@@ -38,13 +38,15 @@ const (
 	NStartedMerging = "stream started merging"
 	NBatchLanded    = "batch landed"
 	NStreamLanded   = "stream landed"
+	NStreamStopped  = "stream stopped"
+	NStreamResumed  = "stream resumed"
 	NWorkOK         = "work came back ok"
 	NMemberUp       = "fleet member up"
 	NMemberDown     = "fleet member down"
 	NUnknownMachine = "an unknown machine is beating"
 	NStagingRefused = "a member refused a card at staging"        // dealt to another member
 	NRestWithdrawn  = "a card withdrawn from a resting route"     // dealt again on one that serves
-	NFriendReturned = "a friend's card returned to ready"         // by friend reconcile: no report, and her queue says done or does not hold it
+	NFriendReturned = "a friend's card returned to ready"         // by the live pass: her run is gone
 	NFriendRedealt  = "a friend's card redealt past its deadline" // by friend redeal: work card redealt, primary back to ready
 	// A card dealt to a member that drains, or a read asked of a reader that drains or whose
 	// machine is held or drains, and not taken, returned for the deal or the ask to give to
@@ -125,6 +127,12 @@ const (
 	// it stands: rewritten in place only when its facts change, never raised
 	// anew (friend_read.go, read_cards.go).
 	NNoFrontierRoom = "no frontier reader has room"
+	// NFinishRefused is the judgment of a finish the lifecycle refused more than
+	// FinishRefusalBound times on one attempt: raised once for the card and
+	// attempt, naming the head offered and the refusal's words, so a finish sent
+	// again without end is seen (steps_work.go Finish; tla/SprintTables.tla
+	// FinishRefusalsBounded).
+	NFinishRefused = "a finish is refused again and again"
 )
 
 // Decisions open to each judgment type.
@@ -145,7 +153,7 @@ var Decisions = map[string][]string{
 	NBaseRed:           {"resume"},         // never wait: it holds the stream (wait_refused.go); the base-gate rule resumes it once the base is green
 	NMissingBase:       {"rebase", "drop"}, // never wait: it holds its cards (wait_refused.go)
 	NBlocked:           {"drop", "ack"},
-	NReadBranchMissing: {"ack", "rework with a fix", "drop"}, // read_missing.go: ack once the branch is on origin
+	NReadBranchMissing: {"ack", "rework with a fix", "drop"}, // read_missing.go: ack once the branch is on origin; ask also resolves it once a branch holds the head (tla/ReadBranchMissing.tla) but is not listed, the three are pinned by read_missing_test.go
 	NMissingNeed:       {"drop", "ack"},
 	NCIRed:             {"rework with a fix", "return", "drop", "look", "ack"},
 	NReadsExhausted:    {"ask another reader", "rework", "drop"},
@@ -161,9 +169,13 @@ var Decisions = map[string][]string{
 	NTimer:             {"ack"},                      // a timer the actor set woke it: nothing to decide
 	NStalled:           {"look at the card", "wait"}, // each stall names its own
 	NNoFrontierRoom:    {"reader add", "wait"},
+	NFinishRefused:     {"look at the card", "drop"}, // the refusal's words name the cause; the count resets with the attempt
 	// a STOP debt owner that has not beaten since the STOP: acknowledged by the
 	// coordinator, who stop-returns its leases by hand, or waited for its beat.
 	NStopDebtBeat: {"ack", "wait"},
+	// the machine held a member for its takes that end with no model call: the
+	// judgment is the hold's cause, so answering it ends the hold (hold_cause.go)
+	NMemberIdleReaps: {"ack", "wait"},
 }
 
 // RepeatDecision is added to a judgment for a primary that came back a second
@@ -189,9 +201,34 @@ func Preview(items []string, sep string) string {
 	return strings.Join(items[:PreviewLen], sep) + sep + "... and " + strconv.Itoa(len(items)-PreviewLen) + " more"
 }
 
+// CoordinatorDelivery is the frozen bus message for one state episode. Sent is
+// recorded only after bus success; Token bridges a crash between send and commit.
+type CoordinatorDelivery struct {
+	CoveredBy                               string // shares the causal notification's token and payload
+	From, To, Token, Subject, Body, Episode string
+	Sent                                    bool
+	RetryBefore                             time.Time // no automatic retry after the bus token acceptance window
+}
+
+// StreamTransition freezes a stream notice at its committing store TIME, including
+// the affected friends. The happened note survives the stop judgment closing.
+// tla/CoordinatorPush.tla: CommitTransition, SeparateBlockerLines.
+type StreamTransition struct {
+	State   string   `json:"state"`
+	Cause   string   `json:"cause,omitempty"`
+	Waiting int      `json:"waiting"`
+	Owners  []string `json:"owners,omitempty"`
+}
+
 // Note is one notification.
 type Note struct {
-	ID string `json:"id"`
+	StreamTransition       *StreamTransition    `json:"stream_transition,omitempty"`
+	ID                     string               `json:"id"`
+	SafeDefault            string               `json:"safe_default,omitempty"`
+	DecisionDelivery       *DecisionDelivery    `json:"decision_delivery,omitempty"`
+	DefaultCoordinatorTold bool                 `json:"default_coordinator_told,omitempty"`
+	DefaultOwnerTold       bool                 `json:"default_owner_told,omitempty"`
+	CoordinatorDelivery    *CoordinatorDelivery `json:"coordinator_delivery,omitempty"`
 	// Alias is a judgment's or an acknowledgement's alias, j<n>, its place among
 	// the epoch's in the order written: the store's commit numbers it (inbox.go,
 	// Alias); "" on a happened or decided note.
@@ -368,6 +405,9 @@ func boolWord(b bool) string {
 
 // Bound cuts the listed primaries to MaxListed; Count keeps the total.
 func (n Note) Bound() Note {
+	if n.Kind == Judgment {
+		n.SafeDefault = SafeDecisionDefault(n.Type)
+	}
 	if len(n.Primaries) > MaxListed {
 		n.Primaries = append([]string(nil), n.Primaries[:MaxListed]...)
 	}
@@ -379,7 +419,14 @@ func (n Note) Bound() Note {
 // the same brief would hold the same way (docs/SPEC-SPRINT.md section 1, a brief defect).
 const DecisionRecut = "re-cut the brief"
 
-// NoteTypeText is a human label for the four historical friend note identifiers.
+// The retired QUEUE.json reconcile's notes (friend_return.go): no step raises them any more,
+// and their persisted identifiers keep their historical bytes for the history that holds them.
+const (
+	NFriendDisagrees = "a friend's row disagrees with her QUEUE.json"
+	NFriendAgrees    = "a friend's row agrees with her QUEUE.json again"
+)
+
+// NoteTypeText is a human label for the historical friend note identifiers.
 // Note.Type itself remains unchanged so stored judgments and API consumers keep
 // matching their existing identifiers, release ages and acknowledgments.
 func NoteTypeText(typ string) string {

@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/verbflag"
 )
 
 // releaseHoldWords distinguishes a card's release operand from the holds on a
@@ -31,7 +31,7 @@ var verbExit = map[string]string{
 	"friend sync":   "exit codes: 0 done, 1 refused (a friend row's name, or a working directory that cannot be read), 2 usage or a store that did not answer, 3 the config could not be read or holds no friend row",
 	"land":          "exit codes: 0 every batch landed (--dry-run: would land), 1 a batch was refused (its line names the next step), 2 usage, a store that did not answer, or a push that landed and was not reported (run land again)",
 	"check":         "exit codes: 0 no violation, 1 a violation (each on its line), 2 usage or a store that did not answer",
-	"check cards":   "exit codes: 0 every core kind clean (CHECK CARDS OK), 1 one or more findings (CHECK CARDS FAILED), 2 usage or a store that did not answer",
+	"check cards":   "exit codes: 0 no refusing finding, warnings included (CHECK CARDS OK), 1 one or more refusing findings (CHECK CARDS FAILED), 2 usage or a store that did not answer",
 	"selftest":      "exit codes: 0 the selftest landed its card through the tree gate (SELFTEST OK), 1 it did not (SELFTEST FAILED names the step, the why and the kept directory), 2 usage",
 	"seat check":    "exit codes: 0 done (every check OK), 1 a check is DOWN, 2 usage or a store that did not answer",
 	"machinery":     "exit codes: 0 done (every check OK), 1 a check is DOWN, 2 usage or a store that did not answer",
@@ -41,6 +41,7 @@ var verbExit = map[string]string{
 	"demo load":     "exit codes: 0 the demo is up and where read it, 1 failed (a damaged backup, a demo already up, a Redis that did not start or a line not replayed: what this load started is stopped and removed), 2 usage",
 	"demo stop":     "exit codes: 0 stopped and removed, 1 failed (no demo up, or a recorded pid or directory that is not the demo's: nothing stopped or removed), 2 usage",
 	"server switch": "exit codes: 0 done, 1 failed or refused (the candidate's shadow tick failed: nothing changed), 2 usage",
+	"friend stage":  "exit codes: 0 staged (or already staged as the same card, branch and head: the JOB.md path), 1 refused (the card is not on the friend's row at that generation, neither the friend's nova-config row nor the sprint row names a git_identity that parses, or the directory is staged as another card), nothing written, 2 usage or a store that did not answer",
 	"brief check":   "exit codes: 0 no finding, 1 one or more findings, 2 usage or an unreadable file, 3 the store did not answer and the store-free checks found nothing",
 }
 
@@ -54,7 +55,7 @@ var verbEffect = map[string]string{
 	"friend hold":       "local write: holds the named friends in the sprint's store, as hold does (every card the friend holds goes back to ready); --dry-run writes nothing",
 	"friend unhold":     "local write: releases the named friends' holds in the sprint's store, as unhold does; --dry-run writes nothing",
 	"check":             "inspection: reads the sprint's tables and prints each violation, writes nothing",
-	"check cards":       "store write: reads the epoch's work table and its streams, runs the core card kinds (needs, files, same-file, bases, names, stale-fix, lint, brief-size) and prints each finding; writes the epoch's one check record (clean or the findings, every card checked and their digest), which start reads; reads each base tree from the lander's clone",
+	"check cards":       "store write: reads the epoch's work table and its streams, runs the core card kinds (needs, files, same-file, bases, names, stale-fix, lint, brief-size) and prints each finding, a file overlap a stream's order or the waits serialize as WARN; writes the epoch's one check record (clean or the findings, every card checked and their digest), which start reads (--dry-run and --from write nothing); reads each base tree from the lander's clone",
 	"brief check":       "inspection: reads the named briefs and runs every check add runs, in add's order, over every brief, collecting every finding instead of stopping at the first; reads the store read-only and writes nothing",
 	"routes":            "inspection: reads the route table and prints each route, writes nothing",
 	"cost reconcile":    "local write: reads each provider's usage of today through the seat's key and writes the reconciliation and its gap judgment to the sprint's store; --dry-run writes nothing",
@@ -73,10 +74,10 @@ var verbEffect = map[string]string{
 	"queue":             "inspection: reads a worker's or a stream's cards, writes nothing",
 	"handover":          "inspection: reads the store, writes nothing",
 	"seat check":        "inspection: checks server, store, loop, beats, readers, dashboard, installed versions, merge queue, writes nothing",
-	"seat install":      "local write: writes the push loop's unit (inbox --wait --push seat) into --dir and loads it with launchctl (macOS) or systemctl --user (Linux); --dry-run prints it and writes nothing",
-	"seat uninstall":    "local write: unloads the push loop's unit and removes its file from --dir; --dry-run names the unit and unloads and removes nothing",
+	"seat install":      "local write: records the seat on this machine (the sprint's server it uses, and the nova-config seat profile) beside the store login; --dry-run prints what it would write and writes nothing",
+	"seat uninstall":    "local write: unloads the retired push loop's unit, where an older build installed it, and removes its file from --dir; --dry-run names the unit and unloads and removes nothing",
 	"machinery":         "inspection: checks server, store, loop, beats, readers, dashboard, installed versions, merge queue, writes nothing",
-	"needs":             "inspection: reads the waiting cards, writes nothing",
+	"needs":             "inspection: reads the waiting cards, writes nothing (needs set replaces a primary's needs or --land-after soft dependencies, where work runs in parallel and the lander lands the two in order; a held card keeps its column and its hold through a needs change, and only release moves it)",
 	"streams":           "inspection: reads the work and merge tables once and prints each stream with the repositories and bases its cards record, its release, its open and landed counts, and with --cards every card's id, state, tier, title and needs; writes nothing",
 	"held":              "inspection: reads the held cards of the table, writes nothing",
 	"sentinels":         "inspection: reads the sentinels and what each waits on, writes nothing",
@@ -92,7 +93,6 @@ var verbEffect = map[string]string{
 	"friend take":       "local write: takes the named cards back from the friend in the sprint's store; --dry-run writes nothing",
 	"friend give":       "local write: clears the friend's take-back mark on the named cards in the sprint's store; --dry-run writes nothing",
 	"friend level":      "local write: moves queued cards between the friends' rows in the sprint's store; --dry-run writes nothing",
-	"friend health":     "local write: records the coordinator's observation of the friend in the sprint's store, or removes it with --clear; --dry-run writes nothing",
 	"reader retire":     "local write: retires the named readers in the sprint's store; a read it is reading is taken back at the next tick and asked of a reader up with no card at that attempt, and it stays when none can take it; --dry-run writes nothing",
 	"promoted":          "local write: records the promotion in the sprint's store; --dry-run writes nothing",
 	"preflight":         "inspection: reads the briefs, the table and the repository, writes nothing",
@@ -104,10 +104,9 @@ var verbEffect = map[string]string{
 	"server switch":     "local write: runs <binary> tick --shadow against the store first (read-only, under --tick-deadline) and refuses the swap, nothing changed, when it exits non-zero, panics or misses the deadline; then switches the server binary on disk, keeping the previous binary, the shadow's plan size and time at <target>.shadow.json, and rolling back on land failure in the window; --dry-run runs the shadow tick only and switches and writes nothing",
 	"merge-window open": "local write: the merge window, the merge table's properties in the sprint's store; land pauses while it is open; --dry-run checks --for and --reason and writes nothing",
 	// a store write, the collect's tip read and its directory reads said
-	"friend reconcile": "store write: finishes each card the friend reported on and returns each the friend abandoned, in the sprint's store; reads the friend's inbox/QUEUE.json and outbox, writes nothing in the friend's directory, and reads origin's tip (one git ls-remote) for each LAND it collects; --dry-run writes nothing and reads no tip",
-	"lane list":        "inspection: lists every machine's lanes and holders, writes nothing",
-	"lane take":        "store write: takes one lane on the machine for the worker, or joins the queue; --dry-run checks availability and writes nothing",
-	"lane give":        "store write: gives the worker's lane or queue position back; --dry-run checks whether a lane is held and writes nothing",
+	"lane list": "inspection: lists every machine's lanes and holders, writes nothing",
+	"lane take": "store write: takes one lane on the machine for the worker, or joins the queue; --dry-run checks availability and writes nothing",
+	"lane give": "store write: gives the worker's lane or queue position back; --dry-run checks whether a lane is held and writes nothing",
 	// the verbs whose one write is their store step, planned and not committed by --dry-run (stepdry.go)
 	"accept":   "local write: moves the eligible primaries in review into the merge queue, or records the coordinator's heavy read on each named primary, in the sprint's store; --dry-run writes nothing",
 	"ack":      "local write: closes the named notifications, nothing to be done, with the reason, in the sprint's store; --dry-run writes nothing",
@@ -128,13 +127,6 @@ var verbEffect = map[string]string{
 
 	// stop-return (the base's #5499) writes through one store step too; its --dry-run is stepdry.go's
 	"stop-return": "local write: returns the named stopped cards to the owner row that acknowledges the cancellation, keeping their placement and attempt, in the sprint's store; --dry-run writes nothing",
-
-	// seat push (the base's #5477) writes the seat's push target; its --dry-run is its own
-	"seat push": "store write: with --harness and --target, records the seat's push target (harness, target, session, adapter) in the sprint's store; with neither, prints the record and writes nothing; --dry-run checks the same and writes nothing",
-
-	// the hook (hook.go): the server records it; this process writes nothing
-	"hook":   "server subscription: holds the seat's hook on the sprint's server, which records it in the sprint's store and streams every judgment and push until the hook ends; --prove and --ack carry the session's answer over the running hook's connection; this process writes nothing",
-	"unhook": "server subscription: ends the running hook over its connection; the server records the seat away in the sprint's store and tells the owner; this process writes nothing",
 
 	// verbs that read and write nothing
 	"goal show": "inspection: reads the goals in the sprint's store, writes nothing",
@@ -270,7 +262,7 @@ func verbProse(name string) string {
 		return releaseHoldWords
 	case "sentinel set":
 		return sentinelSetWords + "\n"
-	case "friend beat", "friend down", "friend up", "friend health":
+	case "friend beat", "friend down", "friend up":
 		return friendVerbWords(name)
 	case "friend take":
 		return friendTakeWords
@@ -278,6 +270,8 @@ func verbProse(name string) string {
 		return friendGiveWords
 	case "friend cards":
 		return friendCardsWords
+	case "friend stage":
+		return friendStageWords
 	case "friend level":
 		return friendLevelWords
 	case "add":

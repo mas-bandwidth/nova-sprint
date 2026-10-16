@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/testbin"
+	"github.com/mas-bandwidth/nova-tools/pkg/testbin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -87,14 +87,7 @@ func TestSelftestLandLandsACannedCardAndSwitchRollsBack(t *testing.T) {
 		t.Parallel()
 		dir := t.TempDir()
 		goodBin := filepath.Join(dir, "good-lander.sh")
-		script := `#!/bin/sh
-if [ "$1" = "land" ]; then
-	git merge -q --no-ff sprint/selftest-canned-1 -m "land selftest-1"
-	git push -q origin main
-fi
-exit 0
-`
-		require.NoError(t, os.WriteFile(goodBin, []byte(script), 0o755))
+		require.NoError(t, os.WriteFile(goodBin, []byte(goodLander), 0o755))
 
 		err := SelftestLand(ctx,
 			WithSelftestScratch(filepath.Join(dir, "scratch")),
@@ -107,14 +100,7 @@ exit 0
 		t.Parallel()
 		dir := t.TempDir()
 		goodBin := filepath.Join(dir, "good-lander.sh")
-		script := `#!/bin/sh
-if [ "$1" = "land" ]; then
-	git merge -q --no-ff sprint/selftest-canned-1 -m "land selftest-1"
-	git push -q origin main
-fi
-exit 0
-`
-		require.NoError(t, os.WriteFile(goodBin, []byte(script), 0o755))
+		require.NoError(t, os.WriteFile(goodBin, []byte(goodLander), 0o755))
 
 		cwd, err := os.Getwd()
 		require.NoError(t, err)
@@ -130,43 +116,18 @@ exit 0
 
 	t.Run("server switch keeps old binary and rolls back on failed land in window", func(t *testing.T) {
 		t.Parallel()
-		dir := t.TempDir()
-		target := filepath.Join(dir, "nova-sprint")
-		candidate := filepath.Join(dir, "nova-sprint-candidate")
-
-		require.NoError(t, os.WriteFile(target, []byte("binary-v1"), 0o755))
-		require.NoError(t, os.WriteFile(candidate, []byte("binary-v2"), 0o755))
-
-		t0 := time.Date(2026, 10, 4, 15, 0, 0, 0, time.UTC)
-		now := t0
-		window := 15 * time.Minute
-
-		err := ServerSwitch(ctx, ServerSwitchOptions{
-			Binary:   candidate,
-			Target:   target,
-			Rollback: true,
-			Window:   window,
-			Now:      func() time.Time { return now },
-		})
-		require.NoError(t, err, "server switch must succeed")
-
-		// Verify target is candidate and prev is v1
+		target := fSwitched(t, fSwitchT0, 15*time.Minute)
 		cur, err := os.ReadFile(target)
 		require.NoError(t, err)
 		assert.Equal(t, "binary-v2", string(cur), "target must be switched to candidate")
-
 		prev, err := os.ReadFile(target + ".prev")
 		require.NoError(t, err)
 		assert.Equal(t, "binary-v1", string(prev), "previous binary must be kept at target.prev")
 
 		// 5 minutes later, a land fails in the window:
-		now = t0.Add(5 * time.Minute)
-		landErr := errors.New("land failed: test check failed")
-		rolledBack, err := CheckRollbackOnLandFailure(target, landErr, now)
+		rolledBack, err := CheckRollbackOnLandFailure(target, errors.New("land failed: test check failed"), fSwitchT0.Add(5*time.Minute))
 		require.NoError(t, err)
 		assert.True(t, rolledBack, "failed land within window must trigger rollback")
-
-		// Target must be rolled back to v1
 		restored, err := os.ReadFile(target)
 		require.NoError(t, err)
 		assert.Equal(t, "binary-v1", string(restored), "target must be restored to previous binary after rollback")
@@ -174,33 +135,11 @@ exit 0
 
 	t.Run("server switch keeps candidate if window expires without failed land", func(t *testing.T) {
 		t.Parallel()
-		dir := t.TempDir()
-		target := filepath.Join(dir, "nova-sprint")
-		candidate := filepath.Join(dir, "nova-sprint-candidate")
-
-		require.NoError(t, os.WriteFile(target, []byte("binary-v1"), 0o755))
-		require.NoError(t, os.WriteFile(candidate, []byte("binary-v2"), 0o755))
-
-		t0 := time.Date(2026, 10, 4, 15, 0, 0, 0, time.UTC)
-		now := t0
-		window := 15 * time.Minute
-
-		err := ServerSwitch(ctx, ServerSwitchOptions{
-			Binary:   candidate,
-			Target:   target,
-			Rollback: true,
-			Window:   window,
-			Now:      func() time.Time { return now },
-		})
-		require.NoError(t, err)
-
+		target := fSwitched(t, fSwitchT0, 15*time.Minute)
 		// 20 minutes later (past 15 minute window), a land fails:
-		now = t0.Add(20 * time.Minute)
-		landErr := errors.New("unrelated failure after window")
-		rolledBack, err := CheckRollbackOnLandFailure(target, landErr, now)
+		rolledBack, err := CheckRollbackOnLandFailure(target, errors.New("unrelated failure after window"), fSwitchT0.Add(20*time.Minute))
 		require.NoError(t, err)
 		assert.False(t, rolledBack, "failure outside window must not roll back")
-
 		cur, err := os.ReadFile(target)
 		require.NoError(t, err)
 		assert.Equal(t, "binary-v2", string(cur), "target must stay at candidate version")
@@ -208,26 +147,19 @@ exit 0
 
 	t.Run("server switch explicit rollback restores previous binary", func(t *testing.T) {
 		t.Parallel()
-		dir := t.TempDir()
-		target := filepath.Join(dir, "nova-sprint")
-		candidate := filepath.Join(dir, "nova-sprint-candidate")
-
-		require.NoError(t, os.WriteFile(target, []byte("binary-v1"), 0o755))
-		require.NoError(t, os.WriteFile(candidate, []byte("binary-v2"), 0o755))
-
-		err := ServerSwitch(ctx, ServerSwitchOptions{
-			Binary:   candidate,
-			Target:   target,
-			Rollback: true,
-		})
-		require.NoError(t, err)
-
-		// Explicit rollback
-		err = ServerRollback(ctx, target)
-		require.NoError(t, err, "explicit rollback must succeed")
-
+		target := fSwitched(t, time.Time{}, 0)
+		require.NoError(t, ServerRollback(ctx, target), "explicit rollback must succeed")
 		restored, err := os.ReadFile(target)
 		require.NoError(t, err)
 		assert.Equal(t, "binary-v1", string(restored), "explicit rollback must restore previous binary")
 	})
 }
+
+// goodLander is a lander script that lands the canned card on origin main.
+const goodLander = `#!/bin/sh
+if [ "$1" = "land" ]; then
+	git merge -q --no-ff sprint/selftest-canned-1 -m "land selftest-1"
+	git push -q origin main
+fi
+exit 0
+`

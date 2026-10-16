@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/pkg/typedrec"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
 
 // A read at any tier is asked of a friend whose class is at or above that tier
@@ -133,24 +133,6 @@ func ParseFriendReadReport(report string) (verdict, finding, why string) {
 	default:
 		return "", "", "a friend's read report says Verdict: LAND or Verdict: HOLD"
 	}
-}
-
-// friendReadTier is the tier a primary's read would be drawn from before
-// readTierOf collapses a frontier card onto the tier a route serves. A heavy
-// card whose read tier is set to the one above (frontier) is frontier here;
-// readTierOf's own return is left as it is.
-func friendReadTier(s *Snapshot, pr *Card) string {
-	m, _ := modelOf(pr)
-	t := cardTier(pr, m)
-	set := s.readTierSetting(pr.Row)
-	if set == "" {
-		return t
-	}
-	ladder := []string{cardhdr.RouteFlash, cardhdr.RoutePro, "heavy", cardhdr.RouteFrontier}
-	if slices.Index(ladder, set) > slices.Index(ladder, t) {
-		return set
-	}
-	return t
 }
 
 // friendAtOrAbove says the friend may be asked a read of tier: one of her tiers
@@ -440,7 +422,7 @@ func friendReadAskOf(s *Snapshot, seats []FriendSeat, dir string, cards []*Card)
 	// by the read's level (readOrder, priority.go), work order within one
 	for _, pr := range cards {
 		attempt := readAttempt(pr)
-		tier := friendReadTier(s, pr)
+		tier := s.readTierOf(pr)
 		worker := attemptWorker(s, pr.ID, attempt)
 		// a friend is asked an attempt once: her read card at it, taken back,
 		// keeps its id, so she is not one who may read it again. A friend who
@@ -680,11 +662,16 @@ func readCardVerb(s *Snapshot, r ReadReq, row, name string) Plan {
 	for _, c := range chosen {
 		pr := s.Work.Card(c.F("primary"))
 		if r.Return {
-			if ended, env := EnvExit(r.Reason, r.Exit); env && HardEnvExit(r.Exit) && !IsFriendRow(row) {
+			readHead := c.F("head")
+			ended, code, env := ReadEnvEnd(r.Reason, r.Exit, readHead, pr.F("head"))
+			if env && IsFriendRow(row) {
+				env = false // a friend's row is no member's environment: her returns are judged as before
+			}
+			if env {
 				// the member's child ended on its environment: no verdict, and its reader is
 				// not spent, so the deal may deal it the read again (docs/SPEC-SPRINT.md, "An
 				// environment exit"; RetiredByEnvironment)
-				p.Units = append(p.Units, readEnvExitUnit(s, c, pr, r, ended, name))
+				p.Units = append(p.Units, readEnvExitUnit(s, c, pr, r, ended, code, name))
 				continue
 			}
 			set := map[string]string{"retired": stamp(s.Now), "retired_by": RetiredByReturned, "reason": cutText(r.Reason, MaxCardTextBytes)}
@@ -806,7 +793,7 @@ func frontierRoomJudgment(p *Plan, s *Snapshot, seats []FriendSeat, waits map[st
 	var judged, causes []string
 	for _, id := range slices.Sorted(maps.Keys(waits)) {
 		pr := s.Work.Placed(id)
-		if pr == nil || friendReadTier(s, pr) != cardhdr.RouteFrontier {
+		if pr == nil || s.readTierOf(pr) != cardhdr.RouteFrontier {
 			continue
 		}
 		judged = append(judged, id)
@@ -838,7 +825,7 @@ func frontierRoomDecisions() []string {
 // has dealt to its unit already (plannedPlaces), as the ask counted them.
 func frontierWhy(s *Snapshot, seats []FriendSeat, p *Plan, pr *Card) string {
 	attempt := readAttempt(pr)
-	tier := friendReadTier(s, pr)
+	tier := s.readTierOf(pr)
 	var up []FriendSeat
 	var full []string
 	for _, f := range seats {

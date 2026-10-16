@@ -11,8 +11,8 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // The doctor (the owner, 2026-10-10 ~04:18Z: "sprint doctor can check this, but i still
@@ -24,7 +24,7 @@ import (
 // said under the layer it stops.
 
 func init() {
-	verbEffect["doctor"] = "inspection: reads only, writes nothing: every definition-of-done fault, one line each with its evidence (the seat check's machinery verdicts, every automatic stop that holds with its age, effect and undo verb, every always-true rule a step broke, the deal dry with cards waiting, and the judgments waiting on the seat), then every check of the desired state against the live sprint and each member's host (DOCTOR OK|WARN|DRIFT|FAIL <check> <subject> <evidence> remedy=<verb>): the ready cards the deal does not take and the deal's reason, the routes each tier can draw, the readers, the loops that did not dial the server again, each member's tools, push credential, seat, disk and build, the lander's loop, the fleet rows against nova-config, the providers resting, the seat's push loop and the members failing on their environment"
+	verbEffect["doctor"] = "inspection: reads only, writes nothing; --all runs nova-doctor run alongside this sprint doctor concurrently, prints both named reports and preserves each exit and stderr (with --json, one envelope holds both reports); --area scopes the sprint checks; --preflight remains the candidate-binary gate and cannot be combined with --all. Otherwise it reports every definition-of-done fault, one line each with evidence (the seat check's machinery verdicts, automatic stops with age, effect and undo verb, broken always-true rules, a dry deal with waiting cards, and overdue seat judgments), then every desired-state check against the sprint and hosts: ready cards the deal does not take and why, routes each tier can draw, readers, loops that did not dial again, each member's tools, push credential, seat, disk and build, the lander's loop, fleet rows against nova-config, resting providers, the coordinator's nova-hook record, and members failing on their environment"
 }
 
 // stopLayer is the doctor's layer a kind of stop is said under.
@@ -33,8 +33,6 @@ var stopLayer = map[string]string{
 	sprint.StopKindRouteRest:     "routes",
 	sprint.StopKindMemberDown:    "machines",
 	sprint.StopKindMemberAdopt:   "machines",
-	sprint.StopKindFriendStalled: "friends",
-	sprint.StopKindFriendDown:    "friends",
 	sprint.StopKindPinWaits:      "cards",
 	sprint.StopKindStreamStopped: "cards",
 }
@@ -91,6 +89,7 @@ func doctorFaults(r sprint.SeatCheckReport, rec store.StopsRecord, violations []
 func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 	const name = "doctor"
 	fs, c := a.verbSetup(name)
+	all := fs.Bool("all", false, "run nova-doctor and the sprint doctor in parallel")
 	area := fs.String("area", "", "run one group of checks: "+strings.Join(sprint.DoctorAreas, ", ")+" (the sprint area is the stops, rules and machinery lines)")
 	preflight := fs.String("preflight", "", "run the release gate's frame against this candidate binary before a switch or adopt: its version and its tick --shadow --json against the store this doctor reads, the store's tables against the candidate's TABLES.lock (a locked-shape refusal is one FAIL whose evidence is the shadow's own error text, naming the columns and the nova-table commands that mend them); the gate's later checks are WARN rows until their cards land; exit 1 on any FAIL")
 	pos, err := parse(fs, args)
@@ -103,13 +102,37 @@ func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 	if *area != "" && !slices.Contains(sprint.DoctorAreas, *area) {
 		return refuse(stderr, name, "--area names "+oneline.Escape(*area)+", which is no area: "+strings.Join(sprint.DoctorAreas, ", "))
 	}
-	st, err := a.store(*c)
+	if *all {
+		if *preflight != "" {
+			return refuse(stderr, name, "--all cannot be combined with --preflight: it checks a candidate binary, not the live sprint")
+		}
+		pair := runDoctorPair(
+			func() doctorRunResult { return runNovaDoctor(c.json) },
+			func() doctorRunResult {
+				var out, errb strings.Builder
+				code := a.cmdDoctorParsed(*c, *area, "", &out, &errb)
+				return doctorRunResult{code: code, stdout: out.String(), stderr: errb.String()}
+			},
+		)
+		if c.json {
+			printDoctorPairJSON(stdout, pair)
+		} else {
+			printDoctorPair(stdout, stderr, pair)
+		}
+		return pairExit(pair)
+	}
+	return a.cmdDoctorParsed(*c, *area, *preflight, stdout, stderr)
+}
+
+func (a *app) cmdDoctorParsed(c common, area, preflight string, stdout, stderr io.Writer) int {
+	const name = "doctor"
+	st, err := a.store(c)
 	if err != nil {
 		return refuse(stderr, name, err.Error())
 	}
 	ctx := context.Background()
-	if *preflight != "" {
-		return a.cmdDoctorPreflight(ctx, *c, *preflight, stdout, stderr)
+	if preflight != "" {
+		return a.cmdDoctorPreflight(ctx, c, preflight, stdout, stderr)
 	}
 	rec, err := st.StopsNow(ctx)
 	if err != nil {
@@ -124,12 +147,12 @@ func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 	now := a.now()
 	machinery := a.withConfigSeat(a.seatCheck(ctx, st, c.redis))
 	faults := doctorFaults(machinery, rec, check.Violations, snap, now)
-	checks, refused, err := a.doctorChecks(ctx, st, machinery.Measures, rec, *area)
+	checks, refused, err := a.doctorChecks(ctx, st, machinery.Measures, rec, area)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s %s: %s; run: nova-sprint where\n", prog, name, oneline.Escape(noSprintYet(err).Error()))
 		return 2
 	}
-	sprintArea := *area == "" || *area == sprint.AreaSprint
+	sprintArea := area == "" || area == sprint.AreaSprint
 	if !sprintArea {
 		faults, refused = nil, nil
 	}
@@ -183,7 +206,7 @@ func (a *app) cmdDoctor(args []string, stdout, stderr io.Writer) int {
 		if refusedFaults == nil {
 			refusedFaults = []string{}
 		}
-		b, err := json.Marshal(map[string]any{"verb": name, "status": status, "exit": code, "at": now.UTC(), "area": *area, "faults": faults, "refused": refusedFaults, "machinery": machinery, "stops": stops, "seat": rec.Seat,
+		b, err := json.Marshal(map[string]any{"verb": name, "status": status, "exit": code, "at": now.UTC(), "area": area, "faults": faults, "refused": refusedFaults, "machinery": machinery, "stops": stops, "seat": rec.Seat,
 			"checks": checks, "counts": counts, "fix_safe": sprint.DoctorFixSafe})
 		if err != nil {
 			fmt.Fprintf(stderr, "%s %s: %s; run: nova-sprint doctor\n", prog, name, oneline.Escape(err.Error()))

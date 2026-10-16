@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // All is the four tables, for the verbs that read everything.
@@ -82,6 +82,10 @@ func (st *Store) check(ctx context.Context, reads int, streams bool) (CheckRepor
 			return rep, nil, err
 		}
 		s, err := st.Load(ctx, All, tickExtras)
+		if err != nil {
+			return rep, nil, err
+		}
+		s.Friends, err = st.FriendSeats(ctx, s.Now)
 		if err != nil {
 			return rep, nil, err
 		}
@@ -367,7 +371,7 @@ func (st *Store) OpenGroups(ctx context.Context) ([]sprint.Group, error) {
 
 // follow is the store pinned to the sprint's current epoch, re-reading the
 // active epoch when the sprint has left the one it holds: a clear advanced
-// the epoch under a long-running reader (the seat's push loop, inbox --wait)
+// the epoch under a long-running reader (inbox --wait, the server's coordinator push)
 // and its next look must read the new epoch and carry on, never be refused by
 // it (docs/SPEC-SPRINT.md section 13: "run goes on at the new epoch"; a
 // restore the clear still owes is performed first, as pin does). A store

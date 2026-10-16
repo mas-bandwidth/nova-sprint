@@ -18,7 +18,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
+	"github.com/mas-bandwidth/nova-tools/pkg/subproc"
 )
 
 // The seat check (docs/SPEC-SPRINT.md, "The seat check"; the owner, 2026-10-04 1:52 PM:
@@ -66,6 +66,9 @@ type outside struct {
 	// machineVersions is each machine's installed version against dev (fp-mach-01).
 	machineVersions func(ctx context.Context, machines []string) (sprint.VersionsM, error)
 	novaTools       func(bin string) sprint.NovaToolsProbe
+	// novaToolsRequired is the nova-tools version this executable needs: go.mod's,
+	// from its build record (sprint.NovaToolsRequired); a test's fake names its own.
+	novaToolsRequired func() (string, bool)
 	// doctorConfig reads nova-config's machine and loop rows (doctor_probe.go).
 	doctorConfig func(ctx context.Context) (doctorConfig, error)
 	// serverStarted is when the server listening at addr started, and how it was measured.
@@ -507,15 +510,15 @@ func (a *app) seatCheck(ctx context.Context, st *store.Store, redisAddr string) 
 		}
 	}
 
-	// 12. the hook: the holder's hook record, the server's word (hook.go)
+	// 12. the hook: the holder's nova-hook record (coordinator_hook.go)
 	if holder, err := st.B.Coordinator(ctx); err != nil {
 		m.Errs[sprint.SeatCheckHook] = err.Error()
 	} else if holder != "" && hookArmed(holder) {
-		rec, ok, err := readHook(ctx, st)
+		hs, err := a.hookStatus(ctx, holder)
 		if err != nil {
 			m.Errs[sprint.SeatCheckHook] = err.Error()
 		}
-		m.Hook = sprint.HookM{Measured: true, Holder: holder, Record: rec, Recorded: ok}
+		m.Hook = sprint.HookM{Measured: true, Holder: holder, Status: hs}
 	}
 
 	return sprint.JudgeSeatCheck(m, now)

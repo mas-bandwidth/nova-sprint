@@ -9,8 +9,8 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/bus"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // The seat is not answering (internal/sprint/seat_answers.go; docs/SPEC-SPRINT.md section 8,
@@ -56,9 +56,10 @@ func seatSilentToken(prefix string, epoch uint64, id string, raise int) string {
 	return t
 }
 
-// tellSeatSilent sends each raise of NSeatSilent not yet told to the sprint's owner on the
+// tellSeatSilent sends each raise of NSeatSilent and NNeedBlocked not yet told to the sprint's owner on the
 // bus, and says it on the server's log; a sprint with no owner is said on the log alone.
 // tla/SprintRules.tla SendOK
+// tla/NeedsBlocked.tla BlockedDependentsCovered
 func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 	now := a.now()
 	a.seatSilent.mu.Lock()
@@ -78,9 +79,62 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 		a.serveSay("SEAT SILENT: the epoch could not be read: %s", oneline.Escape(err.Error()))
 		return
 	}
+	// Suppress the legacy alarm only after a successful folded owner delivery
+	// covered every overdue card-holding judgment represented by this group.
+	all, readErr := st.B.OpenNotes(ctx)
+	if readErr != nil {
+		a.serveSay("DECISIONS OWED: read failed; preserving legacy owner alarm: %s", readErr)
+	}
+	machine, _, machineErr := st.Machine(ctx)
+	if machineErr != nil {
+		a.serveSay("DECISIONS OWED: clock read failed; preserving legacy owner alarm: %s", machineErr)
+	}
+	received := map[string]bool{}
+	for _, o := range all {
+		if d := o.Note.DecisionDelivery; o.Note.Type == sprint.NDecisionDelivery && d != nil && d.Lane == "owner" && !d.SentAt.IsZero() {
+			for _, id := range strings.Split(d.Set, "\x00") {
+				received[id] = true
+			}
+		}
+	}
 	open := map[string]bool{}
 	for _, g := range groups {
-		if g.Type != sprint.NSeatSilent {
+		if g.Type == sprint.NSeatSilent && readErr == nil && machineErr == nil {
+			relevant, covered := false, true
+			groupCards := map[string]bool{}
+			for _, id := range g.Primaries {
+				groupCards[id] = true
+			}
+			for _, o := range all {
+				n := o.Note
+				if n.Kind != sprint.Judgment || !sprint.HoldsACard(n.Type) {
+					continue
+				}
+				age, limit := sprint.DecisionAge(now, n, machine.StoppedBetween)
+				if limit <= 0 || age < limit {
+					continue
+				}
+				cards := n.Primaries
+				if len(cards) == 0 {
+					if n.Card != "" {
+						cards = []string{n.Card}
+					} else {
+						cards = n.Subjects()
+					}
+				}
+				for _, card := range cards {
+					if groupCards[card] {
+						relevant = true
+						covered = covered && received[n.ID]
+						break
+					}
+				}
+			}
+			if relevant && covered {
+				continue
+			}
+		}
+		if g.Type != sprint.NSeatSilent && g.Type != sprint.NNeedBlocked {
 			continue
 		}
 		token := seatSilentToken(st.Names.Prefix, es.N, g.ID, g.Before)
@@ -100,7 +154,7 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 		if owner == "" {
 			a.serveSay("SEAT SILENT %s: the sprint names no owner: told on this line only", g.ID)
 		} else {
-			m := bus.Message{From: "nova-sprint", To: []string{owner}, Kind: bus.KindBlocker, Subject: sprint.NSeatSilent, Body: g.What, Token: token}
+			m := bus.Message{From: "nova-sprint", To: []string{owner}, Kind: bus.KindBlocker, Subject: g.Type, Body: g.What, Token: token}
 			if err := a.bus(ctx, m, func(l string) { a.serveSay("%s", l) }); err != nil {
 				a.serveSay("SEAT SILENT %s: the push to %s failed, tried again at the next look under the same token: %s", g.ID, owner, oneline.Escape(err.Error()))
 				continue

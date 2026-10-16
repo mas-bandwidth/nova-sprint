@@ -27,10 +27,17 @@ type node struct {
 	parts    []any  // children and text runs in document order, for textOf
 }
 
+// commentRe is an HTML comment; the live page is HTML, not XML: its comment at the logo
+// slot (index.html line 448) itself contains "--" (a nested <!--LOGO-->), which XML forbids
+// inside a comment, so the page does not parse as XML and no claim that it does is made.
+var commentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
+
 // parsePage reads the page's markup into a tree with the standard library's XML reader in
-// its forgiving mode: HTML's void elements close themselves and its entities are known.
+// its forgiving mode, over the markup with its comments taken out: HTML's void elements
+// close themselves and its entities are known.
 func parsePage(t *testing.T, html []byte) *node {
 	t.Helper()
+	html = commentRe.ReplaceAll(html, nil)
 	d := xml.NewDecoder(bytes.NewReader(html))
 	d.Strict = false
 	d.AutoClose = xml.HTMLAutoClose
@@ -315,7 +322,9 @@ func TestDashboardPageIsTheSpec(t *testing.T) {
 	}
 	var chips []string
 	for _, c := range body.find(byClass("chip")) {
-		chips = append(chips, strings.Fields(textOf(c))[0])
+		// the coordinator chip's label and its "-" value are adjacent elements, so its
+		// folded text reads "coordinator-": the pill's name is the label alone
+		chips = append(chips, strings.TrimSuffix(strings.Fields(textOf(c))[0], "-"))
 	}
 	assert.Equal(t, pills, chips, "the header's pills, in order")
 

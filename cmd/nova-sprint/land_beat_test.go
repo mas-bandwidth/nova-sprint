@@ -17,8 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/bench"
-	"github.com/mas-bandwidth/nova-sprint/pkg/testbin"
+	"github.com/mas-bandwidth/nova-tools/pkg/bench"
+	"github.com/mas-bandwidth/nova-tools/pkg/testbin"
 )
 
 // beatBuf is the land loop's stdout. The test reads it from another goroutine.

@@ -1,0 +1,224 @@
+# retired-presence.txt -- the old friend presence, liveness and delivery names that
+# are retired and must not come back (the rule in
+# internal/ci/retired_presence_test.go, TestNoRetiredPresenceNameReturns).
+#
+# The owner, 2026-10-14: "continue to remove the old stuff, so they don't come
+# back, or get used when using the tool, or building new code" (v1.3.5). The one
+# truth for friend liveness is the nova-hook record and its per-minute challenge,
+# only the model proves (nova-tools cmd/nova-hook, docs/SPEC-HOOK.md); the sprint
+# reads it (internal/sprint/store/friends.go: "Only nova-hook owns liveness").
+# nova-tools holds the same rule over its own tree.
+#
+# One row per name: `<kind> <name> <what replaced it>`.
+#   ident  a Go identifier, matched as a whole word in every .go file
+#   text   a command, flag or label, matched in every text file (.go, .md, .sh,
+#          .sexp, .txt, .tsv, .yml, .json, .plist, .tla, .cfg), not followed by a
+#          letter, digit or underscore
+# History is not scanned: CHANGELOG.md, FIXES.md, docs/fixes.sexp, tmp/.
+
+# the coordinator's one-second keepalive loop and its sprint-side record
+ident PingEvery nova-hook serve's per-minute challenge
+ident RowsEvery nova-hook serve reads the hooked names each pass
+ident NewKeepalive the hook record, two misses unhook
+ident PeerUp the hook record's proven state
+ident PeerDown the hook record's unhooked state
+ident cmdFriendHealth the hook record (friend health is deleted)
+ident FriendHealth the hook record
+text nova-friend serve nova-hook serve
+
+# the coordinator's ping, the wake ping loop and the pong wait
+text nova-friend ping nova-hook serve's challenge; nova-friend reach to escalate
+text nova-friend wait-pong nova-hook friends --json; nova-friend reach
+text friend-wake-ping nova-hook serve, the hook-serve launch agent
+text --to-friends nova-hook serve challenges every hooked name
+text nova-friend beat the daemon's own beat; liveness is nova-hook's
+
+# the server's old friends rule (presence from beats, pongs and finishes)
+ident FriendEvidence the hook record: held, else proven or unhooked
+ident FriendDownWhy the hook record's reason
+ident FriendBeatBound the hook record; a beat is never liveness
+ident FriendPongWindow the hook record
+ident FriendProofLive the hook record
+ident FriendFinishWindow the hook record; work is not presence
+ident FriendDeafAfter nova-hook serve's FRIEND DOWN judgment
+ident NFriendDeaf nova-hook serve's FRIEND DOWN judgment
+ident FriendSessions the hook record
+ident CheckAnswerWithin the hook record
+ident LegacyPongGrace the hook record
+
+# the daemon copy's session-check presence, push proof and harness watch
+ident StartPresence the hook record
+ident SessionCheck the hook record; only the model's nova-hook prove proves a session
+ident PushProver the hook record (bus2:push is deleted)
+ident PushRenewEvery the hook record
+ident HarnessWatch the hook record; a process is never liveness
+ident WatchHarness the hook record; a process is never liveness
+
+# the sprint's own seat hook and seat push (v1.3.6): the coordinator proves only through nova-hook
+# (a text name of more than one word that is no nova- command is written in double quotes)
+text nova-sprint hook nova-hook hook --as <name> --role coordinator
+text nova-sprint unhook nova-hook unhook --as <name>
+text "--push seat" the server's coordinator push on the bus (cmd/nova-sprint/coordinator_push.go); nova-sprint seat uninstall removes the old loop
+text --quiet-happened the server's coordinator push on the bus
+ident cmdHook nova-hook hook --as <name> --role coordinator
+ident cmdUnhook nova-hook unhook --as <name>
+ident hookMonitor nova-hook hook --as <name> --role coordinator under a Monitor
+ident hookHold nova-hook hook (the bus push nova-hook holds)
+ident hookMsg nova-hook's stream; bus messages from coordinator_push.go
+ident hookHub the nova-hook record
+ident hookSession the nova-hook record
+ident hookRun the nova-hook record
+ident serveHook the nova-hook record (no /api/hook)
+ident hookServerStart coordPushLoop (cmd/nova-sprint/coordinator_push.go)
+ident seatActs the nova-hook record; nova-hook serve's challenge proves the seat
+ident HookKeepalive nova-hook serve's per-minute challenge
+ident HookAnswerBound nova-hook's AnswerBound
+ident HookSilentBound nova-hook's two-miss unhook
+ident HookAckBound coordinator_push.go tells each note once
+ident HookSharedBound nova-hook's ProofTTL
+ident HookRecord hook.Status (the nova-hook record)
+ident HookItem bus messages from coordinator_push.go
+ident HookLive sprint.CoordinatorGate
+ident HookGate sprint.CoordinatorGate
+ident HookGateCall sprint.CoordinatorGate
+ident HookCall sprint.CoordinatorWant
+ident HookBreadcrumb sprint.HookRefusal
+ident HookUnacked coordinator_push.go tells each note once
+ident HookProven nova-hook prove
+ident HookActed nova-hook prove
+ident HookHooked hook.StateProven
+ident HookAway hook.StateUnhooked
+ident HookGone hook.StateUnhooked
+ident NHookLapsed nova-hook serve's two-miss unhook
+ident HookShared the nova-hook record
+ident HookSharedOf the nova-hook record
+ident HookSharedKey the nova-hook record (hook.RecordKey)
+ident HookSharedPrefix the nova-hook record (hook.RecordKey)
+ident HookCoordinatorPushes hook.PushesOf(hook.Coordinator)
+ident HookPushSprint hook.Sprint
+ident HookPushBus hook.Bus
+ident HookRoleCoordinator hook.Coordinator
+ident Hooker hook.Store (coordinator_hook.go, hookStore)
+ident busHooker hook.Store (coordinator_hook.go, hookStore)
+ident hookerShared coordinator_hook.go, hookStatus
+ident hookerForget coordinator_hook.go, hookDrop
+ident hookerBox coordinator_hook.go, hookConn
+ident KeySeatHook the nova-hook record
+ident readHook coordinator_hook.go, hookStatus
+ident writeHook the nova-hook record (only nova-hook writes it)
+ident keySeatPush bus messages from coordinator_push.go
+ident SeatPushKey bus messages from coordinator_push.go
+ident KeySeatPushers bus messages from coordinator_push.go
+ident PushRecord bus messages from coordinator_push.go
+ident AdapterFolder nova-hook's bus push into the session
+ident PushSetup nova-hook hook --as <name> --role coordinator
+ident NotPushTarget nova-hook hook --as <name> --role coordinator
+ident pushDeliverer nova-hook's bus push into the session
+ident folderAdapter nova-hook's bus push into the session
+ident deliverPush coordinator_push.go, coordinatorPass
+ident pushJudgments coordinator_push.go, coordinatorPass
+ident readPush bus messages from coordinator_push.go
+ident writePush bus messages from coordinator_push.go
+ident seatPushTarget nova-hook hook --as <name> --role coordinator
+ident cmdSeatPush nova-hook hook --as <name> --role coordinator
+ident seatInbox bus messages from coordinator_push.go
+ident pushSeat bus messages from coordinator_push.go
+ident SeatUnit the seat push loop is retired; seat uninstall removes its unit
+# friend states other than up, down, held (v1.3.6): the hook record is up or down, the hold is held
+# The owner, 2026-10-14: "being marked as 'stalled' should be removed"; "there is only up,
+# down, held from the sprint POV". sprint.FriendStates is the list; FriendHookStatus writes it.
+ident TickFriendStall the hook record (up or down) and the hold; nothing climbs on silence
+ident PartFriendStall the hook record and the hold; the tick has no stall part
+ident PropFriendStallRung the hook record and the hold; no rung is kept
+ident PropFriendStallDown the hook record's down; held is the coordinator's hold
+ident NFriendStall the coordinator pass's NFriendIdle, a fact that changes no state
+ident NFriendStalled the coordinator pass's NFriendIdle, a fact that changes no state
+ident StopKindFriendStalled the hook record and the hold; no stall stop
+ident StopKindFriendDown the hook record's down; held is the coordinator's hold
+ident friendStallStops the hook record and the hold; no stall stop
+ident PropFriendStallAfter the friend-finish window of the NFriendIdle fact
+ident PropFriendStallStep the hook record and the hold; no rung is kept
+ident FriendStallAfter the friend-finish window of the NFriendIdle fact
+ident FriendStallStep the hook record and the hold; no rung is kept
+ident FriendStallAfterDefault the friend-finish window of the NFriendIdle fact
+ident FriendStallStepDefault the hook record and the hold; no rung is kept
+ident WakeFriend nova-friend reach, by the coordinator; the tick wakes no one
+ident stallWaker nova-friend reach, by the coordinator
+ident wakeFriendStall nova-friend reach, by the coordinator
+ident stallWake nova-friend reach, by the coordinator
+ident friendWorkOf sprint.FriendWorked, a fact the view reports
+ident DutyFriendStall the hook record and the hold; the reference model has no stall duty
+ident FriendStallMoves the hook record and the hold; the reference model has no stall duty
+ident PropFriendDealtNoMore the returned card's friends_left; an up friend is dealt
+ident friendDealtNoMore the returned card's friends_left; an up friend is dealt
+ident friendTakenClear the returned card's friends_left; an up friend is dealt
+text friend_stall_after the friend_finish window of the NFriendIdle fact
+text friend_stall_step the hook record and the hold
+text friend_stall_rung the hook record and the hold
+text friend_stall_down the hook record's down; held is the coordinator's hold
+text friend_dealt_no_more the returned card's friends_left; an up friend is dealt
+text --friend-stall-after the friend-finish window (set --friend-finish)
+text --friend-stall-step the hook record and the hold
+text friend-stalled the hook record and the hold; no stall stop
+text friend-stall-down the hook record's down; held is the coordinator's hold
+# the sprint's copy of the friend daemon (v1.3.6): the daemon is nova-tools' nova-friend run
+# (Envelope and Machine are rows by their qualified name: Status keeps an Envelope field
+# and the sprint has machines of its own)
+ident Daemon nova-tools pkg/friend (nova-friend run)
+ident BatchFor nova-tools pkg/friend (nova-friend run)
+ident friend.Envelope nova-tools pkg/friend (nova-friend run)
+ident WakeTurnText nova-tools pkg/friend (nova-friend run)
+ident DaemonPongSubject nova-tools pkg/friend (nova-friend run)
+ident PingPrefix nova-tools pkg/friend (nova-friend run)
+ident friend.Machine nova-tools pkg/friend (nova-friend run)
+ident PresentText nova-tools pkg/friend (nova-friend run)
+ident LaneRules nova-tools pkg/friend (nova-friend run)
+ident LaneGovernor nova-tools pkg/friend (nova-friend run)
+ident SyncInbox nova-tools pkg/friend (nova-friend run)
+ident ParseHeld nova-tools pkg/friend (nova-friend run)
+ident PlanPresent nova-tools pkg/friend (nova-friend run)
+ident PresentPlan nova-tools pkg/friend (nova-friend run)
+ident PresentSubject nova-tools pkg/friend (nova-friend run)
+ident SupersededNotices nova-tools pkg/friend (nova-friend run)
+ident NotificationPolicy nova-tools pkg/friend (nova-friend run)
+ident NotificationState nova-tools pkg/friend (nova-friend run)
+ident LaneState nova-tools pkg/friend (nova-friend run)
+ident LaneMark nova-tools pkg/friend (nova-friend run)
+ident ClaimLane nova-tools pkg/friend (nova-friend run)
+ident LaneJobOf nova-tools pkg/friend (nova-friend run)
+ident LaneTokens nova-tools pkg/friend (nova-friend run)
+ident LaneVerdict nova-tools pkg/friend (nova-friend run)
+ident FaultWatch nova-tools pkg/friend (nova-friend run)
+ident RescueStray nova-tools pkg/friend (nova-friend run)
+ident Mailbox nova-tools pkg/friend (nova-friend run)
+ident ParsePing nova-tools pkg/friend (nova-friend run)
+ident ParsePong nova-tools pkg/friend (nova-friend run)
+ident PingText nova-tools pkg/friend (nova-friend run)
+ident PongLine nova-tools pkg/friend (nova-friend run)
+ident WakeMark nova-tools pkg/friend (nova-friend run)
+ident RunnerLog nova-tools pkg/friend (nova-friend run)
+ident StopReturnArgv nova-tools pkg/friend (nova-friend run)
+ident ProgressArgv nova-tools pkg/friend (nova-friend run)
+ident ReadRateLimitEvents nova-tools pkg/friend (nova-friend run)
+ident PacingOf nova-tools pkg/friend (nova-friend run)
+ident Stager nova-tools pkg/friend (nova-friend run)
+ident NotStageable nova-tools pkg/friend (nova-friend run)
+ident PronounsRef nova-tools pkg/friend (nova-friend run)
+ident RowPronouns nova-tools pkg/friend (nova-friend run)
+ident NewPronounsRef nova-tools pkg/friend (nova-friend run)
+ident TextLimit nova-tools pkg/friend (nova-friend run)
+ident WithOutputSeen nova-tools pkg/friend (nova-friend run)
+ident WithOutputTail nova-tools pkg/friend (nova-friend run)
+ident ParseLimit nova-tools pkg/friend (nova-friend run)
+ident TokenCapReport nova-tools pkg/friend (nova-friend run)
+# the QUEUE.json reconcile: a friend's local queue file once decided her cards' fate (the
+# friend lane is a client with no local state, 2026-10-14; nova-tools tla/FriendLaneClient.tla)
+ident ReadFriendQueue the server's lane records (take --as friend.<name> --lane <n>)
+ident FriendReconcileOf the server's lane records and its lease (laneGoneUnits)
+ident FriendQueueStrays the server's lane records
+ident FriendDisagree the server's lane records (no second account to disagree with)
+ident FriendCollected the friend's own finish verb
+ident FriendQueueWorking the server's lane records
+ident reconcileFriendsTick nothing: the run loop reads no friend's directory
+ident cmdFriendReconcile the server's lane records
+ident FriendReturnStep the live pass (FriendReturn in live.go)

@@ -11,8 +11,8 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // One selector, one step (docs/SPEC-SPRINT.md, "One selector, one step"; the owner,
@@ -273,8 +273,10 @@ func (a *app) cmdBriefSel(args []string, stdout, stderr io.Writer) int {
 	}
 	var edit sprint.BriefEdit
 	var tier *string
+	var replaceInFlight *bool
 	return a.selVerb("brief", args, stdout, stderr, func(fs flagSet) func() string {
 		briefEditFlags(fs, &edit)
+		replaceInFlight = fs.Bool("replace-in-flight", false, "authorize semantic brief replacement of selected working attempts")
 		tier = fs.String("tier", "", "re-tier every selected card ("+cardhdr.RouteList+"), as brief <id> --tier does")
 		return func() string {
 			if *tier == "" && !edit.Given() {
@@ -283,7 +285,7 @@ func (a *app) cmdBriefSel(args []string, stdout, stderr io.Writer) int {
 			return checkTier(*tier)
 		}
 	}, func(q sprint.Selector, c *common, _ *store.Store) (store.Step, string) {
-		r := sprint.BriefSelReq{Sel: q, Tier: *tier, Edit: edit, Who: c.actor}
+		r := sprint.BriefSelReq{Sel: q, Tier: *tier, Edit: edit, Who: c.actor, ReplaceInFlight: *replaceInFlight}
 		// brief by selector loads what brief <id> loads (store.BriefStep): a card an
 		// attempt was dealt for (working, in review) is edited in place, and that plan
 		// reads its attempt's work card (the fleet table), its reads (the readers table)

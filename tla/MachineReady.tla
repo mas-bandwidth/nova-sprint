@@ -59,6 +59,16 @@
 (* need): never a setting, so never in the gate; start warns on it         *)
 (* (SettingFinding.Live) and readers come up after the start.             *)
 (*                                                                         *)
+(* v1.4.1 (start-warns-never-gates; Glenn: a check reports, it never gates *)
+(* infrastructure): the card check below no longer refuses a start. Start  *)
+(* is StartChecked (a clean record of the cards now, no WARN) or            *)
+(* StartUnchecked (any other record: a WARN line, last = "startwarn"); the *)
+(* old StartRefusedCheck is gone. StartNeverGatedByCheck replaces the      *)
+(* refusal as the rule; witness "checkgates" restores the old gate. The     *)
+(* stalerecord, failedrecord, clearkeeps and warngate witnesses now each    *)
+(* misclassify a start (a silent start over unchecked cards, or a WARN over *)
+(* checked ones): StartOnlyChecked, or UncheckedStartWarns for warngate.   *)
+(*                                                                         *)
 (* The card check gate (v1.2.17, start-refuses-until-a-clean-check; the    *)
 (* owner, 2026-10-13: "if you start a sprint before checking, then it will *)
 (* fail and tell you to check."): nova-sprint check cards writes one check *)
@@ -80,6 +90,23 @@
 (*   "clearkeeps"    start reads another epoch's record as this epoch's:   *)
 (*                   a start with no record after a clear                  *)
 (*                                                    (StartOnlyChecked)   *)
+(*                                                                         *)
+(* The warn and refuse split (v1.2.18; the owner, 2026-10-13: "the gate    *)
+(* keeps refusing on needs, bases, routes and brief size, but only warns   *)
+(* on file overlap that a sentinel or stream order already serializes"):   *)
+(* defectOf is now what the cards at a digest hold: no finding, warnings   *)
+(* only (a same-file finding, or a files finding whose every writer pair   *)
+(* is ordered by the waits; sprint.CardFinding.Refuses), or a refusing     *)
+(* finding. A check fails only on a refusing one (check_cards.go Clean),   *)
+(* so a check of warnings alone is clean and start proceeds.               *)
+(*   "warnrefuses"   a warning fails the check: cards whose overlap is     *)
+(*                   serialized never start               (WarnsNeverFail) *)
+(*   "warngate"      the check is right, but start refuses a clean record  *)
+(*                   of cards holding warnings            (WarnOnlyStarts) *)
+(*   "checkgates"    start refuses while the card check is not clean, the  *)
+(*                   v1.2.17 gate         (StartNeverGatedByCheck)         *)
+(*   "refusewarns"   a refusing finding is taken as a warning: a clean     *)
+(*                   record over refusing cards    (CleanRecordHasNoDefect)*)
 (***************************************************************************)
 EXTENDS Integers
 
@@ -90,10 +117,11 @@ CONSTANTS
 
 States == {"READY", "RUNNING", "STOPPED"}
 Acts == {"init", "clearstop", "clearadvance", "start", "stop", "refused", "add", "tick",
-         "write", "set", "startrefused", "readers", "check", "change", "startunchecked"}
+         "write", "set", "startrefused", "readers", "check", "change", "startwarn"}
 Writers == {"clear", "write", "set"}
 Records == {"none", "clean", "failed"}
 Digests == 0..1
+Defects == {"none", "warn", "refuse"}
 
 VARIABLES
     run,        \* the record says RUNNING
@@ -112,7 +140,7 @@ VARIABLES
     recDigest,  \* the digest of the cards the stored record checked
     recFresh,   \* the stored record is this epoch's (its Epoch field)
     digest,     \* the digest of the cards now (sprint.CardsDigest of the live table)
-    defectOf    \* the cards at each digest hold a finding of the core kinds
+    defectOf    \* what the cards at each digest hold: no finding, warnings only, or a refusing one
 
 vars == <<run, stamp, epoch, clearing, ran, due, judged, prev, last, working, setBy, readersUp,
           rec, recDigest, recFresh, digest, defectOf>>
@@ -138,6 +166,7 @@ RecRead == IF recFresh \/ Broken = "clearkeeps" THEN rec ELSE "none"
 CardGate ==
     CASE Broken = "stalerecord"  -> RecRead = "clean"
       [] Broken = "failedrecord" -> RecRead # "none" /\ recDigest = digest
+      [] Broken = "warngate"     -> RecRead = "clean" /\ recDigest = digest /\ defectOf[digest] = "none"
       [] OTHER                   -> RecRead = "clean" /\ recDigest = digest
 
 \* the truth the gate must agree with: the cards now were checked clean in this epoch
@@ -164,7 +193,7 @@ TypeOK ==
     /\ recDigest \in Digests
     /\ recFresh \in BOOLEAN
     /\ digest \in Digests
-    /\ defectOf \in [Digests -> BOOLEAN]
+    /\ defectOf \in [Digests -> Defects]
 
 \* the first epoch's settings are whatever init left: any value, by no set
 Init ==
@@ -184,7 +213,7 @@ Init ==
     /\ recDigest = 0
     /\ recFresh = FALSE
     /\ digest = 0
-    /\ defectOf \in [Digests -> BOOLEAN]
+    /\ defectOf \in [Digests -> Defects]
 
 \* the stop's stamp (machine_transition.go): a stop of a RUNNING machine records the
 \* epoch it ran in; the reversed witness leaves the stamp as it was
@@ -222,24 +251,31 @@ ClearAdvance ==
     \* in the store and is read as none (its Epoch is the old one)
     /\ recFresh' = FALSE
     /\ digest' = 0
-    /\ defectOf' \in [Digests -> BOOLEAN]
+    /\ defectOf' \in [Digests -> Defects]
     /\ UNCHANGED <<run, readersUp, rec, recDigest>>
 
 \* start (store.SetMachine true): READY or STOPPED to RUNNING, recording the epoch
-\* it reads; it may land between ClearStop and ClearAdvance. Enabled only through
-\* the settings gate (run.go startSettingsGate, before setMachine writes anything) and
-\* the card check gate (run.go startCardCheckGate).
-Start ==
+\* it reads; it may land between ClearStop and ClearAdvance. Enabled through
+\* the settings gate (run.go startSettingsGate, before setMachine writes anything) and by
+\* nothing else: the card check never gates it (v1.4.1, run.go startCardCheckGate reports a
+\* WARN line and returns 0). StartChecked is a start over cards a clean check of this epoch
+\* matches (no WARN); StartUnchecked is a start over any others, with its WARN line.
+StartCore(l) ==
     /\ ~run
     /\ StartGate
-    /\ CardGate
     /\ run' = TRUE
     /\ stamp' = epoch
     /\ ran' = TRUE
     /\ judged' = FALSE
     /\ prev' = Shown
-    /\ last' = "start"
+    /\ last' = l
     /\ UNCHANGED <<epoch, clearing, due, settings, cards>>
+
+StartChecked == CardGate /\ StartCore("start")
+
+StartUnchecked == ~CardGate /\ Broken # "checkgates" /\ StartCore("startwarn")
+
+Start == StartChecked \/ StartUnchecked
 
 \* start refused by the gate: one START REFUSED line per finding, exit 1, nothing written
 StartRefusedSettings ==
@@ -249,20 +285,18 @@ StartRefusedSettings ==
     /\ last' = "startrefused"
     /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings, cards>>
 
-\* start refused by the card check gate: no record of this epoch, a failed one, or a clean
-\* one whose digest is not the cards' now; exit 1, nothing written
-StartRefusedCheck ==
-    /\ ~run
-    /\ ~CardGate
-    /\ prev' = Shown
-    /\ last' = "startunchecked"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings, cards>>
+\* a check of cards holding d fails (check_cards.go: Clean is no refusing finding); each
+\* witness fails on the wrong findings
+CheckFails(d) ==
+    CASE Broken = "warnrefuses" -> d # "none"
+      [] Broken = "refusewarns" -> FALSE
+      [] OTHER                  -> d = "refuse"
 
 \* nova-sprint check cards: the core kinds over the cards now, and one record of this
 \* epoch written, clean or failed, whatever the machine's state (a failed run overwrites
-\* a clean one)
+\* a clean one); warnings alone are clean
 Check ==
-    /\ rec' = IF defectOf[digest] THEN "failed" ELSE "clean"
+    /\ rec' = IF CheckFails(defectOf[digest]) THEN "failed" ELSE "clean"
     /\ recDigest' = digest
     /\ recFresh' = TRUE
     /\ prev' = Shown
@@ -345,7 +379,7 @@ ReadersChange ==
 
 Next == ClearStop \/ ClearAdvance \/ Start \/ Stop \/ StopRefused \/ AddWork \/ Tick
         \/ StartRefusedSettings
-        \/ StartRefusedCheck \/ Check \/ CardChange
+        \/ Check \/ CardChange
         \/ ReadersChange
         \/ \E s \in Settings, v \in BOOLEAN : Write(s, v) \/ SetSetting(s, v)
 
@@ -371,7 +405,7 @@ RanIsNotReady == (ran /\ ~run) => Shown = "STOPPED"
 
 \* the machine never becomes RUNNING with a non-working setting no set of this epoch
 \* chose: every start passed the gate (a value changed after the start is outside it)
-StartOnlyWorking == last = "start" => Gate
+StartOnlyWorking == last \in {"start", "startwarn"} => Gate
 
 \* the gate never over-refuses: a machine not running whose every non-working setting a
 \* set of this epoch chose may start (with its START WARN lines), whatever readers are up,
@@ -383,7 +417,23 @@ DeliberateSetStarts == (~run /\ Gate /\ CardGate) => ENABLED Start
 \* (start-refuses-until-a-clean-check)
 StartOnlyChecked == last = "start" => CardsChecked
 
-\* a clean record that matches the cards is true of them: they hold no finding
-CleanRecordHasNoDefect == CardsChecked => ~defectOf[digest]
+\* a start over cards no clean check of this epoch matches is a start with its WARN line, never
+\* a silent one, and a start over checked cards prints none (v1.4.1)
+UncheckedStartWarns == last = "startwarn" => ~CardsChecked
+
+\* a check reports, it never gates (v1.4.1; Glenn: "a check reports; it never gates
+\* infrastructure"): a machine not running whose settings pass may start, whatever the card
+\* check says: no record, a failed one, a stale one
+StartNeverGatedByCheck == (~run /\ Gate) => ENABLED Start
+
+\* a clean record that matches the cards is true of them: they hold no refusing finding
+CleanRecordHasNoDefect == CardsChecked => defectOf[digest] # "refuse"
+
+\* a check fails exactly when the cards hold a refusing finding: warnings alone never fail it
+WarnsNeverFail == last = "check" => (rec = "failed" <=> defectOf[digest] = "refuse")
+
+\* the gate never over-refuses on warnings: a machine not running, its settings passing,
+\* just checked over cards holding warnings at most, may start (v1.2.18)
+WarnOnlyStarts == (~run /\ Gate /\ last = "check" /\ defectOf[digest] # "refuse") => ENABLED Start
 
 =============================================================================

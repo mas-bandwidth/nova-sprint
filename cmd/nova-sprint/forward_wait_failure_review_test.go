@@ -10,18 +10,18 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
-// A failed log poll cannot satisfy inbox --wait: a subsequent ordinary inbox
+// A failed log long-poll cannot satisfy inbox --wait: a subsequent ordinary inbox
 // read may succeed, but says nothing about whether the requested tick ended.
 // The one inbox read before any poll fails is the wait's own first look (what
 // is open when it begins), not a fallback.
 func TestAnInboxWaitSurfacesItsFailedLogPoll(t *testing.T) {
 	t.Parallel()
-	for _, failure := range []string{"transport", "refused", "malformed"} {
+	for _, failure := range []string{"transport", "refused", "malformed", "missing-cursor"} {
 		for _, initial := range []bool{true, false} {
-			name := failure + "/after-valid-poll"
+			name := failure + "/after-valid-wait"
 			if initial {
 				name = failure + "/initial"
 			}
@@ -49,12 +49,14 @@ func TestAnInboxWaitSurfacesItsFailedLogPoll(t *testing.T) {
 					require.Equal(t, "log", verbs[0][0])
 					polls++
 					if !initial && polls == 1 {
-						return []sprintwire.Result{{Stdout: "{\"lines\":[]}\n"}}, nil
+						return []sprintwire.Result{{Stdout: "{\"cursor\":\"0-0\",\"woke\":false}\n"}}, nil
 					}
 					failed = true
 					switch failure {
 					case "transport":
 						return nil, errors.New("log poll unavailable")
+					case "missing-cursor":
+						return []sprintwire.Result{{Stdout: "{}"}}, nil
 					case "refused":
 						return []sprintwire.Result{{Code: 2, Stderr: "log poll refused\n"}}, nil
 					default:

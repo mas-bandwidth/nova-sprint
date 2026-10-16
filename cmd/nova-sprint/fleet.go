@@ -12,8 +12,8 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/hostload"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // fleetWords is how a fleet member's status comes about, in nova-sprint help
@@ -151,6 +151,8 @@ type beatReport struct {
 	Live []string `json:"live,omitempty"`
 	// DrainingSince is when the member's drain began (--draining), absent while it does not drain.
 	DrainingSince time.Time `json:"draining_since,omitzero"`
+	// Facts are the member's gate facts its beats carry (--facts), absent when none has.
+	Facts []string `json:"facts,omitempty"`
 	// Outcome and Changed are the verb's answer where it is known, as every
 	// worker verb's --json output carries them (accepted | refused | unknown;
 	// yes | no | unknown).
@@ -185,6 +187,7 @@ func (a *app) cmdFleetBeat(args []string, stdout, stderr io.Writer) int {
 	stopReturns := fs.Int("stop-returns", 0, "how many stop-returns the member's lanes still owe after the machine's stop (section 14): start waits for zero")
 	live := fs.String("live", "", "the member's live set: <card>@<gen> for each child it runs and <card>@<gen>:held for each finished report it holds, comma separated, or "+sprint.LiveNone+" for none; the evidence for working: a card working on its row that its live set has not named for "+sprint.LiveGrace.String()+" goes back ready, RUNNING or STOPPED; a beat without it leaves its row unreconciled")
 	noRoom := fs.String("no-room", "", "the member's word that it starts no card, and why (its free disk under its floor): while its beat is fresh the deal gives it none; a beat without it clears it")
+	facts := fs.String("facts", "", "the member's gate facts as it measures its own machine, comma separated (its OS linux or darwin, its ISA, landlock, tla, its toolchains): kept on its beat, and the tick writes them onto its control card, where the deal holds a card's GATE-NEEDS against them; a beat without it keeps the facts it had")
 	draining := fs.Bool("draining", false, "the member's word that it drains (its binary was replaced: it takes no new card and stops when its running cards end): while its beat is fresh the deal gives it none and the tick returns the cards dealt to it and not taken; a beat without it clears it")
 	fdWarn := fs.Int("fd-warn", 0, fmt.Sprintf("the machine's open file descriptors above which the beat says warn and lists the top holders (else NOVA_FD_WARN, else %d)", hostload.FilesWarnDefault))
 	fdAlarm := fs.Int("fd-alarm", 0, fmt.Sprintf("the machine's open file descriptors above which the beat says alarm and the tick writes one judgment of the member (else NOVA_FD_ALARM, else %d)", hostload.FilesAlarmDefault))
@@ -256,7 +259,13 @@ func (a *app) cmdFleetBeat(args []string, stdout, stderr io.Writer) int {
 			return refuse(stderr, "fleet beat", err.Error())
 		}
 	}
-	b, err := st.BeatDraining(context.Background(), pos[0], nil, src, owing, oneline.Field(*noRoom), liveSet, *draining)
+	var factSet []string
+	if set["facts"] {
+		if factSet, err = sprint.FactWords(*facts); err != nil {
+			return refuse(stderr, "fleet beat", err.Error())
+		}
+	}
+	b, err := st.BeatFacts(context.Background(), pos[0], nil, src, owing, oneline.Field(*noRoom), liveSet, *draining, factSet)
 	if err != nil {
 		a.outcome, a.changed = "unknown", "unknown"
 		fmt.Fprintf(stderr, "%s fleet beat: %s\n", prog, oneline.Escape(err.Error()))
@@ -269,7 +278,7 @@ func (a *app) cmdFleetBeat(args []string, stdout, stderr io.Writer) int {
 	}
 	files := b.Meter.Files
 	if c.json {
-		out, _ := json.Marshal(beatReport{Member: pos[0], At: b.At, Load: b.Load, Last: last, How: b.How, Cores: b.Cores, Files: files, StopReturns: b.StopReturns, NoRoom: b.NoRoom, Live: b.Live, DrainingSince: b.DrainingSince, Outcome: a.outcome, Changed: a.changed})
+		out, _ := json.Marshal(beatReport{Member: pos[0], At: b.At, Load: b.Load, Last: last, How: b.How, Cores: b.Cores, Files: files, StopReturns: b.StopReturns, NoRoom: b.NoRoom, Live: b.Live, DrainingSince: b.DrainingSince, Facts: b.Facts, Outcome: a.outcome, Changed: a.changed})
 		fmt.Fprintln(stdout, string(out))
 		return 0
 	}
@@ -288,6 +297,9 @@ func (a *app) cmdFleetBeat(args []string, stdout, stderr io.Writer) int {
 	}
 	if b.Draining {
 		fmt.Fprintf(stdout, " draining_since=%s", b.DrainingSince.Format(time.RFC3339))
+	}
+	if len(b.Facts) > 0 {
+		fmt.Fprintf(stdout, " facts=%s", strings.Join(b.Facts, ","))
 	}
 	fmt.Fprintln(stdout)
 	if files != nil && files.Level() != hostload.LevelOK {

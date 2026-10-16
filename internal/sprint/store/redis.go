@@ -5,14 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/redis/go-redis/v9"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
-	"github.com/redis/go-redis/v9"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // Redis is the Backend of a Redis store holding the table layer's function
@@ -77,8 +77,13 @@ func (r *Redis) Epoch(ctx context.Context) (EpochState, error) {
 // restore field names the epoch whose shape the new one owes, and its defaults
 // field the new epoch, owed its set-defaults step (EpochState.DefaultsOwed), in
 // the same write.
-func (r *Redis) AdvanceEpoch(ctx context.Context, from uint64, at time.Time) (bool, error) {
+func (r *Redis) AdvanceEpoch(ctx context.Context, from uint64, at time.Time, owner ...string) (bool, error) {
 	key := r.Names.EpochKey()
+	fence := r.Names.KeyAt(keyFence, from)
+	id := ""
+	if len(owner) > 0 {
+		id = owner[0]
+	}
 	moved := false
 	err := r.C.Watch(ctx, func(tx *redis.Tx) error {
 		v, err := tx.HGet(ctx, key, "n").Result()
@@ -93,13 +98,27 @@ func (r *Redis) AdvanceEpoch(ctx context.Context, from uint64, at time.Time) (bo
 			moved = true
 			return nil
 		}
+		body, err := tx.Get(ctx, fence).Result()
+		if err != nil && !errors.Is(err, redis.Nil) {
+			return err
+		}
+		var held OpRecord
+		if body != "" {
+			if err := json.Unmarshal([]byte(body), &held); err != nil {
+				return err
+			}
+		}
+		if held.ID != id {
+			moved = true
+			return nil
+		}
 		_, err = tx.TxPipelined(ctx, func(p redis.Pipeliner) error {
 			p.HSet(ctx, key, "n", strconv.FormatUint(from+1, 10), "cleared", at.UTC().Format(time.RFC3339Nano), "restore", strconv.FormatUint(from, 10),
 				"defaults", strconv.FormatUint(from+1, 10))
 			return nil
 		})
 		return err
-	}, key)
+	}, key, fence)
 	if errors.Is(err, redis.TxFailedErr) || moved {
 		return false, nil
 	}
@@ -875,17 +894,6 @@ func (r *Redis) commit(ctx context.Context, p redis.Pipeliner, op OpRecord) erro
 		}
 		p.Set(ctx, r.Names.Key(keyCoordinator), op.Seat.Holder, 0)
 		p.Set(ctx, r.Names.Key(keySeat), rec, 0)
-	}
-	// a clear first, so an observation written by the same commit stands
-	for _, f := range op.HealthClear {
-		p.Del(ctx, r.Names.Key(friendHealthKey(f)))
-	}
-	if op.Health != nil {
-		rec, err := json.Marshal(op.Health.Health)
-		if err != nil {
-			return err
-		}
-		p.Set(ctx, r.Names.Key(friendHealthKey(op.Health.Friend)), string(rec), 0)
 	}
 	if len(op.CloseTimers) > 0 {
 		raw, err := r.C.Get(ctx, r.Names.Key(keyTimers)).Result()

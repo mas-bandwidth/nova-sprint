@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // A card's weight (docs/SPEC-SPRINT.md, the deal, the ask, merging and the inbox; the
@@ -162,11 +162,12 @@ func CriticalLine(cards []CriticalCard) string {
 }
 
 // criticalTier is the tier a critical card starts on and never goes below (ceilingTier):
-// pro, whatever its brief's line 1 says; a pinned model, a pinned tier and a frontier card
+// pro, or its brief's line 1 when that is stronger (a critical heavy card stays heavy: a
+// card is never worked below its tier); a pinned model, a pinned tier and a frontier card
 // keep their own.
 func criticalTier(c *Card, m cardhdr.Model) (string, bool) {
 	if IsCritical(c) && m.Pin == "" && m.Tier != cardhdr.RouteFrontier && c.F(FieldTier) == "" {
-		return cardhdr.RoutePro, true
+		return stronger(cardhdr.RoutePro, m.Tier), true
 	}
 	return "", false
 }

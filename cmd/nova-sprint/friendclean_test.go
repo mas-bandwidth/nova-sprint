@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
-	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
-	"github.com/mas-bandwidth/nova-sprint/pkg/gocache"
-	"github.com/mas-bandwidth/nova-sprint/pkg/testkit"
+	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/gocache"
+	"github.com/mas-bandwidth/nova-tools/pkg/testkit"
 )
 
 // friend clean (friendclean.go; docs/FRIENDS.md; ideas#833, the owner 2026-10-02: "we

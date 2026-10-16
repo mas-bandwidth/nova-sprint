@@ -10,7 +10,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
+	"github.com/mas-bandwidth/nova-tools/pkg/hostload"
 	"github.com/stretchr/testify/require"
 )
 
@@ -179,7 +179,7 @@ func (r *landedRig) beat() {
 	_, err := r.st.FriendBeat(r.ctx, "amy")
 	require.NoError(r.t, err)
 	// her beat is no evidence: a wake ping her session answered makes her up
-	_, _, _, err = r.st.FriendHealth(r.ctx, "amy", "coordinator", sprint.FriendHealth{State: sprint.Up, Seen: r.st.Now(), Generation: sprint.FirstSeatGeneration}, "")
+	err = setFriendHook(r.st, "amy", sprint.Up)
 	require.NoError(r.t, err)
 }
 

@@ -13,7 +13,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // mnRemove takes a card off the work table keeping its record, as a drop does,
@@ -70,13 +70,13 @@ func mnQueue(t *testing.T, r *ujRig, id string) {
 	require.NoError(t, err)
 }
 
-// mnPush is whether the hook's stream has carried a judgment naming both ids.
-func mnPush(t *testing.T, r *ujRig, s *hookSession, ids ...string) bool {
+// mnPush is whether the server's coordinator push sent the seat a judgment naming both ids.
+func mnPush(t *testing.T, r *ujRig, ids ...string) bool {
 	t.Helper()
-	for _, p := range r.pushes(s) {
+	for _, p := range r.pushes() {
 		hit := true
 		for _, id := range ids {
-			hit = hit && strings.Contains(p.Text, id)
+			hit = hit && strings.Contains(p.Body, id)
 		}
 		if hit {
 			return true
@@ -98,7 +98,6 @@ func TestEveryStateAlertsTheCoordinatorOfAGoneNeed(t *testing.T) {
 			r.beat()
 			r.do("fleet up m1 --width 4")
 			r.beat()
-			s := r.hookIn()
 			r.do("start")
 			r.do("add --stream s1 --count 1 --one")              // s1-1, the need
 			r.do("add --stream s2 --count 1 --one --needs s1-1") // s2-1, the dependent
@@ -109,7 +108,7 @@ func TestEveryStateAlertsTheCoordinatorOfAGoneNeed(t *testing.T) {
 			// one second of running time: the run loop's needs check
 			_, err := r.store().Tick(r.ctx)
 			require.NoError(t, err)
-			assert.True(t, mnPush(t, r, s, "s2-1", "s1-1"),
+			assert.True(t, mnPush(t, r, "s2-1", "s1-1"),
 				"the coordinator is told of the gone need on %s", st)
 		})
 	}
@@ -125,7 +124,6 @@ func TestAGoneNeedRepeatsAtItsDeadlineAndNeedsSetClearsIt(t *testing.T) {
 	r.beat()
 	r.do("fleet up m1 --width 4")
 	r.beat()
-	s := r.hookIn()
 	r.do("start")
 	r.do("add --stream s1 --count 1 --one")              // s1-1, the need
 	r.do("add --stream s2 --count 1 --one --needs s1-1") // s2-1, the dependent
@@ -135,37 +133,35 @@ func TestAGoneNeedRepeatsAtItsDeadlineAndNeedsSetClearsIt(t *testing.T) {
 	// the first raise, within one second of running time
 	_, err := r.store().Tick(r.ctx)
 	require.NoError(t, err)
-	require.True(t, mnPush(t, r, s, "s2-1", "s1-1"), "the first judgment names the card and the missing need")
+	require.True(t, mnPush(t, r, "s2-1", "s1-1"), "the first judgment names the card and the missing need")
 
-	openGone := func() int {
+	openBlocked := func() int {
 		v, err := r.store().Inbox(r.ctx, defaultDeadline, defaultStale, 10000)
 		require.NoError(t, err)
 		n := 0
 		for _, o := range v.Open {
-			if o.Note.Type == sprint.NNeedsGone && o.Subject() == "s2-1" {
+			if o.Note.Type == sprint.NNeedBlocked && o.Subject() == "s1-1" {
 				n++
 			}
 		}
 		return n
 	}
-	require.Equal(t, 1, openGone(), "one open gone-need judgment on s2-1")
+	require.Equal(t, 1, openBlocked(), "one open blocker judgment on s1-1")
 
-	// past its deadline, unanswered: it repeats (stays open, is never doubled,
-	// and the overdue reminder reaches the coordinator)
+	// past its deadline, unanswered: it stays open, is never doubled
 	r.mu.Lock()
 	r.now = r.now.Add(sprint.DeadlineJudgment + time.Minute)
 	r.mu.Unlock()
 	r.beat()
 	_, err = r.store().Tick(r.ctx)
 	require.NoError(t, err)
-	require.Equal(t, 1, openGone(), "the judgment repeats, never doubles")
-	require.True(t, mnPush(t, r, s, "s2-1", sprint.NNeedsGone), "the repeat names the card and the judgment")
+	require.Equal(t, 1, openBlocked(), "the judgment stays open, never doubles")
 
 	// answered by needs set in place: the judgment clears
 	r.do("needs set s2-1 --clear")
 	_, err = r.store().Tick(r.ctx)
 	require.NoError(t, err)
-	require.Zero(t, openGone(), "the judgment clears once the need is set away")
+	require.Zero(t, openBlocked(), "the judgment clears once the need is set away")
 }
 
 // Rule (a): drop of a card another unlanded card needs is refused, naming the

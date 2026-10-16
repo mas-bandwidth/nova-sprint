@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // Change is one batch manifest entry for one table.
@@ -67,6 +67,11 @@ type Plan struct {
 	Places  []PlaceAgain
 	Units   []Unit
 	Refused []Refusal
+	// Tally are units written whatever the step's refusals: a named step that
+	// refuses one of its cards writes nothing else (all or none), but the count
+	// of a refused finish (steps_work.go countRefusedFinishes) is the one write a
+	// refusal makes, so a finish sent again without end is seen.
+	Tally []Unit
 	// Notes the step writes with no unit (a fleet member going down with no
 	// cards to deal); they are written with the first unit, or alone.
 	Notes []Note
@@ -88,15 +93,7 @@ type Plan struct {
 	// Seat is the seat's change (MoveSeat): the step's commit writes the
 	// coordinator and the seat's record with its note.
 	Seat *SeatChange
-	// Health is a friend's health observed (ObserveFriend): the step's commit
-	// writes it as her record.
-	Health *FriendHealthWrite
-	// HealthClear is the friends whose observation the step's commit removes (friend
-	// health --clear, ClearFriendHealth; the stall ladder's release, TickFriendStall), so
-	// her status is her session's evidence alone (FriendStatus).
-	HealthClear []string
-	// Timers is the timer record the step leaves (TimerNotes): the timers it
-	// raised are closed in the same commit as their judgment.
+	// Timers is the timer record closed with its judgments.
 	Timers *Timers
 	// CloseTimers is the ids of the timers this step closes: its commit
 	// deletes only these ids from the timer record, read inside the same commit,
@@ -171,10 +168,10 @@ func (p *Plan) refuse(key, why string) { p.Refused = append(p.Refused, Refusal{k
 // named, each on its own (the seat ledger v1.2.4-held-2026-10-10.md bug 12,
 // stream-remove-removes-what-exists; docs/SPEC-SPRINT.md section 11, the
 // stream remove row): one name that is no row of the work or merge table no
-// longer refuses the batch, as the all-or-none rule StreamRemove refused 223
-// streams over one stale name. The rule of one name is streamRemoveWhy, the
-// one StreamRemove applies whole: a RUNNING machine and a stream that holds a
-// card are refused there, with its remedy. A name named twice is taken once.
+// longer refuses the batch, as the retired all-or-none rule (StreamRemove,
+// replaced by this split in b1ed5872) refused 223 streams over one stale name.
+// The rule of one name is streamRemoveWhy: a RUNNING machine and a stream that
+// holds a card are refused there, with its remedy. A name named twice is taken once.
 func StreamRemoveExisting(s *Snapshot, running bool, streams []string) (remove []string, refused []Refusal) {
 	seen := map[string]bool{}
 	for _, st := range streams {
@@ -452,6 +449,12 @@ func answered(p *Plan, s *Snapshot, ids []string, who string) {
 		known, resolved := false, false
 		for _, o := range s.Open {
 			known = known || o.Note.ID == id
+		}
+		// A cannot-ask acknowledgement retains its reader condition and can be
+		// explicitly answered when Ask deals a read. Other acked kinds keep their
+		// prior validation behavior.
+		for _, o := range s.Acked {
+			known = known || o.Note.Type == NCannotAsk && o.Note.ID == id
 		}
 		for _, u := range p.Units {
 			for _, c := range u.Closes {

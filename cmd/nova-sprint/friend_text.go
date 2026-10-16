@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/pronouns"
 	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-tools/pkg/friend"
 )
 
 // friendSays selects the explicit synced row for a text about this friend. A
@@ -14,7 +15,7 @@ import (
 func friendSays(ctx context.Context, st *store.Store, name string) func(string, ...any) string {
 	spec, err := st.FriendSpecOf(ctx, name)
 	if err == nil {
-		p, _ := pronouns.ParsePronouns(spec.Pronouns)
+		p, _ := friend.ParsePronouns(spec.Pronouns)
 		return p.Sprintf
 	}
 	return func(format string, args ...any) string {

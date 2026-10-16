@@ -10,8 +10,8 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/workfile"
 	"github.com/mas-bandwidth/nova-sprint/internal/workgh"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
-	"github.com/mas-bandwidth/nova-sprint/pkg/tool"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/tool"
 )
 
 // verifyTree is layer 1's check (SPEC-WORK-V1 section 1.6): a fresh read of

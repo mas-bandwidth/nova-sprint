@@ -12,7 +12,6 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/refmodel"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 )
 
 // brief is a move as one short line: what it does to which card or judgment,
@@ -242,6 +241,7 @@ func TestResumeGoesOnWhenTheCardAStreamNeededLanded(t *testing.T) {
 	expect(t, got,
 		"set merge ctl-s1 did=the card it needed landed,since=2030-01-02T03:04:05Z,state=merging",
 		"move merge s1-1 s1:stuck>s1:queued",
+		"notice stream resumed []",
 		"notice stream resumed: the card it needed landed [s1-1]",
 		"close stream stopped: needs a card of another stream first [stream:s1]")
 }
@@ -398,8 +398,10 @@ func TestAskTellsOnceWhenFewerThanTwoReadersAreFree(t *testing.T) {
 	w.deal(t, "s1-1")
 	w.take(t, "s1-1")
 	w.finish(t, "s1-1", false)
+	w.s.ReaderStates = map[string]string{"reader-a": sprint.ReaderUp, "reader-m1": sprint.ReaderHeld}
 	got := refmodel.AskMoves(w.snapshot(w.fresh()), later(0))
-	expect(t, got, "open cannot ask [s1-1]")
+	expect(t, got, "open fewer than two readers up [stream:]")
+	// One up reader is eligible: too few for the pair is not cannot ask.
 }
 
 func TestCheckRaisesAJudgmentForABrokenRule(t *testing.T) {
@@ -460,40 +462,36 @@ func TestDeadlinesCountRunningTimeOnly(t *testing.T) {
 		"open a work card is past its deadline [s1-1]")
 }
 
-func TestDeadlinesJudgeAReadCardNotBegun(t *testing.T) {
+// A read card not begun, and a stream with no merge step, are late past
+// thirty minutes. Each call plans from the unchanged snapshot: it also starts
+// the landing-stall episode.
+func TestDeadlinesJudgeALandingStall(t *testing.T) {
 	t.Parallel()
-	w := sprintOf(t, "m1")
-	w.add(t, "s1", 1)
-	w.drive(t, "s1-1", sprint.Review)
-	w.ask(t, "s1-1") // two reads outstanding: both asked at once (reads together, the interim rule)
-	snap := w.snapshot(nil)
-	// Each call plans from the unchanged snapshot: it also starts the landing-stall episode.
-	expect(t, refmodel.DeadlineMoves(snap, later(30*time.Minute)),
-		"prop work landing_stall_since=2030-01-02T03:34:05Z")
-	got := refmodel.DeadlineMoves(snap, later(30*time.Minute+time.Second))
-	expect(t, got,
-		"prop work landing_stall_since=2030-01-02T03:34:06Z",
-		"open a read card is past its deadline [s1-1]",
-		"open a read card is past its deadline [s1-1]")
-	want := []string{"ask --another", "wait", "drop"}
-	assert.Equal(t, want, got[1].Decisions, "the decisions offered: %q, want %q", got[1].Decisions, want)
-}
-
-func TestDeadlinesJudgeAStreamWithNoMergeStep(t *testing.T) {
-	t.Parallel()
-	w := sprintOf(t, "m1")
-	w.add(t, "s1", 1)
-	w.drive(t, "s1-1", sprint.Merging)
-	snap := w.snapshot(nil)
-	// Each call plans from the unchanged snapshot: it also starts the landing-stall episode.
-	expect(t, refmodel.DeadlineMoves(snap, later(30*time.Minute)),
-		"prop work landing_stall_since=2030-01-02T03:34:05Z")
-	got := refmodel.DeadlineMoves(snap, later(30*time.Minute+time.Second))
-	expect(t, got,
-		"prop work landing_stall_since=2030-01-02T03:34:06Z",
-		"open a stream has had no merge step past its deadline [stream:s1]")
-	want := []string{"merge --stream s1", "look", "wait"}
-	assert.Equal(t, want, got[1].Decisions, "the decisions offered: %q, want %q", got[1].Decisions, want)
+	for _, c := range []struct {
+		name  string
+		build func(t *testing.T, w *world)
+		opens []string
+		want  []string // the decisions offered by the first judgment
+	}{
+		{"DeadlinesJudgeAReadCardNotBegun", func(t *testing.T, w *world) {
+			w.drive(t, "s1-1", sprint.Review)
+			w.ask(t, "s1-1") // two reads outstanding: both asked at once (reads together, the interim rule)
+		}, []string{"open a read card is past its deadline [s1-1]", "open a read card is past its deadline [s1-1]"}, []string{"ask --another", "wait", "drop"}},
+		{"DeadlinesJudgeAStreamWithNoMergeStep", func(t *testing.T, w *world) { w.drive(t, "s1-1", sprint.Merging) },
+			[]string{"open a stream has had no merge step past its deadline [stream:s1]"}, []string{"merge --stream s1", "look", "wait"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			w := sprintOf(t, "m1")
+			w.add(t, "s1", 1)
+			c.build(t, w)
+			snap := w.snapshot(nil)
+			expect(t, refmodel.DeadlineMoves(snap, later(30*time.Minute)),
+				"prop work landing_stall_since=2030-01-02T03:34:05Z")
+			got := refmodel.DeadlineMoves(snap, later(30*time.Minute+time.Second))
+			expect(t, got, append([]string{"prop work landing_stall_since=2030-01-02T03:34:06Z"}, c.opens...)...)
+			assert.Equal(t, c.want, got[1].Decisions, "the decisions offered: %q, want %q", got[1].Decisions, c.want)
+		})
+	}
 }
 
 func TestOverdueMarksAJudgmentOncePastTenMinutes(t *testing.T) {
@@ -633,8 +631,8 @@ func TestEveryPartOfTheTickIsADutyAndEveryDutyIsNamedInOrder(t *testing.T) {
 	for _, p := range sprint.TickParts {
 		assert.True(t, names[p.Name], "the tick's part %s is no duty: Decide would leave it out", p.Name)
 	}
-	want := []string{refmodel.DutyLive, refmodel.DutyLevel, refmodel.DutyLevelReads, refmodel.DutyResolve, refmodel.DutyUnservedFallback, refmodel.DutyDeal, refmodel.DutyRebalance, refmodel.DutyAccept, refmodel.DutyAsk, refmodel.DutyResume,
-		refmodel.DutyStrangers, refmodel.DutyPresence, refmodel.DutyFriendStall, refmodel.DutyVerdicts, refmodel.DutyFriendRedeal, refmodel.DutyCheck, refmodel.DutyDeadlines, refmodel.DutyOverdue, refmodel.DutyDone, refmodel.DutyRemind}
+	want := []string{refmodel.DutyLive, refmodel.DutyLevel, refmodel.DutyLevelReads, refmodel.DutyResolve, refmodel.DutyDeal, refmodel.DutyRebalance, refmodel.DutyAccept, refmodel.DutyAsk, refmodel.DutyResume,
+		refmodel.DutyStrangers, refmodel.DutyPresence, refmodel.DutyVerdicts, refmodel.DutyFriendRedeal, refmodel.DutyCheck, refmodel.DutyDeadlines, refmodel.DutyOverdue, refmodel.DutyDone, refmodel.DutyRemind}
 	var got []string
 	for _, d := range refmodel.Duties {
 		got = append(got, d.Name)
@@ -679,15 +677,4 @@ func TestASnapshotThatLacksATableIsRefusedInWords(t *testing.T) {
 	if got := refmodel.Decide(snap, later(0)); len(got) != 0 {
 		assert.Failf(t, "assertion failed", "a STOPPED machine decides nothing, whatever it holds:%s", show(got))
 	}
-}
-
-func TestUnservedFallbackMovesReturnsSomething(t *testing.T) {
-	t.Parallel()
-	w := sprintOf(t, "m1")
-	w.s.Routes = []sprint.Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true}}
-	w.must(t, sprint.Set(w.s, sprint.SetReq{UnservedTierFallsTo: cardhdr.RouteHeavy, Who: coordinator}))
-	w.add(t, "s1", 1) // a ready pro primary whose tier no route serves
-	snap := w.snapshot(w.fresh())
-	moves := refmodel.UnservedFallbackMoves(snap, later(0))
-	assert.NotEmpty(t, moves, "a ready primary whose tier no route serves falls to the strongest served tier at or below the setting")
 }

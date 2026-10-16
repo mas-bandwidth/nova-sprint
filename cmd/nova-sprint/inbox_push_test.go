@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 )
 
 // heldAndWaiting is a sprint with one judgment open and held (wait --for 30m)
@@ -231,33 +232,33 @@ func TestAckTakesTheCommaListInboxPrints(t *testing.T) {
 // it is written, and the interrupt ends the loop.
 func TestInboxPushThroughTheServerWritesTheGroupWhole(t *testing.T) {
 	t.Parallel()
-	r := newServerRig(t, "nova-sprint init --readers reader-a,reader-b --members m1:2",
+	r, ta := newLongPollRig(t, "nova-sprint init --readers reader-a,reader-b --members m1:2",
 		"nova-sprint set --read-cards off",
 		"nova-sprint add --stream s1 --count 1 --one --brief-file "+proBriefFile(t), "nova-sprint start", "nova-sprint tick", "nova-sprint tick",
 		"nova-sprint take --as m1 --limit 1", "nova-sprint finish --as m1 --epoch 0 s1-1.w1@1")
-	clock := r.a.now()
-	r.a.now = func() time.Time { return clock }
 	var sent [][]string
 	c, boss := clientOf(t, r, "boss", &sent)
-	waited := clock
-	c.now = func() time.Time { return waited }
+	c.now = ta.a.now
 	ctx, stop := context.WithCancel(t.Context())
 	t.Cleanup(stop)
 	c.notify = func(context.Context) (context.Context, context.CancelFunc) { return ctx, stop }
-	polls := 0
-	c.sleep = func(d time.Duration) {
-		waited = waited.Add(d)
-		switch polls++; polls {
-		case 2:
-			r.boss("nova-sprint reader away reader-a") // fewer than two readers up: a judgment at the tick
+	waits := 0
+	c.sleep = func(time.Duration) { t.Fatal("client must not poll") }
+	b := inboxNotesWake{Mem: ta.m, wait: func(context.Context, time.Duration) (bool, error) {
+		waits++
+		if waits == 1 {
+			r.boss("nova-sprint reader away reader-a")
 			r.boss("nova-sprint tick")
-		case 4:
-			stop()
+			return true, nil
 		}
-	}
+		stop()
+		return false, ctx.Err()
+	}}
+	ta.a.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return b, nil }
 	dir := t.TempDir()
 	code, out, errs := boss("inbox", "--wait", "--push", dir, "--timeout", "4s")
 	require.Equal(t, 0, code, errs)
+	require.Equal(t, 2, waits, "one delivery, then the next blocking wait is interrupted")
 	var in struct {
 		Judgments []inboxJudgment `json:"judgments"`
 	}

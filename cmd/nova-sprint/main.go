@@ -27,24 +27,26 @@ import (
 	"sync"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	"golang.org/x/mod/semver"
 
 	"github.com/mas-bandwidth/nova-sprint/docs"
-	"github.com/mas-bandwidth/nova-sprint/internal/roadmapdoc"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/buildinfo"
-	"github.com/mas-bandwidth/nova-sprint/pkg/bus"
-	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
-	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/fn"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
-	"github.com/mas-bandwidth/nova-sprint/pkg/redisconn"
-	"github.com/mas-bandwidth/nova-sprint/pkg/secrets"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
-	"github.com/redis/go-redis/v9"
+	"github.com/mas-bandwidth/nova-tools/hook"
+	"github.com/mas-bandwidth/nova-tools/pkg/buildinfo"
+	"github.com/mas-bandwidth/nova-tools/pkg/bus"
+	"github.com/mas-bandwidth/nova-tools/pkg/decide"
+	"github.com/mas-bandwidth/nova-tools/pkg/hostload"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/fn"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/verbflag"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/redisconn"
+	"github.com/mas-bandwidth/nova-tools/pkg/roadmap"
+	"github.com/mas-bandwidth/nova-tools/pkg/secrets"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
 const prog = "nova-sprint"
@@ -55,6 +57,16 @@ var version string
 
 func main() {
 	a := newApp(os.Getenv)
+	if seatEnvironmentNeeded(os.Args[1:]) {
+		if err := a.loadSeatEnvironment(); err != nil {
+			path, pathErr := a.seatEnvironmentPath()
+			if pathErr != nil {
+				path = "optional seat-environment.json"
+			}
+			fmt.Fprintf(os.Stderr, "nova-sprint: seat environment %s: %s; run: nova-up --seat to repair it, or remove that file to use explicit configuration\n", oneline.Field(path), oneline.Escape(err.Error()))
+			os.Exit(2)
+		}
+	}
 	a.briefRecord = a.defaultBriefRecord // a test's app has none: no brief record, no brief decision
 	a.seatLoginOn()                      // a test's app has none: no recorded store login (storelogin.go)
 	defer a.close()
@@ -65,17 +77,19 @@ func main() {
 // shared by every verb it runs (the driver runs many), its clock, and how it
 // sleeps. Tests give it a backend of their own.
 type app struct {
-	getenv  func(string) string
-	now     func() time.Time
-	sleep   func(time.Duration)
-	backend func(ctx context.Context, addr string, names sprint.Names) (store.Backend, error)
-	conns   map[string]*redisconn.Conn
-	cached  map[string]store.Backend
-	twins   map[string]*twin // the open `--redis mem:<file>` twins (twin.go)
-	meter   hostload.Source  // how fleet beat measures this machine
-	etaMu   sync.Mutex
-	etas    []etaSample // the view's estimates of the last etaHold (heldETA)
-	etaKey  etaKey      // the cards to land the held estimates were made over
+	readFriendHooks func(context.Context, ...string) ([]hook.Status, time.Time, error)
+	seatEnvironment *seatEnvironment
+	getenv          func(string) string
+	now             func() time.Time
+	sleep           func(time.Duration)
+	backend         func(ctx context.Context, addr string, names sprint.Names) (store.Backend, error)
+	conns           map[string]*redisconn.Conn
+	cached          map[string]store.Backend
+	twins           map[string]*twin // the open `--redis mem:<file>` twins (twin.go)
+	meter           hostload.Source  // how fleet beat measures this machine
+	etaMu           sync.Mutex
+	etas            []etaSample // the view's estimates of the last etaHold (heldETA)
+	etaKey          etaKey      // the cards to land the held estimates were made over
 
 	// inventory reads the machines of nova-config and their widths (fleet
 	// sync): tests give it the config's in-memory store.
@@ -195,9 +209,6 @@ type app struct {
 	// serveAddr is the store the server runs the workers' verbs on.
 	serial    controlLine
 	serveAddr string
-	// serveStarted is when this server started serving (serve.go), zero for a verb run
-	// alone: a beat's old --pong <time> counts for sprint.LegacyPongGrace after it.
-	serveStarted time.Time
 	// serving says the verb running is one a worker sent to the server (set and
 	// cleared under serial): its step names the epoch its worker holds, or is
 	// refused (runStep).
@@ -214,15 +225,15 @@ type app struct {
 	// on serveLog (run's stdout once it listens; nil, a test's, says nothing).
 	lanesMu sync.Mutex
 	lanes   *serveLanes
-	// hooks is the server's hold of the seat's hook (hook.go), made at the first, under
-	// lanesMu; hookSock, when set (a test), is where a hook process takes its session's
-	// lines, in place of the user's cache directory.
-	hooks    *hookHub
-	hookSock func(name string) (string, error)
-	// hk is this process's shared hook records (hook.go, hooker): the bus store
-	// NOVA_BUS_REDIS names, opened at the first gate that reads it and kept; the server's
-	// lane apps share their server's (servelanes.go), so a lane opens no store of its own.
-	hk *hookerBox
+	// hk is this process's kept connection to the nova-hook record's store
+	// (coordinator_hook.go, hookStore); the server's lane apps share their server's
+	// (servelanes.go), so a lane dials no store of its own. hookStoreFn, when set (a
+	// test), is the store in its place.
+	hk          *hookConn
+	hookStoreFn func(ctx context.Context) (hook.Store, error)
+	// coord is the server's memory of what it told the coordinator on the bus
+	// (coordinator_push.go).
+	coord coordPush
 	// seatSilent is what the run loop has told the owner of the seat not answering
 	// (seat_silent.go): each raise of the judgment once.
 	seatSilent seatSilentTold
@@ -282,8 +293,8 @@ type app struct {
 	// decider, when set (a test), is answer's backend for the judgment decision:
 	// nil is the one --backend names (decide.Jev with JEV_API_KEY, or a fixed file).
 	decider decide.Backend
-	// home is the directory a seat's inbox is under (inbox --wait --push seat:
-	// ~/<holder>-working/inbox): os.UserHomeDir unless a test sets it.
+	// home is the user's home, where a unit's directory is (seat uninstall, install):
+	// os.UserHomeDir unless a test sets it.
 	home func() (string, error)
 	// goos is the OS seat install writes its unit for (seatinstall.go): runtime.GOOS unless a
 	// test sets it; seatLoad, when set (a test), loads and unloads the unit in place of
@@ -389,12 +400,12 @@ func newApp(getenv func(string) string) *app {
 	a.readTip, a.readHeads = a.branchTip, a.branchHeads
 	a.bus = a.sendBus
 	a.busOpen = a.openBus
-	a.hk = &hookerBox{}
+	a.hk = &hookConn{}
 	a.landRoot = defaultLandRoot
 	a.home = os.UserHomeDir
 	a.decideBackend = func(key string) decide.Backend { return decide.JevHTTP(key, decide.JevTimeout) }
 	a.briefBar = a.readBriefBar
-	a.mergeQueue = &keptQueue{ask: ghMergeQueue{host: githubHost}, now: func() time.Time { return a.now() }, kept: map[string]keptAnswer{}}
+	a.mergeQueue = &keptQueue{ask: ghMergeQueue{host: githubHost, env: func() []string { return a.forgeCommandEnv(a.gitEnv) }}, now: func() time.Time { return a.now() }, kept: map[string]keptAnswer{}}
 	a.busWatches = map[string]*bus.Watch{}
 	// start refuses until a clean card check matches the cards; no waiver
 	// (start-refuses-until-a-clean-check, tla/MachineReady.tla StartOnlyChecked)
@@ -685,7 +696,7 @@ func (c *common) register(fs flagSet, getenv func(string) string) {
 func (c *common) registerStore(fs flagSet, getenv func(string) string) {
 	c.epoch = -1
 	fs.StringVar(&c.redis, "redis", firstEnv(getenv, "NOVA_SPRINT_REDIS", "NOVA_REDIS_ADDR", seatLoginAddr), "the Redis address, host:port (else NOVA_SPRINT_REDIS, then NOVA_REDIS_ADDR, then the address nova-sprint seat login recorded, whose user and secret it logs in with); mem:<file> is the in-memory twin kept in that file, for learning and tests, not for a fleet (nova-sprint help, trying it without Redis)")
-	fs.StringVar(&c.actor, "actor", getenv("NOVA_SPRINT_ACTOR"), "who is acting, recorded with every change (else NOVA_SPRINT_ACTOR; no default: a verb that writes wants one; a worker's verb is its --as name's)")
+	fs.StringVar(&c.actor, "actor", getenv("NOVA_SPRINT_ACTOR"), "who is acting, recorded with every change (else NOVA_SPRINT_ACTOR; with no actor, a coordinator or seat verb may use the name whose coordinator hook is proven; a worker's verb is its --as name's)")
 	fs.BoolVar(&c.json, "json", false, "print one JSON object for a program instead of the lines")
 }
 
@@ -728,6 +739,20 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 	}
 	// a twin is ticked by hand: no machine runs between its commands (twin.go)
 	st := &store.Store{B: b, Names: names, Actor: c.actor, Now: a.now, NewID: store.NewID, Sleep: a.sleep, CheckTwin: a.checkTwin, ByHand: a.twinOpen(c.redis)}
+	st.ReadFriendHooks = a.readFriendHooks
+	if st.ReadFriendHooks == nil {
+		st.ReadFriendHooks = func(ctx context.Context, names ...string) ([]hook.Status, time.Time, error) {
+			hs, err := a.hookStore(ctx)
+			if err != nil {
+				return nil, time.Time{}, err
+			}
+			sts, now, err := hs.Read(ctx, names...)
+			if err != nil {
+				a.hookDrop()
+			}
+			return sts, now, err
+		}
+	}
 	// every verb this process runs on the store reads through one twin: a
 	// verb after the first reads only what changed (store/twin.go)
 	a.readTwinsMu.Lock()
@@ -769,18 +794,90 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 		}
 		return nil, err
 	}
-	switch verbClasses[c.verb] {
-	case classCoordinator, classSeat, classRead:
-		// a verb of the seat's the gate let through is an act of the seat: its hook stays
-		// live while it acts (hook.go, seatActs)
-		a.seatActs(c.actor)
-	}
 	return st, nil
+}
+
+// isGlobalBoolFlag reports whether the flag name is a known boolean flag that does not take an argument.
+func isGlobalBoolFlag(name string) bool {
+	switch name {
+	case "json", "dry-run", "help", "h", "version", "shadow", "answer-rules", "idle-alarm",
+		"one", "held", "heavy", "read-ok", "allow-personal-base", "allow-shared-paths", "return", "drop-who":
+		return true
+	default:
+		return false
+	}
+}
+
+// matchVerbAt reports how many words match a verb at args[i:], or 0 if none match.
+func matchVerbAt(args []string) int {
+	for _, v := range verbs {
+		w := strings.Fields(v.name)
+		if len(args) >= len(w) && slices.Equal(args[:len(w)], w) {
+			return len(w)
+		}
+	}
+	if len(args) > 0 {
+		if args[0] == "help" || verbflag.IsHelp(args[0]) || args[0] == "--version" || args[0] == "version" {
+			return 1
+		}
+		if len(groupVerbs(args[0])) > 0 {
+			return 1
+		}
+	}
+	return 0
+}
+
+// normalizeArgs rearranges global flags placed before the verb to follow the verb,
+// so `nova-sprint [flags...] <verb> [args...]` behaves identically to
+// `nova-sprint <verb> [flags...] [args...]`.
+func normalizeArgs(args []string) []string {
+	if len(args) == 0 || !strings.HasPrefix(args[0], "-") {
+		return args
+	}
+	// Flags appear before the verb. Scan to find the verb position.
+	i := 0
+	verbStart, verbLen := -1, 0
+	for i < len(args) {
+		arg := args[i]
+		if strings.HasPrefix(arg, "-") {
+			name := strings.TrimLeft(arg, "-")
+			if strings.Contains(name, "=") || isGlobalBoolFlag(name) {
+				i++
+				continue
+			}
+			// Non-bool flag without '=': consumes next argument as its value if present
+			if i+1 < len(args) {
+				i += 2
+			} else {
+				i++
+			}
+			continue
+		}
+		// Found the first positional non-flag token
+		verbStart = i
+		if w := matchVerbAt(args[i:]); w > 0 {
+			verbLen = w
+		} else {
+			verbLen = 1 // unknown verb: keep 1 word
+		}
+		break
+	}
+	if verbStart == -1 {
+		return args // only flags present, leave for help/version/refuse
+	}
+	verb := args[verbStart : verbStart+verbLen]
+	preFlags := args[:verbStart]
+	postArgs := args[verbStart+verbLen:]
+	if verb[0] == "help" {
+		return append([]string{"help"}, postArgs...)
+	}
+	return append(append(append([]string(nil), verb...), preFlags...), postArgs...)
 }
 
 // run is the one entry point: the command line, and the driver, which runs
 // every verb it plays through it with an argument list.
 func (a *app) run(args []string, stdout, stderr io.Writer) (code int) {
+	args = normalizeArgs(args)
 	// every verb's answer is a refusal unless its report (report) says otherwise:
 	// refuse() and every pre-write refusal are the default, and the report sets
 	// the outcome where it is known (serve.go reads it after the run).
@@ -806,12 +903,17 @@ func (a *app) run(args []string, stdout, stderr io.Writer) (code int) {
 	if code, sent := a.forwarded(args, stdout, stderr); sent {
 		return code
 	}
+	var actorNotice string
+	args, actorNotice, _ = a.defaultHookActor(args, "", false)
+	if actorNotice != "" {
+		fmt.Fprintln(stderr, actorNotice)
+	}
 	// the shadow tick (server switch --dry-run runs the candidate's `tick
 	// --shadow`) opens its store read-only before the window's fn load: its
 	// library check tolerates a library the window will load (libraryCheck).
 	a.shadow = len(args) >= 2 && args[0] == "tick" && slices.Contains(args[1:], "--shadow")
-	// every command run as the coordinator waits for the seat's live, proven hook: one
-	// line and nothing else (hook.go)
+	// every command run as the coordinator waits for its nova-hook record proven as the
+	// coordinator: one line and nothing else (coordinator_hook.go)
 	if code, refused := a.hookFirst(args, stderr); refused {
 		return code
 	}
@@ -949,7 +1051,7 @@ func versionCommand(args []string, build string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, versionLine())
 		return 0
 	}
-	fx, err := roadmapdoc.DecodeFixes("fixes.sexp", docs.FixesSexp)
+	fx, err := roadmap.DecodeFixes("fixes.sexp", docs.FixesSexp)
 	if err != nil {
 		fmt.Fprintf(stderr, "%s version: the compiled fixes ledger does not decode: %s\n", prog, err)
 		return 1
@@ -965,7 +1067,7 @@ func versionCommand(args []string, build string, stdout, stderr io.Writer) int {
 // a release at or below build (semantic version order), or, when build is not a
 // release (a dev build: devel, a vcs stamp), the fixes of the shipped releases
 // alone (docs/SPEC-SPRINT.md section 11, the version verb).
-func versionCarried(build string, fx *roadmapdoc.Fixes) map[string]bool {
+func versionCarried(build string, fx *roadmap.Fixes) map[string]bool {
 	shipped := map[string]bool{}
 	for _, r := range fx.Releases {
 		if r.Status == "shipped" {
@@ -991,14 +1093,14 @@ func versionCarried(build string, fx *roadmapdoc.Fixes) map[string]bool {
 // the one line saying the unreleased fixes of its tree are not listed
 // (docs/SPEC-SPRINT.md section 11, the version verb). With jsonOut it prints
 // {version, fixes:[{release,id,title}]} instead.
-func versionFeatures(build string, fx *roadmapdoc.Fixes, carried map[string]bool, jsonOut bool, stdout, stderr io.Writer) int {
+func versionFeatures(build string, fx *roadmap.Fixes, carried map[string]bool, jsonOut bool, stdout, stderr io.Writer) int {
 	index := map[string]int{}
 	for i, f := range fx.Items {
 		if _, ok := index[f.ID]; !ok {
 			index[f.ID] = i
 		}
 	}
-	var items []roadmapdoc.Fix
+	var items []roadmap.Fix
 	for _, f := range fx.Items {
 		if carried[f.ID] {
 			items = append(items, f)
@@ -1039,8 +1141,8 @@ func versionFeatures(build string, fx *roadmapdoc.Fixes, carried map[string]bool
 // section 11, the version verb): exit 0 when it does; exit 1, naming the
 // release, when the ledger names the fix in a later release or does not name it
 // at all.
-func versionHas(id, build string, fx *roadmapdoc.Fixes, carried map[string]bool, stdout, stderr io.Writer) int {
-	var found *roadmapdoc.Fix
+func versionHas(id, build string, fx *roadmap.Fixes, carried map[string]bool, stdout, stderr io.Writer) int {
+	var found *roadmap.Fix
 	for i := range fx.Items {
 		if fx.Items[i].ID == id {
 			found = &fx.Items[i]

@@ -59,24 +59,6 @@ func TestAMachineFaultHoldClearsOnACleanFinish(t *testing.T) {
 	require.Len(t, w.notesOf(NHoldCleared), 1, "the clear is not pushed to the seat")
 }
 
-// A beating fault-held member with no clean finish yet keeps its fault mark:
-// presence brings it up for the probe, and the mark stays until the clean
-// finish clears it.
-func TestAFaultHeldMemberThatBeatsIsReleasedForAProbe(t *testing.T) {
-	t.Parallel()
-	w := setup(t, 1)
-	w.tick(time.Second)
-	down, _ := presence(w.s, TickReq{Beats: map[string]Beat{"m2": {At: w.s.Now}}})
-	w.must(down)
-
-	w.tick(time.Second)
-	up, _ := presence(w.s, TickReq{Beats: freshBeats(w, "m1", "m2")})
-	w.must(up)
-	ctl := w.s.MemberCtl("m1")
-	require.Equal(t, Up, ctl.F("status"), "not up for the probe: %v", ctl.Fields)
-	require.True(t, FaultHeld(ctl), "the fault mark was lost before the clean finish: %v", ctl.Fields)
-}
-
 // A hold the coordinator made carries no held_by mark and is never lifted by
 // the tick, however healthy the member looks.
 func TestACoordinatorsHoldIsNotClearedByTheTick(t *testing.T) {

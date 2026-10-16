@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/provbalance"
+	"github.com/mas-bandwidth/nova-tools/pkg/provbalance"
 )
 
 // THE BALANCE POLL (nova-tools#5199; the owner, 2026-10-03: "provider out of funds should
@@ -105,7 +105,7 @@ func SpendLastHour(s *Snapshot, provider string) float64 {
 			continue
 		}
 		for _, con := range CardCostOf(c).Consumers {
-			if con.Usage.Actual == "" || seen[con.Key] {
+			if subscriptionUsage(con.Usage) || con.Usage.Actual == "" || seen[con.Key] {
 				continue
 			}
 			at, err := time.Parse(time.RFC3339, con.At)

@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardlimits"
-	"github.com/mas-bandwidth/nova-sprint/pkg/hygiene"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardlimits"
+	"github.com/mas-bandwidth/nova-tools/pkg/hygiene"
 )
 
 const serialFixture = `# The tests that do not open with t.Parallel()
@@ -84,6 +84,16 @@ func TestLedgerPathsAreTheFileItsPackageTestsAndTheLedger(t *testing.T) {
 	tp := PlanLedger(Ledgers["transcripts"], tr, "", "", 0)
 	assert.Equal(t, []string{Ledgers["transcripts"].File}, tp.Cards[0].Paths)
 	assert.Contains(t, tp.Cards[0].Task, "`## nova-bus` section")
+}
+
+// dashGateStep is a brief's STEP 4 line, the gate.
+func dashGateStep(brief string) string {
+	for _, line := range strings.Split(brief, "\n") {
+		if strings.HasPrefix(line, "STEP 4.") {
+			return line
+		}
+	}
+	return ""
 }
 
 func TestMergePathsFoldsPastTheCeiling(t *testing.T) {
@@ -333,14 +343,6 @@ func TestAPackageWithNoTestFileGetsItsTestOnTheNEWLine(t *testing.T) {
 func TestTheGateStepNamesWhoseFileFailed(t *testing.T) {
 	t.Parallel()
 	const sentence = "When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first."
-	gateStep := func(brief string) string {
-		for _, line := range strings.Split(brief, "\n") {
-			if strings.HasPrefix(line, "STEP 4.") {
-				return line
-			}
-		}
-		return ""
-	}
 
 	rows, _ := ParseLedger(Ledgers["serial-tests"], serialFixture)
 	require.NotEmpty(t, rows)
@@ -350,14 +352,14 @@ func TestTheGateStepNamesWhoseFileFailed(t *testing.T) {
 	cards = append(cards, PlanHelp("nova-x", "x\n", "", "", ""))
 	for _, c := range cards {
 		brief := Render(header, c)
-		assert.Contains(t, gateStep(brief), sentence, c.ID)
+		assert.Contains(t, dashGateStep(brief), sentence, c.ID)
 		assert.Empty(t, Lint(c.ID, brief), c.ID)
 		assert.Less(t, len(brief), cardlimits.BriefAdvisoryBytes, c.ID)
 	}
 
 	tmpl, err := swarm.Template("card")
 	require.NoError(t, err)
-	assert.Contains(t, gateStep(tmpl), sentence, "the card template")
+	assert.Contains(t, dashGateStep(tmpl), sentence, "the card template")
 	assert.Less(t, len(tmpl), cardlimits.BriefAdvisoryBytes)
 }
 
@@ -367,18 +369,10 @@ func TestTheGateStepNamesWhoseFileFailed(t *testing.T) {
 // lint; a card that touches no model has neither.
 func TestACardThatTouchesAModelRunsItInItsGate(t *testing.T) {
 	t.Parallel()
-	gateStep := func(brief string) string {
-		for _, line := range strings.Split(brief, "\n") {
-			if strings.HasPrefix(line, "STEP 4.") {
-				return line
-			}
-		}
-		return ""
-	}
 	for _, paths := range [][]string{{"tla/Land.tla", "tla/MCLand.cfg"}, {"tla/*", "internal/sprint/land*.go"}, {"tla/**"}} {
 		c := Card{ID: "model-land", File: paths[0], Paths: paths, Test: "internal/tlc TestTLCRecordsCoverCurrentModels", Tier: "pro", Wave: 1, Kind: "fix-red", Task: "Fix the model."}
 		brief := Render(header, c)
-		step := gateStep(brief)
+		step := dashGateStep(brief)
 		assert.Contains(t, step, "make tlc TLC_JAR=/opt/tla/tla2tools.jar TLC_OUT=$JOB/scratch/tlc-$g TLC_GROUP=$g", paths)
 		assert.Contains(t, step, "go run ./tools/tlacheck groups --root . --stale", paths)
 		assert.Contains(t, step, "go run ./tools/tlacheck merge --root . --keep tla/RUNS.tsv --out tla/RUNS.tsv", paths)

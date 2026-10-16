@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/hostload"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // A fleet member's beats (sprint/presence.go): one record per member under
@@ -167,11 +167,19 @@ func (st *Store) BeatLive(ctx context.Context, member string, given *float64, sr
 // binary was replaced; sprint.Beat.Draining), stamped from its first such beat
 // (sprint.DrainingFrom): a beat without it clears it.
 func (st *Store) BeatDraining(ctx context.Context, member string, given *float64, src hostload.Source, stopReturns *int, noRoom string, live []string, draining bool) (sprint.Beat, error) {
-	if !sprint.ValidID(member) {
-		return sprint.Beat{}, fmt.Errorf("a member name wants letters, digits, _ and -: %s", member)
-	}
+	return st.BeatFacts(ctx, member, given, src, stopReturns, noRoom, live, draining, nil)
+}
+
+// BeatFacts is BeatDraining with the member's gate facts (fleet beat --facts; sprint.Beat.Facts),
+// measured by the member on its own machine: nil keeps the record's facts as they were, as a
+// machine's facts do not go away between two beats. The tick writes them onto the member's
+// control card (sprint factsPlan).
+func (st *Store) BeatFacts(ctx context.Context, member string, given *float64, src hostload.Source, stopReturns *int, noRoom string, live []string, draining bool, facts []string) (sprint.Beat, error) {
 	kv, err := st.rootKV()
 	if err != nil {
+		return sprint.Beat{}, err
+	}
+	if err := st.beatable(ctx, member); err != nil {
 		return sprint.Beat{}, err
 	}
 	var prev sprint.Beat
@@ -212,6 +220,9 @@ func (st *Store) BeatDraining(ctx context.Context, member string, given *float64
 	b.NoRoom = noRoom
 	b.Live, b.LiveKnown, b.LiveSince, b.LiveSeen = sprint.NextLive(prev, now, live)
 	b.Draining, b.DrainingSince = sprint.DrainingFrom(prev, draining, now)
+	if b.Facts = prev.Facts; facts != nil {
+		b.Facts = facts
+	}
 	out, err := json.Marshal(b)
 	if err != nil {
 		return b, err
@@ -219,7 +230,36 @@ func (st *Store) BeatDraining(ctx context.Context, member string, given *float64
 	if err := kv.SetKey(ctx, beatKey(member), string(out)); err != nil {
 		return b, err
 	}
+	if sprint.IsFriendRow(member) {
+		return b, nil // a one-shot friend's row is the roster's (beatable), never a stranger
+	}
 	return b, st.noteStranger(ctx, member)
+}
+
+// beatable says whether member may beat: a machine's name, or a one-shot friend's row
+// (friend.<name>, nova-config friend --session one-shot), whose member lane beats as any
+// member does and whose status is that beat (friendRows). A live friend's row is not a
+// member and never beats here: a friend lane, not a member, serves it.
+func (st *Store) beatable(ctx context.Context, member string) error {
+	friend, isFriend := sprint.FriendOfRow(member)
+	if !isFriend {
+		if !sprint.ValidID(member) {
+			return fmt.Errorf("a member name wants letters, digits, _ and -: %s", member)
+		}
+		return nil
+	}
+	r, _, err := st.roster(ctx)
+	if err != nil {
+		return err
+	}
+	e, ok := r[friend]
+	switch {
+	case !ok || !sprint.ValidID(friend):
+		return fmt.Errorf("no friend %s on the roster: a friend row's member beats only for a friend nova-config names (nova-sprint friend sync)", friend)
+	case e.Session != sprint.FriendOneShot:
+		return fmt.Errorf("friend %s is live: a live friend's row is served by a friend lane, never a member; a one-shot friend's member beats here (nova-config friend set %s --session one-shot)", friend, friend)
+	}
+	return nil
 }
 
 // TouchBeat is the beat that releasing a hold gives a member that has beaten
@@ -377,8 +417,8 @@ func (st *Store) fleetBeats(ctx context.Context, shapes []ntable.Table) (ntable.
 	if err != nil {
 		return shape, beats, err
 	}
-	// each friend's own beat under her name, beside the machines' (the friend stall reads
-	// her session activity there, sprint.TickFriendStall): a friend's beat is kept by her
+	// each friend's own beat under her name, beside the machines' (her live set and work
+	// report, read as facts of her cards, never her state): a friend's beat is kept by her
 	// name, not her row
 	for _, row := range members {
 		f, ok := sprint.FriendOfRow(row)
@@ -541,41 +581,4 @@ func (st *Store) orderFleet(ctx context.Context, shape ntable.Table, status map[
 		return false, nil
 	}
 	return true, ro.RowsOrder(ctx, shape.Name, want)
-}
-
-// friendFinishKey is when a card of the friend's last finished, working to
-// done (FriendFinished): the evidence of her session that a finish is
-// (sprint.FriendEvidence), beside her beat, which is none.
-func friendFinishKey(friend string) string { return "friend-finish:" + friend }
-
-// FriendFinished records that a card of the friend's finished at, working to
-// done, from a report her session wrote (friend sync's collect): her row reads
-// up on it for sprint.FriendFinishWindow. An older finish than the record's
-// writes nothing, and a beat never writes it.
-func (st *Store) FriendFinished(ctx context.Context, friend string, at time.Time) error {
-	kv, err := st.rootKV()
-	if err != nil {
-		return err
-	}
-	at = at.UTC().Truncate(time.Second)
-	if prev, err := st.FriendFinishedAt(ctx, friend); err != nil || !at.After(prev) {
-		return err
-	}
-	return kv.SetKey(ctx, friendFinishKey(friend), at.Format(time.RFC3339))
-}
-
-// FriendFinishedAt is when a card of the friend's last finished, zero when
-// none has or the record cannot be read.
-func (st *Store) FriendFinishedAt(ctx context.Context, friend string) (time.Time, error) {
-	kv, err := st.rootKV()
-	if err != nil {
-		return time.Time{}, err
-	}
-	raw, ok, err := kv.GetKey(ctx, friendFinishKey(friend))
-	if err != nil || !ok {
-		return time.Time{}, err
-	}
-	// ignored: an unreadable record is no finish, which the next finish replaces
-	at, _ := time.Parse(time.RFC3339, raw)
-	return at, nil
 }

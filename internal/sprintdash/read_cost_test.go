@@ -20,7 +20,7 @@ const txt = id => doc.getElementById(id).textContent;
 // the Work table's trailing rows' cost cell: -1 the total, -2 the row above it
 const lastCell = at => { try { const b = doc.getElementById('streams'), r = b.children[b.children.length + at]; return r.children[r.children.length - 1].textContent + "|" + r.children[0].textContent; } catch (e) { return "ERR " + e.message; } };
 process.stdout.write(JSON.stringify({ cost: txt('cost'), per: doc.getElementById('cost-per').innerHTML, title: doc.getElementById('cost-per').title || "",
-  unreconciled: txt('cost-unreconciled'), landed: txt('landed'), all: txt('all'), eta: txt('eta'),
+  unreconciled: txt('cost-unreconciled'), landed: txt('landed'), all: txt('all'), eta: txt('eta'), etaHTML: doc.getElementById('eta').innerHTML,
   workTotal: lastCell(-1), other: lastCell(-2) }));
 `
 
@@ -48,14 +48,18 @@ func TestTheHeroOfASprintDoneIsTheEpochs(t *testing.T) {
 		d["landed"], d["all"] = 9, 9
 		d["summary"] = "9/9 100.0% done"
 	})
-	assert.Equal(t, [3]string{"9", "9", "DONE"}, [3]string{res.Landed, res.All, res.Eta})
+	assert.Equal(t, [2]string{"9", "9"}, [2]string{res.Landed, res.All})
+	assert.Contains(t, res.EtaHTML, "DONE", "a sprint done: DONE in the ETA cell (as live app.js sets it, a span)")
 	assert.Equal(t, "$4.50", res.Cost, "the epoch's cost: the table's and the archived streams'")
 	assert.Equal(t, "$0.50 per card", res.Per, "$4.50 over 9")
 	assert.Empty(t, res.Title)
 }
 
 // costTile is the cost tile and the hero as app.js draws them.
-type costTile struct{ Cost, Per, Title, Unreconciled, Landed, All, Eta, WorkTotal, Other string }
+type costTile struct {
+	Cost, Per, Title, Unreconciled, Landed, All, Eta, WorkTotal, Other string
+	EtaHTML                                                            string `json:"etaHTML"`
+}
 
 // drawCostTile draws the fixture with an archived stream old ($1.50: $1.00 work, $0.50 reads)
 // beside ci ($3.00: $2.00 work, $1.00 reads) and $0.40 unreconciled, edited by edit, and reads

@@ -119,3 +119,52 @@ func TestDealHonoursACardsBenchLine(t *testing.T) {
 		assert.Equal(t, State(""), w.s.StateOf("s1-1"), "nothing was written")
 	})
 }
+
+// TestDealRefusesAnEmptyPoolWithoutPanicking pins the deal's reading of the
+// panic: benchRefusal indexed bench[0] on an empty bench. The panic needs
+// len(bench) == 0, so the card that killed the server is a card with no BENCH
+// line (bench == nil) dealt while every member up was filtered out by
+// notQuiet. A BENCH card whose named members are all down has a non-empty
+// bench and was already safe: it keeps its own text (docs/SPEC-SPRINT.md
+// section 5, the deal: a card's BENCH line).
+func TestDealRefusesAnEmptyPoolWithoutPanicking(t *testing.T) {
+	t.Parallel()
+	t.Run("a card with no BENCH line and every member up filtered out is refused, not indexed", func(t *testing.T) {
+		t.Parallel()
+		w := fleetWorld(t, 0, 0, "m1", "m2")
+		// notQuiet reads Snapshot.NoRoom: every member up starts no card, so the
+		// pool the no-BENCH card is dealt round is empty after the filter.
+		w.s.NoRoom = map[string]string{"m1": "disk under the floor", "m2": "disk under the floor"}
+		addBenched(t, w, "s1", map[string]string{"s1-1": ""})
+		p := w.do(Deal(w.s, DealReq{}))
+		assert.Equal(t, Ready, w.s.StateOf("s1-1"), "the card stays ready: a refusal is not a drop")
+		require.Len(t, p.Refused, 1, "the empty pool is refused once")
+		assert.Equal(t, "s1-1", p.Refused[0].Key)
+		assert.Contains(t, p.Refused[0].Why, "every member up is quiet or draining", "the refusal names the cause")
+		assert.NotContains(t, p.Refused[0].Why, "waits for its bench", "no BENCH line means no bench refusal")
+	})
+	t.Run("a BENCH card whose members are all down keeps today's text exactly", func(t *testing.T) {
+		t.Parallel()
+		w := fleetWorld(t, 0, 0, "m1", "m2")
+		w.must(FleetStep(w.s, FleetReq{Op: "down", Member: "m1", Who: "coordinator"}))
+		addBenched(t, w, "s1", map[string]string{"s1-1": "m1"})
+		p := w.do(Deal(w.s, DealReq{}))
+		require.Len(t, p.Refused, 1)
+		assert.Equal(t, "s1-1", p.Refused[0].Key)
+		assert.Equal(t, "waits for its bench m1: no member of it is up, and a card whose brief says BENCH: is dealt only to the members it names; run: nova-sprint fleet beat m1 on its machine, or release its hold with nova-sprint fleet up m1", p.Refused[0].Why)
+	})
+	t.Run("a mixed tick deals the one and refuses the other", func(t *testing.T) {
+		t.Parallel()
+		w := fleetWorld(t, 0, 0, "m1", "m2")
+		w.must(FleetStep(w.s, FleetReq{Op: "down", Member: "m2", Who: "coordinator"}))
+		addBenched(t, w, "s1", map[string]string{"s1-1": "", "s1-2": "m2"})
+		p := w.do(Deal(w.s, DealReq{}))
+		assert.Equal(t, Working, w.s.StateOf("s1-1"), "the no-BENCH card is dealt to the one member up")
+		assert.Equal(t, "m1", benchRow(w.s, "s1-1"))
+		assert.Equal(t, Ready, w.s.StateOf("s1-2"), "the BENCH card waits for its down bench")
+		assert.Equal(t, "-", benchRow(w.s, "s1-2"))
+		require.Len(t, p.Refused, 1)
+		assert.Equal(t, "s1-2", p.Refused[0].Key)
+		assert.Contains(t, p.Refused[0].Why, "waits for its bench m2")
+	})
+}

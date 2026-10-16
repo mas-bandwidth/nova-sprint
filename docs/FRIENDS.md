@@ -24,15 +24,15 @@ without `REPORT.md`, and done once `REPORT.md` exists. `nova-sprint friend
 sync` reads these directories (writing in them only a sprint card's brief, below)
 into the friends table's `ready`, `working`, `done` and `ok%`.
 
-## Is she doing work: `nova-friend status`
+## Friend availability
 
-`nova-friend status --as <name> --dir <dir>` decides her status from evidence,
-never from her daemon's beat alone, and shows the evidence beside it
-(docs/SPEC-FRIEND.md, "A friend's status, from evidence"):
-
-```
-status=down why="no session answer 12m" evidence="harness unknown; no session answer 12m; no limit; 2 undelivered; last result 40m exit=0"
-```
+`nova-hook` is the sole authority for friend liveness. Sprint reads its hook
+record and combines that result with the separate sprint hold: a missing,
+unproven or down hook displays `down`; a live, proven hook displays `held`
+when held by sprint, and `up` otherwise. A down display does not clear the
+underlying hold. `nova-sprint friend down <name>` sets the hold and
+`nova-sprint friend up <name>` clears it; neither makes a friend available
+without hook evidence (docs/SPEC-SPRINT.md, "The tables").
 
 ## A sprint card
 
@@ -90,8 +90,9 @@ The coordinator puts a card on a friend's row two ways: the deal fills the
 rest from the ready queue, and `nova-sprint friend give <friend> <id>` hands a
 named ready card to her at once (the same work card `friend sync` delivers),
 so the seat need not wait for the deal to draw it for whoever it chooses.
-`friend take <friend> <id>` takes a card of hers she has not started back to
-ready and marks it not to be dealt to her again; each taken card says so and
+`friend take <friend> <id>` takes a card dealt to her and not taken back to
+ready (a card she is working wants `--working` as well, and
+`--all-unstarted` never takes a working card) and marks it not to be dealt to her again; each taken card says so and
 the summary counts them, and `friend give` clears the mark or hands the card
 back (docs/SPEC-SPRINT.md section 1, the seat hands a named card to a friend).
 
@@ -141,31 +142,23 @@ applied and its unit runs, that agent is retired, unloaded and its plist
 removed (`launchctl bootout gui/$(id -u)/com.nova.friend-sync`, then
 `rm ~/Library/LaunchAgents/com.nova.friend-sync.plist`), so one loop syncs.
 
-### A friend's beat comes only from her daemon
+### Work reporting and hook evidence
 
-A friend's `friend beat` is sent by her nova-friend daemon alone, once a second
-while it runs (`nova-friend install`; docs/SPEC-FRIEND.md, "The beat comes from
-the daemon"). The hand-written per-friend beat loops are retired: the launch
-agents `com.nova.loop.friend-beat-<friend>`, each a zsh `while` loop running
-`nova-sprint friend beat <friend>` every second whether or not her session was
-there, which is part of why a friend whose app was closed read up. Each is
-unloaded and its plist removed, as above
-(`launchctl bootout gui/$(id -u)/com.nova.loop.friend-beat-<friend>`, then
-`rm ~/Library/LaunchAgents/com.nova.loop.friend-beat-<friend>.plist`), and no
-loop row, wrapper or other shell loop beats for a friend. A friend with no
-daemon running has no beat, and reads down.
+`nova-sprint friend beat <friend>` carries the daemon's work report: running
+cards, queued and working counts, width, load and other work observations.
+Those fields support scheduling and reconciliation; receiving a report or
+losing reports does not establish friend availability. The model supplies
+hook proof inside its own turn.
 
-When a friend's daemon stops beating for longer than the beat bound
-(`sprint.FriendBeatBound`, thirty minutes), the tick treats her as down: her
-daemon alone runs her lanes, so a session pong is no evidence she is up — she
-is down since her last beat past the bound (`sprint.FriendEvidence`, "down
-since <t>") — and every card she holds and has taken, and every read asked of
-her, comes back to the deal with its carry head kept
-(`sprint.LiveReturns`, `sprint.FriendReturn`). A session pong from a daemon
-that has stopped beating does not keep her cards: the tick hands them back,
-the same plan the run loop's `friend reconcile` applies, and the coordinator's
-`return` works on her read (`sprint.Return`, `returnReadUnit`), handing it back
-to the read deal as the reader's own `read --as <friend> --return` does.
+The model answers the nonce delivered by `nova-hook` with
+`nova-hook prove --as <name> --nonce <nonce>`. Only that hook evidence supplies
+liveness. An explicitly unhooked hook record makes the tick return the friend's
+working cards and review assignments to their deals (`sprint.LiveReturns`),
+even without a new work report. A missing or unproven hook prevents new deals;
+it is not itself an explicit unhook. Sprint's hold remains separate through
+these changes. No file in her directory decides what she holds: the friend
+reconcile against her queue file is retired, and her lanes ask the server
+(`take --as friend.<name> --lane <n>`; nova-tools `tla/FriendLaneClient.tla`).
 
 ## Where a job's work lives
 
@@ -179,6 +172,16 @@ filled in:
 ```
 Work in ~/<name>-working/jobs/<job>/: every clone, worktree and build output goes inside it, GOCACHE=~/<name>-working/.cache/go-build, and the report goes to ~/<name>-working/outbox/<job>/REPORT.md.
 ```
+
+A friend's job is staged by the verb, never by hand: `nova-sprint friend stage <card>@<gen> --as friend.<name> [--dir <jobs dir>]` clones the card's REPO into
+`jobs/<job>/` at its NEXT head when one is carried (else at BASE), creates the
+delivered branch (the branch the `FRIEND-CARD DELIVERED` bus message carries),
+sets the friend's own git identity from her nova-config row's `git_identity=`
+field in the clone's local config (never the machine's global identity, never
+the sprint's default), and writes `JOB.md` naming the exact finish command. It
+refuses a card not dealt to the named friend, and a friend whose nova-config row
+has no `git_identity` field. A second stage of the same card@gen, branch and
+head is idempotent and prints the `JOB.md` path.
 
 A clone left inside `inbox/<job>/`, beside its brief (the layout before this
 line), is found there too.
@@ -227,18 +230,13 @@ absolutely go"; "You should have setup children so you get notified when
 nova-sprint sends messages to you."). The coordinator's three earlier scripts
 are replaced with verbs:
 
-1. **The seat push loop**: `nova-sprint inbox --wait --push seat` is installed as
-   a `nova-config` loop record kept alive on the coordinator machine:
-
-```
-nova-config loop add seat-push --machine bench-a --argv '["/usr/bin/env","NOVA_SPRINT_SERVER=127.0.0.1:6390","nova-sprint","inbox","--wait","--push","seat"]' --keepalive true --as ada
-```
-
-   Its log is the loop's, `~/nova-bench/loops/seat-push.log`. It writes each new
-   judgment and note into the holder's inbox directory,
-   `~/<holder>-working/inbox/sprint-judgments/`, and follows the seat when it
-   moves. It replaces the hand-written launch agent `com.nova.loop.seat-push-<seat>`
-   (a zsh script under `nova-secrets exec`).
+1. **The seat push loop** is retired (v1.3.6): the sprint's server sends every
+   judgment and note for the coordinator to its name on the bus, and the
+   coordinator hooks in with `nova-hook hook --as <coordinator> --role coordinator`
+   under a Monitor, which puts each message into the session. A `seat-push`
+   loop record left on the coordinator machine is retired with it, and its row
+   is removed from nova-config: `nova-sprint inbox --wait` refuses the seat's
+   push word, naming this.
 
 2. **The receive thread**: The coordinator is a friend row like any other (the
    sprint row's `coordinator` names her). Her receive thread is her own
@@ -249,11 +247,11 @@ nova-friend install --as ada --harness opencode --dir ~/ada-working --server 127
 ```
 
    It parks on her bus stream, pushes incoming messages into the session, and
-   beats to the sprint server. It replaces `com.nova.loop.wake-serve-<seat>` and
+   reports work to the sprint server. Its process does not prove the model's
+   availability. It replaces `com.nova.loop.wake-serve-<seat>` and
    `nova-wake`.
 
-3. **Session proof of life**: The 10-minute ping loop
-   (`com.nova.loop.friend-ping-<seat>`) is retired in favour of the friends'
-   session proof of life (card fr-session-proof-of-life): `nova-friend` tracks
-   presence via nonces answered by each friend's session, so no background ping
-   script is run.
+3. **Hook liveness**: `nova-hook` delivers challenges for the model to answer
+   with `nova-hook prove`. The hook record supplies availability to sprint;
+   background ping scripts, daemon reports and separate session-proof records
+   supply no liveness evidence. Sprint stores the scheduling hold separately.

@@ -282,6 +282,10 @@ Refused == IF "refused" \in DOMAIN Scn THEN Scn.refused ELSE {}
 \* 2026-09-30 shape) or "half" (read cards: placed before work, half a slot);
 \* the scenario's, "whole" when it names none.
 ReadCost == IF "readCost" \in DOMAIN Scn THEN Scn.readCost ELSE "whole"
+\* The cards at fix (THE STRICT DEAL, v1.4.5; priority.go PriorityLadder: reader, then
+\* blocker, critical, fix, then high and the new work): the scenario's; none when it names
+\* none, so every configuration before this one deals as it did.
+FixCards == IF "fix" \in DOMAIN Scn THEN Scn.fix ELSE {}
 ASSUME ReadCost \in {"whole", "half"}
 \* A host's load of n reads, in slots (read_cards.go halfLoad: rounded up).
 Load(n) == IF ReadCost = "half" THEN (n + 1) \div 2 ELSE n
@@ -316,6 +320,7 @@ DrainOn == "drain" \in DOMAIN Scn /\ Scn.drain
 StopOn == "run" \in DOMAIN Scn /\ Scn.run
 \* The scenario turns a refused read on (Scn.refuse); one that names none has
 \* none, and the transition is not reached.
+EnvOn == "env" \in DOMAIN Scn /\ Scn.env
 RefuseOn == "refuse" \in DOMAIN Scn /\ Scn.refuse
 \* c1 in review, its read on r1 (the only reader of the small config that
 \* names this scenario): r1 may refuse it, it is asked of r1 once more, and
@@ -337,14 +342,22 @@ ScnRefuse == [
 \* The in-place re-asks of a returned read at its attempt (internal/sprint
 \* MaxReadReasks).
 MaxReasks == 2
+\* The environment returns of one read's reader at an attempt before the
+\* read is spent and judged (internal/sprint EnvReadCap).
+EnvReadCap == 2
 
 VARIABLES col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
           mctr, rctr, sctr, live, miss, acts, ext,
           phase, pumps, sub, addr, notes, wake, act, plc,
           brk, dealt, always, drain, run,
           okd, ci, ret, tk, rdl, ended, ends, hred, seen, hb, rea, cna, nrt,
-          fat, ftr, tier, back, fbk, rwk, rb
+          fat, ftr, tier, back, fbk, rwk, rb, ecn, enj, ehb
 
+\* ehb            the readers table: the return waiting on c is the environment's
+\*                (its in-place re-ask is not counted in rea)
+\* ecn, enj       the readers table: c's reads that ended on the reader's environment
+\*                at its attempt (the primary's env_exit_reads, by reader); the
+\*                environment judgment open on c (READ ENVIRONMENT, below)
 \* fat, ftr       the work table: the primary's record, written by a rework at
 \*                the bound: the attempt that ended at its bound, its tier (0,
 \*                "none" before any)
@@ -377,9 +390,9 @@ vars == <<col, att, bnd, rd, askw, mq, stat, mc, mr, noUp, Q,
           phase, pumps, sub, addr, notes, wake, act, plc,
           brk, dealt, always, drain, run,
           okd, ci, ret, tk, rdl, ended, ends, hred, seen, hb, rea, cna, nrt,
-          fat, ftr, tier, back, fbk, rwk, rb>>
+          fat, ftr, tier, back, fbk, rwk, rb, ecn, enj, ehb>>
 CardVars == <<okd, ci, ret, tk, rdl, ended, ends, hred, seen, hb, rea, cna, nrt,
-              fat, ftr, tier, back, fbk, rwk, rb>>
+              fat, ftr, tier, back, fbk, rwk, rb, ecn, enj, ehb>>
 
 -----------------------------------------------------------------------------
 \* Entries. k is the kind, c the card (or "-"), x the machine, the reader
@@ -411,7 +424,8 @@ Cur == [col |-> col, att |-> att, bnd |-> bnd, rd |-> rd, askw |-> askw,
         f0 |-> Len(Q["fleet"]), drain |-> drain,
         okd |-> okd, ci |-> ci, ret |-> ret, tk |-> tk, rdl |-> rdl, ended |-> ended, ends |-> ends,
         hred |-> hred, seen |-> seen, hb |-> hb, rea |-> rea, cna |-> cna, nrt |-> nrt,
-        fat |-> fat, ftr |-> ftr, tier |-> tier, back |-> back, fbk |-> fbk, rwk |-> rwk, rb |-> rb]
+        fat |-> fat, ftr |-> ftr, tier |-> tier, back |-> back, fbk |-> fbk, rwk |-> rwk, rb |-> rb,
+        ecn |-> ecn, enj |-> enj, ehb |-> ehb]
 
 Put(S, t, e) == [S EXCEPT !.q[t] = Append(@, e)]
 
@@ -472,7 +486,8 @@ AtRB(S, c) == Broken # "redealpast" /\ S.ended[c] /\ S.rdl[c] >= MaxRedeals
 NewAttempt(S, c) ==
   [S EXCEPT !.okd[c] = FALSE, !.ci[c] = "none", !.ret[c] = FALSE,
             !.rdl[c] = 0, !.ended[c] = FALSE, !.ends[c] = 0, !.hred[c] = FALSE,
-            !.seen[c] = {}, !.hb[c] = NoR, !.rea[c] = 0, !.cna[c] = FALSE, !.nrt[c] = FALSE]
+            !.seen[c] = {}, !.hb[c] = NoR, !.rea[c] = 0, !.cna[c] = FALSE, !.nrt[c] = FALSE,
+            !.ecn[c] = 0, !.enj[c] = FALSE, !.ehb[c] = FALSE]
 
 -----------------------------------------------------------------------------
 \* THE WORK PUMP (1.). Applies its whole queue, lands sentinels, releases,
@@ -557,7 +572,13 @@ UpRoom(S) == {m \in Machines : S.stat[m] = "up" /\
                 (Broken = "dealdraining" \/ ~S.drain[m]) /\
                 (Broken = "nowidth" \/ Room(S, m) > 0)}
 DealOne(S, cand) ==
-  LET D == Dealable(S, cand)
+  LET \* the strict deal: a fix card before any new card (steps_tick.go TickDeal,
+      \* ladderOrder); the witness "newfirst" deals in stream turns alone. With no fix
+      \* card in the scenario the deal is the one it was, at its cost (TLC evaluates a LET
+      \* at each use: Dealable is not evaluated twice for it)
+      D == IF FixCards = {} \/ Broken = "newfirst" THEN Dealable(S, cand)
+           ELSE IF Dealable(S, cand) \cap FixCards # {} THEN Dealable(S, cand) \cap FixCards
+           ELSE Dealable(S, cand)
       ss == {StreamOf[c] : c \in D}
       st == Pick(SOrder, ss, S.sctr)
       c == CHOOSE x \in D : StreamOf[x] = st /\
@@ -620,6 +641,21 @@ ApplyR(S, e) ==
          ELSE \* not a read: off the reader, asked once more, the bound not spent
               Put([S EXCEPT !.rd[c] = NoR, !.askw[c] = TRUE, !.hb[c] = e.x],
                   "fleet", E("readoff", c, Host[e.x]))
+    [] e.k = "envret" ->  \* the read ended on the reader's environment: asked again, nothing spent
+         IF S.rd[c] # e.x \/ S.ecn[c] >= EnvReadCap THEN S
+         ELSE LET S1 == Put([S EXCEPT !.rd[c] = NoR, !.askw[c] = TRUE, !.hb[c] = e.x,
+                                      !.mr = [m \in Machines |-> IF m = Host[e.x] THEN S.mr[m] \ {c} ELSE S.mr[m]],
+                                      !.ecn[c] = @ + 1, !.ehb[c] = TRUE],
+                            "fleet", E("readoff", c, Host[e.x]))
+                  AtCap == S.ecn[c] + 1 >= EnvReadCap
+              IN IF Broken = "envredo"
+                 THEN \* the witness: the return is the work's harness end, a new attempt dealt
+                      [S1 EXCEPT !.col[c] = "ready", !.att[c] = Min(@ + 1, MaxAttempts),
+                                 !.brk[c] = Min(@ + 1, MaxAttempts)]
+                 ELSE IF AtCap
+                 THEN \* the cap: the reader is spent at the attempt and ONE judgment names the environment
+                      [S1 EXCEPT !.seen[c] = @ \cup {e.x}, !.hb[c] = NoR, !.ehb[c] = FALSE, !.enj[c] = TRUE]
+                 ELSE S1
     [] e.k = "unread" ->
          IF S.rd[c] # NoR THEN [S EXCEPT !.rd[c] = NoR, !.askw[c] = TRUE] ELSE S
     [] e.k = "raway" ->     \* the reader is not up: its reads are taken back and asked again
@@ -654,7 +690,8 @@ PlaceReads(S) ==
           THEN \* only the reader that returned it can take it: asked of it
                \* again, in place, the counter not moved
                PlaceReads(Put([S EXCEPT !.askw[c] = FALSE, !.rd[c] = h, !.hb[c] = NoR,
-                                        !.rea[c] = Min(@ + 1, MaxReasks + 1), !.cna[c] = FALSE],
+                                        !.rea[c] = IF S.ehb[c] THEN @ ELSE Min(@ + 1, MaxReasks + 1),
+                                        !.ehb[c] = FALSE, !.cna[c] = FALSE],
                               "fleet", E("readon", c, Host[h])))
           ELSE LET rs == Others(S, c)
                    r == Pick(ROrder, rs, S.rctr)
@@ -662,7 +699,7 @@ PlaceReads(S) ==
                                            \* the returned read taken by another
                                            \* reader: its reader is not asked again
                                            !.seen[c] = IF h # NoR THEN @ \cup {h} ELSE @,
-                                           !.cna[c] = FALSE,
+                                           !.cna[c] = FALSE, !.ehb[c] = FALSE,
                                            !.rctr = (@ + 1) % CtrMod,
                                            !.plc = Append(@, [k |-> "r", ctr |-> S.rctr, el |-> rs, pick |-> r])],
                                  "fleet", E("readon", c, Host[r])))
@@ -678,7 +715,7 @@ Eligible(S, c) == {r \in Readers \ S.seen[c] : /\ ("seefleet" \in Fixes => S.sta
                                                /\ ("readerup" \in Fixes => S.stat[r] = "up")
                                                /\ ~Off(S, Host[r])}
 Stranded(S) ==
-  {c \in Cards : /\ S.askw[c] /\ ~S.cna[c] /\ ~S.nrt[c]
+  {c \in Cards : /\ S.askw[c] /\ ~S.cna[c] /\ ~S.nrt[c] /\ ~S.enj[c]
                  /\ IF Broken = "seenonly" /\ S.rea[c] > 0 THEN Readers \subseteq S.seen[c] ELSE Eligible(S, c) = {}}
 JudgeStranded(S) ==
   IF Broken = "silentstrand" \/ Stranded(S) = {} THEN S
@@ -814,7 +851,7 @@ Commit(S) ==
   /\ okd' = S.okd /\ ci' = S.ci /\ ret' = S.ret /\ tk' = S.tk /\ rdl' = S.rdl
   /\ ended' = S.ended /\ ends' = S.ends /\ hred' = S.hred /\ seen' = S.seen /\ hb' = S.hb
   /\ rea' = S.rea /\ cna' = S.cna /\ nrt' = S.nrt
-  /\ fat' = S.fat /\ ftr' = S.ftr /\ tier' = S.tier /\ back' = S.back /\ fbk' = S.fbk /\ rwk' = S.rwk /\ rb' = S.rb
+  /\ fat' = S.fat /\ ftr' = S.ftr /\ tier' = S.tier /\ back' = S.back /\ fbk' = S.fbk /\ rwk' = S.rwk /\ rb' = S.rb /\ ecn' = S.ecn /\ enj' = S.enj /\ ehb' = S.ehb
   /\ col' = S.col /\ att' = S.att /\ bnd' = S.bnd /\ rd' = S.rd /\ askw' = S.askw
   /\ mq' = S.mq /\ stat' = S.stat /\ mc' = S.mc /\ mr' = S.mr /\ noUp' = S.noUp
   /\ drain' = S.drain
@@ -956,6 +993,11 @@ ReadRefuse(c) ==
   /\ RefuseOn /\ rd[c] # NoR /\ ~nrt[c] /\ live[rd[c]] /\ acts < MaxActs
   /\ Pend("readers", "refused", c) = 0
   /\ acts' = acts + 1 /\ Outside("readers", E("refused", c, rd[c])) /\ UNCHANGED <<live, miss>>
+\* READ ENVIRONMENT: the reader that holds a read returns it because its
+\* environment refused (the wall, staging, a stale pin, exit 134 or 137).
+ReadEnvReturn(c) ==
+  /\ EnvOn /\ rd[c] # NoR /\ live[rd[c]] /\ acts < MaxActs /\ Pend("readers", "envret", c) = 0
+  /\ acts' = acts + 1 /\ Outside("readers", E("envret", c, rd[c])) /\ UNCHANGED <<live, miss>>
 ReaderBack(r) ==
   /\ Scn.away /\ ~live[r] /\ acts < MaxActs
   /\ live' = [live EXCEPT ![r] = TRUE] /\ acts' = acts + 1 /\ UNCHANGED miss
@@ -1098,13 +1140,14 @@ Init ==
   /\ fat = [c \in Cards |-> 0] /\ ftr = [c \in Cards |-> "none"] /\ tier = [c \in Cards |-> Ladder[1]]
   /\ back = [t \in Tiers |-> FALSE] /\ fbk = [c \in Cards |-> {}]
   /\ rwk = [c \in Cards |-> 0] /\ rb = [c \in Cards |-> 0]
+  /\ ecn = [c \in Cards |-> 0] /\ enj = [c \in Cards |-> FALSE] /\ ehb = [c \in Cards |-> FALSE]
 
 TickNext == TickStart \/ PumpWork \/ DrainWork \/ StoppedTick \/ TickEnd \/ SettleBound \/
             \E t \in Three : Pass(t) \/ Drain(t)
 OutsideNext ==
   \/ \E c \in Cards : Add(c) \/ Merge(c) \/ \E v \in {"ok", "broken"} : Report(c, v)
   \/ \E c \in Cards, m \in Machines : Finish(c, m) \/ Take(c, m)
-  \/ \E c \in Cards : CIRed(c) \/ CIGreen(c) \/ CIOld(c) \/ Return(c) \/ CoordAccept(c) \/ ReadReturn(c) \/ ReadRefuse(c)
+  \/ \E c \in Cards : CIRed(c) \/ CIGreen(c) \/ CIOld(c) \/ Return(c) \/ CoordAccept(c) \/ ReadReturn(c) \/ ReadRefuse(c) \/ ReadEnvReturn(c)
   \/ \E c \in Cards, cl \in BoundClasses, t \in Tiers : ReworkAtBound(c, cl, t)
   \/ \E t \in Tiers : TierOK(t)
   \/ \E m \in Machines : Beat(m) \/ Lapse(m) \/ Miss(m) \/ BeatReset(m) \/ Hold(m) \/ DrainStart(m)
@@ -1132,6 +1175,7 @@ TypeOK ==
   /\ fat \in [Cards -> 0..MaxAttempts] /\ ftr \in [Cards -> Tiers \cup {"none"}]
   /\ tier \in [Cards -> Tiers] /\ back \in [Tiers -> BOOLEAN] /\ fbk \in [Cards -> SUBSET Tiers]
   /\ rwk \in [Cards -> 0..MaxAttempts] /\ rb \in [Cards -> 0..(MaxBoundReworks + 1)]
+  /\ ecn \in [Cards -> 0..EnvReadCap] /\ enj \in [Cards -> BOOLEAN] /\ ehb \in [Cards -> BOOLEAN]
 
 \* THE CENTRAL PROPERTY (the owner: "nothing advances the work stream table
 \* EXCEPT on the next tick"). Only the tick's one pump writes the work table.
@@ -1220,14 +1264,32 @@ EligibleNow(c) == {r \in Readers \ seen[c] : /\ ("seefleet" \in Fixes => stat[Ho
                                              /\ ("readerup" \in Fixes => stat[r] = "up")
                                              /\ ~Off(Cur, Host[r])}
 StrandingIsJudged ==
-  \A c \in Cards : (phase = "idle" /\ askw[c] /\ col[c] = "review" /\ EligibleNow(c) = {}) => cna[c]
+  \A c \in Cards : (phase = "idle" /\ askw[c] /\ col[c] = "review" /\ EligibleNow(c) = {}) => (cna[c] \/ enj[c])
 \* A RETURN IS NOT A READ: no card is stranded by its readers' reads before
 \* its reader was asked it again MaxReasks times (the code before counted the
 \* first return as a read: W25).
 JudgedOnlyAfterTheBound == \A c \in Cards : (cna[c] /\ Readers \subseteq seen[c]) => rea[c] >= MaxReasks
+\* READ ENVIRONMENT (2026-10-15, a-read-environment-refusal-is-not-a-redo:
+\* a reader's wall refused a write on a green gate, staging could not fetch
+\* the head, the read's pin was stale: the environment, not the work).
+\* Such a return is the outside's ReadEnvReturn(c); the readers update applies
+\* "envret": off the reader, asked again at the same attempt, the in-place
+\* re-asks (rea) and every work counter (att, brk, rdl, ended, bnd) untouched;
+\* the ecn[c]-th such return of the attempt reaching EnvReadCap spends the
+\* reader at the attempt (seen) and opens ONE judgment naming the environment
+\* (enj, the code's envReadBound), never a redo. EnvNeverRedoes: no step that
+\* counts an environment return moves a work counter. The witness "envredo"
+\* treats the return as the work's harness end (a new attempt dealt): it
+\* violates EnvNeverRedoes (MCDirtyTickBrokenEnvRedo).
+EnvNeverRedoes ==
+  [][\A c \in Cards : ecn'[c] > ecn[c] =>
+        /\ att'[c] = att[c] /\ brk'[c] = brk[c] /\ rdl'[c] = rdl[c]
+        /\ ended'[c] = ended[c] /\ bnd'[c] = bnd[c] /\ col'[c] = col[c] /\ rea'[c] = rea[c]]_vars
+\* The judgment, once the cap is reached, is the environment's and is open.
+EnvJudgedAtCap == \A c \in Cards : ecn[c] >= EnvReadCap => enj[c]
 \* A read waiting for a reader in review is placed on one, or judged.
 ReturnSettles ==
-  \A c \in Cards : (askw[c] /\ col[c] = "review") ~> (~askw[c] \/ cna[c] \/ col[c] # "review")
+  \A c \in Cards : (askw[c] /\ col[c] = "review") ~> (~askw[c] \/ cna[c] \/ enj[c] \/ col[c] # "review")
 
 \* THE ASK GUARD: a read is held only by a reader up, at every state (a reader
 \* away has its reads taken back by the update that applies it, and is placed
@@ -1247,7 +1309,7 @@ EveryRowWithWorkMoves ==
 \* route serves and a free up slot could take is dealt in that same tick.
 ConsumerOut(c) ==
   /\ col[c] = "working" => \E m \in Machines : c \in mc[m] /\ stat[m] = "up"
-  /\ col[c] = "review" /\ ~okd[c] /\ ~bnd[c] /\ ~cna[c] /\ ~nrt[c] => rd[c] # NoR /\ stat[rd[c]] = "up"
+  /\ col[c] = "review" /\ ~okd[c] /\ ~bnd[c] /\ ~cna[c] /\ ~nrt[c] /\ ~enj[c] => rd[c] # NoR /\ stat[rd[c]] = "up"
 DealableLeft ==
   \E c \in Cards : col[c] = "ready" /\ c \in Served /\ ~(ended[c] /\ rdl[c] >= MaxRedeals)
                     /\ StreamOf[c] \notin HeldStreams
@@ -1298,12 +1360,23 @@ LanesRespected == \A m \in Machines :
   Cardinality({c \in mc[m] : tk[c]}) <= Width[m]
 
 \* READS BEFORE WORK (THE DEAL'S ORDER AND SKIPS): under ReadCost "half", every
-\* read a pump places precedes every card it deals, in its plan's placements
+\* read a pump places precedes every card it deals, a fix card's too (reader is the
+\* ladder's top rung, v1.4.5: priority.go PriorityLadder), in its plan's placements
 \* (plc: "r" a reader, "s" and "m" a deal's stream and machine). The witness
 \* "workfirst" deals first.
 ReadsBeforeWork ==
   [][act' \in {"PumpWork", "DrainWork"} /\ ReadCost = "half" =>
        \A p, q \in 1..Len(plc') : plc'[p].k = "r" /\ plc'[q].k \in {"s", "m"} => p < q]_vars
+
+\* THE STRICT DEAL (v1.4.5): reads first (ReadsBeforeWork), then the fixes, then new work.
+\* A pump that deals a new card leaves no fix card ready that was ready before it: the fix
+\* is dealt first in the room the reads leave, which is counted rounding a half read up
+\* (Load; a host with one half slot left after its reads takes no work card). The witness
+\* "newfirst" deals a new card while a fix waits.
+FixBeforeNew ==
+  [][act' \in {"PumpWork", "DrainWork"} =>
+       \A c \in Cards \ FixCards : (col[c] = "ready" /\ col'[c] = "working") =>
+         \A f \in FixCards : ~(col[f] = "ready" /\ col'[f] = "ready")]_vars
 
 \* ONE REFUSED READ NEVER BLOCKS WORK: after a pump with a refused read, every
 \* Dealable card with UpRoom is dealt, exactly as without the refusal. The

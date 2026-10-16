@@ -17,7 +17,7 @@ import (
 func partialWorld(t *testing.T) (*world, map[string]string) {
 	t.Helper()
 	w := friendWorld(t, friendBrief("friend"), friendBrief("friend"), friendBrief("friend"))
-	dealStarted(w, FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash"})
+	dealStarted(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash"}))
 	require.Equal(t, Working, w.s.Fleet.Card("s1-1.w1").Col)
 	require.Equal(t, Working, w.s.Fleet.Card("s1-2.w1").Col)
 	require.Equal(t, Ready, w.s.Fleet.Card("s1-3.w1").Col)
@@ -31,7 +31,7 @@ func TestFriendTakeTakesTheTakeableAndNamesTheRest(t *testing.T) {
 	t.Run("takes the takeable", func(t *testing.T) {
 		t.Parallel()
 		w, started := partialWorld(t)
-		p := w.do(FriendTake(w.s, FriendTakeReq{Friend: "amy", IDs: ids, Started: started, Reason: "rebalance"}))
+		p := w.do(FriendTake(w.s, FriendTakeReq{Friend: "amy", Working: true, IDs: ids, Started: started, Reason: "rebalance"}))
 		require.Len(t, p.Refused, 1, "one REFUSED line, for the one she keeps")
 		assert.Equal(t, "s1-2", p.Refused[0].Key)
 		assert.Contains(t, p.Refused[0].Why, "has started: her beat names it running")
@@ -47,7 +47,7 @@ func TestFriendTakeTakesTheTakeableAndNamesTheRest(t *testing.T) {
 	t.Run("all or nothing takes none", func(t *testing.T) {
 		t.Parallel()
 		w, started := partialWorld(t)
-		p := FriendTake(w.s, FriendTakeReq{Friend: "amy", IDs: ids, Started: started, AllOrNothing: true})
+		p := FriendTake(w.s, FriendTakeReq{Friend: "amy", Working: true, IDs: ids, Started: started, AllOrNothing: true})
 		assert.Empty(t, p.Units)
 		require.Len(t, p.Refused, 3, "the started one, and each that would have been taken")
 		assert.Equal(t, "s1-2", p.Refused[0].Key)
@@ -62,7 +62,7 @@ func TestFriendTakeTakesTheTakeableAndNamesTheRest(t *testing.T) {
 	t.Run("all or nothing with none refused takes them all", func(t *testing.T) {
 		t.Parallel()
 		w, _ := partialWorld(t)
-		p := w.must(FriendTake(w.s, FriendTakeReq{Friend: "amy", IDs: []string{"s1-1", "s1-3"}, AllOrNothing: true}))
+		p := w.must(FriendTake(w.s, FriendTakeReq{Friend: "amy", Working: true, IDs: []string{"s1-1", "s1-3"}, AllOrNothing: true}))
 		assert.Len(t, p.Units, 2)
 		assert.Equal(t, Withdrawn, w.s.Fleet.Card("s1-1.w1").Col)
 		assert.Equal(t, Withdrawn, w.s.Fleet.Card("s1-3.w1").Col)

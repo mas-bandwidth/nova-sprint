@@ -10,10 +10,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
-	"github.com/mas-bandwidth/nova-sprint/pkg/harness"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/decide"
+	"github.com/mas-bandwidth/nova-tools/pkg/harness"
 )
 
 // The card decides the model it runs on.
@@ -215,6 +215,7 @@ const (
 	FieldTokens   = "tokens"
 	FieldUSD      = "usd"
 	FieldHarness  = "harness"
+	FieldBilling  = "billing"
 	FieldDeadline = "deadline"
 	FieldRoutes   = "routes"
 	FieldUsage    = "usage"
@@ -225,22 +226,12 @@ const (
 	// card, the tier its route was drawn from, which its packet hands the child or reader,
 	// its JOB.md names and its cost record keeps.
 	FieldTier = "tier"
-	// FieldTierNow is the tier the primary is on, written by every deal on a route:
-	// flash first on every card, then the tier the machine escalated it to (NextTier);
-	// the tier its brief's line 1 names is its ceiling. Add writes pro on a card whose
-	// gate's measured wall is over the flash bound (gate_wall.go).
+	// FieldTierNow is the tier the primary is on, written by every deal on a route: the
+	// card's own tier (its brief's line 1, or its pin), or a tier above it the machine
+	// raised it to (NextTier, capNextTier); never read below the card's own (cardTier).
+	// Add writes pro on a flash card whose gate's measured wall is over the flash bound
+	// (gate_wall.go).
 	FieldTierNow = "tier_now"
-	// FieldReadFallbackNote is the note a read card carries when its read is drawn one
-	// tier down: the card's tier no reader serves, so the read falls to the strongest
-	// tier at or below it a reader up serves ("read at heavy: no frontier reader").
-	FieldReadFallbackNote = "read_fallback_note"
-	// FieldFallbackTier is the primary's fallback tier: the sprint's unserved-tier-falls-to
-	// setting gave a card whose brief tier no route serves and no up friend serves the
-	// strongest served tier at or below the setting (unserved_tier.go). It is a field of its
-	// own, never the brief's line 1 and never a pin the seat made (FieldTier); the deal draws
-	// its route from it and DealtTier names it, and the tick clears it when the brief tier is
-	// served again and the card is not yet taken.
-	FieldFallbackTier = "fallback_tier"
 )
 
 // modelRead is the memo of one brief's model lines (cardhdr.ReadModel): the model
@@ -610,7 +601,7 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map
 			ri[tier].r.count += steps
 			ri[tier].moves[c.ID] = strconv.FormatUint(steps, 10)
 		}
-		set := map[string]string{FieldRoute: r.Name, FieldModel: r.Provider + "/" + r.Model, FieldTokens: tokensWord(r.Tokens), FieldUSD: r.USD, FieldHarness: r.Harness,
+		set := map[string]string{FieldRoute: r.Name, FieldModel: r.Provider + "/" + r.Model, FieldTokens: tokensWord(r.Tokens), FieldUSD: r.USD, FieldHarness: r.Harness, FieldBilling: s.billingPrices(r).Billing,
 			FieldDeadline: strconv.Itoa(r.Deadline), FieldTier: tier, FieldRoutes: strings.Join(append(Split(c.F(FieldRoutes)), r.Name), ",")}
 		if !pinnedTier(c, m) {
 			set[FieldTierNow] = tier // the primary is on the tier drawn (cardTier)
@@ -680,7 +671,7 @@ func (s *Snapshot) routeServed(c, wc *Card, member string) (tier, why string, by
 
 // routeTier is routeOf's and routeServed's shared opening: the tier a deal of c draws
 // from, and the cases that end before the draw — a brief whose model lines do not read, a
-// fallback tier, and a tier the fleet's set leaves out (tierServed); a frontier card is
+// a tier the fleet's set leaves out (tierServed); a frontier card is
 // none of them and goes on to the draw like every tier. done says one of
 // those settled the answer (the returned tier, why and byFriend are it, with no set); else
 // the caller goes on to the pin, a store with no route, or the draw. m is the card's
@@ -697,16 +688,6 @@ func (s *Snapshot) routeTier(c *Card) (tier, why string, byFriend, done bool, m 
 		// a card admitted before the lint read its lines: judged under the tier it
 		// names (an unknown word too), else flash's
 		return tier, "its brief's model lines: " + bad, false, true, m
-	}
-	if fb := fallbackTier(c, m); fb != "" {
-		// the sprint's unserved-tier-falls-to setting gave the card a fallback tier
-		// (unserved_tier.go): the deal draws from it, never the unserved brief tier
-		tier = fb
-		if !s.FleetTakes(tier) {
-			up, why := s.tierServed(tier, nil)
-			return tier, why, len(up) > 0, true, m
-		}
-		return tier, "", false, false, m
 	}
 	// no tier ends here by its name: a frontier card is drawn from its routes as a heavy
 	// card is (tla/RouteIndex.tla EveryTierIsDealtFromItsRoutes); with none drawable and no
@@ -897,57 +878,52 @@ func (s *Snapshot) unservedWhy(tier, member string, drawing bool) (rested, unlau
 	return rested, unlaunchable, full
 }
 
-// Flash first on every card (the owner, 2026-10-02, cost rule 1 of nova-tools#5174,
-// agreed after "The cost of the sprint at $5,400 seems excessive.": "Flash first on
-// every card; pro only on escalation"). The tier a brief's line 1 names is the card's
-// ceiling, what it likely needs, never its first deal: every card is dealt on flash, and
-// one that reaches its bound below its ceiling is escalated by the machine to the next
-// tier of the ladder and dealt a new attempt there, no judgment raised; at its ceiling
-// the bound is the coordinator's judgment as before. A frontier card climbs no
-// ladder: it is drawn on frontier from its first deal, from its routes like every
-// tier; a pinned model runs on its pin; a tier the coordinator pinned (rework --tier, FieldTier) is the card's tier and its
-// ceiling both.
+// A card is worked at its tier or above, never below (the owner, 2026-10-16: "It is
+// completely undefined that a card should run at the wrong tier. There is no aspect of the
+// design of nova sprint that allows this."). The tier its brief's line 1 names (or the tier
+// the coordinator pinned, FieldTier) is the card's own tier and its first deal's
+// (startTier); the machine may raise it (a redeal bound below a pin's ceiling, NextTier; a
+// capped lane, capNextTier) and nothing lowers it: a tier recorded on the primary
+// (FieldTierNow) below the card's own is read as the card's own (cardTier, drawTier). A
+// card whose tier no route or friend serves waits under the tier's judgment
+// (tierServed), never dealt on a weaker one. A frontier card is drawn on frontier from its
+// first deal; a pinned model runs on its pin.
 var tierLadder = []string{cardhdr.RouteFlash, cardhdr.RoutePro, cardhdr.RouteHeavy}
 
 // cardTier is the tier the primary c is on, what its reads, its read count and its
-// escalation go by: the tier its last deal on a route drew (FieldTierNow, which every
-// such deal writes: flash first, then the tier the machine escalated it to); before
-// any (a card not dealt yet, or a store with no route, where its member runs its own
-// model and no deal draws a tier) and for a pinned tier or model or a frontier card,
-// its ceiling.
+// escalation go by: the tier its last deal on a route drew (FieldTierNow, which every such
+// deal writes) when that is above the card's own (ceilingTier: a capped lane re-dealt it a
+// tier up), else the card's own; for a pinned tier or model or a frontier card, its own.
+// Never below the card's own tier: a stale or wrong FieldTierNow below it is ignored.
 func cardTier(c *Card, m cardhdr.Model) string {
+	own := ceilingTier(c, m)
 	if t := c.F(FieldTierNow); t != "" && !pinnedTier(c, m) {
-		return t
+		return stronger(t, own)
 	}
-	return ceilingTier(c, m)
+	return own
 }
 
-// drawTier is the tier the deal draws the primary c's route from: its ceiling when its
-// tier is pinned (pinnedTier), else the tier the machine escalated it to, else "": its first
-// deal on a route, whose tier is the snapshot's to say (startTier: flash first, or pro by
-// its grade).
+// drawTier is the tier the deal draws the primary c's route from: its own tier when its
+// tier is pinned (pinnedTier), else the tier recorded on it (FieldTierNow) raised to its own
+// (never below it), else "": its first deal on a route, whose tier is the snapshot's to say
+// (startTier: the card's own).
 func drawTier(c *Card, m cardhdr.Model) string {
 	if pinnedTier(c, m) {
 		return ceilingTier(c, m)
 	}
-	if fb := fallbackTier(c, m); fb != "" {
-		return fb
+	if t := c.F(FieldTierNow); t != "" {
+		return stronger(t, ceilingTier(c, m))
 	}
-	return c.F(FieldTierNow)
+	return ""
 }
 
 // pinnedTier says the primary c climbs no ladder: the coordinator pinned its tier
-// (FieldTier, rework --tier), its brief pins a model, or it is a frontier card
-// (unless the sprint gave it a fallback tier, unserved_tier.go: a fallback is no pin
-// and the card is dealt on it).
+// (FieldTier, rework --tier), its brief pins a model, or it is a frontier card.
 func pinnedTier(c *Card, m cardhdr.Model) bool {
 	if m.Pin != "" || c.F(FieldTier) != "" {
 		return true
 	}
-	if m.Tier == cardhdr.RouteFrontier {
-		return c.F(FieldFallbackTier) == ""
-	}
-	return false
+	return m.Tier == cardhdr.RouteFrontier
 }
 
 // ceilingTier is the highest tier the machine escalates the primary c to: the tier the
@@ -970,6 +946,16 @@ func ceilingTier(c *Card, m cardhdr.Model) string {
 func CardTiers(c *Card) (now, ceiling string) {
 	m, _ := modelOf(c)
 	return cardTier(c, m), ceilingTier(c, m)
+}
+
+// CardTierShown is the tier the card and where views print for the primary c: the tier
+// it is on. A card waits for its own tier: no cross-tier dealing.
+func CardTierShown(c *Card) string {
+	if c == nil {
+		return ""
+	}
+	now, _ := CardTiers(c)
+	return now
 }
 
 // cardTierOf is the tier the primary c is on (cardTier).
@@ -1029,83 +1015,51 @@ func (s *Snapshot) NextTier(c *Card) string {
 	return tierLadder[i+1]
 }
 
-// readTierOf is the tier a primary's reads are drawn from: the tier of the work
-// being read, as the deal draws it (cardTier; the owner, 2026-10-01: "i think
-// readers being conservatively the same tier as the work being done seems
-// fine?"), raised to the read tier set for its stream or the sprint when that is
-// stronger (settings.go; nova-tools#5096 item 27), never lowered. A card that pins
-// a model and names no tier is read on flash. A heavy card is read on heavy (on pro under
-// the interim rule below: the owner, 2026-10-06 7:41 PM ET, "let pro do it"). A frontier
-// card, a tier no route serves, is read on heavy, the strongest tier a route serves: a
-// read on pro would be weaker than the writer, which item 27 refuses; the one weaker read is
-// the interim rule's, a pro card read on flash while no enabled route serves pro and one
-// serves flash (the owner, 2026-10-06: "let flash read pro"). The value returned
-// is that collapse: a route drawn for the card is named from it. The deal measures every
-// reader, friend or member, against the tier before this collapse (friendReadTier,
-// readTierDistance), so a member whose read is drawn lower ranks by how far below it
-// really reads (docs/SPEC-SPRINT.md section 6, who reads).
+// readTierOf is the tier a primary's reads are drawn from: the card's own tier, the tier
+// of the work being read (cardTier; the owner, 2026-10-01: "i think readers being
+// conservatively the same tier as the work being done seems fine?"), raised to the read
+// tier set for its stream or the sprint when that is stronger (settings.go;
+// nova-tools#5096 item 27), never lowered. A card is never read below its tier (the owner,
+// 2026-10-16: "It is completely undefined that a card should run at the wrong tier"): a
+// frontier card is read at frontier (by a frontier friend: no route serves frontier), a
+// heavy card at heavy, a pro card at pro; a reader above the read tier may read it (a
+// friend at or above it, friendAtOrAbove). When no reader of the tier or above is up the
+// read waits under the tier's judgment (readRouteMissing); it is never handed down
+// (docs/SPEC-SPRINT.md section 6, who reads).
+//
+// tla/RouteIndex.tla NeverBelowItsTier (reversed witness MCRouteIndexBrokenReadBelow.cfg)
 func (s *Snapshot) readTierOf(pr *Card) string {
 	m, _ := modelOf(pr)
 	t := cardTier(pr, m)
-	if t == cardhdr.RouteFrontier {
-		t = cardhdr.RouteHeavy
-	}
 	if set := s.readTierSetting(pr.Row); set != "" {
 		t = stronger(t, set)
 	}
-	// Workaround (the coordinator, 2026-10-06 7:30 PM ET; the owner: 7:11 PM: "let flash read pro"): a pro
-	// read is drawn on flash while no enabled route serves pro and one serves flash, so the
-	// fleet's flash readers read pro cards while the pro routes are off. Read cards replace
-	// this.
-	if t == cardhdr.RoutePro && len(s.Routes) > 0 && !s.tierRouted(t) && s.tierRouted(cardhdr.RouteFlash) {
-		t = cardhdr.RouteFlash
-	}
-	// Workaround (the owner, 2026-10-06 7:41 PM ET: "let pro do it"): a heavy card is read on pro,
-	// so the fleet's pro readers are its second reader beside the heavy friend, who is asked
-	// before this collapse (friendReadTier). Read cards replace this.
-	if t == cardhdr.RouteHeavy {
-		t = cardhdr.RoutePro
-	}
 	return t
 }
 
-// readTierDrawn is the tier a machine read of the primary is drawn on: readTierOf's
-// collapse, and when no reader up serves that tier, the strongest tier at or below the
-// card's own that a reader up serves — a card at a tier no reader serves is read one tier
-// down (docs/SPEC-SPRINT.md section 6, who reads), so a frontier card is read at heavy
-// while a heavy reader is up and no frontier reader is. Friends read at friendReadTier,
-// never here, so the friend path is untouched. With no readers table (a core snapshot
-// holds every reader up) it is readTierOf's own return.
-func (s *Snapshot) readTierDrawn(pr *Card) string {
-	t := s.readTierOf(pr)
-	if s.anyReaderUpServes(t) {
-		return t
+// readRoutesAllRest says every enabled route of the primary's read tier rests at s.Now (the
+// rests the step settled, s.resting), and there is at least one: readRouteOf would fall
+// back to a resting route, and the ask's next take-back (readCardsTakeBack,
+// RetiredByRest) would retire the read at once, a generation spent for nothing each tick
+// (2026-10-15: five generations of every fleet reader's heavy reads in three seconds, the
+// reader then refused "read generations past the load window"). The deal deals no fleet
+// read on it (readRefusal) and the read waits for its route. False with no routes loaded.
+func (s *Snapshot) readRoutesAllRest(pr *Card) bool {
+	if s == nil || len(s.Routes) == 0 || s.rests == nil {
+		return false
 	}
-	own := friendReadTier(s, pr)
-	if i := slices.Index(capLadder, own); i >= 0 {
-		for j := i; j >= 0; j-- {
-			if cand := capLadder[j]; s.anyReaderUpServes(cand) {
-				return cand
-			}
+	tier := s.readTierOf(pr)
+	served := false
+	for _, r := range s.Routes {
+		if r.Tier != tier || !r.Enabled {
+			continue
 		}
-	}
-	return t
-}
-
-// anyReaderUpServes says a reader up serves tier: a fleet reader with its row's tiers,
-// a friend's reader with its own model, exactly as readerServesTier decides for one
-// reader. With no readers table (a core snapshot holds every reader up) it is always
-// served, so the fallback above never fires there.
-func (s *Snapshot) anyReaderUpServes(tier string) bool {
-	if s.Readers == nil {
-		return true
-	}
-	for _, r := range s.UpReaders() {
-		if s.readerServesTier(r, tier) {
-			return true
+		if _, rests := s.resting(r.Name); !rests {
+			return false
 		}
+		served = true
 	}
-	return false
+	return served
 }
 
 // readRouteOf is the route fields of one read card the ask creates for the
@@ -1123,13 +1077,8 @@ func (s *Snapshot) anyReaderUpServes(tier string) bool {
 // no route or none serves the tier: the read carries no route and its reader runs its
 // own --model.
 func (s *Snapshot) readRouteOf(ri routeIndexes, pr *Card, avoid []string) map[string]string {
-	tier, key := s.readTierDrawn(pr), pr.ID
+	tier, key := s.readTierOf(pr), pr.ID
 	base := map[string]string{FieldTier: tier}
-	if s.readTierOf(pr) != tier {
-		if own := friendReadTier(s, pr); own != "" {
-			base[FieldReadFallbackNote] = "read at " + tier + ": no " + own + " reader"
-		}
-	}
 	if len(s.Routes) == 0 || ri[tier] == nil {
 		return base
 	}
@@ -1162,11 +1111,8 @@ func (s *Snapshot) readRouteOf(ri routeIndexes, pr *Card, avoid []string) map[st
 	ri[tier].r.count += steps
 	was, _ := strconv.ParseUint(ri[tier].moves[key], 10, 64)
 	ri[tier].moves[key] = strconv.FormatUint(was+steps, 10)
-	out := map[string]string{FieldRoute: r.Name, FieldModel: r.Provider + "/" + r.Model, FieldTokens: tokensWord(r.Tokens), FieldUSD: r.USD, FieldHarness: r.Harness,
+	out := map[string]string{FieldRoute: r.Name, FieldModel: r.Provider + "/" + r.Model, FieldTokens: tokensWord(r.Tokens), FieldUSD: r.USD, FieldHarness: r.Harness, FieldBilling: s.billingPrices(r).Billing,
 		FieldDeadline: strconv.Itoa(r.Deadline), FieldTier: tier}
-	if note := base[FieldReadFallbackNote]; note != "" {
-		out[FieldReadFallbackNote] = note
-	}
 	// a read on a limited route carries its limits too: its reader's requests take the
 	// same budget (rate_budget.go), and its take is held by the provider's concurrency
 	maps.Copy(out, rateFields(s, r))

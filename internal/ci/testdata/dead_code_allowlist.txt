@@ -1,0 +1,13 @@
+# The dead code ledger: per-package count of functions unreachable from the
+# module's production mains (every main under ./cmd/... and ./tools/...).
+# Held by TestDeadCode in internal/ci/dead_code_test.go (go test -tags functional).
+# Measured with deadcode -test under GOOS linux, darwin and windows; a function
+# counts when it is unreachable under every tag set the module uses, and the
+# count is the union over the GOOSes.
+# Shrink-only: NOVA_CI_UPDATE=1 lowers counts and drops rows at zero; it never
+# raises a count or adds a row.
+internal/sprint 6
+internal/sprintdash 24
+pkg/friend 188
+pkg/ratebudget 5
+pkg/swarm 55

@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // whereRecord is the where record as stored; false when there is none.
@@ -285,6 +285,7 @@ func TestTheFirstTickCountsTheWhereRecordAndAClearMakesItAnew(t *testing.T) {
 // putWhere writes a where record as a loop would have.
 func (h *harness) putWhere(r WhereRecord) {
 	h.t.Helper()
+	r.DecisionHoldsCounted = true // this helper emulates the current loop record
 	require.NoError(h.t, h.st.putJSON(h.ctx, keyWhere, r))
 }
 
@@ -412,3 +413,32 @@ func TestTheWhereCountsTripsArePinned(t *testing.T) {
 // And one more since friend-done-reflects-finishes (done.go): the done record, read with the
 // where record in one exchange, written when the log's new lines moved it.
 const whereMovedTrips = 12
+
+func TestWhereRecordCarriesDefaultHeldCards(t *testing.T) {
+	h := newHarness(t)
+	h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 1}))
+	h.must(NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, Type: sprint.NBound, Stream: "s1", Primaries: []string{"s1-1"}, Count: 1, At: h.now, What: "budget bound"}))
+	h.tick(2 * sprint.DeadlineJudgment)
+	h.must(TickPartStep("overdue", sprint.TickOverdue, sprint.TickReq{}, nil, nil, nil))
+	h.must(DrainStep())
+	h.machine()
+	st, err := h.st.Pinned(h.ctx)
+	require.NoError(t, err)
+	facts, cached := h.whereFacts(st)
+	require.True(t, cached)
+	require.Len(t, facts.DecisionHolds, 1)
+	require.Contains(t, facts.DecisionHolds[0].What, "s1-1")
+	rec, ok := h.whereRecord()
+	require.True(t, ok)
+	rec.DecisionHoldsCounted = false
+	rec.DecisionHolds = nil
+	require.NoError(t, h.st.putJSON(h.ctx, keyWhere, rec))
+	facts, cached = h.whereFacts(st)
+	require.False(t, cached, "pre-upgrade records must not hide parked cards")
+	require.Len(t, facts.DecisionHolds, 1)
+	h.machine()
+	migrated, ok := h.whereRecord()
+	require.True(t, ok)
+	require.True(t, migrated.DecisionHoldsCounted, "idle tick upgrades the old record even when card revisions stand still")
+	require.Len(t, migrated.DecisionHolds, 1)
+}

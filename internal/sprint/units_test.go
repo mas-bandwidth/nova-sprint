@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/units"
+	"github.com/mas-bandwidth/nova-tools/pkg/units"
 )
 
 // Every unit a running sprint needs is written and loaded by a nova verb, each running
@@ -26,11 +26,11 @@ func TestEveryUnitASprintNeedsIsInstalledByAVerb(t *testing.T) {
 	assert.Equal(t, map[string]string{
 		"store": "nova-redis install store", "bus": "nova-redis install bus",
 		"server": "nova-sprint install server", "member": "nova-sprint install member",
-		"seat-push": "nova-sprint install seat-push", "friend-sync": "nova-sprint install friend-sync",
-		"table": "nova-sprint install table", "disk-guard": "nova-swarm install disk-guard",
+		"friend-sync": "nova-sprint install friend-sync",
+		"table":       "nova-sprint install table", "disk-guard": "nova-swarm install disk-guard",
 		"mirror-refresh": "nova-swarm install mirror-refresh",
 	}, verbs, "every unit the Studio ran by hand has its verb")
-	assert.Equal(t, []string{"server", "member", "seat-push", "friend-sync", "table"}, UnitKindNames("nova-sprint"))
+	assert.Equal(t, []string{"server", "member", "friend-sync", "table"}, UnitKindNames("nova-sprint"), "the seat's push loop is retired (v1.3.6)")
 	assert.Equal(t, []string{"store", "bus"}, UnitKindNames("nova-redis"))
 	assert.Equal(t, []string{"disk-guard", "mirror-refresh"}, UnitKindNames("nova-swarm"))
 	seen := map[string]bool{}

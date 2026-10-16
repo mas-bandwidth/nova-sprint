@@ -17,8 +17,8 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // ROLE VIEWS (the owner, 2026-10-04: "i'd rather you hit this vs. hitting my dashboard which
@@ -152,7 +152,7 @@ type coordinatorView struct {
 	At     time.Time `json:"at"`
 	Epoch  uint64    `json:"epoch"`
 	Seat   string    `json:"seat,omitempty"`
-	Hook   string    `json:"hook,omitempty"` // the holder's hook: state=<s> proven=<RFC3339|-> unacked=<n>
+	Hook   string    `json:"hook,omitempty"` // the holder's nova-hook record: state=<s> role=<r> epoch=<n> <push>=<state>... (sprint.HookSaid)
 	// Fleet and Friends are the work switches, carried only when off (nova-sprint set
 	// --fleet off, --friends off): the deal hands that side no work card.
 	Fleet   string `json:"fleet,omitempty"`
@@ -301,17 +301,18 @@ func (a *app) cmdViewWorker(args []string, stdout, stderr io.Writer) int {
 func (a *app) coordinatorView(ctx context.Context, st *store.Store, all bool) (coordinatorView, error) {
 	now := a.now()
 	v := coordinatorView{View: "coordinator", Schema: viewSchema, At: now.UTC().Truncate(time.Second), Items: []viewItem{}}
-	// the holder's hook, read where the server writes it: the store as given, never an epoch's
+	// the holder's hook, as its nova-hook record says it (a record that cannot be read is
+	// said so, and the view goes on)
 	holder, err := st.B.Coordinator(ctx)
 	if err != nil {
 		return v, err
 	}
 	if holder != "" {
-		rec, ok, err := readHook(ctx, st)
-		if err != nil {
-			return v, err
+		if hs, err := a.hookStatus(ctx, holder); err != nil {
+			v.Hook = "state=unread why=" + oneline.Field(err.Error())
+		} else {
+			v.Hook = sprint.HookSaid(hs, now)
 		}
-		v.Hook = sprint.HookSaid(rec, ok, holder, now)
 	}
 	st, err = st.Pinned(ctx)
 	if err != nil {
@@ -499,7 +500,7 @@ func (a *app) coordinatorView(ctx context.Context, st *store.Store, all bool) (c
 			// moves), never her daemon's walk alone: on 2026-10-06 that walk read 3d while
 			// she reported hourly
 			kind = "friend idle"
-			why = "has a daemon that answers and no evidence of work for " + ageWord(now.Sub(friendLastWork(s, f))) + " (no session write, session proof or answer, finish, report or card move)"
+			why = "is up on nova-hook with no evidence of work for " + ageWord(now.Sub(friendLastWork(s, f))) + " (no session write, running work, finish, report or card move)"
 		}
 		if why == "" {
 			continue
@@ -1219,10 +1220,7 @@ func viewJSON(w io.Writer, v any) {
 // row and what her beat and the store's records say) or of a card of hers moving
 // (sprint.FriendCardMoved): what the idle item measures.
 func friendLastWork(s *sprint.Snapshot, f store.FriendRow) time.Time {
-	w := sprint.FriendWork{Active: f.Active, Proof: f.Proof, Finished: f.Finished}
-	if f.Health != nil && f.Health.State == sprint.Up {
-		w.Answered = f.Health.Seen
-	}
+	w := sprint.FriendWork{Active: f.Active}
 	if f.Report != nil && len(f.Report.Running) > 0 {
 		w.Running = f.Beat
 	}

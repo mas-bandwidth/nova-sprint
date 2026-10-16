@@ -26,12 +26,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/harness"
+	"github.com/mas-bandwidth/nova-tools/pkg/harness"
 	"time"
 	"unicode"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardcost"
-	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
+	"github.com/mas-bandwidth/nova-tools/pkg/decide"
 )
 
 // Type is a field's type. It decides the SQL column, the flag's parsing and
@@ -169,13 +169,14 @@ const (
 
 // The kinds of this cut (docs/SPEC-CONFIG.md, "The kinds of this cut").
 const (
-	KindMachine = "machine"
-	KindFleet   = "fleet"
-	KindFriend  = "friend"
-	KindSprint  = "sprint"
-	KindLoop    = "loop"
-	KindRoute   = "route"
-	KindTier    = "tier"
+	KindMachine  = "machine"
+	KindFleet    = "fleet"
+	KindFriend   = "friend"
+	KindSprint   = "sprint"
+	KindLoop     = "loop"
+	KindProvider = "provider"
+	KindRoute    = "route"
+	KindTier     = "tier"
 )
 
 // FriendRoles are the roles someone decides for a friend. The coordinator
@@ -214,6 +215,27 @@ const (
 	FriendModeOneShot = "one-shot"
 	DefaultFriendMode = FriendModeBatch
 )
+
+// FriendSessionWords are whether a friend has a live session between cards: live (the
+// default) or one-shot, a friend with none who runs as a member lane on her row
+// (nova-swarm member --as friend.<name> --prompt <file>). The copy of nova-tools
+// pkg/config's (docs/SPEC-CONFIG.md, friend; nova-tools migration 0045).
+var FriendSessionWords = []string{FriendSessionLive, FriendSessionOneShot}
+
+// The session words and the default a row without one has.
+const (
+	FriendSessionLive    = "live"
+	FriendSessionOneShot = "one-shot"
+	DefaultFriendSession = FriendSessionLive
+)
+
+// FriendSession is a friend row's session: its session field, live when it names none.
+func FriendSession(r Row) string {
+	if s := r.Fields["session"]; s != "" {
+		return s
+	}
+	return DefaultFriendSession
+}
 
 // FriendPronounSets are the friend row's explicit pronoun choices, matching nova-config.
 var FriendPronounSets = []string{"she/her", "he/him", "they/them"}
@@ -283,13 +305,16 @@ func checkFriend(r Row) error {
 	return nil
 }
 
-// Tiers are the model tiers a friend can do, capacity.lua's filter_ok list
-// (docs/SPEC-CONFIG.md, "friend"); TestTiersMatchCapacityFilter holds the Go
-// and Lua lists equal.
+// Tiers are the model tiers, capacity.lua's filter_ok list
+// (docs/SPEC-CONFIG.md, "friend"); a friend's tiers field and a route's tier
+// field are both one of these. TestTiersMatchCapacityFilter holds the Go and
+// Lua lists equal.
 var Tiers = []string{"flash", "frontier", "heavy", "pro"}
 
-// RouteTiers are the tiers a route serves: Tiers less frontier, whose cards
-// are never drawn from routes and escalate to the coordinator.
+// RouteTiers are the tiers migrate makes a route array row for (the tier
+// kind's Seed, and checkTier's names): flash, pro and heavy. A route's tier
+// field is the wider Tiers, accepting frontier beside them for storage and
+// apply. Automatic frontier fleet dispatch requires the sprint deal integration.
 var RouteTiers = []string{"flash", "pro", "heavy"}
 
 // The sprint row's two bars on a decide read's p(defect) (pkg/decide, Bars;
@@ -543,6 +568,7 @@ var Kinds = []*Kind{
 			{Name: "streams", Type: TypeText, Help: "optional comma-separated glob patterns over stream names this friend may be dealt work on; empty means any stream"},
 			{Name: "kinds", Type: TypeNames, Help: "optional comma-separated card KIND values this friend may be dealt; empty means any kind"},
 			{Name: "pronouns", Type: TypeEnum, Enum: FriendPronounSets, Default: DefaultFriendPronouns, Help: "the friend's explicit pronouns: " + strings.Join(FriendPronounSets, ", ") + "; they/them when unstated"},
+			{Name: "session", Type: TypeEnum, Enum: FriendSessionWords, Default: DefaultFriendSession, Help: "whether the friend has a live session between cards: live (the default) or one-shot (no session: a member lane on the friend row, nova-swarm member --as friend.<name> --prompt <identity file>)"},
 		},
 		Check: checkFriend,
 		ApplyOrder: func(r Row) int {
@@ -600,6 +626,20 @@ var Kinds = []*Kind{
 		Derive: deriveLoopLog,
 	},
 	{
+		Name:  KindProvider,
+		Table: "providers",
+		Doc:   "a model provider's declared funding and billing: every route names one; migration seeds unfunded rows until the owner declares the facts",
+		Fields: []Field{
+			{Name: "billing", Type: TypeEnum, Enum: []string{"metered", "plan", "both", "subscription"}, Required: true, Help: "how it is paid: metered (usage), plan (metered reference value), both, or subscription (zero marginal card cost)"},
+			{Name: "funded", Type: TypeBool, Required: true, Help: "whether it is funded, explicitly true or false; migration's false means the owner has not declared funding yet (see note)"},
+			{Name: "balance_usd", Type: TypeDecimal, Help: "the last known USD balance, a non-negative decimal; empty when unknown, with --balance_as_of when set"},
+			{Name: "balance_as_of", Type: TypeText, Help: "the balance's observation date, YYYY-MM-DD; required when --balance_usd is set"},
+			{Name: "console_url", Type: TypeText, Help: "the provider's HTTPS console URL; empty when unknown"},
+			noteField("the owner's funding facts, or migration's reminder to declare them"),
+		},
+		Check: checkProvider,
+	},
+	{
 		// A route is one way to run a model tier: the provider and model a
 		// card of that tier runs on, its budget and deadline. The deal takes
 		// the routes of a card's tier in the order of the tier's array (the
@@ -608,7 +648,7 @@ var Kinds = []*Kind{
 		Table: "routes",
 		Doc:   "a route of a model tier: the provider and model a card of that tier runs on, its token budget and deadline; the tier's array orders its routes; frontier cards are never dealt from routes, they escalate to the coordinator",
 		Fields: []Field{
-			{Name: "tier", Type: TypeEnum, Enum: RouteTiers, Required: true, Help: "the tier it serves: one of " + strings.Join(RouteTiers, ", ") + " (frontier cards are never drawn from routes, they escalate to the coordinator)"},
+			{Name: "tier", Type: TypeEnum, Enum: Tiers, Required: true, Help: "the tier it serves: one of " + strings.Join(Tiers, ", ")},
 			{Name: "provider", Type: TypeText, Required: true, Help: "the provider word of the model id <provider>/<model> the harness is launched with: one word, no slash"},
 			{Name: "model", Type: TypeText, Required: true, Help: "the model name after the provider, which may hold slashes (x-ai/grok-4); no blank"},
 			{Name: "harness", Type: TypeEnum, Enum: harness.Kinds, Default: harness.OpenCode, Help: "the harness a card on this route runs under: opencode (the default: the providers table launches it with the provider's key) or a headless program of the machine's own subscription login, " + strings.Join(harness.Headless, ", ") + " (the heavy tier), whose --provider is " + harness.ProviderPrefix + "<harness>, one word per harness so one login's failure rests only its own routes"},
@@ -629,7 +669,7 @@ var Kinds = []*Kind{
 			{Name: cardcost.FieldInputLong, Type: TypeDecimal, Help: "USD per million input tokens of a request above --" + cardcost.FieldLongContext},
 			{Name: cardcost.FieldOutputLong, Type: TypeDecimal, Help: "USD per million output tokens of a request above --" + cardcost.FieldLongContext},
 			{Name: cardcost.FieldRequest, Type: TypeDecimal, Help: "USD per request, on top of the tokens; empty when there is no fee"},
-			{Name: cardcost.FieldBilling, Type: TypeEnum, Enum: cardcost.Billings, Default: cardcost.BillingMetered, Help: "how it is paid: metered (the default: per token) or plan (a subscription, so the predicted cost is the metered price of the same tokens)"},
+			{Name: cardcost.FieldBilling, Type: TypeEnum, Enum: cardcost.Billings, Default: cardcost.BillingMetered, Help: "how it is paid: metered (per token), plan (metered-value prediction), or subscription (zero marginal per-card USD)"},
 			{Name: cardcost.FieldGateway, Type: TypeDecimal, Help: "the percent a gateway adds on top of the prices, a decimal like 5.5; empty when none"},
 			{Name: cardcost.FieldSource, Type: TypeText, Help: "where the prices were read, free text (a URL)"},
 			{Name: cardcost.FieldAsOf, Type: TypeText, Help: "the date the prices were read, YYYY-MM-DD"},

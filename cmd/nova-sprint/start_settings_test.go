@@ -15,7 +15,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/units"
+	"github.com/mas-bandwidth/nova-tools/pkg/units"
 )
 
 // start's settings gate (v1.2.17, start-refuses-a-non-working-setting; the owner,
@@ -70,6 +70,7 @@ func TestStartRefusesEveryNonWorkingSettingNoSetWrote(t *testing.T) {
 		ta := newTestApp(t)
 		ta.ok("init --readers reader-a,reader-b --members m1")
 		ta.ok("clear --confirm sprint")
+		ta.ok("reader remove reader-m1") // the fixture's readers are the named ones; the clear's member reader goes
 		// the base the coordinator records (the clear carries it); a sprint with none starts
 		// with a START WARN for it (sprintBaseWorking), which these cases do not count
 		ta.directProp(sprint.PropSprintBase, "sprint/s1")

@@ -643,8 +643,9 @@ func TestAckAnswersOnlyTheTypesThatListIt(t *testing.T) {
 	}
 	all[NRemindFailed] = []string{"goal set friend-a --to <route>", "goal drop friend-a", "ack"}
 	ackable := map[string]bool{NTimer: true, NBlocked: true, NMissingNeed: true, NCIRed: true, NRepairSkipped: true, NOpStuck: true, NRemindFailed: true, NReportJudgment: true, NProviderFunds: true, NProviderLow: true, NProviderKey: true, NAllOutOfCredit: true, NScoredLow: true, NRaiseReadTier: true,
-		NAlarmReview: true, NAlarmMerging: true, NAlarmReady: true, NAlarmFleet: true, NFilesAlarm: true, NFriendDeaf: true, NFriendIdle: true, NFriendEmpty: true, NPinIgnored: true, NStatus: true, NDeadBase: true, NReadBranchMissing: true, NFriendSyncFailing: true,
-		NStopMemberDown: true, NStopPinWaits: true, NFriendStalled: true, NStopDebtBeat: true, NFleetFailure: true, NMemberPegged: true}
+		NAlarmReview: true, NAlarmMerging: true, NAlarmReady: true, NAlarmFleet: true, NFilesAlarm: true, NFriendIdle: true, NFriendEmpty: true, NPinIgnored: true, NStatus: true, NDeadBase: true, NReadBranchMissing: true, NFriendSyncFailing: true,
+		NStopMemberDown: true, NStopPinWaits: true, NStopDebtBeat: true, NFleetFailure: true, NMemberPegged: true,
+		NHoldNoCause: true, NMemberIdleReaps: true}
 	for typ, ds := range all {
 		w := setup(t, 1)
 		n := Note{ID: "n-x.1", Kind: Judgment, Type: typ, Stream: "s1", Primaries: []string{"s1-1"}, Count: 1, Decisions: ds, At: w.s.Now}
@@ -668,10 +669,10 @@ func TestAckAnswersOnlyTheTypesThatListIt(t *testing.T) {
 func TestTickKeptList(t *testing.T) {
 	t.Parallel()
 	keeps := []string{NBound, NCannotAsk, NFewReaders, NReviewNoReader, NNoMember, NStarving, NOverloaded, NAdoptFailed, NReadersBehind, NDevBehind, NRaiseReadTier, NNoRoute, NGateNeeds, NReadyOver, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NInvariant, NWorkLate, NReadLate, NMergeLate, NStalled, NNoFrontierRoom, NRemindFailed,
-		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFilesAlarm, NFriendDeaf, NFriendIdle, NCoordinatorBehind, NFriendEmpty, NPinIgnored,
+		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFilesAlarm, NFriendIdle, NCoordinatorBehind, NFriendEmpty, NPinIgnored,
 		NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed, NStatus, NBrokenReadsOutrun, NReaderBreaks, NFriendSyncFailing,
 		NBaseCIRed, NMirrorNeed, NMemberPegged,
-		NStopMemberDown, NStopPinWaits, NFriendStalled, NNeedsGone}
+		NStopMemberDown, NStopPinWaits, NNeedsGone, NHoldNoCause, NMemberIdleReaps}
 	got := []string{NRemindFailed}
 	for typ := range TickDecisions {
 		got = append(got, typ)

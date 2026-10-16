@@ -30,10 +30,10 @@ func TestInitOnASprintWithACoordinatorIsTheCoordinators(t *testing.T) {
 	require.Contains(t, errs, "init does not change the coordinator", "init naming another coordinator: exit %d %q", code, errs)
 }
 
-// --actor has no default: it is --actor or NOVA_SPRINT_ACTOR, else a verb
-// that writes is refused. A worker's verb is its --as member's; reads need
-// no actor; the machine's verbs are the machine's.
-func TestTheActorHasNoDefault(t *testing.T) {
+// Without a proven coordinator hook, a writer needs --actor or
+// NOVA_SPRINT_ACTOR. A worker's verb is its --as member's; reads need no
+// actor; the machine's verbs are the machine's.
+func TestTheActorRequiresAnExplicitOrProvenDefault(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --members m1,m2 --readers reader-a,reader-b")
@@ -111,7 +111,6 @@ func TestEveryCoordinatorVerbIsTheCoordinators(t *testing.T) {
 		"friend take":       "friend take friend-a s1-1",
 		"friend give":       "friend give friend-a s1-1",
 		"friend level":      "friend level",
-		"friend health":     "friend health friend-a --state up --seen 2026-10-04T15:00:00Z --generation 1",
 		"reader add":        "reader add reader-d",
 		"reader set":        "reader set reader-a --tiers flash",
 		"reader away":       "reader away reader-a",
@@ -145,10 +144,9 @@ func TestEveryCoordinatorVerbIsTheCoordinators(t *testing.T) {
 		"merge-window open": "merge-window open --for 1m --reason r",
 		"landed":            "landed s1-1 --sha 0123abc --reason r",
 		// the friends' directories are read only after the store refuses the intruder
-		"friend reconcile": "friend reconcile friend-a",
-		"collect":          "collect",
-		"card base":        "card base s1-1 main",
-		"rebase":           "rebase --from a --to b",
+		"collect":   "collect",
+		"card base": "card base s1-1 main",
+		"rebase":    "rebase --from a --to b",
 	}
 	for _, v := range verbs {
 		if verbClasses[v.name] != classCoordinator {

@@ -12,8 +12,10 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
-	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
+
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/decide"
 )
 
 // The steps that move primaries through the work table and the fleet: add,
@@ -175,6 +177,29 @@ func Add(s *Snapshot, r AddReq) Plan {
 	scores, why := addScores(s, r, len(ids))
 	if why != "" {
 		return refuseAll(why)
+	}
+	if r.Sentinel && len(scores) == 1 && r.Before == "" && r.After == "" && r.Score == nil {
+		// A sentinel with a need on a card of its own stream is placed
+		// directly after the last of them in the line (its producer),
+		// not at the end: it then waits on that card and what is before
+		// it only. With no such need it goes to the end, as before. The
+		// model already allows any place in the line
+		// (tla/SprintTables.tla, the sentinel insert).
+		line := streamLine(s, r.Stream)
+		producer := -1
+		for i, c := range line {
+			if contains(r.Needs, c.ID) {
+				producer = i
+			}
+		}
+		if producer >= 0 {
+			lo := line[producer].Score
+			if producer+1 < len(line) {
+				scores[0] = (lo + line[producer+1].Score) / 2
+			} else {
+				scores[0] = lo + 1
+			}
+		}
 	}
 	for _, t := range []string{Work, Merge} {
 		if !s.T(t).HasRow(r.Stream) {
@@ -765,6 +790,31 @@ func admits(p Plan) bool {
 	return false
 }
 
+// SentinelWaitsBehind is the unlanded cards of the sentinel's own stream
+// ahead of it in the line: what it waits behind (PositionWaits).
+func SentinelWaitsBehind(s *Snapshot, c *Card) []string {
+	return PositionWaits(s, c, nil)
+}
+
+// SentinelBlocks is what the sentinel blocks: the waiting cards behind it
+// in its own stream (Behind), then the cards of other streams that name
+// it as a need and have not landed, in work order.
+func SentinelBlocks(s *Snapshot, c *Card) []string {
+	var out []string
+	for _, x := range Behind(s, c) {
+		out = append(out, x.ID)
+	}
+	for _, x := range s.Work.Cards() {
+		if x.Row == c.Row || x.Col == string(Landed) || contains(out, x.ID) {
+			continue
+		}
+		if contains(Split(x.F("needs")), c.ID) {
+			out = append(out, x.ID)
+		}
+	}
+	return out
+}
+
 // WaitsFor is what a primary still waits for: its needs that have not landed
 // (before the step, or in it: landing) and that the coordinator did not waive.
 func WaitsFor(s *Snapshot, c *Card, landing map[string]bool) []string {
@@ -784,21 +834,6 @@ func NamedWaits(s *Snapshot, c *Card, landing map[string]bool) []string {
 	waived := Split(c.F("waived"))
 	for _, n := range Split(c.F("needs")) {
 		if s.StateOf(n) != Landed && !landing[n] && !contains(waived, n) {
-			out = append(out, n)
-		}
-	}
-	return out
-}
-
-// waitsAfterOpen is the needs a working card gained while it was dealt
-// (FieldWaitsAfter) that have not landed and were not waived: the card's current
-// attempt is legal until it ends, and the finish sends the card to waiting for
-// them (docs/SPEC-SPRINT.md section 9, rule 11; steps_edit.go briefInPlace).
-func waitsAfterOpen(s *Snapshot, c *Card) []string {
-	var out []string
-	waived := Split(c.F("waived"))
-	for _, n := range Split(c.F(FieldWaitsAfter)) {
-		if s.StateOf(n) != Landed && !contains(waived, n) {
 			out = append(out, n)
 		}
 	}
@@ -960,6 +995,8 @@ func ResolveExtras(s *Snapshot) []string {
 
 // Resolve moves waiting -> ready where every need has landed. A need that was
 // dropped or missing is a judgment for the coordinator, once.
+//
+// tla/NeedsBlocked.tla BlockedDependentsCovered
 func Resolve(s *Snapshot, r ResolveReq) Plan { return Lawful(resolvePlan(s, r)) }
 
 func resolvePlan(s *Snapshot, r ResolveReq) Plan {
@@ -973,7 +1010,21 @@ func resolvePlan(s *Snapshot, r ResolveReq) Plan {
 	for _, o := range s.Open {
 		bySubject[o.Subject()] = append(bySubject[o.Subject()], o)
 	}
+	covered := CoveredDependents(s)
 	for _, c := range chosen {
+		// tla/NeedsBlocked.tla BlockedDependentsCovered
+		if blockerID, isCovered := covered[c.ID]; isCovered {
+			for _, o := range bySubject[c.ID] {
+				if (o.Note.Type == NMissingNeed || o.Note.Type == NBlocked) && o.Subject() == c.ID {
+					p.Closes = append(p.Closes, o)
+					p.Notes = append(p.Notes, decided(o, "covered by "+blockerID, r.Who, s.Now, c.ID))
+				}
+			}
+			if len(r.IDs) > 0 {
+				p.refuse(c.ID, "needs a blocked card: covered by "+blockerID)
+			}
+			continue
+		}
 		// A missing prerequisite that now exists is no longer a missing-need
 		// judgment; it still has to land before the primary can move.
 		for _, o := range bySubject[c.ID] {
@@ -1099,6 +1150,11 @@ func Deal(s *Snapshot, r DealReq) Plan {
 // width, width.go): the tick deals it when one has room.
 const noRoomWhy = "every up fleet member is at its room (DealAhead times its width): the tick deals it when one has room"
 
+// noPoolWhy is the refusal of a card with no BENCH line when every member up is quiet or
+// draining (notQuiet, fleet_quiet.go): the pool it could be dealt round is empty, so it waits
+// in ready and the tick deals it when one is up (docs/SPEC-SPRINT.md section 5, the deal).
+const noPoolWhy = "no fleet member can take it now: every member up is quiet or draining"
+
 func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMoves) {
 	var p Plan
 	p.on(s)
@@ -1114,6 +1170,12 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 		}
 		if why := inState(c, Ready); why != "" {
 			return why
+		}
+		// a card that carries a hold is dealt by no path: it moves only by the coordinator's
+		// release, so one that reached ready while held (a needs change before the hold was
+		// guarded) waits here (tla/Holds.tla DealH, reversed witness "dealheld")
+		if IsHeld(c) {
+			return c.ID + " is held (add --held): it is not dealt until the coordinator releases it: nova-sprint release " + c.ID + " --reason '<why>'"
 		}
 		// a card is dealt only when every need has landed (docs/SPEC-SPRINT.md,
 		// needs and the deal): a ready card whose brief named a need not landed
@@ -1154,11 +1216,17 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 	lanes := memberLanes(s, up)
 	for _, c := range chosen {
 		// its bench: the members its brief's BENCH line names, and the deal deals it to
-		// none other; with no member of it up it waits ready (bench_deal.go)
+		// none other; with no member of it up it waits ready (bench_deal.go). The two
+		// causes are split: a card with no BENCH line and an empty pool says so (noPoolWhy)
+		// and never reaches benchRefusal, which is for a card that has a bench.
 		bench := Bench(c)
 		members := onlyBench(up, bench)
 		if len(members) == 0 {
-			p.refuse(c.ID, benchRefusal(bench))
+			if len(bench) == 0 {
+				p.refuse(c.ID, noPoolWhy)
+			} else {
+				p.refuse(c.ID, benchRefusal(bench))
+			}
 			continue
 		}
 		// its gate's needs (docs/SPEC-SPRINT.md, the gate-host rule): the deal gives it only
@@ -1465,6 +1533,13 @@ func liveGen(verb string, c *Card, gens map[string]int) string {
 // tick, every member's row at once); a take by id
 // names one member.
 func Take(s *Snapshot, r TakeReq) Plan {
+	if friend, ok := FriendOfRow(r.As); ok && (r.Lane != 0 || r.LaneByID) && s.FriendIsOneShot(friend) {
+		// a one-shot friend's row is worked by a member, by count, never by a friend lane
+		// (FriendOneShot): a lane's take for it is refused, naming the member that serves it
+		var p Plan
+		p.refuse("take", OneShotLaneRefusal(friend))
+		return p
+	}
 	if r.LaneByID {
 		return NamedLaneTake(s, r)
 	}
@@ -1521,10 +1596,10 @@ func NamedLaneTake(s *Snapshot, r TakeReq) Plan {
 // takeSeat is the width a take for as is held to, or why it takes nothing. A machine
 // takes while its control card says up, to its width. A friend's row has no control card
 // status (only a machine's has; docs/SPEC-SPRINT.md section 1, a take for a friend): she
-// takes while FriendStatus says up, as the snapshot's friend seats carry it (her session's
+// takes while the authoritative hook says up and sprint holds no hold, as the snapshot's friend seats carry it (her session's
 // evidence: a wake ping her session answered, or a card of hers finished), to her width
 // (in one-shot mode too), and is refused when she is held, her beat says down, or her session
-// has given no evidence within its window, the refusal naming which (FriendDownWhy).
+// has given no evidence within its window, the refusal naming which (the hook or sprint hold reason).
 // The model is tla/FriendPresence.tla (Take, TakeOnlyWhenUp, ReadyTakenWhileUp; the
 // witness "ctlstatus" is the control card read that refused every friend up).
 func takeSeat(s *Snapshot, as string) (width int, why string) {
@@ -1541,6 +1616,11 @@ func takeSeat(s *Snapshot, as string) (width int, why string) {
 		return width, ""
 	}
 	if !s.Fleet.HasRow(as) {
+		if slices.ContainsFunc(s.Friends, func(x FriendSeat) bool { return x.Name == as }) {
+			// a friend's bare name is no row: her lanes take under her row, one lane a card
+			// (the coordinator's ask of 2026-10-14: a bare take bounced, a lane's held)
+			return 0, "no fleet member " + as + ": " + as + " is a friend; the friend's lanes take as take --as " + FriendRow(as) + " --lane <n>, n from 1 to the friend's width"
+		}
 		return 0, "no fleet member " + as
 	}
 	// a member held by an uncleared environment fault takes nothing: the fault is the
@@ -1553,6 +1633,35 @@ func takeSeat(s *Snapshot, as string) (width int, why string) {
 		return 0, "member " + as + " is " + orDash(st)
 	}
 	return s.Width(as), ""
+}
+
+// takeAheadOf is the card a take by count of one on the row would take now (takeOne with
+// the same guards: the row's room, the card's live generation, its route rest and the
+// providers' budget), when it is a read or a fix (reader rung, or blocker, critical or fix
+// by the ladder) ranked above the card c a take by id names; "" when it is none, so a take
+// by id never waits behind a card the friend could not take either.
+func takeAheadOf(s *Snapshot, r TakeReq, c *Card) string {
+	if c == nil || isRead(c) || c.F("kind") != "work" {
+		return ""
+	}
+	probe := takeOne(s, TakeReq{As: r.As, Sel: Sel{Limit: 1}, Who: r.Who})
+	for _, u := range probe.Units {
+		for _, ch := range u.Changes {
+			if ch.Table != Fleet {
+				continue
+			}
+			ahead := s.Fleet.Card(ch.Entry.ID)
+			if ahead == nil || ahead.ID == c.ID || ahead.Row != r.As || ahead.Col != Ready {
+				continue
+			}
+			rank := s.friendWorkRank(ahead)
+			if (isRead(ahead) || rank <= priorityRank(PriorityFix)) && rank < s.friendWorkRank(c) {
+				return ahead.ID
+			}
+			return ""
+		}
+	}
+	return ""
 }
 
 func takeOne(s *Snapshot, r TakeReq) Plan {
@@ -1581,6 +1690,24 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 		for _, id := range sel.IDs {
 			c := s.Fleet.Card(id)
 			if c != nil && c.Row == r.As && c.Col == Working && r.Gens[id] == max(c.Int("gen"), 1) {
+				continue
+			}
+			keep = append(keep, id)
+		}
+		if len(keep) == 0 {
+			return p
+		}
+		sel.IDs = keep
+	}
+	// THE STRICT DEAL AT THE TAKE (priority.go, PriorityLadder): a friend's take by id of a
+	// work card is refused while a read or a fix dealt to her row, ranked above it, would be
+	// taken now by a take by count (takeAheadOf), the refusal naming it; a take by count
+	// already takes in that order (friendDealtOrder)
+	if byID && IsFriendRow(r.As) {
+		var keep []string
+		for _, id := range sel.IDs {
+			if ahead := takeAheadOf(s, r, s.Fleet.Card(id)); ahead != "" {
+				p.refuse(id, "a read or a fix dealt to "+r.As+" waits ahead of this card and may be taken now: take "+ahead+" first (the strict deal: reads, then fixes, then new work)")
 				continue
 			}
 			keep = append(keep, id)
@@ -1693,7 +1820,17 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 	for _, c := range chosen {
 		set, unset := takenStamps(c, s.Now), []string{"untaken_since"}
 		if friend, ok := FriendOfRow(r.As); ok {
-			set, unset = friendTaken(s, c, friend) // her deadline, as her deal and her next set it
+			// a friend's own take (take --as friend.<name>, by count, by id or by lane) is her
+			// start, as a lane's take is (laneSet): the tick never puts it back ready as
+			// unstarted (friendUnstartedWorking); only its lease or its deadline ends it. The
+			// fault of 2026-10-14 20:30:21 EDT: friend.emma took a card and the same tick moved
+			// it working -> ready (tla/FriendLaneClient.tla in nova-tools, TakenStaysTaken;
+			// witness MCFriendLaneClientBrokenTickUnstarts.cfg). A read keeps the take alone.
+			if isRead(c) {
+				set, unset = friendTaken(s, c, friend)
+			} else {
+				set, unset = friendStartSet(s, c, friend)
+			}
 		}
 		if r.Lane == 0 {
 			unset = append(unset, FieldLane, FieldLaneAt) // no lane holds a card a take by count moves (lane_hold.go)
@@ -1759,9 +1896,96 @@ type FinishReq struct {
 // by selection without --as is refused outright. As may name several
 // members, comma separated: every card named is on one of them, each
 // finished as its own member's, in the one plan.
-func Finish(s *Snapshot, r FinishReq) Plan { return Lawful(finishPlan(s, r)) }
+func Finish(s *Snapshot, r FinishReq) Plan {
+	p := finishPlan(s, r)
+	before := len(p.Refused)
+	p = Lawful(p)
+	return countRefusedFinishes(s, r, p, before)
+}
+
+// finishWaits is the needs a finish sends the card to waiting for: the open named
+// needs (NamedNeedsOpen, the lifecycle's own predicate over the needs field) among
+// those the card gained while it was dealt or working (FieldWaitsAfter, the rule-11
+// marker). A marker naming a need the needs field does not is no wait, so the
+// finish never asks the lifecycle for a move it refuses. An open need the card was
+// dealt with, never marked, is the needs-stop path's (stoppedOnNeeds, which judges
+// it past its cap); the finish leaves it there as before.
+func finishWaits(s *Snapshot, pr *Card) []string {
+	marked := Split(pr.F(FieldWaitsAfter))
+	var out []string
+	for _, n := range NamedNeedsOpen(s, pr) {
+		if contains(marked, n) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// FinishRefusalBound is how many finishes of one attempt the lifecycle may refuse
+// before the next one raises the NFinishRefused judgment: a refused finish writes
+// nothing, so the member sends the same one again, and without a bound it does so
+// without end (91 times on one card, 2026-10-15).
+const FinishRefusalBound = 5
+
+// FieldFinishRefusals counts, on the attempt's work card, the finishes the lifecycle
+// refused. A redeal is a new work card, so the count resets with the attempt.
+const FieldFinishRefusals = "finish_refusals"
+
+// countRefusedFinishes adds, for each finish the lifecycle refused (the refusals
+// of p after index before) on a working work card, a unit of its own that counts
+// the refusal on the work card (the refused unit writes nothing), and at the
+// refusal that passes FinishRefusalBound raises one NFinishRefused judgment naming
+// the card, the attempt, the head offered and the refusal's words. It is raised
+// at the one count that passes the bound, so a later refusal counts and raises
+// nothing, and an answered judgment is never raised again for the attempt (the
+// once-key of card and attempt). tla/SprintTables.tla FinishRefused,
+// FinishRefusalsBounded; reversed witness "finishloop".
+func countRefusedFinishes(s *Snapshot, r FinishReq, p Plan, before int) Plan {
+	if before > len(p.Refused) {
+		return p
+	}
+	for _, rf := range p.Refused[before:] {
+		c := s.Fleet.Card(rf.Key)
+		if c == nil || !c.Placed() || c.Col != Working || c.F("kind") == "read" {
+			continue
+		}
+		pr := s.Work.Placed(c.F("primary"))
+		if pr == nil || pr.Col != Working {
+			continue
+		}
+		n := c.Int(FieldFinishRefusals) + 1
+		u := Unit{Key: c.ID, Stream: pr.Row,
+			Changes: []Change{change(Fleet, setEntry(c, map[string]string{FieldFinishRefusals: itoa(n)}))}}
+		if n == FinishRefusalBound+1 && !finishRefusedOpen(s, pr.ID, pr.Int("attempt")) {
+			head := r.Head
+			if head == "" {
+				head = c.ID
+			}
+			note := Note{Kind: Judgment, Type: NFinishRefused, Stream: pr.Row, Primaries: []string{pr.ID}, Count: 1, At: s.Now, Who: r.Who, Marked: true,
+				Card: c.ID, Attempt: pr.Int("attempt"), Decisions: append([]string(nil), Decisions[NFinishRefused]...),
+				What: fmt.Sprintf("the finish of %s at attempt %d, head %s, was refused %d times: %s", c.ID, pr.Int("attempt"), head, n, rf.Why)}
+			u.Notes = append(u.Notes, note)
+		}
+		p.Tally = append(p.Tally, u)
+	}
+	return p
+}
+
+// finishRefusedOpen says an open NFinishRefused judgment already names the
+// primary at the attempt.
+func finishRefusedOpen(s *Snapshot, id string, attempt int) bool {
+	for _, o := range s.Open {
+		if o.Note.Type == NFinishRefused && o.Subject() == id && o.Note.Attempt == attempt {
+			return true
+		}
+	}
+	return false
+}
 
 func finishPlan(s *Snapshot, r FinishReq) Plan {
+	if err := cardcost.ValidateUsage(r.Usage); err != nil {
+		return Plan{Refused: []Refusal{{Key: "finish", Why: "usage receipt refused: " + err.Error() + "; adopt the paired receipt-contract build and resend the original receipt"}}}
+	}
 	if len(r.Friends) > 0 {
 		s.Friends = r.Friends
 	}
@@ -1813,6 +2037,10 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 	}, s.Fleet.Card)
 	var chosen []*Card
 	for _, c := range picked {
+		if why := s.receiptBillingRefusal(c, r.Usage); why != "" {
+			p.refuse(c.ID, why)
+			continue
+		}
 		if why := liveGen("finish", c, r.Gens); why != "" {
 			p.refuse(c.ID, why)
 			continue
@@ -2101,11 +2329,39 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		// the attempt was dealt before the need was recorded, so it is legal until now
 		// (docs/SPEC-SPRINT.md section 9, rule 11; steps_edit.go briefInPlace). If the
 		// need has landed by the finish, the card goes on to review as any finish.
-		after := waitsAfterOpen(s, pr)
+		// the needs field decides, the record the lifecycle judges working -> waiting by
+		// (NamedNeedsOpen; tla/SprintTables.tla FinishTarget, FinishAgreesWithLifecycle):
+		// the needs the card gained while working that are still open in it
+		after := finishWaits(s, pr)
 		// the primary's ran record, this attempt added (recordRan, judgments.go): the brief
 		// bound and the lane-broken bound read it (docs/SPEC-SPRINT.md, the bounds)
 		ranAttempts := recordRan(pr.F(FieldRanAttempts), attempt, ran, fault)
 		set[FieldRanAttempts] = ranAttempts
+		// tla/SprintTables.tla Finish: an old generation returns for a fresh
+		// attempt without a review head or a historical staging base.
+		if AttemptPredatesBrief(pr, attempt) {
+			why := fmt.Sprintf("brief replaced: the head of attempt %d was made under the earlier brief", attempt)
+			cardSet["report"] = cutText(why+"\n"+r.Report, MaxCardTextBytes)
+			cardSet["head_superseded"] = "true"
+			u.Changes[0] = change(Fleet, moveEntry(c, c.Row, into, cardSet))
+			delete(set, "head")
+			delete(set, "result")
+			for _, key := range []string{FieldFailure, FieldFailureAt, FieldFailureTier, FieldFailureBound, FieldBriefDefect} {
+				delete(set, key)
+			}
+			set["why"] = why
+			to := Ready
+			if len(after) > 0 {
+				to = Waiting
+			}
+			u.Changes = append(u.Changes, change(Work, moveEntry(pr, pr.Row, to, set, "head", "result", "readers", FieldPassedHead, FieldWaitsAfter, FieldFailure, FieldFailureAt, FieldFailureTier, FieldFailureBound, FieldBriefDefect)))
+			u.Moved = fmt.Sprintf("%s working -> done %s; %s working -> %s; %s", c.ID, result, pr.ID, to, why)
+			if !late {
+				friendNext(s, c, &u, p.Units)
+			}
+			p.Units = append(p.Units, u)
+			continue
+		}
 		// the brief's bound as this finish leaves the card (brief_bound.go): the same failure
 		// escalates below the ceiling only under the attempt cap, counting only attempts whose
 		// worker ran and reported
@@ -2293,7 +2549,7 @@ func friendNext(s *Snapshot, c *Card, u *Unit, prior []Unit) {
 		return
 	}
 	SortCards(ready)
-	next := ready[0]
+	next := ready[0] // nonempty: len(ready) == 0 returns above
 	set, unset := friendTaken(s, next, name)
 	u.Changes = append(u.Changes, change(Fleet, moveEntry(next, c.Row, Working, set, unset...)))
 	u.Moved += snapshotFriendPronouns(s, name).Sprintf("; %s ready -> working ({their} next, taken now)", next.ID)
@@ -2861,6 +3117,10 @@ type FleetReq struct {
 	// Reason, with hold, is the coordinator's reason, kept on the control card
 	// (FieldHeldReason) beside its held status (hold.go).
 	Reason string `json:",omitempty"`
+	// Cause and CauseNote, with hold, are what ends it (hold_cause.go): kept on the
+	// control card (FieldHeldCause, FieldHeldCauseNote) for the tick to read.
+	Cause     string `json:",omitempty"`
+	CauseNote string `json:",omitempty"`
 	// Finish, with hold (and on a down move), lets the member's working cards finish:
 	// only its ready cards, never begun, are dealt round the fleet, and the hold
 	// is marked so (FieldHeldFinish) for the sweep to leave them (hold.go).
@@ -3069,7 +3329,7 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 			// the fault's or the sync's hold stays for a person to lift
 			// (tla/ProviderBudget.tla, FleetUpRefusesUncleared).
 			if r.Op == "release" && ctl.F("held") != "" && !envCleared {
-				unset = append(unset, "held", FieldHeldBy, FieldHeldReason, FieldHeldFinish)
+				unset = append(unset, holdFields...)
 				if !comeUp {
 					line = r.Member + " released, down until it beats"
 				}
@@ -3260,6 +3520,27 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 			line += "; its working cards finish"
 		} else {
 			unset = append(unset, FieldHeldFinish)
+		}
+		// what ends the hold, and who made a coordinator's (hold_cause.go): a later hold
+		// names them again, and one that names no cause leaves none behind, so its
+		// report runs (holdNoCauseConds); the probe's hold keeps its own words
+		switch {
+		case r.Cause != "":
+			set[FieldHeldCause] = r.Cause
+			// a judgment cause keeps its id, and its type and subject: a wait closes it into
+			// an acknowledgement of that type and subject, which still stands (judgmentLive)
+			if o, ok := openEntry(s, r.CauseNote); ok && r.CauseNote != "" {
+				set[FieldHeldCauseNote], set[FieldHeldCauseType], set[FieldHeldCauseSubject] = r.CauseNote, o.Note.Type, o.Subject()
+			} else {
+				unset = append(unset, FieldHeldCauseNote, FieldHeldCauseType, FieldHeldCauseSubject)
+			}
+			unset = append(unset, FieldIdleReapRoutes)
+			line += "; cause " + r.Cause
+		case ctl.F(FieldHeldBy) != HeldByProbe:
+			unset = append(unset, FieldHeldCause, FieldHeldCauseNote, FieldHeldCauseType, FieldHeldCauseSubject, FieldIdleReapRoutes)
+		}
+		if r.HeldBy == "" && r.Who != "" {
+			set[FieldHeldWho] = r.Who
 		}
 	}
 	var head []Change
@@ -3886,14 +4167,14 @@ const RetiredByEnvironment = "environment"
 // exit (ended), spending no reader: the ended word and the harness tail on the read card
 // and on its primary, the run's cost record kept as a returned run's, and the primary's
 // consumer record with that end (the attempt record the doctor counts, EnvExitChildren).
-func readEnvExitUnit(s *Snapshot, c, pr *Card, r ReadReq, ended, name string) Unit {
-	rec := EnvironmentExitRecord(r.Exit, r.Harness)
+func readEnvExitUnit(s *Snapshot, c, pr *Card, r ReadReq, ended, code, name string) Unit {
+	rec := EnvExitRecord{Ended: ended, Harness: EnvironmentExitRecord(r.Exit, r.Harness).Harness}
 	run := nextTake(c, FieldReadTake)
 	cost := readCostRecord(s, c, r.Usage, c.F("asked"), cmpOr(c.F("begun"), stamp(s.Now)))
 	// the read identity's count (EnvReadCap): at the cap the read is retired as a return of
 	// the reader's own, which spends it at the attempt (spentBy), and one bound judgment
 	// holds the card
-	history, capped := readEnvExitCount(pr, readAttempt(c), name, r.Exit)
+	history, capped := readEnvExitCount(pr, readAttempt(c), name, code)
 	retiredBy := RetiredByEnvironment
 	if capped {
 		retiredBy = RetiredByReturned
@@ -3941,8 +4222,8 @@ const FieldEnvExitReads = "env_exit_reads"
 
 // readEnvExitCount is the primary's read history with one more environment exit of reader's
 // read at attempt (exit), and whether that one reaches EnvReadCap for the read identity.
-func readEnvExitCount(pr *Card, attempt int, reader string, exit int) (history string, capped bool) {
-	return envExitCountFrom(pr.F(FieldEnvExitReads), attempt, reader, exit)
+func readEnvExitCount(pr *Card, attempt int, reader, code string) (history string, capped bool) {
+	return envExitCountFrom(pr.F(FieldEnvExitReads), attempt, reader, code)
 }
 
 // envExitCountFrom is readEnvExitCount over the history already held: one more environment exit
@@ -3950,9 +4231,9 @@ func readEnvExitCount(pr *Card, attempt int, reader string, exit int) (history s
 // identity. A step that reports several readers of one primary builds the history by calling this
 // on the pending value (costs[pr.ID][FieldEnvExitReads]) it is accumulating, never the primary's
 // original field each time, so an earlier reader's exit is not overwritten.
-func envExitCountFrom(base string, attempt int, reader string, exit int) (history string, capped bool) {
+func envExitCountFrom(base string, attempt int, reader, code string) (history string, capped bool) {
 	key := itoa(attempt) + ":" + reader + "="
-	h := append(Split(base), key+itoa(exit))
+	h := append(Split(base), key+code)
 	n := 0
 	for _, e := range h {
 		if strings.HasPrefix(e, key) {

@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // A scenario is a short script of a sprint that a random walk reaches by luck
@@ -25,7 +25,7 @@ const (
 func scenarios() []sample {
 	var out []sample
 	for seed := uint64(0); seed < scenarioSeeds; seed++ {
-		for _, run := range []func(*walk) []sample{stoppedOnALandedCard, unevenQueues, unevenReads, aLateCardRedealt, lanesFreedBesideABacklog, aFriendStalls, aCardPastItsCap, aMemberWithFreeLanes, aQueuedCardOnAFullFriend, aFriendCardPastItsDeadlineRedealt, aWaitingPrimaryWhoseNeedLanded, anUnservedTierFallsBack} {
+		for _, run := range []func(*walk) []sample{stoppedOnALandedCard, unevenQueues, unevenReads, aLateCardRedealt, lanesFreedBesideABacklog, aFriendGoesQuiet, aCardPastItsCap, aMemberWithFreeLanes, aQueuedCardOnAFullFriend, aFriendCardPastItsDeadlineRedealt, aWaitingPrimaryWhoseNeedLanded} {
 			out = append(out, run(newWalk(scenarioBase+seed))...)
 		}
 	}
@@ -212,12 +212,12 @@ func friendBrief(name string) string {
 	return "c: a friend's card\nREPO: mas-bandwidth/nova-tools\nWHO: friend " + name + "\n\nThe task."
 }
 
-// aFriendStalls deals a friend two cards and lets her go silent: no session
-// activity, no progress stamp, past the stall bound and then a step at a time, the
-// friend stall climbing her ladder (the wake turns, the coordinator's judgment, her
-// unstarted cards taken back, marked down), a snapshot before each climb.
-func aFriendStalls(k *walk) []sample {
-	k.friends = []sprint.FriendSeat{{Name: "fia", Width: 3, Status: sprint.Up, Class: cardhdr.RouteFrontier, Tiers: []string{cardhdr.RouteFlash, cardhdr.RouteFrontier}}}
+// aFriendGoesQuiet deals a friend two cards and lets her go quiet: no session activity, no
+// progress stamp, for twenty minutes and more, a snapshot each time. She stays up (her
+// status is the hook record's, and the retired stall ladder no longer climbs on silence),
+// and the deal runs again over her row.
+func aFriendGoesQuiet(k *walk) []sample {
+	k.friends = []sprint.FriendSeat{{Name: "fia", Width: 3, Status: sprint.Up, WorkerLive: true, Class: cardhdr.RouteFrontier, Tiers: []string{cardhdr.RouteFlash, cardhdr.RouteFrontier}}}
 	for i := range 2 {
 		id := fmt.Sprintf("p%d", k.next)
 		k.next++
@@ -229,12 +229,11 @@ func aFriendStalls(k *walk) []sample {
 		return nil
 	}
 	var out []sample
-	for _, past := range []time.Duration{sprint.FriendStallAfterDefault + time.Minute, sprint.FriendStallAfterDefault + 2*sprint.FriendStallStepDefault + time.Minute,
-		sprint.FriendStallAfterDefault + 4*sprint.FriendStallStepDefault + time.Minute} {
+	for _, past := range []time.Duration{21 * time.Minute, 31 * time.Minute, 41 * time.Minute} {
 		k.now = t0.Add(past + time.Duration(k.pick(30))*time.Second)
 		k.beatAll()
 		out = append(out, k.sample())
-		k.runPart(sprint.PartFriendStall)
+		k.runPart("deal")
 	}
 	return out
 }
@@ -245,7 +244,7 @@ func aFriendStalls(k *walk) []sample {
 // cap with a frontier friend up with room: the cap's default answer has a card to give
 // her, and no machine could take it.
 func aCardPastItsCap(k *walk) []sample {
-	k.friends = []sprint.FriendSeat{{Name: "gus", Width: 2, Status: sprint.Up, Class: cardhdr.RouteFrontier}}
+	k.friends = []sprint.FriendSeat{{Name: "gus", Width: 2, Status: sprint.Up, WorkerLive: true, Class: cardhdr.RouteFrontier}}
 	id := k.addTo(k.streams[0]) // the stream is made by its first card
 	if id == "" || !k.try(sprint.Set(k.s, sprint.SetReq{Streams: []string{k.streams[0]}, Attempts: "1", Who: coordinator})) {
 		return nil
@@ -266,7 +265,7 @@ func aCardPastItsCap(k *walk) []sample {
 // her lane works, the other card waits behind it, and the members' lanes are idle beside
 // it: the rebalance's case (sprint.Rebalance; the walks give no friend).
 func aQueuedCardOnAFullFriend(k *walk) []sample {
-	k.friends = []sprint.FriendSeat{{Name: "flo", Width: 1, Status: sprint.Up, Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}}}
+	k.friends = []sprint.FriendSeat{{Name: "flo", Width: 1, Status: sprint.Up, WorkerLive: true, Tiers: []string{cardhdr.RouteFlash, cardhdr.RoutePro}}}
 	for range 2 {
 		if k.addTo(k.streams[0]) == "" {
 			return nil
@@ -294,7 +293,7 @@ func aQueuedCardOnAFullFriend(k *walk) []sample {
 // friend-redeal part moves it into her redealt column, never a failure (sprint.TickFriendRedeal;
 // the walks give no friend).
 func aFriendCardPastItsDeadlineRedealt(k *walk) []sample {
-	k.friends = []sprint.FriendSeat{{Name: "fee", Width: 3, Status: sprint.Up, Class: cardhdr.RouteFrontier, Tiers: []string{cardhdr.RouteFlash, cardhdr.RouteFrontier}}}
+	k.friends = []sprint.FriendSeat{{Name: "fee", Width: 3, Status: sprint.Up, WorkerLive: true, Class: cardhdr.RouteFrontier, Tiers: []string{cardhdr.RouteFlash, cardhdr.RouteFrontier}}}
 	id := fmt.Sprintf("p%d", k.next)
 	k.next++
 	if !k.try(sprint.Add(k.s, sprint.AddReq{Brief: friendBrief("fee"), Stream: k.streams[0], IDs: []string{id}, Who: coordinator})) {
@@ -340,26 +339,5 @@ func aWaitingPrimaryWhoseNeedLanded(k *walk) []sample {
 	c.Col = sprint.Landed
 	c.Rev++
 	k.s.Work.Put(c)
-	return append(out, k.sample())
-}
-
-// anUnservedTierFallsBack serves flash alone, so a ready pro primary's tier is
-// unserved, and the setting heavy gives it a fallback (flash): a snapshot with the
-// card ready and unserved (the fallback part sets the tier), and another after the
-// fallback is set and pro is served again (the part clears it).
-func anUnservedTierFallsBack(k *walk) []sample {
-	k.s.Routes = []sprint.Route{{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true}}
-	if !k.try(sprint.Set(k.s, sprint.SetReq{UnservedTierFallsTo: cardhdr.RouteHeavy, Who: coordinator})) {
-		return nil
-	}
-	id := k.addTo(k.streams[0])
-	if id == "" || k.s.StateOf(id) != sprint.Ready {
-		return nil
-	}
-	out := []sample{k.sample()}
-	if !k.runPart(sprint.PartUnservedFallback) {
-		return out
-	}
-	k.s.Routes = append(k.s.Routes, sprint.Route{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "pr", Enabled: true})
 	return append(out, k.sample())
 }

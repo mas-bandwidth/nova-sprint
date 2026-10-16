@@ -17,7 +17,12 @@ import (
 
 // checkBrief is a brief with a header naming the card's repository, base and PATHS.
 func checkBrief(id, base, paths string) string {
-	return "RESULT: " + id + " sha=0123456789ab tier: pro\nREPO: owner/repo\nBASE: " + base + "\nPATHS: " + paths + "\n\nTHE TASK. Do the work.\n"
+	return checkBriefRepo(id, "owner/repo", base, paths)
+}
+
+// checkBriefRepo is checkBrief with the repository named.
+func checkBriefRepo(id, repo, base, paths string) string {
+	return "RESULT: " + id + " sha=0123456789ab tier: pro\nREPO: " + repo + "\nBASE: " + base + "\nPATHS: " + paths + "\n\nTHE TASK. Do the work.\n"
 }
 
 // cardCheckFixture is a clean epoch of three streams: s1 and s2 on their own branches, each with
@@ -115,7 +120,7 @@ func TestCardCheckFindsEachCoreKind(t *testing.T) {
 	assert.Contains(t, got[2].Finding, "internal/c.go is named in PATHS by a5 and a6")
 	assert.Contains(t, got[3].Finding, "needs a1 of stream s1, which lands on sprint/s1, not on sprint/s2")
 	assert.Contains(t, got[4].Finding, "is displayed as its id")
-	assert.Contains(t, got[7].Finding, "over the drain's 16384-byte bound")
+	assert.Contains(t, got[7].Finding, "over the 16384 bytes a brief may be")
 
 	for _, fix := range []struct {
 		kind string
@@ -282,4 +287,78 @@ func setField(s *Snapshot, id, name, value string) {
 	c.Fields = maps.Clone(c.Fields)
 	c.Fields[name] = value
 	s.Work.Put(&c)
+}
+
+// putCheckCard adds one ready primary on stream, in repo, writing paths.
+func putCheckCard(s *Snapshot, id, stream, repo, paths string) {
+	s.Work.Put(&Card{ID: id, Row: stream, Col: Ready, Fields: map[string]string{
+		"kind": "primary", "stream": stream, "attempt": "0",
+		"brief": checkBriefRepo(id, repo, "sprint/"+stream, paths),
+	}})
+}
+
+func TestCardCheckSamePathInDifferentReposIsNoFinding(t *testing.T) {
+	t.Parallel()
+	const path = ".github/workflows/ci.yml"
+	s := cardCheckFixture()
+	putCheckCard(s, "a4", "s1", "robotgamedevelopers/delta", path)
+	putCheckCard(s, "b2", "s2", "mas-bandwidth/rocketnet", path)
+	require.Empty(t, CheckCards(s, cardCheckIn()), "the same path in two repositories is two files")
+
+	s = cardCheckFixture()
+	putCheckCard(s, "a4", "s1", "mas-bandwidth/rocketnet", path)
+	putCheckCard(s, "b2", "s2", "mas-bandwidth/rocketnet", path)
+	got := CheckCards(s, cardCheckIn())
+	files := findingsOfKind(got, CheckFiles)
+	require.Len(t, files, 1, "%+v", got)
+	assert.Contains(t, files[0].Finding, path+" is written by streams s1 and s2")
+	assert.Equal(t, SeverityWarn, files[0].Severity)
+	assert.False(t, files[0].Refuses())
+	assert.Equal(t, overlapWarn, files[0].Serialized)
+	assert.Empty(t, RefusingFindings(got), "a shared file is a warning and the check would exit 0")
+
+	s = cardCheckFixture()
+	putCheckCard(s, "a4", "s1", "robotgamedevelopers/delta", path)
+	putCheckCard(s, "b2", "s2", "mas-bandwidth/rocketnet", ".github/workflows/**")
+	require.Empty(t, findingsOfKind(CheckCards(s, cardCheckIn()), CheckFiles), "a glob in another repository does not cover the file")
+
+	s = cardCheckFixture()
+	putCheckCard(s, "a4", "s1", "mas-bandwidth/rocketnet", path)
+	putCheckCard(s, "b2", "s2", "mas-bandwidth/rocketnet", ".github/workflows/**")
+	got = findingsOfKind(CheckCards(s, cardCheckIn()), CheckFiles)
+	require.Len(t, got, 1, "%+v", got)
+	assert.Contains(t, got[0].Finding, path+" is written by streams s1 and s2")
+	assert.Equal(t, SeverityWarn, got[0].Severity)
+
+	s = cardCheckFixture()
+	s.Merge.Put(&Card{ID: CtlID("s2"), Row: "s2", Col: Ctl, Fields: map[string]string{"kind": "stream", FieldDisplay: "The second stream", FieldStreamBranch: "dev"}})
+	gotAll := CheckCards(s, cardCheckIn())
+	bases := findingsOfKind(gotAll, CheckBases)
+	require.Len(t, bases, 1, "%+v", gotAll)
+	assert.True(t, bases[0].Refuses(), bases[0].Line())
+	assert.NotEmpty(t, RefusingFindings(gotAll), "a bad base still fails the check")
+}
+
+func TestCardCheckMarkdownDoesNotOrderWriters(t *testing.T) {
+	t.Parallel()
+	s := cardCheckFixture()
+	putCheckCard(s, "a4", "s1", "owner/repo", "CLAUDE.md")
+	putCheckCard(s, "a5", "s1", "owner/repo", "CLAUDE.md")
+	require.Empty(t, CheckCards(s, cardCheckIn()), "two cards writing the same markdown give no finding and no forced order")
+
+	s = cardCheckFixture()
+	putCheckCard(s, "a4", "s1", "owner/repo", "AGENTS.md")
+	putCheckCard(s, "b2", "s2", "owner/repo", "AGENTS.md")
+	require.Empty(t, CheckCards(s, cardCheckIn()), "two streams writing the same markdown do not chain")
+
+	s = cardCheckFixture()
+	putCheckCard(s, "a4", "s1", "owner/repo", "docs/guide.md")
+	putCheckCard(s, "a5", "s1", "owner/repo", "internal/c.go")
+	putCheckCard(s, "a6", "s1", "owner/repo", "internal/c.go")
+	got := CheckCards(s, cardCheckIn())
+	require.Empty(t, findingsOfKind(got, CheckFiles))
+	same := findingsOfKind(got, CheckSameFile)
+	require.Len(t, same, 1, "%+v", got)
+	assert.Contains(t, same[0].Finding, "internal/c.go")
+	assert.NotContains(t, same[0].Finding, ".md")
 }

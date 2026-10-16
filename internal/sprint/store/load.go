@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -186,6 +186,16 @@ func (st *Store) HeldBack(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	return sprint.HeldBack(&sprint.Snapshot{Work: t}), nil
+}
+
+// HeldBackByStream is sprint.HeldBackByStream over the work table's waiting
+// column, read alone (workColumn), as HeldBack is.
+func (st *Store) HeldBackByStream(ctx context.Context) (map[string]int, error) {
+	t, err := st.workColumn(ctx, sprint.Waiting)
+	if err != nil || t == nil {
+		return nil, err
+	}
+	return sprint.HeldBackByStream(&sprint.Snapshot{Work: t}), nil
 }
 
 // LandedAt is the landed stamps of the work table's landed column, read alone

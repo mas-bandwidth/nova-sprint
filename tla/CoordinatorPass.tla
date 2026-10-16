@@ -118,6 +118,8 @@
 \*                51 hours): EscalatedPastAck.
 \*   "unknowncloses" (Kind = "drift") the pass closes the open judgment when the facts
 \*                say nothing of it, instead of carrying it: UnknownCarried.
+\*   "stalleachminute" (Kind = "stall") the landing-stall alarm raises again each tick under
+\*                the cause that stands (703 raises in sprint 21): StallOncePerCause.
 \*   "waitforever" the wait never expires its hold: a condition that still holds at its
 \*                review time is never raised again: WaitedRaisedAgainOnExpiry.
 EXTENDS Integers
@@ -127,9 +129,118 @@ CONSTANTS Every, MaxClock, Broken, Kind
 VARIABLES holds, seen, open, acked, first, again, clk, written, pushes,
           marks, newLate, lastPush, tickPushes, watchAt, streak, dealt, stoppedAt, lvl, unknown, sawUnknown, review,
           quiet, sawQuiet
-vars == <<holds, seen, open, acked, first, again, clk, written, pushes,
+episodeVars == <<holds, seen, open, acked, first, again, clk, written, pushes,
           marks, newLate, lastPush, tickPushes, watchAt, streak, dealt, stoppedAt, lvl, unknown, sawUnknown, review,
           quiet, sawQuiet>>
+
+\* The pre-landing outside-push gate. Tip numbers stand for immutable commits;
+\* only a successful lander push records landedTip. An ancestor relationship alone
+\* never certifies an outside descendant. The gate is judged at the exact tip.
+\* -1 is an absent record after startup/upgrade; even its first red is signalled.
+VARIABLES baseTip, landedTip, judgedTip, baseRed, outsideOpen, triedUngated,
+          triedRed
+outsideVars == <<baseTip, landedTip, judgedTip, baseRed, outsideOpen,
+                triedUngated, triedRed>>
+
+\* The landing-stall judgment (internal/sprint/judgments.go, tickLandingStall; the sprint-21
+\* failure review: "landing stalled" raised 703 times, again each minute while one cause
+\* stood). With Kind = "stall" the condition is the stall (cards wait and nothing lands) and
+\* its cause is the lander's standing refusal: the refused card and its finding. The world
+\* changes both between ticks (StallFlip); the tick reads them.
+\*   stHolds      the stall holds now (an outside event).
+\*   stCause      the cause that stands now: 1 or 2, two different findings.
+\*   stSeenHolds, stSeenCause   what the last tick read.
+\*   stOpen       the stall judgment is open; stJCause the cause it was raised for.
+\*   stRaises     the judgments raised for the cause standing now since it began (a ghost:
+\*                the code counts the unit lines "landing stalled" the tick prints).
+\*   stUpdates    how many times the open judgment was rewritten in place (a ghost).
+\*   stClk        the ticks run.
+\* Not modelled: the seat's ack and wait of the stall judgment (the pass kinds above hold them).
+VARIABLES stHolds, stCause, stSeenHolds, stSeenCause, stOpen, stJCause, stRaises, stUpdates, stClk
+stallVars == <<stHolds, stCause, stSeenHolds, stSeenCause, stOpen, stJCause, stRaises, stUpdates, stClk>>
+vars == <<episodeVars, outsideVars, stallVars>>
+
+StallInit ==
+  /\ stHolds = FALSE /\ stCause = 1 /\ stSeenHolds = FALSE /\ stSeenCause = 0
+  /\ stOpen = FALSE /\ stJCause = 0 /\ stRaises = 0 /\ stUpdates = 0 /\ stClk = 0
+
+StallFlip ==
+  /\ \/ stHolds' = ~stHolds /\ UNCHANGED stCause
+     \/ stCause' = 3 - stCause /\ UNCHANGED stHolds
+  /\ UNCHANGED <<stSeenHolds, stSeenCause, stOpen, stJCause, stRaises, stUpdates, stClk>>
+
+\* The tick: a stall that holds with no judgment open, or open for another cause, raises a
+\* judgment for the cause that stands (the old cause's closes); a stall that holds under the
+\* cause its judgment was raised for rewrites that judgment in place, raising nothing; a
+\* stall that is gone closes it. "stalleachminute" raises again each tick under the cause
+\* that stands, as the code did.
+StallTick ==
+  /\ stClk < MaxClock
+  /\ stClk' = stClk + 1
+  /\ stSeenHolds' = stHolds /\ stSeenCause' = stCause
+  /\ UNCHANGED <<stHolds, stCause>>
+  /\ IF stHolds
+       THEN IF ~stOpen \/ stJCause # stCause
+              THEN /\ stOpen' = TRUE /\ stJCause' = stCause /\ stRaises' = 1 /\ UNCHANGED stUpdates
+            ELSE IF Broken = "stalleachminute"
+              THEN /\ stRaises' = stRaises + 1 /\ UNCHANGED <<stOpen, stJCause, stUpdates>>
+            ELSE /\ stUpdates' = stUpdates + 1 /\ UNCHANGED <<stOpen, stJCause, stRaises>>
+       ELSE /\ stOpen' = FALSE /\ stJCause' = 0 /\ stRaises' = 0 /\ UNCHANGED stUpdates
+
+StallTypeOK ==
+  /\ stHolds \in BOOLEAN /\ stCause \in 1..2 /\ stSeenHolds \in BOOLEAN /\ stSeenCause \in 0..2
+  /\ stOpen \in BOOLEAN /\ stJCause \in 0..2 /\ stRaises \in 0..MaxClock
+  /\ stUpdates \in 0..MaxClock /\ stClk \in 0..MaxClock
+\* The judgment is raised once per cause: while one cause stands, one judgment was raised for it.
+StallOncePerCause == stRaises <= 1
+\* The open judgment is of the cause the last tick read.
+StallNamesItsCause == stOpen => stJCause = stSeenCause
+\* Nothing is turned off: a stall the last tick saw holding has its judgment open.
+StallStillRaised == (stSeenHolds /\ stClk > 0) => stOpen
+
+OutsideInit ==
+  /\ baseTip = 0
+  /\ landedTip \in (IF Kind = "outside" /\ Broken = "none" THEN {-1, 0} ELSE {0})
+  /\ judgedTip = landedTip
+  /\ baseRed \in (IF landedTip = -1 THEN BOOLEAN ELSE {FALSE})
+  /\ outsideOpen = FALSE
+  /\ triedUngated = FALSE /\ triedRed = FALSE
+
+OutsidePush ==
+  /\ baseTip < 2
+  /\ baseTip' = baseTip + 1
+  /\ baseRed' \in (IF Broken = "outsidepush" THEN {TRUE} ELSE BOOLEAN)
+  /\ UNCHANGED <<landedTip, judgedTip, outsideOpen, triedUngated, triedRed>>
+
+OutsideGate ==
+  /\ judgedTip # baseTip
+  /\ judgedTip' = baseTip
+  /\ outsideOpen' = baseRed
+  /\ UNCHANGED <<baseTip, landedTip, baseRed, triedUngated, triedRed>>
+
+OutsideLand ==
+  /\ Broken = "outsidepush" \/ (judgedTip = baseTip /\ ~baseRed)
+  /\ triedUngated' = (triedUngated \/ judgedTip # baseTip)
+  /\ triedRed' = (triedRed \/ baseRed)
+  /\ UNCHANGED <<baseTip, landedTip, judgedTip, baseRed, outsideOpen>>
+
+\* A gated successful lander push supplies the next certified tip. This action
+\* cannot bless an arbitrary descendant; OutsidePush never changes landedTip.
+LanderPush ==
+  /\ judgedTip = baseTip /\ ~baseRed /\ baseTip < 2
+  /\ baseTip' = baseTip + 1
+  /\ landedTip' = baseTip + 1
+  /\ judgedTip' = baseTip + 1
+  /\ UNCHANGED <<baseRed, outsideOpen, triedUngated, triedRed>>
+
+OutsideTypeOK ==
+  /\ baseTip \in 0..2 /\ landedTip \in -1..2 /\ judgedTip \in -1..2
+  /\ baseRed \in BOOLEAN /\ outsideOpen \in BOOLEAN
+  /\ triedUngated \in BOOLEAN /\ triedRed \in BOOLEAN
+NoLandingOnUnjudgedTip == ~triedUngated
+NoLandingOnRedTip == ~triedRed
+KnownLanderTipJudged == landedTip = baseTip => judgedTip = baseTip
+OutsideRedSignalled == (judgedTip = baseTip /\ baseRed) => outsideOpen
 
 \* The escalation step: three windows (the code: BehindEscalateEvery, three PassEvery).
 EscEvery == 3 * Every
@@ -160,6 +271,8 @@ TypeOK ==
   /\ sawQuiet \in BOOLEAN
 
 Init ==
+  /\ StallInit
+  /\ OutsideInit
   /\ holds = FALSE /\ seen = FALSE /\ open = FALSE /\ acked = FALSE
   /\ first = -1 /\ again = 0 /\ clk = 0 /\ written = 0 /\ pushes = 0
   /\ marks = {} /\ newLate = 0 /\ lastPush = -1 /\ tickPushes = 0
@@ -361,7 +474,15 @@ Unquiet ==
                  marks, newLate, lastPush, tickPushes, watchAt, streak, dealt,
                  stoppedAt, lvl, unknown, sawUnknown, review, sawQuiet>>
 
-Next == Flip \/ Ack \/ Wait \/ Deal \/ Tick \/ Quiet \/ Unquiet
+Next ==
+  IF Kind = "outside"
+    THEN (OutsidePush \/ OutsideGate \/ OutsideLand \/ LanderPush)
+         /\ UNCHANGED <<episodeVars, stallVars>>
+  ELSE IF Kind = "stall"
+    THEN (StallFlip \/ StallTick)
+         /\ UNCHANGED <<episodeVars, outsideVars>>
+    ELSE (Flip \/ Ack \/ Wait \/ Deal \/ Tick \/ Quiet \/ Unquiet)
+         /\ UNCHANGED <<outsideVars, stallVars>>
 
 Spec == Init /\ [][Next]_vars
 

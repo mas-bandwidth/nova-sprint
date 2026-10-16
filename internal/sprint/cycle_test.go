@@ -52,10 +52,10 @@ func TestAddRefusesACycleThroughTheGates(t *testing.T) {
 	t.Parallel()
 	w := gateStreams(t, 100)
 	refused := map[string]string{
-		"b-dep-5": "b-dep-5 needs a-68 needs a-gate-6 needs a-dep-1 needs b-87 needs b-gate-8 needs b-dep-5 (through sentinel a-gate-6, b-gate-8",
-		"c-dep-1": "c-dep-1 needs b-84 needs b-gate-8 needs b-dep-2 needs c-97 needs c-gate-9 needs c-dep-1 (through sentinel b-gate-8, c-gate-9",
-		"c-dep-2": "c-dep-2 needs a-47 needs a-gate-4 needs a-dep-1 needs c-81 needs c-gate-8 needs c-dep-2 (through sentinel a-gate-4, c-gate-8",
-		"c-dep-3": "c-dep-3 needs b-60 needs b-gate-5 needs b-dep-2 needs c-97 needs c-gate-9 needs c-dep-3 (through sentinel b-gate-5, c-gate-9",
+		"b-dep-5": "b-dep-5 -needs-> a-68 -line-> a-gate-6 -line-> a-dep-1 -needs-> b-87 -line-> b-gate-8 -line-> b-dep-5 (through sentinel a-gate-6, b-gate-8",
+		"c-dep-1": "c-dep-1 -needs-> b-84 -line-> b-gate-8 -line-> b-dep-2 -needs-> c-97 -line-> c-gate-9 -line-> c-dep-1 (through sentinel b-gate-8, c-gate-9",
+		"c-dep-2": "c-dep-2 -needs-> a-47 -line-> a-gate-4 -line-> a-dep-1 -needs-> c-81 -line-> c-gate-8 -line-> c-dep-2 (through sentinel a-gate-4, c-gate-8",
+		"c-dep-3": "c-dep-3 -needs-> b-60 -line-> b-gate-5 -line-> b-dep-2 -needs-> c-97 -line-> c-gate-9 -line-> c-dep-3 (through sentinel b-gate-5, c-gate-9",
 	}
 	for _, d := range gateDeps {
 		p := Add(w.s, depAdd(d))
@@ -93,7 +93,7 @@ func TestACrossNeedBeforeTheGatesIsAdmitted(t *testing.T) {
 	// Before b-gate-1 and needing a-25 behind a-gate-2 closes one: a-gate-2
 	// needs a-z (before it), which needs b-15, behind b-gate-1, which needs b-z.
 	p := Add(w.s, AddReq{Stream: "b", IDs: []string{"b-z"}, Needs: []string{"a-25"}, After: "b-2"})
-	want := "the needs would make a cycle: b-z needs a-25 needs a-gate-2 needs a-z needs b-15 needs b-gate-1 needs b-z (through sentinel a-gate-2, b-gate-1"
+	want := "the needs would make a cycle: b-z -needs-> a-25 -line-> a-gate-2 -line-> a-z -needs-> b-15 -line-> b-gate-1 -line-> b-z (through sentinel a-gate-2, b-gate-1"
 	require.Empty(t, p.Units, "a cycle through both gates: %+v", p)
 	require.Len(t, p.Refused, 1, "a cycle through both gates: %+v", p)
 	require.True(t, strings.HasPrefix(p.Refused[0].Why, want), "a cycle through both gates: %+v", p)
@@ -175,7 +175,7 @@ func TestAddCycleWalkBound(t *testing.T) {
 	// gates; the walk and the naming stay linear.
 	p := Add(w.s, AddReq{Stream: "big", IDs: []string{"big-x"}, Needs: []string{"big-99995"}, After: "big-3"})
 	require.Len(t, p.Refused, 1, "the long loop: %+v", p.Refused)
-	require.Contains(t, p.Refused[0].Why, "big-x needs big-99995 needs big-gate-9999 needs big-x", "the long loop: %+v", p.Refused)
+	require.Contains(t, p.Refused[0].Why, "big-x -needs-> big-99995 -line-> big-gate-9999 -line-> big-x", "the long loop: %+v", p.Refused)
 	all := newNeedGraph(w.s, nil, nil, nil)
 	var roots []string
 	for _, c := range w.s.Work.Column(Waiting) {

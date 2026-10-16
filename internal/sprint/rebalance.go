@@ -357,6 +357,7 @@ func rebalanceReads(s *Snapshot, seats []FriendSeat, units []*rebalanceUnit, wor
 	}
 	idx := fleetReadIndex(s)
 	readRounds := map[string]*round{}
+	tops := readGenTops{}
 	var out []Unit
 	for _, g := range units {
 		er := excessReads(s, g)
@@ -376,7 +377,7 @@ func rebalanceReads(s *Snapshot, seats []FriendSeat, units []*rebalanceUnit, wor
 			worker := attemptUnit(s, pr.ID, attempt)
 			cards := idx[pr.ID]
 			gone := Split(wc.F(FieldRebalancedFrom))
-			tier := friendReadTier(s, pr)
+			tier := s.readTierOf(pr)
 			cursor, ok := readRounds[tier]
 			if !ok {
 				cursor = readDealRound(s, tier, ruses)
@@ -421,10 +422,11 @@ func rebalanceReads(s *Snapshot, seats []FriendSeat, units []*rebalanceUnit, wor
 				}
 			}
 			cursor.moved(name)
-			id := readCardIDFor(cards, pr.ID, attempt, best.name)
+			id := readCardIDFor(cards, pr.ID, attempt, best.name, readGenTop(s, pr.ID, attempt))
 			if id == "" || (s != nil && s.Fleet != nil && s.Fleet.Card(id) != nil) {
 				continue
 			}
+			tops.cut(s, pr.ID, attempt, best.name, id)
 			fields := map[string]string{}
 			for k, v := range wc.Fields {
 				fields[k] = v
@@ -432,7 +434,7 @@ func rebalanceReads(s *Snapshot, seats []FriendSeat, units []*rebalanceUnit, wor
 			fields["reader"] = best.name
 			fields[FieldRebalancedFrom] = strings.Join(append(Split(wc.F(FieldRebalancedFrom)), g.row), ",")
 			if best.friend {
-				fields[FieldTier] = friendReadTier(s, pr)
+				fields[FieldTier] = s.readTierOf(pr)
 				if !s.Fleet.HasRow(best.row) {
 					p.Rows = append(p.Rows, RowAdd{Fleet, best.row})
 				}
@@ -461,6 +463,7 @@ func rebalanceReads(s *Snapshot, seats []FriendSeat, units []*rebalanceUnit, wor
 	for _, tier := range slices.Sorted(maps.Keys(readRounds)) {
 		writeRebalanceRound(p, readRounds[tier])
 	}
+	p.Props = append(p.Props, tops.writes(s)...)
 	return out
 }
 

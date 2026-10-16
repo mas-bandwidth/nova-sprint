@@ -15,82 +15,36 @@ import (
 func TestFleetSyncCoverHeldInInventory(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
-		name  string
-		build func(t *testing.T) *Snapshot
-		want  []SyncMember
-		held  []string
+		name       string
+		up, holds  []string // members brought up, then held by the coordinator, in order
+		syncM1Only bool     // a sync that names m1 alone a member and m2 a machine
+		want       []string // the inventory's members, each at DefaultWidth
+		held       []string
 	}{
-		{
-			name: "the coordinators hold is named",
-			build: func(t *testing.T) *Snapshot {
-				w := newWorld(t, "reader-a")
-				w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-				w.must(FleetStep(w.s, FleetReq{Op: "hold", Member: "m1", Who: "coordinator"}))
-				return w.s
-			},
-			want: []SyncMember{{Name: "m1", Width: DefaultWidth}},
-			held: []string{"m1"},
-		},
-		{
-			name: "the syncs hold is left alone",
-			build: func(t *testing.T) *Snapshot {
-				w := newWorld(t, "reader-a")
-				w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-				w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
-				w.must(FleetStep(w.s, FleetReq{Op: "sync", Who: "sync", Sync: []SyncMember{{Name: "m1", Width: DefaultWidth}}, Machines: []string{"m1", "m2"}}))
-				return w.s
-			},
-			want: []SyncMember{{Name: "m1", Width: DefaultWidth}, {Name: "m2", Width: DefaultWidth}},
-			held: nil,
-		},
-		{
-			name: "a member no one holds is not named",
-			build: func(t *testing.T) *Snapshot {
-				w := newWorld(t, "reader-a")
-				w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-				return w.s
-			},
-			want: []SyncMember{{Name: "m1", Width: DefaultWidth}},
-			held: nil,
-		},
-		{
-			name: "a name with no control card is not named",
-			build: func(t *testing.T) *Snapshot {
-				return newWorld(t, "reader-a").s
-			},
-			want: []SyncMember{{Name: "ghost", Width: DefaultWidth}},
-			held: nil,
-		},
-		{
-			name: "holds are named sorted, not in the want order",
-			build: func(t *testing.T) *Snapshot {
-				w := newWorld(t, "reader-a")
-				w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
-				w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-				w.must(FleetStep(w.s, FleetReq{Op: "hold", Member: "m2", Who: "coordinator"}))
-				w.must(FleetStep(w.s, FleetReq{Op: "hold", Member: "m1", Who: "coordinator"}))
-				return w.s
-			},
-			want: []SyncMember{{Name: "m2", Width: DefaultWidth}, {Name: "m1", Width: DefaultWidth}},
-			held: []string{"m1", "m2"},
-		},
-		{
-			name: "a hold outside want is not named",
-			build: func(t *testing.T) *Snapshot {
-				w := newWorld(t, "reader-a")
-				w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-				w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
-				w.must(FleetStep(w.s, FleetReq{Op: "hold", Member: "m1", Who: "coordinator"}))
-				return w.s
-			},
-			want: []SyncMember{{Name: "m2", Width: DefaultWidth}},
-			held: nil,
-		},
+		{"the coordinators hold is named", []string{"m1"}, []string{"m1"}, false, []string{"m1"}, []string{"m1"}},
+		{"the syncs hold is left alone", []string{"m1", "m2"}, nil, true, []string{"m1", "m2"}, nil},
+		{"a member no one holds is not named", []string{"m1"}, nil, false, []string{"m1"}, nil},
+		{"a name with no control card is not named", nil, nil, false, []string{"ghost"}, nil},
+		{"holds are named sorted, not in the want order", []string{"m2", "m1"}, []string{"m2", "m1"}, false, []string{"m2", "m1"}, []string{"m1", "m2"}},
+		{"a hold outside want is not named", []string{"m1", "m2"}, []string{"m1"}, false, []string{"m2"}, nil},
 	} {
-		c := c
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, c.held, HeldInInventory(c.build(t), c.want))
+			w := newWorld(t, "reader-a")
+			for _, m := range c.up {
+				w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m}))
+			}
+			for _, m := range c.holds {
+				w.must(FleetStep(w.s, FleetReq{Op: "hold", Member: m, Who: "coordinator"}))
+			}
+			if c.syncM1Only {
+				w.must(FleetStep(w.s, FleetReq{Op: "sync", Who: "sync", Sync: []SyncMember{{Name: "m1", Width: DefaultWidth}}, Machines: []string{"m1", "m2"}}))
+			}
+			var want []SyncMember
+			for _, m := range c.want {
+				want = append(want, SyncMember{Name: m, Width: DefaultWidth})
+			}
+			assert.Equal(t, c.held, HeldInInventory(w.s, want))
 		})
 	}
 }

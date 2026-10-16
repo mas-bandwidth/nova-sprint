@@ -16,9 +16,9 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/workfile"
 	"github.com/mas-bandwidth/nova-sprint/internal/workgh"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
-	"github.com/mas-bandwidth/nova-sprint/pkg/testkit"
-	"github.com/mas-bandwidth/nova-sprint/pkg/tool"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/testkit"
+	"github.com/mas-bandwidth/nova-tools/pkg/tool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -100,9 +100,7 @@ func countingGitHub() (github, *atomic.Int64) {
 func TestTheToolMeetsTheStandard(t *testing.T) {
 	t.Parallel()
 	// .Problems() is the class test's marker (docs/SPEC-CI.md tool-standard).
-	// The method is not on this tree, so the banner's what line is what this
-	// test holds.
-	assert.NotEmpty(t, workTool(realGitHub()).What)
+	assert.Empty(t, workTool(realGitHub()).Problems())
 }
 
 // TestVerifyDefaultMaxBytesIsAMemoryBoundNotJustAByteBound pins the verify
@@ -629,7 +627,7 @@ func TestStatusGrammar(t *testing.T) {
 func TestTheVerbsRenderJSON(t *testing.T) {
 	t.Parallel()
 	cli := workMain(unreachable(t))
-	for _, verb := range []string{"import", "verify"} {
+	for _, verb := range []string{"import", "verify", "example"} {
 		t.Run(verb, func(t *testing.T) {
 			t.Parallel()
 			res := cli.Run(verb, "--json")
@@ -648,5 +646,5 @@ func TestABareCommandRefusesWithItsStage(t *testing.T) {
 	res := workMain(unreachable(t)).Run()
 	require.Equal(t, 2, res.Code, "bare nova-work: exit %d, stdout %q, stderr %q", res.Code, res.Stdout, res.Stderr)
 	require.Empty(t, res.Stdout, "bare nova-work: exit %d, stdout %q, stderr %q", res.Code, res.Stdout, res.Stderr)
-	require.Equal(t, "WORK REFUSED: no verb given; the verbs are import, verify, roadmap check, roadmap list, roadmap add, roadmap remove, roadmap pull, roadmap done, roadmap note, roadmap render, help, version; run: nova-work help\n  NOTE "+preAlpha+"\n", res.Stderr, "bare nova-work: exit %d, stdout %q, stderr %q", res.Code, res.Stdout, res.Stderr)
+	require.Equal(t, "WORK REFUSED: no verb given; the verbs are import, verify, example, roadmap check, roadmap list, roadmap add, roadmap remove, roadmap pull, roadmap done, roadmap note, roadmap render, help, version; run: nova-work help\n  NOTE "+preAlpha+"\n", res.Stderr, "bare nova-work: exit %d, stdout %q, stderr %q", res.Code, res.Stdout, res.Stderr)
 }

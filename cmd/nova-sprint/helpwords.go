@@ -51,8 +51,8 @@ words:
   cursor       the coordinator's place in the notes; inbox --read moves it; it bounds HAPPENED and
                DECIDED lines, never the open judgments; inbox --wait wakes for a judgment or a note
                to the coordinator that was not there when it began, and --push <dir> writes each
-               once as <dir>/<note id>.md, the files there being its cursor; --push seat writes to
-               the holder's inbox, ~/<holder>-working/inbox/sprint-judgments, and follows the seat
+               once as <dir>/<note id>.md, the files there being its cursor; the coordinator
+               itself hears each one on the bus, from the server (nova-hook pushes it in)
   seat         the coordinator's place: coordinator <name> gives it (the holder or the owner) or
                takes it (--take --approved-by <owner>); handover prints what the next seat needs
   deal         the tick placing a ready primary's work card on an up member below twice its width

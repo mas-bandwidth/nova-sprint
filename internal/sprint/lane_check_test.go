@@ -1,12 +1,11 @@
 package sprint_test
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
+	"github.com/mas-bandwidth/nova-tools/pkg/hostload"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -31,32 +30,15 @@ func (r *passRig) laneTick(d time.Duration, friend string, running ...string) {
 		_, err := r.st.Beat(r.ctx, m, &zero, hostload.Source{})
 		require.NoError(r.t, err)
 	}
-	for f, pong := range r.pongs {
-		if pong.After(r.proved[f]) {
-			// her daemon asked a check and her session answered it at pong (sprint.ProveBeat)
-			r.mu.Lock()
-			now := r.now
-			r.now = pong
-			r.mu.Unlock()
-			nonce := fmt.Sprintf("n%d", pong.Unix())
-			_, _, err := r.st.FriendBeatProof(r.ctx, f, sprint.FriendReport{Active: pong}, nil, sprint.BeatWords{Run: "run1", Check: nonce, Pong: nonce})
-			require.NoError(r.t, err)
-			r.mu.Lock()
-			r.now = now
-			r.mu.Unlock()
-			r.proved[f] = pong
-		}
+	for f := range r.pongs {
+
 		rep := sprint.FriendReport{Active: r.clock()}
 		if f == friend {
 			rep.Running = running
 		}
 		_, err := r.st.FriendBeatReport(r.ctx, f, rep, nil)
 		require.NoError(r.t, err)
-		if pong.After(r.answered[f]) {
-			_, _, _, err = r.st.FriendHealth(r.ctx, f, "coordinator", sprint.FriendHealth{State: sprint.Up, Seen: pong, Generation: sprint.FirstSeatGeneration}, "")
-			require.NoError(r.t, err)
-			r.answered[f] = pong
-		}
+		require.NoError(r.t, setFriendHook(r.st, f, sprint.Up))
 	}
 	_, err := r.st.Tick(r.ctx)
 	require.NoError(r.t, err)

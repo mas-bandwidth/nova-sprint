@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/testbin"
+	"github.com/mas-bandwidth/nova-tools/pkg/testbin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,6 +27,7 @@ func TestARedClassOnTheBaseStopsLandings(t *testing.T) {
 	r.files("the base's unused helper", map[string]string{"unused.go": "package main\n\nfunc helper() {}\n"})
 	r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/main")
 	r.git(r.worker, "fetch", "-q", "origin")
+	seedKnownLanderBase(r, "main")
 	r.ok("add --stream s1 --count 1 --one")
 	r.queued(map[string]string{"s1-1": r.card("s1-1", map[string]string{"other.go": "package main\n"})}, "s1-1")
 	var runs []string

@@ -9,6 +9,8 @@ import (
 	"io"
 	"net"
 
+	"github.com/mas-bandwidth/nova-tools/hook"
+
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -22,8 +24,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/member"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
+	"github.com/mas-bandwidth/nova-tools/pkg/member"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
 // The sprint's server is tested as the state machine it is (the owner,
@@ -35,9 +37,10 @@ import (
 
 // serverRig is one sprint server over a twin file.
 type serverRig struct {
-	t      *testing.T
-	a      *app
-	served [][]string // every verb sent to the server, in order
+	t        *testing.T
+	a        *app
+	servedMu sync.Mutex
+	served   [][]string // every verb sent to the server, in order
 }
 
 // newServerRig is a server whose sprint the coordinator's lines made.
@@ -46,6 +49,7 @@ func newServerRig(t *testing.T, lines ...string) *serverRig {
 	file := filepath.Join(t.TempDir(), "sprint.twin")
 	env := map[string]string{"NOVA_SPRINT_REDIS": "mem:" + file, "NOVA_SPRINT_ACTOR": "boss"}
 	a := newApp(func(k string) string { return env[k] })
+	a.readFriendHooks = func(context.Context, ...string) ([]hook.Status, time.Time, error) { return nil, time.Time{}, nil }
 	t.Cleanup(a.close)
 	a.serveAddr = "mem:" + file
 	a.readTip, a.readHeads = nil, nil // a broken read's branch is checked only when a test gives a tip
@@ -73,8 +77,23 @@ func (r *serverRig) boss(line string) string {
 
 // send is a worker's delivery of a batch with no connection: the server's step.
 func (r *serverRig) send(_ context.Context, verbs ...[]string) ([]sprintwire.Result, error) {
-	r.served = append(r.served, verbs...)
+	r.servedMu.Lock()
+	for _, verb := range verbs {
+		r.served = append(r.served, append([]string(nil), verb...))
+	}
+	r.servedMu.Unlock()
 	return r.a.serveFrom(sprintwire.Request{Verbs: verbs}, false).Results, nil
+}
+
+// recorded returns an independent snapshot of concurrent client submissions.
+func (r *serverRig) recorded() [][]string {
+	r.servedMu.Lock()
+	defer r.servedMu.Unlock()
+	out := make([][]string, len(r.served))
+	for i, verb := range r.served {
+		out[i] = append([]string(nil), verb...)
+	}
+	return out
 }
 
 // one sends one verb and returns its answer.
@@ -338,19 +357,21 @@ func TestAMemberWorksThroughTheServer(t *testing.T) {
 		}
 		pass()
 		r.boss("nova-sprint tick")
+		pass() // a lane freed by a report is filled by the next pass (nova-tools pkg/member)
 		assert.Len(t, rn.packets, 2*(round+2), "the freed lanes are filled again: %s", log.String())
 		assert.LessOrEqual(t, m.Running(), 2, "never over its width")
 	}
-	// a member with no load sampled yet does not beat a load it did not measure
-	require.ErrorContains(t, m.Beat(), "no sample yet")
+	// a member with no load sampled yet beats a load of 0 (nova-tools pkg/member),
+	// never one it did not measure
+	require.NoError(t, m.Beat())
 	verbs := map[string]int{}
-	for _, v := range r.served {
+	for _, v := range r.recorded() {
 		verbs[v[0]]++
 	}
 	assert.Equal(t, 4, verbs["finish"], "%v\n%s", verbs, log.String())
 	assert.Positive(t, verbs["take"])
 	assert.Positive(t, verbs["queue"])
-	assert.Zero(t, verbs["fleet"], "the beat with no load was not sent")
+	assert.Positive(t, verbs["fleet"], "the beat with no load was sent as 0")
 	seen := map[string]bool{}
 	for _, p := range rn.packets {
 		assert.False(t, seen[p.Card], "%s started twice", p.Card)
@@ -392,9 +413,10 @@ func TestAVerbWhoseAnswerWasLostIsNotRunTwice(t *testing.T) {
 	}}
 	code, out := w.Run("take", "--as", "m1", "--limit", "2", "--epoch", "0", "--json")
 	require.Equal(t, 0, code, string(out))
-	require.Len(t, r.served, 2, "sent again after the lost answer")
-	assert.Equal(t, r.served[0], r.served[1], "the same verb with the same operation id")
-	assert.Contains(t, r.served[0], "--op")
+	served := r.recorded()
+	require.Len(t, served, 2, "sent again after the lost answer")
+	assert.Equal(t, served[0], served[1], "the same verb with the same operation id")
+	assert.Contains(t, served[0], "--op")
 	assert.Len(t, taken(t, sprintwire.Result{Stdout: string(out)}), 2, "the answer names the cards the first run took")
 	q := r.queue("m1")
 	assert.Len(t, q["working"], 2, "two cards taken, not four: %v", q)

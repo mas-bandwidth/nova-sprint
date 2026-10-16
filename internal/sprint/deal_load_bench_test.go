@@ -11,15 +11,9 @@ package sprint
 import (
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
-
-// TickGate is the tick's one-second gate: the machine ticks once a second while
-// it runs (docs/SPEC-SPRINT.md, "The machine"), and the dashboard reads the
-// store every second, so a tick that runs past a second is critical.
-const TickGate = time.Second
 
 // loadedStore is a copy of a loaded store's shape (docs/SPEC-SPRINT.md, "the
 // machine"): two up members of width 32, two flash routes and one pro, `ready`
@@ -44,7 +38,7 @@ func loadedStore(t testing.TB, ready, done, friends int) *Snapshot {
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 32}))
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2", Width: 32}))
 	for i := 0; i < friends; i++ {
-		w.s.Friends = append(w.s.Friends, FriendSeat{Name: fmt.Sprintf("f%02d", i), Width: 8, Status: Up, Class: "flash,pro"})
+		w.s.Friends = append(w.s.Friends, workerSeatFixture(FriendSeat{Name: fmt.Sprintf("f%02d", i), Width: 8, Status: Up, Class: "flash,pro"}))
 	}
 	cards := make([]CardAdd, ready)
 	for i := range cards {
@@ -76,7 +70,7 @@ func TestTickDealReadsEachBriefOnceAtScale(t *testing.T) {
 	resetModelMemo()
 	t.Cleanup(resetModelMemo)
 	before := modelReads.Load()
-	TickDeal(s, TickReq{})
+	tickDealFixture(s, TickReq{})
 	parsed := modelReads.Load() - before
 	t.Logf("TICK-COST ready=%d briefs_parsed=%d", ready, parsed)
 	require.EqualValues(t, ready, parsed,
@@ -114,46 +108,26 @@ func TestTickDrainAndDealUnderTheGateAtLoad(t *testing.T) {
 	resetModelMemo()
 	t.Cleanup(resetModelMemo)
 
-	// the drain part at load: the queue is empty on the first tick, so the pump has
-	// nothing to apply; measure it beside the deal to show which part the tick spends
-	// in. A real queue is the previous tick's deal queued (QueueOf), measured below.
-	drainStart := time.Now()
+	// the drain at load: empty on the first tick, then the previous tick's deal queued
+	// (QueueOf), the busiest realistic queue; the deal, cold then steady over the warm memo.
+	// No clock here (the unit tier keeps none): the wall is BenchmarkTickDealAtLoad's and
+	// BenchmarkTickDrainAtLoad's, outside the gate.
 	Drain(s, s.Queue, MachineActor)
-	drainEmpty := time.Since(drainStart)
-
-	coldStart := time.Now()
-	TickDeal(s, TickReq{})
-	cold := time.Since(coldStart)
-
-	steadiest := time.Duration(0)
+	tickDealFixture(s, TickReq{})
 	for i := 0; i < 5; i++ {
-		start := time.Now()
-		TickDeal(s, TickReq{})
-		if d := time.Since(start); i == 0 || d < steadiest {
-			steadiest = d
-		}
+		tickDealFixture(s, TickReq{})
 	}
-
-	// the previous tick's deal queued for this tick's drain: the busiest realistic
-	// queue at this scale, still the pump's few dozen moves beside the deal's walk
-	plan, _ := TickDeal(s, TickReq{})
+	plan, _ := tickDealFixture(s, TickReq{})
 	_, q := QueueOf(plan, DrainVerb, MachineActor)
-	drainStart = time.Now()
 	Drain(s, q, MachineActor)
-	drainQueued := time.Since(drainStart)
 
-	t.Logf("TICK-GATE ready=%d drain_empty=%s drain_queued(%d)=%s cold_first_tick=%s steady_deal=%s gate=%s",
-		len(s.Work.Column(Ready)), drainEmpty, len(q), drainQueued, cold, steadiest, TickGate)
-	// No wall-clock bound on a shared bench: a loaded machine can slow any sub-second
-	// gate (the flake this test fixed). The gate's meaning is held by the counts — the deal
+	// The gate's meaning is held by the counts — the deal
 	// parses each ready brief exactly once (the model read's share of the tick) and the
 	// drain's moves are bounded by the deal's queued output, far under the ready column —
-	// and by the allocation hold in TestTickDealAllocatesNoPerCardRouteMapAtScale. The
-	// sub-second wall itself is measured only by BenchmarkTickDealAtLoad and
-	// BenchmarkTickDrainAtLoad, outside the gate.
+	// and by the allocation hold in TestTickDealAllocatesNoPerCardRouteMapAtScale.
 	resetModelMemo()
 	before := modelReads.Load()
-	TickDeal(s, TickReq{})
+	tickDealFixture(s, TickReq{})
 	parsed := modelReads.Load() - before
 	require.EqualValues(t, ready, parsed, "the deal parses each ready brief once: the tick's model-read work")
 	require.Less(t, len(q), ready, "the drain is not the tick's dominant cost: its moves are bounded by the deal's queued output")
@@ -182,9 +156,9 @@ func TestTickDealAllocatesNoPerCardRouteMapAtScale(t *testing.T) {
 
 	resetModelMemo()
 	t.Cleanup(resetModelMemo)
-	TickDeal(s, TickReq{}) // warm the memo, as the tick warms it on its first run
+	tickDealFixture(s, TickReq{}) // warm the memo, as the tick warms it on its first run
 
-	allocs := testing.AllocsPerRun(3, func() { TickDeal(s, TickReq{}) })
+	allocs := testing.AllocsPerRun(3, func() { tickDealFixture(s, TickReq{}) })
 	perCard := allocs / float64(ready)
 	t.Logf("TICK-ALLOC ready=%d allocs_per_run=%.0f allocs_per_card=%.2f", ready, allocs, perCard)
 	require.Less(t, perCard, 40.0,
@@ -210,10 +184,10 @@ func BenchmarkTickDealAtLoad(b *testing.B) {
 		b.Run(fmt.Sprintf("ready=%d_done=%d_friends=%d", n.ready, n.done, n.friends), func(b *testing.B) {
 			s := loadedStore(b, n.ready, n.done, n.friends)
 			resetModelMemo()
-			TickDeal(s, TickReq{}) // warm the memo once, as the tick does on its first run
+			tickDealFixture(s, TickReq{}) // warm the memo once, as the tick does on its first run
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				TickDeal(s, TickReq{})
+				tickDealFixture(s, TickReq{})
 			}
 		})
 	}
@@ -232,8 +206,8 @@ func BenchmarkTickDrainAtLoad(b *testing.B) {
 		b.Run(fmt.Sprintf("ready=%d_done=%d_friends=%d", n.ready, n.done, n.friends), func(b *testing.B) {
 			s := loadedStore(b, n.ready, n.done, n.friends)
 			resetModelMemo()
-			TickDeal(s, TickReq{})
-			plan, _ := TickDeal(s, TickReq{})
+			tickDealFixture(s, TickReq{})
+			plan, _ := tickDealFixture(s, TickReq{})
 			_, q := QueueOf(plan, DrainVerb, MachineActor)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {

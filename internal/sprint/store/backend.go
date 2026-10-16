@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // Backend is what the sprint needs of a store.
@@ -45,7 +45,7 @@ type Backend interface {
 	// skipped): the readers table's reader remove, which first refuses a row
 	// that holds a card (docs/SPEC-SPRINT.md section 6), and stream remove,
 	// which first refuses a stream that holds one, its control card going with
-	// its merge row (sprint.StreamRemove).
+	// its merge row (sprint.StreamRemoveExisting).
 	RowsDel(ctx context.Context, table string, rows []string) error
 	// RowsDelIf removes each guard's row, with the cards placed in it, only
 	// while the guard's record (the row's control card) is still on no cell
@@ -78,10 +78,11 @@ type Backend interface {
 	// and whether the restore of the shape of the epoch before it is owed.
 	Epoch(ctx context.Context) (EpochState, error)
 	// AdvanceEpoch moves the sprint from epoch from to from+1 atomically,
+	// only if FROM has no fence, or its fence is held by the optional owner.
 	// recording the time, that the restore of epoch from's shape is owed, and
 	// that from+1 is owed its set-defaults step (EpochState.DefaultsOwed), all in
 	// one write; false when the sprint is no longer at from.
-	AdvanceEpoch(ctx context.Context, from uint64, at time.Time) (bool, error)
+	AdvanceEpoch(ctx context.Context, from uint64, at time.Time, owner ...string) (bool, error)
 	// SettleEpoch records that the restore owed at epoch n is done; it does
 	// nothing when the sprint is no longer at n.
 	SettleEpoch(ctx context.Context, n uint64) error
@@ -96,6 +97,9 @@ type Backend interface {
 	// it writes nothing and says why (tla/ClearDefaults.tla RestoreRow, RestoreSettled,
 	// EditRow, DeleteRow).
 	GuardedRows(ctx context.Context, g RestoreGuard, writes []RowWrite) (GuardOutcome, error)
+	// GuardedMachine writes the record and view only at the pinned epoch, while
+	// owner still holds its fence; RUNNING also requires the restore settled.
+	GuardedMachine(ctx context.Context, g RestoreGuard, owner string, machine Machine, view string) error
 	// AtEpoch is the backend pinned to an epoch: the sprint's keys of that
 	// epoch, and its writes at that epoch. With old, reads of the tables read
 	// that epoch as it was, not the active one.
@@ -309,12 +313,6 @@ type OpRecord struct {
 	// Seat is the seat's change (store/seat.go): its commit sets the
 	// coordinator to its holder and records it as the seat's last change.
 	Seat *sprint.SeatChange `json:"seat,omitempty"`
-	// Health is a friend's health observed (store/friends.go): its commit
-	// writes it as her friend-health record.
-	Health *sprint.FriendHealthWrite `json:"health,omitempty"`
-	// HealthClear is the friends whose friend-health record its commit removes
-	// (friend health --clear; the stall ladder's release).
-	HealthClear []string `json:"health_clear,omitempty"`
 	// CloseTimers is the ids of the timers this step closes (store/timers.go):
 	// its commit deletes only these ids from the timer record, read inside
 	// the same commit, so a timer set or cancelled while the step ran is not

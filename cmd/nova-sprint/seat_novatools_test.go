@@ -33,7 +33,10 @@ func allNovaTools(v string) map[string]string {
 
 func TestSeatCheckRefusesWithoutTheRequiredNovaTools(t *testing.T) {
 	t.Parallel()
-	req := sprint.NovaToolsVersion
+	// the required version is injected, as the build record would give it: a test
+	// binary's record need not list go.mod's nova-tools (the real executable's is the
+	// functional tier's TestTheBuiltExecutableRecordsGoModsNovaTools)
+	req := "v1.2.26-0.20261014184205-74cef8c16f41"
 	older := "v1.0.0"
 	newer := "v1.3.0"
 	require.Equal(t, -1, semver.Compare(older, req), "the fixture's older version is older than %s", req)
@@ -45,6 +48,7 @@ func TestSeatCheckRefusesWithoutTheRequiredNovaTools(t *testing.T) {
 		ta.ok("tick")
 		o := mockHealthyOutside()
 		o.novaTools = fakeNovaTools(versions)
+		o.novaToolsRequired = func() (string, bool) { return req, true }
 		ta.a.outside = o
 		return ta.do("seat check")
 	}

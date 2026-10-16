@@ -1,6 +1,9 @@
 package sprint
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // Shape is what a sprint keeps across a clear: its streams, its readers and
 // the tiers they read, and its fleet members with their status and the
@@ -15,6 +18,11 @@ type Shape struct {
 	// HeldBy is who made a member's hold when it was not the coordinator
 	// (held_by, fleet_sync.go).
 	HeldBy map[string]string `json:"held_by,omitempty"`
+	// HeldFields is each held member's hold beyond held and held_by: its cause, its
+	// reason, who made it (HeldCarried, hold_cause.go). A clear carries them, so a hold
+	// never crosses a clear without its cause (the cold read of #206: an idle-reap hold
+	// crossed with held_by alone and nothing ever ended or reported it).
+	HeldFields map[string]map[string]string `json:"held_fields,omitempty"`
 	// Width is each member's width its control card names (width.go); a
 	// member with the default is not in it.
 	Width map[string]string `json:"width,omitempty"`
@@ -23,9 +31,31 @@ type Shape struct {
 	ReaderTiers map[string]string `json:"reader_tiers,omitempty"`
 }
 
+// MemberReaderRows is the reader row of every up fleet member the readers
+// table lacks: reader-<member> for each member up and not held. Init, a
+// member's join and a clear make these rows when missing, so every up
+// member is a reader with no seat action (read_cards.go memberReads;
+// tla/ReaderTiers.tla EveryUpMemberIsAReader).
+func MemberReaderRows(s *Snapshot) []string {
+	if s == nil || s.Readers == nil {
+		return nil
+	}
+	var out []string
+	for _, m := range s.UpMembers() {
+		if rd := ReaderPrefix + m; !s.Readers.HasRow(rd) {
+			out = append(out, rd)
+		}
+	}
+	return out
+}
+
 // ShapeOf is a snapshot's shape.
 func ShapeOf(s *Snapshot) Shape {
 	sh := Shape{Readers: append([]string(nil), s.Readers.Rows()...), Members: s.Members(), Status: map[string]string{}}
+	// a clear keeps every up member a reader: a member reader row the old
+	// epoch lacked is created by the clear, as init and a join create it
+	// (tla/ReaderTiers.tla Clear, EveryUpMemberIsAReader)
+	sh.Readers = append(sh.Readers, MemberReaderRows(s)...)
 	for _, r := range append(append([]string(nil), s.Work.Rows()...), s.Merge.Rows()...) {
 		if !contains(sh.Streams, r) {
 			sh.Streams = append(sh.Streams, r)
@@ -44,6 +74,17 @@ func ShapeOf(s *Snapshot) Shape {
 					sh.HeldBy = map[string]string{}
 				}
 				sh.HeldBy[m] = by
+			}
+			for _, f := range HeldCarried {
+				if v := s.MemberCtl(m).F(f); v != "" {
+					if sh.HeldFields == nil {
+						sh.HeldFields = map[string]map[string]string{}
+					}
+					if sh.HeldFields[m] == nil {
+						sh.HeldFields[m] = map[string]string{}
+					}
+					sh.HeldFields[m][f] = v
+				}
 			}
 		}
 		if w := s.MemberCtl(m).F(FieldWidth); w != "" {
@@ -86,6 +127,11 @@ func RestoreShape(s *Snapshot, sh Shape) Plan {
 			fields["held"] = now
 			if by := sh.HeldBy[m]; by != "" {
 				fields[FieldHeldBy] = by
+			}
+			for f, v := range sh.HeldFields[m] {
+				if slices.Contains(HeldCarried, f) {
+					fields[f] = v
+				}
 			}
 		}
 		if w := sh.Width[m]; w != "" {

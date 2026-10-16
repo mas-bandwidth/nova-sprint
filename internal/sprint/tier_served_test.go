@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // A tier is served by an enabled fleet route or by a friend up whose row lists it (the
@@ -37,9 +37,9 @@ func proOffWorld(t *testing.T) *world {
 func TestReworkAcceptsATierAFriendServes(t *testing.T) {
 	t.Parallel()
 	stella := func(status string) FriendSeat {
-		return FriendSeat{Name: "stella", Width: 2, Status: status, Class: "heavy,pro"}
+		return workerSeatFixture(FriendSeat{Name: "stella", Width: 2, Status: status, Class: "heavy,pro"})
 	}
-	johnny := FriendSeat{Name: "johnny", Width: 2, Status: Down, Class: "pro"}
+	johnny := workerSeatFixture(FriendSeat{Name: "johnny", Width: 2, Status: Down, Class: "pro"})
 	rework := func(w *world) Plan {
 		return Rework(w.s, ReworkReq{Sel: Sel{IDs: []string{"s1-1"}}, Fix: "make it green", Tier: cardhdr.RoutePro})
 	}
@@ -47,7 +47,7 @@ func TestReworkAcceptsATierAFriendServes(t *testing.T) {
 	t.Run("stella up serves pro: the rework moves, and the friends' deal deals it to her", func(t *testing.T) {
 		t.Parallel()
 		w := proOffWorld(t)
-		w.s.Friends = []FriendSeat{stella(Up)}
+		w.s.Friends = workerSeatFixtures([]FriendSeat{stella(Up)})
 		p := w.must(rework(w))
 		require.Len(t, p.Units, 1)
 		assert.Contains(t, p.Units[0].Moved, "review -> ready")
@@ -70,7 +70,7 @@ func TestReworkAcceptsATierAFriendServes(t *testing.T) {
 	t.Run("stella held: refused naming her", func(t *testing.T) {
 		t.Parallel()
 		w := proOffWorld(t)
-		w.s.Friends = []FriendSeat{stella(Held)}
+		w.s.Friends = workerSeatFixtures([]FriendSeat{stella(Held)})
 		p := rework(w)
 		require.Len(t, p.Refused, 1)
 		assert.Contains(t, p.Refused[0].Why, "no enabled route and no up friend serves tier pro")
@@ -81,7 +81,7 @@ func TestReworkAcceptsATierAFriendServes(t *testing.T) {
 	t.Run("stella held and johnny down: refused naming both", func(t *testing.T) {
 		t.Parallel()
 		w := proOffWorld(t)
-		w.s.Friends = []FriendSeat{stella(Held), johnny}
+		w.s.Friends = workerSeatFixtures([]FriendSeat{stella(Held), johnny})
 		p := rework(w)
 		require.Len(t, p.Refused, 1)
 		assert.Contains(t, p.Refused[0].Why, "stella and johnny serve pro but are held/down")
@@ -170,7 +170,7 @@ func frontierWorld(t *testing.T, col string) *world {
 
 // frontierFay is a friend row that lists frontier.
 func frontierFay(status string) FriendSeat {
-	return FriendSeat{Name: "fay", Width: 2, Status: status, Tiers: []string{cardhdr.RouteFrontier}}
+	return workerSeatFixture(FriendSeat{Name: "fay", Width: 2, Status: status, Tiers: []string{cardhdr.RouteFrontier}})
 }
 
 // openNoRoute is the tier's "no route serves the tier" judgment, if it is open.
@@ -188,7 +188,7 @@ func openNoRoute(w *world) (Open, bool) {
 func TestReworkAcceptsAFrontierTierAFriendServes(t *testing.T) {
 	t.Parallel()
 	w := frontierWorld(t, Review)
-	w.s.Friends = []FriendSeat{frontierFay(Up)}
+	w.s.Friends = workerSeatFixtures([]FriendSeat{frontierFay(Up)})
 	p := w.must(Rework(w.s, ReworkReq{Sel: Sel{IDs: []string{"s1-1"}}, Fix: "make it green", Tier: cardhdr.RouteFrontier}))
 	require.Len(t, p.Units, 1)
 	assert.Contains(t, p.Units[0].Moved, "review -> ready")
@@ -209,7 +209,7 @@ func TestReworkAcceptsAFrontierTierAFriendServes(t *testing.T) {
 func TestAcceptSeesAFrontierTierAFriendServes(t *testing.T) {
 	t.Parallel()
 	w := frontierWorld(t, Review)
-	w.s.Friends = []FriendSeat{frontierFay(Up)}
+	w.s.Friends = workerSeatFixtures([]FriendSeat{frontierFay(Up)})
 	if _, why, byFriend := w.s.routeServed(w.s.Work.Card("s1-1"), nil, ""); !byFriend {
 		t.Fatalf("accept's own check: a frontier tier a friend up serves is served, got %s", why)
 	}
@@ -223,16 +223,16 @@ func TestAcceptSeesAFrontierTierAFriendServes(t *testing.T) {
 func TestAFrontierTierAFriendServesRaisesNoNoRouteJudgment(t *testing.T) {
 	t.Parallel()
 	w := frontierWorld(t, Ready)
-	td, _ := TickDeal(w.s, TickReq{})
+	td, _ := tickDealFixture(w.s, TickReq{})
 	w.do(td)
 	if _, ok := openNoRoute(w); !ok {
 		t.Fatalf("frontier with no friend: the tier's judgment is raised: %v", w.s.Open)
 	}
 	// a friend up whose row lists frontier serves it, though her row has no room: the card
 	// waits ready for her, as one waits on a full provider, never a judgment
-	fay := FriendSeat{Name: "fay", Width: 0, Status: Up, Tiers: []string{cardhdr.RouteFrontier}}
-	w.s.Friends = []FriendSeat{fay}
-	td, _ = TickDeal(w.s, TickReq{Friends: []FriendSeat{fay}})
+	fay := workerSeatFixture(FriendSeat{Name: "fay", Width: 0, Status: Up, Tiers: []string{cardhdr.RouteFrontier}})
+	w.s.Friends = workerSeatFixtures([]FriendSeat{fay})
+	td, _ = tickDealFixture(w.s, TickReq{Friends: workerSeatFixtures([]FriendSeat{fay})})
 	w.do(td)
 	if o, ok := openNoRoute(w); ok {
 		t.Fatalf("a friend up serves frontier: no judgment, got %s", o.Note.What)
@@ -245,7 +245,7 @@ func TestIdleRootForAFrontierTierAFriendServesIsNoNoRoute(t *testing.T) {
 	t.Parallel()
 	w := frontierWorld(t, Ready)
 	c := w.s.Work.Card("s1-1")
-	w.s.Friends = []FriendSeat{frontierFay(Up)}
+	w.s.Friends = workerSeatFixtures([]FriendSeat{frontierFay(Up)})
 	if _, why := w.s.noRoute(escalating(w.s, c)); why != "" {
 		t.Fatalf("idle roots a frontier tier a friend up serves nowhere near rootNoRoute: %s", why)
 	}
@@ -259,9 +259,9 @@ func TestAFrontierTierNoFriendServesIsRefused(t *testing.T) {
 		name string
 		fays []FriendSeat
 	}{
-		{"held", []FriendSeat{frontierFay(Held)}},
-		{"down", []FriendSeat{frontierFay(Down)}},
-		{"row lacks frontier", []FriendSeat{{Name: "fay", Width: 2, Status: Up, Tiers: []string{cardhdr.RouteFlash}}}},
+		{"held", workerSeatFixtures([]FriendSeat{frontierFay(Held)})},
+		{"down", workerSeatFixtures([]FriendSeat{frontierFay(Down)})},
+		{"row lacks frontier", workerSeatFixtures([]FriendSeat{{Name: "fay", Width: 2, Status: Up, Tiers: []string{cardhdr.RouteFlash}}})},
 		{"no friend", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

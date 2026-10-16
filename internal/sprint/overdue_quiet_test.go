@@ -8,6 +8,51 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// eQuietNow is the clock of the quieted-judgment tests; their judgments were raised at
+// eQuietNow less three hours, well past DeadlineJudgment (1h).
+var eQuietNow = time.Date(2026, 10, 13, 10, 0, 0, 0, time.UTC)
+
+// eQuietWork is a work table holding the ready primary c1 at the tier, with the fields given.
+func eQuietWork(tier string, fields map[string]string) *Table {
+	f := map[string]string{PrimaryField: "c1", FieldTierNow: tier}
+	for k, v := range fields {
+		f[k] = v
+	}
+	wt := NewTable(Work)
+	wt.SetRows([]string{"s1"})
+	wt.Put(&Card{ID: "c1", Row: "s1", Col: Ready, Score: 100, Fields: f})
+	return wt
+}
+
+// eQuietFleet is a fleet table of the one row m1.
+func eQuietFleet() *Table {
+	ft := NewTable(Fleet)
+	ft.SetRows([]string{"m1"})
+	return ft
+}
+
+// eBoundJ is the open NBound judgment j-bound-pro on c1, raised at.
+func eBoundJ(at time.Time) Note {
+	return Note{ID: "j-bound-pro", Kind: Judgment, Type: NBound, Stream: "s1", Primaries: []string{"c1"}, Count: 1, At: at,
+		Decisions: []string{"rework with a fix", "drop"}}
+}
+
+// eNoRouteJ is the open NNoRoute judgment j-noroute-<tier> on c1, raised at, saying why.
+func eNoRouteJ(tier string, at time.Time, why string) Note {
+	return Note{ID: "j-noroute-" + tier, Kind: Judgment, Type: NNoRoute, Stream: TierSubject(tier), StreamLevel: true,
+		Primaries: []string{"c1"}, Count: 1, At: at, What: "tier " + tier + " cannot be dealt: every route rests (" + why + ")",
+		Decisions: []string{"route add", "look at the card", "drop"}}
+}
+
+// eOverdueMark is the first overdue reminder of the judgment j, written at.
+func eOverdueMark(j Note, at time.Time) Note {
+	return Note{Kind: Acknowledged, Type: NOverdue, Stream: j.Stream, StreamLevel: j.StreamLevel, What: j.ID, At: at,
+		Primaries: []string{"c1"}, Count: 1}
+}
+
+// eTierKey is the open key of a tier-level judgment j.
+func eTierKey(j Note, tier string) string { return OpenKey(j.ID, StreamSubject(TierSubject(tier))) }
+
 // TestAQuietedJudgmentIsNeverCountedOverdue verifies that a judgment quieted by
 // an unfunded tier (an NBound on a pro card while every pro route rests, plus
 // the tier's NNoRoute whose cause is rests) is never counted overdue:
@@ -16,106 +61,37 @@ import (
 // Red at BASE 65973f2bcf12.
 func TestAQuietedJudgmentIsNeverCountedOverdue(t *testing.T) {
 	t.Parallel()
-	now := time.Date(2026, 10, 13, 10, 0, 0, 0, time.UTC)
+	now := eQuietNow
 	t0 := now.Add(-3 * time.Hour)
-
-	workTable := NewTable(Work)
-	workTable.SetRows([]string{"s1"})
-	workTable.Put(&Card{
-		ID:     "c1",
-		Row:    "s1",
-		Col:    Ready,
-		Score:  100,
-		Fields: map[string]string{PrimaryField: "c1", FieldTierNow: "pro"},
-	})
-
-	fleetTable := NewTable(Fleet)
-	fleetTable.SetRows([]string{"m1"})
-
-	boundJ := Note{
-		ID:        "j-bound-pro",
-		Kind:      Judgment,
-		Type:      NBound,
-		Stream:    "s1",
-		Primaries: []string{"c1"},
-		Count:     1,
-		At:        t0,
-		Decisions: []string{"rework with a fix", "drop"},
-	}
-
-	noRouteJ := Note{
-		ID:          "j-noroute-pro",
-		Kind:        Judgment,
-		Type:        NNoRoute,
-		Stream:      TierSubject("pro"),
-		StreamLevel: true,
-		Primaries:   []string{"c1"},
-		Count:       1,
-		At:          t0,
-		What:        "tier pro cannot be dealt: every route rests (r1: credit; r2: auth)",
-		Decisions:   []string{"route add", "look at the card", "drop"},
-	}
-
+	boundJ, noRouteJ := eBoundJ(t0), eNoRouteJ("pro", t0, "r1: credit; r2: auth")
 	// First overdue reminder was written at t0 + DeadlineJudgment (2h ago):
 	markAt := t0.Add(DeadlineJudgment)
-	boundHold := Note{
-		Kind:      Acknowledged,
-		Type:      NOverdue,
-		Stream:    "s1",
-		What:      boundJ.ID,
-		At:        markAt,
-		Primaries: []string{"c1"},
-		Count:     1,
-	}
-	noRouteHold := Note{
-		Kind:        Acknowledged,
-		Type:        NOverdue,
-		Stream:      TierSubject("pro"),
-		StreamLevel: true,
-		What:        noRouteJ.ID,
-		At:          markAt,
-		Primaries:   []string{"c1"},
-		Count:       1,
-	}
-
-	routes := []Route{
-		{Name: "r1", Tier: "pro", Provider: "prov1", Enabled: true},
-		{Name: "r2", Tier: "pro", Provider: "prov2", Enabled: true},
-	}
-	rests := map[string]RouteRest{
-		"r1": {Route: "r1", Cause: RestCredit, Cards: []string{"c1"}, At: t0, Until: now.Add(time.Hour)},
-		"r2": {Route: "r2", Cause: RestAuth, At: t0, Until: now.Add(time.Hour)},
-	}
-
 	s := &Snapshot{
 		Now:         now,
 		Coordinator: "coordinator",
-		Work:        workTable,
-		Fleet:       fleetTable,
-		Routes:      routes,
-		rests:       rests,
-		Open: []Open{
-			{Key: OpenKey(boundJ.ID, "c1"), Note: boundJ},
-			{Key: OpenKey(noRouteJ.ID, StreamSubject(TierSubject("pro"))), Note: noRouteJ},
+		Work:        eQuietWork("pro", nil),
+		Fleet:       eQuietFleet(),
+		Routes: []Route{
+			{Name: "r1", Tier: "pro", Provider: "prov1", Enabled: true},
+			{Name: "r2", Tier: "pro", Provider: "prov2", Enabled: true},
 		},
-		Acked: []Open{
-			{Key: OpenKey(boundJ.ID, "c1"), Note: boundHold},
-			{Key: OpenKey(noRouteJ.ID, StreamSubject(TierSubject("pro"))), Note: noRouteHold},
+		rests: map[string]RouteRest{
+			"r1": {Route: "r1", Cause: RestCredit, Cards: []string{"c1"}, At: t0, Until: now.Add(time.Hour)},
+			"r2": {Route: "r2", Cause: RestAuth, At: t0, Until: now.Add(time.Hour)},
 		},
+		Open:  []Open{{Key: OpenKey(boundJ.ID, "c1"), Note: boundJ}, {Key: eTierKey(noRouteJ, "pro"), Note: noRouteJ}},
+		Acked: []Open{{Key: OpenKey(boundJ.ID, "c1"), Note: eOverdueMark(boundJ, markAt)}, {Key: eTierKey(noRouteJ, "pro"), Note: eOverdueMark(noRouteJ, markAt)}},
 	}
 	r := TickReq{Who: MachineActor}
 
 	// 1. behindConds returns no NCoordinatorBehind while quieted.
-	conds := behindConds(s, r)
-	assert.Empty(t, conds, "behindConds must return no NCoordinatorBehind for quieted judgments")
-
+	assert.Empty(t, behindConds(s, r), "behindConds must return no NCoordinatorBehind for quieted judgments")
 	// 2. TickOverdue writes no NOverdue line after the first.
 	p, _ := TickOverdue(s, r)
 	for _, n := range p.Notes {
 		assert.NotEqual(t, NOverdue, n.Type, "TickOverdue wrote NOverdue line for quieted judgment")
 		assert.NotEqual(t, NCoordinatorBehind, n.Type, "TickOverdue raised NCoordinatorBehind for quieted judgment")
 	}
-
 	// 3. The hold-close loop closes the overdue holds of quieted judgments.
 	closedWhat := map[string]bool{}
 	for _, o := range p.Closes {
@@ -132,45 +108,24 @@ func TestAQuietedJudgmentIsNeverCountedOverdue(t *testing.T) {
 // Green at BASE 65973f2bcf12.
 func TestAWaitedJudgmentIsNotCountedOverdue(t *testing.T) {
 	t.Parallel()
-	now := time.Date(2026, 10, 13, 10, 0, 0, 0, time.UTC)
+	now := eQuietNow
 	review := now.Add(30 * time.Minute)
-
+	flash := StreamSubject(TierSubject("flash"))
 	// A non-kept judgment (NRed) in s.Open with Review set:
-	nonKeptJ := Note{
-		ID:        "j-nonkept",
-		Kind:      Judgment,
-		Type:      NRed,
-		Stream:    "s1",
-		Primaries: []string{"c1"},
-		Count:     1,
-		At:        now.Add(-time.Hour),
-		Review:    review,
-		ReviewSet: now,
-	}
-
-	// A tick-kept judgment (NNoRoute) waited: closed into s.Acked with Review set:
-	tickKeptHold := Note{
-		ID:          "j-kept-hold",
-		Kind:        Acknowledged,
-		Type:        NNoRoute,
-		Stream:      TierSubject("flash"),
-		StreamLevel: true,
-		Primaries:   []string{"c2"},
-		Count:       1,
-		At:          now.Add(-time.Hour),
-		Review:      review,
-		ReviewSet:   now,
-	}
+	nonKeptJ := Note{ID: "j-nonkept", Kind: Judgment, Type: NRed, Stream: "s1", Primaries: []string{"c1"}, Count: 1,
+		At: now.Add(-time.Hour), Review: review, ReviewSet: now}
+	// A tick-kept judgment (NNoRoute) waited: closed into s.Acked with Review set; on review
+	// expiry it is re-raised into s.Open:
+	tickKeptRaised := Note{ID: "j-kept-raised", Kind: Judgment, Type: NNoRoute, Stream: TierSubject("flash"), StreamLevel: true,
+		Primaries: []string{"c2"}, Count: 1, At: now.Add(-time.Hour)}
+	tickKeptHold := tickKeptRaised
+	tickKeptHold.ID, tickKeptHold.Kind, tickKeptHold.Review, tickKeptHold.ReviewSet = "j-kept-hold", Acknowledged, review, now
 
 	s20 := &Snapshot{
 		Now:         now.Add(20 * time.Minute),
 		Coordinator: "coordinator",
-		Open: []Open{
-			{Key: OpenKey(nonKeptJ.ID, "c1"), Note: nonKeptJ},
-		},
-		Acked: []Open{
-			{Key: OpenKey(tickKeptHold.ID, StreamSubject(TierSubject("flash"))), Note: tickKeptHold},
-		},
+		Open:        []Open{{Key: OpenKey(nonKeptJ.ID, "c1"), Note: nonKeptJ}},
+		Acked:       []Open{{Key: OpenKey(tickKeptHold.ID, flash), Note: tickKeptHold}},
 	}
 	r := TickReq{Who: MachineActor}
 
@@ -182,35 +137,18 @@ func TestAWaitedJudgmentIsNotCountedOverdue(t *testing.T) {
 	assert.Empty(t, behindConds(s20, r), "behindConds counted unexpired waited judgment")
 
 	// At s.Now + 45m (15m after review time expired, exceeding PassEvery): both are counted.
-	// The tick-kept judgment is re-raised into s.Open on review expiry:
-	tickKeptRaised := Note{
-		ID:          "j-kept-raised",
-		Kind:        Judgment,
-		Type:        NNoRoute,
-		Stream:      TierSubject("flash"),
-		StreamLevel: true,
-		Primaries:   []string{"c2"},
-		Count:       1,
-		At:          now.Add(-time.Hour),
-	}
-
 	s45 := &Snapshot{
 		Now:         now.Add(45 * time.Minute),
 		Coordinator: "coordinator",
-		Open: []Open{
-			{Key: OpenKey(nonKeptJ.ID, "c1"), Note: nonKeptJ},
-			{Key: OpenKey(tickKeptRaised.ID, StreamSubject(TierSubject("flash"))), Note: tickKeptRaised},
-		},
+		Open:        []Open{{Key: OpenKey(nonKeptJ.ID, "c1"), Note: nonKeptJ}, {Key: OpenKey(tickKeptRaised.ID, flash), Note: tickKeptRaised}},
 		Acked: []Open{
 			// NOverdue mark written for behindConds:
 			{Key: OpenKey("ov1", "c1"), Note: Note{Kind: Acknowledged, Type: NOverdue, What: nonKeptJ.ID, At: now.Add(30 * time.Minute)}},
-			{Key: OpenKey("ov2", StreamSubject(TierSubject("flash"))), Note: Note{Kind: Acknowledged, Type: NOverdue, What: tickKeptRaised.ID, At: now.Add(30 * time.Minute)}},
+			{Key: OpenKey("ov2", flash), Note: Note{Kind: Acknowledged, Type: NOverdue, What: tickKeptRaised.ID, At: now.Add(30 * time.Minute)}},
 		},
 	}
-
 	assert.True(t, JudgmentOverdue(s45, r, nonKeptJ), "non-kept judgment overdue after review")
 	assert.True(t, JudgmentOverdue(s45, r, tickKeptRaised), "tick-kept judgment overdue after review")
-
 	conds45 := behindConds(s45, r)
 	require.NotEmpty(t, conds45, "behindConds should count judgments past review time")
 	assert.Equal(t, NCoordinatorBehind, conds45[0].typ)
@@ -220,68 +158,27 @@ func TestAWaitedJudgmentIsNotCountedOverdue(t *testing.T) {
 // (rest ends), the judgment is counted again from its own stamps.
 func TestAQuietEndsAndTheJudgmentCountsAgain(t *testing.T) {
 	t.Parallel()
-	now := time.Date(2026, 10, 13, 10, 0, 0, 0, time.UTC)
+	now := eQuietNow
 	t0 := now.Add(-3 * time.Hour)
-
-	workTable := NewTable(Work)
-	workTable.SetRows([]string{"s1"})
-	workTable.Put(&Card{
-		ID:     "c1",
-		Row:    "s1",
-		Col:    Ready,
-		Score:  100,
-		Fields: map[string]string{PrimaryField: "c1", FieldTierNow: "pro"},
-	})
-
-	boundJ := Note{
-		ID:        "j-bound-pro",
-		Kind:      Judgment,
-		Type:      NBound,
-		Stream:    "s1",
-		Primaries: []string{"c1"},
-		Count:     1,
-		At:        t0,
-		Decisions: []string{"rework with a fix", "drop"},
-	}
-
-	markAt := t0.Add(DeadlineJudgment)
-	boundHold := Note{
-		Kind:      Acknowledged,
-		Type:      NOverdue,
-		Stream:    "s1",
-		What:      boundJ.ID,
-		At:        markAt,
-		Primaries: []string{"c1"},
-		Count:     1,
-	}
-
-	routes := []Route{
-		{Name: "r1", Tier: "pro", Provider: "prov1", Enabled: true},
-		{Name: "r2", Tier: "pro", Provider: "prov2", Enabled: true},
-	}
-	// Route r1's rest has ended (Until is in the past):
-	rests := map[string]RouteRest{
-		"r1": {Route: "r1", Cause: RestCredit, Cards: []string{"c1"}, At: t0, Until: now.Add(-10 * time.Minute)},
-		"r2": {Route: "r2", Cause: RestAuth, At: t0, Until: now.Add(time.Hour)},
-	}
-
+	boundJ := eBoundJ(t0)
 	s := &Snapshot{
 		Now:         now,
 		Coordinator: "coordinator",
-		Work:        workTable,
-		Routes:      routes,
-		rests:       rests,
-		Open: []Open{
-			{Key: OpenKey(boundJ.ID, "c1"), Note: boundJ},
+		Work:        eQuietWork("pro", nil),
+		Routes: []Route{
+			{Name: "r1", Tier: "pro", Provider: "prov1", Enabled: true},
+			{Name: "r2", Tier: "pro", Provider: "prov2", Enabled: true},
 		},
-		Acked: []Open{
-			{Key: OpenKey(boundJ.ID, "c1"), Note: boundHold},
+		// Route r1's rest has ended (Until is in the past):
+		rests: map[string]RouteRest{
+			"r1": {Route: "r1", Cause: RestCredit, Cards: []string{"c1"}, At: t0, Until: now.Add(-10 * time.Minute)},
+			"r2": {Route: "r2", Cause: RestAuth, At: t0, Until: now.Add(time.Hour)},
 		},
+		Open:  []Open{{Key: OpenKey(boundJ.ID, "c1"), Note: boundJ}},
+		Acked: []Open{{Key: OpenKey(boundJ.ID, "c1"), Note: eOverdueMark(boundJ, t0.Add(DeadlineJudgment))}},
 	}
-	r := TickReq{Who: MachineActor}
-
 	// With r1 live again, tier pro is served, so NBound is counted again:
-	conds := behindConds(s, r)
+	conds := behindConds(s, TickReq{Who: MachineActor})
 	require.NotEmpty(t, conds, "behindConds must count NBound once pro route is live")
 	assert.Equal(t, NCoordinatorBehind, conds[0].typ)
 }
@@ -291,61 +188,27 @@ func TestAQuietEndsAndTheJudgmentCountsAgain(t *testing.T) {
 // is not live, and that once the rest ends (TierNotLive false), TickRuleNoRoute resumes.
 func TestRestedTierNoRouteNotReRaisedByTickRuleNoRoute(t *testing.T) {
 	t.Parallel()
-	now := time.Date(2026, 10, 13, 10, 0, 0, 0, time.UTC)
+	now := eQuietNow
 	t0 := now.Add(-3 * time.Hour) // well past DeadlineJudgment (1h)
-
-	workTable := NewTable(Work)
-	workTable.SetRows([]string{"s1"})
-	workTable.Put(&Card{
-		ID:     "c1",
-		Row:    "s1",
-		Col:    Ready,
-		Score:  100,
-		Fields: map[string]string{PrimaryField: "c1", FieldTierNow: "flash", "brief": "RESULT: c1 sha=0123456789ab tier: flash\nPATHS: a.go\n"},
-	})
-
-	noRouteJ := Note{
-		ID:          "j-noroute-flash",
-		Kind:        Judgment,
-		Type:        NNoRoute,
-		Stream:      TierSubject("flash"),
-		StreamLevel: true,
-		Primaries:   []string{"c1"},
-		Count:       1,
-		At:          t0,
-		What:        "tier flash cannot be dealt: every route rests (r1: credit)",
-		Decisions:   []string{"route add", "look at the card", "drop"},
-	}
-
-	routes := []Route{
-		{Name: "r1", Tier: "flash", Provider: "prov1", Enabled: true},
-		{Name: "r2", Tier: "pro", Provider: "prov2", Enabled: true},
-	}
-	// r1 is resting until 1 hour from now:
-	rests := map[string]RouteRest{
-		"r1": {Route: "r1", Cause: RestCredit, Cards: []string{"c1"}, At: t0, Until: now.Add(time.Hour)},
-	}
-
-	fleetTable := NewTable(Fleet)
-	fleetTable.SetRows([]string{"m1"})
-
+	noRouteJ := eNoRouteJ("flash", t0, "r1: credit")
 	s := &Snapshot{
 		Now:         now,
 		Coordinator: "coordinator",
-		Work:        workTable,
-		Fleet:       fleetTable,
-		Routes:      routes,
-		rests:       rests,
-		Open: []Open{
-			{Key: OpenKey(noRouteJ.ID, StreamSubject(TierSubject("flash"))), Note: noRouteJ},
+		Work:        eQuietWork("flash", map[string]string{"brief": "RESULT: c1 sha=0123456789ab tier: flash\nPATHS: a.go\n"}),
+		Fleet:       eQuietFleet(),
+		Routes: []Route{
+			{Name: "r1", Tier: "flash", Provider: "prov1", Enabled: true},
+			{Name: "r2", Tier: "pro", Provider: "prov2", Enabled: true},
 		},
+		// r1 is resting until 1 hour from now:
+		rests: map[string]RouteRest{"r1": {Route: "r1", Cause: RestCredit, Cards: []string{"c1"}, At: t0, Until: now.Add(time.Hour)}},
+		Open:  []Open{{Key: eTierKey(noRouteJ, "flash"), Note: noRouteJ}},
 	}
 	r := TickReq{Who: MachineActor, AnswerRules: true}
 
 	// 1. While flash is rested (TierNotLive true), TickRuleNoRoute does not re-raise or re-tier c1:
 	p, _ := TickRuleNoRoute(s, r)
 	assert.Empty(t, p.Units, "TickRuleNoRoute must not re-tier cards of a rested tier's NNoRoute")
-
 	// 2. Once the rest ends (Until in past), TierNotLive is false; TickRuleNoRoute resumes and re-tiers c1 to pro:
 	s.rests["r1"] = RouteRest{Route: "r1", Cause: RestCredit, Cards: []string{"c1"}, At: t0, Until: now.Add(-10 * time.Minute)}
 	pResume, _ := TickRuleNoRoute(s, r)
@@ -359,37 +222,15 @@ func TestRestedTierNoRouteNotReRaisedByTickRuleNoRoute(t *testing.T) {
 // and that once the rest ends (TierNotLive false), SeatWaitsOf resumes counting it.
 func TestRestedTierNoRouteNotInSeatWaitsOverdue(t *testing.T) {
 	t.Parallel()
-	now := time.Date(2026, 10, 13, 10, 0, 0, 0, time.UTC)
+	now := eQuietNow
 	t0 := now.Add(-3 * time.Hour) // past DeadlineJudgment (1h)
-
-	noRouteJ := Note{
-		ID:          "j-noroute-flash",
-		Kind:        Judgment,
-		Type:        NNoRoute,
-		Stream:      TierSubject("flash"),
-		StreamLevel: true,
-		Primaries:   []string{"c1"},
-		Count:       1,
-		At:          t0,
-		What:        "tier flash cannot be dealt: every route rests (r1: credit)",
-		Decisions:   []string{"route add", "look at the card", "drop"},
-	}
-
-	routes := []Route{
-		{Name: "r1", Tier: "flash", Provider: "prov1", Enabled: true},
-	}
-	rests := map[string]RouteRest{
-		"r1": {Route: "r1", Cause: RestCredit, Cards: []string{"c1"}, At: t0, Until: now.Add(time.Hour)},
-	}
-
+	noRouteJ := eNoRouteJ("flash", t0, "r1: credit")
 	s := &Snapshot{
 		Now:         now,
 		Coordinator: "coordinator",
-		Routes:      routes,
-		rests:       rests,
-		Open: []Open{
-			{Key: OpenKey(noRouteJ.ID, StreamSubject(TierSubject("flash"))), Note: noRouteJ},
-		},
+		Routes:      []Route{{Name: "r1", Tier: "flash", Provider: "prov1", Enabled: true}},
+		rests:       map[string]RouteRest{"r1": {Route: "r1", Cause: RestCredit, Cards: []string{"c1"}, At: t0, Until: now.Add(time.Hour)}},
+		Open:        []Open{{Key: eTierKey(noRouteJ, "flash"), Note: noRouteJ}},
 	}
 	r := TickReq{Who: MachineActor}
 
@@ -397,11 +238,9 @@ func TestRestedTierNoRouteNotInSeatWaitsOverdue(t *testing.T) {
 	w := SeatWaitsOf(s, r)
 	assert.Equal(t, 1, w.Judgments, "SeatWaitsOf must count the open judgment")
 	assert.Equal(t, 0, w.Overdue, "SeatWaitsOf must not count quieted judgment overdue")
-
 	// 2. Once the rest ends (Until in past), TierNotLive is false; SeatWaitsOf resumes counting it overdue:
 	s.rests["r1"] = RouteRest{Route: "r1", Cause: RestCredit, Cards: []string{"c1"}, At: t0, Until: now.Add(-10 * time.Minute)}
 	wResume := SeatWaitsOf(s, r)
 	assert.Equal(t, 1, wResume.Judgments)
 	assert.Equal(t, 1, wResume.Overdue, "SeatWaitsOf must count judgment overdue once rest ends")
 }
-

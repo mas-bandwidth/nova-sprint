@@ -23,11 +23,11 @@ func TestEveryDefaultsRowDeclaresWhetherItCanBeNonWorking(t *testing.T) {
 	w := tierWorld(t)
 	p := Set(w.s, SetReq{Who: w.s.Coordinator,
 		ReadTier: ReadTierDefault, DealtMax: ReadTierDefault, GoLanes: ReadTierDefault, FriendIdle: ReadTierDefault,
-		LandingStallBound: ReadTierDefault, FriendStallAfter: ReadTierDefault, FriendStallStep: ReadTierDefault,
-		DriftCommits: ReadTierDefault, DriftHours: ReadTierDefault, Fleet: SwitchOn, Friends: SwitchOn,
+		LandingStallBound: ReadTierDefault,
+		DriftCommits:      ReadTierDefault, DriftHours: ReadTierDefault, Fleet: SwitchOn, Friends: SwitchOn,
 		FleetTiers: TiersAll, FriendsTiers: TiersAll, ReadCards: SwitchOff, Reads: ReadTierDefault,
-		UnservedTierFallsTo: ReadTierDefault, ReworkPriority: ReworkKeep,
-		AlarmReview: AlarmOff, AlarmMerging: AlarmOff, AlarmFleet: AlarmOff, AlarmReady: AlarmOff})
+		ReworkPriority: ReworkKeep,
+		AlarmReview:    AlarmOff, AlarmMerging: AlarmOff, AlarmFleet: AlarmOff, AlarmReady: AlarmOff})
 	require.Empty(t, p.Refused, "a set of every sprint setting")
 	// every work-table setting the clear writes or carries (sprint.Defaults), and the
 	// settings outside the work table the gate reads

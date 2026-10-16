@@ -25,13 +25,19 @@ import (
 // fit runs from a data-derived key, the owner's ask of 2026-10-11: "There's also a weird
 // slowness/juddering when I hold page down/up on the sprint dashboard. ... Please fix
 // critical."; the ETA cell says READY in green before the first start since a clear, the
-// owner's ask of 2026-10-13: "When you are in it print 'READY' to ETA"): the page is that
-// page, byte for byte (pageview.go).
+// owner's ask of 2026-10-13: "When you are in it print 'READY' to ETA"; the friends table is
+// shown by default, the owner's ask of 2026-10-13: "Please fix the sprint dashboard so it shows the
+// friends table by default."): the page is that page, byte for byte (pageview.go).
+// The /events stream and the /landings.json fetch are gone from app.js (the page
+// polls /api/sprint alone; the Landings panel stays hidden, as it did while the
+// Go server answered 404 for that file), the owner's ask of 2026-10-14:
+// "remove the /events and /landings.json requests".
 const (
-	pageIndexSHA256 = "68793d9a475606f51463150686d21ad1046b101d0055552922acc720001071e5"
-	pageAppSHA256   = "319e649504e180cb20c56a4211728cdba4848caa00fc21e298fe272c0c27a850"
-	liveTile192     = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"
-	liveTile384     = "8d534cd3563dd5073b4193c6a91c87c29ad7dae05a41a3d824441b11d9107809"
+	pageIndexSHA256 = "42cc23bc3aaf0804aaf7ba58cd8c15e45c73a8c730c81bf913616d121b72049b"
+	pageAppSHA256   = "8abaa9055145bc574c3c4162b7e1b0e47292021ad776860b1dda3f63afec61e4"
+
+	liveTile192 = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"
+	liveTile384 = "8d534cd3563dd5073b4193c6a91c87c29ad7dae05a41a3d824441b11d9107809"
 )
 
 // get is one answer of the page's handler at path.
@@ -66,9 +72,9 @@ func TestThePageIsItsLockedFilesByteForByte(t *testing.T) {
 
 	assert.Equal(t, app, get(t, r.s, "/app.js").Body.Bytes(), "/app.js is the live app.js, byte for byte")
 	const v = "?v=X"
-	// server.py index_page, the logo branch, its version written v: the live page's robot tile inline
-	// as a data PNG (the live page's logo, liveLogoData), the build in place of its version
-	slot := `<img id="logo" class="logo-tile" src="` + liveLogoData + `" width="120" height="120" alt="nova-sprint">`
+	// server.py index_page, its tile branch, its version written v: the tile img in the slot,
+	// the build in place of its version (the live page's inline data-PNG logo is in index.html itself)
+	slot := `<img id="logo" class="logo-tile" src="/logo-tile-192.png` + v + `" srcset="/logo-tile-192.png` + v + ` 1x, /logo-tile-384.png` + v + ` 2x" alt="">`
 	icon := `<link rel="icon" type="image/png" sizes="192x192" href="/logo-tile-192.png` + v + `"><link rel="apple-touch-icon" href="/logo-tile-192.png` + v + `"><link rel="preload" as="image" href="/logo-tile-192.png` + v + `" imagesrcset="/logo-tile-192.png` + v + ` 1x, /logo-tile-384.png` + v + ` 2x">`
 	want := strings.NewReplacer(`src="app.js"`, `src="app.js`+v+`"`, "<!--LOGO-->", slot, "<!--FAVICON-->", icon).Replace(string(index))
 	served := get(t, r.s, "/").Body.String()
@@ -288,19 +294,17 @@ func TestThePageIsTheLivePagePullerReadsOnlyAPage(t *testing.T) {
 	up.next = func() ([]byte, error) { return twoReleases(8), nil }
 	up.s.Tick()
 	var mu sync.Mutex
-	serve := func(h http.Handler) *httptest.Server {
-		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	serve := func(h http.Handler) *http.Client {
+		return handlerClient(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			mu.Lock()
 			defer mu.Unlock()
 			h.ServeHTTP(w, req)
 		}))
-		t.Cleanup(ts.Close)
-		return ts
 	}
-	pull, pageTS := serve(up.s.Pull()), serve(up.s)
+	pull, page := serve(up.s.Pull()), serve(up.s)
 
 	p := newRig(t)
-	p.s.From = &Upstream{URL: pull.URL + "/api/sprint"}
+	p.s.From = &Upstream{URL: "http://upstream.test/api/sprint", Client: pull}
 	p.s.Tick()
 	assert.Contains(t, p.log.String(), "the upstream dashboard answered a view that is not the page's")
 	var v map[string]json.RawMessage
@@ -309,7 +313,7 @@ func TestThePageIsTheLivePagePullerReadsOnlyAPage(t *testing.T) {
 	assert.Equal(t, "null", string(v["data"]), "nothing of the pull view is drawn")
 
 	q := newRig(t)
-	q.s.From = &Upstream{URL: pageTS.URL + "/api/sprint"}
+	q.s.From = &Upstream{URL: "http://upstream.test/api/sprint", Client: page}
 	q.s.Tick()
 	mu.Lock()
 	var theirs map[string]json.RawMessage

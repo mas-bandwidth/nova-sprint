@@ -199,18 +199,6 @@ func CardRepoAndBase(s *Snapshot, c *Card) (repo, base string) {
 	return repo, base
 }
 
-// StreamRepos is the repositories a stream's cards name (StreamReposAndBases).
-func StreamRepos(s *Snapshot, stream string) []string {
-	repos, _ := StreamReposAndBases(s, stream)
-	return repos
-}
-
-// StreamBasesOf is the bases a stream's cards name (StreamReposAndBases).
-func StreamBasesOf(s *Snapshot, stream string) []string {
-	_, bases := StreamReposAndBases(s, stream)
-	return bases
-}
-
 // StreamTitle is the first sentence of a brief's THE TASK: the text after `THE TASK.`
 // or `THE TASK:` at the start of a line, to the first `. ` and without its final dot.
 // "" when the brief names no task.

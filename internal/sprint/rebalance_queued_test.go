@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // The rebalance (docs/SPEC-SPRINT.md section 1, the rebalance; the owner, 2026-10-06: "This
@@ -78,7 +78,7 @@ func TestRebalanceIsTheWorkTablesPartAfterTheDeal(t *testing.T) {
 // fleet's set admits flash; not when the set is pro only, nor with the fleet off.
 func TestRebalanceMovesAFlashCardOffAFullFriendToAnIdleMember(t *testing.T) {
 	t.Parallel()
-	amy := FriendSeat{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash}}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash}})
 	setup := func() (*world, *Card) {
 		w := rbWorld(t, "m1")
 		rbPlace(w, "s1-1", cardhdr.RouteFlash, FriendRow("amy"), Working)
@@ -86,7 +86,7 @@ func TestRebalanceMovesAFlashCardOffAFullFriendToAnIdleMember(t *testing.T) {
 	}
 
 	w, wc := setup()
-	p := w.must(Rebalance(w.s, []FriendSeat{amy}, "machine"))
+	p := w.must(Rebalance(w.s, workerSeatFixtures([]FriendSeat{amy}), "machine"))
 	require.Equal(t, []string{"rebalanced s1-2.w1 from friend.amy to m1 gen=2 (its excess; a free lane takes it)"}, rebalanced(p))
 	got := w.s.Fleet.Card(wc.ID)
 	assert.Equal(t, "m1", got.Row)
@@ -105,20 +105,20 @@ func TestRebalanceMovesAFlashCardOffAFullFriendToAnIdleMember(t *testing.T) {
 
 	w, _ = setup()
 	w.s.Work.SetProp(PropFleetTiers, cardhdr.RoutePro)
-	assert.Empty(t, rebalanced(Rebalance(w.s, []FriendSeat{amy}, "machine")), "the fleet's set is pro only")
+	assert.Empty(t, rebalanced(Rebalance(w.s, workerSeatFixtures([]FriendSeat{amy}), "machine")), "the fleet's set is pro only")
 
 	w, _ = setup()
 	w.s.Work.SetProp(PropFleet, SwitchOff)
-	assert.Empty(t, rebalanced(Rebalance(w.s, []FriendSeat{amy}, "machine")), "the fleet is off")
+	assert.Empty(t, rebalanced(Rebalance(w.s, workerSeatFixtures([]FriendSeat{amy}), "machine")), "the fleet is off")
 }
 
 // A pro card queued on a full heavy friend moves to a pro friend with an idle lane, the
 // cheapest before a heavy one, and never to a member whose fleet set is flash.
 func TestRebalanceMovesAProCardToAProFriendNeverAFlashMember(t *testing.T) {
 	t.Parallel()
-	hal := FriendSeat{Name: "hal", Width: 1, Status: Up, Tiers: []string{cardhdr.RoutePro, cardhdr.RouteHeavy}}
-	hugh := FriendSeat{Name: "hugh", Width: 3, Status: Up, Tiers: []string{cardhdr.RoutePro, cardhdr.RouteHeavy}}
-	pam := FriendSeat{Name: "pam", Width: 1, Status: Up, Tiers: []string{cardhdr.RoutePro}}
+	hal := workerSeatFixture(FriendSeat{Name: "hal", Width: 1, Status: Up, Tiers: []string{cardhdr.RoutePro, cardhdr.RouteHeavy}})
+	hugh := workerSeatFixture(FriendSeat{Name: "hugh", Width: 3, Status: Up, Tiers: []string{cardhdr.RoutePro, cardhdr.RouteHeavy}})
+	pam := workerSeatFixture(FriendSeat{Name: "pam", Width: 1, Status: Up, Tiers: []string{cardhdr.RoutePro}})
 	setup := func() (*world, *Card) {
 		w := rbWorld(t, "m1")
 		w.s.Work.SetProp(PropFleetTiers, cardhdr.RouteFlash)
@@ -127,13 +127,13 @@ func TestRebalanceMovesAProCardToAProFriendNeverAFlashMember(t *testing.T) {
 	}
 
 	w, wc := setup()
-	w.must(Rebalance(w.s, []FriendSeat{hal, hugh, pam}, "machine"))
+	w.must(Rebalance(w.s, workerSeatFixtures([]FriendSeat{hal, hugh, pam}), "machine"))
 	got := w.s.Fleet.Card(wc.ID)
 	assert.Equal(t, FriendRow("pam"), got.Row, "the pro friend first, though the heavy one has more idle lanes")
 	assert.Empty(t, got.F(FieldRoute), "a friend runs her own model")
 
 	w, wc = setup()
-	assert.Empty(t, rebalanced(Rebalance(w.s, []FriendSeat{hal}, "machine")), "never a flash member")
+	assert.Empty(t, rebalanced(Rebalance(w.s, workerSeatFixtures([]FriendSeat{hal}), "machine")), "never a flash member")
 	assert.Equal(t, FriendRow("hal"), w.s.Fleet.Card(wc.ID).Row)
 }
 
@@ -143,8 +143,8 @@ func TestRebalanceNeverMovesAStartedCard(t *testing.T) {
 	w := rbWorld(t, "m1")
 	busy := rbPlace(w, "s1-1", cardhdr.RouteFlash, FriendRow("amy"), Working)
 	queued := rbPlace(w, "s1-2", cardhdr.RouteFlash, FriendRow("amy"), Ready)
-	amy := FriendSeat{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash}, Running: []string{queued.ID}}
-	assert.Empty(t, rebalanced(Rebalance(w.s, []FriendSeat{amy}, "machine")))
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash}, Running: []string{queued.ID}})
+	assert.Empty(t, rebalanced(Rebalance(w.s, workerSeatFixtures([]FriendSeat{amy}), "machine")))
 	assert.Equal(t, FriendRow("amy"), w.s.Fleet.Card(busy.ID).Row)
 }
 
@@ -152,7 +152,7 @@ func TestRebalanceNeverMovesAStartedCard(t *testing.T) {
 // friends, a model pin.
 func TestRebalanceNeverMovesAPinnedCard(t *testing.T) {
 	t.Parallel()
-	amy := FriendSeat{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash}}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash}})
 	for _, pin := range [][]string{
 		{"pr." + FieldWho, "only." + FriendRow("amy")},
 		{"pr." + FieldWho, FriendRow("amy")},
@@ -160,12 +160,12 @@ func TestRebalanceNeverMovesAPinnedCard(t *testing.T) {
 		w := rbWorld(t, "m1")
 		rbPlace(w, "s1-1", cardhdr.RouteFlash, FriendRow("amy"), Working)
 		rbPlace(w, "s1-2", cardhdr.RouteFlash, FriendRow("amy"), Ready, pin...)
-		assert.Empty(t, rebalanced(Rebalance(w.s, []FriendSeat{amy}, "machine")), "%v", pin)
+		assert.Empty(t, rebalanced(Rebalance(w.s, workerSeatFixtures([]FriendSeat{amy}), "machine")), "%v", pin)
 	}
 	w := rbWorld(t, "m1")
 	rbPlace(w, "s1-1", cardhdr.RouteFlash, FriendRow("amy"), Working)
 	rbPlace(w, "s1-2", cardhdr.RouteFlash, FriendRow("amy"), Ready, "pr."+FieldWho, WhoFriend)
-	assert.Empty(t, rebalanced(Rebalance(w.s, []FriendSeat{amy}, "machine")), "WHO: friend stays with the friends")
+	assert.Empty(t, rebalanced(Rebalance(w.s, workerSeatFixtures([]FriendSeat{amy}), "machine")), "WHO: friend stays with the friends")
 
 	w = rbWorld(t, "m1", "m2")
 	rbPlace(w, "s1-1", cardhdr.RouteFlash, "m1", Working)
@@ -176,12 +176,12 @@ func TestRebalanceNeverMovesAPinnedCard(t *testing.T) {
 // A card taken back from a unit, or rebalanced off it, never moves to it.
 func TestRebalanceNeverMovesACardToAUnitItLeft(t *testing.T) {
 	t.Parallel()
-	amy := FriendSeat{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash}}
-	bob := FriendSeat{Name: "bob", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash}}
+	amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash}})
+	bob := workerSeatFixture(FriendSeat{Name: "bob", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteFlash}})
 	w := rbWorld(t)
 	rbPlace(w, "s1-1", cardhdr.RouteFlash, FriendRow("amy"), Working)
 	rbPlace(w, "s1-2", cardhdr.RouteFlash, FriendRow("amy"), Ready, FieldFriendsLeft, "bob")
-	assert.Empty(t, rebalanced(Rebalance(w.s, []FriendSeat{amy, bob}, "machine")), "taken back from bob")
+	assert.Empty(t, rebalanced(Rebalance(w.s, workerSeatFixtures([]FriendSeat{amy, bob}), "machine")), "taken back from bob")
 
 	w = rbWorld(t, "m1", "m2")
 	rbPlace(w, "s1-1", cardhdr.RouteFlash, "m1", Working)

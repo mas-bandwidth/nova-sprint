@@ -96,7 +96,7 @@ func TestClearStartsAnEmptyEpochAfterAStopReturn(t *testing.T) {
 	}
 	require.Equal(t, []string{"m1", "m2"}, after.Fleet.Rows(), "the members carry over a clear")
 	require.Equal(t, []string{"m1", "m2"}, after.UpMembers(), "the members' status carries over a clear")
-	require.Equal(t, []string{"reader-a", "reader-b", "reader-c"}, after.Readers.Rows(), "the readers carry over a clear")
+	require.Equal(t, []string{"reader-a", "reader-b", "reader-c", "reader-m1", "reader-m2"}, after.Readers.Rows(), "the readers carry over a clear, and every up member's reader with them")
 }
 
 // A reader's tiers cell is a setting, not sprint work: a configured reader
@@ -187,7 +187,7 @@ func TestClearStopsTheSprintAndClearsAllWork(t *testing.T) {
 	}
 	require.Equal(t, []string{"m1", "m2"}, after.Fleet.Rows(), "the members carry over a clear")
 	require.Equal(t, []string{"m1", "m2"}, after.UpMembers(), "the members' status carries over a clear")
-	require.Equal(t, []string{"reader-a", "reader-b", "reader-c"}, after.Readers.Rows(), "the readers carry over a clear")
+	require.Equal(t, []string{"reader-a", "reader-b", "reader-c", "reader-m1", "reader-m2"}, after.Readers.Rows(), "the readers carry over a clear, and every up member's reader with them")
 	if open, _ := h.st.Inbox(h.ctx, 0, 0, 100); len(open.Groups) != 1 || open.Groups[0].Type != sprint.NMachineStopped {
 		require.Fail(t, fmt.Sprintf("the new epoch's inbox is not the one line that the machine is STOPPED: %+v", open.Groups))
 	}
@@ -266,7 +266,7 @@ func TestACutClearIsFinishedByTheNext(t *testing.T) {
 		require.Empty(t, table.Rows(), "%s rows leaked into epoch %d", table.Name, s.Epoch)
 	}
 	require.Equal(t, []string{"m1", "m2"}, s.Fleet.Rows(), "the members carry over a clear")
-	require.Equal(t, []string{"reader-a", "reader-b", "reader-c"}, s.Readers.Rows(), "the readers carry over a clear")
+	require.Equal(t, []string{"reader-a", "reader-b", "reader-c", "reader-m1", "reader-m2"}, s.Readers.Rows(), "the readers carry over a clear, and every up member's reader with them")
 	h.clean("finished and cleared")
 }
 

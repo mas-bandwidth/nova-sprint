@@ -17,7 +17,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/testbin"
+	"github.com/mas-bandwidth/nova-tools/pkg/testbin"
 )
 
 // THE HURT (2026-10-04, 3:21 to 3:37 PM ET, the Studio): a verb under test that
@@ -47,7 +47,7 @@ const (
 )
 
 func TestMain(m *testing.M) {
-	// a test arms the hook's gate for the names it registers (hook.go)
+	// a test arms the hook's gate for the names it registers (coordinator_hook.go)
 	hookArmedDefault = false
 	// the lanes are disabled until v1.3 (sprint.LanesDisabled); their tests keep the
 	// machinery tested until it is replaced, and TestTheBenchLockIsDisabledUntilV13

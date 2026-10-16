@@ -10,18 +10,31 @@ import (
 // re-cut on the branch, and a cleared sprint builds the same on its first add, with no
 // setting written.
 
-// TestFirstAddWritesTheStreamBranchAndTrunk pins that an add of a card with BASE: dev to a
-// new stream writes stream_branch=sprint/s and trunk=dev on the control card.
+// TestFirstAddWritesTheStreamBranchAndTrunk pins that the first add of a card to a new stream
+// writes stream_branch=sprint/s and trunk=<the card's BASE> on the control card, and no setting
+// (the fields are the control card's, not a property).
 func TestFirstAddWritesTheStreamBranchAndTrunk(t *testing.T) {
 	t.Parallel()
-	w := newWorld(t, "reader-a", "reader-b")
-	w.must(Add(w.s, AddReq{Stream: "s", Cards: []CardAdd{{ID: "c1", Brief: "title\ntier: flash\nBASE: dev", Base: "dev"}}, Who: "coordinator"}))
-	ctl := w.s.StreamCtl("s")
-	if got := ctl.F(FieldStreamBranch); got != "sprint/s" {
-		t.Errorf("stream_branch=%q, want sprint/s", got)
-	}
-	if got := ctl.F(FieldTrunk); got != "dev" {
-		t.Errorf("trunk=%q, want dev", got)
+	for _, tc := range []struct{ name, base string }{
+		{"FirstAddWritesTheStreamBranchAndTrunk", "dev"},  // BASE: dev takes trunk=dev
+		{"AMainOnlyRepositoryTakesMainAsTrunk", "main"},   // BASE: main takes trunk=main
+		{"AClearedSprintMakesTheSameStreamBranch", "dev"}, // a cleared sprint builds the same (docs/TESTS.md names it)
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := newWorld(t, "reader-a", "reader-b")
+			p := w.must(Add(w.s, AddReq{Stream: "s", Cards: []CardAdd{{ID: "c1", Brief: "title\ntier: flash\nBASE: " + tc.base, Base: tc.base}}, Who: "coordinator"}))
+			if len(p.Props) != 0 {
+				t.Errorf("no setting is written: %v", p.Props)
+			}
+			ctl := w.s.StreamCtl("s")
+			if got := ctl.F(FieldStreamBranch); got != "sprint/s" {
+				t.Errorf("stream_branch=%q, want sprint/s", got)
+			}
+			if got := ctl.F(FieldTrunk); got != tc.base {
+				t.Errorf("trunk=%q, want %s", got, tc.base)
+			}
+		})
 	}
 }
 
@@ -42,37 +55,6 @@ func TestAddRewritesADevBaseToTheStreamBranch(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("no NOTE line quotes sprint.LandingFlow: %v", p.Said)
-	}
-}
-
-// TestAMainOnlyRepositoryTakesMainAsTrunk pins that a card with BASE: main takes trunk=main
-// and stream_branch=sprint/s.
-func TestAMainOnlyRepositoryTakesMainAsTrunk(t *testing.T) {
-	t.Parallel()
-	w := newWorld(t, "reader-a", "reader-b")
-	w.must(Add(w.s, AddReq{Stream: "s", Cards: []CardAdd{{ID: "c1", Brief: "title\ntier: flash\nBASE: main", Base: "main"}}, Who: "coordinator"}))
-	ctl := w.s.StreamCtl("s")
-	if got := ctl.F(FieldStreamBranch); got != "sprint/s" {
-		t.Errorf("stream_branch=%q, want sprint/s", got)
-	}
-	if got := ctl.F(FieldTrunk); got != "main" {
-		t.Errorf("trunk=%q, want main", got)
-	}
-}
-
-// TestAClearedSprintMakesTheSameStreamBranch pins that a cleared sprint (an epoch bump)
-// writes the same fields on its first add, and no setting is written (the fields are the
-// control card's, not a property).
-func TestAClearedSprintMakesTheSameStreamBranch(t *testing.T) {
-	t.Parallel()
-	w := newWorld(t, "reader-a", "reader-b")
-	p := w.must(Add(w.s, AddReq{Stream: "s", Cards: []CardAdd{{ID: "c1", Brief: "title\ntier: flash\nBASE: dev", Base: "dev"}}, Who: "coordinator"}))
-	if len(p.Props) != 0 {
-		t.Errorf("no setting is written: %v", p.Props)
-	}
-	ctl := w.s.StreamCtl("s")
-	if ctl.F(FieldStreamBranch) != "sprint/s" || ctl.F(FieldTrunk) != "dev" {
-		t.Errorf("stream_branch=%q trunk=%q, want sprint/s dev", ctl.F(FieldStreamBranch), ctl.F(FieldTrunk))
 	}
 }
 

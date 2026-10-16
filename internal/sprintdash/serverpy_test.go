@@ -6,9 +6,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -44,46 +44,45 @@ func TestDashboardServesWhatServerPyServedFromOnePoller(t *testing.T) {
 
 	t.Run("while the poller runs a page reads the copy only", func(t *testing.T) {
 		t.Parallel()
-		var mu sync.Mutex
-		now, reads := time.Date(2026, 10, 6, 9, 0, 0, 0, time.UTC), 0
-		s := &Server{Every: time.Second,
-			Now:  func() time.Time { mu.Lock(); defer mu.Unlock(); return now },
-			Read: func() ([]byte, error) { mu.Lock(); defer mu.Unlock(); reads++; return where(reads), nil }}
-		count := func() int { mu.Lock(); defer mu.Unlock(); return reads }
-		tick := make(chan time.Time)
-		ctx, cancel := context.WithCancel(context.Background())
-		done := make(chan struct{})
-		go func() { s.Run(ctx, tick); close(done) }()
-		t.Cleanup(func() {
+		synctest.Test(t, func(t *testing.T) {
+			var mu sync.Mutex
+			now, reads := time.Date(2026, 10, 6, 9, 0, 0, 0, time.UTC), 0
+			s := &Server{Every: time.Second,
+				Now:  func() time.Time { mu.Lock(); defer mu.Unlock(); return now },
+				Read: func() ([]byte, error) { mu.Lock(); defer mu.Unlock(); reads++; return where(reads), nil }}
+			count := func() int { mu.Lock(); defer mu.Unlock(); return reads }
+			tick := make(chan time.Time)
+			ctx, cancel := context.WithCancel(context.Background())
+			done := make(chan struct{})
+			go func() { s.Run(ctx, tick); close(done) }()
+			t.Cleanup(func() {
+				cancel()
+				<-done
+			})
+			tick <- now
+			synctest.Wait() // the poller's tick has read and is back waiting: no wall clock
+			require.Equal(t, 1, count())
+			s.mu.Lock()
+			require.NotNil(t, s.copy)
+			s.mu.Unlock()
+			for range 20 {
+				mu.Lock()
+				now = now.Add(time.Minute)
+				mu.Unlock()
+				w := httptest.NewRecorder()
+				s.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/sprint", nil))
+				require.Equal(t, http.StatusOK, w.Code)
+				w = httptest.NewRecorder()
+				s.Pull().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/team", nil))
+				require.Equal(t, http.StatusOK, w.Code)
+			}
+			assert.Equal(t, 1, count(), "forty asks twenty minutes apart: the poller's one read")
 			cancel()
 			<-done
-		})
-		tick <- now
-		require.Eventually(t, func() bool {
-			if count() != 1 {
-				return false
-			}
-			s.mu.Lock()
-			defer s.mu.Unlock()
-			return s.copy != nil
-		}, 5*time.Second, time.Millisecond)
-		for range 20 {
-			mu.Lock()
-			now = now.Add(time.Minute)
-			mu.Unlock()
 			w := httptest.NewRecorder()
 			s.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/sprint", nil))
-			require.Equal(t, http.StatusOK, w.Code)
-			w = httptest.NewRecorder()
-			s.Pull().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/team", nil))
-			require.Equal(t, http.StatusOK, w.Code)
-		}
-		assert.Equal(t, 1, count(), "forty asks twenty minutes apart: the poller's one read")
-		cancel()
-		<-done
-		w := httptest.NewRecorder()
-		s.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/sprint", nil))
-		assert.Equal(t, 2, count(), "no poller: an ask past Every reads")
+			assert.Equal(t, 2, count(), "no poller: an ask past Every reads")
+		})
 	})
 
 	t.Run("a failed read holds the copy, marked, and serves none of the reader's text", func(t *testing.T) {
@@ -107,27 +106,30 @@ func TestDashboardServesWhatServerPyServedFromOnePoller(t *testing.T) {
 
 	t.Run("a read past the timeout is marked failed and the next waits for it", func(t *testing.T) {
 		t.Parallel()
-		r := newRig(t)
-		expired := make(chan time.Time, 1)
-		var asked time.Duration
-		r.s.readTimer = func(d time.Duration) (<-chan time.Time, func()) { asked = d; return expired, func() {} }
-		entered, release := make(chan struct{}), make(chan struct{})
-		r.next = func() ([]byte, error) { close(entered); <-release; return where(4), nil }
-		ticked := make(chan struct{})
-		go func() { r.s.Tick(); close(ticked) }()
-		<-entered
-		expired <- r.now
-		require.Eventually(t, func() bool { return strings.Contains(string(r.s.Snapshot()), "timed out") }, 5*time.Second, time.Millisecond)
-		assert.Equal(t, ReadTimeoutDefault, asked)
-		v := r.api()
-		assert.Equal(t, false, v["ok"])
-		assert.Equal(t, "the read timed out after 1m0s", v["error"])
-		assert.Equal(t, 1, r.reads, "the timed-out read still runs: no second read overlaps it")
-		close(release)
-		<-ticked
-		v = r.api()
-		assert.Equal(t, true, v["ok"], "the late read's copy is served when it ends")
-		assert.InDelta(t, 4, v["data"].(map[string]any)["landed"], 0)
+		synctest.Test(t, func(t *testing.T) {
+			r := newRig(t)
+			expired := make(chan time.Time, 1)
+			var asked time.Duration
+			r.s.ReadTimer = func(d time.Duration) (<-chan time.Time, func()) { asked = d; return expired, func() {} }
+			entered, release := make(chan struct{}), make(chan struct{})
+			r.next = func() ([]byte, error) { close(entered); <-release; return where(4), nil }
+			ticked := make(chan struct{})
+			go func() { r.s.Tick(); close(ticked) }()
+			<-entered
+			expired <- r.now
+			synctest.Wait() // the expiry is recorded and the tick waits on the read: no wall clock
+			require.Contains(t, string(r.s.Snapshot()), "timed out")
+			assert.Equal(t, ReadTimeoutDefault, asked)
+			v := r.api()
+			assert.Equal(t, false, v["ok"])
+			assert.Equal(t, "the read timed out after 1m0s", v["error"])
+			assert.Equal(t, 1, r.reads, "the timed-out read still runs: no second read overlaps it")
+			close(release)
+			<-ticked
+			v = r.api()
+			assert.Equal(t, true, v["ok"], "the late read's copy is served when it ends")
+			assert.InDelta(t, 4, v["data"].(map[string]any)["landed"], 0)
+		})
 	})
 
 	t.Run("the snapshot carries the last attempt, its length, the floor and the build", func(t *testing.T) {

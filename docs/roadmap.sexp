@@ -219,7 +219,7 @@
     refuses a need on a card that can no longer land, and dropping a card lists the cards that need
     it."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "card-template-wording-accuracy" :group "sprint"
    :title "Generated card wording matches the card contract"
@@ -234,7 +234,7 @@
    :text "Now that the lander unions generated ledger conflicts, nova-card no longer needs alternating
     waves for one ledger. It plans the cards in one wave."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "card-help-banner-no-repeated-example" :group "docs"
    :title "nova-card help prints each example line once"
@@ -255,21 +255,21 @@
    :text "A friend report starts with an exact Verdict line and an exact Head line, and the friend card
     sync keeps reading older reports leniently."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "sprint-fleet-operation-guards" :group "sprint"
    :title "Guards for fleet staging, trials and width changes"
    :text "Refuse staging when every member is ineligible, bound the fleet trial, and make a width change
     one operation, each with a model scenario and a named test."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "cards moved out of the sprint (work record, 2026-10-04)")
   (item "sprint-inbox-and-seat-guards" :group "sprint"
    :title "Single inbox judgment and password-free seat connection"
    :text "The inbox view prints one bounded judgment, and the sprint seat reaches its store without a
     password in the environment."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "cards moved out of the sprint (work record, 2026-10-04)")
   (item "lander-empty-commit-handling" :group "sprint"
    :title "Lander handles an empty commit"
@@ -277,13 +277,6 @@
     and functional tests."
    :date "2026-10-10"
    :release "v1.2.14"
-   :origin "card moved out of the sprint (work record, 2026-10-04)")
-  (item "friends-table-presence-from-tools" :group "friends"
-   :title "Friends table reads presence owned by nova-tools"
-   :text "The sprint consumes friend presence from the friend tool instead of owning it, so the friends
-    table stays right while the sprint server is stopped or hung."
-   :date "2026-10-10"
-   :release "v1.3"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "seat-check-merge-queue-versions" :group "sprint"
    :title "Seat check for the merge queue and versions"
@@ -304,7 +297,7 @@
    :text "The models still ask reads as a pair, pin round-robin, miss the taken-back reader and omit the
     friend ready queue; update them to match the code."
    :date "2026-10-10"
-   :release "v1.4"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "client-server-conversion" :group "sprint"
    :title "Convert every client-held copy of sprint state to client/server"
@@ -317,7 +310,7 @@
     first. Faults found while the point releases run are recorded here as input."
    :why "Point releases continue meanwhile; their faults are the input to this rewrite cleanup."
    :date "2026-10-11"
-   :release "v1.4"
+   :release "v1.5"
    :origin "the owner, 2026-10-11")
   (item "secure-the-layers-bottom-up" :group "sprint"
    :title "Secure the sprint's layers from the bottom up"
@@ -333,14 +326,14 @@
    :why "Comes after the client/server conversion of the 2026-10-10 inventory, so the layers are secured on
     the converted design rather than on client-held state."
    :date "2026-10-11"
-   :release "v1.4"
+   :release "v1.5"
    :origin "the owner, 2026-10-11")
   (item "card-verb-bounded-reads" :group "sprint"
    :title "One card read touches only that card"
    :text "The card verb reads the whole work table and log on each call; make a read use per-card indexes
     and finish under 100 ms at 2,000 cards."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "cards moved out of the sprint (work record, 2026-10-04)")
   (item "store-backup-and-demo-load-verbs" :group "ops"
    :title "Backup, restore and demo-load verbs for the sprint store"
@@ -354,21 +347,21 @@
    :text "The system promotes the base to dev itself and raises an alarm when the live server, a card
     branch or the base drifts."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "cards moved out of the sprint (work record, 2026-10-04)")
   (item "branch-topology-model" :group "docs"
    :title "Model the branch topology"
    :text "Write a model of the branch rules so a side branch, a temporary landing branch or a red base is
     caught by rule."
    :date "2026-10-10"
-   :release "v1.4"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "friend-notification-and-delivery-reliability" :group "friends"
    :title "Friends are told of cards and push work reliably"
    :text "Delivery of a card to a friend uses known names, the friend is told, finished work is returned
     and the dashboard stays accurate."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "append-only-files-auto-merge" :group "sprint"
    :title "Append-only and generated files merge themselves"
@@ -383,14 +376,14 @@
     once started, cards pinned to a down friend raise one judgment, and the overload alarm covers
     friends."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "rework-keeps-who-pin-and-each-finding" :group "sprint"
    :title "Rework keeps the owner pin and each finding"
    :text "A rework of a card pinned to one friend stays with that friend. A grouped rework gives each card
     its own finding instead of the first card's text."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "reads-route-to-capable-readers" :group "sprint"
    :title "Reads reach a capable reader and keep flowing"
@@ -398,7 +391,7 @@
     lanes and delivered like cards, and a reader row with no process behind it is flagged. A read
     whose child never ran is asked again without counting."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "reader-spend-on-the-table" :group "ops"
    :title "Reader spend summed on the readers table"
@@ -419,27 +412,27 @@
    :text "The lander takes an exclusive lock per clone and reports a stuck pass. Its build gate runs on a
     bench instead of the coordinator machine, and a dead base is refused once with one judgment."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "single-base-branch-discipline" :group "sprint"
    :title "One base branch, watched by the system"
    :text "Cards name only the real base, the server runs only from the base, and a periodic reminder shows
     when branches drift apart."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "dashboard-dark-only" :group "docs"
    :title "Dashboard is dark only, theme toggle removed"
    :text "The sprint dashboard drops the light theme and its toggle and always renders dark."
    :date "2026-10-10"
-   :release "v1.4"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "worker-ok-percent-counts-real-work" :group "ops"
    :title "Worker ok percent counts only work the worker could do"
    :text "Holds that name a brief defect are counted against the card generator, not the worker, and
     reader verdicts and past-deadline friend cards are counted correctly in the ok percent."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "cards moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10)")
   (item "container-sandboxed-functional-tier" :group "ops"
    :title "Container-sandboxed functional tier with a runtime column"
@@ -453,14 +446,14 @@
    :text "The friend deadline rule and the member deadline rule become one function with one spec
     paragraph used by both tables."
    :date "2026-10-10"
-   :release "v1.4"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "friend-card-lint-names-rule-set" :group "sprint"
    :title "Friend card lint says which rule set applies"
    :text "The add lint accepts a friend card with its own rules line and says exactly whether the friend
     or the child rule set applies."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "held-friend-returns-dealt-and-started-cards" :group "friends"
    :title "A held or down friend returns its cards to ready"
@@ -474,7 +467,7 @@
    :text "With no store settings, nova-sprint verbs go to the local server address, so no wrapper script
     or secret is needed."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "batch-selector-grammar-for-card-verbs" :group "sprint"
    :title "One batch selector grammar for card verbs"
@@ -502,7 +495,7 @@
    :text "A sprint test that wrote into the source tree uses a temp directory, and a CI class test checks
     the tree is clean after the package tests."
    :date "2026-10-10"
-   :release "v1.4"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "tla-cards-forced-to-frontier-tier" :group "sprint"
    :title "Cards that edit TLA+ models get the frontier tier"
@@ -539,21 +532,21 @@
    :text "Refuse adding a card with base dev or main outside a promotion stream. A stream can be marked as
     promotion, and land refuses a batch that would reach a protected base."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "local-only-address-check" :group "docs"
    :title "One function for the loopback-or-tailnet address rule"
    :text "Gather every address check for the sprint and its stores into one function, cited from each
     caller, so local-only mode has one definition."
    :date "2026-10-10"
-   :release "v1.4"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "store-latency-and-batched-ticks" :group "sprint"
    :title "Batch tick round trips and alarm on slow store"
    :text "Pipeline or batch each tick part's reads and writes to under twenty round trips per tick. Raise
     one judgment per episode when the store round trip median passes a bar."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "cards moved out of the sprint (work record, 2026-10-04); card moved out of the sprint (work
     record, 2026-10-04)")
   (item "coordinator-heavy-read-record" :group "sprint"
@@ -591,7 +584,7 @@
     that is on the branch but not recorded landed. It gives the coordinator a way to correct either
     mistake."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "read-retry-after-no-verdict" :group "sprint"
    :title "Ask again when a read ended with no verdict, and keep live reads across restart"
@@ -599,7 +592,7 @@
     against the reads bound. A server restart keeps reads whose lease is live, modelled first in
     TLA+."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10)")
   (item "verbs-take-many-targets" :group "sprint"
    :title "Let resume and wait take several streams or notes at once"
@@ -622,7 +615,7 @@
     red. A red base stops landing with one judgment and resumes streams by rule, and the base and
     development branch are synced every cycle."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04); card from the sprint store (2026-10-10)")
   (item "sprint-timers" :group "sprint"
    :title "Timers on the sprint system that wake an actor at a chosen time"
@@ -638,67 +631,68 @@
    :date "2026-10-10"
    :release "after v1.4"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
-  (item "friend-reconcile-and-stall-ladder" :group "friends"
-   :title "Reconcile friends and run the stall ladder every tick"
-   :text "The tick reconciles each friend's store with her inbox and outbox, and a mechanical stall ladder
-    returns cards held by a stalled friend with no step needing the coordinator."
+  (item "friend-reconcile-every-tick" :group "friends"
+   :title "Reconcile friends every tick"
+   :text "The tick reconciles each friend's store with her inbox and outbox, with no step needing the
+    coordinator. A friend's state stays the hook record's (up, down) or the coordinator's hold (held):
+    the stall ladder is retired (v1.3.6)."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "friend-deal-fill-idle-friends-first" :group "friends"
    :title "The friend deal fills idle friends before topping up a full one"
    :text "A card for any friend goes to the up friend of the class with the most room. A full friend is
     not refilled while another of her class is idle."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
   (item "sprint-view-locked-by-file" :group "docs"
    :title "The sprint view frame is pinned byte for byte by a lock file"
    :text "The where frame and the watch writes are compared against a committed lock file so the view
     cannot drift from its design."
    :date "2026-10-10"
-   :release "v1.4"
+   :release "v1.5"
    :origin "PR #5014")
   (item "member-beat-age-at-tick-read" :group "sprint"
    :title "A beat's age is measured at the tick's read so a long tick downs no member"
    :text "A tick that runs long over a slow link no longer marks members down who are beating on time."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "PR #5015")
   (item "reader-four-checks-before-approval" :group "sprint"
    :title "Readers check four things before approving a card"
    :text "Readers check for comments contradicting code, stranded fragments, edits outside declared paths,
     and broken cross-package references before approving."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "PR #5113")
   (item "cold-start-balance-unknown-never-out" :group "sprint"
    :title "A cold start never judges a provider out of funds from old refusals"
    :text "On its first tick the server must not halt the sprint because of stored refusals. An unknown
     balance is never treated as out of credit."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "PR #5228; issue #5220")
   (item "dirty-tick-twin-catchup-robust" :group "ops"
    :title "The dirty-tick twin catches up from set, reorder and delete events without a whole read"
    :text "The change-stream catch-up recognizes row order and row delete events, and the test waits on the
     twin state, not the clock. This removes a flaky merge-queue failure."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "PR #5230; PR #5233; issue #5197; issue #5214")
   (item "finish-head-default-and-land-sha-check" :group "sprint"
    :title "finish --head defaults to what land accepts; a land with no full sha fails"
    :text "The finish help and default match the head that land accepts. A land without a full sha is a
     failed finish, and stale reports stay fenced."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "PR #5235; PR #5246; issue #5154")
   (item "card-tier-ceiling-before-deal" :group "sprint"
    :title "A card's tier is its ceiling before the first deal"
    :text "Before a deal, and in a store with no route, the card's own tier is its ceiling and the card
     verb prints it. The model calls the one tier function."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "PR #5243")
   (item "admission-contract-lint-statement" :group "sprint"
    :title "State the brief admission contract in lint and add"
@@ -712,14 +706,14 @@
    :text "A friend take is rejected when the brief's epoch differs from the live epoch, and the epoch is
     carried into the store step so a concurrent clear fences it."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "PR #5268")
   (item "nova-work-help-clarity" :group "docs"
    :title "Clarify nova-work help semantics"
    :text "Help gives a direct first-run path and explains what import dry-run and verify max do. The
     shared dry-run flag help promises only the result and no changes."
    :date "2026-10-10"
-   :release "v1.4"
+   :release "v1.5"
    :origin "PR #5275")
   (item "dashboard-state-pulse-wave" :group "sprint"
    :title "Dashboard merging, review and working cells pulse in a left-to-right wave"
@@ -746,28 +740,28 @@
    :text "The dashboard reads tiers and per-card cost by tier from where. A running system with a late
     tick reads running, not stopped."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "PR #5323; PR #5326")
   (item "server-beats-and-reads-off-the-line" :group "sprint"
    :title "Server beats and reads run off the control line; a gone caller is never run"
    :text "Verbs that only read or beat must not queue behind the single line of control, and a verb whose
     caller is gone is dropped."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "PR #5325")
   (item "priority-plain-set-blocker-rung" :group "sprint"
    :title "Priority is a plain set; a blocker is stored, dealt first and evicts lower work"
    :text "The priority verb stores every level. A blocker is dealt first and evicts the lowest level, then
     the shortest running card."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "PR #5405; PR #5459; card from the sprint store (2026-10-10)")
   (item "read-cards-sole-path" :group "sprint"
    :title "Read cards are the only read path; every ok primary in review gets its read"
    :text "Remove the old ask path. Every ok primary in review gets a read, and withdrawals and returns
     spend no reader."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "PR #5419; PR #5428; PR #5434")
   (item "needs-verb-edit-in-place" :group "sprint"
    :title "Edit a card's needs in place"
@@ -780,27 +774,20 @@
    :title "Selective sprint reliability repairs: rework priority and staged land gates"
    :text "Rework cards get fix priority and land gates are staged from the tested tree."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "PR #5451")
   (item "structured-brief-intact-when-tiering" :group "sprint"
    :title "Keep structured briefs intact when tiering TLA work"
    :text "The tier line goes before structured header fields so REPO and CARRY briefs stay parseable."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "PR #5452")
-  (item "batch-friend-presence-from-engine-beat" :group "friends"
-   :title "A batch friend's presence is her engine's beat"
-   :text "A friend with no session but a beating engine must not read down. The engine's beat counts as
-    presence."
-   :date "2026-10-10"
-   :release "v1.3"
-   :origin "PR #5455")
   (item "sprint-friend-redeal-and-lane-models" :group "docs"
    :title "TLA+ models for friend redeal, friend rows and live friend lanes"
    :text "The sprint models cover a card taken back from a friend and redealt, and the live friend lane
     judgments, each with reversed witnesses. A CI guard keeps the model records current."
    :date "2026-10-10"
-   :release "v1.4"
+   :release "v1.5"
    :origin "PR #5511; PR #5556; PR #5239; PR #5508; PR #5510")
   (item "deal-by-cost-and-priority-order" :group "sprint"
    :title "The deal fills free lanes by cost, honors priority, and routes frontier cards to friends"
@@ -808,7 +795,7 @@
     ready stack grows to twice the width. Priority ladder order and tie breaks hold, and a frontier
     card goes to a friend whose tiers hold it."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "PR #5531; PR #5545; PR #5552")
   (item "sprint-pause-and-stop-replay" :group "sprint"
    :title "Sprint pause and unpause verbs with idempotent stop return replay"
@@ -823,7 +810,7 @@
     when disconnected. A dashboard whose first read fails exits 2 with one stderr line instead of
     serving."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "PR #5526; PR #5528")
   (item "friend-health-future-proof-refused" :group "friends"
    :title "Friend health refuses a proof dated after the server clock"
@@ -858,14 +845,14 @@
    :text "The card push and table verbs accept the injected ACL password from the environment. Address
     errors never print credentials."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "nova-sprint issue #36")
   (item "sprint-server-memory-wedge" :group "sprint"
    :title "The sprint server does not grow without bound or stop answering"
    :text "The server once reached a very large resident size and stopped answering verbs while the fleet
     stalled behind it. Memory is bounded and a watchdog restarts a wedged server."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "nova-sprint issue #38")
   (item "coordinator-handoff-writes-row-and-role" :group "sprint"
    :title "The coordinator verb also writes the config row and the role"
@@ -879,7 +866,7 @@
    :text "A card that fails at launch returns to ready and is dealt again. It is known to have failed
     within seconds, is not hammered back in, and is raised to the coordinator."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "issue #2040")
   (item "lane-registry-tool" :group "friends"
    :title "Start, brief, watch and stop a child lane through a registry tool"
@@ -914,7 +901,7 @@
    :text "A launcher refusal before any process starts returns the card to the queue instead of raising it
     unknown. The queue remembers dealt labels and refuses a repeat unless forced."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "issue #2381; issue #2382")
   (item "route-choice-from-measured-failure-rates" :group "ops"
    :title "Choose provider routes per bench from measured failure rates"
@@ -978,7 +965,7 @@
    :title "Parse typed approve verdicts and release untyped holds"
    :text "A typed approve line is counted, and an untyped hold can be released by a read."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "issue #2454")
   (item "typed-card-results-and-resume-keys" :group "sprint"
    :title "Typed card outputs and resume by content key and deal-time base"
@@ -1014,7 +1001,7 @@
    :text "The sprint verb records the start once, and bench counts read it, so counts never include an
     earlier sprint."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "issue #2727")
   (item "card-identity-ruling-links" :group "sprint"
    :title "Cards carry a stable id, ruling and spec links, and a reverse walk from PR to reason"
@@ -1035,7 +1022,7 @@
    :text "The batch test step keeps the raw go test JSON stream, paginated review captures are not
     truncated at the output cap, and the gate's receipt is stored where a reader can fetch it."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "issue #2626; issue #2654; issue #2693; issue #3183")
   (item "github-events-stream" :group "sprint"
    :title "GitHub events arrive in a stream so loops are event-driven"
@@ -1095,13 +1082,6 @@
    :release "after v1.4"
    :origin "issue #3295; issue #3543; issue #2061; issue #2062; issue #2065; issue #2066; issue #2069; issue
     #509; card moved out of the sprint (work record, 2026-10-04)")
-  (item "friend-down-detection" :group "friends"
-   :title "Detect a friend AI that is unreachable or out of credits and route around it"
-   :text "A friend counts as down when it cannot be reached or cannot work because credits ran out. The
-    state is detected mechanically and its work is routed elsewhere."
-   :date "2026-10-10"
-   :release "v1.3"
-   :origin "issue #3185")
   (item "pitstop-state-in-store" :group "sprint"
    :title "A pit stop and its lift are one store state every friend reads"
    :text "The stop and its lift are set and cleared by a verb and held in the sprint store, so a friend
@@ -1121,7 +1101,7 @@
    :text "Cards, pull requests and issues state dependencies in one canonical form read by one parser.
     Unknown dependency state is never treated as satisfied."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "issue #3409")
   (item "spec-approval-machinery" :group "sprint"
    :title "Make spec approval reliable: one SPEC line form, a verdict verb, sha-keyed reads"
@@ -1218,7 +1198,7 @@
    :text "Once the unused-verb check confirms it, the old friend-queue, routing, lander and sprint-file
     verbs are deleted together."
    :date "2026-10-10"
-   :release "v1.4"
+   :release "v1.5"
    :origin "issue #4191")
   (item "card-spec-fields-at-push" :group "sprint"
    :title "A card is a spec, refused at push without its fields"
@@ -1280,21 +1260,21 @@
    :text "The reference model assumes two reads per card and has no tier. Teach it reads needed and add
     flash cards and routed stores to its fixtures."
    :date "2026-10-10"
-   :release "v1.4"
+   :release "v1.5"
    :origin "issue #5195")
   (item "generated-ledger-merge-conflicts" :group "sprint"
    :title "Generated ledgers merge without conflict and rework starts at the tip"
    :text "Two cards that shrink the same ledger conflict by line. Regenerate the ledger at the merged
     tree, and stage rework from the current head."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "issue #5215")
   (item "second-tick-leveling-after-deal" :group "sprint"
    :title "A second tick must not move a card the first deal placed"
    :text "Leveling runs at tick start, but the deal places cards later in the tick without regard to it.
     Make the deal and the level agree."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "issue #5408; card from the sprint store (2026-10-10)")
   (item "card-kinds-mechanical-tool-work" :group "sprint"
    :title "Card kinds for fix-red work cut from triaged defects"
@@ -1308,7 +1288,7 @@
    :text "A work client call without a deadline waits forever on a session that never answers. The spec
     fixes a default bound and the client enforces it."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "issue #1643")
   (item "cards-issue-to-landed-no-hand-step" :group "sprint"
    :title "A card goes from issue to landed with no coordinator hand step"
@@ -1350,7 +1330,7 @@
    :text "Every remote call has a timeout and each host is isolated, so a dead machine and stale
     connection sockets cannot freeze the loops."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "issue #2009")
   (item "provider-capacity-ceilings-and-spill" :group "sprint"
    :title "Per-provider and per-model concurrency ceilings with error watch and spill"
@@ -1398,7 +1378,7 @@
    :text "Two members sharing a commit are not a conflict. The planner finds stacks by ancestry, not by
     base ref."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "issue #2036")
   (item "harvest-wave-into-one-gated-pr" :group "sprint"
    :title "Harvest a wave into one gated pull request and write verdicts back"
@@ -1449,14 +1429,14 @@
     directory fallback, and an expired remote call stays unknown and keeps its seat until answered
     or bounded."
    :date "2026-10-10"
-   :release "v1.4"
+   :release "v1.5"
    :origin "issue #2196; issue #2197; issue #2198")
   (item "work-nodes-projection-rebuild-test" :group "ops"
    :title "Nodes table is a rebuildable projection of the journal"
    :text "Add acceptance tests that drop the nodes projection and rebuild it from the journal, and that a
     disagreement is reported as a projection bug."
    :date "2026-10-10"
-   :release "v1.4"
+   :release "v1.5"
    :origin "issue #2202")
   (item "work-derive-fold-expansion" :group "sprint"
    :title "Implement derive and fold expansion in nova-work"
@@ -1522,14 +1502,14 @@
    :text "A card whose brief is wrong is shown as its own column, not as review. Report form is checked by
     lint at finish, and add applies the header fixes its lint computes."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10)")
   (item "machine-sends-width-goal-to-friends" :group "friends"
    :title "The system sends the width goal to idle or under-width friends"
    :text "The system detects a friend who is idle or under width with ready cards and sends the take
     request itself. The deal is bounded by lanes actually started."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10)")
   (item "friend-delivery-state" :group "friends"
    :title "Friend delivery is a visible state"
@@ -1543,56 +1523,56 @@
    :text "A friend card that is only reported finished is not counted ok until a reader accepts it or it
     lands. This keeps the friends table honest."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)")
   (item "hold-fix-applied-by-machine" :group "sprint"
    :title "A hold that names its fix is applied by the system"
    :text "When a hold names its own fix, the system applies it instead of waiting for the coordinator to
     read it."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10)")
   (item "landing-resilience" :group "sprint"
    :title "Landing survives a red base, a red batch and a rejected push"
    :text "A red base is said as the base's and no card is blamed. A red batch ejects the failing card and
     lands the rest. A push rejected because the base moved is retried, never a stop."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)")
   (item "verb-version-skew-and-restart-safety" :group "sprint"
    :title "Verbs are safe across a switch and across client versions"
    :text "A verb sent during a server switch gets a restarting reply and waits. Every verb of one client
     version is readable by the last release."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10)")
   (item "job-dirs-removed-and-volume-guarded" :group "ops"
    :title "Job directories are removed and the volume is guarded"
    :text "A card's job directory is removed once its results are moved and its pull request is confirmed,
     bench lanes clean their own temporary files, and the working volume is guarded."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10); issue #2379; issue #2566; issue #2632")
   (item "route-rate-budget-and-jitter" :group "sprint"
    :title "A route carries a request budget and a jittered rest end"
    :text "A route can carry a requests-per-minute budget that the deal keeps. The end of a route rest is
     jittered so routes do not return together."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10)")
   (item "tla-stop-and-backup-models" :group "docs"
    :title "TLA+ models for the system stop and the backup path"
    :text "Models for how a stop returns reads and claimed cards, and for the promise that a backup path
     holds only a verified file. Each is checked on a small instance and cited from the code."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10)")
   (item "tla-read-and-friend-card-models" :group "docs"
    :title "TLA+ models for reads on a missing branch and the friend card"
    :text "A model for a read on a missing branch that spends no reader, and for a friend card's lifecycle
     and the friend's liveness. Each names the evidence the code reads."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10)")
   (item "complete-cost-headlines" :group "ops"
    :title "Cost headlines are complete and carry their coverage"
@@ -1614,49 +1594,49 @@
    :text "The time from ready to dealt to started is measured per card, shown as median and p90, and
     alarmed once per episode when the p90 passes its target."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)")
   (item "dead-package-removal" :group "docs"
    :title "Dead packages are removed"
    :text "Packages with no users are deleted together with their tests, one step each, checked by the
     build."
    :date "2026-10-10"
-   :release "v1.4"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10)")
   (item "card-cutting-narrow-paths" :group "sprint"
    :title "Card cutting keeps sweeps small and paths narrow"
    :text "A sweep over a whole tool is cut by site so each card finishes inside its deadline. A card that
     edits one test file gets only that file as its paths, so two cards do not collide at land."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10); cards moved out of the sprint (work record, 2026-10-04)")
   (item "server-cold-start-warmup" :group "sprint"
    :title "Server warms its in-memory mirror before ticking"
    :text "A restarted server warms its in-memory copy of the store before its first tick, so early ticks
     do not miss the deadline and crash-loop."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)")
   (item "sprint-state-machine-tla-models" :group "docs"
    :title "TLA+ models for gc, landing prune and the lane check"
    :text "Small TLA+ models for the gc rule, the landing cleanup queue and the tick's friend-lane check,
     each with invariants checked on a small instance and cited from the code."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10)")
   (item "judgment-and-read-start-latency" :group "sprint"
    :title "Judgments and reads start within seconds"
    :text "Mechanical judgments are answered in the step that raises them, and a finished card is offered
     to a free reader at once, with a measured target of under 30 seconds."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)")
   (item "lander-live-progress-lines" :group "sprint"
    :title "The lander prints its phase as it runs"
    :text "A land pass prints a progress line for each phase, so the coordinator can tell a slow pass from
     a stuck one."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10)")
   (item "land-protected-stream-pull-request" :group "sprint"
    :title "Landing into a protected branch opens a pull request"
@@ -1670,7 +1650,7 @@
    :text "A failed attempt is handled by the system, and the deal keeps friends supplied with work even
     when the coordinator is out, so no friend idles or polls for lack of cards."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10)")
   (item "redo-verb-restores-dropped-card" :group "sprint"
    :title "Redo restores a dropped card"
@@ -1690,56 +1670,56 @@
    :text "The server answers verbs in well under a second even while busy, and stop writes its state in
     one store step without waiting for the tick."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)")
   (item "stats-reset-from-a-mark" :group "sprint"
    :title "One verb zeroes every figure on the sprint page"
    :text "A stats reset verb clears total cost, per-card and per-tier cost, stream cost cells and each
     row's done and ok percent from a recorded mark."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10)")
   (item "bench-chosen-by-load" :group "sprint"
    :title "A lane picks the least loaded bench"
    :text "The bench a lane gates on is chosen at lane start from the fleet rows by cores and current load,
     and the choice and reason are written into the brief."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10)")
   (item "card-lint-defects" :group "sprint"
    :title "The card lint refuses known defects and reads place names right"
    :text "The card lint refuses the listed brief defects, and a repository or branch name is not mistaken
     for a personal name."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)")
   (item "idle-trace-and-alarm-unit-tests" :group "ops"
    :title "Unit tests for the idle trace and idle alarm"
    :text "The idle trace and idle alarm code gets unit tests for every root, raising its statement
     coverage from a small fraction."
    :date "2026-10-10"
-   :release "v1.4"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10)")
   (item "lander-records-own-landings" :group "sprint"
    :title "The lander records its own landings"
    :text "A pushed head never waits in merging for a manual merge step. The lander writes the landing
     record itself when it pushes a stream's batch."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10)")
   (item "promote-from-throwaway-branch" :group "sprint"
    :title "Promote merges from a throwaway branch after a whole-tree gate"
    :text "Promotion never names the base branch as a PR head. It opens and merges from a throwaway branch
     after a whole-tree gate, or the report names what blocks it."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10)")
   (item "table-single-write-new-stream" :group "sprint"
    :title "The table tells the truth: one write per new stream"
    :text "Adding a stream records its rows and places in one write, so the table never disagrees with the
     facts."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10)")
   (item "brief-repo-line-lint" :group "sprint"
    :title "A brief's repo line is always owner/name"
@@ -1760,7 +1740,7 @@
    :text "Model the cap deal, deal routes and width, presence beats and leases, down windows and
     take-back, and the priority ladder in TLA+, checked with TLC."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04);
     cards moved out of the sprint (work record, 2026-10-04)")
   (item "sprint-models-cards-and-promotion" :group "docs"
@@ -1768,56 +1748,56 @@
    :text "Model brief lint and twins, needs and sentinels, read cards, seat push, and the merge tree with
     promotion in TLA+, and check them with TLC."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)")
   (item "seat-install-push-verb" :group "sprint"
    :title "A seat install verb installs the push loop"
    :text "The seat install verb installs the push loop as the tool's own verb and pushes judgments to the
     seat."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10)")
   (item "friend-row-matches-live-lanes" :group "friends"
    :title "A friend's row equals her live lanes"
    :text "A friend's working set on the dashboard must equal her live child lanes, and work and its report
     are one act."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10)")
   (item "add-time-already-done-check" :group "sprint"
    :title "Check at add whether a card's work is already on its base"
    :text "At add, by git and without a model, a card is refused when its work already sits on the base
     branch."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10); card moved out of the sprint (work record, 2026-10-04)")
   (item "false-bounce-detector" :group "sprint"
    :title "Detect false bounces by readers"
    :text "Readers must not bounce cards for harness failures or trailer-only misreads. A detector
     separates these from real defects."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10); cards moved out of the sprint (work record, 2026-10-04)")
   (item "sprint-store-test-environment" :group "ops"
    :title "Shared test environment for the sprint store packages"
    :text "The sprint store and its test utility packages get the same test environment scaffold as the
     other packages. Their tests stay under the time bound."
    :date "2026-10-10"
-   :release "v1.4"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10)")
   (item "stage-carries-prior-head-onto-moved-base" :group "sprint"
    :title "The stage carries a prior attempt's head onto a moved base"
    :text "A lane never carries an earlier attempt onto a moved base by hand. The stage does it and reports
     the result."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10)")
   (item "sprint-card-and-lander-tla-models" :group "docs"
    :title "TLA+ models for card counters, the card lifecycle, holds and the lander"
    :text "Model the attempt, generation and epoch counters, the card columns, held cards and sentinels,
     and the lander streams. Each model is checked and cited from the code."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "card from the sprint store (2026-10-10); cards moved out of the sprint (work record, 2026-10-04)")
   (item "repeat-refusal-alarm" :group "sprint"
    :title "The third refusal of one cause in five minutes raises one judgment"
@@ -1903,7 +1883,7 @@
    :text "Lander tests that run git and go move to the functional tier, and the land decisions are pinned
     in a memory test."
    :date "2026-10-10"
-   :release "v1.4"
+   :release "v1.5"
    :origin "nova-sprint commit 2b74be0 (not carried by the re-seed, nova-sprint PR #28); card moved out of
     the sprint (work record, 2026-10-04)")
   (item "coordinator-bring-up" :group "sprint"
@@ -1928,21 +1908,21 @@
    :text "The shadow tick refuses any other library digest before the window, so an adopt cannot carry a
     library change; run it inside the window after the load, with TLA+, and digest code bytes only."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "seat decision, 2026-10-10")
   (item "lander-bench-tree-own-git" :group "sprint"
    :title "The lander bench tree carries its own git, not a pointer"
    :text "The bench tree git points at a worktree that exists only on the coordinator machine, so git
     fails on benches; give the bench tree its own repository."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "v1.2.4 held ledger")
   (item "tick-under-one-second-at-load" :group "sprint"
    :title "The tick stays under one second at load"
    :text "Drain and deal take 0.4 to 0.7 seconds at load, so the tick gate is over one second; bring the
     whole tick under it."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "v1.2.4 held ledger; PR #5557")
   (item "store-rating-and-dogfood-rounds" :group "ops"
    :title "A rating, review, dogfood and audit round of the current release"
@@ -2038,7 +2018,7 @@
    :text "The result finish is mechanical: shas come from git, not from the model, and an unformatted Go
     file is refused before landing."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "PR #5276")
   (item "record-replication-and-restore" :group "ops"
    :title "Replicate the sprint record to a second machine with a restore verb"
@@ -2061,20 +2041,13 @@
    :date "2026-10-10"
    :release "after v1.4"
    :origin "card moved out of the sprint (work record, 2026-10-04)")
-  (item "friend-status-counts-current-assignments" :group "friends"
-   :title "Scope friend status and pong counts to current assignments"
-   :text "Queue sync writes a versioned snapshot of the friend's current Ready and Working row so counts
-    do not include old records."
-   :date "2026-10-10"
-   :release "v1.3"
-   :origin "PR #5486")
   (item "swarm-lint-card-validation" :group "sprint"
    :title "nova-swarm lint card validation closes its escapes"
    :text "Drive letter paths, more than eight globs, comma only paths, unknown kinds, and no test on gated
     kinds pass lint. The card header shape and the worker card practice agree so a spec shaped card
     is admitted."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "issue #1853; issue #1728; issue #2584; issue #2605; issue #2728")
   (item "review-guard-check-verb" :group "sprint"
    :title "A mechanical guard check as a review verb"
@@ -2088,25 +2061,25 @@
    :text "The review verdict passes any rounded score of eight or more whatever the confidence. Low
     confidence lowers or flags the verdict."
    :date "2026-10-10"
-   :release "v1.3"
+   :release "v1.5"
    :origin "issue #3393")
   (item "a-plan-gate-before-code" :group "sprint" :date "2026-10-11"
    :title "A plan gate before code"
    :text "A card above a size bound writes a plan first, and a reader reviews the plan before implementation starts. The design agreed with the owner on 2026-10-11 has two levels. Inside a card, working splits into planning, then a plan read, then implementing: the plan is committed to the card's branch as PLAN.md, and implementing is a second take on the same branch, so a one-shot child starts from the file, not from memory; a refused plan is a re-plan take. Above cards, a plan node turns a roadmap entry into cards with their dependencies (its scope, the cards, their DEPENDS lines and a read), feeds a stream, holds the cap of about 10 unadmitted drafts, and is what nova-work later imports as a node. Both levels are modelled in TLA+ with the card machine before either is built."
    :why "A new system stage, not a fix."
-   :release "v1.3"
+   :release "v1.5"
    :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
   (item "a-review-audit" :group "sprint" :date "2026-10-11"
    :title "A review audit"
    :text "The last gate checks the reads instead of adding another read: that each reader had the repository, ran the tests, and cited lines."
    :why "A new gate, not a fix."
-   :release "v1.3"
+   :release "v1.5"
    :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
   (item "a-precedent-log" :group "sprint" :date "2026-10-11"
    :title "A precedent log"
    :text "An append-only log of the coordinator's decisions, which the system reads before it raises a judgment, so a question already settled is not asked again."
    :why "New capability."
-   :release "v1.3"
+   :release "v1.5"
    :origin "the owner, 2026-10-11: a lesson from the Cockroach Labs write-up \"Five months treating bugs like patients\" (MOLT Sinai)")
   (item "local-deal-stamps-the-endpoint" :group "export-nova-local" :area "nova-sprint"
    :title "local-deal-stamps-the-endpoint"
@@ -2422,4 +2395,46 @@
    :date "2026-10-16"
    :release "v1.5"
    :origin "Glenn, 2026-10-16"
-   :kept (:kind "feature"))))
+   :kept (:kind "feature"))
+  (item "friend-deal-rotation-index" :group "friends" :date "2026-10-16"
+   :title "The friend deal rotates over equally idle friends"
+   :text "preferredFriend (internal/sprint/friend_deal.go) picks the friend with the most idle lanes, then the most free room, then the first by name, so a tie always goes to the same friend. A persisted friend_deal_index on the fleet table, kept like deal_index (round.go PropDealIndex), breaks the tie as ((index + 1) % n), so the first name never always wins. A unit test shows two equally idle friends alternate across ticks, and tla/WhoPreference.tla gains a fairness property: no eligible friend is starved while another is dealt two."
+   :why "A new deal counter, held out of the 1.4.x point releases, which take only critical breakers."
+   :release "v1.5"
+   :origin "Glenn, 2026-10-16: \"Remember to do the ( index + 1 ) % n when dealing so you don't bias to the top.\" (scoped out of v1.4.4 by the freeze rule)")
+  (item "rebalance-loads-read-history" :group "sprint" :date "2026-10-16"
+   :title "fleet level --rebalance loads the read history it deals from"
+   :text "FleetStep (internal/sprint/store/steps.go) loads only the fleet and work tables, with no Extras, so a rebalance from the fleet level verb deals a moved read (rebalance.go readCardIDFor) without the retired generations or the verdicts of the reader it picks. A spent reader can be offered the read again, and a generation that collides with a retired record is refused by the store. The tick's own rebalance loads tickExtras and is correct. The fix gives FleetStep the readers table and ReadCardExtras for its level and rebalance operations, with a test that fails on the old load."
+   :why "Pre-existing, found by the cold read of #436, not tonight's wedge; a collision is refused, never lost."
+   :release "v1.5"
+   :origin "the cold reader of nova-sprint #436, 2026-10-16")
+  (item "friend-lanes-per-tier-model" :group "friends" :date "2026-10-16"
+   :title "A friend's card lanes run each card on the model of its tier"
+   :text "A friend's one-shot lane runs every card on the friend's one model, whatever the card's tier. The friend row names a model per tier it serves, and a lane launches each card, work or read, on the model of the card's tier, never below it (the rule of #432, a card is never worked or read below its tier)."
+   :why "A new row field and lane launch rule."
+   :release "v1.5"
+   :origin "the coordinator, 2026-10-16")
+  (item "machine-capability-tags" :group "ops" :date "2026-10-16"
+   :title "Machine capability tags for the deal (kvm, XDP)"
+   :text "A card that needs a machine capability, such as kvm or a held XDP host, names it, and the deal gives it only to a member whose nova-config machine row carries the tag. The beat's gate facts (deal.go MemberFacts, v1.4.3) are the measured half; the tags are the declared half, checked against the facts so a tag with no measured fact is refused. space keeps its own rule: XDP functional tests only on a held XDP machine, never on a shared bench."
+   :why "New configuration and deal matching."
+   :release "v1.5"
+   :origin "the coordinator, 2026-10-16")
+  (item "release-notes-identical-across-repos" :group "ops" :date "2026-10-16"
+   :title "Identical release notes across the lockstep repositories"
+   :text "A lockstep release (nova-sprint and nova-tools at one version) publishes the same notes in both repositories, written once and checked by the release tool, not two hand-kept files that drift: tonight's nova-tools notes still say \"The matching stable tools release for nova sprint v1.4.0\" at v1.4.4."
+   :why "Release tooling, not a fix to the sprint."
+   :release "v1.5"
+   :origin "the coordinator, 2026-10-16")
+  (item "no-progress-attempt-escalates-tier" :group "sprint" :date "2026-10-16"
+   :title "A no-progress attempt escalates the card's tier"
+   :text "Overnight at least four cards (java-ledgers, java-tables-soak, elixir-porting-register, java-accessor) were redealt at pro after a HOLD read, and the new pro attempt left every file the reader named unchanged, or touched only comments; each was read and held again, up to four times. When a read HOLDs and the next attempt's diff touches none of the files and lines the previous read named, the next deal raises the card's tier one step (pro to heavy) and notes why. A unit test with no real time drives the hold, the no-progress attempt and the raised deal, and the TLA+ model of the attempts gains the escalation with a reversed witness that redeals at the same tier."
+   :why "A new escalation rule in the deal."
+   :release "v1.5"
+   :origin "Rowan, 2026-10-16, from the overnight fix column")
+  (item "friend-row-git-identity" :group "friends" :date "2026-10-16"
+   :title "A friend's own git identity on her nova-config row"
+   :text "friend stage sets the clone's identity from the friend row's git_identity, but the nova-config friend kind has no such field (the row's fields are tiers, roles, width, mode, config_dir, token_cap, streams, kinds, pronouns and session), so every friend delivery was refused until v1.4.5 fell back to the sprint row's git_identity. The friend kind gains git_identity (a migration, apply, and nova-config friend set --git_identity), each friend's identity set by the owner, and stage prefers it (identity=friend)."
+   :why "A schema migration on the fleet's configuration store, held out of the point release."
+   :release "v1.5"
+   :origin "the coordinator's tool audit, 2026-10-16")))

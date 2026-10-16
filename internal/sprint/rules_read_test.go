@@ -377,7 +377,7 @@ func TestBreakerResetOnBriefEdit(t *testing.T) {
 	require.Equal(t, 4, r.snap().Work.Card("r-1").Int("attempt"))
 
 	// Edit the brief to reset the count
-	r.must(store.BriefStep(sprint.BriefReq{ID: "r-1", Brief: readBrief + "\n--- edited ---\n", Who: "coordinator"}))
+	r.must(store.BriefStep(sprint.BriefReq{ID: "r-1", Brief: readBrief + "\n--- edited ---\n", Who: "coordinator", KeepHead: true, ReplaceInFlight: true}))
 
 	// Now next broken read should be reworked by rule again
 	finding4 := "internal/x/a.go:78 closes context after use"

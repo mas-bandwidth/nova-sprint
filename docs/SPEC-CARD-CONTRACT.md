@@ -85,3 +85,18 @@ with the path quoted.
 The header is how the card is staged (docs/SPEC-STAGING.md, the siblings): the member
 clones each SIBLINGS repository at its ref into `$JOB/siblings/<name>` and points the
 harness there from `JOB.md`.
+
+## The LAND-AFTER header (soft dependencies)
+
+A brief may declare a soft dependency on one or more cards in the same repository and base:
+
+    LAND-AFTER: <id>[, <id>...]
+
+Work runs in parallel, and the lander lands the two in order: `add` records the soft
+dependency on the primary without placing it in `waiting`, and the deal never waits on a
+soft dependency (`tla/SoftDependency.tla`). In a many-brief `add`, a soft dependency
+between two cards that name the same non-ledger file in `PATHS:` admits the pair just as a
+hard need (`DEPENDS-ON:`) does, and `add --plan` marks the overlap row `soft` beside
+`edge`. Self-edges, duplicates, cards already in `DEPENDS-ON:` (one relation, not two),
+cards in another `REPO:` or `BASE:`, and cycles across `DEPENDS-ON:` and `LAND-AFTER:`
+together are refused at admission (exit 2, nothing written).

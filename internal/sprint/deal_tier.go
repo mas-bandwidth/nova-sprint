@@ -1,6 +1,6 @@
 package sprint
 
-import "github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+import "github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 
 // DealtTier is the tier a dealt card's packet names (Packet.Tier), never empty
 // (dealt-packet-carries-the-tier.w1; on 2026-10-05 the audit cards were dealt with no tier
@@ -14,9 +14,6 @@ func DealtTier(c, primary *Card) string {
 		return t
 	}
 	if primary != nil {
-		if fb := primary.F(FieldFallbackTier); fb != "" && primary.F(FieldTier) == "" {
-			return fb // the fallback tier the deal drew (unserved_tier.go)
-		}
 		if now, _ := CardTiers(primary); now != "" {
 			return now
 		}

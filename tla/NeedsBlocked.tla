@@ -1,163 +1,245 @@
 ---------------------------- MODULE NeedsBlocked ----------------------------
 (***************************************************************************)
-(* A need is resolved or not (v1.2.17, a-missing-or-blocked-need-is-found- *)
-(* at-check-and-while-running; the owner, 2026-10-13: "This needs to stop  *)
-(* happening. A missing card stalls the sprint."). Epoch 20: a card needed *)
-(* a-route-may-be-frontier, which hit its attempt bound overnight under an *)
-(* open bound judgment no one decided; the card and its stream waited 8+  *)
-(* hours, and every check passed, since the need was on the table.        *)
+(* A held, dropped or absent need is one blocker judgment, pushed to the   *)
+(* owner at once, that quiets its dependents; no drop or defer strands a   *)
+(* dependent (v1.2.17 blocker; docs/SPEC-SPRINT.md sections 8 and 11).     *)
 (*                                                                         *)
-(* A need is RESOLVED when the card it names is landed, or placed and not  *)
-(* held (internal/sprint/needs_resolve.go UnresolvedNeeds): a held card    *)
-(* (an open bound, brief-wrong or harness-fault judgment names it) is not  *)
-(* landing until someone decides. Two cards: b needs a. state is a card's  *)
-(* place as add and the tick see it; admitted is whether add took it in;   *)
-(* machine is the start gate's machine, READY or RUNNING.                  *)
+(* UnresolvedNeeds (internal/sprint/needs_resolve.go): a need is resolved  *)
+(* when it is landed, or placed and not held.                             *)
 (*                                                                         *)
-(* Admit(c) is add (and every brief import, all or nothing): its needs     *)
-(* must be resolved. Hold(c) is the outside event, a card reaching its     *)
-(* bound with no decision; Decide(c) is a rework that closes it; Drop and  *)
-(* Land as the table moves them. Start refuses while an admitted card not  *)
-(* landed or dropped has an unresolved need, computed live (run.go         *)
-(* startNeedsGate), so a hold raised after a clean check is caught.        *)
-(* Absent (no card of this epoch), dropped and an unknown stream are       *)
-(* unresolved as held is; held is the reason no check saw, and the one     *)
-(* modelled here.                                                          *)
+(* Three cards: a, b, c. Initially c needs b, and b needs a.               *)
+(* Unresolved(x) reports a card held (bound, brief-wrong) or dropped.      *)
+(* OpenDeps(x) is every unlanded admitted card reaching x through needs.   *)
+(* A blocker is any card with Unresolved(x) and OpenDeps(x) # {}.          *)
+(* bj is the set of blockers with an open NNeedBlocked judgment.           *)
 (*                                                                         *)
-(* Broken selects a reversed witness:                                      *)
-(*   "admitheld"  Admit treats a held need as placed, as add did before    *)
-(*                this card (AdmittedNeedsResolved)                        *)
-(*                                                                         *)
-(* Room is left for the run-time card                                      *)
-(* (a-blocked-need-is-one-owner-judgment-and-a-drop-never-strands): it     *)
-(* adds its variables (the one owner judgment, the drop's cascade or       *)
-(* relink) and its invariant beside these, without changing Admit's rule. *)
+(* Broken witness selection:                                               *)
+(*   "none"       standard model (MCNeedsBlocked, MCNeedsBlockedRun)       *)
+(*   "admitheld"  Admit treats a held need as placed                       *)
+(*                (violates AdmittedNeedsResolved)                         *)
+(*   "nothing"    Tick raises nothing on a hold, as BASE                   *)
+(*                (violates BlockedDependentsCovered)                      *)
+(*   "defer"      Defer ignores dependents, as BASE                        *)
+(*                (violates NoStrandingDrop)                               *)
 (***************************************************************************)
-EXTENDS Naturals
+EXTENDS Naturals, FiniteSets
 
 CONSTANTS
-    Broken      \* "none", or the reversed witness above
+    Broken      \* "none", "admitheld", "nothing", "defer"
 
-Cards == {"a", "b"}
+Cards == {"a", "b", "c"}
 States == {"absent", "placed", "held", "landed", "dropped"}
 
-\* b needs a
-NeedOf(c) == IF c = "b" THEN {"a"} ELSE {}
-
 VARIABLES
-    state,      \* each card's place: absent (no record), placed, held, landed, dropped
-    admitted,   \* add took the card in
-    machine,    \* the machine as start sees it: ready (READY or STOPPED) or running
-    last,       \* the last action
-    lastCard    \* the card the last action moved
+    state,      \* [Cards -> States]
+    needs,      \* [Cards -> SUBSET Cards]
+    admitted,   \* [Cards -> BOOLEAN]
+    machine,    \* "ready" or "running"
+    last,       \* last action name
+    lastCard,   \* last card moved, or "none"
+    bj,         \* SUBSET Cards: blockers with an open NNeedBlocked
+    ticked,     \* BOOLEAN: whether Tick has run
+    decided     \* [Cards -> BOOLEAN]: whether a rework was decided
 
-vars == <<state, admitted, machine, last, lastCard>>
+vars == <<state, needs, admitted, machine, last, lastCard, bj, ticked, decided>>
 
-\* the rule (UnresolvedNeeds): landed, or placed and not held; the witness reads held as placed
+\* The rule (UnresolvedNeeds): landed, or placed and not held; witness reads held as placed
 Resolved(n) ==
     \/ state[n] \in {"placed", "landed"}
     \/ Broken = "admitheld" /\ state[n] = "held"
 
-\* the truth the rule must agree with
 TrulyResolved(n) == state[n] \in {"placed", "landed"}
 
-\* an admitted card still to land, with a need that is not resolved (TableUnresolved)
-Unresolved == {c \in Cards : admitted[c] /\ state[c] \notin {"landed", "dropped"}
-                             /\ \E n \in NeedOf(c) : ~TrulyResolved(n)}
+Unresolved(x) ==
+    \/ state[x] = "held"
+    \/ state[x] = "dropped"
+
+Reaches(d, x) ==
+    \/ x \in needs[d]
+    \/ \E mid \in Cards : mid \in needs[d] /\ x \in needs[mid]
+
+OpenDeps(x) ==
+    { d \in Cards : admitted[d] /\ state[d] \notin {"landed", "dropped"} /\ Reaches(d, x) }
+
+UnresolvedAdmitted ==
+    { c \in Cards : admitted[c] /\ state[c] \notin {"landed", "dropped"}
+                    /\ \E n \in needs[c] : ~TrulyResolved(n) }
 
 TypeOK ==
     /\ state \in [Cards -> States]
+    /\ needs \in [Cards -> SUBSET Cards]
     /\ admitted \in [Cards -> BOOLEAN]
     /\ machine \in {"ready", "running"}
-    /\ last \in {"init", "admit", "hold", "decide", "drop", "land", "start", "stop", "startrefused"}
+    /\ last \in {"init", "admit", "hold", "decide", "drop", "land", "start", "stop", "startrefused", "tick", "defer"}
     /\ lastCard \in Cards \cup {"none"}
+    /\ bj \in SUBSET Cards
+    /\ ticked \in BOOLEAN
+    /\ decided \in [Cards -> BOOLEAN]
 
 Init ==
     /\ state = [c \in Cards |-> "absent"]
+    /\ needs = [c \in Cards |-> IF c = "c" THEN {"b"} ELSE IF c = "b" THEN {"a"} ELSE {}]
     /\ admitted = [c \in Cards |-> FALSE]
     /\ machine = "ready"
     /\ last = "init"
     /\ lastCard = "none"
+    /\ bj = {}
+    /\ ticked = FALSE
+    /\ decided = [c \in Cards |-> FALSE]
 
-\* add (steps_work.go Add's needs arm, UnresolvedNeeds): every need resolved, else refused
-\* and nothing written; an import of many cards is all or nothing (refuseAll)
 Admit(c) ==
     /\ state[c] = "absent"
-    /\ \A n \in NeedOf(c) : Resolved(n)
+    /\ \A n \in needs[c] : Resolved(n)
     /\ state' = [state EXCEPT ![c] = "placed"]
     /\ admitted' = [admitted EXCEPT ![c] = TRUE]
     /\ last' = "admit"
     /\ lastCard' = c
-    /\ UNCHANGED machine
+    /\ ticked' = FALSE
+    /\ UNCHANGED <<needs, machine, bj, decided>>
 
-\* outside event: the card reaches its bound and an open bound judgment holds it
 Hold(c) ==
     /\ state[c] = "placed"
+    /\ ~decided[c]
+    /\ c \notin bj
     /\ state' = [state EXCEPT ![c] = "held"]
     /\ last' = "hold"
     /\ lastCard' = c
-    /\ UNCHANGED <<admitted, machine>>
+    /\ ticked' = FALSE
+    /\ UNCHANGED <<needs, admitted, machine, bj, decided>>
 
-\* the coordinator decides: a rework closes the judgment and the card is placed again
 Decide(c) ==
     /\ state[c] = "held"
     /\ state' = [state EXCEPT ![c] = "placed"]
+    /\ decided' = [decided EXCEPT ![c] = TRUE]
     /\ last' = "decide"
     /\ lastCard' = c
-    /\ UNCHANGED <<admitted, machine>>
+    /\ ticked' = FALSE
+    /\ UNCHANGED <<needs, admitted, machine, bj>>
 
-Drop(c) ==
-    /\ state[c] \in {"placed", "held"}
-    /\ state' = [state EXCEPT ![c] = "dropped"]
-    /\ last' = "drop"
-    /\ lastCard' = c
-    /\ UNCHANGED <<admitted, machine>>
-
-\* a card lands once its needs landed (NeedsLandFirst, SprintTables.tla)
 Land(c) ==
     /\ state[c] = "placed"
-    /\ \A n \in NeedOf(c) : state[n] = "landed"
+    /\ \A n \in needs[c] : state[n] = "landed"
     /\ state' = [state EXCEPT ![c] = "landed"]
     /\ last' = "land"
     /\ lastCard' = c
-    /\ UNCHANGED <<admitted, machine>>
+    /\ ticked' = FALSE
+    /\ UNCHANGED <<needs, admitted, machine, bj, decided>>
 
-\* start (run.go startNeedsGate, before the record gate): live, not from the record
+DropCascade(x) ==
+    /\ state[x] \in {"placed", "held"}
+    /\ LET toDrop == {x} \cup OpenDeps(x)
+       IN /\ state' = [c \in Cards |-> IF c \in toDrop THEN "dropped" ELSE state[c]]
+          /\ last' = "drop"
+          /\ lastCard' = x
+          /\ ticked' = FALSE
+          /\ UNCHANGED <<needs, admitted, machine, bj, decided>>
+
+DropWaive(x) ==
+    /\ state[x] \in {"placed", "held"}
+    /\ state' = [state EXCEPT ![x] = "dropped"]
+    /\ needs' = [c \in Cards |-> needs[c] \ {x}]
+    /\ last' = "drop"
+    /\ lastCard' = x
+    /\ ticked' = FALSE
+    /\ UNCHANGED <<admitted, machine, bj, decided>>
+
+DropRelink(x, target) ==
+    /\ state[x] \in {"placed", "held"}
+    /\ target \in Cards
+    /\ target # x
+    /\ state[target] \in {"placed", "landed"}
+    /\ ~Unresolved(target)
+    /\ target \notin OpenDeps(x)
+    /\ ~Reaches(target, x)
+    /\ state' = [state EXCEPT ![x] = "dropped"]
+    /\ needs' = [c \in Cards |-> IF x \in needs[c] THEN (needs[c] \ {x}) \cup {target} ELSE needs[c]]
+    /\ last' = "drop"
+    /\ lastCard' = x
+    /\ ticked' = FALSE
+    /\ UNCHANGED <<admitted, machine, bj, decided>>
+
+DropNoDeps(x) ==
+    /\ state[x] \in {"placed", "held"}
+    /\ OpenDeps(x) = {}
+    /\ state' = [state EXCEPT ![x] = "dropped"]
+    /\ last' = "drop"
+    /\ lastCard' = x
+    /\ ticked' = FALSE
+    /\ UNCHANGED <<needs, admitted, machine, bj, decided>>
+
+Defer(x) ==
+    /\ state[x] = "placed"
+    /\ IF Broken = "defer"
+       THEN TRUE
+       ELSE OpenDeps(x) = {}
+    /\ state' = [state EXCEPT ![x] = "dropped"]
+    /\ last' = "defer"
+    /\ lastCard' = x
+    /\ ticked' = FALSE
+    /\ UNCHANGED <<needs, admitted, machine, bj, decided>>
+
+Tick ==
+    /\ bj' = IF Broken = "nothing"
+             THEN { x \in Cards : state[x] = "dropped" /\ OpenDeps(x) # {} }
+             ELSE { x \in Cards : Unresolved(x) /\ OpenDeps(x) # {} }
+    /\ ticked' = TRUE
+    /\ decided' = [c \in Cards |-> FALSE]
+    /\ last' = "tick"
+    /\ lastCard' = "none"
+    /\ UNCHANGED <<state, needs, admitted, machine>>
+
 Start ==
     /\ machine = "ready"
-    /\ Unresolved = {}
+    /\ UnresolvedAdmitted = {}
     /\ machine' = "running"
     /\ last' = "start"
     /\ lastCard' = "none"
-    /\ UNCHANGED <<state, admitted>>
+    /\ ticked' = FALSE
+    /\ UNCHANGED <<state, needs, admitted, bj, decided>>
 
 StartRefused ==
     /\ machine = "ready"
-    /\ Unresolved # {}
+    /\ UnresolvedAdmitted # {}
     /\ last' = "startrefused"
     /\ lastCard' = "none"
-    /\ UNCHANGED <<state, admitted, machine>>
+    /\ UNCHANGED <<state, needs, admitted, machine, bj, ticked, decided>>
 
 Stop ==
     /\ machine = "running"
     /\ machine' = "ready"
     /\ last' = "stop"
     /\ lastCard' = "none"
-    /\ UNCHANGED <<state, admitted>>
+    /\ UNCHANGED <<state, needs, admitted, bj, ticked, decided>>
 
 Next ==
-    \/ \E c \in Cards : Admit(c) \/ Hold(c) \/ Decide(c) \/ Drop(c) \/ Land(c)
-    \/ Start \/ StartRefused \/ Stop
+    \/ \E c \in Cards : Admit(c) \/ Hold(c) \/ Decide(c) \/ Land(c) \/ Defer(c)
+    \/ \E c \in Cards : DropCascade(c) \/ DropWaive(c) \/ DropNoDeps(c)
+    \/ \E c, target \in Cards : DropRelink(c, target)
+    \/ Start \/ StartRefused \/ Stop \/ Tick
 
-Spec == Init /\ [][Next]_vars
+Spec == Init /\ [][Next]_vars /\ WF_vars(Tick)
 
 ---------------------------------------------------------------------------
-\* Invariants.
+\* Invariants from first card (check and start).
 
-\* at the step that admits a card, every need it names is landed, or placed and not held
-AdmittedNeedsResolved == last = "admit" => \A n \in NeedOf(lastCard) : TrulyResolved(n)
+AdmittedNeedsResolved == last = "admit" => \A n \in needs[lastCard] : TrulyResolved(n)
 
-\* the machine never starts from ready while an admitted card has an unresolved need
-StartOnlyResolved == last = "start" => Unresolved = {}
+StartOnlyResolved == last = "start" => UnresolvedAdmitted = {}
+
+---------------------------------------------------------------------------
+\* Invariants from second card (runtime blocker judgments and non-stranding drop/defer).
+
+BlockedDependentsCovered ==
+    ticked => \A x \in Cards : (Unresolved(x) /\ OpenDeps(x) # {}) => x \in bj
+
+OneBlockerJudgment ==
+    ticked => \A x \in bj : Unresolved(x) /\ OpenDeps(x) # {}
+
+NoStrandingDrop ==
+    \A x \in Cards : state[x] = "dropped" =>
+        \A y \in Cards : (admitted[y] /\ state[y] \notin {"landed", "dropped"}) => x \notin needs[y]
+
+LiveDecided ==
+    \A x \in Cards : decided[x] ~> (x \notin bj)
 
 =============================================================================

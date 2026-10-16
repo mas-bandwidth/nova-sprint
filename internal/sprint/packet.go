@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/member"
-	"github.com/mas-bandwidth/nova-sprint/pkg/typedrec"
+	"github.com/mas-bandwidth/nova-tools/pkg/member"
+	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
 
 // Packet is what a worker or a reader is handed with a card, so that no
@@ -44,11 +44,16 @@ type Packet struct {
 	// layer 1); both empty when no earlier attempt pushed: the base is staged.
 	BaseHead    string `json:"base_head,omitempty"`
 	BaseAttempt int    `json:"base_attempt,omitempty"`
+	// NeedHeads describes each primary need, populated by the store's pinned
+	// record reads. Only work packets carry it; the server records it and no
+	// member reads it yet (a member-side refusal would be a nova-tools card).
+	NeedHeads []NeedHead `json:"need_heads,omitempty"`
 	// A work card's route (route.go): the route drawn ("pin" for a pinned card),
 	// the model id the member launches with (provider/model), its token budget
 	// (a count or unmetered) and its deadline in seconds; empty when the store
 	// has no route, and the member runs its own.
 	Route    string `json:"route,omitempty"`
+	Billing  string `json:"billing,omitempty"`
 	Model    string `json:"model,omitempty"`
 	Tokens   string `json:"tokens,omitempty"`
 	USD      string `json:"usd,omitempty"`     // the dollar budget, a decimal; "" for none (#5094)
@@ -84,6 +89,33 @@ type Packet struct {
 	// no read_deadline, read_cards.go): its card id at every epoch, the path it was delivered
 	// at and is closed from; "" for a read card, whose job is a card's.
 	ReadJob string `json:"read_job,omitempty"`
+}
+
+// NeedHead is a need's state and recorded landed commit. State uses NeedWord's
+// vocabulary; Head is empty without a full head and matching landing records.
+type NeedHead struct {
+	ID    string `json:"id"`
+	State string `json:"state"`
+	Head  string `json:"head,omitempty"`
+}
+
+// NeedHeadOf reads the existing landing evidence, never a queued working head.
+// landedRefusals validates the primary's head against the landing pin; MergeStep
+// retains that head on the primary and moves the merge record to Merged with a
+// timestamp. The merge record itself stores no head. Both records must agree
+// that the need landed before its full primary head can ride in a work packet.
+func NeedHeadOf(id string, primary, merge *Card) NeedHead {
+	state := "not on the table"
+	if primary.Placed() {
+		state = primary.Col
+	} else if primary != nil {
+		state = "off the table (" + orDash(primary.F("outcome")) + ")"
+	}
+	n := NeedHead{ID: id, State: NeedWord(state)}
+	if primary.Placed() && primary.Col == Landed && merge.Placed() && merge.Col == Merged && typedrec.IsFullSha(primary.F("head")) {
+		n.Head = primary.F("head")
+	}
+	return n
 }
 
 // FieldRules is a primary's rules by reference (nova-tools#5174 rule 6): the base name of the
@@ -170,9 +202,10 @@ func BaseOf(attempts []*Card) Base {
 
 // PushedHead is an attempt's recorded full commit head. A failed result may still have pushed
 // work before failing; outcome is not evidence that the push did not happen. Placeholders,
-// incomplete records, and in-flight attempts have no pushed head.
+// incomplete records, in-flight attempts, and superseded brief heads have no
+// eligible pushed head. Superseded SHAs remain on the work record for audit.
 func PushedHead(w *Card) string {
-	if typedrec.IsFullSha(w.F("head")) {
+	if w.F("head_superseded") != "true" && typedrec.IsFullSha(w.F("head")) {
 		return w.F("head")
 	}
 	return ""
@@ -214,12 +247,25 @@ func PacketOf(prefix string, epoch uint64, c, primary *Card, earlier []*Card, wo
 	}
 	// a work card's route, or a read card's: the ask draws a read's as the deal
 	// draws a work card's (route.go), so a reader needs no --model
+	p.Billing = c.F(FieldBilling)
 	p.Route, p.Model, p.Tokens, p.USD, p.Harness, p.Deadline = c.F(FieldRoute), c.F(FieldModel), c.F(FieldTokens), c.F(FieldUSD), c.F(FieldHarness), c.Int(FieldDeadline)
 	p.RateRPM, p.RateConcurrent = c.Int(FieldRateRPM), c.Int(FieldRateConcurrent)
 	if p.Tier = c.F(FieldTier); p.Tier == "" && p.Kind == "work" && primary != nil {
 		p.Tier = primary.F(FieldTier)
 	}
 	if p.Kind == "work" {
+		// tla/SprintTables.tla Brief/Finish: superseded attempts are history,
+		// never the branch or head staged for fresh work. Explicit CARRY below
+		// remains the coordinator's choice, independent of that history.
+		if primary != nil && primary.F(FieldBriefKeepHead) != "true" && (primary.Int(FieldHeadBriefAttempt) > 0 || primary.Int(FieldBriefAttempt) > 0) {
+			eligible := make([]*Card, 0, len(earlier))
+			for _, previous := range earlier {
+				if !AttemptPredatesBrief(primary, previous.Int("attempt")) {
+					eligible = append(eligible, previous)
+				}
+			}
+			earlier = eligible
+		}
 		p.Branch = BranchOf(prefix, epoch, c.ID, c.Int("gen"))
 		p.DecideGateFlaky, p.DecideGatePreexisting = c.F(FieldDecideGateFlaky), c.F(FieldDecideGatePreexisting)
 		p.Finding, p.Why = c.F("finding"), c.F("why")

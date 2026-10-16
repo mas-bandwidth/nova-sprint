@@ -90,6 +90,16 @@ func Check(s *Snapshot, pending *Pending) []Violation {
 			out = append(out, Violation{1, fmt.Sprintf("read card %s is on reader %s's row and names reader %s", c.ID, c.Row, orDash(c.F("reader")))})
 		}
 	}
+	// A coordinator hook or mere presence cannot service a dealt work card.
+	liveWorkers := map[string]bool{}
+	for _, f := range s.Friends {
+		liveWorkers[FriendRow(f.Name)] = friendWorkerLive(s, f)
+	}
+	for _, c := range s.Fleet.Column(Ready, Working) {
+		if c.F("kind") != "read" && IsFriendRow(c.Row) && !liveWorkers[c.Row] {
+			out = append(out, Violation{1, fmt.Sprintf("work card %s is dealt to row %s with no live worker", c.ID, c.Row)})
+		}
+	}
 	// 2. Primaries working = primaries of work cards in fleet ready + working.
 	working, dealt := primarySet{}, primarySet{}
 	for _, c := range s.Work.Column(Working) {
@@ -245,6 +255,18 @@ func Check(s *Snapshot, pending *Pending) []Violation {
 		w := without(NamedWaits(s, c, nil), Split(c.F(FieldWaitsAfter)))
 		if len(w) > 0 {
 			out = append(out, Violation{11, fmt.Sprintf("%s is %s and needs %s, not landed", c.ID, c.Col, strings.Join(w, ","))})
+		}
+	}
+	// 11. A working card's rule-11 marker (FieldWaitsAfter) names only needs its needs
+	// field names: the needs field is the card's one record of what it waits for, and
+	// a marker outside it makes the finish and the lifecycle disagree (the finish
+	// sends the card to waiting for a need the lifecycle will not wait for, refused
+	// without end). Every needs write keeps it inside (steps_edit.go keepWaitsInNeeds);
+	// this names the stores that hold such a card already.
+	// tla/SprintTables.tla WaitsAfterWithinNeeds.
+	for _, c := range s.Work.Column(Working) {
+		if stale := without(Split(c.F(FieldWaitsAfter)), Split(c.F("needs"))); len(stale) > 0 {
+			out = append(out, Violation{11, fmt.Sprintf("%s is working and its waits_after names %s, which its needs do not: set its needs (nova-sprint needs set) so they agree", c.ID, strings.Join(stale, ","))})
 		}
 	}
 	// 11. The needs make no cycle: add refuses the add that would close one,

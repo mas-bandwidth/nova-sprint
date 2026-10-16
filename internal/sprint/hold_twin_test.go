@@ -10,7 +10,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
+	"github.com/mas-bandwidth/nova-tools/pkg/hostload"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -82,7 +82,7 @@ func (r *holdRig) beat() {
 	for _, f := range []string{"amy", "bob"} {
 		_, err := r.st.FriendBeat(r.ctx, f)
 		require.NoError(r.t, err)
-		_, _, _, err = r.st.FriendHealth(r.ctx, f, "coordinator", sprint.FriendHealth{State: sprint.Up, Seen: r.st.Now(), Generation: sprint.FirstSeatGeneration}, "")
+		err = setFriendHook(r.st, f, sprint.Up)
 		require.NoError(r.t, err)
 	}
 }
@@ -175,6 +175,8 @@ func (r *holdRig) heldView(name string) (sprint.HoldView, bool) {
 
 func (r *holdRig) friendStatus(name string) string {
 	r.t.Helper()
+	// the server's pass first: FriendRows shows the word the server wrote
+	require.NoError(r.t, r.st.PublishFriendStatus(r.ctx, r.st.Now()))
 	rows, err := r.st.FriendRows(r.ctx, r.st.Now())
 	require.NoError(r.t, err)
 	for _, f := range rows {
@@ -201,7 +203,7 @@ func TestHoldTakesNoNewCardsAndUnholdResumesForMembersFriendsAndStreams(t *testi
 		assert.Equal(t, []string{working}, onRow(s, "m1", "s1", sprint.Ready, sprint.Working), "its ready cards went round the fleet; the card it works stays to finish")
 		hv, ok := r.heldView("m1")
 		require.True(t, ok)
-		assert.Equal(t, sprint.HoldView{Kind: sprint.HoldMember, Name: "m1", Reason: "the build cache cleaner deletes live entries", At: hv.At}, hv)
+		assert.Equal(t, sprint.HoldView{Kind: sprint.HoldMember, Name: "m1", Reason: "the build cache cleaner deletes live entries", At: hv.At, Who: "coordinator", Release: "nova-sprint unhold m1"}, hv, "the view says who held it and the verb that releases it (hold_cause.go)")
 		res, err := r.st.Run(r.ctx, store.TakeStep(sprint.TakeReq{As: "m1", Sel: sprint.Sel{Limit: 1}, Who: "m1"}))
 		require.NoError(t, err)
 		assert.Empty(t, res.Moved, "a held member takes no new card")

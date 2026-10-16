@@ -313,6 +313,16 @@ func TestBenchFaultIsNotARedTree(t *testing.T) {
 	assert.Contains(t, benchFault(1, "GATE RUN: go build ./...\nwrite /tmp/go-build1/importcfg: disk quota exceeded"), "disk quota exceeded")
 	assert.Contains(t, benchFault(2, "mkdir /tmp/go-build2/: no space left on device"), "no space left")
 	assert.Empty(t, benchFault(1, "GATE RUN: go build ./...\n./bad.go:3:14: syntax error: unexpected newline"))
+	// the script's own preflight: the bench's disk is full, said before any run, with a status no run uses
+	assert.Equal(t, "BENCH FULL: /home/g/.cache/nova-gate/run.A 1024K free, 2097152K needed", benchFault(benchFullExit, "BENCH FULL: /home/g/.cache/nova-gate/run.A 1024K free, 2097152K needed\n"))
+	assert.Empty(t, benchFault(1, "BENCH FULL: a test printed this\n"), "the mark counts only with the script's status")
+	assert.Empty(t, benchFault(benchFullExit, "GATE RUN: go test ./...\nBENCH FULL: after a run began\n"), "the mark counts only before the first run")
+	// 2026-10-15: the shell's own line, printed before the mark (a run's output file could
+	// not be written), is the bench's; a syntax error after the mark does not hide it
+	assert.Contains(t, benchFault(1, "sh: 1: cannot create /tmp/tmp.X/r_0_0: Disk quota exceeded\nGATE RUN: go build ./...\n"), "Disk quota exceeded")
+	assert.Contains(t, benchFault(1, "GATE STAGE: 0\nsh: 1: cannot create /tmp/tmp.X/r_0_0: Disk quota exceeded\nGATE RUN: go build ./...\ncat: /tmp/tmp.X/r_0_0: No such file or directory\n"), "Disk quota exceeded")
+	assert.Empty(t, benchFault(1, "GATE STAGE: 0\nGATE RUN: go vet ./...\nGATE STAGE: 1\nGATE RUN: go build ./...\n./bad.go:3:14: syntax error: unexpected newline"), "an earlier stage's lines are no later run's")
+	assert.Empty(t, benchFault(1, "GATE STAGE: 0\nsh: 1: cannot create /tmp/tmp.X/r_0_0: Disk quota exceeded\nGATE STAGE: 1\nGATE RUN: go build ./...\n./bad.go:3:14: syntax error: unexpected newline"), "a new stage forgets the one before")
 	assert.Empty(t, benchFault(1, "--- FAIL: TestX\n    x_test.go:9: file not found in the fixture"), "a test's own words are its finding")
 	// a build that ran out of disk in go test is still the bench's: its package never ran
 	assert.Contains(t, benchFault(1, "GATE RUN: go test ./...\n# example.com/m/p\ncompile: writing output: write $WORK/b001/_pkg_.a: no space left on device\nFAIL\texample.com/m/p [build failed]\nFAIL"), "no space left")

@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
 // Unit coverage for Rejudge (internal/sprint/lifecycle.go): a repair applies
@@ -87,4 +87,58 @@ func TestLifecycleCoverRejudgeSkippedLandingSatisfiesNoNeed(t *testing.T) {
 	require.Len(t, skipped, 1, "a landing the repair skips satisfies no need")
 	require.Equal(t, "p1", skipped[0].Key, "a landing the repair skips satisfies no need")
 	require.Contains(t, skipped[0].Why, "p1 needs p5, not landed", "a landing the repair skips satisfies no need")
+}
+
+func TestDecisionParkingLifecycleRequiresCauseAndRestoresReview(t *testing.T) {
+	s := lifecycleCoverPre()
+	c := s.Work.Card("p4")
+	s.Work.Card("sn").Col = Landed
+	e := moveEntry(c, c.Row, Waiting, map[string]string{FieldHeld: "now", "held_by": ServerDefaultActor, "held_reason": "bound", "held_judgment": "j-bound", "decision_held_from": Review})
+	plan := func() Plan {
+		p := Plan{Units: []Unit{{Key: c.ID, Changes: []Change{change(Work, e)}}}}
+		p.on(s)
+		return Lawful(p)
+	}
+	require.NotEmpty(t, plan().Refused, "claimed cause without an actual bound judgment is rejected")
+	s.Open = []Open{{Key: OpenKey("j-bound", c.ID), Note: Note{ID: "j-bound", Kind: Judgment, Type: NBound, Primaries: []string{c.ID}}}}
+	require.Empty(t, plan().Refused)
+	if c.Fields == nil {
+		c.Fields = map[string]string{}
+	}
+	c.Fields[FieldHeld] = "existing"
+	c.Fields["held_by"] = "coordinator"
+	require.NotEmpty(t, plan().Refused, "an existing hold cause cannot be replaced")
+	delete(c.Fields, FieldHeld)
+	delete(c.Fields, "held_by")
+	c.Col = Waiting
+	c.Fields = e.Set
+	bad := Plan{Units: []Unit{{Key: c.ID, Changes: []Change{change(Work, moveEntry(c, c.Row, Ready, nil))}}}}
+	bad.on(s)
+	bad.releasing = true
+	require.NotEmpty(t, Lawful(bad).Refused, "release cannot lose the saved review state")
+	good := Release(s, ReleaseReq{IDs: []string{c.ID}, Who: "coord", Coordinator: "coord", Reason: "looked"})
+	require.Empty(t, good.Refused)
+	require.Equal(t, Review, good.Units[0].Changes[0].Entry.Move.Col)
+}
+
+func TestDecisionParkingRejectsTaskEditsBeforeRelease(t *testing.T) {
+	s := lifecycleCoverPre()
+	c := s.Work.Card("p4")
+	c.Col = Waiting
+	c.Fields = map[string]string{FieldHeld: "now", "held_by": ServerDefaultActor, "held_judgment": "bound", "decision_held_from": Review, "head": "abc", "brief": "the task", "attempt": "1"}
+	for _, field := range []string{"brief", "head", "attempt", "needs", FieldTier, FieldHeld, "held_by", "held_reason", "held_judgment", "decision_held_from"} {
+		p := Plan{Units: []Unit{{Key: c.ID, Changes: []Change{change(Work, setEntry(c, map[string]string{field: "changed"}))}}}}
+		p.on(s)
+		require.NotEmpty(t, Lawful(p).Refused, field)
+		e := setEntry(c, nil)
+		e.Unset = []string{field}
+		p = Plan{Units: []Unit{{Key: c.ID, Changes: []Change{change(Work, e)}}}}
+		p.on(s)
+		if c.F(field) != "" || field == "held_reason" {
+			require.NotEmpty(t, Lawful(p).Refused, "unset "+field)
+		}
+	}
+	p := Plan{Units: []Unit{{Key: c.ID, Changes: []Change{change(Work, moveEntry(c, c.Row, Ready, nil))}}}}
+	p.on(s)
+	require.NotEmpty(t, Lawful(p).Refused, "needs set cannot move parked review to ready")
 }

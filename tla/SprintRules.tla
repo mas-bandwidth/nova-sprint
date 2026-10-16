@@ -154,7 +154,7 @@
 \*   "identicalrework" the second identical failure is reworked as failed work on its tier
 \*                instead of stopping at the bound (rules.go AtIdenticalFailure): IdenticalIsBound
 \*   "nostall"    the tick never raises the landing-stall judgment: StallLive
-\*   "noclear"    a landing does not clear the episode: StallNotYoung
+\*   "noclear"    a landing does not clear the episode: StallNotYoung, FirstTimeClearsAtTarget
 \*   "harnessredeal" the harness rule reworks the second identical harness fault a third time
 \*                instead of judging it: HarnessFaultBounded
 \*   "groupredeal" the harness rule redeals a card the fleet's grouped harness-fault judgment
@@ -170,6 +170,10 @@
 \*   "newtoken"   the alert sends a fresh bus token each retry: NoSecondMessage
 \*   "noquiet"    the tick raises a card or stream judgment while the tier rests:
 \*                QuietWhileUnfunded
+\*   "harnessvotes" the brief rule marks a card at its cap a brief defect whatever ended its
+\*                attempts, harness faults included (the code before PR #273): MarkOnlyOnVotes
+\*   "lanebrokenmarks" the brief rule marks every brief judgment but the harness's cap, the
+\*                lane-broken one included (the code of PR #273): MarkOnlyOnVotes
 
 EXTENDS Integers, FiniteSets
 
@@ -198,14 +202,15 @@ VARIABLES col, need, blocked, twin,               \* twins
           rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, rdsince, rdminds, \* reads
           gfails, stopped,                         \* gate
           idle, since, said, alarms, clk, nalarm, nclear, \* idle
-          anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, \* answers
-          pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt, \* episodes
+          anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked, anrun, \* answers
+          pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt, \* episodes
           jf, jfstarted, jr, jrasked, jh, jhlanded, \* judgments
           lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged, \* stall
           ctier, cst, crefused, cway, catt,         \* conflict
           ntier, nready, npinned, nfriend, nbrief, njudged, \* noroute
           alopen, almsg, altold,                      \* alert
-          rest, card, tierJ, cardJ, staleJ            \* tier
+          rest, card, tierJ, cardJ, staleJ,           \* tier
+          ftclk, ftcounted, ftunder, ftsince, ftsaid, ftjudged, ftcleared \* firsttime
 
 twinVars == <<col, need, blocked, twin>>
 ruleVars == <<tier, fails, st, attempts, envFails, fclass, same, bbound>>
@@ -213,15 +218,16 @@ lateVars == <<gen, waited, progress, late, waits, lst, stamped, badReturn, own, 
 rdVars == <<rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, rdsince, rdminds>>
 gateVars == <<gfails, stopped>>
 idleVars == <<idle, since, said, alarms, clk, nalarm, nclear>>
-anVars == <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec>>
-epVars == <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+anVars == <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked, anrun>>
+epVars == <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 judgVars == <<jf, jfstarted, jr, jrasked, jh, jhlanded>>
 stallVars == <<lsclk, lsstopped, lswait, lslast, lssince, lssaid, lsjudged>>
 conflictVars == <<ctier, cst, crefused, cway, catt>>
 norouteVars == <<ntier, nready, npinned, nfriend, nbrief, njudged>>
 alertVars == <<alopen, almsg, altold>>
 tierVars == <<rest, card, tierJ, cardJ, staleJ>>
-vars == <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
+ftVars == <<ftclk, ftcounted, ftunder, ftsince, ftsaid, ftjudged, ftcleared>>
+vars == <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>
 
 \* -- answers: a reader's findings ("empty" is a broken verdict that carries none), and the
 \* ways an attempt fails
@@ -282,10 +288,12 @@ TypeOK ==
   /\ anland \in BOOLEAN /\ anlost \in BOOLEAN /\ anfixless \in BOOLEAN
   /\ anhold \in BOOLEAN /\ anfixed \subseteq AnFindings /\ anharness \in Nat
   /\ anfleet \in 0..2 /\ anredealt \in BOOLEAN
+  /\ anvotes \in Nat /\ anmarked \in BOOLEAN /\ anrun \in Nat
   /\ pup \in BOOLEAN /\ pcol \in {"ready", "mine", "away"} /\ pwait \in (0..MaxClock) \cup {-1}
   /\ pign \in BOOLEAN /\ pdw \in (0..MaxClock) \cup {-1} /\ prec \in BOOLEAN /\ pstopped \in BOOLEAN
   /\ eclk \in 0..MaxClock
   /\ ast \in {"waits", "asked", "gone"} /\ aatt \in 1..Cap /\ areason \in {"noreader", "room"}
+  /\ aflapped \in BOOLEAN
   /\ aopen \in BOOLEAN /\ aseen \in BOOLEAN /\ anotes \in 0..MaxClock
   /\ rcol \in {"review", "ready", "working"} /\ rans \in BOOLEAN /\ ratt \in 1..Cap
   /\ jf \in {"open", "taken"} /\ jfstarted \in BOOLEAN
@@ -309,6 +317,13 @@ TypeOK ==
   /\ tierJ \in BOOLEAN
   /\ cardJ \in BOOLEAN
   /\ staleJ \in BOOLEAN
+  /\ ftclk \in 0..MaxClock
+  /\ ftcounted \in 0..Cap
+  /\ ftunder \in BOOLEAN
+  /\ ftsince \in (0..MaxClock) \cup {-1}
+  /\ ftsaid \in (0..MaxClock) \cup {-1}
+  /\ ftjudged \in BOOLEAN
+  /\ ftcleared \in BOOLEAN
 
 Init ==
   /\ col = [x \in TwinIds |-> CASE x = "o" -> "open" [] x = "t" -> "absent" [] OTHER -> "waiting"]
@@ -327,9 +342,10 @@ Init ==
   /\ anfind = None /\ anfail = None /\ anlast = None
   /\ anland = FALSE /\ anlost = FALSE /\ anfixless = FALSE
   /\ anhold = FALSE /\ anfixed = {} /\ anharness = 0 /\ anfleet = 0 /\ anredealt = FALSE /\ andec = 0
+  /\ anvotes = 0 /\ anmarked = FALSE /\ anrun = 0
   /\ pup = FALSE /\ pcol = "ready" /\ pwait = -1 /\ pign = FALSE /\ pdw = -1 /\ prec = FALSE /\ pstopped = FALSE
   /\ eclk = 0
-  /\ ast = "waits" /\ aatt = 1 /\ areason = "noreader" /\ aopen = FALSE /\ aseen = FALSE /\ anotes = 0
+  /\ ast = "waits" /\ aatt = 1 /\ areason = "noreader" /\ aflapped = FALSE /\ aopen = FALSE /\ aseen = FALSE /\ anotes = 0
   /\ rcol = "review" /\ rans = FALSE /\ ratt = 1
   /\ jf = "open" /\ jfstarted = FALSE
   /\ jr = "open" /\ jrasked = 0
@@ -340,6 +356,7 @@ Init ==
   /\ ntier \in 1..3 /\ nready = TRUE /\ npinned = FALSE /\ nfriend = FALSE /\ nbrief = FALSE /\ njudged = FALSE
   /\ alopen = FALSE /\ almsg = 0 /\ altold = FALSE
   /\ rest = FALSE /\ card = "ready" /\ tierJ = FALSE /\ cardJ = FALSE /\ staleJ = FALSE
+  /\ ftclk = 0 /\ ftcounted = 0 /\ ftunder = FALSE /\ ftsince = -1 /\ ftsaid = -1 /\ ftjudged = FALSE /\ ftcleared = FALSE
 
 -----------------------------------------------------------------------------
 \* Part "twins".
@@ -748,6 +765,59 @@ ReadAnswered == (rdst \in {"broken", "bound"}) ~> (rdst \notin {"broken", "bound
 \* Cap attempts since the coordinator's last decision (andec: the attempt at that decision)
 AnAtBound(f) == (f # "empty" /\ f = anlast) \/ anatt - andec >= Cap
 
+\* THE VOTES (PR #273, v1.2.26: "a harness fault never counts toward the brief-defect bound";
+\* internal/sprint brief_bound.go harnessEnds and AtBriefBound's Harness, rules.go classifyEnd,
+\* ruleBrief and harnessAtCap). Every attempt counts toward the cap (anatt - andec), but only a
+\* worker's or the brief's end is a vote that the brief is wrong (anvotes, since andec): a
+\* broken read, a HOLD or any other failure the worker reported. A harness end (EndHarness:
+\* the worker never ran, ran=false in FieldRanAttempts; here a harness fault and both deadline
+\* ends) is an attempt and never a vote. harnessEnds keys on ran alone, so a failure with no
+\* report is split as the code splits it: its worker ran (a vote) or did not (no vote).
+\* AnVotes(k, ran) is whether the attempt's end k is a vote: a harness fault never ran, a
+\* no-report end is ran's, every other end (a HOLD, another failure, the same failure) ran.
+AnVotes(k, ran) ==
+  CASE k = "harness" -> FALSE
+    [] k = "noreport" -> ran
+    [] OTHER -> TRUE
+
+\* the brief's own bounds, votes by themselves: the same finding as the attempt before (the
+\* same-finding-twice bound) or the same failure twice (AtIdenticalFailure, and the lander's
+\* same refusal way twice)
+AnSameBound == (anfind \notin {None, "empty"} /\ anfind = anlast) \/ anfail = "same"
+
+\* the window's ends that were the harness's: every attempt since the decision less the votes
+AnHarnessCount == (anatt - andec) - anvotes
+
+\* ruleBrief marks the card a brief defect at its bound unless the cap was reached mostly on
+\* harness ends (harnessAtCap: harness > since - harness, worded "harness fault ... the brief
+\* is not the cause", offered rework --carry or drop, never marked); the harnessvotes defect is
+\* the code before PR #273, which marked on the cap alone
+AnMarks ==
+  \/ AnSameBound
+  \/ anvotes >= AnHarnessCount
+  \/ Broken = "harnessvotes" /\ anatt - andec >= Cap
+  \/ Broken = "lanebrokenmarks" /\ ~(anatt - andec >= Cap /\ AnHarnessCount > anvotes)
+
+\* THE BROKEN LANE (bounds.go AtLaneBroken, LaneBrokenBound; steps_work.go raises it at the
+\* finish before the cap's judgment): LaneBrokenBound attempts in a row, each ended without a
+\* worker report, raise "the lane is broken, not the brief" (an NBriefWrong judgment offering
+\* hold, rework --tier, drop). AtLaneBroken reads the card's last attempts whatever the
+\* coordinator decided between them, so the run (anrun) is never reset by a decision, only by
+\* a vote. The code's LaneBrokenBound (4) equals its default cap (AttemptsDefault, 4); here the
+\* bound is one past the model's Cap, so a broken lane is reached only across a decision (the
+\* seat's rework --carry at the harness's cap, AnMindCarry), with the window since that
+\* decision below the cap: the case ruleBrief marked a brief defect on no vote (lanebrokenmarks;
+\* rules.go laneBrokenAt now leaves it, never marked).
+AnLaneBound == Cap + 1
+
+\* the brief rule marks a card at its bound a brief defect, once a window; the card stays at
+\* its bound for the mind (brief, rework, drop), whose decision opens a fresh window
+AnMark ==
+  /\ anst = "bound" /\ ~anmarked
+  /\ AnMarks
+  /\ anmarked' = TRUE
+  /\ UNCHANGED <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anrun>>
+
 \* the outside: a reader finds the attempt broken with finding f (a finding whose fix already
 \* stands is not read again; at the bound the read raises the brief's judgment, which the mind
 \* then reworks); the attempt pushed its head
@@ -756,16 +826,26 @@ AnReadBroken(f) ==
   /\ f \notin anfixed
   /\ anhead' = anatt /\ anfind' = f
   /\ anst' = IF f # "empty" /\ AnAtBound(f) THEN "bound" ELSE "broken"
-  /\ UNCHANGED <<anatt, anreworks, ancarry, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec>>
+  /\ anvotes' = anvotes + 1  \* the worker ran and a reader read it: a vote
+  /\ anrun' = 0              \* a vote ends the run of no-report ends
+  /\ UNCHANGED <<anatt, anreworks, ancarry, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anmarked>>
 
 \* the outside: the attempt comes back failed the way k (at the attempt cap the finish raises
-\* the brief's judgment instead)
-AnWorkFails(k) ==
+\* the brief's judgment instead); ran is whether its worker ran (FieldRanAttempts), free only
+\* for a no-report end
+AnWorkFails(k, ran) ==
   /\ anst = "working"
   /\ k = "same" => anreworks > 0
+  /\ k # "noreport" => ran = (k # "harness")
   /\ anhead' = anatt /\ anfail' = k
-  /\ anst' = IF anatt - andec >= Cap \/ (k = "same" /\ Broken # "identicalrework") THEN "bound" ELSE "failed"
-  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec>>
+  /\ anrun' = IF AnVotes(k, ran) THEN 0 ELSE anrun + 1
+  \* the cap, the same failure twice, or a broken lane (AtLaneBroken: the bound's judgment)
+  /\ anst' = IF \/ anatt - andec >= Cap
+                \/ k = "same" /\ Broken # "identicalrework"
+                \/ anrun' >= AnLaneBound
+             THEN "bound" ELSE "failed"
+  /\ anvotes' = IF AnVotes(k, ran) THEN anvotes + 1 ELSE anvotes
+  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anmarked>>
 
 \* the outside: the deadline fails the attempt (a harness fault) while the worker's LAND is
 \* still on its way; its attempt counts toward the cap as any other (the deadlinefree defect
@@ -774,7 +854,9 @@ AnDeadline ==
   /\ anst = "working" /\ ~anland
   /\ anhead' = anatt /\ anfail' = "harness" /\ anland' = TRUE
   /\ anst' = IF anatt - andec >= Cap /\ Broken # "deadlinefree" THEN "bound" ELSE "failed"
-  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec>>
+  \* a deadline's end is the harness's (no worker report): an attempt, never a vote
+  /\ anrun' = anrun + 1
+  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked>>
 
 \* the outside: the deadline fails the attempt (a harness fault) while the worker's HOLD is
 \* still on its way
@@ -782,7 +864,9 @@ AnDeadlineHold ==
   /\ anst = "working" /\ ~anhold
   /\ anhead' = anatt /\ anfail' = "hold" /\ anhold' = TRUE
   /\ anst' = IF anatt - andec >= Cap /\ Broken # "deadlinefree" THEN "bound" ELSE "failed"
-  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anland, anlost, anfixless, anfixed, anharness, anfleet, anredealt, andec>>
+  \* a deadline's end is the harness's (no worker report): an attempt, never a vote
+  /\ anrun' = anrun + 1
+  /\ UNCHANGED <<anatt, anreworks, ancarry, anfind, anlast, anland, anlost, anfixless, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked>>
 
 \* the outside: the worker's late LAND arrives. While its attempt is failed and no later
 \* attempt has started, finish takes it: the attempt is done. Once a later attempt has
@@ -797,7 +881,7 @@ AnLateLand ==
               ELSE /\ anst' = "done" /\ anfail' = None
                    /\ UNCHANGED anlost
        ELSE UNCHANGED <<anst, anfail, anlost>>
-  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anlast, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec>>
+  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anlast, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked, anrun>>
 
 \* the outside: the worker's late HOLD arrives; it finishes the attempt a late LAND does
 AnLateHold ==
@@ -810,7 +894,7 @@ AnLateHold ==
               ELSE /\ anst' = "done" /\ anfail' = None
                    /\ UNCHANGED anlost
        ELSE UNCHANGED <<anst, anfail, anlost>>
-  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anlast, anland, anfixless, anfixed, anharness, anfleet, anredealt, andec>>
+  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anlast, anland, anfixless, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked, anrun>>
 
 \* a rework with fix f ("empty": no fix): one attempt more, from the head the attempt before
 \* pushed; a later attempt started, so a late report still on its way is for the attempt the
@@ -823,7 +907,7 @@ AnRework(f) ==
   /\ anfixless' = (anfixless \/ f = "empty")
   /\ anst' = "working" /\ anfind' = None /\ anfail' = None
   /\ anland' = FALSE /\ anhold' = FALSE
-  /\ UNCHANGED <<anhead, anlost, anfixed, andec>>  \* a rule's rework is no decision: andec stands
+  /\ UNCHANGED <<anhead, anlost, anfixed, andec, anvotes, anmarked, anrun>>  \* a rule's rework is no decision: andec and the window's votes stand
 
 \* the read-broken rule: a broken read with a finding reworks the card with it
 RuleAnBroken ==
@@ -882,7 +966,7 @@ AnMind ==
      \/ anst = "bound" /\ (anfind = None \/ Broken = "answersmind")
      \/ anst = "bound" /\ andec > 0 \* a second bound after the one decision modelled: dropped
   /\ anst' = "judged"
-  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec>>
+  /\ UNCHANGED <<anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked, anrun>>
 
 \* the mind's rework at the bound (the seat's rework, a coordinator decision, steps_review.go
 \* Rework with no Rule): one attempt more from the head the attempt before pushed, as every
@@ -895,7 +979,23 @@ AnMindRework ==
   /\ anatt' = anatt + 1 /\ anreworks' = anreworks + 1 /\ ancarry' = anhead
   /\ anst' = "working" /\ anfixed' = anfixed \cup {anfind} /\ anlast' = anfind
   /\ anfind' = None /\ anfail' = None /\ anland' = FALSE /\ anhold' = FALSE
-  /\ UNCHANGED <<anhead, anlost, anfixless, anharness, anfleet, anredealt>>
+  \* the decision opens a fresh window: its votes start again, and it answers the window's mark
+  /\ anvotes' = 0 /\ anmarked' = FALSE
+  /\ UNCHANGED <<anhead, anlost, anfixless, anharness, anfleet, anredealt, anrun>>
+
+\* the mind's rework --carry at the harness's cap (the remedy BriefBound offers there: the cap
+\* reached mostly on harness ends, no finding to fix): a coordinator decision, a fresh window
+\* from the head the attempt before pushed. The run of no-report ends is not the window's: it
+\* stands (AtLaneBroken reads the last attempts across the decision).
+AnMindCarry ==
+  /\ anst = "bound" /\ anfind = None /\ ~AnSameBound
+  /\ anatt - andec >= Cap /\ AnHarnessCount > anvotes
+  /\ andec = 0 /\ anreworks < MaxFails
+  /\ andec' = anatt
+  /\ anatt' = anatt + 1 /\ anreworks' = anreworks + 1 /\ ancarry' = anhead
+  /\ anst' = "working" /\ anfail' = None /\ anland' = FALSE /\ anhold' = FALSE
+  /\ anvotes' = 0 /\ anmarked' = FALSE
+  /\ UNCHANGED <<anhead, anfind, anlast, anlost, anfixless, anfixed, anharness, anfleet, anredealt, anrun>>
 
 \* the outside: another card of the fleet fails the same harness-fault class, counted by
 \* TickHarnessFleet toward RuleSameFailureCards; two such cards and this one are the fleet's
@@ -905,13 +1005,14 @@ AnFleetFails ==
   /\ anst = "working"
   /\ anfleet < 2
   /\ anfleet' = anfleet + 1
-  /\ UNCHANGED <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anredealt, andec>>
+  /\ UNCHANGED <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anredealt, andec, anvotes, anmarked, anrun>>
 
 AnNext ==
   \/ AnDeadline \/ AnDeadlineHold \/ AnLateLand \/ AnLateHold
   \/ RuleAnBroken \/ RuleAnHarness \/ RuleAnFailed \/ AnMind \/ AnMindRework \/ AnFleetFails
+  \/ AnMindCarry \/ AnMark
   \/ \E f \in AnFindings : AnReadBroken(f)
-  \/ \E k \in AnFails : AnWorkFails(k)
+  \/ \E k \in AnFails, ran \in BOOLEAN : AnWorkFails(k, ran)
 
 \* The answers never pass the attempt bound: Cap attempts since the coordinator's last decision.
 AnswerAttemptsBounded == anatt - andec <= Cap
@@ -963,6 +1064,16 @@ HarnessFaultBounded == anharness <= 1
 \* TickHarnessFleet).
 HarnessFleetHeld == ~anredealt
 
+\* A harness fault never votes the brief wrong (PR #273): a card is marked a brief defect only
+\* on its own bound (the same finding or failure twice) or when the worker's and the brief's
+\* ends since the last decision are at least the harness's. The harnessvotes defect marks on
+\* the cap alone, and TLC's counterexample is the base behaviour: harness ends to the cap,
+\* marked with no vote among them.
+MarkOnlyOnVotes == anmarked => (AnSameBound \/ anvotes >= AnHarnessCount)
+
+\* The window's votes never exceed its attempts.
+VotesWithinWindow == anvotes <= anatt - andec
+
 \* The reversed witness: a mind still answers a card past the bound or with nothing to take as
 \* a fix (MCSprintRulesAnswersReachMindJudges: TLC reaches "judged" and so breaks it). "judged"
 \* is the seat's to answer at once: no wait parks it (wait_refused.go).
@@ -1002,8 +1113,9 @@ ReachMindJudges == anst # "judged"
 \*           its room (an outside event: readers rest, come up, fill and empty).
 \*   aopen   the cannot-ask judgment is open; aseen: the last tick saw the card waiting.
 \*   anotes  the cannot-ask judgments written this episode.
+\*   aflapped eligibility has changed; the reversed witness re-raises on every tick after it.
 \* The episode is the card waiting at one attempt: the judgment is raised when no reader may
-\* read it, held while it still waits for whatever reason, closed when a read is dealt, the
+\* read it, closed on the next tick with an eligible reader even at room, or when a read is dealt, the
 \* card leaves review or its attempt changes.
 \*
 \* The rule's answer (rules.go TickRuleRework, rules_read.go TickRuleTwin; steps_work.go
@@ -1019,8 +1131,10 @@ ReachMindJudges == anst # "judged"
 \*   "pinsilent"   released without the pin-ignored judgment: AwayIsJudged
 \*   "pinearly"    released at once, the bound not waited: PinHonouredWithinBound
 \*   "stoppedcounts" the running clock advances while STOPPED: PinClockSkipsStopped
-\*   "askflap"     the judgment's condition is the reason, not the wait (the code before):
-\*                 closed when the reason turns to room and raised again: OneCannotAskAnEpisode
+\*   "askflap"     after eligibility changes, repeats the judgment on unchanged ticks:
+\*                 OneCannotAskAnEpisode (legacy witness name retained)
+\*   "askheldeligible" an eligible reader leaves the episode open: CannotAskClosedWhenEligible
+\*   "askflapeligible" after a flap, raises again on unchanged no-reader ticks: OneCannotAskAnEpisode
 \*   "asknoclose"  the judgment stays open after the card is asked: CannotAskClosedWhenAsked
 \*   "keepanswer"  the finish keeps the answer (the code before): AnswerApplies
 \*   "answernomove" a rule writes its answer and leaves the card in review: AnswerApplies
@@ -1044,45 +1158,47 @@ PinReleased ==
 \* the outside: she is held or down, or back up
 PinFlip ==
   /\ pup' = ~pup
-  /\ UNCHANGED <<pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 
 \* the outside: the machine is STOPPED or starts again (stopped time does not count)
 PinStop ==
   /\ ~pstopped /\ pstopped' = TRUE
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 PinStart ==
   /\ pstopped /\ pstopped' = FALSE
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 
 \* the outside: the card's attempt ends wherever it ran; its next attempt is pinned to her
 \* again (ReworkPinned), ready, a new episode
 PinNextAttempt ==
   /\ pcol \in {"mine", "away"}
   /\ pcol' = "ready" /\ pdw' = -1 /\ prec' = FALSE
-  /\ UNCHANGED <<pup, pwait, pign, pstopped, eclk, ast, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pwait, pign, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 
 \* the outside: the reason the card waits changes while it waits
 AskReason ==
   /\ ast = "waits"
   /\ areason' = IF areason = "noreader" THEN "room" ELSE "noreader"
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ aflapped' = TRUE
+  /\ anotes' = 0
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, aopen, aseen, rcol, rans, ratt>>
 
 \* the outside: a read is dealt it; the read comes back with no verdict and it waits again
 \* (a new episode: a read was dealt); its attempt is answered and the next one waits; it
 \* leaves review
 AskDealt ==
   /\ ast = "waits" /\ ast' = "asked"
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 AskBack ==
   /\ ast = "asked" /\ ast' = "waits"
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 AskNextAttempt ==
   /\ ast # "gone" /\ aatt < Cap
-  /\ aatt' = aatt + 1 /\ ast' = "waits"
+  /\ aatt' = aatt + 1 /\ ast' = "waits" /\ aflapped' = FALSE
   /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, areason, aseen, rcol, rans, ratt>>
 AskGone ==
   /\ ast # "gone" /\ ast' = "gone"
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, aatt, areason, aopen, aseen, anotes, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, aatt, areason, aflapped, aopen, aseen, anotes, rcol, rans, ratt>>
 
 \* a rule answers the card in review: its next attempt, ready, and the answer, in one step
 RuleAnswers ==
@@ -1090,20 +1206,20 @@ RuleAnswers ==
   /\ rans' = TRUE
   /\ IF Broken = "answernomove" THEN UNCHANGED <<rcol, ratt>>
      ELSE rcol' = "ready" /\ ratt' = ratt + 1
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aopen, aseen, anotes>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes>>
 
 \* the outside: the attempt is dealt and taken; it finishes, back in review, the answer
 \* consumed
 RDealt ==
   /\ rcol = "ready" /\ rcol' = "working"
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aopen, aseen, anotes, rans, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, rans, ratt>>
 RFinish ==
   /\ rcol = "working" /\ rcol' = "review"
   /\ rans' = (Broken = "keepanswer" /\ rans)
-  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aopen, aseen, anotes, ratt>>
+  /\ UNCHANGED <<pup, pcol, pwait, pign, pdw, prec, pstopped, eclk, ast, aatt, areason, aflapped, aopen, aseen, anotes, ratt>>
 
 \* the cannot-ask condition the tick reads, and whether it raises one
-AskHolds == IF Broken = "askflap" THEN ast = "waits" /\ areason = "noreader" ELSE ast = "waits"
+AskHolds == ast = "waits" /\ (areason = "noreader" \/ Broken = "askheldeligible")
 AskRaise == ast = "waits" /\ areason = "noreader"
 
 \* one tick: the deal and the pass for the pin, the ask's judgment, nothing for the answer
@@ -1125,14 +1241,17 @@ EpTick ==
   \* cannot ask: raised once an episode, held while it holds, closed when it clears
   /\ aseen' = (ast = "waits")
   /\ IF AskHolds
-       THEN IF aopen THEN UNCHANGED <<aopen, anotes>>
+       THEN IF aopen
+            THEN IF Broken \in {"askflap", "askflapeligible"} /\ aflapped
+                 THEN aopen' = TRUE /\ anotes' = anotes + 1
+                 ELSE UNCHANGED <<aopen, anotes>>
             ELSE IF AskRaise THEN aopen' = TRUE /\ anotes' = anotes + 1
             ELSE UNCHANGED <<aopen, anotes>>
        ELSE IF Broken = "asknoclose" THEN UNCHANGED <<aopen, anotes>>
             ELSE /\ aopen' = FALSE
                  \* the episode ends when the card no longer waits (a flap keeps counting)
                  /\ anotes' = IF ast = "waits" THEN anotes ELSE 0
-  /\ UNCHANGED <<pup, pstopped, ast, aatt, areason, rcol, rans, ratt>>
+  /\ UNCHANGED <<pup, pstopped, ast, aatt, areason, aflapped, rcol, rans, ratt>>
 
 \* the attempt the card waits at changes: a new episode (the pass ends the judgment of the
 \* attempt before on the next tick, cannotAskEpisodes; modelled by ending the episode on the
@@ -1159,11 +1278,17 @@ PinHonouredWithinBound == pdw # -1 => pdw >= PinBound
 \* nothing on resume.
 PinClockSkipsStopped == [][pstopped => eclk' = eclk]_epVars
 
-\* One cannot-ask judgment an episode: a card that still waits is never judged twice.
+\* One cannot-ask judgment per unchanged eligible set at one attempt.
+\* AskReason starts another episode when that set changes.
 OneCannotAskAnEpisode == anotes <= 1
 
 \* A cannot-ask judgment is open only while the last tick saw the card waiting.
 CannotAskClosedWhenAsked == aopen => aseen
+
+\* Outside eligibility changes may precede the tick: closure is required by that tick,
+\* including a reader at room (the eligible reason is "room").
+CannotAskClosedWhenEligible ==
+  [][(EpTick /\ ast = "waits" /\ areason = "room") => ~aopen']_epVars
 
 \* A rule's answer on a card is the answer of the attempt on its way: the rule moved the
 \* card in the step it answered, and the attempt's finish consumed it.
@@ -1582,36 +1707,105 @@ QuietWhileUnfunded == (rest /\ card # "working") => (~cardJ /\ ~staleJ)
 ResumesWhenFunded == (~rest /\ card = "ready") ~> (~tierJ)
 
 -----------------------------------------------------------------------------
+\* Part "firsttime": the first-time land rate goal (internal/sprint first_time.go,
+\* judgments.go TickFirstTime; run from the deadlines part). When a stream has at least
+\* Cap counted primaries in its window (10 in the code) and its windowed first-time land
+\* rate is under the target (ftunder), the tick end raises one NFirstTimeUnderTarget
+\* judgment to the coordinator, re-raised no more often than StallBound, and clears with
+\* a happened note when the windowed rate is back at or over the target (~ftunder). As in
+\* Part "stall", recovery clears in one step so FirstTimeClearsAtTarget holds at every
+\* state; the "noclear" defect leaves the judgment open when the windowed rate recovers.
+
+\* the outside: a primary is counted (lands after rework/attempt > 1 or is dropped) and
+\* the stream's windowed rate is under the target
+FtCountUnder ==
+  /\ ftclk < MaxClock
+  /\ ftcounted' = IF ftcounted < Cap THEN ftcounted + 1 ELSE Cap
+  /\ ftunder' = TRUE
+  /\ ftcleared' = FALSE
+  /\ UNCHANGED <<ftclk, ftsince, ftsaid, ftjudged>>
+
+\* the outside: a primary lands on attempt 1 with no rework, brief replacement or carry,
+\* bringing the stream's windowed rate back to at or over the target; the "noclear" defect
+\* leaves the judgment open
+FtRecover ==
+  /\ ftclk < MaxClock
+  /\ ftcounted > 0 /\ ftunder
+  /\ ftcounted' = IF ftcounted < Cap THEN ftcounted + 1 ELSE Cap
+  /\ ftunder' = FALSE
+  /\ IF Broken = "noclear"
+       THEN UNCHANGED <<ftsince, ftsaid, ftjudged, ftcleared>>
+       ELSE /\ ftsince' = -1 /\ ftsaid' = -1 /\ ftjudged' = FALSE
+            /\ ftcleared' = (ftjudged \/ ftsaid # -1)
+  /\ UNCHANGED ftclk
+
+\* the tick end's judgment: once at least Cap primaries are counted and the windowed rate
+\* is under the target, raises NFirstTimeUnderTarget and re-raises no more often than
+\* StallBound; clears when back at or over the target
+FtTick ==
+  /\ ftclk < MaxClock
+  /\ LET now == ftclk + 1
+         active == ftcounted >= Cap /\ ftunder
+         due == (ftsaid = -1) \/ (now - ftsaid >= StallBound)
+     IN /\ ftclk' = now
+        /\ IF active
+             THEN /\ ftsince' = IF ftsince = -1 THEN now ELSE ftsince
+                  /\ IF due
+                       THEN /\ ftjudged' = TRUE /\ ftsaid' = now
+                       ELSE UNCHANGED <<ftjudged, ftsaid>>
+                  /\ UNCHANGED <<ftcounted, ftunder, ftcleared>>
+             ELSE IF Broken = "noclear"
+                    THEN UNCHANGED <<ftcounted, ftunder, ftsince, ftsaid, ftjudged, ftcleared>>
+                    ELSE /\ ftsince' = -1 /\ ftsaid' = -1 /\ ftjudged' = FALSE
+                         /\ ftcleared' = IF ftjudged THEN TRUE ELSE ftcleared
+                         /\ UNCHANGED <<ftcounted, ftunder>>
+
+FtNext == FtCountUnder \/ FtRecover \/ FtTick
+
+\* No judgment is raised until the stream has at least Cap counted primaries in its window.
+FirstTimeNotBelowMin == ftjudged => ftcounted >= Cap
+
+\* The first-time under-target judgment is open only while the stream's windowed rate is
+\* under the target: when the rate is back at or over the target, the episode clears.
+FirstTimeClearsAtTarget == ftjudged => ftunder
+
+\* A stream with at least Cap counted primaries whose windowed rate is under the target is
+\* judged or recovers to target, under fairness of the tick.
+FirstTimeLive == (ftcounted >= Cap /\ ftunder) ~> (ftjudged \/ ~ftunder)
+
+-----------------------------------------------------------------------------
 
 Next ==
-  \/ Part = "twins" /\ TwinNext /\ UNCHANGED <<ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
-  \/ Part = "rules" /\ RuleNext /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
-  \/ Part = "late" /\ LateNext /\ UNCHANGED <<twinVars, ruleVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
-  \/ Part = "reads" /\ RdNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
-  \/ Part = "gate" /\ GateNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
-  \/ Part = "idle" /\ IdleNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
-  \/ Part = "answers" /\ AnNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
-  \/ Part = "episodes" /\ EpNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
-  \/ Part = "judgments" /\ JudgNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
-  \/ Part = "stall" /\ LsNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars, tierVars>>
-  \/ Part = "conflict" /\ ConflictNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, norouteVars, alertVars, tierVars>>
-  \/ Part = "noroute" /\ NoRouteNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, alertVars, tierVars>>
-  \/ Part = "alert" /\ AlertNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, tierVars>>
-  \/ Part = "tier" /\ TierNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>
+  \/ Part = "twins" /\ TwinNext /\ UNCHANGED <<ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>
+  \/ Part = "rules" /\ RuleNext /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>
+  \/ Part = "late" /\ LateNext /\ UNCHANGED <<twinVars, ruleVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>
+  \/ Part = "reads" /\ RdNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>
+  \/ Part = "gate" /\ GateNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>
+  \/ Part = "idle" /\ IdleNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>
+  \/ Part = "answers" /\ AnNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>
+  \/ Part = "episodes" /\ EpNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>
+  \/ Part = "judgments" /\ JudgNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>
+  \/ Part = "stall" /\ LsNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>
+  \/ Part = "conflict" /\ ConflictNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, norouteVars, alertVars, tierVars, ftVars>>
+  \/ Part = "noroute" /\ NoRouteNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, alertVars, tierVars, ftVars>>
+  \/ Part = "alert" /\ AlertNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, tierVars, ftVars>>
+  \/ Part = "tier" /\ TierNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, ftVars>>
+  \/ Part = "firsttime" /\ FtNext /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>
 
 \* The rules and a mind act when they may; the outside is unfair. The stall's running tick
 \* and the machine's start are fair (a stopped machine adds no running time, so a stall can
 \* only be owed once the machine has run the bound); the alert's send is fair so a raise is
 \* eventually told; the tier's tick is fair so the tier judgment closes when routes wake.
 Fairness ==
-  /\ WF_vars(Part = "rules" /\ (RuleFailed \/ RuleBound \/ Mind) /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>)
-  /\ WF_vars(Part = "reads" /\ (RuleReadBroken \/ RdMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>)
-  /\ WF_vars(Part = "answers" /\ (RuleAnBroken \/ RuleAnHarness \/ RuleAnFailed \/ AnMind \/ AnMindRework) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>)
-  /\ WF_vars(Part = "judgments" /\ (RuleFriendTake \/ RuleReadLate \/ RuleHoldNeedRework \/ RuleHoldNeedMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>)
-  /\ SF_vars(Part = "stall" /\ LsTick /\ ~lsstopped /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars, tierVars>>)
-  /\ WF_vars(Part = "stall" /\ LsStart /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars, tierVars>>)
-  /\ SF_vars(Part = "alert" /\ SendOK /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, tierVars>>)
-  /\ WF_vars(Part = "tier" /\ TierTick /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars>>)
+  /\ WF_vars(Part = "rules" /\ (RuleFailed \/ RuleBound \/ Mind) /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>)
+  /\ WF_vars(Part = "reads" /\ (RuleReadBroken \/ RdMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>)
+  /\ WF_vars(Part = "answers" /\ (RuleAnBroken \/ RuleAnHarness \/ RuleAnFailed \/ AnMind \/ AnMindRework) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>)
+  /\ WF_vars(Part = "judgments" /\ (RuleFriendTake \/ RuleReadLate \/ RuleHoldNeedRework \/ RuleHoldNeedMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>)
+  /\ SF_vars(Part = "stall" /\ LsTick /\ ~lsstopped /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>)
+  /\ WF_vars(Part = "stall" /\ LsStart /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>)
+  /\ SF_vars(Part = "alert" /\ SendOK /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, tierVars, ftVars>>)
+  /\ WF_vars(Part = "tier" /\ TierTick /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, ftVars>>)
+  /\ SF_vars(Part = "firsttime" /\ FtTick /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars>>)
 
 Spec == Init /\ [][Next]_vars /\ Fairness
 

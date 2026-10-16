@@ -3,17 +3,19 @@ package main
 import (
 	"bytes"
 	"context"
+	"flag"
 	"fmt"
 	"maps"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
-	"github.com/mas-bandwidth/nova-sprint/pkg/sprintwire"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
 
 // THE SERVER'S LANES. The serial lock (app.serial) is the one line of control: a tick, a
@@ -35,6 +37,12 @@ import (
 //     inbox without --read) writes nothing: it runs on the read lane, one read at a time
 //     on its own process state (its own read twin), beside the line, as a client reading
 //     the store directly always has;
+//   - the dashboard's read (`where --json --dashboard`, once a second for each dashboard)
+//     has a lane of its own, beside the line and the read lane: it is answered from a
+//     copy computed one at a time on its own app and lock, which callers within a second
+//     of its start share, so it never waits behind the reads ahead of the read lane
+//     (dashWhere; on 2026-10-15 it took 2.5 to 11.4 s behind them against 0.3 s on the
+//     store);
 //   - every other verb (take, finish, read, queue, which records a reader's beat, fleet
 //     beat, which can write the fleet table, and every coordinator's write) waits for the
 //     line as before, and the line waits for its caller: a batch whose caller has gone is
@@ -57,6 +65,31 @@ func onReadLane(v verbArgs) bool {
 	return readLaneVerbs[v.name] && (v.name != "inbox" || !v.on("read"))
 }
 
+// dashFloor is how long a dashboard copy answers: callers within it of the start of the
+// compute that made it share it.
+const dashFloor = time.Second
+
+// onDashLane says the verb, as its flags read it, is the dashboard's read: where with
+// --json and --dashboard and no other flag but the actor (the server adds its own
+// --redis), and no words. Any other where is a read like the rest.
+func onDashLane(v verbArgs, argv []string) bool {
+	if v.name != "where" || v.err != nil || v.help || !v.on("json") || !v.on("dashboard") {
+		return false
+	}
+	other := false
+	v.fs.Visit(func(f *flag.Flag) { other = other || !slices.Contains([]string{"json", "dashboard", "actor"}, f.Name) })
+	if other {
+		return false
+	}
+	// every word after the verb is a flag of those (or its value): no positional word
+	rest := normalizeArgs(argv)[v.words:]
+	n := 0
+	if _, err := parseEach(v.fs, rest, func(_ string, _, k int) { n += k }); err != nil {
+		return false
+	}
+	return n == len(rest)
+}
+
 // isFriendBeat says the worker's verb is a friend's beat (workerVerb has held it to
 // `friend beat <friend>` and its report's flags).
 func isFriendBeat(argv []string) bool {
@@ -76,6 +109,27 @@ type serveLanes struct {
 	// caller that has gone as the server's line is.
 	line serialLock
 	read *app
+	// dash is the dashboard lane (dashWhere).
+	dash dashLane
+}
+
+// dashLane is the dashboard's read lane: the last copy and the lock one compute at a time
+// takes, on an app of its own. tla/ServerLanes.tla, DashWaitsOnlyForDash.
+type dashLane struct {
+	// line is the lane's own lock, never the read lane's nor the server's; a caller that
+	// has gone gives up its wait as the read lane's does.
+	line serialLock
+	// app is the dashboard's own app, made at the first compute (under line).
+	app *app
+	// kept is the last answer and when its compute began; read without any lock.
+	kept atomic.Pointer[dashCopy]
+}
+
+// dashCopy is one answer of the dashboard lane: its Result, the clock when its compute
+// began (the floor counts from it) and when it ended.
+type dashCopy struct {
+	res        sprintwire.Result
+	began, end time.Time
 }
 
 // lanesFor is the server's lanes, made on the first call that can take the line; nil
@@ -117,7 +171,8 @@ func (a *app) lanesFor(ctx context.Context) *serveLanes {
 	r.now, r.sleep, r.after, r.meter, r.home, r.screen, r.transport, r.checkTwin = a.now, a.sleep, a.after, a.meter, a.home, a.screen, a.transport, a.checkTwin
 	r.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return b, nil }
 	r.serveAddr = a.serveAddr
-	r.hk, r.busOpen = a.hk, a.busOpen // the server's hook records: the gate reads them on this lane too
+	r.readFriendHooks = a.readFriendHooks
+	r.hk, r.hookStoreFn, r.busOpen = a.hk, a.hookStoreFn, a.busOpen // the server's hook record connection: the gate reads it on this lane too
 	l.read = r
 	a.lanes = l
 	return l
@@ -157,7 +212,8 @@ func (l *serveLanes) budget(ctx context.Context, argv, args []string) sprintwire
 	r := newApp(l.read.getenv)
 	b := l.b
 	r.now, r.serveAddr = l.now, l.read.serveAddr
-	r.hk, r.busOpen = l.read.hk, l.read.busOpen // the server's hook records, never a store per take
+	r.readFriendHooks = l.read.readFriendHooks
+	r.hk, r.hookStoreFn, r.busOpen = l.read.hk, l.read.hookStoreFn, l.read.busOpen // the server's hook record connection, never a store per take
 	r.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return b, nil }
 	var stdout, stderr bytes.Buffer
 	code := r.run(args, &stdout, &stderr)
@@ -174,6 +230,61 @@ func (l *serveLanes) readVerbRun(ctx context.Context, args []string) sprintwire.
 	var stdout, stderr bytes.Buffer
 	code := l.read.run(args, &stdout, &stderr)
 	return sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String(), Outcome: l.read.outcome, Changed: l.read.changed}
+}
+
+// dashWhere is the dashboard's read on the dashboard lane (tla/ServerLanes.tla,
+// DashWaitsOnlyForDash; docs/SPEC-SPRINT.md section 14, The server): a caller within a
+// second of the start of the last compute is handed that compute's Result, taking no lock;
+// any other computes once, one at a time, on the dashboard's own app and lock, and a caller
+// that arrives while a compute runs waits for it and shares its Result. It never takes the
+// server's line (a.serial) nor the read lane's (l.line), and a caller that has gone is not
+// run. Only a Result that succeeded is kept.
+func (l *serveLanes) dashWhere(ctx context.Context, args []string) sprintwire.Result {
+	if ctx.Err() != nil {
+		return goneResult(args)
+	}
+	d := &l.dash
+	arrived := l.now()
+	fresh := func() (sprintwire.Result, bool) {
+		c := d.kept.Load()
+		if c == nil {
+			return sprintwire.Result{}, false
+		}
+		if now := l.now(); now.Sub(c.began) < dashFloor && !now.Before(c.began) || !c.end.Before(arrived) {
+			return c.res, true
+		}
+		return sprintwire.Result{}, false
+	}
+	if res, ok := fresh(); ok {
+		return res
+	}
+	if err := d.line.LockCtx(ctx); err != nil {
+		return goneResult(args)
+	}
+	defer d.line.Unlock()
+	if res, ok := fresh(); ok {
+		return res // the compute it waited for
+	}
+	if d.app == nil {
+		// its own app on the lanes' backend, as budget makes its own: never the read
+		// lane's state
+		r := newApp(l.read.getenv)
+		b := l.b
+		r.now, r.sleep, r.after, r.meter, r.home, r.screen, r.transport, r.checkTwin = l.read.now, l.read.sleep, l.read.after, l.read.meter, l.read.home, l.read.screen, l.read.transport, l.read.checkTwin
+		r.serveAddr = l.read.serveAddr
+		r.readFriendHooks = l.read.readFriendHooks
+		r.hk, r.hookStoreFn, r.busOpen = l.read.hk, l.read.hookStoreFn, l.read.busOpen // the server's hook record connection
+		r.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return b, nil }
+		d.app = r
+	}
+	began := l.now()
+	var stdout, stderr bytes.Buffer
+	code := d.app.run(args, &stdout, &stderr)
+	res := sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String(), Outcome: d.app.outcome, Changed: d.app.changed}
+	if code == 0 {
+		d.kept.Store(&dashCopy{res: res, began: began, end: l.now()})
+	}
+	return res
 }
 
 // goneResult is the answer of a verb not run because its caller went away while it
@@ -201,6 +312,12 @@ type serveTally struct {
 	// refused counts the refused verbs since the last SERVE line, by verb word (logRefused,
 	// serve.go), so the line says refused=<n> by verb (docs/SPEC-SPRINT.md section 14).
 	refused map[string]int
+	// tickEnd is when the run loop's last tick ended and tickDeadline that tick's
+	// deadline (tickEnded): the SERVE line says tick-age, and tick=stale past twice the
+	// deadline, so a server whose tick has stopped reads stopped, not up
+	// (a-card-read-never-runs-the-deal). Kept across SERVE lines.
+	tickEnd      time.Time
+	tickDeadline time.Duration
 	// refuseText, refuseSince and refuseRepeat are the refusal rate bound (logRefused): the
 	// last line said, when it was said, and how many identical refusals have stood behind it
 	// since; unlike the counts above they are kept across SERVE lines.
@@ -235,12 +352,38 @@ func (a *app) tally(beats, reads, serial, gone int, wait, hold time.Duration, fi
 		return
 	}
 	total, byVerb := refusedCounts(t.refused)
-	fmt.Fprintf(a.serveLog, "%s SERVE batches=%d beat-lane=%d read-lane=%d on-line=%d gone=%d refused=%d refused-by=%s wait-max=%s held-max=%s held-by=%s over=%s\n",
+	fmt.Fprintf(a.serveLog, "%s SERVE batches=%d beat-lane=%d read-lane=%d on-line=%d gone=%d refused=%d refused-by=%s wait-max=%s held-max=%s held-by=%s over=%s %s\n",
 		now.Format("15:04:05"), t.batches, t.beats, t.reads, t.serialVerbs, t.gone, total,
 		oneline.Field(orDashStr(byVerb, "-")),
-		t.waitMax.Round(time.Millisecond), t.holdMax.Round(time.Millisecond), oneline.Field(orDashStr(t.holdWhat, "-")), now.Sub(t.since).Round(time.Second))
+		t.waitMax.Round(time.Millisecond), t.holdMax.Round(time.Millisecond), oneline.Field(orDashStr(t.holdWhat, "-")), now.Sub(t.since).Round(time.Second),
+		tickAgeField(now, t.tickEnd, t.tickDeadline))
 	t.since, t.batches, t.beats, t.reads, t.serialVerbs, t.gone, t.waitMax, t.holdMax, t.holdWhat = now, 0, 0, 0, 0, 0, 0, 0, ""
 	t.refused = nil
+}
+
+// tickEnded records the end of a tick of the run loop and its deadline, for the SERVE
+// line's tick-age (a-card-read-never-runs-the-deal; docs/SPEC-SPRINT.md section 14, The
+// server, "The tick's deadline").
+func (a *app) tickEnded(at time.Time, deadline time.Duration) {
+	t := &a.served
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.tickEnd, t.tickDeadline = at, deadline
+}
+
+// tickAgeField is the SERVE line's tick-age: the time since the last tick ended ("-"
+// before the first), with tick=stale when that is more than twice the deadline (no
+// deadline: never stale).
+func tickAgeField(now, end time.Time, deadline time.Duration) string {
+	if end.IsZero() {
+		return "tick-age=-"
+	}
+	age := now.Sub(end)
+	s := "tick-age=" + age.Round(time.Second).String()
+	if deadline > 0 && age > 2*deadline {
+		s += " tick=stale"
+	}
+	return s
 }
 
 // refusedCounts is the refused verbs by verb word as the SERVE line prints them: the total

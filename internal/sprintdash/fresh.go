@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 // The live read and its freshness (the owner, 2026-10-04: "I need to be able to always
@@ -31,7 +31,11 @@ const (
 // Tick is one tick of the clock's ticker: a read of the sprint when no read is running,
 // then the freshness check. Run calls it each tick; a test calls it by hand.
 func (s *Server) Tick() {
-	s.refresh(s.Every - s.Every/tickSlack)
+	s.mu.Lock()
+	s.pageTicks++
+	first := s.began.IsZero()
+	s.mu.Unlock()
+	s.refresh(s.Every-s.Every/tickSlack, first)
 	s.checkFresh(s.Now())
 }
 
@@ -85,14 +89,14 @@ func (s *Server) Stale() string {
 }
 
 // healthz answers ok, or 503 with why while the freshness alarm stands.
-func (s *Server) healthz(w http.ResponseWriter) {
+func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 	if why := s.Stale(); why != "" {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = io.WriteString(w, why+"\n") // ignored: a checker gone away asks again
 		return
 	}
-	s.send(w, "text/plain; charset=utf-8", []byte("ok\n"))
+	s.send(w, r, "text/plain; charset=utf-8", []byte("ok\n"))
 }
 
 func orDefault(d, byDefault time.Duration) time.Duration {

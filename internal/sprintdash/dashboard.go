@@ -18,6 +18,7 @@ package sprintdash
 import (
 	"bytes"
 	"cmp"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,14 +37,18 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
 const (
 	// Window is how far back the throughput's samples reach.
 	Window = time.Hour
-	// MinSpan is the samples throughput needs before it shows: until then it is null.
+	// MinSpan is the samples throughput needs before it shows: until then it is null. Only a
+	// history that is truly empty (the dashboard's first ever start) waits for it: the samples
+	// are kept across restarts (SaveSamples), so a release adoption does not.
 	MinSpan = 10 * time.Minute
+	// SaveEvery is the least time between two saves of the samples.
+	SaveEvery = 10 * time.Second
 	// LogEvery is the time between the read-time summary lines on Log.
 	LogEvery = time.Minute
 	// ReadTimeoutDefault is how long a read is waited on before it is marked failed.
@@ -86,6 +91,8 @@ type Server struct {
 	Logo string
 	// Version is the binary's version, part of the build number.
 	Version string
+	// Command is what Read runs, logged on a slow read (>1s).
+	Command string
 	// Log takes a line per new read failure and a read-time summary a minute.
 	Log io.Writer
 	// Keepalive is the time between two keepalive comments on an idle /events stream;
@@ -102,22 +109,35 @@ type Server struct {
 	ReadTimeout time.Duration
 	// keepaliveTick is a test's keepalive ticker in place of the clock's; nil is the clock.
 	keepaliveTick func(time.Duration) (<-chan time.Time, func())
-	// readTimer is a test's read timeout in place of the clock's; nil is the clock.
-	readTimer func(time.Duration) (<-chan time.Time, func())
+	// ReadTimer is a test's read timeout in place of the clock's; nil is the clock.
+	ReadTimer func(time.Duration) (<-chan time.Time, func())
+	// LoadSamples and SaveSamples, when both are set, keep the throughput's samples across a
+	// restart: LoadSamples returns what SaveSamples last was given (nil, or an error, for none),
+	// read once at the first good read; SaveSamples is given the samples at most every
+	// SaveEvery, after a good read. A failure of either is logged and the samples start from
+	// empty or go unsaved.
+	LoadSamples func() ([]byte, error)
+	SaveSamples func([]byte) error
+	// OnRecord, when set, is called after record() completes under mu.
+	OnRecord func()
 
-	mu       sync.Mutex
-	polling  bool // Run is the one reader: a request answers from the copy only
-	reading  bool
-	began    time.Time // when the last read began; zero before the first
-	snap     snapshot
-	page     pageCopy       // the last good read as the page reads it (pageview.go)
-	pageRate pageThroughput // the page's throughput, counted as the live server counts it (pageview.go)
-	copy     *sprintCopy    // the last good read as the pull routes read it; nil before one
-	gen      uint64         // the good reads so far: an /events client sends each new one
-	changed  chan struct{}  // closed, and replaced, at each good read
-	samples  []sample
-	stats    readStats
-	fresh    freshness
+	mu        sync.Mutex
+	polling   bool // Run is the one reader: a request answers from the copy only
+	reading   bool
+	began     time.Time // when the last read began; zero before the first
+	pageTicks int
+	snap      snapshot
+	page      pageCopy       // the last good read as the page reads it (pageview.go)
+	pageRate  pageThroughput // the page's throughput, counted as the live server counts it (pageview.go)
+	copy      *sprintCopy    // the last good read as the pull routes read it; nil before one
+	gen       uint64         // the good reads so far: an /events client sends each new one
+	changed   chan struct{}  // closed, and replaced, at each good read
+	samples   []sample
+	restored  bool      // LoadSamples has been read
+	savedAt   time.Time // when the samples were last saved
+	saveBad   bool      // the last save failed (logged once)
+	stats     readStats
+	fresh     freshness
 }
 
 // snapshot is /api/sprint's body: the page reads data, throughput,
@@ -157,7 +177,16 @@ type readStats struct {
 	sum, max  time.Duration
 }
 
-func (s *Server) send(w http.ResponseWriter, ctype string, body []byte) {
+func (s *Server) send(w http.ResponseWriter, r *http.Request, ctype string, body []byte) {
+	w.Header().Set("Vary", "Accept-Encoding")
+	if r != nil && strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Set("Content-Type", ctype)
+		gw := gzip.NewWriter(w)
+		_, _ = gw.Write(body)
+		_ = gw.Close()
+		return
+	}
 	w.Header().Set("Content-Type", ctype)
 	w.Header().Set("Content-Length", fmt.Sprint(len(body)))
 	_, _ = w.Write(body) // ignored: a page gone away asks again in a second
@@ -172,7 +201,7 @@ func (s *Server) Refresh() {
 	cacheOnly := s.polling && !s.began.IsZero()
 	s.mu.Unlock()
 	if !cacheOnly {
-		s.refresh(s.Every)
+		s.refresh(s.Every, true)
 	}
 }
 
@@ -184,8 +213,9 @@ type readResult struct {
 }
 
 // refresh reads the sprint when gap has passed since the last read began and no read is
-// running.
-func (s *Server) refresh(gap time.Duration) {
+// running. It decouples the page tick from slow background reads: at most one read runs
+// at a time, in the background, logging when it exceeds 1s.
+func (s *Server) refresh(gap time.Duration, wait bool) {
 	s.mu.Lock()
 	start := s.Now()
 	if s.reading || !s.began.IsZero() && start.Sub(s.began) < gap {
@@ -195,37 +225,73 @@ func (s *Server) refresh(gap time.Duration) {
 	s.reading, s.began = true, start
 	s.mu.Unlock()
 
-	done := make(chan readResult, 1)
+	readDone := make(chan readResult, 1)
 	go func() {
 		body, up, err := s.read()
 		if err == nil {
 			err = sprintJSON(body)
 		}
-		done <- readResult{body, up, err}
+		readDone <- readResult{body, up, err}
 	}()
-	timeout := orDefault(s.ReadTimeout, ReadTimeoutDefault)
-	expired, stop := s.timer(timeout)
-	defer stop()
-	var res readResult
-	select {
-	case res = <-done:
-	case <-expired:
+
+	finish := func(res readResult) {
+		end := s.Now()
+		took := end.Sub(start)
+		if took > time.Second && s.Command != "" {
+			s.logf(end, "slow read: took %.3fs: %s", took.Seconds(), s.Command)
+		}
 		s.mu.Lock()
-		s.record(start, s.Now(), nil, nil, &ReadError{Why: fmt.Sprintf("the read timed out after %s", timeout)})
+		s.reading = false
+		s.record(start, end, res.body, res.up, res.err)
+		onRecord := s.OnRecord
 		s.mu.Unlock()
-		res = <-done // reads never overlap: the next one waits for this one to end
+		if onRecord != nil {
+			onRecord()
+		}
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.reading = false
-	s.record(start, s.Now(), res.body, res.up, res.err)
+	waitForRead := func(firstDeadline <-chan time.Time) {
+		timeout := orDefault(s.ReadTimeout, ReadTimeoutDefault)
+		expired, stop := s.timer(timeout)
+		defer stop()
+		select {
+		case res := <-readDone:
+			finish(res)
+		case <-firstDeadline:
+			go func() {
+				select {
+				case res := <-readDone:
+					finish(res)
+				case <-expired:
+					s.mu.Lock()
+					s.record(start, s.Now(), nil, nil, &ReadError{Why: fmt.Sprintf("the read timed out after %s", timeout)})
+					s.mu.Unlock()
+					res := <-readDone
+					finish(res)
+				}
+			}()
+		case <-expired:
+			s.mu.Lock()
+			s.record(start, s.Now(), nil, nil, &ReadError{Why: fmt.Sprintf("the read timed out after %s", timeout)})
+			s.mu.Unlock()
+			res := <-readDone
+			finish(res)
+		}
+	}
+
+	if wait {
+		waitForRead(nil)
+	} else {
+		firstDeadline, stopFirst := s.timer(300 * time.Millisecond)
+		defer stopFirst()
+		waitForRead(firstDeadline)
+	}
 }
 
-// timer is the read timeout's: the clock's, or a test's (readTimer).
+// timer is the read timeout's: the clock's, or a test's (ReadTimer).
 func (s *Server) timer(d time.Duration) (<-chan time.Time, func()) {
-	if s.readTimer != nil {
-		return s.readTimer(d)
+	if s.ReadTimer != nil {
+		return s.ReadTimer(d)
 	}
 	t := time.NewTimer(d)
 	return t.C, func() { t.Stop() }
@@ -274,6 +340,7 @@ func (s *Server) record(start, end time.Time, body []byte, up *snapshot, err err
 		}
 		s.snap.OK, s.snap.Error = false, &why
 	} else {
+		s.restoreSamples(end)
 		// the samples are the epoch's landed cards: the table's and the archived streams'
 		// (stream archive), so an archive, which lands nothing, is not a fall that starts
 		// them again; a sprint done (done) carries the epoch's in landed already, so it is
@@ -309,8 +376,79 @@ func (s *Server) record(start, end time.Time, body []byte, up *snapshot, err err
 		s.snap.Data = placed(bytes.TrimSpace(body))
 		s.pageRecord(bytes.TrimSpace(body), up, end)
 		s.snap.FetchedAt, s.snap.Throughput, s.snap.ThroughputMinutes = &at, rate, minutes
+		s.saveSamples(end)
 	}
 	s.summarize(end, took, err != nil)
+}
+
+// samplesFile is the saved samples: the pull routes' (epoch) and the page's, each oldest first,
+// at in unix nanoseconds.
+type samplesFile struct {
+	Epoch []savedSample `json:"epoch"`
+	Page  []savedSample `json:"page"`
+}
+
+type savedSample struct {
+	At     int64 `json:"at"`
+	Landed int64 `json:"landed"`
+}
+
+func savedOf(in []sample) []savedSample {
+	out := make([]savedSample, 0, len(in))
+	for _, x := range in {
+		out = append(out, savedSample{x.at.UnixNano(), x.landed})
+	}
+	return out
+}
+
+// samplesOf is the saved samples still in the Window at now and not after it (a clock that went
+// back drops them), oldest first.
+func samplesOf(in []savedSample, now time.Time) []sample {
+	var out []sample
+	for _, x := range in {
+		at := time.Unix(0, x.At)
+		if at.After(now) || now.Sub(at) > Window || (len(out) > 0 && at.Before(out[len(out)-1].at)) {
+			continue
+		}
+		out = append(out, sample{at, x.Landed})
+	}
+	return out
+}
+
+// restoreSamples loads the saved samples once, under mu, so the rolling hour carries across a
+// restart; the reset rule (a landed below the last) is the add's, as ever.
+func (s *Server) restoreSamples(now time.Time) {
+	if s.restored || s.LoadSamples == nil || s.SaveSamples == nil {
+		return
+	}
+	s.restored = true
+	b, err := s.LoadSamples()
+	if err != nil {
+		s.logf(now, "samples not loaded: %s; the throughput starts from empty", oneline.Escape(err.Error()))
+		return
+	}
+	var f samplesFile
+	if len(b) == 0 || json.Unmarshal(b, &f) != nil {
+		return
+	}
+	s.samples = samplesOf(f.Epoch, now)
+	s.pageRate.samples = samplesOf(f.Page, now)
+}
+
+// saveSamples saves the samples, under mu, at most every SaveEvery.
+func (s *Server) saveSamples(now time.Time) {
+	if s.SaveSamples == nil || (!s.savedAt.IsZero() && now.Sub(s.savedAt) < SaveEvery) {
+		return
+	}
+	s.savedAt = now
+	b, err := json.Marshal(samplesFile{savedOf(s.samples), savedOf(s.pageRate.samples)})
+	if err == nil {
+		err = s.SaveSamples(b)
+	}
+	if err != nil && !s.saveBad {
+		s.logf(now, "samples not saved: %s", oneline.Escape(err.Error()))
+	}
+	s.saveBad = err != nil
 }
 
 // sampleLanded adds a sample and is the cards landed per hour over the samples of the
@@ -366,6 +504,13 @@ func (s *Server) logf(at time.Time, format string, args ...any) {
 	if s.Log != nil {
 		fmt.Fprintf(s.Log, "DASHBOARD %s %s\n", at.Format("2006-01-02 3:04:05 PM"), fmt.Sprintf(format, args...))
 	}
+}
+
+// PageTicks is how many times the page has ticked from cache.
+func (s *Server) PageTicks() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pageTicks
 }
 
 // Snapshot is /api/sprint's body now, with the build number, as the default release shows it.

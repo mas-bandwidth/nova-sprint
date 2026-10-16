@@ -20,9 +20,9 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/workgh"
-	"github.com/mas-bandwidth/nova-sprint/pkg/atomicfile"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
-	"github.com/mas-bandwidth/nova-sprint/pkg/tool"
+	"github.com/mas-bandwidth/nova-tools/pkg/atomicfile"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/tool"
 )
 
 var version string
@@ -58,7 +58,7 @@ func workTool(gh github) *tool.Tool {
 --dry-run reads GitHub exactly as the import does (every issue, the same calls) and writes nothing.
 verify reads GitHub again: one MISSING, EXTRA or DRIFT line per difference; none is the proof.
 verify --against compares two tree files and reads no network (a minimal tree: verify -h).
-first run: gh logged in (gh auth status); export ORG and REPO, a repository you can read.`,
+first run: nova-work example --dir ./example (then verify --against with no network or gh).`,
 		ExitTable: "0 done, or verify found no difference; 1 verify found differences, or an import's " +
 			"encoded tree did not read back equal, or roadmap check found problems; 2 could not run (a flag, the budget, gh, GitHub, a file)",
 		UsageNote:  roadmapUsageNote,
@@ -115,6 +115,30 @@ import --org $ORG --repo $ORG/$REPO --page-size 15 --out ./tree.lisp`,
 					})
 				},
 				Run: gh.verifyTree,
+			},
+			{
+				Name:      "example",
+				Usage:     "example --dir <dir> [--replace]",
+				Example:   "example --dir ./example",
+				Effect:    tool.LocalWrite + ": writes a minimal pair of tree files and a recorded GraphQL import replay fixture",
+				Detail:    exampleDetail,
+				ExitTable: "0 the example files and fixture are written; 2 could not run (a flag, unwritable directory)",
+				Flags: func(f *tool.Flags) {
+					f.Required("dir", "the directory to write the example tree files and fixture to")
+					f.Bool("replace", false, "replace existing files instead of refusing")
+					f.Check(func(c *tool.Call) {
+						dir := c.Str("dir")
+						if !c.Bool("replace") {
+							for _, name := range []string{"tree.lisp", "against.lisp", "call-01.json", "call-02.json"} {
+								if fileExists(filepath.Join(dir, name)) {
+									c.Problem(fmt.Sprintf("%s exists in %s; pass --replace to replace it", name, dir))
+									break
+								}
+							}
+						}
+					})
+				},
+				Run: writeExample,
 			},
 		}, gh.roadmapVerbs()...),
 			tool.Verb{

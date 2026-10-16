@@ -7,8 +7,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // CardPlan is one card of a plan under review: its id and its brief text. The
@@ -23,20 +23,22 @@ type CardPlan struct {
 // SharedPathRow is one path two or more cards of a plan name together in their
 // PATHS lines. Ledger says a lander-owned ledger covers the path (LedgerInPaths),
 // so the lander merges it and the cards do not collide. Edge says a needs edge
-// chains the pair, so the later card lands at the earlier's tip. A row that is
-// neither ledger nor edge is a refusal: the two cards would edit the file at once.
+// chains the pair, and Soft says a soft dependency (LAND-AFTER) chains the pair,
+// so the later card lands at the earlier's tip. A row that is neither ledger,
+// edge nor soft is a refusal: the two cards would edit the file at once.
 type SharedPathRow struct {
 	Path   string
 	Cards  []string
 	Ledger bool
 	Edge   bool
+	Soft   bool
 }
 
 // SharedPathRows is the overlap table of a plan: one row per repository and path
 // named in PATHS by two or more cards, in first-named path order then repository
 // order within each path, each with the cards
 // that name it, whether a lander-owned ledger covers it, and whether a needs edge
-// chains the cards (docs/SPEC-CARD-CONTRACT.md, the shared-path rule).
+// or soft dependency chains the cards (docs/SPEC-CARD-CONTRACT.md, the shared-path rule).
 func SharedPathRows(cards []CardPlan) []SharedPathRow {
 	type pathKey struct{ repo, path string }
 	byPath := map[pathKey][]string{}
@@ -46,9 +48,11 @@ func SharedPathRows(cards []CardPlan) []SharedPathRow {
 	// never evidence that two cards stage into separate repositories.
 	unknown := map[string][]string{}
 	needs := map[string][]string{}
+	soft := map[string][]string{}
 	for _, c := range cards {
 		repo := planRepo(c.Brief)
 		needs[c.ID] = briefNeeds(c.Brief)
+		soft[c.ID] = briefLandAfter(c.Brief)
 		for _, p := range headerPaths(c.Brief, "PATHS") {
 			if _, seen := pathRank[p]; !seen {
 				pathRank[p] = len(pathRank)
@@ -85,7 +89,7 @@ func SharedPathRows(cards []CardPlan) []SharedPathRow {
 		}
 		rows = append(rows, SharedPathRow{
 			Path: key.path, Cards: ids,
-			Ledger: LedgerInPaths(key.path), Edge: anyEdge(needs, ids),
+			Ledger: LedgerInPaths(key.path), Edge: anyEdge(needs, ids), Soft: anyEdge(soft, ids),
 		})
 	}
 	return rows
@@ -154,20 +158,20 @@ func Review(cards []CardPlan) (table, refusal string) {
 	return Table(rows), RefuseOverlaps(rows)
 }
 
-// RefuseOverlaps is the first non-ledger overlap without an edge, "" when there
-// is none: the brief the add refuses on, naming both cards and the path.
+// RefuseOverlaps is the first non-ledger overlap without an edge or soft dependency,
+// "" when there is none: the brief the add refuses on, naming both cards and the path.
 func RefuseOverlaps(rows []SharedPathRow) string {
 	for _, r := range rows {
-		if r.Ledger || r.Edge {
+		if r.Ledger || r.Edge || r.Soft {
 			continue
 		}
-		return fmt.Sprintf("%s is named in PATHS by %s and %s, and neither needs the other", r.Path, r.Cards[0], r.Cards[1])
+		return fmt.Sprintf("%s is named in PATHS by %s and %s, and neither has a soft dependency on the other (LAND-AFTER: <id>) or needs the other (DEPENDS-ON: <id>)", r.Path, r.Cards[0], r.Cards[1])
 	}
 	return ""
 }
 
 // Table renders the overlap table for a plan review: one line per overlap with
-// the path, the cards, ledger or not, and the edge if any.
+// the path, the cards, ledger or not, and the edge or soft dependency if any.
 func Table(rows []SharedPathRow) string {
 	var b strings.Builder
 	for _, r := range rows {
@@ -178,10 +182,29 @@ func Table(rows []SharedPathRow) string {
 		edge := "no-edge"
 		if r.Edge {
 			edge = "edge"
+		} else if r.Soft {
+			edge = "soft"
 		}
 		fmt.Fprintf(&b, "%s  %s  %s  %s\n", r.Path, strings.Join(r.Cards, ","), ledger, edge)
 	}
 	return b.String()
+}
+
+// briefLandAfter is the soft dependencies a brief names on its LAND-AFTER: header line.
+func briefLandAfter(brief string) []string {
+	value, _ := swarm.CardHeaderValue([]byte(brief), "LAND-AFTER")
+	var out []string
+	for _, id := range strings.Split(value, ",") {
+		if cut, _, ok := strings.Cut(id, "("); ok {
+			id = cut
+		}
+		switch id = strings.TrimSpace(id); {
+		case id == "", id == "-", id == "none", strings.Contains(id, "#"):
+			continue
+		}
+		out = append(out, id)
+	}
+	return out
 }
 
 // briefNeeds is the needs a brief names: the first `Needs:` header line, else

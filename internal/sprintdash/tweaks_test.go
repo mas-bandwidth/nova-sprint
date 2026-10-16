@@ -29,7 +29,7 @@ import (
 //     (the owner 2026-10-04 9:14 AM); the red machine STOPPED chip is gone, STOP lives in the
 //     ETA tile (the owner 2026-10-12 ~00:58Z).
 //
-// Always dark: the page stays dark, no theme toggle.
+// Always dark (the page stays dark, no theme toggle) is TestPageHasNoThemeToggleAndStaysDark's.
 func TestPageCarriesGlennsTweaksOf20261004(t *testing.T) {
 	t.Parallel()
 
@@ -42,12 +42,6 @@ func TestPageCarriesGlennsTweaksOf20261004(t *testing.T) {
 	html := w.Body.String()
 	app := string(file("app.js"))
 	doc := parsePage(t, []byte(html))
-
-	// Always dark: no theme toggle, stays dark
-	assert.NotContains(t, html, `id="theme"`, "index.html must not carry a theme toggle button")
-	assert.NotContains(t, html, `getItem("sprint-theme")`, "the page never restores a light theme")
-	assert.Contains(t, html, `<html lang="en" data-theme="dark">`, "the html element must stay dark")
-	assert.NotContains(t, app, "syncThemeButton", "app.js must not carry syncThemeButton")
 
 	// 1. The big tile numbers (.big) use system font with tabular figures
 	bigRule := regexp.MustCompile(`\.big\s*\{[^}]*font-family:\s*-apple-system,\s*BlinkMacSystemFont,\s*"SF Pro Display",\s*"Inter",\s*system-ui,\s*sans-serif;[^}]*font-variant-numeric:\s*tabular-nums;[^}]*letter-spacing:\s*-\.01em;[^}]*\}`)
@@ -395,7 +389,7 @@ function createDOMStub() {
       },
       set textContent(val) { this._text = val; this.children = []; },
       querySelector(sel) { return createElement('div'); },
-      querySelectorAll(sel) { return []; },
+      querySelectorAll(sel) { return []; }, getBoundingClientRect() { return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 }; },
       remove() { if (this.parentNode) this.parentNode.removeChild(this); },
       cloneNode(deep) { return createElement(tag, id); },
       scrollWidth: 50,
@@ -412,7 +406,7 @@ function createDOMStub() {
   }
 
   const context = {
-    window: { addEventListener() {} },
+    window: { addEventListener() {}, matchMedia: () => ({ matches: false }) },
     document: {
       getElementById: getEl,
       createElement: createElement,

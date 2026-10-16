@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
 // A card's bench (docs/SPEC-SPRINT.md section 5, the deal: a card's BENCH line). A brief
@@ -86,7 +86,7 @@ func BenchRefused(s *Snapshot, bench, unknown []string) string {
 		have = "the fleet's members are " + Preview(members, ", ")
 	}
 	return fmt.Sprintf("BENCH: %s names no fleet member (%s): %s; run: nova-sprint fleet list, and name a member of it, or start the member the card needs with nova-sprint fleet beat %s on its machine",
-		strings.Join(bench, ","), Preview(unknown, ", "), have, unknown[0])
+		strings.Join(bench, ","), Preview(unknown, ", "), have, unknown[0]) // nonempty: BenchRefused is called only with unknown names add found (add.go, BenchKnown)
 }
 
 // onlyBench is the members of up the bench names, in up's order: up itself when the bench
@@ -131,10 +131,15 @@ func benchWaits(bench []string) string {
 	return "waits for its bench " + Preview(bench, ", ") + ": no member of it is up, and a card whose brief says BENCH: is dealt only to the members it names"
 }
 
-// benchRefusal is the deal's refusal of that card, with the remedy (docs/SPEC-SPRINT.md
+// benchRefusal is the deal's refusal of a card whose bench has no member up: its non-empty
+// output is benchWaits with the remedy; an empty bench (a card with no BENCH line that
+// benchWaits cannot name) still gets a refusal, never an index of bench (docs/SPEC-SPRINT.md
 // section 5, a card's BENCH line).
 func benchRefusal(bench []string) string {
-	return benchWaits(bench) + "; run: nova-sprint fleet beat " + bench[0] + " on its machine, or release its hold with nova-sprint fleet up " + bench[0]
+	if len(bench) > 0 {
+		return benchWaits(bench) + "; run: nova-sprint fleet beat " + bench[0] + " on its machine, or release its hold with nova-sprint fleet up " + bench[0]
+	}
+	return "no bench member up: every member that beats is quiet, draining or held; the tick deals it when one is up (nova-sprint where shows the fleet)"
 }
 
 // benchRoom is the refusal of a card whose bench is up and every member of it at its room

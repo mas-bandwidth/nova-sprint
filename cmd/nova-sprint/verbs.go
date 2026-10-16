@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,23 +22,27 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
 
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
+
+	"github.com/mas-bandwidth/nova-sprint/docs"
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
-	"github.com/mas-bandwidth/nova-sprint/pkg/buildinfo"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardlimits"
-	"github.com/mas-bandwidth/nova-sprint/pkg/cardtree"
-	"github.com/mas-bandwidth/nova-sprint/pkg/decide"
-	"github.com/mas-bandwidth/nova-sprint/pkg/diffcheck"
-	"github.com/mas-bandwidth/nova-sprint/pkg/gitrun"
-	"github.com/mas-bandwidth/nova-sprint/pkg/harness"
-	"github.com/mas-bandwidth/nova-sprint/pkg/nsprint/verbflag"
-	"github.com/mas-bandwidth/nova-sprint/pkg/ntable"
-	"github.com/mas-bandwidth/nova-sprint/pkg/oneline"
-	"github.com/mas-bandwidth/nova-sprint/pkg/subproc"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/buildinfo"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardlimits"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardtree"
+	"github.com/mas-bandwidth/nova-tools/pkg/decide"
+	"github.com/mas-bandwidth/nova-tools/pkg/diffcheck"
+	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/harness"
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/verbflag"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/subproc"
+	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
 
 type flagSet = *flag.FlagSet
@@ -118,7 +123,7 @@ func init() {
 		{"fleet quiet", "<member> (--for <duration> | --until <RFC3339>) --reason <text> | <member> --end [--dry-run]", "fleet quiet m1 --for 11m --reason 'load 64: the macOS CI legs time out'", (*app).cmdFleetQuiet},
 		{"friend sync", "[--pg <dsn>] [--root <dir>]", "friend sync", (*app).cmdFriendSync},
 		{"collect", "[<friend>...] [--dead-lanes] [--pg <dsn>] [--root <dir>] [--dry-run]", "collect --dead-lanes", (*app).cmdCollect},
-		{"friend beat", "<friend> [--working <n>] [--queue <n>] [--width <n>] [--running <id>,...] [--load <percent>] [--active <RFC3339>] [--check <nonce>] [--pong <nonce>] [--run <id>]", "friend beat friend-a --working 2 --queue 3 --load 40", (*app).cmdFriendBeat},
+		{"friend beat", "<friend> [--working <n>] [--queue <n>] [--width <n>] [--running <id>,...] [--load <percent>] [--active <RFC3339>]", "friend beat friend-a --working 2 --queue 3 --load 40", (*app).cmdFriendBeat},
 		{"friend down", "<friend> [--reason <text>] [--until <RFC3339>]", "friend down friend-a --reason 'opus rate limited'", func(a *app, args []string, o, e io.Writer) int { return a.cmdFriendHold(true, args, o, e) }},
 		{"friend hold", "<friend>... --reason <text> [--dry-run]", "friend hold friend-a --reason 'opus rate limited'", func(a *app, args []string, o, e io.Writer) int {
 			return a.cmdHoldKind("friend hold", sprint.HoldFriend, false, args, o, e)
@@ -128,13 +133,12 @@ func init() {
 		}},
 		{"friend up", "<friend> [--width <n>]", "friend up friend-a --width 4", func(a *app, args []string, o, e io.Writer) int { return a.cmdFriendHold(false, args, o, e) }},
 		{"friend cards", "<friend> [--json]", "friend cards friend-a --json", (*app).cmdFriendCards},
-		{"friend take", "<friend> (<id>... | --all-unstarted) [--reason <text>]", "friend take friend-a s1-4 --reason 'the friend is on another job'", (*app).cmdFriendTake},
+		{"friend take", "<friend> (<id>... [--working] | --all-unstarted) [--dry-run] [--reason <text>]", "friend take friend-a s1-4 --reason 'the friend is on another job'", (*app).cmdFriendTake},
 		{"friend give", "<friend> <id>... [--reason <text>]", "friend give friend-a s1-4 --reason 'the take was the harness, not the friend's'", (*app).cmdFriendGive},
 		{"friend level", "", "friend level", (*app).cmdFriendLevel},
-		{"friend health", "<friend> (--state up|asleep|down --seen <RFC3339> --generation <n> [--queue <n>] [--working <n>] [--width <n>] [--reason <text>] [--until <RFC3339>] | --clear)", "friend health friend-a --state up --seen 2026-10-04T15:00:00Z --generation 1", (*app).cmdFriendHealth},
 		{"friend clean", "[--pg <dsn> | --file <path>] [--root <dir>] [--days <n>] [--dry-run]", "friend clean --dry-run", (*app).cmdFriendClean},
+		{"friend stage", "<card>@<gen> --as friend.<name> [--dir <jobs dir>]", "friend stage s1-1.w1@1 --as friend.amy", (*app).cmdFriendStage},
 		{"gc", "[--machine <m>] [--dry-run] [--max-age <d>]", "gc --dry-run", (*app).cmdGC},
-		{"friend reconcile", "<friend> [--root <dir>] [--dry-run]", "friend reconcile friend-a --dry-run", (*app).cmdFriendReconcile},
 		{"lane take", "<kind> --machine <m> --as <worker> [--wait <duration>] [--dry-run]", "lane take go --machine m1 --as m1", (*app).cmdLaneTake},
 		{"lane give", "<kind> --machine <m> --as <worker> [--dry-run]", "lane give go --machine m1 --as m1", (*app).cmdLaneGive},
 		{"lane list", "", "lane list", (*app).cmdLaneList},
@@ -148,7 +152,7 @@ func init() {
 		{"stream archive", "<stream>...", "stream archive a b c", func(a *app, args []string, o, e io.Writer) int { return a.cmdStreamArchive(true, args, o, e) }},
 		{"stream unarchive", "<stream>...", "stream unarchive a", func(a *app, args []string, o, e io.Writer) int { return a.cmdStreamArchive(false, args, o, e) }},
 		{"stream set", "<stream>... [--read-tier <flash|pro|heavy|default>] [--land-protected <owner/name,...|any|default>] [--promotion[=false]] [--release <name>] [--display <name>] [--prose <glob,...|default>] [--attempts <n|default>] [--base <branch>] [--reason <text>] [--answers <notes>]", "stream set skips --read-tier pro", (*app).cmdStreamSet},
-		{"set", "[--rework-priority <fix|high|keep>] [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--alarm-review <n|off>] [--alarm-merging <n|off>] [--alarm-fleet <percent|off>] [--alarm-ready <on|off>] [--attempts <n|default>] [--friend-idle <duration|default>] [--landing-stall-bound <duration|default>] [--friend-finish <duration|default>] [--fleet-tiers <tiers|all>] [--friends-tiers <tiers|all>] [--reads <0|1|2|default>] [--unserved-tier-falls-to <heavy|pro|flash|off|default>]", "set --read-tier pro", (*app).cmdSet},
+		{"set", "[--rework-priority <fix|high|keep>] [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--alarm-review <n|off>] [--alarm-merging <n|off>] [--alarm-fleet <percent|off>] [--alarm-ready <on|off>] [--attempts <n|default>] [--friend-idle <duration|default>] [--landing-stall-bound <duration|default>] [--friend-finish <duration|default>] [--fleet-tiers <tiers|all>] [--friends-tiers <tiers|all>] [--reads <0|1|2|default>]", "set --read-tier pro", (*app).cmdSet},
 		{"promoted", "--sha <merge sha> [--answers <note>]", "promoted --sha 0123abc", (*app).cmdPromoted},
 		{"merge-window open", "--for <duration> --reason <text>", "merge-window open --for 10m --reason 'the release merges by hand'", (*app).cmdMergeWindowOpen},
 		{"funded", "<provider> --reason <text>", "funded opencode --reason 'paid $100 in the console'", (*app).cmdFunded},
@@ -159,10 +163,10 @@ func init() {
 		{"remind", "(--in <duration> | --at <time>) --note <text> [--for <actor>] | --list | --cancel <id>", "remind --in 30m --note window-closes", (*app).cmdRemind},
 		{"ack", "<note>[,<note>]... --reason <text>", "ack ci-x-1.1 --reason 'a flaky runner; the rerun is green'", (*app).cmdAck},
 		{"answer", "[--dry-run] [--bar <p>] [--every <duration>] [--timeout <duration>] [--backend jev|fixed] [--answers <file>] [--record <file>]", "answer --dry-run", (*app).cmdAnswer},
-		{"inbox", "[--open <group>] [--read] [--wait [--timeout <duration>] [--push <dir> | --push seat]] [--deadline <duration>] [--stale <duration>]", "inbox --wait", (*app).cmdInbox},
+		{"inbox", "[--open <group>] [--read] [--wait [--timeout <duration>] [--push <dir>]] [--deadline <duration>] [--stale <duration>]", "inbox --wait", (*app).cmdInbox},
 		{"card base", "<id> <branch> [--repo-dir <clone>]", "card base s1-4 main", (*app).cmdCardBase},
-		{"card", "<id> [--brief | --fields] [--at-epoch <n>] | (--all | --stream <s>) --json: every card, one JSON object a line", "card s1-4", (*app).cmdCard},
-		{"needs", "[--stream <s>] [--roots] | set <id> (--needs <a,b> | --clear) [--answers <note>]", "needs set s1-4 --needs s1-1", (*app).cmdNeeds},
+		{"card", "<id> [--brief | --fields] [--at-epoch <n>] | (--all | --stream <s>) --json: every card, one JSON object a line", "card s1-4", (*app).cmdCardWithSoftDeps},
+		{"needs", "[--stream <s>] [--roots] | set <id> (--needs <a,b> | --land-after <a,b> | --clear) [--answers <note>]", "needs set s1-4 --needs s1-1", (*app).cmdNeeds},
 		{"streams", "[--repo <owner/name>] [--release <name>] [--cards]", "streams --cards", (*app).cmdStreams},
 		{"held", "[--stream <s>]", "held", (*app).cmdHeld},
 		{"sentinels", "[--stream <s>]", "sentinels", (*app).cmdSentinels},
@@ -170,7 +174,7 @@ func init() {
 		{"bases", "", "bases", (*app).cmdBases},
 		{"log", "[--card <id>] [--stream <s>] [--member <m>] [--since <10m|RFC3339>] [--at-epoch <n>]", "log --card s1-4", (*app).cmdLog},
 		// before check, so its two words are matched first (check_cards.go)
-		{"check cards", "[--stream <s>...] [--json]", "check cards", (*app).cmdCheckCards},
+		{"check cards", "[--stream <s>...] [--dry-run] [--from <export>] [--json]", "check cards", (*app).cmdCheckCards},
 		{"check", "", "check", (*app).cmdCheck},
 		{"repair", "", "repair", (*app).cmdRepair},
 		{"watch", "--wake [--every <duration>] [--state <file>] [--check <duration>] [--judgment-every <duration>] [--merge-every <duration>] [--backlog-every <duration>] [--land-after <duration>] [--merge-over <n>] [--merging-over <n>] [--review-over <n>]", "watch --wake --state wake.json", (*app).cmdWatch},
@@ -182,12 +186,9 @@ func init() {
 		{"view coordinator", "[--all] [--since <cursor>] [--json]", "view coordinator --json", (*app).cmdViewCoordinator},
 		{"view cards", "[--col <c>] [--stream <s>] [--holder <member>] [--by tier|stream|col|holder] [--json]", "view cards --col review --by tier --json", (*app).cmdViewCards},
 		{"view worker", "--as <member|friend> [--since <cursor>] [--json]", "view worker --as m1 --json", (*app).cmdViewWorker},
-		{"seat install", "--harness <name> --target <dir> [--session <id>] [--dir <dir>] [--log <file>] [--server <host:port>] [--config-seat <name> --config-dsn <dsn> --config-password-env <NAME>] [--dry-run]", "seat install --dry-run --redis 127.0.0.1:6381", (*app).cmdSeatInstall},
+		{"seat install", "[--server <host:port>] [--config-seat <name> --config-dsn <dsn> --config-password-env <NAME>] [--dry-run]", "seat install --dry-run --server 127.0.0.1:6390", (*app).cmdSeatInstall},
 		{"seat uninstall", "[--dir <dir>]", "seat uninstall --dir ./no-unit-here", (*app).cmdSeatUninstall},
-		{"seat push", "[--harness <name> --target <dir> [--session <id>]] [--dry-run]", "seat push", (*app).cmdSeatPush},
-		{"seat", "[--repair --reason <text>] | push [--harness <name> --target <dir> [--session <id>]]", "seat", (*app).cmdSeat},
-		{"hook", "[--prove <sprint>.<bus> | --ack <id> --session <token>] [--quiet-happened]", "hook --ack 1 --session token", (*app).cmdHook},
-		{"unhook", "", "unhook", (*app).cmdUnhook},
+		{"seat", "[--repair --reason <text>]", "seat", (*app).cmdSeat},
 		{"fsck seat", "[--pg <host:port or postgres:// URI>]", "fsck seat", (*app).cmdFsckSeat},
 		{"routes rest", "<provider|route> --reason <text> [--for <duration> | --until <RFC3339>]", "routes rest openrouter --reason 'balance $40, about 1.6 hours left' --for 2h", (*app).cmdRoutesRest},
 		{"routes wake", "<provider|route> --reason <text>", "routes wake openrouter --reason 'the rest was a balance rule the machine no longer keeps'", (*app).cmdRoutesWake},
@@ -201,8 +202,9 @@ func init() {
 		{"stats reset", "--reason <text> [--dry-run] | --show", "stats reset --reason 'count from now' --dry-run", (*app).cmdStatsReset},
 		{"stats", "[--routes [--since <10m|RFC3339>]]", "stats", (*app).cmdStats},
 		{"audit", "[--stream <s>] [--stuck <10m>] [--json]", "audit --stuck 10m", (*app).cmdAudit},
+		{"settings", "[--json]", "settings", (*app).cmdSettings},
 		{"reads", "--review [--stream <s>] [--json]", "reads --review", (*app).cmdReads},
-		{"doctor", "", "doctor", (*app).cmdDoctor},
+		{"doctor", "[--all] [--area <group>] [--preflight <candidate>] [--json]", "doctor --area routes", (*app).cmdDoctor},
 		{"play", "[--simulation] [--seed <n>] [--every <duration>] [--broken <p>] [--fail <p>] [--stuck <p>] [--cross <p>] [--down <p>] [--up <p>] [--red <p>] [--flap <p>] [--batch <n>] [--hold] [--silent <member>@<from>+<for>]... [--ticks <n>]", "play --seed 7 --every 1s", (*app).cmdPlay},
 		{"clear", "--confirm sprint", "clear --confirm sprint", (*app).cmdClear},
 		{"teardown", "--confirm sprint", "teardown --confirm sprint", (*app).cmdTeardown},
@@ -260,7 +262,9 @@ block shows the coordinator's day on that store.
 For one verb's usage, examples, flags and exit codes:
   nova-sprint help <verb> (or <verb> -h)
 For one group's help: nova-sprint help <group> (fleet, friend, reader, goal,
-stream, lane, merge-window).`
+stream, lane, merge-window).
+For the coordinator's workflows, the verbs for each situation in order (find
+the verb before doing anything by hand): nova-sprint help playbook`
 
 func banner() string {
 	var b strings.Builder
@@ -391,11 +395,12 @@ one answer to each judgment (every one prints its own, filled in):
   ready to accept             accept --group <id> --expect <n> --answers <notes>
   work came back failed       rework --group <id> --expect <n> --answers <notes>  (each fix is the work's report; --fix for all; a harness fault or a HOLD with findings is reworked by rule failed, a friend's card too, so only failed work past its bound or with no report comes here; no wait parks it)
   the same harness fault      brief <id> --brief-file '<the re-cut brief>' (its next attempt, from its last pushed head), or drop <id> --reason '<why>'  (the second identical harness fault on one card, or the fleet's on many: one grouped judgment; the card waits and is never redealt)
+  a finish is refused again and again   card <primary> (the judgment names the refusal), mend what it names so the worker's next finish is accepted, or drop <id> --reason '<why>'  (a finish the lifecycle refused more than 5 times on one attempt: one judgment for the card and attempt)
   a friend's report needs a read  card <primary>, then ack <note> --reason '<what the report says>'
   the fleet's failure           mend its cause (the toolchain, a member, a route, a provider), then ack <note> --reason '<what was mended>'  (one judgment for a failure many cards share; the cards rework themselves meanwhile)
   a brief defect              drop <primary> --reason 'a brief defect: re-cut', then add --stream <s> '<new id>' --brief-file '<the re-cut brief>'  (never a redeal)
   a reader found it broken    rework --group <id> --expect <n> --answers <notes>  (each fix is the reader's finding; a read with a finding is reworked by rule read-broken, a friend's card too, so only one with no finding or at its brief's bound comes here; no wait parks it)
-  read's branch not on origin push the branch, then ack <note> --reason '<pushed>' (the tick asks the read again), or rework --fix '<fix>' or drop <id> --answers <note>
+  read's branch not on origin push the branch, then ask --group <id> --expect <n> --answers <notes> (the read is asked again and the judgment closes; refused naming the judgment while no branch on origin holds the head), or ack <note> --reason '<pushed>' (the tick asks the read again), or rework --fix '<fix>' or drop <id> --answers <note>
   the brief is wrong          brief <id> --brief-file <path> (in place: its next attempt, from its last pushed head), or brief --group <id> --expect <n> --dir <dir> --answers <notes>, rework <id> --fix <text> --tier <t> (re-tier), rework <id> --carry --fix <text>, or drop <id>; the same finding twice, or max_attempts attempts (nova-config's sprint row, default 4) since your last decision on the card
   conflict on a card          resume --stream <s> --did '<what you did>' --answers <note>  (land merges again, regenerating the ledgers; a conflict outside them: rework or drop)
   stream branch red           return <suspect> --answers <note>, then resume --stream <s> --did 'returned <suspect>' --answers <note>
@@ -422,6 +427,7 @@ one answer to each judgment (every one prints its own, filled in):
   landed work scored low      add --stream <s> '<fix id>' --brief '<the finding>', then ack <note>; or ack <note> --reason '<why it stands>'
   timer                       ack <note> --reason '<what you did>'  (a timer remind set: it woke its actor, there is nothing to decide)
   STOP debt: an owner has not beaten since the stop    ack <note> --reason '<returned by hand>', or stop-return --as <owner> <id>@<gen> --reason '<observed child exit>'
+  a member's takes end with no model call    ack <note> --reason '<what you saw to on the member>'  (the machine's hold of it names this judgment as its cause: the tick releases the member in the step that sees it answered)
 
 the mechanical judgments the run loop answers by rule, recorded "answered by rule <name>"
 (failed, bound, late, conflict, brief-defect, base-gate, read-broken); nova-sprint rules prints what
@@ -516,6 +522,12 @@ func helpCommand(path []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	name := strings.Join(path, " ")
+	// playbook is a topic, not a verb: the coordinator's workflows,
+	// docs/COORDINATOR-PLAYBOOK.md compiled in (docs/embed.go)
+	if name == "playbook" {
+		fmt.Fprint(stdout, docs.CoordinatorPlaybook)
+		return 0
+	}
 	// a verb named whole is the exact one even when the word also opens a group
 	// (seat is the seat's read, seat install and seat uninstall are its verbs)
 	for _, v := range verbs {
@@ -877,7 +889,24 @@ func (a *app) runStep(verbName string, c common, st *store.Store, step store.Ste
 			c.says = res.Said
 		} // the planner's per-card no-op answers still hold
 	}
+	// a judgment the step raised is named by its id, even when the step refused its
+	// card (a finish refused past its bound raises one)
+	for _, j := range finishRefusedRaised(res.Raised) {
+		c.says = append(c.says, "JUDGMENT raised "+j)
+	}
 	return a.report(ctx, verbName, c, st, res, err, stdout, stderr)
+}
+
+// finishRefusedRaised is the judgments a step raised for a finish refused past its
+// bound ("<id> <type>"): the ones a finish names by id (sprint.NFinishRefused).
+func finishRefusedRaised(raised []string) []string {
+	var out []string
+	for _, j := range raised {
+		if strings.HasSuffix(j, " "+sprint.NFinishRefused) {
+			out = append(out, j)
+		}
+	}
+	return out
 }
 
 func token(verbName string) string {
@@ -1294,6 +1323,17 @@ func (a *app) cmdInit(args []string, stdout, stderr io.Writer) int {
 		}
 		memberNames = append(memberNames, m.Name)
 	}
+	// every up member is a reader: init makes the member reader rows, as a
+	// member's join and a clear do (ensureMemberReaders)
+	if len(specs) > 0 {
+		if err := ensureMemberReaders(ctx, st); err != nil {
+			fmt.Fprintf(stderr, "%s init: %s\n", prog, oneline.Escape(err.Error()))
+			return 1
+		}
+		if rows, err := st.ReaderRows(ctx); err == nil {
+			readerRows = rows
+		}
+	}
 	notes := []string{}
 	if len(specs) > 0 && a.twinOpen(c.redis) {
 		// a twin beats every member at every verb (beatTwin): a member added
@@ -1566,7 +1606,11 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	}
 	step = promotionGuard(step, rs, *landProtected)
 	step = mirrorNotice(step, rs)
-	return a.runStep("add", *c, st, step, stdout, stderr)
+	code := a.runStep("add", *c, st, step, stdout, stderr)
+	if code != 0 && sprint.HasBriefLandAfter(rs) {
+		return 2
+	}
+	return code
 }
 
 // promotionGuard is the add step refused whole, nothing written, when any card it admits
@@ -1574,6 +1618,20 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 // (sprint.PromotionRefusals; docs/SPEC-SPRINT.md section 7, protected-bases-pb-b.w2). A
 // first-add mark is written onto the new control card in the same step as its first card.
 func promotionGuard(step store.Step, rs []sprint.AddReq, landProtected string) store.Step {
+	extras := step.Extras
+	if extraIDs := sprint.AddSoftDepsExtras(rs); len(extraIDs) > 0 {
+		step.Extras = func(s *sprint.Snapshot) map[string][]string {
+			var m map[string][]string
+			if extras != nil {
+				m = extras(s)
+			}
+			if m == nil {
+				m = map[string][]string{}
+			}
+			m[sprint.Work] = append(m[sprint.Work], extraIDs...)
+			return m
+		}
+	}
 	plan := step.Plan
 	step.Plan = func(s *sprint.Snapshot) sprint.Plan {
 		if landProtected != "" {
@@ -1584,12 +1642,12 @@ func promotionGuard(step store.Step, rs []sprint.AddReq, landProtected string) s
 			if len(rs) != 1 || s.StreamCtl(stream) != nil {
 				return sprint.Plan{Refused: []sprint.Refusal{{Key: stream, Why: "--land-protected marks a new stream only"}}}
 			}
-			return sprint.AddMarked(s, rs[0], landProtected)
+			return sprint.WithAddSoftDeps(s, sprint.AddMarked(s, rs[0], landProtected), rs)
 		}
 		if refused := sprint.PromotionRefusals(s, rs); len(refused) > 0 {
 			return sprint.Plan{Refused: refused}
 		}
-		return plan(s)
+		return sprint.WithAddSoftDeps(s, plan(s), rs)
 	}
 	return step
 }
@@ -1734,7 +1792,12 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 	}
 	c.addStream = stream
 	c.addBefore = before
-	return a.runStep("add", *c, st, promotionGuard(store.AddStep(r), []sprint.AddReq{r}, landProtected), stdout, stderr)
+	rsReq := []sprint.AddReq{r}
+	code = a.runStep("add", *c, st, promotionGuard(store.AddStep(r), rsReq, landProtected), stdout, stderr)
+	if code != 0 && sprint.HasBriefLandAfter(rsReq) {
+		return 2
+	}
+	return code
 }
 
 // briefFiles is the brief files of a many-brief add, in order: the *.md files
@@ -1763,7 +1826,7 @@ func (a *app) briefFiles(dir string, files []string, stderr io.Writer) ([]string
 func briefNeeds(brief string) []string {
 	value, found := "", false
 	for _, line := range strings.Split(brief, "\n") {
-		if key, v, ok := cardhdr.KeyValue(line); ok && key == "Needs" {
+		if key, v, ok := cardhdr.KeyValue(line); ok && strings.EqualFold(key, "needs") {
 			value, found = v, true
 			break
 		}
@@ -1777,10 +1840,40 @@ func briefNeeds(brief string) []string {
 			id = cut
 		}
 		switch id = strings.TrimSpace(id); {
-		case id == "", id == "-", id == "none", strings.Contains(id, "#"):
+		case id == "", id == "-", strings.EqualFold(id, "none"), strings.Contains(id, "#"):
 			continue
 		}
 		out = append(out, id)
+	}
+	return out
+}
+
+func briefConsumers(brief string) []string {
+	var out []string
+	for i, line := range strings.Split(brief, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		key, v, ok := cardhdr.KeyValue(line)
+		if !ok {
+			if i == 0 {
+				continue
+			}
+			break
+		}
+		if !strings.EqualFold(key, "consumers") {
+			continue
+		}
+		for _, id := range strings.Split(v, ",") {
+			if cut, _, hasParen := strings.Cut(id, "("); hasParen {
+				id = cut
+			}
+			id = strings.TrimSpace(id)
+			if id == "" || id == "-" || strings.EqualFold(id, "none") {
+				continue
+			}
+			out = append(out, id)
+		}
 	}
 	return out
 }
@@ -2028,13 +2121,8 @@ func lintBriefReads(brief string, rs ruleSet) (modelWhy string, findings []swarm
 		findings = swarm.LintCardChildWith([]byte(brief), rs.rules)
 	}
 	if friendOwnRules(brief) {
-		// A FRIEND CARD THAT CARRIES ITS OWN RULES LINE IS ACCEPTED, not held for the child
-		// RULES paragraph: a friend is not a child, and her card carries its own rules
-		// (docs/SPEC-SPRINT.md section 1, a friend's card; rules by reference: a card that
-		// names no held file carries its own rules, as every card did before). The rule-
-		// checks are the child paragraph's presence checks (pkg/swarm/lintchild.go); the
-		// step- scans still hold her card, a line of it outside its RULES paragraph that
-		// contradicts its carried rules being a finding under any set.
+		// A FRIEND CARD THAT CARRIES ITS OWN RULES LINE IS ACCEPTED, not held for the
+		// child RULES paragraph: a friend is not a child.
 		findings = slices.DeleteFunc(findings, func(f swarm.CardHeaderFinding) bool {
 			return strings.HasPrefix(f.Check, "rule-")
 		})
@@ -2673,12 +2761,17 @@ func (a *app) cmdFinish(args []string, stdout, stderr io.Writer) int {
 	branch := fs.String("branch", "", "the branch the work is on (its packet names the one to use)")
 	baseBranch := fs.String("base", "", "the branch the work started from")
 	usage := fs.String("usage", "", "what the run spent, one line (the member passes its child's budget, wall, tokens by class and cost): kept on the attempt's record, timed and priced")
+	receiptContract := fs.String("receipt-contract", "", "required native receipt contract; 2 requires the paired consumer and raw usage record")
 	lane := fs.Int("lane", 0, "the lane of the member finishing (take --lane gave it the card): a card another lane of its row holds is refused")
 	decision := fs.String("decision", "", "the take's attempt decision, one JSON record line as nova-decide makes it (a work member with JEV_API_KEY asks it for every take): its op naming this take's card and attempt, else the finish is refused; kept on the card, recorded by the server's decide lane, and a failed finish whose class is no-result or nothing-to-do at or above that class's bar on the card is routed by it (docs/SPEC-SPRINT.md section 2)")
 	words, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "finish", err.Error())
 	}
+	if err := receiptContractCheck(*receiptContract, *usage); err != nil {
+		return refuse(stderr, "receipt-contract", err.Error())
+	}
+
 	var decided string
 	var d decide.Decision
 	if *decision != "" {
@@ -2713,7 +2806,7 @@ func (a *app) cmdFinish(args []string, stdout, stderr io.Writer) int {
 			return nil
 		}
 	}
-	return a.runStep("finish", *c, st, store.FinishStep(sprint.FinishReq{Sel: sprint.Sel{IDs: ids}, As: *as, Gens: gens, Failed: *failed,
+	return a.runStep("finish", *c, st, a.finishStep(sprint.FinishReq{Sel: sprint.Sel{IDs: ids}, As: *as, Gens: gens, Failed: *failed,
 		Head: *head, Report: *report, Exit: *exit, Harness: *harness, Branch: *branch, Base: *baseBranch, Usage: *usage, Decided: decided, Lane: *lane, Who: *as}), stdout, stderr)
 }
 
@@ -2757,7 +2850,7 @@ func (a *app) cmdAsk(args []string, stdout, stderr io.Writer) int {
 		}
 		return ""
 	}, func(ids []string, s *sel, c *common) store.Step {
-		return store.AskStep(sprint.AskReq{Sel: s.sel(ids), Another: *another, Answers: answers(*ans), Who: c.actor, Instead: *instead})
+		return a.askStep(sprint.AskReq{Sel: s.sel(ids), Another: *another, Answers: answers(*ans), Who: c.actor, Instead: *instead})
 	})
 }
 
@@ -2773,6 +2866,7 @@ func (a *app) cmdRead(args []string, stdout, stderr io.Writer) int {
 	ret := fs.String("return", "", "hand back a read the reader holds and has no verdict on: not a read; the next tick asks it of another reader free at the attempt, or of this reader again; no finding against the work")
 	reason := fs.String("reason", "", "with --return: why the read has no verdict (it reaches the inbox)")
 	usage := fs.String("usage", "", "with --ok, --broken or --return: what the read spent, one line (the reader passes its child's tokens, wall and cost): kept on the read card, timed and priced")
+	receiptContract := fs.String("receipt-contract", "", "required native receipt contract; 2 requires the paired consumer and raw usage record")
 	lane := fs.Int("lane", 0, "with --ok, --broken or --return: the reader's lane reporting (take --as <reader> --lane <n> began the read): a read another lane of the reader holds is refused")
 	exit := fs.Int("exit", 0, "with --return: the reader's child's exit code (0: a clean end or unknown); a return whose exit is 134 or 137 is an environment exit: no verdict, and the reader is not spent at the attempt (docs/SPEC-SPRINT.md, \"An environment exit\")")
 	harness := fs.String("harness", "", "with --return: the child's harness output, so an environment exit keeps the last 40 lines of it on the card")
@@ -2781,6 +2875,10 @@ func (a *app) cmdRead(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "read", err.Error())
 	}
+	if err := receiptContractCheck(*receiptContract, *usage); err != nil {
+		return refuse(stderr, "receipt-contract", err.Error())
+	}
+
 	n := 0
 	for _, b := range []bool{*begin, *ok, *broken, *ret != ""} {
 		if b {
@@ -2989,14 +3087,59 @@ func (a *app) cmdDrop(args []string, stdout, stderr io.Writer) int {
 		c.after = func(ctx context.Context, st *store.Store, res store.Result) []string {
 			return a.droppedBriefs(ctx, st, res, *reason)
 		}
-		return store.DropStep(sprint.DropReq{Sel: s.sel(ids), Reason: *reason, Answers: answers(*ans), Cascade: *cascade, Relink: *relink, Waive: *waive, Who: c.actor})
+		req := sprint.DropReq{Sel: s.sel(ids), Reason: *reason, Answers: answers(*ans), Cascade: *cascade, Relink: *relink, Waive: *waive, Who: c.actor}
+		step := store.DropStep(req)
+		plan := step.Plan
+		step.Plan = func(snap *sprint.Snapshot) sprint.Plan {
+			return sprint.WithDropSoftDeps(snap, plan(snap), req)
+		}
+		return step
 	})
+}
+
+func (a *app) cmdCardWithSoftDeps(args []string, stdout, stderr io.Writer) int {
+	var buf bytes.Buffer
+	code := a.cmdCard(args, &buf, stderr)
+	out := buf.String()
+	if code != 0 || len(args) == 0 {
+		fmt.Fprint(stdout, out)
+		return code
+	}
+	fs, c := a.verbSetup("card")
+	brief := fs.Bool("brief", false, "")
+	fields := fs.Bool("fields", false, "")
+	all := fs.Bool("all", false, "")
+	stream := fs.String("stream", "", "")
+	atEpoch := fs.Int("at-epoch", -1, "")
+	pos, err := parse(fs, args)
+	if err == nil && len(pos) == 1 && !*brief && !*fields && !*all && *stream == "" && *atEpoch < 0 && !c.json {
+		if st, err := a.store(*c); err == nil {
+			if s, err := st.Load(context.Background(), []string{sprint.Work}, nil); err == nil {
+				if pr := s.Work.Card(pos[0]); pr != nil {
+					if soft := sprint.SoftDepsOf(s, pr); len(soft) > 0 {
+						softLine := "soft: " + strings.Join(soft, ",") + "\n"
+						if idx := strings.Index(out, "\nneeds:"); idx >= 0 {
+							end := strings.IndexByte(out[idx+1:], '\n')
+							if end >= 0 {
+								cut := idx + 1 + end + 1
+								out = out[:cut] + softLine + out[cut:]
+							}
+						} else if nl := strings.IndexByte(out, '\n'); nl >= 0 {
+							out = out[:nl+1] + softLine + out[nl+1:]
+						}
+					}
+				}
+			}
+		}
+	}
+	fmt.Fprint(stdout, out)
+	return code
 }
 
 // cmdBrief replaces a primary's brief in place, on a running machine as on a stopped one
 // (changing a sprint happens through the verbs, never by hand; docs/SPEC-SPRINT.md, the
 // brief verb): the brief held to the card lint as add's is (holdBrief), then one step
-// (sprint.Brief), refused for a card merging or landed; a working card takes one for its next attempt; the card keeps its id,
+// (sprint.Brief), refused for a card merging or landed; a working card requires --replace-in-flight for semantic edits; the card keeps its id,
 // stream, score and needs, and one in review opens its next attempt. --dir replaces one
 // brief per file (cmdBriefDir); --group answers an inbox group as inbox prints it
 // (a group of one with --brief-file, of several with --dir); --widen widens its PATHS by
@@ -3004,11 +3147,13 @@ func (a *app) cmdDrop(args []string, stdout, stderr io.Writer) int {
 // owner, 2026-10-06: "We gotta stop doing this twin shit. it's waste.").
 func (a *app) cmdBrief(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("brief")
-	brief := fs.String("brief", "", fmt.Sprintf("the new brief: a child's whole brief, at most %d KiB, held to the card lint as add holds one (--rules, else the file init --rules recorded, else the built-in general rules) and to the same PATHS check at the BASE tip (a literal path must exist, a glob must match a file, and every func, type or verb STOP or START names with a file must be inside a PATHS file; a CARRY: head= brief, such as --widen writes, skips the existence check) and refused, exit 2, nothing written, when it fails; a primary waiting, ready or in review takes one in place, on a STOPPED machine or a RUNNING one (there applied at its next tick), keeping its id: one an attempt was dealt for opens its next attempt, staged from its last pushed head, its bound reset; a card merging or landed keeps its brief; a working card takes one for its next attempt; one that differs in its DEPENDS-ON: line alone is taken in any state, the machine running or the card dealt; the edit records the needs its DEPENDS-ON: line names, and a ready card that gains a need not landed moves to waiting until it lands, so the deal never runs it before its need (a card dealt or working keeps its attempt, and the new needs apply from its next deal)", cardlimits.MaxBriefBytes>>10))
+	brief := fs.String("brief", "", fmt.Sprintf("the new brief: a child's whole brief, at most %d KiB, held to the card lint as add holds one (--rules, else the file init --rules recorded, else the built-in general rules) and to the same PATHS check at the BASE tip (a literal path must exist, a glob must match a file, and every func, type or verb STOP or START names with a file must be inside a PATHS file; a CARRY: head= brief, such as --widen writes, skips the existence check) and refused, exit 2, nothing written, when it fails; a primary waiting, ready or in review takes one in place, on a STOPPED machine or a RUNNING one (there applied at its next tick), keeping its id: one an attempt was dealt for opens its next attempt, staged from its last pushed head, its bound reset; a card merging or landed keeps its brief; a working card requires --replace-in-flight for semantic edits (not needed for operational notes or scope-widening edits); one that differs in its DEPENDS-ON: line alone is taken in any state (working requires --replace-in-flight), the machine running or the card dealt; the edit records the needs its DEPENDS-ON: line names, and a ready card that gains a need not landed moves to waiting until it lands, so the deal never runs it before its need (a card dealt or working keeps its attempt, and the new needs apply from its next deal)", cardlimits.MaxBriefBytes>>10))
 	briefFile := fs.String("brief-file", "", "the new brief, read from this file: its bytes as they are, its one trailing newline cut; not with --brief")
 	dir := fs.String("dir", "", "a directory of new briefs: one per *.md file, the card its base name without .md, each read and held as --brief-file's; one bad file refuses the whole call, nothing written; not with an id, --brief or --brief-file; with --group, one file for each member of the group and no other")
 	rules := fs.String("rules", "", "the child rules file the brief is held to (default: the file init --rules recorded, else the built-in general rules)")
 	tier := fs.String("tier", "", "re-tier the card instead of replacing its brief: the tier ("+cardhdr.RouteList+") every later deal and read of the card draws its route from, kept on the card as rework --tier keeps it (it pins the card, never escalated past it); taken on a RUNNING machine and for a card dealt, where it applies to the next attempt; with --brief or --brief-file, the tier the edit sets, over the card's recorded tier and the text's line 1")
+	replaceInFlight := fs.Bool("replace-in-flight", false, "replace a working attempt's semantic brief (not needed for operational notes or scope-widening edits to PATHS, NEW, SHARED or START (read)); its old head returns for a fresh attempt")
+	keepHead := fs.Bool("keep-head", false, "keep the in-flight or held head eligible for review after replacing the brief; otherwise an old-brief finish returns for a fresh attempt")
 	needsFromBrief := fs.Bool("needs-from-brief", false, "the brief edit's needs are the text's DEPENDS-ON whole (its admission-time list), over the rule that the card's needs are the truth and a text only adds new ones: the escape hatch when the coordinator means to re-derive them")
 	reason := fs.String("reason", "", "when --tier is given: why the card is this tier, recorded with the pin")
 	widen := fs.Bool("widen", false, "the card's brief edited in place with its PATHS widened by the PATHS-PROPOSED line of its latest attempt's report (the paths before any prose on that line) and a CARRY: line naming that attempt's pushed head, its next attempt starting from it; the same id, no twin; refused, exit 1, for no line, a glob that climbs out with .. or names no file at the base or the head")
@@ -3083,13 +3228,13 @@ func (a *app) cmdBrief(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	if *widen {
-		return a.briefWiden(ids[0], *repoDir, answers(*ans), c, stdout, stderr)
+		return a.briefWiden(ids[0], *repoDir, answers(*ans), c, *replaceInFlight, stdout, stderr)
 	}
 	if *dir != "" {
 		if len(ids) > 0 || *brief != "" || *briefFile != "" {
 			return refuse(stderr, "brief", "--dir names each card by its file: give no id, --brief or --brief-file with it")
 		}
-		return a.cmdBriefDir(*dir, *rules, members, answers(*ans), c, st, stdout, stderr)
+		return a.cmdBriefDir(*dir, *rules, members, answers(*ans), c, st, *keepHead, *replaceInFlight, stdout, stderr)
 	}
 	if len(ids) != 1 || (*brief == "") == (*briefFile == "") {
 		return refuse(stderr, "brief", "wants one primary (or --group <id> of one) and one of --brief <text>, --brief-file <path>, --dir <dir> alone, --widen, or --tier <t>")
@@ -3107,17 +3252,34 @@ func (a *app) cmdBrief(args []string, stdout, stderr io.Writer) int {
 	if why := briefSizeCheck("brief", len(*brief)); why != "" {
 		return refuse(stderr, "brief", why)
 	}
-	rs, code := a.holdBrief("brief", *brief, *rules, c, &st, stderr)
-	if code != 0 {
-		return code
+	if st == nil {
+		if s, err := a.store(*c); err == nil {
+			st = s
+		}
 	}
-	return a.replaceBriefs([]sprint.CardAdd{{ID: ids[0], Brief: *brief}}, answers(*ans), rs, c, st, *tier, *needsFromBrief, *reason, stdout, stderr)
+	var rs ruleSet
+	if !isSentinelCard(st, ids[0]) {
+		var code int
+		rs, code = a.holdBrief("brief", *brief, *rules, c, &st, stderr)
+		if code != 0 {
+			return code
+		}
+	}
+	return a.replaceBriefs([]sprint.CardAdd{{ID: ids[0], Brief: *brief}}, answers(*ans), rs, c, st, *tier, *needsFromBrief, *reason, *keepHead, *replaceInFlight, stdout, stderr)
+}
+
+func isSentinelCard(st *store.Store, id string) bool {
+	if st == nil {
+		return false
+	}
+	info, err := st.CardOf(context.Background(), id)
+	return err == nil && info.Primary != nil && sprint.IsSentinel(info.Primary)
 }
 
 // briefWiden is brief <id> --widen: the card's brief with its PATHS widened by its latest
 // attempt's PATHS-PROPOSED line and a CARRY: line at that attempt's head (widen), held to the
 // card lint, then edited in place as any brief is: the same id, its next attempt.
-func (a *app) briefWiden(id, repoDir string, ans []string, c *common, stdout, stderr io.Writer) int {
+func (a *app) briefWiden(id, repoDir string, ans []string, c *common, replaceInFlight bool, stdout, stderr io.Writer) int {
 	st, err := a.store(*c)
 	if err != nil {
 		return refuse(stderr, "brief", err.Error())
@@ -3134,7 +3296,7 @@ func (a *app) briefWiden(id, repoDir string, ans []string, c *common, stdout, st
 		return code
 	}
 	c.says = append(c.says, fmt.Sprintf("NEXT %s attempt %d starts from attempt %d head=%s", id, w.carry.Attempt+1, w.carry.Attempt, w.carry.Head))
-	return a.replaceBriefs([]sprint.CardAdd{{ID: id, Brief: w.brief}}, ans, rs, c, st, "", false, "", stdout, stderr)
+	return a.replaceBriefs([]sprint.CardAdd{{ID: id, Brief: w.brief}}, ans, rs, c, st, "", false, "", false, replaceInFlight, stdout, stderr)
 }
 
 // cmdBriefDir is brief --dir (docs/SPEC-SPRINT.md, the brief verb): one brief
@@ -3144,7 +3306,7 @@ func (a *app) briefWiden(id, repoDir string, ans []string, c *common, stdout, st
 // anything is written, one bad file refusing the whole call naming it, and one
 // step replaces them all or none, its moved= the count replaced. With members
 // (brief --group), the files are one for each member and no other.
-func (a *app) cmdBriefDir(dir, rules string, members, ans []string, c *common, st *store.Store, stdout, stderr io.Writer) int {
+func (a *app) cmdBriefDir(dir, rules string, members, ans []string, c *common, st *store.Store, keepHead, replaceInFlight bool, stdout, stderr io.Writer) int {
 	files, err := decide.CardFilePaths(dir)
 	if err != nil {
 		return refuse(stderr, "brief", "--dir: "+err.Error())
@@ -3187,10 +3349,22 @@ func (a *app) cmdBriefDir(dir, rules string, members, ans []string, c *common, s
 	if code != 0 {
 		return code
 	}
-	if code := lintBriefFiles("brief", cards, rs, c.max, stderr); code != 0 {
+	if st == nil {
+		if s, err := a.store(*c); err == nil {
+			st = s
+		}
+	}
+	var lintCards []sprint.CardAdd
+	for _, cd := range cards {
+		if isSentinelCard(st, cd.ID) {
+			continue
+		}
+		lintCards = append(lintCards, cd)
+	}
+	if code := lintBriefFiles("brief", lintCards, rs, c.max, stderr); code != 0 {
 		return code
 	}
-	return a.replaceBriefs(cards, ans, rs, c, st, "", false, "", stdout, stderr)
+	return a.replaceBriefs(cards, ans, rs, c, st, "", false, "", keepHead, replaceInFlight, stdout, stderr)
 }
 
 // orNone is the ids comma separated, "none" for none.
@@ -3207,35 +3381,47 @@ func orNone(ids []string) string {
 // tier, when set, is the tier the edit sets over each card's recorded tier and
 // the text's line 1; needsFromBrief takes each card's needs from the text's
 // DEPENDS-ON whole (--needs-from-brief); reason is the reason for re-tiering.
-func (a *app) replaceBriefs(cards []sprint.CardAdd, ans []string, rs ruleSet, c *common, st *store.Store, tier string, needsFromBrief bool, reason string, stdout, stderr io.Writer) int {
+func (a *app) replaceBriefs(cards []sprint.CardAdd, ans []string, rs ruleSet, c *common, st *store.Store, tier string, needsFromBrief bool, reason string, keepHead, replaceInFlight bool, stdout, stderr io.Writer) int {
 	if st == nil { // --rules named the rule set: briefRules opened no store
 		var err error
 		if st, err = a.store(*c); err != nil {
 			return refuse(stderr, "brief", err.Error())
 		}
 	}
-	req := sprint.BriefReq{Who: c.actor, Answers: ans, Tier: tier, NeedsFromBrief: needsFromBrief, Reason: reason}
-	texts := make([]string, len(cards))
-	checks := make([]briefCheck, len(cards))
-	for i, cd := range cards {
-		checks[i] = briefCheck{id: cd.ID, brief: cd.Brief}
+	req := sprint.BriefReq{Who: c.actor, Answers: ans, Tier: tier, NeedsFromBrief: needsFromBrief, Reason: reason, KeepHead: keepHead, ReplaceInFlight: replaceInFlight}
+	var texts, streams []string
+	var checks []briefCheck
+	for _, cd := range cards {
+		if !isSentinelCard(st, cd.ID) {
+			checks = append(checks, briefCheck{id: cd.ID, brief: cd.Brief})
+		}
 	}
-	if code := a.holdPathsAdmit("brief", stderr, checks...); code != 0 {
-		return code
+	if len(checks) > 0 {
+		if code := a.holdPathsAdmit("brief", stderr, checks...); code != 0 {
+			return code
+		}
 	}
-	streams := make([]string, len(cards))
-	for i, cd := range cards {
-		texts[i] = cd.Brief
+	for _, cd := range cards {
+		isSent := isSentinelCard(st, cd.ID)
+		stream := ""
 		// the card's own stream, for its named friend's restriction; a card the store does
 		// not know yet is left to the write step's refusal
 		if info, err := st.CardOf(context.Background(), cd.ID); err == nil && info.Primary != nil {
-			streams[i] = info.Primary.F("stream")
+			stream = info.Primary.F("stream")
 		}
-		req.Cards = append(req.Cards, sprint.BriefCard{ID: cd.ID, Brief: cd.Brief, Rules: cardRules(cd.Brief, rs).held, Needs: uniquify(briefNeeds(cd.Brief))})
-		c.says = append(c.says, unfilledSays("the brief of "+cd.ID, cd.Brief)...)
+		heldRules := ""
+		if !isSent {
+			texts = append(texts, cd.Brief)
+			streams = append(streams, stream)
+			heldRules = cardRules(cd.Brief, rs).held
+			c.says = append(c.says, unfilledSays("the brief of "+cd.ID, cd.Brief)...)
+		}
+		req.Cards = append(req.Cards, sprint.BriefCard{ID: cd.ID, Brief: cd.Brief, Rules: heldRules, Needs: uniquify(briefNeeds(cd.Brief))})
 	}
-	if code := a.holdWho("brief", st, stderr, streams, texts...); code != 0 {
-		return code
+	if len(texts) > 0 {
+		if code := a.holdWho("brief", st, stderr, streams, texts...); code != 0 {
+			return code
+		}
 	}
 	// a new BASE is held as add holds one: the sprint's base, outside the promotion
 	// stream (docs/SPEC-SPRINT.md section 7, the sprint branch); refused here, exit 2,
@@ -3246,6 +3432,17 @@ func (a *app) replaceBriefs(cards []sprint.CardAdd, ans []string, rs ruleSet, c 
 		}
 	}
 	step := store.BriefStep(req)
+	var extraWork []string
+	for _, bc := range req.Cards {
+		extraWork = append(extraWork, bc.ID)
+		extraWork = append(extraWork, bc.Needs...)
+		extraWork = append(extraWork, briefConsumers(bc.Brief)...)
+	}
+	if len(extraWork) > 0 {
+		step.Extras = func(*sprint.Snapshot) map[string][]string {
+			return map[string][]string{sprint.Work: extraWork}
+		}
+	}
 	replace := step.Plan
 	step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.WithBriefBases(replace(s), s, req, cardBase) }
 	return a.runStep("brief", *c, st, step, stdout, stderr)
@@ -3565,12 +3762,82 @@ func (a *app) cmdFleet(op string, args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, name, err.Error())
 	}
-	return a.runStep(name, *c, st, a.fleetStep(st, op, member, c.actor, w, drain, d, off, h, pr), stdout, stderr)
+	code := a.runStep(name, *c, st, a.fleetStep(st, op, member, c.actor, w, drain, d, off, h, pr), stdout, stderr)
+	if code == 0 && op == "up" {
+		// a member's join makes its reader row when missing, as init and
+		// a clear do (ensureMemberReaders); the join already reported, so
+		// a failed make is left to the next join or clear, never a second
+		// result for this verb
+		_ = ensureMemberReaders(context.Background(), st)
+	}
+	return code
+}
+
+// resolveReaderNames is the reader verbs' names with the reader- prefix
+// added: a bare fleet member name (m1) names its member reader
+// (reader-m1) itself, and the verb says so in its line. memberOf says, per
+// resolved row, whether it is a member's reader (reader-<member> of a
+// fleet member). A name that is no member keeps its shape.
+// tla/ReaderTiers.tla EveryUpMemberIsAReader
+func resolveReaderNames(ctx context.Context, st *store.Store, names []string) ([]string, map[string]bool, error) {
+	snap, err := st.Load(ctx, []string{sprint.Fleet, sprint.Readers}, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	members := map[string]bool{}
+	for _, m := range snap.Members() {
+		members[m] = true
+	}
+	out := make([]string, 0, len(names))
+	memberOf := map[string]bool{}
+	for _, n := range names {
+		if strings.HasPrefix(n, sprint.ReaderPrefix) {
+			m, ok := strings.CutPrefix(n, sprint.ReaderPrefix)
+			out = append(out, n)
+			memberOf[n] = ok && members[m]
+			continue
+		}
+		if members[n] {
+			rn := sprint.ReaderPrefix + n
+			out = append(out, rn)
+			memberOf[rn] = true
+			continue
+		}
+		out = append(out, n)
+		memberOf[n] = false
+	}
+	return out, memberOf, nil
+}
+
+// ensureMemberReaders makes the reader row of every up fleet member the
+// readers table lacks (sprint.MemberReaderRows): init and a member's join
+// call it, a clear makes them through the shape it carries
+// (steps_clear.go ShapeOf). It writes nothing when every up member reads,
+// and nothing while the sprint has reader rows of its own: a seat that
+// declared readers (init --readers, reader add) named the set, and a
+// members-only sprint (init --members, the card's case) is the one with
+// no seat action to make.
+func ensureMemberReaders(ctx context.Context, st *store.Store) error {
+	snap, err := st.Load(ctx, []string{sprint.Fleet, sprint.Readers}, nil)
+	if err != nil {
+		return err
+	}
+	if len(snap.Readers.Rows()) > 0 {
+		return nil
+	}
+	missing := sprint.MemberReaderRows(snap)
+	if len(missing) == 0 {
+		return nil
+	}
+	if err := st.EnsureReaderTiers(ctx); err != nil {
+		return err
+	}
+	return st.AddReaders(ctx, missing, nil)
 }
 
 func (a *app) cmdReaderAdd(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("reader add")
-	tiersFlag := fs.String("tiers", "", "the tiers this reader reads, comma separated ("+cardhdr.RouteList+"); all names every tier; default, or omitted, is flash on a fleet reader while the store holds routes and every tier on a friend's reader")
+	tiersFlag := fs.String("tiers", "", "the tiers this reader reads, comma separated ("+cardhdr.RouteList+"); all names every tier; default, or omitted, is every tier a route serves")
 	names, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "reader add", err.Error())
@@ -3592,6 +3859,11 @@ func (a *app) cmdReaderAdd(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "reader add", err.Error())
 	}
 	ctx := context.Background()
+	// a bare fleet member name names its member reader itself
+	var memberOf map[string]bool
+	if names, memberOf, err = resolveReaderNames(ctx, st, names); err != nil {
+		return refuse(stderr, "reader add", err.Error())
+	}
 	if err := st.EnsureReaderTiers(ctx); err != nil {
 		return refuse(stderr, "reader add", err.Error())
 	}
@@ -3623,8 +3895,21 @@ func (a *app) cmdReaderAdd(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s reader add: %s\n", prog, oneline.Escape(err.Error()))
 		return 1
 	}
+	// reader add writes the row up: its beat is now and no hold keeps it
+	// away, so the ask may ask it with no reader up after it.
+	for _, n := range names {
+		_ = st.SetReaderAway(ctx, n, false, c.actor)
+		_, _ = st.ReaderBeat(ctx, n, "")
+	}
 	line := "READER-ADD OK readers=" + strings.Join(names, ",")
-	facts := map[string]any{"readers": names}
+	for _, n := range names {
+		word := "no"
+		if memberOf[n] {
+			word = "yes"
+		}
+		line += " member-reader=" + word
+	}
+	facts := map[string]any{"readers": names, "member_readers": memberOf}
 	if tiersSet {
 		word := sprint.ReaderTiersShown(tiers)
 		line += " tiers=" + word
@@ -3643,7 +3928,7 @@ func (a *app) cmdReaderAdd(args []string, stdout, stderr io.Writer) int {
 // nothing.
 func (a *app) cmdReaderSet(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("reader set")
-	tiersFlag := fs.String("tiers", "", "the tiers these readers read, comma separated ("+cardhdr.RouteList+"); all names every tier; default is flash on a fleet reader while the store holds routes and every tier on a friend's reader")
+	tiersFlag := fs.String("tiers", "", "the tiers these readers read, comma separated ("+cardhdr.RouteList+"); all names every tier; default is every tier a route serves")
 	names, code := readerNames("reader set", args, stderr, fs)
 	if code != 0 {
 		return code
@@ -3657,6 +3942,9 @@ func (a *app) cmdReaderSet(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "reader set", err.Error())
 	}
 	ctx := context.Background()
+	if names, _, err = resolveReaderNames(ctx, st, names); err != nil {
+		return refuse(stderr, "reader set", err.Error())
+	}
 	rows, err := st.ReaderRows(ctx)
 	if err != nil {
 		return a.readFailed("reader set", err, stderr)
@@ -3678,7 +3966,7 @@ func (a *app) cmdReaderSet(args []string, stdout, stderr io.Writer) int {
 }
 
 // readerTiersArg parses --tiers. required refuses a call that omitted it.
-// The stored value is "" for the default (flash on a fleet reader, every tier on a friend's).
+// The stored value is "" for the default (every tier a route serves).
 // Nothing is written here.
 func readerTiersArg(verbName string, fs *flag.FlagSet, raw string, required bool, stderr io.Writer) (string, bool, int) {
 	set := false
@@ -3751,6 +4039,9 @@ func (a *app) cmdReaderHold(away bool, args []string, stdout, stderr io.Writer) 
 		return refuse(stderr, verbName, err.Error())
 	}
 	ctx := context.Background()
+	if names, _, err = resolveReaderNames(ctx, st, names); err != nil {
+		return refuse(stderr, verbName, err.Error())
+	}
 	rows, err := st.ReaderRows(ctx)
 	if err != nil {
 		return a.readFailed(verbName, err, stderr)
@@ -3876,7 +4167,6 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	reworkPriority := fs.String("rework-priority", "", "the priority a normal or low card gets when its next attempt opens: fix (the default), high, or keep to retain its level")
 	reads := fs.String("reads", "", "the ok reads at its head every card in review needs, whatever its tier: 0 (no read: a primary whose work finished LAND is accepted on it), 1 or 2; default: one for a flash card, two above")
 	pegged := fs.String("pegged-bound", "", fmt.Sprintf("how long a member up with no card working may beat at %.0f%% load or more before it is a judgment to the coordinator (member-pegged, once an episode): a duration, or default (%s)", sprint.HeavyLoadPercent, sprint.PeggedBoundDefault))
-	unserved := fs.String("unserved-tier-falls-to", "", "the tier an unserved card falls to: heavy, pro or flash gives every card whose brief tier no route and no up friend serves the strongest served tier at or below it, and clears it when the tier is served again; off (the default) keeps today's behaviour")
 	if a.onSetFlags != nil {
 		a.onSetFlags(fs)
 	}
@@ -3891,9 +4181,17 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "set", err.Error())
 	}
+	if *tier == "" && *dealt == "" && *lanes == "" && *review == "" && *merging == "" && *fleet == "" && *readyAlarm == "" && *attempts == "" && *idle == "" && *landingStallBound == "" && *fleetWork == "" && *friendsWork == "" && *fleetTiers == "" && *friendsTiers == "" && *finish == "" && *base == "" && *readCards == "" && *reworkPriority == "" && *reads == "" && *pegged == "" {
+		s, err := st.Load(context.Background(), []string{sprint.Work}, nil)
+		if err != nil {
+			return a.readFailed("set", err, stderr)
+		}
+		printSettings(stdout, s, c.json)
+		return 0
+	}
 	step := store.SetStep(sprint.SetReq{ReadTier: *tier, DealtMax: *dealt, GoLanes: *lanes, Attempts: *attempts, FriendIdle: *idle, LandingStallBound: *landingStallBound,
 		AlarmReview: *review, AlarmMerging: *merging, AlarmFleet: *fleet, AlarmReady: *readyAlarm,
-		Fleet: *fleetWork, Friends: *friendsWork, FleetTiers: *fleetTiers, FriendsTiers: *friendsTiers, ReadCards: *readCards, Reads: *reads, UnservedTierFallsTo: *unserved, ReworkPriority: *reworkPriority, Who: c.actor})
+		Fleet: *fleetWork, Friends: *friendsWork, FleetTiers: *fleetTiers, FriendsTiers: *friendsTiers, ReadCards: *readCards, Reads: *reads, ReworkPriority: *reworkPriority, Who: c.actor})
 	if *finish != "" {
 		set := step.Plan
 		step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.WithFriendFinish(set(s), s, *finish) }
@@ -4497,4 +4795,80 @@ func (a *app) cmdCardBase(args []string, stdout, stderr io.Writer) int {
 		Plan: func(s *sprint.Snapshot) sprint.Plan {
 			return sprint.CardBase(s, sprint.CardBaseReq{ID: id, Base: branch, OnOrigin: onOrigin, Who: c.actor})
 		}}, stdout, stderr)
+}
+
+// receiptContractCheck is a parser fence: an old local or forwarded server parser
+// rejects this flag before planning; a paired parser checks the required receipt.
+func receiptContractCheck(version, usage string) error {
+	u, err := cardcost.ParseUsageChecked(usage)
+	if err != nil {
+		return err
+	}
+	if version == "" && u.ReceiptVersion == 0 {
+		return nil
+	}
+	if version != "2" || u.ReceiptVersion != 2 {
+		return fmt.Errorf("native receipt contract requires --receipt-contract 2 and receipt_version=2; adopt the paired tools/sprint builds before reporting")
+	}
+	return nil
+}
+
+// askStep is the ask, with origin asked for each primary it names whose read's branch is not
+// on origin (judgment NReadBranchMissing): the branch on origin that holds its head, so the
+// ask re-asks the read and closes the judgment, or is refused naming it
+// (tla/ReadBranchMissing.tla, Ask). Each snapshot retry asks origin again, as finishStep does;
+// a primary not named is never asked again by an ask of the rest.
+func (a *app) askStep(r sprint.AskReq) store.Step {
+	step := store.AskStep(r)
+	if a.readTip == nil || a.readHeads == nil || (len(r.IDs) == 0 && r.Only == nil) {
+		return step
+	}
+	step.Plan = func(s *sprint.Snapshot) sprint.Plan {
+		req := r
+		for _, ck := range sprint.ReadBranchChecks(s) {
+			if !slices.Contains(r.IDs, ck.Primary) && !slices.Contains(r.Only, ck.Primary) {
+				continue
+			}
+			if b := a.branchHolding(context.Background(), ck); b != "" {
+				if req.Holds == nil {
+					req.Holds = map[string]string{}
+				}
+				req.Holds[ck.Primary] = b
+			}
+		}
+		return sprint.Ask(s, req)
+	}
+	return step
+}
+
+// branchHolding is the branch on origin that holds the check's head: the branch the read was
+// handed when it is on origin now at the head, else a branch of the same work card
+// (sprint/<prefix><card>.g*) at the head; "" when none does, or origin cannot be read (the
+// judgment stays open: a listing that failed is no branch found).
+func (a *app) branchHolding(ctx context.Context, ck sprint.BranchCheck) string {
+	repo := swarm.ReadCardBase([]byte(ck.Brief)).Repo
+	if repo == "" || ck.Branch == "" || !typedrec.IsFullSha(ck.Head) {
+		return ""
+	}
+	tip, err := a.readTip(ctx, repo, ck.Branch)
+	if err != nil {
+		return ""
+	}
+	if strings.EqualFold(tip, ck.Head) {
+		return ck.Branch
+	}
+	i := strings.LastIndex(ck.Branch, ".g")
+	if i <= 0 {
+		return ""
+	}
+	heads, err := a.readHeads(ctx, repo, "refs/heads/"+ck.Branch[:i]+".g*")
+	if err != nil {
+		return ""
+	}
+	for _, b := range slices.Sorted(maps.Keys(heads)) {
+		if b != ck.Branch && strings.EqualFold(heads[b], ck.Head) {
+			return b
+		}
+	}
+	return ""
 }

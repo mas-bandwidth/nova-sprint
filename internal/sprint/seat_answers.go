@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"maps"
 	"slices"
@@ -354,4 +355,309 @@ func pinReleaseRecorded(s *Snapshot, id string) bool {
 		}
 	}
 	return false
+}
+
+// Decision defaults are deliberately narrower than the existing automatic answer
+// rules. tla/DecisionsOwed.tla DefaultIsSafe: this table cannot authorize a terminal
+// action or a brief change. Unknown and newly introduced kinds declare none.
+const NServerDefault = "server applied a safe decision default"
+const NDecisionDelivery = "decision escalation delivery"
+const ServerDefaultActor = "server-default"
+
+func SafeDecisionDefault(typ string) string {
+	switch typ {
+	case NBound, NBriefWrong:
+		return "hold with cause"
+	case NCannotAsk:
+		return "wait 30m and re-ask"
+	default:
+		return "none"
+	}
+}
+
+// DecisionDelivery is a durable folded-message obligation. A prepared payload and
+// token survive restart; only a successful transport receipt sets SentAt. Fault is
+// visible in where. It is never proof that the recipient read the message.
+type DecisionDelivery struct {
+	Lane            string    `json:"lane"`
+	To              string    `json:"to"`
+	From            string    `json:"from"`
+	Set             string    `json:"set"`
+	Body            string    `json:"body"`
+	Token           string    `json:"token"`
+	PreparedAt      time.Time `json:"prepared_at"`
+	RetryBefore     time.Time `json:"retry_before"`
+	SentAt          time.Time `json:"sent_at,omitempty"`
+	Fault           string    `json:"fault,omitempty"`
+	Reports         []string  `json:"reports,omitempty"`
+	UnknownReceipts int       `json:"unknown_receipts,omitempty"`
+}
+
+// DecisionAge uses the same running clock and explicit review interval as the
+// judgment deadline. Terminal sprint-done has no decision deadline.
+func DecisionAge(now time.Time, n Note, stopped func(time.Time, time.Time) time.Duration) (time.Duration, time.Duration) {
+	if n.Type == NSprintDone || n.At.IsZero() {
+		return 0, 0
+	}
+	start, limit := n.At, DeadlineJudgment
+	if !n.Review.IsZero() {
+		start = n.ReviewSet
+		if start.IsZero() {
+			start = n.At
+		}
+		limit = n.Review.Sub(start)
+	}
+	if limit <= 0 {
+		return 0, 0
+	}
+	age := now.Sub(start)
+	if stopped != nil {
+		age -= stopped(start, now)
+	}
+	return max(age, 0), limit
+}
+
+// TickDecisionDefaults runs in the fenced overdue pass. Each change and its audit
+// record share a unit. A default is never applied to an active or merging primary.
+// tla/DecisionsOwed.tla DefaultOnlyPastTwice, DefaultIsSafe.
+func TickDecisionDefaults(s *Snapshot, r TickReq) Plan {
+	var p Plan
+	seen := map[string]bool{}
+	for _, o := range s.Open {
+		n := o.Note
+		if n.Kind != Judgment || seen[n.ID] {
+			continue
+		}
+		seen[n.ID] = true
+		age, limit := DecisionAge(s.Now, n, r.Stopped)
+		if limit == 0 || age < 2*limit {
+			continue
+		}
+		var entries []Open
+		for _, e := range s.Open {
+			if e.Note.ID == n.ID {
+				entries = append(entries, e)
+			}
+		}
+		reason := fmt.Sprintf("%s: %s; unanswered at twice its deadline", n.ID, n.What)
+		report := Note{Kind: Acknowledged, Type: NServerDefault, SprintLevel: true, Who: ServerDefaultActor, At: s.Now, Answers: n.ID, What: SafeDecisionDefault(n.Type) + ": " + reason}
+		switch SafeDecisionDefault(n.Type) {
+		case "hold with cause":
+			if s.Work == nil || n.StreamLevel || n.SprintLevel {
+				continue
+			}
+			u := Unit{Key: n.ID, Stream: n.Stream}
+			safe := len(entries) > 0
+			for _, e := range entries {
+				c := s.Work.Placed(e.Subject())
+				if c == nil || IsSentinel(c) || IsHeld(c) || (c.Col != Ready && c.Col != Review) {
+					safe = false
+					break
+				}
+				u.Changes = append(u.Changes, change(Work, moveEntry(c, c.Row, Waiting, map[string]string{FieldHeld: stamp(s.Now), "held_by": ServerDefaultActor, "held_reason": reason, "held_judgment": n.ID, "decision_held_from": c.Col})))
+			}
+			if !safe {
+				continue
+			}
+			u.Closes = entries
+			ack := acknowledged(n, entries, ServerDefaultActor, s.Now)
+			ack.Answers = n.ID
+			u.Notes = []Note{ack, report}
+			u.Moved = "server-default: " + report.What
+			p.Units = append(p.Units, u)
+		case "wait 30m and re-ask":
+			// Reuse wait's acknowledged condition; normal TickAsk retries eligibility,
+			// and its review time reopens the condition if no reader became eligible.
+			q := Wait(s, WaitReq{Note: n.ID, Until: s.Now.Add(30 * time.Minute), Who: s.Coordinator})
+			if len(q.Refused) > 0 {
+				continue
+			}
+			for i := range q.Units {
+				for j := range q.Units[i].Notes {
+					q.Units[i].Notes[j].Who = ServerDefaultActor
+				}
+				q.Units[i].Notes = append(q.Units[i].Notes, report)
+				q.Units[i].Moved = "server-default: " + report.What
+			}
+			p.Units = append(p.Units, q.Units...)
+		}
+	}
+	return p
+}
+
+// DecisionSummary counts distinct open decisions and durable transport faults.
+// Reports remain in the store independently of the inbox cursor.
+type DecisionSummary struct {
+	Count          int           `json:"count"`
+	Oldest         time.Duration `json:"oldest_ns"`
+	DefaultsHour   int           `json:"defaults_hour"`
+	DeliveryFaults int           `json:"delivery_faults"`
+	ReceiptUnknown int           `json:"receipt_unknown"`
+	ReceiptHistory []string      `json:"receipt_history,omitempty"`
+}
+
+func DecisionsOwed(now time.Time, all []Open, held []Note, stopped func(time.Time, time.Time) time.Duration) DecisionSummary {
+	for _, n := range held {
+		all = append(all, Open{Note: n})
+	}
+	var out DecisionSummary
+	seen := map[string]bool{}
+	for _, o := range all {
+		n := o.Note
+		if seen[n.ID] {
+			continue
+		}
+		seen[n.ID] = true
+		if n.Kind == Judgment && n.Type != NSprintDone {
+			out.Count++
+			age, _ := DecisionAge(now, n, stopped)
+			out.Oldest = max(out.Oldest, age)
+		}
+		if n.Type == NServerDefault && !n.At.Before(now.Add(-time.Hour)) {
+			out.DefaultsHour++
+		}
+		if n.DecisionDelivery != nil {
+			if n.DecisionDelivery.Fault != "" && n.DecisionDelivery.SentAt.IsZero() {
+				out.DeliveryFaults++
+			}
+			out.ReceiptUnknown += n.DecisionDelivery.UnknownReceipts
+			if n.DecisionDelivery.UnknownReceipts > 0 {
+				out.ReceiptHistory = append(out.ReceiptHistory, fmt.Sprintf("from=%s to=%s: %s", n.DecisionDelivery.From, n.DecisionDelivery.To, n.What))
+			}
+		}
+	}
+	return out
+}
+func (d DecisionSummary) Line() string {
+	return fmt.Sprintf("DECISIONS OWED %d, oldest %s; server-defaults applied this hour %d; delivery faults %d; earlier receipts unknown %d", d.Count, d.Oldest.Truncate(time.Second), d.DefaultsHour, d.DeliveryFaults, d.ReceiptUnknown)
+}
+
+// DecisionBatch folds by stable note identity, never by changing ages. A default
+// report remains owed until both channels have a successful receipt; afterward it
+// stays in the folded hour's report. No transport operation occurs here.
+func DecisionBatch(now time.Time, all []Open, held []Note, lane string, stopped func(time.Time, time.Time) time.Duration, current *Snapshot) (string, string, []string) {
+	notes := map[string]Note{}
+	subjects := map[string][]string{}
+	for _, n := range held {
+		notes[n.ID] = n
+		subjects[n.ID] = n.Subjects() // Derived from live held cards, never an old open note.
+	}
+	for _, o := range all {
+		n := o.Note
+		if subject := o.Subject(); subject != "" {
+			subjects[n.ID] = append(subjects[n.ID], subject)
+		}
+		if n.Kind == Judgment {
+			age, limit := DecisionAge(now, n, stopped)
+			if limit > 0 && age >= limit {
+				notes[n.ID] = n
+			}
+		} else if n.Type == NServerDefault {
+			told := n.DefaultOwnerTold
+			if lane == "coordinator" {
+				told = n.DefaultCoordinatorTold
+			}
+			if !told || !n.At.Before(now.Add(-time.Hour)) {
+				notes[n.ID] = n
+			}
+		}
+	}
+	ids := slices.Sorted(maps.Keys(notes))
+	var b strings.Builder
+	var reports []string
+	if len(ids) == 0 {
+		return "", "", nil
+	}
+	// Keep notices below the bus's 1 MiB limit even when note reasons are large.
+	// The durable Set retains every ID; the digest identifies that exact set if
+	// even its ID list needs an inbox pointer rather than transport-sized text.
+	const bodyLimit = 900 * 1024
+	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(ids, "\x00"))))
+	fmt.Fprintf(&b, "DECISIONS OWED: %d overdue judgments/default reports; set=%s; full details: nova-sprint inbox\n", len(ids), digest)
+	omitted := 0
+	for _, id := range ids {
+		n := notes[id]
+		if n.Type == NServerDefault {
+			reports = append(reports, id)
+		}
+		reason := n.What
+		var cards []string
+		if n.Type == NNoRoute && n.StreamLevel && strings.HasPrefix(n.Stream, "tier:") && current != nil && current.Work != nil {
+			tier := strings.TrimPrefix(n.Stream, "tier:")
+			for _, id := range n.Primaries {
+				c := current.Work.Placed(id)
+				if c == nil {
+					continue
+				}
+				if c.Col == Ready && current.DealTier(escalating(current, c)) == tier {
+					cards = append(cards, id)
+				}
+				// Use the deal's read predicate: a failed review or one whose
+				// reads are already running/completed is not held by this tier.
+				if c.Col == Review && c.F("result") != "failed" && readsWithoutRoute(current, c) {
+					readTier, why := current.readRouteMissing(c)
+					if readTier == tier && (why != "" || current.refusedNoRoute(c)) {
+						cards = append(cards, id)
+					}
+				}
+			}
+			cards = slices.Compact(slices.Sorted(slices.Values(cards)))
+			// The recorded count is historical: a rule may already have dealt a
+			// subset. Keep its route explanation, but report only cards still held.
+			if _, why, ok := strings.Cut(reason, " wait: "); ok {
+				reason = fmt.Sprintf("%d primaries of tier %s wait: %s", len(cards), tier, why)
+			}
+		}
+		if len(reason) > 512 {
+			reason = reason[:512] + "… [full reason in inbox]"
+		}
+		age, _ := DecisionAge(now, n, stopped)
+		active := subjects[id]
+		active = slices.Compact(slices.Sorted(slices.Values(active)))
+		line := fmt.Sprintf("%s %s subjects=%s age=%s safe-default=%s: %s\n", id, n.Type, Preview(active, ","), age.Truncate(time.Second), SafeDecisionDefault(n.Type), reason)
+		if len(cards) > 0 {
+			line += "  cards=" + Preview(cards, ",") + "\n"
+		}
+		if n.Kind == Judgment {
+			if action := WaitRefusedAction(n); action != "" {
+				line += "  act: " + action + "\n"
+			}
+		}
+		if n.Type == NServerDefault {
+			line = fmt.Sprintf("%s server-default judgment=%s: %s\n", id, n.Answers, reason)
+		}
+		if b.Len()+len(line) > bodyLimit {
+			omitted++
+			continue
+		}
+		b.WriteString(line)
+	}
+	if omitted > 0 {
+		fmt.Fprintf(&b, "%d further IDs in nova-sprint inbox; complete durable delivery set=%s\n", omitted, digest)
+	}
+	return strings.Join(ids, "\x00"), b.String(), reports
+}
+
+// DecisionParkedReview distinguishes a reversible review hold from a primary
+// leaving review because its attempt or head was superseded.
+func DecisionParkedReview(c *Card) bool {
+	return c != nil && c.Col == Waiting && IsHeld(c) && c.F("held_by") == ServerDefaultActor && c.F("held_judgment") != "" && c.F("decision_held_from") == Review
+}
+
+// DefaultHeldDecisions derives obligations from live cards, not expiring audit
+// reports. Clearing the hold on release removes the obligation atomically with
+// the card move. The original judgment ID stays visible in every folded notice.
+func DefaultHeldDecisions(s *Snapshot) []Note {
+	var out []Note
+	if s == nil || s.Work == nil {
+		return out
+	}
+	for _, c := range s.Work.Column(Waiting) {
+		if !IsHeld(c) || c.F("held_by") != ServerDefaultActor {
+			continue
+		}
+		at, _ := time.Parse(time.RFC3339, c.F(FieldHeld))
+		out = append(out, Note{ID: "server-default-held:" + c.ID, Kind: Judgment, Type: "server-default hold", Primaries: []string{c.ID}, At: at, Answers: c.F("held_judgment"), What: fmt.Sprintf("%s remains parked by server-default for judgment %s: %s; release after review", c.ID, c.F("held_judgment"), c.F("held_reason"))})
+	}
+	return out
 }

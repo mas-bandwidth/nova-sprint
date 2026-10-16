@@ -22,6 +22,13 @@ func upWidths(t *testing.T, w *world, spec ...memberWidth) {
 	}
 }
 
+// dPutN puts n work cards <member>-<col>-<i> on the member in the column, scored from score.
+func dPutN(w *world, member, col string, n int, score float64, extra map[string]string) {
+	for i := 0; i < n; i++ {
+		putWorkCard(w, fmt.Sprintf("%s-%s-%d", member, col, i), member, col, score+float64(i), extra)
+	}
+}
+
 // The owner's rule (2026-10-11 ~19:05-19:20Z): a card moves only when its
 // member cannot start it. batman (width 4) holds one ready card it can start,
 // hetzner1 (width 16) holds eleven working cards and is below its width, so no
@@ -32,9 +39,7 @@ func TestTheLevelLeavesADealtCardOnAnIdleMember(t *testing.T) {
 	w := newWorld(t, "reader-a")
 	upWidths(t, w, memberWidth{"batman", 4}, memberWidth{"hetzner1", 16})
 	putWorkCard(w, "batman-ready", "batman", Ready, 1, nil)
-	for i := 0; i < 11; i++ {
-		putWorkCard(w, fmt.Sprintf("hetzner1-working-%d", i), "hetzner1", Working, float64(10+i), nil)
-	}
+	dPutN(w, "hetzner1", Working, 11, 10, nil)
 	p := FleetStep(w.s, FleetReq{Op: "level", Who: MachineActor})
 	assert.Empty(t, p.Units, "the level moved a card off a member that can start it: %v", movedLines(p))
 	w.must(p)
@@ -50,18 +55,10 @@ func TestTheLevelMovesTheExcessOntoFreeLanesOnly(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
 	upWidths(t, w, memberWidth{"source", 4}, memberWidth{"free", 4}, memberWidth{"full", 4})
-	for i := 0; i < 4; i++ {
-		putWorkCard(w, fmt.Sprintf("source-working-%d", i), "source", Working, float64(i), nil)
-	}
-	for i := 0; i < 6; i++ {
-		putWorkCard(w, fmt.Sprintf("source-ready-%d", i), "source", Ready, float64(10+i), nil)
-	}
-	for i := 0; i < 2; i++ {
-		putWorkCard(w, fmt.Sprintf("free-working-%d", i), "free", Working, float64(20+i), nil)
-	}
-	for i := 0; i < 6; i++ {
-		putWorkCard(w, fmt.Sprintf("full-working-%d", i), "full", Working, float64(30+i), nil)
-	}
+	dPutN(w, "source", Working, 4, 0, nil)
+	dPutN(w, "source", Ready, 6, 10, nil)
+	dPutN(w, "free", Working, 2, 20, nil)
+	dPutN(w, "full", Working, 6, 30, nil)
 	w.s.Fleet.SetProps(map[string]string{PropDealIndex: "source"})
 	p := FleetStep(w.s, FleetReq{Op: "level", Who: MachineActor})
 	require.Len(t, p.Units, 2, "the level moved %d cards, want 2: %v", len(p.Units), movedLines(p))
@@ -87,20 +84,12 @@ func TestTheLevelTargetsRollTheIndex(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
 	upWidths(t, w, memberWidth{"a", 4}, memberWidth{"b", 4}, memberWidth{"c", 4}, memberWidth{"d", 4}, memberWidth{"e", 4}, memberWidth{"f", 4})
-	for i := 0; i < 4; i++ {
-		putWorkCard(w, fmt.Sprintf("a-working-%d", i), "a", Working, float64(i), nil)
-	}
-	for i := 0; i < 6; i++ {
-		putWorkCard(w, fmt.Sprintf("a-ready-%d", i), "a", Ready, float64(10+i), nil)
-	}
+	dPutN(w, "a", Working, 4, 0, nil)
+	dPutN(w, "a", Ready, 6, 10, nil)
 	for _, m := range []string{"b", "c", "d", "e"} {
-		for i := 0; i < 3; i++ {
-			putWorkCard(w, fmt.Sprintf("%s-working-%d", m, i), m, Working, float64(20+i), nil)
-		}
+		dPutN(w, m, Working, 3, 20, nil)
 	}
-	for i := 0; i < 4; i++ {
-		putWorkCard(w, fmt.Sprintf("f-working-%d", i), "f", Working, float64(30+i), nil)
-	}
+	dPutN(w, "f", Working, 4, 30, nil)
 	// the index just past a: the first scan starts at b.
 	w.s.Fleet.SetProps(map[string]string{PropDealIndex: "a"})
 	p := FleetStep(w.s, FleetReq{Op: "level", Who: MachineActor})
@@ -127,13 +116,9 @@ func TestTheLevelSkipsASourceWithNoMovableCard(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a")
 	upWidths(t, w, memberWidth{"over", 2}, memberWidth{"less", 2}, memberWidth{"free", 4})
-	for i := 0; i < 2; i++ {
-		putWorkCard(w, fmt.Sprintf("over-working-%d", i), "over", Working, float64(i), nil)
-		putWorkCard(w, fmt.Sprintf("less-working-%d", i), "less", Working, float64(10+i), nil)
-	}
-	for i := 0; i < 3; i++ {
-		putWorkCard(w, fmt.Sprintf("over-ready-%d", i), "over", Ready, float64(20+i), refusedBy("free"))
-	}
+	dPutN(w, "over", Working, 2, 0, nil)
+	dPutN(w, "less", Working, 2, 10, nil)
+	dPutN(w, "over", Ready, 3, 20, refusedBy("free"))
 	putWorkCard(w, "less-ready", "less", Ready, 30, nil)
 	putWorkCard(w, "free-working", "free", Working, 40, nil)
 	p := FleetStep(w.s, FleetReq{Op: "level", Who: MachineActor})

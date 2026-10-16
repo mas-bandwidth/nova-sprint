@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/hostload"
+	"github.com/mas-bandwidth/nova-tools/pkg/hostload"
 )
 
 // A fleet member's presence (docs/SPEC-SPRINT.md section 5, the fleet; the
@@ -41,32 +41,6 @@ const (
 	LoadedGrace = MissedBeatsDown * BeatDeadline
 	// LoadWindow is the span of beats whose highest load the load cell shows.
 	LoadWindow = 10 * time.Second
-	// FriendBeatEvery is how often a friend's daemon beats (friend beat). The
-	// beat is recorded and shown (her report, her load, its age), and it never
-	// makes her up: it proves a daemon, not a session (FriendStatus).
-	FriendBeatEvery = time.Second
-	// FriendProofLive is how old the session proof her beat carries may be while she is
-	// up (docs/SPEC-FRIEND.md, The push proof): her daemon asks the session eight
-	// minutes after its last ask and waits up to five for the answer (nova-friend's
-	// ProveEvery and SessionBound), so a session that answers is never proved longer
-	// ago than thirteen minutes, inside this window. The owner, 2026-10-05: "nova-bus is useless if the friend using it
-	// is deaf and is not listening to messages sent back."
-	FriendProofLive = 15 * time.Minute
-	// FriendPongWindow is how long a wake ping her session answered keeps her
-	// up, and FriendFinishWindow how long a card of hers finished (working to
-	// done) does (docs/SPEC-FRIEND.md, "Presence is her session's evidence").
-	// The owner, 2026-10-05 ~9:30 AM ET: "there is no value in things that are
-	// answered just by the daemon"; a friend is up only when her session
-	// answered a wake ping within ten minutes or she finished a card within
-	// thirty. On 2026-10-04 friends read up for hours on beats sent for them
-	// while their sessions took no turn.
-	FriendPongWindow   = 10 * time.Minute
-	FriendFinishWindow = 30 * time.Minute
-	// FriendBeatBound is how stale a friend's last beat may be before the tick treats
-	// her as gone and hands her cards and reads back to the deal: her daemon alone runs
-	// her lanes, so a beat this old is a daemon that has stopped (docs/SPEC-SPRINT.md
-	// section 1, friend reconcile; a friend who stops beating is down).
-	FriendBeatBound = 30 * time.Minute
 )
 
 // Held is the status of a member the coordinator holds down.
@@ -96,10 +70,6 @@ type Beat struct {
 	// Friend is what a friend's beat reports of her work (friend beat); nil on a
 	// machine's beat.
 	Friend *FriendReport `json:"friend,omitempty"`
-	// Proof is a friend's session's last proof as her beat carried it (friend beat
-	// --pong: her session's answer to a SESSION CHECK, or its own bus message), zero
-	// when her beat carried none; the friend beat record keeps it under "pong".
-	Proof time.Time `json:"pong,omitzero"`
 	// StopReturns is how many stop-returns a member's lanes still owe after the machine's
 	// stop (fleet beat --stop-returns; docs/SPEC-SPRINT.md section 14, stop cancels jobs):
 	// start waits for zero. A friend's count is her report's (FriendReport.StopReturns).
@@ -128,6 +98,11 @@ type Beat struct {
 	// taken (drainReturns; tla/NoRoom.tla, NeverDealtToDraining).
 	Draining      bool      `json:"draining,omitempty"`
 	DrainingSince time.Time `json:"draining_since,omitzero"`
+	// Facts are the member's gate facts as it measures its own machine (fleet beat --facts:
+	// its OS, its ISA, landlock, the TLA jar, its toolchains; FieldFacts), kept from beat to
+	// beat while a beat carries none. The tick writes them onto the member's control card
+	// (factsPlan), where the deal reads them for a card's GATE-NEEDS.
+	Facts []string `json:"facts,omitempty"`
 }
 
 // DrainingPrefix begins the no-room word the server gives a member or reader whose fresh beat
@@ -263,6 +238,24 @@ func (b Beat) Alive(now time.Time) bool {
 	return b.Beaten() && (b.Missed(now) < MissedBeatsDown || b.Loaded(now))
 }
 
+// LoadMax is the top of the load scale: load is CPU busy-over-total across
+// all cores, 0-100%, where 100% is full use of the machine (all cores)
+// (docs/SPEC-SPRINT-DASHBOARD.md, Fleet). A load average over cores is not
+// bounded by it, so a beat carrying one is clamped here, at the one place
+// every member beat's record is made.
+const LoadMax = 100.0
+
+// clampLoad keeps a load percent on the 0-100 scale (LoadMax).
+func clampLoad(pct float64) float64 {
+	switch {
+	case pct < 0:
+		return 0
+	case pct > LoadMax:
+		return LoadMax
+	}
+	return pct
+}
+
 // NextBeat is the record after a beat at now with the load pct: the beat at
 // the second, the samples of the last LoadWindow with this one in place of any
 // of the same second, and their highest as the load. Two beats in the same
@@ -272,10 +265,11 @@ func NextBeat(prev Beat, now time.Time, pct float64, how string, meter hostload.
 	b := Beat{At: at, How: how, Meter: meter}
 	for _, s := range prev.Samples {
 		if s.At.After(at.Add(-LoadWindow)) && s.At.Before(at) {
+			s.Pct = clampLoad(s.Pct)
 			b.Samples = append(b.Samples, s)
 		}
 	}
-	b.Samples = append(b.Samples, LoadSample{At: at, Pct: float64(int64(pct*10+0.5)) / 10})
+	b.Samples = append(b.Samples, LoadSample{At: at, Pct: float64(int64(clampLoad(pct)*10+0.5)) / 10})
 	for _, s := range b.Samples {
 		b.Load = max(b.Load, s.Pct)
 	}
@@ -303,91 +297,6 @@ func PresenceStatus(held bool, b Beat, now time.Time) string {
 	return Down
 }
 
-// FriendStatus is the one rule of a friend's status at now: held while the
-// coordinator holds her (friend down); else down while her last beat says so
-// (SaysDown: her harness at its limit, until when and why; a beat can say down,
-// never up); else up only on evidence from her own session within its window
-// (FriendEvidence): a wake ping her session answered
-// (the coordinator's friend health --state up, under the current seat
-// generation) under FriendPongWindow old, or her session's answer to a check her
-// daemon asked, proved on her beat (friend beat --check, then --pong naming its
-// nonce; ProveBeat; Beat.Proof) under FriendProofLive old while her beat is
-// fresh, or a card of hers finished under FriendFinishWindow old;
-// else down. Her beat itself, whoever sends it, is never evidence: a daemon or a
-// loop beating for her says an app is open, not that her session can work; only
-// the session's answer it carries is. Releasing a hold (friend up) is no
-// evidence either.
-func FriendStatus(f FriendPresence, now time.Time) string {
-	status, _ := FriendEvidence(f, now)
-	return status
-}
-
-// FriendEvidence is FriendStatus with the evidence it rests on, as her row
-// names it: for up, the evidence and its age ("session pong 3m0s ago",
-// "finish 12m0s ago"); for down, what is missing, each with the age of the
-// last one seen, and the beat's age when she beats, so a row read down while
-// her daemon beats says why; for a beat that says down, until when and why;
-// for held, "held".
-// tla/SeatHealth.tla Status
-func FriendEvidence(f FriendPresence, now time.Time) (string, string) {
-	if f.Held {
-		return Held, "held"
-	}
-	if f.Beat.SaysDown() {
-		return Down, beatSaysDownWhy(f.Beat)
-	}
-	// her daemon alone runs her lanes: a beat past the beat bound is a daemon that has
-	// stopped, and a session pong it carried is no evidence she is working. She is down
-	// since that beat, whatever the pong says (docs/SPEC-SPRINT.md section 1, a friend's
-	// health; a friend who stops beating is down).
-	if f.Beat.Beaten() && now.Sub(f.Beat.At) > FriendBeatBound {
-		return Down, "daemon stopped beating " + ago(now.Sub(f.Beat.At)) + ": down since " + stamp(f.Beat.At)
-	}
-	pong := !f.Health.Seen.IsZero() && f.Health.State == Up && f.Health.Generation == f.Generation
-	if age := now.Sub(f.Health.Seen); pong && age >= 0 && age < FriendPongWindow {
-		return Up, "session pong " + ago(age)
-	}
-	// the proof her beat record keeps is an answer to a check her daemon asked (ProveBeat),
-	// and it counts only while her beat is fresh: a daemon that stopped proves nothing more
-	proof := !f.Beat.Proof.IsZero()
-	if age := now.Sub(f.Beat.Proof); proof && age >= 0 && age < FriendProofLive && f.Beat.Fresh(now) {
-		return Up, "session proof " + ago(age)
-	}
-	if age := now.Sub(f.Finished); !f.Finished.IsZero() && age >= 0 && age < FriendFinishWindow {
-		return Up, "finish " + ago(age)
-	}
-	why := "no session evidence: no wake ping answered within " + FriendPongWindow.String()
-	if pong {
-		why += " (last " + ago(now.Sub(f.Health.Seen)) + ")"
-	}
-	why += ", no session proof on the beat within " + FriendProofLive.String()
-	if proof {
-		why += " (last " + ago(now.Sub(f.Beat.Proof))
-		if !f.Beat.Fresh(now) {
-			why += ", beat stopped " + ago(now.Sub(f.Beat.At))
-		}
-		why += ")"
-	}
-	why += ", no card finished within " + FriendFinishWindow.String()
-	if !f.Finished.IsZero() {
-		why += " (last " + ago(now.Sub(f.Finished)) + ")"
-	}
-	if f.Beat.Beaten() {
-		why += "; beat " + ago(now.Sub(f.Beat.At)) + " is not evidence"
-	}
-	return Down, why
-}
-
-// beatSaysDownWhy is why a beat that says down puts her down (SaysDown): until
-// when, and the reason her daemon gave.
-func beatSaysDownWhy(b Beat) string {
-	why := "beat says down until " + b.Friend.Until.UTC().Format(time.RFC3339)
-	if b.Friend.Reason != "" {
-		why += ": " + b.Friend.Reason
-	}
-	return why
-}
-
 // ago is an age as a row says it, to the second: "3m0s ago", or "in the
 // future" for a stamp after now, which is no evidence.
 func ago(d time.Duration) string {
@@ -407,7 +316,7 @@ func LoadText(b Beat, now time.Time) string {
 	if !b.Fresh(now) && !b.Loaded(now) {
 		return ""
 	}
-	load := fmt.Sprintf("%.1f%%", b.Load)
+	load := fmt.Sprintf("%.1f%%", clampLoad(b.Load))
 	if b.Loaded(now) {
 		load += " loaded"
 	}
@@ -453,7 +362,15 @@ func TickPresence(s *Snapshot, r TickReq) (Plan, int) {
 	return p, due + gdue
 }
 
+// presence is the fleet's presence from the beats (presenceMoves), with each member's gate
+// facts from its beat written onto its control card beside it (deal.go, factsPlan): both the
+// tick's own part and the release's (FleetBackPresence) run it.
 func presence(s *Snapshot, r TickReq) (Plan, int) {
+	p, due := presenceMoves(s, r)
+	return withFacts(p, factsPlan(s, r)), due
+}
+
+func presenceMoves(s *Snapshot, r TickReq) (Plan, int) {
 	if r.Beats == nil {
 		return Plan{}, 0
 	}
@@ -538,18 +455,4 @@ func StrangerNotes(s *Snapshot, names []string) Plan {
 			What: "an unknown machine is beating: " + m + "; add it with nova-sprint fleet up " + m})
 	}
 	return p
-}
-
-// FriendDownWhy is why FriendStatus does not say up at now, in the words a take refused
-// for her names (takeOne): held by the coordinator; her beat says down, until when and why; or the session evidence she lacks as
-// FriendEvidence names it (her beat is never evidence). "" while she is up.
-func FriendDownWhy(f FriendPresence, now time.Time) string {
-	if f.Held {
-		return "held by the coordinator (friend down)"
-	}
-	word, why := FriendEvidence(f, now)
-	if word == Up {
-		return ""
-	}
-	return why
 }

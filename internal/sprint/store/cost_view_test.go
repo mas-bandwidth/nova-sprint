@@ -64,8 +64,6 @@ func TestTheWhereRecordCountsTiersAndCostsByTier(t *testing.T) {
 	rec := whereOf(h.snap(), h.machineRecord(), h.st.now())
 	assert.Equal(t, map[string]int{"flash": 1, "pro": 1, "heavy": 1}, rec.Tiers)
 	assert.Equal(t, s1, rec.Streams["s1"])
-	assert.Equal(t, "-", sprint.PerLandedOf("-", 0))
-	assert.Equal(t, "$0.34", sprint.PerLandedOf("$1.00", 3), "a cent rounded up")
 	h.clean("tiers and costs counted")
 }
 

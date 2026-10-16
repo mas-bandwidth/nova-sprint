@@ -13,11 +13,11 @@ func TestWhoIsAPreference(t *testing.T) {
 		name, who, want string
 		seats           []FriendSeat
 	}{
-		{"unpinned", "", "friend.bob", []FriendSeat{{Name: "bob", Width: 1, Status: Up, Class: "pro,heavy"}}},
-		{"preferred first", "friend amy", "friend.amy", []FriendSeat{{Name: "amy", Width: 1, Status: Up, Class: "pro"}, {Name: "bob", Width: 8, Status: Up, Class: "pro"}}},
-		{"preferred full", "friend amy", "friend.bob", []FriendSeat{{Name: "amy", Width: 0, Status: Up, Class: "pro"}, {Name: "bob", Width: 1, Status: Up, Class: "pro"}}},
-		{"fleet fallback", "friend amy", "fleet", []FriendSeat{{Name: "amy", Width: 0, Status: Up, Class: "pro"}, {Name: "bob", Width: 1, Status: Up, Class: "flash"}}},
-		{"only waits", "only friend amy", "", []FriendSeat{{Name: "amy", Width: 0, Status: Up, Class: "pro"}, {Name: "bob", Width: 1, Status: Up, Class: "pro"}}},
+		{"unpinned", "", "friend.bob", workerSeatFixtures([]FriendSeat{{Name: "bob", Width: 1, Status: Up, Class: "pro,heavy"}})},
+		{"preferred first", "friend amy", "friend.amy", workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 1, Status: Up, Class: "pro"}, {Name: "bob", Width: 8, Status: Up, Class: "pro"}})},
+		{"preferred full", "friend amy", "friend.bob", workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 0, Status: Up, Class: "pro"}, {Name: "bob", Width: 1, Status: Up, Class: "pro"}})},
+		{"fleet fallback", "friend amy", "fleet", workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 0, Status: Up, Class: "pro"}, {Name: "bob", Width: 1, Status: Up, Class: "flash"}})},
+		{"only waits", "only friend amy", "", workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 0, Status: Up, Class: "pro"}, {Name: "bob", Width: 1, Status: Up, Class: "pro"}})},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			brief := "c: work tier: pro\n"
@@ -57,7 +57,7 @@ func TestPreferencePreservesTheRetryBound(t *testing.T) {
 				change(Fleet, moveEntry(wc, wc.Row, Withdrawn, map[string]string{"redeals": itoa(n), FieldTakeEnded: stamp(w.s.Now)})),
 				change(Work, moveEntry(pr, pr.Row, Ready, nil)),
 			}}}})
-			p := FriendDeal(w.s, []*Card{w.s.Primary(pr.ID)}, []FriendSeat{{Name: "amy", Width: 1, Status: Up, Class: "pro"}})
+			p := FriendDeal(w.s, []*Card{w.s.Primary(pr.ID)}, workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 1, Status: Up, Class: "pro"}}))
 			if n == MaxRedeals {
 				assert.Empty(t, p.Units)
 				return
