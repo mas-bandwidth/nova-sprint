@@ -277,8 +277,8 @@ Every store verb takes --redis <addr> (else NOVA_SPRINT_REDIS, then
 NOVA_REDIS_ADDR), --actor <name> (else NOVA_SPRINT_ACTOR; no
 default: a verb that writes wants one), --op <id> (the same id again returns
 the recorded result), --json and --max <n> (listed items, and the count of a
-set when the verb takes one; 0 is all listed; --limit is --max for one
-release). The
+set when the verb takes one; 0 is all listed; log does not cap yet: narrow it
+with --card, --stream, --member or --since; --limit is --max for one release). The
 coordinator's verbs are the coordinator's alone (the first init names it:
 --coordinator, else the actor); take, finish, read, fleet beat, friend
 beat, lane take and lane give are the workers', whose actor is the member, reader or friend named; merge and ci are
