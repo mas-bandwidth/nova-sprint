@@ -1238,6 +1238,12 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 			p.Notes = append(p.Notes, gateNeedsJudgment(c, gateWhy, r.Who, s.Now))
 			continue
 		}
+		// a member up satisfies it now: the judgment raised while none did (facts not yet
+		// beaten in, the first ticks after a restart, 2026-10-16) closes, open or
+		// acknowledged, never left standing naming members with empty facts
+		// (tla/GateFacts.tla JudgmentClosedOnceDealt)
+		p.Closes = append(p.Closes, closesFor(s.Open, []string{NGateNeeds}, c.ID)...)
+		p.Closes = append(p.Closes, closesFor(s.Acked, []string{NGateNeeds}, c.ID)...)
 		roomWhy := noRoomWhy
 		if len(bench) > 0 {
 			roomWhy = benchRoom(bench)

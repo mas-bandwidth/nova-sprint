@@ -229,7 +229,8 @@ func tiersWorking(prop string) func(*Snapshot, WorkingBars) []SettingFinding {
 }
 
 // readersServing is how many readers up serve the read tier: the reader rows up that serve it
-// (readerServesTier) and the friends who may read with the reader role and the tier.
+// (readerServesTier) and the friends who may read with the reader role and the tier: her
+// seat's tiers at or above it (friendAtOrAbove; a friend whose seat names no tier reads none).
 func readersServing(s *Snapshot, tier string) int {
 	n := 0
 	if s.Readers != nil {
@@ -240,7 +241,7 @@ func readersServing(s *Snapshot, tier string) int {
 		}
 	}
 	for _, f := range s.Friends {
-		if friendHasRole(f, RoleReader) && friendCanRead(s, f) && (len(f.Tiers) == 0 || slices.Contains(f.Tiers, tier)) {
+		if friendHasRole(f, RoleReader) && friendCanRead(s, f) && friendAtOrAbove(s, f, tier) {
 			n++
 		}
 	}

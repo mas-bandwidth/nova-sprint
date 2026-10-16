@@ -18,6 +18,7 @@ import (
 func TestAHeavyCardWithOneOkReadIsAcceptedWhenReadsIsOne(t *testing.T) {
 	t.Parallel()
 	w := tierWorld(t)
+	w.s.Routes = append(w.s.Routes, Route{Name: "heavy-a", Tier: "heavy", Provider: "p", Model: "heavy-a", Tokens: 1000, Deadline: 600, Enabled: true})
 	w.s.Work.Card("s1-2").Fields[FieldTierNow] = "heavy"
 	w.must(Ask(w.s, AskReq{Sel: Sel{IDs: []string{"s1-2"}}}))
 	reads := liveReadsAt(w.s, w.s.Work.Card("s1-2"), 1)

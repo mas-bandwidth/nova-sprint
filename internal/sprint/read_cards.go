@@ -660,6 +660,12 @@ func readCardsTakeBack(s *Snapshot) map[string][]Change {
 // tier rests (readRoutesAllRest): the read waits for a route, cutting no generation.
 const ReadRoutesRest = "every route of its read tier rests"
 
+// ReadTierNoRoute is the wait of a primary whose read tier no enabled route and no reader up
+// that brings its own model serves (readTierUnserved): no read of it is dealt, and the
+// tier's one configuration judgment holds it (TickDeal, NNoRoute), never a cannot-ask or a
+// frontier-room judgment of the same cause (tla/ReaderTiers.tla, UnroutedIsJudged).
+const ReadTierNoRoute = "no enabled route serves its read tier"
+
 // NoReaderMayRead begins the wait of a primary no unit up may be dealt its read card: the
 // read-card ask raises cannot ask on it (readCardsAskPart).
 const NoReaderMayRead = "no reader up may read it"
@@ -845,6 +851,9 @@ func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why 
 		delete(back, pr.ID)
 		if len(picked) < want {
 			switch {
+			case len(may) == 0 && readTierUnserved(view, pr):
+				// a configuration issue, the tier's one judgment's (TickDeal, NNoRoute)
+				waits[pr.ID] = ReadTierNoRoute
 			case len(may) == 0 && resting:
 				// the route's rest is noted once by itself (NRouteRested): no cannot-ask
 				// judgment for a read that waits only for its route to serve
@@ -1202,7 +1211,7 @@ func frontierRoomCondsOfWaits(s *Snapshot, waits map[string]string, full map[str
 	var judged, causes []string
 	for _, id := range slices.Sorted(maps.Keys(waits)) {
 		pr := s.Work.Placed(id)
-		if pr == nil || s.readTierOf(pr) != cardhdr.RouteFrontier || strings.HasPrefix(waits[id], NoReaderMayRead) {
+		if pr == nil || s.readTierOf(pr) != cardhdr.RouteFrontier || strings.HasPrefix(waits[id], NoReaderMayRead) || waits[id] == ReadTierNoRoute {
 			continue
 		}
 		why := "fewer units may read it than it wants"

@@ -24,8 +24,9 @@ func TestAHeavyCardIsReadByAFriendReaderWithNoHeavyRoute(t *testing.T) {
 		w := newWorld(t, "reader-m1", "reader-amy", "reader-bob")
 		w.readersTable() // explicit legacy reader-table fixture
 		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
-		// amy and bob are friends: the tick hands the snapshot their seats
-		w.s.Friends = workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 1, Status: Up}, {Name: "bob", Width: 1, Status: Up}})
+		// amy and bob are heavy friends: the tick hands the snapshot their seats, whose
+		// tiers say what their own models read (a friend with no tier reads none)
+		w.s.Friends = workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteHeavy}}, {Name: "bob", Width: 1, Status: Up, Tiers: []string{cardhdr.RouteHeavy}}})
 		w.s.Routes = []Route{
 			{Name: "flash-a", Tier: cardhdr.RouteFlash, Provider: "p", Model: "f", Enabled: true},
 			{Name: "pro-a", Tier: cardhdr.RoutePro, Provider: "p", Model: "q", Enabled: false},
@@ -79,9 +80,13 @@ func TestAHeavyCardIsReadByAFriendReaderWithNoHeavyRoute(t *testing.T) {
 	assert.False(t, held(w), "still no no-route judgment")
 	assert.Empty(t, w.notesOf(NCannotAsk))
 
-	// the control: no reader that brings its own model is up, and the fleet reader has
-	// no route of heavy to draw: the judgment is raised as before, and nothing is asked
+	// the control: no reader that brings its own model is up (the friends are down too),
+	// and the fleet reader has no route of heavy to draw: the judgment is raised as
+	// before, and nothing is asked
 	c := setup()
+	for i := range c.s.Friends {
+		c.s.Friends[i].Status = Down
+	}
 	tick(c)
 	assert.Empty(t, readsAt(c.s, c.s.Work.Card("s1-1"), 1), "the fleet reader is not asked a heavy read with no heavy route")
 	assert.True(t, held(c), "no reader and no route serve heavy: the tier's judgment")
@@ -172,9 +177,16 @@ func TestAHeldFriendReaderDoesNotServe(t *testing.T) {
 
 	// unheld, the same reader brings her model and serves her tiers: the rule is the
 	// hold's, not her name's
-	w.s.Friends = workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 1, Status: Up}})
+	w.s.Friends = workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 1, Status: Up, Tiers: []string{cardhdr.RoutePro}}})
 	assert.True(t, w.s.ownModelReader("reader-amy"), "a friend up's reader brings her own model")
 	assert.True(t, w.s.readerServesTier("reader-amy", cardhdr.RoutePro), "and serves her tier")
+	assert.True(t, w.s.readerServesTier("reader-amy", cardhdr.RouteFlash), "and a tier below it, as her row reads (friendAtOrAbove)")
+	assert.False(t, w.s.readerServesTier("reader-amy", cardhdr.RouteHeavy), "never a tier above her own: her model is configured for pro")
+
+	// a friend whose seat names no tier has no model configured for any: her reader
+	// serves none, a configuration issue, never worked around
+	w.s.Friends = workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 1, Status: Up}})
+	assert.False(t, w.s.readerServesTier("reader-amy", cardhdr.RouteFlash), "no tier configured: no read")
 }
 
 // holdingFriend is a world with a fleet reader up beside a friend's reader row,

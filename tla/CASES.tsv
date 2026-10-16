@@ -546,6 +546,12 @@ MCReaderTiersBrokenHeld.cfg	MCReaderTiers.tla	invariant	NoReadToAHeldReader	igno
 MCReaderTiersBrokenEmptyFlashOnly.cfg	MCReaderTiers.tla	invariant	EmptyCellReadsEveryServedTier	ignore-terminal	readertiers	required	-
 MCReaderTiersBrokenClearDrops.cfg	MCReaderTiers.tla	invariant	EveryUpMemberIsAReader	ignore-terminal	readertiers	required	-
 MCReaderTiersBrokenClearOff.cfg	MCReaderTiers.tla	invariant	ReadCardsStaysOn	ignore-terminal	readertiers	required	-
+MCReaderTiersBrokenRegardlessOfRoutes.cfg	MCReaderTiers.tla	invariant	NoReadOnUnroutedTier	ignore-terminal	readertiers	required	-
+MCReaderTiersBrokenDealUnrouted.cfg	MCReaderTiers.tla	invariant	NoCardOnUnroutedTier	ignore-terminal	readertiers	required	-
+MCReaderTiersBrokenJudgmentStays.cfg	MCReaderTiers.tla	invariant	JudgedOnlyWhileUnrouted	ignore-terminal	readertiers	required	-
+MCReaderTiersBrokenTwoJudgments.cfg	MCReaderTiers.tla	invariant	OneJudgmentPerCause	ignore-terminal	readertiers	required	-
+MCReaderTiersBrokenFriendAnyTier.cfg	MCReaderTiers.tla	invariant	FriendReadsWithinHerSeat	ignore-terminal	readertiers	required	-
+MCReaderTiersReachFrontierRead.cfg	MCReaderTiers.tla	invariant	ReachFrontierRead	ignore-terminal	readertiers	required	-
 MCRateBudget.cfg	MCRateBudget.tla	pass	-	ignore-terminal	ratebudget	required	-
 MCRateBudgetLive.cfg	MCRateBudget.tla	pass	-	ignore-terminal	ratebudget	required	-
 MCRateBudgetProgress.cfg	MCRateBudget.tla	pass	-	ignore-terminal	ratebudget	required	-
@@ -755,3 +761,4 @@ MCReadBranchMissingBrokenReworkKeepsIt.cfg	MCReadBranchMissing.tla	invariant	Off
 MCGateFacts.cfg	MCGateFacts.tla	pass	-	ignore-terminal	gatefacts	required	-
 MCGateFactsBrokenNoWriter.cfg	MCGateFacts.tla	temporal	CardDealt	ignore-terminal	gatefacts	required	-
 MCGateFactsBrokenOnChange.cfg	MCGateFacts.tla	temporal	CardDealt	ignore-terminal	gatefacts	required	-
+MCGateFactsBrokenStaysOpen.cfg	MCGateFacts.tla	invariant	JudgmentClosedOnceDealt	ignore-terminal	gatefacts	required	-

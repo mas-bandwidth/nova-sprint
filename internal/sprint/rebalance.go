@@ -150,9 +150,13 @@ func Rebalance(s *Snapshot, seats []FriendSeat, who string) Plan {
 		if to == nil {
 			continue
 		}
+		u, ok := rebalanceMove(s, &p, declared, ri, g, to, pr, wc, tier, who)
+		if !ok {
+			continue // no route of its tier is drawn for the machine: it stays where it is
+		}
 		to.load++
 		workMoved[to.row]++
-		p.Units = append(p.Units, rebalanceMove(s, &p, declared, ri, g, to, pr, wc, tier, who))
+		p.Units = append(p.Units, u)
 	}
 	writeRebalanceRound(&p, cursor)
 	// Reads are rebalanced too (docs/SPEC-SPRINT.md section 1, the rebalance): the excess
@@ -287,8 +291,11 @@ func rebalanceTo(s *Snapshot, units []*rebalanceUnit, g *rebalanceUnit, pr, wc *
 }
 
 // rebalanceMove is the card moved from g to to at its next generation, its old row named on
-// it and in the note.
-func rebalanceMove(s *Snapshot, p *Plan, declared map[string]bool, ri routeIndexes, g, to *rebalanceUnit, pr, wc *Card, tier, who string) Unit {
+// it and in the note. ok is false when the move would put it on a machine with no route of
+// its tier drawn (off a friend's row, where the check of the tier passed but the draw found
+// no route, a provider at its budget): a card is never dealt on a tier with no route, so it
+// stays where it is (tla/ReaderTiers.tla, NoCardOnUnroutedTier).
+func rebalanceMove(s *Snapshot, p *Plan, declared map[string]bool, ri routeIndexes, g, to *rebalanceUnit, pr, wc *Card, tier, who string) (Unit, bool) {
 	set := nextGen(wc, to.row, s.Now)
 	unset := []string{FieldFriendDeadline}
 	set[FieldRebalancedFrom] = strings.Join(append(Split(wc.F(FieldRebalancedFrom)), g.row), ",")
@@ -307,7 +314,10 @@ func rebalanceMove(s *Snapshot, p *Plan, declared map[string]bool, ri routeIndex
 		}
 	case g.friend:
 		// off a friend's row onto a machine: a route of its tier, as a deal draws one
-		route, _, _, _ := s.routeOf(pr, wc, ri, to.name)
+		route, _, why, _ := s.routeOf(pr, wc, ri, to.name)
+		if why != "" || len(s.Routes) > 0 && route[FieldRoute] == "" {
+			return Unit{}, false
+		}
 		w, pm := splitRoute(route)
 		s.dealDeadline(to.name, w)
 		for k, v := range w {
@@ -327,7 +337,7 @@ func rebalanceMove(s *Snapshot, p *Plan, declared map[string]bool, ri routeIndex
 	n := happened(NRebalanced, pr.Row, s.Now, pr.ID)
 	n.Who, n.What = who, what
 	return Unit{Key: pr.ID, Stream: pr.Row, Changes: changes, Notes: []Note{n},
-		Moved: fmt.Sprintf("%s gen=%d (its excess; a free lane takes it)", what, wc.Int("gen")+1)}
+		Moved: fmt.Sprintf("%s gen=%d (its excess; a free lane takes it)", what, wc.Int("gen")+1)}, true
 }
 
 // rebalanceReads is the rebalance's read pass (Rebalance): the excess read cards of every

@@ -3863,12 +3863,21 @@ is served. `card` and `where --json --rows` show the tier it is on.
   chose this over a heavy fleet route, which would let the fleet be dealt heavy
   cards it cannot run): a friend's or a bud's reader, `reader-<name>` for a
   friend whose seat the tick reads or whose friend row the fleet table has
-  (beaten by her daemon, `internal/friend` ReaderOf), brings its own model and
-  serves every tier its tiers cell names, route or none; any other reader is the
-  fleet's, runs the route its read draws, so it serves a tier only while an
-  enabled route of the tier is in the tier's array, and is asked no read of a
-  tier it cannot draw (`sprint.readerServesTier`,
-  `internal/sprint/read_route.go`). Its read of a tier no route serves is asked
+  (beaten by her daemon, `internal/friend` ReaderOf), brings her own harness
+  model by tier and serves a tier its tiers cell names (an empty cell names
+  every tier) that her seat's tiers reach (`friendAtOrAbove`, her row's own
+  read rule; a friend whose seat names no tier reads none), route or none; any
+  other reader is the fleet's, runs the route its read draws, so it serves a
+  tier only while an enabled route of the tier is in the tier's array,
+  whatever its tiers cell names (`reader set --tiers` narrows what it reads,
+  it is never a route), and is asked no read of a tier it cannot draw
+  (`sprint.readerServesTier`, `internal/sprint/read_route.go`; the owner,
+  2026-10-16: "Tier must be respected. If no configured tier exists then that
+  is a configuration issue, not something to work around."; until v1.4.6 a
+  fleet reader whose cell named a tier was asked its reads with no route, and
+  every one was refused at launch). A read no reader serves waits under its
+  tier's one judgment below, never a cannot-ask or fewer-readers judgment of
+  the same cause (`ReadTierNoRoute`, `readTierUnserved`). Its read of a tier no route serves is asked
   with no route, and its verdict records on the read card the `model` and
   `harness` its usage line names (`model=<provider/model> ... harness=<h>`), so
   the read says what it ran on. The deal's tick raises the tier's judgment,

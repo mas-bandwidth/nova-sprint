@@ -123,8 +123,9 @@ func TestMemberReaderWithAllTiersGetsAsked(t *testing.T) {
 }
 
 // TestMemberReaderWithRouteTiersGetsAsked pins that a member's reader row with explicit
-// tier configuration serves a tier whether or not a route for it is enabled: the reader
-// row's tiers, not the route table, decide the member's reads.
+// tier configuration serves a tier it names only while a route of the tier is enabled: a
+// fleet reader brings no model of its own, and a read dealt it on an unrouted tier carried
+// no route and was refused at launch (2026-10-16). It reverses f4a0d6a1 (2026-10-10).
 func TestMemberReaderWithRouteTiersGetsAsked(t *testing.T) {
 	t.Parallel()
 
@@ -133,7 +134,7 @@ func TestMemberReaderWithRouteTiersGetsAsked(t *testing.T) {
 		enabled bool
 	}{
 		{"TestMemberReaderWithEnabledRouteGetsAsked", true},
-		{"TestMemberReaderWithExplicitTiersGetsAskedRegardlessOfRoutes", false},
+		{"TestMemberReaderWithExplicitTiersIsNotAskedWithNoRoute", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -147,6 +148,10 @@ func TestMemberReaderWithRouteTiersGetsAsked(t *testing.T) {
 			putReviewBy(w, "s1-1", "s1-1: work (s1) tier: pro\n", "m1", 1)
 			dealReads(t, w, workerSeatFixtures([]FriendSeat{}))
 			reads := readCardsOf(w, "s1-1")
+			if !tc.enabled {
+				require.Empty(t, reads, "no route serves pro: no routeless read is dealt")
+				return
+			}
 			require.Len(t, reads, 1, "one read asked to m2 (m1 is the worker)")
 			require.Equal(t, "m2", reads[0].Row)
 		})

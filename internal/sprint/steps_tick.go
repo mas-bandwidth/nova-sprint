@@ -1278,6 +1278,17 @@ func dealOrder(s *Snapshot, cards []*Card) []*Card {
 	return streamTurns(cards, streamRound(s, PropStreamIndex))
 }
 
+// readTierUnserved says the primary in review wants a read whose tier no enabled route and
+// no reader up that brings its own model serves (readRouteMissing): the tier's one
+// configuration judgment holds it (TickDeal, NNoRoute) and no read of it is dealt.
+func readTierUnserved(s *Snapshot, pr *Card) bool {
+	if s.Readers == nil || pr.F("result") == "failed" || ReadsWanted(s, pr) == 0 {
+		return false
+	}
+	_, why := s.readRouteMissing(pr)
+	return why != ""
+}
+
 // readsWithoutRoute says a primary in review waits for reads, or holds a read
 // asked or begun with no route (asked while no route served its tier): what
 // that tier's no-route judgment holds (TickDeal).
@@ -1534,6 +1545,11 @@ func TickAsk(s *Snapshot, r TickReq) (Plan, int) {
 		free := s.freeReaders(c, attempt)
 		returned := len(returnedInTier(s, c, attempt))
 		switch {
+		case readTierUnserved(s, c):
+			// no route and no reader that brings its own model serves its read tier: the
+			// tier's one configuration judgment holds it (TickDeal, NNoRoute), never a
+			// fewer-readers or cannot-ask judgment of the same cause (tla/ReaderTiers.tla,
+			// UnroutedIsJudged)
 		case !enoughReadersUp(s, c):
 			// an absent reader is never asked: the sprint's one judgment says so
 			few = true

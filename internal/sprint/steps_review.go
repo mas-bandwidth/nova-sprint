@@ -227,6 +227,11 @@ func Ask(s *Snapshot, r AskReq) Plan {
 					return ch.Table == Fleet && ch.Entry.Create != nil && ch.Entry.Set["kind"] == "read"
 				})
 			}) {
+				if why == ReadTierNoRoute {
+					_, rwhy := deal.readRouteMissing(c)
+					p.refuse(c.ID, why+": "+rwhy)
+					continue
+				}
 				if why == ReadRoutesRest {
 					p.refuse(c.ID, why+"; it is dealt when a route of its tier serves again (nova-sprint routes; routes wake <provider|route>), or rework or drop it")
 					continue
