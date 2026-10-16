@@ -1,6 +1,7 @@
 // Package docs compiles this repository's documentation data into the binary,
 // so a built binary can answer which fixes it carries with no file beside it
-// (docs/SPEC-SPRINT.md section 11, the version verb).
+// (docs/SPEC-SPRINT.md section 11, the version verb), and print the
+// coordinator's playbook (nova-sprint help playbook).
 package docs
 
 import _ "embed"
@@ -13,3 +14,12 @@ import _ "embed"
 //
 //go:embed fixes.sexp
 var FixesSexp []byte
+
+// CoordinatorPlaybook is docs/COORDINATOR-PLAYBOOK.md compiled in, the page
+// `nova-sprint help playbook` prints: the coordinator's workflows, each the
+// verbs in order. A test (cmd/nova-sprint/playbook_test.go) holds these bytes
+// equal to the file, and every verb, flag and usage line the page names to the
+// help, so the page cannot go stale.
+//
+//go:embed COORDINATOR-PLAYBOOK.md
+var CoordinatorPlaybook string

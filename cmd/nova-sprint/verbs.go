@@ -26,6 +26,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 
+	"github.com/mas-bandwidth/nova-sprint/docs"
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
@@ -261,7 +262,9 @@ block shows the coordinator's day on that store.
 For one verb's usage, examples, flags and exit codes:
   nova-sprint help <verb> (or <verb> -h)
 For one group's help: nova-sprint help <group> (fleet, friend, reader, goal,
-stream, lane, merge-window).`
+stream, lane, merge-window).
+For the coordinator's workflows, the verbs for each situation in order (find
+the verb before doing anything by hand): nova-sprint help playbook`
 
 func banner() string {
 	var b strings.Builder
@@ -519,6 +522,12 @@ func helpCommand(path []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	name := strings.Join(path, " ")
+	// playbook is a topic, not a verb: the coordinator's workflows,
+	// docs/COORDINATOR-PLAYBOOK.md compiled in (docs/embed.go)
+	if name == "playbook" {
+		fmt.Fprint(stdout, docs.CoordinatorPlaybook)
+		return 0
+	}
 	// a verb named whole is the exact one even when the word also opens a group
 	// (seat is the seat's read, seat install and seat uninstall are its verbs)
 	for _, v := range verbs {
