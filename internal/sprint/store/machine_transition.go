@@ -398,7 +398,7 @@ func (st *Store) settleStopDebtByBeat(ctx context.Context) error {
 				n := sprint.Note{Kind: sprint.Judgment, Type: sprint.NStopDebtBeat, Primaries: append([]string(nil), reported...), Count: len(reported),
 					Who: sprint.MachineActor, At: s.Now, Marked: true,
 					Decisions: append([]string(nil), sprint.Decisions[sprint.NStopDebtBeat]...),
-					What:      fmt.Sprintf("STOP debt: %s have not beaten since the STOP, so their leases stay owed until they stop-return them", strings.Join(reported, ", ")),
+					What:      fmt.Sprintf("STOP debt: no beat since the STOP from %s, so the leases they own stay owed until they stop-return them", strings.Join(slices.Compact(slices.Clone(reported)), ", ")),
 					Hint:      "run: nova-sprint stop-return --as <owner> <card>@<gen> --epoch <n> --reason '<observed child exit>' (the card, gen and epoch: nova-sprint friend cards <owner>)"}
 				return sprint.Plan{Notes: []sprint.Note{n}}
 			}})
