@@ -268,9 +268,11 @@ func (s *Snapshot) readTierSetting(stream string) string {
 // card's reads should run on a tier at least as strong as the writer's").
 var readTiers = []string{cardhdr.RouteFlash, cardhdr.RoutePro, cardhdr.RouteHeavy}
 
-// stronger is the stronger of two read tiers.
+// stronger is the stronger of two tiers on the whole ladder (capLadder: flash, pro, heavy,
+// frontier), so a frontier tier is never taken for a weaker one; a word off the ladder is
+// weaker than every tier on it.
 func stronger(a, b string) string {
-	if slices.Index(readTiers, b) > slices.Index(readTiers, a) {
+	if slices.Index(capLadder, b) > slices.Index(capLadder, a) {
 		return b
 	}
 	return a

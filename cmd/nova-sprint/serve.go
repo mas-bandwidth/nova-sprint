@@ -63,7 +63,7 @@ import (
 // ids (packetsWanted).
 
 // fleetBeatWords reads `fleet beat <member> [--stop-returns <n>] [--no-room <why>]
-// [--draining] [--live <set>] --load <percent>`, the words nova-tools pkg/member sends
+// [--draining] [--live <set>] [--facts <list>] --load <percent>`, the words nova-tools pkg/member sends
 // (member.Beat, drainArgs, noRoomArgs): the optional words may stand in any order and
 // --load anywhere among them. --load is required, because the server cannot measure the
 // worker's machine. A word the list does not name is refused naming it; why is "" when
@@ -88,14 +88,14 @@ func fleetBeatWords(rest []string) (as, load, stop, live, noRoom string, drainin
 		}
 		var value string
 		switch w {
-		case "--load", "--stop-returns", "--live", "--no-room":
+		case "--load", "--stop-returns", "--live", "--no-room", "--facts":
 			if i+1 >= len(words) {
 				return "", "", "", "", "", false, "a beat's " + w + " wants its value"
 			}
 			value = words[i+1]
 			i++
 		default:
-			return "", "", "", "", "", false, "a beat takes no word " + oneline.Escape(w) + ": its words are `fleet beat <member> [--stop-returns <n>] [--no-room <why>] [--draining] [--live <set>] --load <percent>` and nothing more"
+			return "", "", "", "", "", false, "a beat takes no word " + oneline.Escape(w) + ": its words are `fleet beat <member> [--stop-returns <n>] [--no-room <why>] [--draining] [--live <set>] [--facts <list>] --load <percent>` and nothing more"
 		}
 		switch w {
 		case "--load":
@@ -115,6 +115,12 @@ func fleetBeatWords(rest []string) (as, load, stop, live, noRoom string, drainin
 			live = value
 		case "--no-room":
 			noRoom = value
+		case "--facts":
+			// the member's gate facts, its own measure of its machine (fleet beat --facts):
+			// fact words only, so no word of the list can be taken as a flag
+			if _, err := sprint.FactWords(value); err != nil {
+				return "", "", "", "", "", false, "a beat's " + err.Error()
+			}
 		}
 	}
 	if !loadSet {
@@ -321,6 +327,9 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 				serving = verbClasses[v.name] == classWorker
 				if lanes != nil && v.err == nil && !v.help && onReadLane(v) {
 					lane = "read"
+					if onDashLane(v, argv) {
+						lane = "dash" // the dashboard's read: its own lane (tla/ServerLanes.tla, DashWaitsOnlyForDash)
+					}
 				}
 				callerArgs := argv
 				callerArgs, actorNotice, actorResolved = a.defaultHookActor(argv, a.serveAddr, true)
@@ -356,6 +365,13 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 				continue
 			}
 			out.Results[i] = lanes.friendBeat(ctx, a, argv, args[words:])
+			a.logRefused(argv, refusedWorker(as, argv), out.Results[i].Code, out.Results[i].Stderr)
+			continue
+		case "dash":
+			// the dashboard's read: a copy kept on the dashboard lane, counted as a read
+			// (servelanes.go dashWhere; tla/ServerLanes.tla, DashWaitsOnlyForDash)
+			reads++
+			out.Results[i] = lanes.dashWhere(ctx, args)
 			a.logRefused(argv, refusedWorker(as, argv), out.Results[i].Code, out.Results[i].Stderr)
 			continue
 		case "read":
@@ -683,6 +699,8 @@ func (a *app) listen(addr, redis string, stdout io.Writer) error {
 	// the coordinator's push: its judgments to its name on the bus, and its sprint push
 	// held in its nova-hook record (coordinator_push.go)
 	go a.coordPushLoop(context.Background())
+	// CIReceiptTell.tla: event-driven CI receipt delivery with a ten-minute sweep.
+	go a.ciTellLoop(context.Background())
 	for at, h := range lns {
 		ln, err := net.Listen("tcp", at)
 		if err != nil {

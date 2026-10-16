@@ -43,8 +43,12 @@ import (
 const (
 	// Window is how far back the throughput's samples reach.
 	Window = time.Hour
-	// MinSpan is the samples throughput needs before it shows: until then it is null.
+	// MinSpan is the samples throughput needs before it shows: until then it is null. Only a
+	// history that is truly empty (the dashboard's first ever start) waits for it: the samples
+	// are kept across restarts (SaveSamples), so a release adoption does not.
 	MinSpan = 10 * time.Minute
+	// SaveEvery is the least time between two saves of the samples.
+	SaveEvery = 10 * time.Second
 	// LogEvery is the time between the read-time summary lines on Log.
 	LogEvery = time.Minute
 	// ReadTimeoutDefault is how long a read is waited on before it is marked failed.
@@ -107,6 +111,13 @@ type Server struct {
 	keepaliveTick func(time.Duration) (<-chan time.Time, func())
 	// ReadTimer is a test's read timeout in place of the clock's; nil is the clock.
 	ReadTimer func(time.Duration) (<-chan time.Time, func())
+	// LoadSamples and SaveSamples, when both are set, keep the throughput's samples across a
+	// restart: LoadSamples returns what SaveSamples last was given (nil, or an error, for none),
+	// read once at the first good read; SaveSamples is given the samples at most every
+	// SaveEvery, after a good read. A failure of either is logged and the samples start from
+	// empty or go unsaved.
+	LoadSamples func() ([]byte, error)
+	SaveSamples func([]byte) error
 	// OnRecord, when set, is called after record() completes under mu.
 	OnRecord func()
 
@@ -122,6 +133,9 @@ type Server struct {
 	gen       uint64         // the good reads so far: an /events client sends each new one
 	changed   chan struct{}  // closed, and replaced, at each good read
 	samples   []sample
+	restored  bool      // LoadSamples has been read
+	savedAt   time.Time // when the samples were last saved
+	saveBad   bool      // the last save failed (logged once)
 	stats     readStats
 	fresh     freshness
 }
@@ -326,6 +340,7 @@ func (s *Server) record(start, end time.Time, body []byte, up *snapshot, err err
 		}
 		s.snap.OK, s.snap.Error = false, &why
 	} else {
+		s.restoreSamples(end)
 		// the samples are the epoch's landed cards: the table's and the archived streams'
 		// (stream archive), so an archive, which lands nothing, is not a fall that starts
 		// them again; a sprint done (done) carries the epoch's in landed already, so it is
@@ -361,8 +376,79 @@ func (s *Server) record(start, end time.Time, body []byte, up *snapshot, err err
 		s.snap.Data = placed(bytes.TrimSpace(body))
 		s.pageRecord(bytes.TrimSpace(body), up, end)
 		s.snap.FetchedAt, s.snap.Throughput, s.snap.ThroughputMinutes = &at, rate, minutes
+		s.saveSamples(end)
 	}
 	s.summarize(end, took, err != nil)
+}
+
+// samplesFile is the saved samples: the pull routes' (epoch) and the page's, each oldest first,
+// at in unix nanoseconds.
+type samplesFile struct {
+	Epoch []savedSample `json:"epoch"`
+	Page  []savedSample `json:"page"`
+}
+
+type savedSample struct {
+	At     int64 `json:"at"`
+	Landed int64 `json:"landed"`
+}
+
+func savedOf(in []sample) []savedSample {
+	out := make([]savedSample, 0, len(in))
+	for _, x := range in {
+		out = append(out, savedSample{x.at.UnixNano(), x.landed})
+	}
+	return out
+}
+
+// samplesOf is the saved samples still in the Window at now and not after it (a clock that went
+// back drops them), oldest first.
+func samplesOf(in []savedSample, now time.Time) []sample {
+	var out []sample
+	for _, x := range in {
+		at := time.Unix(0, x.At)
+		if at.After(now) || now.Sub(at) > Window || (len(out) > 0 && at.Before(out[len(out)-1].at)) {
+			continue
+		}
+		out = append(out, sample{at, x.Landed})
+	}
+	return out
+}
+
+// restoreSamples loads the saved samples once, under mu, so the rolling hour carries across a
+// restart; the reset rule (a landed below the last) is the add's, as ever.
+func (s *Server) restoreSamples(now time.Time) {
+	if s.restored || s.LoadSamples == nil || s.SaveSamples == nil {
+		return
+	}
+	s.restored = true
+	b, err := s.LoadSamples()
+	if err != nil {
+		s.logf(now, "samples not loaded: %s; the throughput starts from empty", oneline.Escape(err.Error()))
+		return
+	}
+	var f samplesFile
+	if len(b) == 0 || json.Unmarshal(b, &f) != nil {
+		return
+	}
+	s.samples = samplesOf(f.Epoch, now)
+	s.pageRate.samples = samplesOf(f.Page, now)
+}
+
+// saveSamples saves the samples, under mu, at most every SaveEvery.
+func (s *Server) saveSamples(now time.Time) {
+	if s.SaveSamples == nil || (!s.savedAt.IsZero() && now.Sub(s.savedAt) < SaveEvery) {
+		return
+	}
+	s.savedAt = now
+	b, err := json.Marshal(samplesFile{savedOf(s.samples), savedOf(s.pageRate.samples)})
+	if err == nil {
+		err = s.SaveSamples(b)
+	}
+	if err != nil && !s.saveBad {
+		s.logf(now, "samples not saved: %s", oneline.Escape(err.Error()))
+	}
+	s.saveBad = err != nil
 }
 
 // sampleLanded adds a sample and is the cards landed per hour over the samples of the

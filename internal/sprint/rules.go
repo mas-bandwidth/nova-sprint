@@ -572,8 +572,11 @@ func ruleConflict(s *Snapshot, a *RuleAnswer) {
 			a.Why = card + " refused the same way twice (" + way + "): the brief is wrong, not the worker; marked a brief defect, the stream held for a mind"
 			return
 		}
-		a.Act, a.Why = ActReturn, refusalSaid(way, ctl)+": "+card+" returned to be redone on the current tip at flash"
-		a.set = map[string]string{FieldRuleRefused: way, FieldRuleRefusal: cutText(what, MaxCardTextBytes), FieldTierNow: cardhdr.RouteFlash}
+		// redone at the card's own tier, never below it (cardTier): the escalation it took is
+		// given back, the tier its brief's line 1 or its pin names is kept
+		_, own := CardTiers(pr)
+		a.Act, a.Why = ActReturn, refusalSaid(way, ctl)+": "+card+" returned to be redone on the current tip at "+own
+		a.set = map[string]string{FieldRuleRefused: way, FieldRuleRefusal: cutText(what, MaxCardTextBytes), FieldTierNow: own}
 	case pr != nil && pr.F(FieldRuleRedo) != "" && (m == nil || m.Col != Stuck):
 		a.Act, a.Why = ActResume, card+" is out of the stream to be redone on the tip: the stream goes on"
 	default:
@@ -781,7 +784,7 @@ func acting(s *Snapshot, r TickReq, acts ...string) []RuleAnswer {
 
 // TickRuleReturn returns the conflict cards the conflict rule answers, each marked with the
 // refusal it was returned on (FieldRuleRefused, FieldRuleRefusal) and its next attempt's
-// tier, flash (FieldTierNow).
+// tier, the card's own (FieldTierNow; never below it).
 func TickRuleReturn(s *Snapshot, r TickReq) (Plan, int) {
 	var ids []string
 	sets := map[string]map[string]string{}

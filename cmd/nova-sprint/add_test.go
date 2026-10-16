@@ -40,6 +40,6 @@ func TestAddManyPrintsTheOverlapTableBeforeTheRefusal(t *testing.T) {
 	code, out, errs := ta.do("add --stream s --brief-dir " + dir)
 	require.Equal(t, 2, code, "%s%s", out, errs)
 	assert.Contains(t, out, "internal/x.go  q1,q2  not-ledger  no-edge\n")
-	assert.Contains(t, errs, "internal/x.go is named in PATHS by q1 and q2, and neither needs the other")
+	assert.Contains(t, errs, "internal/x.go is named in PATHS by q1 and q2, and neither has a soft dependency on the other (LAND-AFTER: <id>) or needs the other (DEPENDS-ON: <id>)")
 	assert.False(t, ta.placed("q1") || ta.placed("q2"), "nothing written")
 }

@@ -282,7 +282,7 @@ var cardTypedKeys = map[string]bool{"KIND": true, "PATHS": true, "TEST": true, "
 var cardHeaderKeys = map[string]bool{
 	"KIND": true, "PATHS": true, "TEST": true, "LEGS": true, "SOURCE": true,
 	"START": true, "STOP": true,
-	"DEPENDS-ON": true, "PRIORITY": true, "NEW": true, "SHARED": true,
+	"DEPENDS-ON": true, "LAND-AFTER": true, "PRIORITY": true, "NEW": true, "SHARED": true,
 	"REPO": true, "BASE": true, "tier": true, "RESULT": true,
 	"CONSUMERS": true, "WHO": true,
 }

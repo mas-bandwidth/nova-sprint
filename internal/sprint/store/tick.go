@@ -812,6 +812,11 @@ func (st *Store) Tick(ctx context.Context) (res TickResult, err error) {
 		return res, fmt.Errorf("back: %w", err)
 	}
 	res.State = m.StateWord()
+	// the server's word on every friend, written first on every pass, STOPPED or not: what
+	// the dashboard and where show is read from it (friends.go PublishFriendStatus)
+	if err := st.PublishFriendStatus(ctx, st.now()); err != nil {
+		return res, fmt.Errorf("friend status: %w", err)
+	}
 	if !m.Running() {
 		// A STOPPED machine moves nothing; the tick shows the fleet as its
 		// beats say and says it looked, so start can tell a run loop is

@@ -32,6 +32,12 @@ even when a server is configured; see the
 
 ### Server version
 
+The server also pushes completed CI receipts from `ev:github` to the coordinator
+and the identified card owner as `CI <conclusion> <repo>@<sha12> pr=<number> run=<id> card=<card or ->`. Delivery is event driven, with a ten-minute recovery
+sweep; retries retain the same message and once-key. Unmatched receipts go to the
+seat alone. See [CI receipt notifications](SPEC-SPRINT.md#ci-receipt-notifications)
+for routing, restart and hook-display limits.
+
 `where --json` carries the running server's own version as `server_version` (the string `nova-sprint version` prints) and the server's heartbeat as `server` (`version`, `commit`, `started`, `at`): the version it runs, the source commit it was built from, when it started and when it last wrote. The run loop writes the heartbeat to the store once a second under a three-second TTL, one `SET` with an expiry a second. Both fields are absent when no server runs or its last heartbeat is older than that TTL, so a program (the dashboard's version chip) hides its version cell rather than show a stale one. The heartbeat is the deployment's record, not an epoch's: a clear never leaves a stale version behind. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-server).
 
 ### Verbs
@@ -46,7 +52,7 @@ nova-sprint release check [--json] [--streams <glob>] [--window <duration>] [--m
 nova-sprint resolve [<id>...] [--stream <s>] [--limit <n>]
 nova-sprint start
 # start refuses, exit 1, nothing written, while a setting the design depends on is non-working and no set of this epoch chose it: one line each, START REFUSED setting=<name> value=<v> why=<...> run: <verb> (read_cards off, fleet and friends off, fleet_tiers/friends_tiers serving no needed tier, git_identity empty or unparseable, max_attempts outside 1..100, a server run with --land=false); a value a set of this epoch chose starts with one START WARN setting=<name> value=<v> set by <who> at <when> why="<...>" run: <verb> line each, and the readers up (none for a needed tier, or fewer than reads_needed) are live state: a START WARN line, never a refusal
-# start (from READY or STOPPED) also refuses, exit 1, nothing written, until a clean card check of this epoch matches the cards (v1.2.17, start-refuses-until-a-clean-check; no flag, variable or setting skips it), one line on stderr: "run nova-sprint check cards first: no check record for epoch <n>" (none, as after a clear), "run nova-sprint check cards: the last check found <kind:n,...>" (a failed record), "run nova-sprint check cards: the last check covered stream(s) <s> only" (a --stream check), or "run nova-sprint check cards: the cards changed since the check (<card> added | removed | changed: <stream (a move) | needs | priority | tier | brief>)"; a start of a RUNNING machine changes nothing, and a mem twin (--redis mem:<file>) is not gated
+# start (from READY or STOPPED) reads the card check and never gates on it (v1.4.1, start-warns-never-gates; a check reports, it never gates infrastructure): when there is no clean full check of the cards now it prints one WARN line on stderr and starts anyway, exit 0: "WARN run nova-sprint check cards first: no check record for epoch <n>; the machine starts anyway" (none, as after a clear), "WARN run nova-sprint check cards: the last check found <kind:n,...>" (a failed record), "WARN run nova-sprint check cards: the last check covered stream(s) <s> only" (a --stream check), or "WARN run nova-sprint check cards: the cards changed since the check (<card> added | removed | changed: <stream (a move) | needs | priority | tier | brief>)"; a clean matching check prints no WARN; a start of a RUNNING machine changes nothing, and a mem twin (--redis mem:<file>) prints no report
 # before the record's gate, start computes every unresolved need live (absent, dropped, unknown stream, held at its bound with no decision, cycle) and refuses, exit 1, nothing written, one line a card and need: "run nova-sprint check cards: <card> needs <need> (<reason>)"; a hold raised after a clean check is caught
 nova-sprint stop --reason <text> [--until <time or duration>]
 # stop puts the machine into STOPPED until an explicit start (v1.2.17); --reason is required; --until is optional display metadata for readers (a duration from now like 90m, a clock time like 2:04 PM or 14:04, or an RFC 3339 time), showing "STOPPED, expected back by <until> (<reason>); start ends it"; without --until it shows "STOPPED until the next start (<reason>)"
@@ -59,15 +65,16 @@ nova-sprint goal show [<name>]
 nova-sprint goal drop <name>
 nova-sprint take --as <member> [<card>@<gen>...] [--epoch <n>] [--limit <n>]
 nova-sprint finish --as <member> <card>@<gen>... --epoch <n> (--head <commit> | --failed) [--report <text>] [--exit <n>] [--harness <text>] [--usage <text>]
+# finish ends where the card's needs field says (review, or waiting for a need not landed); a finish the lifecycle refuses is counted on the work card, and the sixth refusal of an attempt raises one judgment, its id printed as JUDGMENT raised <id> <type>
 nova-sprint progress --as <worker> <card>[@<gen>]... --epoch <n>
 nova-sprint ask [<id>... | --group <id> [--expect <n>]] [--stream <s>] [--limit <n>] [--another] [--answers <note>]
 # ask --answers closes cannot ask when it deals a read; the tick closes it as soon as an up reader may read, even at room
+# ask <card> [--answers <j>] on a card whose "a read's branch is not on origin" judgment is open asks origin: a branch of the work holding the head asks the read again and closes it; none is refused in one line naming the judgment, rework with a fix and drop (ask --another gives the same reason; tla/ReadBranchMissing.tla)
 nova-sprint queue --as <reader|member> [--wait <duration> --after <cursor>] | --stream <s>
 nova-sprint read --as <reader> (--begin | --ok | --broken) [<card>...] --epoch <n> [--limit <n>] [--finding <text>] [--usage <text>] | --as <reader> --return <card> --reason <text> --epoch <n> [--exit <n>] [--harness <text>] [--usage <text>] | --as <coordinator> (--ok | --broken) <card>... --finding <text>
 # read --as <coordinator> is the coordinator's own read of a primary in review, recorded on it
-# as one of the reads the card needs; refused for the card's own worker. A card at a tier no
-# reader serves is read one tier down: the read card's tier names the strongest tier with an
-# enabled route and a reader up ("read at heavy: no frontier reader").
+# as one of the reads the card needs; refused for the card's own worker. A card is never read
+# below its tier: a card at a tier no reader serves waits for a reader of its tier or above.
 nova-sprint accept (<id>... | --stream <s> | --read-ok | --group <id> [--expect <n>]) [--answers <note>]   # the tick accepts every primary whose reads are all ok and tells the seat (ready to merge); accept is for a held primary or a stuck case, and accept --read-ok with nothing eligible says "nothing waits: the tick accepts"
 nova-sprint rework (<id>... | --group <id> [--expect <n>] | <selector> [--dry-run]) [--fix <text>] [--carry] [--answers <note>]
 # rework --carry keeps each card's brief, records its latest pushed head as the brief's CARRY: line (what --widen writes), resets its bound and opens the next attempt staged from that head: the one verb that answers a bound judgment and a brief-defect judgment whose cause is coordination once its needs have landed; a card with no pushed head refuses the whole step, by name, and nothing is written
@@ -75,14 +82,14 @@ nova-sprint redo <card>... [--stream <s>] [--answers <note>]   # merge conflicts
 nova-sprint return (<id>... | --group <id> [--expect <n>] | <selector> [--dry-run]) [--reason <text>] [--answers <note>]
 nova-sprint drop (<id>... | --stream <s> --col <state> | --repo <owner/name>... --expect <n> | --group <id> [--expect <n>] | <selector> [--dry-run]) --reason <text> [--answers <note>] [--cascade | --relink <new-id> | --waive]   # a drop of a card any unlanded card needs is refused, naming the dependants, unless --cascade drops them too, --relink re-points their needs at <new-id> (refusing an unresolved target), or --waive removes the need from each (recorded with the reason): no drop strands a need
 nova-sprint defer (<id>... | --stream <s> | --repo <owner/name>) --repo-dir <dir> --reason <text> [--expect <n>]   # defers waiting cards to the roadmap; refused if any unlanded card needs the card being deferred, naming the dependents (no defer strands a dependent)
-nova-sprint needs set <id> (--needs <a,b> | --clear) [--answers <note>]   # the coordinator's alone: re-point a card's needs in place; a card in merging or review whose need is gone is answerable here
+nova-sprint needs set <id> (--needs <a,b> | --land-after <a,b> | --clear) [--answers <note>]   # the coordinator's alone: re-point a card's needs or soft dependencies (--land-after; '-' or '' clears them) in place; work runs in parallel, and the lander lands the two in order; a card in merging or review whose need is gone is answerable here
 nova-sprint rank (<id>... | <selector> [--dry-run]) (--score <n> | --first) [--answers <note>]
 nova-sprint priority <id>... | (<id>... | --stream <s> | <selector> [--dry-run]) (--blocker | --critical | --fix | --high | --normal | --low) --reason <text>
 nova-sprint relink <old-id>[,<old-id>...] <new-id> [--reason <text>]
 nova-sprint sentinel set <id> --needs <a,b>
 nova-sprint brief check <file|dir>... [--stream <s>] [--rules <file>] [--allow-shared-paths] [--json]
 nova-sprint brief <id> (--brief <text> | --brief-file <path>) [--rules <file>] [--answers <note>] [--tier <t> --reason <text>] [--needs-from-brief] [--keep-head] [--replace-in-flight] | --dir <dir> [--rules <file>] [--keep-head] [--replace-in-flight] | --group <id> [--expect <n>] (--brief-file <path> | --dir <dir>) [--answers <note>] | <id> --widen [--repo-dir <clone>] [--replace-in-flight] | <id> --tier <flash|pro|heavy|frontier> --reason <text> | <selector> (--set-base <branch> | --drop-who | --tier <t>)... [--replace-in-flight] [--dry-run]
-# While working, only additions or changes to whole CARRY:, RESUME: or ROUTE NOTE: lines preserve the in-flight binding automatically. Other brief edits require --replace-in-flight, naming the working attempt on refusal. Metadata changes through flags are not operational notes.
+# While working, only additions or changes to whole CARRY:, RESUME: or ROUTE NOTE: lines or scope-only widening edits (entries added to PATHS, NEW or SHARED, or START entries marked (read) added) preserve the in-flight binding automatically without --replace-in-flight. On a review card a scope-only edit writes the brief in place and leaves the card in review with its head and reads. Other brief edits require --replace-in-flight, naming the working attempt on refusal. Metadata changes through flags are not operational notes.
 # A replaced brief returns an old-brief finish to ready with no head; a held review head is cleared. --keep-head keeps the in-flight or held head eligible for review and says so in the result. On a waiting sentinel, brief replaces its brief in place and checks its machine-read header lines (KIND, STREAM, TIER, PRIORITY, BENCH, NEEDS/DEPENDS-ON, CONSUMERS).
 nova-sprint tier <card> --set <flash|pro|heavy|frontier> --reason <text>
 nova-sprint recut <id> (--tier <flash|pro|heavy|frontier> | --brief-file <path> [--rules <file>]) [--new <id>] | <selector> (--tier <t> | --set-base <branch> | --drop-who)... [--dry-run]
@@ -102,7 +109,7 @@ A card waits for its own tier: no cross-tier dealing. The `set --unserved-tier-f
 nova-sprint backup (--out <dir> [--part-bytes <n>] [--secrets-store <dir> --secrets-as <seat> --secrets-key <path> --sops <path>] | --file <path> [--dry-run])
 nova-sprint demo load <backup.xz part>... [--sha256 <hex>] [--dir <dir>] [--xz <path>] [--redis-server <path>]
 nova-sprint demo stop [--dir <dir>]
-nova-sprint fleet beat <member> [--stop-returns <n>] [--no-room <why>] [--draining] [--live <set>] --load <percent> [--dry-run]
+nova-sprint fleet beat <member> [--stop-returns <n>] [--no-room <why>] [--draining] [--live <set>] [--facts <list>] --load <percent> [--dry-run]
 nova-sprint fleet up <member> [--width <n>]
 nova-sprint fleet down <member>
 nova-sprint hold <name>... --reason <text> [--return]
@@ -600,7 +607,9 @@ the failing log's tail. A pull request closed without a merge clears the promoti
 flight with one judgment naming it, `JUDGMENT closed-pr ... pr=<n>`, and the next pass cuts
 afresh. The verb claims the promotion cleared only after every in-flight key is gone: a
 cleanup that fails is a refusal naming the keys that remain. Every step prints a line as it goes, and every wait names what it waits on
-(`PROMOTE WAIT ... checks pending: <names>`), looking again every `--poll` (default 1m).
+(`PROMOTE WAIT ... checks pending: <names>`). While the promotion is pending the wait blocks on the store's `ev:github` stream
+for a row naming the repository and the pull request (the checks arrive as events, written by the ci receipts); such a row ends the
+wait at once and the verb asks gh once, and `--poll` (default 1m) stays the backstop for a lost row.
 Without `--once` the verb repeats every `--every`. `--dry-run` prints the cut it would make,
 or the promotion in flight, and writes, enqueues and records nothing. The contract is
 [SPEC-SPRINT.md section 11](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), promote.
@@ -821,6 +830,10 @@ number of cards and the oldest card still merging. One check alone:
 `release check --window 168h`. With no merge in the window it passes and says
 n=0. The contract is [SPEC-RELEASE.md](https://github.com/mas-bandwidth/nova-tools/blob/main/docs/SPEC-RELEASE.md) section 16, subsection
 release-check-merge-queue-p90-b.w7.
+
+### First-time land rate goal
+
+`nova-sprint where` shows a `first time` column on the work table (`<pct>% <first>/<counted>`, `-` when none counted) and a summary line under the work table (`first time: <overall> target 90%`, naming any streams under target), and `where --json` carries `first time` on each work row alongside top-level `first_time`, `first_time_target`, `first_time_window`, and `first_time_under_target`. A primary counts only when it has landed or been dropped; it counts as first-time only when it landed on attempt 1 with no rework, no brief replacement, and no carry.
 
 
 ## nova-card

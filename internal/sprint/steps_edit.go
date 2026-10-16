@@ -179,6 +179,24 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			continue
 		}
 		c := s.Work.Placed(b.ID)
+		if c != nil && !IsSentinel(c) && (c.Col == Working || (c.Col == Review && c.F("result") != "failed" && !r.ByRule)) &&
+			scopeWidenedOnly(c.F("brief"), b.Brief) && b.Rules == c.F(FieldRules) &&
+			(r.Tier == "" || r.Tier == c.F(FieldTier)) && sameNeeds(Split(c.F("needs")), kept[b.ID]) {
+			if why := tierBelowFrontierForTLA(c.ID, r.Tier, b.Brief); why != "" {
+				p.refuse(c.ID, why)
+				continue
+			}
+			seen[b.ID] = true
+			if c.Int("attempt") > 0 {
+				p.Said = append(p.Said, fmt.Sprintf("bound: same task (%d attempts stand)", c.Int("attempt")-c.Int(FieldBriefAttempt)))
+			}
+			said := fmt.Sprintf("scope widened in place by %s at attempt %d: %s", orDash(r.Who), c.Int("attempt"), briefChange(c.F("brief"), b.Brief))
+			if r.Reason != "" {
+				said += "; reason: " + r.Reason
+			}
+			p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, map[string]string{"brief": b.Brief, "why": cutText(said, MaxCardTextBytes)}))}, Moved: c.ID + " " + said})
+			continue
+		}
 		if c != nil && !IsSentinel(c) && c.Col == Working {
 			// tla/SprintTables.tla OperationalEdit: only operational text changes;
 			// preserve provenance, task/decision bounds, needs and all held evidence.
@@ -267,7 +285,7 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		// an edit that changes only a routing line or the tier is the same task and keeps
 		// the count; a new task resets it (FieldBriefAttempt). The same text again is
 		// refused above (sameLines).
-		if c.Int("attempt") > 0 && sameTask(c.F("brief"), b.Brief) {
+		if c.Int("attempt") > 0 && (sameTask(c.F("brief"), b.Brief) || (!r.ByRule && c.F("result") != "failed" && scopeWidenedOnly(c.F("brief"), b.Brief))) {
 			p.Said = append(p.Said, fmt.Sprintf("bound: same task (%d attempts stand)", c.Int("attempt")-c.Int(FieldBriefAttempt)))
 		} else {
 			set[FieldBriefAttempt] = c.F("attempt")
@@ -371,17 +389,9 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			// moves the card to waiting when this attempt ends (docs/SPEC-SPRINT.md
 			// section 9, rule 11; steps_work.go finishPlan). The card names the
 			// state it is in, so brief and rule 11 agree (FieldWaitsAfter).
-			if c.Col == Working {
-				var after []string
-				for _, n := range want {
-					if !contains(cur, n) && s.StateOf(n) != Landed {
-						after = append(after, n)
-					}
-				}
-				if len(after) > 0 {
-					set[FieldWaitsAfter] = strings.Join(after, ",")
-				}
-			}
+			// tla/SprintTables.tla WaitsAfterWithinNeeds: the marker is rewritten in the
+			// same unit as the needs, inside them (keepWaitsInNeeds)
+			keepWaitsInNeeds(s, c, want, set, &unset)
 		}
 		if c.Int("attempt") > 0 {
 			u, orphan := briefInPlace(s, c, b.Brief, set, unset, r.Who, toWaiting, r.Reason)
@@ -810,32 +820,33 @@ func briefChange(old, brief string) string {
 	return cutText(strings.Join(out, " | "), 1024)
 }
 
+func stripOperationalLines(text string) ([]string, map[string]int) {
+	var body []string
+	counts := make(map[string]int)
+	for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
+		key := ""
+		for _, candidate := range []string{"CARRY:", "RESUME:", "ROUTE NOTE:"} {
+			if strings.HasPrefix(line, candidate) {
+				key = candidate
+				break
+			}
+		}
+		if key == "" {
+			body = append(body, line)
+		} else {
+			counts[key]++
+		}
+	}
+	return body, counts
+}
+
 // operationalBriefOnly compares all non-operational lines byte for byte and in
 // order. A note is a whole, column-zero header, never a paragraph/continuation.
 // Removing a note is deliberately not the add/change exception.
 func operationalBriefOnly(old, brief string) bool {
-	strip := func(text string) (string, map[string]int) {
-		var body []string
-		counts := make(map[string]int)
-		for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
-			key := ""
-			for _, candidate := range []string{"CARRY:", "RESUME:", "ROUTE NOTE:"} {
-				if strings.HasPrefix(line, candidate) {
-					key = candidate
-					break
-				}
-			}
-			if key == "" {
-				body = append(body, line)
-			} else {
-				counts[key]++
-			}
-		}
-		return strings.Join(body, "\n"), counts
-	}
-	a, ac := strip(old)
-	b, bc := strip(brief)
-	if strings.TrimSuffix(old, "\n") == strings.TrimSuffix(brief, "\n") || a != b {
+	a, ac := stripOperationalLines(old)
+	b, bc := stripOperationalLines(brief)
+	if strings.TrimSuffix(old, "\n") == strings.TrimSuffix(brief, "\n") || strings.Join(a, "\n") != strings.Join(b, "\n") {
 		return false
 	}
 	for key, count := range ac {
@@ -844,6 +855,187 @@ func operationalBriefOnly(old, brief string) bool {
 		}
 	}
 	return true
+}
+
+// scopeWidenedOnly reports whether brief refines old only by adding entries to
+// PATHS, NEW or SHARED lines (none removed, none reordered away) or adding
+// START entries marked (read), optionally alongside operational notes
+// (tla/SprintTables.tla ScopeWiden).
+func scopeWidenedOnly(old, brief string) bool {
+	if strings.TrimSuffix(old, "\n") == strings.TrimSuffix(brief, "\n") {
+		return false
+	}
+	oldLines, ac := stripOperationalLines(old)
+	newLines, bc := stripOperationalLines(brief)
+	for key, count := range ac {
+		if bc[key] < count {
+			return false
+		}
+	}
+	if len(oldLines) == 0 || len(newLines) == 0 || oldLines[0] != newLines[0] {
+		return false
+	}
+	colZeroHeader := func(line string) (string, string, bool) {
+		if line != strings.TrimLeft(line, " \t") {
+			return "", "", false
+		}
+		return cardhdr.KeyValue(line)
+	}
+	oldHasKey := map[string]bool{}
+	for idx := 1; idx < len(oldLines); idx++ {
+		if strings.TrimSpace(oldLines[idx]) == "" {
+			continue
+		}
+		k, _, ok := colZeroHeader(oldLines[idx])
+		if !ok {
+			break
+		}
+		oldHasKey[k] = true
+	}
+	insertedKey := map[string]bool{}
+	inHeader := true
+	widened := false
+	i, j := 1, 1
+	for i < len(oldLines) || j < len(newLines) {
+		if !inHeader {
+			if i >= len(oldLines) || j >= len(newLines) || oldLines[i] != newLines[j] {
+				return false
+			}
+			i++
+			j++
+			continue
+		}
+		if i < len(oldLines) && j < len(newLines) && oldLines[i] == newLines[j] {
+			if strings.TrimSpace(oldLines[i]) != "" {
+				if _, _, ok := colZeroHeader(oldLines[i]); !ok {
+					inHeader = false
+				}
+			}
+			i++
+			j++
+			continue
+		}
+		if i < len(oldLines) && j < len(newLines) {
+			kOld, vOld, okOld := colZeroHeader(oldLines[i])
+			kNew, vNew, okNew := colZeroHeader(newLines[j])
+			if okOld && okNew && kOld == kNew {
+				var w, ok bool
+				switch kOld {
+				case "PATHS", "NEW", "SHARED":
+					w, ok = scopeListWidened(vOld, vNew)
+				case "START":
+					w, ok = startListWidened(vOld, vNew)
+				}
+				if !ok {
+					return false
+				}
+				widened = widened || w
+				i++
+				j++
+				continue
+			}
+		}
+		if j < len(newLines) && oldHasKey["PATHS"] {
+			kNew, vNew, okNew := colZeroHeader(newLines[j])
+			if okNew && !oldHasKey[kNew] && !insertedKey[kNew] {
+				var w, ok bool
+				switch kNew {
+				case "NEW", "SHARED":
+					w, ok = scopeListWidened("none", vNew)
+				case "START":
+					w, ok = startListWidened("none", vNew)
+				}
+				if ok && w {
+					insertedKey[kNew] = true
+					widened = true
+					j++
+					continue
+				}
+			}
+		}
+		return false
+	}
+	return widened
+}
+
+func scopeEntries(v string) ([]string, bool) {
+	t := strings.TrimSpace(v)
+	if t == "" || t == "-" || strings.EqualFold(t, "none") {
+		return nil, true
+	}
+	var out []string
+	for _, raw := range strings.Split(v, ",") {
+		g := strings.TrimSpace(raw)
+		if g == "" || g == "-" || strings.EqualFold(g, "none") || slices.Contains(out, g) {
+			return nil, false
+		}
+		out = append(out, g)
+	}
+	return out, true
+}
+
+func scopeListWidened(vOld, vNew string) (widened, ok bool) {
+	oldItems, ok := scopeEntries(vOld)
+	if !ok {
+		return false, false
+	}
+	newItems, ok := scopeEntries(vNew)
+	if !ok || len(newItems) < len(oldItems) {
+		return false, false
+	}
+	idx := 0
+	var added []string
+	for _, item := range newItems {
+		if idx < len(oldItems) && item == oldItems[idx] {
+			idx++
+		} else {
+			added = append(added, item)
+		}
+	}
+	if idx != len(oldItems) {
+		return false, false
+	}
+	if len(added) == 0 {
+		return false, true
+	}
+	w := PathsWidened("PATHS: "+strings.Join(oldItems, ","), added, "")
+	return strings.HasPrefix(w, "PATHS: ") && w != "PATHS: ", true
+}
+
+func startListWidened(vOld, vNew string) (widened, ok bool) {
+	oldItems, ok := scopeEntries(vOld)
+	if !ok {
+		return false, false
+	}
+	newItems, ok := scopeEntries(vNew)
+	if !ok || len(newItems) < len(oldItems) {
+		return false, false
+	}
+	idx := 0
+	var added []string
+	for _, item := range newItems {
+		if idx < len(oldItems) && item == oldItems[idx] {
+			idx++
+		} else {
+			if !isReadStartEntry(item) {
+				return false, false
+			}
+			added = append(added, item)
+		}
+	}
+	if idx != len(oldItems) {
+		return false, false
+	}
+	return len(added) > 0, true
+}
+
+func isReadStartEntry(item string) bool {
+	const suffix = "(read)"
+	if len(item) <= len(suffix) || !strings.EqualFold(item[len(item)-len(suffix):], suffix) {
+		return false
+	}
+	path := strings.TrimSpace(item[:len(item)-len(suffix)])
+	return path != "" && !strings.ContainsAny(path, "() \t")
 }
 
 // sameLines says two briefs hold the same lines, trimmed, blank lines left out, in any
@@ -1149,10 +1341,18 @@ func unlandedNeeds(s *Snapshot, c *Card) string {
 	return strings.Join(missing, ",")
 }
 
-// reworkWhyCarry is reworkWhy for rework --carry: a card in review that ended on a brief defect
-// whose cause is coordination (IsCoordinationDefect) takes the rework once its needs have all
-// landed; while any has not, it is refused naming them; any other card is reworkWhy's.
+// reworkWhyCarry is reworkWhy for rework --carry: a card in review at the conflict bound (the
+// landing refused its head twice only for a merge conflict with the advanced base,
+// IsConflictBound) takes the rework whether or not the brief-defect rule marked it, since the
+// base moved under a correct head and the brief is not the cause (tla/Land.tla, THE BOUND,
+// ConflictBoundCarries); one that ended on a brief defect whose cause is coordination
+// (IsCoordinationDefect) takes it once its needs have all landed, and while any has not, it is
+// refused naming them; any other card is reworkWhy's (a gate, checks or paths bound stays the
+// brief's, and a card marked a brief defect for it is re-cut).
 func reworkWhyCarry(s *Snapshot, c *Card) string {
+	if IsConflictBound(c) {
+		return ""
+	}
 	if c.Placed() && c.Col == Review && c.F(FieldBriefDefect) != "" && IsCoordinationDefect(c.F(FieldBriefDefect)) {
 		if missing := unlandedNeeds(s, c); missing != "" {
 			return "it ended on a coordination brief defect (" + c.F(FieldBriefDefect) + "), and its needs " + missing + " have not landed: rework --carry once they have, or re-cut the brief; nothing was changed"
@@ -1343,20 +1543,10 @@ func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string, ti
 	// the need applies from its next deal, and the finish moves it to waiting
 	// (docs/SPEC-SPRINT.md section 9, rule 11; steps_work.go finishPlan). The card
 	// names the state it is in (FieldWaitsAfter), so brief and rule 11 agree.
-	after := ""
-	if c.Col == string(Working) {
-		var waited []string
-		cur := Split(c.F("needs"))
-		for _, n := range needs {
-			if !contains(cur, n) && s.StateOf(n) != Landed {
-				waited = append(waited, n)
-			}
-		}
-		if len(waited) > 0 {
-			after = strings.Join(waited, ",")
-			set[FieldWaitsAfter] = after
-		}
-	}
+	// tla/SprintTables.tla WaitsAfterWithinNeeds: the marker is rewritten with the
+	// needs, inside them (keepWaitsInNeeds); it is empty, and unset, when the
+	// write drops every need the card gained while working
+	after := keepWaitsInNeeds(s, c, needs, set, &unset)
 	moved := fmt.Sprintf("%s DEPENDS-ON replaced: needs %s (%d bytes) stream=%s %s", c.ID, orDash(set["needs"]), len(brief), c.Row, c.Col)
 	if after != "" {
 		moved += "; working, waits for " + after + " after this attempt"
@@ -1367,6 +1557,34 @@ func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string, ti
 	p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set, unset...))},
 		Moved: moved})
 	return p
+}
+
+// keepWaitsInNeeds writes the rule-11 marker (FieldWaitsAfter) of a needs write in
+// the same unit as the needs: a working card's marker is its old marker plus the
+// needs the write gains that have not landed, intersected with the new needs, and is
+// unset when that is empty; a card that is not working keeps none. It returns the
+// marker written, "" when it is unset, and so the status line's words.
+// tla/SprintTables.tla Follow and WaitsAfterWithinNeeds (reversed witness
+// "staleafter": the write left the marker as it was).
+func keepWaitsInNeeds(s *Snapshot, c *Card, newNeeds []string, set map[string]string, unset *[]string) string {
+	var out []string
+	if c.Col == Working {
+		cur, old := Split(c.F("needs")), Split(c.F(FieldWaitsAfter))
+		for _, n := range newNeeds {
+			if contains(old, n) || (!contains(cur, n) && s.StateOf(n) != Landed) {
+				out = append(out, n)
+			}
+		}
+	}
+	after := strings.Join(out, ",")
+	switch {
+	case after != "":
+		set[FieldWaitsAfter] = after
+	case c.F(FieldWaitsAfter) != "":
+		delete(set, FieldWaitsAfter)
+		*unset = append(*unset, FieldWaitsAfter)
+	}
+	return after
 }
 
 // NeedsSetReq re-points one primary's needs (nova-sprint needs set).
@@ -1392,8 +1610,10 @@ type NeedsSetReq struct {
 // with a need not landed waits again at the tick; one in review takes none). A
 // rewrite that would close a cycle of needs is refused (needsCycle). A landed or
 // off-table card, a sentinel, and a need that is no primary on the table (named
-// whole) are refused, nothing written. Coordinator-only (docs/SPEC-SPRINT.md,
-// needs). It is the one writer of a primary's needs, with the brief edit.
+// whole) are refused, nothing written. A held card keeps its column, its hold stamp,
+// held_by and held_reason through the change, its needs written as asked: a needs
+// change never releases a hold, only release does (tla/Holds.tla NeedsSetH). Coordinator-only
+// (docs/SPEC-SPRINT.md, needs). It is the one writer of a primary's needs, with the brief edit.
 func NeedsSet(s *Snapshot, r NeedsSetReq) Plan {
 	var p Plan
 	p.on(s)
@@ -1478,6 +1698,13 @@ func NeedsSet(s *Snapshot, r NeedsSetReq) Plan {
 			to = Waiting
 		}
 	}
+	// a held card keeps its column and its hold through any needs change: it moves only
+	// by the coordinator's release (releaseHeld), which checks the needs itself
+	// (tla/Holds.tla NeedsSetH, reversed witness "needssetheld")
+	held := IsHeld(c)
+	if held {
+		to = c.Col
+	}
 	set := map[string]string{"brief": brief}
 	var unset []string
 	if len(wants) > 0 {
@@ -1485,8 +1712,12 @@ func NeedsSet(s *Snapshot, r NeedsSetReq) Plan {
 	} else {
 		unset = append(unset, "needs")
 	}
+	keepWaitsInNeeds(s, c, wants, set, &unset)
 	u := Unit{Key: c.ID, Stream: c.Row}
-	if to != c.Col {
+	if held {
+		u.Changes = []Change{change(Work, setEntry(c, set, unset...))}
+		u.Moved = fmt.Sprintf("%s needs %s stream=%s %s; held: a needs change never releases a hold: nova-sprint release %s --reason '<why>'", c.ID, orDash(set["needs"]), c.Row, c.Col, c.ID)
+	} else if to != c.Col {
 		u.Changes = []Change{change(Work, moveEntry(c, c.Row, to, set, unset...))}
 		u.Moved = fmt.Sprintf("%s needs %s: %s -> %s stream=%s", c.ID, orDash(set["needs"]), c.Col, to, c.Row)
 	} else {

@@ -57,3 +57,27 @@ func TestTheServerBeatTakesDrainingAndNoRoom(t *testing.T) {
 		assert.NotEmpty(t, why, "refused: %v", argv)
 	}
 }
+
+// TestTheServerBeatTakesFacts: a member's beat carries its gate facts (--facts <list>), the
+// member's own measure of its machine, which the deal holds a GATE-NEEDS card against. The
+// server takes the word anywhere among the others, and refuses a list that is not fact words.
+func TestTheServerBeatTakesFacts(t *testing.T) {
+	t.Parallel()
+	for _, argv := range [][]string{
+		{"fleet", "beat", "m", "--stop-returns", "0", "--facts", "linux,amd64,landlock,tla,go", "--load", "0.4"},
+		{"fleet", "beat", "m", "--live", "-", "--load", "0.4", "--facts", "darwin,arm64"},
+	} {
+		as, words, why := workerVerb(argv)
+		require.Empty(t, why, "the server runs %v", argv)
+		assert.Equal(t, "m", as)
+		assert.Equal(t, 2, words)
+	}
+	for _, argv := range [][]string{
+		{"fleet", "beat", "m", "--facts", "", "--load", "1"},
+		{"fleet", "beat", "m", "--facts", "linux,a b", "--load", "1"},
+		{"fleet", "beat", "m", "--facts"},
+	} {
+		_, _, why := workerVerb(argv)
+		assert.NotEmpty(t, why, "refused: %v", argv)
+	}
+}

@@ -7,10 +7,15 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (208)
-- [Setup, release and operations](#setup-release-and-operations) (27)
+- [The sprint system](#the-sprint-system) (218)
+- [Setup, release and operations](#setup-release-and-operations) (35)
 - [Docs, models and the repository](#docs-models-and-the-repository) (22)
-- [Friend AIs](#friend-ais) (16)
+- [Friend AIs](#friend-ais) (21)
+- [Moved out of the sprint on 2026-10-15: nova-local](#moved-out-of-the-sprint-on-2026-10-15-nova-local) (1)
+- [Moved out of the sprint on 2026-10-15: v13-blockers](#moved-out-of-the-sprint-on-2026-10-15-v13-blockers) (19)
+- [Moved out of the sprint on 2026-10-15: v15-features](#moved-out-of-the-sprint-on-2026-10-15-v15-features) (1)
+- [Moved out of the sprint on 2026-10-15: target v1.5](#moved-out-of-the-sprint-on-2026-10-15-target-v15) (6)
+- [Resume after the rocketnet milestone](#resume-after-the-rocketnet-milestone) (7)
 
 ## Lessons from Prime Agent's rewrite
 
@@ -1720,6 +1725,106 @@ Target: v1.5
 
 From: the owner, 2026-10-11: a lesson from the Cockroach Labs write-up "Five months treating bugs like patients" (MOLT Sinai)
 
+### Reads per tier are configurable: one friend reader at heavy and frontier
+
+The reads a card needs are set per tier (nova-sprint set --reads <tier>=<n>, or a stream setting), and heavy and frontier cards need exactly one friend read to land. Today the count per tier is fixed in the rules, and with few friends up nothing lands. Source: Glenn 2026-10-15 ~21:30Z: "Please reduce to 1 reader only. Otherwise nothing lands." and "(1 friend reader at heavy, frontier...)" and "if you can't do it per-tier yet, don't worry."
+
+Why it waits: Kind: bug. Nothing lands at heavy and frontier while few friends are up.
+
+Target: v1.5
+
+From: Glenn, 2026-10-15 ~21:30Z
+
+### The deal prefers the cheapest row, and the fleet is overflow
+
+The deal hands a work card to the cheapest able row first, by cost class. Each row, friend or fleet machine, carries a cost class in nova-config: subscription (already paid, such as the Max plan) or api, with the API rows' per-token or per-card rate taken from the routes table. The deal fills subscription rows with free width first, then API rows by ascending rate, across friends and fleet alike; not all friends are on subscription (some are API rate), so friend versus fleet is not the order. A setting names it (set --deal-order cost), replacing today's all-or-nothing set --fleet on|off, and where shows each row's cost class. The model's witness: an API row dealt while a subscription row had width. Source: Glenn 2026-10-15 ~21:50Z: "flash and pro should go to you first, because you are CHEAPEST"; ~22:00Z: "Remember that not all friends are on subscription. Some like Alex and Zhi are API rate. Therefore they need that considered when finding the cheapest row." Also a sprint card of the same id. Resume after the rocketnet milestone (Glenn, 2026-10-15): the card of the same id was dropped from the sprint, nothing pushed; brief in the card record, base v1.5.
+
+Why it waits: Cost: the subscription rows are already paid; the fleet spends API credit per card.
+
+Target: after the rocketnet milestone
+
+From: Glenn, 2026-10-15 ~21:50Z
+
+### Archived streams leave the all-cards view
+
+The dashboard's CARDS BY STATE strip and the all-cards view count only cards of streams on the board; archiving or removing a stream removes its landed cards from those views (today the strip still shows 28 landed from archived streams). Source: Glenn 2026-10-15 ~22:15Z: "This is a bug for v1.5. When landed cards and/or work streams are removed, the landed cards they contained should be removed from the ALL CARDS view."
+
+Why it waits: Kind: bug.
+
+Target: v1.5
+
+From: Glenn, 2026-10-15 ~22:15Z
+
+### fleet level --rebalance loads the read history it deals from
+
+FleetStep (internal/sprint/store/steps.go) loads only the fleet and work tables, with no Extras, so a rebalance from the fleet level verb deals a moved read (rebalance.go readCardIDFor) without the retired generations or the verdicts of the reader it picks. A spent reader can be offered the read again, and a generation that collides with a retired record is refused by the store. The tick's own rebalance loads tickExtras and is correct. The fix gives FleetStep the readers table and ReadCardExtras for its level and rebalance operations, with a test that fails on the old load.
+
+Why it waits: Pre-existing, found by the cold read of #436, not tonight's wedge; a collision is refused, never lost.
+
+Target: v1.5
+
+From: the cold reader of nova-sprint #436, 2026-10-16
+
+### A no-progress attempt escalates the card's tier
+
+Overnight at least four cards (java-ledgers, java-tables-soak, elixir-porting-register, java-accessor) were redealt at pro after a HOLD read, and the new pro attempt left every file the reader named unchanged, or touched only comments; each was read and held again, up to four times. When a read HOLDs and the next attempt's diff touches none of the files and lines the previous read named, the next deal raises the card's tier one step (pro to heavy) and notes why. A unit test with no real time drives the hold, the no-progress attempt and the raised deal, and the TLA+ model of the attempts gains the escalation with a reversed witness that redeals at the same tier.
+
+Why it waits: A new escalation rule in the deal.
+
+Target: v1.5
+
+From: Rowan, 2026-10-16, from the overnight fix column
+
+### Selftest, the sims and the unit tests run with routes configured, as in use
+
+A store with no routes configured at all treats every tier as served, and each worker runs its own --model. v1.4.6 fences that shortcut so it applies only to the in-memory twin: the pretend sprint of `nova-sprint selftest`, the help walkthrough, and the twin and play sims. A real store with no routes refuses by name. v1.7 removes the shortcut entirely. The selftest twin, the walkthrough, the sims and the roughly 362 unit tests that rely on an empty route table instead configure routes the way a real sprint does, through the same nova-config route rows or their store equivalent, so the tier is respected everywhere with no special case. DONE-WHEN: the predicate that fences the shortcut is deleted; no code path serves a tier without an enabled route; selftest, the walkthrough and the sims configure routes; the full unit tier and TLC (ReaderTiers) pass; and a test pins that an empty route table refuses on every store kind.
+
+Why it waits: The system should be tested exactly as it will be used. A special case that serves every tier when no routes exist is a path a real sprint never takes, so the tests that rely on it prove less than they appear to, and keeping it, even fenced, leaves a way for the tier rule to be skipped.
+
+Target: v1.7
+
+From: Glenn, 2026-10-16: "Add a task to v1.7 to do it properly. It's best to test exactly as the system will be used." (the v1.4.6 fence of the empty-route shortcut)
+
+### Swarm mode: the whole fleet and every friend go wide on one problem
+
+A new mode beside the deal. Instead of many cards to many workers, one hard problem goes to every lane at once: every fleet member's lanes and every friend's width, each attacking the same problem independently. Coordination is shared across the message bus plus a few text files in a repo: a findings log (what each lane learned), a dead-ends list (what failed and why, so no lane repeats it), and a leaderboard of candidate heads with their gate results. The problem's tests, or an outside judge, rank the candidates; the first head that passes every gate wins, or the best one at a deadline. Design questions for the card: diversity across lanes (different models, tiers, prompts and starting points, so lanes are not copies); how much each lane reads of the shared files, and when (sharing too early collapses diversity, too late wastes work); a budget and a stop rule (a token cap, a wall clock, and stopping once a winner lands); merging partial results from several lanes; and fairness of the bus under many writers. It is a state machine (lanes, candidates, judging, stop), so its TLA+ model comes first. Predicated on nova-tools v1.7 rename-nova-swarm-to-nova-worker, which frees the name: this mode is nova-swarm.
+
+Why it waits: Some problems are worth many independent attempts at once: hard bugs, R&D and frontier cards. Today the sprint can only split work, not converge many minds on one problem.
+
+Target: v1.7
+
+From: Glenn, live, 2026-10-16: 'for v1.7 we could add a swarm mode. This is where entire fleet and friends go wide with each lane solving the same problem, with shared coordination across the message bus and some text files in a repo.'
+
+### Composite verbs: one call does each coordinator act, end to end
+
+Learned from Hermes Agent's programmatic tool calling, which collapses a multi-step pipeline into one inference call. Each coordinator act that today takes 3 to 6 verbs, with traps on the way, becomes one deterministic verb that does the whole act and prints only what to act on. Measured on 2026-10-16: (1) stuck: list every card that is not moving but could be, and why: waiting with every need landed, held by a judgment, or merging but not queued. This is today's tools/stuck-cards-review.sh made a verb. (2) refinish-same-head: re-finish a card whose only fault was the bench or the gate, checking first that the head merges onto the base. (3) fix-missing-base: add a recut card's missing REPO or BASE line in any column (return, brief --keep-head, accept). (4) resolve-bound: clear a misclassified attempt bound (release, then an in-place brief with a dated carry line). (5) accept-on-read: record a cold read with its evidence file, choosing --heavy or --read-ok itself. Each verb has --dry-run, refuses by name with the one next command, and is tested on a real store, including every refusal. Glenn, 2026-10-16: skills are non-deterministic, so lessons become deterministic verbs and checks, never prose skills the agent must remember to apply.
+
+Why it waits: Every manual multi-verb act today cost tokens and hit at least one refusal that needed another verb first; one deterministic verb per act removes both.
+
+Target: v1.7
+
+From: Glenn, live, 2026-10-16, on the Hermes Agent review: '#2 is great idea for v1.7' and 'skills are fine, but remember, skills are non-deterministic'
+
+### Every resolved judgment becomes a recorded lesson, and repeated lessons become verbs or checks
+
+Learned from Hermes Agent's skill loop (the agent writes a skill after solving something and improves it with use), but made deterministic. Glenn, 2026-10-16: skills are non-deterministic. The machine records every resolved judgment as data: the judgment kind, the cause the coordinator named, the verbs that fixed it, and how long the card was stuck. When a cause repeats past a threshold, the machine raises a named judgment proposing the fix as code: a composite verb (composite-verbs-one-call-per-coordinator-act), a refusal that names the next command, or a check that stops the cause at its source, so a hulk-style bench fault or a recut card with no BASE line is caught before it strands cards. A lesson never lives only as prose for an agent to remember. Today's examples, to seed it: a bench gate on the wrong Go, a misclassified attempt bound, a recut card missing REPO and BASE lines blocking a whole stream's batch, a false empty-commit on a no-ff merge over a carried head, soft land-after deps on file overlap, and stale GATE-NEEDS judgments after members gained facts.
+
+Why it waits: The coordinator fixed the same few causes by hand many times today; recording them as data and turning repeats into code makes the fix permanent and deterministic.
+
+Target: v1.7
+
+From: Glenn, live, 2026-10-16, on the Hermes Agent review: '#2 and #3 is great for v1.7' and 'skills are fine, but remember, skills are non-deterministic'
+
+### Card lint locks in the coordinator's lessons: 16 new rules from 30 hours of failed cards
+
+From the coaching analysis of 408 failed events, 2026-10-16 (~/rowan-working/coaching/2026-10-16.md, section 4). 78 events, plus 57 machine PATHS widenings and 156 brief-replaced bounces, were the brief's fault, not the worker's. Each lesson becomes a deterministic rule at add, brief, recut and --widen, refusing with the one next command: L1 generated-outputs-in-paths (needs a per-repo map of which emitter writes which generated files); L2 registry-rows-in-paths (extends paths-cover-registry to make/<lang>.mk, make/negative-controls.json, tablenames, tla CASES/RUNS/RUNS-HISTORY, tools/agentsmap/catalog.go); L3 pinned-digest-in-paths; L4 changed-rule-pins-in-paths (tests and docs that pin the rule being changed); L5 every-brief-names-repo-and-base; L6 needs-are-header-lines-and-live (a named dependency is a DEPENDS-ON or LAND-AFTER line naming a live card); L7 overlap-on-the-table-needs-an-order; L8 donewhen-runs-at-base (every target, script, driver, TLA module, TLC group and sibling exists at BASE or inside PATHS/NEW); L9 siblings-named; L10 host-words-need-gate-needs; L11 staged-job-or-machine-only; L12 roadmap-flip-needs-row-coverage; L13 measure-card-names-its-driver (and refuses a hand-made board); L14 form-has-a-checker (needs a review-checker command); L15 pin-only-to-an-up-friend; L16 tier-floor-by-size (only ever raises a tier). Also from today: BASE must be a stream branch, never another card's branch, since a card that landed onto a card branch never reached its stream (rocketnet-message-objects-and-c-api). Every rule is tested on a real store, including each refusal, and replayed against today's failed cards to show it would have caught them.
+
+Why it waits: Lessons that live in prose are forgotten; skills are non-deterministic (Glenn, same day). A lint rule refuses the bad card before it costs an attempt.
+
+Target: v1.7
+
+From: Glenn, live, 2026-10-16: 'as coordinator, please coach yourself how you can improve the cards that go in, and then lock it in with card lint (v1.7)'
+
 ## Setup, release and operations
 
 Setting machines up, installing and releasing safely, and the checks that keep a fleet honest.
@@ -1939,6 +2044,86 @@ The playbook replicates the SQLite record continuously, and a restore from the r
 Target: after v1.4
 
 From: issue #2555
+
+### The adopt step store does not report a false half move
+
+On every non-seat host the adopt prints "REFUSED step=store, a half move" even when the install worked. The step must report what it did. Found adopting v1.3.15 to v1.3.18 on 2026-10-15 (coordinator report).
+
+Why it waits: Kind: bug.
+
+Target: v1.5
+
+From: coordinator report, adopting v1.3.15 to v1.3.18, 2026-10-15
+
+### The adopt friends step installs freddy with width and model
+
+On mini-m5-1 the friends step refuses the freddy install because nova-friend install needs --width and --model, which the play does not pass. Found adopting v1.3.15 to v1.3.18 on 2026-10-15 (coordinator report).
+
+Why it waits: Kind: bug.
+
+Target: v1.5
+
+From: coordinator report, adopting v1.3.15 to v1.3.18, 2026-10-15
+
+### The adopt window stops the sprint server reliably
+
+The studio adopt window does not always stop the sprint server within 180 s. The stop must drain readers and succeed, or say why. Found adopting v1.3.15 to v1.3.18 on 2026-10-15 (coordinator report).
+
+Why it waits: Kind: bug.
+
+Target: v1.5
+
+From: coordinator report, adopting v1.3.15 to v1.3.18, 2026-10-15
+
+### Adopt warns when a --limit host is not in the inventory
+
+adopt --limit <host> silently does nothing for a host missing from nova-inventory. It must warn, naming the host. Found adopting v1.3.15 to v1.3.18 on 2026-10-15 (coordinator report).
+
+Why it waits: Kind: bug.
+
+Target: v1.5
+
+From: coordinator report, adopting v1.3.15 to v1.3.18, 2026-10-15
+
+### nova-sprint live agrees with nova-hook status
+
+nova-sprint live refused while nova-hook status showed proven (seen 2026-10-15 ~20:5xZ). Pull request 416 (v1.3.17, the hook gate accepts a silent proven name) may have fixed it: verified 2026-10-15 on v1.3.18, live reports OK while status is proven. Close unless it recurs; kept as a regression check. Found adopting v1.3.15 to v1.3.18 on 2026-10-15 (coordinator report).
+
+Why it waits: Kind: bug.
+
+Target: v1.5
+
+From: coordinator report, adopting v1.3.15 to v1.3.18, 2026-10-15
+
+### Machine capability tags for the deal (kvm, XDP)
+
+A card that needs a machine capability, such as kvm or a held XDP host, names it, and the deal gives it only to a member whose nova-config machine row carries the tag. The beat's gate facts (deal.go MemberFacts, v1.4.3) are the measured half; the tags are the declared half, checked against the facts so a tag with no measured fact is refused. space keeps its own rule: XDP functional tests only on a held XDP machine, never on a shared bench.
+
+Why it waits: New configuration and deal matching.
+
+Target: v1.5
+
+From: the coordinator, 2026-10-16
+
+### Identical release notes across the lockstep repositories
+
+A lockstep release (nova-sprint and nova-tools at one version) publishes the same notes in both repositories, written once and checked by the release tool, not two hand-kept files that drift: tonight's nova-tools notes still say "The matching stable tools release for nova sprint v1.4.0" at v1.4.4.
+
+Why it waits: Release tooling, not a fix to the sprint.
+
+Target: v1.5
+
+From: the coordinator, 2026-10-16
+
+### One app starts at login and runs every nova service on the machine, configured from the friend list, never a launch agent per friend or job
+
+After the 2026-10-16 reboot the studio had 45 files in ~/Library/LaunchAgents and more in /Library/LaunchDaemons, a plist for each friend hook (aurora, emma, johnny, stella), each friend runner, each loop, the dashboards, the redis instances and the sprint server. 19 were stale: editor backups, before-* and moved-to-* copies, a duplicate Stella hook, and sprint-table-live, which had crash-looped 23,923 times on a retired verb. Two more broke on the reboot because their paths pointed at a versioned Homebrew Cellar node and at /tmp. Each friend added, moved or retired meant a hand-written plist, and nothing removed the old one. The fix is one supervisor, installed as the only nova launch agent on a machine (plus one daemon only where root is needed, such as the CI runners). It reads which friends live on this machine, their harness, dirs and sessions from nova-config, and the machine's roles (store, sprint server, dashboard, hook-serve, loops) from the same config. It starts each child, restarts it with backoff, writes one log per child, and reports per-child state so nova-doctor shows a crash loop at once. Adding or moving a friend is a config change: the supervisor starts or stops her children, and a retired job disappears because config is the only source. It refuses a path under /tmp or a versioned Cellar path, and nova-doctor flags any other nova plist on the machine as a stray. The supervisor's states (absent, starting, running, backing-off, stopped, removed) get a TLA+ model before code, and unit tests use a fake clock and a fake process starter. Covers nova-tools binaries too (nova-hook, nova-friend, nova-swarm loops, nova-secrets exec wrappers), and the fleet's ansible plays install only the supervisor.
+
+Why it waits: A launch agent per friend and per job grew to dozens of plists that nobody removed, and stale ones broke things and loaded the machine (Glenn, 2026-10-16).
+
+Target: v1.7
+
+From: Glenn, live, 2026-10-16: 'consolidate all these things into one app that starts at startup and has configuration according to friends, not an app per-friend'
 
 ## Docs, models and the repository
 
@@ -2251,3 +2436,339 @@ Friend rows record which model serves each tier, so the deal and the friend agre
 Target: after v1.4
 
 From: card moved out of the sprint (work record, 2026-10-04); PR #5387
+
+### A friend row takes its ready queue by itself
+
+A friend row whose seat is live takes every card dealt to its ready queue at once, up to its width, without any session deciding; the take starts the worker the row's harness configures, at a model no lower than the card's tier (heavy and frontier go to the row's strongest model). A card the row cannot run is refused back to the deal with a judgment naming why, never left sitting ready. Where shows the dealt-to-taken latency per row; a ready card untaken past 60 s on a live row with free width raises one judgment. The model (FriendReadyTake) gains the invariant that a live row with free width holds no ready card past one tick, with a reversed witness. Tests run on the in-memory twin with time as an argument. The full brief is kept at working/tmp/v15cards/a-friend-row-takes-its-ready-queue-by-itself.md. Source: Glenn 2026-10-16 ~00:35Z: "Add a card to v1.5 to setup something so you take cards in ready queue automatically. that is the disgn and the intent."
+
+Why it waits: Cards sat in a friend row's ready queue for long stretches on 2026-10-15 because taking waited for a dispatcher session to decide.
+
+Target: v1.5
+
+From: Glenn, 2026-10-16 ~00:35Z
+
+### A friend's dispatcher follows its row width by itself
+
+The width in nova-config is the one true source for how many workers a friend's dispatcher runs. Today the coordinator changes `nova-config friend set <f> --width N` and then has to message the friend to resize her dispatcher child; that second step goes away. friend-sync already writes the width to the friend's row. Either the friend's hook pushes a width-changed notice, or the dispatcher reads the row width (from `nova-sprint friend cards <f>` or a `friend width` verb) on every loop and runs up to that many workers, with reads at half a slot. Nobody tells the friend. Tests: a unit test with no real time, where changing the configured width changes the dispatcher's concurrency on its next loop; and a functional test on a real store, where shrinking the width never kills a running worker and only stops new takes. The width/take loop is a state machine, so the TLA+ module is extended (FriendReadyTake) or a new one added: the width the dispatcher runs to equals the row width within one loop, and a shrink never terminates a running worker, each with a reversed witness. Related: the v1.5 entry a-friend-row-takes-its-ready-queue-by-itself (#431). Source: Glenn 2026-10-16: "Each friend should *automatically* update their dispatcher when their width changes in nova-config. It should not be a second step."
+
+Why it waits: Changing a friend's width needed a second step, a message to the friend, so the dispatcher could run at the old width until someone remembered.
+
+Target: v1.5
+
+From: Glenn, 2026-10-16
+
+### The friend deal rotates over equally idle friends
+
+preferredFriend (internal/sprint/friend_deal.go) picks the friend with the most idle lanes, then the most free room, then the first by name, so a tie always goes to the same friend. A persisted friend_deal_index on the fleet table, kept like deal_index (round.go PropDealIndex), breaks the tie as ((index + 1) % n), so the first name never always wins. A unit test shows two equally idle friends alternate across ticks, and tla/WhoPreference.tla gains a fairness property: no eligible friend is starved while another is dealt two.
+
+Why it waits: A new deal counter, held out of the 1.4.x point releases, which take only critical breakers.
+
+Target: v1.5
+
+From: Glenn, 2026-10-16: "Remember to do the ( index + 1 ) % n when dealing so you don't bias to the top." (scoped out of v1.4.4 by the freeze rule)
+
+### A friend's card lanes run each card on the model of its tier
+
+A friend's one-shot lane runs every card on the friend's one model, whatever the card's tier. The friend row names a model per tier it serves, and a lane launches each card, work or read, on the model of the card's tier, never below it (the rule of #432, a card is never worked or read below its tier).
+
+Why it waits: A new row field and lane launch rule.
+
+Target: v1.5
+
+From: the coordinator, 2026-10-16
+
+### A friend's own git identity on her nova-config row
+
+friend stage sets the clone's identity from the friend row's git_identity, but the nova-config friend kind has no such field (the row's fields are tiers, roles, width, mode, config_dir, token_cap, streams, kinds, pronouns and session), so every friend delivery was refused until v1.4.5 fell back to the sprint row's git_identity. The friend kind gains git_identity (a migration, apply, and nova-config friend set --git_identity), each friend's identity set by the owner, and stage prefers it (identity=friend).
+
+Why it waits: A schema migration on the fleet's configuration store, held out of the point release.
+
+Target: v1.5
+
+From: the coordinator's tool audit, 2026-10-16
+
+## Moved out of the sprint on 2026-10-15: nova-local
+
+The open cards of sprint stream nova-local, moved out of the sprint on 2026-10-15 when Glenn scoped the sprint down to the four tiny fixes of v13-blockers, tool-review-2026-10-15 and nova-local, one item per card. Landed cards of the stream are in git and are not listed. Each item names its card, its tier, its base branch, every pushed head and branch, and any head not on origin.
+
+### local-deal-stamps-the-endpoint
+
+RESULT: local-deal-stamps-the-endpoint sha=<sha12> tier: heavy REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms STOP: the deal stamps a local provider's endpoint on the card it draws onto a local route (work at route.go's draw, read at the read draw), the packet carries it as endpoint, routes prints endpoint=<url> concurrency=<busy>/<cap> on a local route, the provider concurrency budget caps a local provider as any Source: Glenn, ~14:13Z 2026-10-15: "Please add the work for nova-local to the current sprint, low priority."; the nova-tools roadmap item nova-local-provider-per-machine ("Restore nova-local built to its spec, with local as a provider per fleet machine that the sprint deals to like any route"; from PR #5307, closed 2026-10-10 when the sprint moved to mas-bandwidth/nova-sprint, its head f322683d4d kept on origin/rowan/nova-local). Work audited 2026-10-15. No pushed head.
+
+Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
+
+From: sprint card local-deal-stamps-the-endpoint (stream nova-local, column waiting, tier , base v1.3/comms), moved out of the sprint 2026-10-15
+
+## Moved out of the sprint on 2026-10-15: v13-blockers
+
+The open cards of sprint stream v13-blockers, moved out of the sprint on 2026-10-15 when Glenn scoped the sprint down to the four tiny fixes of v13-blockers, tool-review-2026-10-15 and nova-local, one item per card. Landed cards of the stream are in git and are not listed. Each item names its card, its tier, its base branch, every pushed head and branch, and any head not on origin.
+
+### bench-grants-owned-by-the-sprint-server
+
+DEPENDS-ON: lander-checks-docs-against-the-candidate-verbs RESULT: bench-grants-owned-by-the-sprint-server sha=<sha12> tier: frontier REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms STOP: the sprint's server owns bench grants: `nova-sprint grant add --bench <b> --to <name> --for <d>`, `grant extend <id> --for <d>`, `grant end <id>` (coordinator verbs, served on the loopback listener only) and `grant list` (a read) k Source: the push audit of 2026-10-15 (nova-tools abd4a6d, nova-sprint 3e51974), item 7: a bench grant's expiry is a scheduled event and is pushed, never found by a poll. The card it replaces, bench-grant-record-pushes-its-expiry, put the grant record and its watcher in nova-tools' cmd/nova-swarm and pkg/swarm, writing Redis from a worker's binary; that breaks nova-tools internal/ci/onewriter_class_test.go TestAWorkerDoesNotOpenTheStore, which stays as it is. The one writer of the sprint is its server, s Work audited 2026-10-15. Pushed heads: 6ba6aac9679a9f22af18df08983f7da28d0f7102 (stella; on origin: sprint/bench-grants-owned-by-the-sprint-server.w1.g4.e21, sprint/bench-grants-owned-by-the-sprint-server.w2.g1.e21, sprint/bench-grants-owned-by-the-sprint-server.w3.g4.e21).
+
+Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
+
+From: sprint card bench-grants-owned-by-the-sprint-server (stream v13-blockers, column waiting, tier , base v1.3/comms), moved out of the sprint 2026-10-15
+
+### finish-judges-scope-before-reads
+
+RESULT: finish-judges-scope-before-reads sha=<sha12> tier: frontier REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms STOP: an ok finish whose head changes a file outside its PATHS (after the always-in-PATHS rule) is turned at the finish into the same E12 record the lander's refusal writes, so the widen rule or the conflict rule acts before any read is asked; the 12 replayed refusals are caught at their finish, and th Source: Glenn 13:18Z: "card all 14 check and lint proposals plus the 4 loosenings as blockers, top-ranked first"; the sprint-21 failure review (epoch 21, nova-sprint log and card histories). Work audited 2026-10-15. Pushed heads: d55e61020ad35b890408243f281fc6e99d79486d (stella; on origin: sprint/finish-judges-scope-before-reads.w3.g1.e21, sprint/finish-judges-scope-before-reads.w4.g2.e21).
+
+Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
+
+From: sprint card finish-judges-scope-before-reads (stream v13-blockers, column waiting, tier , base v1.3/comms), moved out of the sprint 2026-10-15
+
+### sprint-tlacheck-from-nova-tools
+
+RESULT: sprint-tlacheck-from-nova-tools sha=<sha12> tier: pro CARRY: sprint-tlacheck-from-nova-tools attempt 4 head=9c271de04c4afbd3cf3ccf91afcf872081a9665e REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms SOURCE: Glenn, 2026-10-15 13:16Z: card the missing contraction and dead-code pieces as blockers; finish dead code and contraction. Needs: sprint-roadmap-and-sexp-from-nova-tools STOP: tools/tlacheck is deleted, mak Source: Glenn, 2026-10-15 13:16Z: card the missing contraction and dead-code pieces as blockers; finish dead code and contraction. Work audited 2026-10-15. Pushed heads: ca39047f51a997a01a46bc74c6ec6972804c8131 (superman; on origin: sprint/sprint-tlacheck-from-nova-tools.w1.g1.e21); 9c271de04c4afbd3cf3ccf91afcf872081a9665e (amd-1; on origin: sprint/sprint-tlacheck-from-nova-tools.w3.g1.e21); 480acfa9f651911cda18163ecbc947857adda2ce (vision; on origin: sprint/sprint-tlacheck-from-nova-tools.w5.g1.e21).
+
+Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
+
+From: sprint card sprint-tlacheck-from-nova-tools (stream v13-blockers, column waiting, tier pro, base v1.3/comms), moved out of the sprint 2026-10-15
+
+### deal-tells-on-commit-not-on-friend-sync
+
+RESULT: deal-tells-on-commit-not-on-friend-sync sha=<sha12> tier: frontier REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms STOP: a card dealt to a friend row (the coordinator seat's own included) is delivered to its inbox and told on the bus within one log event of the tick that commits the deal, not at the next friend sync --every pass; the seat's own row is told as kind=status; --every stays as the quiet-log backs Source: Glenn 13:57Z 2026-10-15: "Event driven push notifications are vastly superior to polling. What else is like this? A poll where it should be a push notification to you, across nova tools and nova sprint?"; the push audit of that hour (nova-tools abd4a6d, nova-sprint 3e51974), item 4 (and the friend-sync hop of 6). Work audited 2026-10-15. Pushed heads: 254ca3129cfa068d5db7a1ca1fda7eb672c4c71f (emma; on origin: sprint/deal-tells-on-commit-not-on-friend-sync.w1.g1.e21, sprint/deal-tells-on-commit-not-on-friend-sync.w2.g4.e21, sprint/deal-tells-on-commit-not-on-friend-sync.w3.g1.e21); 2b7e0652bd6e85419fa23ad1b026a641f5285eec (stella; on origin: sprint/deal-tells-on-commit-not-on-friend-sync.w2.g4.e21, sprint/deal-tells-on-commit-not-on-friend-sync.w3.g1.e21). Working branch, not on origin: sprint/deal-tells-on-commit-not-on-friend-sync.w3.g3.e21 (emma, working when dropped).
+
+Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
+
+From: sprint card deal-tells-on-commit-not-on-friend-sync (stream v13-blockers, column working, tier , base v1.3/comms), moved out of the sprint 2026-10-15
+
+### server-loops-wake-on-the-sprint-log
+
+RESULT: server-loops-wake-on-the-sprint-log sha=<sha12> tier: frontier REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms STOP: the server's land loop, seat-silent look and decide lane block on the sprint log (Store.WaitLog) and run within one log event of a change, their fixed intervals (LandEvery 2s, seatSilentLook 5s, DecideEvery 5s) kept only as the quiet-log backstop; TLC and the tests pin it. PATHS: cmd/nova-spri Source: Glenn 13:57Z 2026-10-15: "Event driven push notifications are vastly superior to polling. What else is like this? A poll where it should be a push notification to you, across nova tools and nova sprint?"; the push audit of that hour (nova-tools abd4a6d, nova-sprint 3e51974), item 10. Work audited 2026-10-15. Pushed heads: 60b06904cfa66962823d10aba35a7da879839d86 (rowan; on origin: sprint/server-loops-wake-on-the-sprint-log.w1.g1.e21, sprint/server-loops-wake-on-the-sprint-log.w2.g1.e21); 78547271574dd5b67e3202e69939caeeac36d753 (rowan; on origin: sprint/server-loops-wake-on-the-sprint-log.w2.g1.e21).
+
+Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
+
+From: sprint card server-loops-wake-on-the-sprint-log (stream v13-blockers, column review, tier , base v1.3/comms), moved out of the sprint 2026-10-15
+
+### watch-wake-wakes-on-judgment-bus-messages
+
+RESULT: watch-wake-wakes-on-judgment-bus-messages sha=<sha12> tier: frontier REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms STOP: nova-sprint watch --wake wakes the coordinator on a kind=judgment bus message and on a machine message sent under the coordinator's own name by the sprint server or the heartbeat server, within one bus read, not only through the store at most once per --judgment-every; messages the coord Source: Glenn 13:57Z 2026-10-15: "Event driven push notifications are vastly superior to polling. What else is like this? A poll where it should be a push notification to you, across nova tools and nova sprint?"; the push audit of that hour (nova-tools abd4a6d, nova-sprint 3e51974), item 2 (its follow-up). Work audited 2026-10-15. No pushed head.
+
+Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
+
+From: sprint card watch-wake-wakes-on-judgment-bus-messages (stream v13-blockers, column ready, tier , base v1.3/comms), moved out of the sprint 2026-10-15
+
+### a-red-base-gets-its-fix-red-worked
+
+RESULT: a-red-base-gets-its-fix-red-worked sha=<sha12> tier: frontier REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms STOP: when a base fails its tree gate on a class (gofmt, vet, class-tests), the fix-red card the generator names is admitted to that base's stream at once with PRIORITY blocker and first in line, dealt by the next tick with no coordinator step, and its landing closes the base-red episode and resumes Source: Glenn 14:35Z 2026-10-15: "I like this approach. I am happy to run you at Medium or High for important things. If you could run some things at low that would be great." (the sprint must be smooth enough to coordinate at low effort; this gap forced hand-work the same day). Work audited 2026-10-15. Pushed heads: 627ada6eb8c9b6a92a7092d1ba1467e35bbe1725 (rowan; on origin: sprint/a-red-base-gets-its-fix-red-worked.w1.g1.e21, sprint/a-red-base-gets-its-fix-red-worked.w2.g1.e21); c751741a3a3b7587be64a7008ae0872afbde4679 (rowan; on origin: sprint/a-red-base-gets-its-fix-red-worked.w2.g1.e21). Working branch, not on origin: sprint/a-red-base-gets-its-fix-red-worked.w3.g1.e21 (emma, working when dropped).
+
+Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
+
+From: sprint card a-red-base-gets-its-fix-red-worked (stream v13-blockers, column working, tier , base v1.3/comms), moved out of the sprint 2026-10-15
+
+### finish-auto-take-hands-the-card-to-a-worker
+
+RESULT: finish-auto-take-hands-the-card-to-a-worker sha=<sha12> tier: frontier REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms STOP: a friend's finish never leaves a card in working with no worker on it: the next ready card it takes is handed to that friend's worker launcher by one bus push in the same commit (or not taken at all when the friend has no launcher that answers), a taken card no longer flaps back to rea Source: Glenn 14:35Z 2026-10-15: "I like this approach. I am happy to run you at Medium or High for important things. If you could run some things at low that would be great." (the sprint must be smooth enough to coordinate at low effort; this gap forced hand-work the same day). Work audited 2026-10-15. No pushed head. Working branch, not on origin: sprint/finish-auto-take-hands-the-card-to-a-worker.w3.g3.e21 (emma, working when dropped).
+
+Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
+
+From: sprint card finish-auto-take-hands-the-card-to-a-worker (stream v13-blockers, column working, tier , base v1.3/comms), moved out of the sprint 2026-10-15
+
+### sprint-pins-nova-tools-with-staging-needs
+
+RESULT: sprint-pins-nova-tools-with-staging-needs sha=<sha12> tier: frontier REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms STOP: go.mod pins a nova-tools commit that holds the landed staging-needs refusal, and a functional test drives the real staging path end to end: a packet the store built for a spike whose need landed is refused by the nova-tools member against a base without the need's head and staged once th Source: Glenn 13:18Z: "card all 14 check and lint proposals plus the 4 loosenings as blockers, top-ranked first"; the sprint-21 failure review (epoch 21, nova-sprint log and card histories). Split 2026-10-15 from the single staging-needs card: production stages through nova-tools pkg/member, so the refusal reaches the fleet only when nova-sprint pins it. Work audited 2026-10-15. No pushed head.
+
+Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
+
+From: sprint card sprint-pins-nova-tools-with-staging-needs (stream v13-blockers, column waiting, tier , base v1.3/comms), moved out of the sprint 2026-10-15
+
+### deal-matches-published-gate-facts
+
+RESULT: deal-matches-published-gate-facts sha=<sha12> tier: frontier REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms STOP: `nova-sprint fleet beat <m> --facts <list>` stores the member's facts on its control card (FieldFacts), and every path that puts a work card on a unit (the machine deal, the friend deal, the rebalance and any redeal) gives a GATE-NEEDS card only to a unit whose facts cover every need; a card no Source: Glenn 13:51Z 2026-10-15: "Please card all the optimizations for architectures." The misdeal of 2026-10-15 (sprint epoch 21, `nova-sprint log --card spike-fixed-batch-neon-on-m5`): at 10:54 the machine deal held the card's GATE-NEEDS (darwin, arm64, sme2) and raised NGateNeeds ("batman (facts: ); hetzner2 (facts: ); space (facts: ); superman (facts: )"); at 11:02 attempt 1 was dealt to a friend seat anyway, and at 11:28 the rebalance moved it from that seat to b3 ("its excess; a free lane takes i Work audited 2026-10-15. No pushed head.
+
+Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
+
+From: sprint card deal-matches-published-gate-facts (stream v13-blockers, column waiting, tier , base v1.3/comms), moved out of the sprint 2026-10-15
+
+### routes-rest-and-limit-resolve-every-listed-route
+
+RESULT: routes-rest-and-limit-resolve-every-listed-route sha=<sha12> tier: frontier CARRY: routes-rest-and-limit-resolve-every-listed-route attempt 1 head=da363ca7fe02dab1f89fb400195fa18a144288c5 REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms STOP: every route name `nova-sprint routes` prints (a ROUTE line) is resolved by `routes rest`, `routes wake` and `routes limit`, with and without --dry-run, on the mem twin a Source: the coordinator, epoch 21 (2026-10-15): `routes rest` and `routes limit` refused a route `routes` lists, verbatim: `REFUSED pro-glm53-openrouter: pro-glm53-openrouter names no route and no provider of a route (nova sprint routes lists them)`; the same day `nova-config route set --enabled false` reached the sprint only after a separate `nova-config apply --kind route`. Work audited 2026-10-15. Pushed heads: da363ca7fe02dab1f89fb400195fa18a144288c5 (emma; on origin: sprint/routes-rest-and-limit-resolve-every-listed-route.w1.g3.e21).
+
+Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
+
+From: sprint card routes-rest-and-limit-resolve-every-listed-route (stream v13-blockers, column ready, tier , base v1.3/comms), moved out of the sprint 2026-10-15
+
+### a-released-pin-goes-only-to-another-friend
+
+RESULT: a-released-pin-goes-only-to-another-friend sha=<sha12> tier: frontier REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms STOP: a work card whose brief says WHO: only friend <name> (OnlyFriend) still waits for that friend and is still released at its deadline (the existing 10-minute timed release, PinReleased in stops.go); once released it is placed by no path (the machine deal, the rebalance, the redeal, the me Source: the coordinator, epoch 21 (2026-10-15): hard-pinned cards tr15-table-r5, tr15-table-r3 and tr15-fuse-r1 were released at their 10-minute deadline and then dealt to fleet members, and the judgment "a pinned card was dealt away from its friend" recurred over 13 cards (j17228). The owner ruled 2026-10-15 about 16:36Z: keep the 10-minute pin release; a released pin goes only to another friend, never a fleet machine. Work audited 2026-10-15. No pushed head. Working branch, not on origin: sprint/a-released-pin-goes-only-to-another-friend.w1.g4.e21 (emma, working when dropped).
+
+Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
+
+From: sprint card a-released-pin-goes-only-to-another-friend (stream v13-blockers, column working, tier , base v1.3/comms), moved out of the sprint 2026-10-15
+
+### check-warns-when-the-sprint-runs-serial
+
+RESULT: check-warns-when-the-sprint-runs-serial sha=<sha12> tier: frontier REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms KIND: feature PRIORITY: blocker STOP: nova-sprint check cards reports each stream's critical-path length against its open cards and the waiting cards held only by overlap needs or soft dependencies, and warns, naming the stream or the edge, when a stream's critical path is more than half its ope Source: Glenn ~15:02Z 2026-10-15: "How can we remember and enforce not putting toooooo restrictive dependencies on cards in future? I love the rigor, but we don't really need things running fully serial like this." At 14:50Z that day 269 cards were waiting on 466 need edges; one card was the only unlanded need of 115 others, and the schema streams ran a critical path of 15 of 18 and 17 of 25 open cards. Work audited 2026-10-15. No pushed head.
+
+Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
+
+From: sprint card check-warns-when-the-sprint-runs-serial (stream v13-blockers, column waiting, tier , base v1.3/comms), moved out of the sprint 2026-10-15
+
+### sprint-child-rules-from-nova-tools-fleet
+
+RESULT: sprint-child-rules-from-nova-tools-fleet sha=<sha12> tier: pro REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms SOURCE: the owner, 2026-10-15: audit nova-sprint for code that re-implements nova-tools, then the fixes (tmp/dup-audit-2026-10-15.md, finding F8). DEPENDS-ON: sprint-swarm-from-nova-tools STOP: internal/fleetrules is deleted, nothing in the module imports it or reads a file under it, the tests that Source: the owner, 2026-10-15: audit nova-sprint for code that re-implements nova-tools, then the fixes (tmp/dup-audit-2026-10-15.md, finding F8). Work audited 2026-10-15. No pushed head.
+
+Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
+
+From: sprint card sprint-child-rules-from-nova-tools-fleet (stream v13-blockers, column waiting, tier , base v1.3/comms), moved out of the sprint 2026-10-15
+
+### sprint-tlc-and-safepath-from-nova-tools
+
+RESULT: sprint-tlc-and-safepath-from-nova-tools sha=<sha12> tier: heavy REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms SOURCE: the owner, 2026-10-15: audit nova-sprint for code that re-implements nova-tools, then the fixes (tmp/dup-audit-2026-10-15.md, findings F1 and F2). DEPENDS-ON: sprint-tlacheck-from-nova-tools STOP: nova-sprint's pkg/tlc and pkg/safepath are deleted, every importer imports github.com/mas-band Source: the owner, 2026-10-15: audit nova-sprint for code that re-implements nova-tools, then the fixes (tmp/dup-audit-2026-10-15.md, findings F1 and F2). Work audited 2026-10-15. No pushed head.
+
+Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
+
+From: sprint card sprint-tlc-and-safepath-from-nova-tools (stream v13-blockers, column waiting, tier , base v1.3/comms), moved out of the sprint 2026-10-15
+
+### prose-never-re-adds-a-need
+
+RESULT: prose-never-re-adds-a-need sha=<sha12> tier: frontier REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms KIND: fix PRIORITY: critical STOP: a card's needs change only through its typed header's DEPENDS-ON: (or Needs:) line, needs set, a relink or a replace; no prose line, no stale waits_after record and no other field brings back a need the coordinator removed; the red tests named in DONE-WHEN pass at head, and Source: the needs audit of 2026-10-15 afternoon (working/tmp/needs-audit-2026-10-15-pm.md, "A removed need comes back from prose"): the morning's removal of go-table-writers-refuse-what-their-readers-refuse -> table-wire-over-text-transports came back after a later brief edit. That brief still carries the prose line `ORDER. DEPENDS-ON table-wire-over-text-transports (the schema-go chain); ...` below its header, and nine open schema-go briefs carry such a line. The owner's rule: needs are true dependenci Work audited 2026-10-15. No pushed head.
+
+Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
+
+From: sprint card prose-never-re-adds-a-need (stream v13-blockers, column ready, tier , base v1.3/comms), moved out of the sprint 2026-10-15
+
+### adoption-is-measured
+
+RESULT: adoption-is-measured sha=<sha12> tier: heavy REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms KIND: feature PRIORITY: blocker STREAM: v13-blockers STOP: `fleet beat` and a reader's `queue` take `--version <v>` and `--installed <v>` and keep both on the beat; `nova-sprint release adoption [<v>] [--json]` prints each release's live members and readers, how many report it installed and how many run it, and the a Source: the owner, 2026-10-15, verbatim: "It should take no more than 5 minutes, and ideally just one minute to deploy a new release across our fleet." and "make future releases meet the speed requirements." (The four-layer design, including the dashboard adoption tile, is the coordinator's, which the owner told to proceed.) The layer in full: the version travels in each member's beat; a release counts as adopted when every live member reports it, and an alarm (one judgment) fires if that has not happen Work audited 2026-10-15. No pushed head.
+
+Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
+
+Target: v1.5
+
+From: sprint card adoption-is-measured (stream v13-blockers, column ready, tier , base v1.3/comms), moved out of the sprint 2026-10-15
+
+### release-gates-are-card-receipts
+
+RESULT: release-gates-are-card-receipts sha=<sha12> tier: frontier REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms KIND: feature PRIORITY: blocker STREAM: v13-blockers STOP: a primary whose brief's PATHS or NEW reach the sensitive list is dealt a security read beside its cold reads and leaves review only when it stands ok at the head; every card the land step lands gets a receipt, kept across clears and keyed by rep Source: The owner, 2026-10-15, approving four layers for the fast release pipeline, layer 2: the security read and the cold read happen per card at review and are recorded as receipts; at cut time the cut checks every commit since the last tag has its receipts, refuses naming the missing commit, and never runs a gate itself; per-release waivers stay possible and explicit. The v1.3.14 release read took 21 minutes at cut time. Work audited 2026-10-15. No pushed head.
+
+Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
+
+Target: v1.5
+
+From: sprint card release-gates-are-card-receipts (stream v13-blockers, column waiting, tier , base v1.3/comms), moved out of the sprint 2026-10-15
+
+### release-drill-under-five-minutes
+
+RESULT: release-drill-under-five-minutes sha=<sha12> tier: frontier REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms KIND: acceptance PRIORITY: blocker STREAM: v13-blockers WHO: friend STOP: one real release drill has run from the last landing on the stable line to 100% fleet adoption through the new pipeline, every step's time recorded by `nova-sprint release drill` in docs/RELEASE-DRILLS.md, and DONE-WHEN holds; or Source: The owner, 2026-10-15: no more than 5 minutes from the last landing to a release adopted across the fleet, ideally 1 minute to deploy across the fleet; today it takes 30 to 45 minutes. The fifth card of the fast release pipeline: a real drill from landing to fleet adoption, timings recorded; done at 5 minutes or less end to end and 60 seconds or less for the deploy step. Work audited 2026-10-15. No pushed head.
+
+Why it waits: Scoped out of the sprint by Glenn 2026-10-15: only the four tiny fixes stay in v13-blockers, tool-review-2026-10-15 and nova-local; the rest waits on the roadmap.
+
+Target: v1.5
+
+From: sprint card release-drill-under-five-minutes (stream v13-blockers, column waiting, tier , base v1.3/comms), moved out of the sprint 2026-10-15
+
+## Moved out of the sprint on 2026-10-15: v15-features
+
+The open cards of sprint stream v15-features, moved out of the sprint on 2026-10-15 when Glenn scoped the sprint down (v1.5 work not about schema adoption moves to v1.7), one item per card. Landed cards of the stream are in git and are not listed. Each item names its card, its tier, its base branch, every pushed head and branch, and any head not on origin.
+
+### a-member-hold-releases-itself-at-its-time
+
+RESULT: a-member-hold-releases-itself-at-its-time sha=<sha12> tier: heavy REPO: mas-bandwidth/nova-sprint BASE: v1.5 KIND: feature PRIORITY: high STREAM: v15-features STOP: `nova-sprint hold <member>` takes exactly one of `--until <RFC3339>` or `--for <duration>`, or `--indefinite` with a `--reason`, and is refused naming the three when none is given; the control card keeps the release time; the tick releases an expi Source: the owner, 2026-10-15, verbatim: "Please add a system for holding a machine, and then automatically releasing it at a future time or a time at some duration in the future from present. You can't remember to auto-release it. This has just been demonstrated." The demonstration: the coordinator held member amd-1 for a spike at 18:33Z, the spike ended, and the hold sat 49 minutes with nothing using the machine until the owner asked. The owner then placed this on v1.5, not v1.3. Work audited 2026-10-15. No pushed head. Working branch, not on origin: sprint/a-member-hold-releases-itself-at-its-time.w1.g2.e21 (emma, working when dropped).
+
+Why it waits: Scoped out of the sprint by Glenn 2026-10-15 ("anything in v1.5 that is not related to schema adoption, move to v1.7"): target v1.7.
+
+Target: v1.7
+
+From: sprint card a-member-hold-releases-itself-at-its-time (stream v15-features, column working, tier , base v1.5), moved out of the sprint 2026-10-15
+
+## Moved out of the sprint on 2026-10-15: target v1.5
+
+Cards that were merging when Glenn moved the rest into v1.5 (2026-10-15); one item per card with its pushed heads and any head not on origin.
+
+### sprint-config-from-nova-tools
+
+RESULT: sprint-config-from-nova-tools sha=<sha12> tier: heavy CARRY: sprint-config-from-nova-tools attempt 5 Source: Glenn, 2026-10-15 13:16Z: card the missing contraction and dead-code pieces as blockers; finish dead code and Heads: 64766041b9f9 (stella; origin sprint/sprint-config-from-nova-tools.w1.g4.e21); 902376d7e973 (rowan; origin sprint/sprint-config-from-nova-tools.w2.g1.e21); ca143cc02b6f (rowan; origin sprint/sprint-config-from-nova-tools.w4.g1.e21); b457e417fa2e (rowan; origin sprint/sprint-config-from-nova-tools.w6.g1.e21).
+
+Why it waits: Moved out of the sprint by Glenn 2026-10-15 to v1.5 (was merging).
+
+Target: v1.5
+
+### sprint-swarm-from-nova-tools
+
+RESULT: sprint-swarm-from-nova-tools sha=<sha12> tier: heavy REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms SOURCE: Glenn, 2026-10-15 13:16Z: card Source: Glenn, 2026-10-15 13:16Z: card the missing contraction and dead-code pieces as blockers; finish dead code and Heads: 6ccfc0d2bbc7 (rowan; origin sprint/sprint-swarm-from-nova-tools.w1.g1.e21); 7184b6c61e9a (emma; origin sprint/sprint-swarm-from-nova-tools.w2.g1.e21); 65a79bfdbb58 (emma; origin sprint/sprint-swarm-from-nova-tools.w3.g1.e21).
+
+Why it waits: Moved out of the sprint by Glenn 2026-10-15 to v1.5 (was merging).
+
+Target: v1.5
+
+### sprint-seat-environment-from-seatcred
+
+RESULT: sprint-seat-environment-from-seatcred sha=<sha12> tier: pro CARRY: sprint-seat-environment-from-seatcred attempt 3 Source: the owner, 2026-10-15: audit nova-sprint for code that re-implements nova-tools, then the fixes (tmp/dup-audit-2026-10-15.md, findings F6 and Heads: 8886ebfec6b8 (vision; origin sprint/sprint-seat-environment-from-seatcred.w2.g1.e21); b7e150bfbab2 (hetzner1; origin sprint/sprint-seat-environment-from-seatcred.w4.g2.e21).
+
+Why it waits: Moved out of the sprint by Glenn 2026-10-15 to v1.5 (was merging).
+
+Target: v1.5
+
+### a-need-names-what-it-consumes
+
+RESULT: a-need-names-what-it-consumes sha=<sha12> tier: frontier CARRY: a-need-names-what-it-consumes attempt 2 Source: Glenn ~15:02Z 2026-10-15: "How can we remember and enforce not putting toooooo restrictive dependencies on cards in future? I love the rigor, but we don't really need things Heads: 1f8c2fbf29f7 (rowan; origin sprint/a-need-names-what-it-consumes.w2.g1.e21); 60e5fc07a7d0 (emma; origin sprint/a-need-names-what-it-consumes.w3.g2.e21).
+
+Why it waits: Moved out of the sprint by Glenn 2026-10-15 to v1.5 (was merging).
+
+Target: v1.5
+
+### lander-checks-docs-against-the-candidate-verbs
+
+RESULT: lander-checks-docs-against-the-candidate-verbs sha=<sha12> tier: frontier REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms STOP: the lander's Source: the coordinator, 2026-10-15: the card bench-grants-owned-by-the-sprint-server adds the verb `nova-sprint grant` and documents it; the installed lander (v1.3.14) reads the Heads: a42017f5fbfb (rowan; origin sprint/lander-checks-docs-against-the-candidate-verbs.w1.g1.e21); 784ff63034e8 (rowan; origin sprint/lander-checks-docs-against-the-candidate-verbs.w2.g1.e21).
+
+Why it waits: Moved out of the sprint by Glenn 2026-10-15 to v1.5 (was merging).
+
+Target: v1.5
+
+### an-ended-read-record-never-blocks-ask
+
+RESULT: an-ended-read-record-never-blocks-ask sha=<sha12> tier: frontier REPO: mas-bandwidth/nova-sprint BASE: v1.3/comms STOP: `nova-sprint ask` Source: the coordinator, epoch 21 (2026-10-15): `ask` refused with code=MEMBEREXISTS: `member "virtualgo-research-a.r1.batman~21": member identity already exists: expected absent, Heads: a70d422b59eb (rowan; origin sprint/an-ended-read-record-never-blocks-ask.w1.g3.e21).
+
+Why it waits: Moved out of the sprint by Glenn 2026-10-15 to v1.5 (was merging).
+
+Target: v1.5
+
+## Resume after the rocketnet milestone
+
+Cards moved out of the sprint on 2026-10-15 when Glenn said: "move the schema cards out to the roadmap. We will continue them only after we have rocketnet in the bag." One item per card with its pushed heads and any head not on origin.
+
+### C11: nova-sprint's bus reads legacy and typed envelopes alike, counted per form
+
+Resume after the rocketnet milestone. THE TASK. Make nova-sprint's pkg/bus reader accept both the legacy entry and the typed Envelope, through pkg/schemaread, counting reads per form. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none. Back in the sprint 2026-10-16 as l1-bus-envelope-dual-read-2 (stream v15-schema-tables, aspect 1 of the schema-table adoption, one aspect at a time).
+
+Target: v1.5
+
+### C16: one full night on Layer 1, measured, for Glenn's sign-off
+
+Resume after the rocketnet milestone. THE TASK. Gather one night's evidence that Layer 1 holds, in numbers, and write it for Glenn to sign off. The card does not sign off Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none. Back in the sprint 2026-10-16 as l1-acceptance-soak-2 (stream v15-schema-tables, aspect 4 of the schema-table adoption, one aspect at a time).
+
+Target: v1.5
+
+### C22: nova-work builds the typed result and refuses before writing
+
+Resume after the rocketnet milestone. THE TASK. Give nova-work a result builder that validates the Result table before writing RESULT.md, per section 4.8's Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none. Back in the sprint 2026-10-16 as l2-nova-work-result-builder-2 (stream v15-schema-tables, aspect 5 of the schema-table adoption, one aspect at a time).
+
+Target: v1.5
+
+### C27: the Layer 2 sign-off fence: measured across one stream, for Glenn
+
+Resume after the rocketnet milestone. THE TASK. Gather the Layer 2 evidence and write it for Glenn to sign off; the card does not sign off Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none. Back in the sprint 2026-10-16 as l2-signoff-fence-2 (stream v15-schema-tables, aspect 5 of the schema-table adoption, one aspect at a time).
+
+Target: v1.5
+
+### C24: a judgment's verdict is a field; JudgmentRetire gains the typed-verdict invariant
+
+Resume after the rocketnet milestone. THE TASK. Model first, then make FinishedAs read the verdict from the typed judgment's field, never from a subject or a log Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none. Back in the sprint 2026-10-16 as l3-judgment-verdict-field-2 (stream v15-schema-tables, aspect 6 of the schema-table adoption, one aspect at a time).
+
+Target: v1.5
+
+### C25: no verdict, card or kind is read from a subject: a rewrite fuzz proves it
+
+Resume after the rocketnet milestone. THE TASK. Find every read of meaning from a message subject in pkg/friend and move it to the typed field; prove it with a rewrite Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none. Back in the sprint 2026-10-16 as l3-subject-census-and-rewrite-fuzz-2 (stream v15-schema-tables, aspect 6 of the schema-table adoption, one aspect at a time).
+
+Target: v1.5
+
+### friend-tiers-and-fleet-tiers-default-all
+
+Resume after the rocketnet milestone. THE TASK. The sprint has `set --fleet-tiers` (the tiers the fleet as a whole may be dealt) but no matching setting for the friends as a whole. Add Source: Glenn, 2026-10-15 ~21:58Z: "we should be able to configure tiers allowed for friends (as a whole) and fleet (as a whole). Default Heads: none.
+
+Target: after the rocketnet milestone

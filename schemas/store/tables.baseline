@@ -1,0 +1,21 @@
+schema-tables-baseline 7
+package donewire
+
+table Completion
+    field kind id=0xef9c96d721673243 kind=12 size=16
+    field card id=0xb5614e90e87b455f kind=12 size=515
+    field row id=0x8a0bc1196111ad9b kind=12 size=135
+    field at id=0x089c4e07b545a968 kind=5
+
+table DoneRecord
+    field epoch id=0xfc9697d1196e6ba6 kind=9
+    field cursor id=0xf927453fbe6252ef kind=12 size=41
+    field done id=0xdc51fb6761fd6e91 kind=14 elem=13 type=Completion array=bounded bound=95
+    field pages id=0xab01daa76a48769f kind=8
+
+## history
+### 2026-10-15 (UTC) — first baseline
+- baseline created over 2 tables — data written BEFORE this point is not covered by it
+
+### 2026-10-15 (UTC) — add pages count for paged done record
+- no compatibility-affecting edits; the wire absorbs the rest

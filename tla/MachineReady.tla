@@ -59,6 +59,16 @@
 (* need): never a setting, so never in the gate; start warns on it         *)
 (* (SettingFinding.Live) and readers come up after the start.             *)
 (*                                                                         *)
+(* v1.4.1 (start-warns-never-gates; Glenn: a check reports, it never gates *)
+(* infrastructure): the card check below no longer refuses a start. Start  *)
+(* is StartChecked (a clean record of the cards now, no WARN) or            *)
+(* StartUnchecked (any other record: a WARN line, last = "startwarn"); the *)
+(* old StartRefusedCheck is gone. StartNeverGatedByCheck replaces the      *)
+(* refusal as the rule; witness "checkgates" restores the old gate. The     *)
+(* stalerecord, failedrecord, clearkeeps and warngate witnesses now each    *)
+(* misclassify a start (a silent start over unchecked cards, or a WARN over *)
+(* checked ones): StartOnlyChecked, or UncheckedStartWarns for warngate.   *)
+(*                                                                         *)
 (* The card check gate (v1.2.17, start-refuses-until-a-clean-check; the    *)
 (* owner, 2026-10-13: "if you start a sprint before checking, then it will *)
 (* fail and tell you to check."): nova-sprint check cards writes one check *)
@@ -93,6 +103,8 @@
 (*                   serialized never start               (WarnsNeverFail) *)
 (*   "warngate"      the check is right, but start refuses a clean record  *)
 (*                   of cards holding warnings            (WarnOnlyStarts) *)
+(*   "checkgates"    start refuses while the card check is not clean, the  *)
+(*                   v1.2.17 gate         (StartNeverGatedByCheck)         *)
 (*   "refusewarns"   a refusing finding is taken as a warning: a clean     *)
 (*                   record over refusing cards    (CleanRecordHasNoDefect)*)
 (***************************************************************************)
@@ -105,7 +117,7 @@ CONSTANTS
 
 States == {"READY", "RUNNING", "STOPPED"}
 Acts == {"init", "clearstop", "clearadvance", "start", "stop", "refused", "add", "tick",
-         "write", "set", "startrefused", "readers", "check", "change", "startunchecked"}
+         "write", "set", "startrefused", "readers", "check", "change", "startwarn"}
 Writers == {"clear", "write", "set"}
 Records == {"none", "clean", "failed"}
 Digests == 0..1
@@ -243,20 +255,27 @@ ClearAdvance ==
     /\ UNCHANGED <<run, readersUp, rec, recDigest>>
 
 \* start (store.SetMachine true): READY or STOPPED to RUNNING, recording the epoch
-\* it reads; it may land between ClearStop and ClearAdvance. Enabled only through
-\* the settings gate (run.go startSettingsGate, before setMachine writes anything) and
-\* the card check gate (run.go startCardCheckGate).
-Start ==
+\* it reads; it may land between ClearStop and ClearAdvance. Enabled through
+\* the settings gate (run.go startSettingsGate, before setMachine writes anything) and by
+\* nothing else: the card check never gates it (v1.4.1, run.go startCardCheckGate reports a
+\* WARN line and returns 0). StartChecked is a start over cards a clean check of this epoch
+\* matches (no WARN); StartUnchecked is a start over any others, with its WARN line.
+StartCore(l) ==
     /\ ~run
     /\ StartGate
-    /\ CardGate
     /\ run' = TRUE
     /\ stamp' = epoch
     /\ ran' = TRUE
     /\ judged' = FALSE
     /\ prev' = Shown
-    /\ last' = "start"
+    /\ last' = l
     /\ UNCHANGED <<epoch, clearing, due, settings, cards>>
+
+StartChecked == CardGate /\ StartCore("start")
+
+StartUnchecked == ~CardGate /\ Broken # "checkgates" /\ StartCore("startwarn")
+
+Start == StartChecked \/ StartUnchecked
 
 \* start refused by the gate: one START REFUSED line per finding, exit 1, nothing written
 StartRefusedSettings ==
@@ -264,15 +283,6 @@ StartRefusedSettings ==
     /\ ~StartGate
     /\ prev' = Shown
     /\ last' = "startrefused"
-    /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings, cards>>
-
-\* start refused by the card check gate: no record of this epoch, a failed one, or a clean
-\* one whose digest is not the cards' now; exit 1, nothing written
-StartRefusedCheck ==
-    /\ ~run
-    /\ ~CardGate
-    /\ prev' = Shown
-    /\ last' = "startunchecked"
     /\ UNCHANGED <<run, stamp, epoch, clearing, ran, due, judged, settings, cards>>
 
 \* a check of cards holding d fails (check_cards.go: Clean is no refusing finding); each
@@ -369,7 +379,7 @@ ReadersChange ==
 
 Next == ClearStop \/ ClearAdvance \/ Start \/ Stop \/ StopRefused \/ AddWork \/ Tick
         \/ StartRefusedSettings
-        \/ StartRefusedCheck \/ Check \/ CardChange
+        \/ Check \/ CardChange
         \/ ReadersChange
         \/ \E s \in Settings, v \in BOOLEAN : Write(s, v) \/ SetSetting(s, v)
 
@@ -395,7 +405,7 @@ RanIsNotReady == (ran /\ ~run) => Shown = "STOPPED"
 
 \* the machine never becomes RUNNING with a non-working setting no set of this epoch
 \* chose: every start passed the gate (a value changed after the start is outside it)
-StartOnlyWorking == last = "start" => Gate
+StartOnlyWorking == last \in {"start", "startwarn"} => Gate
 
 \* the gate never over-refuses: a machine not running whose every non-working setting a
 \* set of this epoch chose may start (with its START WARN lines), whatever readers are up,
@@ -406,6 +416,15 @@ DeliberateSetStarts == (~run /\ Gate /\ CardGate) => ENABLED Start
 \* record after a clear, a failed record, or a change after the clean check is refused
 \* (start-refuses-until-a-clean-check)
 StartOnlyChecked == last = "start" => CardsChecked
+
+\* a start over cards no clean check of this epoch matches is a start with its WARN line, never
+\* a silent one, and a start over checked cards prints none (v1.4.1)
+UncheckedStartWarns == last = "startwarn" => ~CardsChecked
+
+\* a check reports, it never gates (v1.4.1; Glenn: "a check reports; it never gates
+\* infrastructure"): a machine not running whose settings pass may start, whatever the card
+\* check says: no record, a failed one, a stale one
+StartNeverGatedByCheck == (~run /\ Gate) => ENABLED Start
 
 \* a clean record that matches the cards is true of them: they hold no refusing finding
 CleanRecordHasNoDefect == CardsChecked => defectOf[digest] # "refuse"

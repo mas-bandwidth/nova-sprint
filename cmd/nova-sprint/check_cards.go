@@ -533,18 +533,20 @@ func (a *app) cardTree(ctx context.Context, cb swarm.CardBase) sprint.AdmissionT
 	return a.admissionTree(ctx, &lander{a: a}, cb)
 }
 
-// startCardCheckGate is start's card check gate (start-refuses-until-a-clean-check): from READY
-// or STOPPED, before the machine changes, it reads the epoch's check record and the cards now,
-// and refuses, exit 1, nothing written, with no record, a failed one, one a --stream check
-// limited, or a clean one whose digest is not the cards' now (recomputed from the live table, so
-// any admit, move, brief, needs, priority or tier change voids it with no hook in those verbs).
-// A start of a RUNNING machine changes nothing and is not gated. No flag, variable or setting
-// skips it: newApp sets cardCheckGate (docs/SPEC-SPRINT.md section 14, "The card check"). The
-// one store it does not gate is a mem twin (st.ByHand: --redis mem:<file>, for learning and
-// tests, never a fleet's), so the help's walkthrough and the first-run transcript run as
-// written; check cards runs on a twin as anywhere.
+// startCardCheckGate is start's card check report (v1.4.1, start-warns-never-gates; Glenn: a
+// check reports, it never gates infrastructure): from READY or STOPPED, before the machine
+// changes, it reads the epoch's check record and the cards now, and prints one WARN line on
+// stderr when there is no record, a failed one, one a --stream check limited, or a clean one
+// whose digest is not the cards' now (recomputed from the live table, so any admit, move, brief,
+// needs, priority or tier change makes it stale with no hook in those verbs), and provider
+// findings as WARN too. It always returns 0: the start proceeds (the name is kept; a read
+// failure still exits through readFailed). A clean check that matches prints no WARN. A start of
+// a RUNNING machine changes nothing and prints nothing. newApp sets cardCheckGate
+// (docs/SPEC-SPRINT.md section 14, "The card check"); a mem twin (st.ByHand: --redis
+// mem:<file>, for learning and tests, never a fleet's) prints no report, so the help's
+// walkthrough and the first-run transcript run as written.
 //
-// tla/MachineReady.tla Start, StartRefusedCheck: StartOnlyChecked
+// tla/MachineReady.tla StartChecked, StartUnchecked: StartOnlyChecked, StartNeverGatedByCheck
 func (a *app) startCardCheckGate(ctx context.Context, st *store.Store, stderr io.Writer) int {
 	if !a.cardCheckGate || st.ByHand {
 		return 0
@@ -586,14 +588,14 @@ func (a *app) startCardCheckGate(ctx context.Context, st *store.Store, stderr io
 				for _, f := range findings {
 					fmt.Fprintf(stderr, "%s start: run nova-sprint check cards: %s\n", prog, oneline.Escape(f.Line()))
 				}
-				fmt.Fprintf(stderr, "%s start: %d provider finding(s): the machine is not started and nothing was written\n", prog, len(findings))
-				return 1
+				fmt.Fprintf(stderr, "%s start: WARN %d provider finding(s); the machine starts anyway (a check reports, it never gates a start)\n", prog, len(findings))
+				return 0
 			}
 		}
 	}
 	if why == "" {
 		return 0
 	}
-	fmt.Fprintf(stderr, "%s start: %s; the machine is not started and nothing was written\n", prog, oneline.Escape(why))
-	return 1
+	fmt.Fprintf(stderr, "%s start: WARN %s; the machine starts anyway (a check reports, it never gates a start)\n", prog, oneline.Escape(why))
+	return 0
 }

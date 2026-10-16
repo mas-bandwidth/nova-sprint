@@ -150,12 +150,19 @@ func TestAFriendCardIsStagedByAVerb(t *testing.T) {
 	assert.Equal(t, 1, code)
 	assert.Contains(t, errs, "not dealt to friend bob")
 
-	// a friend with no git_identity on record is refused and no clone is made
+	// a friend with no git_identity on her row is staged with the sprint row's (v1.4.5: the
+	// friend kind has no such field, so every friend delivery was refused), and says so
 	before = len(calls)
-	code, _, errs = ta.do(fmt.Sprintf("friend stage s1-2.w1@1 --as friend.bob --dir %s", filepath.Join(root, "bob-working", "jobs")))
-	assert.Equal(t, 1, code)
-	assert.Contains(t, errs, "no git_identity field")
-	assert.Equal(t, before, len(calls), "no clone is made for a friend with no identity")
-	_, statErr := os.Lstat(filepath.Join(root, "bob-working", "jobs", "s1-2.w1"))
-	assert.True(t, os.IsNotExist(statErr), "the job directory was not created")
+	code, out, errs = ta.do(fmt.Sprintf("friend stage s1-2.w1@1 --as friend.bob --dir %s", filepath.Join(root, "bob-working", "jobs")))
+	assert.Equal(t, 0, code, "%s", errs)
+	assert.Contains(t, out, "identity=sprint", "the OK line names the identity it set")
+	sprintID, ok := config.ParseGitIdentity(config.DefaultGitIdentity)
+	require.True(t, ok)
+	var email string
+	for _, c := range calls[before:] {
+		if len(c.args) == 3 && c.args[0] == "config" && c.args[1] == "user.email" {
+			email = c.args[2]
+		}
+	}
+	assert.Equal(t, sprintID.Email, email, "the clone commits as the sprint row's identity, never the host's global one")
 }

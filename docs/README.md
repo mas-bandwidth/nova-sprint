@@ -14,11 +14,13 @@ through review and landing.
 | Your next question | Where to go |
 |---|---|
 | What does nova-sprint do? | [Project introduction](../README.md) |
+| Can I watch a sprint doing real work? | [Live dashboard](http://37.27.135.206) and [the README tour](../README.md#give-the-team-a-plan-go-have-a-life) |
 | How do I get started? | [Getting started](GETTING-STARTED.md) |
 | What can I try before connecting a team? | [First-lap note](FIRST-LAP.md) |
 | How does the system keep work moving? | [Follow a card](../README.md#follow-a-card-from-waiting-to-landed) |
 | What are cards, streams, dependencies, and sentinels? | [Workflow glossary](sprint/GLOSSARY.md), then [the sprint contract](SPEC-SPRINT.md) |
 | What do I do as the coordinator? | [Coordinator's guide](SPRINT-COORDINATOR.md) |
+| Which verbs, in what order, for a situation? | [Coordinator's playbook](COORDINATOR-PLAYBOOK.md) (`nova-sprint help playbook`) |
 | How do I coordinate at low cost? | [dispatcher](DISPATCHER.md) |
 | How do commands connect to a store or server? | [Environment reference](ENVIRONMENT.md) |
 | What is the exact command? | [Command reference](CLI.md) |

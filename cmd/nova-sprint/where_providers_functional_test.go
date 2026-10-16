@@ -50,9 +50,9 @@ func TestRedisFullCheckNamesFundedRouteGapsAndLiveStartFundingChange(t *testing.
 	a.runVerb("check", "cards")
 	require.NoError(t, c.HSet(ctx, config.ProviderKey("p"), "funded", "false").Err())
 	out, code, errs = a.runVerbOut("start") // direct gate, never runOnStore's synthetic record helper
-	assert.Equal(t, 1, code, out+errs)
+	assert.Equal(t, 0, code, out+errs)
 	assert.Contains(t, errs, "CHECK routes tier:pro holds no route of a funded provider")
-	assert.Contains(t, errs, "nothing was written")
+	assert.Contains(t, errs, "WARN 1 provider finding(s); the machine starts anyway")
 	require.NoError(t, c.HSet(ctx, config.ProviderKey("p"), "funded", "true").Err())
 	a.runVerb("check", "cards")
 	a.runVerb("start")

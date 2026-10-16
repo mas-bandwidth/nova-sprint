@@ -76,7 +76,7 @@ func TestAReadIsNeverAskedOntoARestingRoute(t *testing.T) {
 			require.Equal(t, "pro-b", c.F(FieldRoute), "a read is never asked onto a resting route while another serves")
 		}
 	})
-	t.Run("every route resting behaves as today", func(t *testing.T) {
+	t.Run("every route resting deals no read and raises nothing", func(t *testing.T) {
 		t.Parallel()
 		w := readRouteRestWorld(t)
 		at := func(m int) string { return stamp(w.s.Now.Add(time.Duration(m) * time.Minute)) }
@@ -88,11 +88,13 @@ func TestAReadIsNeverAskedOntoARestingRoute(t *testing.T) {
 					Fields: map[string]string{FieldProviderTake + "1": take.String(), FieldRoute: route}})
 			}
 		}
+		// 2026-10-15: dealt onto a resting route, the next take-back retired each read at
+		// once (RetiredByRest), a generation spent every tick until every fleet reader was
+		// refused past the load window. The read waits for its route instead, cutting none.
+		rs, _ := w.s.withRests()
+		_, waits := readCardsAsk(rs, nil, nil)
+		require.Equal(t, ReadRoutesRest, waits["s1-1"], "the read waits for its route, no cannot-ask judgment")
 		dealReads(t, w, nil)
-		reads := readCardsOf(w, "s1-1")
-		require.NotEmpty(t, reads, "the ask refuses nothing and raises nothing when every route rests: the take-back retires it")
-		for _, c := range reads {
-			require.NotEmpty(t, c.F(FieldRoute), "a read is still asked a route when none serves")
-		}
+		require.Empty(t, readCardsOf(w, "s1-1"), "no read is cut onto a resting route")
 	})
 }

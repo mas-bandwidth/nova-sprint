@@ -294,7 +294,7 @@ from the owner edits one line here and nothing else moves.
    regular text color." "or if you want, green.").
 3. COST: total to the cent; sub-line "$0.24 per card" (never "per landed card").
 4. IN FLIGHT: n; sub-line "14 working · 9 verify" on one line (verify counts review, fix and merging together, one global state; the tooltip gives the review, fix and merging counts).
-5. THROUGHPUT: cards landed per hour over the last 60 min; "—" until ten minutes of samples; sub-line "cards / hour".
+5. THROUGHPUT: cards landed per hour over the last 60 min; "—" only on the dashboard's first ever start, until ten minutes of samples: the samples are saved (a file beside the store login, one a store) and loaded on start, so a restart, as each release adoption is, carries the rolling hour on and shows the figure at once; sub-line "cards / hour".
    A lone tile on its row spans the width with its figure centered.
 - No FLEET tile. Flash on change: LANDED only; the others never.
 

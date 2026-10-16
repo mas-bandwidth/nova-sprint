@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -87,6 +89,7 @@ func (a *app) cmdDashboard(args []string, stdout, stderr io.Writer) int {
 	redis := (verbArgs{fs: fs}).given("redis")
 	stdout = &lockedWriter{w: stdout} // the listeners and the reads write lines from their own goroutines
 	srv := a.dashboardServer(c.redis, redis, from, *every, *logo, stdout)
+	a.keepDashboardSamples(srv, c.redis, from)
 	ctx, stop := a.notify(context.Background())
 	defer stop()
 	// one poller: the first read before any listener opens, then one each --every whoever
@@ -296,4 +299,37 @@ func (l *lockedWriter) Write(p []byte) (int, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.w.Write(p)
+}
+
+// keepDashboardSamples has srv keep its throughput samples in a file beside the store login's, one
+// file a store (and a puller's upstream), so a restart, which every release adoption is, carries
+// the rolling hour on and the figure never waits to warm up again. An app with the login off (a
+// test's) keeps none.
+func (a *app) keepDashboardSamples(srv *sprintdash.Server, redis, from string) {
+	if a.loginFile == nil {
+		return
+	}
+	login, err := a.loginFile()
+	if err != nil {
+		return
+	}
+	sum := sha256.Sum256([]byte(redis + "\x00" + from))
+	path := filepath.Join(filepath.Dir(login), fmt.Sprintf("dashboard-samples-%x.json", sum[:6]))
+	srv.LoadSamples = func() ([]byte, error) {
+		b, err := os.ReadFile(path)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return b, err
+	}
+	srv.SaveSamples = func(b []byte) error {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			return err
+		}
+		tmp := path + ".tmp"
+		if err := os.WriteFile(tmp, b, 0o600); err != nil {
+			return err
+		}
+		return os.Rename(tmp, path)
+	}
 }

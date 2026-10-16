@@ -33,8 +33,9 @@ import (
 // (friendcards.go). A friend's nova-friend daemon beats with friend beat, and
 // nothing else does (docs/SPEC-FRIEND.md, "The beat comes from the daemon"); the
 // coordinator holds one with friend down and releases it with friend up. The
-// status is derived where it is shown (store.FriendRows), by
-// nova-hook and the sprint hold, and sorted in the fleet's order.
+// status is the server's word, written by the tick from nova-hook and the sprint hold
+// (store.PublishFriendStatus) and read where it is shown (store.FriendRows), never
+// derived there, and sorted in the fleet's order.
 
 // friendWords is how a friend's row comes about, in nova-sprint help and
 // nova-sprint help friend.
@@ -56,9 +57,12 @@ width, done (ok and failed), ok% (ok over done, pooled in the footer) and
 status, all from the friend's sprint cards — the cards dealt to the friend's fleet row
 friend.<name>, their states and their finish verdicts — never from the friend's
 inbox/outbox directories (those are only the transport of the friend's cards, below).
-Liveness comes only from nova-hook. The dashboard shows down whenever the hook
-record is down, held only when the hook is up and sprint holds the friend, and up
-otherwise. friend beat carries work reports, never liveness. friend hold <friend> --reason <text> sets the sprint hold. friend up releases
+Liveness comes only from nova-hook, and the status is the server's word: each tick
+writes every friend's status (down whenever the hook record is down, held only when
+the hook is up and sprint holds the friend, and up otherwise) into the store, and
+where and the dashboard show that word and never work it out, so a reader with no bus
+address shows what the server wrote. A friend the server has written no status for
+shows down. friend beat carries work reports, never liveness. friend hold <friend> --reason <text> sets the sprint hold. friend up releases
 the sprint hold; it cannot prove the friend alive. A friend down shows
 working 0: the friend's cards stay on the friend's row and count again when the friend is up; ready
 and done are as they were. where draws the

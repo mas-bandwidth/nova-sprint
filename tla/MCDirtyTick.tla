@@ -98,6 +98,14 @@ ScnHeldStream == [heldStreams |-> {"s1"}] @@ Base
 ScnReadsFirst == [readCost |-> "half", askw |-> [c \in Cards |-> c = "c2"], lapse |-> FALSE] @@
   [Base EXCEPT !.col = [c \in Cards |-> IF c = "c1" THEN "ready" ELSE "review"],
                !.q = Queues(<<E("room", "-", "m1")>>, <<>>, <<>>, <<>>)]
+\* The strict deal (v1.4.5): c1 ready (new), c3 ready at fix, c2 in review with its read
+\* pending (askw); one machine of width 1 (two slots) hosting the only reader. The pump
+\* places c2's read first (half a slot, rounded up to one), and deals in the one slot left
+\* c3, the fix, never c1, though c1 is first in its stream (FixBeforeNew). The witness
+\* "newfirst" deals c1. No machine lapses.
+ScnFixFirst == [readCost |-> "half", fix |-> {"c3"}, askw |-> [c \in Cards |-> c = "c2"], lapse |-> FALSE] @@
+  [Base EXCEPT !.col = [c \in Cards |-> IF c = "c2" THEN "review" ELSE "ready"],
+               !.q = Queues(<<E("room", "-", "m1")>>, <<>>, <<>>, <<>>)]
 \* A refused read card create: c1 ready, c2 in review with its read pending
 \* (askw) and refused by the table (refused). The pump drops the read create,
 \* leaving c2 askw, and deals c1 into the room on m1. The witness "readblocks"
@@ -139,6 +147,11 @@ ScnHandBack == [Base EXCEPT !.col = [c \in Cards |-> "review"], !.hand = TRUE, !
                             !.rd = [c \in Cards |-> "r1"],
                             !.mr = [m \in Machines |-> IF m = "m1" THEN {"c1"} ELSE {}],
                             !.q = Queues(<<>>, <<>>, <<>>, <<>>)]
+\* READ ENVIRONMENT. As ScnHandBack, but r1's returns are the environment's
+\* (the wall, staging, a stale pin, exit 134 or 137): asked again at the same
+\* attempt, no re-ask or work counter moves, and at EnvReadCap one judgment
+\* names the environment (DirtyTick.tla, EnvNeverRedoes, EnvJudgedAtCap).
+ScnEnv == [ScnHandBack EXCEPT !.hand = FALSE] @@ [env |-> TRUE]
 \* The same with the machines' lapses on: r1's host may go down after r1
 \* returns the read, leaving the card no reader up (STRANDED).
 ScnHandBackLapse == [ScnHandBack EXCEPT !.lapse = TRUE]

@@ -704,7 +704,12 @@ type whereView struct {
 	// CostCheck is the tick's check that the streams' sums are every card's own total
 	// (sprint.CostCheck: ok, both sums exact, the gap); absent before the first tick of a
 	// server that counts it. The text frame prints its line under the work table.
-	CostCheck *sprint.CostCheck `json:"cost_check,omitempty"`
+	CostCheck            *sprint.CostCheck `json:"cost_check,omitempty"`
+	FirstTime            string            `json:"first_time"`
+	FirstTimeTarget      int               `json:"first_time_target"`
+	FirstTimeWindow      int               `json:"first_time_window"`
+	FirstTimeUnderTarget []string          `json:"first_time_under_target,omitempty"`
+	FirstTimeRoutes      map[string]string `json:"first_time_routes,omitempty"`
 	// ReadSpend is the day's read spend per route, one line under the summary
 	// (sprint.ReadSpendLine), from the tick's where record; absent when no read ended today.
 	ReadSpend string               `json:"read_spend,omitempty"`
@@ -1561,6 +1566,19 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	if err != nil {
 		return whereView{}, "", err
 	}
+	firstTime := firstTimeSummaryOf(ctx, st, shapes[0], facts, v.Landed+v.ArchivedLanded, v.All+v.ArchivedCards)
+	v.FirstTime = firstTime.Overall.String()
+	v.FirstTimeTarget = firstTime.Target
+	v.FirstTimeWindow = firstTime.Window
+	v.FirstTimeUnderTarget = firstTime.UnderTarget
+	if len(firstTime.Routes) > 0 {
+		v.FirstTimeRoutes = map[string]string{}
+		for r, rc := range firstTime.Routes {
+			v.FirstTimeRoutes[r] = rc.String()
+		}
+	}
+	showFirstTime := len(v.Providers) > 0 || v.Landed+v.ArchivedLanded > 0 ||
+		shapes[0].Props[sprint.PropFirstTimeTarget] != "" || shapes[0].Props[sprint.PropFirstTimeWindow] != ""
 	for i, t := range shapes {
 		logical := sprint.ViewOrder[i]
 		if logical == sprint.Work {
@@ -1604,6 +1622,9 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 			// the tiers and the spend by tier go to StreamCosts, from the tick's record (cost_view.go)
 			// the cost cell is the stream's whole spend from the same record as stream_costs (so
 			// the column and the tile are one sum), and the runs no price covers beside it
+			if showFirstTime {
+				t = firstTimeColumn(t, firstTime) // first time (rate and count, "-" for none)
+			}
 			t = streamCostColumns(t, facts.Streams) // cost | unpriced
 			t = perLandedColumn(t, facts.Streams)   // | per landed, the last
 			for _, r := range t.Rows {
@@ -1616,6 +1637,11 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 					v.StreamCosts[r.Key] = tc
 				}
 				if rows[r.Key] != nil {
+					if sc, ok := firstTime.Streams[r.Key]; ok {
+						rows[r.Key][sprint.FirstTimeCol] = sc.Overall.String()
+					} else {
+						rows[r.Key][sprint.FirstTimeCol] = "-"
+					}
 					rows[r.Key][sprint.Cost] = r.Texts[sprint.Cost]
 					rows[r.Key][unpricedField] = r.Texts[unpricedColumnName]
 					rows[r.Key][perLandedField] = r.Texts[perLandedColumnName]
@@ -1649,6 +1675,9 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 		parts[logical] = ntable.Render(t, ntable.RenderOpts{Title: logical})
 		if line := archivedLine(v.Archived); logical == sprint.Work && line != "" {
 			parts[logical] = strings.TrimRight(parts[logical], "\n") + "\n" + line + "\n"
+		}
+		if logical == sprint.Work && showFirstTime {
+			parts[logical] = strings.TrimRight(parts[logical], "\n") + "\n\n" + sprint.FormatFirstTimeLine(firstTime) + "\n"
 		}
 	}
 	friends, err := st.FriendRows(ctx, now)
@@ -1864,6 +1893,91 @@ func perLandedColumn(t ntable.Table, streams map[string]sprint.TierCosts) ntable
 			// the cost cell is the stream's whole spend, not its landed cards' alone: with no
 			// record of the tick there is no landed figure to divide
 			texts[perLandedColumnName] = "-"
+		}
+		r.Texts = texts
+		rows[i] = r
+	}
+	t.Rows = rows
+	return t
+}
+
+func firstTimeSummaryOf(ctx context.Context, st *store.Store, workShape ntable.Table, facts store.WhereFacts, landed, _ int64) sprint.FirstTimeSummary {
+	target := sprint.FirstTimeTargetOf(workShape.Props[sprint.PropFirstTimeTarget])
+	win := sprint.FirstTimeWindowOf(workShape.Props[sprint.PropFirstTimeWindow])
+	hasDropped := false
+	for _, tc := range facts.Streams {
+		if tc.DroppedCards > 0 || tc.CarriedCards > 0 {
+			hasDropped = true
+			break
+		}
+	}
+	if facts.Tiers != nil {
+		colIdx := map[string]int{}
+		for j, col := range workShape.Columns {
+			colIdx[col.Name] = j
+		}
+		cellCount := func(r ntable.Row, col string) int64 {
+			if j, ok := colIdx[col]; ok && j < len(r.Cells) {
+				return r.Cells[j].Count
+			}
+			return 0
+		}
+		rows := slices.Clone(workShape.Rows)
+		slices.SortFunc(rows, func(a, b ntable.Row) int {
+			return strings.Compare(a.Key, b.Key)
+		})
+		var keyBuilder strings.Builder
+		for _, r := range rows {
+			fmt.Fprintf(&keyBuilder, "%s=%d,%d,%d,%d,%d,%d:%s;",
+				r.Key,
+				cellCount(r, sprint.Waiting),
+				cellCount(r, sprint.Ready),
+				cellCount(r, sprint.Working),
+				cellCount(r, sprint.Review),
+				cellCount(r, sprint.Merging),
+				cellCount(r, sprint.Landed),
+				facts.Streams[r.Key].LandedUSD,
+			)
+		}
+		if ft, ok := sprint.CachedFirstTimeSummary(st.PinnedEpoch(), target, win, keyBuilder.String()); ok {
+			return ft
+		}
+	}
+	if landed > 0 || hasDropped {
+		if sWork, err := st.Load(ctx, []string{sprint.Work}, nil); err == nil {
+			return sprint.FirstTimeOf(sWork)
+		}
+	}
+	return sprint.FirstTimeSummary{
+		Target:  target,
+		Window:  win,
+		Streams: map[string]sprint.FirstTimeStream{},
+	}
+}
+
+func firstTimeColumn(t ntable.Table, ft sprint.FirstTimeSummary) ntable.Table {
+	col := ntable.Column{Name: sprint.FirstTimeCol, Projection: ntable.Text, Fold: ntable.None}
+	cols := make([]ntable.Column, 0, len(t.Columns)+1)
+	inserted := false
+	for _, c := range t.Columns {
+		if c.Name == sprint.Cost && !inserted {
+			cols = append(cols, col)
+			inserted = true
+		}
+		cols = append(cols, c)
+	}
+	if !inserted {
+		cols = append(cols, col)
+	}
+	t.Columns = cols
+	rows := make([]ntable.Row, len(t.Rows))
+	for i, r := range t.Rows {
+		texts := map[string]string{}
+		maps.Copy(texts, r.Texts)
+		if sc, ok := ft.Streams[r.Key]; ok {
+			texts[sprint.FirstTimeCol] = sc.Overall.String()
+		} else {
+			texts[sprint.FirstTimeCol] = "-"
 		}
 		r.Texts = texts
 		rows[i] = r
@@ -3039,7 +3153,7 @@ func (a *app) cmdRoutes(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "routes", err.Error())
 	}
 	ctx := context.Background()
-	rs, _, err := st.Routes(ctx)
+	rs, tiers, err := st.Routes(ctx)
 	if err != nil {
 		return a.readFailed("routes", err, stderr)
 	}
@@ -3071,7 +3185,7 @@ func (a *app) cmdRoutes(args []string, stdout, stderr io.Writer) int {
 		if err != nil {
 			return a.readFailed("routes", err, stderr)
 		}
-		out := map[string]any{"tiers": sprint.TierRoutes(rs), "routes": stats, "decide_judgment_bar": bar}
+		out := map[string]any{"tiers": sprint.TierRoutes(rs), "tier_routes": tiers, "routes": stats, "decide_judgment_bar": bar}
 		if lim := limitsText(ctx, st, s, a.now()); len(lim) > 0 {
 			out["limits"] = lim // the global rate budgets set (routes limit)
 		}
