@@ -2625,39 +2625,39 @@ Cards moved out of the sprint on 2026-10-15 when Glenn said: "move the schema ca
 
 ### C11: nova-sprint's bus reads legacy and typed envelopes alike, counted per form
 
-Resume after the rocketnet milestone. THE TASK. Make nova-sprint's pkg/bus reader accept both the legacy entry and the typed Envelope, through pkg/schemaread, counting reads per form. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none.
+Resume after the rocketnet milestone. THE TASK. Make nova-sprint's pkg/bus reader accept both the legacy entry and the typed Envelope, through pkg/schemaread, counting reads per form. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none. Back in the sprint 2026-10-16 as l1-bus-envelope-dual-read-2 (stream v15-schema-tables, aspect 1 of the schema-table adoption, one aspect at a time).
 
-Target: after the rocketnet milestone
+Target: v1.5
 
 ### C16: one full night on Layer 1, measured, for Glenn's sign-off
 
-Resume after the rocketnet milestone. THE TASK. Gather one night's evidence that Layer 1 holds, in numbers, and write it for Glenn to sign off. The card does not sign off Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none.
+Resume after the rocketnet milestone. THE TASK. Gather one night's evidence that Layer 1 holds, in numbers, and write it for Glenn to sign off. The card does not sign off Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none. Back in the sprint 2026-10-16 as l1-acceptance-soak-2 (stream v15-schema-tables, aspect 4 of the schema-table adoption, one aspect at a time).
 
-Target: after the rocketnet milestone
+Target: v1.5
 
 ### C22: nova-work builds the typed result and refuses before writing
 
-Resume after the rocketnet milestone. THE TASK. Give nova-work a result builder that validates the Result table before writing RESULT.md, per section 4.8's Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none.
+Resume after the rocketnet milestone. THE TASK. Give nova-work a result builder that validates the Result table before writing RESULT.md, per section 4.8's Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none. Back in the sprint 2026-10-16 as l2-nova-work-result-builder-2 (stream v15-schema-tables, aspect 5 of the schema-table adoption, one aspect at a time).
 
-Target: after the rocketnet milestone
+Target: v1.5
 
 ### C27: the Layer 2 sign-off fence: measured across one stream, for Glenn
 
-Resume after the rocketnet milestone. THE TASK. Gather the Layer 2 evidence and write it for Glenn to sign off; the card does not sign off Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none.
+Resume after the rocketnet milestone. THE TASK. Gather the Layer 2 evidence and write it for Glenn to sign off; the card does not sign off Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none. Back in the sprint 2026-10-16 as l2-signoff-fence-2 (stream v15-schema-tables, aspect 5 of the schema-table adoption, one aspect at a time).
 
-Target: after the rocketnet milestone
+Target: v1.5
 
 ### C24: a judgment's verdict is a field; JudgmentRetire gains the typed-verdict invariant
 
-Resume after the rocketnet milestone. THE TASK. Model first, then make FinishedAs read the verdict from the typed judgment's field, never from a subject or a log Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none.
+Resume after the rocketnet milestone. THE TASK. Model first, then make FinishedAs read the verdict from the typed judgment's field, never from a subject or a log Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none. Back in the sprint 2026-10-16 as l3-judgment-verdict-field-2 (stream v15-schema-tables, aspect 6 of the schema-table adoption, one aspect at a time).
 
-Target: after the rocketnet milestone
+Target: v1.5
 
 ### C25: no verdict, card or kind is read from a subject: a rewrite fuzz proves it
 
-Resume after the rocketnet milestone. THE TASK. Find every read of meaning from a message subject in pkg/friend and move it to the typed field; prove it with a rewrite Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none.
+Resume after the rocketnet milestone. THE TASK. Find every read of meaning from a message subject in pkg/friend and move it to the typed field; prove it with a rewrite Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section Heads: none. Back in the sprint 2026-10-16 as l3-subject-census-and-rewrite-fuzz-2 (stream v15-schema-tables, aspect 6 of the schema-table adoption, one aspect at a time).
 
-Target: after the rocketnet milestone
+Target: v1.5
 
 ### friend-tiers-and-fleet-tiers-default-all
 
