@@ -267,15 +267,38 @@ func gateRuns(tests bool, have []string, unitPkgs []string) []gateStage {
 	return stages
 }
 
-// gateWhy is a red run as a finding, one line: the run, how it ended and its output.
+// gateWhyCap bounds a red run's finding. It keeps the end of the output: a failing run's
+// last lines are the ones that say why (2026-10-15: a front cap kept a build's first 1500
+// bytes and dropped the stderr that followed).
+const gateWhyCap = 1500
+
+// gateWhy is a red run as a finding, one line: the run, how it ended and the end of its
+// output: every line the script printed (its own stderr before the run's mark included),
+// the marks left out, capped from the front so the last lines stay. A run that printed
+// nothing says "no output" beside whatever the script itself printed.
 func gateWhy(run []string, err error, out string) string {
 	var lines []string
+	ran := false // the last run's mark was seen, then whether it printed anything
 	for _, l := range strings.Split(out, "\n") {
-		if l = strings.TrimSpace(l); l != "" {
+		l = strings.TrimSpace(l)
+		switch {
+		case l == "":
+		case strings.HasPrefix(l, gateMark):
+			ran = false
+		case strings.HasPrefix(l, gateStageMark):
+		default:
 			lines = append(lines, l)
+			ran = true
 		}
 	}
-	return strings.Join(run, " ") + ": " + oneline.Err(err) + ": " + oneline.Cap(strings.Join(lines, " | "), 1500)
+	if !ran {
+		lines = append(lines, "no output")
+	}
+	text := strings.Join(lines, " | ")
+	if len(text) > gateWhyCap {
+		text = "..." + strings.ToValidUTF8(text[len(text)-gateWhyCap:], "")
+	}
+	return strings.Join(run, " ") + ": " + oneline.Err(err) + ": " + text
 }
 
 // baseGateFail is a base commit's failures of its tree gate under the base-gate rule: how
@@ -717,8 +740,15 @@ func (l *lander) gateOn(ctx context.Context, host, dir string, runs [][]string, 
 	}
 	if fault := benchFault(code, out); fault != "" {
 		// the bench could not run the gate (no go on its PATH, its disk full): the tree is
-		// not red, and no head is blamed; the ring's next slot runs it (ringGate)
-		return "", false, &bench.StageError{Host: host, Step: "the gate's toolchain", Code: code, Tail: fault}
+		// not red, and no head is blamed; the ring's next slot runs it (ringGate). It is
+		// said, with the line that says it, and a full disk is named so.
+		step := "the gate's toolchain"
+		if benchDiskFault(fault) {
+			step = "the bench's disk"
+		}
+		refused := &bench.StageError{Host: host, Step: step, Code: code, Tail: fault}
+		l.copySaid(refused.Error())
+		return "", false, refused
 	}
 	return gateWhy(gateRedRun(runs, out), fmt.Errorf("exit status %d on the bench %s", code, host), out), true, nil
 }
@@ -824,6 +854,8 @@ var benchFaults = []string{"disk quota exceeded", "no space left on device"}
 // test printed them is searched and blamed like any red tree.
 func benchFault(code int, out string) string {
 	var (
+		shell   []string            // the shell's own lines before the stage's first run's mark: kept for the stage
+		marked  bool                // the stage's first run's mark was seen
 		found   []string            // the bench's own lines, kept whatever follows
 		held    []string            // this segment's fault lines: the bench's own unless a test binary ran in it
 		pending map[string][]string // each build block's fault lines, by package, until its result
@@ -864,9 +896,24 @@ func benchFault(code int, out string) string {
 			continue
 		}
 		switch {
+		case code == benchFullExit && !marked && !indented && strings.HasPrefix(t, benchFullMark):
+			// the script's own preflight, before any run: the bench's disk cannot hold the gate
+			return t
+		case strings.HasPrefix(t, gateStageMark):
+			// a stage's start: what the shell printed before is an earlier, green stage's
+			shell, marked = nil, false
+			found, held, pending, order, later, block, inTest = nil, nil, nil, nil, nil, "", false
+			continue
 		case strings.HasPrefix(t, gateMark):
 			// a run's first line: the run before it ended green (set -e), so only the lines
-			// of the run the gate ended on can say the bench failed
+			// of the run the gate ended on can say the bench failed. The script prints its
+			// marks after a stage's jobs end, so a line the shell printed before the stage's
+			// first mark (a redirect that could not be written) is the stage's, not a
+			// green run's: it is kept (2026-10-15, a quota-full /tmp)
+			if !marked {
+				shell = append(append(shell, found...), held...)
+				marked = true
+			}
 			found, held, pending, order, later, block, inTest = nil, nil, nil, nil, nil, "", false
 			continue
 		case strings.HasPrefix(t, "--- FAIL") || strings.HasPrefix(t, "=== RUN") || strings.HasPrefix(t, "panic:"):
@@ -902,7 +949,25 @@ func benchFault(code int, out string) string {
 	if len(held) > 0 {
 		return held[0]
 	}
+	if len(shell) > 0 {
+		return shell[0]
+	}
 	return ""
+}
+
+// benchDiskFault says a fault benchFault found is the bench's disk: the script's own
+// preflight mark, or one of the words a full disk prints.
+func benchDiskFault(fault string) bool {
+	if strings.HasPrefix(fault, benchFullMark) {
+		return true
+	}
+	low := strings.ToLower(fault)
+	for _, f := range benchFaults {
+		if strings.Contains(low, f) {
+			return true
+		}
+	}
+	return false
 }
 
 // goBuildHeader says t is the header go prints above one package's build errors:
@@ -944,6 +1009,29 @@ func goPackageResult(t string) (pkg string, ran bool, ok bool) {
 
 // gateMark starts the line a bench gate prints before each of its runs.
 const gateMark = "GATE RUN: "
+
+// gateStageMark starts the line the script prints before it starts a stage's jobs: what the
+// shell itself prints between it and the stage's first gateMark (a redirect that could not
+// be written, a job that could not start) belongs to the stage's runs, whichever run the
+// gate ends on (benchFault).
+const gateStageMark = "GATE STAGE: "
+
+// benchFullMark starts the one line the script prints, before any run, when the bench's
+// disk cannot hold the gate (its per-run directory is short of free space, or a small write
+// there fails: a per-user quota df does not show), and benchFullExit is the status it then
+// exits with, one no gate run uses (gateOn, benchFault; tla/GateRing.tla AskRefused).
+const (
+	benchFullMark = "BENCH FULL: "
+	benchFullExit = 97
+)
+
+// benchMinFreeKB is the free space, in kilobytes (df -Pk), the per-run directory's
+// filesystem needs before the gate starts: 2 GiB, a go build's and test's work dirs and
+// binaries with room to spare.
+const benchMinFreeKB = 2 * 1024 * 1024
+
+// benchProbeKB is the size of the write probe in the per-run directory.
+const benchProbeKB = 1024
 
 // gateCommand is one gate run as a shell command: gofmt's rule (exit zero and a non-empty
 // list is red) is kept.
@@ -991,7 +1079,23 @@ func gateRunStage(run []string, i int) int {
 func gateScript(runs [][]string) string {
 	// a non-interactive ssh shell reads no profile: when go is not on its PATH, the Go a
 	// bench keeps under ~/sdk (the fleet's install) or /usr/local/go is put there
-	parts := []string{"set -e", `command -v go >/dev/null 2>&1 || for d in "$HOME"/sdk/go*/bin /usr/local/go/bin; do if [ -x "$d/go" ]; then PATH="$d:$PATH"; fi; done; export PATH`, `gate_dir=$(mktemp -d)`, `trap 'rm -rf "$gate_dir"' EXIT`}
+	parts := []string{"set -e", `command -v go >/dev/null 2>&1 || for d in "$HOME"/sdk/go*/bin /usr/local/go/bin; do if [ -x "$d/go" ]; then PATH="$d:$PATH"; fi; done; export PATH`}
+	// the run directory is one mktemp -d under the bench's home disk (never /tmp, whose
+	// per-user quota filled on 2026-10-15), with go's $WORK and every child's temp files
+	// inside it, and the EXIT trap removes all of it whatever the runs did
+	parts = append(parts,
+		`gate_root="$HOME"/.cache/nova-gate`,
+		`gate_dir=$({ mkdir -p "$gate_root" && mktemp -d "$gate_root"/run.XXXXXX; } 2>&1) || { printf '%s\n' `+bench.Quote(benchFullMark)+`"$gate_root: $gate_dir"; exit `+fmt.Sprint(benchFullExit)+`; }`,
+		`trap 'rm -rf "$gate_dir"' EXIT`,
+		// the bench's disk is checked before the first run: free kilobytes of the directory's
+		// filesystem against the minimum, and a small write, which a per-user quota refuses
+		// where df shows space
+		`gate_free=$(df -Pk "$gate_dir" 2>/dev/null | awk 'NR==2 {print $4}')`,
+		fmt.Sprintf(`case "$gate_free" in ''|*[!0-9]*) ;; *) if [ "$gate_free" -lt %d ]; then printf '%%s\n' %s"$gate_dir $gate_free"K' free, %dK needed'; exit %d; fi ;; esac`, benchMinFreeKB, bench.Quote(benchFullMark), benchMinFreeKB, benchFullExit),
+		fmt.Sprintf(`gate_probe=$({ mkdir -p "$gate_dir"/work && dd if=/dev/zero of="$gate_dir"/work/probe bs=1024 count=%d; } 2>&1) || { printf '%%s\n' %s"$gate_dir write probe failed: $(printf '%%s\n' "$gate_probe" | tail -n 1)"; exit %d; }`, benchProbeKB, bench.Quote(benchFullMark), benchFullExit),
+		`rm -f "$gate_dir"/work/probe`,
+		`export GOTMPDIR="$gate_dir"/work TMPDIR="$gate_dir"/work`,
+	)
 	var order []int
 	groups := map[int][][]string{}
 	for i, run := range runs {
@@ -1003,7 +1107,7 @@ func gateScript(runs [][]string) string {
 	}
 	for _, s := range order {
 		group := groups[s]
-		parts = append(parts, "gate_pids=''")
+		parts = append(parts, "echo "+bench.Quote(fmt.Sprintf("%s%d", gateStageMark, s)), "gate_pids=''")
 		for j, run := range group {
 			file := fmt.Sprintf(`"$gate_dir"/r_%d_%d`, s, j)
 			parts = append(parts, "("+gateCommand(run)+") > "+file+" 2>&1 &")

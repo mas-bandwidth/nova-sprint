@@ -127,6 +127,12 @@ const (
 	// it stands: rewritten in place only when its facts change, never raised
 	// anew (friend_read.go, read_cards.go).
 	NNoFrontierRoom = "no frontier reader has room"
+	// NFinishRefused is the judgment of a finish the lifecycle refused more than
+	// FinishRefusalBound times on one attempt: raised once for the card and
+	// attempt, naming the head offered and the refusal's words, so a finish sent
+	// again without end is seen (steps_work.go Finish; tla/SprintTables.tla
+	// FinishRefusalsBounded).
+	NFinishRefused = "a finish is refused again and again"
 )
 
 // Decisions open to each judgment type.
@@ -147,7 +153,7 @@ var Decisions = map[string][]string{
 	NBaseRed:           {"resume"},         // never wait: it holds the stream (wait_refused.go); the base-gate rule resumes it once the base is green
 	NMissingBase:       {"rebase", "drop"}, // never wait: it holds its cards (wait_refused.go)
 	NBlocked:           {"drop", "ack"},
-	NReadBranchMissing: {"ack", "rework with a fix", "drop"}, // read_missing.go: ack once the branch is on origin
+	NReadBranchMissing: {"ack", "rework with a fix", "drop"}, // read_missing.go: ack once the branch is on origin; ask also resolves it once a branch holds the head (tla/ReadBranchMissing.tla) but is not listed, the three are pinned by read_missing_test.go
 	NMissingNeed:       {"drop", "ack"},
 	NCIRed:             {"rework with a fix", "return", "drop", "look", "ack"},
 	NReadsExhausted:    {"ask another reader", "rework", "drop"},
@@ -163,6 +169,7 @@ var Decisions = map[string][]string{
 	NTimer:             {"ack"},                      // a timer the actor set woke it: nothing to decide
 	NStalled:           {"look at the card", "wait"}, // each stall names its own
 	NNoFrontierRoom:    {"reader add", "wait"},
+	NFinishRefused:     {"look at the card", "drop"}, // the refusal's words name the cause; the count resets with the attempt
 	// a STOP debt owner that has not beaten since the STOP: acknowledged by the
 	// coordinator, who stop-returns its leases by hand, or waited for its beat.
 	NStopDebtBeat: {"ack", "wait"},

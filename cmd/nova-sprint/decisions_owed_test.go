@@ -81,6 +81,66 @@ func TestDecisionsOwedDeadlineFoldOwnerRetryAndRestart(t *testing.T) {
 	require.Contains(t, strings.Split(view, "\n")[0], "delivery faults 0")
 }
 
+// A review or merge judgment is pushed on the existing durable coordinator
+// lane immediately and then once each minute until the judgment closes. The
+// bus receipt is delivery, not an answer; a process restart keeps the receipt.
+func TestReviewAndMergeJudgmentsRepeatUntilResolved(t *testing.T) {
+	t.Parallel()
+	for _, typ := range []string{sprint.NReadBroken, sprint.NMergeLate} {
+		t.Run(typ, func(t *testing.T) {
+			ta, _, _ := coordSprint(t, "repeat-seat")
+			ctx := context.Background()
+			st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: "repeat-seat"}
+			b := &tokenBus{}
+			ta.a.bus = b.send
+			add := func(head string) {
+				_, err := st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, Type: typ, Stream: "s1", Primaries: []string{"s1-1"}, Count: 1, At: ta.a.now(), What: "head=" + head + " needs a decision"}))
+				require.NoError(t, err)
+			}
+			count := func() int {
+				n := 0
+				for _, m := range b.delivered {
+					if m.Subject == "nova-sprint: decisions owed" && len(m.To) == 1 && m.To[0] == "repeat-seat" {
+						n++
+					}
+				}
+				return n
+			}
+			add("head-1")
+			ta.a.coordinatorPass(ctx)
+			require.Equal(t, 1, count(), "first raise is immediate")
+			ta.step(sprint.RepeatedDecisionEvery - time.Second)
+			ta.a.coordinatorPass(ctx)
+			require.Equal(t, 1, count(), "the accepted bus receipt is not a resolution or an early repeat")
+			ta.a.coord = coordPush{} // restart loses process memory, not the persisted receipt
+			ta.a.coordinatorPass(ctx)
+			require.Equal(t, 1, count(), "restart does not duplicate the delivered judgment")
+			ta.step(time.Second)
+			ta.a.coordinatorPass(ctx)
+			require.Equal(t, 2, count(), "same unresolved judgment repeats at exactly 60 seconds")
+			require.Contains(t, b.delivered[len(b.delivered)-1].Body, "head=head-1")
+			_, err := st.Run(ctx, store.Step{Verb: "fixture resolve", Plan: func(s *sprint.Snapshot) sprint.Plan {
+				var p sprint.Plan
+				for _, o := range s.Open {
+					if o.Note.Type == typ && strings.Contains(o.Note.What, "head=head-1") {
+						p.Closes = append(p.Closes, o)
+					}
+				}
+				return p
+			}})
+			require.NoError(t, err)
+			ta.step(2 * sprint.RepeatedDecisionEvery)
+			ta.a.coordinatorPass(ctx)
+			require.Equal(t, 2, count(), "resolved judgment stops repeating")
+			add("head-2")
+			ta.a.coordinatorPass(ctx)
+			require.Equal(t, 3, count(), "a new head is a new judgment episode")
+			require.Contains(t, b.delivered[len(b.delivered)-1].Body, "head-2")
+			require.NotContains(t, b.delivered[len(b.delivered)-1].Body, "head-1")
+		})
+	}
+}
+
 func TestWhereDecisionsOwedIsFirstEvenWhenEmpty(t *testing.T) {
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")

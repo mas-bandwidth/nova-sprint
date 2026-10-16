@@ -3,6 +3,12 @@
 Start with one AI friend and one small task. You can add more friends,
 different models and harnesses, or a fleet of swarm workers as your team grows.
 
+## Have a look
+
+[Open the live dashboard](http://37.27.135.206/) to see a real sprint.
+Follow the streams, friends, fleet, costs, and estimated finish time. That is
+the view you will have of your own team.
+
 ## Install the commands
 
 nova-sprint runs alongside [Nova Tools](https://github.com/mas-bandwidth/nova-tools).

@@ -25,6 +25,7 @@ func TestFriendRowsReturnsNameWidthStatusOnly(t *testing.T) {
 	h.up("amy")
 	require.NoError(t, err)
 	require.NoError(t, h.st.SetFriendHeld(h.ctx, "bob", true, "c", "", time.Time{}, 0))
+	require.NoError(t, h.st.PublishFriendStatus(h.ctx, h.now)) // the server's pass
 	rows, err := h.st.FriendRows(h.ctx, h.now)
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
@@ -183,8 +184,9 @@ func TestTwinStoreConfigSyncToOneShotKeepsEachLaneRefreshing(t *testing.T) {
 	assert.Equal(t, sprint.Working, snap.Fleet.Card("s1-4.w1").Col)
 }
 
-// Status Up is a presence fact shared by friend, coordinator and comms hooks.
-// Only a healthy proven worker-role record makes the seat eligible for work.
+// Status Up is a presence fact shared by friend, coordinator and comms hooks. A name has one
+// hook record, so a healthy proven friend, coordinator or comms record is the worker proof of
+// its friend row (v1.3.19); an unproven, unhealthy, unhooked or role-less record is not.
 func TestFriendSeatsCarryProvenWorkerEvidence(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -193,8 +195,11 @@ func TestFriendSeatsCarryProvenWorkerEvidence(t *testing.T) {
 		live bool
 	}{
 		{"worker", hook.Status{Name: "amy", Role: hook.Friend, State: hook.StateProven}, true},
-		{"coordinator", hook.Status{Name: "amy", Role: hook.Coordinator, State: hook.StateProven}, false},
-		{"comms", hook.Status{Name: "amy", Role: hook.Comms, State: hook.StateProven}, false},
+		{"coordinator", hook.Status{Name: "amy", Role: hook.Coordinator, State: hook.StateProven}, true},
+		{"unproven coordinator", hook.Status{Name: "amy", Role: hook.Coordinator, State: hook.StateLive}, false},
+		{"unhooked coordinator", hook.Status{Name: "amy", Role: hook.Coordinator, State: hook.StateUnhooked}, false},
+		{"unhealthy coordinator", hook.Status{Name: "amy", Role: hook.Coordinator, State: hook.StateProven, Down: hook.NoAnswerReason}, false},
+		{"comms", hook.Status{Name: "amy", Role: hook.Comms, State: hook.StateProven}, true},
 		{"unknown role", hook.Status{Name: "amy", State: hook.StateProven}, false},
 		{"unproven worker", hook.Status{Name: "amy", Role: hook.Friend, State: hook.StateLive}, false},
 		{"unhealthy worker", hook.Status{Name: "amy", Role: hook.Friend, State: hook.StateProven, Down: hook.NoAnswerReason}, false},
@@ -233,7 +238,7 @@ func TestCheckLoadsWorkerEvidenceForDealtFriendCards(t *testing.T) {
 		require.NotContains(t, v.Detail, "no live worker")
 	}
 	h.st.ReadFriendHooks = func(context.Context, ...string) ([]hook.Status, time.Time, error) {
-		return []hook.Status{{Name: "amy", Role: hook.Comms, State: hook.StateProven}}, h.now, nil
+		return []hook.Status{{Name: "amy", Role: hook.Comms, State: hook.StateLive}}, h.now, nil
 	}
 	rep, _, err = h.st.Check(h.ctx, 1)
 	require.NoError(t, err)
@@ -273,4 +278,52 @@ func (h *harness) workerSeats(seats []sprint.FriendSeat) []sprint.FriendSeat {
 		}
 	}
 	return seats
+}
+
+// The coordinator's friend row is dealt work on the strength of the coordinator's own proven hook
+// record (v1.3.19), on the in-memory twin with the clock an argument: the friend row is named
+// for the sprint's coordinator, its one hook record is hooked as coordinator, and an unhooked
+// record is dealt nothing.
+func TestAFriendRowHookedAsCoordinatorIsDealtAWorkCardAndAnUnhookedOneIsNot(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name  string
+		rec   hook.Status
+		dealt bool
+	}{
+		{"coordinator record proven", hook.Status{Role: hook.Coordinator, State: hook.StateProven}, true},
+		{"comms record proven", hook.Status{Role: hook.Comms, State: hook.StateProven}, true},
+		{"unhooked", hook.Status{Role: hook.Coordinator, State: hook.StateUnhooked}, false},
+		{"no record", hook.Status{}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			coord := h.st.Actor // the harness acts as the sprint's coordinator
+			_, _, _, err := h.st.SyncFriends(h.ctx, []FriendSpec{{Name: coord, Width: 32, Class: "flash"}})
+			require.NoError(t, err)
+			h.st.ReadFriendHooks = func(context.Context, ...string) ([]hook.Status, time.Time, error) {
+				if tc.rec.State == "" {
+					return nil, h.now, nil
+				}
+				r := tc.rec
+				r.Name = coord
+				return []hook.Status{r}, h.now, nil
+			}
+			h.must(AddStep(sprint.AddReq{Stream: "s1", Cards: []sprint.CardAdd{{ID: "s1-1", Brief: "c: coordinator row\nREPO: mas-bandwidth/nova-tools\nWHO: only friend " + coord + "\n\nThe task."}}}))
+			h.startMachine()
+			h.machine()
+			wc := h.snap().Fleet.Placed("s1-1.w1")
+			if !tc.dealt {
+				assert.Nil(t, wc)
+				return
+			}
+			require.NotNil(t, wc, "the coordinator's own proven row is dealt")
+			assert.Equal(t, sprint.FriendRow(coord), wc.Row)
+			rep, _, err := h.st.Check(h.ctx, 1)
+			require.NoError(t, err)
+			for _, v := range rep.Violations {
+				require.NotContains(t, v.Detail, "no live worker")
+			}
+		})
+	}
 }

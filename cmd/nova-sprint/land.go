@@ -1152,15 +1152,20 @@ func againRemedy(stream string) string {
 	return "run land again, which rereads the queue and lets its checks decide (where the cards are as they were, their merges and push are no-ops and the report records them; a card reworked since is merged at its new head, or meets a real conflict): nova-sprint land --stream " + stream
 }
 
-// landingLedgerEntry reads the card's own fixes ledger record at its pushed head,
-// where the lander has already verified and fetched the commit.
-func (l *lander) landingLedgerEntry(ctx context.Context, head, id string) (sprint.LandingLedgerEntry, error) {
-	if _, err := l.git(ctx, l.repoDir, "cat-file", "-e", head+"^{commit}"); err != nil {
-		if _, fetchErr := l.git(ctx, l.repoDir, "fetch", "--no-tags", "origin", head); fetchErr != nil {
+// landingLedgerEntry reads the card's own fixes ledger record at its pushed head in
+// dir, the clone the batch was built in, where the lander has already verified and
+// fetched the commit. dir is never empty: a git in no directory runs in the process's
+// working directory, which for the server's land loop (no --repo-dir) is no clone.
+func (l *lander) landingLedgerEntry(ctx context.Context, dir, head, id string) (sprint.LandingLedgerEntry, error) {
+	if dir == "" {
+		return sprint.LandingLedgerEntry{}, fmt.Errorf("read landed head %s: no clone to read it in", head)
+	}
+	if _, err := l.git(ctx, dir, "cat-file", "-e", head+"^{commit}"); err != nil {
+		if _, fetchErr := l.git(ctx, dir, "fetch", "--no-tags", "origin", head); fetchErr != nil {
 			return sprint.LandingLedgerEntry{}, fmt.Errorf("fetch landed head %s: %w", head, fetchErr)
 		}
 	}
-	data, err := l.git(ctx, l.repoDir, "show", head+":docs/fixes.sexp")
+	data, err := l.git(ctx, dir, "show", head+":docs/fixes.sexp")
 	if err != nil {
 		return sprint.LandingLedgerEntry{}, err
 	}
@@ -1187,8 +1192,14 @@ func (l *lander) landed(b landBatch, stream string, pins []landCard) bool {
 	l.stage("report", "merge report")
 	start := time.Now()
 	ledgerEntries := make(map[string]sprint.LandingLedgerEntry, len(pins))
+	// the batch's own clone (prepare sets b.Dir from clone: --repo-dir, else the one kept
+	// under the land root), never l.repoDir alone, which is empty without --repo-dir
+	dir := b.Dir
+	if dir == "" {
+		dir = l.repoDir
+	}
 	for _, c := range pins {
-		entry, readErr := l.landingLedgerEntry(context.Background(), c.head, c.id)
+		entry, readErr := l.landingLedgerEntry(context.Background(), dir, c.head, c.id)
 		if readErr != nil {
 			entry.Error = oneline.Cap(readErr.Error(), 300)
 		}

@@ -41,7 +41,7 @@ var verbExit = map[string]string{
 	"demo load":     "exit codes: 0 the demo is up and where read it, 1 failed (a damaged backup, a demo already up, a Redis that did not start or a line not replayed: what this load started is stopped and removed), 2 usage",
 	"demo stop":     "exit codes: 0 stopped and removed, 1 failed (no demo up, or a recorded pid or directory that is not the demo's: nothing stopped or removed), 2 usage",
 	"server switch": "exit codes: 0 done, 1 failed or refused (the candidate's shadow tick failed: nothing changed), 2 usage",
-	"friend stage":  "exit codes: 0 staged (or already staged as the same card, branch and head: the JOB.md path), 1 refused (the card is not on her row at that generation, her nova-config row has no git_identity, or the directory is staged as another card), nothing written, 2 usage or a store that did not answer",
+	"friend stage":  "exit codes: 0 staged (or already staged as the same card, branch and head: the JOB.md path), 1 refused (the card is not on the friend's row at that generation, neither the friend's nova-config row nor the sprint row names a git_identity that parses, or the directory is staged as another card), nothing written, 2 usage or a store that did not answer",
 	"brief check":   "exit codes: 0 no finding, 1 one or more findings, 2 usage or an unreadable file, 3 the store did not answer and the store-free checks found nothing",
 }
 
@@ -77,7 +77,7 @@ var verbEffect = map[string]string{
 	"seat install":      "local write: records the seat on this machine (the sprint's server it uses, and the nova-config seat profile) beside the store login; --dry-run prints what it would write and writes nothing",
 	"seat uninstall":    "local write: unloads the retired push loop's unit, where an older build installed it, and removes its file from --dir; --dry-run names the unit and unloads and removes nothing",
 	"machinery":         "inspection: checks server, store, loop, beats, readers, dashboard, installed versions, merge queue, writes nothing",
-	"needs":             "inspection: reads the waiting cards, writes nothing",
+	"needs":             "inspection: reads the waiting cards, writes nothing (needs set replaces a primary's needs or --land-after soft dependencies, where work runs in parallel and the lander lands the two in order; a held card keeps its column and its hold through a needs change, and only release moves it)",
 	"streams":           "inspection: reads the work and merge tables once and prints each stream with the repositories and bases its cards record, its release, its open and landed counts, and with --cards every card's id, state, tier, title and needs; writes nothing",
 	"held":              "inspection: reads the held cards of the table, writes nothing",
 	"sentinels":         "inspection: reads the sentinels and what each waits on, writes nothing",

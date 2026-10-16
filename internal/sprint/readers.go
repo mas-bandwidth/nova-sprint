@@ -631,7 +631,7 @@ func ReadCardForAsk(s *Snapshot, primary string, attempt int, reader string) (id
 //
 // tla/ReaderTiers.tla Eligible
 func (s *Snapshot) freeReaders(pr *Card, attempt int) []string {
-	tier := s.readTierDrawn(pr)
+	tier := s.readTierOf(pr)
 	var out []string
 	for _, rd := range s.Readers.Rows() {
 		if s.ReaderIsUp(rd) && s.readerServesTier(rd, tier) {

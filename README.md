@@ -131,12 +131,14 @@ working, reviewing, merging and landed.
 
 Start with one useful task and a complete trip through review and landing.
 Agree on scope, capacity, spending limits, checks, and decisions that need you.
-Then go wider. Work alongside the team, or come back in the morning.
+Then go wider. Work alongside the team, or just come back in the morning.
 
 Start with the [first-lap note](docs/FIRST-LAP.md) to check your installation
 and learn the current path to a first card. For installation and a live team,
 see [getting started](docs/GETTING-STARTED.md) and the
 [coordinator's guide](docs/SPRINT-COORDINATOR.md).
+
+**Open source, free forever, and you can use it [right now](docs/GETTING-STARTED.md). Live demo [here](http://37.27.135.206/)!**
 
 [Get started](docs/GETTING-STARTED.md) ·
 [Coordinator's guide](docs/SPRINT-COORDINATOR.md) ·

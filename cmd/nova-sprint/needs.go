@@ -88,6 +88,7 @@ func (a *app) cmdNeeds(args []string, stdout, stderr io.Writer) int {
 	stream := fs.String("stream", "", "the waiting cards of one stream (default: every stream)")
 	roots := fs.Bool("roots", false, "print only the roots and the width lines")
 	needs := fs.String("needs", "", "with set: the card's needs, comma separated, in place of the ones it has; each a primary on the table")
+	landAfter := fs.String("land-after", "", "with set: the card's soft dependencies (LAND-AFTER), comma separated, in place of the ones it has; '-' or '' clears them")
 	clear := fs.Bool("clear", false, "with set: empty the card's needs")
 	answers := fs.String("answers", "", "with set: the judgments it answers, comma separated")
 	pos, err := parse(fs, args)
@@ -95,7 +96,7 @@ func (a *app) cmdNeeds(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "needs", err.Error())
 	}
 	if len(pos) > 0 && pos[0] == "set" {
-		return a.cmdNeedsSet(fs, c, pos[1:], *needs, *clear, *answers, stdout, stderr)
+		return a.cmdNeedsSet(fs, c, pos[1:], *needs, *landAfter, *clear, *answers, stdout, stderr)
 	}
 	if len(pos) > 0 {
 		return refuse(stderr, "needs", argErr("takes no words ", err, pos...))
@@ -397,35 +398,54 @@ func needsMoreText(b *strings.Builder, kind, scope string, more *needsMore) {
 	}
 }
 
-// cmdNeedsSet is needs set <id> (--needs <a,b> | --clear) [--answers <note>]:
-// the direct verb that re-points a primary's needs, in place of dropping the
+// cmdNeedsSet is needs set <id> (--needs <a,b> | --land-after <a,b> | --clear) [--answers <note>]:
+// the direct verb that re-points a primary's needs or soft dependencies, in place of dropping the
 // card and adding it again (the owner, 2026-10-11: "I hate twins."). It is the
-// coordinator's alone; each need is a primary on the table, and a landed or
+// coordinator's alone; each need or soft dependency is a primary on the table, and a landed or
 // off-table card is refused (docs/SPEC-SPRINT.md, needs).
-func (a *app) cmdNeedsSet(fs flagSet, c *common, rest []string, needs string, clear bool, answersNote string, stdout, stderr io.Writer) int {
-	given, cleared := false, false
+func (a *app) cmdNeedsSet(fs flagSet, c *common, rest []string, needs, landAfter string, clear bool, answersNote string, stdout, stderr io.Writer) int {
+	given, landAfterGiven, cleared := false, false, false
 	fs.Visit(func(f *flag.Flag) {
 		switch f.Name {
 		case "needs":
 			given = true
+		case "land-after":
+			landAfterGiven = true
 		case "clear":
 			cleared = true
 		}
 	})
 	switch {
 	case len(rest) != 1:
-		return refuse(stderr, "needs set", "wants <id> (--needs <a,b> | --clear) [--answers <note>]")
+		return refuse(stderr, "needs set", "wants <id> (--needs <a,b> | --land-after <a,b> | --clear) [--answers <note>]")
+	case landAfterGiven && (given || cleared):
+		return refuse(stderr, "needs set", "wants one of --needs <a,b>, --land-after <a,b> or --clear, not both")
 	case given && cleared:
 		return refuse(stderr, "needs set", "wants one of --needs <a,b> or --clear, not both")
-	case !given && !cleared:
-		return refuse(stderr, "needs set", "wants one of --needs <a,b> or --clear")
+	case !given && !landAfterGiven && !cleared:
+		return refuse(stderr, "needs set", "wants one of --needs <a,b>, --land-after <a,b> or --clear")
 	}
 	st, err := a.store(*c)
 	if err != nil {
 		return refuse(stderr, "needs set", err.Error())
 	}
+	if landAfterGiven {
+		r := sprint.SoftDepsSetReq{ID: rest[0], Raw: landAfter, Answers: answers(answersNote), Who: c.actor}
+		if code := a.runStep("needs set", *c, st, needsSetLandAfterStep(r), stdout, stderr); code != 0 {
+			return 2
+		}
+		return 0
+	}
 	r := sprint.NeedsSetReq{ID: rest[0], Needs: sprint.Split(needs), Clear: clear, Answers: answers(answersNote), Who: c.actor}
 	return a.runStep("needs set", *c, st, needsSetStep(r), stdout, stderr)
+}
+
+func needsSetLandAfterStep(r sprint.SoftDepsSetReq) store.Step {
+	return store.Step{Answers: r.Answers, Named: true, Args: store.ArgsOf(r), Verb: "needs set", Load: []string{sprint.Work},
+		Extras: func(*sprint.Snapshot) map[string][]string {
+			return map[string][]string{sprint.Work: append([]string{r.ID}, sprint.Split(r.Raw)...)}
+		},
+		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.SetSoftDeps(s, r) }}
 }
 
 // needsSetStep reads the work table and the records of the needs named, placed

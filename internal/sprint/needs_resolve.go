@@ -95,7 +95,8 @@ func noteName(n *Note) string {
 // waived need is no need. The cycle reason is the stored table's: a card not yet on the table
 // (an add) is checked for cycles by the add's own graph (Add, newNeedGraph).
 //
-// tla/NeedsBlocked.tla AdmittedNeedsResolved (Admit's guard, Resolved)
+// tla/NeedsBlocked.tla AdmittedNeedsResolved (Admit's guard, Resolved);
+// tla/SoftDependency.tla SoftNeverBlocksDeal (DealEligible: only hard needs gate ready and the deal; soft dependencies never do).
 func UnresolvedNeeds(s *Snapshot, id string, needs []string, adding map[string]bool) []UnresolvedNeed {
 	self := s.Work.Card(id)
 	waived := Split(self.F("waived"))

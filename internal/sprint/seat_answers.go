@@ -549,7 +549,7 @@ func DecisionBatch(now time.Time, all []Open, held []Note, lane string, stopped 
 		}
 		if n.Kind == Judgment {
 			age, limit := DecisionAge(now, n, stopped)
-			if limit > 0 && age >= limit {
+			if lane == "coordinator" && RepeatedDecisionType(n.Type) || limit > 0 && age >= limit {
 				notes[n.ID] = n
 			}
 		} else if n.Type == NServerDefault {
@@ -573,7 +573,7 @@ func DecisionBatch(now time.Time, all []Open, held []Note, lane string, stopped 
 	// even its ID list needs an inbox pointer rather than transport-sized text.
 	const bodyLimit = 900 * 1024
 	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(ids, "\x00"))))
-	fmt.Fprintf(&b, "DECISIONS OWED: %d overdue judgments/default reports; set=%s; full details: nova-sprint inbox\n", len(ids), digest)
+	fmt.Fprintf(&b, "DECISIONS OWED: %d unresolved judgments/default reports; set=%s; full details: nova-sprint inbox\n", len(ids), digest)
 	omitted := 0
 	for _, id := range ids {
 		n := notes[id]
@@ -636,6 +636,44 @@ func DecisionBatch(now time.Time, all []Open, held []Note, lane string, stopped 
 		fmt.Fprintf(&b, "%d further IDs in nova-sprint inbox; complete durable delivery set=%s\n", omitted, digest)
 	}
 	return strings.Join(ids, "\x00"), b.String(), reports
+}
+
+// RepeatedDecisionEvery is the durable coordinator escalation interval for a
+// review or merge judgment. A successful bus receipt starts the next interval;
+// reading or acknowledging the push never closes the underlying judgment.
+const RepeatedDecisionEvery = time.Minute
+
+// RepeatedDecisionType names decisions that block a review or merge from
+// progressing. The coordinator delivery lane persists its receipt for these
+// types, so a server restart does not start a fresh reminder interval.
+func RepeatedDecisionType(typ string) bool {
+	switch typ {
+	case NReadBroken, NReadReturned, NReadBranchMissing, NReadsExhausted,
+		NReadyToAccept, NReportJudgment, NStranded, NReviewNoReader, NCannotAsk,
+		NFewReaders, NReadLate, NReturned, NMergeLate, NConflict, NRed,
+		NCross, NRejected, NBaseRed, NMissingBase, NCIRed:
+		return true
+	}
+	return false
+}
+
+// RepeatedDecisionSet reports whether the durable coordinator batch still
+// contains a live review or merge judgment. Set members are note IDs, never
+// elapsed text or a delivery acknowledgment.
+func RepeatedDecisionSet(s *Snapshot, set string) bool {
+	if s == nil || set == "" {
+		return false
+	}
+	ids := map[string]bool{}
+	for _, id := range strings.Split(set, "\x00") {
+		ids[id] = true
+	}
+	for _, o := range s.Open {
+		if ids[o.Note.ID] && o.Note.Kind == Judgment && RepeatedDecisionType(o.Note.Type) {
+			return true
+		}
+	}
+	return false
 }
 
 // DecisionParkedReview distinguishes a reversible review hold from a primary

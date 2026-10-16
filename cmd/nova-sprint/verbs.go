@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 
+	"github.com/mas-bandwidth/nova-sprint/docs"
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
@@ -40,6 +42,7 @@ import (
 	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 	"github.com/mas-bandwidth/nova-tools/pkg/subproc"
+	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
 
 type flagSet = *flag.FlagSet
@@ -162,8 +165,8 @@ func init() {
 		{"answer", "[--dry-run] [--bar <p>] [--every <duration>] [--timeout <duration>] [--backend jev|fixed] [--answers <file>] [--record <file>]", "answer --dry-run", (*app).cmdAnswer},
 		{"inbox", "[--open <group>] [--read] [--wait [--timeout <duration>] [--push <dir>]] [--deadline <duration>] [--stale <duration>]", "inbox --wait", (*app).cmdInbox},
 		{"card base", "<id> <branch> [--repo-dir <clone>]", "card base s1-4 main", (*app).cmdCardBase},
-		{"card", "<id> [--brief | --fields] [--at-epoch <n>] | (--all | --stream <s>) --json: every card, one JSON object a line", "card s1-4", (*app).cmdCard},
-		{"needs", "[--stream <s>] [--roots] | set <id> (--needs <a,b> | --clear) [--answers <note>]", "needs set s1-4 --needs s1-1", (*app).cmdNeeds},
+		{"card", "<id> [--brief | --fields] [--at-epoch <n>] | (--all | --stream <s>) --json: every card, one JSON object a line", "card s1-4", (*app).cmdCardWithSoftDeps},
+		{"needs", "[--stream <s>] [--roots] | set <id> (--needs <a,b> | --land-after <a,b> | --clear) [--answers <note>]", "needs set s1-4 --needs s1-1", (*app).cmdNeeds},
 		{"streams", "[--repo <owner/name>] [--release <name>] [--cards]", "streams --cards", (*app).cmdStreams},
 		{"held", "[--stream <s>]", "held", (*app).cmdHeld},
 		{"sentinels", "[--stream <s>]", "sentinels", (*app).cmdSentinels},
@@ -259,7 +262,9 @@ block shows the coordinator's day on that store.
 For one verb's usage, examples, flags and exit codes:
   nova-sprint help <verb> (or <verb> -h)
 For one group's help: nova-sprint help <group> (fleet, friend, reader, goal,
-stream, lane, merge-window).`
+stream, lane, merge-window).
+For the coordinator's workflows, the verbs for each situation in order (find
+the verb before doing anything by hand): nova-sprint help playbook`
 
 func banner() string {
 	var b strings.Builder
@@ -390,11 +395,12 @@ one answer to each judgment (every one prints its own, filled in):
   ready to accept             accept --group <id> --expect <n> --answers <notes>
   work came back failed       rework --group <id> --expect <n> --answers <notes>  (each fix is the work's report; --fix for all; a harness fault or a HOLD with findings is reworked by rule failed, a friend's card too, so only failed work past its bound or with no report comes here; no wait parks it)
   the same harness fault      brief <id> --brief-file '<the re-cut brief>' (its next attempt, from its last pushed head), or drop <id> --reason '<why>'  (the second identical harness fault on one card, or the fleet's on many: one grouped judgment; the card waits and is never redealt)
+  a finish is refused again and again   card <primary> (the judgment names the refusal), mend what it names so the worker's next finish is accepted, or drop <id> --reason '<why>'  (a finish the lifecycle refused more than 5 times on one attempt: one judgment for the card and attempt)
   a friend's report needs a read  card <primary>, then ack <note> --reason '<what the report says>'
   the fleet's failure           mend its cause (the toolchain, a member, a route, a provider), then ack <note> --reason '<what was mended>'  (one judgment for a failure many cards share; the cards rework themselves meanwhile)
   a brief defect              drop <primary> --reason 'a brief defect: re-cut', then add --stream <s> '<new id>' --brief-file '<the re-cut brief>'  (never a redeal)
   a reader found it broken    rework --group <id> --expect <n> --answers <notes>  (each fix is the reader's finding; a read with a finding is reworked by rule read-broken, a friend's card too, so only one with no finding or at its brief's bound comes here; no wait parks it)
-  read's branch not on origin push the branch, then ack <note> --reason '<pushed>' (the tick asks the read again), or rework --fix '<fix>' or drop <id> --answers <note>
+  read's branch not on origin push the branch, then ask --group <id> --expect <n> --answers <notes> (the read is asked again and the judgment closes; refused naming the judgment while no branch on origin holds the head), or ack <note> --reason '<pushed>' (the tick asks the read again), or rework --fix '<fix>' or drop <id> --answers <note>
   the brief is wrong          brief <id> --brief-file <path> (in place: its next attempt, from its last pushed head), or brief --group <id> --expect <n> --dir <dir> --answers <notes>, rework <id> --fix <text> --tier <t> (re-tier), rework <id> --carry --fix <text>, or drop <id>; the same finding twice, or max_attempts attempts (nova-config's sprint row, default 4) since your last decision on the card
   conflict on a card          resume --stream <s> --did '<what you did>' --answers <note>  (land merges again, regenerating the ledgers; a conflict outside them: rework or drop)
   stream branch red           return <suspect> --answers <note>, then resume --stream <s> --did 'returned <suspect>' --answers <note>
@@ -516,6 +522,12 @@ func helpCommand(path []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	name := strings.Join(path, " ")
+	// playbook is a topic, not a verb: the coordinator's workflows,
+	// docs/COORDINATOR-PLAYBOOK.md compiled in (docs/embed.go)
+	if name == "playbook" {
+		fmt.Fprint(stdout, docs.CoordinatorPlaybook)
+		return 0
+	}
 	// a verb named whole is the exact one even when the word also opens a group
 	// (seat is the seat's read, seat install and seat uninstall are its verbs)
 	for _, v := range verbs {
@@ -877,7 +889,24 @@ func (a *app) runStep(verbName string, c common, st *store.Store, step store.Ste
 			c.says = res.Said
 		} // the planner's per-card no-op answers still hold
 	}
+	// a judgment the step raised is named by its id, even when the step refused its
+	// card (a finish refused past its bound raises one)
+	for _, j := range finishRefusedRaised(res.Raised) {
+		c.says = append(c.says, "JUDGMENT raised "+j)
+	}
 	return a.report(ctx, verbName, c, st, res, err, stdout, stderr)
+}
+
+// finishRefusedRaised is the judgments a step raised for a finish refused past its
+// bound ("<id> <type>"): the ones a finish names by id (sprint.NFinishRefused).
+func finishRefusedRaised(raised []string) []string {
+	var out []string
+	for _, j := range raised {
+		if strings.HasSuffix(j, " "+sprint.NFinishRefused) {
+			out = append(out, j)
+		}
+	}
+	return out
 }
 
 func token(verbName string) string {
@@ -1577,7 +1606,11 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	}
 	step = promotionGuard(step, rs, *landProtected)
 	step = mirrorNotice(step, rs)
-	return a.runStep("add", *c, st, step, stdout, stderr)
+	code := a.runStep("add", *c, st, step, stdout, stderr)
+	if code != 0 && sprint.HasBriefLandAfter(rs) {
+		return 2
+	}
+	return code
 }
 
 // promotionGuard is the add step refused whole, nothing written, when any card it admits
@@ -1585,6 +1618,20 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 // (sprint.PromotionRefusals; docs/SPEC-SPRINT.md section 7, protected-bases-pb-b.w2). A
 // first-add mark is written onto the new control card in the same step as its first card.
 func promotionGuard(step store.Step, rs []sprint.AddReq, landProtected string) store.Step {
+	extras := step.Extras
+	if extraIDs := sprint.AddSoftDepsExtras(rs); len(extraIDs) > 0 {
+		step.Extras = func(s *sprint.Snapshot) map[string][]string {
+			var m map[string][]string
+			if extras != nil {
+				m = extras(s)
+			}
+			if m == nil {
+				m = map[string][]string{}
+			}
+			m[sprint.Work] = append(m[sprint.Work], extraIDs...)
+			return m
+		}
+	}
 	plan := step.Plan
 	step.Plan = func(s *sprint.Snapshot) sprint.Plan {
 		if landProtected != "" {
@@ -1595,12 +1642,12 @@ func promotionGuard(step store.Step, rs []sprint.AddReq, landProtected string) s
 			if len(rs) != 1 || s.StreamCtl(stream) != nil {
 				return sprint.Plan{Refused: []sprint.Refusal{{Key: stream, Why: "--land-protected marks a new stream only"}}}
 			}
-			return sprint.AddMarked(s, rs[0], landProtected)
+			return sprint.WithAddSoftDeps(s, sprint.AddMarked(s, rs[0], landProtected), rs)
 		}
 		if refused := sprint.PromotionRefusals(s, rs); len(refused) > 0 {
 			return sprint.Plan{Refused: refused}
 		}
-		return plan(s)
+		return sprint.WithAddSoftDeps(s, plan(s), rs)
 	}
 	return step
 }
@@ -1745,7 +1792,12 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 	}
 	c.addStream = stream
 	c.addBefore = before
-	return a.runStep("add", *c, st, promotionGuard(store.AddStep(r), []sprint.AddReq{r}, landProtected), stdout, stderr)
+	rsReq := []sprint.AddReq{r}
+	code = a.runStep("add", *c, st, promotionGuard(store.AddStep(r), rsReq, landProtected), stdout, stderr)
+	if code != 0 && sprint.HasBriefLandAfter(rsReq) {
+		return 2
+	}
+	return code
 }
 
 // briefFiles is the brief files of a many-brief add, in order: the *.md files
@@ -2798,7 +2850,7 @@ func (a *app) cmdAsk(args []string, stdout, stderr io.Writer) int {
 		}
 		return ""
 	}, func(ids []string, s *sel, c *common) store.Step {
-		return store.AskStep(sprint.AskReq{Sel: s.sel(ids), Another: *another, Answers: answers(*ans), Who: c.actor, Instead: *instead})
+		return a.askStep(sprint.AskReq{Sel: s.sel(ids), Another: *another, Answers: answers(*ans), Who: c.actor, Instead: *instead})
 	})
 }
 
@@ -3035,8 +3087,53 @@ func (a *app) cmdDrop(args []string, stdout, stderr io.Writer) int {
 		c.after = func(ctx context.Context, st *store.Store, res store.Result) []string {
 			return a.droppedBriefs(ctx, st, res, *reason)
 		}
-		return store.DropStep(sprint.DropReq{Sel: s.sel(ids), Reason: *reason, Answers: answers(*ans), Cascade: *cascade, Relink: *relink, Waive: *waive, Who: c.actor})
+		req := sprint.DropReq{Sel: s.sel(ids), Reason: *reason, Answers: answers(*ans), Cascade: *cascade, Relink: *relink, Waive: *waive, Who: c.actor}
+		step := store.DropStep(req)
+		plan := step.Plan
+		step.Plan = func(snap *sprint.Snapshot) sprint.Plan {
+			return sprint.WithDropSoftDeps(snap, plan(snap), req)
+		}
+		return step
 	})
+}
+
+func (a *app) cmdCardWithSoftDeps(args []string, stdout, stderr io.Writer) int {
+	var buf bytes.Buffer
+	code := a.cmdCard(args, &buf, stderr)
+	out := buf.String()
+	if code != 0 || len(args) == 0 {
+		fmt.Fprint(stdout, out)
+		return code
+	}
+	fs, c := a.verbSetup("card")
+	brief := fs.Bool("brief", false, "")
+	fields := fs.Bool("fields", false, "")
+	all := fs.Bool("all", false, "")
+	stream := fs.String("stream", "", "")
+	atEpoch := fs.Int("at-epoch", -1, "")
+	pos, err := parse(fs, args)
+	if err == nil && len(pos) == 1 && !*brief && !*fields && !*all && *stream == "" && *atEpoch < 0 && !c.json {
+		if st, err := a.store(*c); err == nil {
+			if s, err := st.Load(context.Background(), []string{sprint.Work}, nil); err == nil {
+				if pr := s.Work.Card(pos[0]); pr != nil {
+					if soft := sprint.SoftDepsOf(s, pr); len(soft) > 0 {
+						softLine := "soft: " + strings.Join(soft, ",") + "\n"
+						if idx := strings.Index(out, "\nneeds:"); idx >= 0 {
+							end := strings.IndexByte(out[idx+1:], '\n')
+							if end >= 0 {
+								cut := idx + 1 + end + 1
+								out = out[:cut] + softLine + out[cut:]
+							}
+						} else if nl := strings.IndexByte(out, '\n'); nl >= 0 {
+							out = out[:nl+1] + softLine + out[nl+1:]
+						}
+					}
+				}
+			}
+		}
+	}
+	fmt.Fprint(stdout, out)
+	return code
 }
 
 // cmdBrief replaces a primary's brief in place, on a running machine as on a stopped one
@@ -3050,12 +3147,12 @@ func (a *app) cmdDrop(args []string, stdout, stderr io.Writer) int {
 // owner, 2026-10-06: "We gotta stop doing this twin shit. it's waste.").
 func (a *app) cmdBrief(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("brief")
-	brief := fs.String("brief", "", fmt.Sprintf("the new brief: a child's whole brief, at most %d KiB, held to the card lint as add holds one (--rules, else the file init --rules recorded, else the built-in general rules) and to the same PATHS check at the BASE tip (a literal path must exist, a glob must match a file, and every func, type or verb STOP or START names with a file must be inside a PATHS file; a CARRY: head= brief, such as --widen writes, skips the existence check) and refused, exit 2, nothing written, when it fails; a primary waiting, ready or in review takes one in place, on a STOPPED machine or a RUNNING one (there applied at its next tick), keeping its id: one an attempt was dealt for opens its next attempt, staged from its last pushed head, its bound reset; a card merging or landed keeps its brief; a working card requires --replace-in-flight for semantic edits; one that differs in its DEPENDS-ON: line alone is taken in any state (working requires --replace-in-flight), the machine running or the card dealt; the edit records the needs its DEPENDS-ON: line names, and a ready card that gains a need not landed moves to waiting until it lands, so the deal never runs it before its need (a card dealt or working keeps its attempt, and the new needs apply from its next deal)", cardlimits.MaxBriefBytes>>10))
+	brief := fs.String("brief", "", fmt.Sprintf("the new brief: a child's whole brief, at most %d KiB, held to the card lint as add holds one (--rules, else the file init --rules recorded, else the built-in general rules) and to the same PATHS check at the BASE tip (a literal path must exist, a glob must match a file, and every func, type or verb STOP or START names with a file must be inside a PATHS file; a CARRY: head= brief, such as --widen writes, skips the existence check) and refused, exit 2, nothing written, when it fails; a primary waiting, ready or in review takes one in place, on a STOPPED machine or a RUNNING one (there applied at its next tick), keeping its id: one an attempt was dealt for opens its next attempt, staged from its last pushed head, its bound reset; a card merging or landed keeps its brief; a working card requires --replace-in-flight for semantic edits (not needed for operational notes or scope-widening edits); one that differs in its DEPENDS-ON: line alone is taken in any state (working requires --replace-in-flight), the machine running or the card dealt; the edit records the needs its DEPENDS-ON: line names, and a ready card that gains a need not landed moves to waiting until it lands, so the deal never runs it before its need (a card dealt or working keeps its attempt, and the new needs apply from its next deal)", cardlimits.MaxBriefBytes>>10))
 	briefFile := fs.String("brief-file", "", "the new brief, read from this file: its bytes as they are, its one trailing newline cut; not with --brief")
 	dir := fs.String("dir", "", "a directory of new briefs: one per *.md file, the card its base name without .md, each read and held as --brief-file's; one bad file refuses the whole call, nothing written; not with an id, --brief or --brief-file; with --group, one file for each member of the group and no other")
 	rules := fs.String("rules", "", "the child rules file the brief is held to (default: the file init --rules recorded, else the built-in general rules)")
 	tier := fs.String("tier", "", "re-tier the card instead of replacing its brief: the tier ("+cardhdr.RouteList+") every later deal and read of the card draws its route from, kept on the card as rework --tier keeps it (it pins the card, never escalated past it); taken on a RUNNING machine and for a card dealt, where it applies to the next attempt; with --brief or --brief-file, the tier the edit sets, over the card's recorded tier and the text's line 1")
-	replaceInFlight := fs.Bool("replace-in-flight", false, "replace a working attempt's semantic brief; its old head returns for a fresh attempt")
+	replaceInFlight := fs.Bool("replace-in-flight", false, "replace a working attempt's semantic brief (not needed for operational notes or scope-widening edits to PATHS, NEW, SHARED or START (read)); its old head returns for a fresh attempt")
 	keepHead := fs.Bool("keep-head", false, "keep the in-flight or held head eligible for review after replacing the brief; otherwise an old-brief finish returns for a fresh attempt")
 	needsFromBrief := fs.Bool("needs-from-brief", false, "the brief edit's needs are the text's DEPENDS-ON whole (its admission-time list), over the rule that the card's needs are the truth and a text only adds new ones: the escape hatch when the coordinator means to re-derive them")
 	reason := fs.String("reason", "", "when --tier is given: why the card is this tier, recorded with the pin")
@@ -4714,4 +4811,64 @@ func receiptContractCheck(version, usage string) error {
 		return fmt.Errorf("native receipt contract requires --receipt-contract 2 and receipt_version=2; adopt the paired tools/sprint builds before reporting")
 	}
 	return nil
+}
+
+// askStep is the ask, with origin asked for each primary it names whose read's branch is not
+// on origin (judgment NReadBranchMissing): the branch on origin that holds its head, so the
+// ask re-asks the read and closes the judgment, or is refused naming it
+// (tla/ReadBranchMissing.tla, Ask). Each snapshot retry asks origin again, as finishStep does;
+// a primary not named is never asked again by an ask of the rest.
+func (a *app) askStep(r sprint.AskReq) store.Step {
+	step := store.AskStep(r)
+	if a.readTip == nil || a.readHeads == nil || (len(r.IDs) == 0 && r.Only == nil) {
+		return step
+	}
+	step.Plan = func(s *sprint.Snapshot) sprint.Plan {
+		req := r
+		for _, ck := range sprint.ReadBranchChecks(s) {
+			if !slices.Contains(r.IDs, ck.Primary) && !slices.Contains(r.Only, ck.Primary) {
+				continue
+			}
+			if b := a.branchHolding(context.Background(), ck); b != "" {
+				if req.Holds == nil {
+					req.Holds = map[string]string{}
+				}
+				req.Holds[ck.Primary] = b
+			}
+		}
+		return sprint.Ask(s, req)
+	}
+	return step
+}
+
+// branchHolding is the branch on origin that holds the check's head: the branch the read was
+// handed when it is on origin now at the head, else a branch of the same work card
+// (sprint/<prefix><card>.g*) at the head; "" when none does, or origin cannot be read (the
+// judgment stays open: a listing that failed is no branch found).
+func (a *app) branchHolding(ctx context.Context, ck sprint.BranchCheck) string {
+	repo := swarm.ReadCardBase([]byte(ck.Brief)).Repo
+	if repo == "" || ck.Branch == "" || !typedrec.IsFullSha(ck.Head) {
+		return ""
+	}
+	tip, err := a.readTip(ctx, repo, ck.Branch)
+	if err != nil {
+		return ""
+	}
+	if strings.EqualFold(tip, ck.Head) {
+		return ck.Branch
+	}
+	i := strings.LastIndex(ck.Branch, ".g")
+	if i <= 0 {
+		return ""
+	}
+	heads, err := a.readHeads(ctx, repo, "refs/heads/"+ck.Branch[:i]+".g*")
+	if err != nil {
+		return ""
+	}
+	for _, b := range slices.Sorted(maps.Keys(heads)) {
+		if b != ck.Branch && strings.EqualFold(heads[b], ck.Head) {
+			return b
+		}
+	}
+	return ""
 }

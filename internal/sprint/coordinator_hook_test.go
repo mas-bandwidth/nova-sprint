@@ -106,3 +106,35 @@ func TestTheSeatCheckSaysTheHook(t *testing.T) {
 	assert.True(t, l.Up, "%v", l.Facts)
 	assert.Equal(t, "holder=rowan state=proven role=coordinator answered=2m0s ago", strings.Join(l.Facts, " "))
 }
+
+// The gate accepts a quiet, live coordinator (v1.3.17): nova-hook serve challenges a name only
+// after its silence, so a coordinator proven at t and silent since has no recent challenge to
+// answer, and the sprint, which reads the record through the pinned hook package's liveness rule
+// (Served.Down), must run it at t+4m as nova-hook status says proven. A record the hook says
+// expired (silent past the rule's bound) or unhooked still refuses. Time is an argument; no
+// store, no clock, no socket.
+func TestTheGateAcceptsASilentProvenCoordinatorUntilTheHookSaysOtherwise(t *testing.T) {
+	t.Parallel()
+	t0 := time.Date(2026, 10, 15, 20, 0, 0, 0, time.UTC)
+	const every = 30 * time.Second
+	// a heartbeat server that passed a moment before each read, reading at now
+	serving := func(now time.Time) hook.Served {
+		return hook.Served{OK: true, At: now.Add(-time.Second), Now: now, Every: every, DownAfter: 2 * time.Minute}
+	}
+	read := func(st hook.Status, now time.Time) hook.Status {
+		st.Down = serving(now).Down(st)
+		return st
+	}
+	proven := provenCoordinator("rowan", t0)
+
+	assert.Empty(t, CoordinatorGate("rowan", read(proven, t0.Add(30*time.Second))), "just proven: it runs")
+	assert.Empty(t, CoordinatorGate("rowan", read(proven, t0.Add(4*time.Minute))),
+		"proven at t, silent with no challenge since: it still runs at t+4m")
+
+	expired := read(proven, t0.Add(2*time.Hour))
+	assert.Equal(t, hook.NoAnswerReason, expired.Down, "the hook reads a name silent for hours down")
+	assert.Contains(t, CoordinatorGate("rowan", expired), hook.NoAnswerReason)
+
+	unhooked := hook.Status{Name: "rowan", State: hook.StateUnhooked, Unhooked: t0.Add(4 * time.Minute), Reason: "missed 2 challenges"}
+	assert.Contains(t, CoordinatorGate("rowan", read(unhooked, t0.Add(4*time.Minute))), "unhooked at")
+}

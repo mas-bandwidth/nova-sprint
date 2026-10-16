@@ -24,7 +24,8 @@ import (
 // is neither.
 func TestSharedPathRule(t *testing.T) {
 	t.Parallel()
-	const xRefusal = "src/x.go is named in PATHS by fix-a and fix-b, and neither needs the other"
+	const noLink = ", and neither has a soft dependency on the other (LAND-AFTER: <id>) or needs the other (DEPENDS-ON: <id>)"
+	const xRefusal = "src/x.go is named in PATHS by fix-a and fix-b" + noLink
 	for _, tc := range []struct {
 		name, pathA, pathB, shared, needsB string
 		table, refusal, msg                string
@@ -35,7 +36,7 @@ func TestSharedPathRule(t *testing.T) {
 			"src/x.go  fix-a,fix-b  not-ledger  no-edge\n", xRefusal, "a SHARED: line does not admit a non-ledger path: the lander merges only ledgers"},
 		{"SharedPathRuleRefusesTestFileOverlap", "cmd/nova-sprint/add_test.go", "cmd/nova-sprint/add_test.go", "", "",
 			"cmd/nova-sprint/add_test.go  fix-a,fix-b  not-ledger  no-edge\n",
-			"cmd/nova-sprint/add_test.go is named in PATHS by fix-a and fix-b, and neither needs the other", "add_test.go is no lander-owned ledger"},
+			"cmd/nova-sprint/add_test.go is named in PATHS by fix-a and fix-b" + noLink, "add_test.go is no lander-owned ledger"},
 		{"ReviewNamesLedgerRows", "FIXES.md", "FIXES.md", "", "",
 			"FIXES.md  fix-a,fix-b  ledger  no-edge\n", "", "a ledger the lander merges is shared freely"},
 		{"ReviewNamesEdgeRows", "src/x.go", "src/x.go", "", "fix-a",
@@ -115,7 +116,7 @@ func TestReviewRepositoryIdentity(t *testing.T) {
 			require.Len(t, rows, 1)
 			assert.Equal(t, "src/x.go", rows[0].Path)
 			assert.Equal(t, []string{"fix-a", "fix-b"}, rows[0].Cards)
-			assert.Contains(t, RefuseOverlaps(rows), "neither needs the other")
+			assert.Contains(t, RefuseOverlaps(rows), "neither has a soft dependency on the other (LAND-AFTER: <id>) or needs the other (DEPENDS-ON: <id>)")
 		})
 	}
 }

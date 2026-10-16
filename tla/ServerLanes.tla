@@ -24,6 +24,13 @@
 (* read whose lease is live and only takes back reads whose lease lapsed.  *)
 (* Read-lane verbs (where, card, log, ...) hold no lease.                  *)
 (*                                                                         *)
+(* The dashboard's read (`where --json --dashboard`, the public page's once  *)
+(* a second) runs on a lane of its own, the dashboard lane (servelanes.go    *)
+(* dashWhere): one compute at a time, beside the line and the read lane,     *)
+(* answered from a copy callers within a second of its start share. A dash   *)
+(* caller takes only the dashboard lane's holder, never the line nor the     *)
+(* read lane's.                                                              *)
+(*                                                                         *)
 (* The fault of 2026-10-04: every verb took the line, and a batch whose    *)
 (* caller had gone was still run when its turn came, so beats waited       *)
 (* behind ticks and writes and the line never drained.                     *)
@@ -36,6 +43,9 @@
 (*                 that cannot be given up): GoneNeverRuns fails;          *)
 (*   "tickqueues"  the tick takes a ticket like a batch and waits its      *)
 (*                 turn in the queue: TickWaitsOneTurn fails;              *)
+(*   "dashonreadlane" the dashboard's read takes the read lane as a read     *)
+(*                 does and waits behind the reads: DashWaitsOnlyForDash   *)
+(*                 fails;                                                  *)
 (*   "norenew"     the served queue never renews a lease: a lease begun    *)
 (*                 and not renewed expires and is taken back, so           *)
 (*                 LiveLeaseNeverTakenBack fails.                          *)
@@ -44,14 +54,15 @@ EXTENDS Naturals, FiniteSets
 
 CONSTANTS Callers, KindOf, MaxTicks, Broken, Cards, Bound
 
-Kinds  == {"beat", "read", "write", "begin", "queue"}
-Faults == {"beatonline", "readonline", "rungone", "tickqueues", "norenew"}
+Kinds  == {"beat", "read", "dash", "write", "begin", "queue"}
+Faults == {"beatonline", "readonline", "rungone", "tickqueues", "norenew", "dashonreadlane"}
 ASSUME Broken \subseteq Faults /\ "tick" \notin Callers /\ "none" \notin Callers
 ASSUME \A r \in Callers : KindOf[r] \in Kinds
 ASSUME Bound > 0
 
 VARIABLES line,      \* the line's holder: "none", "tick" or a caller
           rline,     \* the read lane's holder: "none" or a caller
+          dline,     \* the dashboard lane's holder: "none" or a caller
           pc,        \* each caller: idle, waiting, running, answered, dropped
           gone,      \* each caller: its client has gone away
           goneWait,  \* ghost: it went while it was still waiting to start
@@ -70,7 +81,7 @@ VARIABLES line,      \* the line's holder: "none", "tick" or a caller
           tickQueued,\* broken "tickqueues": the tick has taken a ticket
           tickTkt    \* broken "tickqueues": the tick's ticket
 
-vars == <<line, rline, pc, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
+vars == <<line, rline, dline, pc, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
           next, serving, tkt, turnDue, dueFinishes, tickQueued, tickTkt>>
 
 \* a line verb: it runs holding the line (a write, read --begin, or a reader's
@@ -90,6 +101,7 @@ NoBatchWaits == serving = next
 TypeOK ==
   /\ line \in {"none", "tick"} \cup Callers
   /\ rline \in {"none"} \cup Callers
+  /\ dline \in {"none"} \cup Callers
   /\ pc \in [Callers -> {"idle", "waiting", "running", "answered", "dropped"}]
   /\ gone \in [Callers -> BOOLEAN]
   /\ goneWait \in [Callers -> BOOLEAN]
@@ -109,7 +121,7 @@ TypeOK ==
   /\ tickTkt \in 0..(Cardinality(Callers) + 1)
 
 Init ==
-  /\ line = "none" /\ rline = "none"
+  /\ line = "none" /\ rline = "none" /\ dline = "none"
   /\ pc = [r \in Callers |-> "idle"]
   /\ gone = [r \in Callers |-> FALSE]
   /\ goneWait = [r \in Callers |-> FALSE]
@@ -132,21 +144,21 @@ Send(r) == /\ pc[r] = "idle"
            /\ pc' = [pc EXCEPT ![r] = "waiting"]
            /\ tkt' = IF LineVerb(r) THEN [tkt EXCEPT ![r] = next] ELSE tkt
            /\ next' = IF LineVerb(r) THEN next + 1 ELSE next
-           /\ UNCHANGED <<line, rline, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
+           /\ UNCHANGED <<line, rline, dline, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
                           serving, turnDue, dueFinishes, tickQueued, tickTkt>>
 
 \* the tick's turn becomes due (the batches' turn is over), while the tick still has
 \* a turn left to take
 Turn == /\ ~turnDue /\ ticks < MaxTicks
         /\ turnDue' = TRUE /\ dueFinishes' = 0
-        /\ UNCHANGED <<line, rline, pc, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
+        /\ UNCHANGED <<line, rline, dline, pc, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
                        next, serving, tkt, tickQueued, tickTkt>>
 
 \* broken "tickqueues": the tick takes a ticket like a batch
 TickQueue == /\ "tickqueues" \in Broken
              /\ TickWants /\ ~tickQueued
              /\ tickQueued' = TRUE /\ tickTkt' = next /\ next' = next + 1
-             /\ UNCHANGED <<line, rline, pc, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
+             /\ UNCHANGED <<line, rline, dline, pc, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
                             serving, tkt, turnDue, dueFinishes>>
 
 \* the run loop takes the line for a tick, and gives it back; the design takes it at
@@ -156,18 +168,18 @@ TickBegin == /\ line = "none" /\ ticks < MaxTicks
                 THEN (tickQueued /\ serving = tickTkt)
                 ELSE (NoBatchWaits \/ turnDue)
              /\ line' = "tick" /\ ticks' = ticks + 1
-             /\ UNCHANGED <<rline, pc, gone, goneWait, ran, lease, begun, restarts, takenBack, wasLapsed,
+             /\ UNCHANGED <<rline, dline, pc, gone, goneWait, ran, lease, begun, restarts, takenBack, wasLapsed,
                             next, serving, tkt, turnDue, dueFinishes, tickQueued, tickTkt>>
 TickEnd == /\ line = "tick" /\ line' = "none"
            /\ turnDue' = FALSE /\ tickQueued' = FALSE
-           /\ UNCHANGED <<rline, pc, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
+           /\ UNCHANGED <<rline, dline, pc, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
                           next, serving, tkt, dueFinishes, tickTkt>>
 
 \* a caller's client gives up (its deadline): it is gone, whatever its verb is doing
 GiveUp(r) == /\ pc[r] \in {"waiting", "running"} /\ ~gone[r]
              /\ gone' = [gone EXCEPT ![r] = TRUE]
              /\ goneWait' = [goneWait EXCEPT ![r] = (pc[r] = "waiting")]
-             /\ UNCHANGED <<line, rline, pc, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
+             /\ UNCHANGED <<line, rline, dline, pc, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
                             next, serving, tkt, turnDue, dueFinishes, tickQueued, tickTkt>>
 
 \* a verb on the line takes it in ticket order (a batch is next when its ticket is
@@ -177,7 +189,7 @@ TakeLine(r) == /\ pc[r] = "waiting" /\ OnLine(r) /\ line = "none"
                /\ (~LineVerb(r) \/ (tkt[r] = serving /\ ("tickqueues" \in Broken \/ ~(turnDue /\ ticks < MaxTicks))))
                /\ line' = r /\ pc' = [pc EXCEPT ![r] = "running"]
                /\ serving' = IF LineVerb(r) THEN serving + 1 ELSE serving
-               /\ UNCHANGED <<rline, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
+               /\ UNCHANGED <<rline, dline, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
                               next, tkt, turnDue, dueFinishes, tickQueued, tickTkt>>
 
 \* a batch gone while it waited is served and handed back: its ticket is served, its
@@ -187,18 +199,18 @@ ServeGone(r) == /\ pc[r] = "waiting" /\ LineVerb(r) /\ gone[r] /\ "rungone" \not
                 /\ ("tickqueues" \in Broken \/ ~(turnDue /\ ticks < MaxTicks))
                 /\ serving' = serving + 1
                 /\ pc' = [pc EXCEPT ![r] = "dropped"]
-                /\ UNCHANGED <<line, rline, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
+                /\ UNCHANGED <<line, rline, dline, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
                                next, tkt, turnDue, dueFinishes, tickQueued, tickTkt>>
 
 \* a beat starts on the beat lane: no line, no other beat waited for
 BeatStart(r) == /\ pc[r] = "waiting" /\ KindOf[r] = "beat" /\ ~OnLine(r) /\ ~gone[r]
                 /\ pc' = [pc EXCEPT ![r] = "running"]
-                /\ UNCHANGED <<line, rline, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
+                /\ UNCHANGED <<line, rline, dline, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
                                next, serving, tkt, turnDue, dueFinishes, tickQueued, tickTkt>>
 
 BeatDrop(r) == /\ pc[r] = "waiting" /\ KindOf[r] = "beat" /\ ~OnLine(r) /\ gone[r]
                 /\ pc' = [pc EXCEPT ![r] = "dropped"]
-                /\ UNCHANGED <<line, rline, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
+                /\ UNCHANGED <<line, rline, dline, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
                                next, serving, tkt, turnDue, dueFinishes, tickQueued, tickTkt>>
 
 \* a read-lane verb starts on the read lane: it waits for a read ahead of it alone,
@@ -206,17 +218,33 @@ BeatDrop(r) == /\ pc[r] = "waiting" /\ KindOf[r] = "beat" /\ ~OnLine(r) /\ gone[
 ReadStart(r) == /\ pc[r] = "waiting" /\ KindOf[r] = "read" /\ ~OnLine(r) /\ rline = "none"
                 /\ ~gone[r]
                 /\ rline' = r /\ pc' = [pc EXCEPT ![r] = "running"]
-                /\ UNCHANGED <<line, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
+                /\ UNCHANGED <<line, dline, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
                                next, serving, tkt, turnDue, dueFinishes, tickQueued, tickTkt>>
 ReadDrop(r) == /\ pc[r] = "waiting" /\ KindOf[r] = "read" /\ ~OnLine(r) /\ gone[r]
                /\ pc' = [pc EXCEPT ![r] = "dropped"]
-               /\ UNCHANGED <<line, rline, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
+               /\ UNCHANGED <<line, rline, dline, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
+                              next, serving, tkt, turnDue, dueFinishes, tickQueued, tickTkt>>
+
+\* a dashboard read (where --json --dashboard) starts on the dashboard lane
+\* (servelanes.go dashWhere): it waits for another dashboard read alone, never for the
+\* line nor the read lane, and is dropped as a read is when its caller has gone first.
+\* Broken "dashonreadlane": it takes the read lane's holder as a read does.
+DashStart(r) == /\ pc[r] = "waiting" /\ KindOf[r] = "dash" /\ ~OnLine(r) /\ ~gone[r]
+                /\ IF "dashonreadlane" \in Broken
+                   THEN /\ rline = "none" /\ rline' = r /\ dline' = dline
+                   ELSE /\ dline = "none" /\ dline' = r /\ rline' = rline
+                /\ pc' = [pc EXCEPT ![r] = "running"]
+                /\ UNCHANGED <<line, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
+                               next, serving, tkt, turnDue, dueFinishes, tickQueued, tickTkt>>
+DashDrop(r) == /\ pc[r] = "waiting" /\ KindOf[r] = "dash" /\ ~OnLine(r) /\ gone[r]
+               /\ pc' = [pc EXCEPT ![r] = "dropped"]
+               /\ UNCHANGED <<line, rline, dline, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
                               next, serving, tkt, turnDue, dueFinishes, tickQueued, tickTkt>>
 
 \* a lease lapses (ages): it has not been renewed, so its bound runs out
 Age(c) == /\ lease[c] > 0
           /\ lease' = [lease EXCEPT ![c] = @ - 1]
-          /\ UNCHANGED <<line, rline, pc, gone, goneWait, ran, ticks, begun, restarts, takenBack, wasLapsed,
+          /\ UNCHANGED <<line, rline, dline, pc, gone, goneWait, ran, ticks, begun, restarts, takenBack, wasLapsed,
                          next, serving, tkt, turnDue, dueFinishes, tickQueued, tickTkt>>
 
 \* a server restart: reads with a live lease are kept, lapsed reads are taken back
@@ -226,7 +254,7 @@ Restart ==
   /\ restarts' = restarts + 1
   /\ takenBack' = [c \in Cards |-> takenBack[c] \/ (begun[c] /\ lease[c] = 0)]
   /\ wasLapsed' = [c \in Cards |-> wasLapsed[c] \/ (begun[c] /\ lease[c] = 0)]
-  /\ UNCHANGED <<line, rline, pc, gone, goneWait, ran, ticks, lease, begun,
+  /\ UNCHANGED <<line, rline, dline, pc, gone, goneWait, ran, ticks, lease, begun,
                  next, serving, tkt, turnDue, dueFinishes, tickQueued, tickTkt>>
 
 \* the verb runs and is answered; what it held is given back. A begin verb begins a
@@ -236,6 +264,7 @@ Finish(r) == /\ pc[r] = "running" /\ KindOf[r] # "queue"
              /\ pc' = [pc EXCEPT ![r] = "answered"]
              /\ line' = IF line = r THEN "none" ELSE line
              /\ rline' = IF rline = r THEN "none" ELSE rline
+             /\ dline' = IF dline = r THEN "none" ELSE dline
              /\ IF KindOf[r] = "begin"
                    THEN /\ \E c \in Cards : ~begun[c]
                                           /\ begun' = [begun EXCEPT ![c] = TRUE]
@@ -255,6 +284,7 @@ Renew(r) == /\ pc[r] = "running" /\ KindOf[r] = "queue"
             /\ pc' = [pc EXCEPT ![r] = "answered"]
             /\ line' = IF line = r THEN "none" ELSE line
             /\ rline' = IF rline = r THEN "none" ELSE rline
+            /\ dline' = IF dline = r THEN "none" ELSE dline
             /\ begun' = begun
             /\ lease' = IF "norenew" \in Broken
                         THEN lease
@@ -270,6 +300,7 @@ Next ==
   \/ \E c \in Cards : Age(c)
   \/ \E r \in Callers : Send(r) \/ GiveUp(r) \/ TakeLine(r) \/ ServeGone(r)
                         \/ BeatStart(r) \/ BeatDrop(r) \/ ReadStart(r) \/ ReadDrop(r)
+                        \/ DashStart(r) \/ DashDrop(r)
                         \/ Finish(r) \/ Renew(r)
 
 Fairness ==
@@ -279,6 +310,7 @@ Fairness ==
   /\ \A r \in Callers : /\ SF_vars(TakeLine(r)) /\ WF_vars(ServeGone(r))
                         /\ WF_vars(BeatStart(r)) /\ WF_vars(BeatDrop(r))
                         /\ SF_vars(ReadStart(r))
+                        /\ SF_vars(DashStart(r)) /\ WF_vars(DashDrop(r))
                         /\ WF_vars(ReadDrop(r)) /\ WF_vars(Finish(r)) /\ WF_vars(Renew(r))
   /\ \A c \in Cards : WF_vars(Age(c))
 
@@ -303,7 +335,14 @@ ReadWaitsOnlyForReads == \A r \in Callers :
 GoneNeverRuns == \A r \in Callers : goneWait[r] => ~ran[r]
 
 \* The lanes never hold the line.
-LanesHoldNoLine == \A r \in Callers : KindOf[r] \in {"beat", "read"} => line # r
+LanesHoldNoLine == \A r \in Callers : KindOf[r] \in {"beat", "read", "dash"} => line # r
+
+\* The dashboard's read waits for another dashboard read alone: with the dashboard lane
+\* free, a waiting dash caller whose caller is there can start, whoever holds the line
+\* and whoever holds the read lane (a dashboard that waited behind the reads is the fault
+\* of 2026-10-15: its read took 2.5 to 11.4 s through the server, 0.3 s on the store).
+DashWaitsOnlyForDash == \A r \in Callers :
+  (pc[r] = "waiting" /\ KindOf[r] = "dash" /\ dline = "none" /\ ~gone[r]) => ENABLED DashStart(r)
 
 \* Batches are served in ticket order: no batch runs while an earlier ticket still
 \* waits.

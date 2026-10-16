@@ -26,7 +26,7 @@ import (
 // with no check record for the epoch is refused, exit 1, the machine not started; the rig's
 // funnel (runOnStore) records the epoch's clean check before a start, as check cards writes it,
 // and the same start then passes through the real gate.
-func TestStartRefusesWithNoCardCheckOnTheStore(t *testing.T) {
+func TestStartWarnsWithNoCardCheckOnTheStore(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	addr := testutil.Start(t)
@@ -64,14 +64,10 @@ func TestStartRefusesWithNoCardCheckOnTheStore(t *testing.T) {
 	// start straight through runInto, outside the funnel: no check record for the epoch
 	var out, errb bytes.Buffer
 	code := runInto(a, []string{"start", "--redis", addr}, &out, &errb)
-	require.Equal(t, 1, code, "refused: %s%s", out.String(), errb.String())
-	assert.Contains(t, errb.String(), "run nova-sprint check cards first: no check record for epoch ")
-	assert.Contains(t, errb.String(), "nothing was written")
-	assert.False(t, running(), "the machine is not started")
-
-	// through the funnel: the epoch's clean check is recorded, and the real gate lets it start
-	run("start")
-	assert.True(t, running())
+	require.Equal(t, 0, code, "warned, started: %s%s", out.String(), errb.String())
+	assert.Contains(t, errb.String(), "WARN run nova-sprint check cards first: no check record for epoch ")
+	assert.Contains(t, errb.String(), "the machine starts anyway")
+	assert.True(t, running(), "the machine is started: a check reports, it never gates")
 }
 
 // mustBackend is the app's backend for the store at addr.

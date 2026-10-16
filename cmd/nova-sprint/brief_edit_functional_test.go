@@ -66,7 +66,7 @@ func TestABriefEditKeepsARelinkedNeedOnTheStore(t *testing.T) {
 	run("start")
 	run("tick") // the fleet update, last in the tick, brings m1 up
 	run("tick") // the pump deals to it
-	out = run("brief", "d", "--brief-file", writeHeaderBrief(t, t.TempDir(), "d", "c", "internal/d.go"))
+	out = run("brief", "d", "--brief-file", writeHeaderBrief(t, t.TempDir(), "d", "c", "internal/d.go"), "--replace-in-flight")
 	assert.Contains(t, out, "NOTE bound: same task (1 attempts stand)", "a routing-only edit keeps the bound count and says so")
 
 	// brief --tier --brief-file requires --reason; refuses without it, writes nothing
@@ -83,7 +83,7 @@ func TestABriefEditKeepsARelinkedNeedOnTheStore(t *testing.T) {
 	// brief --tier --brief-file with --reason works; reason visible on the card
 	out2.Reset()
 	errb2.Reset()
-	code = runOnStore(a, addr, append([]string{"brief", "e", "--tier", "heavy", "--brief-file", writeBrief(t, "the brief"), "--reason", "a heavy card"}, "--redis", addr), &out2, &errb2)
+	code = runOnStore(a, addr, append([]string{"brief", "e", "--tier", "heavy", "--brief-file", writeBrief(t, "the brief"), "--reason", "a heavy card", "--replace-in-flight"}, "--redis", addr), &out2, &errb2)
 	assert.Equal(t, 0, code, "brief --tier --brief-file with --reason")
 	assert.Contains(t, out2.String(), "reason: a heavy card")
 	run("card", "e", "--fields")

@@ -46,7 +46,7 @@ func TestAFriendRowWithNoLiveWorkerIsDealtNothing(t *testing.T) {
 	w.must(Add(w.s, AddReq{Stream: "replay", Cards: cards}))
 	p, _ := TickDeal(w.s, TickReq{Friends: w.s.Friends})
 	w.must(p)
-	assert.Zero(t, w.s.Fleet.Count(FriendRow("rowan"), Ready)+w.s.Fleet.Count(FriendRow("rowan"), Working), "an up coordinator hook proves no live worker")
+	assert.Zero(t, w.s.Fleet.Count(FriendRow("rowan"), Ready)+w.s.Fleet.Count(FriendRow("rowan"), Working), "a coordinator row with no worker proof is dealt nothing")
 	for _, id := range ids {
 		wc := w.s.Fleet.Placed(WorkCardID(id, 1))
 		require.NotNil(t, wc, "the proven worker must actually receive %s", id)
@@ -70,6 +70,42 @@ func TestAFriendRowWithNoLiveWorkerIsDealtNothing(t *testing.T) {
 	assert.True(t, found, "check must name card %s and row %s: %v", bad.ID, bad.Row, violations)
 }
 
+// The coordinator's row is a worker row (v1.3.19, Glenn 2026-10-15: one row takes every tier at
+// width 32, a dispatcher staffs each card). Its proven hook record is the worker proof, and what
+// keeps cards off it, the epoch-21 incident, is the row's state: unhooked or down, or held.
+func TestTheCoordinatorsRowIsDealtOnItsProvenRecordAndNotWhenUnhookedDownOrHeld(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name  string
+		seat  FriendSeat
+		dealt bool
+	}{
+		{"proven record", FriendSeat{Name: "rowan", Status: Up, Width: 32, Class: "flash,pro", Evidence: "nova-hook proven", WorkerLive: true}, true},
+		{"unhooked", FriendSeat{Name: "rowan", Status: Down, Width: 32, Class: "flash,pro", Unhooked: true, WorkerLive: false}, false},
+		{"down", FriendSeat{Name: "rowan", Status: Down, Width: 32, Class: "flash,pro", WorkerLive: false}, false},
+		{"held", FriendSeat{Name: "rowan", Status: Held, Held: true, Width: 32, Class: "flash,pro", WorkerLive: true}, false},
+		{"up without proof", FriendSeat{Name: "rowan", Status: Up, Width: 32, Class: "flash,pro", WorkerLive: false}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := newWorld(t)
+			w.s.Coordinator = "rowan"
+			w.s.Friends = []FriendSeat{tc.seat}
+			w.must(Add(w.s, AddReq{Stream: "s1", Cards: []CardAdd{{ID: "s1-1", Brief: friendBrief("friend")}, {ID: "s1-2", Brief: friendBrief("friend")}}}))
+			p, _ := TickDeal(w.s, TickReq{Friends: w.s.Friends})
+			w.must(p)
+			wc := w.s.Fleet.Placed("s1-1.w1")
+			if !tc.dealt {
+				assert.Nil(t, wc, "a coordinator row that is %s is dealt nothing", tc.name)
+				assert.Zero(t, w.s.Fleet.Count(FriendRow("rowan"), Ready)+w.s.Fleet.Count(FriendRow("rowan"), Working))
+				return
+			}
+			require.NotNil(t, wc, "the coordinator's proven row must receive a work card")
+			assert.Equal(t, FriendRow("rowan"), wc.Row)
+			assert.Empty(t, Check(w.s, nil), "a work card on the coordinator's proven row passes check")
+		})
+	}
+}
+
 func TestFriendDealRequiresWorkerProofOnEveryRow(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -77,7 +113,6 @@ func TestFriendDealRequiresWorkerProofOnEveryRow(t *testing.T) {
 		seat FriendSeat
 	}{
 		{"up without worker", FriendSeat{Name: "ghost", Status: Up, Width: 16, Class: "flash,pro", WorkerLive: false}},
-		{"coordinator with worker proof", FriendSeat{Name: "rowan", Status: Up, Width: 16, Class: "flash,pro", WorkerLive: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := newWorld(t)

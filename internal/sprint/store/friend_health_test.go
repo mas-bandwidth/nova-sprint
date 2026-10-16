@@ -27,6 +27,8 @@ func (h *harness) give(from, to string) {
 
 func (h *harness) friendStatus(name string) string {
 	h.t.Helper()
+	// the server's pass first: FriendRows shows the word the server wrote
+	require.NoError(h.t, h.st.PublishFriendStatus(h.ctx, h.now))
 	rows, err := h.st.FriendRows(h.ctx, h.now)
 	require.NoError(h.t, err)
 	for _, r := range rows {

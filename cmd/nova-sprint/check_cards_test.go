@@ -122,16 +122,18 @@ func (ta *testApp) seedClean() {
 	})
 }
 
-func TestStartRefusesUntilACleanCardCheckMatchesTheCards(t *testing.T) {
+func TestStartWarnsAndStartsWhateverTheCardCheckSaysAndCleanPrintsNoWarn(t *testing.T) {
 	t.Parallel()
 	ta := gateOn(t)
 
-	// a start after a clear: no record for the epoch
+	// a start after a clear: no record for the epoch. A check reports, it never gates a
+	// start: the WARN line is printed and the machine starts (exit 0)
 	code, out, errs := ta.do("start")
-	require.Equal(t, 1, code, "refused: %s%s", out, errs)
-	assert.Contains(t, errs, "run nova-sprint check cards first: no check record for epoch ")
-	assert.Contains(t, errs, "nothing was written")
-	assert.False(t, ta.machineRunning(), "nothing was written")
+	require.Equal(t, 0, code, "warned, started: %s%s", out, errs)
+	assert.Contains(t, errs, "WARN run nova-sprint check cards first: no check record for epoch ")
+	assert.Contains(t, errs, "the machine starts anyway")
+	assert.True(t, ta.machineRunning(), "the machine started")
+	ta.ok("stop --reason 'the test continues' --until 30m")
 
 	// one defect of each core kind, written as add never would
 	ta.seedClean()
@@ -165,7 +167,7 @@ func TestStartRefusesUntilACleanCardCheckMatchesTheCards(t *testing.T) {
 	assert.NotContains(t, out, "brief-size", "a record over the bound with a brief under it is no finding")
 	code, out, errs = ta.do("start")
 	require.Equal(t, 1, code, "refused: %s%s", out, errs)
-	// the live needs gate comes first (a-missing-or-blocked-need-is-found-at-check-and-while-
+	// the live needs gate (a separate rule, an unresolved need) comes first (a-missing-or-blocked-need-is-found-at-check-and-while-
 	// running), then the record's
 	assert.Contains(t, errs, "run nova-sprint check cards: a3 needs gone (absent)")
 	assert.False(t, ta.machineRunning())
@@ -192,10 +194,12 @@ func TestStartRefusesUntilACleanCardCheckMatchesTheCards(t *testing.T) {
 	for i, f := range fixes {
 		f.fix()
 		if i == 0 {
-			// the needs resolved, the failed record still refuses
+			// the needs resolved, the failed record only warns: the machine starts
 			code, out, errs = ta.do("start")
-			require.Equal(t, 1, code, "refused: %s%s", out, errs)
-			assert.Contains(t, errs, "run nova-sprint check cards: the last check found "+kinds)
+			require.Equal(t, 0, code, "warned, started: %s%s", out, errs)
+			assert.Contains(t, errs, "WARN run nova-sprint check cards: the last check found "+kinds)
+			assert.True(t, ta.machineRunning())
+			ta.ok("stop --reason 'the test continues' --until 30m")
 		}
 		code, out, errs = ta.do("check cards")
 		left := checkLines(out)
@@ -208,6 +212,11 @@ func TestStartRefusesUntilACleanCardCheckMatchesTheCards(t *testing.T) {
 	assert.Contains(t, out, "CHECK CARDS OK cards=")
 	ta.ok("start")
 	assert.True(t, ta.machineRunning(), "a clean check of the cards now starts the machine")
+	ta.ok("stop --reason 'the clean start is checked below' --until 30m")
+	code, out, errs = ta.do("start")
+	require.Equal(t, 0, code, "%s%s", out, errs)
+	assert.NotContains(t, out+errs, "WARN run nova-sprint check cards", "a clean check prints no check-cards WARN")
+	assert.NotContains(t, out+errs, "the machine starts anyway", "a clean check prints no check-cards WARN")
 	ta.ok("stop --reason 'the card changes below' --until 30m")
 
 	// an admit, a move, a brief edit, a priority change and a needs edit after a clean check
@@ -228,9 +237,10 @@ func TestStartRefusesUntilACleanCardCheckMatchesTheCards(t *testing.T) {
 	} {
 		ta.ok(c.change)
 		code, out, errs = ta.do("start")
-		require.Equal(t, 1, code, "%s after a clean check: %s%s", c.name, out, errs)
-		assert.Contains(t, errs, "run nova-sprint check cards: the cards changed since the check ("+c.want+")", c.name)
-		assert.False(t, ta.machineRunning(), c.name)
+		require.Equal(t, 0, code, "%s after a clean check: %s%s", c.name, out, errs)
+		assert.Contains(t, errs, "WARN run nova-sprint check cards: the cards changed since the check ("+c.want+")", c.name)
+		assert.True(t, ta.machineRunning(), c.name)
+		ta.ok("stop --reason 'the next change' --until 30m")
 		ta.ok("check cards")
 	}
 	ta.ok("start")
@@ -242,16 +252,18 @@ func TestStartRefusesUntilACleanCardCheckMatchesTheCards(t *testing.T) {
 	assert.Contains(t, out, "unchanged: the machine is RUNNING already")
 }
 
-// A --stream check covers those streams alone, so its record never opens the start gate.
-func TestAStreamLimitedCardCheckNeverOpensTheStart(t *testing.T) {
+// A --stream check covers those streams alone, so its record is not a full check: start warns and starts.
+func TestAStreamLimitedCardCheckOnlyWarnsAtStart(t *testing.T) {
 	t.Parallel()
 	ta := gateOn(t)
 	ta.seedClean()
 	out := ta.ok("check cards --stream s1")
 	assert.Contains(t, out, "CHECK CARDS OK cards=")
 	code, _, errs := ta.do("start")
-	require.Equal(t, 1, code, errs)
-	assert.Contains(t, errs, "run nova-sprint check cards: the last check covered stream(s) s1 only")
+	require.Equal(t, 0, code, errs)
+	assert.Contains(t, errs, "WARN run nova-sprint check cards: the last check covered stream(s) s1 only")
+	assert.True(t, ta.machineRunning())
+	ta.ok("stop --reason 'a full check follows' --until 30m")
 	ta.ok("check cards")
 	ta.ok("start")
 }
@@ -278,7 +290,7 @@ func TestCheckCardsJSONAndTheInvariantCheckApart(t *testing.T) {
 func TestNewAppGatesStartOnTheCardCheck(t *testing.T) {
 	t.Parallel()
 	a := newApp(func(string) string { return "" })
-	assert.True(t, a.cardCheckGate, "the production app gates start on a clean card check")
+	assert.True(t, a.cardCheckGate, "the production app runs the start card check (it reports; it never gates)")
 	assert.Equal(t, classCoordinator, verbClasses["check cards"])
 	assert.NotEmpty(t, verbExit["check cards"])
 	assert.NotEmpty(t, verbEffect["check cards"])
@@ -364,10 +376,11 @@ func TestCheckCardsDryRunWritesNoRecord(t *testing.T) {
 	assert.True(t, got.DryRun)
 	assert.Equal(t, 4, got.Cards)
 
-	// no check record was written, so start still refuses
+	// no check record was written, so start warns (and starts)
 	code, _, errs = ta.do("start")
-	require.Equal(t, 1, code, errs)
-	assert.Contains(t, errs, "run nova-sprint check cards first: no check record for epoch ")
+	require.Equal(t, 0, code, errs)
+	assert.Contains(t, errs, "WARN run nova-sprint check cards first: no check record for epoch ")
+	ta.ok("stop --reason 'a clean check follows' --until 30m")
 
 	// write a clean check record, then run a stream-limited --dry-run: the clean full record
 	// is not overwritten, so start proceeds
