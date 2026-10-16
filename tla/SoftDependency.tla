@@ -2,18 +2,26 @@
 (***************************************************************************)
 (* A soft dependency (`LAND-AFTER: <card-id>`, or `needs set --land-after`) *)
 (* orders landing without blocking the deal: cards a and b may be dealt,   *)
-(* worked and queued in parallel, while the lander and merge step land a   *)
-(* before b whenever a is on the table; if a is dropped, b is released to  *)
-(* land on its own (docs/SPEC-SPRINT.md, docs/SPEC-CARD-CONTRACT.md).      *)
+(* worked and queued in parallel, and the lander orders a before b only    *)
+(* among cards both queued to merge. When a is not queued, b lands and a   *)
+(* re-merges onto it later (SoftIsOrderOnly); when a is queued, b lands    *)
+(* after it in the batch (SoftLandsInOrder); a queued card that cannot be  *)
+(* placed is skipped and the batch lands every other one                  *)
+(* (HeldNeverEmptiesBatch). If a is dropped, b's soft dependency is        *)
+(* released (docs/SPEC-SPRINT.md, docs/SPEC-CARD-CONTRACT.md).             *)
 (*                                                                         *)
 (* Abstractions of existing modules (neither extended, as other cards edit *)
 (* them):                                                                  *)
 (*   - tla/NeedsBlocked.tla: abstracts Admit, UnresolvedNeeds, Land and    *)
 (*     Drop into Init, NeedsMet, Resolve, Deal, Land and Drop.             *)
 (*   - tla/LandPass.tla: abstracts OpenStream, NextBatch, Pass and         *)
-(*     RefuseHead into Queue, Land (single queued head honouring           *)
-(*     SoftLandsInOrder) and Conflict (a landed head moves the base tip    *)
-(*     and a conflicting queued head is reworked back to working).         *)
+(*     RefuseHead into Queue, LandBatch (every placeable queued card in   *)
+(*     one batch, internal/sprint MergeSoftOrder and cmd/nova-sprint       *)
+(*     openStream) and Conflict (a landed head moves the base tip and a    *)
+(*     conflicting queued head is reworked back to working). Hold and      *)
+(*     Release are the outside facts that keep a queued card out of a      *)
+(*     batch (a dead base, a need it waits for); each card is held at      *)
+(*     most once, so the liveness check is not a hold/release loop.        *)
 (*                                                                         *)
 (* SoftNeverBlocksDeal is stated as an invariant over DealEligible and the *)
 (* history variable dealtWhileSoftUnlanded (which records that b was dealt *)
@@ -23,13 +31,18 @@
 (*   "none"        standard model (MCSoftDependency)                       *)
 (*   "blocksdeal"  Deal waits on soft dependencies as on hard needs        *)
 (*                 (violates SoftNeverBlocksDeal)                          *)
-(*   "anyorder"    Land takes any queued head ignoring soft dependencies   *)
+(*   "anyorder"    LandBatch takes queued heads ignoring soft dependencies *)
 (*                 (violates SoftLandsInOrder)                             *)
+(*   "softishard"  an unqueued, unlanded target holds its dependent, the   *)
+(*                 rule before 2026-10-16 (violates SoftIsOrderOnly)       *)
+(*   "heldblocks"  one queued card that cannot be placed empties the       *)
+(*                 batch, the stream refused whole (violates               *)
+(*                 HeldNeverEmptiesBatch)                                  *)
 (***************************************************************************)
 EXTENDS Naturals, Sequences, FiniteSets
 
 CONSTANTS
-    Broken      \* "none", "blocksdeal", "anyorder"
+    Broken      \* "none", "blocksdeal", "anyorder", "softishard", "heldblocks"
 
 Cards == {"a", "b", "c"}
 Columns == {"waiting", "ready", "working", "queued", "landed", "dropped"}
@@ -41,9 +54,13 @@ VARIABLES
     landedOrder,            \* Seq(Cards): order in which cards landed
     reworked,               \* [Cards -> BOOLEAN]: whether card was reworked at tip after conflict
     droppedEver,            \* BOOLEAN: history variable, TRUE once any Drop occurred
-    dealtWhileSoftUnlanded  \* BOOLEAN: history variable, TRUE once b was dealt while a was unlanded
+    dealtWhileSoftUnlanded, \* BOOLEAN: history variable, TRUE once b was dealt while a was unlanded
+    held,                   \* SUBSET Cards: queued cards an outside fact keeps out of the batch
+    heldEver,               \* [Cards -> BOOLEAN]: whether the card was ever held (bounds Hold)
+    outOfOrder              \* BOOLEAN: history variable, TRUE once a card landed ahead of a queued soft dependency
 
-vars == <<col, soft, needs, landedOrder, reworked, droppedEver, dealtWhileSoftUnlanded>>
+vars == <<col, soft, needs, landedOrder, reworked, droppedEver, dealtWhileSoftUnlanded, held, heldEver, outOfOrder>>
+rest == <<held, heldEver, outOfOrder>>
 
 Placed(x) == col[x] # "dropped"
 
@@ -63,10 +80,36 @@ DealEligible(x) ==
     /\ NeedsMet(x)
     /\ (Broken = "blocksdeal" => SoftMet(x))
 
-LandAllowed(x) ==
-    /\ col[x] = "queued"
-    /\ NeedsMet(x)
-    /\ (Broken = "anyorder" \/ SoftMet(x))
+\* Free: queued, not held, and its hard needs landed.
+Free(x) == col[x] = "queued" /\ x \notin held /\ NeedsMet(x)
+
+\* SoftPlaceable(s): soft dependency s of a queued card lets it be placed. A soft
+\* dependency orders only among queued cards: one not queued is ignored for this
+\* batch, and a queued one must itself be placed ahead (Free; the soft targets here
+\* have no soft dependencies of their own, so one level is the whole order).
+SoftPlaceable(s) ==
+    IF Broken = "softishard"
+    THEN ~Placed(s) \/ col[s] = "landed" \/ Free(s)
+    ELSE col[s] # "queued" \/ Free(s)
+
+\* Placeable: what MergeSoftOrder places this batch (LandOrderBlocked is empty).
+Placeable(x) == Free(x) /\ (Broken = "anyorder" \/ \A s \in soft[x] : SoftPlaceable(s))
+
+\* Batch: every placeable queued card; a card that cannot be placed is skipped, never
+\* the whole batch (under "heldblocks" one such card empties it).
+Batch ==
+    IF Broken = "heldblocks" /\ \E x \in Cards : col[x] = "queued" /\ ~Placeable(x)
+    THEN {}
+    ELSE {x \in Cards : Placeable(x)}
+
+LandAllowed(x) == x \in Batch
+
+RECURSIVE SetToSeq(_)
+SetToSeq(S) == IF S = {} THEN <<>> ELSE LET e == CHOOSE e \in S : TRUE IN <<e>> \o SetToSeq(S \ {e})
+
+\* The batch's order: the cards with no soft dependency in the batch first, then the rest.
+Ahead == {x \in Batch : \A s \in soft[x] : s \notin Batch}
+BatchOrder == SetToSeq(Ahead) \o SetToSeq(Batch \ Ahead)
 
 InSeq(s, e) == \E i \in 1..Len(s) : s[i] = e
 
@@ -81,6 +124,9 @@ TypeOK ==
     /\ reworked \in [Cards -> BOOLEAN]
     /\ droppedEver \in BOOLEAN
     /\ dealtWhileSoftUnlanded \in BOOLEAN
+    /\ held \subseteq Cards
+    /\ heldEver \in [Cards -> BOOLEAN]
+    /\ outOfOrder \in BOOLEAN
 
 Init ==
     /\ col = [x \in Cards |-> IF x = "c" THEN "waiting" ELSE "ready"]
@@ -90,6 +136,9 @@ Init ==
     /\ reworked = [x \in Cards |-> FALSE]
     /\ droppedEver = FALSE
     /\ dealtWhileSoftUnlanded = FALSE
+    /\ held = {}
+    /\ heldEver = [x \in Cards |-> FALSE]
+    /\ outOfOrder = FALSE
 
 \* Waiting card whose hard needs have landed moves to ready.
 Resolve(x) ==
@@ -98,6 +147,7 @@ Resolve(x) ==
     /\ (Broken = "blocksdeal" => SoftMet(x))
     /\ col' = [col EXCEPT ![x] = "ready"]
     /\ UNCHANGED <<soft, needs, landedOrder, reworked, droppedEver, dealtWhileSoftUnlanded>>
+    /\ UNCHANGED rest
 
 \* Deal a ready card to working; soft dependencies never block the deal.
 Deal(x) ==
@@ -105,6 +155,7 @@ Deal(x) ==
     /\ col' = [col EXCEPT ![x] = "working"]
     /\ dealtWhileSoftUnlanded' = (dealtWhileSoftUnlanded \/ (x = "b" /\ col["a"] # "landed"))
     /\ UNCHANGED <<soft, needs, landedOrder, reworked, droppedEver>>
+    /\ UNCHANGED rest
 
 \* Finish work and queue the card's head for the lander (Finish + Queue).
 Finish(x) ==
@@ -112,25 +163,49 @@ Finish(x) ==
     /\ NeedsMet(x)
     /\ col' = [col EXCEPT ![x] = "queued"]
     /\ UNCHANGED <<soft, needs, landedOrder, reworked, droppedEver, dealtWhileSoftUnlanded>>
+    /\ UNCHANGED rest
 
 Queue(x) == Finish(x)
 
-\* Lander merges one queued head whose soft dependencies (and hard needs) have landed.
-Land(x) ==
-    /\ LandAllowed(x)
-    /\ col' = [col EXCEPT ![x] = "landed"]
-    /\ landedOrder' = Append(landedOrder, x)
-    /\ UNCHANGED <<soft, needs, reworked, droppedEver, dealtWhileSoftUnlanded>>
+\* Lander lands one batch: every placeable queued card, in BatchOrder. outOfOrder
+\* records a card landed while a soft dependency of it was queued and not ahead of it.
+LandBatch ==
+    /\ Batch # {}
+    /\ col' = [x \in Cards |-> IF x \in Batch THEN "landed" ELSE col[x]]
+    /\ landedOrder' = landedOrder \o BatchOrder
+    /\ outOfOrder' = (outOfOrder \/ \E x \in Batch : \E s \in soft[x] :
+            col[s] = "queued" /\ (s \notin Batch \/ SeqPos(BatchOrder, s) > SeqPos(BatchOrder, x)))
+    /\ UNCHANGED <<soft, needs, reworked, droppedEver, dealtWhileSoftUnlanded, held, heldEver>>
+
+Land(x) == x \in Batch /\ LandBatch
+
+\* An outside fact keeps a queued card out of the batch (a dead base, a need it waits
+\* for), at most once a card.
+Hold(x) ==
+    /\ col[x] = "queued"
+    /\ x \notin held
+    /\ ~heldEver[x]
+    /\ held' = held \cup {x}
+    /\ heldEver' = [heldEver EXCEPT ![x] = TRUE]
+    /\ UNCHANGED <<col, soft, needs, landedOrder, reworked, droppedEver, dealtWhileSoftUnlanded, outOfOrder>>
+
+\* The fact is answered: the card may be placed again.
+Release(x) ==
+    /\ x \in held
+    /\ held' = held \ {x}
+    /\ UNCHANGED <<col, soft, needs, landedOrder, reworked, droppedEver, dealtWhileSoftUnlanded, heldEver, outOfOrder>>
 
 \* A landed head moved the base tip and a queued head conflicts at the tip:
 \* its head is refused and reworked back to working.
 Conflict(x) ==
     /\ col[x] = "queued"
+    /\ x \notin held
     /\ Len(landedOrder) > 0
     /\ ~reworked[x]
     /\ col' = [col EXCEPT ![x] = "working"]
     /\ reworked' = [reworked EXCEPT ![x] = TRUE]
     /\ UNCHANGED <<soft, needs, landedOrder, droppedEver, dealtWhileSoftUnlanded>>
+    /\ UNCHANGED rest
 
 \* Drop an unlanded card that no unlanded card hard-needs; soft dependents are released.
 Drop(x) ==
@@ -139,13 +214,15 @@ Drop(x) ==
     /\ col' = [col EXCEPT ![x] = "dropped"]
     /\ droppedEver' = TRUE
     /\ UNCHANGED <<soft, needs, landedOrder, reworked, dealtWhileSoftUnlanded>>
+    /\ UNCHANGED rest
 
 NextProgress ==
-    \E x \in Cards : Resolve(x) \/ Deal(x) \/ Queue(x) \/ Land(x)
+    \/ LandBatch
+    \/ \E x \in Cards : Resolve(x) \/ Deal(x) \/ Queue(x) \/ Release(x)
 
 Next ==
     \/ NextProgress
-    \/ \E x \in Cards : Conflict(x) \/ Drop(x)
+    \/ \E x \in Cards : Conflict(x) \/ Drop(x) \/ Hold(x)
 
 Spec == Init /\ [][Next]_vars /\ WF_vars(NextProgress)
 
@@ -160,25 +237,34 @@ SoftNeverBlocksDeal ==
     /\ \A x \in Cards : (col[x] = "ready" /\ NeedsMet(x)) => DealEligible(x)
     /\ (col["b"] \in {"working", "queued", "landed"} /\ col["a"] = "ready") => dealtWhileSoftUnlanded
 
-\* SoftLandsInOrder: if b soft-depends on a, b never lands while a is on the table
-\* and unlanded, and if both a and b have landed, a appears before b in landedOrder.
-SoftLandsInOrder ==
-    /\ \A x \in Cards : col[x] = "landed" =>
-        \A s \in soft[x] :
-            /\ (~Placed(s) \/ col[s] = "landed")
-            /\ (InSeq(landedOrder, s) /\ InSeq(landedOrder, x) => SeqPos(landedOrder, s) < SeqPos(landedOrder, x))
+\* SoftLandsInOrder: if b soft-depends on a and a is queued to merge, b never lands
+\* ahead of it: not while a is queued and left out of the batch, and not before a in
+\* the batch they land in together.
+SoftLandsInOrder == ~outOfOrder
+
+\* SoftIsOrderOnly: a soft dependency orders only among queued cards. A free queued
+\* card none of whose soft dependencies is queued is placed in the batch, whatever
+\* column its targets are in (reversed witness "softishard": an unqueued, unlanded
+\* target holds it).
+SoftIsOrderOnly ==
+    \A x \in Cards : (Free(x) /\ \A s \in soft[x] : col[s] # "queued") => Placeable(x)
+
+\* HeldNeverEmptiesBatch: a card that cannot be placed is skipped; every placeable
+\* queued card is in the batch (reversed witness "heldblocks": one held card empties it).
+HeldNeverEmptiesBatch ==
+    \A x \in Cards : Placeable(x) => x \in Batch
 
 \* DropReleasesSoft: once a soft dependency is dropped, the dependent is allowed to land.
 DropReleasesSoft ==
     \A x \in Cards :
-        (col[x] = "queued" /\ NeedsMet(x) /\ (\A s \in soft[x] : col[s] \in {"landed", "dropped"}))
-            => LandAllowed(x)
+        (Free(x) /\ (\A s \in soft[x] : col[s] \in {"landed", "dropped"}))
+            => Placeable(x)
 
 \* NoSoftAndNeedCycle: the union of soft dependencies and hard needs is acyclic.
 NoSoftAndNeedCycle ==
     \A x \in Cards : ~Reaches(x, x)
 
-\* BothLand (liveness): under weak fairness of Deal, Finish/Queue and Land,
+\* BothLand (liveness): under weak fairness of Deal, Finish/Queue, Release and LandBatch,
 \* when no card is dropped and Broken = "none", every card eventually lands.
 BothLand ==
     (Broken = "none" /\ []~droppedEver) => <>(\A x \in Cards : col[x] = "landed")

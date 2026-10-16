@@ -152,17 +152,19 @@ func resolveSoftTarget(s *Snapshot, id string) string {
 	return ""
 }
 
-// LandOrderBlocked returns the soft dependencies of c that have neither landed
-// nor been included ahead of c in landing.
+// LandOrderBlocked returns the soft dependencies of c that are queued to merge
+// (in the merging column of c's stream) and not included ahead of c in landing.
+// A soft dependency orders only among cards queued to merge: one not in merging
+// is ignored for this batch, c lands, and the target re-merges onto it later.
 //
-// tla/SoftDependency.tla LandOrderBlocked, SoftLandsInOrder
+// tla/SoftDependency.tla LandOrderBlocked, SoftIsOrderOnly, SoftLandsInOrder
 func LandOrderBlocked(s *Snapshot, c *Card, landing map[string]bool) []string {
 	if c == nil {
 		return nil
 	}
 	var out []string
 	for _, dep := range SoftDepsOf(s, c) {
-		if s.StateOf(dep) != Landed && !landing[dep] {
+		if t := s.Work.Placed(dep); t != nil && t.Col == Merging && t.Row == c.Row && !landing[dep] {
 			out = append(out, dep)
 		}
 	}
@@ -171,13 +173,12 @@ func LandOrderBlocked(s *Snapshot, c *Card, landing map[string]bool) []string {
 
 // MergeSoftOrder filters and orders queued cards so that every card's hard needs
 // (WaitsFor) and soft dependencies (LandOrderBlocked) are either already landed
-// or precede it in the returned slice. A card whose soft dependency has not
-// landed and is not queued ahead of it is held out of the batch without blocking
-// cards behind it that do not depend on it. When every queued card is blocked by
-// an unlanded soft dependency, softWhy names the first card and its unlanded
-// soft dependency.
+// or precede it in the returned slice. A card whose queued soft dependency
+// cannot be placed ahead of it is skipped for this batch without blocking the
+// cards that can be placed; softWhy names each such card and its soft
+// dependency, whether or not other cards were placed.
 //
-// tla/SoftDependency.tla MergeSoftOrder, SoftLandsInOrder, SoftNeverDeadlocksOnUnmergedPredecessor
+// tla/SoftDependency.tla MergeSoftOrder, SoftLandsInOrder, HeldNeverEmptiesBatch
 func MergeSoftOrder(s *Snapshot, cards []*Card) (ordered []*Card, softWhy string) {
 	if len(cards) == 0 || s == nil || s.Work == nil {
 		return cards, ""
@@ -202,15 +203,14 @@ func MergeSoftOrder(s *Snapshot, cards []*Card) (ordered []*Card, softWhy string
 		landed[c.ID] = true
 		pending = slices.Delete(pending, best, best+1)
 	}
-	if len(out) == 0 && len(pending) > 0 {
-		for _, c := range pending {
-			pr := s.Work.Card(c.ID)
-			if blocked := LandOrderBlocked(s, pr, landed); len(blocked) > 0 {
-				return out, fmt.Sprintf("%s: soft dependency on %s not landed; nothing was changed", c.ID, strings.Join(blocked, ", "))
-			}
+	var why []string
+	for _, c := range pending {
+		pr := s.Work.Card(c.ID)
+		if blocked := LandOrderBlocked(s, pr, landed); len(blocked) > 0 {
+			why = append(why, fmt.Sprintf("%s: soft dependency on %s not landed; %s is skipped this batch", c.ID, strings.Join(blocked, ", "), c.ID))
 		}
 	}
-	return out, ""
+	return out, strings.Join(why, "; ")
 }
 
 // SoftDepsSetReq is the request for needs set <id> --land-after <a,b>.
