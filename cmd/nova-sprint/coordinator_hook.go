@@ -77,6 +77,10 @@ func hookExemptCall(verb string, args []string) bool {
 // hookReadBound bounds one read or write of the nova-hook record.
 const hookReadBound = 5 * time.Second
 
+// hookGateBound bounds the whole gate a command passes before its verb (hookFirst): the
+// store's open, the seat's holder and the nova-hook record, each read in it.
+const hookGateBound = 30 * time.Second
+
 // hookConn is a process's one connection to the nova-hook record's store, opened at the
 // first read and kept (the server's lane apps share their server's: servelanes.go), so a
 // gate on the server's line never dials. A read that fails drops it, and the next dials
@@ -263,11 +267,15 @@ func (a *app) hookFirst(args []string, stderr io.Writer) (int, bool) {
 	if strings.TrimSpace(c.redis) == "" {
 		return refuse(sprint.HookUnread(c.actor, "no sprint store is named (NOVA_SPRINT_REDIS or --redis), so the seat's holder cannot be read"))
 	}
-	st, err := a.storeCtx(context.Background(), common{redis: c.redis})
+	// the gate never waits forever: its store open and its reads end by hookGateBound,
+	// and a gate that has not answered by then refuses, failing closed
+	ctx, cancel := context.WithTimeout(context.Background(), hookGateBound)
+	defer cancel()
+	st, err := a.storeCtx(ctx, common{redis: c.redis})
 	if err != nil {
 		return refuse(sprint.HookUnread(c.actor, "the sprint store "+oneline.Field(c.redis)+" did not open: "+oneline.Escape(err.Error())))
 	}
-	why, err := a.hookedIn(context.Background(), st, c, false) // the exempt call left above
+	why, err := a.hookedIn(ctx, st, c, false) // the exempt call left above
 	if err != nil {
 		return refuse(sprint.HookUnread(c.actor, "the seat's holder could not be read: "+oneline.Escape(err.Error())))
 	}

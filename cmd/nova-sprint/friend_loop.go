@@ -60,7 +60,7 @@ func (a *app) friendSyncLoop(c common, pg, root string, every time.Duration, std
 		if pc, why := a.friendSyncActor(ctx, c); why != "" {
 			fmt.Fprintf(&errs, "%s friend sync: %s\n", prog, why)
 		} else {
-			code, changed = a.friendSyncPass(pc, pg, root, &out, &errs)
+			code, changed = a.friendSyncPass(ctx, pc, pg, root, &out, &errs)
 		}
 		now := a.now()
 		stamp := now.Format(time.RFC3339)
@@ -111,6 +111,8 @@ func (a *app) friendSyncLoop(c common, pg, root string, every time.Duration, std
 // the seat the pass acts as; why is the reason it could not, "" when it did. The store is
 // the sprint's, not the config's: a loop refused by the config store can still be told of.
 func (a *app) friendSyncRecord(ctx context.Context, c common, r sprint.FriendSyncStateReq) string {
+	ctx, cancel := context.WithTimeout(ctx, friendSyncPassBound) // never waits forever
+	defer cancel()
 	pc, why := a.friendSyncActor(ctx, c)
 	if why != "" {
 		return why
@@ -137,6 +139,8 @@ func (a *app) friendSyncActor(ctx context.Context, c common) (common, string) {
 	if c.actor != "" {
 		return c, ""
 	}
+	ctx, cancel := context.WithTimeout(ctx, friendSyncPassBound) // never waits forever
+	defer cancel()
 	read := c
 	read.verb = "where" // a read: no actor wanted to read the seat
 	st, err := a.storeCtx(ctx, read)

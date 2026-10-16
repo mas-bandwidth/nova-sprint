@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -181,24 +182,82 @@ func (a *app) cmdFriendSync(args []string, stdout, stderr io.Writer) int {
 	if *every > 0 {
 		return a.friendSyncLoop(*c, *pg, *root, *every, stdout, stderr)
 	}
-	code, _ := a.friendSyncPass(*c, *pg, *root, stdout, stderr)
+	code, _ := a.friendSyncPass(context.Background(), *c, *pg, *root, stdout, stderr)
 	return code
 }
 
-// friendSyncPass is one pass of friend sync on a store it opens as c says: its exit
-// code, and whether it changed anything (a friend added, taken off or updated, a card
-// delivered or finished).
-func (a *app) friendSyncPass(c common, pg, root string, stdout, stderr io.Writer) (int, bool) {
+// friendSyncPassBound is the deadline of one pass of friend sync (the owner's law,
+// 2026-10-14: "never wait forever, mechanically"). A pass with nothing to do takes
+// milliseconds and a pass that delivers and collects takes seconds; a pass that has not
+// ended by its deadline is refused, naming where it stood, and the loop's next pass
+// retries. The deadline is held twice: on the sprint's clock (a.now, the clock the store
+// stamps its steps with), read between the pass's stages, and as the pass's context
+// deadline, which ends any read or write still waiting on the sprint store, the bus or
+// the config store (tla/FriendSyncPass.tla, PassEnds).
+const friendSyncPassBound = 2 * time.Minute
+
+// passDeadline is one pass's deadline on the sprint's clock: its start and its end.
+type passDeadline struct {
+	start, end time.Time
+	now        func() time.Time
+}
+
+// newPassDeadline starts a deadline of bound at now().
+func newPassDeadline(now func() time.Time, bound time.Duration) passDeadline {
+	at := now()
+	return passDeadline{start: at, end: at.Add(bound), now: now}
+}
+
+// late says the pass is past its deadline: its end reached on the sprint's clock, or
+// its context done.
+func (d passDeadline) late(ctx context.Context) bool {
+	return !d.now().Before(d.end) || ctx.Err() != nil
+}
+
+// refusal is the deadline's one refusal line, naming the stage the pass stood at.
+func (d passDeadline) refusal(stage string) string {
+	return fmt.Sprintf("the pass did not end within its deadline, %s on the sprint's clock from %s, and stood at %s; nothing more is done this pass (what it wrote stands); the next pass retries; run: nova-sprint friend sync",
+		d.end.Sub(d.start), d.start.UTC().Format(time.RFC3339), stage)
+}
+
+// passRefused is a pass's refusal: the one REFUSED line, exit 1 (friend sync's
+// refused), so the loop says it and its next pass retries.
+func passRefused(stderr io.Writer, name, what string) int {
+	fmt.Fprintf(stderr, "%s %s REFUSED: %s\n", prog, name, oneline.Escape(what))
+	return 1
+}
+
+// friendSyncPass is one pass of friend sync on a store it opens as c says, within
+// friendSyncPassBound of ctx: its exit code, and whether it changed anything (a friend
+// added, taken off or updated, a card delivered or finished). A coordinator whose
+// nova-hook record is not proven refuses the pass by name, and so does a pass past its
+// deadline: neither ever waits.
+func (a *app) friendSyncPass(ctx context.Context, c common, pg, root string, stdout, stderr io.Writer) (int, bool) {
 	const name = "friend sync"
-	st, err := a.store(c)
+	ctx, cancel := context.WithTimeout(ctx, friendSyncPassBound)
+	defer cancel()
+	dl := newPassDeadline(a.now, friendSyncPassBound)
+	st, err := a.storeCtx(ctx, c)
 	if err != nil {
+		var hg *hookGateError
+		switch {
+		case errors.As(err, &hg):
+			return passRefused(stderr, name, "the coordinator's hook is not proven: "+hg.why+"; the next pass retries"), false
+		case dl.late(ctx):
+			return passRefused(stderr, name, dl.refusal("opening the sprint store and the coordinator's hook gate")), false
+		}
 		return refuse(stderr, name, err.Error()), false
 	}
-	ctx := context.Background()
 	rows, err := a.friends(ctx, pg)
+	if err != nil && dl.late(ctx) {
+		return passRefused(stderr, name, dl.refusal("reading the config's friend rows")), false
+	}
 	if err != nil {
 		fmt.Fprintf(stderr, "%s %s: the config cannot be read: %s; nothing was changed\n", prog, name, oneline.WithRemedy(err.Error(), "nova-config friend list"))
 		return exitCannotRead, false
+	}
+	if dl.late(ctx) {
+		return passRefused(stderr, name, dl.refusal("after reading the config's friend rows")), false
 	}
 	if len(rows) == 0 {
 		fmt.Fprintf(stderr, "%s %s: the config holds no friend row, and syncing to none would take every friend off; is this the fleet's config? run: nova-config friend list; nothing was changed\n", prog, name)
@@ -227,6 +286,9 @@ func (a *app) friendSyncPass(c common, pg, root string, stdout, stderr io.Writer
 		specs = append(specs, store.FriendSpec{Name: n, Width: width, Class: friendClass(r), Mode: config.FriendMode(r), ConfigDir: r.Fields["config_dir"], Pronouns: config.FriendPronouns(r), Session: friendSession(r), TokenCap: config.FriendTokenCap(r), TokenCapSet: true, Roles: friendRoles(r), Billing: r.Fields["billing"], Streams: r.Fields["streams"], Kinds: r.Fields["kinds"]})
 	}
 	added, removed, updated, err := st.SyncFriends(ctx, specs)
+	if err != nil && dl.late(ctx) {
+		return passRefused(stderr, name, dl.refusal("syncing the friends table")), false
+	}
 	if err != nil {
 		return a.readFailed(name, err, stderr), false
 	}
@@ -260,13 +322,22 @@ func (a *app) friendSyncPass(c common, pg, root string, stdout, stderr io.Writer
 		if s.Session == sprint.FriendOneShot {
 			continue // no inbox, queue file, wake or start receipt is a one-shot's: her member reads the brief from the server
 		}
+		if dl.late(ctx) {
+			return passRefused(stderr, name, dl.refusal("the sprint cards of "+s.Name)), false
+		}
 		// her starts first, so a card she began is working before its report is read
 		if err := a.friendStartsOf(ctx, st, s.Name, filepath.Join(root, s.Name+"-working"), say); err != nil {
+			if dl.late(ctx) {
+				return passRefused(stderr, name, dl.refusal("the starts of "+s.Name)), false
+			}
 			fmt.Fprint(stderr, friend.Pronouns(s.Pronouns).Sprintf("%s %s: the sprint cards of %s cannot be read for {their} starts: %s; the friends table is synced; run: nova-sprint friend sync\n", prog, name, s.Name, oneline.Escape(err.Error())))
 			return 1, false
 		}
 		d, f, err := a.friendCardsOf(ctx, st, s.Name, filepath.Join(root, s.Name+"-working"), say)
 		delivered, finished = delivered+d, finished+f
+		if err != nil && dl.late(ctx) {
+			return passRefused(stderr, name, dl.refusal("delivering and collecting the sprint cards of "+s.Name)), false
+		}
 		if err != nil {
 			fmt.Fprintf(stderr, "%s %s: the sprint cards of %s cannot be delivered or collected: %s; the friends table is synced; run: nova-sprint friend sync\n", prog, name, s.Name, oneline.Escape(err.Error()))
 			return 1, false

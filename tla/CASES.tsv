@@ -755,3 +755,6 @@ MCReadBranchMissingBrokenReworkKeepsIt.cfg	MCReadBranchMissing.tla	invariant	Off
 MCGateFacts.cfg	MCGateFacts.tla	pass	-	ignore-terminal	gatefacts	required	-
 MCGateFactsBrokenNoWriter.cfg	MCGateFacts.tla	temporal	CardDealt	ignore-terminal	gatefacts	required	-
 MCGateFactsBrokenOnChange.cfg	MCGateFacts.tla	temporal	CardDealt	ignore-terminal	gatefacts	required	-
+MCFriendSyncPass.cfg	MCFriendSyncPass.tla	pass	-	ignore-terminal	friendsyncpass	required	-
+MCFriendSyncPassBrokenNoDeadline.cfg	MCFriendSyncPass.tla	temporal	PassEnds	ignore-terminal	friendsyncpass	required	-
+MCFriendSyncPassBrokenSkipGate.cfg	MCFriendSyncPass.tla	invariant	WorksOnlyProven	ignore-terminal	friendsyncpass	required	-
