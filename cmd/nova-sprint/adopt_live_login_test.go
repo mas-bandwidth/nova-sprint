@@ -103,7 +103,7 @@ func TestLiveUsesSeatLoginForLibrary(t *testing.T) {
 	defer liveRunnerOf.Delete(a)
 
 	var out, errs bytes.Buffer
-	code := runInto(a, []string{"live", "--json", "--bin-dir", localBin, "--dashboard", filepath.Join(dashDir, "nova-sprint-int"), "--agents-dir", agents}, &out, &errs)
+	code := runInto(a, []string{"live", "--json", "--bin-dir", localBin, "--dashboard", filepath.Join(dashDir, "nova-sprint-int"), "--agents-dir", agents, "--daemons-dir", filepath.Join(dir, "daemons")}, &out, &errs)
 	require.Equal(t, 0, code, "%s", errs.String())
 
 	var m liveManifest
