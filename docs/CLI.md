@@ -767,7 +767,7 @@ command again finishes it), or when `--source` holds no
 |---|---|
 | 0 | done |
 | 1 | failed or incomplete (including refused; `start` while every provider is out of credit) |
-| 2 | usage, or a store that did not answer (`fleet sync --check`: there is drift) |
+| 2 | usage, or a store that did not answer (under `fleet sync --check`, 2 is drift alone, with DRIFT lines; a store that did not answer is 3) |
 | 3 | unreadable config (`fleet sync`, `friend sync`, `friend clean`), missing friend rows (`friend sync`, `friend clean`), or a replaced binary (`run`, `dashboard`) |
 
 The exit codes do not separate a definite refusal from an unknown outcome: exit
