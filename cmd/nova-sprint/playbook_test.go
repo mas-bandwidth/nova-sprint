@@ -16,7 +16,7 @@ import (
 // playbook_test.go holds docs/COORDINATOR-PLAYBOOK.md, the page
 // `nova-sprint help playbook` prints, to the help it cites, so it cannot go
 // stale: the embedded bytes are the file's, every usage line it quotes is a
-// line of `nova-sprint help` byte for byte, and every command it names runs a
+// line of `nova-sprint help all` byte for byte, and every command it names runs a
 // verb the verb table carries with flags that verb takes. The flags are read
 // from each verb's own help (its FlagSet, as `nova-sprint help <verb>` prints
 // it), never copied here. The verbs of the nova-tools tools the page names are
@@ -84,7 +84,7 @@ func checkPlaybook(verbs map[string]map[string]bool, bannerText, text string) []
 	for _, m := range playbookUsageRe.FindAllStringSubmatch(text, -1) {
 		usages++
 		if !lines[m[1]] {
-			problems = append(problems, "usage line not in nova-sprint help: "+m[1])
+			problems = append(problems, "usage line not in nova-sprint help all: "+m[1])
 		}
 	}
 	if usages == 0 {
@@ -134,13 +134,14 @@ func TestHelpPlaybookPrintsTheCoordinatorPlaybook(t *testing.T) {
 	assert.Equal(t, docs.CoordinatorPlaybook, out.String(), "help playbook prints the page whole")
 	assert.Contains(t, out.String(), "## Before you do anything by hand", "the playbook opens with the rule")
 
-	assert.Contains(t, banner(), "nova-sprint help playbook", "nova-sprint help names the playbook")
+	assert.Contains(t, banner(), "nova-sprint help playbook", "nova-sprint help all names the playbook")
+	assert.Contains(t, helpIndex(), "nova-sprint help playbook", "nova-sprint help names the playbook")
 	for _, v := range verbs {
 		assert.NotEqual(t, "playbook", v.name, "a verb named playbook would shadow the topic")
 	}
 }
 
-// Every usage line the playbook quotes is nova-sprint help's, and every
+// Every usage line the playbook quotes is nova-sprint help all's, and every
 // command it names is a verb with flags the verb takes. The witnesses run the
 // same check on lines that must be refused, so a check that passes everything
 // fails here.
@@ -161,7 +162,7 @@ func TestThePlaybookNamesOnlyRealVerbsAndUsageLines(t *testing.T) {
 		assert.Empty(t, checkPlaybook(table, b, good), "real usage lines and verbs are refused")
 
 		for text, want := range map[string]string{
-			"usage: `nova-sprint inbox [--fly]`":                    "usage line not in nova-sprint help",
+			"usage: `nova-sprint inbox [--fly]`":                    "usage line not in nova-sprint help all",
 			"usage: `nova-sprint where`\n`nova-sprint fly`":         `nova-sprint has no verb "fly"`,
 			"usage: `nova-sprint where`\n`nova-sprint where --fly`": "nova-sprint where has no flag --fly",
 			"usage: `nova-sprint where`\n`nova-friend fly`":         `nova-friend has no verb "fly"`,

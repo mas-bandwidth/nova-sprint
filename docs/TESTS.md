@@ -10,7 +10,7 @@ CLI walkthrough is in the
 [first-lap note](FIRST-LAP.md).
 In the test binary, `--redis mem:<file>` loads an in-memory twin from a file
 and saves it after each command. Commands run one at a time. This transcript
-follows the card flow in `nova-sprint help`, with
+follows the card flow in `nova-sprint help all`, with
 `NOVA_SPRINT_REDIS=mem:sprint.twin` and `NOVA_SPRINT_ACTOR=boss` set. It uses
 `finish` without `--head` and `merge` to record a landing without git. The
 help's final `tick` moves the card to landed, and `where` shows the sprint.

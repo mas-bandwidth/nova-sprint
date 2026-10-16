@@ -337,9 +337,15 @@ are reports; `tick`, `run`, `friend clean` and `gc` are the system's. Reads need
 actor except `inbox --read`, which moves the coordinator's cursor. A set is
 ids, a stream, a column, `--max n` (`--limit` is an alias), or an inbox group:
 `--group <id>`, the id `inbox` prints, with `--expect <n>` the size it printed,
-which refuses a group that has changed. `nova-sprint help <verb>` (or
+which refuses a group that has changed. `nova-sprint help` (or `-h`) is the index: a
+short orientation, then every verb on one line (its main flags and what it is for),
+grouped by situation, then where the detail is. `nova-sprint help <verb>` (or
 `<verb> -h`) prints one verb's usage, flags and exit codes; `nova-sprint help
-<group>` (fleet, friend, reader, goal, stream) prints one group's.
+<group>` (fleet, friend, reader, goal, stream, lane) prints one group's;
+`nova-sprint help playbook` prints the coordinator's situations and their verbs in
+order; `nova-sprint help all` prints the full reference (every usage line, the
+inbox's worked example and answers, the words), which the top-level help printed
+before v1.4.6.
 
 ### Worker queue waits
 

@@ -1,0 +1,196 @@
+nova-sprint: a sprint of work cards, dealt to a fleet of workers and read before they land
+
+One store holds the cards. Each tick deals ready cards to workers (fleet members and friends),
+asks readers to read the finished work and queues what passed to land. What the machine cannot
+decide goes to the coordinator's inbox as a judgment that prints the commands answering it.
+Who reads what: the coordinator, every group; a worker, "work rows"; a reader, "reads and
+review"; a friend, "friends"; the fleet's admin, "fleet and readers", "machines and the store".
+Start here: where (the sprint now), inbox (what needs you), help playbook (what to do when).
+The law: the tools do the mechanical work. Find the verb first; never do a verb's work by hand.
+
+look at the sprint:
+  where [--watch] [--all] [--json]               the sprint now: machine, tables, rows and ETA
+  inbox [--wait] [--open <group>]                the judgments waiting on you, each with its answers
+  view coordinator [--all] [--json]              everything that needs the seat, in one read
+  view cards [--col <c>] [--by tier|stream]      list or count the cards by column, stream or holder
+  view worker --as <member|friend>               one worker's cards, packets and results not landed
+  card <id> [--brief | --fields]                 one card: its brief, attempts, state and log
+  streams [--cards] [--release <name>]           each stream: repositories, bases, open and landed
+  needs [--stream <s>] [--roots]                 the waiting cards and the needs they wait on
+  held [--stream <s>]                            the held cards
+  sentinels [--stream <s>]                       the sentinels and what each one waits on
+  bases                                          each base the open cards name: ahead, behind, gate
+  log [--card <id>] [--since <10m>]              the sprint's change log
+  stats [--routes]                               the sprint's counts and rates
+  rules                                          what the tick's rules would answer, and why idle
+  handover                                       what the next holder of the seat needs
+  dashboard [--listen <addr:port>]               serve the sprint's web page and pull routes
+
+run the machine:
+  init [--readers <a,b>] [--members <m:width>]   create the sprint: readers, members, coordinator
+  start                                          start the machine ticking
+  stop --reason <text> --until <time>            stop the machine until the next start
+  run [--listen <addr:port>] [--land]            the server loop: tick, serve the verbs, land
+  tick [--shadow]                                one tick by hand: deal, ask reads, queue merges
+  resolve [<id>...] [--stream <s>]               move waiting cards whose needs landed to ready
+  watch --wake [--every <duration>]              block until something needs the coordinator
+  remind --in <duration> --note <text>           a timer that wakes its actor as a judgment
+  play [--seed <n>] [--every <duration>]         simulate the world outside the tables on a twin
+  quack --streams <a,b> --repo <clone url>       add the end-to-end test cards, --count per stream
+  selftest [--dir <d>] [--keep]                  run the card flow on a scratch twin and repository
+  selftest land [--binary <path>]                land a canned card on a scratch clone
+  clear --confirm sprint                         a new epoch, every setting at its working default
+  teardown --confirm sprint                      delete the sprint's records from the store
+
+cards and briefs:
+  add --stream <s> --brief-file <f>...           admit cards (or <id>..., --brief-dir, --count)
+  preflight --brief-dir <dir>                    check a directory of briefs before adding it
+  brief check <file|dir>... [--stream <s>]       every check add runs, over briefs; writes nothing
+  check cards [--stream <s>...] [--dry-run]      the card check before start, recorded for start
+  brief <id> --brief-file <path>                 re-brief a card in place (or --tier, --widen)
+  recut <id> (--tier <t> | --brief-file <f>)     re-cut a card as its twin
+  twin <card> [--paths <p,...>] [--carry]        replace a card by its twin, widened
+  relink <old-id>[,<old-id>] <new-id>            re-point what waited on old cards to their twin
+  continue <card> --note <text>                  carry a bound card's pushed work to a next attempt
+  tier <card> --set <tier> --reason <text>       set a card's tier without editing its brief
+  move <id>... --stream <s>                      move cards to another stream
+  rank <id>... (--first | --score <n>)           change cards' place in their stream
+  priority <id>... --high --reason <text>        set cards' priority, blocker down to low
+  unpin <id>... --reason <text>                  take the WHO pin off unstarted cards
+  sentinel set <id> --needs <a,b>                replace a sentinel's needs
+  card base <id> <branch>                        point a merging card at another base on origin
+  rebase --from <branch> --to <branch>           move every unlanded card from one base to another
+  drop <id>... --reason <text>                   drop cards; they are never dealt again
+  defer <id>... --repo-dir <dir>                 write waiting cards to the roadmap, then drop them
+
+answer the inbox:
+  accept (<id>... | --group <id> --expect <n>)   move passed cards in review to the merge queue
+  rework <id>... --fix <text>                    open the cards' next attempt with what to fix
+  return <id>... --reason <text>                 take merging cards off the queue, back to review
+  redo <card>...                                 merge again a card whose merge conflicted
+  ask [<id>...] [--another]                      ask a reader (or one more) to read cards in review
+  resume --stream <s> --did <text>               resume a stopped stream, with what was done
+  release <sentinel|card>... --reason <text>     release sentinels or held cards
+  wait <note> --for <duration>                   park a judgment for a while
+  ack <note>[,<note>] --reason <text>            close notes that need nothing done
+  answer [--dry-run] [--bar <p>]                 answer the routine judgments through nova-decide
+
+work rows (take, finish, queue):
+  queue --as <member|reader> | --stream <s>      a worker's dealt and held cards, or a stream's
+  take --as <member> [<card>@<gen>...]           take dealt cards to work on
+  progress --as <worker> <card>@<gen>            stamp progress on cards being worked
+  finish --as <member> <card>@<gen>              report work done: --head <sha>, or --failed
+  stop-return --as <owner-row> <card>@<gen>      hand stopped cards back to their owner row
+  lane take <kind> --machine <m> --as <worker>   take a lane on a machine, or queue for one
+  lane give <kind> --machine <m> --as <worker>   give a lane or a queue place back
+  lane list                                      every machine's lanes and their holders
+  budget take <provider/model> --holder <id>     take a rate and concurrency grant for a call
+  budget renew <provider/model> --holder <id>    renew the concurrency slot of a long call
+  budget release <provider/model> --holder <id>  free the concurrency slot when a call ends
+  ci <id>... (--red | --green) --epoch <n>       report a CI run's result on cards
+  merge --stream <s> [--red | --conflict <id>]   report a merge's result: red, conflict, landed
+
+reads and review:
+  read --as <reader> (--ok | --broken)           record a read's verdict (--begin starts one)
+  reads --review [--stream <s>]                  who holds each read of the cards in review
+
+friends:
+  friend sync [--root <dir>]                     copy nova-config's friends in; deliver their cards
+  collect [<friend>...] [--dead-lanes]           finish friends' cards from their outbox reports
+  friend cards <friend> [--json]                 the cards on a friend's row, packets and briefs
+  friend up <friend> [--width <n>]               release a friend's hold; --width sets the width
+  friend down <friend> [--reason <text>]         hold a friend; the cards stay on the friend's row
+  friend hold <friend>... --reason <text>        hold friends; their cards go back to ready
+  friend unhold <friend>... [--reason <text>]    release friends' holds
+  friend beat <friend> [--working <n>]           a friend's work report, never liveness
+  friend take <friend> <id>...                   take cards back from a friend
+  friend give <friend> <id>...                   clear a friend's take-back mark on cards
+  friend level                                   move queued cards between the friends' rows
+  friend stage <card>@<gen> --as friend.<name>   stage a friend's dealt card in a job directory
+  friend clean [--days <n>] [--dry-run]          remove friends' finished job directories
+  goal set <name> --file <path> [--to <route>]   a person's goal, delivered every 5 running minutes
+  goal show [<name>]                             the goals set and their routes
+  goal drop <name>                               take a person's goal off
+
+fleet and readers:
+  fleet sync [--check]                           make the fleet table match nova-config's machines
+  fleet up <member> [--width <n>]                bring a member up at a width
+  fleet down <member>                            take a member down; its unfinished work is redealt
+  fleet hold <member>... --reason <text>         hold members, whatever they beat (--return too)
+  fleet unhold <member>... [--reason <text>]     release members' holds
+  fleet quiet <member> --for <duration>          deal a member nothing for a while
+  fleet level [--dry-run]                        level members' queues and reads, as the tick does
+  fleet beat <member> [--load <percent>]         a member's beat
+  hold <name>... --reason <text>                 hold members, readers, friends or streams by name
+  unhold <name>... [--reason <text>]             release those holds by name
+  reader add <reader>... [--tiers <t,...>]       add readers, up, reading the tiers named
+  reader set <reader>... --tiers <t,...>         set the tiers readers read
+  reader away <reader>...                        hold readers away, whatever they beat
+  reader up <reader>...                          release readers' away hold
+  reader retire <reader>...                      retire readers; their reads go to readers up
+  reader remove <reader>...                      delete readers holding no read card
+
+routes and cost:
+  routes                                         the route table: tier, provider/model, budget, rest
+  routes rest <provider|route> --reason <text>   deal no work on a provider or route for a while
+  routes wake <provider|route> --reason <text>   end a rest now
+  routes limit <provider|route> --rpm <n>        set a model's rate (--concurrent: a provider's)
+  funded <provider> --reason <text>              end a provider's rest for funds, once it is paid
+  cost reconcile [--dry-run]                     hold today's provider usage against the records
+  cost reprice [--since <RFC3339>] [--dry-run]   reprice the records at the routes' current prices
+  stats tidy --all --reason <text> [--dry-run]   archive the done counts and count from now
+  stats reset --reason <text> | --show           mark the counters; every figure counts from it
+
+landing and releases:
+  land [--stream <s>...] [--check <command>]     merge passed cards onto their base and push
+  verify-landed [--stream <s>...]                check each landed head is on its base on origin
+  landed <id>... --sha <commit> --reason <text>  record a landing git proves (an unreported push)
+  merge-window open --for <duration>             pause land while merges are done by hand
+  promote [--every <duration>] [--dry-run]       promote landed work toward the development branch
+  promoted --sha <merge sha>                     record a promotion
+  release check [--window <duration>]            the release's checks: RELEASE OK or NOT READY
+  stream set <stream>... [--release <name>]      a stream's release, base, read tier and more
+  stream archive <stream>...                     take landed streams off the table
+  stream unarchive <stream>...                   put archived streams back on the table
+  stream remove <stream>...                      delete streams that hold no card
+
+settings and the seat:
+  settings [--json]                              every setting with its value and default
+  set [--read-tier <t>] [--attempts <n>] ...     set the sprint's settings
+  seat [--repair --reason <text>]                the seat: holder, epoch and generation
+  coordinator <name> --reason <text>             move the seat to <name> (or --take, approved)
+
+repair and diagnosis:
+  doctor [--all] [--area <group>]                every fault, with its evidence and remedy
+  audit [--stream <s>] [--stuck <10m>]           anything blocked, stuck or looped, card by card
+  check                                          check the sprint's invariants, each violation
+  repair [--dry-run]                             finish a step cut short; re-read under-read merges
+  seat check                                     the machinery: server, store, loop, beats, readers
+  machinery                                      seat check's other name
+  fsck seat [--pg <dsn>]                         whether seat key, record, server and config agree
+
+machines and the store:
+  install <server|member|friend-sync|table>      install and load a unit this machine needs
+  uninstall <server|member|friend-sync|table>    unload and remove a unit
+  units --check [--dir <dir>]                    each unit a sprint needs: there, missing, different
+  seat install [--server <host:port>]            record the seat on this machine
+  seat uninstall [--dir <dir>]                   remove the retired push loop's unit
+  server switch [<binary>] [--rollback]          swap the server binary after a shadow tick
+  adopt <version|path> --source <checkout>       roll a build out to the seat through ansible
+  live [--json]                                  what is installed and running on this machine
+  gc [--machine <m>] [--dry-run]                 remove finished job, read and lander directories
+  backup (--out <dir> | --file <path>)           write the store out, checked by a restore
+  snapshot --dir <dir> [--keep <n>]              an RDB copy of the store, checked and pruned
+  demo load <backup.xz part>...                  load a backup into a throwaway Redis to look at
+  demo stop [--dir <dir>]                        stop the demo Redis and remove its directory
+
+help and version:
+  help [<verb> | <group> | playbook | all]       this index, or the detail named
+  version                                        the version line, with its source commit
+
+detail:
+  nova-sprint help <verb>     a verb's whole usage, its flags, examples and exit codes
+  nova-sprint help <group>    a group's verbs and words (fleet, friend, reader, stream, lane, goal)
+  nova-sprint help playbook   the coordinator's situations, each with its verbs in order
+  nova-sprint help all        the full reference: every usage line, the inbox's answers, the words
+Every store verb also takes --redis <addr>, --actor <name>, --op <id>, --json and --max <n>.

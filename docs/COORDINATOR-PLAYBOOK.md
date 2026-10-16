@@ -4,7 +4,7 @@ The coordinator seat's workflows. Each one gives the situation, the verbs in the
 them, what success looks like, and what not to do by hand. `nova-sprint help playbook` prints this
 file; it is compiled into the binary from `docs/COORDINATOR-PLAYBOOK.md`.
 
-Each step quotes the verb's usage line exactly as `nova-sprint help` prints it, then the line to
+Each step quotes the verb's usage line exactly as `nova-sprint help all` prints it, then the line to
 run, then the spec section the step comes from. Where this file and a verb's help disagree, the
 help is right and this file has the defect. A test (`cmd/nova-sprint/playbook_test.go`) holds every
 `nova-sprint` usage line quoted here to the help, and every verb and flag named here to the verb
@@ -23,10 +23,11 @@ reads, answer the mechanical judgments by rule, land, re-check a red base and fi
 cards from their reports. When the model does that work by hand, it adds a second writer, skips
 the checks the verb runs, and leaves no record in the log.
 
-1. Look for the verb. `nova-sprint help` lists every usage line, `nova-sprint help <verb>` prints
+1. Look for the verb. `nova-sprint help` is the index, every verb on one line by situation;
+   `nova-sprint help all` lists every usage line, `nova-sprint help <verb>` prints
    one verb's flags, examples and exit codes, and `nova-sprint help <group>` prints one group (fleet,
    friend, reader, goal, stream, lane, merge-window). Every judgment in the inbox prints the commands
-   that answer it: copy them and fill in each `'<...>'` (`nova-sprint help`, "reading the inbox
+   that answer it: copy them and fill in each `'<...>'` (`nova-sprint help all`, "reading the inbox
    and answering a judgment").
 2. Ask what is waiting on you. usage: `nova-sprint view coordinator [--all] [--since <cursor>] [--json]`.
    Run `nova-sprint view coordinator --needs`. It lists every decision waiting on the coordinator
@@ -40,14 +41,14 @@ the checks the verb runs, and leaves no record in the log.
    step. The runbook says the same: when a task keeps needing an outside script or a manual store
    edit, name the missing tool behaviour and propose it (SPRINT-COORDINATOR.md section 1, "Keep
    coordination in the tools").
-4. A refusal is an answer. A verb that refuses prints why on its REFUSED line (`nova-sprint help`).
+4. A refusal is an answer. A verb that refuses prints why on its REFUSED line (`nova-sprint help all`).
    Read it, and do not work round it (SPRINT-COORDINATOR.md section 1, "Keep coordination in the tools").
 5. These are never done by hand (SPRINT-COORDINATOR.md section 1). No `redis-cli` and no edit of
    a store key: every change is a verb. No second `run`, `tick`, `land` or `play` beside the running
    server, because that makes a second writer. No unit file written by hand: `nova-redis install` and
    `nova-sprint install` write them. No secret printed, pasted or put on a command line. No
    `rm -rf`. `take`, `finish`, `read`, `fleet beat`, `friend beat`, `lane take` and `lane give`
-   are the workers' verbs, never the seat's (`nova-sprint help`).
+   are the workers' verbs, never the seat's (`nova-sprint help all`).
 
 ## 1. Session start
 
@@ -131,10 +132,10 @@ it.
 `status=up`. `where` shows the row up with cards working, and finishes arrive without you.
 
 **Not by hand.** Never run a hand take loop: `take --as friend.<name>` is the friend's lane's take
-(`nova-sprint help`), and the daemon makes it. Do not finish a friend's card from her REPORT.md by
+(`nova-sprint help all`), and the daemon makes it. Do not finish a friend's card from her REPORT.md by
 hand, because `nova-sprint collect` does that (section 6 below). Do not hand-edit the plist; run
 install again. Do not use `friend give` to fill a row: the seat hands a named ready card to a
-friend with friend give, and the deal fills the rest (`nova-sprint help`).
+friend with friend give, and the deal fills the rest (`nova-sprint help all`).
 
 ## 3. Reads and review
 
@@ -151,7 +152,7 @@ friend with friend give, and the deal fills the rest (`nova-sprint help`).
    and usage `nova-sprint reader set <reader>... --tiers <flash[,pro,heavy,frontier]|all|default>`.
    The judgments "review has no reader" and "no frontier reader has room" are answered by
    `nova-sprint reader add <reader>`, or by `nova-sprint reader add <reader> --tiers frontier`
-   (`nova-sprint help`, "one answer to each judgment"). Spec: SPEC-SPRINT.md section 6, "The
+   (`nova-sprint help all`, "one answer to each judgment"). Spec: SPEC-SPRINT.md section 6, "The
    readers".
 3. See the reads. usage: `nova-sprint reads --review [--stream <s>] [--json]`. It lists every
    primary in review and each of its read cards at its attempt: who holds each read, in what
@@ -244,7 +245,7 @@ verb prints a MOVED line for every card, and the inbox holds only what needs a m
 **Not by hand.** For "the brief is wrong", do not drop a card and add it again: `brief` edits it in
 place (SPEC-SPRINT.md section 11, the `brief` row). A brief-defect judgment is the exception, and
 the inbox prints its answer: drop, then add the re-cut brief as a new card, never a redeal
-(`nova-sprint help`, "one answer to each judgment"). Do not resolve a conflict on the card's branch, which
+(`nova-sprint help all`, "one answer to each judgment"). Do not resolve a conflict on the card's branch, which
 no reader has read; rework or drop it instead (SPRINT-COORDINATOR.md section 2). Do not loop over
 cards one process at a time when a selector does them in one step (SPEC-SPRINT.md section 2, "One
 selector, one step"). Do not compose a command when the inbox prints one.
@@ -276,7 +277,7 @@ and "v11-base-red-auto-resume-now".
    The base cure lands the fix head first.
 3. Report a base red the lander has not seen. usage: `nova-sprint merge --stream <s> [--batch <n>] [--conflict <id> [--conflict-kind file|ledger] [--conflict-path <p>...] | --cross <id>=<other> | --red [--suspect <id>...] | --rejected | --base-red <error>] [--note <text>]`.
    `nova-sprint merge --stream <s> --base-red <error>` reports the fact that the base fails its
-   tree gate: the stream stops, and no card moves. merge is a report (`nova-sprint help`), so use
+   tree gate: the stream stops, and no card moves. merge is a report (`nova-sprint help all`), so use
    it only for a fact the lander has not recorded.
 4. Resume what the rule did not. usage: `nova-sprint resume --stream <s> [--did <text>] [--answers <note>]`.
    For a stream the rule left stopped, run
@@ -294,14 +295,14 @@ streams one by one while the base's judgment stands, because the rule resumes th
 
 **What happens without you.** nova-hook's heartbeat server challenges each hooked friend, and a
 silent friend's record goes down. The sprint's tick writes each friend's status from that record
-and never works it out: down whenever the hook record is down (`nova-sprint help`, "The friends").
+and never works it out: down whenever the hook record is down (`nova-sprint help all`, "The friends").
 The heartbeat server sends the coordinator FRIEND DOWN and FRIEND BACK judgments
 (`nova-hook help hook`). The friend's daemon stops a lane turn that stays silent past
 `--silent-stop`. After the same provider refusal on `--broken-after` lane turns in a row, it marks
 the session broken and tells the seat once. On a provider failure (out of funds) it stops every
 lane and writes PAUSED (`nova-friend help run`, `nova-friend help resume`). A friend that is down
 shows working 0, and her cards stay on her row and count again when she is up
-(`nova-sprint help`). Spec: SPEC-SPRINT.md section 1, "The tables"; nova-tools SPEC-FRIEND.md,
+(`nova-sprint help all`). Spec: SPEC-SPRINT.md section 1, "The tables"; nova-tools SPEC-FRIEND.md,
 "Presence"; SPEC-HOOK.md, "The heartbeat".
 
 **The verbs, in order.**
@@ -316,7 +317,7 @@ shows working 0, and her cards stay on her row and count again when she is up
    kept for one release. A held friend keeps no card: every card on her row goes back to ready,
    and a started card with a push carries its pushed head to the next taker. Release her with
    usage `nova-sprint unhold <member|reader|friend|stream>... [--reason <text>] [--dry-run]`.
-   `friend up` cannot prove the friend alive (`nova-sprint help`, "The friends"). Spec:
+   `friend up` cannot prove the friend alive (`nova-sprint help all`, "The friends"). Spec:
    SPEC-SPRINT.md section 11, the `hold` and `friend down, friend up` rows.
 4. Finish what her reports already finish. usage: `nova-sprint collect [<friend>...] [--dead-lanes] [--pg <dsn>] [--root <dir>] [--dry-run]`.
    Run `nova-sprint collect --dry-run`, then `nova-sprint collect --dead-lanes`. collect finishes
@@ -325,7 +326,7 @@ shows working 0, and her cards stay on her row and count again when she is up
    SPEC-SPRINT.md section 1, "Collect".
 5. Settle a stop's debt. usage: `nova-sprint stop-return --as <owner-row> <card>@<gen>... --epoch <n> --reason <cancel acknowledgement> [--dry-run]`.
    This answers "STOP debt: an owner has not beaten since the stop" once you have seen the
-   child exit (`nova-sprint help`, "one answer to each judgment"). Spec: SPEC-SPRINT.md section
+   child exit (`nova-sprint help all`, "one answer to each judgment"). Spec: SPEC-SPRINT.md section
    14, "The system".
 6. On her machine, after a person deals with the provider, use usage
    `nova-friend resume --as <me> [--dir <d>] [--state-dir <d>] [--dry-run]` to clear PAUSED, and
@@ -379,7 +380,7 @@ names a cause.
 **Not by hand.** Do not `rm -rf` job directories or caches; gc removes them. Do not edit the fleet
 table; `fleet sync` and `fleet up` write it. A member up with no card working that beats at 90% or more
 for the pegged bound (`set --pegged-bound`, default 10m) is a judgment that tells you to read the leftover process on the machine (ps), kill it by PID, or
-hold the member (`nova-sprint help`, "The fleet"). Never kill a process blindly.
+hold the member (`nova-sprint help all`, "The fleet"). Never kill a process blindly.
 
 ## 8. Priorities and order
 
@@ -462,7 +463,7 @@ after a shadow tick (SPEC-SPRINT.md section 14, "install-canary-shadow-tick-r.w1
    Spec: SPEC-SPRINT.md section 19, "Timers".
 6. Look again later. usage: `nova-sprint wait (<note>[,<note>]... | --group <id> [--expect <n>]) (--for <duration> | --until <RFC3339>)`.
    It sets a judgment's next review time. Never use it on a judgment that holds a card
-   (`nova-sprint help`, "overdue: act"). Spec: SPEC-SPRINT.md section 11, the `wait` row.
+   (`nova-sprint help all`, "overdue: act"). Spec: SPEC-SPRINT.md section 11, the `wait` row.
 7. Keep a person on their goal. usage: `nova-sprint goal set <name> [--file <path>] [--to file:<path>]`.
    While the machine is RUNNING, the tick delivers each person's goal down their route at start
    and every 5 minutes of running time. Spec: SPEC-SPRINT.md section 15, "Reminders".

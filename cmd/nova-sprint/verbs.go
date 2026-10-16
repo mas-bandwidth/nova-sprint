@@ -517,11 +517,16 @@ func sourceCommitExtra() string {
 }
 
 func helpCommand(path []string, stdout, stderr io.Writer) int {
+	// the top-level help is the index (helpindex.go); help all is the full reference
 	if len(path) == 0 {
-		fmt.Fprint(stdout, banner())
+		fmt.Fprint(stdout, helpIndex())
 		return 0
 	}
 	name := strings.Join(path, " ")
+	if name == "all" {
+		fmt.Fprint(stdout, banner())
+		return 0
+	}
 	// playbook is a topic, not a verb: the coordinator's workflows,
 	// docs/COORDINATOR-PLAYBOOK.md compiled in (docs/embed.go)
 	if name == "playbook" {

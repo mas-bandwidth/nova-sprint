@@ -441,7 +441,10 @@ func TestEveryVerbHasHelpAndRefusesBadUse(t *testing.T) {
 	}
 	code, out, _ := ta.do("help")
 	assert.Equal(t, 0, code, "help: %d", code)
-	assert.Contains(t, out, "nova-sprint play", "help: %d", code)
+	assert.Regexp(t, `(?m)^  play \[`, out, "help: %d", code)
+	code, out, _ = ta.do("help all")
+	assert.Equal(t, 0, code, "help all: %d", code)
+	assert.Contains(t, out, "nova-sprint play", "help all: %d", code)
 	for _, line := range []string{"", "nosuch", "start now", "take", "merge", "read --as reader-a", "rank x", "teardown", "add --stream s1"} {
 		code, _, errs := ta.do(line)
 		assert.Equal(t, 2, code, "%q: exit %d %q", line, code, errs)

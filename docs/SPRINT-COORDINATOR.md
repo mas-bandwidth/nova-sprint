@@ -168,7 +168,7 @@ notice names its new state, who resumed it, and the `--did` explanation.
 - Sentinel reached. The other printed decisions are `add --stream <s> --before <sentinel> '<new id>' --brief
   '<brief>'` and `drop`. A judgment held for a wave not yet agreed stays open, never released to clear the
   inbox.
-- Every other type is answered by the line the inbox prints (`nova-sprint help`, "one answer to each
+- Every other type is answered by the line the inbox prints (`nova-sprint help all`, "one answer to each
   judgment"; [SPEC-SPRINT.md section 8](SPEC-SPRINT.md#8-notifications) lists each type, its answers and
   whether `ack` is one): ready to accept (`accept`), stream branch red, merge queue rejected, needs another
   stream first (`rank <other> --first`), ci red, reads exhausted (`ask --another`), a card at its bound,
