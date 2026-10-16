@@ -9,7 +9,7 @@ tool (
 
 require (
 	github.com/jackc/pgx/v5 v5.11.0
-	github.com/mas-bandwidth/nova-tools v1.2.26-0.20261015142540-bac0614abd81
+	github.com/mas-bandwidth/nova-tools v1.3.15-0.20261016122027-3144c1facfa4
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/stretchr/testify v1.12.1
 	github.com/yuin/gopher-lua v1.1.1
