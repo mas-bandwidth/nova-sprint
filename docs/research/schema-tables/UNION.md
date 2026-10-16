@@ -413,11 +413,15 @@ table Pong                      // (rev) variable, per Glenn's ruling (D1): an o
 table Ack                       // the receipt: emma BusReceipt, stella send receipt (U18, U64)
 {
     id      string(64)
-    stage   Stage               // enum Stage { queued, claimed, pushed, acted }
+    stage   Stage               // enum Stage { queued, delivered, read, acted }: pkg/bus stages.go
     push    PushState           // enum PushState { up, down, stale }: the NOTE line today
     reason  string(152)
 }
 ```
+
+**(rev)** The Ack stage words are pkg/bus's (`stages.go`: queued, delivered, read, acted), the running code,
+so one word names each stage; the U64 input's claimed and pushed are not adopted (coordinator decision,
+2026-10-16; nova-tools `schemas/hook/ack.schema`).
 
 **(rev)** The pong tracer ran the four-field form (nonce, queue, working, width) and carried it on the bus as
 `pongwire ` + padded standard base64 of the binary wire, which keeps the form byte (`unknown_form`) and the
