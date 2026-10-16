@@ -99,8 +99,10 @@ func defaultWakeCfg() wakeCfg {
 		backlogEvery: 30 * time.Minute, landAfter: 15 * time.Minute, mergeOver: 30, mergingOver: 60, reviewOver: 40, sleep: time.Sleep}
 }
 
-// wakeMsg is one entry of the coordinator's bus stream.
-type wakeMsg struct{ ID, From, Subject, Kind string }
+// wakeMsg is one entry of the coordinator's bus stream. Refused is the
+// refusal of an entry the reader refused (bus_envelope.go): it carries
+// nothing else and is never acted on.
+type wakeMsg struct{ ID, From, Subject, Kind, Refused string }
 
 // wakeLook is what one look at the world reads.
 type wakeLook struct {
@@ -183,7 +185,7 @@ var notAnAsk = regexp.MustCompile(`(?i)pong|ping|^card \S+ dealt|card \S+ finish
 // tla/CoordinatorWake.tla ArriveAsk ArriveFilter
 func (m wakeMsg) wakes(coordinator string) bool {
 	switch {
-	case m.From == coordinator:
+	case m.Refused != "", m.From == coordinator:
 		return false
 	case m.Kind != "":
 		return m.Kind == bus.KindRequest || m.Kind == bus.KindBlocker || m.Kind == bus.KindReport
@@ -387,6 +389,8 @@ type storeWake struct {
 	a      *app
 	stream string // the coordinator's stream; "" with no bus
 	bus    *bus.Bus
+	reads  *busReader   // reads the stream's entries in either form; made at the first read when nil
+	say    func(string) // tells a refused entry; nil says nothing
 }
 
 // busBatch bounds one read of the stream.
@@ -453,9 +457,20 @@ func (w *storeWake) look(ctx context.Context, after string) (wakeLook, error) {
 		if err != nil {
 			return l, err
 		}
+		if w.reads == nil {
+			w.reads = newBusReader()
+		}
 		for _, e := range es {
-			f := e.Fields
-			l.Msgs = append(l.Msgs, wakeMsg{ID: e.Entry, From: f["from"], Subject: f["subject"], Kind: f["kind"]})
+			m, _, err := w.reads.entry(e)
+			if err != nil {
+				// refused by name and never acted on: the cursor passes it and it wakes nothing
+				l.Msgs = append(l.Msgs, wakeMsg{ID: e.Entry, Refused: err.Error()})
+				if w.say != nil {
+					w.say("bus entry " + e.Entry + ": " + err.Error())
+				}
+				continue
+			}
+			l.Msgs = append(l.Msgs, wakeMsg{ID: e.Entry, From: m.From, Subject: m.Subject, Kind: m.Kind})
 		}
 	}
 	return l, nil
@@ -557,9 +572,13 @@ func (a *app) cmdWatch(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return a.readFailed("watch", err, stderr)
 	}
-	src := &storeWake{st: st, a: a, bus: b}
+	src := &storeWake{st: st, a: a, bus: b, reads: newBusReader(), say: func(s string) { fmt.Fprintf(stderr, "%s watch: %s\n", prog, s) }}
 	if coord != "" {
 		src.stream = bus.StreamOf(coord)
+	}
+	if b != nil {
+		// the per-form read counter: what a cutover reads before writers switch
+		defer func() { fmt.Fprintf(stderr, "%s watch: bus reads %s\n", prog, src.reads.countsLine()) }()
 	}
 	cfg := wakeCfg{every: *every, check: *check, judgmentEvery: *judgmentEvery, mergeEvery: *mergeEvery, backlogEvery: *backlogEvery,
 		landAfter: *landAfter, mergeOver: *mergeOver, mergingOver: *mergingOver, reviewOver: *reviewOver, sleep: func(d time.Duration) { a.pause(ctx, d) }}
