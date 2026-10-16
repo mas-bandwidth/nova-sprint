@@ -16,6 +16,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-tools/pkg/member"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
 
 // friendStageGit is the git runner friend stage clones and configures with: a
@@ -173,6 +174,7 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 		root = filepath.Join(home, friendName+"-working", friend.JobsDir)
 	}
 	jobDir := filepath.Join(root, job)
+	symbolicBase := next == "" && base.Sha == "" && !typedrec.IsFullSha(startRef)
 
 	// (5) an already staged directory
 	if _, err := os.Lstat(filepath.Join(jobDir, friend.JobFile)); err == nil {
@@ -181,6 +183,13 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 			return refuse(stderr, name, "the staged JOB.md cannot be read: "+oneline.Err(err))
 		}
 		s := string(old)
+		if symbolicBase {
+			resolved, err := friendStageBaseHead(ctx, jobDir, startRef)
+			if err != nil {
+				return refuse(stderr, name, "resolving BASE "+oneline.Escape(startRef)+" in the staged clone: "+oneline.Err(err))
+			}
+			startRef = resolved
+		}
 		if strings.Contains(s, "CARD: "+card+"\n") && strings.Contains(s, "GEN: "+strconv.Itoa(gen)+"\n") &&
 			strings.Contains(s, "BRANCH: "+p.Branch+"\n") && strings.Contains(s, "HEAD: "+startRef+"\n") {
 			fmt.Fprintln(stdout, filepath.Join(jobDir, friend.JobFile))
@@ -211,6 +220,17 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 			return refuse(stderr, name, "fetch of the NEXT head "+oneline.Escape(next)+": "+oneline.Err(err))
 		}
 	}
+	// A clone checks out only its default branch. A non-default BASE exists as a
+	// remote-tracking ref, not as the bare local branch named in the brief.
+	// Resolve that fetched ref to a commit so checkout and JOB.md bind one exact
+	// head while BASE keeps naming the branch the result will land on.
+	if symbolicBase {
+		resolved, err := friendStageBaseHead(ctx, jobDir, startRef)
+		if err != nil {
+			return refuse(stderr, name, "resolving BASE "+oneline.Escape(startRef)+" in the clone: "+oneline.Err(err))
+		}
+		startRef = resolved
+	}
 	if _, err := friendStageGit(ctx, jobDir, "checkout", "-q", "-B", p.Branch, startRef); err != nil {
 		return refuse(stderr, name, "checkout of "+oneline.Field(p.Branch)+" at "+oneline.Escape(startRef)+": "+oneline.Err(err))
 	}
@@ -231,6 +251,21 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "FRIEND-STAGE OK friend=%s card=%s gen=%d branch=%s job=%s jobmd=%s identity=%s\n", friendName, card, gen, p.Branch, oneline.Field(job), filepath.Join(jobDir, friend.JobFile), identityFrom)
 	a.outcome, a.changed = "accepted", "yes"
 	return 0
+}
+
+// friendStageBaseHead pins a symbolic BASE to the branch tip the clone actually
+// fetched. A bare non-default branch does not exist locally after git clone.
+func friendStageBaseHead(ctx context.Context, jobDir, baseRef string) (string, error) {
+	ref := "refs/remotes/origin/" + baseRef + "^{commit}"
+	resolved, err := friendStageGit(ctx, jobDir, "rev-parse", "--verify", ref)
+	if err != nil {
+		return "", err
+	}
+	resolved = strings.TrimSpace(resolved)
+	if !typedrec.IsFullSha(resolved) {
+		return "", fmt.Errorf("git returned no commit for %s", oneline.Escape(baseRef))
+	}
+	return resolved, nil
 }
 
 // refuseState is refuse for a refusal of the world's state, not of the words
