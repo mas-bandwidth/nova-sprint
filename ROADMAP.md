@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (213)
+- [The sprint system](#the-sprint-system) (214)
 - [Setup, release and operations](#setup-release-and-operations) (34)
 - [Docs, models and the repository](#docs-models-and-the-repository) (22)
 - [Friend AIs](#friend-ais) (21)
@@ -1774,6 +1774,16 @@ Why it waits: A new escalation rule in the deal.
 Target: v1.5
 
 From: Rowan, 2026-10-16, from the overnight fix column
+
+### Selftest, the sims and the unit tests run with routes configured, as in use
+
+A store with no routes configured at all treats every tier as served, and each worker runs its own --model. v1.4.6 fences that shortcut so it applies only to the in-memory twin: the pretend sprint of `nova-sprint selftest`, the help walkthrough, and the twin and play sims. A real store with no routes refuses by name. v1.7 removes the shortcut entirely. The selftest twin, the walkthrough, the sims and the roughly 362 unit tests that rely on an empty route table instead configure routes the way a real sprint does, through the same nova-config route rows or their store equivalent, so the tier is respected everywhere with no special case. DONE-WHEN: the predicate that fences the shortcut is deleted; no code path serves a tier without an enabled route; selftest, the walkthrough and the sims configure routes; the full unit tier and TLC (ReaderTiers) pass; and a test pins that an empty route table refuses on every store kind.
+
+Why it waits: The system should be tested exactly as it will be used. A special case that serves every tier when no routes exist is a path a real sprint never takes, so the tests that rely on it prove less than they appear to, and keeping it, even fenced, leaves a way for the tier rule to be skipped.
+
+Target: v1.7
+
+From: Glenn, 2026-10-16: "Add a task to v1.7 to do it properly. It's best to test exactly as the system will be used." (the v1.4.6 fence of the empty-route shortcut)
 
 ## Setup, release and operations
 
