@@ -8,7 +8,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
 - [The sprint system](#the-sprint-system) (218)
-- [Setup, release and operations](#setup-release-and-operations) (34)
+- [Setup, release and operations](#setup-release-and-operations) (35)
 - [Docs, models and the repository](#docs-models-and-the-repository) (22)
 - [Friend AIs](#friend-ais) (21)
 - [Moved out of the sprint on 2026-10-15: nova-local](#moved-out-of-the-sprint-on-2026-10-15-nova-local) (1)
@@ -2114,6 +2114,16 @@ Why it waits: Release tooling, not a fix to the sprint.
 Target: v1.5
 
 From: the coordinator, 2026-10-16
+
+### One app starts at login and runs every nova service on the machine, configured from the friend list, never a launch agent per friend or job
+
+After the 2026-10-16 reboot the studio had 45 files in ~/Library/LaunchAgents and more in /Library/LaunchDaemons, a plist for each friend hook (aurora, emma, johnny, stella), each friend runner, each loop, the dashboards, the redis instances and the sprint server. 19 were stale: editor backups, before-* and moved-to-* copies, a duplicate Stella hook, and sprint-table-live, which had crash-looped 23,923 times on a retired verb. Two more broke on the reboot because their paths pointed at a versioned Homebrew Cellar node and at /tmp. Each friend added, moved or retired meant a hand-written plist, and nothing removed the old one. The fix is one supervisor, installed as the only nova launch agent on a machine (plus one daemon only where root is needed, such as the CI runners). It reads which friends live on this machine, their harness, dirs and sessions from nova-config, and the machine's roles (store, sprint server, dashboard, hook-serve, loops) from the same config. It starts each child, restarts it with backoff, writes one log per child, and reports per-child state so nova-doctor shows a crash loop at once. Adding or moving a friend is a config change: the supervisor starts or stops her children, and a retired job disappears because config is the only source. It refuses a path under /tmp or a versioned Cellar path, and nova-doctor flags any other nova plist on the machine as a stray. The supervisor's states (absent, starting, running, backing-off, stopped, removed) get a TLA+ model before code, and unit tests use a fake clock and a fake process starter. Covers nova-tools binaries too (nova-hook, nova-friend, nova-swarm loops, nova-secrets exec wrappers), and the fleet's ansible plays install only the supervisor.
+
+Why it waits: A launch agent per friend and per job grew to dozens of plists that nobody removed, and stale ones broke things and loaded the machine (Glenn, 2026-10-16).
+
+Target: v1.7
+
+From: Glenn, live, 2026-10-16: 'consolidate all these things into one app that starts at startup and has configuration according to friends, not an app per-friend'
 
 ## Docs, models and the repository
 
