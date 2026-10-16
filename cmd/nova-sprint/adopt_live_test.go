@@ -106,7 +106,7 @@ func TestLiveShowsWhatIsInstalled(t *testing.T) {
 	t.Cleanup(func() { liveRunnerOf.Delete(a) })
 
 	var out, errs bytes.Buffer
-	require.Equal(t, 0, runInto(a, []string{"live", "--json", "--dashboard", link, "--agents-dir", agents}, &out, &errs), errs.String())
+	require.Equal(t, 0, runInto(a, []string{"live", "--json", "--dashboard", link, "--agents-dir", agents, "--daemons-dir", filepath.Join(home, "daemons")}, &out, &errs), errs.String())
 	var m liveManifest
 	require.NoError(t, json.Unmarshal(out.Bytes(), &m))
 	assert.Contains(t, ran, bin+"/nova-redis fn check --addr s:1 --user coordinator --password-env PW", "the library is read by the installed nova-redis, as the seat logs in")
@@ -193,7 +193,7 @@ func TestLiveShowsWhatIsInstalled(t *testing.T) {
 	out.Reset()
 	errs.Reset()
 	env["NOVA_LAUNCH_AGENTS"] = agents // the environment names the directory too
-	require.Equal(t, 0, runInto(a, []string{"live", "--dashboard", link}, &out, &errs), errs.String())
+	require.Equal(t, 0, runInto(a, []string{"live", "--dashboard", link, "--daemons-dir", filepath.Join(home, "daemons")}, &out, &errs), errs.String())
 	text := out.String()
 	assert.Contains(t, text, "LIVE SERVER binary="+filepath.Join(bin, "nova-sprint"))
 	assert.Contains(t, text, "LIVE LIBRARY state=STALE loaded=aaa want=bbb match=false")
