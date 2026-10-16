@@ -16,6 +16,7 @@ func TestLandRefusesACardShortOfItsReads(t *testing.T) {
 	r.ok("add --stream s1 --count 1 --one")
 	head := r.head("s1-1", "main", "s1-1.txt", "one\n")
 	r.queued(map[string]string{"s1-1": head}, "s1-1")
+	r.ok("start") // before the setting makes the card short of its reads: start refuses while check fails
 	r.ok("set --reads 2")
 	code, out, errs := r.do("land --repo-dir " + r.clone + " --base main")
 	assert.Equal(t, 1, code, "a refusal is reported")
@@ -23,7 +24,7 @@ func TestLandRefusesACardShortOfItsReads(t *testing.T) {
 	assert.Equal(t, []string{"base"}, r.mainLog(), "nothing pushed")
 	assert.Equal(t, map[string]string{"s1-1": "merging/queued"}, r.places("s1-1"))
 	// a running machine's pump (a stopped one ticks nothing)
-	tick := r.ok("start") + r.ok("tick")
+	tick := r.ok("tick")
 	assert.Equal(t, map[string]string{"s1-1": "review/returned"}, r.places("s1-1"), "back to review for its second read: %s", tick)
 }
 

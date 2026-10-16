@@ -181,7 +181,7 @@ func TestStartWarnsAndStartsWhateverTheCardCheckSaysAndCleanPrintsNoWarn(t *test
 		{"files", func() {
 			ta.seed(nil, nil, []ntable.BatchMemberEntry{edit("b2", map[string]string{"brief": lintedBrief("b2", "sprint/s2", "internal/y/**")})})
 		}},
-		{"same-file", func() { ta.seed(nil, nil, []ntable.BatchMemberEntry{edit("a6", map[string]string{"needs": "a5"})}) }},
+		{"same-file", func() { ta.ok("needs set a6 --needs a5") }}, // the verb waits a6 on a5: start refuses while check fails
 		{"bases", func() {
 			ta.seed(nil, nil, []ntable.BatchMemberEntry{edit("b3", map[string]string{"needs": "s1-stop"})})
 		}},

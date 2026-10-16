@@ -102,7 +102,7 @@ func TestStartRefusesEveryNonWorkingSettingNoSetWrote(t *testing.T) {
 		{name: "fleet and friends off", break_: func(ta *testApp) {
 			ta.directProp(sprint.PropFleet, "off")
 			ta.directProp(sprint.PropFriends, "off")
-		}, setting: []string{"fleet", "friends"}, verb: "nova-sprint set --fleet on", set: "set --fleet off --friends off"},
+		}, setting: []string{"fleet", "friends"}, verb: "nova-sprint set --fleet on"}, // chosen by set, nothing deals a ready card: check fails (rule 12) and start refuses
 		{name: "fleet tiers serve no needed tier", break_: func(ta *testApp) {
 			ta.directProp(sprint.PropFriends, "off")
 			ta.directProp(sprint.PropFleetTiers, "heavy")

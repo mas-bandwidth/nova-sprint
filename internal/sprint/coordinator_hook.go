@@ -61,7 +61,10 @@ func HookRefusal(r *hook.Refusal) string {
 		}
 		lines = append(lines, l)
 	}
-	out := fmt.Sprintf("%s: %s; run: %s under a Monitor, and answer each HOOK CHALLENGE it prints with nova-hook prove", HookFirst, r.Why, r.Hook)
+	// DO NOT REMOVE THIS WITHOUT GLENN'S EXPLICIT PERMISSION
+	// the owner, 2026-10-16: an unanswered challenge stops every verb, "telling you to hook
+	// in properly and receive push notifications".
+	out := fmt.Sprintf("%s: %s; run: %s under a Monitor and receive push notifications, and answer each HOOK CHALLENGE it prints with nova-hook prove", HookFirst, r.Why, r.Hook)
 	if len(lines) > 0 {
 		out += "; " + strings.Join(lines, "; ")
 	}
