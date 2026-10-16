@@ -514,6 +514,11 @@ func coordFresh(told map[string]bool, l coordLook, now time.Time) []coordSend {
 		notes[o.Note.ID] = o.Note
 	}
 	for _, g := range l.groups {
+		// Review and merge decisions use the existing durable decisions-owed
+		// receipt below. Do not send a second, process-memory-only reminder.
+		if g.Kind == sprint.Judgment && sprint.RepeatedDecisionType(g.Type) {
+			continue
+		}
 		if g.Kind == sprint.Judgment && len(g.Notes) > 0 && !g.Due.IsZero() && !now.Before(g.Due) {
 			continue
 		}
@@ -706,6 +711,9 @@ func coordWarningGroups(l coordLook) []sprint.Group {
 	}
 	var groups []sprint.Group
 	for _, g := range l.groups {
+		if g.Kind == sprint.Judgment && sprint.RepeatedDecisionType(g.Type) {
+			continue
+		}
 		skip := false
 		for _, id := range g.Notes {
 			skip = skip || covered[id]
@@ -815,7 +823,9 @@ func (a *app) decisionPass(ctx context.Context) {
 						return p
 					}
 					if lane == "coordinator" && d.To == to && d.Set == set {
-						return p
+						if !sprint.RepeatedDecisionSet(s, set) || s.Now.Sub(d.SentAt) < sprint.RepeatedDecisionEvery {
+							return p
+						}
 					}
 				}
 				if set == "" {
