@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (215)
+- [The sprint system](#the-sprint-system) (216)
 - [Setup, release and operations](#setup-release-and-operations) (34)
 - [Docs, models and the repository](#docs-models-and-the-repository) (22)
 - [Friend AIs](#friend-ais) (21)
@@ -1794,6 +1794,16 @@ Why it waits: Some problems are worth many independent attempts at once: hard bu
 Target: v1.7
 
 From: Glenn, live, 2026-10-16: 'for v1.7 we could add a swarm mode. This is where entire fleet and friends go wide with each lane solving the same problem, with shared coordination across the message bus and some text files in a repo.'
+
+### Composite verbs: one call does each coordinator act, end to end
+
+Learned from Hermes Agent's programmatic tool calling, which collapses a multi-step pipeline into one inference call. Each coordinator act that today takes 3 to 6 verbs, with traps on the way, becomes one deterministic verb that does the whole act and prints only what to act on. Measured on 2026-10-16: (1) stuck: list every card that is not moving but could be, and why: waiting with every need landed, held by a judgment, or merging but not queued. This is today's tools/stuck-cards-review.sh made a verb. (2) refinish-same-head: re-finish a card whose only fault was the bench or the gate, checking first that the head merges onto the base. (3) fix-missing-base: add a recut card's missing REPO or BASE line in any column (return, brief --keep-head, accept). (4) resolve-bound: clear a misclassified attempt bound (release, then an in-place brief with a dated carry line). (5) accept-on-read: record a cold read with its evidence file, choosing --heavy or --read-ok itself. Each verb has --dry-run, refuses by name with the one next command, and is tested on a real store, including every refusal. Glenn, 2026-10-16: skills are non-deterministic, so lessons become deterministic verbs and checks, never prose skills the agent must remember to apply.
+
+Why it waits: Every manual multi-verb act today cost tokens and hit at least one refusal that needed another verb first; one deterministic verb per act removes both.
+
+Target: v1.7
+
+From: Glenn, live, 2026-10-16, on the Hermes Agent review: '#2 is great idea for v1.7' and 'skills are fine, but remember, skills are non-deterministic'
 
 ## Setup, release and operations
 
