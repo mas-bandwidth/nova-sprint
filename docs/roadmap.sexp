@@ -2414,4 +2414,12 @@
    :date "2026-10-16"
    :release "v1.5"
    :origin "Glenn, 2026-10-16 ~00:35Z"
+   :kept (:kind "feature"))
+  (item "a-friends-dispatcher-follows-its-row-width-by-itself" :group "friends" :area "nova-sprint"
+   :title "A friend's dispatcher follows its row width by itself"
+   :text "The width in nova-config is the one true source for how many workers a friend's dispatcher runs. Today the coordinator changes `nova-config friend set <f> --width N` and then has to message the friend to resize her dispatcher child; that second step goes away. friend-sync already writes the width to the friend's row. Either the friend's hook pushes a width-changed notice, or the dispatcher reads the row width (from `nova-sprint friend cards <f>` or a `friend width` verb) on every loop and runs up to that many workers, with reads at half a slot. Nobody tells the friend. Tests: a unit test with no real time, where changing the configured width changes the dispatcher's concurrency on its next loop; and a functional test on a real store, where shrinking the width never kills a running worker and only stops new takes. The width/take loop is a state machine, so the TLA+ module is extended (FriendReadyTake) or a new one added: the width the dispatcher runs to equals the row width within one loop, and a shrink never terminates a running worker, each with a reversed witness. Related: the v1.5 entry a-friend-row-takes-its-ready-queue-by-itself (#431). Source: Glenn 2026-10-16: \"Each friend should *automatically* update their dispatcher when their width changes in nova-config. It should not be a second step.\""
+   :why "Changing a friend's width needed a second step, a message to the friend, so the dispatcher could run at the old width until someone remembered."
+   :date "2026-10-16"
+   :release "v1.5"
+   :origin "Glenn, 2026-10-16"
    :kept (:kind "feature"))))

@@ -10,7 +10,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 - [The sprint system](#the-sprint-system) (211)
 - [Setup, release and operations](#setup-release-and-operations) (32)
 - [Docs, models and the repository](#docs-models-and-the-repository) (22)
-- [Friend AIs](#friend-ais) (21)
+- [Friend AIs](#friend-ais) (22)
 - [Moved out of the sprint on 2026-10-15: nova-local](#moved-out-of-the-sprint-on-2026-10-15-nova-local) (1)
 - [Moved out of the sprint on 2026-10-15: v13-blockers](#moved-out-of-the-sprint-on-2026-10-15-v13-blockers) (19)
 - [Moved out of the sprint on 2026-10-15: v15-features](#moved-out-of-the-sprint-on-2026-10-15-v15-features) (1)
@@ -2378,6 +2378,16 @@ Why it waits: Cards sat in a friend row's ready queue for long stretches on 2026
 Target: v1.5
 
 From: Glenn, 2026-10-16 ~00:35Z
+
+### A friend's dispatcher follows its row width by itself
+
+The width in nova-config is the one true source for how many workers a friend's dispatcher runs. Today the coordinator changes `nova-config friend set <f> --width N` and then has to message the friend to resize her dispatcher child; that second step goes away. friend-sync already writes the width to the friend's row. Either the friend's hook pushes a width-changed notice, or the dispatcher reads the row width (from `nova-sprint friend cards <f>` or a `friend width` verb) on every loop and runs up to that many workers, with reads at half a slot. Nobody tells the friend. Tests: a unit test with no real time, where changing the configured width changes the dispatcher's concurrency on its next loop; and a functional test on a real store, where shrinking the width never kills a running worker and only stops new takes. The width/take loop is a state machine, so the TLA+ module is extended (FriendReadyTake) or a new one added: the width the dispatcher runs to equals the row width within one loop, and a shrink never terminates a running worker, each with a reversed witness. Related: the v1.5 entry a-friend-row-takes-its-ready-queue-by-itself (#431). Source: Glenn 2026-10-16: "Each friend should *automatically* update their dispatcher when their width changes in nova-config. It should not be a second step."
+
+Why it waits: Changing a friend's width needed a second step, a message to the friend, so the dispatcher could run at the old width until someone remembered.
+
+Target: v1.5
+
+From: Glenn, 2026-10-16
 
 ## Moved out of the sprint on 2026-10-15: nova-local
 
