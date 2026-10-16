@@ -184,7 +184,7 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 		}
 		s := string(old)
 		if symbolicBase {
-			resolved, err := friendStageBaseHead(ctx, jobDir, startRef)
+			resolved, err := friendStageBaseHead(ctx, jobDir, startRef, friendStageGit)
 			if err != nil {
 				return refuse(stderr, name, "resolving BASE "+oneline.Escape(startRef)+" in the staged clone: "+oneline.Err(err))
 			}
@@ -225,7 +225,7 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	// Resolve that fetched ref to a commit so checkout and JOB.md bind one exact
 	// head while BASE keeps naming the branch the result will land on.
 	if symbolicBase {
-		resolved, err := friendStageBaseHead(ctx, jobDir, startRef)
+		resolved, err := friendStageBaseHead(ctx, jobDir, startRef, friendStageGit)
 		if err != nil {
 			return refuse(stderr, name, "resolving BASE "+oneline.Escape(startRef)+" in the clone: "+oneline.Err(err))
 		}
@@ -255,9 +255,9 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 
 // friendStageBaseHead pins a symbolic BASE to the branch tip the clone actually
 // fetched. A bare non-default branch does not exist locally after git clone.
-func friendStageBaseHead(ctx context.Context, jobDir, baseRef string) (string, error) {
+func friendStageBaseHead(ctx context.Context, jobDir, baseRef string, run func(context.Context, string, ...string) (string, error)) (string, error) {
 	ref := "refs/remotes/origin/" + baseRef + "^{commit}"
-	resolved, err := friendStageGit(ctx, jobDir, "rev-parse", "--verify", ref)
+	resolved, err := run(ctx, jobDir, "rev-parse", "--verify", ref)
 	if err != nil {
 		return "", err
 	}
