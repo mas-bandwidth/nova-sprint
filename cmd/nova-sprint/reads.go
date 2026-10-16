@@ -2884,7 +2884,7 @@ func (a *app) cmdCard(args []string, stdout, stderr io.Writer) int {
 		return a.readFailed("card", err, stderr)
 	}
 	if v.Primary == nil {
-		fmt.Fprintf(stderr, "%s card: no primary %s; run: nova-sprint where\n", prog, oneline.Escape(id))
+		fmt.Fprintf(stderr, "%s card REFUSED: no primary %s; run: nova-sprint where\n", prog, oneline.Escape(id))
 		return 1
 	}
 	if *brief {
