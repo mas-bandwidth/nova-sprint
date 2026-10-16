@@ -115,6 +115,31 @@ func TestTheServerHoldsTheSprintPushWhileItsSendsGo(t *testing.T) {
 	ta.lined(func() { ta.ok("where") })
 }
 
+// A restarted server re-sends what it told before and the bus answers that the message
+// went under its token and will not go again (the token past its life). That is a
+// delivery: the key is told and the sprint push stays proven. Counted as a failure it
+// unproved the push on every look and refused every coordinator write, the verb that
+// would have cleared the message included (2026-10-16, v1.4.6).
+func TestASendWhoseMessageAlreadyWentIsToldAndHoldsTheSprintPush(t *testing.T) {
+	t.Parallel()
+	const name = "push-went"
+	ta, rig, _ := coordSprint(t, name)
+	hookBusOnly(t, rig, name)
+	ta.pass(name)
+	ta.lined(func() { ta.ok("where") })
+	timerJudgment(ta, name)
+
+	send := ta.a.bus
+	went := &bus.Refusal{Problems: []string{`the token "stream:5b0d" sent 01M50JB68Q72VR34CNAQDKRZGW at 2026-10-15T19:59:05Z, past its life of 24h0m0s: the message went, and is not sent again; a new message wants a new token`}}
+	ta.a.bus = func(context.Context, bus.Message, func(string)) error { return went }
+	ta.step(hook.RenewEvery)
+	ta.a.coordinatorPass(context.Background())
+	ta.lined(func() { ta.ok("where") })
+	ta.a.bus = send
+	assert.Empty(t, ta.pass(name), "the message went: it is told, and the next look sends it no more")
+	ta.lined(func() { ta.ok("where") })
+}
+
 // The waiting-judgment warning goes on the bus (the owner, 2026-10-11: "Any card waiting
 // for judgement should alert you via warning [...] once it has been in this state for 10
 // seconds or longer." "These must be push notifications."): a judgment open 9 s, nothing;
