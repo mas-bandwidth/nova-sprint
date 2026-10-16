@@ -167,6 +167,14 @@ func (st *Store) BeatLive(ctx context.Context, member string, given *float64, sr
 // binary was replaced; sprint.Beat.Draining), stamped from its first such beat
 // (sprint.DrainingFrom): a beat without it clears it.
 func (st *Store) BeatDraining(ctx context.Context, member string, given *float64, src hostload.Source, stopReturns *int, noRoom string, live []string, draining bool) (sprint.Beat, error) {
+	return st.BeatFacts(ctx, member, given, src, stopReturns, noRoom, live, draining, nil)
+}
+
+// BeatFacts is BeatDraining with the member's gate facts (fleet beat --facts; sprint.Beat.Facts),
+// measured by the member on its own machine: nil keeps the record's facts as they were, as a
+// machine's facts do not go away between two beats. The tick writes them onto the member's
+// control card (sprint factsPlan).
+func (st *Store) BeatFacts(ctx context.Context, member string, given *float64, src hostload.Source, stopReturns *int, noRoom string, live []string, draining bool, facts []string) (sprint.Beat, error) {
 	kv, err := st.rootKV()
 	if err != nil {
 		return sprint.Beat{}, err
@@ -212,6 +220,9 @@ func (st *Store) BeatDraining(ctx context.Context, member string, given *float64
 	b.NoRoom = noRoom
 	b.Live, b.LiveKnown, b.LiveSince, b.LiveSeen = sprint.NextLive(prev, now, live)
 	b.Draining, b.DrainingSince = sprint.DrainingFrom(prev, draining, now)
+	if b.Facts = prev.Facts; facts != nil {
+		b.Facts = facts
+	}
 	out, err := json.Marshal(b)
 	if err != nil {
 		return b, err

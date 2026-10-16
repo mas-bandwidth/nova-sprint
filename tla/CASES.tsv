@@ -748,3 +748,6 @@ MCSprintTablesBrokenScopeBounce.cfg	MCSprintTables.tla	action	ScopeWidenPreserve
 MCSprintTablesBrokenScopeRedeal.cfg	MCSprintTables.tla	action	ScopeWidenKeepsReview	ignore-terminal	sprinttables	required	-
 MCReadBranchMissing.cfg	MCReadBranchMissing.tla	pass	-	ignore-terminal	readbranchmissing	required	-
 MCReadBranchMissingBrokenReworkKeepsIt.cfg	MCReadBranchMissing.tla	invariant	OfferedDecisionResolves	ignore-terminal	readbranchmissing	required	-
+MCGateFacts.cfg	MCGateFacts.tla	pass	-	ignore-terminal	gatefacts	required	-
+MCGateFactsBrokenNoWriter.cfg	MCGateFacts.tla	temporal	CardDealt	ignore-terminal	gatefacts	required	-
+MCGateFactsBrokenOnChange.cfg	MCGateFacts.tla	temporal	CardDealt	ignore-terminal	gatefacts	required	-
