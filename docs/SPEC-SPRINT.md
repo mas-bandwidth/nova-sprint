@@ -773,18 +773,18 @@ and stays (`TestEveryFriendDecisionReadsTheOneTierOfTheCard`).
 
 A read at any tier is asked of any unit with room at or above that tier, a
 fleet reader or a friend, by the one ask (`friendReadAsk` before the system's
-`Ask`). The tier a friend is matched on is the tier before a frontier card is
-collapsed onto the tier a route serves (`friendReadTier`): a frontier card, or
-a heavy card whose read tier is the one above, stays frontier, and only a
-friend of frontier class is at or above it. Her class is the tiers her
+`Ask`), never of one below it (section 5, a card is never worked or read below its
+tier). The read tier is `readTierOf`: a frontier card, or a heavy card whose read
+tier is the one above, is frontier, and only a friend of frontier class is at or
+above it (no route serves frontier). Her class is the tiers her
 nova-config row says she can do. She is asked when she is up, one of her tiers
 is the read tier or above it (`capLadder`), and she has room (the same free
 width a friend's card is dealt within, `TickDeal`), chosen by the same chooser
 as that deal (`preferredFriend`: an idle lane first, then the most room, then
 by name). Each ask takes one of that free width. Paid fleet readers are asked
 only when no such friend has room: the system's ask then draws the read on a
-route of the collapsed tier (`readTierOf`), a reader whose tiers cell names
-that tier exactly. When every such friend is at her room and no paid reader
+route of the read tier (`readTierOf`), a reader whose tiers cell names that tier
+exactly. When every such friend is at her room and no paid reader
 has room, the read waits as a machine read waits for a reader's: due, noted
 `waiting for a reader`, no judgment. With no such friend up, the system's ask
 stands, including the one judgment a read with fewer readers up than it needs
@@ -2836,38 +2836,25 @@ order the cards were dealt in, so a card brought to the front of its stream by
   the tick's later parts. A member that cannot launch a taken card (no model,
   budget or deadline from its packet or its override) reports it at once as a
   `--failed` finish, `launch refused: <why>`, never leaving it working.
-- Flash first on every card (the owner, 2026-10-02, cost rule 1 of
-  nova-tools#5174, agreed after "The cost of the sprint at $5,400 seems
-  excessive.": "Flash first on every card; pro only on escalation"). The tier
-  line 1 names is the card's ceiling, what it likely needs, never its first
-  deal: every card is dealt on flash, and the deal draws from the tier the
-  card is on, the primary's `tier_now` (flash when unset), which every deal on
-  a route writes. The tier a card is on (its reads, its read count, its
-  escalation) is `tier_now`; before its first deal on a route, and always in a
-  store with no route (where its member runs its own model and no deal draws a
-  tier), it is its ceiling. An attempt that
-  reaches its bound on a tier below its ceiling is escalated by the system,
-  raising no judgment. At the take bound (the redeal bound, section 2, the work
-  card's redeals, or its last two takes ending the same way, the second
-  identical failure) the deal retires the work card at its bound
-  (`retired_by=escalation`), writes the next tier of the ladder flash, pro on
-  the primary (`tier_now`), and deals a new attempt on it, the brief and fix the
-  card's own, its work card's `why` `escalated from flash to pro: attempt <n>
-  reached its bound on flash (redealt 3 times)`, or `(its last two takes ended
-  the same way: <class>)`. At the attempt bound (two attempts whose work came
-  back failed the same way) the failed finish writes `tier_now` and the why
-  (`escalated from flash to pro: attempts <n-1> and <n> failed the same way
-  (<class>)`) on the primary and returns it to ready, as a rework with no
-  member up does, and the tick's deal cuts the new attempt on the next tier. The
-  failed finish reads the routes whether or not it reports usage (a native run
-  that printed no final line sends no `--usage`), so the escalation never waits
-  on a usage line (`TestASecondIdenticalFailureWithNoUsageStillEscalates`). A
-  tier no route serves is the tick's judgment of that tier, the card held by it. At its ceiling the bound is the judgment "a card
-  reached its bound" as before. The ladder has flash and pro: a frontier card
-  is the coordinator's and is never dealt, a pinned model runs on its pin (read
-  on the tier line 1 names), and a tier the coordinator pinned with `rework
-  --tier` is the card's tier and its ceiling both, never escalated. A store with
-  no route escalates nothing (its member runs its own model whatever the tier).
+- **A card is never worked or read below its tier** (the owner, 2026-10-16: "It is
+  completely undefined that a card should run at the wrong tier. There is no aspect of
+  the design of nova sprint that allows this."). A card's tier is its brief's line 1
+  (`tier: <t>`, ladder flash < pro < heavy < frontier), or the tier the coordinator
+  pinned (`rework --tier`, `brief --tier`, `tier --set`). It is worked only by a route or
+  a friend row whose tier is the card's tier or above, and read only by a reader (a
+  route, a fleet reader row, or a friend) whose tier is the card's read tier or above:
+  its tier, raised by a read-tier setting (`set --read-tier`, `stream set --read-tier`),
+  never lowered. When nobody qualifies the card waits under the tier's judgment (`no
+  route serves the tier`, naming the missing tier); it is never handed down. The deal
+  draws the card's tier from its first deal (`startTier`); a `tier_now` recorded on the
+  primary below its tier (a flash-first deal of an older binary, the gate's wall, the
+  conflict rule's return) is read as the card's own tier (`cardTier`, `drawTier`). A
+  critical card is raised to pro when it is below it, never lowered; the gate's wall
+  raises a flash card to pro and writes nothing on a heavy one. Flash first (the owner,
+  2026-10-02) and the escalation below a card's tier that carried it are gone: a card is
+  at its ceiling from its first deal, so at its bound the judgment is "a card reached its
+  bound"; a capped friend's lane is re-dealt once a tier up (`capNextTier`). A pinned
+  model runs on its pin; a store with no route escalates nothing.
   Each work card records `tier`, the tier its route was drawn from, which its
   packet hands the child and its JOB.md names; `card` prints it on each ATTEMPT
   and COST line and the tier now and the ceiling on its CARD OK line
@@ -3559,10 +3546,6 @@ is served. `card` and `where --json --rows` show the tier it is on.
   - A read card retired without a verdict (returned past its re-asks, levelled, held, taken
     back, away or refused) leaves its reader askable once more at the attempt, under the
     second identity `<primary>.r<attempt>.<reader>.g1`; a read with a verdict spends it.
-  - A pro card is read on flash while no enabled route serves pro and one serves flash (the
-    owner, 7:11 PM ET: "let flash read pro"), and a heavy card's reads are drawn on pro, a
-    heavy friend asked first at heavy and a fleet reader of pro beside her (7:41 PM ET:
-    "let pro do it").
   - `set --fleet off` deals no work card to a machine and `set --friends off` none to a
     friend (both default on, the work table's properties `fleet` and `friends`): reads
     still flow on both sides, `where` and `view coordinator` say `fleet: off` or
@@ -3639,10 +3622,8 @@ is served. `card` and `where --json --rows` show the tier it is on.
   sprint (below) raises the route its reads are drawn on and never their
   count. The reads per machine are unchanged: a reader still runs at its
   machine's width.
-- A card at a tier no reader serves is read one tier down: its read is drawn on
-  the strongest tier at or below its own with an enabled route and a reader up,
-  and the read card's tier says which ("read at heavy: no frontier reader"), so
-  a frontier card is read at heavy while a heavy reader is up. The coordinator
+- A card is never read below its tier (section 5): a card at a tier no reader serves
+  waits for a reader of its tier or above, under the tier's judgment. The coordinator
   may read a card itself (`nova-sprint read --as <coordinator> --ok|--broken <card> --finding <text>`, section 6, the coordinator's read), recorded on the
   primary at its attempt and head and counted as one of the reads the card needs
   (`sprint.ReadsStanding`, `coordinatorReadStanding`); it is refused for the
@@ -3828,8 +3809,7 @@ is served. `card` and `where --json --rows` show the tier it is on.
   work from (flash first, the tier it escalated to after; a card that pins a
   model is read on line 1's tier, flash when it names none; a heavy card, heavy; a frontier card, a
   tier no route serves, is asked of a frontier friend, not drawn on a route (section 1, a friend's
-  card), and a route named for it is heavy, the strongest tier a route serves (a read on pro
-  would be weaker than the writer); the owner, 2026-10-01: "i think readers being
+  card), never drawn on a heavy route (a read below the writer is refused); the owner, 2026-10-01: "i think readers being
   conservatively the same tier as the work being done seems fine?"), raised
   to the read tier set for its stream (`stream set <s> --read-tier <tier>`, the
   stream's control card's `read_tier`) or else for the sprint (`set --read-tier
@@ -4117,7 +4097,7 @@ reads close as `read --ok|--broken` closes them, and it leaves review only by th
 - **Who reads.** The rules a work card is dealt by, and two of a read's own. A friend is dealt
   a read when she is dealable (`friendDealable`), her nova-config row's roles name `reader`
   (`friend sync` copies them to the roster, `FriendSeat.Roles`; on 2026-10-06 builder-only
-  friends were asked reads) and one of her tiers is the read's tier or above it (`friendAtOrAbove`: a heavy friend reads a flash and a pro card). A reader one tier below the read's tier may take it too (the owner, 2026-10-06 7:11 PM ET "let flash read pro", 7:41 PM "let pro do it"; `tierBelow`), a friend or a member alike, never two below (`TestAReaderOneTierBelowMayTakeAReadCard`). A fleet member
+  friends were asked reads) and one of her tiers is the read's tier or above it (`friendAtOrAbove`: a heavy friend reads a flash and a pro card). A reader below the read's tier never takes it, a friend or a member alike (section 5; `TestAReaderBelowTheReadTierNeverTakesAReadCard`). A fleet member
   is dealt a read when it is up and its reader row, `reader-<m>` on the readers table (the
   machine's reader identity: `reader add`), is neither held nor retired and serves the read's
   tier (`reader set --tiers`, `readerServesTier`). Never the unit that worked the attempt, and
@@ -4143,10 +4123,9 @@ reads close as `read --ok|--broken` closes them, and it leaves review only by th
    cheapest reader
   that may take it, friends and members alike: one with a free lane before every one with
   none (a read waits in a ready queue only when every reader that may take it is busy), then
-  by tier distance (`readTierDistance`, against the read's tier before `readTierOf` lowers
-  it, for friends and members alike: the read's own tier, one tier below, then the tiers
-  above, nearest first, then a member whose read is drawn two or more tiers below; a pro read
-  on a heavy reader is a waste, and the flash reader takes the flash reads), then the
+  by tier distance (`readTierDistance`, against the read's tier `readTierOf`, for friends
+  and members alike: the read's own tier, then the tiers above, nearest first, never one
+  below; a pro read on a heavy reader is a waste, and the flash reader takes the flash reads), then the
   persisted ring cursor (`read_deal_index_<tier>`) round every unit with a free lane, never
   the most idle and never the name (the owner, 2026-10-11: "Deal logic should be using
   ((index++) % n) to roll around, not hitting the same fleet machine or friend each deal").

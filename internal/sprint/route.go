@@ -1026,6 +1026,8 @@ func (s *Snapshot) NextTier(c *Card) string {
 // friend at or above it, friendAtOrAbove). When no reader of the tier or above is up the
 // read waits under the tier's judgment (readRouteMissing); it is never handed down
 // (docs/SPEC-SPRINT.md section 6, who reads).
+//
+// tla/RouteIndex.tla NeverBelowItsTier (reversed witness MCRouteIndexBrokenReadBelow.cfg)
 func (s *Snapshot) readTierOf(pr *Card) string {
 	m, _ := modelOf(pr)
 	t := cardTier(pr, m)
