@@ -24,7 +24,7 @@ import (
 // laneWords is nova-sprint help lane, and the banner's paragraph on the lanes.
 func laneWords() string {
 	return strings.TrimSpace(fmt.Sprintf(`
-The lanes are DISABLED until v1.3 (Glenn 2026-10-13: not a sanctioned or stable
+The lanes are DISABLED (Glenn 2026-10-13: not a sanctioned or stable
 feature; not to be used): lane take is granted at once and lane give gives nothing
 back, each printing one BENCH LOCK DISABLED line; take no bench lock.
 The lanes: one Go build or test stream per machine, a lock the machine grants:
