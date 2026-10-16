@@ -4116,7 +4116,14 @@ reads close as `read --ok|--broken` closes them, and it leaves review only by th
    the generation after the highest the read index holds (`fleetReadIndex`; `readCardIDFor`,
    `ReadCardGenIDs`), and `ReadCardExtras` names the identity the store must read from the same
    rule, so no reader is ever refused "no id" (the owner, 2026-10-06: "I don't want any serial
-   reads again"). A read the reader itself ended with no verdict (`returned`, `late`) spends
+   reads again"). The store reads a reader's generations through `readGenBound` and one past
+   it: the load window past the highest placed card, or the primary's read top
+   (`PropReadGenTop`, "<attempt>:<gen>", raised in the plan that cuts a generation past the
+   window) when higher, so no reader taken back past the window is refused for good
+   (tla/ReadCards.tla CompleteView, NeverWedged; v1.4.4). A member is dealt no read while every
+   route of the read's tier rests (`ReadRoutesRest`): dealt, its take-back would retire it at
+   once and spend a generation each tick; the read waits for its route, with no cannot-ask
+   judgment. A read the reader itself ended with no verdict (`returned`, `late`) spends
    it: the next read goes to another reader. The ask runs every tick: every primary in review
    short of its reads is asked every read it still needs in the same tick, each to a different
    unit that may read it (`mayReadCard`), and a read waits for room and nothing else. When
