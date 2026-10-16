@@ -98,6 +98,11 @@ type Beat struct {
 	// taken (drainReturns; tla/NoRoom.tla, NeverDealtToDraining).
 	Draining      bool      `json:"draining,omitempty"`
 	DrainingSince time.Time `json:"draining_since,omitzero"`
+	// Facts are the member's gate facts as it measures its own machine (fleet beat --facts:
+	// its OS, its ISA, landlock, the TLA jar, its toolchains; FieldFacts), kept from beat to
+	// beat while a beat carries none. The tick writes them onto the member's control card
+	// (factsPlan), where the deal reads them for a card's GATE-NEEDS.
+	Facts []string `json:"facts,omitempty"`
 }
 
 // DrainingPrefix begins the no-room word the server gives a member or reader whose fresh beat
@@ -357,7 +362,15 @@ func TickPresence(s *Snapshot, r TickReq) (Plan, int) {
 	return p, due + gdue
 }
 
+// presence is the fleet's presence from the beats (presenceMoves), with each member's gate
+// facts from its beat written onto its control card beside it (deal.go, factsPlan): both the
+// tick's own part and the release's (FleetBackPresence) run it.
 func presence(s *Snapshot, r TickReq) (Plan, int) {
+	p, due := presenceMoves(s, r)
+	return withFacts(p, factsPlan(s, r)), due
+}
+
+func presenceMoves(s *Snapshot, r TickReq) (Plan, int) {
 	if r.Beats == nil {
 		return Plan{}, 0
 	}

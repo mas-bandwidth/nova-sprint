@@ -1,6 +1,8 @@
 package sprint
 
 import (
+	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -13,6 +15,21 @@ import (
 // deal holds a card's GATE-NEEDS (GateNeeds) against these.
 const FieldFacts = "facts"
 
+// FactWords reads a beat's --facts: a comma list of fact words (ValidID each: letters,
+// digits, _ and -, never beginning with -), trimmed, with no empty list; the error names the word refused.
+func FactWords(s string) ([]string, error) {
+	out := Split(s)
+	if len(out) == 0 {
+		return nil, fmt.Errorf("--facts names at least one fact, comma separated (linux, darwin, arm64, landlock, tla, go)")
+	}
+	for _, f := range out {
+		if !ValidID(f) || strings.HasPrefix(f, "-") {
+			return nil, fmt.Errorf("--facts wants fact words (letters, digits, _ and -), found %q", f)
+		}
+	}
+	return out, nil
+}
+
 // MemberFacts reads a member's gate facts from its control card (FieldFacts), Split into
 // its comma list; nil when the member has no control card or names none.
 func (s *Snapshot) MemberFacts(member string) []string {
@@ -20,6 +37,59 @@ func (s *Snapshot) MemberFacts(member string) []string {
 		return nil
 	}
 	return Split(s.MemberCtl(member).F(FieldFacts))
+}
+
+// factsPlan writes each member's gate facts, as its fresh beat carries them (fleet beat
+// --facts, Beat.Facts), onto its control card (FieldFacts), the field the deal reads
+// (MemberFacts, GateHostPool). The member measures its own machine (the server cannot): a
+// card is written only when the beat's facts differ from the card's, so a fleet whose facts
+// stand writes nothing, and a control card made again (fleet sync, a rejoin) is written
+// again from the next beat. A beat that carries no facts (a member from before v1.4.3)
+// leaves the card as it is, and so does a member held adopting (its adoption step owns its
+// card this tick). Before this the field had no writer at all, and every
+// GATE-NEEDS card was a judgment that named members with empty facts.
+func factsPlan(s *Snapshot, r TickReq) Plan {
+	var p Plan
+	if r.Beats == nil || s.Fleet == nil {
+		return p
+	}
+	for _, m := range s.Members() {
+		ctl := s.MemberCtl(m)
+		b, ok := r.Beats[m]
+		if ctl == nil || !ok || len(b.Facts) == 0 || !b.Fresh(s.Now) || AdoptingHeld(ctl) {
+			continue
+		}
+		want := strings.Join(b.Facts, ",")
+		if ctl.F(FieldFacts) == want {
+			continue
+		}
+		p.Units = append(p.Units, Unit{Key: ctl.ID, Moved: m + " facts " + want,
+			Changes: []Change{change(Fleet, setEntry(ctl, map[string]string{FieldFacts: want}))}})
+	}
+	return p
+}
+
+// withFacts adds the facts plan's changes to p: a control card p already changes takes the
+// facts field in that change (one change of an entry a step), any other its own unit.
+func withFacts(p Plan, f Plan) Plan {
+	for _, u := range f.Units {
+		merged := false
+		for i := range p.Units {
+			for j := range p.Units[i].Changes {
+				if c := &p.Units[i].Changes[j]; c.Table == Fleet && c.Entry.ID == u.Key {
+					if c.Entry.Set == nil {
+						c.Entry.Set = map[string]string{}
+					}
+					maps.Copy(c.Entry.Set, u.Changes[0].Entry.Set)
+					merged = true
+				}
+			}
+		}
+		if !merged {
+			p.Units = append(p.Units, u)
+		}
+	}
+	return p
 }
 
 // GateHostPool narrows ms to the members whose facts satisfy every need of the card's

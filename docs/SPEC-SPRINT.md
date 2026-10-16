@@ -17,6 +17,12 @@ A brief may name a `GATE-NEEDS:` line listing the gate's needs
 (e.g., `GATE-NEEDS: linux, tla`). The deal matches a card to a
 member only when the member's facts satisfy every need. A card no member
 can satisfy is a judgment at once; it is never silently waited for.
+A member's facts are its own measure of its machine, carried on its beat
+(`fleet beat <m> --facts linux,amd64,landlock,tla,go`: its OS, its ISA,
+landlock, the TLA jar at /opt/tla/tla2tools.jar, its toolchains); the
+tick's presence writes them onto the member's control card (`facts`)
+whenever they differ from the card's, and a beat without `--facts` keeps
+the facts it had.
 The coordinator machine (the Studio) is never dealt a card whose
 `GATE-NEEDS:` it cannot meet and is never named as a gate host.
 
