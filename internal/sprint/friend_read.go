@@ -103,12 +103,15 @@ func sectionHeading(line string) bool {
 }
 
 // ParseFriendReadReport reads a friend's read report. LAND closes the read
-// ok. HOLD closes it broken when a line names a file, a line or a rule
-// (typedrec.NamesADefect, the rule a reader's broken read is held to).
+// ok. HOLD closes it broken when its Finding: paragraph names a file, a line
+// or a rule (typedrec.NamesADefect). Older reports without Finding: may name
+// the defect in a bare line; report metadata is not a finding.
 // why is set when the report does not close the read.
 func ParseFriendReadReport(report string) (verdict, finding, why string) {
-	word, defect := "", ""
-	for _, l := range strings.Split(report, "\n") {
+	word, explicit, legacy := "", "", ""
+	hasFinding := false
+	lines := strings.Split(report, "\n")
+	for i, l := range lines {
 		t := strings.TrimSpace(l)
 		if word == "" {
 			if rest, ok := strings.CutPrefix(t, "Verdict:"); ok {
@@ -118,21 +121,63 @@ func ParseFriendReadReport(report string) (verdict, finding, why string) {
 				}
 			}
 		}
-		if defect == "" && typedrec.NamesADefect(l) {
-			defect = strings.TrimSpace(l)
+		if !hasFinding && strings.HasPrefix(t, "Finding:") {
+			explicit, hasFinding = t, true
+			if strings.TrimSpace(strings.TrimPrefix(t, "Finding:")) == "" {
+				// A report may put the current finding below its label. Keep
+				// its first paragraph, not later evidence or metadata.
+				var paragraph []string
+				for _, next := range lines[i+1:] {
+					candidate := strings.TrimSpace(next)
+					if candidate == "" {
+						if len(paragraph) > 0 {
+							break
+						}
+						continue
+					}
+					if friendReadReportMetadata(candidate) {
+						break
+					}
+					paragraph = append(paragraph, candidate)
+				}
+				if len(paragraph) > 0 {
+					explicit = strings.Join(paragraph, "\n")
+				}
+			}
+		}
+		if legacy == "" && !friendReadReportMetadata(t) && typedrec.NamesADefect(t) {
+			legacy = t
 		}
 	}
 	switch word {
 	case "LAND":
 		return "ok", "", ""
 	case "HOLD":
-		if defect == "" {
+		defect := legacy
+		if hasFinding {
+			defect = explicit
+		}
+		if !typedrec.NamesADefect(defect) {
 			return "", "", "a HOLD closes a read broken only when a finding names a file, a line or a rule"
 		}
 		return "broken", defect, ""
 	default:
 		return "", "", "a friend's read report says Verdict: LAND or Verdict: HOLD"
 	}
+}
+
+// A report's identity and source coordinates can themselves look like a file
+// to NamesADefect. They are never the legacy, unlabeled finding.
+func friendReadReportMetadata(line string) bool {
+	key, _, ok := strings.Cut(line, ":")
+	if !ok {
+		return false
+	}
+	switch strings.ToLower(key) {
+	case "card", "head", "epoch", "generation", "repository", "base", "branch", "start", "attempt", "reader", "who", "binding", "linux evidence", "validation":
+		return true
+	}
+	return false
 }
 
 // friendAtOrAbove says the friend may be asked a read of tier: one of her tiers
