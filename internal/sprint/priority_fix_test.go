@@ -17,7 +17,8 @@ func TestFixPriorityOrdersDealAskAndMerge(t *testing.T) {
 		c.Fields[FieldPriority] = level
 		cards = append(cards, c)
 	}
-	want := []*Card{cards[6], cards[5], cards[4], cards[3], cards[2], cards[1], cards[0]}
+	// reader is the top rung (the strict deal: reads, then fixes, then new work)
+	want := []*Card{cards[2], cards[6], cards[5], cards[4], cards[3], cards[1], cards[0]}
 	assert.Equal(t, want, ladderOrder(cards))
 	assert.Equal(t, []*Card{cards[6], cards[5], cards[4], cards[3], cards[0], cards[1], cards[2]}, readOrder(cards))
 	assert.Equal(t, want, MergePriorityOrder(w.s, cards))

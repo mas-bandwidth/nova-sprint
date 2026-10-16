@@ -138,18 +138,19 @@ func TestReadsOutrankNormalWork(t *testing.T) {
 	}
 }
 
-// The ladder above reader: a high card is dealt before the reads, the reads before normal work,
-// and the reads of a higher primary are asked first.
+// The ladder's top rung is reader (the strict deal, 2026-10-16): the reads before every work
+// card, a high card in the room they leave before normal work, and the reads of a higher
+// primary are asked first.
 func TestTheLadderOrdersTheDealAndTheAsk(t *testing.T) {
 	t.Parallel()
 
-	t.Run("high before the reads, the reads before normal", func(t *testing.T) {
+	t.Run("the reads before high work, high before normal", func(t *testing.T) {
 		t.Parallel()
-		w, amy := priorityWorld(t, 5, 3, 0, 4)
+		w, amy := priorityWorld(t, 5, 2, 0, 4) // her room is three
 		w.s.Work.Card("s2-4").Fields[FieldPriority] = PriorityHigh
 		tickDealAndAsk(t, w, amy)
-		assert.Equal(t, []string{"s2-4"}, friendNewWork(w, "amy"), "the high card first, and no normal card")
-		assert.Len(t, friendReads(w, "amy"), 2, "the reads in the room it leaves")
+		assert.Len(t, friendReads(w, "amy"), 2, "every read first")
+		assert.Equal(t, []string{"s2-4"}, friendNewWork(w, "amy"), "the high card in the room the reads leave, and no normal card")
 	})
 
 	t.Run("a blocker's read is asked first", func(t *testing.T) {
