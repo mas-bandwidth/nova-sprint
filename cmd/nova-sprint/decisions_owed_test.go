@@ -85,6 +85,7 @@ func TestDecisionsOwedDeadlineFoldOwnerRetryAndRestart(t *testing.T) {
 // lane immediately and then once each minute until the judgment closes. The
 // bus receipt is delivery, not an answer; a process restart keeps the receipt.
 func TestReviewAndMergeJudgmentsRepeatUntilResolved(t *testing.T) {
+	t.Parallel()
 	for _, typ := range []string{sprint.NReadBroken, sprint.NMergeLate} {
 		t.Run(typ, func(t *testing.T) {
 			ta, _, _ := coordSprint(t, "repeat-seat")
