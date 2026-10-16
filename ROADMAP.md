@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (214)
+- [The sprint system](#the-sprint-system) (215)
 - [Setup, release and operations](#setup-release-and-operations) (34)
 - [Docs, models and the repository](#docs-models-and-the-repository) (22)
 - [Friend AIs](#friend-ais) (21)
@@ -1784,6 +1784,16 @@ Why it waits: The system should be tested exactly as it will be used. A special 
 Target: v1.7
 
 From: Glenn, 2026-10-16: "Add a task to v1.7 to do it properly. It's best to test exactly as the system will be used." (the v1.4.6 fence of the empty-route shortcut)
+
+### Swarm mode: the whole fleet and every friend go wide on one problem
+
+A new mode beside the deal. Instead of many cards to many workers, one hard problem goes to every lane at once: every fleet member's lanes and every friend's width, each attacking the same problem independently. Coordination is shared across the message bus plus a few text files in a repo: a findings log (what each lane learned), a dead-ends list (what failed and why, so no lane repeats it), and a leaderboard of candidate heads with their gate results. The problem's tests, or an outside judge, rank the candidates; the first head that passes every gate wins, or the best one at a deadline. Design questions for the card: diversity across lanes (different models, tiers, prompts and starting points, so lanes are not copies); how much each lane reads of the shared files, and when (sharing too early collapses diversity, too late wastes work); a budget and a stop rule (a token cap, a wall clock, and stopping once a winner lands); merging partial results from several lanes; and fairness of the bus under many writers. It is a state machine (lanes, candidates, judging, stop), so its TLA+ model comes first. Predicated on nova-tools v1.7 rename-nova-swarm-to-nova-worker, which frees the name: this mode is nova-swarm.
+
+Why it waits: Some problems are worth many independent attempts at once: hard bugs, R&D and frontier cards. Today the sprint can only split work, not converge many minds on one problem.
+
+Target: v1.7
+
+From: Glenn, live, 2026-10-16: 'for v1.7 we could add a swarm mode. This is where entire fleet and friends go wide with each lane solving the same problem, with shared coordination across the message bus and some text files in a repo.'
 
 ## Setup, release and operations
 
