@@ -1635,6 +1635,31 @@ func takeSeat(s *Snapshot, as string) (width int, why string) {
 	return s.Width(as), ""
 }
 
+// newFirstAttempt says a dealt work card is new work: its primary's first attempt, below fix
+// on the ladder (friendWorkRank), as the strict deal ranks it last.
+func newFirstAttempt(s *Snapshot, c *Card) bool {
+	if isRead(c) || c.F("kind") != "work" || c.Int("attempt") >= 2 {
+		return false
+	}
+	return s.friendWorkRank(c) > priorityRank(PriorityFix)
+}
+
+// takeAheadOf is the read and fix cards ready on the row a take by id of new work must not
+// pass (newFirstAttempt): every read card, and every work card at fix or above or past its
+// first attempt, less the ids the take names.
+func takeAheadOf(s *Snapshot, row string, ids []string) []string {
+	var out []string
+	for _, c := range s.Fleet.Cell(row, Ready) {
+		if slices.Contains(ids, c.ID) || c.F("kind") != "work" && !isRead(c) {
+			continue
+		}
+		if isRead(c) || !newFirstAttempt(s, c) {
+			out = append(out, c.ID)
+		}
+	}
+	return out
+}
+
 func takeOne(s *Snapshot, r TakeReq) Plan {
 	var p Plan
 	sel := r.Sel
@@ -1669,6 +1694,25 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 			return p
 		}
 		sel.IDs = keep
+	}
+	// THE STRICT DEAL AT THE TAKE (priority.go, PriorityLadder): a friend's take by id of a
+	// new first attempt is refused while a read or a fix dealt to her row waits ready, the
+	// refusal naming them; a take by count already takes in that order (friendDealtOrder)
+	if byID && IsFriendRow(r.As) {
+		if waits := takeAheadOf(s, r.As, sel.IDs); len(waits) > 0 {
+			var keep []string
+			for _, id := range sel.IDs {
+				if c := s.Fleet.Card(id); c != nil && c.Row == r.As && newFirstAttempt(s, c) {
+					p.refuse(id, "a read or a fix dealt to "+r.As+" waits ahead of this new first attempt: take "+strings.Join(waits, ", ")+" first (the strict deal: reads, then fixes, then new work)")
+					continue
+				}
+				keep = append(keep, id)
+			}
+			if len(keep) == 0 {
+				return p
+			}
+			sel.IDs = keep
+		}
 	}
 	// THE WIDTH IS HARD: a member's working cards never pass its width, held here, at the
 	// sprint's one writer, whatever the member asks. A take by
