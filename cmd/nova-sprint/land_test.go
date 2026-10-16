@@ -840,7 +840,36 @@ func TestLandingPushReadsTheCardLedgerEntryAtTheLandedHead(t *testing.T) {
  :items ((fix "s1-1" :release "v1.2.14" :title "The ledger title" :text "The ledger text" :origin "card s1-1" :status "planned")))`
 	head := r.commit("docs/fixes.sexp", ledger, "add ledger record")
 	l := &lander{a: r.a, repoDir: r.worker}
-	got, err := l.landingLedgerEntry(context.Background(), head, "s1-1")
+	got, err := l.landingLedgerEntry(context.Background(), r.worker, head, "s1-1")
 	require.NoError(t, err)
 	assert.Equal(t, sprint.LandingLedgerEntry{Title: "The ledger title", Text: "The ledger text"}, got)
+}
+
+// A land given no --repo-dir (the server's land loop) builds each batch in the clone it
+// keeps under the land root, and the landing note reads the card's ledger entry in that
+// same clone, never in the process's working directory, which is no clone (2026-10-16:
+// the landings of schema-elixir and schema-dart said "ledger entry unavailable: fetch
+// landed head ...: not a git repository"). The test's own working directory is this
+// package's checkout, so every git here is held to file: remotes and a git run outside
+// the kept clone cannot fetch from that checkout's origin.
+func TestALandWithNoRepoDirReadsTheLedgerEntryInItsKeptClone(t *testing.T) {
+	t.Parallel()
+	r := newLandRig(t)
+	r.a.gitEnv = append(slices.Clone(r.env), "GIT_ALLOW_PROTOCOL=file")
+	r.promotionStream("s1")
+	brief := filepath.Join(t.TempDir(), "g.md")
+	require.NoError(t, os.WriteFile(brief, []byte(passingBrief("REPO: "+r.remote+"\nBASE: main\n\nWrite the ledger record.")), 0o600))
+	r.ok("add --stream s1 g --one --brief-file " + brief)
+	r.git(r.worker, "switch", "-q", "--no-track", "-c", "sprint/g", "refs/remotes/origin/main")
+	require.NoError(t, os.MkdirAll(filepath.Join(r.worker, "docs"), 0o700))
+	ledger := `(fixes "v1"
+ :title "Fixes"
+ :text "Release fixes"
+ :releases ((release "v1.2.14" :status "planned" :text "Next release"))
+ :items ((fix "g" :release "v1.2.14" :title "The kept clone title" :text "The kept clone text" :origin "card g" :status "planned")))`
+	r.queued(map[string]string{"g": r.commit("docs/fixes.sexp", ledger, "work of g")}, "g")
+	assert.Contains(t, r.ok("land --stream s1"), "LAND OK stream=s1 cards=1 base=main")
+	inbox := r.ok("inbox --max 0")
+	assert.Contains(t, inbox, "The kept clone title")
+	assert.NotContains(t, inbox, "ledger entry unavailable")
 }
