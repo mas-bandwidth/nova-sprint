@@ -1051,6 +1051,31 @@ func (s *Snapshot) readTierOf(pr *Card) string {
 // the reads). The tier alone when the store holds
 // no route or none serves the tier: the read carries no route and its reader runs its
 // own --model.
+// readRoutesAllRest says every enabled route of the primary's read tier rests at s.Now (the
+// rests the step settled, s.resting), and there is at least one: readRouteOf would fall
+// back to a resting route, and the ask's next take-back (readCardsTakeBack,
+// RetiredByRest) would retire the read at once, a generation spent for nothing each tick
+// (2026-10-15: five generations of every fleet reader's heavy reads in three seconds, the
+// reader then refused "read generations past the load window"). The deal deals no fleet
+// read on it (readRefusal) and the read waits for its route. False with no routes loaded.
+func (s *Snapshot) readRoutesAllRest(pr *Card) bool {
+	if s == nil || len(s.Routes) == 0 || s.rests == nil {
+		return false
+	}
+	tier := s.readTierOf(pr)
+	served := false
+	for _, r := range s.Routes {
+		if r.Tier != tier || !r.Enabled {
+			continue
+		}
+		if _, rests := s.resting(r.Name); !rests {
+			return false
+		}
+		served = true
+	}
+	return served
+}
+
 func (s *Snapshot) readRouteOf(ri routeIndexes, pr *Card, avoid []string) map[string]string {
 	tier, key := s.readTierOf(pr), pr.ID
 	base := map[string]string{FieldTier: tier}

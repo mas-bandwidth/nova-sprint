@@ -56,9 +56,12 @@ func (r *readCardsRig) advance(d time.Duration) {
 }
 
 // TestATakenBackReadIsAskedOfTheSameReaderAgain: the only reader that may read an attempt
-// has its read taken back by the machine four times (the unstarted bound): it is dealt the
-// read a fifth time at a fresh generation, never refused "no id", and ReadCardExtras names
-// that generation (the owner, 2026-10-06: "I don't want any serial reads again").
+// has its read taken back by the machine nine times (the unstarted bound), past the load
+// window (readCardLoadWindow): it is dealt the read again each time at a fresh generation,
+// never refused "no id" nor "read generations past the load window", and ReadCardExtras
+// names the generation after it (the owner, 2026-10-06: "I don't want any serial reads
+// again"; 2026-10-15, forty review cards wedged at five taken-back generations; the read
+// top, sprint.PropReadGenTop, tla/ReadCards.tla NeverWedged).
 func TestATakenBackReadIsAskedOfTheSameReaderAgain(t *testing.T) {
 	t.Parallel()
 	r := newReadCardsRig(t, "m1", "m2")
@@ -68,7 +71,8 @@ func TestATakenBackReadIsAskedOfTheSameReaderAgain(t *testing.T) {
 	reader := reads[0].Row
 	require.NotEqual(t, worker, reader)
 	base := sprint.ReadCardID("s1-1", 1, reader)
-	for i := 1; i <= 4; i++ {
+	const takeBacks = 9
+	for i := 1; i <= takeBacks; i++ {
 		r.advance(7 * time.Hour) // past the dealt bound: the machine takes the unstarted read back
 		r.tick()
 		reads = r.readCards("s1-1")
@@ -76,6 +80,6 @@ func TestATakenBackReadIsAskedOfTheSameReaderAgain(t *testing.T) {
 		require.Equal(t, reader, reads[0].Row, "the same reader")
 		require.Equal(t, fmt.Sprintf("%s.g%d", base, i), reads[0].ID, "a fresh generation")
 	}
-	require.Contains(t, sprint.ReadCardExtras(r.snap()), base+".g5",
+	require.Contains(t, sprint.ReadCardExtras(r.snap()), fmt.Sprintf("%s.g%d", base, takeBacks+1),
 		"ReadCardExtras names the generation the store must read")
 }
