@@ -18,6 +18,7 @@ through review and landing.
 | How does the system keep work moving? | [Follow a card](../README.md#follow-a-card-all-the-way-home) |
 | What are cards, streams, dependencies, and sentinels? | [Cards and workflow rules](SPEC-SPRINT.md) |
 | What do I do as the coordinator? | [Coordinator's guide](SPRINT-COORDINATOR.md) |
+| Which verbs, in what order, for a situation? | [Coordinator's playbook](COORDINATOR-PLAYBOOK.md) (`nova-sprint help playbook`) |
 | What is the exact command? | [Command reference](CLI.md) |
 | How do I open the dashboard? | [Dashboard guide and specification](SPEC-SPRINT-DASHBOARD.md#serving-and-publishing) |
 | How do I contribute a change? | [Contributing](../CONTRIBUTING.md) |
