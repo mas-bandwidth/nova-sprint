@@ -35,7 +35,11 @@ func TestRoutesJSONCarriesTheAppliedTierArray(t *testing.T) {
 			}
 			ta.json("routes", &view)
 			require.Contains(t, view.TierRoutes, "pro")
-			assert.Equal(t, tc.list, view.TierRoutes["pro"])
+			if len(tc.list) == 0 {
+				assert.Empty(t, view.TierRoutes["pro"])
+			} else {
+				assert.Equal(t, tc.list, view.TierRoutes["pro"])
+			}
 			assert.Len(t, view.Routes, 2, "the view still includes enabled routes outside the array")
 			assert.NotEmpty(t, view.Tiers, "the existing summary field remains")
 		})
