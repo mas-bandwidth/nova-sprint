@@ -95,6 +95,68 @@ func TestReworkAcceptsATierAFriendServes(t *testing.T) {
 	})
 }
 
+// A route visible to the tier-only check may be unlaunchable by every fleet
+// member. Rework --carry then leaves the heavy card ready for an eligible friend;
+// it does not refuse the friend's deal as if that sentence were a route error.
+func TestReworkCarryUsesFriendWhenFleetCannotLaunchHeavy(t *testing.T) {
+	t.Parallel()
+	heavyWorld := func(t *testing.T) *world {
+		t.Helper()
+		w := setup(t, 1)
+		w.s.Work.Card("s1-1").Fields["brief"] = "tier: heavy"
+		w.s.Routes = []Route{{Name: "heavy-local", Tier: cardhdr.RouteHeavy, Provider: "p", Model: "sol", Harness: "opencode", Enabled: true}}
+		pushedFirstAttempt(w, "s1-1", carryHead1)
+		w.s.Routes = []Route{{Name: "heavy-codex", Tier: cardhdr.RouteHeavy, Provider: "p", Model: "sol", Harness: "codex", Enabled: true}}
+		return w
+	}
+	stella := func(status string) FriendSeat {
+		return workerSeatFixture(FriendSeat{Name: "stella", Width: 2, Status: status, Class: "heavy"})
+	}
+	rework := func(w *world) Plan {
+		return Rework(w.s, ReworkReq{Sel: Sel{IDs: []string{"s1-1"}}, Carry: true, Fix: "address the reader's finding"})
+	}
+
+	t.Run("up friend receives the carried head", func(t *testing.T) {
+		t.Parallel()
+		w := heavyWorld(t)
+		w.s.Friends = workerSeatFixtures([]FriendSeat{stella(Up)})
+		p := w.must(rework(w))
+		require.Len(t, p.Units, 1)
+		assert.Contains(t, p.Units[0].Moved, "review -> ready")
+		assert.Contains(t, p.Units[0].Moved, "stella")
+		assert.Equal(t, Ready, w.state("s1-1"))
+		assert.Contains(t, w.s.Work.Card("s1-1").F("brief"), "CARRY: s1-1 attempt 1 head="+carryHead1)
+		dealWith(w, stella(Up))
+		assert.Equal(t, FriendRow("stella"), w.s.Fleet.Card("s1-1.w2").Row)
+	})
+
+	t.Run("held friend cannot receive the card", func(t *testing.T) {
+		t.Parallel()
+		w := heavyWorld(t)
+		w.s.Friends = workerSeatFixtures([]FriendSeat{stella(Held)})
+		require.Len(t, rework(w).Refused, 1)
+		assert.Equal(t, Review, w.state("s1-1"))
+	})
+
+	t.Run("no friend cannot receive the card", func(t *testing.T) {
+		t.Parallel()
+		w := heavyWorld(t)
+		require.Len(t, rework(w).Refused, 1)
+		assert.Equal(t, Review, w.state("s1-1"))
+	})
+
+	t.Run("fleet launcher still takes its route", func(t *testing.T) {
+		t.Parallel()
+		w := heavyWorld(t)
+		w.s.Friends = workerSeatFixtures([]FriendSeat{stella(Up)})
+		w.s.Routes[0].Harness = "opencode"
+		p := w.must(rework(w))
+		require.Len(t, p.Units, 1)
+		assert.Equal(t, Working, w.state("s1-1"))
+		assert.NotEqual(t, FriendRow("stella"), w.s.Fleet.Card("s1-1.w2").Row)
+	})
+}
+
 // Every verb that validates a tier goes through one check (tierServed): every string
 // literal of the sprint's sources that refuses for want of an enabled route is inside it,
 // and the deal's draw (routeOf), the tick's (noRoute) and the reads' (readRouteMissing)
