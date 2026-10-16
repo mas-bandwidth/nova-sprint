@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (217)
+- [The sprint system](#the-sprint-system) (218)
 - [Setup, release and operations](#setup-release-and-operations) (34)
 - [Docs, models and the repository](#docs-models-and-the-repository) (22)
 - [Friend AIs](#friend-ais) (21)
@@ -1814,6 +1814,16 @@ Why it waits: The coordinator fixed the same few causes by hand many times today
 Target: v1.7
 
 From: Glenn, live, 2026-10-16, on the Hermes Agent review: '#2 and #3 is great for v1.7' and 'skills are fine, but remember, skills are non-deterministic'
+
+### Card lint locks in the coordinator's lessons: 16 new rules from 30 hours of failed cards
+
+From the coaching analysis of 408 failed events, 2026-10-16 (~/rowan-working/coaching/2026-10-16.md, section 4). 78 events, plus 57 machine PATHS widenings and 156 brief-replaced bounces, were the brief's fault, not the worker's. Each lesson becomes a deterministic rule at add, brief, recut and --widen, refusing with the one next command: L1 generated-outputs-in-paths (needs a per-repo map of which emitter writes which generated files); L2 registry-rows-in-paths (extends paths-cover-registry to make/<lang>.mk, make/negative-controls.json, tablenames, tla CASES/RUNS/RUNS-HISTORY, tools/agentsmap/catalog.go); L3 pinned-digest-in-paths; L4 changed-rule-pins-in-paths (tests and docs that pin the rule being changed); L5 every-brief-names-repo-and-base; L6 needs-are-header-lines-and-live (a named dependency is a DEPENDS-ON or LAND-AFTER line naming a live card); L7 overlap-on-the-table-needs-an-order; L8 donewhen-runs-at-base (every target, script, driver, TLA module, TLC group and sibling exists at BASE or inside PATHS/NEW); L9 siblings-named; L10 host-words-need-gate-needs; L11 staged-job-or-machine-only; L12 roadmap-flip-needs-row-coverage; L13 measure-card-names-its-driver (and refuses a hand-made board); L14 form-has-a-checker (needs a review-checker command); L15 pin-only-to-an-up-friend; L16 tier-floor-by-size (only ever raises a tier). Also from today: BASE must be a stream branch, never another card's branch, since a card that landed onto a card branch never reached its stream (rocketnet-message-objects-and-c-api). Every rule is tested on a real store, including each refusal, and replayed against today's failed cards to show it would have caught them.
+
+Why it waits: Lessons that live in prose are forgotten; skills are non-deterministic (Glenn, same day). A lint rule refuses the bad card before it costs an attempt.
+
+Target: v1.7
+
+From: Glenn, live, 2026-10-16: 'as coordinator, please coach yourself how you can improve the cards that go in, and then lock it in with card lint (v1.7)'
 
 ## Setup, release and operations
 
