@@ -50,10 +50,10 @@ func TestAComputedCriticalIsShownNotYetOrdered(t *testing.T) {
 	assert.Equal(t, "priority: critical s1-3; critical (by weight, not yet ordered) s1-2", line)
 }
 
-// A read inherits its primary's level, the higher of reader and its primary's (the owner,
-// 2026-10-06: "that work stream jumps to the front of the reader and merge queue"): a high
-// primary's read is asked and dealt before high work and before a normal primary's older read,
-// and its read card carries the level a reader's queue shows.
+// A read inherits its primary's level (the owner, 2026-10-06: "that work stream jumps to the
+// front of the reader and merge queue"): a high primary's read is asked first among the reads,
+// every read before any work, high work too (the strict deal, 2026-10-16), and its read card
+// carries the level a reader's queue shows.
 func TestAHighPrimarysReadIsAskedAndDealtFirst(t *testing.T) {
 	t.Parallel()
 
@@ -66,8 +66,9 @@ func TestAHighPrimarysReadIsAskedAndDealtFirst(t *testing.T) {
 		}
 		tickDealAndAsk(t, w, amy)
 		reads := friendReads(w, "amy")
-		assert.Equal(t, []string{"s1-4"}, reads, "the high read first, before high work and the older normal reads")
-		assert.Len(t, friendNewWork(w, "amy"), 2, "then the high work in the room it leaves")
+		assert.Contains(t, reads, "s1-4", "the high read is asked")
+		assert.Len(t, reads, 3, "every read she may take fills her room first")
+		assert.Empty(t, friendNewWork(w, "amy"), "no work, high work too, while a read takes her room")
 		rc := w.s.Fleet.Card(ReadCardID("s1-4", 1, "amy"))
 		require.NotNil(t, rc)
 		assert.Equal(t, PriorityHigh, QueuePriority(rc), "the read card carries its primary's level")
