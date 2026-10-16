@@ -572,10 +572,13 @@ UpRoom(S) == {m \in Machines : S.stat[m] = "up" /\
                 (Broken = "dealdraining" \/ ~S.drain[m]) /\
                 (Broken = "nowidth" \/ Room(S, m) > 0)}
 DealOne(S, cand) ==
-  LET D0 == Dealable(S, cand)
-      \* the strict deal: a fix card before any new card (steps_tick.go TickDeal,
-      \* ladderOrder); the witness "newfirst" deals in stream turns alone
-      D == IF Broken # "newfirst" /\ D0 \cap FixCards # {} THEN D0 \cap FixCards ELSE D0
+  LET \* the strict deal: a fix card before any new card (steps_tick.go TickDeal,
+      \* ladderOrder); the witness "newfirst" deals in stream turns alone. With no fix
+      \* card in the scenario the deal is the one it was, at its cost (TLC evaluates a LET
+      \* at each use: Dealable is not evaluated twice for it)
+      D == IF FixCards = {} \/ Broken = "newfirst" THEN Dealable(S, cand)
+           ELSE IF Dealable(S, cand) \cap FixCards # {} THEN Dealable(S, cand) \cap FixCards
+           ELSE Dealable(S, cand)
       ss == {StreamOf[c] : c \in D}
       st == Pick(SOrder, ss, S.sctr)
       c == CHOOSE x \in D : StreamOf[x] = st /\
