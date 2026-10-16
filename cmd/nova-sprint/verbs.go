@@ -163,7 +163,7 @@ func init() {
 		{"remind", "(--in <duration> | --at <time>) --note <text> [--for <actor>] | --list | --cancel <id>", "remind --in 30m --note window-closes", (*app).cmdRemind},
 		{"ack", "<note>[,<note>]... --reason <text>", "ack ci-x-1.1 --reason 'a flaky runner; the rerun is green'", (*app).cmdAck},
 		{"answer", "[--dry-run] [--bar <p>] [--every <duration>] [--timeout <duration>] [--backend jev|fixed] [--answers <file>] [--record <file>]", "answer --dry-run", (*app).cmdAnswer},
-		{"inbox", "[--open <group>] [--read] [--wait [--timeout <duration>] [--push <dir>]] [--deadline <duration>] [--stale <duration>]", "inbox --wait", (*app).cmdInbox},
+		{"inbox", "[--open <group>] [--read] [--wait [--timeout <duration>] [--push <dir>]] [--deadline <duration>] [--stale <duration>] [--json]", "inbox --wait", (*app).cmdInbox},
 		{"card base", "<id> <branch> [--repo-dir <clone>]", "card base s1-4 main", (*app).cmdCardBase},
 		{"card", "<id> [--brief | --fields] [--at-epoch <n>] | (--all | --stream <s>) --json: every card, one JSON object a line", "card s1-4", (*app).cmdCardWithSoftDeps},
 		{"needs", "[--stream <s>] [--roots] | set <id> (--needs <a,b> | --land-after <a,b> | --clear) [--answers <note>]", "needs set s1-4 --needs s1-1", (*app).cmdNeeds},
@@ -175,15 +175,15 @@ func init() {
 		{"log", "[--card <id>] [--stream <s>] [--member <m>] [--since <10m|RFC3339>] [--at-epoch <n>]", "log --card s1-4", (*app).cmdLog},
 		// before check, so its two words are matched first (check_cards.go)
 		{"check cards", "[--stream <s>...] [--dry-run] [--from <export>] [--json]", "check cards", (*app).cmdCheckCards},
-		{"check", "", "check", (*app).cmdCheck},
-		{"repair", "", "repair", (*app).cmdRepair},
+		{"check", "[--max <n>] [--json]", "check", (*app).cmdCheck},
+		{"repair", "[--dry-run] [--json]", "repair", (*app).cmdRepair},
 		{"watch", "--wake [--every <duration>] [--state <file>] [--check <duration>] [--judgment-every <duration>] [--merge-every <duration>] [--backlog-every <duration>] [--land-after <duration>] [--merge-over <n>] [--merging-over <n>] [--review-over <n>]", "watch --wake --state wake.json", (*app).cmdWatch},
 		{"seat check", "", "seat check", (*app).cmdSeatCheck},
 		{"machinery", "", "machinery", (*app).cmdMachinery},
 		{"where", "[--watch] [--every <duration>] [--all] [--json [--cards] [--rows]] [--release [<name>]]", "where", (*app).cmdWhere},
 		{"dashboard", "[--listen <address:port>[,<address:port>...] | none] [--pull <address:port>[,<address:port>...] | none] [--logo <file>] [--every <duration>]", "dashboard --listen 127.0.0.1:7390 --pull 127.0.0.1:7395", (*app).cmdDashboard},
 		{"handover", "", "handover", (*app).cmdHandover},
-		{"view coordinator", "[--all] [--since <cursor>] [--json]", "view coordinator --json", (*app).cmdViewCoordinator},
+		{"view coordinator", "[--all] [--since <cursor>] [--needs] [--json]", "view coordinator --json", (*app).cmdViewCoordinator},
 		{"view cards", "[--col <c>] [--stream <s>] [--holder <member>] [--by tier|stream|col|holder] [--json]", "view cards --col review --by tier --json", (*app).cmdViewCards},
 		{"view worker", "--as <member|friend> [--since <cursor>] [--json]", "view worker --as m1 --json", (*app).cmdViewWorker},
 		{"seat install", "[--server <host:port>] [--config-seat <name> --config-dsn <dsn> --config-password-env <NAME>] [--dry-run]", "seat install --dry-run --server 127.0.0.1:6390", (*app).cmdSeatInstall},
@@ -277,8 +277,8 @@ Every store verb takes --redis <addr> (else NOVA_SPRINT_REDIS, then
 NOVA_REDIS_ADDR), --actor <name> (else NOVA_SPRINT_ACTOR; no
 default: a verb that writes wants one), --op <id> (the same id again returns
 the recorded result), --json and --max <n> (listed items, and the count of a
-set when the verb takes one; 0 is all listed; --limit is --max for one
-release). The
+set when the verb takes one; 0 is all listed; log does not cap yet: narrow it
+with --card, --stream, --member or --since; --limit is --max for one release). The
 coordinator's verbs are the coordinator's alone (the first init names it:
 --coordinator, else the actor); take, finish, read, fleet beat, friend
 beat, lane take and lane give are the workers', whose actor is the member, reader or friend named; merge and ci are
@@ -426,7 +426,7 @@ one answer to each judgment (every one prints its own, filled in):
   stalled                     card <primary> (HELD says what holds it), then the decision it prints, or ack <note> --reason '<why>'
   landed work scored low      add --stream <s> '<fix id>' --brief '<the finding>', then ack <note>; or ack <note> --reason '<why it stands>'
   timer                       ack <note> --reason '<what you did>'  (a timer remind set: it woke its actor, there is nothing to decide)
-  STOP debt: an owner has not beaten since the stop    ack <note> --reason '<returned by hand>', or stop-return --as <owner> <id>@<gen> --reason '<observed child exit>'
+  STOP debt: an owner has not beaten since the stop    ack <note> --reason '<returned by hand>', or stop-return --as <owner> <id>@<gen> --epoch <n> --reason '<observed child exit>'
   a member's takes end with no model call    ack <note> --reason '<what you saw to on the member>'  (the machine's hold of it names this judgment as its cause: the tick releases the member in the step that sees it answered)
 
 the mechanical judgments the run loop answers by rule, recorded "answered by rule <name>"
@@ -1080,7 +1080,7 @@ func (a *app) report(ctx context.Context, verbName string, c common, st *store.S
 	for _, r := range res.Repaired {
 		fmt.Fprintf(stdout, "REPAIRED %s\n", oneline.Escape(r))
 	}
-	listed(stdout, "MOVED", res.Moved, c.max, verbName)
+	listed(stdout, "MOVED", res.Moved, c.max, verbName+" <the same words>")
 	for _, p := range c.handed {
 		printPacket(stdout, p)
 	}
@@ -1090,7 +1090,7 @@ func (a *app) report(ctx context.Context, verbName string, c common, st *store.S
 	// every refused id says why, and what to run instead (output.go; docs/STANDARD.md
 	// section 3, point 1): the reason and the remedy in the default text output, as
 	// --json's refused array has carried them all along
-	listed(stderr, "REFUSED", refusalLines(ctx, st, res.Refused), c.max, verbName)
+	listed(stderr, "REFUSED", refusalLines(ctx, st, res.Refused), c.max, verbName+" <the same words>")
 	status := "OK"
 	if code != 0 {
 		status = "FAILED"
@@ -1136,7 +1136,7 @@ func (a *app) report(ctx context.Context, verbName string, c common, st *store.S
 func listed(w io.Writer, kind string, lines []string, max int, verbName string) {
 	for i, l := range lines {
 		if max > 0 && i == max {
-			fmt.Fprintf(w, "MORE kind=%s shown=%d total=%d run: nova-sprint %s ... --max 0\n", strings.ToLower(kind), max, len(lines), verbName)
+			fmt.Fprintf(w, "MORE kind=%s shown=%d total=%d run: nova-sprint %s --max 0\n", strings.ToLower(kind), max, len(lines), verbName)
 			return
 		}
 		fmt.Fprintf(w, "%s %s\n", kind, oneline.Escape(l))

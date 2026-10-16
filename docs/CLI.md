@@ -152,7 +152,7 @@ nova-sprint wait <note> (--for <duration> | --until <RFC3339>)
 nova-sprint ack <note>... --reason <text>
 nova-sprint answer [--dry-run] [--bar <p>] [--every <duration>] [--timeout <duration>] [--backend jev|fixed] [--answers <file>] [--record <file>]
 # answer --every <d> is the coordinator seat's loop (60s): between passes it blocks on the inbox stream from the last note it has seen (XREAD BLOCK on the inbox), so a judgment committed there ends the wait and the next pass runs at once; a quiet inbox runs a pass at --every, the backstop that catches a lost push. The cursor is the inbox's tail as the wait woke, read before the pass, so a note committed during a pass ends the next wait at once and none is skipped. A backend that cannot block, a twin, and a loop through the sprint's server (NOVA_SPRINT_SERVER) wait --every on the clock between passes, as before
-nova-sprint inbox [--open <group>] [--read] [--wait [--timeout <duration>]] [--deadline <duration>] [--stale <duration>]
+nova-sprint inbox [--open <group>] [--read] [--wait [--timeout <duration>] [--push <dir>]] [--deadline <duration>] [--stale <duration>] [--json]
 nova-sprint card <id> [--brief | --fields] [--json] [--at-epoch <n>]
 nova-sprint card (--all | --stream <s>) --json [--at-epoch <n>]
 nova-sprint card base <id> <branch> [--repo-dir <clone>]
@@ -161,10 +161,10 @@ nova-sprint streams [--repo <owner/name>] [--release <name>] [--cards]
 nova-sprint log [--card <id>] [--stream <s>] [--member <m>] [--since <10m|RFC3339>] [--at-epoch <n>]
 nova-sprint check cards [--stream <s>...] [--dry-run] [--from <export>] [--json]
 # the core pre-start card check (v1.2.17; coordinator): over the epoch's work table and streams (or --from an export file or directory of card --json, card --all --json with briefs/ and trees/, or backup --file / RESTORE dump), one line a finding, CHECK <kind> <card|stream> <finding> remedy=<what to do>, then CHECK CARDS OK cards=<n> (exit 0) or CHECK CARDS FAILED kinds=<kind:n,...> (exit 1); 2 is usage or a store that did not answer. The kinds: needs (every unresolved need, one line each, CHECK needs <card> <need> <reason>: <words> remedy=<verbs>; the reasons absent, dropped, unknown stream, held (an open bound, brief-wrong or harness-fault judgment names it, with its id, type and age and the verbs that decide it) and cycle), files (a file two streams write, PATHS expanded at each card's base tree; a ledger or a test is none), same-file (two cards of a stream naming one PATHS file with no need between them), bases (a stream on the trunk or on another stream's branch, or a need across two streams' branches but a producer's sentinel), names (a stream's display name unset, its id, or a hyphenated id), stale-fix (priority fix with no attempt this epoch), stale-head (a pushed head from an attempt at or below the brief's `brief_attempt`; `brief --keep-head` exempts it), lint (the card lint brief check runs; a primary with no brief), brief-size (a brief over the store's bound, or a card record over the drain's 16384 bytes). Every live run without --dry-run writes the epoch's one check record (clean or the findings, every card's id, stream, tier, priority, needs and brief sha256, and their digest), which start reads; --dry-run and --from write no check record, and a --stream check's record never opens the start. The --from input path skips local store reads and writes, but normal client forwarding and hook checks still run first.
-nova-sprint check
-nova-sprint repair
+nova-sprint check [--max <n>] [--json]
+nova-sprint repair [--dry-run] [--json]
 nova-sprint where [--watch] [--every <duration>] [--all] [--json [--cards] [--rows] [--archived] [--stale <duration>] [--at-epoch <n>]: includes landedSeries] [--release [<name>]]
-nova-sprint view coordinator [--all] [--since <cursor>] [--json]
+nova-sprint view coordinator [--all] [--since <cursor>] [--needs] [--json]
 nova-sprint view cards [--col <c>] [--stream <s>] [--holder <member>] [--by tier|stream|col|holder] [--json]
 nova-sprint view worker --as <member|friend> [--since <cursor>] [--json]
 nova-sprint dashboard [--listen <address:port>[,...] | none] [--pull <address:port>[,...] | none] [--logo <file>] [--every <duration>]
@@ -767,7 +767,7 @@ command again finishes it), or when `--source` holds no
 |---|---|
 | 0 | done |
 | 1 | failed or incomplete (including refused; `start` while every provider is out of credit) |
-| 2 | usage, or a store that did not answer (`fleet sync --check`: there is drift) |
+| 2 | usage, or a store that did not answer (under `fleet sync --check`, 2 is drift alone, with DRIFT lines; a store that did not answer is 3) |
 | 3 | unreadable config (`fleet sync`, `friend sync`, `friend clean`), missing friend rows (`friend sync`, `friend clean`), or a replaced binary (`run`, `dashboard`) |
 
 The exit codes do not separate a definite refusal from an unknown outcome: exit
