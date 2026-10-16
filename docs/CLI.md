@@ -164,7 +164,7 @@ nova-sprint check cards [--stream <s>...] [--dry-run] [--from <export>] [--json]
 nova-sprint check
 nova-sprint repair
 nova-sprint where [--watch] [--every <duration>] [--all] [--json [--cards] [--rows] [--archived] [--stale <duration>] [--at-epoch <n>]: includes landedSeries] [--release [<name>]]
-nova-sprint view coordinator [--all] [--since <cursor>] [--json]
+nova-sprint view coordinator [--all] [--since <cursor>] [--needs] [--json]
 nova-sprint view cards [--col <c>] [--stream <s>] [--holder <member>] [--by tier|stream|col|holder] [--json]
 nova-sprint view worker --as <member|friend> [--since <cursor>] [--json]
 nova-sprint dashboard [--listen <address:port>[,...] | none] [--pull <address:port>[,...] | none] [--logo <file>] [--every <duration>]
