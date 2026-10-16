@@ -183,7 +183,9 @@ MCDirtyTickW20.cfg	MCDirtyTick.tla	invariant	RouteGuard	ignore-terminal	dirtytic
 MCDirtyTickHeldStream.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickBrokenDealHeldStream.cfg	MCDirtyTick.tla	invariant	HeldStreamNotDealt	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickReadsFirst.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
+MCDirtyTickFixFirst.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickBrokenWorkFirst.cfg	MCDirtyTick.tla	action	ReadsBeforeWork	ignore-terminal	dirtytick-witnesses	required	-
+MCDirtyTickBrokenNewFirst.cfg	MCDirtyTick.tla	action	FixBeforeNew	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickReadRefused.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickBrokenReadBlocks.cfg	MCDirtyTick.tla	invariant	OneRefusedReadNeverBlocksWork	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickReader.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-

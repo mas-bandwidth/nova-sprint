@@ -272,6 +272,16 @@ func TestAReadCostsHalfASlot(t *testing.T) {
 		work, reads := rowLoad(w.s, "m2")
 		require.Equal(t, 1, reads)
 		require.Equal(t, 1, work, "room 2 slots: one read (half), one work card; the half left takes no work")
+
+		// the half-slot edge (v1.4.5, the strict deal): with exactly half a slot left, a read it
+		// may take waits, and the half goes to that read, never to new work (halfLoad rounds a
+		// half read up, so the work room is none)
+		require.Equal(t, 0, DealAhead*w.s.Width("m2")-halfLoad(work, reads), "no work room in the half left")
+		putReviewBy(w, "s1-2", "s1-2: work (s1)\n", "m1", 2)
+		dealReads(t, w, nil)
+		work, reads = rowLoad(w.s, "m2")
+		require.Equal(t, 2, reads, "the waiting read takes the half slot")
+		require.Equal(t, 1, work, "and no new work card is dealt into it")
 	})
 	t.Run("the take", func(t *testing.T) {
 		t.Parallel()
