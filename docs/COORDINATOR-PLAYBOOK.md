@@ -190,8 +190,8 @@ bound, or a brief that is wrong.
    "Answered by rule".
 2. Run the judgment decision. usage: `nova-sprint answer [--dry-run] [--bar <p>] [--every <duration>] [--timeout <duration>] [--backend jev|fixed] [--answers <file>] [--record <file>]`.
    Run `nova-secrets exec --only JEV_API_KEY -- nova-sprint answer --dry-run`, then the same with
-   `--every 60s` as the seat's loop (the runbook gives the `--store`, `--as`, `--key` and `--sops`
-   flags of `nova-secrets exec`). The verb the decision chose is applied at or above
+   `--every 60s` as the seat's loop (SPRINT-COORDINATOR-SEAT.md, "The wrapper", gives the
+   `--store`, `--as`, `--key` and `--sops` flags `nova-secrets exec` requires). The verb the decision chose is applied at or above
    `decide_judgment_bar`. The bar ships empty, so nothing is applied and what a bar would apply is
    listed. Every drop, everything under the bar, and a provider's refusal for want of payment are
    listed for you. You set the bar on the sprint row with
@@ -232,7 +232,7 @@ bound, or a brief that is wrong.
 6. Mend the dependencies. usage: `nova-sprint needs [--stream <s>] [--roots] | set <id> (--needs <a,b> | --land-after <a,b> | --clear) [--answers <note>]`.
    `nova-sprint needs set <card> --needs <a,b>` replaces a card's needs, and `--land-after <a,b>`
    sets soft dependencies: the work runs in parallel, and the lander lands the two in order. Spec:
-   SPEC-SPRINT.md section 3, "The lifecycle of a primary"; "Soft dependencies".
+   SPEC-SPRINT.md section 3, "The lifecycle of a primary"; section 19, "Soft dependencies".
 7. Make a twin only when you mean a new id. usage: `nova-sprint recut <id> (--tier <flash|pro|heavy|frontier> | --brief-file <path> [--rules <file>]) [--new <id>] | <selector> (--tier <t> | --set-base <branch> | --drop-who)... [--dry-run]`.
    `recut` re-cuts the card as its twin, with the next letter as its id unless you give `--new`.
    `recut --widen` is retired: a PATHS widening uses `brief <id> --widen` (`nova-sprint help recut`).
@@ -241,8 +241,10 @@ bound, or a brief that is wrong.
 **Success looks like.** Every decision you make carries `--answers`, so its judgment closes. Each
 verb prints a MOVED line for every card, and the inbox holds only what needs a mind.
 
-**Not by hand.** Do not drop a card and add it again to fix its brief: `brief` edits it in place
-(SPEC-SPRINT.md section 11, the `brief` row). Do not resolve a conflict on the card's branch, which
+**Not by hand.** For "the brief is wrong", do not drop a card and add it again: `brief` edits it in
+place (SPEC-SPRINT.md section 11, the `brief` row). A brief-defect judgment is the exception, and
+the inbox prints its answer: drop, then add the re-cut brief as a new card, never a redeal
+(`nova-sprint help`, "one answer to each judgment"). Do not resolve a conflict on the card's branch, which
 no reader has read; rework or drop it instead (SPRINT-COORDINATOR.md section 2). Do not loop over
 cards one process at a time when a selector does them in one step (SPEC-SPRINT.md section 2, "One
 selector, one step"). Do not compose a command when the inbox prints one.
@@ -314,7 +316,7 @@ shows working 0, and her cards stay on her row and count again when she is up
    kept for one release. A held friend keeps no card: every card on her row goes back to ready,
    and a started card with a push carries its pushed head to the next taker. Release her with
    usage `nova-sprint unhold <member|reader|friend|stream>... [--reason <text>] [--dry-run]`.
-   `friend up` cannot prove the friend alive (`nova-sprint help`, "Hold and unhold"). Spec:
+   `friend up` cannot prove the friend alive (`nova-sprint help`, "The friends"). Spec:
    SPEC-SPRINT.md section 11, the `hold` and `friend down, friend up` rows.
 4. Finish what her reports already finish. usage: `nova-sprint collect [<friend>...] [--dead-lanes] [--pg <dsn>] [--root <dir>] [--dry-run]`.
    Run `nova-sprint collect --dry-run`, then `nova-sprint collect --dead-lanes`. collect finishes
@@ -375,8 +377,8 @@ model answers a challenge (`nova-hook help`).
 names a cause.
 
 **Not by hand.** Do not `rm -rf` job directories or caches; gc removes them. Do not edit the fleet
-table; `fleet sync` and `fleet up` write it. A member pegged at 90% or more with no card working is
-a judgment that tells you to read the leftover process on the machine (ps), kill it by PID, or
+table; `fleet sync` and `fleet up` write it. A member up with no card working that beats at 90% or more
+for the pegged bound (`set --pegged-bound`, default 10m) is a judgment that tells you to read the leftover process on the machine (ps), kill it by PID, or
 hold the member (`nova-sprint help`, "The fleet"). Never kill a process blindly.
 
 ## 8. Priorities and order
