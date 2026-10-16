@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
@@ -176,4 +178,54 @@ func TestAFriendCardIsStagedByAVerb(t *testing.T) {
 		}
 	}
 	assert.Equal(t, sprintID.Email, email, "the clone commits as the sprint row's identity, never the host's global one")
+}
+
+// A fresh clone has a local main but only a remote-tracking ref for a
+// non-default BASE. Pinning that ref gives checkout and JOB.md the exact
+// commit, and a missing branch fails instead of staging the wrong source.
+func TestFriendStagePinsANonDefaultBaseFromTheClone(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	root := t.TempDir()
+	run := func(ctx context.Context, dir string, args ...string) (string, error) {
+		cmd := exec.CommandContext(ctx, "git", args...)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return string(out), fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(string(out)))
+		}
+		return string(out), nil
+	}
+	mustGit := func(dir string, args ...string) string {
+		t.Helper()
+		out, err := run(ctx, dir, args...)
+		require.NoError(t, err)
+		return strings.TrimSpace(out)
+	}
+	remote := filepath.Join(root, "remote.git")
+	seed := filepath.Join(root, "seed")
+	clone := filepath.Join(root, "clone")
+	mustGit(root, "init", "-q", "--bare", "-b", "main", remote)
+	mustGit(root, "init", "-q", "-b", "main", seed)
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "main.txt"), []byte("main\n"), 0o644))
+	mustGit(seed, "add", "main.txt")
+	mustGit(seed, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "main")
+	mustGit(seed, "remote", "add", "origin", remote)
+	mustGit(seed, "push", "-q", "origin", "main")
+	mustGit(seed, "checkout", "-qb", "sprint/proof")
+	require.NoError(t, os.WriteFile(filepath.Join(seed, "proof.txt"), []byte("proof\n"), 0o644))
+	mustGit(seed, "add", "proof.txt")
+	mustGit(seed, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "proof")
+	want := mustGit(seed, "rev-parse", "HEAD")
+	mustGit(seed, "push", "-q", "origin", "sprint/proof")
+	mustGit(root, "clone", "-q", remote, clone)
+	_, err := run(ctx, clone, "rev-parse", "--verify", "sprint/proof^{commit}")
+	require.Error(t, err, "the clone must not have a local BASE branch")
+	got, err := friendStageBaseHead(ctx, clone, "sprint/proof", run)
+	require.NoError(t, err)
+	assert.Equal(t, want, got)
+	mustGit(clone, "checkout", "-q", "-B", "sprint/work.w1", got)
+	assert.Equal(t, want, mustGit(clone, "rev-parse", "HEAD"))
+	_, err = friendStageBaseHead(ctx, clone, "sprint/missing", run)
+	require.Error(t, err, "a missing BASE must not silently fall back to main")
 }
