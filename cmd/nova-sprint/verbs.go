@@ -1080,7 +1080,7 @@ func (a *app) report(ctx context.Context, verbName string, c common, st *store.S
 	for _, r := range res.Repaired {
 		fmt.Fprintf(stdout, "REPAIRED %s\n", oneline.Escape(r))
 	}
-	listed(stdout, "MOVED", res.Moved, c.max, verbName)
+	listed(stdout, "MOVED", res.Moved, c.max, verbName+" <the same words>")
 	for _, p := range c.handed {
 		printPacket(stdout, p)
 	}
@@ -1090,7 +1090,7 @@ func (a *app) report(ctx context.Context, verbName string, c common, st *store.S
 	// every refused id says why, and what to run instead (output.go; docs/STANDARD.md
 	// section 3, point 1): the reason and the remedy in the default text output, as
 	// --json's refused array has carried them all along
-	listed(stderr, "REFUSED", refusalLines(ctx, st, res.Refused), c.max, verbName)
+	listed(stderr, "REFUSED", refusalLines(ctx, st, res.Refused), c.max, verbName+" <the same words>")
 	status := "OK"
 	if code != 0 {
 		status = "FAILED"
@@ -1136,7 +1136,7 @@ func (a *app) report(ctx context.Context, verbName string, c common, st *store.S
 func listed(w io.Writer, kind string, lines []string, max int, verbName string) {
 	for i, l := range lines {
 		if max > 0 && i == max {
-			fmt.Fprintf(w, "MORE kind=%s shown=%d total=%d run: nova-sprint %s ... --max 0\n", strings.ToLower(kind), max, len(lines), verbName)
+			fmt.Fprintf(w, "MORE kind=%s shown=%d total=%d run: nova-sprint %s --max 0\n", strings.ToLower(kind), max, len(lines), verbName)
 			return
 		}
 		fmt.Fprintf(w, "%s %s\n", kind, oneline.Escape(l))
