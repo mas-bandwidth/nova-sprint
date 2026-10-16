@@ -2437,4 +2437,11 @@
    :text "friend stage sets the clone's identity from the friend row's git_identity, but the nova-config friend kind has no such field (the row's fields are tiers, roles, width, mode, config_dir, token_cap, streams, kinds, pronouns and session), so every friend delivery was refused until v1.4.5 fell back to the sprint row's git_identity. The friend kind gains git_identity (a migration, apply, and nova-config friend set --git_identity), each friend's identity set by the owner, and stage prefers it (identity=friend)."
    :why "A schema migration on the fleet's configuration store, held out of the point release."
    :release "v1.5"
-   :origin "the coordinator's tool audit, 2026-10-16")))
+   :origin "the coordinator's tool audit, 2026-10-16")
+  (item "selftest-and-tests-run-with-routes-configured-as-in-use" :group "sprint" :area "nova-sprint" :date "2026-10-16"
+   :title "Selftest, the sims and the unit tests run with routes configured, as in use"
+   :text "A store with no routes configured at all treats every tier as served, and each worker runs its own --model. v1.4.6 fences that shortcut so it applies only to the in-memory twin: the pretend sprint of `nova-sprint selftest`, the help walkthrough, and the twin and play sims. A real store with no routes refuses by name. v1.7 removes the shortcut entirely. The selftest twin, the walkthrough, the sims and the roughly 362 unit tests that rely on an empty route table instead configure routes the way a real sprint does, through the same nova-config route rows or their store equivalent, so the tier is respected everywhere with no special case. DONE-WHEN: the predicate that fences the shortcut is deleted; no code path serves a tier without an enabled route; selftest, the walkthrough and the sims configure routes; the full unit tier and TLC (ReaderTiers) pass; and a test pins that an empty route table refuses on every store kind."
+   :why "The system should be tested exactly as it will be used. A special case that serves every tier when no routes exist is a path a real sprint never takes, so the tests that rely on it prove less than they appear to, and keeping it, even fenced, leaves a way for the tier rule to be skipped."
+   :release "v1.7"
+   :origin "Glenn, 2026-10-16: \"Add a task to v1.7 to do it properly. It's best to test exactly as the system will be used.\" (the v1.4.6 fence of the empty-route shortcut)"
+   :kept (:kind "refactor"))))
