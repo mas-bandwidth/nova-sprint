@@ -8,8 +8,9 @@
 # nightly gate. nova-sprint is public: the models job's if: skips a pull
 # request from a fork, for this workflow as written. A fork's pull request
 # runs its own copy of the workflow files, so what keeps a stranger's workflow
-# off the self-hosted runners is the repository's fork-approval setting (the
-# owner's to set), not this condition. The TLC jar is pinned
+# off the self-hosted runners is the repository's fork-approval setting,
+# set to require approval for all external contributors (2026-10-16), not
+# this condition. The TLC jar is pinned
 # by digest in tla/tla2tools.sha256 -- the same digest every tla/RUNS.tsv
 # record names -- and downloaded from the tlaplus v1.7.4 release. The jobs
 # never write tla/RUNS.tsv: records still land through cards, from a bench.
