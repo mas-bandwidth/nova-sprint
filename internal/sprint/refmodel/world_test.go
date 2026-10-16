@@ -28,8 +28,10 @@ type world struct {
 // newWorld is an empty sprint with the readers named, a coordinator, and the
 // clock at t0.
 func newWorld(readers ...string) *world {
+	// the world is the tests' in-memory store, a twin (MemTwin)
 	s := &sprint.Snapshot{Now: t0, Work: sprint.NewTable(sprint.Work), Readers: sprint.NewTable(sprint.Readers),
-		Merge: sprint.NewTable(sprint.Merge), Fleet: sprint.NewTable(sprint.Fleet), Coordinator: "coordinator", Actor: "coordinator"}
+		Merge: sprint.NewTable(sprint.Merge), Fleet: sprint.NewTable(sprint.Fleet), Coordinator: "coordinator", Actor: "coordinator",
+		MemTwin: true}
 	// The existing reference model is intentionally of the legacy readers table.
 	s.Work.SetProp(sprint.PropReadCards, sprint.SwitchOff)
 	s.Readers.SetRows(append(s.Readers.Rows(), readers...))

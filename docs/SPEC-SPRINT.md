@@ -2319,7 +2319,7 @@ until that lane reads its harness's own report (opencode's store for the run, as
 `swarm.ReadCardUsageAfter` does). A subscription reader (a bud's `claude -p`
 on its own plan, which bills no dollar per token) adds `billing=subscription` to its usage:
 its tokens are kept, the harness's notional cost dropped, `unpriced=subscription`, and its
-COST line says `cost=tokens`. A read with no route at all (a store with no routes) is taken
+COST line says `cost=tokens`. A read with no route at all (the twin with no routes) is taken
 with or without usage, as before. The where record splits each stream's complete cost by
 kind (`work_cost`, `read_cost`, beside `total_cost`), carries its subscription reads' tokens
 (`read_tokens`) and its reads that ended on the tick's UTC day by route (`reads_today`); the
@@ -2758,9 +2758,12 @@ order the cards were dealt in, so a card brought to the front of its stream by
   ordered list of route names, a name repeated for more turns, and a tier with
   none takes its enabled routes in name order. Applied provider rows (`providers`, `provider:<name>`) declare billing and funding and ride the same route read. The full `check cards` fails with kind `routes` for each enabled route of a funded provider absent from every effective tier array, each configured array (including an empty field using its fallback) with no enabled funded native-tier route, or no applied provider rows; it names the route/tier and a `nova-config` remedy. Empty arrays retain the enabled native-tier fallback; coverage also requires the array tier to match the route's native tier, as servedRoute does, so a foreign-tier entry neither hides a route gap nor funds that tier. `where` prints provider funding and unique per-tier in/enabled counts after the machine line, with the same coverage and `provider_gaps` in JSON; balance/rest fields remain available. Malformed or unpopulated provider hashes never abort the route read: they count as not funded, with one named provider diagnostic in check/where and no fabricated explicit-false funding value. Start recomputes these same provider findings live after verifying the clean card record, so configuration changed after a clean check still refuses a start. The deal (and a redeal, and a
   rework's next attempt) resolves the card at deal time: a pin is its route
-  (`pin`) and moves no index; a store with no route deals as before (the member
-  runs its override); a frontier card is dealt like every tier: from the frontier
-  array's enabled, non-resting routes or an up friend who lists frontier, by the
+  (`pin`) and moves no index; the in-memory twin (`mem:<file>`) with no route deals as
+  before (the member runs its override), and a real store (Redis) with no route deals no
+  tier: every tier is unrouted there, each waits under its one no-route judgment, closed
+  once a route of it is enabled (the owner, 2026-10-16, on that shortcut: "Fence it
+  off."; `twinRunsOwnModel`, tla/ReaderTiers.tla `NoDealOnRealStoreWithoutRoutes`); a
+  frontier card is dealt like every tier: from the frontier array's enabled, non-resting routes or an up friend who lists frontier, by the
   deal's cost rule; with neither, it waits for the coordinator under the tier's
   no-route judgment; a pinned card runs on its pin (tla/RouteIndex.tla
   `EveryTierIsDealtFromItsRoutes`, `TestAFrontierCardIsDealtFromItsRoutesLikeEveryTier`);
@@ -2860,7 +2863,8 @@ order the cards were dealt in, so a card brought to the front of its stream by
   2026-10-02) and the escalation below a card's tier that carried it are gone: a card is
   at its ceiling from its first deal, so at its bound the judgment is "a card reached its
   bound"; a capped friend's lane is re-dealt once a tier up (`capNextTier`). A pinned
-  model runs on its pin; a store with no route escalates nothing.
+  model runs on its pin; the twin with no route escalates nothing (a real store with no
+  route escalates as one with routes does, and deals nothing).
   Each work card records `tier`, the tier its route was drawn from, which its
   packet hands the child and its JOB.md names; `card` prints it on each ATTEMPT
   and COST line and the tier now and the ceiling on its CARD OK line
@@ -3218,7 +3222,9 @@ order the cards were dealt in, so a card brought to the front of its stream by
     `balance_at`, `rested_for`) (`TestTheRunLoopPollsBalancesAndWhereShowsTheProvidersTable`).
 - The twin (`mem:<file>`) holds no routes: routes are config, nova-config's
   rows applied to a store's Redis, and a twin has no config store to apply
-  from. A twin deals as a store with no route does (the member's override);
+  from. A twin with no route deals every tier on the member's override, and it is the
+  only store that does (`Store.MemTwin`, `Snapshot.MemTwin`, `twinRunsOwnModel`): a real
+  store with no route deals no card and no fleet read, one no-route judgment per tier;
   the route paths are driven on the in-memory store in the tests
   (`Mem.SetRoutes`) and on a real store.
 - Two things are called routes. The `route` kind is the sprint's: what a card
@@ -3624,7 +3630,7 @@ is served. `card` and `where --json --rows` show the tier it is on.
   different readers (`sprint.ReadsNeeded`). The tier is the card's own, the tier
   it is on (section 5, flash first: flash at its first deal on a route, then the
   tier it escalated to, or the tier a rework recorded; its ceiling, line 1's
-  tier, in a store with no route); a read tier set for the stream or the
+  tier, in the twin with no route); a read tier set for the stream or the
   sprint (below) raises the route its reads are drawn on and never their
   count. The reads per machine are unchanged: a reader still runs at its
   machine's width.
@@ -3652,8 +3658,9 @@ is served. `card` and `where --json --rows` show the tier it is on.
   and `where --json` carries `reads_needed`, the count or "default".
 - A reader row carries the tiers it reads (`readers.tiers`, text, no fold;
   an empty cell is the default: every tier a route serves, for a fleet reader
-  and for a friend's or a bud's reader alike; a store with no route has every
-  reader run its own model, and an empty cell there reads every tier too).
+  and for a friend's or a bud's reader alike; the twin with no route has every
+  reader run its own model, and an empty cell there reads every tier too; a real store
+  with no route has no fleet reader serve any tier).
   Every up fleet member has a member reader row `reader-<member>`, made by
   init, by a member's join (`fleet up`) and by a clear when missing, and up
   while its member is up and not held. `reader add <reader>...
@@ -3855,8 +3862,9 @@ is served. `card` and `where --json --rows` show the tier it is on.
   read (`internal/sprint/route.go`, readRouteOf;
   tla/RouteIndex.tla, THE READS); its packet hands the reader that route, so a
   reader loop needs no `--model`, and a reader started with `--model`,
-  `--tokens` and `--deadline` runs its reads on those. A store with no route
-  asks with none, and the reader runs its own. **A read needs a reader, not a
+  `--tokens` and `--deadline` runs its reads on those. The twin with no route
+  asks with none, and the reader runs its own; a real store with no route asks no fleet
+  reader. **A read needs a reader, not a
   route** (the card pr-wire-server-restart, 2026-10-05, a heavy card stalled in
   review under `no enabled route serves tier heavy` while the fleet's table held
   flash and pro routes only and the friends who read heavy were up; the owner

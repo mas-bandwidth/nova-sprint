@@ -19,6 +19,10 @@ import (
 
 // Backend is what the sprint needs of a store.
 type Backend interface {
+	// InMemory says the backend is the in-memory one (Mem): true only there, false for
+	// Redis; a wrapper says what it wraps. It marks the twin (Store.MemTwin), the one
+	// store where no route at all runs every tier on the member's own --model.
+	InMemory() bool
 	// Shapes reads each table's definition, rows, count cells, text cells and
 	// revision, in one exchange.
 	Shapes(ctx context.Context, tables []string) ([]ntable.Table, error)

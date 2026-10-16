@@ -38,6 +38,10 @@ type Redis struct {
 
 func (r *Redis) key(name string) string { return r.Names.KeyAt(name, r.Pinned) }
 
+// InMemory is false: Redis is a real store (Backend.InMemory), where a store with no
+// route at all serves no tier.
+func (r *Redis) InMemory() bool { return false }
+
 // AtEpoch is the backend pinned to an epoch.
 func (r *Redis) AtEpoch(epoch uint64, old bool) Backend {
 	c := *r

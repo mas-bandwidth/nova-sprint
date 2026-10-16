@@ -138,6 +138,13 @@ type Store struct {
 	old     bool // pinned to an earlier epoch, for reading
 }
 
+// MemTwin says the store's backend is the in-memory one (Backend.InMemory: a --redis
+// mem:<file> twin, the selftest's, the play and twin sims', a unit test's), the one place
+// a snapshot learns it (Snapshot.MemTwin, set where the store builds the snapshot). Any
+// other backend is a real store (Redis): there a store with no route at all serves no
+// tier (sprint's twinRunsOwnModel; the owner, 2026-10-16: "Fence it off.").
+func (st *Store) MemTwin() bool { return st.B != nil && st.B.InMemory() }
+
 // Step is one verb's step: the tables its plan reads, any records it reads
 // beyond them, and its plan.
 type Step struct {

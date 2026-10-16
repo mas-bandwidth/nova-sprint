@@ -514,6 +514,13 @@ type Snapshot struct {
 	Tiers map[string][]string
 	// Providers is the applied funding declaration, read with routes; missing is unknown.
 	Providers map[string]Provider
+	// MemTwin says the snapshot was read from the in-memory store (store.Mem: a
+	// --redis mem:<file> twin, the selftest's, the play and twin sims'), set by the
+	// store where it builds the snapshot (store.Store.MemTwin). Only there does a
+	// store with no route at all run every tier on its member's own --model
+	// (twinRunsOwnModel). A real store (Redis) and a snapshot built by hand leave it
+	// false: a tier with no enabled route is unrouted there, routes or none.
+	MemTwin bool
 	// DecideBounce and DecideReview are the sprint row's bars on a decide read's
 	// p(defect) as nova-config applied them (sprint:decide_bounce,
 	// sprint:decide_review), read with the routes; both "" is no decide read

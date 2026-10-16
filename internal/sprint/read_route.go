@@ -12,8 +12,9 @@ import (
 // and pro routes only, and the friends and buds that read heavy were up). The owner
 // chose this over a heavy fleet route, which would let the fleet be dealt heavy cards
 // it cannot run. A fleet reader runs the route its read draws, so it serves a tier
-// only while an enabled route of the tier is in the tier's array (or the store holds
-// no route, where every reader runs its own). A friend's or a bud's reader,
+// only while an enabled route of the tier is in the tier's array (or the in-memory
+// twin holds no route, where every reader runs its own: twinRunsOwnModel). A friend's
+// or a bud's reader,
 // reader-<name> beaten by her daemon, brings her own harness model by tier: it serves a
 // tier its tiers cell names that her seat's tiers reach, route or none, and its verdict's
 // usage line says the model and the harness its read ran on (readUsageFields).
@@ -56,13 +57,26 @@ func (s *Snapshot) heldFriendReader(reader string) bool {
 	return false
 }
 
+// twinRunsOwnModel says every tier is served with no route, its member (or fleet reader)
+// running its own --model: only on the in-memory twin (MemTwin: a mem:<file> twin, the
+// selftest's, the play and twin sims'), and only while it holds no route at all. It is the
+// one predicate every deal path asks for that shortcut (tierRouted, routeOf, routeServed,
+// NextTier, readRouteOf, the rebalance). The owner, 2026-10-16, on the shortcut: "Fence it
+// off." A real store with no routes is a configuration issue, never worked around: every
+// tier is unrouted there, no card and no fleet read is dealt, and each tier waits under
+// its one NNoRoute judgment, closed once a route of it is enabled.
+//
+// tla/ReaderTiers.tla NoDealOnRealStoreWithoutRoutes (reversed witness
+// MCReaderTiersBrokenRealShortcut.cfg)
+func (s *Snapshot) twinRunsOwnModel() bool {
+	return s != nil && s.MemTwin && len(s.Routes) == 0
+}
+
 // tierRouted says a fleet reader can draw a read of tier: an enabled route of the tier is
-// in its array, or the store holds no route at all (its reader runs its own --model). The
-// second is the store with no routes the help documents (a twin, the selftest install
-// gate's mem twin, a one-machine try): it is live, so it stays until the owner rules on it;
-// in a store with routes a tier with none is never served.
+// in its array, or the in-memory twin holds no route at all (twinRunsOwnModel: its reader
+// runs its own --model). A real store with no route serves no tier.
 func (s *Snapshot) tierRouted(tier string) bool {
-	if len(s.Routes) == 0 {
+	if s.twinRunsOwnModel() {
 		return true
 	}
 	for _, name := range s.tierArray(tier) {

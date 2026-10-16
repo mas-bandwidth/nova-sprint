@@ -92,7 +92,7 @@ func cloneTables(s *sprint.Snapshot) *sprint.Snapshot {
 		Work: cloneTable(s.Work), Readers: cloneTable(s.Readers), Merge: cloneTable(s.Merge), Fleet: cloneTable(s.Fleet),
 		Open: cloneOpen(s.Open), Acked: cloneOpen(s.Acked), Answered: maps.Clone(s.Answered),
 		QueueLen: s.QueueLen, Queue: cloneQueue(s.Queue), Held: maps.Clone(s.Held),
-		Routes: slices.Clone(s.Routes), Tiers: maps.Clone(s.Tiers), Providers: maps.Clone(s.Providers),
+		Routes: slices.Clone(s.Routes), Tiers: maps.Clone(s.Tiers), Providers: maps.Clone(s.Providers), MemTwin: s.MemTwin,
 		DecideBounce: s.DecideBounce, DecideReview: s.DecideReview, DecideScoreBar: s.DecideScoreBar,
 		DecideAttemptNoResult: s.DecideAttemptNoResult, DecideAttemptNothingToDo: s.DecideAttemptNothingToDo, DecideGrade: s.DecideGrade,
 		DecideGateFlaky: s.DecideGateFlaky, DecideGatePreexisting: s.DecideGatePreexisting,

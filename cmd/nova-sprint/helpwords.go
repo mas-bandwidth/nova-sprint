@@ -30,8 +30,10 @@ each fleet machine, which opens no store:
   nova-swarm member --as <reader> --server <address>:<port> --reader --width <n> --harness <path> --root <dir>
 The first beats, takes to its row's width and runs each card as one child; the
 second runs up to <n> reads at once. A harness that reads its provider key from
-the environment needs --pass <KEY>; a store with no routes (nova-config route)
-needs --model, --tokens and --deadline; nova-swarm member -h names every flag.`) + "\n"
+the environment needs --pass <KEY>; the twin (mem:<file>) with no routes
+(nova-config route) needs --model, --tokens and --deadline, and a real store with
+no routes deals nothing until one is applied; nova-swarm member -h names every
+flag.`) + "\n"
 }
 
 // wordsSection defines, one line each, the words the help and the verbs' output use,

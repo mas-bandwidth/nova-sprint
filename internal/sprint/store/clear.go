@@ -493,7 +493,7 @@ func (st *Store) owedSource(ctx context.Context) (*sprint.Snapshot, error) {
 		tables[t], out = one.T(t), one
 	}
 	if out == nil {
-		out = &sprint.Snapshot{Now: st.now(), Epoch: st.epoch - 1, Prefix: st.Names.Prefix}
+		out = &sprint.Snapshot{Now: st.now(), Epoch: st.epoch - 1, Prefix: st.Names.Prefix, MemTwin: st.MemTwin()}
 	}
 	out.Work, out.Readers, out.Merge, out.Fleet = tables[sprint.Work], tables[sprint.Readers], tables[sprint.Merge], tables[sprint.Fleet]
 	return out, nil

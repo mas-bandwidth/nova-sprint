@@ -2024,6 +2024,10 @@ func (r readOnly) SettleDefaults(context.Context, uint64) error { return ErrRead
 func (r readOnly) GuardedRows(context.Context, RestoreGuard, []RowWrite) (GuardOutcome, error) {
 	return GuardApplied, ErrReadOnly
 }
+
+// InMemory is the wrapped backend's (Backend.InMemory).
+func (r readOnly) InMemory() bool { return r.b.InMemory() }
+
 func (r readOnly) AtEpoch(epoch uint64, old bool) Backend {
 	return readOnly{b: r.b.AtEpoch(epoch, old)}
 }

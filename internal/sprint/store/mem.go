@@ -148,6 +148,9 @@ type memOp struct {
 	receipt ntable.Receipt
 }
 
+// InMemory is true: Mem is the in-memory backend (Backend.InMemory).
+func (m *Mem) InMemory() bool { return true }
+
 // NewMem is an empty store.
 func NewMem() *Mem {
 	return &Mem{memState: &memState{tables: map[string]*memTable{}, dropped: map[string]*memResidue{}, views: map[string]ntable.View{},

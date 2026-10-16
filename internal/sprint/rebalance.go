@@ -315,7 +315,7 @@ func rebalanceMove(s *Snapshot, p *Plan, declared map[string]bool, ri routeIndex
 	case g.friend:
 		// off a friend's row onto a machine: a route of its tier, as a deal draws one
 		route, _, why, _ := s.routeOf(pr, wc, ri, to.name)
-		if why != "" || len(s.Routes) > 0 && route[FieldRoute] == "" {
+		if why != "" || !s.twinRunsOwnModel() && route[FieldRoute] == "" {
 			return Unit{}, false
 		}
 		w, pm := splitRoute(route)

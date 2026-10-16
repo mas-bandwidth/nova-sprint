@@ -33,8 +33,9 @@ import (
 //
 // The rules, in order:
 //   - a pinned card runs on its pin (route "pin");
-//   - a store with no route at all deals as before, with no route: the member runs
-//     its own --model (a twin, a one-machine test);
+//   - the in-memory twin with no route at all deals as before, with no route: the
+//     member runs its own --model (twinRunsOwnModel); a real store with no route deals
+//     no tier, each tier judged unrouted;
 //   - a frontier card with no pin is dealt like every tier: from its array's routes or
 //     an up friend who lists frontier; with neither it waits for the coordinator, one
 //     judgment for the tier (tla/RouteIndex.tla EveryTierIsDealtFromItsRoutes);
@@ -300,8 +301,9 @@ const NNoRoute = "no route serves the tier"
 // a colon, so it is never a stream's.
 func TierSubject(tier string) string { return "tier:" + tier }
 
-// noRoute is why a primary's tier is not served: "" when a route serves it (or the store
-// has no route at all) or a friend up does (tierServed), else the tier it is judged under
+// noRoute is why a primary's tier is not served: "" when a route serves it (or the
+// in-memory twin has no route at all, twinRunsOwnModel) or a friend up does
+// (tierServed), else the tier it is judged under
 // and the sentence. It moves no index.
 func (s *Snapshot) noRoute(c *Card) (tier, why string) {
 	tier, why, byFriend := s.routeServed(c, nil, "")
@@ -592,7 +594,7 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map
 	if m.Pin != "" {
 		return map[string]string{FieldRoute: RoutePin, FieldModel: m.Pin, FieldTokens: m.Tokens, FieldUSD: "", FieldDeadline: strconv.Itoa(m.Deadline)}, "", "", false
 	}
-	if len(s.Routes) == 0 {
+	if s.twinRunsOwnModel() {
 		return nil, "", "", false
 	}
 	r, steps, ok, rested, unlaunchable, full := s.drawRoute(c, wc, ri, member, tier)
@@ -655,7 +657,7 @@ func (s *Snapshot) routeServed(c, wc *Card, member string) (tier, why string, by
 	if m.Pin != "" {
 		return "", "", false // a pinned card runs on its pin: served
 	}
-	if len(s.Routes) == 0 {
+	if s.twinRunsOwnModel() {
 		return "", "", false
 	}
 	if _, _, ok, rested, unlaunchable, _ := s.drawRoute(c, wc, nil, member, tier); ok {
@@ -674,7 +676,8 @@ func (s *Snapshot) routeServed(c, wc *Card, member string) (tier, why string, by
 // a tier the fleet's set leaves out (tierServed); a frontier card is
 // none of them and goes on to the draw like every tier. done says one of
 // those settled the answer (the returned tier, why and byFriend are it, with no set); else
-// the caller goes on to the pin, a store with no route, or the draw. m is the card's
+// the caller goes on to the pin, the twin with no route (twinRunsOwnModel), or the
+// draw. m is the card's
 // model, for the pin's fields and the tier a deal writes on the primary.
 func (s *Snapshot) routeTier(c *Card) (tier, why string, byFriend, done bool, m cardhdr.Model) {
 	var bad string
@@ -1000,12 +1003,13 @@ func (s *Snapshot) dealTierOf(c *Card) string {
 // NextTier is the tier the primary c escalates to when it reaches its bound: the next tier
 // of the ladder above the one it is on, up to its ceiling; "" at its ceiling (a pinned
 // model or tier is on its ceiling, cardTier), for brief lines that cannot be read, and in
-// a store with no route (a twin: its member runs its own model whatever the tier). One
+// the in-memory twin with no route (twinRunsOwnModel: its member runs its own model
+// whatever the tier). A real store with no route escalates as one with routes does. One
 // function decides it for every bound that escalates: the redeal bound (Deal) and the
 // failure bounds.
 func (s *Snapshot) NextTier(c *Card) string {
 	m, bad := modelOf(c)
-	if bad != "" || len(s.Routes) == 0 {
+	if bad != "" || s.twinRunsOwnModel() {
 		return ""
 	}
 	i, top := slices.Index(tierLadder, cardTier(c, m)), slices.Index(tierLadder, ceilingTier(c, m))
@@ -1073,13 +1077,13 @@ func (s *Snapshot) readRoutesAllRest(pr *Card) bool {
 // at s.Now (s.resting; the ask settles the rests once for the whole ask,
 // readCardsAskFull, so no read scans the fleet table): a read is never asked onto
 // a resting route while another of the tier serves (docs/SPEC-SPRINT.md section 6,
-// the reads). The tier alone when the store holds
-// no route or none serves the tier: the read carries no route and its reader runs its
-// own --model.
+// the reads). The tier alone when the in-memory twin holds no route (twinRunsOwnModel)
+// or the ask drew no index for the tier (no route of it is loaded: the read is a friend's
+// reader's, who runs her own model, readerServesTier): the read carries no route.
 func (s *Snapshot) readRouteOf(ri routeIndexes, pr *Card, avoid []string) map[string]string {
 	tier, key := s.readTierOf(pr), pr.ID
 	base := map[string]string{FieldTier: tier}
-	if len(s.Routes) == 0 || ri[tier] == nil {
+	if s.twinRunsOwnModel() || ri[tier] == nil {
 		return base
 	}
 	served := make([]Route, 0, len(s.Routes))
@@ -1120,8 +1124,9 @@ func (s *Snapshot) readRouteOf(ri routeIndexes, pr *Card, avoid []string) map[st
 }
 
 // readRouteMissing is the tier of the primary pr's reads (readTierOf), and why
-// no reader can read it: "" when the store holds no route at all (reads run on the
-// reader's own model), an enabled route of the tier is in its array, or a reader up
+// no reader can read it: "" when the in-memory twin holds no route at all
+// (twinRunsOwnModel: reads run on the reader's own model), an enabled route of the
+// tier is in its array, or a reader up
 // that brings its own model (a friend's or a bud's, read_route.go) reads the tier:
 // a read needs a reader, not a route; the member's side only while the fleet's tiers hold
 // the read tier, a friend only while the friends' tiers do (set --fleet-tiers,

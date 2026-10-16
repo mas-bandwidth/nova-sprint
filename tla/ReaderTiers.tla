@@ -37,11 +37,23 @@
 \* alone and fails FriendReadsWithinHerSeat. A held friend's reader reads none
 \* (docs/SPEC-SPRINT.md section 11, hold).
 \*
-\* A STORE WITH NO ROUTE AT ALL (RoutesExist = FALSE) is the store the help
-\* documents (a twin, the selftest install gate's mem twin): every reader and
-\* member runs its own --model and every tier is served. It is live, so the code
-\* keeps it until the owner rules on it; every case below has routes
-\* (RoutesExist = TRUE), where a tier with none is never served.
+\* A STORE WITH NO ROUTE AT ALL (routed = {}; RoutesExist = FALSE starts the
+\* store with none and lets the coordinator enable or disable a route of any
+\* tier) is fenced off (the owner, 2026-10-16, on it: "Fence it off."). Only the
+\* in-memory twin (StoreKind = "mem": store.Mem, a mem:<file> twin, the
+\* selftest's, the play and twin sims') takes the shortcut, every reader and
+\* member running its own --model with every tier served (read_route.go
+\* twinRunsOwnModel, the one predicate tierRouted, routeOf, routeServed, NextTier,
+\* readRouteOf and the rebalance ask; store Backend.InMemory, Store.MemTwin,
+\* Snapshot.MemTwin). A real store (StoreKind = "real": Redis) with no route
+\* serves no tier: no work card and no fleet read is dealt
+\* (NoDealOnRealStoreWithoutRoutes), each tier with work waiting is judged
+\* unrouted (UnroutedIsJudged), and the judgment closes once a route of the
+\* tier is enabled (JudgedOnlyWhileUnrouted; ReachRealStoreDealsOnceRouted says a
+\* real store does deal once a route is enabled). BugShortcutOnRealStore is the
+\* v1.4.6 head (len(s.Routes) == 0 alone, any store) and fails
+\* NoDealOnRealStoreWithoutRoutes. With routes (RoutesExist = TRUE: flash and
+\* pro stay configured) the store kind changes nothing.
 \*
 \* Every up fleet member has a member reader row reader-<member>, created by
 \* init, by a member's join and by a clear when missing, and up while its
@@ -56,7 +68,8 @@
 \* drop member reader rows and fails EveryUpMemberIsAReader;
 \* BugClearTurnsOff has Clear write read-cards off and fails
 \* ReadCardsStaysOn; BugReadsRegardlessOfRoutes, BugDealUnrouted,
-\* BugJudgmentStays, BugTwoJudgments and BugFriendAnyTier as above.
+\* BugJudgmentStays, BugTwoJudgments, BugFriendAnyTier and
+\* BugShortcutOnRealStore as above.
 \*
 \* The instance is the module. It is run as the cases MCReaderTiers.cfg and
 \* MCReaderTiersBroken*.cfg (tla/CASES.tsv, group readertiers).
@@ -66,7 +79,9 @@ EXTENDS Naturals, FiniteSets
 CONSTANTS BugIgnoreHeld, BugEmptyFlashOnly, BugClearDropsReaders,
           BugClearTurnsOff, RoutesExist, Need,
           BugReadsRegardlessOfRoutes, BugDealUnrouted, BugJudgmentStays,
-          BugTwoJudgments, BugFriendAnyTier
+          BugTwoJudgments, BugFriendAnyTier, StoreKind, BugShortcutOnRealStore
+
+ASSUME StoreKind \in {"mem", "real"}
 
 \* rf reads flash; ra has an empty cell; rx1 and rx2 name every tier (reader set
 \* --tiers flash,pro,heavy,frontier, the live shape of 2026-10-16); hra is a
@@ -80,9 +95,11 @@ Members == {"m1", "m2"}
 \* Four tiers, the code's routes (reader_tiers.go readerTierOrder), weakest first.
 AllTiers == {"flash", "pro", "heavy", "frontier"}
 Rank == [flash |-> 1, pro |-> 2, heavy |-> 3, frontier |-> 4]
-\* The tiers whose routes the coordinator configures in this instance; flash and
-\* pro are configured from the start and stay.
-Switchable == {"heavy", "frontier"}
+\* The tiers whose routes the coordinator configures in this instance: with
+\* routes, flash and pro are configured from the start and stay; a store that
+\* starts with no route at all has every tier's switched on and off.
+Switchable == IF RoutesExist THEN {"heavy", "frontier"} ELSE AllTiers
+InitRouted == IF RoutesExist THEN {"flash", "pro"} ELSE {}
 
 tierOf == [cf |-> "flash", cp |-> "pro", cx |-> "frontier", wf |-> "flash", wx |-> "frontier"]
 readerTiers == [rf |-> {"flash"}, ra |-> {}, rx1 |-> AllTiers, rx2 |-> AllTiers, hra |-> {}, fr |-> {}]
@@ -99,14 +116,25 @@ memberUp == [m \in Members |-> TRUE]
 Held(r) == r \in heldReaders /\ ~BugIgnoreHeld
 
 VARIABLES asked, memberReader, readCardsOn, routed, dealt, judged, cannotAsk,
-          tock, badRead, badCard
+          tock, badRead, badCard, bareDeal
 
 vars == <<asked, memberReader, readCardsOn, routed, dealt, judged, cannotAsk,
-          tock, badRead, badCard>>
+          tock, badRead, badCard, bareDeal>>
+
+\* The store holds no route at all.
+NoRouteAtAll == routed = {}
+
+\* The twin's shortcut (read_route.go twinRunsOwnModel): the in-memory store with
+\* no route at all runs every tier on the member's own --model. The bug takes it
+\* on a real store too (the v1.4.6 head: len(s.Routes) == 0, any store).
+TwinRunsOwnModel == NoRouteAtAll /\ (StoreKind = "mem" \/ BugShortcutOnRealStore)
+
+\* A real store holding no route at all: no tier is served there.
+RealBare == StoreKind = "real" /\ NoRouteAtAll
 
 \* A tier a fleet reader or a machine may draw: an enabled route of it is
-\* configured, or the store holds no route at all (read_route.go tierRouted).
-Routed(t) == ~RoutesExist \/ t \in routed
+\* configured, or the twin holds no route at all (read_route.go tierRouted).
+Routed(t) == TwinRunsOwnModel \/ t \in routed
 ServedTiers == {t \in AllTiers : Routed(t)}
 
 \* The tiers at or above one her seat names (friendAtOrAbove): a friend reads her
@@ -150,17 +178,19 @@ Init ==
   /\ asked = [r \in Readers |-> {}]
   /\ memberReader = [m \in Members |-> TRUE]
   /\ readCardsOn = TRUE
-  /\ routed = {"flash", "pro"}
+  /\ routed = InitRouted
   /\ dealt = {}
   /\ judged = {}
   /\ cannotAsk = {}
   /\ tock = FALSE
   /\ badRead = FALSE
   /\ badCard = FALSE
+  /\ bareDeal = FALSE
 
 \* Ask places the reads the card needs together, Need[c] of them, one each on a
 \* different free reader that serves the card's tier (ReadsWanted). The ghost
-\* badRead records a fleet reader asked a read of a tier no route serves.
+\* badRead records a fleet reader asked a read of a tier no route serves, and
+\* bareDeal one asked any read on a real store with no route at all.
 Ask(c) ==
   /\ Waiting(c)
   /\ Cardinality(FreeFor(c)) >= Need[c]
@@ -168,16 +198,19 @@ Ask(c) ==
        /\ Cardinality(S) = Need[c]
        /\ asked' = [r \in Readers |-> IF r \in S THEN asked[r] \cup {c} ELSE asked[r]]
        /\ badRead' = (badRead \/ \E r \in S \ OwnModelReaders : ~Routed(tierOf[c]))
+       /\ bareDeal' = (bareDeal \/ (RealBare /\ S \ OwnModelReaders # {}))
   /\ tock' = FALSE
   /\ UNCHANGED <<memberReader, readCardsOn, routed, dealt, judged, cannotAsk, badCard>>
 
 \* The deal gives a work card to a machine only on a routed tier (routeOf);
-\* BugDealUnrouted deals it routeless, a member override's model or none.
+\* BugDealUnrouted deals it routeless, a member override's model or none. The
+\* ghost bareDeal records a card dealt on a real store with no route at all.
 Deal(w) ==
   /\ w \notin dealt
   /\ Routed(tierOf[w]) \/ BugDealUnrouted
   /\ dealt' = dealt \cup {w}
   /\ badCard' = (badCard \/ ~Routed(tierOf[w]))
+  /\ bareDeal' = (bareDeal \/ RealBare)
   /\ tock' = FALSE
   /\ UNCHANGED <<asked, memberReader, readCardsOn, routed, judged, cannotAsk, badRead>>
 
@@ -186,13 +219,13 @@ EnableRoute(t) ==
   /\ t \notin routed
   /\ routed' = routed \cup {t}
   /\ tock' = FALSE
-  /\ UNCHANGED <<asked, memberReader, readCardsOn, dealt, judged, cannotAsk, badRead, badCard>>
+  /\ UNCHANGED <<asked, memberReader, readCardsOn, dealt, judged, cannotAsk, badRead, badCard, bareDeal>>
 
 DisableRoute(t) ==
   /\ t \in routed
   /\ routed' = routed \ {t}
   /\ tock' = FALSE
-  /\ UNCHANGED <<asked, memberReader, readCardsOn, dealt, judged, cannotAsk, badRead, badCard>>
+  /\ UNCHANGED <<asked, memberReader, readCardsOn, dealt, judged, cannotAsk, badRead, badCard, bareDeal>>
 
 \* The tick's judgments (TickDeal NNoRoute; TickAsk and the read-card ask's
 \* cannot ask): the tier's one judgment for every unserved tier with work
@@ -205,7 +238,7 @@ Tick ==
                      /\ Cardinality(FreeFor(c)) < Need[c]
                      /\ (BugTwoJudgments \/ ~Unserved(tierOf[c]))}
   /\ tock' = TRUE
-  /\ UNCHANGED <<asked, memberReader, readCardsOn, routed, dealt, badRead, badCard>>
+  /\ UNCHANGED <<asked, memberReader, readCardsOn, routed, dealt, badRead, badCard, bareDeal>>
 
 \* Clear advances the epoch: the work goes, the shape stays. Member reader
 \* rows and every working default survive (steps_clear.go ShapeOf,
@@ -219,7 +252,7 @@ Clear ==
                        ELSE memberReader
   /\ readCardsOn' = IF BugClearTurnsOff THEN FALSE ELSE TRUE
   /\ tock' = FALSE
-  /\ UNCHANGED <<routed, judged, cannotAsk, badRead, badCard>>
+  /\ UNCHANGED <<routed, judged, cannotAsk, badRead, badCard, bareDeal>>
 
 Next ==
   \/ \E c \in Cards : Ask(c)
@@ -245,6 +278,11 @@ NoReadOutsideTier ==
 \* serves, and no machine is ever dealt a card of one.
 NoReadOnUnroutedTier == ~badRead
 NoCardOnUnroutedTier == ~badCard
+
+\* THE FENCE (the owner, 2026-10-16: "Fence it off."): a real store with no
+\* route at all deals nothing, no work card to a machine and no read to a fleet
+\* reader; only the in-memory twin runs every tier on its own --model.
+NoDealOnRealStoreWithoutRoutes == ~bareDeal
 
 \* A friend's reader reads only the tiers her seat reaches.
 FriendReadsWithinHerSeat ==
@@ -279,5 +317,9 @@ ReadCardsStaysOn == readCardsOn = TRUE
 \* Reachability (a reversed witness, written to be false where the design must
 \* reach): a frontier read is asked once a frontier route is enabled.
 ReachFrontierRead == \A r \in Readers : "cx" \notin asked[r]
+
+\* Reachability: a real store that starts with no route deals a card once a
+\* route of its tier is enabled (the fence never stops the deal for good).
+ReachRealStoreDealsOnceRouted == ~(StoreKind = "real" /\ "wf" \in dealt)
 
 =============================================================================
