@@ -41,7 +41,7 @@ var verbExit = map[string]string{
 	"demo load":     "exit codes: 0 the demo is up and where read it, 1 failed (a damaged backup, a demo already up, a Redis that did not start or a line not replayed: what this load started is stopped and removed), 2 usage",
 	"demo stop":     "exit codes: 0 stopped and removed, 1 failed (no demo up, or a recorded pid or directory that is not the demo's: nothing stopped or removed), 2 usage",
 	"server switch": "exit codes: 0 done, 1 failed or refused (the candidate's shadow tick failed: nothing changed), 2 usage",
-	"friend stage":  "exit codes: 0 staged (or already staged as the same card, branch and head: the JOB.md path), 1 refused (the card is not on the friend's row at that generation, the friend's nova-config row has no git_identity, or the directory is staged as another card), nothing written, 2 usage or a store that did not answer",
+	"friend stage":  "exit codes: 0 staged (or already staged as the same card, branch and head: the JOB.md path), 1 refused (the card is not on the friend's row at that generation, neither the friend's nova-config row nor the sprint row names a git_identity that parses, or the directory is staged as another card), nothing written, 2 usage or a store that did not answer",
 	"brief check":   "exit codes: 0 no finding, 1 one or more findings, 2 usage or an unreadable file, 3 the store did not answer and the store-free checks found nothing",
 }
 

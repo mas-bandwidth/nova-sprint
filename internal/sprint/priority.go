@@ -36,7 +36,13 @@ const (
 )
 
 // PriorityLadder is the levels, highest first.
-var PriorityLadder = []string{PriorityBlocker, PriorityCritical, PriorityFix, PriorityHigh, PriorityReader, PriorityNormal, PriorityLow}
+//
+// Reader is the top rung: the deal is strict, a read card before every work card, then the
+// fixes (blocker, critical, fix, and every next attempt, at fix by the rework policy,
+// reworkPriority), then new work (the owner, 2026-10-16: "this priority should be mechanical,
+// not something done in LLM space"; tla/DirtyTick.tla ReadsBeforeWork). Among the reads, a
+// primary's own level still orders its reads (readOrder, ReadPriority).
+var PriorityLadder = []string{PriorityReader, PriorityBlocker, PriorityCritical, PriorityFix, PriorityHigh, PriorityNormal, PriorityLow}
 
 // PrioritySettable is the levels a primary may be given (reader is a read card's alone).
 var PrioritySettable = []string{PriorityBlocker, PriorityCritical, PriorityFix, PriorityHigh, PriorityNormal, PriorityLow}
@@ -171,17 +177,34 @@ func ladderOrder(cards []*Card) []*Card {
 // primary's own level (cardRank), so the reads of a blocker, critical, fix or high primary go to
 // the front of the read queue, and a normal or low primary's read is reader (the owner,
 // 2026-10-06: "that work stream jumps to the front of the reader and merge queue").
-func readRank(pr *Card) int { return min(cardRank(pr), priorityRank(PriorityReader)) }
+// Every read is on the reader rung, the top (PriorityLadder): above all work, whatever its
+// primary's level.
+func readRank(pr *Card) int { return priorityRank(PriorityReader) }
 
-// ReadPriority is the level of a read of the primary (readRank): reader, or its primary's
-// when that is higher.
-func ReadPriority(pr *Card) string { return PriorityLadder[readRank(pr)] }
+// ReadPriority is the level a read of the primary inherits: its primary's when that is above
+// normal (blocker, critical, fix, high), else reader. It orders the reads among themselves
+// (readOrder) and is shown on the read card (priorityOnRead); every read is above all work.
+func ReadPriority(pr *Card) string {
+	if l, _ := CardPriority(pr); priorityRank(l) < priorityRank(PriorityNormal) && l != PriorityReader {
+		return l
+	}
+	return PriorityReader
+}
 
-// readOrder is the primaries in review by the level of their reads (readRank), highest
-// first, stable: equals keep the order given (the ask's stream turns, work order).
+// readQueueRank is the place of the primary's reads among the reads: its inherited level
+// (ReadPriority), a plain reader read after every inherited one.
+func readQueueRank(pr *Card) int {
+	if l := ReadPriority(pr); l != PriorityReader {
+		return priorityRank(l)
+	}
+	return priorityRank(PriorityNormal)
+}
+
+// readOrder is the primaries in review by the level their reads inherit (readQueueRank),
+// highest first, stable: equals keep the order given (the ask's stream turns, work order).
 func readOrder(cards []*Card) []*Card {
 	out := slices.Clone(cards)
-	sort.SliceStable(out, func(i, j int) bool { return readRank(out[i]) < readRank(out[j]) })
+	sort.SliceStable(out, func(i, j int) bool { return readQueueRank(out[i]) < readQueueRank(out[j]) })
 	return out
 }
 
@@ -364,7 +387,7 @@ func StreamPriorities(s *Snapshot) map[string]string {
 // normal.
 func PriorityLine(counts map[string][]string, streams map[string]string) string {
 	var parts []string
-	ladder := slices.Insert(slices.Clone(PriorityLadder), 2, CriticalByWeight)
+	ladder := slices.Insert(slices.Clone(PriorityLadder), slices.Index(PriorityLadder, PriorityCritical)+1, CriticalByWeight)
 	for _, l := range ladder {
 		ids := counts[l]
 		if len(ids) == 0 {

@@ -1635,6 +1635,35 @@ func takeSeat(s *Snapshot, as string) (width int, why string) {
 	return s.Width(as), ""
 }
 
+// takeAheadOf is the card a take by count of one on the row would take now (takeOne with
+// the same guards: the row's room, the card's live generation, its route rest and the
+// providers' budget), when it is a read or a fix (reader rung, or blocker, critical or fix
+// by the ladder) ranked above the card c a take by id names; "" when it is none, so a take
+// by id never waits behind a card the friend could not take either.
+func takeAheadOf(s *Snapshot, r TakeReq, c *Card) string {
+	if c == nil || isRead(c) || c.F("kind") != "work" {
+		return ""
+	}
+	probe := takeOne(s, TakeReq{As: r.As, Sel: Sel{Limit: 1}, Who: r.Who})
+	for _, u := range probe.Units {
+		for _, ch := range u.Changes {
+			if ch.Table != Fleet {
+				continue
+			}
+			ahead := s.Fleet.Card(ch.Entry.ID)
+			if ahead == nil || ahead.ID == c.ID || ahead.Row != r.As || ahead.Col != Ready {
+				continue
+			}
+			rank := s.friendWorkRank(ahead)
+			if (isRead(ahead) || rank <= priorityRank(PriorityFix)) && rank < s.friendWorkRank(c) {
+				return ahead.ID
+			}
+			return ""
+		}
+	}
+	return ""
+}
+
 func takeOne(s *Snapshot, r TakeReq) Plan {
 	var p Plan
 	sel := r.Sel
@@ -1661,6 +1690,24 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 		for _, id := range sel.IDs {
 			c := s.Fleet.Card(id)
 			if c != nil && c.Row == r.As && c.Col == Working && r.Gens[id] == max(c.Int("gen"), 1) {
+				continue
+			}
+			keep = append(keep, id)
+		}
+		if len(keep) == 0 {
+			return p
+		}
+		sel.IDs = keep
+	}
+	// THE STRICT DEAL AT THE TAKE (priority.go, PriorityLadder): a friend's take by id of a
+	// work card is refused while a read or a fix dealt to her row, ranked above it, would be
+	// taken now by a take by count (takeAheadOf), the refusal naming it; a take by count
+	// already takes in that order (friendDealtOrder)
+	if byID && IsFriendRow(r.As) {
+		var keep []string
+		for _, id := range sel.IDs {
+			if ahead := takeAheadOf(s, r, s.Fleet.Card(id)); ahead != "" {
+				p.refuse(id, "a read or a fix dealt to "+r.As+" waits ahead of this card and may be taken now: take "+ahead+" first (the strict deal: reads, then fixes, then new work)")
 				continue
 			}
 			keep = append(keep, id)

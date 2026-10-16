@@ -282,6 +282,10 @@ Refused == IF "refused" \in DOMAIN Scn THEN Scn.refused ELSE {}
 \* 2026-09-30 shape) or "half" (read cards: placed before work, half a slot);
 \* the scenario's, "whole" when it names none.
 ReadCost == IF "readCost" \in DOMAIN Scn THEN Scn.readCost ELSE "whole"
+\* The cards at fix (THE STRICT DEAL, v1.4.5; priority.go PriorityLadder: reader, then
+\* blocker, critical, fix, then high and the new work): the scenario's; none when it names
+\* none, so every configuration before this one deals as it did.
+FixCards == IF "fix" \in DOMAIN Scn THEN Scn.fix ELSE {}
 ASSUME ReadCost \in {"whole", "half"}
 \* A host's load of n reads, in slots (read_cards.go halfLoad: rounded up).
 Load(n) == IF ReadCost = "half" THEN (n + 1) \div 2 ELSE n
@@ -568,7 +572,13 @@ UpRoom(S) == {m \in Machines : S.stat[m] = "up" /\
                 (Broken = "dealdraining" \/ ~S.drain[m]) /\
                 (Broken = "nowidth" \/ Room(S, m) > 0)}
 DealOne(S, cand) ==
-  LET D == Dealable(S, cand)
+  LET \* the strict deal: a fix card before any new card (steps_tick.go TickDeal,
+      \* ladderOrder); the witness "newfirst" deals in stream turns alone. With no fix
+      \* card in the scenario the deal is the one it was, at its cost (TLC evaluates a LET
+      \* at each use: Dealable is not evaluated twice for it)
+      D == IF FixCards = {} \/ Broken = "newfirst" THEN Dealable(S, cand)
+           ELSE IF Dealable(S, cand) \cap FixCards # {} THEN Dealable(S, cand) \cap FixCards
+           ELSE Dealable(S, cand)
       ss == {StreamOf[c] : c \in D}
       st == Pick(SOrder, ss, S.sctr)
       c == CHOOSE x \in D : StreamOf[x] = st /\
@@ -1350,12 +1360,23 @@ LanesRespected == \A m \in Machines :
   Cardinality({c \in mc[m] : tk[c]}) <= Width[m]
 
 \* READS BEFORE WORK (THE DEAL'S ORDER AND SKIPS): under ReadCost "half", every
-\* read a pump places precedes every card it deals, in its plan's placements
+\* read a pump places precedes every card it deals, a fix card's too (reader is the
+\* ladder's top rung, v1.4.5: priority.go PriorityLadder), in its plan's placements
 \* (plc: "r" a reader, "s" and "m" a deal's stream and machine). The witness
 \* "workfirst" deals first.
 ReadsBeforeWork ==
   [][act' \in {"PumpWork", "DrainWork"} /\ ReadCost = "half" =>
        \A p, q \in 1..Len(plc') : plc'[p].k = "r" /\ plc'[q].k \in {"s", "m"} => p < q]_vars
+
+\* THE STRICT DEAL (v1.4.5): reads first (ReadsBeforeWork), then the fixes, then new work.
+\* A pump that deals a new card leaves no fix card ready that was ready before it: the fix
+\* is dealt first in the room the reads leave, which is counted rounding a half read up
+\* (Load; a host with one half slot left after its reads takes no work card). The witness
+\* "newfirst" deals a new card while a fix waits.
+FixBeforeNew ==
+  [][act' \in {"PumpWork", "DrainWork"} =>
+       \A c \in Cards \ FixCards : (col[c] = "ready" /\ col'[c] = "working") =>
+         \A f \in FixCards : ~(col[f] = "ready" /\ col'[f] = "ready")]_vars
 
 \* ONE REFUSED READ NEVER BLOCKS WORK: after a pump with a refused read, every
 \* Dealable card with UpRoom is dealt, exactly as without the refusal. The

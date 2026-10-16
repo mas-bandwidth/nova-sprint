@@ -7,10 +7,10 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (208)
-- [Setup, release and operations](#setup-release-and-operations) (27)
+- [The sprint system](#the-sprint-system) (210)
+- [Setup, release and operations](#setup-release-and-operations) (29)
 - [Docs, models and the repository](#docs-models-and-the-repository) (22)
-- [Friend AIs](#friend-ais) (16)
+- [Friend AIs](#friend-ais) (19)
 
 ## Lessons from Prime Agent's rewrite
 
@@ -1720,6 +1720,26 @@ Target: v1.5
 
 From: the owner, 2026-10-11: a lesson from the Cockroach Labs write-up "Five months treating bugs like patients" (MOLT Sinai)
 
+### fleet level --rebalance loads the read history it deals from
+
+FleetStep (internal/sprint/store/steps.go) loads only the fleet and work tables, with no Extras, so a rebalance from the fleet level verb deals a moved read (rebalance.go readCardIDFor) without the retired generations or the verdicts of the reader it picks. A spent reader can be offered the read again, and a generation that collides with a retired record is refused by the store. The tick's own rebalance loads tickExtras and is correct. The fix gives FleetStep the readers table and ReadCardExtras for its level and rebalance operations, with a test that fails on the old load.
+
+Why it waits: Pre-existing, found by the cold read of #436, not tonight's wedge; a collision is refused, never lost.
+
+Target: v1.5
+
+From: the cold reader of nova-sprint #436, 2026-10-16
+
+### A no-progress attempt escalates the card's tier
+
+Overnight at least four cards (java-ledgers, java-tables-soak, elixir-porting-register, java-accessor) were redealt at pro after a HOLD read, and the new pro attempt left every file the reader named unchanged, or touched only comments; each was read and held again, up to four times. When a read HOLDs and the next attempt's diff touches none of the files and lines the previous read named, the next deal raises the card's tier one step (pro to heavy) and notes why. A unit test with no real time drives the hold, the no-progress attempt and the raised deal, and the TLA+ model of the attempts gains the escalation with a reversed witness that redeals at the same tier.
+
+Why it waits: A new escalation rule in the deal.
+
+Target: v1.5
+
+From: Rowan, 2026-10-16, from the overnight fix column
+
 ## Setup, release and operations
 
 Setting machines up, installing and releasing safely, and the checks that keep a fleet honest.
@@ -1939,6 +1959,26 @@ The playbook replicates the SQLite record continuously, and a restore from the r
 Target: after v1.4
 
 From: issue #2555
+
+### Machine capability tags for the deal (kvm, XDP)
+
+A card that needs a machine capability, such as kvm or a held XDP host, names it, and the deal gives it only to a member whose nova-config machine row carries the tag. The beat's gate facts (deal.go MemberFacts, v1.4.3) are the measured half; the tags are the declared half, checked against the facts so a tag with no measured fact is refused. space keeps its own rule: XDP functional tests only on a held XDP machine, never on a shared bench.
+
+Why it waits: New configuration and deal matching.
+
+Target: v1.5
+
+From: the coordinator, 2026-10-16
+
+### Identical release notes across the lockstep repositories
+
+A lockstep release (nova-sprint and nova-tools at one version) publishes the same notes in both repositories, written once and checked by the release tool, not two hand-kept files that drift: tonight's nova-tools notes still say "The matching stable tools release for nova sprint v1.4.0" at v1.4.4.
+
+Why it waits: Release tooling, not a fix to the sprint.
+
+Target: v1.5
+
+From: the coordinator, 2026-10-16
 
 ## Docs, models and the repository
 
@@ -2251,3 +2291,33 @@ Friend rows record which model serves each tier, so the deal and the friend agre
 Target: after v1.4
 
 From: card moved out of the sprint (work record, 2026-10-04); PR #5387
+
+### The friend deal rotates over equally idle friends
+
+preferredFriend (internal/sprint/friend_deal.go) picks the friend with the most idle lanes, then the most free room, then the first by name, so a tie always goes to the same friend. A persisted friend_deal_index on the fleet table, kept like deal_index (round.go PropDealIndex), breaks the tie as ((index + 1) % n), so the first name never always wins. A unit test shows two equally idle friends alternate across ticks, and tla/WhoPreference.tla gains a fairness property: no eligible friend is starved while another is dealt two.
+
+Why it waits: A new deal counter, held out of the 1.4.x point releases, which take only critical breakers.
+
+Target: v1.5
+
+From: Glenn, 2026-10-16: "Remember to do the ( index + 1 ) % n when dealing so you don't bias to the top." (scoped out of v1.4.4 by the freeze rule)
+
+### A friend's card lanes run each card on the model of its tier
+
+A friend's one-shot lane runs every card on the friend's one model, whatever the card's tier. The friend row names a model per tier it serves, and a lane launches each card, work or read, on the model of the card's tier, never below it (the rule of #432, a card is never worked or read below its tier).
+
+Why it waits: A new row field and lane launch rule.
+
+Target: v1.5
+
+From: the coordinator, 2026-10-16
+
+### A friend's own git identity on her nova-config row
+
+friend stage sets the clone's identity from the friend row's git_identity, but the nova-config friend kind has no such field (the row's fields are tiers, roles, width, mode, config_dir, token_cap, streams, kinds, pronouns and session), so every friend delivery was refused until v1.4.5 fell back to the sprint row's git_identity. The friend kind gains git_identity (a migration, apply, and nova-config friend set --git_identity), each friend's identity set by the owner, and stage prefers it (identity=friend).
+
+Why it waits: A schema migration on the fleet's configuration store, held out of the point release.
+
+Target: v1.5
+
+From: the coordinator's tool audit, 2026-10-16
