@@ -156,7 +156,7 @@ func TestThePlaybookNamesOnlyRealVerbsAndUsageLines(t *testing.T) {
 	})
 
 	t.Run("the witnesses", func(t *testing.T) {
-		good := "usage: `nova-sprint inbox [--open <group>] [--read] [--wait [--timeout <duration>] [--push <dir>]] [--deadline <duration>] [--stale <duration>]`\n" +
+		good := "usage: `nova-sprint inbox [--open <group>] [--read] [--wait [--timeout <duration>] [--push <dir>]] [--deadline <duration>] [--stale <duration>] [--json]`\n" +
 			"run `nova-sprint view coordinator --needs`, `nova-sprint brief <card> --keep-head --brief-file <f>`, `nova-friend lanes --as <me> --clear-faults`, `nova-sprint help playbook`\n"
 		assert.Empty(t, checkPlaybook(table, b, good), "real usage lines and verbs are refused")
 
