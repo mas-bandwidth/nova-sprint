@@ -1635,29 +1635,33 @@ func takeSeat(s *Snapshot, as string) (width int, why string) {
 	return s.Width(as), ""
 }
 
-// newFirstAttempt says a dealt work card is new work: its primary's first attempt, below fix
-// on the ladder (friendWorkRank), as the strict deal ranks it last.
-func newFirstAttempt(s *Snapshot, c *Card) bool {
-	if isRead(c) || c.F("kind") != "work" || c.Int("attempt") >= 2 {
-		return false
+// takeAheadOf is the card a take by count of one on the row would take now (takeOne with
+// the same guards: the row's room, the card's live generation, its route rest and the
+// providers' budget), when it is a read or a fix (reader rung, or blocker, critical or fix
+// by the ladder) ranked above the card c a take by id names; "" when it is none, so a take
+// by id never waits behind a card the friend could not take either.
+func takeAheadOf(s *Snapshot, r TakeReq, c *Card) string {
+	if c == nil || isRead(c) || c.F("kind") != "work" {
+		return ""
 	}
-	return s.friendWorkRank(c) > priorityRank(PriorityFix)
-}
-
-// takeAheadOf is the read and fix cards ready on the row a take by id of new work must not
-// pass (newFirstAttempt): every read card, and every work card at fix or above or past its
-// first attempt, less the ids the take names.
-func takeAheadOf(s *Snapshot, row string, ids []string) []string {
-	var out []string
-	for _, c := range s.Fleet.Cell(row, Ready) {
-		if slices.Contains(ids, c.ID) || c.F("kind") != "work" && !isRead(c) {
-			continue
-		}
-		if isRead(c) || !newFirstAttempt(s, c) {
-			out = append(out, c.ID)
+	probe := takeOne(s, TakeReq{As: r.As, Sel: Sel{Limit: 1}, Who: r.Who})
+	for _, u := range probe.Units {
+		for _, ch := range u.Changes {
+			if ch.Table != Fleet {
+				continue
+			}
+			ahead := s.Fleet.Card(ch.Entry.ID)
+			if ahead == nil || ahead.ID == c.ID || ahead.Row != r.As || ahead.Col != Ready {
+				continue
+			}
+			rank := s.friendWorkRank(ahead)
+			if (isRead(ahead) || rank <= priorityRank(PriorityFix)) && rank < s.friendWorkRank(c) {
+				return ahead.ID
+			}
+			return ""
 		}
 	}
-	return out
+	return ""
 }
 
 func takeOne(s *Snapshot, r TakeReq) Plan {
@@ -1696,23 +1700,22 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 		sel.IDs = keep
 	}
 	// THE STRICT DEAL AT THE TAKE (priority.go, PriorityLadder): a friend's take by id of a
-	// new first attempt is refused while a read or a fix dealt to her row waits ready, the
-	// refusal naming them; a take by count already takes in that order (friendDealtOrder)
+	// work card is refused while a read or a fix dealt to her row, ranked above it, would be
+	// taken now by a take by count (takeAheadOf), the refusal naming it; a take by count
+	// already takes in that order (friendDealtOrder)
 	if byID && IsFriendRow(r.As) {
-		if waits := takeAheadOf(s, r.As, sel.IDs); len(waits) > 0 {
-			var keep []string
-			for _, id := range sel.IDs {
-				if c := s.Fleet.Card(id); c != nil && c.Row == r.As && newFirstAttempt(s, c) {
-					p.refuse(id, "a read or a fix dealt to "+r.As+" waits ahead of this new first attempt: take "+strings.Join(waits, ", ")+" first (the strict deal: reads, then fixes, then new work)")
-					continue
-				}
-				keep = append(keep, id)
+		var keep []string
+		for _, id := range sel.IDs {
+			if ahead := takeAheadOf(s, r, s.Fleet.Card(id)); ahead != "" {
+				p.refuse(id, "a read or a fix dealt to "+r.As+" waits ahead of this card and may be taken now: take "+ahead+" first (the strict deal: reads, then fixes, then new work)")
+				continue
 			}
-			if len(keep) == 0 {
-				return p
-			}
-			sel.IDs = keep
+			keep = append(keep, id)
 		}
+		if len(keep) == 0 {
+			return p
+		}
+		sel.IDs = keep
 	}
 	// THE WIDTH IS HARD: a member's working cards never pass its width, held here, at the
 	// sprint's one writer, whatever the member asks. A take by

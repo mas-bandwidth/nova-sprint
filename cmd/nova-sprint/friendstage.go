@@ -122,13 +122,16 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	}
 	identityFrom := "friend"
 	id, ok := config.ParseGitIdentity(git)
+	if !ok && strings.TrimSpace(git) != "" {
+		return refuseState(stderr, name, fmt.Sprintf("friend %s's nova-config row names git_identity %s, which is not 'Name <email>'; fix the row before staging", friendName, strconv.Quote(git)))
+	}
 	if !ok {
 		sprintID, err := st.GitIdentity(ctx)
 		if err != nil {
 			return a.readFailed(name, err, stderr)
 		}
 		if id, ok = config.ParseGitIdentity(sprintID); !ok {
-			return refuseState(stderr, name, fmt.Sprintf("friend %s has no git_identity on her nova-config row and the sprint row's git_identity %s is not 'Name <email>', so staging would fall back to the machine's global git config; %s", friendName, strconv.Quote(sprintID), identityRemedy))
+			return refuseState(stderr, name, fmt.Sprintf("the nova-config row of friend %s names no git_identity and the sprint row's git_identity %s is not 'Name <email>', so staging would fall back to the machine's global git config; %s", friendName, strconv.Quote(sprintID), identityRemedy))
 		}
 		identityFrom = "sprint"
 	}
