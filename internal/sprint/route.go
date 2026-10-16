@@ -1037,20 +1037,6 @@ func (s *Snapshot) readTierOf(pr *Card) string {
 	return t
 }
 
-// readRouteOf is the route fields of one read card the ask creates for the
-// primary pr: the read is drawn as a work card is, from the array of pr's read tier
-// (readTierOf, written on the read card as FieldTier) at that tier's rolling index, the index moved past the entry
-// taken and every entry skipped (an entry naming no enabled route), the moves
-// summed under pr's unit, so the deal and the reads of a tier share one
-// rotation (tla/RouteIndex.tla, THE READS). The routes avoid (those a read of
-// the primary returned on) are left out while another of the tier is served,
-// as a redeal leaves out the routes already taken, and so is a route that rests
-// at s.Now (s.resting; the ask settles the rests once for the whole ask,
-// readCardsAskFull, so no read scans the fleet table): a read is never asked onto
-// a resting route while another of the tier serves (docs/SPEC-SPRINT.md section 6,
-// the reads). The tier alone when the store holds
-// no route or none serves the tier: the read carries no route and its reader runs its
-// own --model.
 // readRoutesAllRest says every enabled route of the primary's read tier rests at s.Now (the
 // rests the step settled, s.resting), and there is at least one: readRouteOf would fall
 // back to a resting route, and the ask's next take-back (readCardsTakeBack,
@@ -1076,6 +1062,20 @@ func (s *Snapshot) readRoutesAllRest(pr *Card) bool {
 	return served
 }
 
+// readRouteOf is the route fields of one read card the ask creates for the
+// primary pr: the read is drawn as a work card is, from the array of pr's read tier
+// (readTierOf, written on the read card as FieldTier) at that tier's rolling index, the index moved past the entry
+// taken and every entry skipped (an entry naming no enabled route), the moves
+// summed under pr's unit, so the deal and the reads of a tier share one
+// rotation (tla/RouteIndex.tla, THE READS). The routes avoid (those a read of
+// the primary returned on) are left out while another of the tier is served,
+// as a redeal leaves out the routes already taken, and so is a route that rests
+// at s.Now (s.resting; the ask settles the rests once for the whole ask,
+// readCardsAskFull, so no read scans the fleet table): a read is never asked onto
+// a resting route while another of the tier serves (docs/SPEC-SPRINT.md section 6,
+// the reads). The tier alone when the store holds
+// no route or none serves the tier: the read carries no route and its reader runs its
+// own --model.
 func (s *Snapshot) readRouteOf(ri routeIndexes, pr *Card, avoid []string) map[string]string {
 	tier, key := s.readTierOf(pr), pr.ID
 	base := map[string]string{FieldTier: tier}
