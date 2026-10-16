@@ -3153,7 +3153,7 @@ func (a *app) cmdRoutes(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "routes", err.Error())
 	}
 	ctx := context.Background()
-	rs, _, err := st.Routes(ctx)
+	rs, tiers, err := st.Routes(ctx)
 	if err != nil {
 		return a.readFailed("routes", err, stderr)
 	}
@@ -3185,7 +3185,7 @@ func (a *app) cmdRoutes(args []string, stdout, stderr io.Writer) int {
 		if err != nil {
 			return a.readFailed("routes", err, stderr)
 		}
-		out := map[string]any{"tiers": sprint.TierRoutes(rs), "routes": stats, "decide_judgment_bar": bar}
+		out := map[string]any{"tiers": sprint.TierRoutes(rs), "tier_routes": tiers, "routes": stats, "decide_judgment_bar": bar}
 		if lim := limitsText(ctx, st, s, a.now()); len(lim) > 0 {
 			out["limits"] = lim // the global rate budgets set (routes limit)
 		}
