@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/friendrowswire"
 )
 
 // A reader's presence (sprint/readers.go; docs/SPEC-SPRINT.md section 6): two
@@ -36,6 +38,78 @@ type readerHold struct {
 	Held    bool      `json:"held,omitempty"`
 	Reason  string    `json:"reason,omitempty"`
 	Return  bool      `json:"return,omitempty"`
+}
+
+// readerHoldSchema is the ReaderHold table's schema JSON text (friendrows.schema
+// ReaderHold): the open texts and the nullable stamp.
+type readerHoldSchema struct {
+	Away    bool    `json:"away"`
+	Retired bool    `json:"retired"`
+	At      *string `json:"at"`
+	By      *string `json:"by"`
+	Held    bool    `json:"held"`
+	Reason  *string `json:"reason"`
+	Return  bool    `json:"return"`
+}
+
+// readerHoldTable is the generated ReaderHold variable table (S1, S2).
+func readerHoldTable() friendTable[friendrowswire.ReaderHold] {
+	return friendTable[friendrowswire.ReaderHold]{
+		measure: friendrowswire.ReaderHoldLoadMeasureReason,
+		load:    friendrowswire.ReaderHoldLoad,
+		fromJSON: func(text []byte, rep *friendrowswire.TableReport) (*friendrowswire.ReaderHold, bool) {
+			var b friendrowswire.ReaderHoldBuilder
+			if !b.Init() {
+				return nil, false
+			}
+			if !friendrowswire.ReaderHoldFromJson(&b, text, rep) || !b.Lock() {
+				return nil, false
+			}
+			return b.AsConst(), true
+		},
+		toJSON: func(w *friendrowswire.ReaderHold) []byte {
+			buf := make([]byte, max(friendrowswire.ReaderHoldToJsonMeasure(w), 0))
+			return buf[:max(friendrowswire.ReaderHoldToJson(w, buf), 0)]
+		},
+		save: func(w *friendrowswire.ReaderHold) []byte {
+			buf := make([]byte, max(friendrowswire.ReaderHoldMeasure(w), 0))
+			return buf[:max(friendrowswire.ReaderHoldSave(w, buf), 0)]
+		},
+	}
+}
+
+// readerHoldRowFns adapts the reader hold to the store row reader: READERHOLD
+// (S1, S2, S4).
+func readerHoldRowFns() RowFns[readerHold] {
+	return presenceRowFns("READERHOLD", readerHoldTable(), func(h *readerHold) readerHoldSchema {
+		return readerHoldSchema{
+			Away: h.Away, Retired: h.Retired, At: rowTime(h.At), By: rowText(h.By),
+			Held: h.Held, Reason: rowText(h.Reason), Return: h.Return,
+		}
+	}, func(m *readerHoldSchema) (readerHold, bool) {
+		at, ok := rowTimeOf(m.At)
+		return readerHold{
+			Away: m.Away, Retired: m.Retired, At: at, By: rowTextOf(m.By),
+			Held: m.Held, Reason: rowTextOf(m.Reason), Return: m.Return,
+		}, ok
+	})
+}
+
+// readerHoldRowSets is each store's reader-hold reader, keyed by the store's done
+// reader so a pinned copy counts into the store's one reader (S4).
+var readerHoldRowSets sync.Map
+
+// readerHoldRows is this store's reader of the reader hold (reader-away:<reader>),
+// registered on it so Check reports its per-form counts (S4).
+func (st *Store) readerHoldRows() *RowCodec[readerHold] {
+	key := st.doneRows()
+	v, ok := readerHoldRowSets.Load(key)
+	if !ok {
+		v, _ = readerHoldRowSets.LoadOrStore(key, NewRowCodec(readerHoldRowFns()))
+	}
+	c := v.(*RowCodec[readerHold])
+	c.Register(st)
+	return c
 }
 
 // ReaderRows is the readers table's rows, in table order.
@@ -215,8 +289,12 @@ func (st *Store) readerStates(ctx context.Context, readers []string, now time.Ti
 			_ = json.Unmarshal([]byte(vals[2*i]), &b)
 		}
 		if oks[2*i+1] {
-			// ignored: an unreadable record is no hold, which the next reader away or reader up replaces
-			_ = json.Unmarshal([]byte(vals[2*i+1]), &hold)
+			// S2, S4: the hold reads every form. A damaged record is counted as
+			// a refusal and reads as no hold, which the next reader away or
+			// reader up replaces (the rule the legacy decode held to).
+			if h, _, err := st.readerHoldRows().Read([]byte(vals[2*i+1])); err == nil {
+				hold = h
+			}
 		}
 		out[r] = sprint.ReaderState(hold.Away, b, now)
 		if why := sprint.NoRoomNow(b, now); why != "" {
