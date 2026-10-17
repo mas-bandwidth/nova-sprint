@@ -2777,7 +2777,7 @@ func (l *lander) baseMovedOutside(ctx context.Context, repo, base, tip string) (
 		repo = l.repoDir
 	}
 	l.a.serial.Lock()
-	s, err := l.st.Load(ctx, []string{sprint.Work}, nil)
+	s, err := l.st.Load(ctx, []string{sprint.Work, sprint.Merge}, nil)
 	l.a.serial.Unlock()
 	if err != nil {
 		return false, "the base's last landed tip could not be read: " + oneline.Err(err)
