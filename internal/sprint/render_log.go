@@ -118,7 +118,25 @@ func renderPrimary(l Line, fromCol, toCol string, moved bool, by string) string 
 		return fmt.Sprintf("%s accepted %s; queued to merge in %s", id, by, l.Stream)
 	case string(Landed):
 		return fmt.Sprintf("%s landed", id)
+	// Three writers move a primary ready -> waiting: a sentinel insert (Add),
+	// a brief edit or a needs set that gains a need not landed, and the
+	// server-default answer "hold with cause" (TickDecisionDefaults). Only an
+	// insert is a sentinel.
 	case string(Waiting):
+		if l.Set[FieldHeld] != "" {
+			who := l.Set[FieldHeldBy]
+			if who == "" {
+				who = strings.TrimPrefix(byWhom(l.Actor), "by ")
+			}
+			s := fmt.Sprintf("%s waits: held by %s", id, who)
+			if j := l.Set["held_judgment"]; j != "" {
+				s += " for judgment " + j
+			}
+			return s
+		}
+		if needs := l.Set["needs"]; needs != "" {
+			return fmt.Sprintf("%s waits on what it needs: %s", id, needs)
+		}
 		return fmt.Sprintf("%s waits: a sentinel was put in front of it %s", id, by)
 	}
 	return renderPlain(l, by)
