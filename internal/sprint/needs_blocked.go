@@ -209,7 +209,19 @@ func TickNeedBlocked(s *Snapshot, r TickReq) (Plan, int) {
 			if c != nil && c.Col == Landed {
 				why = subject + " landed"
 			} else if c != nil && c.Placed() && needHolder(s, subject) == nil {
-				why = subject + " is unheld"
+				// The server-default answer to an unanswered bound judgment holds the card
+				// by its fields (held, held_by, held_judgment) while closing that judgment,
+				// so the blocker retires with no open holding judgment although the card is
+				// still held.
+				if IsHeld(c) {
+					by := ""
+					if hb := c.F(FieldHeldBy); hb != "" {
+						by = " by " + hb
+					}
+					why = subject + " is still held" + by + " and no open judgment holds it: nova-sprint release " + subject + " deals it again"
+				} else {
+					why = subject + " is unheld"
+				}
 			}
 			p.Notes = append(p.Notes, decided(o, why, MachineActor, s.Now, subject))
 		}
