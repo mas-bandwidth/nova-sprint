@@ -879,7 +879,7 @@ var longTime = "2026-10-17T01:02:03." + strings.Repeat("123456789", 8) + "Z"
 // longText returns n bytes of one letter.
 func longText(n int) string { return strings.Repeat("a", n) }
 
-// longEntries returns n copies of the object.
+// longTextEntries returns n copies of the text.
 func longTextEntries(n int, text string) []any {
 	out := make([]any, n)
 	for i := range out {
@@ -888,6 +888,7 @@ func longTextEntries(n int, text string) []any {
 	return out
 }
 
+// longEntries returns n copies of the object.
 func longEntries(n int, obj map[string]any) []any {
 	out := make([]any, n)
 	for i := range out {
