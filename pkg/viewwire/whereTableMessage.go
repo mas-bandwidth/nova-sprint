@@ -91,7 +91,7 @@ func NameListNamesTextSaveMessageBody(w *TableMessageWriter, value *NameListName
 			return false
 		}
 		if value.ValueLength > 0 {
-			w.Put(266, TableMessageRefBitsHere)
+			w.Put(264, TableMessageRefBitsHere)
 			if value.ValueLength < 0 || value.ValueLength > 515 {
 				return false
 			}
@@ -2734,7 +2734,7 @@ func CostCheckOrphansTextSaveMessageBody(w *TableMessageWriter, value *CostCheck
 			return false
 		}
 		if value.ValueLength > 0 {
-			w.Put(266, TableMessageRefBitsHere)
+			w.Put(264, TableMessageRefBitsHere)
 			if value.ValueLength < 0 || value.ValueLength > 515 {
 				return false
 			}
@@ -5292,7 +5292,7 @@ func StageTimesStreamsEntrySaveMessageBody(w *TableMessageWriter, value *StageTi
 			return false
 		}
 		if value.Value.Count > 0 {
-			w.Put(13, TableMessageRefBitsHere)
+			w.Put(12, TableMessageRefBitsHere)
 			if value.Value.Count < 0 {
 				return false
 			}
@@ -17368,162 +17368,6 @@ func WhereViewStalledTextLoadMessageBody(r *TableMessageReader, value *WhereView
 		}
 	}
 }
-func WhereViewFleetTiersTextLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereViewFleetTiersText) bool {
-	WhereViewFleetTiersTextReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(8)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Value[:])
-					copy(value.Value[:], text[:kept])
-					value.ValueLength = int32(kept)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func WhereViewFleetTiersTextSaveMessageBody(w *TableMessageWriter, value *WhereViewFleetTiersText) bool {
-	{
-		if value.ValueLength < 0 || value.ValueLength > 8 {
-			return false
-		}
-		if value.ValueLength > 0 {
-			w.Put(8, TableMessageRefBitsHere)
-			if value.ValueLength < 0 || value.ValueLength > 8 {
-				return false
-			}
-			w.Put(uint64(value.ValueLength), 4)
-			w.Raw(value.Value[:value.ValueLength])
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func WhereViewFleetTiersTextLoadMessageBody(r *TableMessageReader, value *WhereViewFleetTiersText) bool {
-	WhereViewFleetTiersTextReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(8)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Value[:])
-					copy(value.Value[:], text[:kept])
-					value.ValueLength = int32(kept)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
 func WhereViewFriendsTiersTextLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereViewFriendsTiersText) bool {
 	WhereViewFriendsTiersTextReset(value)
 	r.Retain.discard(r.Path, false, 0)
@@ -17600,7 +17444,7 @@ func WhereViewFriendsTiersTextSaveMessageBody(w *TableMessageWriter, value *Wher
 			return false
 		}
 		if value.ValueLength > 0 {
-			w.Put(8, TableMessageRefBitsHere)
+			w.Put(13, TableMessageRefBitsHere)
 			if value.ValueLength < 0 || value.ValueLength > 8 {
 				return false
 			}
@@ -17781,7 +17625,7 @@ func WhereViewPrioritiesEntrySaveMessageBody(w *TableMessageWriter, value *Where
 			return false
 		}
 		if value.KeyLength > 0 {
-			w.Put(11, TableMessageRefBitsHere)
+			w.Put(10, TableMessageRefBitsHere)
 			if value.KeyLength < 0 || value.KeyLength > 8 {
 				return false
 			}
@@ -18006,7 +17850,7 @@ func WhereViewStreamPrioritiesEntrySaveMessageBody(w *TableMessageWriter, value 
 	}
 	{
 		if value.Value != 0 {
-			w.Put(9, TableMessageRefBitsHere)
+			w.Put(8, TableMessageRefBitsHere)
 			if value.Value == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -18224,7 +18068,7 @@ func WhereViewReleasesEntrySaveMessageBody(w *TableMessageWriter, value *WhereVi
 			return false
 		}
 		if value.KeyLength > 0 {
-			w.Put(10, TableMessageRefBitsHere)
+			w.Put(9, TableMessageRefBitsHere)
 			if value.KeyLength < 0 || value.KeyLength > 65536 {
 				return false
 			}
@@ -18923,20 +18767,6 @@ func init() {
 	}
 	WhereViewStalledTextTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
 		ok := WhereViewStalledTextLoadMessageBody(&r, (*WhereViewStalledText)(p))
-		return r, ok
-	}
-}
-
-func init() {
-	WhereViewFleetTiersTextTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := WhereViewFleetTiersTextLoadMessageBodyRetain(&r, (*WhereViewFleetTiersText)(p))
-		return r, ok
-	}
-	WhereViewFleetTiersTextTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return WhereViewFleetTiersTextSaveMessageBody(w, (*WhereViewFleetTiersText)(p))
-	}
-	WhereViewFleetTiersTextTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := WhereViewFleetTiersTextLoadMessageBody(&r, (*WhereViewFleetTiersText)(p))
 		return r, ok
 	}
 }

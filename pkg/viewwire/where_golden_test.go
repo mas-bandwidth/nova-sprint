@@ -343,7 +343,7 @@ func samples() map[string]string {
 		"blockers": []string{"card-a waits on card-b", "card-c waits on a sentinel"},
 		"idle":     "idle: 2 cards wait on card-b", "coordinator": "coordinator", "pending": "op-12", "epoch": 21, "cleared": t2,
 		"machine": "running", "server_version": "nova-sprint v1.4.8", "server": beat,
-		"fleet_work": "on", "friends_work": "off", "fleet_tiers": []string{"pro", "heavy"}, "friends_tiers": []string{"pro"}, "reads_needed": "default",
+		"fleet_work": "on", "friends_work": "off", "friends_tiers": []string{"pro"},
 		"goals": []goalView{goal}, "seat": seatChange(), "holds": []sprint.HoldView{holdView()}, "seat_waits": waits,
 		"stops": []sprint.Stop{stopRow()}, "providers": []providerView{providerRow()}, "provider_gaps": gapReport(),
 		"lanes": []sprint.LaneRow{laneRow()}, "cards": []dealtCard{dealt()},
@@ -371,7 +371,6 @@ var textBound = map[string]int{
 	"NameList.names":                    515,
 	"WhereView.first_time_under_target": 128,
 	"WhereView.stalled":                 128,
-	"WhereView.fleet_tiers":             8, // frontier
 	"WhereView.friends_tiers":           8,
 }
 
@@ -1152,7 +1151,6 @@ var textListPaths = map[string][]string{
 	"first_time_under_target":   {"first_time_under_target"},
 	"stalled":                   {"stalled"},
 	"blockers":                  {"blockers"},
-	"fleet_tiers":               {"fleet_tiers"},
 	"friends_tiers":             {"friends_tiers"},
 	"decisions.receipt_history": {"decisions", "receipt_history"},
 	"cost_check.orphans":        {"cost_check", "orphans"},
@@ -1214,8 +1212,6 @@ func divergences(t *testing.T, sample string) {
 	cases := []struct {
 		what, text string
 	}{
-		{"fleet_tiers is the string all today (sprint.TiersAll) and a list here", withField(t, sample, "fleet_tiers", "all")},
-		{"reads_needed is a number today and its text here", withField(t, sample, "reads_needed", 3)},
 		{"a nil Go slice is null today and the list here", withField(t, sample, "stalled", nil)},
 	}
 	for _, c := range cases {
@@ -1300,7 +1296,6 @@ func longSample(t *testing.T, sample string) string {
 	m["stalled"] = texts(longEntries, "s", 128)
 	m["first_time_under_target"] = texts(longEntries, "f", 128)
 	m["blockers"] = texts(longBlockers, "b", openBytes)
-	m["fleet_tiers"] = texts(longEntries, "t", textBound["WhereView.fleet_tiers"])
 	m["friends_tiers"] = texts(longEntries, "u", textBound["WhereView.friends_tiers"])
 	nested := func(key, sub string, v []any) {
 		o := m[key].(map[string]any)
@@ -1334,7 +1329,7 @@ func longChecks(t *testing.T, sample string) {
 	canon := string(codec.SaveJSON(&v))
 	want, got := decode(t, long).(map[string]any), decode(t, canon).(map[string]any)
 	require.True(t, contains(want, got), "every long text and list survives")
-	for _, key := range []string{"stalled", "first_time_under_target", "fleet_tiers", "friends_tiers", "streams", "rows", "cards", "friends"} {
+	for _, key := range []string{"stalled", "first_time_under_target", "friends_tiers", "streams", "rows", "cards", "friends"} {
 		assert.Len(t, got[key], longEntries, "%s keeps its %d entries", key, longEntries)
 	}
 	assert.Len(t, got["priorities"].(map[string]any)["high"], longEntries)
@@ -1456,11 +1451,11 @@ func TestWhereViewGolden(t *testing.T) {
 		assert.Equal(t, textBound, declared, "the element bounds this test pins are the text lists of where.schema")
 
 		// the bound walk is not vacuous: it finds the declared bounds
-		assert.Len(t, textLists(wire.WhereViewTableType()), 5, "WhereView's text lists")
+	 assert.Len(t, textLists(wire.WhereViewTableType()), 4, "WhereView's text lists")
 		assert.Len(t, stringFields(wire.StreamClockTableType()), 1, "StreamClock's bounded strings: the stream key")
 		assert.Len(t, stringFields(wire.GoalViewTableType()), 2, "GoalView's bounded strings: the name and the text")
 		assert.Len(t, stringFields(wire.WhereViewTableType()), 0, "WhereView declares no bounded string")
-		assert.Len(t, openStrings(wire.WhereViewTableType()), 13, "WhereView's open texts")
+	 assert.Len(t, openStrings(wire.WhereViewTableType()), 12, "WhereView's open texts")
 		assert.Len(t, openStrings(wire.ProviderViewTableType()), 8, "ProviderView's open texts, the state among them")
 		assert.Len(t, openStrings(wire.HoldViewTableType()), 8, "HoldView's open texts, the name among them")
 		assert.Len(t, openStrings(wire.StopTableType()), 6, "Stop's open texts, the subject among them")

@@ -25,9 +25,6 @@ table 28375b546bf6c1b9.6dd8dc6c5fdae3ce
     field key id=0x3dc94a19365b10ec kind=12
     field value id=0x7ce4fd9430e80cea kind=5
 
-table 28375b546bf6c1b9.7f1b4a5c41ecd465
-    field value id=0x7ce4fd9430e80cea kind=12 size=8
-
 table 28375b546bf6c1b9.a11df2a73cf40d42
     field key id=0x3dc94a19365b10ec kind=12 size=128
     field value id=0x7ce4fd9430e80cea kind=17 type=string
@@ -456,9 +453,7 @@ table WhereView
     field server id=0x7294d77db181ded2 kind=17 type=ServerBeat
     field fleet_work id=0xb9a400e2ab1a653d kind=17 type=string
     field friends_work id=0x7b989cbd26ec648a kind=17 type=string
-    field fleet_tiers id=0x7f1b4a5c41ecd465 kind=14 elem=12 type=WhereViewFleetTiersText array=unbounded
     field friends_tiers id=0xe685131756c58824 kind=14 elem=12 type=WhereViewFriendsTiersText array=unbounded
-    field reads_needed id=0xac4c97888e22525a kind=17 type=string
     field goals id=0x6bd3bccef38de2bf kind=14 elem=13 type=GoalView array=unbounded
     field seat id=0x2d08f118d3f933e8 kind=17 type=SeatChange
     field holds id=0x7477287ad37c50f1 kind=14 elem=13 type=HoldView array=unbounded
@@ -782,3 +777,6 @@ table ddc8631e5d828d8d.e6f09b190519daa4
 - TierCosts.readers: map key capacity 135 -> 0 (an entry whose KEY does not fit the new capacity is skipped WHOLE and counted, because a clamped key is a merged entry (docs/SPEC-TABLES.md §2.8)) [warn]
 - WhereView.tiers: map key capacity 128 -> 0 (an entry whose KEY does not fit the new capacity is skipped WHOLE and counted, because a clamped key is a merged entry (docs/SPEC-TABLES.md §2.8)) [warn]
 - WhereView.first_time_routes: map key capacity 128 -> 0 (an entry whose KEY does not fit the new capacity is skipped WHOLE and counted, because a clamped key is a merged entry (docs/SPEC-TABLES.md §2.8)) [warn]
+
+### 2026-10-17 (UTC) — fleet_tiers and reads_needed are keys of two JSON types today and cannot be kept
+- table 28375b546bf6c1b9.7f1b4a5c41ecd465: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]

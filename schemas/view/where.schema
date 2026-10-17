@@ -664,18 +664,10 @@ table WhereView
     // "on" or "off".
     fleet_work   *string
     friends_work *string
-    // the tiers each side may take: the list. SHAPE: today `"all"` (a string) when
-    // every tier may be taken, else the list; here the list, and "all" is the
-    // list ["all"] (sprint.TiersAll). A reader that tests for the string reads the
-    // list instead. Each word is "all" or a tier of flash, pro, heavy and frontier
-    // (internal/sprint/settings.go:167-188, sideTiersWord, with capLadder,
-    // lane_cap.go:35), the longest frontier, 8 bytes.
-    fleet_tiers   []string(8)
+    // the tiers the friends side may take: the list. Each word is "all" or a tier
+    // of flash, pro, heavy and frontier (internal/sprint/settings.go:167-188,
+    // sideTiersWord, with capLadder, lane_cap.go:35), the longest frontier, 8 bytes.
     friends_tiers []string(8)
-    // the reads every card in review needs: the count as text, or "default"
-    // (sprint.ReadTierDefault). SHAPE: today a JSON number when set, here its
-    // decimal text.
-    reads_needed *string
     goals        []GoalView
     seat         *SeatChange
     holds        []HoldView
