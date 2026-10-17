@@ -1,0 +1,17 @@
+schema-lock 7
+package snaprowswire
+
+fixed table SnapshotCounts layout=0xfa7773a35a121a6a lineage=0xf88b5df8dc1db791
+    field keys id=0x581987d75cbd3e2d kind=5 width=8 default=0
+    field cards id=0xaf9dac3b097689c4 kind=5 width=8 default=0
+    lineage wire=0xc7200ada1682ef58 record=16 bytes=03000000ed18221a585ce3550d10000000020000002d3ebd5cd7871958050800000000000000c48976093bac9daf050800000000000000
+
+fixed table Tokens layout=0x271937985ce3e7d8 lineage=0xcd69d16792f378af
+    field input id=0x1ebbae8f5810b65b kind=5 width=8 default=0
+    field cache_read id=0x779748cd7970e246 kind=5 width=8 default=0
+    field cache_write id=0x313c6440b18aae09 kind=5 width=8 default=0
+    field output id=0x150f53f8651b4384 kind=5 width=8 default=0
+    field reasoning id=0x938f9c45fb249647 kind=5 width=8 default=0
+    field requests id=0x7166d3e80f26d1f3 kind=5 width=8 default=0
+    field max_prompt id=0x832da51eba5c8b80 kind=5 width=8 default=0
+    lineage wire=0xc3e8fef89edf2629 record=56 bytes=08000000f367c9f8038cfd780d38000000070000005bb610588faebb1e05080000000000000046e27079cd48977705080000000000000009ae8ab140643c3105080000000000000084431b65f8530f15050800000000000000479624fb459c8f93050800000000000000f3d1260fe8d36671050800000000000000808b5cba1ea52d83050800000000000000
