@@ -10,7 +10,7 @@ package snaprowswire_test
 // The split it pins (S1, the coordinator's form ruling of 2026-10-17): a record is
 // a FIXED table only where every bound it declares is a bound the code enforces.
 // Two records are fixed (SnapshotCounts and Tokens hold integers only, so they
-// declare no bound); the other forty-nine hold a text or a list the Go struct
+// declare no bound); the other forty-eight hold a text or a list the Go struct
 // leaves open, so they are VARIABLE tables with open lists and unbounded text.
 //
 // What the test pins:
@@ -550,6 +550,16 @@ func runVariable[T any](t *testing.T, name, sample string, o varOps[T]) {
 	}
 	// every unbounded text holds a long value, and null is not the empty text
 	long := strings.Repeat("é-long text of the area ", 4000)
+	// every open list of texts holds a long element whole
+	for _, f := range openLists(info) {
+		if f.Kind != 12 {
+			continue
+		}
+		long := long
+		canonLong := roundTrip(t, name+"."+f.Name+" with a long element", r, codec, withField(t, sample, f.Json, arr(long)))
+		got := decode(t, canonLong).(map[string]any)[f.Json].([]any)
+		assert.Equal(t, long, got[0], "%s.%s holds a long element whole", name, f.Name)
+	}
 	for _, f := range pointerFields(info, "string") {
 		long := long
 		canonLong := roundTrip(t, name+"."+f.Name+" with long text", r, codec, withField(t, sample, f.Json, long))
@@ -722,20 +732,20 @@ func sampleSet(t *testing.T) map[string]string {
 	cell := obj{"key": "k:r1:state", "bound": true, "count": 2, "members": arr(scored, obj{"member": "s1-2", "score": 1.25}), "unread": true, "unread_why": "key K is string, expected zset"}
 	row := obj{"key": "r1", "label": "Row one", "exclude": "s1-9", "owner": "finish", "cells": arr(cell), "texts": arr(obj{"name": "state", "value": "active"}), "hidden": true}
 	ntab := obj{"epoch_key": "e", "epoch_field": "n", "member_prefix": "w:", "epoch": 21, "revision": 7, "name": "t-work", "columns": arr(column),
-		"footer_label": "total", "hidden": words("note"), "hidden_table": true, "sort": "-name", "rows": arr(row), "props": arr(obj{"name": "stream", "value": "s1"})}
-	view := obj{"name": "sprint", "tables": words("t-work", "t-fleet"), "title": "The sprint", "summary": "state", "state": "STOPPED"}
+		"footer_label": "total", "hidden": arr("note"), "hidden_table": true, "sort": "-name", "rows": arr(row), "props": arr(obj{"name": "stream", "value": "s1"})}
+	view := obj{"name": "sprint", "tables": arr("t-work", "t-fleet"), "title": "The sprint", "summary": "state", "state": "STOPPED"}
 	fchange := obj{"name": "brief", "before": nil, "after": "t", "before_bytes": 0, "before_sha1": "", "after_bytes": 1, "after_sha1": "da4b9237bacccdf19c0760cab7aec4a8359010b0"}
 	bmember := obj{"id": "s1-1", "before_place": "", "after_place": "r1:state", "before_score_text": nil, "after_score_text": "0.5", "before_rev": "0", "after_rev": "1",
-		"fields_set": arr(obj{"name": "brief", "value": "t"}), "fields_unset": words("old"), "fields": arr(fchange)}
+		"fields_set": arr(obj{"name": "brief", "value": "t"}), "fields_unset": arr("old"), "fields": arr(fchange)}
 	bdelta := obj{"operation_id": "op1", "digest": "d1", "actor": "beta", "selected_count": 1, "guard_count": 0, "changed_count": 1, "members": arr(bmember),
 		"props": arr(obj{"name": "stream", "value": "s1"})}
 	receipt := obj{"id": "1-0", "epoch": 21, "before": 1, "after": 2, "outcome": "changed", "batch_delta": bdelta, "replay": true}
 	field := obj{"name": "brief", "value": "a card brief"}
 	member := obj{"epoch": 21, "placed": true, "row": "r1", "col": "state", "score": 0.5, "rev": 1, "fields": arr(field, obj{"name": "gen", "value": "1"})}
 	memberEntry := obj{"id": "s1-1", "member": member}
-	change := obj{"epoch": 21, "before": 1, "after": 2, "verb": "apply", "ids": words("s1-1")}
+	change := obj{"epoch": 21, "before": 1, "after": 2, "verb": "apply", "ids": arr("s1-1")}
 	opEntry := obj{"key": "21:op1", "body": "{}", "receipt": receipt}
-	epochSnap := obj{"rows": words("r1", "r2"), "hidden": arr(obj{"name": "r2", "on": true}), "texts": arr(obj{"row": "r1", "cells": arr(obj{"name": "state", "value": "active"})}),
+	epochSnap := obj{"rows": arr("r1", "r2"), "hidden": arr(obj{"name": "r2", "on": true}), "texts": arr(obj{"row": "r1", "cells": arr(obj{"name": "state", "value": "active"})}),
 		"props": arr(obj{"name": "stream", "value": "s1"})}
 	tableSnap := obj{"def": ntab, "epochs": arr(obj{"epoch": 21, "snapshot": epochSnap}), "wrote": arr(obj{"epoch": 21, "on": true}), "rev": 2,
 		"members": arr(memberEntry), "ops": arr(opEntry), "changes": arr(change)}
@@ -751,12 +761,12 @@ func sampleSet(t *testing.T) map[string]string {
 		"defaults_owed": 21, "logs": arr(obj{"epoch": 21, "log": logSnap}), "kv": arr(obj{"name": "coordinator", "value": "rowan"}), "seq": 9}
 
 	s := map[string]any{
-		"Word": obj{"text": "alpha"}, "Pair": obj{"name": "stream", "value": "s1"}, "Flag": obj{"name": "r2", "on": true}, "EpochFlag": obj{"epoch": 21, "on": true},
+		"Pair": obj{"name": "stream", "value": "s1"}, "Flag": obj{"name": "r2", "on": true}, "EpochFlag": obj{"epoch": 21, "on": true},
 		"Image": obj{"data": queued}, "TokenCount": obj{"name": "input_tokens", "count": 4200}, "RawRecord": rawRecord, "RawUsage": rawUsage, "Usage": usage,
 		"Total": total, "Consumer": consumer,
 		"CardCostView": obj{"consumers": arr(consumer, consumer), "total": total, "cut": 3, "carried_usd": "0.5", "carried_from": "a7", "carried_to": "a9"},
 		"SnapshotTaken": obj{"file": "snapshot-20261017T010203Z.rdb", "sha256": strings.Repeat("ab", 32), "size": 1048576, "counts": counts, "restore": "semantic",
-			"pruned": words("snapshot-20261010T010203Z.rdb")},
+			"pruned": arr("snapshot-20261010T010203Z.rdb")},
 		"ColumnCount": obj{"column": "ready", "count": 4}, "BackupCounts": obj{"keys": 40, "columns": arr(obj{"column": "ready", "count": 4}, obj{"column": "working", "count": 2})},
 		"DumpKey": obj{"key": "nova:work:meta", "ttl": 0, "payload": "AAECAw=="}, "StatePart": obj{"name": "epoch", "value": "{\"N\":21}"},
 		"SprintState": obj{"parts": arr(obj{"name": "coordinator", "value": "rowan"}, obj{"name": "epoch", "value": "{\"N\":21}"})},
@@ -878,11 +888,7 @@ func unpairs(v any, nameKey string) any {
 }
 
 func wordsOf(v any) []any {
-	out := []any{}
-	for _, s := range lst(v) {
-		out = append(out, obj{"text": s})
-	}
-	return out
+	return lst(v)
 }
 
 func unwordsOf(v any) any {
@@ -890,11 +896,7 @@ func unwordsOf(v any) any {
 	if len(l) == 0 {
 		return nil
 	}
-	out := []any{}
-	for _, e := range l {
-		out = append(out, e.(map[string]any)["text"])
-	}
-	return out
+	return l
 }
 
 func mapList(v any, f func(any) any) []any {
@@ -1736,7 +1738,7 @@ func TestNothingSerializedLacksATable(t *testing.T) {
 		}
 	}
 	// every table is held by a struct of the area or is an entry of a map or list
-	entries := map[string]bool{"Word": true, "Pair": true, "Flag": true, "EpochFlag": true, "Image": true, "TokenCount": true, "ColumnCount": true, "StatePart": true,
+	entries := map[string]bool{"Pair": true, "Flag": true, "EpochFlag": true, "Image": true, "TokenCount": true, "ColumnCount": true, "StatePart": true,
 		"FieldChange": true, "Field": true, "MemberEntry": true, "OpEntry": true, "TextRow": true, "EpochEntry": true, "TableEntry": true, "ResidueEntry": true,
 		"ViewEntry": true, "NoteEntry": true, "TimeEntry": true, "LogEntry": true}
 	held := map[string]bool{}
@@ -1805,7 +1807,7 @@ func TestSnapshotAndCostGolden(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(names)
 	require.Equal(t, want, names, "the area's tables")
-	require.Len(t, want, 51)
+	require.Len(t, want, 50)
 
 	for name, run := range fixed {
 		t.Run("fixed/"+name, func(t *testing.T) {
@@ -1830,7 +1832,11 @@ func TestSnapshotAndCostGolden(t *testing.T) {
 		var inBase []string
 		for _, line := range strings.Split(string(base), "\n") {
 			if n, ok := strings.CutPrefix(line, "table "); ok {
-				inBase = append(inBase, strings.TrimSpace(n))
+				n = strings.TrimSpace(n)
+				if strings.Contains(n, ".") {
+					continue // an anonymous text-list element table: no named table of the area
+				}
+				inBase = append(inBase, n)
 			}
 		}
 		sort.Strings(inBase)
@@ -1862,11 +1868,6 @@ func TestSnapshotAndCostGolden(t *testing.T) {
 // variableCases is the mechanical part of this file: one entry per variable table.
 func variableCases(s map[string]string) map[string]func(t *testing.T) {
 	return map[string]func(t *testing.T){
-		"Word": func(t *testing.T) {
-			runVariable(t, "Word", s["Word"], varOps[wire.Word]{
-				builder((*wire.WordBuilder).Init, (*wire.WordBuilder).GetRoot, func(b *wire.WordBuilder) *wire.TableArena { return &b.Arena }, wire.WordFromJson),
-				wire.WordMeasure, wire.WordSave, wire.WordLoadMeasureReason, wire.WordLoad, wire.WordToJsonMeasure, wire.WordToJson, wire.WordTableType, nil})
-		},
 		"Pair": func(t *testing.T) {
 			runVariable(t, "Pair", s["Pair"], varOps[wire.Pair]{
 				builder((*wire.PairBuilder).Init, (*wire.PairBuilder).GetRoot, func(b *wire.PairBuilder) *wire.TableArena { return &b.Arena }, wire.PairFromJson),
@@ -2110,7 +2111,7 @@ func variableCases(s map[string]string) map[string]func(t *testing.T) {
 	}
 }
 
-var variableNames = []string{"Word", "Pair", "Flag", "EpochFlag", "Image", "TokenCount", "RawRecord", "RawUsage", "Usage", "Total", "Consumer", "CardCostView", "SnapshotTaken", "ColumnCount", "BackupCounts", "DumpKey", "StatePart", "SprintState", "Column", "ScoredMember", "Cell", "Row", "NTable", "View", "FieldChange", "BatchMemberDelta", "BatchDelta", "Receipt", "Field", "MemberSnapshot", "MemberEntry", "ChangeSnapshot", "OpEntry", "TextRow", "EpochSnapshot", "EpochEntry", "TableSnapshot", "TableEntry", "ResidueSnap", "ResidueEntry", "ViewEntry", "NoteSnapshot", "LineSnapshot", "NoteEntry", "TimeEntry", "LogSnapshot", "LogEntry", "MemSnapshot", "MemDumpMember"}
+var variableNames = []string{"Pair", "Flag", "EpochFlag", "Image", "TokenCount", "RawRecord", "RawUsage", "Usage", "Total", "Consumer", "CardCostView", "SnapshotTaken", "ColumnCount", "BackupCounts", "DumpKey", "StatePart", "SprintState", "Column", "ScoredMember", "Cell", "Row", "NTable", "View", "FieldChange", "BatchMemberDelta", "BatchDelta", "Receipt", "Field", "MemberSnapshot", "MemberEntry", "ChangeSnapshot", "OpEntry", "TextRow", "EpochSnapshot", "EpochEntry", "TableSnapshot", "TableEntry", "ResidueSnap", "ResidueEntry", "ViewEntry", "NoteSnapshot", "LineSnapshot", "NoteEntry", "TimeEntry", "LogSnapshot", "LogEntry", "MemSnapshot", "MemDumpMember"}
 
 // tableInfos is every table of the area by name.
 func tableInfos() map[string]*wire.TableTypeInfo {
@@ -2165,6 +2166,5 @@ func tableInfos() map[string]*wire.TableTypeInfo {
 		"Usage":            wire.UsageTableType(),
 		"View":             wire.ViewTableType(),
 		"ViewEntry":        wire.ViewEntryTableType(),
-		"Word":             wire.WordTableType(),
 	}
 }

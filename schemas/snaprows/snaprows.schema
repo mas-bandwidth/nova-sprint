@@ -59,13 +59,6 @@ package snaprowswire
 // ---------------------------------------------------------------------------
 // The words every record shares.
 
-// Word is one text of a list of texts (Go []string): the schema compiler takes
-// no list of text, so the text is wrapped in a table.
-table Word
-{
-    text *string
-}
-
 // Pair is one entry of a string map in key order (Go map[string]string).
 table Pair
 {
@@ -230,7 +223,7 @@ table SnapshotTaken
     size    int64
     counts  SnapshotCounts
     restore *string
-    pruned  []Word
+    pruned  []string
 }
 
 // ColumnCount is one entry of BackupCounts.Columns (a map[string]int) in the
@@ -329,7 +322,7 @@ table NTable
     name          *string
     columns      []Column
     footer_label *string
-    hidden       []Word
+    hidden       []string
     hidden_table bool
     sort         *string
     rows         []Row
@@ -340,7 +333,7 @@ table NTable
 table View
 {
     name    *string
-    tables  []Word
+    tables  []string
     title   *string
     summary *string
     state   *string
@@ -373,7 +366,7 @@ table BatchMemberDelta
     before_rev        *string
     after_rev         *string
     fields_set        []Pair
-    fields_unset      []Word
+    fields_unset      []string
     fields            []FieldChange
 }
 
@@ -442,7 +435,7 @@ table ChangeSnapshot
     before uint64
     after  uint64
     verb   *string
-    ids    []Word
+    ids    []string
 }
 
 // OpEntry is one entry of tableSnapshot.Ops (a map[string]opSnapshot) in the
@@ -466,7 +459,7 @@ table TextRow
 // EpochSnapshot is store.epochSnapshot (mem_snapshot.go 53-58).
 table EpochSnapshot
 {
-    rows   []Word
+    rows   []string
     hidden []Flag
     texts  []TextRow
     props  []Pair

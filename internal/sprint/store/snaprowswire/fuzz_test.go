@@ -345,9 +345,6 @@ var fuzzRoots = []fuzzRoot{
 	fuzzBuilder("View", func(b *ViewBuilder, w []byte, r *TableReport) bool { return ViewLoadBuilder(b, w, r) }, func(b *ViewBuilder, w []byte, r *TableReport) bool { return ViewFromJson(b, w, r) }, func(v *View) []byte { return fuzzImage(ViewMeasure(v), func(b []byte) int64 { return ViewSave(v, b) }) }, func(v *View) []byte {
 		return fuzzImage(ViewToJsonMeasure(v), func(b []byte) int64 { return ViewToJson(v, b) })
 	}),
-	fuzzBuilder("Word", func(b *WordBuilder, w []byte, r *TableReport) bool { return WordLoadBuilder(b, w, r) }, func(b *WordBuilder, w []byte, r *TableReport) bool { return WordFromJson(b, w, r) }, func(v *Word) []byte { return fuzzImage(WordMeasure(v), func(b []byte) int64 { return WordSave(v, b) }) }, func(v *Word) []byte {
-		return fuzzImage(WordToJsonMeasure(v), func(b []byte) int64 { return WordToJson(v, b) })
-	}),
 }
 
 var fuzzSeeds = map[string]bool{}
