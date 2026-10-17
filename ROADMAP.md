@@ -9,7 +9,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
 - [The sprint system](#the-sprint-system) (218)
 - [Setup, release and operations](#setup-release-and-operations) (70)
-- [Docs, models and the repository](#docs-models-and-the-repository) (22)
+- [Docs, models and the repository](#docs-models-and-the-repository) (23)
 - [Friend AIs](#friend-ais) (21)
 - [Moved out of the sprint on 2026-10-15: nova-local](#moved-out-of-the-sprint-on-2026-10-15-nova-local) (1)
 - [Moved out of the sprint on 2026-10-15: v13-blockers](#moved-out-of-the-sprint-on-2026-10-15-v13-blockers) (19)
@@ -2654,6 +2654,14 @@ Model the attempt, generation and epoch counters, the card columns, held cards a
 Target: v1.5
 
 From: card from the sprint store (2026-10-10); cards moved out of the sprint (work record, 2026-10-04)
+
+### ROADMAP.md is feature tables with check marks and crosses, like schema's
+
+Every repository's roadmap renders as one section per area and one table of user-recognisable features with done and remaining cells and a complete percentage row, evidence for each done cell kept in the data, as schema's ROADMAP.md does. pkg/roadmap (nova-tools) gains feature and evidence records and the table render; nova-work roadmap verbs and nova-sprint pick it up with the next nova-tools bump, so both repos switch together. Locked out of v1.4.8 because the renderer ships inside nova-work and nova-sprint.
+
+Target: v1.7
+
+From: the owner, 2026-10-17: the standard format for all roadmaps, including nova tools and nova sprint
 
 ## Friend AIs
 
