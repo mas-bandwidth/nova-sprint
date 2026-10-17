@@ -2255,7 +2255,10 @@ records (`MaxCostRecords`): a record past it is still added to the total, and
 `cost_cut` counts the records the list left out. A read's records reach the
 primary from the read step, a change of the work table: while the system runs,
 it waits in the work table's queue for the next tick's pump with the read's
-words, as a finish's change of its primary does. `card <id>` prints, from the
+words, as a finish's change of its primary does. A step whose work-table changes
+queue this way on a RUNNING machine whose last tick failed says one `NOTE` line
+(`queued: ...`) beside its OK, naming how many ticks failed and the error
+(v17-queued-step-names-a-failing-tick). `card <id>` prints, from the
 primary alone, a COST line for each record (kind, card, attempt, take, member
 or reader, route, model, tier (the tier its route was drawn from: flash first,
 section 5), end, the tokens, wait, run, predicted, actual and
