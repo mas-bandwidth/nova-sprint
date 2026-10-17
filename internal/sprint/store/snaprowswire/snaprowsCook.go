@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package snaprowswire — the COOKED FORM (docs/SPEC-TABLES.md §7): the READ half.
+// package snaprowswire — the COOKED FORM (mas-bandwidth/schema docs/SPEC-TABLES.md §7): the READ half, then
+// the WRITE half (<Name>CookMeasure, <Name>CookFrom). An OPTIONAL form
+// (mas-bandwidth/schema docs/SPEC-TABLES.md, GO's optional forms): the package compiles without it.
 //
 // A cook is a LOAD-TRUSTED-DATA-FROM-TOOLS format and not a wire. Tooling writes
 // a region for one BUILD VERSION and that build points at it: Open matches the
@@ -19,9 +21,9 @@
 // a pointer and a length and points — the block form's contract (§19.2), for the
 // same reason.
 //
-// THIS FILE AND <Base>Block.go ARE A PAIR: they share one set of blittable
-// <Name>Row records, because a cooked record IS the blittable row. Compile both
-// or neither — one without the other leaves those records undefined.
+// A cooked record IS the blittable <Name>Row, the block form's row too: the
+// rows are the core's, in the TABLE source, so this file and <Base>Block.go each
+// compile with or without the other.
 
 package snaprowswire
 
@@ -31,7 +33,7 @@ import (
 	"unsafe"
 )
 
-// TableCookMagic is the cook's magic (docs/SPEC-TABLES.md §7.1), read before
+// TableCookMagic is the cook's magic (mas-bandwidth/schema docs/SPEC-TABLES.md §7.1), read before
 // anything else: it is what establishes the byte order every other header word
 // is written in, and it is also what separates a COOK from a BLOCK — the two
 // accelerators carry the same build version and different magics, because a
@@ -68,13 +70,13 @@ const TableCookMaxAlign int64 = 64
 
 // TableCookStorage is what a cooked SLOT holds, which is not always what the
 // WIRE carries: an ENUM slot holds the ORDINAL at the enum's own derived
-// storage width (docs/SPEC-TABLES.md §7.2), where the wire rides the
+// storage width (mas-bandwidth/schema docs/SPEC-TABLES.md §7.2), where the wire rides the
 // variant-name hash. A walker reads a slot with the width ElemSize gives and
 // the signedness this names.
 //
 // Its members are FLAT package-level constants, which is what Go already does
 // with every enum a schema declares (SPEC.md §6.1's Go column) — so all eight
-// spellings are claimed in internal/tablenames, exactly as a declared enum's
+// spellings are claimed in mas-bandwidth/schema internal/tablenames, exactly as a declared enum's
 // variants are claimed by the checker. C# spells the same vocabulary as one
 // scoped enum and claims one name; the port does not get to have it both ways,
 // and the flat form is the one a Go consumer expects to write.
@@ -127,519 +129,7 @@ type TableCookInfo struct {
 	Fields    []TableCookFieldInfo
 }
 
-// The BLITTABLE records a cooked region is laid out from: the C ABI layout
-// §20.3 commits the compiler to, with GENERATED PADDING FIELDS wherever it has
-// interior padding (docs/SPEC-TABLES.md §19.3). A cooked record IS the
-// blittable row, so these are the same <Name>Row structs the block form spells,
-// from the same model; a record the block form already emits is emitted THERE
-// and not again here.
-
-// BackupCountsRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type BackupCountsRow struct {
-	Keys    int64
-	Columns TableList[ColumnCountRow]
-}
-
-// BatchDeltaRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type BatchDeltaRow struct {
-	OperationId   int64 // *: signed self-relative delta, zero is null (§6.3)
-	Digest        int64 // *: signed self-relative delta, zero is null (§6.3)
-	Actor         int64 // *: signed self-relative delta, zero is null (§6.3)
-	SelectedCount int64
-	GuardCount    int64
-	ChangedCount  int64
-	Members       TableList[BatchMemberDeltaRow]
-	Props         TableList[PairRow]
-}
-
-// BatchMemberDeltaRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type BatchMemberDeltaRow struct {
-	Id              int64 // *: signed self-relative delta, zero is null (§6.3)
-	BeforePlace     int64 // *: signed self-relative delta, zero is null (§6.3)
-	AfterPlace      int64 // *: signed self-relative delta, zero is null (§6.3)
-	BeforeScoreText int64 // *: signed self-relative delta, zero is null (§6.3)
-	AfterScoreText  int64 // *: signed self-relative delta, zero is null (§6.3)
-	BeforeRev       int64 // *: signed self-relative delta, zero is null (§6.3)
-	AfterRev        int64 // *: signed self-relative delta, zero is null (§6.3)
-	FieldsSet       TableList[PairRow]
-	FieldsUnset     TableList[WordRow]
-	Fields          TableList[FieldChangeRow]
-}
-
-// CardCostViewRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type CardCostViewRow struct {
-	Consumers   TableList[ConsumerRow]
-	Total       TotalRow
-	Cut         int64
-	CarriedUsd  int64 // *: signed self-relative delta, zero is null (§6.3)
-	CarriedFrom int64 // *: signed self-relative delta, zero is null (§6.3)
-	CarriedTo   int64 // *: signed self-relative delta, zero is null (§6.3)
-}
-
-// CellRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type CellRow struct {
-	Key       int64 // *: signed self-relative delta, zero is null (§6.3)
-	Bound     bool
-	_         [7]byte // generated padding
-	Count     int64
-	Members   TableList[ScoredMemberRow]
-	Unread    bool
-	_         [7]byte // generated padding
-	UnreadWhy int64   // *: signed self-relative delta, zero is null (§6.3)
-}
-
-// ChangeSnapshotRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type ChangeSnapshotRow struct {
-	Epoch  uint64
-	Before uint64
-	After  uint64
-	Verb   int64 // *: signed self-relative delta, zero is null (§6.3)
-	Ids    TableList[WordRow]
-}
-
-// ColumnRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type ColumnRow struct {
-	Name       int64 // *: signed self-relative delta, zero is null (§6.3)
-	Label      int64 // *: signed self-relative delta, zero is null (§6.3)
-	Projection int64 // *: signed self-relative delta, zero is null (§6.3)
-	Fold       int64 // *: signed self-relative delta, zero is null (§6.3)
-	Width      int64
-}
-
-// ColumnCountRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type ColumnCountRow struct {
-	Column int64 // *: signed self-relative delta, zero is null (§6.3)
-	Count  int64
-}
-
-// ConsumerRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type ConsumerRow struct {
-	Kind    int64 // *: signed self-relative delta, zero is null (§6.3)
-	Card    int64 // *: signed self-relative delta, zero is null (§6.3)
-	Attempt int64
-	Take    int64
-	Gen     int64
-	Who     int64 // *: signed self-relative delta, zero is null (§6.3)
-	Route   int64 // *: signed self-relative delta, zero is null (§6.3)
-	Model   int64 // *: signed self-relative delta, zero is null (§6.3)
-	Tier    int64 // *: signed self-relative delta, zero is null (§6.3)
-	End     int64 // *: signed self-relative delta, zero is null (§6.3)
-	At      int64 // *: signed self-relative delta, zero is null (§6.3)
-	Key     int64 // *: signed self-relative delta, zero is null (§6.3)
-	Usage   UsageRow
-	Cap     int64 // *: signed self-relative delta, zero is null (§6.3)
-	Overrun int64 // *: signed self-relative delta, zero is null (§6.3)
-}
-
-// DumpKeyRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type DumpKeyRow struct {
-	Key     int64 // *: signed self-relative delta, zero is null (§6.3)
-	Ttl     int64
-	Payload int64 // *: signed self-relative delta, zero is null (§6.3)
-}
-
-// EpochEntryRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type EpochEntryRow struct {
-	Epoch    uint64
-	Snapshot EpochSnapshotRow
-}
-
-// EpochFlagRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type EpochFlagRow struct {
-	Epoch uint64
-	On    bool
-	_     [7]byte // generated padding
-}
-
-// EpochSnapshotRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type EpochSnapshotRow struct {
-	Rows   TableList[WordRow]
-	Hidden TableList[FlagRow]
-	Texts  TableList[TextRowRow]
-	Props  TableList[PairRow]
-}
-
-// FieldRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type FieldRow struct {
-	Name  int64 // *: signed self-relative delta, zero is null (§6.3)
-	Value int64 // *: signed self-relative delta, zero is null (§6.3)
-}
-
-// FieldChangeRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type FieldChangeRow struct {
-	Name        int64 // *: signed self-relative delta, zero is null (§6.3)
-	Before      int64 // *: signed self-relative delta, zero is null (§6.3)
-	After       int64 // *: signed self-relative delta, zero is null (§6.3)
-	BeforeBytes int64
-	BeforeSha1  int64 // *: signed self-relative delta, zero is null (§6.3)
-	AfterBytes  int64
-	AfterSha1   int64 // *: signed self-relative delta, zero is null (§6.3)
-}
-
-// FlagRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type FlagRow struct {
-	Name int64 // *: signed self-relative delta, zero is null (§6.3)
-	On   bool
-	_    [7]byte // generated padding
-}
-
-// ImageRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type ImageRow struct {
-	Data int64 // *: signed self-relative delta, zero is null (§6.3)
-}
-
-// LineSnapshotRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type LineSnapshotRow struct {
-	Id   int64 // *: signed self-relative delta, zero is null (§6.3)
-	Line int64 // *: signed self-relative delta, zero is null (§6.3)
-}
-
-// LogEntryRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type LogEntryRow struct {
-	Epoch uint64
-	Log   LogSnapshotRow
-}
-
-// LogSnapshotRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type LogSnapshotRow struct {
-	Fence    int64 // *: signed self-relative delta, zero is null (§6.3)
-	Gen      uint64
-	Done     TableList[PairRow]
-	Progress TableList[TimeEntryRow]
-	Inbox    TableList[NoteSnapshotRow]
-	Lines    TableList[LineSnapshotRow]
-	Notes    TableList[NoteEntryRow]
-	Aliases  TableList[PairRow]
-	Answered TableList[PairRow]
-	Open     TableList[PairRow]
-	Cursor   int64 // *: signed self-relative delta, zero is null (§6.3)
-	Queue    TableList[ImageRow]
-}
-
-// MemDumpMemberRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type MemDumpMemberRow struct {
-	TableName int64 // *: signed self-relative delta, zero is null (§6.3)
-	Member    int64 // *MemberSnapshot: signed self-relative delta, zero is null (§6.3)
-}
-
-// MemSnapshotRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type MemSnapshotRow struct {
-	Version      int64
-	Tables       TableList[TableEntryRow]
-	Dropped      TableList[ResidueEntryRow]
-	Views        TableList[ViewEntryRow]
-	EpochSet     bool
-	_            [7]byte // generated padding
-	Epoch        uint64
-	Cleared      int64
-	Owed         bool
-	_            [7]byte // generated padding
-	DefaultsOwed uint64
-	Logs         TableList[LogEntryRow]
-	Kv           TableList[PairRow]
-	Seq          int64
-}
-
-// MemberEntryRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type MemberEntryRow struct {
-	Id     int64 // *: signed self-relative delta, zero is null (§6.3)
-	Member MemberSnapshotRow
-}
-
-// MemberSnapshotRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type MemberSnapshotRow struct {
-	Epoch  uint64
-	Placed bool
-	_      [7]byte // generated padding
-	Row    int64   // *: signed self-relative delta, zero is null (§6.3)
-	Col    int64   // *: signed self-relative delta, zero is null (§6.3)
-	Score  float64
-	Rev    uint64
-	Fields TableList[FieldRow]
-}
-
-// NTableRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type NTableRow struct {
-	EpochKey     int64 // *: signed self-relative delta, zero is null (§6.3)
-	EpochField   int64 // *: signed self-relative delta, zero is null (§6.3)
-	MemberPrefix int64 // *: signed self-relative delta, zero is null (§6.3)
-	Epoch        uint64
-	Revision     uint64
-	Name         int64 // *: signed self-relative delta, zero is null (§6.3)
-	Columns      TableList[ColumnRow]
-	FooterLabel  int64 // *: signed self-relative delta, zero is null (§6.3)
-	Hidden       TableList[WordRow]
-	HiddenTable  bool
-	_            [7]byte // generated padding
-	Sort         int64   // *: signed self-relative delta, zero is null (§6.3)
-	Rows         TableList[RowRow]
-	Props        TableList[PairRow]
-}
-
-// NoteEntryRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type NoteEntryRow struct {
-	Id   int64 // *: signed self-relative delta, zero is null (§6.3)
-	Note int64 // *: signed self-relative delta, zero is null (§6.3)
-}
-
-// NoteSnapshotRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type NoteSnapshotRow struct {
-	Id   int64 // *: signed self-relative delta, zero is null (§6.3)
-	Note int64 // *: signed self-relative delta, zero is null (§6.3)
-}
-
-// OpEntryRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type OpEntryRow struct {
-	Key     int64 // *: signed self-relative delta, zero is null (§6.3)
-	Body    int64 // *: signed self-relative delta, zero is null (§6.3)
-	Receipt ReceiptRow
-}
-
-// PairRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type PairRow struct {
-	Name  int64 // *: signed self-relative delta, zero is null (§6.3)
-	Value int64 // *: signed self-relative delta, zero is null (§6.3)
-}
-
-// RawRecordRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type RawRecordRow struct {
-	Harness         int64 // *: signed self-relative delta, zero is null (§6.3)
-	Execution       int64 // *: signed self-relative delta, zero is null (§6.3)
-	SourceSchema    int64 // *: signed self-relative delta, zero is null (§6.3)
-	ProducerVersion int64 // *: signed self-relative delta, zero is null (§6.3)
-	Billing         int64 // *: signed self-relative delta, zero is null (§6.3)
-	Tokens          TableList[TokenCountRow]
-}
-
-// RawUsageRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type RawUsageRow struct {
-	Version int64
-	Records TableList[RawRecordRow]
-}
-
-// ReceiptRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type ReceiptRow struct {
-	Id         int64 // *: signed self-relative delta, zero is null (§6.3)
-	Epoch      uint64
-	Before     uint64
-	After      uint64
-	Outcome    int64 // *: signed self-relative delta, zero is null (§6.3)
-	BatchDelta int64 // *BatchDelta: signed self-relative delta, zero is null (§6.3)
-	Replay     bool
-	_          [7]byte // generated padding
-}
-
-// ResidueEntryRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type ResidueEntryRow struct {
-	Name    int64 // *: signed self-relative delta, zero is null (§6.3)
-	Residue ResidueSnapRow
-}
-
-// ResidueSnapRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type ResidueSnapRow struct {
-	Keys          TableList[FlagRow]
-	TableSnapshot int64 // *TableSnapshot: signed self-relative delta, zero is null (§6.3)
-}
-
-// RowRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type RowRow struct {
-	Key     int64 // *: signed self-relative delta, zero is null (§6.3)
-	Label   int64 // *: signed self-relative delta, zero is null (§6.3)
-	Exclude int64 // *: signed self-relative delta, zero is null (§6.3)
-	Owner   int64 // *: signed self-relative delta, zero is null (§6.3)
-	Cells   TableList[CellRow]
-	Texts   TableList[PairRow]
-	Hidden  bool
-	_       [7]byte // generated padding
-}
-
-// ScoredMemberRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type ScoredMemberRow struct {
-	Member int64 // *: signed self-relative delta, zero is null (§6.3)
-	Score  float64
-}
-
-// SnapshotCountsRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type SnapshotCountsRow struct {
-	Keys  int64
-	Cards int64
-}
-
-// SnapshotTakenRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type SnapshotTakenRow struct {
-	File    int64 // *: signed self-relative delta, zero is null (§6.3)
-	Sha256  int64 // *: signed self-relative delta, zero is null (§6.3)
-	Size    int64
-	Counts  SnapshotCountsRow
-	Restore int64 // *: signed self-relative delta, zero is null (§6.3)
-	Pruned  TableList[WordRow]
-}
-
-// SprintStateRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type SprintStateRow struct {
-	Parts TableList[StatePartRow]
-}
-
-// StatePartRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type StatePartRow struct {
-	Name  int64 // *: signed self-relative delta, zero is null (§6.3)
-	Value int64 // *: signed self-relative delta, zero is null (§6.3)
-}
-
-// TableEntryRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type TableEntryRow struct {
-	Name          int64 // *: signed self-relative delta, zero is null (§6.3)
-	TableSnapshot TableSnapshotRow
-}
-
-// TableSnapshotRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type TableSnapshotRow struct {
-	Def     NTableRow
-	Epochs  TableList[EpochEntryRow]
-	Wrote   TableList[EpochFlagRow]
-	Rev     uint64
-	Members TableList[MemberEntryRow]
-	Ops     TableList[OpEntryRow]
-	Changes TableList[ChangeSnapshotRow]
-}
-
-// TextRowRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type TextRowRow struct {
-	Row   int64 // *: signed self-relative delta, zero is null (§6.3)
-	Cells TableList[PairRow]
-}
-
-// TimeEntryRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type TimeEntryRow struct {
-	Name int64 // *: signed self-relative delta, zero is null (§6.3)
-	At   int64
-}
-
-// TokenCountRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type TokenCountRow struct {
-	Name  int64 // *: signed self-relative delta, zero is null (§6.3)
-	Count int64
-}
-
-// TokensRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type TokensRow struct {
-	Input      int64
-	CacheRead  int64
-	CacheWrite int64
-	Output     int64
-	Reasoning  int64
-	Requests   int64
-	MaxPrompt  int64
-}
-
-// TotalRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type TotalRow struct {
-	Records          int64
-	Tokens           TokensRow
-	WaitS            int64
-	RunS             int64
-	PredictedUsd     int64 // *: signed self-relative delta, zero is null (§6.3)
-	PredictedRecords int64
-	ActualUsd        int64 // *: signed self-relative delta, zero is null (§6.3)
-	ActualRecords    int64
-	ActualBy         int64 // *: signed self-relative delta, zero is null (§6.3)
-	ChargedUsd       int64 // *: signed self-relative delta, zero is null (§6.3)
-	ChargedRecords   int64
-}
-
-// UsageRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type UsageRow struct {
-	Billing        int64 // *: signed self-relative delta, zero is null (§6.3)
-	ReceiptVersion int64
-	RawUsage       int64 // *RawUsage: signed self-relative delta, zero is null (§6.3)
-	Wall           int64 // *: signed self-relative delta, zero is null (§6.3)
-	Budget         int64 // *: signed self-relative delta, zero is null (§6.3)
-	Tokens         TokensRow
-	Model          int64 // *: signed self-relative delta, zero is null (§6.3)
-	ActualUsd      int64 // *: signed self-relative delta, zero is null (§6.3)
-	ActualBy       int64 // *: signed self-relative delta, zero is null (§6.3)
-	WaitS          int64
-	RunS           int64
-	PriceRoute     int64 // *: signed self-relative delta, zero is null (§6.3)
-	Prices         int64 // *: signed self-relative delta, zero is null (§6.3)
-	PredictedUsd   int64 // *: signed self-relative delta, zero is null (§6.3)
-	LongContext    bool
-	_              [7]byte // generated padding
-	Unpriced       int64   // *: signed self-relative delta, zero is null (§6.3)
-}
-
-// ViewRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type ViewRow struct {
-	Name    int64 // *: signed self-relative delta, zero is null (§6.3)
-	Tables  TableList[WordRow]
-	Title   int64 // *: signed self-relative delta, zero is null (§6.3)
-	Summary int64 // *: signed self-relative delta, zero is null (§6.3)
-	State   int64 // *: signed self-relative delta, zero is null (§6.3)
-}
-
-// ViewEntryRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type ViewEntryRow struct {
-	Name int64 // *: signed self-relative delta, zero is null (§6.3)
-	View ViewRow
-}
-
-// WordRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type WordRow struct {
-	Text int64 // *: signed self-relative delta, zero is null (§6.3)
-}
-
-// THE LAYOUT CONTRACT for the cook closure (docs/SPEC-TABLES.md §20.3), run
+// THE LAYOUT CONTRACT for the cook closure (mas-bandwidth/schema docs/SPEC-TABLES.md §20.3), run
 // ONCE at package initialisation: a cooked region is laid out by the
 // compiler's C ABI model, so a runtime that lays one of these records out
 // differently would read a cook at the wrong offsets and never know.
@@ -993,7 +483,7 @@ func init() {
 func tableCookLayoutSize(what string, got, want uintptr) {
 	if got != want {
 		panic(fmt.Sprintf("schema cook layout: %s is %d bytes in this runtime and %d in the layout "+
-			"model the cook's bytes come from — the two disagree about the bytes (docs/SPEC-TABLES.md §20.3)", what, got, want))
+			"model the cook's bytes come from — the two disagree about the bytes (mas-bandwidth/schema docs/SPEC-TABLES.md §20.3)", what, got, want))
 	}
 }
 
@@ -1001,7 +491,7 @@ func tableCookLayoutSize(what string, got, want uintptr) {
 func tableCookLayoutOffset(what string, got, want uintptr) {
 	if got != want {
 		panic(fmt.Sprintf("schema cook layout: %s sits at %d in this runtime and %d in the layout "+
-			"model the cook's bytes come from — the two disagree about the bytes (docs/SPEC-TABLES.md §20.3)", what, got, want))
+			"model the cook's bytes come from — the two disagree about the bytes (mas-bandwidth/schema docs/SPEC-TABLES.md §20.3)", what, got, want))
 	}
 }
 
@@ -1583,7 +1073,7 @@ func init() {
 
 // WordCook is Word's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — WordOpen, WordAt — and so does Go, because Go has free functions;
@@ -1681,12 +1171,12 @@ func WordAt(slot *int64, arena ...*TableArena) *WordRow {
 }
 
 // Type is Word's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c WordCook) Type() *TableCookInfo { return &tableCookRecords[50] }
 
 // PairCook is Pair's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — PairOpen, PairAt — and so does Go, because Go has free functions;
@@ -1784,12 +1274,12 @@ func PairAt(slot *int64, arena ...*TableArena) *PairRow {
 }
 
 // Type is Pair's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c PairCook) Type() *TableCookInfo { return &tableCookRecords[28] }
 
 // FlagCook is Flag's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — FlagOpen, FlagAt — and so does Go, because Go has free functions;
@@ -1887,12 +1377,12 @@ func FlagAt(slot *int64, arena ...*TableArena) *FlagRow {
 }
 
 // Type is Flag's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c FlagCook) Type() *TableCookInfo { return &tableCookRecords[15] }
 
 // EpochFlagCook is EpochFlag's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — EpochFlagOpen, EpochFlagAt — and so does Go, because Go has free functions;
@@ -1990,12 +1480,12 @@ func EpochFlagAt(slot *int64, arena ...*TableArena) *EpochFlagRow {
 }
 
 // Type is EpochFlag's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c EpochFlagCook) Type() *TableCookInfo { return &tableCookRecords[11] }
 
 // ImageCook is Image's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — ImageOpen, ImageAt — and so does Go, because Go has free functions;
@@ -2093,12 +1583,12 @@ func ImageAt(slot *int64, arena ...*TableArena) *ImageRow {
 }
 
 // Type is Image's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c ImageCook) Type() *TableCookInfo { return &tableCookRecords[16] }
 
 // TokensCook is Tokens's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — TokensOpen, TokensAt — and so does Go, because Go has free functions;
@@ -2196,12 +1686,12 @@ func TokensAt(slot *int64, arena ...*TableArena) *TokensRow {
 }
 
 // Type is Tokens's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c TokensCook) Type() *TableCookInfo { return &tableCookRecords[45] }
 
 // TokenCountCook is TokenCount's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — TokenCountOpen, TokenCountAt — and so does Go, because Go has free functions;
@@ -2299,12 +1789,12 @@ func TokenCountAt(slot *int64, arena ...*TableArena) *TokenCountRow {
 }
 
 // Type is TokenCount's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c TokenCountCook) Type() *TableCookInfo { return &tableCookRecords[44] }
 
 // RawRecordCook is RawRecord's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — RawRecordOpen, RawRecordAt — and so does Go, because Go has free functions;
@@ -2402,12 +1892,12 @@ func RawRecordAt(slot *int64, arena ...*TableArena) *RawRecordRow {
 }
 
 // Type is RawRecord's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c RawRecordCook) Type() *TableCookInfo { return &tableCookRecords[29] }
 
 // RawUsageCook is RawUsage's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — RawUsageOpen, RawUsageAt — and so does Go, because Go has free functions;
@@ -2505,12 +1995,12 @@ func RawUsageAt(slot *int64, arena ...*TableArena) *RawUsageRow {
 }
 
 // Type is RawUsage's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c RawUsageCook) Type() *TableCookInfo { return &tableCookRecords[30] }
 
 // UsageCook is Usage's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — UsageOpen, UsageAt — and so does Go, because Go has free functions;
@@ -2608,12 +2098,12 @@ func UsageAt(slot *int64, arena ...*TableArena) *UsageRow {
 }
 
 // Type is Usage's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c UsageCook) Type() *TableCookInfo { return &tableCookRecords[47] }
 
 // TotalCook is Total's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — TotalOpen, TotalAt — and so does Go, because Go has free functions;
@@ -2711,12 +2201,12 @@ func TotalAt(slot *int64, arena ...*TableArena) *TotalRow {
 }
 
 // Type is Total's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c TotalCook) Type() *TableCookInfo { return &tableCookRecords[46] }
 
 // ConsumerCook is Consumer's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — ConsumerOpen, ConsumerAt — and so does Go, because Go has free functions;
@@ -2814,12 +2304,12 @@ func ConsumerAt(slot *int64, arena ...*TableArena) *ConsumerRow {
 }
 
 // Type is Consumer's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c ConsumerCook) Type() *TableCookInfo { return &tableCookRecords[8] }
 
 // CardCostViewCook is CardCostView's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — CardCostViewOpen, CardCostViewAt — and so does Go, because Go has free functions;
@@ -2917,12 +2407,12 @@ func CardCostViewAt(slot *int64, arena ...*TableArena) *CardCostViewRow {
 }
 
 // Type is CardCostView's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c CardCostViewCook) Type() *TableCookInfo { return &tableCookRecords[3] }
 
 // SnapshotCountsCook is SnapshotCounts's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — SnapshotCountsOpen, SnapshotCountsAt — and so does Go, because Go has free functions;
@@ -3020,12 +2510,12 @@ func SnapshotCountsAt(slot *int64, arena ...*TableArena) *SnapshotCountsRow {
 }
 
 // Type is SnapshotCounts's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c SnapshotCountsCook) Type() *TableCookInfo { return &tableCookRecords[36] }
 
 // SnapshotTakenCook is SnapshotTaken's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — SnapshotTakenOpen, SnapshotTakenAt — and so does Go, because Go has free functions;
@@ -3123,12 +2613,12 @@ func SnapshotTakenAt(slot *int64, arena ...*TableArena) *SnapshotTakenRow {
 }
 
 // Type is SnapshotTaken's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c SnapshotTakenCook) Type() *TableCookInfo { return &tableCookRecords[37] }
 
 // ColumnCountCook is ColumnCount's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — ColumnCountOpen, ColumnCountAt — and so does Go, because Go has free functions;
@@ -3226,12 +2716,12 @@ func ColumnCountAt(slot *int64, arena ...*TableArena) *ColumnCountRow {
 }
 
 // Type is ColumnCount's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c ColumnCountCook) Type() *TableCookInfo { return &tableCookRecords[7] }
 
 // BackupCountsCook is BackupCounts's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — BackupCountsOpen, BackupCountsAt — and so does Go, because Go has free functions;
@@ -3329,12 +2819,12 @@ func BackupCountsAt(slot *int64, arena ...*TableArena) *BackupCountsRow {
 }
 
 // Type is BackupCounts's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c BackupCountsCook) Type() *TableCookInfo { return &tableCookRecords[0] }
 
 // DumpKeyCook is DumpKey's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — DumpKeyOpen, DumpKeyAt — and so does Go, because Go has free functions;
@@ -3432,12 +2922,12 @@ func DumpKeyAt(slot *int64, arena ...*TableArena) *DumpKeyRow {
 }
 
 // Type is DumpKey's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c DumpKeyCook) Type() *TableCookInfo { return &tableCookRecords[9] }
 
 // StatePartCook is StatePart's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — StatePartOpen, StatePartAt — and so does Go, because Go has free functions;
@@ -3535,12 +3025,12 @@ func StatePartAt(slot *int64, arena ...*TableArena) *StatePartRow {
 }
 
 // Type is StatePart's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c StatePartCook) Type() *TableCookInfo { return &tableCookRecords[39] }
 
 // SprintStateCook is SprintState's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — SprintStateOpen, SprintStateAt — and so does Go, because Go has free functions;
@@ -3638,12 +3128,12 @@ func SprintStateAt(slot *int64, arena ...*TableArena) *SprintStateRow {
 }
 
 // Type is SprintState's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c SprintStateCook) Type() *TableCookInfo { return &tableCookRecords[38] }
 
 // ColumnCook is Column's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — ColumnOpen, ColumnAt — and so does Go, because Go has free functions;
@@ -3741,12 +3231,12 @@ func ColumnAt(slot *int64, arena ...*TableArena) *ColumnRow {
 }
 
 // Type is Column's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c ColumnCook) Type() *TableCookInfo { return &tableCookRecords[6] }
 
 // ScoredMemberCook is ScoredMember's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — ScoredMemberOpen, ScoredMemberAt — and so does Go, because Go has free functions;
@@ -3844,12 +3334,12 @@ func ScoredMemberAt(slot *int64, arena ...*TableArena) *ScoredMemberRow {
 }
 
 // Type is ScoredMember's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c ScoredMemberCook) Type() *TableCookInfo { return &tableCookRecords[35] }
 
 // CellCook is Cell's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — CellOpen, CellAt — and so does Go, because Go has free functions;
@@ -3947,12 +3437,12 @@ func CellAt(slot *int64, arena ...*TableArena) *CellRow {
 }
 
 // Type is Cell's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c CellCook) Type() *TableCookInfo { return &tableCookRecords[4] }
 
 // RowCook is Row's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — RowOpen, RowAt — and so does Go, because Go has free functions;
@@ -4050,12 +3540,12 @@ func RowAt(slot *int64, arena ...*TableArena) *RowRow {
 }
 
 // Type is Row's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c RowCook) Type() *TableCookInfo { return &tableCookRecords[34] }
 
 // NTableCook is NTable's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — NTableOpen, NTableAt — and so does Go, because Go has free functions;
@@ -4153,12 +3643,12 @@ func NTableAt(slot *int64, arena ...*TableArena) *NTableRow {
 }
 
 // Type is NTable's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c NTableCook) Type() *TableCookInfo { return &tableCookRecords[24] }
 
 // ViewCook is View's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — ViewOpen, ViewAt — and so does Go, because Go has free functions;
@@ -4256,12 +3746,12 @@ func ViewAt(slot *int64, arena ...*TableArena) *ViewRow {
 }
 
 // Type is View's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c ViewCook) Type() *TableCookInfo { return &tableCookRecords[48] }
 
 // FieldChangeCook is FieldChange's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — FieldChangeOpen, FieldChangeAt — and so does Go, because Go has free functions;
@@ -4359,12 +3849,12 @@ func FieldChangeAt(slot *int64, arena ...*TableArena) *FieldChangeRow {
 }
 
 // Type is FieldChange's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c FieldChangeCook) Type() *TableCookInfo { return &tableCookRecords[14] }
 
 // BatchMemberDeltaCook is BatchMemberDelta's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — BatchMemberDeltaOpen, BatchMemberDeltaAt — and so does Go, because Go has free functions;
@@ -4462,12 +3952,12 @@ func BatchMemberDeltaAt(slot *int64, arena ...*TableArena) *BatchMemberDeltaRow 
 }
 
 // Type is BatchMemberDelta's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c BatchMemberDeltaCook) Type() *TableCookInfo { return &tableCookRecords[2] }
 
 // BatchDeltaCook is BatchDelta's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — BatchDeltaOpen, BatchDeltaAt — and so does Go, because Go has free functions;
@@ -4565,12 +4055,12 @@ func BatchDeltaAt(slot *int64, arena ...*TableArena) *BatchDeltaRow {
 }
 
 // Type is BatchDelta's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c BatchDeltaCook) Type() *TableCookInfo { return &tableCookRecords[1] }
 
 // ReceiptCook is Receipt's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — ReceiptOpen, ReceiptAt — and so does Go, because Go has free functions;
@@ -4668,12 +4158,12 @@ func ReceiptAt(slot *int64, arena ...*TableArena) *ReceiptRow {
 }
 
 // Type is Receipt's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c ReceiptCook) Type() *TableCookInfo { return &tableCookRecords[31] }
 
 // FieldCook is Field's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — FieldOpen, FieldAt — and so does Go, because Go has free functions;
@@ -4771,12 +4261,12 @@ func FieldAt(slot *int64, arena ...*TableArena) *FieldRow {
 }
 
 // Type is Field's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c FieldCook) Type() *TableCookInfo { return &tableCookRecords[13] }
 
 // MemberSnapshotCook is MemberSnapshot's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — MemberSnapshotOpen, MemberSnapshotAt — and so does Go, because Go has free functions;
@@ -4874,12 +4364,12 @@ func MemberSnapshotAt(slot *int64, arena ...*TableArena) *MemberSnapshotRow {
 }
 
 // Type is MemberSnapshot's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c MemberSnapshotCook) Type() *TableCookInfo { return &tableCookRecords[23] }
 
 // MemberEntryCook is MemberEntry's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — MemberEntryOpen, MemberEntryAt — and so does Go, because Go has free functions;
@@ -4977,12 +4467,12 @@ func MemberEntryAt(slot *int64, arena ...*TableArena) *MemberEntryRow {
 }
 
 // Type is MemberEntry's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c MemberEntryCook) Type() *TableCookInfo { return &tableCookRecords[22] }
 
 // ChangeSnapshotCook is ChangeSnapshot's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — ChangeSnapshotOpen, ChangeSnapshotAt — and so does Go, because Go has free functions;
@@ -5080,12 +4570,12 @@ func ChangeSnapshotAt(slot *int64, arena ...*TableArena) *ChangeSnapshotRow {
 }
 
 // Type is ChangeSnapshot's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c ChangeSnapshotCook) Type() *TableCookInfo { return &tableCookRecords[5] }
 
 // OpEntryCook is OpEntry's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — OpEntryOpen, OpEntryAt — and so does Go, because Go has free functions;
@@ -5183,12 +4673,12 @@ func OpEntryAt(slot *int64, arena ...*TableArena) *OpEntryRow {
 }
 
 // Type is OpEntry's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c OpEntryCook) Type() *TableCookInfo { return &tableCookRecords[27] }
 
 // TextRowCook is TextRow's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — TextRowOpen, TextRowAt — and so does Go, because Go has free functions;
@@ -5286,12 +4776,12 @@ func TextRowAt(slot *int64, arena ...*TableArena) *TextRowRow {
 }
 
 // Type is TextRow's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c TextRowCook) Type() *TableCookInfo { return &tableCookRecords[42] }
 
 // EpochSnapshotCook is EpochSnapshot's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — EpochSnapshotOpen, EpochSnapshotAt — and so does Go, because Go has free functions;
@@ -5389,12 +4879,12 @@ func EpochSnapshotAt(slot *int64, arena ...*TableArena) *EpochSnapshotRow {
 }
 
 // Type is EpochSnapshot's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c EpochSnapshotCook) Type() *TableCookInfo { return &tableCookRecords[12] }
 
 // EpochEntryCook is EpochEntry's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — EpochEntryOpen, EpochEntryAt — and so does Go, because Go has free functions;
@@ -5492,12 +4982,12 @@ func EpochEntryAt(slot *int64, arena ...*TableArena) *EpochEntryRow {
 }
 
 // Type is EpochEntry's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c EpochEntryCook) Type() *TableCookInfo { return &tableCookRecords[10] }
 
 // TableSnapshotCook is TableSnapshot's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — TableSnapshotOpen, TableSnapshotAt — and so does Go, because Go has free functions;
@@ -5595,12 +5085,12 @@ func TableSnapshotAt(slot *int64, arena ...*TableArena) *TableSnapshotRow {
 }
 
 // Type is TableSnapshot's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c TableSnapshotCook) Type() *TableCookInfo { return &tableCookRecords[41] }
 
 // TableEntryCook is TableEntry's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — TableEntryOpen, TableEntryAt — and so does Go, because Go has free functions;
@@ -5698,12 +5188,12 @@ func TableEntryAt(slot *int64, arena ...*TableArena) *TableEntryRow {
 }
 
 // Type is TableEntry's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c TableEntryCook) Type() *TableCookInfo { return &tableCookRecords[40] }
 
 // ResidueSnapCook is ResidueSnap's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — ResidueSnapOpen, ResidueSnapAt — and so does Go, because Go has free functions;
@@ -5801,12 +5291,12 @@ func ResidueSnapAt(slot *int64, arena ...*TableArena) *ResidueSnapRow {
 }
 
 // Type is ResidueSnap's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c ResidueSnapCook) Type() *TableCookInfo { return &tableCookRecords[33] }
 
 // ResidueEntryCook is ResidueEntry's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — ResidueEntryOpen, ResidueEntryAt — and so does Go, because Go has free functions;
@@ -5904,12 +5394,12 @@ func ResidueEntryAt(slot *int64, arena ...*TableArena) *ResidueEntryRow {
 }
 
 // Type is ResidueEntry's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c ResidueEntryCook) Type() *TableCookInfo { return &tableCookRecords[32] }
 
 // ViewEntryCook is ViewEntry's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — ViewEntryOpen, ViewEntryAt — and so does Go, because Go has free functions;
@@ -6007,12 +5497,12 @@ func ViewEntryAt(slot *int64, arena ...*TableArena) *ViewEntryRow {
 }
 
 // Type is ViewEntry's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c ViewEntryCook) Type() *TableCookInfo { return &tableCookRecords[49] }
 
 // NoteSnapshotCook is NoteSnapshot's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — NoteSnapshotOpen, NoteSnapshotAt — and so does Go, because Go has free functions;
@@ -6110,12 +5600,12 @@ func NoteSnapshotAt(slot *int64, arena ...*TableArena) *NoteSnapshotRow {
 }
 
 // Type is NoteSnapshot's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c NoteSnapshotCook) Type() *TableCookInfo { return &tableCookRecords[26] }
 
 // LineSnapshotCook is LineSnapshot's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — LineSnapshotOpen, LineSnapshotAt — and so does Go, because Go has free functions;
@@ -6213,12 +5703,12 @@ func LineSnapshotAt(slot *int64, arena ...*TableArena) *LineSnapshotRow {
 }
 
 // Type is LineSnapshot's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c LineSnapshotCook) Type() *TableCookInfo { return &tableCookRecords[17] }
 
 // NoteEntryCook is NoteEntry's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — NoteEntryOpen, NoteEntryAt — and so does Go, because Go has free functions;
@@ -6316,12 +5806,12 @@ func NoteEntryAt(slot *int64, arena ...*TableArena) *NoteEntryRow {
 }
 
 // Type is NoteEntry's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c NoteEntryCook) Type() *TableCookInfo { return &tableCookRecords[25] }
 
 // TimeEntryCook is TimeEntry's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — TimeEntryOpen, TimeEntryAt — and so does Go, because Go has free functions;
@@ -6419,12 +5909,12 @@ func TimeEntryAt(slot *int64, arena ...*TableArena) *TimeEntryRow {
 }
 
 // Type is TimeEntry's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c TimeEntryCook) Type() *TableCookInfo { return &tableCookRecords[43] }
 
 // LogSnapshotCook is LogSnapshot's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — LogSnapshotOpen, LogSnapshotAt — and so does Go, because Go has free functions;
@@ -6522,12 +6012,12 @@ func LogSnapshotAt(slot *int64, arena ...*TableArena) *LogSnapshotRow {
 }
 
 // Type is LogSnapshot's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c LogSnapshotCook) Type() *TableCookInfo { return &tableCookRecords[19] }
 
 // LogEntryCook is LogEntry's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — LogEntryOpen, LogEntryAt — and so does Go, because Go has free functions;
@@ -6625,12 +6115,12 @@ func LogEntryAt(slot *int64, arena ...*TableArena) *LogEntryRow {
 }
 
 // Type is LogEntry's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c LogEntryCook) Type() *TableCookInfo { return &tableCookRecords[18] }
 
 // MemSnapshotCook is MemSnapshot's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — MemSnapshotOpen, MemSnapshotAt — and so does Go, because Go has free functions;
@@ -6728,12 +6218,12 @@ func MemSnapshotAt(slot *int64, arena ...*TableArena) *MemSnapshotRow {
 }
 
 // Type is MemSnapshot's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c MemSnapshotCook) Type() *TableCookInfo { return &tableCookRecords[21] }
 
 // MemDumpMemberCook is MemDumpMember's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
 //
 // `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
 // functions — MemDumpMemberOpen, MemDumpMemberAt — and so does Go, because Go has free functions;
@@ -6831,5 +6321,924 @@ func MemDumpMemberAt(slot *int64, arena ...*TableArena) *MemDumpMemberRow {
 }
 
 // Type is MemDumpMember's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c MemDumpMemberCook) Type() *TableCookInfo { return &tableCookRecords[20] }
+
+const tableCookBuildVersion uint64 = 0x6a042f65ce7ffc57
+
+// TableByteOrder selects the target order, independently of the writing host.
+type TableByteOrder uint8
+
+const (
+	TableByteOrderLittle TableByteOrder = 1
+	TableByteOrderBig    TableByteOrder = 2
+)
+
+type tableCookWriter struct {
+	numbering *TableNumbering
+	buffer    []byte
+	order     TableByteOrder
+	at        int64
+}
+
+func (w *tableCookWriter) put(at int64, value uint64, width uint32) {
+	if w.buffer == nil {
+		return
+	}
+	for i := uint32(0); i < width; i++ {
+		shift := i
+		if w.order == TableByteOrderBig {
+			shift = width - 1 - i
+		}
+		w.buffer[at+int64(i)] = byte(value >> (shift * 8))
+	}
+}
+func (w *tableCookWriter) header(data, nodes, align int64) {
+	w.put(0, 0x4b4f4f434d484353, 8)
+	w.put(8, tableCookBuildVersion, 8)
+	w.put(16, uint64(w.order), 8)
+	w.put(24, uint64(data), 8)
+	w.put(32, uint64(nodes)*16, 8)
+	w.put(40, uint64(align), 8)
+}
+func (w *tableCookWriter) record(p unsafe.Pointer, t *TableTypeInfo, at int64, live bool) bool {
+	for i := range t.Fields {
+		f := &t.Fields[i]
+		rides := live && tableJsonGuardHolds(p, t, f.Guard)
+		if f.Optional {
+			rides = rides && *(*bool)(unsafe.Add(p, f.PresentOffset))
+		}
+		if !w.field(p, f, at, rides) {
+			return false
+		}
+	}
+	return true
+}
+func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64, live bool) bool {
+	p := unsafe.Add(base, f.Offset)
+	dest := at + int64(f.CookOffset)
+	if f.Optional {
+		v := uint64(0)
+		if *(*bool)(unsafe.Add(base, f.PresentOffset)) {
+			v = 1
+		}
+		w.put(at+int64(f.CookPresentOffset), v, 1)
+	}
+	if f.List || f.Map {
+		return w.container(p, f, dest, live)
+	}
+	count := int32(1)
+	used := int32(1)
+	if f.Counted {
+		used = *(*int32)(unsafe.Add(base, f.CountOffset))
+		if used < 0 || used > f.ArrayBound {
+			return false
+		}
+		w.put(at+int64(f.CookCountOffset), uint64(used), 4)
+	}
+	if !f.Pointer && (f.TypeName == "string" || f.TypeName == "bytes" || f.TypeName == "wstring") {
+		width := f.CookElemSize
+		for i := int32(0); i < used; i++ {
+			v := tableJsonGetRaw(unsafe.Add(p, int64(i)*int64(width)), width)
+			w.put(dest+int64(i)*int64(width), v, width)
+		}
+		return true
+	}
+	if f.IsArray {
+		count = f.ArrayBound
+		if !f.Counted {
+			used = count
+		}
+	}
+	for i := int32(0); i < count; i++ {
+		if !w.value(unsafe.Add(p, int64(i)*int64(f.ElemSize)), f, dest+int64(i)*int64(f.CookElemSize), live && i < used) {
+			return false
+		}
+	}
+	return true
+}
+func (w *tableCookWriter) value(p unsafe.Pointer, f *TableFieldInfo, at int64, live bool) bool {
+	if f.Pointer {
+		return w.reference((*int64)(p), at)
+	}
+	if f.Arms != nil {
+		u := f.Arms()
+		tag := tableJsonGetRaw(unsafe.Add(p, u.TagOffset), u.TagSize)
+		if tag >= uint64(len(u.Arms)) {
+			return false
+		}
+		w.put(at, tag, u.CookTagSize)
+		if tag == 0 || u.Arms[tag].Void {
+			return true
+		}
+		return w.field(p, &u.Arms[tag].Field, at, live)
+	}
+	if f.Table != nil {
+		return w.record(p, f.Table(), at, live)
+	}
+	width := f.CookElemSize
+	if width == 16 {
+		lo := *(*uint64)(p)
+		hi := *(*uint64)(unsafe.Add(p, 8))
+		if w.order == TableByteOrderBig {
+			lo, hi = hi, lo
+		}
+		w.put(at, lo, 8)
+		w.put(at+8, hi, 8)
+		return true
+	}
+	value := tableJsonGetRaw(p, f.ElemSize)
+	if f.Kind == 1 {
+		value = 0
+		if *(*bool)(p) {
+			value = 1
+		}
+	}
+	w.put(at, value, width)
+	return true
+}
+func tableCookFixed(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, order TableByteOrder) bool {
+	if p == nil || order != TableByteOrderLittle && order != TableByteOrderBig {
+		return false
+	}
+	align := max(int64(8), int64(t.CookAlign))
+	data := (int64(t.CookSize) + align - 1) & -align
+	total := 64 + data + 16
+	if int64(len(buffer)) < total {
+		return false
+	}
+	w := tableCookWriter{order: order}
+	if !w.record(p, t, 64, true) {
+		return false
+	}
+	clear(buffer[:total])
+	w.buffer = buffer
+	w.header(data, 1, align)
+	if !w.record(p, t, 64, true) {
+		return false
+	}
+	w.put(64+data, 0, 8)
+	w.put(64+data+8, t.Id, 8)
+	return true
+}
+
+func (w *tableCookWriter) reference(slot *int64, at int64) bool {
+	if *slot == 0 {
+		return true
+	}
+	if w.numbering == nil {
+		return false
+	}
+	i, ok := w.numbering.Index(slot)
+	if !ok {
+		return false
+	}
+	w.put(at, uint64(64+w.numbering.entries[i-1].offset-at), 8)
+	return true
+}
+func tableCookRegion(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, order TableByteOrder, measure bool, a *TableArena, allocator ...TableAllocator) int64 {
+	size, _ := tableCookRegionReason(p, t, buffer, order, measure, a, allocator...)
+	return size
+}
+func tableCookRegionReason(p unsafe.Pointer, t *TableTypeInfo, buffer []byte, order TableByteOrder, measure bool, a *TableArena, allocator ...TableAllocator) (int64, TableRefuseReason) {
+	if order != TableByteOrderLittle && order != TableByteOrderBig {
+		return -1, TableRefuseInvalidValue
+	}
+	n, ok := tableNumber(p, t, a, allocator...)
+	if !ok {
+		return -1, n.reason
+	}
+	defer n.Release()
+	w := tableCookWriter{order: order, numbering: &n}
+	data, align := int64(0), int64(8)
+	for i := range n.entries {
+		e := &n.entries[i]
+		size, alignment := int64(0), int64(8)
+		if e.info != nil {
+			size = int64(e.info.CookSize)
+			alignment = int64(e.info.CookAlign)
+		} else {
+			length := uint64(*(*uint32)(e.node))
+			size = 8 + int64(length)
+			if e.id == tableStringTypeId {
+				size++
+			}
+		}
+		align = max(align, alignment)
+		data = (data + alignment - 1) & -alignment
+		e.offset = data
+		w.at = 64 + data + size
+		if e.info != nil && !w.record(e.node, e.info, 64+data, true) {
+			return -1, TableRefuseInvalidValue
+		}
+		data = w.at - 64
+	}
+	data = (data + align - 1) & -align
+	total := 64 + data + int64(len(n.entries))*16
+	if measure {
+		return total, TableRefuseOk
+	}
+	if int64(len(buffer)) < total {
+		return -1, TableRefuseInvalidValue
+	}
+	clear(buffer[:total])
+	w.buffer = buffer
+	w.header(data, int64(len(n.entries)), align)
+	for i := range n.entries {
+		e := &n.entries[i]
+		at := 64 + e.offset
+		if e.info != nil {
+			w.at = at + int64(e.info.CookSize)
+			if !w.record(e.node, e.info, at, true) {
+				return -1, TableRefuseInvalidValue
+			}
+		} else {
+			length := uint64(*(*uint32)(e.node))
+			w.put(at, length, 4)
+			copy(buffer[at+8:at+8+int64(length)], unsafe.Slice((*byte)(unsafe.Add(e.node, 8)), int(length)))
+		}
+		w.put(64+data+int64(i)*16, uint64(e.offset), 8)
+		w.put(64+data+int64(i)*16+8, e.id, 8)
+	}
+	return total, TableRefuseOk
+}
+
+func (w *tableCookWriter) container(p unsafe.Pointer, f *TableFieldInfo, at int64, live bool) bool {
+	h := (*tableContainer)(p)
+	if h.Count < 0 || !live && h.Count != 0 {
+		return false
+	}
+	if h.Count == 0 {
+		return true
+	}
+	if w.numbering == nil {
+		return false
+	}
+	alignment := int64(f.ElemAlign)
+	w.at = (w.at + alignment - 1) & -alignment
+	start := w.at
+	w.at += int64(h.Count) * int64(f.CookElemSize)
+	if w.at < start {
+		return false
+	}
+	w.put(at, uint64(start-at), 8)
+	w.put(at+8, uint64(h.Count), 4)
+	cursor := tableMapCursor(h, f, w.numbering.arena)
+	defer cursor.Release()
+	for i := int32(0); i < h.Count; i++ {
+		elem := cursor.Next()
+		if elem == nil || !w.value(elem, f, start+int64(i)*int64(f.CookElemSize), true) {
+			return false
+		}
+	}
+	return true
+}
+func WordCookMeasure(value *Word, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), WordTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func WordCookMeasureReason(value *Word, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), WordTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func WordCookFrom(value *Word, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), WordTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func PairCookMeasure(value *Pair, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), PairTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func PairCookMeasureReason(value *Pair, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), PairTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func PairCookFrom(value *Pair, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), PairTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func FlagCookMeasure(value *Flag, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), FlagTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func FlagCookMeasureReason(value *Flag, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), FlagTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func FlagCookFrom(value *Flag, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), FlagTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func EpochFlagCookMeasure(value *EpochFlag, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), EpochFlagTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func EpochFlagCookMeasureReason(value *EpochFlag, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), EpochFlagTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func EpochFlagCookFrom(value *EpochFlag, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), EpochFlagTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func ImageCookMeasure(value *Image, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), ImageTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func ImageCookMeasureReason(value *Image, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), ImageTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func ImageCookFrom(value *Image, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), ImageTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func TokensCookMeasure(value *Tokens) int64                { return 136 }
+func TokensCookMeasureReason(value *Tokens) (int64, error) { return TokensCookMeasure(value), nil }
+func TokensCookFrom(value *Tokens, buffer []byte, order TableByteOrder) bool {
+	return tableCookFixed(unsafe.Pointer(value), TokensTableType(), buffer, order)
+}
+func TokenCountCookMeasure(value *TokenCount, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), TokenCountTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func TokenCountCookMeasureReason(value *TokenCount, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), TokenCountTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func TokenCountCookFrom(value *TokenCount, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), TokenCountTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func RawRecordCookMeasure(value *RawRecord, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), RawRecordTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func RawRecordCookMeasureReason(value *RawRecord, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), RawRecordTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func RawRecordCookFrom(value *RawRecord, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), RawRecordTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func RawUsageCookMeasure(value *RawUsage, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), RawUsageTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func RawUsageCookMeasureReason(value *RawUsage, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), RawUsageTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func RawUsageCookFrom(value *RawUsage, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), RawUsageTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func UsageCookMeasure(value *Usage, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), UsageTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func UsageCookMeasureReason(value *Usage, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), UsageTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func UsageCookFrom(value *Usage, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), UsageTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func TotalCookMeasure(value *Total, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), TotalTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func TotalCookMeasureReason(value *Total, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), TotalTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func TotalCookFrom(value *Total, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), TotalTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func ConsumerCookMeasure(value *Consumer, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), ConsumerTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func ConsumerCookMeasureReason(value *Consumer, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), ConsumerTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func ConsumerCookFrom(value *Consumer, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), ConsumerTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func CardCostViewCookMeasure(value *CardCostView, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), CardCostViewTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func CardCostViewCookMeasureReason(value *CardCostView, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), CardCostViewTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func CardCostViewCookFrom(value *CardCostView, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), CardCostViewTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func SnapshotCountsCookMeasure(value *SnapshotCounts) int64 { return 96 }
+func SnapshotCountsCookMeasureReason(value *SnapshotCounts) (int64, error) {
+	return SnapshotCountsCookMeasure(value), nil
+}
+func SnapshotCountsCookFrom(value *SnapshotCounts, buffer []byte, order TableByteOrder) bool {
+	return tableCookFixed(unsafe.Pointer(value), SnapshotCountsTableType(), buffer, order)
+}
+func SnapshotTakenCookMeasure(value *SnapshotTaken, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), SnapshotTakenTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func SnapshotTakenCookMeasureReason(value *SnapshotTaken, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), SnapshotTakenTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func SnapshotTakenCookFrom(value *SnapshotTaken, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), SnapshotTakenTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func ColumnCountCookMeasure(value *ColumnCount, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), ColumnCountTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func ColumnCountCookMeasureReason(value *ColumnCount, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), ColumnCountTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func ColumnCountCookFrom(value *ColumnCount, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), ColumnCountTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func BackupCountsCookMeasure(value *BackupCounts, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), BackupCountsTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func BackupCountsCookMeasureReason(value *BackupCounts, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), BackupCountsTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func BackupCountsCookFrom(value *BackupCounts, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), BackupCountsTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func DumpKeyCookMeasure(value *DumpKey, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), DumpKeyTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func DumpKeyCookMeasureReason(value *DumpKey, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), DumpKeyTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func DumpKeyCookFrom(value *DumpKey, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), DumpKeyTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func StatePartCookMeasure(value *StatePart, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), StatePartTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func StatePartCookMeasureReason(value *StatePart, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), StatePartTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func StatePartCookFrom(value *StatePart, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), StatePartTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func SprintStateCookMeasure(value *SprintState, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), SprintStateTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func SprintStateCookMeasureReason(value *SprintState, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), SprintStateTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func SprintStateCookFrom(value *SprintState, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), SprintStateTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func ColumnCookMeasure(value *Column, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), ColumnTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func ColumnCookMeasureReason(value *Column, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), ColumnTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func ColumnCookFrom(value *Column, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), ColumnTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func ScoredMemberCookMeasure(value *ScoredMember, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), ScoredMemberTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func ScoredMemberCookMeasureReason(value *ScoredMember, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), ScoredMemberTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func ScoredMemberCookFrom(value *ScoredMember, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), ScoredMemberTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func CellCookMeasure(value *Cell, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), CellTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func CellCookMeasureReason(value *Cell, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), CellTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func CellCookFrom(value *Cell, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), CellTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func RowCookMeasure(value *Row, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), RowTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func RowCookMeasureReason(value *Row, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), RowTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func RowCookFrom(value *Row, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), RowTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func NTableCookMeasure(value *NTable, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), NTableTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func NTableCookMeasureReason(value *NTable, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), NTableTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func NTableCookFrom(value *NTable, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), NTableTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func ViewCookMeasure(value *View, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), ViewTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func ViewCookMeasureReason(value *View, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), ViewTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func ViewCookFrom(value *View, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), ViewTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func FieldChangeCookMeasure(value *FieldChange, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), FieldChangeTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func FieldChangeCookMeasureReason(value *FieldChange, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), FieldChangeTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func FieldChangeCookFrom(value *FieldChange, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), FieldChangeTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func BatchMemberDeltaCookMeasure(value *BatchMemberDelta, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), BatchMemberDeltaTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func BatchMemberDeltaCookMeasureReason(value *BatchMemberDelta, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), BatchMemberDeltaTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func BatchMemberDeltaCookFrom(value *BatchMemberDelta, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), BatchMemberDeltaTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func BatchDeltaCookMeasure(value *BatchDelta, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), BatchDeltaTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func BatchDeltaCookMeasureReason(value *BatchDelta, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), BatchDeltaTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func BatchDeltaCookFrom(value *BatchDelta, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), BatchDeltaTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func ReceiptCookMeasure(value *Receipt, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), ReceiptTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func ReceiptCookMeasureReason(value *Receipt, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), ReceiptTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func ReceiptCookFrom(value *Receipt, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), ReceiptTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func FieldCookMeasure(value *Field, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), FieldTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func FieldCookMeasureReason(value *Field, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), FieldTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func FieldCookFrom(value *Field, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), FieldTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func MemberSnapshotCookMeasure(value *MemberSnapshot, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), MemberSnapshotTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func MemberSnapshotCookMeasureReason(value *MemberSnapshot, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), MemberSnapshotTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func MemberSnapshotCookFrom(value *MemberSnapshot, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), MemberSnapshotTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func MemberEntryCookMeasure(value *MemberEntry, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), MemberEntryTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func MemberEntryCookMeasureReason(value *MemberEntry, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), MemberEntryTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func MemberEntryCookFrom(value *MemberEntry, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), MemberEntryTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func ChangeSnapshotCookMeasure(value *ChangeSnapshot, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), ChangeSnapshotTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func ChangeSnapshotCookMeasureReason(value *ChangeSnapshot, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), ChangeSnapshotTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func ChangeSnapshotCookFrom(value *ChangeSnapshot, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), ChangeSnapshotTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func OpEntryCookMeasure(value *OpEntry, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), OpEntryTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func OpEntryCookMeasureReason(value *OpEntry, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), OpEntryTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func OpEntryCookFrom(value *OpEntry, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), OpEntryTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func TextRowCookMeasure(value *TextRow, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), TextRowTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func TextRowCookMeasureReason(value *TextRow, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), TextRowTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func TextRowCookFrom(value *TextRow, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), TextRowTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func EpochSnapshotCookMeasure(value *EpochSnapshot, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), EpochSnapshotTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func EpochSnapshotCookMeasureReason(value *EpochSnapshot, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), EpochSnapshotTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func EpochSnapshotCookFrom(value *EpochSnapshot, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), EpochSnapshotTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func EpochEntryCookMeasure(value *EpochEntry, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), EpochEntryTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func EpochEntryCookMeasureReason(value *EpochEntry, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), EpochEntryTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func EpochEntryCookFrom(value *EpochEntry, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), EpochEntryTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func TableSnapshotCookMeasure(value *TableSnapshot, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), TableSnapshotTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func TableSnapshotCookMeasureReason(value *TableSnapshot, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), TableSnapshotTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func TableSnapshotCookFrom(value *TableSnapshot, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), TableSnapshotTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func TableEntryCookMeasure(value *TableEntry, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), TableEntryTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func TableEntryCookMeasureReason(value *TableEntry, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), TableEntryTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func TableEntryCookFrom(value *TableEntry, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), TableEntryTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func ResidueSnapCookMeasure(value *ResidueSnap, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), ResidueSnapTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func ResidueSnapCookMeasureReason(value *ResidueSnap, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), ResidueSnapTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func ResidueSnapCookFrom(value *ResidueSnap, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), ResidueSnapTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func ResidueEntryCookMeasure(value *ResidueEntry, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), ResidueEntryTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func ResidueEntryCookMeasureReason(value *ResidueEntry, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), ResidueEntryTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func ResidueEntryCookFrom(value *ResidueEntry, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), ResidueEntryTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func ViewEntryCookMeasure(value *ViewEntry, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), ViewEntryTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func ViewEntryCookMeasureReason(value *ViewEntry, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), ViewEntryTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func ViewEntryCookFrom(value *ViewEntry, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), ViewEntryTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func NoteSnapshotCookMeasure(value *NoteSnapshot, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), NoteSnapshotTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func NoteSnapshotCookMeasureReason(value *NoteSnapshot, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), NoteSnapshotTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func NoteSnapshotCookFrom(value *NoteSnapshot, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), NoteSnapshotTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func LineSnapshotCookMeasure(value *LineSnapshot, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), LineSnapshotTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func LineSnapshotCookMeasureReason(value *LineSnapshot, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), LineSnapshotTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func LineSnapshotCookFrom(value *LineSnapshot, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), LineSnapshotTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func NoteEntryCookMeasure(value *NoteEntry, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), NoteEntryTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func NoteEntryCookMeasureReason(value *NoteEntry, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), NoteEntryTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func NoteEntryCookFrom(value *NoteEntry, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), NoteEntryTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func TimeEntryCookMeasure(value *TimeEntry, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), TimeEntryTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func TimeEntryCookMeasureReason(value *TimeEntry, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), TimeEntryTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func TimeEntryCookFrom(value *TimeEntry, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), TimeEntryTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func LogSnapshotCookMeasure(value *LogSnapshot, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), LogSnapshotTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func LogSnapshotCookMeasureReason(value *LogSnapshot, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), LogSnapshotTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func LogSnapshotCookFrom(value *LogSnapshot, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), LogSnapshotTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func LogEntryCookMeasure(value *LogEntry, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), LogEntryTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func LogEntryCookMeasureReason(value *LogEntry, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), LogEntryTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func LogEntryCookFrom(value *LogEntry, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), LogEntryTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func MemSnapshotCookMeasure(value *MemSnapshot, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), MemSnapshotTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func MemSnapshotCookMeasureReason(value *MemSnapshot, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), MemSnapshotTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func MemSnapshotCookFrom(value *MemSnapshot, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), MemSnapshotTableType(), buffer, order, false, arena, allocator) >= 0
+}
+func MemDumpMemberCookMeasure(value *MemDumpMember, context ...TableWriteContext) int64 {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), MemDumpMemberTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+}
+func MemDumpMemberCookMeasureReason(value *MemDumpMember, context ...TableWriteContext) (int64, error) {
+	arena, allocator := tableWriteOptions(context)
+	size, reason := tableCookRegionReason(unsafe.Pointer(value), MemDumpMemberTableType(), nil, TableByteOrderLittle, true, arena, allocator)
+	return size, tableRefuseError(reason)
+}
+func MemDumpMemberCookFrom(value *MemDumpMember, buffer []byte, order TableByteOrder, context ...TableWriteContext) bool {
+	arena, allocator := tableWriteOptions(context)
+	return tableCookRegion(unsafe.Pointer(value), MemDumpMemberTableType(), buffer, order, false, arena, allocator) >= 0
+}

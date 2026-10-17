@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package donewire — the BLOCK FORM (docs/SPEC-TABLES.md §19): producer and consumer.
+// package donewire — the BLOCK FORM (mas-bandwidth/schema docs/SPEC-TABLES.md §19): producer and consumer.
 //
 // NOTHING DECLARES THIS FORM. Every fixed table has one, and it is emitted on
 // the side: compile this file when you build or read a block. The unit's
-// <Base>Table.go carries not one symbol of it.
+// <Base>Table.go carries none of its entry points; the blittable <Name>Row
+// records it lays out are the core's, shared with the cooked form.
 //
 // It is UNSAFE by nature, not by taste: a block is memory another language
 // wrote, and pointing at it without a copy is the whole point (§12.1).
@@ -26,14 +27,14 @@ import (
 )
 
 // TableBlockMagic identifies a schema block and carries the byte-order check
-// with it (docs/SPEC-TABLES.md §19.1). It is stored in the producer's NATIVE
+// with it (mas-bandwidth/schema docs/SPEC-TABLES.md §19.1). It is stored in the producer's NATIVE
 // order; a consumer that reads back the byte-swapped value has found a foreign
 // byte order, and one that reads back anything else has not found a block at
 // all.
 const TableBlockMagic uint64 = 0x4b4c42414d484353
 
 // TableBlockByteOrder is THIS BUILD's byte order, as the prologue carries it
-// (docs/SPEC-TABLES.md §20.3): 1 little, 2 big. A block written by a build of
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §20.3): 1 little, 2 big. A block written by a build of
 // the other order is REFUSED by BlockOpen — a fix-up path is a named
 // obligation, not something a consumer improvises row by row.
 //
@@ -82,7 +83,7 @@ func (r TableBlockRows[T]) At(i int32) *T {
 
 // ---- block fill path: end ----
 
-// ---- reflection over a block (docs/SPEC-TABLES.md §8, §19.2) ----
+// ---- reflection over a block (mas-bandwidth/schema docs/SPEC-TABLES.md §8, §19.2) ----
 //
 // The descriptors are the mechanism, and they are what retires a hand-kept
 // mirror: a consumer holding them reads the triples out of an instance and
@@ -109,7 +110,7 @@ type TableBlockFieldInfo struct {
 	Stride       uint32 // THIS BUILD's pitch, to assert against — never to index with (§19.2)
 
 	// ---- what a GENERIC ROW WALK needs, in the vocabulary TableFieldInfo
-	// already uses (docs/SPEC-TABLES.md §8.1), so ONE walker reads a cooked
+	// already uses (mas-bandwidth/schema docs/SPEC-TABLES.md §8.1), so ONE walker reads a cooked
 	// node and a block row without learning a second one. Where the field
 	// starts is the pair above; this is everything after it.
 	IsArray       bool   // inline storage of ArrayBound slots at ElemSize (bytes included)
@@ -133,7 +134,7 @@ type TableBlockFieldInfo struct {
 // that array's ROW, and so on down.
 type TableBlockInfo struct {
 	Name         string
-	BuildVersion uint64 // the unit's (docs/SPEC-TABLES.md §20)
+	BuildVersion uint64 // the unit's (mas-bandwidth/schema docs/SPEC-TABLES.md §20)
 	Size         uint32 // the record's own size: a projection's, or a row's
 	Align        uint32
 	NumFields    int32
@@ -164,7 +165,7 @@ type TableBlockRefusal struct {
 
 // The BLITTABLE records: one per record the block form touches, laid out to
 // the C ABI with GENERATED PADDING FIELDS wherever the layout has interior
-// padding (docs/SPEC-TABLES.md §19.3). Explicit padding is chosen over relying
+// padding (mas-bandwidth/schema docs/SPEC-TABLES.md §19.3). Explicit padding is chosen over relying
 // on Go's own inter-field padding matching C's, because that is an
 // assumption, and an assumption is what this form exists to delete: the
 // padding puts every field where the model says, and the init below proves
@@ -175,20 +176,6 @@ type TableBlockRefusal struct {
 // declaration's name, which is the table wire's storage, and one declaration
 // cannot be two types.
 
-// CompletionRow — a block row, or a record one nests by value. `Row` is a CLAIMED
-// suffix (docs/SPEC-TABLES.md §11), so no declaration in the unit can take it.
-type CompletionRow struct {
-	Kind       [17]byte // string(16): max length, used length beside it
-	_          [3]byte  // generated padding
-	KindLength int32
-	Card       [516]byte // string(515): max length, used length beside it
-	CardLength int32
-	Row        [136]byte // string(135): max length, used length beside it
-	RowLength  int32
-	_          [4]byte // generated padding
-	At         int64
-}
-
 // CompletionBlockProjection — the block PROJECTION: the table's own instance as it
 // sits at the front of a block, opening with the generated PROLOGUE and
 // carrying, per out-of-line array, the triple that says where its rows are.
@@ -198,7 +185,7 @@ type CompletionRow struct {
 // another block's row, and the two differ by the prologue.
 type CompletionBlockProjection struct {
 	Magic        uint64   // generated: identifies a schema block
-	BuildVersion uint64   // generated: the unit's build version (docs/SPEC-TABLES.md §20)
+	BuildVersion uint64   // generated: the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20)
 	ByteOrder    uint64   // generated: 1 little, 2 big
 	Kind         [17]byte // string(16): max length, used length beside it
 	_            [3]byte  // generated padding
@@ -220,7 +207,7 @@ type CompletionBlockProjection struct {
 // another block's row, and the two differ by the prologue.
 type DoneRecordBlockProjection struct {
 	Magic        uint64 // generated: identifies a schema block
-	BuildVersion uint64 // generated: the unit's build version (docs/SPEC-TABLES.md §20)
+	BuildVersion uint64 // generated: the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20)
 	ByteOrder    uint64 // generated: 1 little, 2 big
 	Epoch        uint64
 	Cursor       [42]byte // string(41): max length, used length beside it
@@ -231,7 +218,7 @@ type DoneRecordBlockProjection struct {
 	_            [4]byte // generated padding
 }
 
-// The LAYOUT CONTRACT's Go half (docs/SPEC-TABLES.md §19.3), run ONCE at
+// The LAYOUT CONTRACT's Go half (mas-bandwidth/schema docs/SPEC-TABLES.md §19.3), run ONCE at
 // package initialisation. It REFUSES rather than guesses: a runtime whose
 // model disagrees with the one the compiler derived stops the program where
 // it starts, rather than pointing at a row and reading the wrong bytes.
@@ -268,7 +255,7 @@ func init() {
 func tableBlockLayoutSize(what string, got, want uintptr) {
 	if got != want {
 		panic(fmt.Sprintf("schema block layout: %s is %d bytes in this runtime and %d in the schema "+
-			"the C++ side asserts — the two sides disagree about the bytes (docs/SPEC-TABLES.md §19.3)", what, got, want))
+			"the C++ side asserts — the two sides disagree about the bytes (mas-bandwidth/schema docs/SPEC-TABLES.md §19.3)", what, got, want))
 	}
 }
 
@@ -276,7 +263,7 @@ func tableBlockLayoutSize(what string, got, want uintptr) {
 func tableBlockLayoutOffset(what string, got, want uintptr) {
 	if got != want {
 		panic(fmt.Sprintf("schema block layout: %s sits at %d in this runtime and %d in the schema "+
-			"the C++ side asserts — the two sides disagree about the bytes (docs/SPEC-TABLES.md §19.3)", what, got, want))
+			"the C++ side asserts — the two sides disagree about the bytes (mas-bandwidth/schema docs/SPEC-TABLES.md §19.3)", what, got, want))
 	}
 }
 
@@ -336,7 +323,7 @@ func init() {
 }
 
 // CompletionBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
-// from the declared maxima (docs/SPEC-TABLES.md §19.1). A Go consumer does
+// from the declared maxima (mas-bandwidth/schema docs/SPEC-TABLES.md §19.1). A Go consumer does
 // not allocate a block — the bytes are handed to it — but it caps by this: a
 // playback buffer, a recording, a scratch copy all size from the generated
 // constant rather than from a number a person wrote down beside it.
@@ -476,7 +463,7 @@ func CompletionBlockBytes(b *CompletionBlock) int64 {
 func (b *CompletionBlock) Type() *TableBlockInfo { return &tableBlockRecords[0] }
 
 // DoneRecordBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
-// from the declared maxima (docs/SPEC-TABLES.md §19.1). A Go consumer does
+// from the declared maxima (mas-bandwidth/schema docs/SPEC-TABLES.md §19.1). A Go consumer does
 // not allocate a block — the bytes are handed to it — but it caps by this: a
 // playback buffer, a recording, a scratch copy all size from the generated
 // constant rather than from a number a person wrote down beside it.
@@ -499,7 +486,7 @@ type DoneRecordBlock struct {
 // ---- block fill path: begin ----
 // DoneStride, DoneMax and DoneProjectionOffset are the constants this build
 // asserts against. A consumer INDEXES with what it read from the instance,
-// never with these (docs/SPEC-TABLES.md §19.2). They are METHODS rather than
+// never with these (mas-bandwidth/schema docs/SPEC-TABLES.md §19.2). They are METHODS rather than
 // package constants because §11 gives a language whose accessors are members
 // exactly that latitude: a member claims nothing at file scope.
 func (b *DoneRecordBlock) DoneStride() int64           { return 696 }

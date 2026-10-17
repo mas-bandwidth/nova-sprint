@@ -1994,6 +1994,6 @@ func TestViewRowsGolden(t *testing.T) {
 		require.NoError(t, err, "schemas/viewrows/viewrows.schema is committed")
 		gen, err := os.ReadFile("generate.go")
 		require.NoError(t, err)
-		assert.Contains(t, string(gen), "schema/v2/cmd/schema@v2.5.1-0.20261014163537-4d9941fbc7fd generate --lang go --out . ../../../../schemas/viewrows", "generate.go pins the repository's schema pin")
+		assert.Contains(t, string(gen), "schema/v2/cmd/schema@v2.5.1-0.20261017153557-54e0eda7d20b generate --lang go --out . ../../../../schemas/viewrows", "generate.go pins the repository's schema pin")
 	})
 }
