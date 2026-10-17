@@ -2689,4 +2689,9 @@
    :title "ROADMAP.md is feature tables with check marks and crosses, like schema's"
    :text "Every repository's roadmap renders as one section per area and one table of user-recognisable features with done and remaining cells and a complete percentage row, evidence for each done cell kept in the data, as schema's ROADMAP.md does. pkg/roadmap (nova-tools) gains feature and evidence records and the table render; nova-work roadmap verbs and nova-sprint pick it up with the next nova-tools bump, so both repos switch together. Locked out of v1.4.8 because the renderer ships inside nova-work and nova-sprint."
    :release "v1.7"
-   :origin "the owner, 2026-10-17: the standard format for all roadmaps, including nova tools and nova sprint")))
+   :origin "the owner, 2026-10-17: the standard format for all roadmaps, including nova tools and nova sprint")
+  (item "land-conflict-is-a-merge-step" :group "sprint" :date "2026-10-16"
+   :title "A landing conflict is resolved in the merge step, never a new attempt"
+   :text "When a card's head no longer merges onto its stream's tip, the lander merges the tip into the card's branch, re-runs the card's own gate and lands; only a conflict it cannot resolve, or a gate that goes red after the merge, goes back to the card, and then as a merge task, not a fresh attempt with a new worker and a new read. Today every conflict re-deals the card (fixed-count reached attempt 11 on a two-line make/go.mk conflict)."
+   :release "v1.7"
+   :origin "the owner, 2026-10-17: these bad merges should not become fixes; they should be done in the merge step")))

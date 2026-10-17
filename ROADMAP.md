@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (218)
+- [The sprint system](#the-sprint-system) (219)
 - [Setup, release and operations](#setup-release-and-operations) (70)
 - [Docs, models and the repository](#docs-models-and-the-repository) (23)
 - [Friend AIs](#friend-ais) (21)
@@ -1824,6 +1824,14 @@ Why it waits: Lessons that live in prose are forgotten; skills are non-determini
 Target: v1.7
 
 From: Glenn, live, 2026-10-16: 'as coordinator, please coach yourself how you can improve the cards that go in, and then lock it in with card lint (v1.7)'
+
+### A landing conflict is resolved in the merge step, never a new attempt
+
+When a card's head no longer merges onto its stream's tip, the lander merges the tip into the card's branch, re-runs the card's own gate and lands; only a conflict it cannot resolve, or a gate that goes red after the merge, goes back to the card, and then as a merge task, not a fresh attempt with a new worker and a new read. Today every conflict re-deals the card (fixed-count reached attempt 11 on a two-line make/go.mk conflict).
+
+Target: v1.7
+
+From: the owner, 2026-10-17: these bad merges should not become fixes; they should be done in the merge step
 
 ## Setup, release and operations
 
