@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"runtime"
@@ -19,6 +20,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/friendrowswire"
 	"github.com/mas-bandwidth/nova-tools/pkg/hostload"
 	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/schemaread"
 )
 
 // A fleet member's beats (sprint/presence.go): one record per member under
@@ -67,6 +69,13 @@ func strangerText(dst []byte, s string) (int32, string) {
 type strangerEntry struct {
 	name string
 	rec  stranger
+}
+
+// strangerPage is one stored page of the strangers record as the dual reader returns it
+// (S1, S2): its entries keyed by machine name and the record's declared page count.
+type strangerPage struct {
+	entries map[string]stranger
+	pages   uint32
 }
 
 // strangerFixedPageOf fills w as one fixed-table page of (name, seen, told) entries, or
@@ -149,28 +158,22 @@ func (st *Store) writeStrangers(ctx context.Context, kv KV, s map[string]strange
 	return nil
 }
 
-// decodeStrangerPage decodes one fixed strangers page's entries into out and returns the
-// record's declared page count, or the reason the image is refused (S2).
-func decodeStrangerPage(raw string, out map[string]stranger) (uint32, string) {
-	if raw == "" || raw[0] != friendrowswire.TableFixedForm {
-		return 0, "unknown_form"
+// decodeStrangerPage reads one stored strangers page through the registered row codec
+// (S1, S2, S4), returning its entries and declared page count, or the original refusal
+// reason. Empty remains the early return.
+func (st *Store) decodeStrangerPage(raw string) (strangerPage, string) {
+	if raw == "" {
+		return strangerPage{}, "empty"
 	}
-	pages := make([]friendrowswire.Strangers, 1)
-	plan := make([]friendrowswire.TableFixedEntry, 2*len(friendrowswire.StrangersFixedPlan.Entries))
-	var rep friendrowswire.TableReport
-	n := friendrowswire.StrangersFixedLoad(pages, []byte(raw), plan, &rep)
-	if n != 1 || rep.Malformed || rep.Reason != "" {
-		return 0, "malformed"
+	page, _, err := st.presenceRows().stranger.Read([]byte(raw))
+	if err != nil {
+		var refusal *schemaread.Refusal
+		if errors.As(err, &refusal) {
+			return strangerPage{}, refusal.Reason
+		}
+		return strangerPage{}, "malformed"
 	}
-	p := pages[0]
-	for i := int32(0); i < p.EntriesCount; i++ {
-		e := &p.Entries[i]
-		out[string(e.Name[:e.NameLength])] = stranger{Seen: doneTimeOf(e.Seen), Told: e.Told}
-	}
-	if p.Pages == 0 {
-		return 1, ""
-	}
-	return p.Pages, ""
+	return page, ""
 }
 
 func (st *Store) strangers(ctx context.Context) (map[string]stranger, error) {
@@ -186,26 +189,23 @@ func (st *Store) strangers(ctx context.Context) (map[string]stranger, error) {
 	if raw == "" {
 		return out, nil
 	}
-	// Today's legacy JSON object reads whole (S2, S4). An unreadable record is read as
-	// none on purpose: the next stranger's note writes it whole again; the refusal is named
-	// and counted under STRANGERS.
-	if raw[0] == '{' {
-		if s, err := presenceRow(st.presenceRows().stranger, []byte(raw)); err == nil && s != nil {
-			out = s
-		}
-		return out, nil
-	}
-	// The fixed paged form (S1, S2). An unreadable record reads as none on purpose, as the
-	// legacy form's does.
-	pages, why := decodeStrangerPage(raw, out)
+	// Every page reads through the dual reader, so the per-form count is the evidence (S2,
+	// S4): the fixed paged form, the padded standard base64 of that wire, the schema JSON
+	// text and today's legacy JSON object. An unreadable record is read as none on purpose:
+	// the next stranger's note writes it whole again; the refusal is named and counted
+	// under STRANGERS.
+	page, why := st.decodeStrangerPage(raw)
 	if why != "" {
 		return map[string]stranger{}, nil
 	}
-	if pages <= 1 {
+	for name, rec := range page.entries {
+		out[name] = rec
+	}
+	if page.pages <= 1 {
 		return out, nil
 	}
-	names := make([]string, pages-1)
-	for p := uint32(1); p < pages; p++ {
+	names := make([]string, page.pages-1)
+	for p := uint32(1); p < page.pages; p++ {
 		names[p-1] = strangersPageKey(int(p))
 	}
 	vals, oks, err := getKeys(ctx, kv, names)
@@ -216,8 +216,12 @@ func (st *Store) strangers(ctx context.Context) (map[string]stranger, error) {
 		if !pok {
 			return map[string]stranger{}, nil
 		}
-		if _, why := decodeStrangerPage(vals[i], out); why != "" {
+		next, why := st.decodeStrangerPage(vals[i])
+		if why != "" {
 			return map[string]stranger{}, nil
+		}
+		for name, rec := range next.entries {
+			out[name] = rec
 		}
 	}
 	return out, nil
@@ -230,8 +234,8 @@ func (st *Store) putStrangers(ctx context.Context, s map[string]stranger) error 
 	}
 	prevPages := uint32(1)
 	if raw, ok, err := kv.GetKey(ctx, keyStrangers); err == nil && ok && len(raw) > 0 && raw[0] == friendrowswire.TableFixedForm {
-		if pages, why := decodeStrangerPage(raw, map[string]stranger{}); why == "" {
-			prevPages = pages
+		if page, why := st.decodeStrangerPage(raw); why == "" {
+			prevPages = page.pages
 		}
 	}
 	// encodeStrangersPages refuses a value the fixed form cannot hold before any byte is
@@ -529,7 +533,7 @@ type presenceRowCodecs struct {
 	entry    *RowCodec[friendEntry]
 	status   *RowCodec[friendStatus]
 	beat     *RowCodec[sprint.Beat]
-	stranger *RowCodec[map[string]stranger]
+	stranger *RowCodec[strangerPage]
 }
 
 // presenceRows is this store's readers of the friend roster and presence rows, registered on
@@ -951,16 +955,102 @@ func beatOfSchema(m *beatSchema) (sprint.Beat, bool) {
 	return b, ok
 }
 
-// strangerRowFns is the strangers record's legacy reader and counter: STRANGERS, today's
-// legacy JSON (S2, S4). The record itself is now a fixed table (friendrows.schema Strangers),
-// written by putStrangers and read by strangers() page by page; this codec keeps the legacy
-// form reading and counting until the retire card.
-func strangerRowFns() RowFns[map[string]stranger] {
-	return RowFns[map[string]stranger]{
-		Name:       "STRANGERS",
-		Reset:      func(v *map[string]stranger) { *v = nil },
+// strangerPageFromWire maps the generated fixed page into the page the store reads (S1).
+func strangerPageFromWire(w friendrowswire.Strangers) strangerPage {
+	p := strangerPage{pages: w.Pages}
+	if p.pages == 0 {
+		p.pages = 1
+	}
+	if w.EntriesCount > 0 {
+		p.entries = make(map[string]stranger, w.EntriesCount)
+	}
+	for i := int32(0); i < w.EntriesCount; i++ {
+		e := &w.Entries[i]
+		p.entries[string(e.Name[:e.NameLength])] = stranger{Seen: doneTimeOf(e.Seen), Told: e.Told}
+	}
+	return p
+}
+
+// strangerWireReport preserves the fixed decoder's refusal precedence and reasons (S2), the
+// mapping doneWireReport makes for the done record. The generated decoder names a malformed
+// header, a reserved byte and a bound overrun more finely than the store's vocabulary, so
+// they map to the store's reasons; a layout the lineage does not hold maps to layout_newer,
+// the name an older build refuses it by.
+func strangerWireReport(rep friendrowswire.TableReport, n int64) RowReport {
+	switch rep.Reason {
+	case "truncated", "reserved_not_zero":
+		return RowReport{Malformed: true, Reason: "malformed"}
+	case "count_over_bound", "length_over_bound":
+		return RowReport{Clamped: 1, Reason: "clamped"}
+	case "layout_unknown":
+		return RowReport{Reason: "layout_newer"}
+	}
+	switch {
+	case n < 0 && rep.Reason != "":
+		return RowReport{Reason: rep.Reason}
+	case n < 0 || rep.Malformed:
+		return RowReport{Malformed: true, Reason: "malformed"}
+	case n != 1:
+		return RowReport{Malformed: true, Reason: "record_count"}
+	case rep.Clamped != 0:
+		return RowReport{Clamped: int(rep.Clamped), Reason: "clamped"}
+	case rep.Unknown != 0 || rep.KindMismatch != 0:
+		return RowReport{Unknown: int(rep.Unknown), KindMismatch: int(rep.KindMismatch), Reason: "unknown"}
+	default:
+		return RowReport{}
+	}
+}
+
+// strangerLoadWire adapts the generated fixed table while preserving the prior decoder's
+// refusal reasons (S1, S2).
+func strangerLoadWire(v *strangerPage, wire []byte) RowReport {
+	out := make([]friendrowswire.Strangers, 1)
+	plan := make([]friendrowswire.TableFixedEntry, 2*len(friendrowswire.StrangersFixedPlan.Entries))
+	var rep friendrowswire.TableReport
+	n := friendrowswire.StrangersFixedLoad(out, wire, plan, &rep)
+	rr := strangerWireReport(rep, n)
+	if rr.Reason == "" {
+		*v = strangerPageFromWire(out[0])
+	}
+	return rr
+}
+
+// strangerLoadJSON adapts the generated schema JSON form to the same page value (S2).
+func strangerLoadJSON(v *strangerPage, text []byte) RowReport {
+	var w friendrowswire.Strangers
+	var rep friendrowswire.TableReport
+	if !friendrowswire.StrangersFromJson(&w, text, &rep) {
+		rr := presenceReport(&rep)
+		if !rr.refuses() {
+			rr.Malformed = true
+		}
+		return rr
+	}
+	*v = strangerPageFromWire(w)
+	return RowReport{}
+}
+
+// strangerLoadLegacy keeps today's whole-object decoder, one page (S2, S4).
+func strangerLoadLegacy(v *strangerPage, raw []byte) RowReport {
+	var entries map[string]stranger
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		return RowReport{Malformed: true, Reason: "legacy_json_unreadable"}
+	}
+	*v = strangerPage{entries: entries, pages: 1}
+	return RowReport{}
+}
+
+// strangerRowFns is the strangers record's kept dual reader (S1, S2, S4): the fixed table
+// (form 3), the padded standard base64 of that wire, the schema JSON text and today's legacy
+// JSON object, every read counted under STRANGERS and its form. putStrangers writes the fixed
+// form; the legacy form is read until the retire card.
+func strangerRowFns() RowFns[strangerPage] {
+	return RowFns[strangerPage]{
+		Name: "STRANGERS", Forms: doneWireForms(),
+		Reset:    func(v *strangerPage) { *v = strangerPage{} },
+		LoadWire: strangerLoadWire, LoadJSON: strangerLoadJSON,
 		Legacy:     LegacyObject,
-		LoadLegacy: DecodeLegacy[map[string]stranger],
+		LoadLegacy: strangerLoadLegacy,
 	}
 }
 

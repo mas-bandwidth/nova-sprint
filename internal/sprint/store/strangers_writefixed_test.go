@@ -47,6 +47,11 @@ func TestStrangersWriteFixed(t *testing.T) {
 	got, err := st.strangers(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, strangers, got)
+	// That read went through the codec and is counted under STRANGERS and its form (S2, S4).
+	report, _, err := st.Check(ctx, 1)
+	require.NoError(t, err)
+	require.Contains(t, report.RowForms, "STRANGERS")
+	assert.Positive(t, report.RowForms["STRANGERS"]["binary"], "fixed-form strangers reads are counted")
 
 	// The empty record round-trips.
 	require.NoError(t, st.putStrangers(ctx, map[string]stranger{}))
