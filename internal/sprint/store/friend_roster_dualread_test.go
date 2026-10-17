@@ -30,7 +30,7 @@ func TestFriendRosterRowsDualRead(t *testing.T) {
 	require.NoError(t, st.Init(ctx))
 	pinned, err := st.pin(ctx)
 	require.NoError(t, err)
-	kv, err := pinned.kv()
+	_, err = pinned.kv()
 	require.NoError(t, err)
 
 	// The roster entry (friendEntry).

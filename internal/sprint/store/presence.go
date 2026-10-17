@@ -317,6 +317,40 @@ func (st *Store) Beats(ctx context.Context, members []string) (map[string]sprint
 	return out, nil
 }
 
+// friendEntryWire renders one roster entry as its fixed-table wire image. S1: the
+// fixed table is the server-owned form the dual-read card adopts; writers stay legacy
+// here, so this is only the reader-first proof's fixture.
+func friendEntryWire(e friendEntry) ([]byte, error) {
+	return nil, fmt.Errorf("FRIENDENTRY wire write not implemented")
+}
+
+// decodeFriendEntry reads one roster entry from any form (S2): the fixed image, the
+// padded standard base64 of that image, or today's legacy JSON. A refused value is
+// named. S4: each read is counted under the form read.
+func decodeFriendEntry(in []byte) (friendEntry, error) {
+	return friendEntry{}, fmt.Errorf("FRIENDENTRY REFUSED: not implemented; run: nova-sprint check")
+}
+
+// friendStatusWire renders one friend status record as its fixed-table wire image. S1.
+func friendStatusWire(s friendStatus) ([]byte, error) {
+	return nil, fmt.Errorf("FRIENDSTATUS wire write not implemented")
+}
+
+// decodeFriendStatus reads one friend status record from any form (S2). S4: counted per form.
+func decodeFriendStatus(in []byte) (friendStatus, error) {
+	return friendStatus{}, fmt.Errorf("FRIENDSTATUS REFUSED: not implemented; run: nova-sprint check")
+}
+
+// beatWire renders one member or friend beat as its fixed-table wire image. S1.
+func beatWire(b sprint.Beat) ([]byte, error) {
+	return nil, fmt.Errorf("BEAT wire write not implemented")
+}
+
+// decodeBeat reads one member or friend beat from any form (S2). S4: counted per form.
+func decodeBeat(in []byte) (sprint.Beat, error) {
+	return sprint.Beat{}, fmt.Errorf("BEAT REFUSED: not implemented; run: nova-sprint check")
+}
+
 // getKeys reads machine records, in one exchange where the store can.
 func getKeys(ctx context.Context, kv KV, names []string) ([]string, []bool, error) {
 	if kg, ok := kv.(KeysGetter); ok {
