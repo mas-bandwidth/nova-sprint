@@ -6619,6 +6619,15 @@ limiter, never raised as a stall (`TestAReadyCardWhoseEveryRouteIsFullIsHeldNotS
 Checked by `nova-sprint check`, and by the model. Sets of primaries are compared
 exactly, member by member, never by their counts.
 
+`nova-sprint check --json` also prints `row_forms`, the store row reader's
+per-record, per-form read counts (`internal/sprint/store/rowcodec.go`). A stored
+value is read as a fixed binary image, padded standard base64 of that image, the
+schema JSON text, or today's legacy JSON, and each read counts once under the
+form read. The object also carries `unknown_fields` and `refused_<reason>`. No
+stored record is counted until its reader is registered, and until then
+`row_forms` is an empty object. The plain `CHECK` line is unchanged. The counts
+are the evidence a later card reads before that record's writer switches.
+
 1. A card is in one place in each table it is in.
 2. Primaries in work working and live work cards (fleet ready + working) are a
    bijection: each primary in working has exactly one live work card, the one it
