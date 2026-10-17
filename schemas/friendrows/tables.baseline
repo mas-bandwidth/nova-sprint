@@ -11,16 +11,13 @@ table Beat
     field report id=0xadae49645df2840b kind=17 type=FriendReport
     field stop_returns id=0xea14e391abc0c981 kind=5
     field no_room id=0x90ab055b72415078 kind=17 type=string
-    field live id=0xbf6695ad6966058f kind=14 elem=13 type=LiveWord array=unbounded
+    field live id=0xbf6695ad6966058f kind=14 elem=12 type=BeatLiveText array=unbounded
     field live_known id=0xee4d5d6524526827 kind=1
     field live_since id=0x5be056ec01c992da kind=17 type=string
     field live_seen id=0x0d16749b8d3694d7 kind=14 elem=13 type=LiveSight array=unbounded
     field draining id=0x445341bdde0ebac7 kind=1
     field draining_since id=0xc4010e578c81f622 kind=17 type=string
-    field facts id=0xefa717c1620c4ae4 kind=14 elem=13 type=FactWord array=unbounded
-
-table FactWord
-    field text id=0xfa04f4ef1995407e kind=17 type=string
+    field facts id=0xefa717c1620c4ae4 kind=14 elem=12 type=BeatFactsText array=unbounded
 
 table Files
     field at id=0x089c4e07b545a968 kind=17 type=string
@@ -53,7 +50,7 @@ table FriendEntry
     field give_back id=0xc95b347fb010b956 kind=1
 
 table FriendReport
-    field running id=0x60147fb4fa4a8e0c kind=14 elem=13 type=RunWord array=unbounded
+    field running id=0x60147fb4fa4a8e0c kind=14 elem=12 type=FriendReportRunningText array=unbounded
     field working id=0x08879e024cb91288 kind=5 optional=true
     field queue id=0xb11e8b146c5a21d8 kind=5 optional=true
     field width id=0xdbdacd932fd1e9bf kind=5 optional=true
@@ -112,9 +109,6 @@ table LiveSight
     field entry id=0xbe2a85bf4c0ca913 kind=17 type=string
     field at id=0x089c4e07b545a968 kind=17 type=string
 
-table LiveWord
-    field text id=0xfa04f4ef1995407e kind=17 type=string
-
 table LoadSample
     field pct id=0x77c35c1956708830 kind=11
     field at id=0x089c4e07b545a968 kind=17 type=string
@@ -143,9 +137,6 @@ table ReaderHold
     field reason id=0x65e8d7f3474f2639 kind=17 type=string
     field give_back id=0xc95b347fb010b956 kind=1
 
-table RunWord
-    field text id=0xfa04f4ef1995407e kind=17 type=string
-
 table SeatChange
     field holder id=0x630853b55c723d4f kind=17 type=string
     field generation id=0xe700a2848d46a857 kind=9
@@ -170,6 +161,15 @@ table Ticks
     field busy id=0xff75d19be2aea620 kind=9
     field total id=0x2dcede7d543a4ffd kind=9
 
+table a07443a7967ec8e5.bf6695ad6966058f
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table a07443a7967ec8e5.efa717c1620c4ae4
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table cccd7b8be68a49a3.60147fb4fa4a8e0c
+    field value id=0x7ce4fd9430e80cea kind=12
+
 ## history
 ### 2026-10-17 (UTC) — the unlanded friendrows area opens every bound a code path does not enforce
 - baseline created over 21 tables — data written BEFORE this point is not covered by it
@@ -177,3 +177,14 @@ table Ticks
 ### 2026-10-17 (UTC) — FriendStatus.status becomes open text: FriendRows shows any word outside FriendStates as down and accepts any length
 - FriendStatus.status: wire kind 12 -> 17 [refuse]
 - FriendStatus.status: nested table string added [refuse]
+
+### 2026-10-17 (UTC) — text lists are plain []string (SPEC-TABLES 2.13.1); no record of the word-table form was written outside the unreleased v15 stream
+- Beat.live: array element kind 13 -> 12 [refuse]
+- Beat.live: nested table LiveWord -> BeatLiveText, and BeatLiveText is not described by this baseline [refuse]
+- Beat.facts: array element kind 13 -> 12 [refuse]
+- Beat.facts: nested table FactWord -> BeatFactsText, and BeatFactsText is not described by this baseline [refuse]
+- FriendReport.running: array element kind 13 -> 12 [refuse]
+- FriendReport.running: nested table RunWord -> FriendReportRunningText, and FriendReportRunningText is not described by this baseline [refuse]
+- table FactWord: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
+- table LiveWord: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
+- table RunWord: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]

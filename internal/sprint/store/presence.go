@@ -570,27 +570,6 @@ func rowIntOf(p *int64) *int {
 	return &v
 }
 
-// rowWord is one word of an open word list (RunWord, LiveWord, FactWord).
-type rowWord struct {
-	Text *string `json:"text"`
-}
-
-func rowWords(ws []string) []rowWord {
-	var out []rowWord
-	for _, w := range ws {
-		out = append(out, rowWord{Text: rowText(w)})
-	}
-	return out
-}
-
-func rowWordsOf(ws []rowWord) []string {
-	var out []string
-	for _, w := range ws {
-		out = append(out, rowTextOf(w.Text))
-	}
-	return out
-}
-
 // beatSchema is the Beat table's schema JSON text (friendrows.schema Beat). An empty list is
 // left out: the table reader reads a null list as a kind mismatch.
 type beatSchema struct {
@@ -603,13 +582,13 @@ type beatSchema struct {
 	Friend        *friendReportSchema `json:"friend"`
 	StopReturns   int64               `json:"stop_returns"`
 	NoRoom        *string             `json:"no_room"`
-	Live          []rowWord           `json:"live,omitempty"`
+	Live          []string            `json:"live,omitempty"`
 	LiveKnown     bool                `json:"live_known"`
 	LiveSince     *string             `json:"live_since"`
 	LiveSeen      []liveSightSchema   `json:"live_seen,omitempty"`
 	Draining      bool                `json:"draining"`
 	DrainingSince *string             `json:"draining_since"`
-	Facts         []rowWord           `json:"facts,omitempty"`
+	Facts         []string            `json:"facts,omitempty"`
 }
 
 type loadSampleSchema struct {
@@ -648,7 +627,7 @@ type holderSchema struct {
 }
 
 type friendReportSchema struct {
-	Running     []rowWord `json:"running,omitempty"`
+	Running     []string  `json:"running,omitempty"`
 	Working     *int64    `json:"working"`
 	Queue       *int64    `json:"queue"`
 	Width       *int64    `json:"width"`
@@ -703,9 +682,9 @@ func beatRowFns() RowFns[sprint.Beat] {
 func beatToSchema(b *sprint.Beat) beatSchema {
 	m := beatSchema{
 		At: rowTime(b.At), Load: b.Load, Cores: int64(b.Cores), How: rowText(b.How),
-		StopReturns: int64(b.StopReturns), NoRoom: rowText(b.NoRoom), Live: rowWords(b.Live),
+		StopReturns: int64(b.StopReturns), NoRoom: rowText(b.NoRoom), Live: b.Live,
 		LiveKnown: b.LiveKnown, LiveSince: rowTime(b.LiveSince), Draining: b.Draining,
-		DrainingSince: rowTime(b.DrainingSince), Facts: rowWords(b.Facts),
+		DrainingSince: rowTime(b.DrainingSince), Facts: b.Facts,
 		Meter: meterSchema{TopAt: rowTime(b.Meter.TopAt), TopPct: b.Meter.TopPct},
 	}
 	for _, s := range b.Samples {
@@ -723,7 +702,7 @@ func beatToSchema(b *sprint.Beat) beatSchema {
 	}
 	if r := b.Friend; r != nil {
 		m.Friend = &friendReportSchema{
-			Running: rowWords(r.Running), Working: rowInt(r.Working), Queue: rowInt(r.Queue), Width: rowInt(r.Width),
+			Running: r.Running, Working: rowInt(r.Working), Queue: rowInt(r.Queue), Width: rowInt(r.Width),
 			StopReturns: rowInt(r.StopReturns), Paced: rowInt(r.Paced), Active: rowTime(r.Active), Window: rowText(r.Window),
 			Until: rowTime(r.Until), Reason: rowText(r.Reason), Build: rowText(r.Build), Started: rowTime(r.Started), Present: rowTime(r.Present),
 		}
@@ -743,9 +722,9 @@ func beatOfSchema(m *beatSchema) (sprint.Beat, bool) {
 	}
 	b := sprint.Beat{
 		At: at(m.At), Load: m.Load, Cores: int(m.Cores), How: rowTextOf(m.How),
-		StopReturns: int(m.StopReturns), NoRoom: rowTextOf(m.NoRoom), Live: rowWordsOf(m.Live),
+		StopReturns: int(m.StopReturns), NoRoom: rowTextOf(m.NoRoom), Live: m.Live,
 		LiveKnown: m.LiveKnown, LiveSince: at(m.LiveSince), Draining: m.Draining,
-		DrainingSince: at(m.DrainingSince), Facts: rowWordsOf(m.Facts),
+		DrainingSince: at(m.DrainingSince), Facts: m.Facts,
 		Meter: hostload.State{TopAt: at(m.Meter.TopAt), TopPct: m.Meter.TopPct},
 	}
 	for _, s := range m.Samples {
@@ -763,7 +742,7 @@ func beatOfSchema(m *beatSchema) (sprint.Beat, bool) {
 	}
 	if r := m.Friend; r != nil {
 		b.Friend = &sprint.FriendReport{
-			Running: rowWordsOf(r.Running), Working: rowIntOf(r.Working), Queue: rowIntOf(r.Queue), Width: rowIntOf(r.Width),
+			Running: r.Running, Working: rowIntOf(r.Working), Queue: rowIntOf(r.Queue), Width: rowIntOf(r.Width),
 			StopReturns: rowIntOf(r.StopReturns), Paced: rowIntOf(r.Paced), Active: at(r.Active), Window: rowTextOf(r.Window),
 			Until: at(r.Until), Reason: rowTextOf(r.Reason), Build: rowTextOf(r.Build), Started: at(r.Started), Present: at(r.Present),
 		}

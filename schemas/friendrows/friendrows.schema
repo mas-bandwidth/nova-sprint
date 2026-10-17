@@ -167,16 +167,6 @@ table Meter
     files *Files
 }
 
-// RunWord is one card id or job name in a friend's running list, a variable
-// table. runningIDs (serve.go) bounds the joined list the verb takes, but
-// the direct verb sets Running from sprint.Split, which has no length check
-// (cmd/nova-sprint/friends.go, internal/sprint/state.go), so the word is open
-// text.
-table RunWord
-{
-    text *string
-}
-
 // FriendReport is what a friend's beat reports (presence.go FriendReport), a
 // variable table. A *int is ?int64 on the 64-bit server. The flags check a
 // floor, but Store.FriendBeatReport takes the struct whole and no store path
@@ -184,7 +174,7 @@ table RunWord
 table FriendReport
 {
     // as long as the data.
-    running []RunWord
+    running []string
     working ?int64
     queue ?int64
     width ?int64
@@ -206,24 +196,6 @@ table FriendReport
     started *string
     // Source time.Time JSON, RFC3339Nano text.
     present *string
-}
-
-// LiveWord is one entry of a beat's live set: <card>@<gen> or
-// <card>@<gen>:held, a variable table. ParseLive bounds the verb's text, but
-// Store.BeatLive and FriendBeatLive take the []string whole (NextLive clones
-// it unfiltered) and the stored beat is read back by json.Unmarshal, so the
-// word is open text.
-table LiveWord
-{
-    text *string
-}
-
-// FactWord is one gate fact, a variable table. FactWords (deal.go) requires a
-// ValidID for the verb's text, but Store.BeatFacts takes the []string whole,
-// so the word is open text.
-table FactWord
-{
-    text *string
 }
 
 // LiveSight is one entry of Beat.LiveSeen, a JSON object keyed by the live
@@ -265,7 +237,7 @@ table Beat
     stop_returns int64
     // fleet beat --no-room states no length.
     no_room *string
-    live []LiveWord
+    live []string
     live_known bool
     // Source time.Time JSON, RFC3339Nano text.
     live_since *string
@@ -276,7 +248,7 @@ table Beat
     // Source time.Time JSON, RFC3339Nano text.
     draining_since *string
     // as long as the data.
-    facts []FactWord
+    facts []string
 }
 
 // ReaderHold is the coordinator's hold of a reader (store/readers.go
