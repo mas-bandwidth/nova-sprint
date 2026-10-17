@@ -1,0 +1,911 @@
+// verbs.schema: the --json output of the nova-sprint verbs that print their
+// own object (cmd/nova-sprint: install.go, seat.go, friendsync_install.go,
+// fleetsync.go, watchwake.go, goal.go, snapshot.go, shadow.go,
+// settings_verb.go, serve.go, run.go, remind.go, log.go, streams.go,
+// storelogin.go, stats.go, seatinstall.go, sayok.go) as VARIABLE tables. The
+// worker answers (Aspect 11) and where are not here. Its Go is generated into
+// pkg/verbjsonwire (go generate ./pkg/verbjsonwire).
+//
+// A VARIABLE table (the owner's S1): a program of another version reads this
+// output, so an older reader meets a newer writer's fields, skips them and
+// counts them. Read by pkg/schemaread (S2), which accepts the binary wire,
+// padded standard base64 of it, and the JSON text form, and refuses every
+// clamp and every damaged image by name.
+//
+// THE JSON TEXT FORM keeps today's keys: a field spells the key the Go struct
+// or the map literal spells (the json attribute where the schema name cannot
+// be the key). Today's value shapes are preserved where this compiler pin can
+// express them; where it cannot, the delta and its source are named here as
+// this area's scope resolution. It is fixed by the schema-standard feature this
+// card depends on ("schema-string-arrays-and-top-level-array-roots"; fixes go
+// standard first, then Go, verified in Go: S5), not here:
+//   - a Go []string becomes an array of word tables (IdWord, CardWord,
+//     TextWord): this compiler refuses an array of string(N) ("an array of
+//     string(N) is not supported in v1 — wrap the element in a type"), so a
+//     field that prints an array of strings (handover.rules and handover.first,
+//     cmd/nova-sprint/seat.go:150-151; streams.repos and streams.bases) reads
+//     as an array of {"s": "..."} objects, not of bare strings;
+//   - goal show prints a top-level array (cmd/nova-sprint/goal.go:188-190),
+//     which a table root cannot be: it is GoalList's "goals" array instead;
+//   - a Go time.Time is the string it marshals to (RFC 3339 with nanoseconds,
+//     at most 35 bytes; 40 here), and *time.Time is an optional of it;
+//   - a field that is omitted when empty (omitempty) is a field that reads as
+//     empty when absent; the text form may write the empty value.
+//
+// The root table of every --json verb is named beside its source file: SayOK
+// (sayok.go), UnitRemoved and UnitInstalled and UnitsCheck (install.go,
+// friendsync_install.go), SeatInstall (seatinstall.go), SeatCoordinator and
+// Handover and SeatCheck and SeatRepaired and SeatRecord and StoreLogin
+// (seat.go, storelogin.go), SyncReport (fleetsync.go), WakeState
+// (watchwake.go), WakeAnswer (log.go, serve.go), GoalList and GoalSet and
+// GoalDrop (goal.go), SnapshotDrill and SnapshotTaken (snapshot.go), ShadowOut
+// and ShadowRecord (shadow.go), SettingValue and SettingsOk
+// (settings_verb.go), MachineOut (run.go), RemindView and RemindList
+// (remind.go), LogOut (log.go), StreamsView (streams.go), PassStats
+// (stats.go). The worker answers (Aspect 11) and where are not here.
+//
+// The bounds are the code's where it holds one: sprint.MaxIDLen (128) for an
+// id, a card id of at most four dot-joined ids (515), a friend row of
+// "friend." plus an id (135), store.MaxCardTextBytes (64 KiB) for the words a
+// change carries, sprint.MaxCause (300) for a cause, a path at the platform's
+// PATH_MAX (4096). A text the code bounds nowhere is bounded here at 4096
+// bytes, and a count the code bounds nowhere is unbounded ([]T): a list is
+// never clamped, and the reader refuses what a declared bound would cut.
+package verbjsonwire
+
+// ---- word tables: the element of an array of text ----------------------------
+
+// IdWord is one id: a ValidID word of sprint.MaxIDLen (128) bytes (a member,
+// a stream, a route, a table name).
+table IdWord
+{
+    s string(128)
+}
+
+// CardWord is one card id: at most 4 dot-joined ValidID words, 4*128 + 3 = 515
+// (sprint.ValidCardID).
+table CardWord
+{
+    s string(515)
+}
+
+// TextWord is one line of text the code bounds nowhere: 4096 bytes.
+table TextWord
+{
+    s string(4096)
+}
+
+// ---- sayok.go: the envelope of a verb's success -----------------------------
+
+// SayOK is sayOK's object when a verb has no facts beside the envelope: the
+// verb's name, its status and its exit code. Every verb's own facts ride
+// beside these keys in the verb's own table.
+table SayOK
+{
+    verb   string(32)
+    status string(16)
+    exit   int64
+}
+
+// ---- install.go, friendsync_install.go, seatinstall.go: the unit verbs ----------
+
+// UnitRemoved is the uninstall verbs' object (install.go uninstallUnit,
+// friendsync_install.go): a dry run prints path, present and dry_run; a
+// removal prints path and removed.
+table UnitRemoved
+{
+    path    string(4096)
+    present ?bool
+    dry_run ?bool
+    removed ?bool
+}
+
+// UnitInstalled is the install verbs' object (install.go, friendsync_install.go):
+// a dry run prints path, the unit text, args and dry_run; an install prints
+// path, written, loaded and args. The unit text is a launchd plist or a
+// systemd unit, at most 32 KiB here.
+table UnitInstalled
+{
+    path    string(4096)
+    unit    string(32768)
+    args    []TextWord
+    dry_run ?bool
+    written ?bool
+    loaded  ?bool
+}
+
+// UnitState is units.UnitState: one unit kind a running sprint needs.
+table UnitState
+{
+    kind    string(64)
+    owed    string(4096)
+    path    string(4096)
+    state   string(16)
+    why     string(4096)
+    install string(4096)
+}
+
+// UnitsCheck is units --check's object: the directory looked in, each unit's
+// state and whether every unit is installed.
+table UnitsCheck
+{
+    dir   string(4096)
+    units []UnitState
+    ok    bool
+}
+
+// SeatInstall is seat install's object (seatinstall.go): the server recorded,
+// whether it was a dry run, and the lines it printed.
+table SeatInstall
+{
+    server  string(256)
+    dry_run bool
+    seat    []TextWord
+}
+
+// ---- seat.go: the seat ------------------------------------------------------------
+
+// SeatChange is sprint.SeatChange: the last change of the seat.
+table SeatChange
+{
+    holder       string(135)
+    generation   uint64
+    from         string(135)
+    at           string(40)
+    by           string(135)
+    taken        bool
+    approved_by  string(135)
+    reason       string(4096)
+}
+
+// SeatView is seatView: the holder, the seat's generation and the last change
+// of the seat; since (empty when absent) and last are absent while the seat has
+// not moved.
+table SeatView
+{
+    holder     string(135)
+    generation uint64
+    since      string(40)
+    last       ?SeatChange
+}
+
+// ServerView is serverView: the actor the server runs as and, when it is not
+// the seat's holder, the line of its unit to change.
+table ServerView
+{
+    actor  string(135)
+    change string(4096)
+}
+
+// StreamCounts is streamCounts: a stream and its cards in each state. The key
+// is a state word (sprint.States: waiting, ready, working, review, merging,
+// landed), at most 16 bytes.
+table StreamCounts
+{
+    stream string(128)
+    counts map[string(16)]int64
+}
+
+// SentinelView is sentinelView: a sentinel, whether it was reached and the
+// cards waiting behind it.
+table SentinelView
+{
+    id      string(515)
+    stream  string(128)
+    reached bool
+    behind  []CardWord
+}
+
+// InboxAnswer is inboxAnswer: one decision and the command lines that make it.
+table InboxAnswer
+{
+    decision string(4096)
+    commands []TextWord
+}
+
+// InboxJudgment is inboxJudgment: one open judgment of the inbox; due is
+// empty when the judgment has no due time.
+table InboxJudgment
+{
+    id        string(1024)
+    alias     string(16)
+    kind      string(32)
+    type_     string(64) | json = "type"
+    what      string(4096)
+    stream    string(128)
+    size      int64
+    cards     []CardWord
+    notes     []TextWord
+    marked    bool
+    overdue   bool
+    waited    string(64)
+    due       string(40)
+    answers   []InboxAnswer
+    decisions []TextWord
+}
+
+// MemberView is memberView: a member held or down, and by whom.
+table MemberView
+{
+    member string(128)
+    status string(16)
+    by     string(135)
+}
+
+// RoutesView is routesView: how many routes are enabled, and which are not.
+table RoutesView
+{
+    enabled  int64
+    disabled []IdWord
+}
+
+// DecisionView is decisionView: one of the coordinator's last decisions.
+table DecisionView
+{
+    at     string(40)
+    verb   string(32)
+    what   string(4096)
+    by     string(135)
+    reason string(4096)
+}
+
+// Handover is handoverView: what the next seat needs. The decisions are the
+// last handoverDecisions (10) of the log.
+table Handover
+{
+    at        string(40)
+    seat      SeatView
+    owner     string(135)
+    server    ?ServerView
+    machine   string(4096)
+    summary   string(4096)
+    streams   []StreamCounts
+    sentinels []SentinelView
+    judgments []InboxJudgment
+    members   []MemberView
+    routes    RoutesView
+    decisions [..10]DecisionView
+    rules     []TextWord
+    first     []TextWord
+}
+
+// SeatCoordinator is coordinator's object (seat.go cmdCoordinator): the new
+// holder, the previous one, who moved it and the handover that follows.
+table SeatCoordinator
+{
+    holder      string(135)
+    from        string(135)
+    by          string(135)
+    taken       bool
+    approved_by string(135)
+    op          string(128)
+    handover    Handover
+}
+
+// SeatCheck is seat's object (seat.go cmdSeat): sayOK's verb, status and exit
+// beside the holder, the epoch, the generation, the seat record's holder and
+// the server; a drifting seat names the drift and exits 1 (it prints no verb).
+table SeatCheck
+{
+    verb       string(32)
+    status     string(16)
+    exit       int64
+    holder     string(135)
+    epoch      uint64
+    generation uint64
+    record     string(135)
+    server     string(256)
+    drift      string(4096)
+}
+
+// SeatRepaired is seat --repair's object (seat.go seatRepair).
+table SeatRepaired
+{
+    verb   string(32)
+    status string(16)
+    exit   int64
+    holder string(135)
+    was    string(135)
+    by     string(135)
+    op     string(128)
+    drift  string(4096)
+}
+
+// SeatRecord is seat.json (seat.go seatRecord): the server and the nova-config
+// seat the seat install learned.
+table SeatRecord
+{
+    server      string(256)
+    config_seat string(128)
+}
+
+// StoreLogin is login.json (storelogin.go storeLogin): where the store is and
+// where its password is kept; it holds no secret.
+table StoreLogin
+{
+    redis  string(256)
+    user   string(128)
+    store  string(4096)
+    as_    string(128) | json = "as"
+    key    string(4096)
+    sops   string(4096)
+    secret string(128)
+}
+
+// ---- fleetsync.go -------------------------------------------------------------------
+
+// SyncDrift is syncDrift: one way the fleet table differs from the inventory.
+table SyncDrift
+{
+    member string(128)
+    kind   string(32)
+    from   int64
+    to     int64
+}
+
+// SyncReport is syncReport: fleet sync's one shape whether the verb checked,
+// had nothing to write, or wrote.
+table SyncReport
+{
+    verb    string(32)
+    check   bool
+    members int64
+    drift   []SyncDrift
+    held    []IdWord
+    holding []TextWord
+    waiting []TextWord
+    moved   []TextWord
+    refused []TextWord
+    error   string(4096)
+}
+
+// ---- watchwake.go -------------------------------------------------------------------
+
+// WakeState is the watch-wake state file (watchwake.go wakeState): the cursor
+// into the bus, the judgments and stop seen, the friends down with their
+// counts and the friends already told, with the last wake of each kind.
+table WakeState
+{
+    seeded    bool
+    bus       string(41)
+    judgments []TextWord
+    stop      string(4096)
+    down      map[string(128)]int64
+    told      []IdWord
+    last      map[string(128)]string(40)
+}
+
+// WakeAnswer is log --wait-tick's object (log.go, serve.go): the log cursor (a
+// Redis stream id, "<ms>-<seq>", 20 + 1 + 20 = 41) and whether a tick woke it.
+table WakeAnswer
+{
+    cursor string(41)
+    woke   bool
+}
+
+// ---- goal.go ---------------------------------------------------------------------------
+
+// GoalView is goalView: a person's goal and where it stands. text is the
+// goal's text, at most store.MaxCardTextBytes (64 KiB).
+table GoalView
+{
+    name  string(128)
+    route string(128)
+    last  string(40)
+    count int64
+    state string(16)
+    error string(4096)
+    text  string(65536)
+}
+
+// GoalList is goal show's object: the views goal show prints as a top-level
+// array, as a "goals" array (a table root is an object).
+table GoalList
+{
+    goals []GoalView | json = "goals"
+}
+
+// GoalSet is goal set's object: a GoalView with new, whether the goal was
+// created.
+table GoalSet
+{
+    name    string(128)
+    route   string(128)
+    last    string(40)
+    count   int64
+    state   string(16)
+    error   string(4096)
+    text    string(65536)
+    created bool | json = "new"
+}
+
+// GoalDrop is goal drop's object.
+table GoalDrop
+{
+    name    string(128)
+    dropped bool
+}
+
+// ---- snapshot.go -------------------------------------------------------------------------
+
+// SnapshotCounts is store.SnapshotCounts.
+table SnapshotCounts
+{
+    keys  int64
+    cards int64
+}
+
+// SnapshotDrill is snapshot --restore-drill's object. sha256 is 64 hex bytes;
+// restore is store.RestoreIntegrity or store.RestoreSemantic.
+table SnapshotDrill
+{
+    file    string(4096)
+    sha256  string(64)
+    counts  SnapshotCounts
+    restore string(16)
+}
+
+// SnapshotTaken is store.SnapshotTaken: snapshot's object.
+table SnapshotTaken
+{
+    file    string(4096)
+    sha256  string(64)
+    bytes_  int64 | json = "bytes"
+    counts  SnapshotCounts
+    restore string(16)
+    pruned  []TextWord
+}
+
+// ---- shadow.go ---------------------------------------------------------------------------
+
+// ShadowPart is store.ShadowPart: one part of a tick with something to do.
+table ShadowPart
+{
+    table_ string(32) | json = "table"
+    name   string(64)
+    size   int64
+    due    int64
+}
+
+// ShadowPlan is store.ShadowPlan: what a shadow tick planned.
+table ShadowPlan
+{
+    epoch   uint64
+    state   string(16)
+    parts   []ShadowPart
+    size    int64
+    took_ns int64
+    reads   []TextWord
+}
+
+// ShadowOut is tick --shadow's object: the plan, or the error.
+table ShadowOut
+{
+    shadow ?ShadowPlan
+    error  string(4096)
+}
+
+// ShadowRecord is <target>.shadow.json (shadow.go shadowRecord): the
+// candidate's shadow tick beside the switch record.
+table ShadowRecord
+{
+    binary  string(4096)
+    at      string(40)
+    wall_ns int64
+    plan    ShadowPlan
+}
+
+// ---- settings_verb.go --------------------------------------------------------------------
+
+// SettingValue is sprint.SettingValue: one setting, one object a line.
+table SettingValue
+{
+    flag     string(64)
+    prop     string(64)
+    value    string(4096)
+    dflt     string(4096) | json = "default"
+    set      bool
+    accessor string(256)
+}
+
+// SettingsOk is the closing object of settings: how many settings, how many
+// set, and the epoch.
+table SettingsOk
+{
+    count int64
+    set   int64
+    epoch uint64
+}
+
+// ---- run.go: start, stop, tick -------------------------------------------------------------
+
+// Refusal is sprint.Refusal: a key (a card or row id) and why it was refused.
+table Refusal
+{
+    id  string(515)
+    why string(4096)
+}
+
+// DrainedResult is a store.Result a step drained before it planned (the
+// drained list of a Result holds results that drain nothing themselves).
+table DrainedResult
+{
+    verb     string(32)
+    op       string(128)
+    moved    []TextWord
+    refused  []Refusal
+    notes    int64
+    raised   []TextWord
+    said     []TextWord
+    attempts int64
+    replay   bool
+    repaired []TextWord
+    pending  string(128)
+    skipped  []TextWord
+    args     string(4096)
+    lost     bool
+    tables   map[string(32)]int64
+}
+
+// PartResult is store.PartResult: a tick part's name and the Result it wrote,
+// whose keys the object carries beside the name.
+table PartResult
+{
+    name     string(64)
+    verb     string(32)
+    op       string(128)
+    moved    []TextWord
+    refused  []Refusal
+    notes    int64
+    raised   []TextWord
+    said     []TextWord
+    attempts int64
+    replay   bool
+    repaired []TextWord
+    pending  string(128)
+    skipped  []TextWord
+    args     string(4096)
+    lost     bool
+    tables   map[string(32)]int64
+    drained  []DrainedResult
+}
+
+// RepairResult is store.RepairResult: a pending operation a tick finished.
+table RepairResult
+{
+    op      string(128)
+    verb    string(32)
+    done    string(32)
+    detail  string(4096)
+    skipped []TextWord
+}
+
+// LaneQuiet is sprint.LaneQuiet: a judgment the lane check kept from rising.
+table LaneQuiet
+{
+    type_   string(64) | json = "type"
+    subject string(4096)
+    why     string(4096)
+    friend_name string(135) | json = "friend"
+    run     string(4096)
+}
+
+// TableRows is store.TableRows: a table of a tick and the rows its parts
+// changed in it.
+table TableRows
+{
+    table_ string(32) | json = "table"
+    rows   []TextWord
+}
+
+// ArchiveResult is store.ArchiveResult: the streams a tick archived and drew.
+table ArchiveResult
+{
+    archived []IdWord
+    shown    []IdWord
+}
+
+// PartTime is store.PartTime: one part of a tick and the time its step took.
+table PartTime
+{
+    table_   string(32) | json = "table"
+    name     string(64)
+    took_ns  int64
+    trips    int64
+    reads    int64
+    rows     int64
+    stale    int64
+    mismatch int64
+    asked    int64
+    refused  int64
+    lost     int64
+}
+
+// TickResult is store.TickResult: what a tick did.
+table TickResult
+{
+    state        string(16)
+    tick_end     int64
+    idle         bool
+    repaired     []RepairResult
+    parts        []PartResult
+    stale        string(4096)
+    halted       string(4096)
+    due          int64
+    quiet        []LaneQuiet
+    tables       []TableRows
+    done         string(4096)
+    hint         string(4096)
+    archive      ?ArchiveResult
+    order        []IdWord
+    times        []PartTime
+    took_ns      int64
+    busy_retries int64
+    route_trips  int64
+    said         []TextWord
+}
+
+// MachineOut is machineOut: start's, stop's and tick's report. reason and
+// until are a stop by hand's.
+table MachineOut
+{
+    before  string(16)
+    after   string(16)
+    changed bool
+    tick    ?TickResult
+    notes   int64
+    error   string(4096)
+    sprint  string(4096)
+    refused []Refusal
+    moved   []TextWord
+    parts   []PartResult
+    reason  string(4096)
+    until   string(40)
+}
+
+// ---- remind.go -----------------------------------------------------------------------------
+
+// RemindView is remindView: one timer for a program. outcome and changed are
+// accepted | refused | unknown, and yes | no | unknown.
+table RemindView
+{
+    id      string(128)
+    for_    string(135) | json = "for"
+    due     string(40)
+    note    string(4096)
+    by      string(135)
+    set     string(40)
+    dry_run bool
+    outcome string(16)
+    changed string(16)
+}
+
+// MoreView is moreView: the MORE line's counts under --json.
+table MoreView
+{
+    shown int64
+    total int64
+}
+
+// RemindList is remind --list's object.
+table RemindList
+{
+    items   []RemindView
+    more    ?MoreView
+    outcome string(16)
+    changed string(16)
+}
+
+// ---- log.go -----------------------------------------------------------------------------------
+
+// StreamTransition is sprint.StreamTransition.
+table StreamTransition
+{
+    state   string(16)
+    cause   string(4096)
+    waiting int64
+    owners  []IdWord
+}
+
+// DecisionDelivery is sprint.DecisionDelivery: a decision's delivery to a lane.
+table DecisionDelivery
+{
+    lane             string(135)
+    to               string(135)
+    from             string(135)
+    set              string(4096)
+    body             string(65536)
+    token            string(128)
+    prepared_at      string(40)
+    retry_before     string(40)
+    sent_at          string(40)
+    fault            string(4096)
+    reports          []TextWord
+    unknown_receipts int64
+}
+
+// CoordinatorDelivery is sprint.CoordinatorDelivery; its Go fields carry no
+// json tag, so the keys are the Go field names.
+table CoordinatorDelivery
+{
+    covered_by   string(128) | json = "CoveredBy"
+    from         string(135) | json = "From"
+    to           string(135) | json = "To"
+    token        string(128) | json = "Token"
+    subject      string(4096) | json = "Subject"
+    body         string(65536) | json = "Body"
+    episode      string(128) | json = "Episode"
+    sent         bool | json = "Sent"
+    retry_before string(40) | json = "RetryBefore"
+}
+
+// Note is sprint.Note: one notification.
+table Note
+{
+    stream_transition        ?StreamTransition
+    id                       string(128)
+    safe_default             string(4096)
+    decision_delivery        ?DecisionDelivery
+    default_coordinator_told bool
+    default_owner_told       bool
+    coordinator_delivery     ?CoordinatorDelivery
+    alias                    string(16)
+    kind                     string(32)
+    type_                    string(64) | json = "type"
+    stream                   string(128)
+    primaries                []CardWord
+    count                    int64
+    what                     string(4096)
+    who                      string(135)
+    attempt                  int64
+    before                   int64
+    at                       string(40)
+    decisions                []TextWord
+    marked                   bool
+    answers                  string(4096)
+    suspects                 []CardWord
+    card                     string(515)
+    other                    string(515)
+    tier                     string(16)
+    other_stream             string(128)
+    stream_level             bool
+    sprint_level             bool
+    needs                    []CardWord
+    review                   string(40)
+    review_set               string(40)
+    to                       string(135)
+    hint                     string(4096)
+}
+
+// LogLine is sprint.Line: one line of the log. cause is at most
+// sprint.MaxCause (300); text holds the words a change carries (a brief is at
+// most store.MaxBriefBytes, 16 KiB, the rest at most store.MaxCardTextBytes);
+// the keys of text and set are field names.
+table LogLine
+{
+    kind    string(32)
+    at      string(40)
+    epoch   uint64
+    op      string(128)
+    card    string(515)
+    cards   []CardWord
+    primary string(515)
+    stream  string(128)
+    table_  string(32) | json = "table"
+    from    string(256)
+    to      string(256)
+    removed bool
+    gen     int64
+    actor   string(135)
+    verb    string(32)
+    cause   string(300)
+    answers []TextWord
+    text    map[string(32)]string(65536)
+    set     map[string(32)]string(4096)
+    note    ?Note
+}
+
+// LogOut is log --json's object.
+table LogOut
+{
+    lines []LogLine
+}
+
+// ---- streams.go -------------------------------------------------------------------------------
+
+// StreamCard is sprint.StreamCard.
+table StreamCard
+{
+    id    string(515)
+    state string(16)
+    tier  string(16)
+    title string(4096)
+    needs []CardWord
+}
+
+// StreamEntry is sprint.StreamEntry.
+table StreamEntry
+{
+    stream  string(128)
+    repos   []TextWord
+    bases   []TextWord
+    release string(128)
+    display string(128)
+    state   string(16)
+    open    int64
+    landed  int64
+    cards   []StreamCard
+}
+
+// StreamsView is sprint.StreamsView: streams --json's object.
+table StreamsView
+{
+    streams []StreamEntry
+    mixed   []TextWord
+}
+
+// ---- stats.go ---------------------------------------------------------------------------------
+
+// Measure is sprint.Measure: the median, the max and the count of a measure's
+// samples, in seconds.
+table Measure
+{
+    median_s float64
+    max_s    float64
+    n        int64
+}
+
+// Stages is sprint.Stages: the primary's stages.
+table Stages
+{
+    deal_wait        Measure
+    finish_to_2reads Measure
+    accept_to_land   Measure
+    total            Measure
+}
+
+// MemberStat is sprint.MemberStat.
+table MemberStat
+{
+    member     string(128)
+    cards      int64
+    failed     int64
+    take_wait  Measure
+    run_wall   Measure
+    report_lag Measure
+}
+
+// ReaderStat is sprint.ReaderStat.
+table ReaderStat
+{
+    reader     string(128)
+    cards      int64
+    begin_wait Measure
+    run_wall   Measure
+    report_lag Measure
+}
+
+// RouteTakes is sprint.RouteTakes.
+table RouteTakes
+{
+    route             string(128)
+    takes             int64
+    ok                int64
+    failed            int64
+    provider_failures int64
+    run_wall          Measure
+}
+
+// PassStats is sprint.PassStats: stats --json's object. since is empty
+// until a stats tidy (an optional string(N) is a named follow-on of the
+// compiler, so absence is the empty text).
+table PassStats
+{
+    epoch     uint64
+    since     string(40)
+    primaries int64
+    stages    Stages
+    work      []MemberStat
+    reads     []ReaderStat
+    routes    []RouteTakes
+}
