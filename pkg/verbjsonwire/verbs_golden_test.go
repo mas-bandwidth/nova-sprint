@@ -4,10 +4,8 @@ package verbjsonwire
 // (schemas/verbjson/verbs.schema, a VARIABLE-table area: S1, S2). For every
 // root table (the object a verb prints with --json) it holds that
 //
-//   - a sample of today's output, adapted by the one rule the schema documents
-//     for a Go []string (an array of {"s": ...} word tables), reads through
-//     pkg/schemaread as JSON text, and the table's text form keeps every
-//     non-empty key and value of it;
+//   - a sample of today's output reads through pkg/schemaread as JSON text,
+//     and the table's text form keeps every non-empty key and value of it;
 //   - the value round-trips in its three forms, the binary wire, padded
 //     standard base64 of the wire and the JSON text, each read strictly and
 //     counted once on the form read;
@@ -27,6 +25,8 @@ package verbjsonwire
 // program is used.
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -62,12 +62,13 @@ type field struct {
 
 type tableDef struct {
 	name   string
+	array  bool // | json = "array": the table's text is its one field's array
 	fields []field
 }
 
 var (
 	fieldLine = regexp.MustCompile(`^\s*([a-z_][a-z0-9_]*)\s+(\S+)(?:\s*\|\s*json\s*=\s*"([^"]+)")?\s*$`)
-	tableHead = regexp.MustCompile(`^table\s+([A-Za-z0-9]+)\s*$`)
+	tableHead = regexp.MustCompile(`^table\s+([A-Za-z0-9]+)(?:\s*\|\s*json\s*=\s*"array")?\s*$`)
 	strType   = regexp.MustCompile(`^string\((\d+)\)$`)
 	arrType   = regexp.MustCompile(`^\[\.\.(\d+)\](.+)$`)
 	mapType   = regexp.MustCompile(`^map\[string\((\d+)\)\](.+)$`)
@@ -91,6 +92,8 @@ func parseType(s string) *typ {
 		return &typ{kind: "list", elem: parseType(rest)}
 	}
 	switch s {
+	case "string":
+		return &typ{kind: "string"}
 	case "bool":
 		return &typ{kind: "bool"}
 	case "int64", "uint64", "float64":
@@ -115,7 +118,7 @@ func loadSchema(t *testing.T) (map[string]*tableDef, []string) {
 			continue
 		}
 		if m := tableHead.FindStringSubmatch(line); m != nil {
-			cur = &tableDef{name: m[1]}
+			cur = &tableDef{name: m[1], array: strings.Contains(line, `json = "array"`)}
 			defs[m[1]] = cur
 			order = append(order, m[1])
 			continue
@@ -153,6 +156,10 @@ func base(defs map[string]*tableDef, t *typ) any {
 	case "num":
 		return 7.0
 	case "table":
+		if defs[t.table].array {
+			f := defs[t.table].fields[0]
+			return []any{base(defs, f.t.elem)}
+		}
 		o := map[string]any{}
 		for _, f := range defs[t.table].fields {
 			o[f.key] = base(defs, f.t)
@@ -175,6 +182,13 @@ func overs(defs map[string]*tableDef, t *typ) []any {
 	case "string":
 		out = append(out, strings.Repeat("x", t.bound+1))
 	case "table":
+		if defs[t.table].array {
+			f := defs[t.table].fields[0]
+			for _, v := range overs(defs, f.t) {
+				out = append(out, v)
+			}
+			return out
+		}
 		for _, f := range defs[t.table].fields {
 			for _, v := range overs(defs, f.t) {
 				o := base(defs, t).(map[string]any)
@@ -183,8 +197,10 @@ func overs(defs map[string]*tableDef, t *typ) []any {
 			}
 		}
 	case "list":
-		for _, v := range overs(defs, t.elem) {
-			out = append(out, []any{v})
+		if t.elem.kind != "string" || t.elem.bound > 0 {
+			for _, v := range overs(defs, t.elem) {
+				out = append(out, []any{v})
+			}
 		}
 	case "array":
 		more := make([]any, t.bound+1)
@@ -192,8 +208,10 @@ func overs(defs map[string]*tableDef, t *typ) []any {
 			more[i] = base(defs, t.elem)
 		}
 		out = append(out, more)
-		for _, v := range overs(defs, t.elem) {
-			out = append(out, []any{v})
+		if t.elem.kind != "string" || t.elem.bound > 0 {
+			for _, v := range overs(defs, t.elem) {
+				out = append(out, []any{v})
+			}
 		}
 	case "map":
 		out = append(out, map[string]any{strings.Repeat("k", t.bound+1): base(defs, t.elem)})
@@ -217,47 +235,6 @@ func reaches(defs map[string]*tableDef, name string, seen map[string]bool) {
 			}
 		}
 	}
-}
-
-// adapt rewrites a sample of today's output by the schema's one documented
-// rule: a verb's array of strings is an array of word tables.
-func adapt(defs map[string]*tableDef, t *typ, v any) any {
-	switch t.kind {
-	case "table":
-		o, ok := v.(map[string]any)
-		if !ok {
-			return v
-		}
-		for _, f := range defs[t.table].fields {
-			if x, there := o[f.key]; there {
-				o[f.key] = adapt(defs, f.t, x)
-			}
-		}
-		return o
-	case "list", "array":
-		a, ok := v.([]any)
-		if !ok {
-			return v
-		}
-		for i, x := range a {
-			if s, isString := x.(string); isString && t.elem.kind == "table" {
-				a[i] = map[string]any{"s": s}
-				continue
-			}
-			a[i] = adapt(defs, t.elem, x)
-		}
-		return a
-	case "map":
-		m, ok := v.(map[string]any)
-		if !ok {
-			return v
-		}
-		for k, x := range m {
-			m[k] = adapt(defs, t.elem, x)
-		}
-		return m
-	}
-	return v
 }
 
 // prune drops every zero value, so "absent reads as zero" compares equal to a
@@ -532,6 +509,7 @@ var samples = map[string][]string{
 	"WakeState":     {`{"seeded":true,"bus":"1760000000000-0","judgments":["j1"],"stop":"","down":{"friend.amy":2},"told":["friend.amy"],"last":{"judgment":"` + instant + `"}}`},
 	"WakeAnswer":    {`{"cursor":"1760000000000-3","woke":true}`},
 	"GoalList":      {`{"goals":[{"name":"rowan","route":"rowan","last":"` + instant + `","count":3,"state":"ok","text":"keep going\n"}]}`},
+	"GoalShow":      {`[{"name":"rowan","route":"rowan","last":"` + instant + `","count":3,"state":"ok","text":"keep going\n"}]`},
 	"GoalSet":       {`{"name":"rowan","route":"rowan","last":"` + zeroAt + `","count":0,"state":"waiting","new":true}`},
 	"GoalDrop":      {`{"name":"rowan","dropped":true}`},
 	"SnapshotDrill": {`{"file":"/x/snapshot-1.rdb","sha256":"` + hex64 + `","counts":{"keys":1200,"cards":300},"restore":"integrity"}`},
@@ -597,8 +575,8 @@ func roots() []root {
 		{table: "WakeAnswer", name: "WAKE-ANSWER", help: "nova-sprint log -h", samples: samples["WakeAnswer"], newCode: func() erased {
 			return newCodec("WAKE-ANSWER", "nova-sprint log -h", WakeAnswerLoadMeasureReason, WakeAnswerLoadBuilder, WakeAnswerFromJson, WakeAnswerMeasure, WakeAnswerSave, WakeAnswerToJsonMeasure, WakeAnswerToJson)
 		}},
-		{table: "GoalList", name: "GOAL-LIST", help: "nova-sprint goal show -h", samples: samples["GoalList"], newCode: func() erased {
-			return newCodec("GOAL-LIST", "nova-sprint goal show -h", GoalListLoadMeasureReason, GoalListLoadBuilder, GoalListFromJson, GoalListMeasure, GoalListSave, GoalListToJsonMeasure, GoalListToJson)
+		{table: "GoalList", name: "GOAL-LIST", help: "nova-sprint goal list -h", samples: samples["GoalList"], newCode: func() erased {
+			return newCodec("GOAL-LIST", "nova-sprint goal list -h", GoalListLoadMeasureReason, GoalListLoadBuilder, GoalListFromJson, GoalListMeasure, GoalListSave, GoalListToJsonMeasure, GoalListToJson)
 		}},
 		{table: "GoalSet", name: "GOAL-SET", help: "nova-sprint goal set -h", samples: samples["GoalSet"], newCode: func() erased {
 			return newCodec("GOAL-SET", "nova-sprint goal set -h", GoalSetLoadMeasureReason, GoalSetLoadBuilder, GoalSetFromJson, GoalSetMeasure, GoalSetSave, GoalSetToJsonMeasure, GoalSetToJson)
@@ -692,6 +670,7 @@ func TestVerbJSONGolden(t *testing.T) {
 
 	// the roots are tables of the schema, and together reach every table.
 	seen := map[string]bool{}
+	reaches(defs, "GoalShow", seen)
 	for _, r := range rs {
 		require.Contains(t, defs, r.table, "root %s is no table of the schema", r.table)
 		require.NotEmpty(t, r.samples, "root %s has no sample of today's output", r.table)
@@ -709,9 +688,9 @@ func TestVerbJSONGolden(t *testing.T) {
 			// today's output keeps its keys and values (S2: the JSON text form).
 			for i, s := range r.samples {
 				t.Run(fmt.Sprintf("sample%d", i), func(t *testing.T) {
-					want := prune(adapt(defs, rootType, decode(t, []byte(s))))
+					want := prune(decode(t, []byte(s)))
 					require.NotNil(t, want)
-					roundTrip(t, r, encode(t, adapt(defs, rootType, decode(t, []byte(s)))), want)
+					roundTrip(t, r, encode(t, decode(t, []byte(s))), want)
 				})
 			}
 
@@ -719,6 +698,19 @@ func TestVerbJSONGolden(t *testing.T) {
 			t.Run("every field", func(t *testing.T) {
 				full := base(defs, rootType)
 				roundTrip(t, r, encode(t, full), prune(base(defs, rootType)))
+			})
+
+			// the generated JSON text is the bytes encoding/json writes for
+			// today's Go value: same keys, same field order, same shapes.
+			t.Run("json interop", func(t *testing.T) {
+				full := base(defs, rootType)
+				text := encode(t, full)
+				got, _, err := r.newCode().read(text)
+				require.NoError(t, err, "%s: read JSON", r.name)
+				var compact bytes.Buffer
+				require.NoError(t, json.Compact(&compact, got))
+				want := encode(t, reflectValue(defs, rootType, full))
+				assert.Equal(t, string(want), compact.String(), "%s: the generated JSON text is encoding/json's bytes", r.name)
 			})
 
 			// a value past a declared bound is refused by name, never clamped.
@@ -773,7 +765,11 @@ func TestVerbJSONGolden(t *testing.T) {
 			// a newer writer's field is skipped and counted (S1), in every form.
 			t.Run("newer writer", func(t *testing.T) {
 				c := r.newCode()
-				o := base(defs, rootType).(map[string]any)
+				v := base(defs, rootType)
+				o, isMap := v.(map[string]any)
+				if !isMap {
+					t.Skip("an array root has no field to add a newer writer's field to")
+				}
 				o["zz_a_field_a_newer_writer_adds"] = 1.0
 				_, res, err := c.read(encode(t, o))
 				require.NoError(t, err)
@@ -782,6 +778,98 @@ func TestVerbJSONGolden(t *testing.T) {
 			})
 		})
 	}
+
+	// GoalShow is the area's array root (goal.go:188-190): its JSON text is a
+	// top-level array. pkg/schemaread's Detect recognises JSON text only by a
+	// leading '{', so that one form is refused by name (unknown_form) until
+	// schemaread learns the array root; the binary and base64 forms round-trip.
+	t.Run("GoalShow", func(t *testing.T) {
+		t.Parallel()
+		text := []byte(samples["GoalShow"][0])
+		var builder GoalShowBuilder
+		require.True(t, builder.Init())
+		var rep TableReport
+		require.True(t, GoalShowFromJson(&builder, text, &rep), "%s", rep.Err())
+		require.True(t, builder.Lock())
+		root := builder.AsConst()
+		wire := whole(func() int64 { return GoalShowMeasure(root) }, func(b []byte) int64 { return GoalShowSave(root, b) })
+		require.NotEmpty(t, wire)
+		c := newCodec("GOAL-SHOW", "nova-sprint goal show -h", GoalShowLoadMeasureReason, GoalShowLoadBuilder, GoalShowFromJson, GoalShowMeasure, GoalShowSave, GoalShowToJsonMeasure, GoalShowToJson)
+		for _, form := range []schemaread.Form{schemaread.FormBinary, schemaread.FormBase64} {
+			img := wire
+			if form == schemaread.FormBase64 {
+				img = []byte(base64.StdEncoding.EncodeToString(wire))
+			}
+			back, res, err := c.read(img)
+			require.NoError(t, err, "GOAL-SHOW: read %s", form)
+			assert.Equal(t, form, res.Form)
+			assert.Equal(t, prune(decode(t, text)), prune(decode(t, back)), "GOAL-SHOW: %s round trip", form)
+		}
+		_, _, err := c.read(text)
+		require.Error(t, err)
+		var ref *schemaread.Refusal
+		require.True(t, errors.As(err, &ref))
+		assert.Equal(t, schemaread.ReasonUnknownForm, ref.Reason, "schemaread has not learned the array root's JSON text")
+	})
+}
+
+// reflectValue builds today's Go value of t (the struct encoding/json writes)
+// from a generic value: fields in schema order, the schema's JSON key as the tag.
+func reflectValue(defs map[string]*tableDef, t *typ, v any) any {
+	_, rv := reflected(defs, t, v)
+	return rv.Interface()
+}
+
+func reflected(defs map[string]*tableDef, t *typ, v any) (reflect.Type, reflect.Value) {
+	switch t.kind {
+	case "string":
+		return reflect.TypeOf(""), reflect.ValueOf(v.(string))
+	case "bool":
+		return reflect.TypeOf(false), reflect.ValueOf(v.(bool))
+	case "num":
+		return reflect.TypeOf(float64(0)), reflect.ValueOf(v.(float64))
+	case "list", "array":
+		a, _ := v.([]any)
+		et, ev := reflected(defs, t.elem, base(defs, t.elem))
+		st := reflect.SliceOf(et)
+		out := reflect.MakeSlice(st, len(a), len(a))
+		for i, x := range a {
+			_, e := reflected(defs, t.elem, x)
+			out.Index(i).Set(e)
+		}
+		_ = ev
+		return st, out
+	case "map":
+		m, _ := v.(map[string]any)
+		et, _ := reflected(defs, t.elem, base(defs, t.elem))
+		mt := reflect.MapOf(reflect.TypeOf(""), et)
+		out := reflect.MakeMap(mt)
+		for k, x := range m {
+			_, e := reflected(defs, t.elem, x)
+			out.SetMapIndex(reflect.ValueOf(k), e)
+		}
+		return mt, out
+	case "table":
+		def := defs[t.table]
+		if def.array {
+			return reflected(defs, def.fields[0].t, v)
+		}
+		o, _ := v.(map[string]any)
+		var fs []reflect.StructField
+		var vs []reflect.Value
+		for i, f := range def.fields {
+			ft, fv := reflected(defs, f.t, o[f.key])
+			fs = append(fs, reflect.StructField{Name: fmt.Sprintf("F%d", i), Type: ft, Tag: reflect.StructTag(`json:"` + f.key + `"`)})
+			vs = append(vs, fv)
+		}
+		st := reflect.StructOf(fs)
+		out := reflect.New(st).Elem()
+		for i := range vs {
+			out.Field(i).Set(vs[i])
+		}
+		return st, out
+	}
+	panic("unknown kind " + t.kind)
 }
 
 // firstDiff names the longest string of the text, the value that crossed the bound.
@@ -843,7 +931,7 @@ func TestVerbJSONPin(t *testing.T) {
 
 	// every table is a generated type: its descriptor names it.
 	infos := map[string]*TableTypeInfo{
-		"SayOK": SayOKTableType(), "GoalList": GoalListTableType(), "PassStats": PassStatsTableType(),
+		"SayOK": SayOKTableType(), "GoalList": GoalListTableType(), "GoalShow": GoalShowTableType(), "PassStats": PassStatsTableType(),
 		"LogLine": LogLineTableType(), "TickResult": TickResultTableType(),
 	}
 	for name, info := range infos {

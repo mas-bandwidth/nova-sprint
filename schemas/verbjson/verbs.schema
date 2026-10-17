@@ -14,19 +14,11 @@
 //
 // THE JSON TEXT FORM keeps today's keys: a field spells the key the Go struct
 // or the map literal spells (the json attribute where the schema name cannot
-// be the key). Today's value shapes are preserved where this compiler pin can
-// express them; where it cannot, the delta and its source are named here as
-// this area's scope resolution. It is fixed by the schema-standard feature this
-// card depends on ("schema-string-arrays-and-top-level-array-roots"; fixes go
-// standard first, then Go, verified in Go: S5), not here:
-//   - a Go []string becomes an array of word tables (IdWord, CardWord,
-//     TextWord): this compiler refuses an array of string(N) ("an array of
-//     string(N) is not supported in v1 — wrap the element in a type"), so a
-//     field that prints an array of strings (handover.rules and handover.first,
-//     cmd/nova-sprint/seat.go:150-151; streams.repos and streams.bases) reads
-//     as an array of {"s": "..."} objects, not of bare strings;
-//   - goal show prints a top-level array (cmd/nova-sprint/goal.go:188-190),
-//     which a table root cannot be: it is GoalList's "goals" array instead;
+// be the key). Today's value shapes are kept:
+//   - a Go []string is a text list (docs/USAGE.md, "Text lists and array-root
+//     tables"): a bare []string where no code bounds an element, and
+//     []string(N) where the code enforces N bytes (sprint.MaxIDLen 128 for an
+//     id, a card id at most four dot-joined ids 515);
 //   - a Go time.Time is the string it marshals to (RFC 3339 with nanoseconds,
 //     at most 35 bytes; 40 here), and *time.Time is an optional of it;
 //   - a field that is omitted when empty (omitempty) is a field that reads as
@@ -37,7 +29,7 @@
 // friendsync_install.go), SeatInstall (seatinstall.go), SeatCoordinator and
 // Handover and SeatCheck and SeatRepaired and SeatRecord and StoreLogin
 // (seat.go, storelogin.go), SyncReport (fleetsync.go), WakeState
-// (watchwake.go), WakeAnswer (log.go, serve.go), GoalList and GoalSet and
+// (watchwake.go), WakeAnswer (log.go, serve.go), GoalShow and GoalList and GoalSet and
 // GoalDrop (goal.go), SnapshotDrill and SnapshotTaken (snapshot.go), ShadowOut
 // and ShadowRecord (shadow.go), SettingValue and SettingsOk
 // (settings_verb.go), MachineOut (run.go), RemindView and RemindList
@@ -52,28 +44,6 @@
 // bytes, and a count the code bounds nowhere is unbounded ([]T): a list is
 // never clamped, and the reader refuses what a declared bound would cut.
 package verbjsonwire
-
-// ---- word tables: the element of an array of text ----------------------------
-
-// IdWord is one id: a ValidID word of sprint.MaxIDLen (128) bytes (a member,
-// a stream, a route, a table name).
-table IdWord
-{
-    s string(128)
-}
-
-// CardWord is one card id: at most 4 dot-joined ValidID words, 4*128 + 3 = 515
-// (sprint.ValidCardID).
-table CardWord
-{
-    s string(515)
-}
-
-// TextWord is one line of text the code bounds nowhere: 4096 bytes.
-table TextWord
-{
-    s string(4096)
-}
 
 // ---- sayok.go: the envelope of a verb's success -----------------------------
 
@@ -108,7 +78,7 @@ table UnitInstalled
 {
     path    string(4096)
     unit    string(32768)
-    args    []TextWord
+    args    []string
     dry_run ?bool
     written ?bool
     loaded  ?bool
@@ -140,7 +110,7 @@ table SeatInstall
 {
     server  string(256)
     dry_run bool
-    seat    []TextWord
+    seat    []string
 }
 
 // ---- seat.go: the seat ------------------------------------------------------------
@@ -193,14 +163,14 @@ table SentinelView
     id      string(515)
     stream  string(128)
     reached bool
-    behind  []CardWord
+    behind  []string(515)
 }
 
 // InboxAnswer is inboxAnswer: one decision and the command lines that make it.
 table InboxAnswer
 {
     decision string(4096)
-    commands []TextWord
+    commands []string
 }
 
 // InboxJudgment is inboxJudgment: one open judgment of the inbox; due is
@@ -214,14 +184,14 @@ table InboxJudgment
     what      string(4096)
     stream    string(128)
     size      int64
-    cards     []CardWord
-    notes     []TextWord
+    cards     []string(515)
+    notes     []string
     marked    bool
     overdue   bool
     waited    string(64)
     due       string(40)
     answers   []InboxAnswer
-    decisions []TextWord
+    decisions []string
 }
 
 // MemberView is memberView: a member held or down, and by whom.
@@ -236,7 +206,7 @@ table MemberView
 table RoutesView
 {
     enabled  int64
-    disabled []IdWord
+    disabled []string(128)
 }
 
 // DecisionView is decisionView: one of the coordinator's last decisions.
@@ -265,8 +235,8 @@ table Handover
     members   []MemberView
     routes    RoutesView
     decisions [..10]DecisionView
-    rules     []TextWord
-    first     []TextWord
+    rules     []string
+    first     []string
 }
 
 // SeatCoordinator is coordinator's object (seat.go cmdCoordinator): the new
@@ -351,11 +321,11 @@ table SyncReport
     check   bool
     members int64
     drift   []SyncDrift
-    held    []IdWord
-    holding []TextWord
-    waiting []TextWord
-    moved   []TextWord
-    refused []TextWord
+    held    []string(128)
+    holding []string
+    waiting []string
+    moved   []string
+    refused []string
     error   string(4096)
 }
 
@@ -368,10 +338,10 @@ table WakeState
 {
     seeded    bool
     bus       string(41)
-    judgments []TextWord
+    judgments []string
     stop      string(4096)
     down      map[string(128)]int64
-    told      []IdWord
+    told      []string(128)
     last      map[string(128)]string(40)
 }
 
@@ -398,8 +368,15 @@ table GoalView
     text  string(65536)
 }
 
-// GoalList is goal show's object: the views goal show prints as a top-level
-// array, as a "goals" array (a table root is an object).
+// GoalShow is goal show's object (cmd/nova-sprint/goal.go:188-190): the views
+// it prints as a top-level JSON array, which the array root writes
+// (docs/SPEC-TABLES.md section 16.10).
+table GoalShow | json = "array"
+{
+    goals []GoalView
+}
+
+// GoalList is goal list's object: the views as a "goals" array.
 table GoalList
 {
     goals []GoalView | json = "goals"
@@ -453,7 +430,7 @@ table SnapshotTaken
     bytes_  int64 | json = "bytes"
     counts  SnapshotCounts
     restore string(16)
-    pruned  []TextWord
+    pruned  []string
 }
 
 // ---- shadow.go ---------------------------------------------------------------------------
@@ -475,7 +452,7 @@ table ShadowPlan
     parts   []ShadowPart
     size    int64
     took_ns int64
-    reads   []TextWord
+    reads   []string
 }
 
 // ShadowOut is tick --shadow's object: the plan, or the error.
@@ -532,16 +509,16 @@ table DrainedResult
 {
     verb     string(32)
     op       string(128)
-    moved    []TextWord
+    moved    []string
     refused  []Refusal
     notes    int64
-    raised   []TextWord
-    said     []TextWord
+    raised   []string
+    said     []string
     attempts int64
     replay   bool
-    repaired []TextWord
+    repaired []string
     pending  string(128)
-    skipped  []TextWord
+    skipped  []string
     args     string(4096)
     lost     bool
     tables   map[string(32)]int64
@@ -554,16 +531,16 @@ table PartResult
     name     string(64)
     verb     string(32)
     op       string(128)
-    moved    []TextWord
+    moved    []string
     refused  []Refusal
     notes    int64
-    raised   []TextWord
-    said     []TextWord
+    raised   []string
+    said     []string
     attempts int64
     replay   bool
-    repaired []TextWord
+    repaired []string
     pending  string(128)
-    skipped  []TextWord
+    skipped  []string
     args     string(4096)
     lost     bool
     tables   map[string(32)]int64
@@ -577,7 +554,7 @@ table RepairResult
     verb    string(32)
     done    string(32)
     detail  string(4096)
-    skipped []TextWord
+    skipped []string
 }
 
 // LaneQuiet is sprint.LaneQuiet: a judgment the lane check kept from rising.
@@ -595,14 +572,14 @@ table LaneQuiet
 table TableRows
 {
     table_ string(32) | json = "table"
-    rows   []TextWord
+    rows   []string
 }
 
 // ArchiveResult is store.ArchiveResult: the streams a tick archived and drew.
 table ArchiveResult
 {
-    archived []IdWord
-    shown    []IdWord
+    archived []string(128)
+    shown    []string(128)
 }
 
 // PartTime is store.PartTime: one part of a tick and the time its step took.
@@ -637,12 +614,12 @@ table TickResult
     done         string(4096)
     hint         string(4096)
     archive      ?ArchiveResult
-    order        []IdWord
+    order        []string(128)
     times        []PartTime
     took_ns      int64
     busy_retries int64
     route_trips  int64
-    said         []TextWord
+    said         []string
 }
 
 // MachineOut is machineOut: start's, stop's and tick's report. reason and
@@ -657,7 +634,7 @@ table MachineOut
     error   string(4096)
     sprint  string(4096)
     refused []Refusal
-    moved   []TextWord
+    moved   []string
     parts   []PartResult
     reason  string(4096)
     until   string(40)
@@ -704,7 +681,7 @@ table StreamTransition
     state   string(16)
     cause   string(4096)
     waiting int64
-    owners  []IdWord
+    owners  []string(128)
 }
 
 // DecisionDelivery is sprint.DecisionDelivery: a decision's delivery to a lane.
@@ -720,7 +697,7 @@ table DecisionDelivery
     retry_before     string(40)
     sent_at          string(40)
     fault            string(4096)
-    reports          []TextWord
+    reports          []string
     unknown_receipts int64
 }
 
@@ -753,24 +730,24 @@ table Note
     kind                     string(32)
     type_                    string(64) | json = "type"
     stream                   string(128)
-    primaries                []CardWord
+    primaries                []string(515)
     count                    int64
     what                     string(4096)
     who                      string(135)
     attempt                  int64
     before                   int64
     at                       string(40)
-    decisions                []TextWord
+    decisions                []string
     marked                   bool
     answers                  string(4096)
-    suspects                 []CardWord
+    suspects                 []string(515)
     card                     string(515)
     other                    string(515)
     tier                     string(16)
     other_stream             string(128)
     stream_level             bool
     sprint_level             bool
-    needs                    []CardWord
+    needs                    []string(515)
     review                   string(40)
     review_set               string(40)
     to                       string(135)
@@ -788,7 +765,7 @@ table LogLine
     epoch   uint64
     op      string(128)
     card    string(515)
-    cards   []CardWord
+    cards   []string(515)
     primary string(515)
     stream  string(128)
     table_  string(32) | json = "table"
@@ -799,7 +776,7 @@ table LogLine
     actor   string(135)
     verb    string(32)
     cause   string(300)
-    answers []TextWord
+    answers []string
     text    map[string(32)]string(65536)
     set     map[string(32)]string(4096)
     note    ?Note
@@ -820,15 +797,15 @@ table StreamCard
     state string(16)
     tier  string(16)
     title string(4096)
-    needs []CardWord
+    needs []string(515)
 }
 
 // StreamEntry is sprint.StreamEntry.
 table StreamEntry
 {
     stream  string(128)
-    repos   []TextWord
-    bases   []TextWord
+    repos   []string
+    bases   []string
     release string(128)
     display string(128)
     state   string(16)
@@ -841,7 +818,7 @@ table StreamEntry
 table StreamsView
 {
     streams []StreamEntry
-    mixed   []TextWord
+    mixed   []string
 }
 
 // ---- stats.go ---------------------------------------------------------------------------------
