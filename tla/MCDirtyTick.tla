@@ -53,6 +53,12 @@ ScnWidthHalf == [readCost |-> "half"] @@ ScnWidth
 \* c1 merging, its merge recorded.
 ScnLand == [Base EXCEPT !.col = [c \in Cards |-> "merging"], !.mq = {"c1"},
                         !.q = Queues(<<>>, <<>>, <<E("merged", "c1", "-")>>, <<>>)]
+\* THE LAND GATE ON HELD MEMBERS (2026-10-17): c1 merging, every machine held by
+\* the coordinator and none up; c1 lands only through LandGate (Scn.gate). No
+\* machine lapses or beats (all live).
+ScnGateHeld == [gate |-> TRUE, heldinit |-> Machines, lapse |-> FALSE] @@
+               [Base EXCEPT !.col = [c \in Cards |-> "merging"], !.mq = {"c1"}, !.up = {},
+                            !.q = Queues(<<>>, <<>>, <<>>, <<>>)]
 \* c1 in review, its read on r1 (host m1) reported broken.
 ScnRework == [Base EXCEPT !.col = [c \in Cards |-> "review"], !.rd = [c \in Cards |-> "r1"],
                           !.mr = [m \in Machines |-> IF m = "m1" THEN {"c1"} ELSE {}],

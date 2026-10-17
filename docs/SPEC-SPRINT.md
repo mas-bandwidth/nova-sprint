@@ -4807,7 +4807,20 @@ the loop's gate runs in the clone; a `land` command on its own (a hand land,
 the install walkthrough) runs it there as before and its line carries no
 bench. The ledgers' update runs stay in the clone.
 
-**The gate bench is a hash ring.** The up benches, in the fleet's order, are a
+**A held member still runs gates.** The benches a gate may go to are the fleet
+members other than this machine that are up or held by the coordinator (held,
+with no `held_by` and no `fault_since`; `Snapshot.GateMembers`): a hold is a deal
+control (no card is dealt there; `UpMembers` stays the deal filter) and a gate is
+not a card, so `fleet hold` on every member no longer refuses every batch. A member
+down and not held, or held by a machine mark (fault, sync, probe, adopt), runs no
+gate (`gateHosts`, `landgo.go`; `tla/DirtyTick.tla` `LandGate`, `GateLands`,
+`HeldMayGateNeverDealt`; `MCDirtyTickGateHeld.cfg`, and the reversed witness
+`MCDirtyTickBrokenGateUpOnly.cfg`). `land --dry-run` makes the same choice and
+runs nothing: a batch it would land carries `bench=<member>` (the ring's first
+slot for its stream, no `wall=`), or, when another member is configured and none
+may gate, is `refused` with the loop's reason, counted under `refused=`.
+
+**The gate bench is a hash ring.** The gate benches, in the fleet's order, are a
 ring of `n`, and a batch's gate starts at `ring[FNV64(stream) % n]`, FNV-1a
 64-bit of the stream's name (`benchRing`, `landring.go`): the lander asks that
 bench's Go lane first and, while a lane is held, steps to `(h+1) % n`, then

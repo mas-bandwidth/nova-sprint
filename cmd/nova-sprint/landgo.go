@@ -1150,10 +1150,8 @@ func redRun(runs [][]string, out string) []string {
 	return last
 }
 
-// gateBenches is the up fleet members other than this machine that bench.CheckHost
-// accepts, in the fleet's order. remote says the loop has another fleet member configured,
-// even when it is down or the fleet could not be read. inLoop says land is the server's land
-// loop's. Only the loop sends the gate out: a land command on its own (a hand land, the
+// gateBenches is gateHosts for the server's land loop. inLoop says land is the server's
+// land loop's. Only the loop sends the gate out: a land command on its own (a hand land, the
 // install walkthrough) keeps it in this process. A unit test under the host guard with no
 // bench seam keeps it here too, so a member brought up in a test is not sshed to.
 func (l *lander) gateBenches(ctx context.Context) (hosts []string, inLoop, remote bool) {
@@ -1168,11 +1166,26 @@ func (l *lander) gateBenches(ctx context.Context) (hosts []string, inLoop, remot
 	if !inLoop || (testguard.Refusing() && seam == nil) {
 		return nil, inLoop, false
 	}
+	hosts, remote = l.gateHosts(ctx)
+	return hosts, inLoop, remote
+}
+
+// gateHosts is the gate's host choice, which the loop (gateBenches) and the dry run
+// (dryGate) share: the fleet members that may run a gate (Snapshot.GateMembers: up, or
+// held by the coordinator; a hold is a deal control, not a gate one) other than this
+// machine that bench.CheckHost accepts, in the fleet's order. A down member is left out;
+// one that cannot be reached is passed over by the ring (ringGate). remote says another
+// fleet member is configured, even when it is down or the fleet could not be read.
+// tla/DirtyTick.tla LandGate (MCDirtyTickGateHeld.cfg, MCDirtyTickBrokenGateUpOnly.cfg).
+func (l *lander) gateHosts(ctx context.Context) (hosts []string, remote bool) {
+	if l == nil || l.a == nil || l.st == nil {
+		return nil, false
+	}
 	l.a.serial.Lock()
 	s, err := l.st.Load(ctx, []string{sprint.Fleet}, nil)
 	l.a.serial.Unlock()
 	if err != nil || s == nil {
-		return nil, inLoop, true
+		return nil, true
 	}
 	self := l.a.machineName()
 	for _, m := range s.Members() {
@@ -1181,7 +1194,7 @@ func (l *lander) gateBenches(ctx context.Context) (hosts []string, inLoop, remot
 			break
 		}
 	}
-	for _, m := range s.UpMembers() {
+	for _, m := range s.GateMembers() {
 		if self != "" && strings.EqualFold(m, self) {
 			continue
 		}
@@ -1190,7 +1203,7 @@ func (l *lander) gateBenches(ctx context.Context) (hosts []string, inLoop, remot
 		}
 		hosts = append(hosts, m)
 	}
-	return hosts, inLoop, remote
+	return hosts, remote
 }
 
 // takeGateLane asks hosts (a ring: benchRing's order) for a Go lane one host at a time
