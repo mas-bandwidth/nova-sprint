@@ -2,11 +2,11 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/viewrowswire"
 )
 
 // A stuck operation: one pending past its grace that the tick could not
@@ -31,34 +31,43 @@ type Stuck struct {
 	RepairedAt time.Time `json:"repaired_at,omitempty"`
 }
 
+// stuckOps is the stuck record's generated variable table (viewrowswire Stuck; S1).
+var stuckOps = viewOps[viewrowswire.Stuck]{"Stuck",
+	viewBuilder((*viewrowswire.StuckBuilder).Init, (*viewrowswire.StuckBuilder).GetRoot, func(b *viewrowswire.StuckBuilder) *viewrowswire.TableArena { return &b.Arena }, viewrowswire.StuckFromJson),
+	viewrowswire.StuckMeasure, viewrowswire.StuckSave, viewrowswire.StuckLoadMeasureReason, viewrowswire.StuckLoad, viewrowswire.StuckToJsonMeasure, viewrowswire.StuckToJson}
+
+// stuckRead reads one stored stuck record through c, in any of its forms (S2): a record
+// that does not read is the named refusal, counted on c (S4).
+func stuckRead(c *RowCodec[Stuck], raw string, held bool) (Stuck, bool, error) {
+	s, held, err := viewRead(c, raw, held)
+	if err != nil {
+		return Stuck{}, false, fmt.Errorf("the machine's %s record is unreadable: %w", keyStuck, err)
+	}
+	return s, held && s.Op != "", nil
+}
+
 // stuck reads the stuck record; ok is false when there is none or the store
 // keeps no machine records.
 func (st *Store) stuck(ctx context.Context) (Stuck, bool, error) {
-	var s Stuck
 	kv, ok := st.B.(KV)
 	if !ok {
-		return s, false, nil
+		return Stuck{}, false, nil
 	}
-	if _, held, err := kv.GetKey(ctx, keyStuck); err != nil || !held {
-		return s, false, err
+	raw, held, err := kv.GetKey(ctx, keyStuck)
+	if err != nil || !held {
+		return Stuck{}, false, err
 	}
-	if err := st.getJSON(ctx, keyStuck, &s); err != nil {
-		return s, false, err
-	}
-	return s, s.Op != "", nil
+	return stuckRead(st.viewRows().stuck, raw, held)
 }
 
 // stuckOf is the stuck record the fence was read with (Fence.Stuck); ok is
-// false when there is none.
+// false when there is none. It reads with the loose readers: the fence carries
+// no Store.
 func stuckOf(f Fence) (Stuck, bool, error) {
-	var s Stuck
 	if f.Stuck == "" {
-		return s, false, nil
+		return Stuck{}, false, nil
 	}
-	if err := json.Unmarshal([]byte(f.Stuck), &s); err != nil {
-		return s, false, fmt.Errorf("the machine's %s record is unreadable: %w", keyStuck, err)
-	}
-	return s, s.Op != "", nil
+	return stuckRead(viewRowsLoose.stuck, f.Stuck, true)
 }
 
 // markStuck records an operation the tick could not finish; a record of the

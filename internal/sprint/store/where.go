@@ -1,14 +1,22 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"reflect"
 	"slices"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/viewrowswire"
+	"github.com/mas-bandwidth/nova-tools/pkg/schemaread"
 )
 
 // The where record (docs/SPEC-SPRINT.md section 1): what where shows that the
@@ -226,13 +234,17 @@ func costExtras(s *sprint.Snapshot) map[string][]string {
 }
 
 // readWhere is the where record as stored; false when there is none or it
-// does not read.
-func readWhere(raw string, ok bool) (WhereRecord, bool) {
-	var r WhereRecord
-	if !ok || json.Unmarshal([]byte(raw), &r) != nil {
+// does not read. It reads in any of the record's forms (S2) through c, the
+// Store's reader, or the loose reader with none. A record that does not read
+// is no record, on purpose: keepWhere counts it again and writes it over, and
+// WhereFacts counts the cards as it does before the first record. The refusal
+// is counted on the reader by its name (S4).
+func readWhere(raw string, ok bool, c ...*RowCodec[WhereRecord]) (WhereRecord, bool) {
+	r, ok, err := viewRead(viewCodec(viewRowsLoose.where, c), raw, ok)
+	if err != nil {
 		return WhereRecord{}, false
 	}
-	return r, true
+	return r, ok
 }
 
 // keepWhere is the tick's count of the where record: nothing when the record
@@ -271,7 +283,7 @@ func (st *Store) keepWhere(ctx context.Context, m Machine) error {
 	stamp := stats.statsStamp(st.epoch)
 	// a record from before the series, or the archived streams' figures, were counted is
 	// counted again once, tables still or not
-	if r, ok := readWhere(vals[0], oks[0]); ok && r.Epoch == st.epoch && r.Rev == shapes[0].Revision && r.FleetRev == shapes[1].Revision && r.Stats == stamp && r.SeriesCounted && r.ArchivedCounted && r.DecisionHoldsCounted {
+	if r, ok := readWhere(vals[0], oks[0], st.viewRows().where); ok && r.Epoch == st.epoch && r.Rev == shapes[0].Revision && r.FleetRev == shapes[1].Revision && r.Stats == stamp && r.SeriesCounted && r.ArchivedCounted && r.DecisionHoldsCounted {
 		return nil
 	}
 	tw := st.twin()
@@ -361,7 +373,7 @@ func (st *Store) MeasureStoreRTT(ctx context.Context) (time.Duration, error) {
 	if err != nil {
 		return d, err
 	}
-	return d, st.keepStoreRTT(ctx, kv, readStoreRTT(v, ok), t0, d)
+	return d, st.keepStoreRTT(ctx, kv, storeRTTOf(st.viewRows().rtt, v, ok), t0, d)
 }
 
 // RecordStoreRTT records one store round trip d that began at the store's now.
@@ -374,7 +386,7 @@ func (st *Store) RecordStoreRTT(ctx context.Context, d time.Duration) error {
 	if err != nil {
 		return err
 	}
-	return st.keepStoreRTT(ctx, kv, readStoreRTT(v, ok), st.now(), d)
+	return st.keepStoreRTT(ctx, kv, storeRTTOf(st.viewRows().rtt, v, ok), st.now(), d)
 }
 
 // keepStoreRTT adds the sample (at, d) to r, drops the samples older than
@@ -398,11 +410,13 @@ func (st *Store) keepStoreRTT(ctx context.Context, kv KV, r StoreRTTRecord, at t
 	return kv.SetKey(ctx, keyStoreRTT, string(b))
 }
 
-// readStoreRTT is the record a read returned; none, or one that does not
-// parse, is an empty record.
-func readStoreRTT(v string, ok bool) StoreRTTRecord {
-	var r StoreRTTRecord
-	if ok && json.Unmarshal([]byte(v), &r) != nil {
+// storeRTTOf reads the store round trip record through c, in any of its forms (S2). One
+// that does not read is an empty record, on purpose: the server is its one writer and
+// writes it over with the next sample, and where shows no round trip until then. The
+// refusal is counted on c by its name (S4).
+func storeRTTOf(c *RowCodec[StoreRTTRecord], v string, ok bool) StoreRTTRecord {
+	r, _, err := viewRead(c, v, ok)
+	if err != nil {
 		return StoreRTTRecord{}
 	}
 	return r
@@ -529,19 +543,21 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 		}
 		f.Records = true
 		f.Done, _, _, _ = st.readDoneFrom(ctx, kv, vals[6], oks[6])
+		rows := st.viewRows()
 		// the stats reset's mark, in the same exchange: an unreadable stats record is none
-		// here, as it is no tidy (the tick says it, statsRecordOf)
-		var stats StatsRecord
-		if !oks[4] || json.Unmarshal([]byte(vals[4]), &stats) != nil {
+		// here, as it is no tidy (the tick says it, statsRecordOf); its refusal is counted
+		// on the stats reader by name (S2, S4)
+		stats, _, serr := viewRead(rows.stats, vals[4], oks[4])
+		if serr != nil {
 			stats = StatsRecord{}
 		}
 		f.Reset = stats.resetIn(st.epoch)
-		for i, v := range []any{&f.Machine, &f.Heartbeat} {
-			if oks[i] {
-				if err := json.Unmarshal([]byte(vals[i]), v); err != nil {
-					return f, err
-				}
-			}
+		// the machine's records: one that does not read is the named refusal (S2)
+		if f.Machine, _, err = viewRead(rows.machine, vals[0], oks[0]); err != nil {
+			return f, err
+		}
+		if f.Heartbeat, _, err = viewRead(rows.heartbeat, vals[1], oks[1]); err != nil {
+			return f, err
 		}
 		if !f.Machine.Running() {
 			// READY is read off the record at the epoch these facts are of (Machine.Ready;
@@ -554,13 +570,13 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 			}
 			f.Machine = f.Machine.readyAt(es)
 		}
-		if r := readStoreRTT(vals[3], oks[3]); len(r.Samples) > 0 && st.now().Sub(time.UnixMilli(r.At)) <= StoreRTTWindow {
+		if r := storeRTTOf(rows.rtt, vals[3], oks[3]); len(r.Samples) > 0 && st.now().Sub(time.UnixMilli(r.At)) <= StoreRTTWindow {
 			f.HasStoreRTT, f.StoreRTTP50MS, f.StoreRTTP99MS = true, r.P50MS, r.P99MS
 		}
-		if r, ok := readStops(vals[5], oks[5]); ok && r.Epoch == st.epoch {
+		if r, ok := stopsOfRaw(rows.stops, vals[5], oks[5]); ok && r.Epoch == st.epoch {
 			f.Stops, f.HasStops = r, true
 		}
-		r, ok := readWhere(vals[2], oks[2])
+		r, ok := readWhere(vals[2], oks[2], rows.where)
 		// the landed series' landings are taken from any record of the pinned epoch that
 		// counted them, as of the tick's last count (WhereRecord.Series): the series is a
 		// day of landings in 10-minute buckets, never the cards' counts
@@ -628,8 +644,10 @@ func (st *Store) whereCosts(ctx context.Context, f *WhereFacts) error {
 	if err != nil {
 		return err
 	}
-	var stats StatsRecord
-	if !had || json.Unmarshal([]byte(raw), &stats) != nil {
+	// an unreadable stats record is none here, as it is no tidy (statsRecordOf); its refusal
+	// is counted on the stats reader by name (S2, S4)
+	stats, _, err := viewRead(st.viewRows().stats, raw, had)
+	if err != nil {
 		stats = StatsRecord{}
 	}
 	streams := sprint.StreamTierCosts(s)
@@ -645,4 +663,769 @@ func (st *Store) whereCosts(ctx context.Context, f *WhereFacts) error {
 // after the work table's revision its last tick saw.
 func (st *Store) keptBy(r WhereRecord, m Machine, hb Heartbeat) bool {
 	return !st.ByHand && m.Running() && hb.Error == "" && st.now().Sub(hb.Alive()) <= MachineSilence && r.Rev >= hb.Revisions[0]
+}
+
+// ---------------------------------------------------------------------------
+// The view rows' strict read (S1, S2, S4; schemas/viewrows/viewrows.schema).
+//
+// The where, store round trip, stats, machine and heartbeat records (this file), the stops
+// record (stops.go), the check record (check_record.go) and the stuck record (stuck.go) are
+// variable tables of viewrowswire (S1: each holds text or a list no path bounds). Every read
+// of them goes through its RowCodec (rowcodec.go), which takes the table's binary wire (form
+// byte 1), padded standard base64 of that wire, the schema JSON text and the legacy JSON
+// every writer still writes, and reads each to one equal value (S2). A damaged value is
+// `<RECORD> REFUSED: <reason>; run: nova-sprint check`, and every read is counted on its
+// record and its form (S4: the evidence a later card reads before the writers switch).
+// The Go value and the schema text are mapped by the generated descriptors
+// (viewrowswire.UnitView): a Go field is the schema field with its legacy JSON key, a map is a
+// list of pairs in key order, a list of texts is a list of one-text tables, a time is Unix
+// nanoseconds UTC with 0 for the zero time, and a Go array is the fixed table of as many
+// fields, in order (the schema's own header).
+
+// viewWireForm is the variable table's form byte (S1, S2).
+const viewWireForm byte = 1
+
+// viewOps is one record's generated variable-table functions (S1, S2).
+type viewOps[W any] struct {
+	table       string // the schema table's name, its descriptor in viewrowswire.UnitView
+	fromJSON    func([]byte, *viewrowswire.TableReport) (*W, *viewrowswire.TableArena, bool)
+	measure     func(*W, ...viewrowswire.TableWriteContext) int64
+	save        func(*W, []byte, ...viewrowswire.TableWriteContext) int64
+	loadMeasure func([]byte) (int64, error)
+	load        func(region, wire []byte, rep *viewrowswire.TableReport) *W
+	jsonMeasure func(*W, ...viewrowswire.TableAllocator) int64
+	toJSON      func(*W, []byte, ...viewrowswire.TableAllocator) int64
+}
+
+// viewBuilder adapts a generated builder to viewOps.fromJSON.
+func viewBuilder[B any, W any](init func(*B, ...viewrowswire.TableAllocator) bool, root func(*B) *W, arena func(*B) *viewrowswire.TableArena, from func(*B, []byte, *viewrowswire.TableReport) bool) func([]byte, *viewrowswire.TableReport) (*W, *viewrowswire.TableArena, bool) {
+	return func(text []byte, rep *viewrowswire.TableReport) (*W, *viewrowswire.TableArena, bool) {
+		b := new(B)
+		if !init(b) {
+			return nil, nil, false
+		}
+		ok := from(b, text, rep)
+		return root(b), arena(b), ok
+	}
+}
+
+// viewReport is a generated table report as the row codec decides on it; a load that
+// returned nothing is malformed when it names nothing else (S2).
+func viewReport(rep viewrowswire.TableReport, ok bool) RowReport {
+	return RowReport{Unknown: int(rep.Unknown), KindMismatch: int(rep.KindMismatch), Clamped: int(rep.Clamped),
+		Malformed: rep.Malformed || !ok, Duplicate: int(rep.Duplicate), Reason: rep.Reason}
+}
+
+// viewRefused says the strict read refuses r (rowcodec.go RowReport.schema, S2).
+func viewRefused(r RowReport) bool {
+	return r.Reason != "" || r.Malformed || r.Duplicate > 0 || r.KindMismatch > 0 || r.Clamped > 0
+}
+
+// viewMalformed is the refusal of a wire or text the generated functions could not size or
+// write (S2).
+var viewMalformed = RowReport{Malformed: true, Reason: schemaread.ReasonMalformed}
+
+// text is the schema JSON text of one wire, or the refusal its load reports (S2).
+func (o viewOps[W]) text(wire []byte) ([]byte, RowReport) {
+	n, err := o.loadMeasure(wire)
+	if err != nil {
+		return nil, RowReport{Reason: err.Error()}
+	}
+	var rep viewrowswire.TableReport
+	out := o.load(make([]byte, n), wire, &rep)
+	if rr := viewReport(rep, out != nil); viewRefused(rr) {
+		return nil, rr
+	}
+	size := o.jsonMeasure(out)
+	if size < 0 {
+		return nil, viewMalformed
+	}
+	buf := make([]byte, size)
+	m := o.toJSON(out, buf)
+	if m < 0 {
+		return nil, viewMalformed
+	}
+	return buf[:m], viewReport(rep, true)
+}
+
+// wire is the binary wire of one schema JSON text, or the refusal its reader reports (S2).
+func (o viewOps[W]) wire(text []byte) ([]byte, RowReport) {
+	var rep viewrowswire.TableReport
+	root, arena, ok := o.fromJSON(text, &rep)
+	if rr := viewReport(rep, ok && root != nil); viewRefused(rr) {
+		return nil, rr
+	}
+	size := o.measure(root, arena)
+	if size < 0 {
+		return nil, viewMalformed
+	}
+	buf := make([]byte, size)
+	n := o.save(root, buf, arena)
+	if n < 0 {
+		return nil, viewMalformed
+	}
+	return buf[:n], viewReport(rep, true)
+}
+
+// viewRowFns is one record's row functions: the generated variable table for the binary wire,
+// its base64 and the schema JSON text, and encoding/json for the legacy text every writer
+// writes today (S1, S2, S4). Legacy text is told from the schema text as rowcodec.go's
+// LegacyObject tells it: the generated writer ends its text with a newline.
+func viewRowFns[T any, W any](name string, o viewOps[W]) RowFns[T] {
+	info := viewTable(o.table)
+	load := func(v *T, wire []byte) RowReport {
+		text, rr := o.text(wire)
+		if viewRefused(rr) {
+			return rr
+		}
+		if err := viewFromText(text, info, v); err != nil {
+			return viewMapReport(err)
+		}
+		return rr
+	}
+	save := func(v *T) []byte {
+		text, err := viewToText(v, info)
+		if err != nil {
+			return nil
+		}
+		wire, rr := o.wire(text)
+		if viewRefused(rr) {
+			return nil
+		}
+		return wire
+	}
+	return RowFns[T]{
+		Name: name, Form: viewWireForm,
+		Reset:    func(v *T) { var zero T; *v = zero },
+		LoadWire: load,
+		LoadJSON: func(v *T, text []byte) RowReport {
+			wire, rr := o.wire(text)
+			if viewRefused(rr) {
+				return rr
+			}
+			lr := load(v, wire)
+			if !viewRefused(lr) {
+				lr.Unknown = rr.Unknown // the wire written from the text holds no unknown field
+			}
+			return lr
+		},
+		Legacy:     LegacyObject,
+		LoadLegacy: DecodeLegacy[T],
+		SaveWire:   save,
+		SaveJSON: func(v *T) []byte {
+			text, rr := o.text(save(v))
+			if viewRefused(rr) {
+				return nil
+			}
+			return text
+		},
+	}
+}
+
+// viewRowCodecs is one Store's view-row readers (S4). A Store and every copy pinned from it
+// share them, as they share the done reader (stats.go clone), so the counts are one per
+// sprint store and not one per pin.
+type viewRowCodecs struct {
+	where     *RowCodec[WhereRecord]
+	rtt       *RowCodec[StoreRTTRecord]
+	stats     *RowCodec[StatsRecord]
+	machine   *RowCodec[Machine]
+	heartbeat *RowCodec[Heartbeat]
+	stops     *RowCodec[StopsRecord]
+	check     *RowCodec[CheckRecord]
+	stuck     *RowCodec[Stuck]
+}
+
+// The generated functions of each view row read here (S1).
+var (
+	whereOps = viewOps[viewrowswire.WhereRecord]{"WhereRecord",
+		viewBuilder((*viewrowswire.WhereRecordBuilder).Init, (*viewrowswire.WhereRecordBuilder).GetRoot, func(b *viewrowswire.WhereRecordBuilder) *viewrowswire.TableArena { return &b.Arena }, viewrowswire.WhereRecordFromJson),
+		viewrowswire.WhereRecordMeasure, viewrowswire.WhereRecordSave, viewrowswire.WhereRecordLoadMeasureReason, viewrowswire.WhereRecordLoad, viewrowswire.WhereRecordToJsonMeasure, viewrowswire.WhereRecordToJson}
+	rttOps = viewOps[viewrowswire.StoreRTTRecord]{"StoreRTTRecord",
+		viewBuilder((*viewrowswire.StoreRTTRecordBuilder).Init, (*viewrowswire.StoreRTTRecordBuilder).GetRoot, func(b *viewrowswire.StoreRTTRecordBuilder) *viewrowswire.TableArena { return &b.Arena }, viewrowswire.StoreRTTRecordFromJson),
+		viewrowswire.StoreRTTRecordMeasure, viewrowswire.StoreRTTRecordSave, viewrowswire.StoreRTTRecordLoadMeasureReason, viewrowswire.StoreRTTRecordLoad, viewrowswire.StoreRTTRecordToJsonMeasure, viewrowswire.StoreRTTRecordToJson}
+	statsOps = viewOps[viewrowswire.StatsRecord]{"StatsRecord",
+		viewBuilder((*viewrowswire.StatsRecordBuilder).Init, (*viewrowswire.StatsRecordBuilder).GetRoot, func(b *viewrowswire.StatsRecordBuilder) *viewrowswire.TableArena { return &b.Arena }, viewrowswire.StatsRecordFromJson),
+		viewrowswire.StatsRecordMeasure, viewrowswire.StatsRecordSave, viewrowswire.StatsRecordLoadMeasureReason, viewrowswire.StatsRecordLoad, viewrowswire.StatsRecordToJsonMeasure, viewrowswire.StatsRecordToJson}
+	machineOps = viewOps[viewrowswire.Machine]{"Machine",
+		viewBuilder((*viewrowswire.MachineBuilder).Init, (*viewrowswire.MachineBuilder).GetRoot, func(b *viewrowswire.MachineBuilder) *viewrowswire.TableArena { return &b.Arena }, viewrowswire.MachineFromJson),
+		viewrowswire.MachineMeasure, viewrowswire.MachineSave, viewrowswire.MachineLoadMeasureReason, viewrowswire.MachineLoad, viewrowswire.MachineToJsonMeasure, viewrowswire.MachineToJson}
+	heartbeatOps = viewOps[viewrowswire.Heartbeat]{"Heartbeat",
+		viewBuilder((*viewrowswire.HeartbeatBuilder).Init, (*viewrowswire.HeartbeatBuilder).GetRoot, func(b *viewrowswire.HeartbeatBuilder) *viewrowswire.TableArena { return &b.Arena }, viewrowswire.HeartbeatFromJson),
+		viewrowswire.HeartbeatMeasure, viewrowswire.HeartbeatSave, viewrowswire.HeartbeatLoadMeasureReason, viewrowswire.HeartbeatLoad, viewrowswire.HeartbeatToJsonMeasure, viewrowswire.HeartbeatToJson}
+)
+
+// newViewRowCodecs makes one set of the view-row readers (S1, S2, S4).
+func newViewRowCodecs() *viewRowCodecs {
+	return &viewRowCodecs{
+		where:     NewRowCodec(viewRowFns[WhereRecord]("WHERERECORD", whereOps)),
+		rtt:       NewRowCodec(viewRowFns[StoreRTTRecord]("STORERTTRECORD", rttOps)),
+		stats:     NewRowCodec(viewRowFns[StatsRecord]("STATSRECORD", statsOps)),
+		machine:   NewRowCodec(viewRowFns[Machine]("MACHINE", machineOps)),
+		heartbeat: NewRowCodec(viewRowFns[Heartbeat]("HEARTBEAT", heartbeatOps)),
+		stops:     NewRowCodec(viewRowFns[StopsRecord]("STOPSRECORD", stopsOps)),
+		check:     NewRowCodec(viewRowFns[CheckRecord]("CHECKRECORD", checkOps)),
+		stuck:     NewRowCodec(viewRowFns[Stuck]("STUCK", stuckOps)),
+	}
+}
+
+// register counts every view-row reader on st's CheckReport (S4).
+func (b *viewRowCodecs) register(st *Store) {
+	b.where.Register(st)
+	b.rtt.Register(st)
+	b.stats.Register(st)
+	b.machine.Register(st)
+	b.heartbeat.Register(st)
+	b.stops.Register(st)
+	b.check.Register(st)
+	b.stuck.Register(st)
+}
+
+var (
+	viewRowsMu sync.Mutex
+	// viewRowsBy is each store's readers, keyed by the done reader the store and its pinned
+	// copies share (stats.go clone), so a pin reads with its store's counters (S4).
+	viewRowsBy = map[*RowCodec[donePage]]*viewRowCodecs{}
+	// viewRowsLoose is the readers of the reads made with no Store (readWhere,
+	// CheckRecordOf, stuckOf), registered process-wide so every store's report
+	// lists each view row, at zero before its first read (S4).
+	viewRowsLoose = newViewRowCodecs().registerProcess()
+)
+
+// registerProcess counts every view-row reader of b process-wide (RegisterProcess in
+// rowcodec.go), so check --json on a fresh store lists the view rows at zero (S4).
+func (b *viewRowCodecs) registerProcess() *viewRowCodecs {
+	b.where.RegisterProcess()
+	b.rtt.RegisterProcess()
+	b.stats.RegisterProcess()
+	b.machine.RegisterProcess()
+	b.heartbeat.RegisterProcess()
+	b.stops.RegisterProcess()
+	b.check.RegisterProcess()
+	b.stuck.RegisterProcess()
+	return b
+}
+
+// viewRows is this Store's view-row readers, registered on it (S4); a nil Store reads with
+// the loose readers.
+func (st *Store) viewRows() *viewRowCodecs {
+	if st == nil {
+		return viewRowsLoose
+	}
+	key := st.doneRows()
+	viewRowsMu.Lock()
+	b := viewRowsBy[key]
+	if b == nil {
+		b = newViewRowCodecs()
+		viewRowsBy[key] = b
+	}
+	viewRowsMu.Unlock()
+	b.register(st)
+	return b
+}
+
+// viewCodec is the one reader of c, or loose with none (S4).
+func viewCodec[T any](loose *RowCodec[T], c []*RowCodec[T]) *RowCodec[T] {
+	if len(c) > 0 && c[0] != nil {
+		return c[0]
+	}
+	return loose
+}
+
+// viewRead reads one stored value through c: absent is no record and no error; a value that
+// does not read is the named refusal, counted on c (S2, S4).
+func viewRead[T any](c *RowCodec[T], raw string, ok bool) (T, bool, error) {
+	var zero T
+	if !ok {
+		return zero, false, nil
+	}
+	v, _, err := c.Read([]byte(raw))
+	if err != nil {
+		return zero, false, err
+	}
+	return v, true, nil
+}
+
+// ---------------------------------------------------------------------------
+// The Go record and the schema text, mapped by the generated descriptors (S2).
+
+var (
+	viewTablesOnce sync.Once
+	viewTables     map[string]*viewrowswire.TableTypeInfo
+	viewTimeType   = reflect.TypeOf(time.Time{})
+)
+
+// viewTable is the generated descriptor of one schema table; nil for none.
+func viewTable(name string) *viewrowswire.TableTypeInfo {
+	viewTablesOnce.Do(func() {
+		viewTables = map[string]*viewrowswire.TableTypeInfo{}
+		for _, t := range viewrowswire.UnitView().Tables {
+			viewTables[t.Name] = t.Type
+		}
+	})
+	return viewTables[name]
+}
+
+// viewMapError is a value the Go record and the schema text cannot both hold: its reason is
+// the refusal's (S2).
+type viewMapError struct {
+	reason, at string
+}
+
+func (e *viewMapError) Error() string { return e.reason + ": " + e.at }
+
+func viewMapErr(reason, format string, args ...any) error {
+	return &viewMapError{reason: reason, at: fmt.Sprintf(format, args...)}
+}
+
+// viewMapReport is the refusal of a mapping error: its own reason, else malformed (S2).
+func viewMapReport(err error) RowReport {
+	var me *viewMapError
+	if errors.As(err, &me) && me.reason == schemaread.ReasonClamped {
+		return RowReport{Clamped: 1, Reason: schemaread.ReasonClamped}
+	}
+	return viewMalformed
+}
+
+// viewGoField is one Go field: where it is in its struct.
+type viewGoField struct {
+	index []int
+}
+
+// viewGoFieldsOf is viewGoFields by type, made once per type.
+var viewGoFieldsOf sync.Map // reflect.Type -> map[string]viewGoField
+
+// viewGoFields is a Go struct's exported fields by their legacy JSON key, embedded structs
+// flattened as encoding/json flattens them.
+func viewGoFields(t reflect.Type) map[string]viewGoField {
+	if v, ok := viewGoFieldsOf.Load(t); ok {
+		return v.(map[string]viewGoField)
+	}
+	out := map[string]viewGoField{}
+	var walk func(t reflect.Type, at []int)
+	walk = func(t reflect.Type, at []int) {
+		for i := 0; i < t.NumField(); i++ {
+			f := t.Field(i)
+			idx := append(slices.Clone(at), i)
+			tag := f.Tag.Get("json")
+			if tag == "-" {
+				continue
+			}
+			name, _, _ := strings.Cut(tag, ",")
+			if f.Anonymous && name == "" && f.Type.Kind() == reflect.Struct {
+				walk(f.Type, idx)
+				continue
+			}
+			if !f.IsExported() {
+				continue
+			}
+			if name == "" {
+				name = f.Name
+			}
+			out[name] = viewGoField{index: idx}
+		}
+	}
+	walk(t, nil)
+	viewGoFieldsOf.Store(t, out)
+	return out
+}
+
+// viewToText is the schema JSON text of the Go record *v (S2).
+func viewToText[T any](v *T, info *viewrowswire.TableTypeInfo) ([]byte, error) {
+	if info == nil {
+		return nil, viewMapErr(schemaread.ReasonMalformed, "no table")
+	}
+	obj, err := viewObjTo(reflect.ValueOf(v).Elem(), info)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(obj)
+}
+
+// viewObjTo is one Go struct as the schema table's object; every Go field has its schema
+// field and every schema field its Go field, so nothing is dropped unseen.
+func viewObjTo(gv reflect.Value, info *viewrowswire.TableTypeInfo) (map[string]any, error) {
+	fields := viewGoFields(gv.Type())
+	if len(fields) != len(info.Fields) {
+		return nil, viewMapErr(schemaread.ReasonMalformed, "%s: %d Go fields, %d schema fields", info.Name, len(fields), len(info.Fields))
+	}
+	out := make(map[string]any, len(info.Fields))
+	for i := range info.Fields {
+		f := &info.Fields[i]
+		gf, ok := fields[f.Json]
+		if !ok {
+			return nil, viewMapErr(schemaread.ReasonMalformed, "%s.%s: no Go field", info.Name, f.Json)
+		}
+		x, present, err := viewValueTo(gv.FieldByIndex(gf.index), f.TypeName, f.IsArray)
+		if err != nil {
+			return nil, fmt.Errorf("%s.%s: %w", info.Name, f.Json, err)
+		}
+		if present {
+			out[f.Json] = x
+		}
+	}
+	return out, nil
+}
+
+// viewValueTo is one Go value as the schema value of type typ (a list of typ when list);
+// present is false for a nil pointer and an empty map or slice, which the text leaves out.
+func viewValueTo(gv reflect.Value, typ string, list bool) (any, bool, error) {
+	if list {
+		switch gv.Kind() {
+		case reflect.Map:
+			if gv.Len() == 0 {
+				return nil, false, nil
+			}
+			pair := viewTable(typ)
+			if pair == nil || len(pair.Fields) != 2 || gv.Type().Key().Kind() != reflect.String {
+				return nil, false, viewMapErr(schemaread.ReasonMalformed, "a map into %s", typ)
+			}
+			keys := gv.MapKeys()
+			slices.SortFunc(keys, func(a, b reflect.Value) int { return strings.Compare(a.String(), b.String()) })
+			arr := make([]any, 0, len(keys))
+			for _, k := range keys {
+				vf := &pair.Fields[1]
+				x, present, err := viewValueTo(gv.MapIndex(k), vf.TypeName, vf.IsArray)
+				if err != nil {
+					return nil, false, err
+				}
+				e := map[string]any{pair.Fields[0].Json: k.String()}
+				if present {
+					e[vf.Json] = x
+				}
+				arr = append(arr, e)
+			}
+			return arr, true, nil
+		case reflect.Slice, reflect.Array:
+			if gv.Kind() == reflect.Slice && gv.Len() == 0 {
+				return nil, false, nil
+			}
+			arr := make([]any, gv.Len())
+			for i := range arr {
+				x, present, err := viewValueTo(gv.Index(i), typ, false)
+				if err != nil {
+					return nil, false, err
+				}
+				if !present {
+					return nil, false, viewMapErr(schemaread.ReasonMalformed, "an absent element of %s", typ)
+				}
+				arr[i] = x
+			}
+			return arr, true, nil
+		}
+		return nil, false, viewMapErr(schemaread.ReasonMalformed, "a Go %s into a list of %s", gv.Type(), typ)
+	}
+	switch typ {
+	case "int8", "int16", "int32", "int64":
+		switch {
+		case gv.Type() == viewTimeType:
+			return json.Number(strconv.FormatInt(viewNanos(gv.Interface().(time.Time)), 10)), true, nil
+		case gv.CanInt():
+			return json.Number(strconv.FormatInt(gv.Int(), 10)), true, nil
+		case gv.CanUint() && gv.Uint() <= math.MaxInt64:
+			return json.Number(strconv.FormatInt(int64(gv.Uint()), 10)), true, nil
+		}
+	case "uint8", "uint16", "uint32", "uint64":
+		switch {
+		case gv.CanUint():
+			return json.Number(strconv.FormatUint(gv.Uint(), 10)), true, nil
+		case gv.CanInt() && gv.Int() >= 0:
+			return json.Number(strconv.FormatUint(uint64(gv.Int()), 10)), true, nil
+		}
+	case "float32", "float64":
+		if gv.CanFloat() && !math.IsNaN(gv.Float()) && !math.IsInf(gv.Float(), 0) {
+			return json.Number(strconv.FormatFloat(gv.Float(), 'g', -1, 64)), true, nil
+		}
+	case "bool":
+		if gv.Kind() == reflect.Bool {
+			return gv.Bool(), true, nil
+		}
+	case "string":
+		if gv.Kind() == reflect.String {
+			return gv.String(), true, nil
+		}
+	default:
+		info := viewTable(typ)
+		switch {
+		case info == nil:
+		case gv.Kind() == reflect.Pointer:
+			if gv.IsNil() {
+				return nil, false, nil
+			}
+			return viewValueTo(gv.Elem(), typ, false)
+		case gv.Kind() == reflect.Struct && gv.Type() != viewTimeType:
+			obj, err := viewObjTo(gv, info)
+			return obj, err == nil, err
+		case gv.Kind() == reflect.Array && gv.Len() == len(info.Fields):
+			obj := map[string]any{}
+			for i := range info.Fields {
+				f := &info.Fields[i]
+				x, present, err := viewValueTo(gv.Index(i), f.TypeName, f.IsArray)
+				if err != nil {
+					return nil, false, err
+				}
+				if present {
+					obj[f.Json] = x
+				}
+			}
+			return obj, true, nil
+		case len(info.Fields) == 1:
+			f := &info.Fields[0]
+			x, present, err := viewValueTo(gv, f.TypeName, f.IsArray)
+			if err != nil {
+				return nil, false, err
+			}
+			obj := map[string]any{}
+			if present {
+				obj[f.Json] = x
+			}
+			return obj, true, nil
+		}
+	}
+	return nil, false, viewMapErr(schemaread.ReasonMalformed, "a Go %s into %s", gv.Type(), typ)
+}
+
+// viewNanos is a stored time as Unix nanoseconds UTC, 0 for the zero time (the schema's
+// header).
+func viewNanos(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.UnixNano()
+}
+
+// viewTime is viewNanos read back: 0 is the zero time.
+func viewTime(n int64) time.Time {
+	if n == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, n).UTC()
+}
+
+// viewFromText reads one schema JSON text, as the generated writer wrote it, into *v (S2).
+func viewFromText[T any](text []byte, info *viewrowswire.TableTypeInfo, v *T) error {
+	if info == nil {
+		return viewMapErr(schemaread.ReasonMalformed, "no table")
+	}
+	dec := json.NewDecoder(bytes.NewReader(text))
+	dec.UseNumber()
+	var x any
+	if err := dec.Decode(&x); err != nil {
+		return viewMapErr(schemaread.ReasonMalformed, "%s: %v", info.Name, err)
+	}
+	obj, ok := x.(map[string]any)
+	if !ok {
+		return viewMapErr(schemaread.ReasonMalformed, "%s: not an object", info.Name)
+	}
+	return viewObjFrom(obj, reflect.ValueOf(v).Elem(), info)
+}
+
+// viewObjFrom fills one Go struct from the schema table's object. An empty list or map is
+// absent from the text and reads as nil: the variable table holds no presence for it.
+func viewObjFrom(obj map[string]any, gv reflect.Value, info *viewrowswire.TableTypeInfo) error {
+	fields := viewGoFields(gv.Type())
+	if len(fields) != len(info.Fields) {
+		return viewMapErr(schemaread.ReasonMalformed, "%s: %d Go fields, %d schema fields", info.Name, len(fields), len(info.Fields))
+	}
+	for i := range info.Fields {
+		f := &info.Fields[i]
+		gf, ok := fields[f.Json]
+		if !ok {
+			return viewMapErr(schemaread.ReasonMalformed, "%s.%s: no Go field", info.Name, f.Json)
+		}
+		fv := gv.FieldByIndex(gf.index)
+		if x, has := obj[f.Json]; has && x != nil {
+			if err := viewValueFrom(x, fv, f.TypeName, f.IsArray); err != nil {
+				return fmt.Errorf("%s.%s: %w", info.Name, f.Json, err)
+			}
+		}
+	}
+	return nil
+}
+
+// viewValueFrom sets one Go value from the schema value x of type typ (a list of typ when
+// list). A number past the Go value's range, or a list past a Go array's length, is clamped;
+// a key twice in a map's pairs is malformed, never last-wins (rowcodec.go RowReport).
+func viewValueFrom(x any, gv reflect.Value, typ string, list bool) error {
+	if list {
+		arr, ok := x.([]any)
+		if !ok {
+			return viewMapErr(schemaread.ReasonMalformed, "not a list of %s", typ)
+		}
+		switch gv.Kind() {
+		case reflect.Map:
+			pair := viewTable(typ)
+			if pair == nil || len(pair.Fields) != 2 || gv.Type().Key().Kind() != reflect.String {
+				return viewMapErr(schemaread.ReasonMalformed, "%s into a map", typ)
+			}
+			if len(arr) == 0 {
+				return nil
+			}
+			m := reflect.MakeMapWithSize(gv.Type(), len(arr))
+			for _, e := range arr {
+				eo, ok := e.(map[string]any)
+				if !ok {
+					return viewMapErr(schemaread.ReasonMalformed, "a %s that is not an object", typ)
+				}
+				var key string
+				if k, has := eo[pair.Fields[0].Json]; has && k != nil {
+					if key, ok = k.(string); !ok {
+						return viewMapErr(schemaread.ReasonMalformed, "a %s key that is not text", typ)
+					}
+				}
+				kv := reflect.ValueOf(key).Convert(gv.Type().Key())
+				if m.MapIndex(kv).IsValid() {
+					return viewMapErr(schemaread.ReasonMalformed, "the %s key %q twice", typ, key)
+				}
+				val := reflect.New(gv.Type().Elem()).Elem()
+				vf := &pair.Fields[1]
+				if y, has := eo[vf.Json]; has && y != nil {
+					if err := viewValueFrom(y, val, vf.TypeName, vf.IsArray); err != nil {
+						return err
+					}
+				}
+				m.SetMapIndex(kv, val)
+			}
+			gv.Set(m)
+			return nil
+		case reflect.Slice:
+			if len(arr) == 0 {
+				return nil
+			}
+			s := reflect.MakeSlice(gv.Type(), len(arr), len(arr))
+			for i, e := range arr {
+				if err := viewValueFrom(e, s.Index(i), typ, false); err != nil {
+					return err
+				}
+			}
+			gv.Set(s)
+			return nil
+		case reflect.Array:
+			if len(arr) != gv.Len() {
+				return viewMapErr(schemaread.ReasonClamped, "%d of %s into %d", len(arr), typ, gv.Len())
+			}
+			for i, e := range arr {
+				if err := viewValueFrom(e, gv.Index(i), typ, false); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+		return viewMapErr(schemaread.ReasonMalformed, "a list of %s into a Go %s", typ, gv.Type())
+	}
+	switch typ {
+	case "int8", "int16", "int32", "int64":
+		n, ok := x.(json.Number)
+		if !ok {
+			break
+		}
+		i, err := n.Int64()
+		if err != nil {
+			return viewMapErr(schemaread.ReasonClamped, "%s %s", typ, n)
+		}
+		switch {
+		case gv.Type() == viewTimeType:
+			gv.Set(reflect.ValueOf(viewTime(i)))
+			return nil
+		case gv.CanInt():
+			if gv.OverflowInt(i) {
+				return viewMapErr(schemaread.ReasonClamped, "%d into a Go %s", i, gv.Type())
+			}
+			gv.SetInt(i)
+			return nil
+		case gv.CanUint():
+			if i < 0 || gv.OverflowUint(uint64(i)) {
+				return viewMapErr(schemaread.ReasonClamped, "%d into a Go %s", i, gv.Type())
+			}
+			gv.SetUint(uint64(i))
+			return nil
+		}
+	case "uint8", "uint16", "uint32", "uint64":
+		n, ok := x.(json.Number)
+		if !ok {
+			break
+		}
+		u, err := strconv.ParseUint(n.String(), 10, 64)
+		if err != nil {
+			return viewMapErr(schemaread.ReasonClamped, "%s %s", typ, n)
+		}
+		switch {
+		case gv.CanUint():
+			if gv.OverflowUint(u) {
+				return viewMapErr(schemaread.ReasonClamped, "%d into a Go %s", u, gv.Type())
+			}
+			gv.SetUint(u)
+			return nil
+		case gv.CanInt():
+			if u > math.MaxInt64 || gv.OverflowInt(int64(u)) {
+				return viewMapErr(schemaread.ReasonClamped, "%d into a Go %s", u, gv.Type())
+			}
+			gv.SetInt(int64(u))
+			return nil
+		}
+	case "float32", "float64":
+		n, ok := x.(json.Number)
+		if !ok || !gv.CanFloat() {
+			break
+		}
+		f, err := n.Float64()
+		if err != nil {
+			return viewMapErr(schemaread.ReasonClamped, "%s %s", typ, n)
+		}
+		gv.SetFloat(f)
+		return nil
+	case "bool":
+		if b, ok := x.(bool); ok && gv.Kind() == reflect.Bool {
+			gv.SetBool(b)
+			return nil
+		}
+	case "string":
+		if s, ok := x.(string); ok && gv.Kind() == reflect.String {
+			gv.SetString(s)
+			return nil
+		}
+	default:
+		info := viewTable(typ)
+		switch {
+		case info == nil:
+		case gv.Kind() == reflect.Pointer:
+			p := reflect.New(gv.Type().Elem())
+			if err := viewValueFrom(x, p.Elem(), typ, false); err != nil {
+				return err
+			}
+			gv.Set(p)
+			return nil
+		case gv.Kind() == reflect.Struct && gv.Type() != viewTimeType:
+			obj, ok := x.(map[string]any)
+			if !ok {
+				break
+			}
+			return viewObjFrom(obj, gv, info)
+		case gv.Kind() == reflect.Array && gv.Len() == len(info.Fields):
+			obj, ok := x.(map[string]any)
+			if !ok {
+				break
+			}
+			for i := range info.Fields {
+				f := &info.Fields[i]
+				if y, has := obj[f.Json]; has && y != nil {
+					if err := viewValueFrom(y, gv.Index(i), f.TypeName, f.IsArray); err != nil {
+						return err
+					}
+				}
+			}
+			return nil
+		case len(info.Fields) == 1:
+			obj, ok := x.(map[string]any)
+			if !ok {
+				break
+			}
+			f := &info.Fields[0]
+			if y, has := obj[f.Json]; has && y != nil {
+				return viewValueFrom(y, gv, f.TypeName, f.IsArray)
+			}
+			return nil
+		}
+	}
+	return viewMapErr(schemaread.ReasonMalformed, "%s into a Go %s", typ, gv.Type())
 }
