@@ -1149,14 +1149,14 @@ func keptOffTable(s *Snapshot, id string) bool {
 }
 
 // tierBelowFrontierForTLA is why a brief edit's --tier is refused: a tier below
-// heavy for a brief whose PATHS or NEW covers tla/ (the lint's
-// tla-is-heavy-or-above rule, as briefTier refuses it for tier --set); "" when
-// tier is unset or heavy or above.
+// heavy for a brief whose NEW names a new .tla module (the lint's
+// new-model-is-heavy-or-above rule, as briefTier refuses it for tier --set); ""
+// when tier is unset or heavy or above, or the brief only edits what tla/ holds.
 func tierBelowFrontierForTLA(id, tier, brief string) string {
-	if tier == "" || tier == cardhdr.RouteFrontier || tier == cardhdr.RouteHeavy || !briefCoversTLA(brief) {
+	if tier == "" || tier == cardhdr.RouteFrontier || tier == cardhdr.RouteHeavy || !briefWritesModel(brief) {
 		return ""
 	}
-	return id + "'s PATHS covers tla/, a TLA+ model, and a model is the heavy tier's work or above: --tier " + tier + " is below heavy and refused (the lint's tla-is-heavy-or-above rule); nothing was changed"
+	return id + "'s NEW names a new TLA+ model, and writing a model is the heavy tier's work or above: --tier " + tier + " is below heavy and refused (the lint's new-model-is-heavy-or-above rule); nothing was changed"
 }
 
 // sameNeeds says two need lists are the same, in order: the ordinary brief path
@@ -1220,8 +1220,8 @@ func briefTier(s *Snapshot, p Plan, r BriefReq) Plan {
 	case c.F(FieldTier) == r.Tier:
 		p.refuse(c.ID, c.ID+" is pinned to tier "+r.Tier+" already; nothing was changed")
 		return p
-	case r.Tier != cardhdr.RouteFrontier && r.Tier != cardhdr.RouteHeavy && briefCoversTLA(c.F("brief")):
-		p.refuse(c.ID, c.ID+"'s PATHS covers tla/, a TLA+ model, and a model is the heavy tier's work or above: a tier below heavy is refused (the lint's tla-is-heavy-or-above rule); nothing was changed")
+	case r.Tier != cardhdr.RouteFrontier && r.Tier != cardhdr.RouteHeavy && briefWritesModel(c.F("brief")):
+		p.refuse(c.ID, c.ID+"'s NEW names a new TLA+ model, and writing a model is the heavy tier's work or above: a tier below heavy is refused (the lint's new-model-is-heavy-or-above rule); nothing was changed")
 		return p
 	}
 	if m, _ := cardhdr.ReadModel(c.F("brief")); m.Pin != "" {
@@ -1247,17 +1247,11 @@ func briefTier(s *Snapshot, p Plan, r BriefReq) Plan {
 	return p
 }
 
-// briefCoversTLA says the brief's PATHS or NEW covers tla/ (the lint's
-// tla-is-heavy-or-above rule): a TLA+ model, the heavy tier's work or above, so
-// a tier below heavy is refused.
-func briefCoversTLA(brief string) bool {
-	for _, e := range swarm.CardPaths([]byte(brief)) {
-		e = strings.TrimSpace(e)
-		if e == "tla" || strings.HasPrefix(e, "tla/") {
-			return true
-		}
-	}
-	return false
+// briefWritesModel says the brief's NEW names a new .tla module (the lint's
+// new-model-is-heavy-or-above rule): writing a TLA+ model, the heavy tier's work
+// or above, so a tier below heavy is refused. Editing what tla/ holds is any tier.
+func briefWritesModel(brief string) bool {
+	return len(swarm.CardNewModels([]byte(brief))) > 0
 }
 
 // briefStarted is the remedy of a brief refused for a card merging or landed (a

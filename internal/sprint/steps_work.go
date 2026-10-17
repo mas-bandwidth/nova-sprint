@@ -280,7 +280,7 @@ func Add(s *Snapshot, r AddReq) Plan {
 		score  float64
 		needs  []string
 		brief  string
-		model  string // the words of a card add tiered frontier (ModelTier)
+		model  string // the words of a card add tiered heavy (ModelTier)
 		rules  string // FieldRules
 		bench  string // FieldBench: the members its brief's BENCH line names (bench_deal.go)
 		repo   string // the repository its brief's REPO: line names (FieldRepo)
@@ -311,7 +311,7 @@ func Add(s *Snapshot, r AddReq) Plan {
 			bench, benchWhy = nil, BenchRefused(s, bench, unknown)
 		}
 		devWhy := SprintBranchWhy(s, r.Stream, baseOf(i), id)
-		// a card whose PATHS name TLA+ model work is tiered frontier (tier_model.go)
+		// a card whose NEW names a new TLA+ model is tiered heavy (tier_model.go)
 		brief, modelSaid, modelWhy := ModelTier(briefOf(i))
 		_, priorityWhy := PriorityOfBrief(briefOf(i)) // a PRIORITY line naming no level (priority.go)
 		switch {

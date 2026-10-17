@@ -13,8 +13,8 @@ import (
 
 // writeTlaBrief writes a passing brief whose header block carries paths on its PATHS:
 // line and whose body carries steps, and returns its path. A brief whose PATHS covers
-// tla/ is tier frontier (the tla-is-frontier brief check, docs/SPEC-SPRINT.md section
-// 11); every other brief is flash.
+// tla/ is tier frontier (above the new-model-is-heavy-or-above brief check's floor,
+// docs/SPEC-SPRINT.md section 11); every other brief is flash.
 func writeTlaBrief(t *testing.T, dir, id, paths, steps string) string {
 	t.Helper()
 	tier := "flash"
