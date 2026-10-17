@@ -1,0 +1,3 @@
+go test fuzz v1
+byte('\x0e')
+[]byte("{\n  \"id\": \"\",\n  \"safe_default\": \"\",\n  \"default_coordinator_told\": false,\n  \"default_owner_told\": false,\n  \"alias\": \"\",\n  \"kind\": \"\",\n  \"note_type\": \"\",\n  \"stream\": \"\",\n  \"primaries\": [],\n  \"count\": 0,\n  \"what\": \"\",\n  \"who\": \"\",\n  \"attempt\": 0,\n  \"before\": 0,\n  \"at\": 0,\n  \"decisions\": [],\n  \"marked\": false,\n  \"answers\": \"\",\n  \"suspects\": [],\n  \"card\": \"\",\n  \"other\": \"\",\n  \"tier\": \"\",\n  \"other_stream\": \"\",\n  \"stream_level\": false,\n  \"sprint_level\": false,\n  \"needs\": [],\n  \"review\": 0,\n  \"review_set\": 0,\n  \"to\": \"\",\n  \"hint\": \"\"\n}\n")
