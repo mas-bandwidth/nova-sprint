@@ -166,6 +166,10 @@ table ServerRecord
     field pid id=0x77af701956600122 kind=5
     field host id=0x4077f8cc7eaf4d6f kind=17 type=string
 
+table Stranger
+    field seen id=0x2cfadb18d3ecd12a kind=17 type=string
+    field told id=0x2fd9f6ef389a0874 kind=1
+
 table Ticks
     field busy id=0xff75d19be2aea620 kind=9
     field total id=0x2dcede7d543a4ffd kind=9
@@ -177,3 +181,6 @@ table Ticks
 ### 2026-10-17 (UTC) — FriendStatus.status becomes open text: FriendRows shows any word outside FriendStates as down and accepts any length
 - FriendStatus.status: wire kind 12 -> 17 [refuse]
 - FriendStatus.status: nested table string added [refuse]
+
+### 2026-10-17 (UTC) — a8-strangers-writer: Stranger table
+- no compatibility-affecting edits; the wire absorbs the rest

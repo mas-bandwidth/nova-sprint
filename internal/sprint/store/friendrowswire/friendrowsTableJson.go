@@ -3081,6 +3081,18 @@ func FriendStatusToJsonMeasure(value *FriendStatus, allocator ...TableAllocator)
 func FriendStatusToJson(value *FriendStatus, buffer []byte, allocator ...TableAllocator) int64 {
 	return tableRegionToJson(unsafe.Pointer(value), FriendStatusTableType(), buffer, allocator...)
 }
+func StrangerFromJson(builder *StrangerBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), StrangerTableType(), &builder.Main, text, report)
+}
+func StrangerToJsonMeasure(value *Stranger, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), StrangerTableType(), nil, allocator...)
+}
+func StrangerToJson(value *Stranger, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), StrangerTableType(), buffer, allocator...)
+}
 func LoadSampleFromJson(builder *LoadSampleBuilder, text []byte, report *TableReport) bool {
 	if builder.Arena.Locked {
 		return false
