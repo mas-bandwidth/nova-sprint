@@ -143,8 +143,11 @@ func unbuiltRoots(roots []deadCodeRoot, stderr string) []deadCodeRoot {
 }
 
 // deadFuncs runs deadcode -test for one GOOS and tag set and returns the set of
-// "<package> <func>" keys it reports, skipping roots that do not build.
-func deadFuncs(t *testing.T, ctx context.Context, bin, root, goos, tags string, roots []deadCodeRoot) (map[string]bool, []deadCodeRoot, error) {
+// "<package> <func>" keys it reports (package paths with the module prefix cut),
+// skipping roots that do not build. Each time it drops roots it passes the kept
+// roots to learn, when learn is not nil; procs is the run's GOMAXPROCS (0 leaves
+// the environment's).
+func deadFuncs(t *testing.T, ctx context.Context, bin, root, module, goos, tags string, roots []deadCodeRoot, procs int, learn func([]deadCodeRoot)) (map[string]bool, []deadCodeRoot, error) {
 	t.Helper()
 	for {
 		args := []string{"-test", "-json", "-tags", tags}
@@ -154,6 +157,9 @@ func deadFuncs(t *testing.T, ctx context.Context, bin, root, goos, tags string, 
 		cmd := exec.CommandContext(ctx, bin, args...)
 		cmd.Dir = root
 		cmd.Env = deadCodeEnv(goos)
+		if procs > 0 {
+			cmd.Env = append(cmd.Env, "GOMAXPROCS="+strconv.Itoa(procs))
+		}
 		cmd.WaitDelay = 5 * time.Second
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -174,6 +180,9 @@ func deadFuncs(t *testing.T, ctx context.Context, bin, root, goos, tags string, 
 				}
 			}
 			roots = kept
+			if learn != nil {
+				learn(kept)
+			}
 			continue
 		}
 		var pkgs []deadcodePackage
@@ -184,7 +193,7 @@ func deadFuncs(t *testing.T, ctx context.Context, bin, root, goos, tags string, 
 		for _, p := range pkgs {
 			for _, fn := range p.Funcs {
 				if !fn.Marker && !fn.Generated {
-					dead[strings.TrimPrefix(p.Path, deadCodeModule)+" "+fn.Name] = true
+					dead[strings.TrimPrefix(p.Path, module)+" "+fn.Name] = true
 				}
 			}
 		}
@@ -192,25 +201,31 @@ func deadFuncs(t *testing.T, ctx context.Context, bin, root, goos, tags string, 
 	}
 }
 
-// measureDeadCode returns, per package, the sorted names of functions dead under
-// every tag set for at least one GOOS.
+// measureDeadCode returns, per package (its path with the module prefix cut),
+// the sorted names of functions dead under every tag set for at least one GOOS,
+// measured by the deadcode binary bin over the mains under root's ./cmd/... and
+// ./tools/....
 //
 // The GOOS-by-tag-set runs are independent, so they run at once, bounded by
 // deadCodeParallel: serially they took longer than the functional tier's
-// two-minute package bound. The result is exactly the serial cascade's: there,
-// tag set i ran over the roots the sets before it kept. Each parallel run starts
-// from every root; when the cascade carries every root into set i, or the
-// run's final, successful call was over exactly the roots the cascade carries,
-// the cascade's call is that same command, and otherwise the set is run again,
-// in order, over the cascade's roots.
-func measureDeadCode(t *testing.T, ctx context.Context, root string) map[string][]string {
+// two-minute package bound. Each GOOS's first tag set runs first and decides the
+// roots the GOOS's other tag sets start from: its first call either drops the
+// roots that do not build there or succeeds over them all, and the other tag
+// sets wait for that instead of each failing on the same root and running
+// again. A run that drops a root passes it on to the runs of its GOOS that start
+// after it. The result is exactly the serial cascade's: there, tag set i ran
+// over the roots the sets before it kept.
+// When a run started from the roots the cascade carries into set i, or its final,
+// successful call was over exactly those roots, the cascade's call is that same
+// command, and otherwise the set is run again, in order, over the cascade's roots.
+func measureDeadCode(t *testing.T, ctx context.Context, bin, root, module string) map[string][]string {
 	t.Helper()
-	bin := deadcodeBinary(t, ctx, root)
 
 	type deadRun struct {
-		dead map[string]bool
-		kept []deadCodeRoot
-		err  error
+		start []deadCodeRoot
+		dead  map[string]bool
+		kept  []deadCodeRoot
+		err   error
 	}
 	allRoots := make([][]deadCodeRoot, len(deadCodeGOOS))
 	for g, goos := range deadCodeGOOS {
@@ -218,21 +233,63 @@ func measureDeadCode(t *testing.T, ctx context.Context, root string) map[string]
 		require.NoError(t, err)
 		allRoots[g] = roots
 	}
-	runs := make([][]deadRun, len(deadCodeGOOS))
-	sem := make(chan struct{}, deadCodeParallel())
-	var wg sync.WaitGroup
-	for g, goos := range deadCodeGOOS {
-		runs[g] = make([]deadRun, len(deadCodeTagSets))
-		for i, tags := range deadCodeTagSets {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				sem <- struct{}{}
-				defer func() { <-sem }()
-				dead, kept, err := deadFuncs(t, ctx, bin, root, goos, tags, allRoots[g])
-				runs[g][i] = deadRun{dead, kept, err}
-			}()
+
+	// learned[g] is the roots GOOS g has kept so far, in allRoots order; decided[g]
+	// closes when GOOS g's first tag set has decided them.
+	learned := make([][]deadCodeRoot, len(deadCodeGOOS))
+	copy(learned, allRoots)
+	decided := make([]chan struct{}, len(deadCodeGOOS))
+	decide := make([]func(), len(deadCodeGOOS))
+	for g := range deadCodeGOOS {
+		decided[g] = make(chan struct{})
+		decide[g] = sync.OnceFunc(func() { close(decided[g]) })
+	}
+	var mu sync.Mutex
+	type job struct{ g, i int }
+	jobs := make(chan job, len(deadCodeGOOS)*len(deadCodeTagSets))
+	for g := range deadCodeGOOS {
+		jobs <- job{g, 0}
+	}
+	for g := range deadCodeGOOS {
+		for i := 1; i < len(deadCodeTagSets); i++ {
+			jobs <- job{g, i}
 		}
+	}
+	close(jobs)
+
+	runs := make([][]deadRun, len(deadCodeGOOS))
+	for g := range runs {
+		runs[g] = make([]deadRun, len(deadCodeTagSets))
+	}
+	parallel := min(deadCodeParallel(), cap(jobs))
+	procs := (runtime.NumCPU() + parallel - 1) / parallel
+	var wg sync.WaitGroup
+	for range parallel {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := range jobs {
+				if j.i > 0 {
+					<-decided[j.g] // the first tag sets are queued, and so running, ahead of every other
+				}
+				mu.Lock()
+				start := learned[j.g]
+				mu.Unlock()
+				learn := func(kept []deadCodeRoot) {
+					mu.Lock()
+					learned[j.g] = intersectRoots(learned[j.g], kept)
+					mu.Unlock()
+					if j.i == 0 {
+						decide[j.g]()
+					}
+				}
+				dead, kept, err := deadFuncs(t, ctx, bin, root, module, deadCodeGOOS[j.g], deadCodeTagSets[j.i], start, procs, learn)
+				if j.i == 0 {
+					decide[j.g]()
+				}
+				runs[j.g][j.i] = deadRun{start, dead, kept, err}
+			}
+		}()
 	}
 	wg.Wait()
 
@@ -244,15 +301,15 @@ func measureDeadCode(t *testing.T, ctx context.Context, root string) map[string]
 		for i, tags := range deadCodeTagSets {
 			r := runs[g][i]
 			require.NoError(t, r.err)
-			if !sameRoots(r.kept, roots) && !sameRoots(roots, all) {
-				dead, kept, err := deadFuncs(t, ctx, bin, root, goos, tags, roots)
+			if !sameRoots(r.kept, roots) && !sameRoots(roots, r.start) {
+				dead, kept, err := deadFuncs(t, ctx, bin, root, module, goos, tags, roots, procs, nil)
 				require.NoError(t, err)
 				r = deadRun{dead: dead, kept: kept}
 			}
 			roots = r.kept
 			every = intersectDead(every, r.dead)
 		}
-		unjudged, err := skippedReach(ctx, root, goos, all, roots)
+		unjudged, err := skippedReach(ctx, root, module, goos, all, roots)
 		require.NoError(t, err)
 		for k := range every {
 			pkg, _, _ := strings.Cut(k, " ")
@@ -272,12 +329,54 @@ func measureDeadCode(t *testing.T, ctx context.Context, root string) map[string]
 	return byPkg
 }
 
-// deadCodeParallel bounds the deadcode runs in flight. Each run loads and
-// analyses the whole program, so the bound is the machine's cores, and two at
-// the least so a small runner still overlaps one run's loading with another's
-// analysis.
+// deadCodeRunMemory is a deadcode run's peak resident memory over this module,
+// rounded up: each run loads and analyses the whole program.
+const deadCodeRunMemory = 3 << 30
+
+// deadCodeParallel bounds the deadcode runs in flight by the machine's cores and
+// by its available memory over deadCodeRunMemory, at least one: bounded by cores
+// alone, the runs in flight ran a loaded machine out of memory.
 func deadCodeParallel() int {
-	return max(2, runtime.NumCPU())
+	n := runtime.NumCPU()
+	if avail, ok := availableMemory(); ok {
+		n = min(n, int(avail/deadCodeRunMemory))
+	}
+	return max(1, n)
+}
+
+// availableMemory reads MemAvailable from /proc/meminfo; ok is false where there
+// is none.
+func availableMemory() (n uint64, ok bool) {
+	raw, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return 0, false
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if rest, found := strings.CutPrefix(line, "MemAvailable:"); found {
+			f := strings.Fields(rest)
+			if len(f) == 2 && f[1] == "kB" {
+				if kb, err := strconv.ParseUint(f[0], 10, 64); err == nil {
+					return kb << 10, true
+				}
+			}
+		}
+	}
+	return 0, false
+}
+
+// intersectRoots keeps the roots of a that are also in b, in a's order.
+func intersectRoots(a, b []deadCodeRoot) []deadCodeRoot {
+	in := map[deadCodeRoot]bool{}
+	for _, r := range b {
+		in[r] = true
+	}
+	var out []deadCodeRoot
+	for _, r := range a {
+		if in[r] {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 func sameRoots(a, b []deadCodeRoot) bool {
@@ -295,7 +394,7 @@ func sameRoots(a, b []deadCodeRoot) bool {
 // skippedReach returns the packages (module-relative) reached, tests included,
 // by the roots in all that are missing from kept: a GOOS that skipped a root
 // cannot judge them.
-func skippedReach(ctx context.Context, root, goos string, all, kept []deadCodeRoot) (map[string]bool, error) {
+func skippedReach(ctx context.Context, root, module, goos string, all, kept []deadCodeRoot) (map[string]bool, error) {
 	have := map[string]bool{}
 	for _, r := range kept {
 		have[r.importPath] = true
@@ -322,7 +421,7 @@ func skippedReach(ctx context.Context, root, goos string, all, kept []deadCodeRo
 		return nil, fmt.Errorf("listing what %v reaches for GOOS=%s: %w\nstderr: %s", skipped, goos, err, stderr.String())
 	}
 	for _, path := range strings.Fields(stdout.String()) {
-		if p, ok := strings.CutPrefix(path, deadCodeModule); ok {
+		if p, ok := strings.CutPrefix(path, module); ok {
 			p, _, _ = strings.Cut(p, " ") // test variants read "pkg [pkg.test]"
 			out[p] = true
 		}
@@ -449,7 +548,7 @@ func TestDeadCode(t *testing.T) {
 	ledger, err := parseDeadCodeLedger(string(raw))
 	require.NoError(t, err, "parsing %s", deadCodeLedgerPath)
 
-	measured := measureDeadCode(t, ctx, root)
+	measured := measureDeadCode(t, ctx, deadcodeBinary(t, ctx, root), root, deadCodeModule)
 	update := os.Getenv(deadCodeUpdateEnv) == "1"
 	problems, next := checkDeadCodeLedger(ledger, measured, update)
 	if update {
