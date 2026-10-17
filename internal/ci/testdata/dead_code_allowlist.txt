@@ -8,6 +8,5 @@
 # raises a count or adds a row.
 internal/sprint 6
 internal/sprintdash 24
-pkg/friend 188
 pkg/ratebudget 5
 pkg/swarm 55
