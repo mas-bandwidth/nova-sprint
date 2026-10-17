@@ -1,0 +1,771 @@
+schema-tables-baseline 7
+package viewrowswire
+
+table 28da53a6fe32b5ad.81027a1935117cdf
+    field key id=0x3dc94a19365b10ec kind=12 size=128
+    field value id=0x7ce4fd9430e80cea kind=13 type=ReaderSpend
+
+table 5674f7598cdb4d0d.0591a059b0712587
+    field key id=0x3dc94a19365b10ec kind=12 size=135
+    field value id=0x7ce4fd9430e80cea kind=13 type=LineList
+
+table 5674f7598cdb4d0d.1a3f3d0c1dc62263
+    field key id=0x3dc94a19365b10ec kind=12 size=135
+    field value id=0x7ce4fd9430e80cea kind=13 type=IntList
+
+table 5674f7598cdb4d0d.81f528932d7f3d02
+    field key id=0x3dc94a19365b10ec kind=12 size=128
+    field value id=0x7ce4fd9430e80cea kind=13 type=TierCosts
+
+table 5674f7598cdb4d0d.87835f41ad67b3fa
+    field key id=0x3dc94a19365b10ec kind=12 size=128
+    field value id=0x7ce4fd9430e80cea kind=13 type=SentinelCounts
+
+table 5674f7598cdb4d0d.a11df2a73cf40d42
+    field key id=0x3dc94a19365b10ec kind=12 size=128
+    field value id=0x7ce4fd9430e80cea kind=13 type=Line
+
+table 5674f7598cdb4d0d.c622641fb86276a6
+    field key id=0x3dc94a19365b10ec kind=12 size=128
+    field value id=0x7ce4fd9430e80cea kind=5
+
+table 5674f7598cdb4d0d.df031b708d57a398
+    field key id=0x3dc94a19365b10ec kind=12 size=128
+    field value id=0x7ce4fd9430e80cea kind=5
+
+table 5674f7598cdb4d0d.f9da199e5b7433ff
+    field key id=0x3dc94a19365b10ec kind=12 size=135
+    field value id=0x7ce4fd9430e80cea kind=13 type=IntList
+
+table 5a4607cb4b223192.81f528932d7f3d02
+    field key id=0x3dc94a19365b10ec kind=12 size=128
+    field value id=0x7ce4fd9430e80cea kind=13 type=StreamBase
+
+table 895456a39a622e29.81f528932d7f3d02
+    field key id=0x3dc94a19365b10ec kind=12 size=128
+    field value id=0x7ce4fd9430e80cea kind=13 type=StreamBase
+
+table 9e2dc24b99181341.81f528932d7f3d02
+    field key id=0x3dc94a19365b10ec kind=12 size=128
+    field value id=0x7ce4fd9430e80cea kind=13 type=ResetStream
+
+table 9e2dc24b99181341.a3a7061ff10a8138
+    field key id=0x3dc94a19365b10ec kind=12 size=135
+    field value id=0x7ce4fd9430e80cea kind=13 type=ResetRow
+
+table ArchivedFleetCard
+    field row id=0x8a0bc1196111ad9b kind=12 size=135
+    field col id=0xf604f3190d016791 kind=17 type=string
+    field at id=0x089c4e07b545a968 kind=5
+
+table BatchManifest
+    field schema id=0x758d17ff764667b6 kind=5
+    field logical_table id=0xfd4e73068a03eeeb kind=17 type=string
+    field epoch id=0xfc9697d1196e6ba6 kind=17 type=string
+    field expected_table_revision id=0x65a2607f6d2abb4a kind=17 type=string
+    field operation_id id=0x7beabc1e060d1e76 kind=17 type=string
+    field actor id=0xdcccc5391c47d4da kind=17 type=string
+    field members id=0x79d594675e391090 kind=14 elem=13 type=BatchMemberEntry array=unbounded
+    field props id=0xf9399b246d7ec9d1 kind=14 elem=13 type=TextPair array=unbounded
+    field prop_expect id=0x2196b6fab23d2858 kind=14 elem=13 type=TextPair array=unbounded
+    field prop_absent id=0xa4dcbf2722883418 kind=14 elem=13 type=Line array=unbounded
+
+table BatchMemberEntry
+    field id id=0x08b72e07b55c3ac0 kind=17 type=string
+    field expect id=0x208ad7977190aad8 kind=17 type=MemberExpect
+    field create id=0xf74e5feadea773fd kind=17 type=MemberCreate
+    field member_move id=0x57bd3d9902d49501 kind=17 type=MemberMove
+    field remove id=0xfff83d536a1d457d kind=1
+    field set id=0x823b87195ce20e23 kind=14 elem=13 type=TextPair array=unbounded
+    field unset id=0xf49fb84e699194ba kind=14 elem=13 type=Line array=unbounded
+
+table Beat
+    field at id=0x089c4e07b545a968 kind=5
+    field host_load id=0xfd305cb7f3ed652c kind=11
+    field cores id=0xce57648e554861b7 kind=5
+    field how id=0x335f27192ff5d5ed kind=17 type=string
+    field samples id=0xe3b1ca6a3b48dddc kind=14 elem=13 type=LoadSample array=unbounded
+    field meter id=0x3fa741c8085af182 kind=13 type=MeterState
+    field friend_report id=0xd9d742c447a6c234 kind=17 type=FriendReport
+    field stop_returns id=0xea14e391abc0c981 kind=5
+    field no_room id=0x90ab055b72415078 kind=17 type=string
+    field live id=0xbf6695ad6966058f kind=14 elem=13 type=Line array=unbounded
+    field live_known id=0xee4d5d6524526827 kind=1
+    field live_since id=0x5be056ec01c992da kind=5
+    field live_seen id=0x0d16749b8d3694d7 kind=14 elem=13 type=LiveSeenPair array=unbounded
+    field draining id=0x445341bdde0ebac7 kind=1
+    field draining_since id=0xc4010e578c81f622 kind=5
+    field facts id=0xefa717c1620c4ae4 kind=14 elem=13 type=Line array=unbounded
+
+table CardID
+    field id id=0x08b72e07b55c3ac0 kind=12 size=515
+
+table CheckRecord
+    field epoch id=0xfc9697d1196e6ba6 kind=9
+    field at id=0x089c4e07b545a968 kind=5
+    field by id=0x08a64b07b54df8d4 kind=17 type=string
+    field clean id=0xf531ec9544a8fc3e kind=1
+    field streams id=0x81f528932d7f3d02 kind=14 elem=13 type=Line array=unbounded
+    field kinds id=0x8e467f8dc25a4790 kind=17 type=string
+    field findings id=0xb8d942799ce18e2f kind=14 elem=13 type=Line array=bounded bound=200
+    field cards id=0xaf9dac3b097689c4 kind=14 elem=13 type=CheckedCard array=unbounded
+    field digest id=0xc771fca99beaeafd kind=12 size=64
+
+table CheckedCard
+    field id id=0x08b72e07b55c3ac0 kind=12 size=515
+    field stream id=0x4f6a36d8e8907985 kind=12 size=128
+    field tier id=0x1e6f84ef2eb65989 kind=17 type=string
+    field priority id=0xf5b6ea8c35ac1e89 kind=17 type=string
+    field needs id=0x4dde811e86af67ba kind=17 type=string
+    field brief id=0xf90e421e2470877f kind=12 size=64
+
+table CoordinatorDelivery
+    field covered_by id=0x523dd14f54a423e3 kind=17 type=string
+    field from id=0x7f845078d7a5c0b5 kind=17 type=string
+    field to id=0x08c83907b56ac0a4 kind=17 type=string
+    field token id=0x26c4b17d50b3c152 kind=17 type=string
+    field subject id=0x9640735281e90c0f kind=17 type=string
+    field body id=0xcd4de79bc6c93295 kind=17 type=string
+    field episode id=0xdc04396c642e5212 kind=17 type=string
+    field sent id=0x2d1fe318d40bfaff kind=1
+    field retry_before id=0xfa2e8461180cfa6d kind=5
+
+table CostCheck
+    field streams_usd id=0xb57920a53585fe21 kind=17 type=string
+    field cards_usd id=0xba4a4ffe7d45c8fb kind=17 type=string
+    field gap_usd id=0x24ac263c9141e420 kind=17 type=string
+    field ok id=0x08b05d07b5566bef kind=1
+    field orphans id=0x8c20bc9bc44d9848 kind=14 elem=13 type=CardID array=unbounded
+    field unlisted id=0x4a9d3fa1d11006d7 kind=5
+
+table CostReconcileRecord
+    field provider id=0xd02b4c8c65fb54dc kind=17 type=string
+    field at id=0x089c4e07b545a968 kind=17 type=string
+    field known id=0x9e7c31938395894c kind=1
+    field note id=0x3bf8fbbad1587cdd kind=17 type=string
+    field day id=0xca8d3918f4578f1d kind=17 type=string
+    field used id=0x7d678ae4032b59f0 kind=11
+    field provider_internal id=0x8f19a26151ce74bc kind=11
+    field internal_reads id=0x2adcaf27b57fc61a kind=11
+    field gap id=0xd4f05718fab6a2ef kind=11
+    field share id=0x6e308e493acb8858 kind=11
+    field days id=0x8587736730c8b7ea kind=14 elem=13 type=DayGapPair array=unbounded
+
+table CriticalCard
+    field id id=0x08b72e07b55c3ac0 kind=12 size=515
+    field behind id=0xfd7bbb6eebc12569 kind=5
+    field state id=0xee63aaad45b1b116 kind=17 type=string
+
+table DayGap
+    field provider id=0xd02b4c8c65fb54dc kind=11
+    field provider_internal id=0x8f19a26151ce74bc kind=11
+
+table DayGapPair
+    field day id=0xca8d3918f4578f1d kind=17 type=string
+    field gap id=0xd4f05718fab6a2ef kind=13 type=DayGap
+
+table DecisionDelivery
+    field lane id=0x0460ddad9060af0f kind=17 type=string
+    field to id=0x08c83907b56ac0a4 kind=17 type=string
+    field from id=0x7f845078d7a5c0b5 kind=17 type=string
+    field set id=0x823b87195ce20e23 kind=17 type=string
+    field body id=0xcd4de79bc6c93295 kind=17 type=string
+    field token id=0x26c4b17d50b3c152 kind=17 type=string
+    field prepared_at id=0x01ed4842eeeaacf8 kind=5
+    field retry_before id=0xfa2e8461180cfa6d kind=5
+    field sent_at id=0x4a1ef4b32bf8fea5 kind=5
+    field fault id=0x8e54e4c1bcb53cdf kind=17 type=string
+    field reports id=0x11ab2d8ba31717e8 kind=14 elem=13 type=Line array=unbounded
+    field unknown_receipts id=0xc48bbb17ab629fab kind=5
+
+table FieldGuard
+    field equals id=0x2fedf26ef08343d4 kind=17 type=string
+    field absent id=0xa3d0dfc3e1dbb698 kind=1 optional=true
+    field one_of id=0xf2a11d5df6c1be51 kind=14 elem=13 type=Line array=unbounded
+
+table FieldGuardPair
+    field field id=0x2c5d047ff4e6ffc7 kind=17 type=string
+    field guard id=0xaabe362250e8c5ee kind=13 type=FieldGuard
+
+table FleetDropDebt
+    field members id=0x79d594675e391090 kind=14 elem=13 type=FleetMachineRow array=unbounded
+
+table FleetMachineRow
+    field name id=0xc4bcadba8e631b86 kind=12 size=128
+
+table FriendReport
+    field running id=0x60147fb4fa4a8e0c kind=14 elem=13 type=Line array=unbounded
+    field working id=0x08879e024cb91288 kind=5 optional=true
+    field queue id=0xb11e8b146c5a21d8 kind=5 optional=true
+    field width id=0xdbdacd932fd1e9bf kind=5 optional=true
+    field stop_returns id=0xea14e391abc0c981 kind=5 optional=true
+    field active id=0x6580790b036f0c6f kind=5
+    field paced id=0x8a2a33a758314d6a kind=5 optional=true
+    field window id=0x71f304ea62c01cbd kind=17 type=string
+    field until id=0x1fcc8b4e81fbac2f kind=5
+    field reason id=0x65e8d7f3474f2639 kind=17 type=string
+    field build id=0x802517e298c70b03 kind=17 type=string
+    field started id=0xc732f2e2fbe9f15e kind=5
+    field present id=0x6f3f2303c0258eac kind=5
+
+table Heartbeat
+    field at id=0x089c4e07b545a968 kind=5
+    field ticks id=0x7fd9266c6a3e25b5 kind=5
+    field error id=0x9f7452dd75d54d31 kind=17 type=string
+    field failures id=0xf5f3a7ddac55be06 kind=5
+    field tick_overrun id=0x3ce11ff0eeec30a4 kind=5
+    field due id=0xca643d18f43490d5 kind=5
+    field revisions id=0x48a799c4762dfb11 kind=14 elem=9 array=fixed bound=4
+    field landed id=0xdd3bf9933387198d kind=5
+    field all id=0xe6f09b190519daa4 kind=5
+    field full id=0x865b7478db00e67c kind=5
+    field looked id=0xab56337f892ae537 kind=5
+    field fresh id=0xfcd500563d7a36cf kind=14 elem=13 type=Line array=unbounded
+    field quiet id=0x4b67b014335f38d7 kind=14 elem=13 type=LaneQuiet array=unbounded
+    field suppressed id=0xe692b695e19881d7 kind=13 type=Suppressed
+
+table HeldRecord
+    field id id=0x08b72e07b55c3ac0 kind=17 type=string
+    field held_lock id=0xc90e48916e46091c kind=1
+    field verb id=0x673ebb0102773a20 kind=17 type=string
+    field at id=0x089c4e07b545a968 kind=5
+    field manifests id=0xe316d09466679195 kind=14 elem=13 type=BatchManifest array=unbounded
+    field notes id=0x40906c71b95bdbaa kind=14 elem=13 type=Note array=unbounded
+    field decided id=0x17557edef437f27f kind=14 elem=13 type=Note array=unbounded
+    field log id=0x125073191daf5431 kind=14 elem=13 type=LogLine array=unbounded
+    field updates id=0x43ac328ac5ae0e45 kind=14 elem=13 type=Note array=unbounded
+    field closes id=0x8553185090e84610 kind=14 elem=13 type=Line array=unbounded
+    field streams id=0x81f528932d7f3d02 kind=14 elem=13 type=Line array=unbounded
+    field caller_op id=0xcc11e62c8c25c9b8 kind=17 type=string
+    field result id=0x9b51cd7cd76778c4 kind=17 type=string
+    field stuck id=0x9bcdc0ada7f7a0ab kind=17 type=string
+    field queue id=0xb11e8b146c5a21d8 kind=14 elem=13 type=QueuedChange array=unbounded
+    field drain id=0x16749dc90dc393b9 kind=5
+    field seat id=0x2d08f118d3f933e8 kind=17 type=SeatChange
+    field close_timers id=0x5165a1bf1f4e6ce2 kind=14 elem=13 type=Line array=unbounded
+    field timers id=0x2b0159e51fae9103 kind=17 type=Timers
+
+table IntList
+    field pairs id=0x544438a7391e1e26 kind=14 elem=13 type=IntPair array=unbounded
+
+table IntPair
+    field key id=0x3dc94a19365b10ec kind=17 type=string
+    field n id=0xaf63e34c8601f871 kind=5
+
+table KindTime
+    field kind id=0xef9c96d721673243 kind=17 type=string
+    field at id=0x089c4e07b545a968 kind=5
+
+table Landing
+    field at id=0x089c4e07b545a968 kind=5
+    field worker id=0xa51a677d5b590177 kind=12 size=135
+    field stream id=0x4f6a36d8e8907985 kind=12 size=128
+
+table LaneQuiet
+    field quiet_type id=0x89cebd20bf9608d0 kind=17 type=string
+    field subject id=0x9640735281e90c0f kind=17 type=string
+    field why id=0x5ec5ea1948914a79 kind=17 type=string
+    field friend_name id=0x2bcee2fac7bb6eb5 kind=17 type=string
+    field run id=0x89b2a81960c55a4a kind=17 type=string
+
+table Line
+    field text id=0xfa04f4ef1995407e kind=17 type=string
+
+table LineList
+    field items id=0x3e7884bf4f412c6f kind=14 elem=13 type=Line array=unbounded
+
+table LiveSeenPair
+    field key id=0x3dc94a19365b10ec kind=17 type=string
+    field at id=0x089c4e07b545a968 kind=5
+
+table LoadSample
+    field at id=0x089c4e07b545a968 kind=5
+    field pct id=0x77c35c1956708830 kind=11
+
+table LogIndex
+    field cursor id=0xf927453fbe6252ef kind=17 type=string
+    field entries id=0xc5b2a72c0845a253 kind=14 elem=13 type=LogIndexEntry array=unbounded
+
+table LogIndexEntry
+    field name id=0xc4bcadba8e631b86 kind=17 type=string
+    field ids id=0x2b7dea192bb7be29 kind=14 elem=13 type=Line array=unbounded
+
+table LogLine
+    field kind id=0xef9c96d721673243 kind=17 type=string
+    field at id=0x089c4e07b545a968 kind=5
+    field epoch id=0xfc9697d1196e6ba6 kind=9
+    field op id=0x08b05607b556600a kind=17 type=string
+    field card id=0xb5614e90e87b455f kind=17 type=string
+    field cards id=0xaf9dac3b097689c4 kind=14 elem=13 type=Line array=unbounded
+    field primary id=0xbf31137ff783e939 kind=17 type=string
+    field stream id=0x4f6a36d8e8907985 kind=17 type=string
+    field logical_table id=0xfd4e73068a03eeeb kind=17 type=string
+    field from id=0x7f845078d7a5c0b5 kind=17 type=string
+    field to id=0x08c83907b56ac0a4 kind=17 type=string
+    field removed id=0x10154dbd4fbc697b kind=1
+    field gen id=0xd4e26d18faaa8af5 kind=5
+    field actor id=0xdcccc5391c47d4da kind=17 type=string
+    field verb id=0x673ebb0102773a20 kind=17 type=string
+    field cause id=0xb733af3b0d745380 kind=12 size=300
+    field answers id=0xd7316b9dd9f8d444 kind=14 elem=13 type=Line array=unbounded
+    field text id=0xfa04f4ef1995407e kind=14 elem=13 type=TextPair array=unbounded
+    field set id=0x823b87195ce20e23 kind=14 elem=13 type=TextPair array=unbounded
+    field note id=0x3bf8fbbad1587cdd kind=17 type=Note
+
+table Machine
+    field state id=0xee63aaad45b1b116 kind=17 type=string
+    field since id=0x2b827d4f5e0ada9d kind=5
+    field who id=0x5ec5fc194891690f kind=17 type=string
+    field run_seq id=0xacedb7384eab0a76 kind=9
+    field stop_issued id=0xfdf8bb7f3adbc373 kind=1
+    field stop_debt id=0x8aa8356fe0470d77 kind=14 elem=13 type=StopLease array=unbounded
+    field stopped_ns id=0x6d03fef96c701bec kind=5
+    field spans id=0x437dfc8ab2566816 kind=14 elem=13 type=Span array=bounded bound=1000
+    field cause id=0xb733af3b0d745380 kind=17 type=string
+    field reason id=0x65e8d7f3474f2639 kind=17 type=string
+    field until id=0x1fcc8b4e81fbac2f kind=5
+    field started_in id=0xdbbf026cdeb9da00 kind=17 type=string
+
+table MemberCreate
+    field row id=0x8a0bc1196111ad9b kind=17 type=string
+    field col id=0xf604f3190d016791 kind=17 type=string
+    field score id=0xc10e63fbe7f624f5 kind=11
+
+table MemberExpect
+    field absent id=0xa3d0dfc3e1dbb698 kind=1
+    field revision id=0xd6a4dbc46c8e8658 kind=17 type=string
+    field place id=0xfd6f0e4e166f85bc kind=17 type=PlaceExpect
+    field fields id=0x490e596d24847edc kind=14 elem=13 type=FieldGuardPair array=unbounded
+
+table MemberMove
+    field row id=0x8a0bc1196111ad9b kind=17 type=string
+    field col id=0xf604f3190d016791 kind=17 type=string
+    field score id=0xc10e63fbe7f624f5 kind=11 optional=true
+
+table MeterFiles
+    field at id=0x089c4e07b545a968 kind=5
+    field open id=0xf84f97b4633670e9 kind=5
+    field max id=0x080f5119176d1ff9 kind=5
+    field warn id=0x5e39a0f62bea2e31 kind=5
+    field alarm id=0x087fdebb3c0a9fba kind=5
+    field top id=0x56f9bc194465a83c kind=14 elem=13 type=MeterHolder array=bounded bound=10
+    field top_at id=0x1afc641a0aa8fb34 kind=5
+    field top_err id=0xa458fa402eef98a0 kind=17 type=string
+
+table MeterHolder
+    field pid id=0x77af701956600122 kind=5
+    field command id=0x66655dca2c3e8a12 kind=17 type=string
+    field user id=0x7d6780e4032b48f2 kind=17 type=string
+    field open id=0xf84f97b4633670e9 kind=5
+
+table MeterState
+    field ticks id=0x7fd9266c6a3e25b5 kind=13 type=MeterTicks optional=true
+    field top_at id=0x1afc641a0aa8fb34 kind=5
+    field top_pct id=0x019d013fd348a6a4 kind=11
+    field files id=0x69f800801812a5f0 kind=17 type=MeterFiles
+
+table MeterTicks
+    field busy id=0xff75d19be2aea620 kind=9
+    field total id=0x2dcede7d543a4ffd kind=9
+
+table Note
+    field stream_transition id=0xc3f9c8c777cc7c35 kind=17 type=StreamTransition
+    field id id=0x08b72e07b55c3ac0 kind=17 type=string
+    field safe_default id=0x6841d32120de9a5e kind=17 type=string
+    field decision_delivery id=0x818c426b23e35a14 kind=17 type=DecisionDelivery
+    field default_coordinator_told id=0xe513af0ce75cf351 kind=1
+    field default_owner_told id=0x045fe49e7f2e967e kind=1
+    field coordinator_delivery id=0x3e6819a72438e142 kind=17 type=CoordinatorDelivery
+    field alias id=0x509220bb65a646b7 kind=17 type=string
+    field kind id=0xef9c96d721673243 kind=17 type=string
+    field note_type id=0x3d6681a0ead0ced6 kind=17 type=string
+    field stream id=0x4f6a36d8e8907985 kind=17 type=string
+    field primaries id=0x1e199200bbd2c715 kind=14 elem=13 type=CardID array=bounded bound=50
+    field count id=0xb1e5e28e4479a274 kind=5
+    field what id=0x9be8c5f64f26c30f kind=17 type=string
+    field who id=0x5ec5fc194891690f kind=17 type=string
+    field attempt id=0x63e618bd2b303dee kind=5
+    field before id=0xd89aa06245afb2be kind=5
+    field at id=0x089c4e07b545a968 kind=5
+    field decisions id=0xe280a3451e738170 kind=14 elem=13 type=Line array=unbounded
+    field marked id=0xeddcc52b15488641 kind=1
+    field answers id=0xd7316b9dd9f8d444 kind=17 type=string
+    field suspects id=0x22b24d859cab0707 kind=14 elem=13 type=Line array=unbounded
+    field card id=0xb5614e90e87b455f kind=17 type=string
+    field other id=0x0a24ad61c2562a55 kind=17 type=string
+    field tier id=0x1e6f84ef2eb65989 kind=17 type=string
+    field other_stream id=0x69d9147830b8815e kind=17 type=string
+    field stream_level id=0x928b726c815092cc kind=1
+    field sprint_level id=0xe432996e4b38a7dc kind=1
+    field needs id=0x4dde811e86af67ba kind=14 elem=13 type=Line array=unbounded
+    field review id=0x0e9718950b3dd3a1 kind=5
+    field review_set id=0xb9be9ca27fd4975a kind=5
+    field to id=0x08c83907b56ac0a4 kind=17 type=string
+    field hint id=0x7341fccc9b1d9b78 kind=17 type=string
+
+table PlaceExpect
+    field row id=0x8a0bc1196111ad9b kind=17 type=string
+    field col id=0xf604f3190d016791 kind=17 type=string
+
+table PriorityCards
+    field level id=0xe8ddc90a9d7c709d kind=17 type=string
+    field cards id=0xaf9dac3b097689c4 kind=14 elem=13 type=CardID array=unbounded
+
+table PropWrite
+    field logical_table id=0xfd4e73068a03eeeb kind=17 type=string
+    field name id=0xc4bcadba8e631b86 kind=17 type=string
+    field value id=0x7ce4fd9430e80cea kind=17 type=string
+    field was id=0x5eade819487cb532 kind=17 type=string
+    field was_absent id=0x32e6b0c4205a213e kind=1
+
+table QueuedChange
+    field entry id=0xbe2a85bf4c0ca913 kind=17 type=BatchMemberEntry
+    field prop id=0x8572880e35379c18 kind=17 type=PropWrite
+    field verb id=0x673ebb0102773a20 kind=17 type=string
+    field actor id=0xdcccc5391c47d4da kind=17 type=string
+    field moved id=0x272cf992fbe8c670 kind=17 type=string
+
+table ReadCardCounts
+    field ready id=0x8935baf305f374b4 kind=5
+    field working id=0x08879e024cb91288 kind=5
+    field done id=0xdc51fb6761fd6e91 kind=5
+
+table ReadDay
+    field usd id=0x4c52b1193dcce7e7 kind=17 type=string
+    field tokens id=0x93fab8f021712b13 kind=5
+    field reads id=0x8935b4f305f36a82 kind=5
+
+table ReadDayPair
+    field route id=0x3127fb469f19ebde kind=17 type=string
+    field day id=0xca8d3918f4578f1d kind=13 type=ReadDay
+
+table ReaderSpend
+    field reads id=0x8935b4f305f36a82 kind=5
+    field priced id=0x926e311ad178314a kind=5
+    field usd id=0x4c52b1193dcce7e7 kind=17 type=string
+    field hour_priced id=0x87ccbc73fad2ac1b kind=5
+    field hour_usd id=0x10a5819c3ff93bc0 kind=17 type=string
+    field tokens id=0x93fab8f021712b13 kind=5
+
+table ReadsWindowView
+    field ok id=0x08b05d07b5566bef kind=5
+    field broken id=0xb164662ad16fa660 kind=5
+    field since id=0x2b827d4f5e0ada9d kind=5
+
+table RefusedRecord
+    field epoch id=0xfc9697d1196e6ba6 kind=9
+    field verbs id=0xe6d215b730981b09 kind=14 elem=13 type=RefusedVerb array=unbounded
+
+table RefusedVerb
+    field epoch id=0xfc9697d1196e6ba6 kind=9
+    field at id=0x089c4e07b545a968 kind=5
+    field verb id=0x673ebb0102773a20 kind=17 type=string
+    field member id=0x8cada599d66ec543 kind=17 type=string
+    field card id=0xb5614e90e87b455f kind=17 type=string
+    field argv id=0x89492d843ebc9863 kind=17 type=string
+    field why id=0x5ec5ea1948914a79 kind=17 type=string
+
+table ResetMark
+    field at id=0x089c4e07b545a968 kind=5
+    field epoch id=0xfc9697d1196e6ba6 kind=9
+    field by id=0x08a64b07b54df8d4 kind=17 type=string
+    field reason id=0x65e8d7f3474f2639 kind=17 type=string
+    field rows id=0xa3a7061ff10a8138 kind=14 elem=13 array=map keykind=12 keybound=135
+    field streams id=0x81f528932d7f3d02 kind=14 elem=13 array=map keykind=12 keybound=128
+    field total_cost id=0x42e380b861ee97d7 kind=17 type=string
+    field unreconciled id=0xd3382d08eeea28a6 kind=17 type=string
+    field op id=0x08b05607b556600a kind=17 type=string
+
+table ResetResult
+    field mark id=0x1f3b3fa2ce7ecac0 kind=13 type=ResetMark
+    field replaced id=0xe7f16644073d5f45 kind=17 type=ResetMark
+    field dry_run id=0x2493e27bcb234f74 kind=1
+    field replay id=0x93e4cd644f65cef2 kind=1
+    field said id=0x096e4d18bf89481c kind=14 elem=13 type=Line array=unbounded
+    field refused id=0xdd362779f48a4b03 kind=17 type=string
+
+table ResetRow
+    field ok id=0x08b05d07b5566bef kind=5
+    field failed id=0xd7338946b42394f4 kind=5
+
+table ResetStream
+    field cost id=0x0bef0691197c9f78 kind=17 type=string
+    field landed id=0xdd3bf9933387198d kind=5
+    field total_cost id=0x42e380b861ee97d7 kind=17 type=string
+    field total_usd id=0x95676bba1360fcfe kind=17 type=string
+    field work_cost id=0xed90c66b452f42d0 kind=17 type=string
+    field read_cost id=0x04d23c7555fd602f kind=17 type=string
+    field decide_cost id=0xf5b4630751f7ecab kind=17 type=string
+    field cost_by_tier id=0x23b885a1b02092b5 kind=14 elem=13 type=TextPair array=unbounded
+
+table Route
+    field name id=0xc4bcadba8e631b86 kind=17 type=string
+    field tier id=0x1e6f84ef2eb65989 kind=17 type=string
+    field provider id=0xd02b4c8c65fb54dc kind=17 type=string
+    field model id=0x9de543933e6e703a kind=17 type=string
+    field harness id=0x211fcbbafe5331ab kind=17 type=string
+    field tokens id=0x93fab8f021712b13 kind=5
+    field usd id=0x4c52b1193dcce7e7 kind=17 type=string
+    field deadline id=0x4abbaca40bb6fe75 kind=5
+    field enabled id=0x70d885806b56289e kind=1
+    field first id=0x89d7ed7f996f1d41 kind=1
+    field prices id=0x926e3c1ad17843fb kind=13 type=RoutePrices
+
+table RoutePrices
+    field input id=0x1ebbae8f5810b65b kind=17 type=string
+    field cache_read id=0x779748cd7970e246 kind=17 type=string
+    field cache_write id=0x313c6440b18aae09 kind=17 type=string
+    field output id=0x150f53f8651b4384 kind=17 type=string
+    field reasoning_as_output id=0x06027144dbe6a614 kind=1
+    field long_context id=0x2e9ace113fac97c7 kind=5
+    field input_long id=0x61d5c725b939d1aa kind=17 type=string
+    field output_long id=0x4a2b6cd47cb37eaf kind=17 type=string
+    field request id=0x6f4743b8bc5b4eb2 kind=17 type=string
+    field billing id=0x4005570295afd25c kind=17 type=string
+    field gateway_percent id=0x0594613d9a1a71c3 kind=17 type=string
+    field source id=0x76dbdc228f782db8 kind=17 type=string
+    field as_of id=0x4dc694bbeb944e67 kind=17 type=string
+
+table RouteStat
+    field route id=0x3127fb469f19ebde kind=13 type=Route
+    field pinned id=0x5f82477707ad620f kind=1
+    field attempts id=0xf039a67062f8b1c7 kind=5
+    field ok id=0x08b05d07b5566bef kind=5
+    field failed id=0xd7338946b42394f4 kind=5
+    field provider_failures id=0xad23a478034a0daa kind=5
+    field mean_wall id=0x8e713a5ace7cfe69 kind=17 type=string
+    field rested_until id=0x9979b99727e1d5bd kind=17 type=string
+    field rested_for id=0xbbaa0e67f346764e kind=17 type=string
+    field balance id=0x420234a0f998390b kind=17 type=string
+    field balance_at id=0xe548666cccbba2e9 kind=17 type=string
+
+table RowName
+    field name id=0xc4bcadba8e631b86 kind=12 size=135
+
+table RttSample
+    field start id=0xee5d97ad45ad251f kind=5
+    field us id=0x08c43d07b566de99 kind=5
+
+table SeatChange
+    field holder id=0x630853b55c723d4f kind=17 type=string
+    field generation id=0xe700a2848d46a857 kind=9
+    field from id=0x7f845078d7a5c0b5 kind=17 type=string
+    field at id=0x089c4e07b545a968 kind=5
+    field by id=0x08a64b07b54df8d4 kind=17 type=string
+    field taken id=0xc379d129de405f48 kind=1
+    field approved_by id=0xd820e861048719da kind=17 type=string
+    field reason id=0x65e8d7f3474f2639 kind=17 type=string
+
+table SeatWaits
+    field judgments id=0x96f1955a44843146 kind=5
+    field overdue id=0xa0fcb61231764b6b kind=5
+    field oldest_id id=0x40286155ce1935ae kind=17 type=string
+    field oldest_type id=0xf8e42f20bf747d1b kind=17 type=string
+    field oldest_at id=0x400d4155ce023796 kind=5
+    field level id=0xe8ddc90a9d7c709d kind=5
+
+table SentinelCounts
+    field all id=0xe6f09b190519daa4 kind=5
+    field landed id=0xdd3bf9933387198d kind=5
+    field by_col id=0x5c6c347ebc0ab5f5 kind=14 elem=13 type=IntPair array=unbounded
+
+table Span
+    field from id=0x7f845078d7a5c0b5 kind=5
+    field to id=0x08c83907b56ac0a4 kind=5
+
+table StageStat
+    field median_s id=0x629d70c6ad2d4471 kind=11
+    field p90_s id=0x1c2229ffeae48168 kind=11
+    field n id=0xaf63e34c8601f871 kind=5
+
+table StageStatPair
+    field stage id=0xee9dbaad45e3448d kind=17 type=string
+    field stat id=0xaefd5a191d95e3f7 kind=13 type=StageStat
+
+table StageStats
+    field stages id=0x5949326dc12e3b9a kind=14 elem=13 type=StageStatPair array=unbounded
+
+table StageTimes
+    field all id=0xe6f09b190519daa4 kind=14 elem=13 type=StageStatPair array=unbounded
+    field streams id=0x81f528932d7f3d02 kind=14 elem=13 array=map keykind=12 keybound=128
+
+table StatsArchive
+    field at id=0x089c4e07b545a968 kind=5
+    field epoch id=0xfc9697d1196e6ba6 kind=9
+    field reason id=0x65e8d7f3474f2639 kind=17 type=string
+    field by id=0x08a64b07b54df8d4 kind=17 type=string
+    field kinds id=0x8e467f8dc25a4790 kind=14 elem=13 type=Line array=unbounded
+    field state id=0xee63aaad45b1b116 kind=17 type=string
+    field error id=0x9f7452dd75d54d31 kind=17 type=string
+    field rows id=0xa3a7061ff10a8138 kind=14 elem=13 type=TidyRow array=unbounded
+    field routes id=0xa0dba600590b76f7 kind=14 elem=13 type=RouteStat array=unbounded
+    field streams id=0x81f528932d7f3d02 kind=14 elem=13 array=map keykind=12 keybound=128
+
+table StatsRecord
+    field epoch id=0xfc9697d1196e6ba6 kind=9
+    field since id=0x2b827d4f5e0ada9d kind=5
+    field reason id=0x65e8d7f3474f2639 kind=17 type=string
+    field by id=0x08a64b07b54df8d4 kind=17 type=string
+    field kinds id=0x8e467f8dc25a4790 kind=14 elem=13 type=KindTime array=unbounded
+    field streams id=0x81f528932d7f3d02 kind=14 elem=13 array=map keykind=12 keybound=128
+    field archives id=0xe1742cfb3376a502 kind=14 elem=13 type=Line array=unbounded
+    field reset_mark id=0x7ace47af1f750108 kind=17 type=ResetMark
+    field tidying id=0x7e43376f68f5ebcb kind=17 type=TidyInFlight
+
+table Stop
+    field kind id=0xef9c96d721673243 kind=17 type=string
+    field subject id=0x9640735281e90c0f kind=17 type=string
+    field since id=0x2b827d4f5e0ada9d kind=5
+    field what id=0x9be8c5f64f26c30f kind=17 type=string
+    field effect id=0x36c1c83b51f24394 kind=17 type=string
+    field undo id=0x64bde8e4857adf2f kind=17 type=string
+    field signal id=0x5062cd8f7a7fd349 kind=17 type=string
+
+table StopLease
+    field lease_table id=0xf770855d63d07966 kind=17 type=string
+    field row id=0x8a0bc1196111ad9b kind=17 type=string
+    field id id=0x08b72e07b55c3ac0 kind=17 type=string
+    field gen id=0xd4e26d18faaa8af5 kind=5
+
+table StopsRecord
+    field epoch id=0xfc9697d1196e6ba6 kind=9
+    field at id=0x089c4e07b545a968 kind=5
+    field seat id=0x2d08f118d3f933e8 kind=13 type=SeatWaits
+    field stops id=0x44f536ad76b6a942 kind=14 elem=13 type=Stop array=unbounded
+
+table StoreRTTRecord
+    field at id=0x089c4e07b545a968 kind=5
+    field samples id=0xe3b1ca6a3b48dddc kind=14 elem=13 type=RttSample array=unbounded
+    field store_rtt_p50_ms id=0xf603e23e20725712 kind=11
+    field store_rtt_p99_ms id=0xa899b225b2fb8c07 kind=11
+
+table StreamBase
+    field cost id=0x0bef0691197c9f78 kind=17 type=string
+    field landed id=0xdd3bf9933387198d kind=5
+
+table StreamTransition
+    field state id=0xee63aaad45b1b116 kind=17 type=string
+    field cause id=0xb733af3b0d745380 kind=17 type=string
+    field waiting id=0xeac9afef1a00b5e8 kind=5
+    field owners id=0x9746d619fd1fc965 kind=14 elem=13 type=RowName array=unbounded
+
+table Stuck
+    field op id=0x08b05607b556600a kind=17 type=string
+    field verb id=0x673ebb0102773a20 kind=17 type=string
+    field at id=0x089c4e07b545a968 kind=5
+    field seen id=0x2cfadb18d3ecd12a kind=5
+    field why id=0x5ec5ea1948914a79 kind=17 type=string
+    field repaired id=0xb238d277e29fd945 kind=17 type=string
+    field repaired_at id=0x2669369049032d0b kind=5
+
+table Suppressed
+    field epoch id=0xfc9697d1196e6ba6 kind=9
+    field n id=0xaf63e34c8601f871 kind=5
+    field lane id=0x0460ddad9060af0f kind=5
+    field readers id=0x81027a1935117cdf kind=5
+    field tier id=0x1e6f84ef2eb65989 kind=5
+
+table TextPair
+    field key id=0x3dc94a19365b10ec kind=17 type=string
+    field value id=0x7ce4fd9430e80cea kind=17 type=string
+
+table TidyCard
+    field id id=0x08b72e07b55c3ac0 kind=17 type=string
+    field cell id=0xd98b1e90fd653435 kind=17 type=string
+    field why id=0x5ec5ea1948914a79 kind=17 type=string
+    field finished id=0x51b5152ffddbd983 kind=5
+
+table TidyInFlight
+    field archive id=0xbea01422b5f77185 kind=17 type=string
+    field at id=0x089c4e07b545a968 kind=5
+    field mark id=0x1f3b3fa2ce7ecac0 kind=5
+
+table TidyResult
+    field archive id=0xbea01422b5f77185 kind=17 type=string
+    field dry_run id=0x2493e27bcb234f74 kind=1
+    field refused id=0xdd362779f48a4b03 kind=17 type=string
+    field said id=0x096e4d18bf89481c kind=14 elem=13 type=Line array=unbounded
+    field record id=0x9c9327fff79474ac kind=13 type=StatsArchive
+    field moved id=0x272cf992fbe8c670 kind=5
+    field kept id=0x583876d75cd7d1d9 kind=5
+
+table TidyRow
+    field row id=0x8a0bc1196111ad9b kind=17 type=string
+    field ok id=0x08b05d07b5566bef kind=5
+    field failed id=0xd7338946b42394f4 kind=5
+    field moved id=0x272cf992fbe8c670 kind=14 elem=13 type=TidyCard array=unbounded
+    field kept id=0x583876d75cd7d1d9 kind=14 elem=13 type=TidyCard array=unbounded
+
+table TierCosts
+    field tiers id=0x6dd8dc6c5fdae3ce kind=14 elem=13 type=IntPair array=unbounded
+    field per_landed id=0x50dcfb7833db1c01 kind=17 type=string
+    field cost_by_tier id=0x23b885a1b02092b5 kind=14 elem=13 type=TextPair array=unbounded
+    field total_cost id=0x42e380b861ee97d7 kind=17 type=string
+    field total_usd id=0x95676bba1360fcfe kind=17 type=string
+    field landed_usd id=0xc4724b6b4f7cf32e kind=17 type=string
+    field work_cost id=0xed90c66b452f42d0 kind=17 type=string
+    field read_cost id=0x04d23c7555fd602f kind=17 type=string
+    field decide_cost id=0xf5b4630751f7ecab kind=17 type=string
+    field decide_unpriced id=0x88f2fad76c7ccc5e kind=5
+    field dropped_cards id=0x464b2d5e2b76af9d kind=5
+    field carried_cards id=0x37262ce770037539 kind=5
+    field read_tokens id=0xfce73b3551b7fd98 kind=5
+    field reads_today id=0xe917efab029e6660 kind=14 elem=13 type=ReadDayPair array=unbounded
+    field unpriced_runs id=0xd34e990c15da5154 kind=5
+    field reads_no_tokens id=0x99c9ddb4fdd50e57 kind=5
+    field readers id=0x81027a1935117cdf kind=14 elem=13 array=map keykind=12 keybound=128
+    field in_flight id=0x9c758c73deb84ac9 kind=17 type=string
+    field unreconciled id=0xd3382d08eeea28a6 kind=17 type=string
+    field reconciles id=0x1b80529daa6d58ec kind=14 elem=13 type=CostReconcileRecord array=unbounded
+
+table Timer
+    field id id=0x08b72e07b55c3ac0 kind=17 type=string
+    field for_actor id=0xd6eeb6f50d7b0592 kind=17 type=string
+    field due id=0xca643d18f43490d5 kind=5
+    field note id=0x3bf8fbbad1587cdd kind=12 size=512
+    field by id=0x08a64b07b54df8d4 kind=17 type=string
+    field set id=0x823b87195ce20e23 kind=5
+
+table Timers
+    field open_timers id=0xfe3930a031d4a5f0 kind=14 elem=13 type=Timer array=unbounded
+
+table WhereRecord
+    field decision_holds id=0x39868222e749fa8e kind=14 elem=13 type=Note array=unbounded
+    field decision_holds_counted id=0x7bea41dc962f3db3 kind=1
+    field epoch id=0xfc9697d1196e6ba6 kind=9
+    field rev id=0x89e9b01960f4aa52 kind=9
+    field held id=0x0a9904cc5fa248be kind=5
+    field held_streams id=0xdf031b708d57a398 kind=14 elem=13 array=map keykind=12 keybound=128
+    field landings id=0xe962b73301e3cb5d kind=14 elem=5 array=bounded bound=10000
+    field critical id=0x387748cc2ad39108 kind=14 elem=13 type=CriticalCard array=bounded bound=5
+    field blockers id=0x274d62c1e1e8ead2 kind=14 elem=13 type=Line array=bounded bound=3
+    field sentinels id=0x87835f41ad67b3fa kind=14 elem=13 array=map keykind=12 keybound=128
+    field tiers id=0x6dd8dc6c5fdae3ce kind=14 elem=13 type=IntPair array=unbounded
+    field streams id=0x81f528932d7f3d02 kind=14 elem=13 array=map keykind=12 keybound=128
+    field cost_check id=0xbea0bc892d25d607 kind=17 type=CostCheck
+    field stage_times id=0x072531ee7becec74 kind=13 type=StageTimes
+    field dealt_fleet id=0xc622641fb86276a6 kind=14 elem=13 array=map keykind=12 keybound=128
+    field reads_waiting id=0x7c66a4f6c72a2f32 kind=5
+    field priorities id=0xc6293a6425e1ff65 kind=14 elem=13 type=PriorityCards array=unbounded
+    field stream_priorities id=0xa11df2a73cf40d42 kind=14 elem=13 array=map keykind=12 keybound=128
+    field reads_window id=0xa15579321342d2f7 kind=13 type=ReadsWindowView
+    field fleet_rev id=0x150679cb7599b35d kind=9
+    field row_cards id=0x1a3f3d0c1dc62263 kind=14 elem=13 array=map keykind=12 keybound=135
+    field read_cards id=0x43175e54072048dd kind=13 type=ReadCardCounts
+    field fix_states id=0xf9da199e5b7433ff kind=14 elem=13 array=map keykind=12 keybound=135
+    field row_working id=0x0591a059b0712587 kind=14 elem=13 array=map keykind=12 keybound=135
+    field stats id=0xee639cad45b1994c kind=17 type=string
+    field series id=0x4b0cd17e2c175230 kind=14 elem=13 type=Landing array=unbounded
+    field series_counted id=0x387e4f9ba3d1716d kind=1
+    field archived_primaries id=0x71b5a50881106db2 kind=14 elem=13 type=CardID array=unbounded
+    field archived_fleet id=0xb04c30d6db0361a8 kind=14 elem=13 type=ArchivedFleetCard array=unbounded
+    field live_stage_times id=0xbc8dd1bc79f0e3eb kind=13 type=StageTimes
+    field archived_counted id=0x48d5d6681cb16ffa kind=1
+
+table ddc8631e5d828d8d.81f528932d7f3d02
+    field key id=0x3dc94a19365b10ec kind=12 size=128
+    field value id=0x7ce4fd9430e80cea kind=13 type=StageStats
+
+## history
+### 2026-10-17 (UTC) — first baseline
+- baseline created over 103 tables — data written BEFORE this point is not covered by it

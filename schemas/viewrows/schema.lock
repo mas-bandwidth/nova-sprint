@@ -1,0 +1,76 @@
+schema-lock 7
+package viewrowswire
+
+fixed table CardID layout=0x273f481e85662568 lineage=0xf86419d19324b230
+    field id id=0x08b72e07b55c3ac0 kind=12 width=520 default=bytes: cap=515
+    lineage wire=0xde66dbf2427a122f record=519 bytes=0200000072c920ef64ff6cc80d0702000001000000c03a5cb5072eb7080c0702000000000000
+
+fixed table DayGap layout=0xce7142dd3a7652de lineage=0xae7d39b3e2c90ed2
+    field provider id=0xd02b4c8c65fb54dc kind=11 width=8 default=0.0
+    field provider_internal id=0x8f19a26151ce74bc kind=11 width=8 default=0.0
+    lineage wire=0x7bd23f6815163d80 record=16 bytes=030000003745cdcf13beac470d1000000002000000dc54fb658c4c2bd00b0800000000000000bc74ce5161a2198f0b0800000000000000
+
+fixed table FleetMachineRow layout=0xd6b14a0eab185879 lineage=0x1741416076b7bb65
+    field name id=0xc4bcadba8e631b86 kind=12 width=136 default=bytes: cap=128
+    lineage wire=0x0fd287a6e3862595 record=132 bytes=02000000f87a2c3df2492b6e0d8400000001000000861b638ebaadbcc40c8400000000000000
+
+fixed table Landing layout=0xa117046e05ffeb59 lineage=0x4e1ef7af3b692b37
+    field at id=0x089c4e07b545a968 kind=5 width=8 default=0
+    field worker id=0xa51a677d5b590177 kind=12 width=140 default=bytes: cap=135
+    field stream id=0x4f6a36d8e8907985 kind=12 width=136 default=bytes: cap=128
+    lineage wire=0x15d3c9b5158dc815 record=279 bytes=040000003c9a080b71d8a92f0d170100000300000068a945b5074e9c080508000000000000007701595b7d671aa50c8b00000000000000857990e8d8366a4f0c8400000000000000
+
+fixed table LoadSample layout=0xc67f1d024a189f0d lineage=0xde142ed5dad87f63
+    field at id=0x089c4e07b545a968 kind=5 width=8 default=0
+    field pct id=0x77c35c1956708830 kind=11 width=8 default=0.0
+    lineage wire=0x8d80cb7f15f8d22c record=16 bytes=03000000530bbea7b054240b0d100000000200000068a945b5074e9c0805080000000000000030887056195cc3770b0800000000000000
+
+fixed table MeterTicks layout=0x1b03c0f2ab6ab9b7 lineage=0x340ca229f45dfd7e
+    field busy id=0xff75d19be2aea620 kind=9 width=8 default=0
+    field total id=0x2dcede7d543a4ffd kind=9 width=8 default=0
+    lineage wire=0x7c96eebe62ca6932 record=16 bytes=030000009c5989f03ea393130d100000000200000020a6aee29bd175ff090800000000000000fd4f3a547ddece2d090800000000000000
+
+fixed table ReadCardCounts layout=0x925a9c0983268d8e lineage=0x042648a8f76bf2e5
+    field ready id=0x8935baf305f374b4 kind=5 width=8 default=0
+    field working id=0x08879e024cb91288 kind=5 width=8 default=0
+    field done id=0xdc51fb6761fd6e91 kind=5 width=8 default=0
+    lineage wire=0xb89249daf06473f6 record=24 bytes=04000000cf55ef472418f7440d1800000003000000b474f305f3ba35890508000000000000008812b94c029e8708050800000000000000916efd6167fb51dc050800000000000000
+
+fixed table ReadsWindowView layout=0x1975ae7fc5988350 lineage=0x19f9d77a370fb40e
+    field ok id=0x08b05d07b5566bef kind=5 width=8 default=0
+    field broken id=0xb164662ad16fa660 kind=5 width=8 default=0
+    field since id=0x2b827d4f5e0ada9d kind=5 width=8 default=0
+    lineage wire=0x83acc5b257e90713 record=24 bytes=040000006f95e3320fb208c50d1800000003000000ef6b56b5075db00805080000000000000060a66fd12a6664b10508000000000000009dda0a5e4f7d822b050800000000000000
+
+fixed table ResetRow layout=0xc5f1961498ae96f9 lineage=0xb4d7d5a247addc9a
+    field ok id=0x08b05d07b5566bef kind=5 width=8 default=0
+    field failed id=0xd7338946b42394f4 kind=5 width=8 default=0
+    lineage wire=0xf2297cd0c3bdcd02 record=16 bytes=03000000046acf99d0a904530d1000000002000000ef6b56b5075db008050800000000000000f49423b4468933d7050800000000000000
+
+fixed table RowName layout=0xe105c98179a20402 lineage=0x81657cd8c0d923cc
+    field name id=0xc4bcadba8e631b86 kind=12 width=140 default=bytes: cap=135
+    lineage wire=0xdc231ddb0f3be9ec record=139 bytes=0200000080b53bf35d7eaace0d8b00000001000000861b638ebaadbcc40c8b00000000000000
+
+fixed table RttSample layout=0x07dfaa5c9cf4cfd4 lineage=0xdf6f8aca982a83ad
+    field start id=0xee5d97ad45ad251f kind=5 width=8 default=0
+    field us id=0x08c43d07b566de99 kind=5 width=8 default=0
+    lineage wire=0x52f4f4bd9cd00257 record=16 bytes=03000000677350b67a36fb600d10000000020000001f25ad45ad975dee05080000000000000099de66b5073dc408050800000000000000
+
+fixed table Span layout=0x8c09defdb9dafa76 lineage=0x9a859578cfe4441e
+    field from id=0x7f845078d7a5c0b5 kind=5 width=8 default=0
+    field to id=0x08c83907b56ac0a4 kind=5 width=8 default=0
+    lineage wire=0xe8efa39a963ca855 record=16 bytes=03000000c144ad0a25c10bb60d1000000002000000b5c0a5d77850847f050800000000000000a4c06ab50739c808050800000000000000
+
+fixed table StageStat layout=0x682e886c08a44494 lineage=0xbfdd94ee7519e20f
+    field median_s id=0x629d70c6ad2d4471 kind=11 width=8 default=0.0
+    field p90_s id=0x1c2229ffeae48168 kind=11 width=8 default=0.0
+    field n id=0xaf63e34c8601f871 kind=5 width=8 default=0
+    lineage wire=0x4f349f92f4fe3b6d record=24 bytes=04000000ffb455f44fd5d8330d180000000300000071442dadc6709d620b08000000000000006881e4eaff29221c0b080000000000000071f801864ce363af050800000000000000
+
+fixed table Suppressed layout=0xe939e7e91d5bf2e5 lineage=0x51acda016242ef87
+    field epoch id=0xfc9697d1196e6ba6 kind=9 width=8 default=0
+    field n id=0xaf63e34c8601f871 kind=5 width=8 default=0
+    field lane id=0x0460ddad9060af0f kind=5 width=8 default=0
+    field readers id=0x81027a1935117cdf kind=5 width=8 default=0
+    field tier id=0x1e6f84ef2eb65989 kind=5 width=8 default=0
+    lineage wire=0x1fd540713b764fc4 record=40 bytes=06000000b7bb953bb42c52640d2800000005000000a66b6e19d19796fc09080000000000000071f801864ce363af0508000000000000000faf6090addd6004050800000000000000df7c1135197a02810508000000000000008959b62eef846f1e050800000000000000
