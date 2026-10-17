@@ -388,3 +388,37 @@ func OrphanJudgments(s *Snapshot) []Orphan {
 	}
 	return out
 }
+
+// RetireOnly is the tick's retire checks alone, with nothing else of a tick
+// (nova-sprint tick --retire-only, the v1.5.4 hotfix): every judgment whose
+// cards have left the table or moved past it, every orphan (RetireJudgments),
+// and every need-blocked judgment whose need no longer blocks a card
+// (TickNeedBlocked's retire half; its raises and rewrites are dropped). It
+// closes judgments and writes their machine's answers, and moves no card, so
+// it runs on a STOPPED machine as on a RUNNING one: a judgment whose cause is
+// gone retires without a start, which a violation of check refuses
+// (tla/JudgmentRetire.tla RetireOnly, StoppedMovesNothing).
+func RetireOnly(s *Snapshot, who string) Plan {
+	var p Plan
+	RetireJudgments(s, &p, who)
+	blocked, _ := TickNeedBlocked(s, TickReq{Who: who})
+	closing := map[string]bool{}
+	for _, o := range p.Closes {
+		closing[o.Key] = true
+	}
+	answered := map[string]bool{}
+	for _, o := range blocked.Closes {
+		if closing[o.Key] {
+			continue
+		}
+		closing[o.Key] = true
+		answered[o.Note.ID] = true
+		p.Closes = append(p.Closes, o)
+	}
+	for _, n := range blocked.Notes {
+		if n.Kind == Decided && answered[n.Answers] {
+			p.Notes = append(p.Notes, n)
+		}
+	}
+	return p
+}

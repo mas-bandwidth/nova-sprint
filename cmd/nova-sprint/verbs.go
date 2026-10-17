@@ -67,7 +67,7 @@ func init() {
 		{"stop", "--reason <text> --until <time or duration>", "stop --reason 'the bench is rebooting' --until 30m", (*app).cmdMachineStop},
 		{"stop-return", "--as <owner-row> <card>@<gen>... --epoch <n> --reason <cancel acknowledgement> [--dry-run]", "stop-return --as friend-a s1-1.w1@1 --epoch 15 --reason 'owned process stopped'", (*app).cmdStopReturn},
 		{"run", "[--answer-rules=false] [--idle-alarm=false] [--listen <address:port>] [--land] [--decide <dir>]", "run", (*app).cmdRunGC},
-		{"tick", "[--answer-rules] [--idle-alarm] [--shadow]", "tick", (*app).cmdTick},
+		{"tick", "[--answer-rules] [--idle-alarm] [--shadow] | --retire-only [--dry-run]", "tick", (*app).cmdTick},
 		{"selftest land", "[--binary <path>] [--scratch-dir <dir>]", "selftest land", (*app).cmdSelftestLand},
 		{"selftest", "[--dir <d>] [--keep]", "selftest", (*app).cmdSelftest},
 		{"goal set", "<name> [--file <path>] [--to file:<path>]", "goal set friend-a --file goal-a.txt --to file:/tmp/reminder-a.txt", (*app).cmdGoalSet},
@@ -176,7 +176,7 @@ func init() {
 		// before check, so its two words are matched first (check_cards.go)
 		{"check cards", "[--stream <s>...] [--dry-run] [--from <export>] [--json]", "check cards", (*app).cmdCheckCards},
 		{"check", "[--max <n>] [--json]", "check", (*app).cmdCheck},
-		{"repair", "[--dry-run] [--json]", "repair", (*app).cmdRepair},
+		{"repair", "[--skipped <op>.skip] [--dry-run] [--json]", "repair", (*app).cmdRepair},
 		{"watch", "--wake [--every <duration>] [--state <file>] [--check <duration>] [--judgment-every <duration>] [--merge-every <duration>] [--backlog-every <duration>] [--land-after <duration>] [--merge-over <n>] [--merging-over <n>] [--review-over <n>]", "watch --wake --state wake.json", (*app).cmdWatch},
 		{"seat check", "", "seat check", (*app).cmdSeatCheck},
 		{"machinery", "", "machinery", (*app).cmdMachinery},

@@ -327,10 +327,19 @@ func (a *app) machineFlags(name string, args []string, stderr io.Writer, extra .
 }
 
 func (a *app) cmdTick(args []string, stdout, stderr io.Writer) int {
-	var rules, idle, shadow bool
-	c, code := a.machineFlags("tick", args, stderr, answerRulesFlag(&rules, false), idleAlarmFlag(&idle, false), shadowFlag(&shadow))
+	var rules, idle, shadow, retire, dry bool
+	c, code := a.machineFlags("tick", args, stderr, answerRulesFlag(&rules, false), idleAlarmFlag(&idle, false), shadowFlag(&shadow), retireOnlyFlag(&retire, &dry))
 	if c == nil {
 		return code
+	}
+	if retire {
+		if shadow || rules || idle {
+			return refuse(stderr, "tick", "--retire-only runs the retire checks alone: it takes no --shadow, --answer-rules or --idle-alarm; nothing was changed")
+		}
+		return a.retireOnly(*c, dry, stdout, stderr)
+	}
+	if dry {
+		return refuse(stderr, "tick", "--dry-run goes with --retire-only (a whole tick's plan is tick --shadow); nothing was changed")
 	}
 	if shadow {
 		return a.shadowTick(*c, rules, idle, stdout, stderr)
@@ -1268,4 +1277,75 @@ func (a *app) cardDiff(ctx context.Context, c *sprint.Card) (string, error) {
 		return "", err
 	}
 	return string(res.Stdout), nil
+}
+
+// retireOnlyFlag is tick's --retire-only, with its --dry-run.
+func retireOnlyFlag(on, dry *bool) func(flagSet) {
+	return func(fs flagSet) {
+		fs.BoolVar(on, "retire-only", false, "run the tick's retire checks alone, as the machine, STOPPED or RUNNING: close each judgment whose cause is gone (its cards off the table or moved past it, an orphan, a need that no longer blocks a card) with the machine's answer, and move no card (the v1.5.4 hotfix: a stopped machine retires what check would otherwise refuse start on)")
+		fs.BoolVar(dry, "dry-run", false, "with --retire-only: print each judgment it would retire (WOULD RETIRE lines) and write nothing")
+	}
+}
+
+// retireOnly is tick --retire-only (store.RetireStep, sprint.RetireOnly): one
+// RETIRED (or, dry, WOULD RETIRE) line per judgment and subject it closes, with
+// the machine's answer, then the summary. Exit 0 done (none to retire is done),
+// 2 when the store did not answer.
+// tla/JudgmentRetire.tla RetireOnly
+func (a *app) retireOnly(c common, dry bool, stdout, stderr io.Writer) int {
+	st, err := a.store(c)
+	if err != nil {
+		return refuse(stderr, "tick", err.Error())
+	}
+	ctx := context.Background()
+	step := store.RetireStep()
+	snap, err := st.Load(ctx, step.Load, step.Extras)
+	if err == nil {
+		snap.Friends, err = st.FriendSeats(ctx, snap.Now)
+	}
+	if err != nil {
+		return a.readFailed("tick", err, stderr)
+	}
+	p := step.Plan(snap)
+	answer := map[string]string{}
+	for _, n := range p.Notes {
+		if n.Kind == sprint.Decided {
+			answer[n.Answers] = n.What
+		}
+	}
+	word := "RETIRED"
+	if dry {
+		word = "WOULD RETIRE"
+	}
+	ids := map[string]bool{}
+	for _, o := range p.Closes {
+		ids[o.Note.ID] = true
+	}
+	if !dry && len(p.Closes) > 0 {
+		step.CallerOp = c.op
+		res, err := st.Run(ctx, step)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s tick: %s\n", prog, oneline.WithRemedy(err.Error(), prog+" tick -h"))
+			return 2
+		}
+		if len(res.Refused) > 0 {
+			for _, r := range res.Refused {
+				fmt.Fprintf(stderr, "REFUSED %s: %s\n", oneline.Escape(r.Key), oneline.Escape(r.Why))
+			}
+			return 1
+		}
+	}
+	for _, o := range p.Closes {
+		alias := ""
+		if o.Note.Alias != "" {
+			alias = " alias=" + oneline.Field(o.Note.Alias)
+		}
+		fmt.Fprintf(stdout, "%s judgment=%s%s type=%q subject=%q answer=%q\n", word, oneline.Field(o.Note.ID), alias, oneline.Escape(o.Note.Type), oneline.Escape(o.Subject()), oneline.Escape(answer[o.Note.ID]))
+	}
+	would := ""
+	if dry {
+		would = " DRY-RUN; nothing was written"
+	}
+	fmt.Fprintf(stdout, "TICK RETIRE OK judgments=%d subjects=%d%s\n", len(ids), len(p.Closes), would)
+	return 0
 }

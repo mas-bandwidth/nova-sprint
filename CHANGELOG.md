@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.5.4 — 2026-10-17
+
+A hotfix that gets a stopped sprint back to a clean check: a repair no longer drops the log lines of changes that applied, the dropped lines can be put back, and a stopped machine can retire a judgment whose cause is gone.
+
+- Repair of a cut operation: an entry the table layer refuses whose member the store holds as the entry's result (one revision past what it expected, at its target, its fields set) counts as applied and keeps its move line; the manifest's table properties already at their new values count as applied too. A later manifest refused when sent again is probed first, as the first one is: when its writer applied it whole, none of its entries is sent again. On 2026-10-17 a tick drain's repair skipped 159 applied cards and dropped their lines, and check reported 106 rule 13 violations.
+- `nova-sprint repair --skipped <op>.skip [--dry-run] [--op <id>]` (coordinator) reconciles a repair's skip judgment: each listed card the store holds as the skip found it gets its missing move line (expected -> found, with its queued lines' words and fields, its generation as stored, and why); a card the log has since moved on, an already restored line and a table property are settled; anything else is refused by name; the judgment is closed when nothing is refused.
+- `nova-sprint tick --retire-only [--dry-run]` runs the tick's retire checks alone, as the machine, STOPPED or RUNNING: each judgment whose cards left the table or moved past it, each orphan, and each need-blocked judgment of a need no card has any more is closed with the machine's answer. It moves no card. Start's check gate is unchanged.
+- Models: new `tla/RepairLog.tla` (AppliedHasLine, LineOnlyIfApplied, ProbeSparesEntries, ReconciledHasLine; reversed witnesses `skipapplied`, the 2026-10-17 bug, `noprobe` and `reconcileblind`); `tla/JudgmentRetire.tla` RetireOnly with NoOrphanAfterRetire and RetireMovesNothing (reversed witness `stopped_stays`).
+- Requires nova-tools v1.5.2. No wire or record change.
+
+## v1.5.3 — 2026-10-17
+
+- Requires nova-tools v1.5.2: a nova table holds 1024 properties at an epoch, not 64, so the work table's tick drain is no longer refused at 65.
+
 ## v1.5.2 — 2026-10-17
 
 Cards stop getting stuck on the machine's own holds and on stale gate judgments.

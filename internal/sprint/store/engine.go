@@ -2223,6 +2223,17 @@ func (st *Store) finishOp(ctx context.Context, op OpRecord, twins ...*Twin) (Rep
 			}
 		}
 		if i > 0 {
+			// A later manifest gets the first's probe: the table layer's record
+			// of its own operation id says its writer applied it whole (perhaps
+			// against a refreshed revision), and then nothing of it is sent
+			// again entry by entry (tla/RepairLog.tla RepairProbe).
+			sent, perr := st.sentBefore(ctx, man)
+			if perr != nil {
+				return RepairResult{Op: op.ID, Verb: op.Verb, Done: RepairOpen, Detail: fmt.Sprintf("table %s: the store did not answer: %v", man.Table, perr)}, nil
+			}
+			if sent {
+				continue
+			}
 			if open := byEntry(i, man); open != nil {
 				return *open, nil
 			}
@@ -2281,7 +2292,9 @@ func (st *Store) finishOp(ctx context.Context, op OpRecord, twins ...*Twin) (Rep
 // each under its own operation id derived from the manifest's, so an entry
 // applied by an earlier repair replays (or conflicts, when sent against
 // another table revision) and counts as applied. An entry the table layer
-// refuses on its own expectations is skipped, with what it expected and what
+// refuses whose member the store holds as the entry's result (heldAsResult)
+// applied before, under the manifest's own id, and counts as applied too.
+// Any other entry the table layer refuses on its own expectations is skipped, with what it expected and what
 // the store holds; so is one refused on a bound or a rule, with the store's
 // own text; so is one the lifecycle refuses (barred, by stored id), with why,
 // and it is never sent.
@@ -2316,6 +2329,16 @@ func (st *Store) applyEntries(ctx context.Context, man ntable.BatchManifest, bar
 				// the table moved between the read and the send: read again
 			case !ntable.IsRefusal(err) && !errors.Is(err, ntable.ErrMalformedManifest):
 				return nil, err
+			case heldAsResult(e, rs):
+				// The store holds the member as this entry leaves it, one
+				// revision past what it expected: the entry applied (under the
+				// manifest's own id, whose record the store no longer answers
+				// from), so it counts as applied and its move line is kept.
+				// 2026-10-17: a tick drain's 159 applied entries were skipped
+				// on their MEMBERREVISION and their lines dropped, 106 rule 13
+				// violations (tla/RepairLog.tla ApplyEntry, AppliedHasLine).
+				outcome = "applied"
+				changedOne = changedOne || hasChanges(e)
 			default:
 				// its own expectation, or a bound or a rule of the table layer
 				k := skipOf(man.Table, e, rs)
@@ -2371,6 +2394,11 @@ func (st *Store) applyProps(ctx context.Context, man ntable.BatchManifest, chang
 		case refusalCode(err) == "REVISION":
 		case !ntable.IsRefusal(err) && !errors.Is(err, ntable.ErrMalformedManifest):
 			return nil, err
+		case propsHeld(man.Props, shapes[0].Props):
+			// every property already holds the value the manifest sets: they
+			// applied with its members, under the manifest's own id, and their
+			// guards on the values before no longer hold (heldAsResult)
+			return nil, nil
 		default:
 			return skipAll(err.Error()), nil
 		}
@@ -2488,6 +2516,66 @@ func (st *Store) bars(man ntable.BatchManifest, barred map[string]string) bool {
 		}
 	}
 	return false
+}
+
+// heldAsResult says the store holds the member as the entry leaves it: one
+// revision past the revision the entry expects, in the place it moves the
+// member to (or, with no move, the place it expects; off every cell for a
+// removal), with every field it sets at its value and every field it unsets
+// absent. Only an entry that expects a revision can be told applied this
+// way; one that creates its member, or expects none, never is.
+func heldAsResult(e ntable.BatchMemberEntry, rs ntable.ReadSetResult) bool {
+	x := e.Expect
+	if x == nil || x.Absent || x.Revision == "" || e.Create != nil || !hasChanges(e) {
+		return false
+	}
+	want, err := strconv.ParseUint(x.Revision, 10, 64)
+	if err != nil {
+		return false
+	}
+	m, ok := rs.Member(e.ID)
+	if !ok || m.Revision != want+1 {
+		return false
+	}
+	switch {
+	case e.Remove:
+		if m.Placed {
+			return false
+		}
+	case e.Move != nil:
+		if !m.Placed || m.Row != e.Move.Row || m.Col != e.Move.Col {
+			return false
+		}
+	case x.Place != nil:
+		if !m.Placed || m.Row != x.Place.Row || m.Col != x.Place.Col {
+			return false
+		}
+	}
+	for f, v := range e.Set {
+		if got, ok := m.Fields[f]; !ok || got != v {
+			return false
+		}
+	}
+	for _, f := range e.Unset {
+		if _, ok := m.Fields[f]; ok {
+			return false
+		}
+	}
+	return true
+}
+
+// propsHeld says the table holds every property the manifest sets at the
+// value it sets (and the manifest sets one).
+func propsHeld(set, held map[string]string) bool {
+	if len(set) == 0 {
+		return false
+	}
+	for name, v := range set {
+		if got, ok := held[name]; !ok || got != v {
+			return false
+		}
+	}
+	return true
 }
 
 // skipOf describes a skipped entry: what it expected and what the store holds.
