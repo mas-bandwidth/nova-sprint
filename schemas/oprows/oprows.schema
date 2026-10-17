@@ -355,7 +355,8 @@ table QueuedChange
 
 // Manifest is one nova-tables batch manifest of an operation (ntable.BatchManifest),
 // nova-tables' own protocol: the stored table it writes (OpRecord.Tables) and
-// the manifest's own bytes, held whole as a blob and never decoded here.
+// the manifest's own bytes, held whole as a blob and never decoded here. The
+// reader holds the blob to ntable.LimitManifestBytes as a constraint.
 table Manifest
 {
     table_name string(128)

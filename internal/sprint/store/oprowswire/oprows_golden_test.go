@@ -49,6 +49,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	wire "github.com/mas-bandwidth/nova-sprint/internal/sprint/store/oprowswire"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 	"github.com/mas-bandwidth/nova-tools/pkg/schemaread"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -545,6 +546,14 @@ func cardTextBound(field string, ref *wire.TableRef, c *schemaread.Checker) {
 	c.Text(field, string(s.Data[:s.Length]), store.MaxCardTextBytes)
 }
 
+// manifestBound is the constraint a blob cannot declare: a nova-tables batch
+// manifest is at most ntable.LimitManifestBytes.
+func manifestBound(ref *wire.TableRef, c *schemaread.Checker) {
+	if d := wire.TableBytesAt(ref); d.Length > ntable.LimitManifestBytes {
+		c.Bound("data", d.Length, 0, ntable.LimitManifestBytes)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // The tables.
 
@@ -670,9 +679,23 @@ func variableCases() map[string]func(t *testing.T) {
 				wire.QueuedChangeMeasure, wire.QueuedChangeSave, wire.QueuedChangeLoadMeasureReason, wire.QueuedChangeLoad, wire.QueuedChangeToJsonMeasure, wire.QueuedChangeToJson, wire.QueuedChangeTableType, nil})
 		},
 		"Manifest": func(t *testing.T) {
-			runVariable(t, "Manifest", manifJSON, varOps[wire.Manifest]{
+			ops := varOps[wire.Manifest]{
 				builder((*wire.ManifestBuilder).Init, (*wire.ManifestBuilder).GetRoot, func(b *wire.ManifestBuilder) *wire.TableArena { return &b.Arena }, wire.ManifestFromJson),
-				wire.ManifestMeasure, wire.ManifestSave, wire.ManifestLoadMeasureReason, wire.ManifestLoad, wire.ManifestToJsonMeasure, wire.ManifestToJson, wire.ManifestTableType, nil})
+				wire.ManifestMeasure, wire.ManifestSave, wire.ManifestLoadMeasureReason, wire.ManifestLoad, wire.ManifestToJsonMeasure, wire.ManifestToJson, wire.ManifestTableType,
+				func(v **wire.Manifest, c *schemaread.Checker) { manifestBound(&(*v).Data, c) }}
+			runVariable(t, "Manifest", manifJSON, ops)
+
+			// the blob's bound is the reader's constraint: a manifest of
+			// ntable.LimitManifestBytes reads whole, one byte past it is refused
+			r := schemaread.NewReader(ops.codec("Manifest"))
+			whole := bytes.Repeat([]byte{0x5a}, ntable.LimitManifestBytes)
+			v, _, err := r.Read([]byte(withField(t, manifJSON, "data", b64(whole))))
+			require.NoError(t, err, "a manifest of ntable.LimitManifestBytes reads")
+			d := wire.TableBytesAt(&v.Data)
+			assert.Equal(t, whole, d.Data[:d.Length], "the manifest is held whole, never chunked")
+			got, _, err := r.Read([]byte(withField(t, manifJSON, "data", b64(append(whole, 0x5a)))))
+			assert.Equal(t, schemaread.ReasonClamped, refusalOf(t, "Manifest.data", err))
+			assert.Nil(t, got)
 		},
 		"StepResult": func(t *testing.T) {
 			runVariable(t, "StepResult", resultJSON, varOps[wire.StepResult]{
