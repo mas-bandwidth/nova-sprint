@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unsafe"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
@@ -23,10 +24,12 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-tools/pkg/atomicfile"
 	"github.com/mas-bandwidth/nova-tools/pkg/bus"
+	"github.com/mas-bandwidth/nova-tools/pkg/friendfilewire"
 	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
 	"github.com/mas-bandwidth/nova-tools/pkg/member"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 	"github.com/mas-bandwidth/nova-tools/pkg/redisconn"
+	"github.com/mas-bandwidth/nova-tools/pkg/schemaread"
 	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
 
@@ -845,6 +848,140 @@ type friendTask struct {
 	Deliverable string `json:"deliverable,omitempty"`
 }
 
+// friendQueueHelp is the command a damaged friend queue file points at.
+const friendQueueHelp = "nova-sprint friend"
+
+// friendQueueRead is the one strict read of the friend queue file: pkg/schemaread
+// over the FriendQueue table (nova-tools pkg/friendfilewire, tables FriendQueue and
+// FriendTask) reads the binary wire, padded standard base64 of it, the schema JSON
+// text, and today's legacy JSON (the object with tasks, and the bare list). A damaged
+// value is refused by name; every read is counted once under the form read (S2, S4;
+// C13, the per-form counter). Writers stay legacy here; the writer switch is card
+// a10-sprint-friend-queue-writer.
+var friendQueueRead = newFriendQueueRead()
+
+type friendQueueReader struct {
+	r *schemaread.Reader[friendQueue]
+}
+
+func newFriendQueueRead() *friendQueueReader {
+	q := &friendQueueReader{}
+	q.r = schemaread.NewReader(&schemaread.Codec[friendQueue]{
+		Name:  "FRIENDQUEUE",
+		Help:  friendQueueHelp,
+		Reset: func(v *friendQueue) { *v = friendQueue{} },
+		Measure: func(wire []byte) error {
+			_, err := friendfilewire.FriendQueueLoadMeasureReason(wire)
+			return err
+		},
+		LoadWire:    friendQueueLoadWire,
+		LoadJSON:    friendQueueLoadJSON,
+		Legacy:      friendQueueLegacy,
+		LoadLegacy:  friendQueueLoadLegacy,
+	})
+	return q
+}
+
+// friendQueueLegacy recognises today's bare-list legacy shape. The object-with-tasks
+// legacy shape opens with '{' and reads as the schema JSON text (the FriendTask fields
+// are the same names), so it is not legacy here (S2). S1: a server-owned record is a
+// fixed table; the queue's table form is the variable form byte, named by Forms.
+func friendQueueLegacy(in []byte) bool {
+	t := bytes.TrimLeft(in, " \t\r\n")
+	return len(t) > 0 && t[0] == '['
+}
+
+func friendQueueLoadLegacy(v *friendQueue, in []byte) schemaread.Report {
+	if json.Unmarshal(in, v) == nil {
+		return schemaread.Report{}
+	}
+	if json.Unmarshal(in, &v.Tasks) == nil {
+		return schemaread.Report{}
+	}
+	return schemaread.Report{Malformed: true, Reason: "legacy_json_unreadable"}
+}
+
+func friendQueueReport(r *friendfilewire.TableReport) schemaread.Report {
+	return schemaread.Report{
+		Unknown:      int(r.Unknown),
+		KindMismatch: int(r.KindMismatch),
+		Clamped:      int(r.Clamped),
+		Malformed:    r.Malformed || r.Duplicate > 0,
+		Reason:       r.Reason,
+	}
+}
+
+// friendQueueRegion is an aligned buffer of n bytes for a region load, as the
+// generated region load needs.
+func friendQueueRegion(n int64) []byte {
+	raw := make([]byte, n+63)
+	off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
+	return raw[off : off+uintptr(n)]
+}
+
+func friendQueueLoadWire(v *friendQueue, wire []byte) schemaread.Report {
+	n := friendfilewire.FriendQueueLoadMeasure(wire)
+	if n < 0 {
+		return schemaread.Report{Malformed: true}
+	}
+	var r friendfilewire.TableReport
+	region := friendQueueRegion(n)
+	q := friendfilewire.FriendQueueLoad(region, wire, &r)
+	if q == nil {
+		return schemaread.Report{Malformed: true}
+	}
+	friendQueueFromRow(v, q)
+	return friendQueueReport(&r)
+}
+
+func friendQueueLoadJSON(v *friendQueue, text []byte) schemaread.Report {
+	var b friendfilewire.FriendQueueBuilder
+	if !b.Init() {
+		return schemaread.Report{Malformed: true}
+	}
+	var r friendfilewire.TableReport
+	if !friendfilewire.FriendQueueFromJson(&b, text, &r) || !b.Lock() {
+		return schemaread.Report{Malformed: true, Reason: r.Reason}
+	}
+	friendQueueFromRow(v, b.AsConst())
+	return friendQueueReport(&r)
+}
+
+// friendQueueString is the text at a task's self-relative slot, as the generated
+// table holds it.
+func friendQueueString(slot *int64) string {
+	s := friendfilewire.TableStringAt(slot)
+	return string(s.Data[:s.Length])
+}
+
+// friendQueueFromRow copies the read FriendQueue into today's Go struct, so the
+// load's region and builder need not outlive the read. A struct field the table
+// lacks would stop this card HOLD; the FriendTask fields all exist here.
+func friendQueueFromRow(v *friendQueue, q *friendfilewire.FriendQueue) {
+	v.Tasks = v.Tasks[:0]
+	for i := int32(0); i < q.Tasks.Count; i++ {
+		t := q.Tasks.At(i)
+		v.Tasks = append(v.Tasks, friendTask{
+			Gen:        int(t.Gen),
+			Job:        friendQueueString(&t.Job),
+			ID:         friendQueueString(&t.Id),
+			State:      friendQueueString(&t.State),
+			Deliverable: friendQueueString(&t.Deliverable),
+		})
+	}
+}
+
+// readQueueFile reads the friend queue file through the one strict read. A refusal
+// is a *schemaread.Refusal and the value is zero. S2.
+func readQueueFile(path string) (friendQueue, schemaread.Form, error) {
+	before, err := os.ReadFile(path)
+	if err != nil {
+		return friendQueue{}, schemaread.FormNone, err
+	}
+	q, res, err := friendQueueRead.r.Read(before)
+	return q, res.Form, err
+}
+
 // writeQueueFile keeps the friend's queue file as the sprint sees her cards: each card
 // on her row is a record, queued while it is ready behind her working cards, working
 // while it is working, and taken once the coordinator has taken it back or a queued one
@@ -860,13 +997,19 @@ func writeQueueFile(dir string, states map[string]string, leftOf func(ids []stri
 	path := filepath.Join(dir, filepath.FromSlash(queueFile))
 	var q friendQueue
 	before, err := os.ReadFile(path)
-	if err == nil {
-		if json.Unmarshal(before, &q) != nil {
-			// ignored: a file that is no queue is replaced by one (the bare list form is read too)
-			_ = json.Unmarshal(before, &q.Tasks)
-		}
-	} else if !errors.Is(err, fs.ErrNotExist) {
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		// no queue yet: nothing to read; the first write makes it
+	case err != nil:
 		return err
+	default:
+		q, _, err = friendQueueRead.r.Read(before)
+		if err != nil {
+			// a file that is no queue is refused by name, never read as absent,
+			// empty or zero; the rule that a file which is no queue is replaced
+			// (RECIPE step 3) now hands the refusal to the caller instead
+			return err
+		}
 	}
 	var gone []string
 	for _, t := range q.Tasks {
