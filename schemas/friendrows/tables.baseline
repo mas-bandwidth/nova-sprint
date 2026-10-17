@@ -167,7 +167,7 @@ table ServerRecord
     field host id=0x4077f8cc7eaf4d6f kind=17 type=string
 
 table Stranger
-    field seen id=0x2cfadb18d3ecd12a kind=17 type=string
+    field seen id=0x2cfadb18d3ecd12a kind=5
     field told id=0x2fd9f6ef389a0874 kind=1
 
 table Ticks
@@ -184,3 +184,7 @@ table Ticks
 
 ### 2026-10-17 (UTC) — a8-strangers-writer: Stranger table
 - no compatibility-affecting edits; the wire absorbs the rest
+
+### 2026-10-17 (UTC) — Stranger is a server-owned record, so by S1 it is a fixed table, not a variable one: seen becomes Unix nanoseconds UTC int64
+- Stranger.seen: wire kind 17 -> 5 [refuse]
+- Stranger.seen: nested table string removed — the field keeps its wire kind, so no reader can report the change (docs/SPEC-TABLES.md §4) [refuse]

@@ -1,6 +1,11 @@
 schema-lock 7
 package friendrowswire
 
+fixed table Stranger layout=0x72bfd91bd1b2e11f lineage=0x12d0be9f6fb68ad3
+    field seen id=0x2cfadb18d3ecd12a kind=5 width=8 default=0
+    field told id=0x2fd9f6ef389a0874 kind=1 width=1 default=false
+    lineage wire=0xcfe23d2014ea03a3 record=9 bytes=0300000047228661bf9eb4e30d09000000020000002ad1ecd318dbfa2c05080000000000000074089a38eff6d92f010100000000000000
+
 fixed table Ticks layout=0x1b03c0f2ab6ab9b7 lineage=0x482514a27f86b8f5
     field busy id=0xff75d19be2aea620 kind=9 width=8 default=0
     field total id=0x2dcede7d543a4ffd kind=9 width=8 default=0

@@ -3081,18 +3081,24 @@ func FriendStatusToJsonMeasure(value *FriendStatus, allocator ...TableAllocator)
 func FriendStatusToJson(value *FriendStatus, buffer []byte, allocator ...TableAllocator) int64 {
 	return tableRegionToJson(unsafe.Pointer(value), FriendStatusTableType(), buffer, allocator...)
 }
-func StrangerFromJson(builder *StrangerBuilder, text []byte, report *TableReport) bool {
-	if builder.Arena.Locked {
-		return false
-	}
-	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), StrangerTableType(), &builder.Main, text, report)
+
+// StrangerFromJson fills one Stranger from a JSON text (docs/SPEC-TABLES.md §16).
+// A nil report is allowed; every tolerance event still decides the same way.
+func StrangerFromJson(value *Stranger, text []byte, report *TableReport) bool {
+	return tableJsonRead(unsafe.Pointer(value), StrangerTableType(), text, report)
 }
-func StrangerToJsonMeasure(value *Stranger, allocator ...TableAllocator) int64 {
-	return tableRegionToJson(unsafe.Pointer(value), StrangerTableType(), nil, allocator...)
+
+// StrangerToJsonMeasure is the exact size of Stranger's JSON text, writing nothing.
+func StrangerToJsonMeasure(value *Stranger) int64 {
+	return tableJsonWrite(unsafe.Pointer(value), StrangerTableType(), nil)
 }
-func StrangerToJson(value *Stranger, buffer []byte, allocator ...TableAllocator) int64 {
-	return tableRegionToJson(unsafe.Pointer(value), StrangerTableType(), buffer, allocator...)
+
+// StrangerToJson writes Stranger's JSON text into the caller's slice and returns the
+// bytes written — exactly StrangerToJsonMeasure's answer — or -1 when it is short.
+func StrangerToJson(value *Stranger, buffer []byte) int64 {
+	return tableJsonWrite(unsafe.Pointer(value), StrangerTableType(), buffer)
 }
+
 func LoadSampleFromJson(builder *LoadSampleBuilder, text []byte, report *TableReport) bool {
 	if builder.Arena.Locked {
 		return false

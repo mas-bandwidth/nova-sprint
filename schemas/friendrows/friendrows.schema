@@ -13,7 +13,8 @@
 //
 // A FIXED table is a small bounded struct whose every field is bounded by its
 // Go type alone and whose body stays under the 4096-byte fixed advisory
-// (SPEC-TABLES §3.4). Ticks is the one: two uint64 counters. A unit that holds
+// (SPEC-TABLES §3.4). Ticks (two uint64 counters) and Stranger (a Unix
+// nanoseconds time and a bool) are the ones. A unit that holds
 // a variable table emits no fixed form (form byte 3) for any of its tables, so
 // a fixed table here rides the table wire (form byte 1) as an element of the
 // variable records that hold it; its class still holds its body bounded and
@@ -103,16 +104,17 @@ table FriendStatus
     at *string
 }
 
-// Stranger is one unknown machine that beats (presence.go stranger), a variable
-// table. The strangers record (keyStrangers) is a JSON object keyed by the
-// machine's name, and the name is that key, not a field; the roster reads each
-// entry alike (presenceRowMap). A stranger's seen is the source time.Time JSON
-// text and told is whether the coordinator was told of it; noteStranger sets
-// both with no length check, so no field of it is bounded.
-table Stranger
+// Stranger is one unknown machine that beats (presence.go stranger), a fixed
+// table: the sprint server owns the strangers record and is its only writer and
+// reader, so by S1 it is fixed, not variable. The strangers record
+// (keyStrangers) is a JSON object keyed by the machine's name, and the name is
+// that key, not a field; the roster reads each entry alike (presenceRowMap).
+// A stranger's seen is the source time.Time as Unix nanoseconds UTC, 0 for the
+// zero time.
+fixed table Stranger
 {
-    // Source time.Time JSON, RFC3339Nano text.
-    seen *string
+    // Source time.Time: Unix nanoseconds UTC, 0 for the zero time.
+    seen int64
     told bool
 }
 

@@ -387,7 +387,7 @@ type ServerRecordRow struct {
 // StrangerRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type StrangerRow struct {
-	Seen int64 // *: signed self-relative delta, zero is null (§6.3)
+	Seen int64
 	Told bool
 	_    [7]byte // generated padding
 }
@@ -842,7 +842,7 @@ func init() {
 	tableCookRecords[20] = TableCookInfo{
 		Name: "Stranger", Size: 16, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
-			{Name: "seen", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "seen", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 			{Name: "told", Offset: 8, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
 		},
 	}

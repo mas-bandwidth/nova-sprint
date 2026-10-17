@@ -17,7 +17,6 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/friendrowswire"
 	"github.com/mas-bandwidth/nova-tools/pkg/hostload"
 	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
-	"github.com/mas-bandwidth/nova-tools/pkg/schemaread"
 )
 
 // A fleet member's beats (sprint/presence.go): one record per member under
@@ -59,19 +58,9 @@ func (st *Store) putStrangers(ctx context.Context, s map[string]stranger) error 
 	if err != nil {
 		return err
 	}
-	// S2, S4: each entry is written in the table form, the padded standard base64 of the
-	// Stranger table's wire, so a reader of any form reads it; a value the table cannot hold
-	// is refused by name before a byte of the entry is written, never written in legacy form.
-	c := st.presenceRows().stranger
-	out := make(map[string]string, len(s))
-	for name, x := range s {
-		raw, err := c.Write(&x, schemaread.FormBase64)
-		if err != nil {
-			return fmt.Errorf("strangers: %w", err)
-		}
-		out[name] = string(raw)
-	}
-	b, err := json.Marshal(out)
+	// S4: writers still write the legacy form here; the writer switch to the Stranger table
+	// form is a later card, which reads the per-form counts first.
+	b, err := json.Marshal(s)
 	if err != nil {
 		return err
 	}
@@ -790,50 +779,71 @@ func beatOfSchema(m *beatSchema) (sprint.Beat, bool) {
 	return b, ok
 }
 
-// strangerSchema is the Stranger table's schema JSON text (friendrows.schema Stranger).
-type strangerSchema struct {
-	Seen *string `json:"seen"`
-	Told bool    `json:"told"`
-}
-
-// strangerTable is the generated Stranger table (S1, S2).
-func strangerTable() friendTable[friendrowswire.Stranger] {
-	return friendTable[friendrowswire.Stranger]{
-		measure: friendrowswire.StrangerLoadMeasureReason,
-		load:    friendrowswire.StrangerLoad,
-		fromJSON: func(text []byte, rep *friendrowswire.TableReport) (*friendrowswire.Stranger, bool) {
-			var b friendrowswire.StrangerBuilder
-			if !b.Init() {
-				return nil, false
-			}
-			if !friendrowswire.StrangerFromJson(&b, text, rep) || !b.Lock() {
-				return nil, false
-			}
-			return b.AsConst(), true
-		},
-		toJSON: func(w *friendrowswire.Stranger) []byte {
-			buf := make([]byte, max(friendrowswire.StrangerToJsonMeasure(w), 0))
-			return buf[:max(friendrowswire.StrangerToJson(w, buf), 0)]
-		},
-		save: func(w *friendrowswire.Stranger) []byte {
-			buf := make([]byte, max(friendrowswire.StrangerMeasure(w), 0))
-			return buf[:max(friendrowswire.StrangerSave(w, buf), 0)]
-		},
-	}
-}
-
 // strangerRowFns is one stranger entry as the row reader reads it: STRANGERS (S1, S2,
 // S4). The strangers record is a JSON object keyed by the machine's name under keyStrangers,
 // and each entry is read through this codec, as the roster reads each entry (presenceRowMap).
+// Stranger is a fixed table (friendrows.schema): the sprint server owns the record and is
+// its only writer and reader, so by S1 it is fixed, not variable. Its wire rides the table
+// wire (form byte 1), as every table of this unit does; the schema JSON text holds seen as
+// Unix nanoseconds UTC, 0 for the zero time.
 func strangerRowFns() RowFns[stranger] {
-	return presenceRowFns("STRANGERS", strangerTable(),
-		func(s *stranger) strangerSchema {
-			return strangerSchema{Seen: rowTime(s.Seen), Told: s.Told}
+	load := func(v *stranger, w *friendrowswire.Stranger) {
+		v.Seen = doneTimeOf(w.Seen)
+		v.Told = w.Told
+	}
+	save := func(v *stranger) *friendrowswire.Stranger {
+		var w friendrowswire.Stranger
+		if !v.Seen.IsZero() {
+			w.Seen = v.Seen.UnixNano()
+		}
+		w.Told = v.Told
+		return &w
+	}
+	return RowFns[stranger]{
+		Name:  "STRANGERS",
+		Forms: []byte{1},
+		Reset: func(v *stranger) { *v = stranger{} },
+		LoadWire: func(v *stranger, wire []byte) RowReport {
+			var w friendrowswire.Stranger
+			var rep friendrowswire.TableReport
+			if !friendrowswire.StrangerLoad(&w, wire, &rep) || presenceReport(&rep).refuses() {
+				rr := presenceReport(&rep)
+				if rr.Reason == "" && !rr.Malformed && rr.Duplicate == 0 && rr.Clamped == 0 &&
+					rr.Unknown == 0 && rr.KindMismatch == 0 {
+					rr.Malformed = true
+				}
+				return rr
+			}
+			load(v, &w)
+			return RowReport{Unknown: int(rep.Unknown)}
 		},
-		func(m *strangerSchema) (stranger, bool) {
-			seen, ok := rowTimeOf(m.Seen)
-			return stranger{Seen: seen, Told: m.Told}, ok
-		})
+		LoadJSON: func(v *stranger, text []byte) RowReport {
+			var w friendrowswire.Stranger
+			var rep friendrowswire.TableReport
+			if !friendrowswire.StrangerFromJson(&w, text, &rep) || presenceReport(&rep).refuses() {
+				rr := presenceReport(&rep)
+				if rr.Reason == "" && !rr.Malformed && rr.Duplicate == 0 && rr.Clamped == 0 &&
+					rr.Unknown == 0 && rr.KindMismatch == 0 {
+					rr.Malformed = true
+				}
+				return rr
+			}
+			load(v, &w)
+			return RowReport{Unknown: int(rep.Unknown)}
+		},
+		Legacy:     LegacyObject,
+		LoadLegacy: DecodeLegacy[stranger],
+		SaveWire: func(v *stranger) []byte {
+			w := save(v)
+			buf := make([]byte, max(friendrowswire.StrangerMeasure(w), 0))
+			return buf[:max(friendrowswire.StrangerSave(w, buf), 0)]
+		},
+		SaveJSON: func(v *stranger) []byte {
+			w := save(v)
+			buf := make([]byte, max(friendrowswire.StrangerToJsonMeasure(w), 0))
+			return buf[:max(friendrowswire.StrangerToJson(w, buf), 0)]
+		},
+	}
 }
 
 // getKeys reads machine records, in one exchange where the store can.

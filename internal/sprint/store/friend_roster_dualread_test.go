@@ -225,6 +225,11 @@ func TestFriendRosterRowsDualRead(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	assert.True(t, LegacyObject([]byte(raw)), raw)
+	require.NoError(t, st.putStrangers(ctx, map[string]stranger{"m8": {Seen: at(6)}}))
+	raw, ok, err = kv.GetKey(ctx, keyStrangers)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.True(t, LegacyObject([]byte(raw)), raw)
 
 	// The read sites that carry a record into the next write read it from the table forms:
 	// the friend's proof and check record (FriendBeatLive), her row (friendRowsOf, with a
