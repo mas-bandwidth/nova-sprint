@@ -3320,22 +3320,17 @@ func NoteToJsonMeasure(value *Note, allocator ...TableAllocator) int64 {
 func NoteToJson(value *Note, buffer []byte, allocator ...TableAllocator) int64 {
 	return tableRegionToJson(unsafe.Pointer(value), NoteTableType(), buffer, allocator...)
 }
-
-// TextRefFromJson fills one TextRef from a JSON text (docs/SPEC-TABLES.md §16).
-// A nil report is allowed; every tolerance event still decides the same way.
-func TextRefFromJson(value *TextRef, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), TextRefTableType(), text, report)
+func CardTextFromJson(builder *CardTextBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), CardTextTableType(), &builder.Main, text, report)
 }
-
-// TextRefToJsonMeasure is the exact size of TextRef's JSON text, writing nothing.
-func TextRefToJsonMeasure(value *TextRef) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TextRefTableType(), nil)
+func CardTextToJsonMeasure(value *CardText, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), CardTextTableType(), nil, allocator...)
 }
-
-// TextRefToJson writes TextRef's JSON text into the caller's slice and returns the
-// bytes written — exactly TextRefToJsonMeasure's answer — or -1 when it is short.
-func TextRefToJson(value *TextRef, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), TextRefTableType(), buffer)
+func CardTextToJson(value *CardText, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), CardTextTableType(), buffer, allocator...)
 }
 
 // PairFromJson fills one Pair from a JSON text (docs/SPEC-TABLES.md §16).
@@ -3402,23 +3397,30 @@ func PropWriteToJson(value *PropWrite, buffer []byte) int64 {
 	return tableJsonWrite(unsafe.Pointer(value), PropWriteTableType(), buffer)
 }
 
-// QueuedChangeFromJson fills one QueuedChange from a JSON text (docs/SPEC-TABLES.md §16).
-// A nil report is allowed; every tolerance event still decides the same way.
-func QueuedChangeFromJson(value *QueuedChange, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), QueuedChangeTableType(), text, report)
+func QueuedChangeFromJson(builder *QueuedChangeBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), QueuedChangeTableType(), &builder.Main, text, report)
 }
-
-// QueuedChangeToJsonMeasure is the exact size of QueuedChange's JSON text, writing nothing.
-func QueuedChangeToJsonMeasure(value *QueuedChange) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), QueuedChangeTableType(), nil)
+func QueuedChangeToJsonMeasure(value *QueuedChange, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), QueuedChangeTableType(), nil, allocator...)
 }
-
-// QueuedChangeToJson writes QueuedChange's JSON text into the caller's slice and returns the
-// bytes written — exactly QueuedChangeToJsonMeasure's answer — or -1 when it is short.
-func QueuedChangeToJson(value *QueuedChange, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), QueuedChangeTableType(), buffer)
+func QueuedChangeToJson(value *QueuedChange, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), QueuedChangeTableType(), buffer, allocator...)
 }
-
+func ManifestFromJson(builder *ManifestBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), ManifestTableType(), &builder.Main, text, report)
+}
+func ManifestToJsonMeasure(value *Manifest, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), ManifestTableType(), nil, allocator...)
+}
+func ManifestToJson(value *Manifest, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), ManifestTableType(), buffer, allocator...)
+}
 func OpRecordFromJson(builder *OpRecordBuilder, text []byte, report *TableReport) bool {
 	if builder.Arena.Locked {
 		return false
@@ -3430,54 +3432,6 @@ func OpRecordToJsonMeasure(value *OpRecord, allocator ...TableAllocator) int64 {
 }
 func OpRecordToJson(value *OpRecord, buffer []byte, allocator ...TableAllocator) int64 {
 	return tableRegionToJson(unsafe.Pointer(value), OpRecordTableType(), buffer, allocator...)
-}
-func OpNoteFromJson(builder *OpNoteBuilder, text []byte, report *TableReport) bool {
-	if builder.Arena.Locked {
-		return false
-	}
-	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), OpNoteTableType(), &builder.Main, text, report)
-}
-func OpNoteToJsonMeasure(value *OpNote, allocator ...TableAllocator) int64 {
-	return tableRegionToJson(unsafe.Pointer(value), OpNoteTableType(), nil, allocator...)
-}
-func OpNoteToJson(value *OpNote, buffer []byte, allocator ...TableAllocator) int64 {
-	return tableRegionToJson(unsafe.Pointer(value), OpNoteTableType(), buffer, allocator...)
-}
-func OpLogLineFromJson(builder *OpLogLineBuilder, text []byte, report *TableReport) bool {
-	if builder.Arena.Locked {
-		return false
-	}
-	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), OpLogLineTableType(), &builder.Main, text, report)
-}
-func OpLogLineToJsonMeasure(value *OpLogLine, allocator ...TableAllocator) int64 {
-	return tableRegionToJson(unsafe.Pointer(value), OpLogLineTableType(), nil, allocator...)
-}
-func OpLogLineToJson(value *OpLogLine, buffer []byte, allocator ...TableAllocator) int64 {
-	return tableRegionToJson(unsafe.Pointer(value), OpLogLineTableType(), buffer, allocator...)
-}
-func OpQueuedFromJson(builder *OpQueuedBuilder, text []byte, report *TableReport) bool {
-	if builder.Arena.Locked {
-		return false
-	}
-	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), OpQueuedTableType(), &builder.Main, text, report)
-}
-func OpQueuedToJsonMeasure(value *OpQueued, allocator ...TableAllocator) int64 {
-	return tableRegionToJson(unsafe.Pointer(value), OpQueuedTableType(), nil, allocator...)
-}
-func OpQueuedToJson(value *OpQueued, buffer []byte, allocator ...TableAllocator) int64 {
-	return tableRegionToJson(unsafe.Pointer(value), OpQueuedTableType(), buffer, allocator...)
-}
-func ChunkFromJson(builder *ChunkBuilder, text []byte, report *TableReport) bool {
-	if builder.Arena.Locked {
-		return false
-	}
-	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), ChunkTableType(), &builder.Main, text, report)
-}
-func ChunkToJsonMeasure(value *Chunk, allocator ...TableAllocator) int64 {
-	return tableRegionToJson(unsafe.Pointer(value), ChunkTableType(), nil, allocator...)
-}
-func ChunkToJson(value *Chunk, buffer []byte, allocator ...TableAllocator) int64 {
-	return tableRegionToJson(unsafe.Pointer(value), ChunkTableType(), buffer, allocator...)
 }
 
 // RefusalFromJson fills one Refusal from a JSON text (docs/SPEC-TABLES.md §16).

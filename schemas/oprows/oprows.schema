@@ -12,13 +12,17 @@
 // layout_newer). Large, sparse or text-heavy records are VARIABLE tables sized
 // by content, with their bounds the code's (the op journal, the notes and
 // note lines, the timers, the step result and the lists of members and cells):
-// every table the compiler flags past the 4096-byte fixed advisory is a
-// variable table, and the journal's parts are variable tables of their own.
+// every table past the compiler's 4096-byte fixed advisory is a variable
+// table, and a variable table holds its record whole. The operation record
+// carries its notes, log lines, queued changes, manifests, step result and
+// timers inside itself; a card text and a nova-tables entry or manifest ride
+// as blobs (*string, *bytes) at their used size, never split into chunks.
 // A value past a declared bound is refused at the reader, never clamped into a
 // record.
 //
 // Where the code enforces no bound on a field, the bound here is chosen to fit
-// the record and is named "chosen" in its comment.
+// the record and is named "chosen" in its comment. Where the code enforces no
+// count on a list of records, the list is unbounded ([]T), sized by content.
 //
 // Times are Unix nanoseconds UTC, 0 for the zero time (as donewire). Maps are
 // lists of pairs in key order. The strings the wire holds as UTF-8 text.
@@ -255,15 +259,17 @@ table Note
     coordinator_delivery ?CoordinatorDelivery
 }
 
-// TextRef names one card text a log line carries whole (sprint.Line.Text): the
-// field name and its length in bytes. The bytes ride in Chunk records of kind
-// "text" keyed "<line index>:<name>" because a card text is up to
-// sprint.MaxCardTextBytes (64 KiB), more than the fixed form holds.
-fixed table TextRef
+// CardText is one card text a log line carries whole (sprint.Line.Text, a map
+// in key order): the field name and its words. The words are a *string blob at
+// their used size: a card text is up to sprint.MaxCardTextBytes (64 KiB), and
+// a string(65536) would hold 64 KiB of slack in every entry. The reader holds
+// the text to sprint.MaxCardTextBytes as a constraint, because a blob declares
+// no bound.
+table CardText
 {
     // fix, report, finding, reason, return_reason, did, note, ci_note, brief, why.
     name string(16)
-    size uint32
+    text *string
 }
 
 // Pair is one entry of a string map in key order (sprint.Line.Set: a stamp, a
@@ -299,8 +305,9 @@ table LogLine
     cause string(300)
     // the judgments the step answered, chosen count 16.
     answers [..16]Name128
-    // the card texts it carries, by name; the bytes are Chunk records.
-    text [..12]TextRef
+    // the card texts it carries, by name in key order: the ten names of
+    // sprint.TextFields, chosen count 12.
+    text [..12]CardText
     set  [..16]Pair
     // the notification as written, for a note line.
     note ?Note
@@ -335,21 +342,32 @@ fixed table PropWrite
 
 // QueuedChange is sprint.QueuedChange: a work-table change the step queued for
 // the pump. The entry is a nova-tables batch member entry, nova-tables' own
-// protocol; it is carried as opaque bytes in Chunk records of kind "entry"
-// (entry_bytes long), never decoded here.
-fixed table QueuedChange
+// protocol: its own bytes, held whole as a blob and never decoded here; null
+// when the change is a property write only.
+table QueuedChange
 {
-    entry_bytes uint32
-    prop        ?PropWrite
-    verb        string(80)
-    actor       string(135)
-    moved       string(256)
+    entry *bytes
+    prop  ?PropWrite
+    verb  string(80)
+    actor string(135)
+    moved string(256)
 }
 
-// OpRecord is the header of the operation record the fence holds: store.OpRecord
-// without its lists. Each list is its own variable part table (OpNote,
-// OpLogLine, OpQueued, Chunk) and the header counts them. Chosen counts 64
-// for the streams, the closes and the timer ids.
+// Manifest is one nova-tables batch manifest of an operation (ntable.BatchManifest),
+// nova-tables' own protocol: the stored table it writes (OpRecord.Tables) and
+// the manifest's own bytes, held whole as a blob and never decoded here.
+table Manifest
+{
+    table_name string(128)
+    data       *bytes
+}
+
+// OpRecord is store.OpRecord, the operation record the fence holds, whole: its
+// manifests, notes, decided answers, log lines, rewritten judgments and queued
+// changes are lists inside it, unbounded because the code enforces no count on
+// them, and its step result and timer record are records it points at, null
+// when absent.
+// Chosen counts 64 for the streams, the closes and the timer ids.
 table OpRecord
 {
     id string(256)
@@ -357,69 +375,33 @@ table OpRecord
     is_lock bool
     verb    string(80)
     at      int64
-    // the nova-tables batch manifests in apply order: opaque bytes in Chunk
-    // records of kind "manifest"; this is their count.
-    manifests uint32
-    notes     uint32
-    decided   uint32
-    log       uint32
-    updates   uint32
+    // the nova-tables batch manifests in apply order.
+    manifests []Manifest
+    // happened and judgment notes, ids assigned.
+    notes []Note
+    // answers to open judgments.
+    decided []Note
+    // the log's move lines of the step's changes.
+    log []LogLine
+    // open judgments rewritten in place.
+    updates []Note
     // open keys the step closes.
     closes    [..64]Name400
     streams   [..64]Name128
     caller_op string(256)
-    // the step's result: a StepResult record under the caller's operation id.
-    has_result bool
+    // the step's result, recorded under the caller's operation id; null when
+    // there is none (a pointer: an optional may not hold a variable closure
+    // with pointer edges, SPEC-TABLES section 2.3).
+    result *StepResult
     // the stuck operation this one reports.
-    stuck        string(256)
-    queue        uint32
+    stuck string(256)
+    // the work-table changes the step queued for the pump, in order.
+    queue        []QueuedChange
     drain        int32
     seat         ?SeatChange
     close_timers [..64]Name128
-    // the timer record the step leaves: a Timers record.
-    has_timers bool
-}
-
-// OpNote is one note of an operation: role is notes, decided or updates, index
-// its place in that list.
-table OpNote
-{
-    op_id string(256)
-    role  string(16)
-    index uint32
-    note  Note
-}
-
-// OpLogLine is one log line of an operation, index its place in OpRecord.Log.
-table OpLogLine
-{
-    op_id string(256)
-    index uint32
-    line  LogLine
-}
-
-// OpQueued is one queued change of an operation, index its place in
-// OpRecord.Queue.
-table OpQueued
-{
-    op_id  string(256)
-    index  uint32
-    change QueuedChange
-}
-
-// Chunk is one slice of bytes a variable table holds whole: a manifest
-// (kind "manifest", key the stored table name), a queued entry (kind "entry",
-// key the queue index) or a card text (kind "text", key "<line index>:<name>").
-// The bytes are the other protocol's own, unchanged; index counts from 0 of
-// count chunks, each at most 32768 bytes.
-table Chunk
-{
-    op_id string(256)
-    kind  string(16)
-    key   string(128)
-    index uint32
-    count uint32
-    data  bytes(32768)
+    // the timer record the step leaves; null when it leaves none.
+    timers *Timers
 }
 
 // ---------------------------------------------------------------------------
@@ -444,9 +426,8 @@ fixed table TableCount
 // StepResult is store.Result: what a step did, recorded under the caller's
 // operation id and replayed by it. The lists are chosen counts: moved 64,
 // refused 16, raised 16, said 8, repaired 16, skipped 8, tables 16, none
-// enforced today. The drains of the work table's queue ride as `drained`
-// further StepResult records, since the fixed form holds no record inside
-// itself.
+// enforced today. The drains of the work table's queue the step made before it
+// planned are results of their own, held whole in the list `drained`.
 table StepResult
 {
     verb    string(80)
@@ -466,5 +447,5 @@ table StepResult
     args    string(24)
     lost    bool
     tables  [..16]TableCount
-    drained uint32
+    drained []*StepResult
 }

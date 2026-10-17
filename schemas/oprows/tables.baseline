@@ -1,6 +1,10 @@
 schema-tables-baseline 7
 package oprowswire
 
+table CardText
+    field name id=0xc4bcadba8e631b86 kind=12 size=16
+    field text id=0xfa04f4ef1995407e kind=17 type=string
+
 table Cell
     field row id=0x8a0bc1196111ad9b kind=12 size=256
     field column id=0x5f531287628bf287 kind=12 size=128
@@ -16,14 +20,6 @@ table ChangeEvent
     field rev_after id=0x269a80e3d5d94dff kind=9
     field members id=0x79d594675e391090 kind=14 elem=13 type=Member array=bounded bound=64
     field batch_members id=0xa628e579aa3749b7 kind=14 elem=13 type=Member array=bounded bound=64
-
-table Chunk
-    field op_id id=0x41f03c8413cac022 kind=12 size=256
-    field kind id=0xef9c96d721673243 kind=12 size=16
-    field key id=0x3dc94a19365b10ec kind=12 size=128
-    field index id=0x83cf8e8f9081468b kind=8
-    field count id=0xb1e5e28e4479a274 kind=8
-    field data id=0x855b556730a34a05 kind=14 elem=6 size=32768
 
 table CoordinatorDelivery
     field covered_by id=0x523dd14f54a423e3 kind=12 size=128
@@ -73,9 +69,13 @@ table LogLine
     field verb id=0x673ebb0102773a20 kind=12 size=80
     field cause id=0xb733af3b0d745380 kind=12 size=300
     field answers id=0xd7316b9dd9f8d444 kind=14 elem=13 type=Name128 array=bounded bound=16
-    field text id=0xfa04f4ef1995407e kind=14 elem=13 type=TextRef array=bounded bound=12
+    field text id=0xfa04f4ef1995407e kind=14 elem=13 type=CardText array=bounded bound=12
     field set id=0x823b87195ce20e23 kind=14 elem=13 type=Pair array=bounded bound=16
     field note id=0x3bf8fbbad1587cdd kind=13 type=Note optional=true
+
+table Manifest
+    field table_name id=0x6bcb6e85b78cf363 kind=12 size=128
+    field data id=0x855b556730a34a05 kind=17 type=bytes
 
 table Member
     field id id=0x08b72e07b55c3ac0 kind=12 size=256
@@ -127,42 +127,26 @@ table Note
     field decision_delivery id=0x818c426b23e35a14 kind=13 type=DecisionDelivery optional=true
     field coordinator_delivery id=0x3e6819a72438e142 kind=13 type=CoordinatorDelivery optional=true
 
-table OpLogLine
-    field op_id id=0x41f03c8413cac022 kind=12 size=256
-    field index id=0x83cf8e8f9081468b kind=8
-    field line id=0xbf4ba5ad694f5907 kind=13 type=LogLine
-
-table OpNote
-    field op_id id=0x41f03c8413cac022 kind=12 size=256
-    field role id=0xa358ec1ff0c833b9 kind=12 size=16
-    field index id=0x83cf8e8f9081468b kind=8
-    field note id=0x3bf8fbbad1587cdd kind=13 type=Note
-
-table OpQueued
-    field op_id id=0x41f03c8413cac022 kind=12 size=256
-    field index id=0x83cf8e8f9081468b kind=8
-    field change id=0x4a6173034c7ba27d kind=13 type=QueuedChange
-
 table OpRecord
     field id id=0x08b72e07b55c3ac0 kind=12 size=256
     field is_lock id=0x9edafb5766caa599 kind=1
     field verb id=0x673ebb0102773a20 kind=12 size=80
     field at id=0x089c4e07b545a968 kind=5
-    field manifests id=0xe316d09466679195 kind=8
-    field notes id=0x40906c71b95bdbaa kind=8
-    field decided id=0x17557edef437f27f kind=8
-    field log id=0x125073191daf5431 kind=8
-    field updates id=0x43ac328ac5ae0e45 kind=8
+    field manifests id=0xe316d09466679195 kind=14 elem=13 type=Manifest array=unbounded
+    field notes id=0x40906c71b95bdbaa kind=14 elem=13 type=Note array=unbounded
+    field decided id=0x17557edef437f27f kind=14 elem=13 type=Note array=unbounded
+    field log id=0x125073191daf5431 kind=14 elem=13 type=LogLine array=unbounded
+    field updates id=0x43ac328ac5ae0e45 kind=14 elem=13 type=Note array=unbounded
     field closes id=0x8553185090e84610 kind=14 elem=13 type=Name400 array=bounded bound=64
     field streams id=0x81f528932d7f3d02 kind=14 elem=13 type=Name128 array=bounded bound=64
     field caller_op id=0xcc11e62c8c25c9b8 kind=12 size=256
-    field has_result id=0xcf1e93d4528ea4cd kind=1
+    field result id=0x9b51cd7cd76778c4 kind=17 type=StepResult
     field stuck id=0x9bcdc0ada7f7a0ab kind=12 size=256
-    field queue id=0xb11e8b146c5a21d8 kind=8
+    field queue id=0xb11e8b146c5a21d8 kind=14 elem=13 type=QueuedChange array=unbounded
     field drain id=0x16749dc90dc393b9 kind=4
     field seat id=0x2d08f118d3f933e8 kind=13 type=SeatChange optional=true
     field close_timers id=0x5165a1bf1f4e6ce2 kind=14 elem=13 type=Name128 array=bounded bound=64
-    field has_timers id=0x9c20517f213c7362 kind=1
+    field timers id=0x2b0159e51fae9103 kind=17 type=Timers
 
 table Pair
     field name id=0xc4bcadba8e631b86 kind=12 size=32
@@ -176,7 +160,7 @@ table PropWrite
     field was_absent id=0x32e6b0c4205a213e kind=1
 
 table QueuedChange
-    field entry_bytes id=0x8b82cf32cda90dc7 kind=8
+    field entry id=0xbe2a85bf4c0ca913 kind=17 type=bytes
     field prop id=0x8572880e35379c18 kind=13 type=PropWrite optional=true
     field verb id=0x673ebb0102773a20 kind=12 size=80
     field actor id=0xdcccc5391c47d4da kind=12 size=135
@@ -215,7 +199,7 @@ table StepResult
     field args id=0x894930843ebc9d7c kind=12 size=24
     field lost id=0xce4be8ad7126193b kind=1
     field tables id=0xe26607dbf29ff924 kind=14 elem=13 type=TableCount array=bounded bound=16
-    field drained id=0xe4a62beec8268510 kind=8
+    field drained id=0xe4a62beec8268510 kind=14 elem=17 type=StepResult array=unbounded
 
 table StreamTransition
     field state id=0xee63aaad45b1b116 kind=12 size=32
@@ -229,10 +213,6 @@ table TableCount
 
 table Text512
     field value id=0x7ce4fd9430e80cea kind=12 size=512
-
-table TextRef
-    field name id=0xc4bcadba8e631b86 kind=12 size=16
-    field size id=0x4dea9618e618ae3c kind=8
 
 table Timer
     field id id=0x08b72e07b55c3ac0 kind=12 size=128
@@ -248,3 +228,34 @@ table Timers
 ## history
 ### 2026-10-17 (UTC) — attempt 2: variable tables for the large and sparse records
 - baseline created over 31 tables — data written BEFORE this point is not covered by it
+
+### 2026-10-17 (UTC) — attempt 4: the operation record holds its lists, result and timers whole; card texts, queued entries and manifests ride as blobs; the chunk and part tables are retired; no record of the area has been written yet
+- OpRecord.manifests: wire kind 8 -> 14 [refuse]
+- OpRecord.manifests: array element kind 13 added [refuse]
+- OpRecord.manifests: nested table Manifest added [refuse]
+- OpRecord.notes: wire kind 8 -> 14 [refuse]
+- OpRecord.notes: array element kind 13 added [refuse]
+- OpRecord.notes: nested table Note added [refuse]
+- OpRecord.decided: wire kind 8 -> 14 [refuse]
+- OpRecord.decided: array element kind 13 added [refuse]
+- OpRecord.decided: nested table Note added [refuse]
+- OpRecord.log: wire kind 8 -> 14 [refuse]
+- OpRecord.log: array element kind 13 added [refuse]
+- OpRecord.log: nested table LogLine added [refuse]
+- OpRecord.updates: wire kind 8 -> 14 [refuse]
+- OpRecord.updates: array element kind 13 added [refuse]
+- OpRecord.updates: nested table Note added [refuse]
+- OpRecord.queue: wire kind 8 -> 14 [refuse]
+- OpRecord.queue: array element kind 13 added [refuse]
+- OpRecord.queue: nested table QueuedChange added [refuse]
+- StepResult.drained: wire kind 8 -> 14 [refuse]
+- StepResult.drained: array element kind 17 added [refuse]
+- StepResult.drained: nested table StepResult added [refuse]
+- table Chunk: no longer in the closure — the closest declaration, Manifest, carries 1 of its 6 identities, below the half needed to call it a rename, so this baseline no longer covers it [warn]
+- table OpLogLine: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
+- table OpNote: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
+- table OpQueued: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
+- table TextRef: no longer in the closure under that name; CardText carries 1 of its 2 identities, so it is judged as the rename it looks like [warn]
+- table OpRecord: has_result, has_timers removed and result, timers added in one edit — if that is a rename the wire id moved with the name and every stored value orphans: declare it `result ... | was = "has_result"`, and pair `json = "has_result"` if the text key must survive (docs/SPEC-TABLES.md §5, §16.4) [warn]
+- table QueuedChange: entry_bytes removed and entry added in one edit — if that is a rename the wire id moved with the name and every stored value orphans: declare it `entry ... | was = "entry_bytes"`, and pair `json = "entry_bytes"` if the text key must survive (docs/SPEC-TABLES.md §5, §16.4) [warn]
+- table CardText: size removed and text added in one edit — if that is a rename the wire id moved with the name and every stored value orphans: declare it `text ... | was = "size"`, and pair `json = "size"` if the text key must survive (docs/SPEC-TABLES.md §5, §16.4) [warn]

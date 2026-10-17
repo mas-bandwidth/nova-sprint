@@ -54,14 +54,6 @@ fixed table PropWrite layout=0x06ddc7353005a14b lineage=0xc8012a2d4c1eec4a
     field was_absent id=0x32e6b0c4205a213e kind=1 width=1 default=false
     lineage wire=0x6283fff0d6439ac1 record=2321 bytes=06000000471c17bc7fdd4c1c0d110900000500000063f38cb7856ecb6b0c8400000000000000861b638ebaadbcc40c8400000000000000ea0ce83094fde47c0c040400000000000032b57c4819e8ad5e0c04040000000000003e215a20c4b0e632010100000000000000
 
-fixed table QueuedChange layout=0xb317cdfdc9001c63 lineage=0x2b55f3435221aa91
-    field entry_bytes id=0x8b82cf32cda90dc7 kind=8 width=4 default=0
-    field prop id=0x8572880e35379c18 kind=13 width=2341 default=zero held=PropWrite@0x06ddc7353005a14b optional
-    field verb id=0x673ebb0102773a20 kind=12 width=87 default=bytes: cap=80
-    field actor id=0xdcccc5391c47d4da kind=12 width=140 default=bytes: cap=135
-    field moved id=0x272cf992fbe8c670 kind=12 width=264 default=bytes: cap=256
-    lineage wire=0x123dcb8b98d02d9b record=2809 bytes=0c000000a4fe78c34ea2c8890df90a000005000000c70da9cd32cf828b080400000000000000189c37350e887285231209000001000000189c37350e8872850d110900000500000063f38cb7856ecb6b0c8400000000000000861b638ebaadbcc40c8400000000000000ea0ce83094fde47c0c040400000000000032b57c4819e8ad5e0c04040000000000003e215a20c4b0e632010100000000000000203a770201bb3e670c5400000000000000dad4471c39c5ccdc0c8b0000000000000070c6e8fb92f92c270c0401000000000000
-
 fixed table Refusal layout=0x7cc4646515f2ee44 lineage=0xffd3105753eceb91
     field id id=0x08b72e07b55c3ac0 kind=12 width=264 default=bytes: cap=256
     field why id=0x5ec5ea1948914a79 kind=12 width=520 default=bytes: cap=512
@@ -97,11 +89,6 @@ fixed table TableCount layout=0x870634f92c444abb lineage=0xd37c1c689ee25131
 fixed table Text512 layout=0x48331ce381a97429 lineage=0xdc3fd93909e24bd3
     field value id=0x7ce4fd9430e80cea kind=12 width=520 default=bytes: cap=512
     lineage wire=0xc4dc85b1e32b777d record=516 bytes=0200000016e5892e8241c0500d0402000001000000ea0ce83094fde47c0c0402000000000000
-
-fixed table TextRef layout=0x09928238aa391a64 lineage=0x5f3ef17bcdb7221e
-    field name id=0xc4bcadba8e631b86 kind=12 width=24 default=bytes: cap=16
-    field size id=0x4dea9618e618ae3c kind=8 width=4 default=0
-    lineage wire=0x1a7515a5c90770cc record=24 bytes=03000000ef8c295b806058180d1800000002000000861b638ebaadbcc40c14000000000000003cae18e61896ea4d080400000000000000
 
 fixed table Timer layout=0x763d9fb7b98588ca lineage=0xf9050f22d44428c8
     field id id=0x08b72e07b55c3ac0 kind=12 width=136 default=bytes: cap=128
