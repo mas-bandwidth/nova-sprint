@@ -5,32 +5,42 @@ fixed table FactWord layout=0xf6b80bda20a44588 lineage=0xe0232b97baadc339
     field text id=0xfa04f4ef1995407e kind=12 width=136 default=bytes: cap=128
     lineage wire=0x15de63d36aa9d92b record=132 bytes=02000000f3a996b7b34c8c070d84000000010000007e409519eff404fa0c8400000000000000
 
-fixed table LaneHold layout=0xb15ee4bbe59c2745 lineage=0xbc8361fc7093ab4d
+fixed table LaneHold layout=0x0e352bf8c0dfce55 lineage=0xbae48aaf7683d80c
     field who id=0x5ec5fc194891690f kind=12 width=264 default=bytes: cap=257
-    field since id=0x2b827d4f5e0ada9d kind=5 width=8 default=0
-    field seen id=0x2cfadb18d3ecd12a kind=5 width=8 default=0
+    field since id=0x2b827d4f5e0ada9d kind=5 width=9 default=0 optional deprecated
+    field seen id=0x2cfadb18d3ecd12a kind=5 width=9 default=0 optional deprecated
     field claimed id=0x57dbd78a7e35f70e kind=1 width=1 default=false
+    field since_time id=0xd6564a0e79f959bf kind=12 width=42 default=bytes: cap=35
+    field seen_time id=0x42875c3f8f722d3e kind=12 width=40 default=bytes: cap=35
     lineage wire=0x1d903044894173cc record=278 bytes=05000000969fe9281987d5420d16010000040000000f69914819fcc55e0c05010000000000009dda0a5e4f7d822b0508000000000000002ad1ecd318dbfa2c0508000000000000000ef7357e8ad7db57010100000000000000
+    lineage wire=0x4065212bcf408b09 record=358 bytes=09000000969fe9281987d5420d66010000060000000f69914819fcc55e0c05010000000000009dda0a5e4f7d822b2309000000010000009dda0a5e4f7d822b0508000000000000002ad1ecd318dbfa2c2309000000010000002ad1ecd318dbfa2c0508000000000000000ef7357e8ad7db57010100000000000000bf59f9790e4a56d60c27000000000000003e2d728f3f5c87420c2700000000000000
 
-fixed table LaneWait layout=0xcd51f20b34e336f7 lineage=0x5a390a92b74946e3
+fixed table LaneWait layout=0xdffa9997f3ee2db4 lineage=0x9f119743f8e69e58
     field who id=0x5ec5fc194891690f kind=12 width=264 default=bytes: cap=257
-    field since id=0x2b827d4f5e0ada9d kind=5 width=8 default=0
-    field seen id=0x2cfadb18d3ecd12a kind=5 width=8 default=0
+    field since id=0x2b827d4f5e0ada9d kind=5 width=9 default=0 optional deprecated
+    field seen id=0x2cfadb18d3ecd12a kind=5 width=9 default=0 optional deprecated
+    field since_time id=0xd6564a0e79f959bf kind=12 width=43 default=bytes: cap=35
+    field seen_time id=0x42875c3f8f722d3e kind=12 width=40 default=bytes: cap=35
     lineage wire=0xc9761b7375f27dee record=277 bytes=04000000b674560aa8c9f1eb0d15010000030000000f69914819fcc55e0c05010000000000009dda0a5e4f7d822b0508000000000000002ad1ecd318dbfa2c050800000000000000
+    lineage wire=0x510e0618ad4b674d record=357 bytes=08000000b674560aa8c9f1eb0d65010000050000000f69914819fcc55e0c05010000000000009dda0a5e4f7d822b2309000000010000009dda0a5e4f7d822b0508000000000000002ad1ecd318dbfa2c2309000000010000002ad1ecd318dbfa2c050800000000000000bf59f9790e4a56d60c27000000000000003e2d728f3f5c87420c2700000000000000
 
-fixed table LiveSight layout=0x1fbe1e747f1f7858 lineage=0x11de6569290a3869
+fixed table LiveSight layout=0x446f6524a082f0bf lineage=0xef959ca89fe41e01
     field entry id=0xbe2a85bf4c0ca913 kind=12 width=288 default=bytes: cap=281
-    field at id=0x089c4e07b545a968 kind=5 width=8 default=0
+    field at id=0x089c4e07b545a968 kind=5 width=9 default=0 optional deprecated
+    field at_time id=0xd1516468b2c446b4 kind=12 width=43 default=bytes: cap=35
     lineage wire=0xea5dc10574f2e285 record=293 bytes=030000008455f204f8556ab90d250100000200000013a90c4cbf852abe0c1d0100000000000068a945b5074e9c08050800000000000000
+    lineage wire=0xc5419abd1c7847f0 record=333 bytes=050000008455f204f8556ab90d4d0100000300000013a90c4cbf852abe0c1d0100000000000068a945b5074e9c0823090000000100000068a945b5074e9c08050800000000000000b446c4b2686451d10c2700000000000000
 
 fixed table LiveWord layout=0xd0712159a7320d5c lineage=0x5fc7e990aa0443fd
     field text id=0xfa04f4ef1995407e kind=12 width=288 default=bytes: cap=281
     lineage wire=0x71e2a2912f4c7207 record=285 bytes=0200000043ac26c01b0ea65d0d1d010000010000007e409519eff404fa0c1d01000000000000
 
-fixed table LoadSample layout=0xc67f1d024a189f0d lineage=0xde142ed5dad87f63
-    field at id=0x089c4e07b545a968 kind=5 width=8 default=0
+fixed table LoadSample layout=0x486d62a4efb7776b lineage=0x0d156f40a7b199ed
+    field at id=0x089c4e07b545a968 kind=5 width=9 default=0 optional deprecated
     field pct id=0x77c35c1956708830 kind=11 width=8 default=0.0
+    field at_time id=0xd1516468b2c446b4 kind=12 width=40 default=bytes: cap=35
     lineage wire=0x8d80cb7f15f8d22c record=16 bytes=03000000530bbea7b054240b0d100000000200000068a945b5074e9c0805080000000000000030887056195cc3770b0800000000000000
+    lineage wire=0xb103efec31112a87 record=56 bytes=05000000530bbea7b054240b0d380000000300000068a945b5074e9c0823090000000100000068a945b5074e9c0805080000000000000030887056195cc3770b0800000000000000b446c4b2686451d10c2700000000000000
 
 fixed table Ticks layout=0x1b03c0f2ab6ab9b7 lineage=0x482514a27f86b8f5
     field busy id=0xff75d19be2aea620 kind=9 width=8 default=0

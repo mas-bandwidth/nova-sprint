@@ -6,16 +6,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/mas-bandwidth/nova-tools/pkg/schemaread"
 )
 
-// clock is the test clock: 1000.0 seconds, in Unix nanoseconds. A zero time
-// stays zero, so a missed stamp cannot pass for this one.
-const clock int64 = 1000 * 1000 * 1000 * 1000
+// clock is the test clock: 1000.0 seconds. A zero time stays zero, so a missed
+// stamp cannot pass for this one.
+const clock int64 = 1000
 
 // friendRowsHelp is the run: text of a friendrows refusal.
 const friendRowsHelp = "nova-sprint store friendrows"
@@ -60,6 +63,8 @@ func TestFriendRowsGolden(t *testing.T) {
 	}
 	beatLive512(t, vars[7])
 	longReasons(t, vars[11], vars[9])
+	intRanges(t, vars[0], vars[2], vars[3], vars[6], vars[7], vars[12])
+	timestampSemantics(t)
 }
 
 // tableRow is one fixed table's generated functions. A unit that holds a
@@ -114,10 +119,11 @@ func golden[T comparable](t *testing.T, g tableRow[T]) {
 		}
 		text := []byte(base64.StdEncoding.EncodeToString(wire))
 		jsonText := g.json(t, &sample)
+		deprecatedAliasesOmitted(t, g.table(), jsonText)
 
 		got := g.read(t, wire, schemaread.FormBinary)
 		if got != sample {
-			t.Fatalf("%s binary round trip differs", g.name)
+			t.Fatalf("%s binary round trip differs: sample=%+v got=%+v", g.name, sample, got)
 		}
 		got = g.read(t, text, schemaread.FormBase64)
 		if got != sample {
@@ -186,6 +192,21 @@ func (g tableRow[T]) reader() *schemaread.Reader[T] {
 			return reportOf(&rep)
 		},
 	})
+}
+
+func deprecatedAliasesOmitted(t *testing.T, info *TableTypeInfo, text []byte) {
+	t.Helper()
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(text, &object); err != nil { t.Fatalf("%s JSON: %v", info.Name, err) }
+	for i := range info.Fields {
+		f := &info.Fields[i]
+		if !f.Optional { continue }
+		for _, tag := range f.Tags {
+			if tag == "deprecated" {
+				if _, ok := object[f.Json]; ok { t.Errorf("%s emitted deprecated field %q at its default", info.Name, f.Json) }
+			}
+		}
+	}
 }
 
 func reportOf(r *TableReport) schemaread.Report {
@@ -340,8 +361,15 @@ func damaged(t *testing.T, wire []byte, cut string, refuse refuser) {
 func fill(p unsafe.Pointer, info *TableTypeInfo) {
 	for i := range info.Fields {
 		f := &info.Fields[i]
+		deprecated := false
+		for _, tag := range f.Tags {
+			deprecated = deprecated || tag == "deprecated"
+		}
 		if f.Optional {
-			*(*bool)(unsafe.Add(p, f.PresentOffset)) = true
+			*(*bool)(unsafe.Add(p, f.PresentOffset)) = !deprecated
+		}
+		if deprecated {
+			continue // the deprecated slot holds its default, as the writer does.
 		}
 		base := unsafe.Add(p, f.Offset)
 		switch {
@@ -611,8 +639,15 @@ func vfill(t *testing.T, w *TableWorker, p unsafe.Pointer, info *TableTypeInfo) 
 	t.Helper()
 	for i := range info.Fields {
 		f := &info.Fields[i]
+		deprecated := false
+		for _, tag := range f.Tags {
+			deprecated = deprecated || tag == "deprecated"
+		}
 		if f.Optional {
-			*(*bool)(unsafe.Add(p, f.PresentOffset)) = true
+			*(*bool)(unsafe.Add(p, f.PresentOffset)) = !deprecated
+		}
+		if deprecated {
+			continue // the deprecated slot holds its default, as the writer does.
 		}
 		base := unsafe.Add(p, f.Offset)
 		switch {
@@ -654,7 +689,7 @@ func beatLive512(t *testing.T, g varRow) {
 		t.Parallel()
 		d := g.draft(t)
 		b := (*Beat)(d.root())
-		b.At = clock
+		setTimeText(t, d.root(), g.info, "at", time.Unix(clock, 0).UTC())
 		b.LiveCount = 512
 		for i := range b.Live {
 			n := copy(b.Live[i].Text[:], fmt.Sprintf("card-%d@%d:held", i, i+1))
@@ -677,16 +712,14 @@ func beatLive512(t *testing.T, g varRow) {
 	})
 }
 
-// longReasons pins a reason with no code bound at 70 KB, past any fixed body
-// (65536), round-tripping whole; and HoldView's reason at MaxCardTextBytes
-// (65536) exactly, with one byte more refused by the writer.
+// longReasons pins unbounded reasons at 70 KB through every supported form.
 func longReasons(t *testing.T, seat, hold varRow) {
 	t.Run("SeatChangeReason70KB", func(t *testing.T) {
 		t.Parallel()
 		reason := bytes.Repeat([]byte("seat reason "), 70*1024/12+1)[:70*1024]
 		d := seat.draft(t)
 		s := (*SeatChange)(d.root())
-		s.At = clock
+		setTimeText(t, d.root(), seat.info, "at", time.Unix(clock, 0).UTC())
 		s.Generation = 7
 		TableStringEmplace(&d.worker, &s.Reason, reason)
 		got := (*SeatChange)(seat.roundTrip(t, seat.wire(d)).root)
@@ -695,21 +728,229 @@ func longReasons(t *testing.T, seat, hold varRow) {
 			t.Fatalf("reason after a read is %d bytes, want %d", v.Length, len(reason))
 		}
 	})
-	t.Run("HoldViewReasonAtMaxCardText", func(t *testing.T) {
+	t.Run("HoldViewReason70KB", func(t *testing.T) {
 		t.Parallel()
 		d := hold.draft(t)
-		h := (*HoldView)(d.root())
-		for i := range h.Reason[:65536] {
-			h.Reason[i] = 'r'
-		}
-		h.ReasonLength = 65536
-		got := (*HoldView)(hold.roundTrip(t, hold.wire(d)).root)
-		if got.ReasonLength != 65536 {
-			t.Fatalf("hold reason after a read = %d, want 65536", got.ReasonLength)
-		}
-		h.ReasonLength = 65537
-		if hold.wire(d) != nil {
-			t.Fatalf("the writer saved a 65537-byte hold reason")
+		text := hold.jsonOf(t, doc{root: d.root()})
+		reason := strings.Repeat("r", 70*1024)
+		text = replaceJSONField(t, text, "reason", reason)
+		fromJSON := hold.read(t, text, schemaread.FormJSON)
+		assertStringField(t, hold.info, fromJSON.root, "reason", reason)
+		wire := hold.wireOf(t, fromJSON)
+		for _, in := range [][]byte{wire, []byte(base64.StdEncoding.EncodeToString(wire)), hold.jsonOf(t, fromJSON)} {
+			form := schemaread.FormBinary
+			if bytes.Equal(in, []byte(base64.StdEncoding.EncodeToString(wire))) {
+				form = schemaread.FormBase64
+			}
+			if len(in) > 0 && in[0] == '{' {
+				form = schemaread.FormJSON
+			}
+			got := hold.read(t, in, form)
+			assertStringField(t, hold.info, got.root, "reason", reason)
 		}
 	})
+}
+
+func replaceJSONField(t *testing.T, text []byte, key string, value any) []byte {
+	t.Helper()
+	var obj map[string]any
+	if err := json.Unmarshal(text, &obj); err != nil {
+		t.Fatal(err)
+	}
+	obj[key] = value
+	out, err := json.Marshal(obj)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func assertStringField(t *testing.T, info *TableTypeInfo, p unsafe.Pointer, name, want string) {
+	t.Helper()
+	for i := range info.Fields {
+		f := &info.Fields[i]
+		if f.Json == name {
+			v := TableStringAt((*TableRef)(unsafe.Add(p, f.Offset)))
+			if string(v.Data[:v.Length]) != want {
+				t.Fatalf("%s.%s length/value mismatch", info.Name, name)
+			}
+			return
+		}
+	}
+	t.Fatalf("%s has no %s field", info.Name, name)
+}
+
+func intRanges(t *testing.T, rows ...varRow) {
+	t.Helper()
+	wantFields := map[string][]string{"FriendEntry": {"width"}, "Holder": {"pid", "open"}, "Files": {"open", "max", "warn", "alarm"}, "FriendReport": {"working", "queue", "width", "stop_returns", "paced"}, "Beat": {"cores", "stop_returns"}, "ServerRecord": {"pid"}}
+	byName := make(map[string]varRow, len(rows))
+	for _, r := range rows {
+		byName[r.name] = r
+	}
+	for name, fields := range wantFields {
+		g, ok := byName[name]
+		if !ok {
+			t.Fatalf("missing row %s", name)
+		}
+		for _, field := range fields {
+			found := false
+			for i := range g.info.Fields {
+				f := &g.info.Fields[i]
+				if f.Json == field {
+					found = true
+					if f.TypeName != "int64" {
+						t.Errorf("%s.%s type = %s, want int64", name, field, f.TypeName)
+					}
+					break
+				}
+			}
+			if !found {
+				t.Errorf("%s missing field %s", name, field)
+			}
+		}
+	}
+	for _, tc := range []struct {
+		row, field string
+		value      int64
+	}{{"Files", "max", math.MaxInt64}, {"FriendReport", "working", 2147483648}, {"FriendEntry", "width", 2147483648}} {
+		g := byName[tc.row]
+		d := g.draft(t)
+		vfill(t, &d.worker, d.root(), g.info)
+		text := replaceJSONField(t, g.jsonOf(t, doc{root: d.root()}), tc.field, json.Number(strconv.FormatInt(tc.value, 10)))
+		got := g.read(t, text, schemaread.FormJSON)
+		if n := int64Field(t, g.info, got.root, tc.field); n != tc.value {
+			t.Errorf("%s.%s = %d, want %d", tc.row, tc.field, n, tc.value)
+		}
+		wire := g.wireOf(t, got)
+		for _, in := range [][]byte{wire, []byte(base64.StdEncoding.EncodeToString(wire))} {
+			form := schemaread.FormBinary
+			if !bytes.Equal(in, wire) {
+				form = schemaread.FormBase64
+			}
+			again := g.read(t, in, form)
+			if n := int64Field(t, g.info, again.root, tc.field); n != tc.value {
+				t.Errorf("%s.%s after %s = %d", tc.row, tc.field, form, n)
+			}
+		}
+	}
+}
+
+func int64Field(t *testing.T, info *TableTypeInfo, p unsafe.Pointer, name string) int64 {
+	t.Helper()
+	for i := range info.Fields {
+		f := &info.Fields[i]
+		if f.Json == name {
+			return *(*int64)(unsafe.Add(p, f.Offset))
+		}
+	}
+	t.Fatalf("%s missing %s", info.Name, name)
+	return 0
+}
+
+func timestampSemantics(t *testing.T) {
+	t.Helper()
+	g := row[LoadSample]("LoadSample", LoadSampleReset, LoadSampleMeasure, LoadSampleSave, LoadSampleLoad, LoadSampleFromJson, LoadSampleToJsonMeasure, LoadSampleToJson, LoadSampleTableType)
+	zone := time.FixedZone("edge", 23*60*60+59*60)
+	values := []time.Time{
+		time.Time{},
+		time.Unix(0, 0).UTC(),
+		time.Date(1970, 1, 1, 0, 0, 0, 1, time.UTC),
+		time.Date(9999, 12, 31, 23, 59, 59, 999999999, zone),
+	}
+	for _, want := range values {
+		var sample LoadSample
+		LoadSampleReset(&sample)
+		fill(unsafe.Pointer(&sample), LoadSampleTableType())
+		setTimeText(t, unsafe.Pointer(&sample), LoadSampleTableType(), "at", want)
+		wantJSON, err := want.MarshalJSON()
+		if err != nil {
+			t.Fatalf("marshal source time %s: %v", want, err)
+		}
+		var wantText string
+		if err := json.Unmarshal(wantJSON, &wantText); err != nil {
+			t.Fatal(err)
+		}
+		for _, tc := range []struct {
+			form schemaread.Form
+			data []byte
+		}{
+			{schemaread.FormBinary, g.wire(t, &sample)},
+			{schemaread.FormBase64, []byte(base64.StdEncoding.EncodeToString(g.wire(t, &sample)))},
+			{schemaread.FormJSON, g.json(t, &sample)},
+		} {
+			got := g.read(t, tc.data, tc.form)
+			gotText := stringField(t, unsafe.Pointer(&got), LoadSampleTableType(), "at")
+			if gotText != wantText {
+				t.Errorf("%s source time text = %q, want MarshalJSON text %q", tc.form, gotText, wantText)
+			}
+			var actual time.Time
+			if err := json.Unmarshal([]byte(strconv.Quote(gotText)), &actual); err != nil {
+				t.Errorf("%s source time decode %q: %v", tc.form, gotText, err)
+				continue
+			}
+			if !actual.Equal(want) || actual.IsZero() != want.IsZero() {
+				t.Errorf("%s time roundtrip got %s zero=%t, want %s zero=%t", tc.form, actual, actual.IsZero(), want, want.IsZero())
+			}
+		}
+	}
+
+	// The schema's string bound preserves source JSON but does not validate its
+	// time domain. Keep that conversion-boundary limitation explicit: source
+	// time.Time decoding rejects these values, while the generated string
+	// reader accepts them because they fit string(35).
+	for _, invalid := range []string{"10000-01-01T00:00:00Z", "2025-02-30T00:00:00Z", "2025-01-01T00:60:00Z", "2025-01-01T00:00:00+1:00"} {
+		var source time.Time
+		if err := json.Unmarshal([]byte(strconv.Quote(invalid)), &source); err == nil {
+			t.Errorf("time.Time accepted invalid source timestamp %q", invalid)
+			continue
+		}
+		text := []byte(`{"at":"` + invalid + `","pct":1}`)
+		if _, _, err := g.reader().Read(text); err != nil {
+			t.Errorf("bounded table string unexpectedly rejected %q: %v", invalid, err)
+		}
+	}
+}
+
+func setTimeText(t *testing.T, p unsafe.Pointer, info *TableTypeInfo, name string, source time.Time) {
+	t.Helper()
+	encoded, err := source.MarshalJSON()
+	if err != nil {
+		t.Fatalf("marshal %s: %v", name, err)
+	}
+	var text string
+	if err := json.Unmarshal(encoded, &text); err != nil {
+		t.Fatal(err)
+	}
+	for i := range info.Fields {
+		f := &info.Fields[i]
+		if f.Json != name {
+			continue
+		}
+		if f.TypeName != "string" || len(text) > int(f.ArrayBound) {
+			t.Fatalf("%s.%s string length %d exceeds %d", info.Name, name, len(text), f.ArrayBound)
+		}
+		b := unsafe.Slice((*byte)(unsafe.Add(p, f.Offset)), int(f.ArrayBound))
+		clear(b)
+		copy(b, text)
+		*(*int32)(unsafe.Add(p, f.CountOffset)) = int32(len(text))
+		return
+	}
+	t.Fatalf("%s missing string field %s", info.Name, name)
+}
+
+func stringField(t *testing.T, p unsafe.Pointer, info *TableTypeInfo, name string) string {
+	t.Helper()
+	for i := range info.Fields {
+		f := &info.Fields[i]
+		if f.Json == name {
+			n := *(*int32)(unsafe.Add(p, f.CountOffset))
+			if n < 0 || n > int32(f.ArrayBound) {
+				t.Fatalf("%s.%s length %d out of range", info.Name, name, n)
+			}
+			b := unsafe.Slice((*byte)(unsafe.Add(p, f.Offset)), int(n))
+			return string(b)
+		}
+	}
+	t.Fatalf("%s missing field %s", info.Name, name)
+	return ""
 }

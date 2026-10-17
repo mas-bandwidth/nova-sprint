@@ -2,41 +2,41 @@ schema-tables-baseline 7
 package friendrowswire
 
 table Beat
-    field at id=0x089c4e07b545a968 kind=5
+    field at id=0x089c4e07b545a968 kind=12 size=35
     field load_pct id=0xe5f1ed4363ea5da1 kind=11
-    field cores id=0xce57648e554861b7 kind=4
+    field cores id=0xce57648e554861b7 kind=5
     field how id=0x335f27192ff5d5ed kind=12 size=8
     field samples id=0xe3b1ca6a3b48dddc kind=14 elem=13 type=LoadSample array=bounded bound=11
     field meter id=0x3fa741c8085af182 kind=13 type=Meter
     field report id=0xadae49645df2840b kind=17 type=FriendReport
-    field stop_returns id=0xea14e391abc0c981 kind=4 min=0 max=2147483647
+    field stop_returns id=0xea14e391abc0c981 kind=5 min=0 max=9223372036854775807
     field no_room id=0x90ab055b72415078 kind=17 type=string
     field live id=0xbf6695ad6966058f kind=14 elem=13 type=LiveWord array=bounded bound=512
     field live_known id=0xee4d5d6524526827 kind=1
-    field live_since id=0x5be056ec01c992da kind=5
+    field live_since id=0x5be056ec01c992da kind=12 size=35
     field live_seen id=0x0d16749b8d3694d7 kind=14 elem=13 type=LiveSight array=unbounded
     field draining id=0x445341bdde0ebac7 kind=1
-    field draining_since id=0xc4010e578c81f622 kind=5
+    field draining_since id=0xc4010e578c81f622 kind=12 size=35
     field facts id=0xefa717c1620c4ae4 kind=14 elem=13 type=FactWord array=unbounded
 
 table FactWord
     field text id=0xfa04f4ef1995407e kind=12 size=128
 
 table Files
-    field at id=0x089c4e07b545a968 kind=5
-    field open id=0xf84f97b4633670e9 kind=4
-    field max id=0x080f5119176d1ff9 kind=4
-    field warn id=0x5e39a0f62bea2e31 kind=4
-    field alarm id=0x087fdebb3c0a9fba kind=4
+    field at id=0x089c4e07b545a968 kind=12 size=35
+    field open id=0xf84f97b4633670e9 kind=5
+    field max id=0x080f5119176d1ff9 kind=5
+    field warn id=0x5e39a0f62bea2e31 kind=5
+    field alarm id=0x087fdebb3c0a9fba kind=5
     field top id=0x56f9bc194465a83c kind=14 elem=13 type=Holder array=bounded bound=10
-    field top_at id=0x1afc641a0aa8fb34 kind=5
+    field top_at id=0x1afc641a0aa8fb34 kind=12 size=35
     field top_err id=0xa458fa402eef98a0 kind=17 type=string
 
 table FriendEntry
     field held id=0x0a9904cc5fa248be kind=1
-    field at id=0x089c4e07b545a968 kind=5
+    field at id=0x089c4e07b545a968 kind=12 size=35
     field by id=0x08a64b07b54df8d4 kind=12 size=128
-    field width id=0xdbdacd932fd1e9bf kind=4
+    field width id=0xdbdacd932fd1e9bf kind=5
     field tier_class id=0x99489d6d9c324f12 kind=17 type=string
     field mode id=0x0d3deba2c41dadb2 kind=12 size=8
     field streams id=0x81f528932d7f3d02 kind=17 type=string
@@ -49,37 +49,37 @@ table FriendEntry
     field roles id=0x584d04462430003e kind=17 type=string
     field billing id=0x4005570295afd25c kind=12 size=16
     field reason id=0x65e8d7f3474f2639 kind=17 type=string
-    field until id=0x1fcc8b4e81fbac2f kind=5
+    field until id=0x1fcc8b4e81fbac2f kind=12 size=35
     field give_back id=0xc95b347fb010b956 kind=1
 
 table FriendReport
     field running id=0x60147fb4fa4a8e0c kind=14 elem=13 type=RunWord array=unbounded
-    field working id=0x08879e024cb91288 kind=4 optional=true min=0 max=2147483647
-    field queue id=0xb11e8b146c5a21d8 kind=4 optional=true min=0 max=2147483647
-    field width id=0xdbdacd932fd1e9bf kind=4 optional=true
-    field stop_returns id=0xea14e391abc0c981 kind=4 optional=true min=0 max=2147483647
-    field paced id=0x8a2a33a758314d6a kind=4 optional=true min=0 max=2147483647
-    field active id=0x6580790b036f0c6f kind=5
+    field working id=0x08879e024cb91288 kind=5 optional=true min=0 max=9223372036854775807
+    field queue id=0xb11e8b146c5a21d8 kind=5 optional=true min=0 max=9223372036854775807
+    field width id=0xdbdacd932fd1e9bf kind=5 optional=true
+    field stop_returns id=0xea14e391abc0c981 kind=5 optional=true min=0 max=9223372036854775807
+    field paced id=0x8a2a33a758314d6a kind=5 optional=true min=0 max=9223372036854775807
+    field active id=0x6580790b036f0c6f kind=12 size=35
     field window id=0x71f304ea62c01cbd kind=17 type=string
-    field until id=0x1fcc8b4e81fbac2f kind=5
+    field until id=0x1fcc8b4e81fbac2f kind=12 size=35
     field reason id=0x65e8d7f3474f2639 kind=12 size=1024
     field build id=0x802517e298c70b03 kind=17 type=string
-    field started id=0xc732f2e2fbe9f15e kind=5
-    field present id=0x6f3f2303c0258eac kind=5
+    field started id=0xc732f2e2fbe9f15e kind=12 size=35
+    field present id=0x6f3f2303c0258eac kind=12 size=35
 
 table FriendStatus
     field status id=0xc4d5696d6cc12c2f kind=12 size=8
     field reason id=0x65e8d7f3474f2639 kind=17 type=string
-    field until id=0x1fcc8b4e81fbac2f kind=5
+    field until id=0x1fcc8b4e81fbac2f kind=12 size=35
     field evidence id=0xae70fc8f5906c564 kind=17 type=string
     field worker_live id=0x859d6aa16b62633a kind=1
     field unhooked id=0xa5c4e70e4b632e7c kind=1
-    field at id=0x089c4e07b545a968 kind=5
+    field at id=0x089c4e07b545a968 kind=12 size=35
 
 table HoldView
     field kind id=0xef9c96d721673243 kind=12 size=16
     field name id=0xc4bcadba8e631b86 kind=12 size=135
-    field reason id=0x65e8d7f3474f2639 kind=12 size=65536
+    field reason id=0x65e8d7f3474f2639 kind=17 type=string
     field by id=0x08a64b07b54df8d4 kind=12 size=128
     field at id=0x089c4e07b545a968 kind=12 size=32
     field give_back id=0xc95b347fb010b956 kind=1
@@ -88,10 +88,10 @@ table HoldView
     field release id=0xa63d4c9b882b10fe kind=17 type=string
 
 table Holder
-    field pid id=0x77af701956600122 kind=4
+    field pid id=0x77af701956600122 kind=5
     field command id=0x66655dca2c3e8a12 kind=17 type=string
     field user id=0x7d6780e4032b48f2 kind=17 type=string
-    field open id=0xf84f97b4633670e9 kind=4
+    field open id=0xf84f97b4633670e9 kind=5
 
 table Lane
     field holders id=0xb963792c161e0cf4 kind=14 elem=13 type=LaneHold array=unbounded
@@ -99,25 +99,31 @@ table Lane
 
 table LaneHold
     field who id=0x5ec5fc194891690f kind=12 size=257
-    field since id=0x2b827d4f5e0ada9d kind=5
-    field seen id=0x2cfadb18d3ecd12a kind=5
+    field since_ns id=0x2b827d4f5e0ada9d kind=5 optional=true was=since
+    field seen_ns id=0x2cfadb18d3ecd12a kind=5 optional=true was=seen
     field claimed id=0x57dbd78a7e35f70e kind=1
+    field since_time id=0xd6564a0e79f959bf kind=12 size=35
+    field seen_time id=0x42875c3f8f722d3e kind=12 size=35
 
 table LaneWait
     field who id=0x5ec5fc194891690f kind=12 size=257
-    field since id=0x2b827d4f5e0ada9d kind=5
-    field seen id=0x2cfadb18d3ecd12a kind=5
+    field since_ns id=0x2b827d4f5e0ada9d kind=5 optional=true was=since
+    field seen_ns id=0x2cfadb18d3ecd12a kind=5 optional=true was=seen
+    field since_time id=0xd6564a0e79f959bf kind=12 size=35
+    field seen_time id=0x42875c3f8f722d3e kind=12 size=35
 
 table LiveSight
     field entry id=0xbe2a85bf4c0ca913 kind=12 size=281
-    field at id=0x089c4e07b545a968 kind=5
+    field at_ns id=0x089c4e07b545a968 kind=5 optional=true was=at
+    field at_time id=0xd1516468b2c446b4 kind=12 size=35
 
 table LiveWord
     field text id=0xfa04f4ef1995407e kind=12 size=281
 
 table LoadSample
-    field at id=0x089c4e07b545a968 kind=5
+    field at_ns id=0x089c4e07b545a968 kind=5 optional=true was=at
     field pct id=0x77c35c1956708830 kind=11
+    field at_time id=0xd1516468b2c446b4 kind=12 size=35
 
 table Login
     field redis id=0xa30c3ff3148ac374 kind=17 type=string
@@ -130,14 +136,14 @@ table Login
 
 table Meter
     field ticks id=0x7fd9266c6a3e25b5 kind=13 type=Ticks optional=true
-    field top_at id=0x1afc641a0aa8fb34 kind=5
+    field top_at id=0x1afc641a0aa8fb34 kind=12 size=35
     field top_pct id=0x019d013fd348a6a4 kind=11
     field files id=0x69f800801812a5f0 kind=17 type=Files
 
 table ReaderHold
     field away id=0x6f3fb3842ffa02bb kind=1
     field retired id=0x112eaa508e1c8456 kind=1
-    field at id=0x089c4e07b545a968 kind=5
+    field at id=0x089c4e07b545a968 kind=12 size=35
     field by id=0x08a64b07b54df8d4 kind=12 size=128
     field held id=0x0a9904cc5fa248be kind=1
     field reason id=0x65e8d7f3474f2639 kind=17 type=string
@@ -150,7 +156,7 @@ table SeatChange
     field holder id=0x630853b55c723d4f kind=12 size=128
     field generation id=0xe700a2848d46a857 kind=9
     field from id=0x7f845078d7a5c0b5 kind=12 size=128
-    field at id=0x089c4e07b545a968 kind=5
+    field at id=0x089c4e07b545a968 kind=12 size=35
     field by id=0x08a64b07b54df8d4 kind=12 size=128
     field taken id=0xc379d129de405f48 kind=1
     field approved_by id=0xd820e861048719da kind=12 size=128
@@ -158,12 +164,12 @@ table SeatChange
 
 table ServerRecord
     field actor id=0xdcccc5391c47d4da kind=12 size=128
-    field at id=0x089c4e07b545a968 kind=5
+    field at id=0x089c4e07b545a968 kind=12 size=35
     field version id=0xbb62c62c9808ea37 kind=17 type=string
     field commit id=0x7da7727ca39ddcdc kind=17 type=string
-    field started id=0xc732f2e2fbe9f15e kind=5
+    field started id=0xc732f2e2fbe9f15e kind=12 size=35
     field land id=0x0460dcad9060ad5c kind=1
-    field pid id=0x77af701956600122 kind=4
+    field pid id=0x77af701956600122 kind=5
     field host id=0x4077f8cc7eaf4d6f kind=17 type=string
 
 table Ticks
@@ -173,3 +179,58 @@ table Ticks
 ## history
 ### 2026-10-17 (UTC) — first baseline: fixed and variable friendrows tables
 - baseline created over 21 tables — data written BEFORE this point is not covered by it
+
+### 2026-10-17 (UTC) — Correct the unadopted initial friendrows definitions to preserve native 64-bit int and source time.Time JSON ranges; no reader, writer, or released image uses the prior definitions.
+- Beat.at: wire kind 5 -> 12 [refuse]
+- Beat.cores: wire kind 4 -> 5 [refuse]
+- Beat.stop_returns: wire kind 4 -> 5 [refuse]
+- Beat.live_since: wire kind 5 -> 12 [refuse]
+- Beat.draining_since: wire kind 5 -> 12 [refuse]
+- Files.at: wire kind 5 -> 12 [refuse]
+- Files.open: wire kind 4 -> 5 [refuse]
+- Files.max: wire kind 4 -> 5 [refuse]
+- Files.warn: wire kind 4 -> 5 [refuse]
+- Files.alarm: wire kind 4 -> 5 [refuse]
+- Files.top_at: wire kind 5 -> 12 [refuse]
+- FriendEntry.at: wire kind 5 -> 12 [refuse]
+- FriendEntry.width: wire kind 4 -> 5 [refuse]
+- FriendEntry.until: wire kind 5 -> 12 [refuse]
+- FriendReport.working: wire kind 4 -> 5 [refuse]
+- FriendReport.queue: wire kind 4 -> 5 [refuse]
+- FriendReport.width: wire kind 4 -> 5 [refuse]
+- FriendReport.stop_returns: wire kind 4 -> 5 [refuse]
+- FriendReport.paced: wire kind 4 -> 5 [refuse]
+- FriendReport.active: wire kind 5 -> 12 [refuse]
+- FriendReport.until: wire kind 5 -> 12 [refuse]
+- FriendReport.started: wire kind 5 -> 12 [refuse]
+- FriendReport.present: wire kind 5 -> 12 [refuse]
+- FriendStatus.until: wire kind 5 -> 12 [refuse]
+- FriendStatus.at: wire kind 5 -> 12 [refuse]
+- HoldView.reason: wire kind 12 -> 17 [refuse]
+- HoldView.reason: nested table string added [refuse]
+- Holder.pid: wire kind 4 -> 5 [refuse]
+- Holder.open: wire kind 4 -> 5 [refuse]
+- Meter.top_at: wire kind 5 -> 12 [refuse]
+- ReaderHold.at: wire kind 5 -> 12 [refuse]
+- SeatChange.at: wire kind 5 -> 12 [refuse]
+- ServerRecord.at: wire kind 5 -> 12 [refuse]
+- ServerRecord.started: wire kind 5 -> 12 [refuse]
+- ServerRecord.pid: wire kind 4 -> 5 [refuse]
+- Beat.at: capacity 35 added (a stored value longer than the new capacity is truncated and counts clamped) [warn]
+- Beat.live_since: capacity 35 added (a stored value longer than the new capacity is truncated and counts clamped) [warn]
+- Beat.draining_since: capacity 35 added (a stored value longer than the new capacity is truncated and counts clamped) [warn]
+- Files.at: capacity 35 added (a stored value longer than the new capacity is truncated and counts clamped) [warn]
+- Files.top_at: capacity 35 added (a stored value longer than the new capacity is truncated and counts clamped) [warn]
+- FriendEntry.at: capacity 35 added (a stored value longer than the new capacity is truncated and counts clamped) [warn]
+- FriendEntry.until: capacity 35 added (a stored value longer than the new capacity is truncated and counts clamped) [warn]
+- FriendReport.active: capacity 35 added (a stored value longer than the new capacity is truncated and counts clamped) [warn]
+- FriendReport.until: capacity 35 added (a stored value longer than the new capacity is truncated and counts clamped) [warn]
+- FriendReport.started: capacity 35 added (a stored value longer than the new capacity is truncated and counts clamped) [warn]
+- FriendReport.present: capacity 35 added (a stored value longer than the new capacity is truncated and counts clamped) [warn]
+- FriendStatus.until: capacity 35 added (a stored value longer than the new capacity is truncated and counts clamped) [warn]
+- FriendStatus.at: capacity 35 added (a stored value longer than the new capacity is truncated and counts clamped) [warn]
+- Meter.top_at: capacity 35 added (a stored value longer than the new capacity is truncated and counts clamped) [warn]
+- ReaderHold.at: capacity 35 added (a stored value longer than the new capacity is truncated and counts clamped) [warn]
+- SeatChange.at: capacity 35 added (a stored value longer than the new capacity is truncated and counts clamped) [warn]
+- ServerRecord.at: capacity 35 added (a stored value longer than the new capacity is truncated and counts clamped) [warn]
+- ServerRecord.started: capacity 35 added (a stored value longer than the new capacity is truncated and counts clamped) [warn]

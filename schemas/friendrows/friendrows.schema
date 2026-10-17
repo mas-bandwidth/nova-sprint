@@ -19,7 +19,7 @@
 //
 // A JSON object the store writes today is a list of entries here, and the
 // key stays the store key, not a field, wherever the Go struct has no field
-// for it. A time.Time is int64 Unix nanoseconds UTC, and 0 is the zero time.
+// for it. A time.Time keeps the source JSON representation: RFC3339Nano text in a bounded string. The source decoder validates the timestamp syntax; the table string reader validates its declared length.
 // A *T in Go is ?T. A float64 stays a float64: the compiler accepts a numeric
 // range on an integer, not on a float64, so a clamp the code applies to a
 // percent is named in the comment and is not a declared range.
@@ -37,14 +37,14 @@ package friendrowswire
 table FriendEntry
 {
     held bool
-    // Unix nanoseconds UTC; 0 is the zero time.
-    at int64
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    at string(35)
     // the coordinator who holds her: a ValidID, MaxIDLen 128 (schema.go).
     by string(128)
     // 0 means the roster has not set a width (json omitempty). checkFriend
     // requires at least 1 when the config row sets one, and states no ceiling.
     // The stored field therefore declares no numeric range.
-    width int32
+    width int64
     // her tiers, sorted and comma joined. The store states no length.
     // json "class": class is a reserved word.
     tier_class *string | json = "class"
@@ -72,8 +72,8 @@ table FriendEntry
     // friend down and hold --reason. The store's setter (friends.go
     // SetFriendHeld) states no length.
     reason *string
-    // Unix nanoseconds UTC; 0 is the zero time (json omitzero).
-    until int64
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    until string(35)
     // json "return": return is a reserved word.
     give_back bool | json = "return"
 }
@@ -91,14 +91,14 @@ table FriendStatus
     status string(8)
     // a hook reason or a hold reason, composed by the store with no length.
     reason *string
-    // Unix nanoseconds UTC; 0 is the zero time.
-    until int64
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    until string(35)
     // the proof word or the hook's reason. The store states no length.
     evidence *string
     worker_live bool
     unhooked bool
-    // Unix nanoseconds UTC; 0 is the zero time.
-    at int64
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    at string(35)
 }
 
 // LoadSample is one beat's load (presence.go), a fixed table. NextBeat keeps
@@ -108,9 +108,11 @@ table FriendStatus
 // declares no range.
 fixed table LoadSample
 {
-    // Unix nanoseconds UTC; 0 is the zero time.
-    at int64
+    // The original Unix-nanosecond slot stays at its locked wire offset.
+    at_ns ?int64 | was = "at", deprecated, json = "at_unix_nanos"
     pct float64
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    at_time string(35) | json = "at"
 }
 
 // Ticks is one reading of the kernel CPU counters (hostload.Ticks), a fixed
@@ -126,10 +128,10 @@ fixed table Ticks
 // length in the reader. json "cmd" keeps today's key.
 table Holder
 {
-    pid int32
+    pid int64
     command *string | json = "cmd"
     user *string
-    open int32
+    open int64
 }
 
 // Files is one reading of the machine's open descriptors (hostload.Files), a
@@ -138,16 +140,16 @@ table Holder
 // reader.
 table Files
 {
-    // Unix nanoseconds UTC; 0 is the zero time.
-    at int64
-    open int32
-    max int32
-    warn int32
-    alarm int32
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    at string(35)
+    open int64
+    max int64
+    warn int64
+    alarm int64
     // hostload FilesTop: at most 10 holders.
     top [..10]Holder
-    // Unix nanoseconds UTC; 0 is the zero time.
-    top_at int64
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    top_at string(35)
     top_err *string
 }
 
@@ -160,8 +162,8 @@ table Files
 table Meter
 {
     ticks ?Ticks
-    // Unix nanoseconds UTC; 0 is the zero time.
-    top_at int64
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    top_at string(35)
     top_pct float64
     files *Files
 }
@@ -175,43 +177,42 @@ table RunWord
 }
 
 // FriendReport is what a friend's beat reports (presence.go FriendReport), a
-// variable table. A *int is ?int32. Go's int is the platform int; the counts
-// the flags accept fit int32, and a field names its width. wholeAtLeast
-// states the minimum and no ceiling, so the max is int32's own (SPEC §4.6).
+// variable table. A *int is ?int64 on the 64-bit server. The flag accepts a nonnegative
+// platform int with no ceiling, so the max is int64's own (SPEC §4.6).
 table FriendReport
 {
     // runningIDs bounds the joined list at 4096 bytes and states no count:
     // the list is as long as the data.
     running []RunWord
     // friendBeatFlags --working: wholeAtLeast(0).
-    working ?int32 | min = 0, max = 2147483647
+    working ?int64 | min = 0, max = 9223372036854775807
     // friendBeatFlags --queue: wholeAtLeast(0).
-    queue ?int32 | min = 0, max = 2147483647
+    queue ?int64 | min = 0, max = 9223372036854775807
     // friendBeatFlags --width: wholeAtLeast(1). No ceiling on the flag.
     // checkFriend states the same minimum and no machine ceiling.
     // The minimum is not a declared range: an optional's absent value is the
     // type's zero, a range that excludes zero is refused, and an optional
     // takes no specified default (SPEC-TABLES §2.3, SPEC §4.6).
-    width ?int32
+    width ?int64
     // a whole number of at least 0. The flag states no ceiling.
-    stop_returns ?int32 | min = 0, max = 2147483647
+    stop_returns ?int64 | min = 0, max = 9223372036854775807
     // her paced width. The struct states no numeric floor. 0 is a reported
     // zero; absent is the ? not set. No ceiling.
-    paced ?int32 | min = 0, max = 2147483647
-    // Unix nanoseconds UTC; 0 is the zero time.
-    active int64
+    paced ?int64 | min = 0, max = 9223372036854775807
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    active string(35)
     // "5h 62% 7d 31%" is the shape the struct names. No length is stated.
     window *string
-    // Unix nanoseconds UTC; 0 is the zero time.
-    until int64
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    until string(35)
     // friendBeatFlags --reason: oneLineText (serve.go), at most 1024.
     reason string(1024)
     // the daemon's version line. The beat states no length.
     build *string
-    // Unix nanoseconds UTC; 0 is the zero time.
-    started int64
-    // Unix nanoseconds UTC; 0 is the zero time.
-    present int64
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    started string(35)
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    present string(35)
 }
 
 // LiveWord is one entry of a beat's live set, a fixed table: <card>@<gen> or
@@ -230,12 +231,15 @@ fixed table FactWord
 }
 
 // LiveSight is one entry of Beat.LiveSeen, a JSON object keyed by the live
-// entry, a fixed table. The pair is an entry. at is Unix nanoseconds UTC; 0
-// is the zero time.
+// entry, a fixed table. The pair is an entry. at is the source time.Time JSON text, including its
+// UTC offset and nanosecond precision.
 fixed table LiveSight
 {
     entry string(281)
-    at int64
+    // The original Unix-nanosecond slot stays at its locked wire offset.
+    at_ns ?int64 | was = "at", deprecated, json = "at_unix_nanos"
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    at_time string(35) | json = "at"
 }
 
 // Beat is a member's, a friend's or a reader's presence record (presence.go
@@ -248,14 +252,14 @@ fixed table LiveSight
 // least 0 (serve.go workerVerb) and the flag states no ceiling.
 table Beat
 {
-    // Unix nanoseconds UTC; 0 is the zero time.
-    at int64
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    at string(35)
     // json "load": load is a generated Dart table verb (SPEC-TABLES §11).
     // The clamps are clampLoad onto LoadMax (100), hostload.MaxPercent
     // (1000), and friend beat --load at least 0 with no upper bound. A
     // float64 declares no range.
     load_pct float64 | json = "load"
-    cores int32
+    cores int64
     // hostload.HowCPU "cpu", HowLoad1 "load1", HowGiven "given".
     how string(8)
     // NextBeat keeps at most 11 samples (LoadSample).
@@ -266,20 +270,20 @@ table Beat
     // closure is a compiler follow-on (SPEC-TABLES §2.3, §15).
     report *FriendReport | json = "friend"
     // serve.go: a whole number of at least 0, no ceiling (SPEC §4.6).
-    stop_returns int32 | min = 0, max = 2147483647
+    stop_returns int64 | min = 0, max = 9223372036854775807
     // fleet beat --no-room states no length.
     no_room *string
     // live.go maxLiveEntries: ParseLive accepts at most 512 entries.
     live [..512]LiveWord
     live_known bool
-    // Unix nanoseconds UTC; 0 is the zero time.
-    live_since int64
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    live_since string(35)
     // NextLive keeps each sighting for liveSeenKeep, a time and not a count,
     // so the list is as long as the data.
     live_seen []LiveSight
     draining bool
-    // Unix nanoseconds UTC; 0 is the zero time.
-    draining_since int64
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    draining_since string(35)
     // FactWords states no count.
     facts []FactWord
 }
@@ -291,8 +295,8 @@ table ReaderHold
 {
     away bool
     retired bool
-    // Unix nanoseconds UTC; 0 is the zero time.
-    at int64
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    at string(35)
     // a ValidID, MaxIDLen 128.
     by string(128)
     held bool
@@ -311,8 +315,8 @@ table HoldView
     kind string(16)
     // a ValidID (128) or a friend row "friend." plus a ValidID (135).
     name string(135)
-    // a card text field: MaxCardTextBytes (steps_review.go), 65536.
-    reason string(65536)
+    // The hold view can contain an unbounded friend or reader hold reason.
+    reason *string
     // a ValidID, MaxIDLen 128.
     by string(128)
     // stamp() is time.RFC3339, 20 bytes for a UTC second, 32 with a zone.
@@ -333,21 +337,27 @@ table HoldView
 fixed table LaneHold
 {
     who string(257)
-    // Unix nanoseconds UTC; 0 is the zero time.
-    since int64
-    // Unix nanoseconds UTC; 0 is the zero time.
-    seen int64
+    // The original Unix-nanosecond slots stay at their locked wire offsets.
+    since_ns ?int64 | was = "since", deprecated, json = "since_unix_nanos"
+    seen_ns ?int64 | was = "seen", deprecated, json = "seen_unix_nanos"
     claimed bool
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    since_time string(35) | json = "since"
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    seen_time string(35) | json = "seen"
 }
 
 // LaneWait is one waiter (lane.go), a fixed table. The same who as LaneHold.
 fixed table LaneWait
 {
     who string(257)
-    // Unix nanoseconds UTC; 0 is the zero time.
-    since int64
-    // Unix nanoseconds UTC; 0 is the zero time.
-    seen int64
+    // The original Unix-nanosecond slots stay at their locked wire offsets.
+    since_ns ?int64 | was = "since", deprecated, json = "since_unix_nanos"
+    seen_ns ?int64 | was = "seen", deprecated, json = "seen_unix_nanos"
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    since_time string(35) | json = "since"
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    seen_time string(35) | json = "seen"
 }
 
 // Lane is one machine's lanes of one kind (lane.go): holders and queue, oldest
@@ -372,8 +382,8 @@ table SeatChange
     generation uint64
     // a ValidID, MaxIDLen 128.
     from string(128)
-    // Unix nanoseconds UTC; 0 is the zero time.
-    at int64
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    at string(35)
     // a ValidID, MaxIDLen 128.
     by string(128)
     taken bool
@@ -384,19 +394,19 @@ table SeatChange
 
 // ServerRecord is the server's heartbeat (store/seat.go), the store key
 // "server", a variable table. Version, commit and host have no length in
-// SetServer. PID is int32: a pid fits, and Go's int is the platform int.
+// SetServer. PID is Go's platform int.
 table ServerRecord
 {
     // a ValidID, MaxIDLen 128.
     actor string(128)
-    // Unix nanoseconds UTC; 0 is the zero time.
-    at int64
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    at string(35)
     version *string
     commit *string
-    // Unix nanoseconds UTC; 0 is the zero time.
-    started int64
+    // Source time.Time JSON, RFC3339Nano text (string reader checks length).
+    started string(35)
     land bool
-    pid int32
+    pid int64
     host *string
 }
 
