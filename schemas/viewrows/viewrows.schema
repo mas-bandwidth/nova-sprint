@@ -1,0 +1,1274 @@
+// viewrows.schema: the sprint store's view records as FIXED tables (S1).
+// The server is the only writer and the only reader, and the server is
+// upgraded first. A map, a pointer, or an unbounded array would make the
+// table variable, so each map is a counted array of entries and each
+// optional pointer is ?T. Time fields are Unix nanoseconds, and 0 is the
+// zero time, except where a comment names another unit.
+//
+// The fixed form's record body ceiling is 65536 bytes. A collection the
+// code keeps larger than that ceiling is one page here, with a pages count,
+// the same shape as the done record. A string the code allows at
+// MaxCardTextBytes (65536) is 65540 bytes with its length word, so it cannot
+// be a field of this form; those texts are a page width named in the comment.
+package viewrowswire
+
+// --- shared text and entry widths ---
+
+// CardID is sprint.ValidCardID: at most 4 dot-joined ValidID words of
+// MaxIDLen (128) bytes, so 4*128+3 = 515.
+fixed table CardID
+{
+    id string(515)
+}
+
+// RowName is a fleet row: a member name (ValidID, 128) or a friend row
+// "friend." + a ValidID (sprint.FriendRow), so 7+128 = 135.
+fixed table RowName
+{
+    name string(135)
+}
+
+// MemberName is sprint.ValidID: one word, at most MaxIDLen (128).
+fixed table MemberName
+{
+    name string(128)
+}
+
+// StreamID is a Redis stream id "<ms>-<seq>", two uint64 in decimal: 41.
+fixed table StreamID
+{
+    id string(41)
+}
+
+// Stamp80 holds a stats stamp (two RFC3339Nano times joined by "|", 71
+// bytes) or an archive key "stats:archive:" + RFC3339Nano + "-" + 8 hex
+// (archiveNonce is 4 bytes).
+fixed table Stamp80
+{
+    text string(80)
+}
+
+// TierWord is any brief tier word (flash when the brief names none). The
+// code does not cap the word; 32 is this table's page width.
+fixed table TierWord
+{
+    word string(32)
+}
+
+// Prose256 is a text the code does not cap below MaxCardTextBytes. That cap
+// does not fit in a fixed body, so the page width is 256.
+fixed table Prose256
+{
+    text string(256)
+}
+
+// Word64 is a short token (a verb, a how, a cell) with no tighter code cap.
+fixed table Word64
+{
+    text string(64)
+}
+
+// Word16 is a closed short word (a stop kind, a tidy kind, a column).
+fixed table Word16
+{
+    text string(16)
+}
+
+// Money32 is a cardcost decimal ("$1.25" or a bare decimal). The code stores
+// no length cap; 32 holds a cent figure with a leading "$".
+fixed table Money32
+{
+    text string(32)
+}
+
+// LiveKey is one live-set entry, "<card>@<gen>" or "<card>@<gen>:held":
+// a card id, one byte, a generation, and an optional ":held".
+fixed table LiveKey
+{
+    key string(548)
+}
+
+// --- stage times, costs, and the small where pieces ---
+
+// StageStat is one stage's median and p90, in seconds, over N cards
+// (sprint.StageStat).
+fixed table StageStat
+{
+    median_s float64
+    p90_s    float64
+    n        int32
+}
+
+// StageStatEntry is one stage name in a stage map. StageOrder names 9 stages.
+fixed table StageStatEntry
+{
+    stage string(16)
+    stat  StageStat
+}
+
+// StreamStageEntry is one stream's stage map.
+fixed table StreamStageEntry
+{
+    // a stream name (ValidID, MaxIDLen 128)
+    stream string(128)
+    // StageOrder is 9 stages.
+    stages [..9]StageStatEntry
+}
+
+// StageTimes is the stage stats over every stream and per stream
+// (sprint.StageTimes). The code does not cap the stream count; 4 is the
+// page under the fixed body ceiling.
+fixed table StageTimes
+{
+    all     [..9]StageStatEntry
+    streams [..4]StreamStageEntry
+}
+
+// ReadDay is one route's reads of a UTC day (sprint.ReadDay).
+fixed table ReadDay
+{
+    usd    string(32)
+    tokens int64
+    reads  int32
+}
+
+// ReadDayEntry is one route in TierCosts.ReadsToday. The code does not cap
+// the route count.
+fixed table ReadDayEntry
+{
+    route string(32)
+    day   ReadDay
+}
+
+// ReaderSpend is one reader's reads summed (sprint.ReaderSpend).
+fixed table ReaderSpend
+{
+    reads       int32
+    priced      int32
+    usd         string(32)
+    hour_priced int32
+    hour_usd    string(32)
+    tokens      int64
+}
+
+// ReaderSpendEntry is one reader in TierCosts.Readers.
+fixed table ReaderSpendEntry
+{
+    reader string(64)
+    spend  ReaderSpend
+}
+
+// DayGap is one day's reconciliation (sprint.DayGap).
+fixed table DayGap
+{
+    provider          float64
+    provider_internal float64 | json = "internal"
+}
+
+// DayGapEntry is one day in CostReconcileRecord.Days.
+fixed table DayGapEntry
+{
+    day string(16)
+    gap DayGap
+}
+
+// CostReconcileRecord is a provider's reconciliation (sprint.CostReconcileRecord).
+// The code does not cap the day count; 2 is the page.
+fixed table CostReconcileRecord
+{
+    provider          string(32)
+    at                string(40)
+    known             bool
+    note              string(64)
+    day               string(16)
+    used              float64
+    provider_internal float64          | json = "internal"
+    internal_reads    float64
+    gap               float64
+    share             float64
+    days              [..2]DayGapEntry
+}
+
+// TierCountEntry is a tier word and a card count.
+fixed table TierCountEntry
+{
+    tier string(32)
+    n    int32
+}
+
+// CostTierEntry is one tier's dollar figure in a cost-by-tier map.
+fixed table CostTierEntry
+{
+    tier string(32)
+    usd  string(32)
+}
+
+// TierCosts is one stream's tiers and spend (sprint.TierCosts). Map counts
+// are a page: the code does not cap tiers, routes, or readers. Reconciles
+// is the sprint's provider list; 1 is the page.
+fixed table TierCosts
+{
+    tiers           [..4]TierCountEntry
+    per_landed      string(32)
+    cost_by_tier    [..4]CostTierEntry
+    total_cost      string(32)
+    total_usd       string(32)
+    landed_usd      string(32)
+    work_cost       string(32)
+    read_cost       string(32)
+    decide_cost     string(32)
+    decide_unpriced int32
+    dropped_cards   int32
+    carried_cards   int32
+    read_tokens     int64
+    reads_today     [..2]ReadDayEntry
+    unpriced_runs   int32
+    reads_no_tokens int32
+    readers         [..2]ReaderSpendEntry
+    in_flight       string(32)
+    unreconciled    string(32)
+    reconciles      [..1]CostReconcileRecord
+}
+
+// CostCheck is the streams' sums against every card's own total
+// (sprint.CostCheck). Orphans are card ids; 2 is the page.
+fixed table CostCheck
+{
+    streams_usd string(32)
+    cards_usd   string(32)
+    gap_usd     string(32)
+    ok          bool
+    orphans     [..2]CardID
+    unlisted    int32
+}
+
+// CriticalCard is one of where's critical lines (sprint.CriticalCard).
+fixed table CriticalCard
+{
+    id     string(515)
+    behind int32
+    state  string(16)
+}
+
+// Landing is one card's landing (sprint.Landing): at is Unix seconds.
+fixed table Landing
+{
+    at     int64
+    worker string(135)
+    stream string(128)
+}
+
+// ArchivedFleetCard is a work card of an archived stream in a fleet done
+// cell (sprint.ArchivedFleetCard). at is Unix seconds, 0 with no stamp.
+fixed table ArchivedFleetCard
+{
+    row string(135)
+    col string(16)
+    at  int64
+}
+
+// ColCountEntry is one column's count. The work table has 6 states.
+fixed table ColCountEntry
+{
+    col string(16)
+    n   int32
+}
+
+// SentinelCounts is one stream's sentinel primaries (store.SentinelCounts).
+// ByCol keys are the work-table columns; 6 is that set.
+fixed table SentinelCounts
+{
+    all    int32
+    landed int32
+    by_col [..6]ColCountEntry
+}
+
+// SentinelEntry is one stream in WhereRecord.Sentinels.
+fixed table SentinelEntry
+{
+    stream string(128)
+    counts SentinelCounts
+}
+
+// HeldStreamEntry is one stream's held-card count (WhereRecord.HeldStreams).
+fixed table HeldStreamEntry
+{
+    stream string(128)
+    held   int32
+}
+
+// StreamTierEntry is one stream in WhereRecord.Streams.
+fixed table StreamTierEntry
+{
+    stream string(128)
+    costs  TierCosts
+}
+
+// DealtEntry is one friend's dealt-fleet count.
+fixed table DealtEntry
+{
+    row string(135)
+    n   int32
+}
+
+// PriorityEntry is one level's open primaries (WhereRecord.Priorities).
+// PriorityLadder names 7 levels. The cards at a level are not capped; 1 is
+// the page, because a card id is 515 bytes.
+fixed table PriorityEntry
+{
+    level string(16)
+    cards [..1]CardID
+}
+
+// StreamPriorityEntry is one stream's default level.
+fixed table StreamPriorityEntry
+{
+    stream string(128)
+    level  string(16)
+}
+
+// RowFieldEntry is one dashboard field of a fleet row. RowCardFields names 8.
+fixed table RowFieldEntry
+{
+    field string(24)
+    n     int32
+}
+
+// RowCardsEntry is one fleet row in WhereRecord.RowCards.
+fixed table RowCardsEntry
+{
+    row          string(135)
+    field_counts [..8]RowFieldEntry | json = "counts"
+}
+
+// FixStateEntry is one fleet row in WhereRecord.FixStates. Columns are the
+// 6 work states.
+fixed table FixStateEntry
+{
+    row        string(135)
+    col_counts [..6]ColCountEntry | json = "counts"
+}
+
+// RowWorkingEntry is one fleet row's working cards as <card>@<gen>
+// (WhereRecord.RowWorking). 1 card is the page.
+fixed table RowWorkingEntry
+{
+    row   string(135)
+    cards [..1]LiveKey
+}
+
+// ReadCardCounts is the epoch's read cards (sprint.ReadCardCounts).
+fixed table ReadCardCounts
+{
+    ready   int32
+    working int32
+    done    int32
+}
+
+// ReadsWindowView is the ok and broken verdicts (sprint.ReadsWindowView).
+fixed table ReadsWindowView
+{
+    ok     int32
+    broken int32
+    since  int64
+}
+
+// --- notes, the where record, the store round trip ---
+
+// StreamTransition is a stream notice frozen on a note (sprint.StreamTransition).
+// Owners are fleet rows; 2 is the page.
+fixed table StreamTransition
+{
+    state   string(32)
+    cause   string(64)
+    waiting int32
+    owners  [..2]RowName
+}
+
+// DecisionDelivery is a folded-message obligation (sprint.DecisionDelivery).
+// Reports are not capped; 1 is the page.
+fixed table DecisionDelivery
+{
+    lane             string(64)
+    to               string(128)
+    from             string(128)
+    set              string(64)
+    body             string(256)
+    token            string(128)
+    prepared_at      int64
+    retry_before     int64
+    sent_at          int64
+    fault            string(128)
+    reports          [..1]MemberName
+    unknown_receipts int32
+}
+
+// CoordinatorDelivery is the frozen bus message on a note. Its Go fields
+// carry no json tag, so the text keys are the Go names.
+fixed table CoordinatorDelivery
+{
+    covered_by   string(64)  | json = "CoveredBy"
+    from         string(128) | json = "From"
+    to           string(128) | json = "To"
+    token        string(128) | json = "Token"
+    subject      string(128) | json = "Subject"
+    body         string(256) | json = "Body"
+    episode      string(64)  | json = "Episode"
+    sent         bool        | json = "Sent"
+    retry_before int64       | json = "RetryBefore"
+}
+
+// Note is one notification (sprint.Note). Note.Bound cuts primaries to
+// MaxListed (50); 50 card ids do not fit in one fixed body, so this page
+// keeps 2. What is a page of 256, not MaxCardTextBytes. Decisions, suspects,
+// and needs are pages too: the code caps none of them except primaries.
+fixed table Note
+{
+    stream_transition        ?StreamTransition
+    id                       string(128)
+    safe_default             string(64)
+    decision_delivery        ?DecisionDelivery
+    default_coordinator_told bool
+    default_owner_told       bool
+    coordinator_delivery     ?CoordinatorDelivery
+    alias                    string(32)
+    kind                     string(16)
+    note_type                string(96)           | json = "type"
+    stream                   string(128)
+    primaries                [..2]CardID
+    count                    int32
+    what                     string(256)
+    who                      string(128)
+    attempt                  int32
+    before                   int32
+    at                       int64
+    decisions                [..4]Word64
+    marked                   bool
+    answers                  string(128)
+    suspects                 [..2]CardID
+    card                     string(515)
+    other                    string(515)
+    tier                     string(32)
+    other_stream             string(128)
+    stream_level             bool
+    sprint_level             bool
+    needs                    [..4]Word64
+    review                   int64
+    review_set               int64
+    to                       string(128)
+    hint                     string(128)
+}
+
+// WhereRecord is one page of store.WhereRecord (key "where"). Counts the
+// code enforces and that fit: critical is the five heaviest (where.go calls
+// Critical(s, 5)); blockers is the top 3 (IdleBlockers(s, 3)). Landings are
+// at most MaxRecentLandings (10000) Unix seconds; 10000 int64s are 80004
+// bytes, so this page keeps 128 and landing_pages is the page count.
+// Decision holds are DefaultHeldDecisions notes; one note is the page and
+// hold_pages is the page count. Every map is a counted entry array because
+// a map is a variable edge (S1); the counts are the page under the ceiling,
+// which the code does not cap.
+fixed table WhereRecord
+{
+    decision_holds         [..1]Note
+    hold_pages             uint32
+    decision_holds_counted bool
+    epoch                  uint64
+    rev                    uint64
+    held                   int32
+    held_streams           [..4]HeldStreamEntry
+    landings               [..128]int64
+    landing_pages          uint32
+    critical               [..5]CriticalCard
+    blockers               [..3]CardID
+    sentinels              [..4]SentinelEntry
+    tiers                  [..4]TierCountEntry
+    streams                [..1]StreamTierEntry
+    cost_check             ?CostCheck
+    stage_times            StageTimes
+    dealt_fleet            [..4]DealtEntry
+    reads_waiting          int32
+    priorities             [..7]PriorityEntry
+    stream_priorities      [..4]StreamPriorityEntry
+    reads_window           ReadsWindowView
+    fleet_rev              uint64
+    row_cards              [..2]RowCardsEntry
+    read_cards             ReadCardCounts
+    fix_states             [..2]FixStateEntry
+    row_working            [..2]RowWorkingEntry
+    stats                  string(80)
+    series                 [..4]Landing
+    series_counted         bool
+    series_pages           uint32
+    archived_primaries     [..2]CardID
+    archived_fleet         [..2]ArchivedFleetCard
+    live_stage_times       StageTimes
+    archived_counted       bool
+}
+
+// RttSample is one store round-trip sample. The JSON is a pair: start is
+// Unix milliseconds (samples[i][0]) and us is microseconds (samples[i][1]).
+// A fixed table cannot hold an array of arrays, so the pair is this table.
+fixed table RttSample
+{
+    start int64
+    us    int64
+}
+
+// StoreRTTRecord is the store round trip (store.StoreRTTRecord, key
+// "store_rtt"). StoreRTTWindow (1 minute) over StoreRTTEvery (10 seconds)
+// is about 7 samples; the slice itself is aged, not counted, and 8 is the
+// table's count.
+fixed table StoreRTTRecord
+{
+    at               int64
+    samples          [..8]RttSample
+    store_rtt_p50_ms float64
+    store_rtt_p99_ms float64
+}
+
+// --- stops, doctor, beats, check ---
+
+// SeatWaits is what waits on the seat (sprint.SeatWaits).
+fixed table SeatWaits
+{
+    judgments   int32
+    overdue     int32
+    oldest_id   string(128)
+    oldest_type string(128)
+    oldest_at   int64
+    level       int32
+}
+
+// Stop is one automatic stop that holds (sprint.Stop). The kind is one of
+// the StopKind words (the longest is "member-adopting", 16). What and effect
+// are a page of 128: a stop line can be cut at MaxCardTextBytes, which does
+// not fit here. LiveStops has no count cap.
+fixed table Stop
+{
+    kind    string(32)
+    subject string(515)
+    since   int64
+    what    string(128)
+    effect  string(128)
+    undo    string(128)
+    signal  string(64)
+}
+
+// StopsRecord is the stops record (store.StopsRecord, key "stops"). 8 stops
+// is the page; stop_pages is the page count.
+fixed table StopsRecord
+{
+    epoch      uint64
+    at         int64
+    seat       SeatWaits
+    stops      [..8]Stop
+    stop_pages uint32
+}
+
+// RefusedVerb is one verb the server refused (sprint.RefusedVerb). The Go
+// fields carry no json tag, so the text keys are the Go names. Argv and why
+// are a page of 128; the code does not cap them below MaxCardTextBytes.
+fixed table RefusedVerb
+{
+    epoch  uint64      | json = "Epoch"
+    at     int64       | json = "At"
+    verb   string(64)  | json = "Verb"
+    member string(128) | json = "Member"
+    card   string(515) | json = "Card"
+    argv   string(128) | json = "Argv"
+    why    string(128) | json = "Why"
+}
+
+// RefusedRecord is the doctor's refused-verb record (sprint.RefusedRecord,
+// key "refusedrecord"). PruneRefused keeps RefusedWindow (10 minutes) and
+// does not cap the count. RefusedBeatBound (3) and RefusedVerbBound (10) are
+// check thresholds, not storage caps. 8 verbs is the page.
+fixed table RefusedRecord
+{
+    epoch      uint64
+    verbs      [..8]RefusedVerb
+    verb_pages uint32
+}
+
+// LoadSample is one beat's load percent (sprint.LoadSample).
+fixed table LoadSample
+{
+    at  int64
+    pct float64
+}
+
+// MeterTicks is one reading of the kernel CPU counters (hostload.Ticks).
+fixed table MeterTicks
+{
+    busy  uint64
+    total uint64
+}
+
+// MeterHolder is one process and its open descriptors (hostload.Holder).
+// FilesTop is 10 holders. The command is a page of 64.
+fixed table MeterHolder
+{
+    pid     int32
+    command string(64) | json = "cmd"
+    user    string(64)
+    open    int32
+}
+
+// MeterFiles is one reading of open file descriptors (hostload.Files).
+// Top is at most FilesTop (10).
+fixed table MeterFiles
+{
+    at      int64
+    open    int32
+    max     int32
+    warn    int32
+    alarm   int32
+    top     [..10]MeterHolder
+    top_at  int64
+    top_err string(128)
+}
+
+// MeterState is the measuring state the next beat starts from (hostload.State).
+fixed table MeterState
+{
+    ticks   ?MeterTicks
+    top_at  int64
+    top_pct float64
+    files   ?MeterFiles
+}
+
+// FriendReport is what a friend's beat reports (sprint.FriendReport).
+// Pointer counts are ?int32. Running is not capped; 4 is the page.
+fixed table FriendReport
+{
+    running      [..4]MemberName
+    working      ?int32
+    queue        ?int32
+    width        ?int32
+    stop_returns ?int32
+    active       int64
+    paced        ?int32
+    window       string(64)
+    until        int64
+    reason       string(128)
+    build        string(64)
+    started      int64
+    present      int64
+}
+
+// LiveSeenEntry is one live-set entry's last sighting (Beat.LiveSeen).
+fixed table LiveSeenEntry
+{
+    key string(548)
+    at  int64
+}
+
+// Beat is a member's presence record (sprint.Beat), the beats the doctor
+// reads. Samples are the host load ring of the last ten. Live and live_seen
+// and facts are not capped; the counts here are the page.
+fixed table Beat
+{
+    at             int64
+    cores          int32
+    how            string(16)
+    samples        [..10]LoadSample
+    host_load      float64            | json = "load"
+    meter          MeterState
+    friend_report  ?FriendReport      | json = "friend"
+    stop_returns   int32
+    no_room        string(128)
+    live           [..2]LiveKey
+    live_known     bool
+    live_since     int64
+    live_seen      [..2]LiveSeenEntry
+    draining       bool
+    draining_since int64
+    facts          [..4]Word64
+}
+
+// CheckedCard is one card as the check record keeps it (sprint.CheckedCard).
+// brief is the sha256 of its brief, hex, 64 bytes. Needs is a page of 128.
+fixed table CheckedCard
+{
+    id       string(515)
+    stream   string(128)
+    tier     string(32)
+    priority string(16)
+    needs    string(128)
+    brief    string(64)
+}
+
+// CheckRecord is the check record (store.CheckRecord, key "cardcheck").
+// Findings are at most MaxCheckFindings (200). Each line is a page of 64
+// because 200 lines of MaxCardTextBytes do not fit. Cards are one per placed
+// card, which the code does not cap; 8 is the page and card_pages the count.
+// Digest is CardsDigest, a sha256 hex, 64 bytes.
+fixed table CheckRecord
+{
+    epoch      uint64
+    at         int64
+    by         string(128)
+    clean      bool
+    streams    [..4]MemberName
+    kinds      string(128)
+    findings   [..200]Word64
+    cards      [..4]CheckedCard
+    card_pages uint32
+    digest     string(64)
+}
+
+// --- fleet debt, stats, stuck, the log index ---
+
+// FleetMachineRow is one member whose fleet row the cleanup deleted
+// (fleet_rows.go). The name is a ValidID, MaxIDLen 128.
+fixed table FleetMachineRow
+{
+    name string(128)
+}
+
+// FleetDropDebt is the fleet-drop-debt record: a JSON array of those member
+// names (key "fleet-drop-debt"). The code does not cap the count; 32 is the
+// page. The machine rows are these names.
+fixed table FleetDropDebt
+{
+    members      [..32]FleetMachineRow
+    member_pages uint32
+}
+
+// ResetRow is one fleet row's done cells at a stats reset (sprint.ResetRow).
+fixed table ResetRow
+{
+    ok     int32
+    failed int32
+}
+
+// ResetRowEntry is one row in ResetMark.Rows.
+fixed table ResetRowEntry
+{
+    row  string(135)
+    mark ResetRow
+}
+
+// ResetStream is one stream's figures at the mark (sprint.ResetStream).
+// CostByTier is not capped; 4 is the page.
+fixed table ResetStream
+{
+    cost         string(32)
+    landed       int32
+    total_cost   string(32)
+    total_usd    string(32)
+    work_cost    string(32)
+    read_cost    string(32)
+    decide_cost  string(32)
+    cost_by_tier [..4]CostTierEntry
+}
+
+// ResetStreamEntry is one stream in ResetMark.Streams.
+fixed table ResetStreamEntry
+{
+    stream string(128)
+    mark   ResetStream
+}
+
+// ResetMark is a stats reset (sprint.ResetMark), stored on the stats record.
+// The code does not cap rows or streams. ntable.LimitTableProps is 64 and a
+// tidy has already passed it, so it is not a row cap; 8 is the page.
+fixed table ResetMark
+{
+    at           int64
+    epoch        uint64
+    by           string(128)
+    reason       string(128)
+    rows         [..8]ResetRowEntry
+    streams      [..4]ResetStreamEntry
+    total_cost   string(32)
+    unreconciled string(32)
+    op           string(128)
+    row_pages    uint32
+}
+
+// ResetResult is what a reset wrote (store.ResetResult). Said is not capped;
+// 2 is the page.
+fixed table ResetResult
+{
+    mark     ResetMark
+    replaced ?ResetMark
+    dry_run  bool
+    replay   bool
+    said     [..2]Prose256
+    refused  string(128)
+}
+
+// KindTimeEntry is one tidy kind's last time. TidyKinds is 4 words:
+// friends, fleet, routes, streams.
+fixed table KindTimeEntry
+{
+    kind string(16)
+    at   int64
+}
+
+// StreamBase is a stream's landed cost and count (sprint.StreamBase).
+fixed table StreamBase
+{
+    cost   string(32)
+    landed int32
+}
+
+// StreamBaseEntry is one stream in a base map.
+fixed table StreamBaseEntry
+{
+    stream      string(128)
+    stream_base StreamBase  | json = "base"
+}
+
+// TidyInFlight is a tidy that began and has not written its end
+// (store.TidyInFlight).
+fixed table TidyInFlight
+{
+    archive string(80)
+    at      int64
+    mark    int64
+}
+
+// StatsRecord is the last tidy as stored (store.StatsRecord, key "stats"),
+// including the reset mark stats_reset.go writes onto it. Kinds are the 4
+// TidyKinds. Streams and archives are not capped; the counts are the page.
+fixed table StatsRecord
+{
+    epoch      uint64
+    since      int64
+    reason     string(128)
+    by         string(128)
+    kinds      [..4]KindTimeEntry
+    streams    [..4]StreamBaseEntry
+    archives   [..4]Stamp80
+    reset_mark ?ResetMark           | json = "reset"
+    tidying    ?TidyInFlight
+}
+
+// TidyCard is one finished card a tidy took off or kept (sprint.TidyCard).
+fixed table TidyCard
+{
+    id       string(515)
+    cell     string(16)
+    why      string(64)
+    finished int64
+}
+
+// TidyRow is one fleet row's done cells as a tidy found them (sprint.TidyRow).
+// Moved and kept are not capped; 1 is the page.
+fixed table TidyRow
+{
+    row    string(135)
+    ok     int32
+    failed int32
+    moved  [..1]TidyCard
+    kept   [..1]TidyCard
+}
+
+// RoutePrices is a route's price sheet (cardcost.Prices). Amounts are
+// canonical decimals with no code cap; 32 is the page width.
+fixed table RoutePrices
+{
+    input               string(32)
+    cache_read          string(32)
+    cache_write         string(32)
+    output              string(32)
+    reasoning_as_output bool
+    long_context        int64
+    input_long          string(32)
+    output_long         string(32)
+    request             string(32)
+    billing             string(16)
+    gateway_percent     string(32)
+    source              string(32)
+    as_of               string(40)
+}
+
+// Route is one route as the store holds it (sprint.Route). Share has
+// json:"-" and is not serialized.
+fixed table Route
+{
+    name     string(64)
+    tier     string(32)
+    provider string(32)
+    model    string(64)
+    harness  string(32)
+    tokens   int32
+    usd      string(32)
+    deadline int32
+    enabled  bool
+    first    bool
+    prices   RoutePrices
+}
+
+// RouteStat is one route's record (sprint.RouteStat).
+fixed table RouteStat
+{
+    route             Route
+    pinned            bool
+    attempts          int32
+    ok                int32
+    failed            int32
+    provider_failures int32
+    mean_wall         string(16)
+    rested_until      string(40)
+    rested_for        string(64)
+    balance           string(32)
+    balance_at        string(40)
+}
+
+// StatsArchive is one tidy's archive (store.StatsArchive). State is
+// planned, done, or failed. Rows, routes, and streams are not capped; the
+// counts are the page.
+fixed table StatsArchive
+{
+    at            int64
+    epoch         uint64
+    reason        string(128)
+    by            string(128)
+    kinds         [..4]Word16
+    state         string(16)
+    error         string(128)
+    rows          [..2]TidyRow
+    routes        [..2]RouteStat
+    streams       [..2]StreamBaseEntry
+    archive_pages uint32
+}
+
+// TidyResult is what a tidy did (store.TidyResult). Said is not capped; 2
+// is the page.
+fixed table TidyResult
+{
+    archive string(80)
+    dry_run bool
+    refused string(128)
+    said    [..2]Prose256
+    record  StatsArchive
+    moved   int32
+    kept    int32
+}
+
+// Stuck is the stuck record (store.Stuck, key "stuck"). Op is the operation
+// id; the code does not cap it, and 128 is the page width. Why and repaired
+// are pages of 256.
+fixed table Stuck
+{
+    op          string(128)
+    verb        string(64)
+    at          int64
+    seen        int64
+    why         string(256)
+    repaired    string(256)
+    repaired_at int64
+}
+
+// LogIndexEntry is one card's indexed log stream ids (the mem store's
+// logindex JSON, a map of name to stream ids). The code does not cap either
+// count. The name is a card id.
+fixed table LogIndexEntry
+{
+    name string(515)
+    ids  [..4]StreamID
+}
+
+// LogIndex is the load index: the cursor key "logindexed" (a Redis stream
+// id) and one page of the "logindex" map. logIndexPages (4) is how many log
+// pages one tick indexes, not a cap on this map.
+fixed table LogIndex
+{
+    cursor      string(41)
+    entries     [..4]LogIndexEntry
+    index_pages uint32
+}
+
+// --- the tick: machine, heartbeat, and the held fence body ---
+
+// Span is one time the machine was STOPPED (sprint.Span).
+fixed table Span
+{
+    from int64
+    to   int64
+}
+
+// StopLease is one child the owner must confirm stopped (store.StopLease).
+fixed table StopLease
+{
+    lease_table string(16)  | json = "table"
+    row         string(135)
+    id          string(515)
+    gen         int32
+}
+
+// Machine is the state record (store.Machine, key "machine"). Spans are at
+// most MaxStopSpans (1000). StopDebt is not capped; 4 is the page and
+// debt_pages is the page count. started_in is the epoch number in decimal.
+fixed table Machine
+{
+    state       string(16)
+    since       int64
+    who         string(128)
+    run_seq     uint64
+    stop_issued bool
+    stop_debt   [..4]StopLease
+    debt_pages  uint32
+    stopped_ns  int64
+    spans       [..1000]Span
+    cause       string(32)
+    reason      string(128)
+    until       int64
+    started_in  string(32)
+}
+
+// LaneQuiet is a judgment the tick kept from rising (sprint.LaneQuiet).
+fixed table LaneQuiet
+{
+    quiet_type  string(96)  | json = "type"
+    subject     string(128)
+    why         string(128)
+    friend_name string(128) | json = "friend"
+    run         string(64)
+}
+
+// Suppressed is the count of judgments kept from rising (sprint.Suppressed).
+fixed table Suppressed
+{
+    epoch   uint64
+    n       int32
+    lane    int32
+    readers int32
+    tier    int32
+}
+
+// Heartbeat is the last tick (store.Heartbeat, key "heartbeat"). Revisions
+// is the four table revisions, a fixed [4]uint64. Fresh, and quiet, are not
+// capped; the counts are the page.
+fixed table Heartbeat
+{
+    at           int64
+    ticks        int64
+    error        string(256)
+    failures     int32
+    tick_overrun int64
+    due          int32
+    revisions    [4]uint64
+    landed       int64
+    all          int64
+    full         int64
+    looked       int64
+    fresh        [..8]MemberName
+    quiet        [..2]LaneQuiet
+    quiet_pages  uint32
+    suppressed   Suppressed
+}
+
+// StringKV is one string map entry. Value is a page of 64 where the code
+// allows MaxCardTextBytes.
+fixed table StringKV
+{
+    key   string(32)
+    value string(64)
+}
+
+// PlaceExpect is the expected row and column (ntable.PlaceExpect).
+fixed table PlaceExpect
+{
+    row string(135)
+    col string(32)
+}
+
+// GuardText is FieldGuard.Equals. A fixed table refuses ?string(N), so the
+// *string is this table, optional on the guard. The code does not cap the
+// text below MaxCardTextBytes, which does not fit; 128 is the page.
+fixed table GuardText
+{
+    text string(128)
+}
+
+// FieldGuard is one field check (ntable.FieldGuard). Absent is a pointer.
+// OneOf is not capped; 1 is the page.
+fixed table FieldGuard
+{
+    equals ?GuardText
+    absent ?bool
+    one_of [..1]Word64
+}
+
+// FieldGuardEntry is one field in MemberExpect.Fields.
+fixed table FieldGuardEntry
+{
+    field string(32)
+    guard FieldGuard
+}
+
+// MemberExpect guards a member before a mutation (ntable.MemberExpect).
+fixed table MemberExpect
+{
+    absent   bool
+    revision string(32)
+    place    ?PlaceExpect
+    fields   [..1]FieldGuardEntry
+}
+
+// MemberCreate places a new member (ntable.MemberCreateOp).
+fixed table MemberCreate
+{
+    row   string(135)
+    col   string(32)
+    score float64
+}
+
+// MemberMove moves a member (ntable.MemberMoveOp). Score is a pointer.
+fixed table MemberMove
+{
+    row   string(135)
+    col   string(32)
+    score ?float64
+}
+
+// BatchMemberEntry is one member of a batch (ntable.BatchMemberEntry).
+// Set and unset are not capped; 1 is the page.
+fixed table BatchMemberEntry
+{
+    id          string(515)
+    expect      ?MemberExpect
+    create      ?MemberCreate
+    member_move ?MemberMove   | json = "move"
+    remove      bool
+    set         [..1]StringKV
+    unset       [..1]Word64
+}
+
+// PropName is one property name a batch expects absent.
+fixed table PropName
+{
+    name string(64)
+}
+
+// BatchManifest is one atomic batch (ntable.BatchManifest) on the held
+// operation. Members and property maps are not capped; 1 is the page.
+fixed table BatchManifest
+{
+    schema                  int32
+    logical_table           string(32)            | json = "table"
+    epoch                   string(32)
+    expected_table_revision string(32)
+    operation_id            string(128)
+    actor                   string(128)
+    members                 [..1]BatchMemberEntry
+    props                   [..1]StringKV
+    prop_expect             [..1]StringKV
+    prop_absent             [..1]PropName
+}
+
+// PropWrite is a table property a step writes (sprint.PropWrite). The Go
+// fields carry no json tag, so the text keys are the Go names.
+fixed table PropWrite
+{
+    logical_table string(32)  | json = "Table"
+    name          string(64)  | json = "Name"
+    value         string(128) | json = "Value"
+    was           string(128) | json = "Was"
+    was_absent    bool        | json = "WasAbsent"
+}
+
+// QueuedChange is one work-table change queued for the pump (sprint.QueuedChange).
+fixed table QueuedChange
+{
+    entry ?BatchMemberEntry
+    prop  ?PropWrite
+    verb  string(64)
+    actor string(128)
+    moved string(128)
+}
+
+// LogLine is one log line on the held operation (sprint.Line). Cards, answers,
+// and text are not capped; the counts are the page. Cause is at most
+// MaxCause (300).
+fixed table LogLine
+{
+    kind          string(16)
+    at            int64
+    epoch         uint64
+    op            string(128)
+    card          string(515)
+    cards         [..1]CardID
+    primary       string(515)
+    stream        string(128)
+    logical_table string(32)      | json = "table"
+    from          string(160)
+    to            string(160)
+    removed       bool
+    gen           int32
+    actor         string(128)
+    verb          string(64)
+    cause         string(300)
+    answers       [..1]MemberName
+    text          [..1]StringKV
+}
+
+// Timer is one timer (sprint.Timer). Note is at most MaxTimerNote (512).
+fixed table Timer
+{
+    id        string(128)
+    for_actor string(128) | json = "for"
+    due       int64
+    note      string(512)
+    by        string(128)
+    set       int64
+}
+
+// Timers is the open timers on the held operation (sprint.Timers). The code
+// does not cap them; 1 is the page on this record.
+fixed table Timers
+{
+    open_timers [..1]Timer | json = "open"
+}
+
+// SeatChange is one change of the seat (sprint.SeatChange).
+fixed table SeatChange
+{
+    holder      string(128)
+    generation  uint64
+    from        string(128)
+    at          int64
+    by          string(128)
+    taken       bool
+    approved_by string(128)
+    reason      string(128)
+}
+
+// HeldRecord is the fence body tick.go unmarshals as held (store.OpRecord).
+// It is not a key of its own. Notes, manifests, the log, and the queue do
+// not fit at the widths the code allows, so each is one page and the pages
+// fields are the page counts. Closes and streams are open keys and stream
+// names; 2 is the page.
+fixed table HeldRecord
+{
+    id             string(128)
+    held_lock      bool               | json = "lock"
+    verb           string(64)
+    at             int64
+    manifests      [..1]BatchManifest
+    manifest_pages uint32
+    notes          [..1]Note
+    note_pages     uint32
+    decided        [..1]Note
+    decided_pages  uint32
+    log            [..1]LogLine
+    log_pages      uint32
+    updates        [..1]Note
+    update_pages   uint32
+    closes         [..2]Word64
+    streams        [..2]MemberName
+    caller_op      string(128)
+    result         string(128)
+    stuck          string(128)
+    queue          [..1]QueuedChange
+    queue_pages    uint32
+    drain          int32
+    seat           ?SeatChange
+    close_timers   [..2]Word64
+    timers         ?Timers
+}
