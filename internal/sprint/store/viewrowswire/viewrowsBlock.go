@@ -175,37 +175,6 @@ type TableBlockRefusal struct {
 // declaration's name, which is the table wire's storage, and one declaration
 // cannot be two types.
 
-// CardIDBlockProjection — the block PROJECTION: the table's own instance as it
-// sits at the front of a block, opening with the generated PROLOGUE and
-// carrying, per out-of-line array, the triple that says where its rows are.
-// It is a record like any other and follows the same C ABI rule (§19.3).
-//
-// It is a SEPARATE record from CardIDRow: a table can be both a block root and
-// another block's row, and the two differ by the prologue.
-type CardIDBlockProjection struct {
-	Magic        uint64    // generated: identifies a schema block
-	BuildVersion uint64    // generated: the unit's build version (docs/SPEC-TABLES.md §20)
-	ByteOrder    uint64    // generated: 1 little, 2 big
-	Id           [516]byte // string(515): max length, used length beside it
-	IdLength     int32
-}
-
-// RowNameBlockProjection — the block PROJECTION: the table's own instance as it
-// sits at the front of a block, opening with the generated PROLOGUE and
-// carrying, per out-of-line array, the triple that says where its rows are.
-// It is a record like any other and follows the same C ABI rule (§19.3).
-//
-// It is a SEPARATE record from RowNameRow: a table can be both a block root and
-// another block's row, and the two differ by the prologue.
-type RowNameBlockProjection struct {
-	Magic        uint64    // generated: identifies a schema block
-	BuildVersion uint64    // generated: the unit's build version (docs/SPEC-TABLES.md §20)
-	ByteOrder    uint64    // generated: 1 little, 2 big
-	Name         [136]byte // string(135): max length, used length beside it
-	NameLength   int32
-	_            [4]byte // generated padding
-}
-
 // StageStatBlockProjection — the block PROJECTION: the table's own instance as it
 // sits at the front of a block, opening with the generated PROLOGUE and
 // carrying, per out-of-line array, the triple that says where its rows are.
@@ -235,26 +204,6 @@ type DayGapBlockProjection struct {
 	ByteOrder        uint64 // generated: 1 little, 2 big
 	Provider         float64
 	ProviderInternal float64
-}
-
-// LandingBlockProjection — the block PROJECTION: the table's own instance as it
-// sits at the front of a block, opening with the generated PROLOGUE and
-// carrying, per out-of-line array, the triple that says where its rows are.
-// It is a record like any other and follows the same C ABI rule (§19.3).
-//
-// It is a SEPARATE record from LandingRow: a table can be both a block root and
-// another block's row, and the two differ by the prologue.
-type LandingBlockProjection struct {
-	Magic        uint64 // generated: identifies a schema block
-	BuildVersion uint64 // generated: the unit's build version (docs/SPEC-TABLES.md §20)
-	ByteOrder    uint64 // generated: 1 little, 2 big
-	At           int64
-	Worker       [136]byte // string(135): max length, used length beside it
-	WorkerLength int32
-	Stream       [129]byte // string(128): max length, used length beside it
-	_            [3]byte   // generated padding
-	StreamLength int32
-	_            [4]byte // generated padding
 }
 
 // ReadCardCountsBlockProjection — the block PROJECTION: the table's own instance as it
@@ -334,22 +283,6 @@ type MeterTicksBlockProjection struct {
 	Total        uint64
 }
 
-// FleetMachineRowBlockProjection — the block PROJECTION: the table's own instance as it
-// sits at the front of a block, opening with the generated PROLOGUE and
-// carrying, per out-of-line array, the triple that says where its rows are.
-// It is a record like any other and follows the same C ABI rule (§19.3).
-//
-// It is a SEPARATE record from FleetMachineRowRow: a table can be both a block root and
-// another block's row, and the two differ by the prologue.
-type FleetMachineRowBlockProjection struct {
-	Magic        uint64    // generated: identifies a schema block
-	BuildVersion uint64    // generated: the unit's build version (docs/SPEC-TABLES.md §20)
-	ByteOrder    uint64    // generated: 1 little, 2 big
-	Name         [129]byte // string(128): max length, used length beside it
-	_            [3]byte   // generated padding
-	NameLength   int32
-}
-
 // ResetRowBlockProjection — the block PROJECTION: the table's own instance as it
 // sits at the front of a block, opening with the generated PROLOGUE and
 // carrying, per out-of-line array, the triple that says where its rows are.
@@ -403,12 +336,6 @@ type SuppressedBlockProjection struct {
 // model disagrees with the one the compiler derived stops the program where
 // it starts, rather than pointing at a row and reading the wrong bytes.
 func init() {
-	tableBlockLayoutSize("CardIDBlockProjection", unsafe.Sizeof(CardIDBlockProjection{}), 544)
-	tableBlockLayoutSize("CardIDBlockProjection alignment", unsafe.Alignof(CardIDBlockProjection{}), 8)
-	tableBlockLayoutOffset("CardIDBlockProjection.Magic", unsafe.Offsetof(CardIDBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("CardIDBlockProjection.BuildVersion", unsafe.Offsetof(CardIDBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("CardIDBlockProjection.ByteOrder", unsafe.Offsetof(CardIDBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("CardIDBlockProjection.Id", unsafe.Offsetof(CardIDBlockProjection{}.Id), 24)
 	tableBlockLayoutSize("DayGapBlockProjection", unsafe.Sizeof(DayGapBlockProjection{}), 40)
 	tableBlockLayoutSize("DayGapBlockProjection alignment", unsafe.Alignof(DayGapBlockProjection{}), 8)
 	tableBlockLayoutOffset("DayGapBlockProjection.Magic", unsafe.Offsetof(DayGapBlockProjection{}.Magic), 0)
@@ -416,20 +343,6 @@ func init() {
 	tableBlockLayoutOffset("DayGapBlockProjection.ByteOrder", unsafe.Offsetof(DayGapBlockProjection{}.ByteOrder), 16)
 	tableBlockLayoutOffset("DayGapBlockProjection.Provider", unsafe.Offsetof(DayGapBlockProjection{}.Provider), 24)
 	tableBlockLayoutOffset("DayGapBlockProjection.ProviderInternal", unsafe.Offsetof(DayGapBlockProjection{}.ProviderInternal), 32)
-	tableBlockLayoutSize("FleetMachineRowBlockProjection", unsafe.Sizeof(FleetMachineRowBlockProjection{}), 160)
-	tableBlockLayoutSize("FleetMachineRowBlockProjection alignment", unsafe.Alignof(FleetMachineRowBlockProjection{}), 8)
-	tableBlockLayoutOffset("FleetMachineRowBlockProjection.Magic", unsafe.Offsetof(FleetMachineRowBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("FleetMachineRowBlockProjection.BuildVersion", unsafe.Offsetof(FleetMachineRowBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("FleetMachineRowBlockProjection.ByteOrder", unsafe.Offsetof(FleetMachineRowBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("FleetMachineRowBlockProjection.Name", unsafe.Offsetof(FleetMachineRowBlockProjection{}.Name), 24)
-	tableBlockLayoutSize("LandingBlockProjection", unsafe.Sizeof(LandingBlockProjection{}), 312)
-	tableBlockLayoutSize("LandingBlockProjection alignment", unsafe.Alignof(LandingBlockProjection{}), 8)
-	tableBlockLayoutOffset("LandingBlockProjection.Magic", unsafe.Offsetof(LandingBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("LandingBlockProjection.BuildVersion", unsafe.Offsetof(LandingBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("LandingBlockProjection.ByteOrder", unsafe.Offsetof(LandingBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("LandingBlockProjection.At", unsafe.Offsetof(LandingBlockProjection{}.At), 24)
-	tableBlockLayoutOffset("LandingBlockProjection.Worker", unsafe.Offsetof(LandingBlockProjection{}.Worker), 32)
-	tableBlockLayoutOffset("LandingBlockProjection.Stream", unsafe.Offsetof(LandingBlockProjection{}.Stream), 172)
 	tableBlockLayoutSize("LoadSampleBlockProjection", unsafe.Sizeof(LoadSampleBlockProjection{}), 40)
 	tableBlockLayoutSize("LoadSampleBlockProjection alignment", unsafe.Alignof(LoadSampleBlockProjection{}), 8)
 	tableBlockLayoutOffset("LoadSampleBlockProjection.Magic", unsafe.Offsetof(LoadSampleBlockProjection{}.Magic), 0)
@@ -467,12 +380,6 @@ func init() {
 	tableBlockLayoutOffset("ResetRowBlockProjection.ByteOrder", unsafe.Offsetof(ResetRowBlockProjection{}.ByteOrder), 16)
 	tableBlockLayoutOffset("ResetRowBlockProjection.Ok", unsafe.Offsetof(ResetRowBlockProjection{}.Ok), 24)
 	tableBlockLayoutOffset("ResetRowBlockProjection.Failed", unsafe.Offsetof(ResetRowBlockProjection{}.Failed), 32)
-	tableBlockLayoutSize("RowNameBlockProjection", unsafe.Sizeof(RowNameBlockProjection{}), 168)
-	tableBlockLayoutSize("RowNameBlockProjection alignment", unsafe.Alignof(RowNameBlockProjection{}), 8)
-	tableBlockLayoutOffset("RowNameBlockProjection.Magic", unsafe.Offsetof(RowNameBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("RowNameBlockProjection.BuildVersion", unsafe.Offsetof(RowNameBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("RowNameBlockProjection.ByteOrder", unsafe.Offsetof(RowNameBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("RowNameBlockProjection.Name", unsafe.Offsetof(RowNameBlockProjection{}.Name), 24)
 	tableBlockLayoutSize("RttSampleBlockProjection", unsafe.Sizeof(RttSampleBlockProjection{}), 40)
 	tableBlockLayoutSize("RttSampleBlockProjection alignment", unsafe.Alignof(RttSampleBlockProjection{}), 8)
 	tableBlockLayoutOffset("RttSampleBlockProjection.Magic", unsafe.Offsetof(RttSampleBlockProjection{}.Magic), 0)
@@ -528,7 +435,7 @@ func tableBlockLayoutOffset(what string, got, want uintptr) {
 // data, so a reflective read costs a lookup and not a parse. Every record
 // hangs off the element column rather than taking a name of its own, so a
 // walker reaches the whole graph from any block's Type (§8, §19.2).
-var tableBlockRecords = make([]TableBlockInfo, 14)
+var tableBlockRecords = make([]TableBlockInfo, 10)
 
 // The graph is FILLED HERE rather than in the slice's own initializer, and
 // the reason is a language fact: a field's element column names another
@@ -539,13 +446,6 @@ var tableBlockRecords = make([]TableBlockInfo, 14)
 // goroutine with no synchronisation.
 func init() {
 	tableBlockRecords[0] = TableBlockInfo{
-		Name: "CardID", BuildVersion: BuildVersion, Size: 544, Align: 8, NumFields: 1,
-		Fields: []TableBlockFieldInfo{
-			{Name: "id", Offset: 24, Size: 520, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 540, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: true, Optional: false, ArrayBound: 515, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-		},
-	}
-	tableBlockRecords[1] = TableBlockInfo{
 		Name: "DayGap", BuildVersion: BuildVersion, Size: 40, Align: 8, NumFields: 2,
 		Fields: []TableBlockFieldInfo{
 			{Name: "provider", Offset: 24, Size: 8, Kind: 11, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
@@ -554,25 +454,7 @@ func init() {
 				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 8, PresentOffset: 0xffffffff, Element: nil},
 		},
 	}
-	tableBlockRecords[2] = TableBlockInfo{
-		Name: "FleetMachineRow", BuildVersion: BuildVersion, Size: 160, Align: 8, NumFields: 1,
-		Fields: []TableBlockFieldInfo{
-			{Name: "name", Offset: 24, Size: 136, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 156, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: true, Optional: false, ArrayBound: 128, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-		},
-	}
-	tableBlockRecords[3] = TableBlockInfo{
-		Name: "Landing", BuildVersion: BuildVersion, Size: 312, Align: 8, NumFields: 3,
-		Fields: []TableBlockFieldInfo{
-			{Name: "at", Offset: 24, Size: 8, Kind: 5, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 8, PresentOffset: 0xffffffff, Element: nil},
-			{Name: "worker", Offset: 32, Size: 140, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 168, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: true, Optional: false, ArrayBound: 135, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-			{Name: "stream", Offset: 172, Size: 136, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 304, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: true, Optional: false, ArrayBound: 128, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-		},
-	}
-	tableBlockRecords[4] = TableBlockInfo{
+	tableBlockRecords[1] = TableBlockInfo{
 		Name: "LoadSample", BuildVersion: BuildVersion, Size: 40, Align: 8, NumFields: 2,
 		Fields: []TableBlockFieldInfo{
 			{Name: "at", Offset: 24, Size: 8, Kind: 5, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
@@ -581,7 +463,7 @@ func init() {
 				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 8, PresentOffset: 0xffffffff, Element: nil},
 		},
 	}
-	tableBlockRecords[5] = TableBlockInfo{
+	tableBlockRecords[2] = TableBlockInfo{
 		Name: "MeterTicks", BuildVersion: BuildVersion, Size: 40, Align: 8, NumFields: 2,
 		Fields: []TableBlockFieldInfo{
 			{Name: "busy", Offset: 24, Size: 8, Kind: 9, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
@@ -590,7 +472,7 @@ func init() {
 				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 8, PresentOffset: 0xffffffff, Element: nil},
 		},
 	}
-	tableBlockRecords[6] = TableBlockInfo{
+	tableBlockRecords[3] = TableBlockInfo{
 		Name: "ReadCardCounts", BuildVersion: BuildVersion, Size: 48, Align: 8, NumFields: 3,
 		Fields: []TableBlockFieldInfo{
 			{Name: "ready", Offset: 24, Size: 8, Kind: 5, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
@@ -601,7 +483,7 @@ func init() {
 				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 8, PresentOffset: 0xffffffff, Element: nil},
 		},
 	}
-	tableBlockRecords[7] = TableBlockInfo{
+	tableBlockRecords[4] = TableBlockInfo{
 		Name: "ReadsWindowView", BuildVersion: BuildVersion, Size: 48, Align: 8, NumFields: 3,
 		Fields: []TableBlockFieldInfo{
 			{Name: "ok", Offset: 24, Size: 8, Kind: 5, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
@@ -612,7 +494,7 @@ func init() {
 				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 8, PresentOffset: 0xffffffff, Element: nil},
 		},
 	}
-	tableBlockRecords[8] = TableBlockInfo{
+	tableBlockRecords[5] = TableBlockInfo{
 		Name: "ResetRow", BuildVersion: BuildVersion, Size: 40, Align: 8, NumFields: 2,
 		Fields: []TableBlockFieldInfo{
 			{Name: "ok", Offset: 24, Size: 8, Kind: 5, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
@@ -621,14 +503,7 @@ func init() {
 				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 8, PresentOffset: 0xffffffff, Element: nil},
 		},
 	}
-	tableBlockRecords[9] = TableBlockInfo{
-		Name: "RowName", BuildVersion: BuildVersion, Size: 168, Align: 8, NumFields: 1,
-		Fields: []TableBlockFieldInfo{
-			{Name: "name", Offset: 24, Size: 140, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 160, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: true, Optional: false, ArrayBound: 135, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-		},
-	}
-	tableBlockRecords[10] = TableBlockInfo{
+	tableBlockRecords[6] = TableBlockInfo{
 		Name: "RttSample", BuildVersion: BuildVersion, Size: 40, Align: 8, NumFields: 2,
 		Fields: []TableBlockFieldInfo{
 			{Name: "start", Offset: 24, Size: 8, Kind: 5, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
@@ -637,7 +512,7 @@ func init() {
 				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 8, PresentOffset: 0xffffffff, Element: nil},
 		},
 	}
-	tableBlockRecords[11] = TableBlockInfo{
+	tableBlockRecords[7] = TableBlockInfo{
 		Name: "Span", BuildVersion: BuildVersion, Size: 40, Align: 8, NumFields: 2,
 		Fields: []TableBlockFieldInfo{
 			{Name: "from", Offset: 24, Size: 8, Kind: 5, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
@@ -646,7 +521,7 @@ func init() {
 				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 8, PresentOffset: 0xffffffff, Element: nil},
 		},
 	}
-	tableBlockRecords[12] = TableBlockInfo{
+	tableBlockRecords[8] = TableBlockInfo{
 		Name: "StageStat", BuildVersion: BuildVersion, Size: 48, Align: 8, NumFields: 3,
 		Fields: []TableBlockFieldInfo{
 			{Name: "median_s", Offset: 24, Size: 8, Kind: 11, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
@@ -657,7 +532,7 @@ func init() {
 				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 8, PresentOffset: 0xffffffff, Element: nil},
 		},
 	}
-	tableBlockRecords[13] = TableBlockInfo{
+	tableBlockRecords[9] = TableBlockInfo{
 		Name: "Suppressed", BuildVersion: BuildVersion, Size: 64, Align: 8, NumFields: 5,
 		Fields: []TableBlockFieldInfo{
 			{Name: "epoch", Offset: 24, Size: 8, Kind: 9, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
@@ -674,285 +549,13 @@ func init() {
 	}
 }
 
-// CardIDBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
-// from the declared maxima (docs/SPEC-TABLES.md §19.1). A Go consumer does
-// not allocate a block — the bytes are handed to it — but it caps by this: a
-// playback buffer, a recording, a scratch copy all size from the generated
-// constant rather than from a number a person wrote down beside it.
-const CardIDBlockMaxBytes int64 = 576
+// table CardID has NO block form: it is VARIABLE-LENGTH: CardID.id is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
 
-// CardIDBlock is CardID's block: a pointer and a length, and then rows in place.
-// Opening one is ONE check and no copy; reading a row is one add (§19.2).
-//
-// The bytes belong to the CONSUMER — a []byte it owns, an mmap, or memory a
-// producer handed across. Nothing here allocates.
-//
-// A block is valid until the next fill over the SAME storage, which
-// invalidates every block over it and every row pointer taken from one.
-type CardIDBlock struct {
-	Base       unsafe.Pointer         // the extent's base, 64-byte aligned
-	Projection *CardIDBlockProjection // the projection, at offset 0
-	Bytes      int64                  // the extent in use
-}
-
-// ---- block fill path: begin ----
-// ---- block fill path: end ----
-// CardIDBlockOpen is the bool convenience for the handle's typed Open error.
-func CardIDBlockOpen(block *CardIDBlock, base unsafe.Pointer, bytes int64) bool {
-	return block.Open(base, bytes) == nil
-}
-
-// Open reads all prologue and layout words bytewise before the final base
-// alignment check. Every refusal names the first failed clause in SPEC §19.2.
-func (block *CardIDBlock) Open(base unsafe.Pointer, bytes int64) error {
-	*block = CardIDBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 544 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 544)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
-	}
-	used := int64(544)
-	padding := (64 - (used % 64)) % 64
-	if padding > bytes-used {
-		return TableRefuseTruncated
-	}
-	used += padding
-	if uintptr(base)%64 != 0 {
-		return TableRefuseUnalignedBase
-	}
-	block.Base = base
-	block.Projection = (*CardIDBlockProjection)(base)
-	block.Bytes = used
-	return nil
-}
-
-// CardIDCounts is gathered before Begin; clamping is the caller's policy.
-type CardIDCounts struct {
-}
-
-// CardIDBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
-type CardIDBlockStorage struct {
-	base       unsafe.Pointer
-	allocation []byte
-	allocator  TableBlockAllocator
-}
-
-func (s *CardIDBlockStorage) Create(a TableBlockAllocator) bool {
-	if s == nil || s.allocation != nil || a.Alloc == nil || a.Free == nil {
-		return false
-	}
-	raw := a.Alloc(CardIDBlockMaxBytes + 63)
-	if int64(len(raw)) < CardIDBlockMaxBytes+63 {
-		if raw != nil {
-			a.Free(raw)
-		}
-		return false
-	}
-	s.allocation = raw
-	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
-	return true
-}
-func (s *CardIDBlockStorage) Destroy() {
-	if s != nil && s.allocation != nil {
-		s.allocator.Free(s.allocation)
-		*s = CardIDBlockStorage{}
-	}
-}
-
-// ---- block fill path: begin ----
-// CardIDBlockBegin writes only the prologue and triples, never rows or padding.
-// Storage and all counts are checked before any byte of the extent changes.
-func CardIDBlockBegin(b *CardIDBlock, s *CardIDBlockStorage, c CardIDCounts, refusal *TableBlockRefusal) bool {
-	if refusal != nil {
-		*refusal = TableBlockRefusal{}
-	}
-	if b == nil {
-		return false
-	}
-	if s == nil || s.base == nil {
-		return false
-	}
-	p := (*CardIDBlockProjection)(s.base)
-	p.Magic = TableBlockMagic
-	p.BuildVersion = BuildVersion
-	p.ByteOrder = TableBlockByteOrder
-	offset := int64(544)
-	*b = CardIDBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
-	return true
-}
-
-func CardIDBlockBytes(b *CardIDBlock) int64 {
-	if b == nil || b.Projection == nil {
-		return 0
-	}
-	used := int64(544)
-	return (used + 63) &^ int64(63)
-}
-
-// ---- block fill path: end ----
-
-// Type is this block's descriptors: constant data, so a reflective read costs
-// a lookup and not a parse. The row layouts hang off the element column
-// rather than taking names of their own, so a walker reaches every record
-// through the graph.
-func (b *CardIDBlock) Type() *TableBlockInfo { return &tableBlockRecords[0] }
-
-// RowNameBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
-// from the declared maxima (docs/SPEC-TABLES.md §19.1). A Go consumer does
-// not allocate a block — the bytes are handed to it — but it caps by this: a
-// playback buffer, a recording, a scratch copy all size from the generated
-// constant rather than from a number a person wrote down beside it.
-const RowNameBlockMaxBytes int64 = 192
-
-// RowNameBlock is RowName's block: a pointer and a length, and then rows in place.
-// Opening one is ONE check and no copy; reading a row is one add (§19.2).
-//
-// The bytes belong to the CONSUMER — a []byte it owns, an mmap, or memory a
-// producer handed across. Nothing here allocates.
-//
-// A block is valid until the next fill over the SAME storage, which
-// invalidates every block over it and every row pointer taken from one.
-type RowNameBlock struct {
-	Base       unsafe.Pointer          // the extent's base, 64-byte aligned
-	Projection *RowNameBlockProjection // the projection, at offset 0
-	Bytes      int64                   // the extent in use
-}
-
-// ---- block fill path: begin ----
-// ---- block fill path: end ----
-// RowNameBlockOpen is the bool convenience for the handle's typed Open error.
-func RowNameBlockOpen(block *RowNameBlock, base unsafe.Pointer, bytes int64) bool {
-	return block.Open(base, bytes) == nil
-}
-
-// Open reads all prologue and layout words bytewise before the final base
-// alignment check. Every refusal names the first failed clause in SPEC §19.2.
-func (block *RowNameBlock) Open(base unsafe.Pointer, bytes int64) error {
-	*block = RowNameBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 168 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 168)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
-	}
-	used := int64(168)
-	padding := (64 - (used % 64)) % 64
-	if padding > bytes-used {
-		return TableRefuseTruncated
-	}
-	used += padding
-	if uintptr(base)%64 != 0 {
-		return TableRefuseUnalignedBase
-	}
-	block.Base = base
-	block.Projection = (*RowNameBlockProjection)(base)
-	block.Bytes = used
-	return nil
-}
-
-// RowNameCounts is gathered before Begin; clamping is the caller's policy.
-type RowNameCounts struct {
-}
-
-// RowNameBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
-type RowNameBlockStorage struct {
-	base       unsafe.Pointer
-	allocation []byte
-	allocator  TableBlockAllocator
-}
-
-func (s *RowNameBlockStorage) Create(a TableBlockAllocator) bool {
-	if s == nil || s.allocation != nil || a.Alloc == nil || a.Free == nil {
-		return false
-	}
-	raw := a.Alloc(RowNameBlockMaxBytes + 63)
-	if int64(len(raw)) < RowNameBlockMaxBytes+63 {
-		if raw != nil {
-			a.Free(raw)
-		}
-		return false
-	}
-	s.allocation = raw
-	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
-	return true
-}
-func (s *RowNameBlockStorage) Destroy() {
-	if s != nil && s.allocation != nil {
-		s.allocator.Free(s.allocation)
-		*s = RowNameBlockStorage{}
-	}
-}
-
-// ---- block fill path: begin ----
-// RowNameBlockBegin writes only the prologue and triples, never rows or padding.
-// Storage and all counts are checked before any byte of the extent changes.
-func RowNameBlockBegin(b *RowNameBlock, s *RowNameBlockStorage, c RowNameCounts, refusal *TableBlockRefusal) bool {
-	if refusal != nil {
-		*refusal = TableBlockRefusal{}
-	}
-	if b == nil {
-		return false
-	}
-	if s == nil || s.base == nil {
-		return false
-	}
-	p := (*RowNameBlockProjection)(s.base)
-	p.Magic = TableBlockMagic
-	p.BuildVersion = BuildVersion
-	p.ByteOrder = TableBlockByteOrder
-	offset := int64(168)
-	*b = RowNameBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
-	return true
-}
-
-func RowNameBlockBytes(b *RowNameBlock) int64 {
-	if b == nil || b.Projection == nil {
-		return 0
-	}
-	used := int64(168)
-	return (used + 63) &^ int64(63)
-}
-
-// ---- block fill path: end ----
-
-// Type is this block's descriptors: constant data, so a reflective read costs
-// a lookup and not a parse. The row layouts hang off the element column
-// rather than taking names of their own, so a walker reaches every record
-// through the graph.
-func (b *RowNameBlock) Type() *TableBlockInfo { return &tableBlockRecords[9] }
+// table RowName has NO block form: it is VARIABLE-LENGTH: RowName.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
 
 // table Line has NO block form: it is VARIABLE-LENGTH: Line.text is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
@@ -971,6 +574,14 @@ func (b *RowNameBlock) Type() *TableBlockInfo { return &tableBlockRecords[9] }
 // absent by construction rather than by refusal.
 
 // table IntList has NO block form: it is VARIABLE-LENGTH: IntList.pairs is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table IntListPair has NO block form: it is VARIABLE-LENGTH: IntListPair.key is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table LineListPair has NO block form: it is VARIABLE-LENGTH: LineListPair.key is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -1112,7 +723,7 @@ func StageStatBlockBytes(b *StageStatBlock) int64 {
 // a lookup and not a parse. The row layouts hang off the element column
 // rather than taking names of their own, so a walker reaches every record
 // through the graph.
-func (b *StageStatBlock) Type() *TableBlockInfo { return &tableBlockRecords[12] }
+func (b *StageStatBlock) Type() *TableBlockInfo { return &tableBlockRecords[8] }
 
 // table StageStatPair has NO block form: it is VARIABLE-LENGTH: StageStatPair.stage is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
@@ -1122,7 +733,7 @@ func (b *StageStatBlock) Type() *TableBlockInfo { return &tableBlockRecords[12] 
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table StageTimesStreamsEntry has NO block form: it is the generated ENTRY of the map StageTimes.streams, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (docs/SPEC-TABLES.md §19).
+// table StreamStagesPair has NO block form: it is VARIABLE-LENGTH: StreamStagesPair.key is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -1139,6 +750,10 @@ func (b *StageStatBlock) Type() *TableBlockInfo { return &tableBlockRecords[12] 
 // absent by construction rather than by refusal.
 
 // table ReaderSpend has NO block form: it is VARIABLE-LENGTH: ReaderSpend.usd is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table ReaderSpendPair has NO block form: it is VARIABLE-LENGTH: ReaderSpendPair.key is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -1280,17 +895,13 @@ func DayGapBlockBytes(b *DayGapBlock) int64 {
 // a lookup and not a parse. The row layouts hang off the element column
 // rather than taking names of their own, so a walker reaches every record
 // through the graph.
-func (b *DayGapBlock) Type() *TableBlockInfo { return &tableBlockRecords[1] }
+func (b *DayGapBlock) Type() *TableBlockInfo { return &tableBlockRecords[0] }
 
 // table DayGapPair has NO block form: it is VARIABLE-LENGTH: DayGapPair.day is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
 // table CostReconcileRecord has NO block form: it is VARIABLE-LENGTH: CostReconcileRecord.provider is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
-// Its wire (§3) is unaffected — only this projection is absent, and it is
-// absent by construction rather than by refusal.
-
-// table TierCostsReadersEntry has NO block form: it is the generated ENTRY of the map TierCosts.readers, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -1302,151 +913,15 @@ func (b *DayGapBlock) Type() *TableBlockInfo { return &tableBlockRecords[1] }
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table CriticalCard has NO block form: it is VARIABLE-LENGTH: CriticalCard.state is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table CriticalCard has NO block form: it is VARIABLE-LENGTH: CriticalCard.id is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// LandingBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
-// from the declared maxima (docs/SPEC-TABLES.md §19.1). A Go consumer does
-// not allocate a block — the bytes are handed to it — but it caps by this: a
-// playback buffer, a recording, a scratch copy all size from the generated
-// constant rather than from a number a person wrote down beside it.
-const LandingBlockMaxBytes int64 = 320
+// table Landing has NO block form: it is VARIABLE-LENGTH: Landing.worker is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
 
-// LandingBlock is Landing's block: a pointer and a length, and then rows in place.
-// Opening one is ONE check and no copy; reading a row is one add (§19.2).
-//
-// The bytes belong to the CONSUMER — a []byte it owns, an mmap, or memory a
-// producer handed across. Nothing here allocates.
-//
-// A block is valid until the next fill over the SAME storage, which
-// invalidates every block over it and every row pointer taken from one.
-type LandingBlock struct {
-	Base       unsafe.Pointer          // the extent's base, 64-byte aligned
-	Projection *LandingBlockProjection // the projection, at offset 0
-	Bytes      int64                   // the extent in use
-}
-
-// ---- block fill path: begin ----
-// ---- block fill path: end ----
-// LandingBlockOpen is the bool convenience for the handle's typed Open error.
-func LandingBlockOpen(block *LandingBlock, base unsafe.Pointer, bytes int64) bool {
-	return block.Open(base, bytes) == nil
-}
-
-// Open reads all prologue and layout words bytewise before the final base
-// alignment check. Every refusal names the first failed clause in SPEC §19.2.
-func (block *LandingBlock) Open(base unsafe.Pointer, bytes int64) error {
-	*block = LandingBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 312 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 312)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
-	}
-	used := int64(312)
-	padding := (64 - (used % 64)) % 64
-	if padding > bytes-used {
-		return TableRefuseTruncated
-	}
-	used += padding
-	if uintptr(base)%64 != 0 {
-		return TableRefuseUnalignedBase
-	}
-	block.Base = base
-	block.Projection = (*LandingBlockProjection)(base)
-	block.Bytes = used
-	return nil
-}
-
-// LandingCounts is gathered before Begin; clamping is the caller's policy.
-type LandingCounts struct {
-}
-
-// LandingBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
-type LandingBlockStorage struct {
-	base       unsafe.Pointer
-	allocation []byte
-	allocator  TableBlockAllocator
-}
-
-func (s *LandingBlockStorage) Create(a TableBlockAllocator) bool {
-	if s == nil || s.allocation != nil || a.Alloc == nil || a.Free == nil {
-		return false
-	}
-	raw := a.Alloc(LandingBlockMaxBytes + 63)
-	if int64(len(raw)) < LandingBlockMaxBytes+63 {
-		if raw != nil {
-			a.Free(raw)
-		}
-		return false
-	}
-	s.allocation = raw
-	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
-	return true
-}
-func (s *LandingBlockStorage) Destroy() {
-	if s != nil && s.allocation != nil {
-		s.allocator.Free(s.allocation)
-		*s = LandingBlockStorage{}
-	}
-}
-
-// ---- block fill path: begin ----
-// LandingBlockBegin writes only the prologue and triples, never rows or padding.
-// Storage and all counts are checked before any byte of the extent changes.
-func LandingBlockBegin(b *LandingBlock, s *LandingBlockStorage, c LandingCounts, refusal *TableBlockRefusal) bool {
-	if refusal != nil {
-		*refusal = TableBlockRefusal{}
-	}
-	if b == nil {
-		return false
-	}
-	if s == nil || s.base == nil {
-		return false
-	}
-	p := (*LandingBlockProjection)(s.base)
-	p.Magic = TableBlockMagic
-	p.BuildVersion = BuildVersion
-	p.ByteOrder = TableBlockByteOrder
-	offset := int64(312)
-	*b = LandingBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
-	return true
-}
-
-func LandingBlockBytes(b *LandingBlock) int64 {
-	if b == nil || b.Projection == nil {
-		return 0
-	}
-	used := int64(312)
-	return (used + 63) &^ int64(63)
-}
-
-// ---- block fill path: end ----
-
-// Type is this block's descriptors: constant data, so a reflective read costs
-// a lookup and not a parse. The row layouts hang off the element column
-// rather than taking names of their own, so a walker reaches every record
-// through the graph.
-func (b *LandingBlock) Type() *TableBlockInfo { return &tableBlockRecords[3] }
-
-// table ArchivedFleetCard has NO block form: it is VARIABLE-LENGTH: ArchivedFleetCard.col is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table ArchivedFleetCard has NO block form: it is VARIABLE-LENGTH: ArchivedFleetCard.row is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -1596,7 +1071,7 @@ func ReadCardCountsBlockBytes(b *ReadCardCountsBlock) int64 {
 // a lookup and not a parse. The row layouts hang off the element column
 // rather than taking names of their own, so a walker reaches every record
 // through the graph.
-func (b *ReadCardCountsBlock) Type() *TableBlockInfo { return &tableBlockRecords[6] }
+func (b *ReadCardCountsBlock) Type() *TableBlockInfo { return &tableBlockRecords[3] }
 
 // ReadsWindowViewBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
 // from the declared maxima (docs/SPEC-TABLES.md §19.1). A Go consumer does
@@ -1736,7 +1211,7 @@ func ReadsWindowViewBlockBytes(b *ReadsWindowViewBlock) int64 {
 // a lookup and not a parse. The row layouts hang off the element column
 // rather than taking names of their own, so a walker reaches every record
 // through the graph.
-func (b *ReadsWindowViewBlock) Type() *TableBlockInfo { return &tableBlockRecords[7] }
+func (b *ReadsWindowViewBlock) Type() *TableBlockInfo { return &tableBlockRecords[4] }
 
 // table StreamTransition has NO block form: it is VARIABLE-LENGTH: StreamTransition.state is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
@@ -1754,35 +1229,11 @@ func (b *ReadsWindowViewBlock) Type() *TableBlockInfo { return &tableBlockRecord
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table WhereRecordHeldStreamsEntry has NO block form: it is the generated ENTRY of the map WhereRecord.held_streams, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (docs/SPEC-TABLES.md §19).
+// table SentinelPair has NO block form: it is VARIABLE-LENGTH: SentinelPair.key is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table WhereRecordSentinelsEntry has NO block form: it is the generated ENTRY of the map WhereRecord.sentinels, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (docs/SPEC-TABLES.md §19).
-// Its wire (§3) is unaffected — only this projection is absent, and it is
-// absent by construction rather than by refusal.
-
-// table WhereRecordStreamsEntry has NO block form: it is the generated ENTRY of the map WhereRecord.streams, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (docs/SPEC-TABLES.md §19).
-// Its wire (§3) is unaffected — only this projection is absent, and it is
-// absent by construction rather than by refusal.
-
-// table WhereRecordDealtFleetEntry has NO block form: it is the generated ENTRY of the map WhereRecord.dealt_fleet, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (docs/SPEC-TABLES.md §19).
-// Its wire (§3) is unaffected — only this projection is absent, and it is
-// absent by construction rather than by refusal.
-
-// table WhereRecordStreamPrioritiesEntry has NO block form: it is the generated ENTRY of the map WhereRecord.stream_priorities, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (docs/SPEC-TABLES.md §19).
-// Its wire (§3) is unaffected — only this projection is absent, and it is
-// absent by construction rather than by refusal.
-
-// table WhereRecordRowCardsEntry has NO block form: it is the generated ENTRY of the map WhereRecord.row_cards, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (docs/SPEC-TABLES.md §19).
-// Its wire (§3) is unaffected — only this projection is absent, and it is
-// absent by construction rather than by refusal.
-
-// table WhereRecordFixStatesEntry has NO block form: it is the generated ENTRY of the map WhereRecord.fix_states, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (docs/SPEC-TABLES.md §19).
-// Its wire (§3) is unaffected — only this projection is absent, and it is
-// absent by construction rather than by refusal.
-
-// table WhereRecordRowWorkingEntry has NO block form: it is the generated ENTRY of the map WhereRecord.row_working, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (docs/SPEC-TABLES.md §19).
+// table TierCostsPair has NO block form: it is VARIABLE-LENGTH: TierCostsPair.key is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -1928,7 +1379,7 @@ func RttSampleBlockBytes(b *RttSampleBlock) int64 {
 // a lookup and not a parse. The row layouts hang off the element column
 // rather than taking names of their own, so a walker reaches every record
 // through the graph.
-func (b *RttSampleBlock) Type() *TableBlockInfo { return &tableBlockRecords[10] }
+func (b *RttSampleBlock) Type() *TableBlockInfo { return &tableBlockRecords[6] }
 
 // table StoreRTTRecord has NO block form: it is VARIABLE-LENGTH: StoreRTTRecord.samples is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
@@ -2092,7 +1543,7 @@ func LoadSampleBlockBytes(b *LoadSampleBlock) int64 {
 // a lookup and not a parse. The row layouts hang off the element column
 // rather than taking names of their own, so a walker reaches every record
 // through the graph.
-func (b *LoadSampleBlock) Type() *TableBlockInfo { return &tableBlockRecords[4] }
+func (b *LoadSampleBlock) Type() *TableBlockInfo { return &tableBlockRecords[1] }
 
 // MeterTicksBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
 // from the declared maxima (docs/SPEC-TABLES.md §19.1). A Go consumer does
@@ -2232,13 +1683,13 @@ func MeterTicksBlockBytes(b *MeterTicksBlock) int64 {
 // a lookup and not a parse. The row layouts hang off the element column
 // rather than taking names of their own, so a walker reaches every record
 // through the graph.
-func (b *MeterTicksBlock) Type() *TableBlockInfo { return &tableBlockRecords[5] }
+func (b *MeterTicksBlock) Type() *TableBlockInfo { return &tableBlockRecords[2] }
 
 // table MeterHolder has NO block form: it is VARIABLE-LENGTH: MeterHolder.command is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table MeterFiles has NO block form: it is VARIABLE-LENGTH: MeterHolder.command is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table MeterFiles has NO block form: it is VARIABLE-LENGTH: MeterFiles.top is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -2258,7 +1709,7 @@ func (b *MeterTicksBlock) Type() *TableBlockInfo { return &tableBlockRecords[5] 
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table CheckedCard has NO block form: it is VARIABLE-LENGTH: CheckedCard.tier is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table CheckedCard has NO block form: it is VARIABLE-LENGTH: CheckedCard.id is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -2266,145 +1717,9 @@ func (b *MeterTicksBlock) Type() *TableBlockInfo { return &tableBlockRecords[5] 
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// FleetMachineRowBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
-// from the declared maxima (docs/SPEC-TABLES.md §19.1). A Go consumer does
-// not allocate a block — the bytes are handed to it — but it caps by this: a
-// playback buffer, a recording, a scratch copy all size from the generated
-// constant rather than from a number a person wrote down beside it.
-const FleetMachineRowBlockMaxBytes int64 = 192
-
-// FleetMachineRowBlock is FleetMachineRow's block: a pointer and a length, and then rows in place.
-// Opening one is ONE check and no copy; reading a row is one add (§19.2).
-//
-// The bytes belong to the CONSUMER — a []byte it owns, an mmap, or memory a
-// producer handed across. Nothing here allocates.
-//
-// A block is valid until the next fill over the SAME storage, which
-// invalidates every block over it and every row pointer taken from one.
-type FleetMachineRowBlock struct {
-	Base       unsafe.Pointer                  // the extent's base, 64-byte aligned
-	Projection *FleetMachineRowBlockProjection // the projection, at offset 0
-	Bytes      int64                           // the extent in use
-}
-
-// ---- block fill path: begin ----
-// ---- block fill path: end ----
-// FleetMachineRowBlockOpen is the bool convenience for the handle's typed Open error.
-func FleetMachineRowBlockOpen(block *FleetMachineRowBlock, base unsafe.Pointer, bytes int64) bool {
-	return block.Open(base, bytes) == nil
-}
-
-// Open reads all prologue and layout words bytewise before the final base
-// alignment check. Every refusal names the first failed clause in SPEC §19.2.
-func (block *FleetMachineRowBlock) Open(base unsafe.Pointer, bytes int64) error {
-	*block = FleetMachineRowBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 160 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 160)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
-	}
-	used := int64(160)
-	padding := (64 - (used % 64)) % 64
-	if padding > bytes-used {
-		return TableRefuseTruncated
-	}
-	used += padding
-	if uintptr(base)%64 != 0 {
-		return TableRefuseUnalignedBase
-	}
-	block.Base = base
-	block.Projection = (*FleetMachineRowBlockProjection)(base)
-	block.Bytes = used
-	return nil
-}
-
-// FleetMachineRowCounts is gathered before Begin; clamping is the caller's policy.
-type FleetMachineRowCounts struct {
-}
-
-// FleetMachineRowBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
-type FleetMachineRowBlockStorage struct {
-	base       unsafe.Pointer
-	allocation []byte
-	allocator  TableBlockAllocator
-}
-
-func (s *FleetMachineRowBlockStorage) Create(a TableBlockAllocator) bool {
-	if s == nil || s.allocation != nil || a.Alloc == nil || a.Free == nil {
-		return false
-	}
-	raw := a.Alloc(FleetMachineRowBlockMaxBytes + 63)
-	if int64(len(raw)) < FleetMachineRowBlockMaxBytes+63 {
-		if raw != nil {
-			a.Free(raw)
-		}
-		return false
-	}
-	s.allocation = raw
-	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
-	return true
-}
-func (s *FleetMachineRowBlockStorage) Destroy() {
-	if s != nil && s.allocation != nil {
-		s.allocator.Free(s.allocation)
-		*s = FleetMachineRowBlockStorage{}
-	}
-}
-
-// ---- block fill path: begin ----
-// FleetMachineRowBlockBegin writes only the prologue and triples, never rows or padding.
-// Storage and all counts are checked before any byte of the extent changes.
-func FleetMachineRowBlockBegin(b *FleetMachineRowBlock, s *FleetMachineRowBlockStorage, c FleetMachineRowCounts, refusal *TableBlockRefusal) bool {
-	if refusal != nil {
-		*refusal = TableBlockRefusal{}
-	}
-	if b == nil {
-		return false
-	}
-	if s == nil || s.base == nil {
-		return false
-	}
-	p := (*FleetMachineRowBlockProjection)(s.base)
-	p.Magic = TableBlockMagic
-	p.BuildVersion = BuildVersion
-	p.ByteOrder = TableBlockByteOrder
-	offset := int64(160)
-	*b = FleetMachineRowBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
-	return true
-}
-
-func FleetMachineRowBlockBytes(b *FleetMachineRowBlock) int64 {
-	if b == nil || b.Projection == nil {
-		return 0
-	}
-	used := int64(160)
-	return (used + 63) &^ int64(63)
-}
-
-// ---- block fill path: end ----
-
-// Type is this block's descriptors: constant data, so a reflective read costs
-// a lookup and not a parse. The row layouts hang off the element column
-// rather than taking names of their own, so a walker reaches every record
-// through the graph.
-func (b *FleetMachineRowBlock) Type() *TableBlockInfo { return &tableBlockRecords[2] }
+// table FleetMachineRow has NO block form: it is VARIABLE-LENGTH: FleetMachineRow.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
 
 // table FleetDropDebt has NO block form: it is VARIABLE-LENGTH: FleetDropDebt.members is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
@@ -2548,17 +1863,17 @@ func ResetRowBlockBytes(b *ResetRowBlock) int64 {
 // a lookup and not a parse. The row layouts hang off the element column
 // rather than taking names of their own, so a walker reaches every record
 // through the graph.
-func (b *ResetRowBlock) Type() *TableBlockInfo { return &tableBlockRecords[8] }
+func (b *ResetRowBlock) Type() *TableBlockInfo { return &tableBlockRecords[5] }
 
 // table ResetStream has NO block form: it is VARIABLE-LENGTH: ResetStream.cost is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table ResetMarkRowsEntry has NO block form: it is the generated ENTRY of the map ResetMark.rows, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (docs/SPEC-TABLES.md §19).
+// table ResetRowPair has NO block form: it is VARIABLE-LENGTH: ResetRowPair.key is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table ResetMarkStreamsEntry has NO block form: it is the generated ENTRY of the map ResetMark.streams, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (docs/SPEC-TABLES.md §19).
+// table ResetStreamPair has NO block form: it is VARIABLE-LENGTH: ResetStreamPair.key is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -2574,15 +1889,15 @@ func (b *ResetRowBlock) Type() *TableBlockInfo { return &tableBlockRecords[8] }
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
+// table StreamBasePair has NO block form: it is VARIABLE-LENGTH: StreamBasePair.key is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
 // table KindTime has NO block form: it is VARIABLE-LENGTH: KindTime.kind is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
 // table TidyInFlight has NO block form: it is VARIABLE-LENGTH: TidyInFlight.archive is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
-// Its wire (§3) is unaffected — only this projection is absent, and it is
-// absent by construction rather than by refusal.
-
-// table StatsRecordStreamsEntry has NO block form: it is the generated ENTRY of the map StatsRecord.streams, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -2607,10 +1922,6 @@ func (b *ResetRowBlock) Type() *TableBlockInfo { return &tableBlockRecords[8] }
 // absent by construction rather than by refusal.
 
 // table RouteStat has NO block form: it is VARIABLE-LENGTH: Route.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
-// Its wire (§3) is unaffected — only this projection is absent, and it is
-// absent by construction rather than by refusal.
-
-// table StatsArchiveStreamsEntry has NO block form: it is the generated ENTRY of the map StatsArchive.streams, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -2772,7 +2083,7 @@ func SpanBlockBytes(b *SpanBlock) int64 {
 // a lookup and not a parse. The row layouts hang off the element column
 // rather than taking names of their own, so a walker reaches every record
 // through the graph.
-func (b *SpanBlock) Type() *TableBlockInfo { return &tableBlockRecords[11] }
+func (b *SpanBlock) Type() *TableBlockInfo { return &tableBlockRecords[7] }
 
 // table StopLease has NO block form: it is VARIABLE-LENGTH: StopLease.lease_table is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
@@ -2924,7 +2235,7 @@ func SuppressedBlockBytes(b *SuppressedBlock) int64 {
 // a lookup and not a parse. The row layouts hang off the element column
 // rather than taking names of their own, so a walker reaches every record
 // through the graph.
-func (b *SuppressedBlock) Type() *TableBlockInfo { return &tableBlockRecords[13] }
+func (b *SuppressedBlock) Type() *TableBlockInfo { return &tableBlockRecords[9] }
 
 // table Heartbeat has NO block form: it is VARIABLE-LENGTH: Heartbeat.error is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is

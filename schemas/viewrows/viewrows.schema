@@ -14,37 +14,25 @@
 // does not bound is a VARIABLE table with open lists ([]T) and unbounded text
 // (*string), sized by content and held whole. The bound table of the pull
 // request names, field by field, the file and line of the code that enforces
-// each declared bound; a field with no bound in the code has none here.
+// each declared bound; a field with no bound every path enforces has none here.
 //
-// What is bounded here, and by what:
-//   - an identity word (a stream, a member, a reader, a friend) is a
-//     sprint.ValidID word of at most sprint.MaxIDLen (128) bytes
-//     (internal/sprint/schema.go:289-292);
-//   - a card id is at most four ValidID words joined by dots, 4*128+3 = 515
-//     (internal/sprint/schema.go:296-311);
-//   - a fleet row is a member name or "friend." and a friend name, 7+128 = 135
-//     (internal/sprint/select_batch.go:54);
-//   - a note lists at most sprint.MaxListed (50) primaries
-//     (internal/sprint/notes.go:406-412), a log line's cause is cut to
-//     sprint.MaxCause (300) (internal/sprint/store/engine.go:1103-1104 and
-//     1527-1528), a timer note is at most sprint.MaxTimerNote (512)
-//     (internal/sprint/timers.go:67-75), a check record keeps at most
-//     MaxCheckFindings (200) lines (internal/sprint/store/check_record.go:80-81),
-//     the machine keeps at most MaxStopSpans (1000) spans
-//     (internal/sprint/store/machine_transition.go:172-173 and 449-450), the
-//     where record keeps at most sprint.MaxRecentLandings (10000) landings
-//     (internal/sprint/rate.go:91), five critical cards
-//     (internal/sprint/weight.go:131-143, where.go:162), three blockers
-//     (internal/sprint/idle.go:117-129, where.go:166), a file reading lists at
-//     most hostload.FilesTop (10) holders (pkg/hostload/files.go:147-155), the
-//     heartbeat holds the four table revisions (tick.go Heartbeat.Revisions)
-//     and a sha256 in hex is 64 bytes (internal/sprint/cardcheck.go:678-692).
+// What is bounded here, and by what: one thing only. Heartbeat.revisions is
+// the four table revisions, a Go [4]uint64 (internal/sprint/store/tick.go:199),
+// so every writer (tick.go:945, 1016, 1130) can only assign four and every
+// reader (tick.go:383 and 406 through getJSON, where.go:526 through getKeys)
+// unmarshals into the same array and holds exactly four.
 //
-// A Go map keyed by a ValidID word (a stream, a fleet row, a reader) is a map
-// here, its key bounded by that word. A Go map keyed by any other word (a
-// tier, a route, a provider, a day, a column, a level, a text field) has no
-// key bound in the code, so it is a list of pairs in key order with the key
-// as unbounded text.
+// Every other cap the code names (a card id of 515 bytes, a fleet row of 135,
+// a stream word of 128, the note's 50 primaries, the where record's 10000
+// landings, 5 critical cards and 3 blockers, the check record's 200 findings,
+// the machine's 1000 spans, the 10 file holders, a log line's 300-byte cause, a
+// timer's 512-byte note, a sha256 in hex) binds one writer path only. The
+// readers of these stored records are plain json.Unmarshal and keep any
+// length, count and map key (readWhere, internal/sprint/store/where.go:230-235;
+// CheckRecordOf, check_record.go:46-51, which does not apply MaxCheckFindings),
+// so none is a bound every path enforces: lists are open ([]T), text is
+// unbounded (*string) and a map keyed by any text is a list of pairs in key
+// order with the key as unbounded text.
 //
 // Times are Unix nanoseconds UTC, 0 for the zero time, except where a comment
 // names another unit. Go ints are int64. A record the Go struct carries with
@@ -54,17 +42,19 @@ package viewrowswire
 // ---------------------------------------------------------------------------
 // Words, lists and pairs.
 
-// CardID is a card's id: sprint.ValidCardID, at most 515 bytes.
-fixed table CardID
+// CardID is a card's id (sprint.ValidCardID writes it). The readers of the
+// stored records are plain json.Unmarshal and keep any length, so the text is
+// unbounded.
+table CardID
 {
-    id string(515)
+    id *string
 }
 
-// RowName is one fleet row: a member name or "friend." and a friend name, at
-// most 135 bytes.
-fixed table RowName
+// RowName is one fleet row: a member name or "friend." and a friend name. The
+// readers keep any length, so the text is unbounded.
+table RowName
 {
-    name string(135)
+    name *string
 }
 
 // Line is one text the code does not bound.
@@ -99,6 +89,21 @@ table IntList
     pairs []IntPair
 }
 
+// IntListPair is one entry of a map of count maps in key order: a name and its
+// counts.
+table IntListPair
+{
+    key  *string
+    list IntList
+}
+
+// LineListPair is one entry of a map of text lists in key order.
+table LineListPair
+{
+    key  *string
+    list LineList
+}
+
 // ---------------------------------------------------------------------------
 // Stage times, costs and the small where pieces (internal/sprint).
 
@@ -124,12 +129,19 @@ table StageStats
     stages []StageStatPair
 }
 
+// StreamStagesPair is one stream's stages in StageTimes.Streams in key order.
+table StreamStagesPair
+{
+    key   *string
+    stats StageStats
+}
+
 // StageTimes is the stage stats over every stream and per stream
 // (sprint.StageTimes).
 table StageTimes
 {
     all     []StageStatPair
-    streams map[string(128)]StageStats
+    streams []StreamStagesPair
 }
 
 // ReadDay is one route's reads of a UTC day (sprint.ReadDay).
@@ -156,6 +168,13 @@ table ReaderSpend
     hour_priced int64
     hour_usd    *string
     tokens      int64
+}
+
+// ReaderSpendPair is one reader in TierCosts.Readers in key order.
+table ReaderSpendPair
+{
+    key   *string
+    spend ReaderSpend
 }
 
 // DayGap is one day's reconciliation (sprint.DayGap).
@@ -207,7 +226,7 @@ table TierCosts
     reads_today     []ReadDayPair
     unpriced_runs   int64
     reads_no_tokens int64
-    readers         map[string(128)]ReaderSpend
+    readers         []ReaderSpendPair
     in_flight       *string
     unreconciled    *string
     reconciles      []CostReconcileRecord
@@ -228,25 +247,26 @@ table CostCheck
 // CriticalCard is one of where's critical lines (sprint.CriticalCard).
 table CriticalCard
 {
-    id     string(515)
+    id     *string
     behind int64
     state  *string
 }
 
 // Landing is one card's landing (sprint.Landing): at is Unix seconds, worker
-// a fleet row and stream the card's stream.
-fixed table Landing
+// a fleet row and stream the card's stream. The readers keep any length, so
+// the texts are unbounded.
+table Landing
 {
     at     int64
-    worker string(135)
-    stream string(128)
+    worker *string
+    stream *string
 }
 
 // ArchivedFleetCard is a work card of an archived stream in a fleet done cell
 // (sprint.ArchivedFleetCard): at is Unix seconds, 0 with no stamp.
 table ArchivedFleetCard
 {
-    row string(135)
+    row *string
     col *string
     at  int64
 }
@@ -328,7 +348,8 @@ table CoordinatorDelivery
 }
 
 // Note is one notification (sprint.Note). Note.Bound cuts the listed
-// primaries to MaxListed (50).
+// primaries to MaxListed (50) on the writer's side only; the readers keep any
+// count, so the list is open.
 table Note
 {
     stream_transition        *StreamTransition
@@ -342,7 +363,7 @@ table Note
     kind                     *string
     note_type                *string              | json = "type"
     stream                   *string
-    primaries                [..50]CardID
+    primaries                []CardID
     count                    int64
     what                     *string
     who                      *string
@@ -369,7 +390,23 @@ table Note
 // ---------------------------------------------------------------------------
 // The where record (where.go).
 
-// WhereRecord is store.WhereRecord (key "where").
+// SentinelPair is one stream in WhereRecord.Sentinels in key order.
+table SentinelPair
+{
+    key    *string
+    counts SentinelCounts
+}
+
+// TierCostsPair is one stream in WhereRecord.Streams in key order.
+table TierCostsPair
+{
+    key   *string
+    costs TierCosts
+}
+
+// WhereRecord is store.WhereRecord (key "where"). Every list is open and every
+// map is a list of pairs in key order with the key as unbounded text: the
+// readers (readWhere) are plain json.Unmarshal and keep any count and length.
 table WhereRecord
 {
     decision_holds         []Note
@@ -377,25 +414,25 @@ table WhereRecord
     epoch                  uint64
     rev                    uint64
     held                   int64
-    held_streams           map[string(128)]int64
-    landings               [..10000]int64
-    critical               [..5]CriticalCard
-    blockers               [..3]Line
-    sentinels              map[string(128)]SentinelCounts
+    held_streams           []IntPair
+    landings               []int64
+    critical               []CriticalCard
+    blockers               []Line
+    sentinels              []SentinelPair
     tiers                  []IntPair
-    streams                map[string(128)]TierCosts
+    streams                []TierCostsPair
     cost_check             *CostCheck
     stage_times            StageTimes
-    dealt_fleet            map[string(128)]int64
+    dealt_fleet            []IntPair
     reads_waiting          int64
     priorities             []PriorityCards
-    stream_priorities      map[string(128)]Line
+    stream_priorities      []TextPair
     reads_window           ReadsWindowView
     fleet_rev              uint64
-    row_cards              map[string(135)]IntList
+    row_cards              []IntListPair
     read_cards             ReadCardCounts
-    fix_states             map[string(135)]IntList
-    row_working            map[string(135)]LineList
+    fix_states             []IntListPair
+    row_working            []LineListPair
     stats                  *string
     series                 []Landing
     series_counted         bool
@@ -503,7 +540,8 @@ table MeterHolder
 }
 
 // MeterFiles is one reading of open file descriptors (hostload.Files): top
-// lists at most hostload.FilesTop (10) holders.
+// lists the holders; the writer keeps hostload.FilesTop (10) and the readers
+// keep any count, so the list is open.
 table MeterFiles
 {
     at      int64
@@ -511,7 +549,7 @@ table MeterFiles
     max     int64
     warn    int64
     alarm   int64
-    top     [..10]MeterHolder
+    top     []MeterHolder
     top_at  int64
     top_err *string
 }
@@ -576,20 +614,21 @@ table Beat
 // The check record (check_record.go).
 
 // CheckedCard is one card as the check record keeps it (sprint.CheckedCard):
-// brief is the sha256 of the card's brief in hex, 64 bytes.
+// brief is the sha256 of the card's brief in hex.
 table CheckedCard
 {
-    id       string(515)
-    stream   string(128)
+    id       *string
+    stream   *string
     tier     *string
     priority *string
     needs    *string
-    brief    string(64)
+    brief    *string
 }
 
 // CheckRecord is the check record (store.CheckRecord, key "cardcheck"):
-// findings are at most MaxCheckFindings (200) lines and digest is
-// sprint.CardsDigest, a sha256 in hex, 64 bytes.
+// PutCardCheck cuts the findings to MaxCheckFindings (200) but CheckRecordOf
+// (check_record.go:46-51) does not, so the list is open; digest is
+// sprint.CardsDigest, a sha256 in hex.
 table CheckRecord
 {
     epoch    uint64
@@ -598,19 +637,19 @@ table CheckRecord
     clean    bool
     streams  []Line
     kinds    *string
-    findings [..200]Line
+    findings []Line
     cards    []CheckedCard
-    digest   string(64)
+    digest   *string
 }
 
 // ---------------------------------------------------------------------------
 // The fleet drop debt (fleet_rows.go).
 
-// FleetMachineRow is one member whose fleet row the cleanup deleted: a
-// sprint.ValidID member name.
-fixed table FleetMachineRow
+// FleetMachineRow is one member whose fleet row the cleanup deleted: a member
+// name. The readers keep any length, so the text is unbounded.
+table FleetMachineRow
 {
-    name string(128)
+    name *string
 }
 
 // FleetDropDebt is the fleet-drop-debt record (key "fleet-drop-debt"): the
@@ -643,6 +682,20 @@ table ResetStream
     cost_by_tier []TextPair
 }
 
+// ResetRowPair is one fleet row in ResetMark.Rows in key order.
+table ResetRowPair
+{
+    key *string
+    row ResetRow
+}
+
+// ResetStreamPair is one stream in ResetMark.Streams in key order.
+table ResetStreamPair
+{
+    key    *string
+    stream ResetStream
+}
+
 // ResetMark is a stats reset (sprint.ResetMark), stored on the stats record.
 table ResetMark
 {
@@ -650,8 +703,8 @@ table ResetMark
     epoch        uint64
     by           *string
     reason       *string
-    rows         map[string(135)]ResetRow
-    streams      map[string(128)]ResetStream
+    rows         []ResetRowPair
+    streams      []ResetStreamPair
     total_cost   *string
     unreconciled *string
     op           *string
@@ -673,6 +726,14 @@ table StreamBase
 {
     cost   *string
     landed int64
+}
+
+// StreamBasePair is one stream in StatsRecord.Streams and StatsArchive.Streams
+// in key order.
+table StreamBasePair
+{
+    key     *string
+    figures StreamBase
 }
 
 // KindTime is one tidy kind's last time.
@@ -700,9 +761,9 @@ table StatsRecord
     reason     *string
     by         *string
     kinds      []KindTime
-    streams    map[string(128)]StreamBase
+    streams    []StreamBasePair
     archives   []Line
-    reset_mark *ResetMark                 | json = "reset"
+    reset_mark *ResetMark       | json = "reset"
     tidying    *TidyInFlight
 }
 
@@ -788,7 +849,7 @@ table StatsArchive
     error   *string
     rows    []TidyRow
     routes  []RouteStat
-    streams map[string(128)]StreamBase
+    streams []StreamBasePair
 }
 
 // TidyResult is what a tidy did (store.TidyResult).
@@ -852,8 +913,9 @@ table StopLease
     gen         int64
 }
 
-// Machine is the state record (store.Machine, key "machine"): at most
-// MaxStopSpans (1000) spans. stopped_ns is the total time STOPPED before the
+// Machine is the state record (store.Machine, key "machine"): the writer cuts
+// the spans to MaxStopSpans (1000) and the readers keep any count, so the list
+// is open. stopped_ns is the total time STOPPED before the
 // current span, in nanoseconds, and started_in the epoch number in decimal.
 table Machine
 {
@@ -864,7 +926,7 @@ table Machine
     stop_issued bool
     stop_debt   []StopLease
     stopped_ns  int64
-    spans       [..1000]Span
+    spans       []Span
     cause       *string
     reason      *string
     until       int64
@@ -1008,8 +1070,8 @@ table QueuedChange
     moved *string
 }
 
-// LogLine is one log line on the held operation (sprint.Line): cause is cut to
-// MaxCause (300) by the store.
+// LogLine is one log line on the held operation (sprint.Line): the store cuts
+// cause to MaxCause (300) on two writer paths only, so the text is unbounded.
 table LogLine
 {
     kind          *string
@@ -1020,27 +1082,28 @@ table LogLine
     cards         []Line
     primary       *string
     stream        *string
-    logical_table *string     | json = "table"
+    logical_table *string    | json = "table"
     from          *string
     to            *string
     removed       bool
     gen           int64
     actor         *string
     verb          *string
-    cause         string(300)
+    cause         *string
     answers       []Line
     text          []TextPair
     set           []TextPair
     note          *Note
 }
 
-// Timer is one timer (sprint.Timer): the note is at most MaxTimerNote (512).
+// Timer is one timer (sprint.Timer): ValidTimerNote bounds the note to
+// MaxTimerNote (512) on the verb path only, so the text is unbounded.
 table Timer
 {
     id        *string
-    for_actor *string     | json = "for"
+    for_actor *string | json = "for"
     due       int64
-    note      string(512)
+    note      *string
     by        *string
     set       int64
 }

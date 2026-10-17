@@ -49,10 +49,8 @@ package viewrowswire_test
 import (
 	"bufio"
 	"bytes"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -90,16 +88,12 @@ const bigCount = 200
 // fixedLayouts is the layout hash of every fixed table, as schema.lock holds
 // it: a change to a fixed table's layout is a change to this list.
 var fixedLayouts = map[string]string{
-	"CardID":          "0x273f481e85662568",
 	"DayGap":          "0xce7142dd3a7652de",
-	"FleetMachineRow": "0xd6b14a0eab185879",
-	"Landing":         "0xa117046e05ffeb59",
 	"LoadSample":      "0xc67f1d024a189f0d",
 	"MeterTicks":      "0x1b03c0f2ab6ab9b7",
 	"ReadCardCounts":  "0x925a9c0983268d8e",
 	"ReadsWindowView": "0x1975ae7fc5988350",
 	"ResetRow":        "0xc5f1961498ae96f9",
-	"RowName":         "0xe105c98179a20402",
 	"RttSample":       "0x07dfaa5c9cf4cfd4",
 	"Span":            "0x8c09defdb9dafa76",
 	"StageStat":       "0x682e886c08a44494",
@@ -788,8 +782,10 @@ func allTables() []tableCase {
 				builder((*wire.BeatBuilder).Init, (*wire.BeatBuilder).GetRoot, func(b *wire.BeatBuilder) *wire.TableArena { return &b.Arena }, wire.BeatFromJson),
 				wire.BeatMeasure, wire.BeatSave, wire.BeatLoadMeasureReason, wire.BeatLoad, wire.BeatToJsonMeasure, wire.BeatToJson, wire.BeatTableType, nil})
 		}},
-		{"CardID", true, func(t *testing.T, name string, samples []namedSample) {
-			runFixed(t, name, samples, fixedOps[wire.CardID]{wire.CardIDReset, wire.CardIDSave, wire.CardIDLoad, wire.CardIDFromJson, wire.CardIDToJsonMeasure, wire.CardIDToJson, wire.CardIDTableType})
+		{"CardID", false, func(t *testing.T, name string, samples []namedSample) {
+			runVariable(t, name, samples, varOps[wire.CardID]{
+				builder((*wire.CardIDBuilder).Init, (*wire.CardIDBuilder).GetRoot, func(b *wire.CardIDBuilder) *wire.TableArena { return &b.Arena }, wire.CardIDFromJson),
+				wire.CardIDMeasure, wire.CardIDSave, wire.CardIDLoadMeasureReason, wire.CardIDLoad, wire.CardIDToJsonMeasure, wire.CardIDToJson, wire.CardIDTableType, nil})
 		}},
 		{"CheckRecord", false, func(t *testing.T, name string, samples []namedSample) {
 			runVariable(t, name, samples, varOps[wire.CheckRecord]{
@@ -849,8 +845,10 @@ func allTables() []tableCase {
 				builder((*wire.FleetDropDebtBuilder).Init, (*wire.FleetDropDebtBuilder).GetRoot, func(b *wire.FleetDropDebtBuilder) *wire.TableArena { return &b.Arena }, wire.FleetDropDebtFromJson),
 				wire.FleetDropDebtMeasure, wire.FleetDropDebtSave, wire.FleetDropDebtLoadMeasureReason, wire.FleetDropDebtLoad, wire.FleetDropDebtToJsonMeasure, wire.FleetDropDebtToJson, wire.FleetDropDebtTableType, nil})
 		}},
-		{"FleetMachineRow", true, func(t *testing.T, name string, samples []namedSample) {
-			runFixed(t, name, samples, fixedOps[wire.FleetMachineRow]{wire.FleetMachineRowReset, wire.FleetMachineRowSave, wire.FleetMachineRowLoad, wire.FleetMachineRowFromJson, wire.FleetMachineRowToJsonMeasure, wire.FleetMachineRowToJson, wire.FleetMachineRowTableType})
+		{"FleetMachineRow", false, func(t *testing.T, name string, samples []namedSample) {
+			runVariable(t, name, samples, varOps[wire.FleetMachineRow]{
+				builder((*wire.FleetMachineRowBuilder).Init, (*wire.FleetMachineRowBuilder).GetRoot, func(b *wire.FleetMachineRowBuilder) *wire.TableArena { return &b.Arena }, wire.FleetMachineRowFromJson),
+				wire.FleetMachineRowMeasure, wire.FleetMachineRowSave, wire.FleetMachineRowLoadMeasureReason, wire.FleetMachineRowLoad, wire.FleetMachineRowToJsonMeasure, wire.FleetMachineRowToJson, wire.FleetMachineRowTableType, nil})
 		}},
 		{"FriendReport", false, func(t *testing.T, name string, samples []namedSample) {
 			runVariable(t, name, samples, varOps[wire.FriendReport]{
@@ -882,8 +880,10 @@ func allTables() []tableCase {
 				builder((*wire.KindTimeBuilder).Init, (*wire.KindTimeBuilder).GetRoot, func(b *wire.KindTimeBuilder) *wire.TableArena { return &b.Arena }, wire.KindTimeFromJson),
 				wire.KindTimeMeasure, wire.KindTimeSave, wire.KindTimeLoadMeasureReason, wire.KindTimeLoad, wire.KindTimeToJsonMeasure, wire.KindTimeToJson, wire.KindTimeTableType, nil})
 		}},
-		{"Landing", true, func(t *testing.T, name string, samples []namedSample) {
-			runFixed(t, name, samples, fixedOps[wire.Landing]{wire.LandingReset, wire.LandingSave, wire.LandingLoad, wire.LandingFromJson, wire.LandingToJsonMeasure, wire.LandingToJson, wire.LandingTableType})
+		{"Landing", false, func(t *testing.T, name string, samples []namedSample) {
+			runVariable(t, name, samples, varOps[wire.Landing]{
+				builder((*wire.LandingBuilder).Init, (*wire.LandingBuilder).GetRoot, func(b *wire.LandingBuilder) *wire.TableArena { return &b.Arena }, wire.LandingFromJson),
+				wire.LandingMeasure, wire.LandingSave, wire.LandingLoadMeasureReason, wire.LandingLoad, wire.LandingToJsonMeasure, wire.LandingToJson, wire.LandingTableType, nil})
 		}},
 		{"LaneQuiet", false, func(t *testing.T, name string, samples []namedSample) {
 			runVariable(t, name, samples, varOps[wire.LaneQuiet]{
@@ -1050,8 +1050,10 @@ func allTables() []tableCase {
 				builder((*wire.RouteStatBuilder).Init, (*wire.RouteStatBuilder).GetRoot, func(b *wire.RouteStatBuilder) *wire.TableArena { return &b.Arena }, wire.RouteStatFromJson),
 				wire.RouteStatMeasure, wire.RouteStatSave, wire.RouteStatLoadMeasureReason, wire.RouteStatLoad, wire.RouteStatToJsonMeasure, wire.RouteStatToJson, wire.RouteStatTableType, nil})
 		}},
-		{"RowName", true, func(t *testing.T, name string, samples []namedSample) {
-			runFixed(t, name, samples, fixedOps[wire.RowName]{wire.RowNameReset, wire.RowNameSave, wire.RowNameLoad, wire.RowNameFromJson, wire.RowNameToJsonMeasure, wire.RowNameToJson, wire.RowNameTableType})
+		{"RowName", false, func(t *testing.T, name string, samples []namedSample) {
+			runVariable(t, name, samples, varOps[wire.RowName]{
+				builder((*wire.RowNameBuilder).Init, (*wire.RowNameBuilder).GetRoot, func(b *wire.RowNameBuilder) *wire.TableArena { return &b.Arena }, wire.RowNameFromJson),
+				wire.RowNameMeasure, wire.RowNameSave, wire.RowNameLoadMeasureReason, wire.RowNameLoad, wire.RowNameToJsonMeasure, wire.RowNameToJson, wire.RowNameTableType, nil})
 		}},
 		{"RttSample", true, func(t *testing.T, name string, samples []namedSample) {
 			runFixed(t, name, samples, fixedOps[wire.RttSample]{wire.RttSampleReset, wire.RttSampleSave, wire.RttSampleLoad, wire.RttSampleFromJson, wire.RttSampleToJsonMeasure, wire.RttSampleToJson, wire.RttSampleTableType})
@@ -1184,6 +1186,51 @@ func allTables() []tableCase {
 			runVariable(t, name, samples, varOps[wire.WhereRecord]{
 				builder((*wire.WhereRecordBuilder).Init, (*wire.WhereRecordBuilder).GetRoot, func(b *wire.WhereRecordBuilder) *wire.TableArena { return &b.Arena }, wire.WhereRecordFromJson),
 				wire.WhereRecordMeasure, wire.WhereRecordSave, wire.WhereRecordLoadMeasureReason, wire.WhereRecordLoad, wire.WhereRecordToJsonMeasure, wire.WhereRecordToJson, wire.WhereRecordTableType, nil})
+		}},
+		{"IntListPair", false, func(t *testing.T, name string, samples []namedSample) {
+			runVariable(t, name, samples, varOps[wire.IntListPair]{
+				builder((*wire.IntListPairBuilder).Init, (*wire.IntListPairBuilder).GetRoot, func(b *wire.IntListPairBuilder) *wire.TableArena { return &b.Arena }, wire.IntListPairFromJson),
+				wire.IntListPairMeasure, wire.IntListPairSave, wire.IntListPairLoadMeasureReason, wire.IntListPairLoad, wire.IntListPairToJsonMeasure, wire.IntListPairToJson, wire.IntListPairTableType, nil})
+		}},
+		{"LineListPair", false, func(t *testing.T, name string, samples []namedSample) {
+			runVariable(t, name, samples, varOps[wire.LineListPair]{
+				builder((*wire.LineListPairBuilder).Init, (*wire.LineListPairBuilder).GetRoot, func(b *wire.LineListPairBuilder) *wire.TableArena { return &b.Arena }, wire.LineListPairFromJson),
+				wire.LineListPairMeasure, wire.LineListPairSave, wire.LineListPairLoadMeasureReason, wire.LineListPairLoad, wire.LineListPairToJsonMeasure, wire.LineListPairToJson, wire.LineListPairTableType, nil})
+		}},
+		{"StreamStagesPair", false, func(t *testing.T, name string, samples []namedSample) {
+			runVariable(t, name, samples, varOps[wire.StreamStagesPair]{
+				builder((*wire.StreamStagesPairBuilder).Init, (*wire.StreamStagesPairBuilder).GetRoot, func(b *wire.StreamStagesPairBuilder) *wire.TableArena { return &b.Arena }, wire.StreamStagesPairFromJson),
+				wire.StreamStagesPairMeasure, wire.StreamStagesPairSave, wire.StreamStagesPairLoadMeasureReason, wire.StreamStagesPairLoad, wire.StreamStagesPairToJsonMeasure, wire.StreamStagesPairToJson, wire.StreamStagesPairTableType, nil})
+		}},
+		{"ReaderSpendPair", false, func(t *testing.T, name string, samples []namedSample) {
+			runVariable(t, name, samples, varOps[wire.ReaderSpendPair]{
+				builder((*wire.ReaderSpendPairBuilder).Init, (*wire.ReaderSpendPairBuilder).GetRoot, func(b *wire.ReaderSpendPairBuilder) *wire.TableArena { return &b.Arena }, wire.ReaderSpendPairFromJson),
+				wire.ReaderSpendPairMeasure, wire.ReaderSpendPairSave, wire.ReaderSpendPairLoadMeasureReason, wire.ReaderSpendPairLoad, wire.ReaderSpendPairToJsonMeasure, wire.ReaderSpendPairToJson, wire.ReaderSpendPairTableType, nil})
+		}},
+		{"SentinelPair", false, func(t *testing.T, name string, samples []namedSample) {
+			runVariable(t, name, samples, varOps[wire.SentinelPair]{
+				builder((*wire.SentinelPairBuilder).Init, (*wire.SentinelPairBuilder).GetRoot, func(b *wire.SentinelPairBuilder) *wire.TableArena { return &b.Arena }, wire.SentinelPairFromJson),
+				wire.SentinelPairMeasure, wire.SentinelPairSave, wire.SentinelPairLoadMeasureReason, wire.SentinelPairLoad, wire.SentinelPairToJsonMeasure, wire.SentinelPairToJson, wire.SentinelPairTableType, nil})
+		}},
+		{"TierCostsPair", false, func(t *testing.T, name string, samples []namedSample) {
+			runVariable(t, name, samples, varOps[wire.TierCostsPair]{
+				builder((*wire.TierCostsPairBuilder).Init, (*wire.TierCostsPairBuilder).GetRoot, func(b *wire.TierCostsPairBuilder) *wire.TableArena { return &b.Arena }, wire.TierCostsPairFromJson),
+				wire.TierCostsPairMeasure, wire.TierCostsPairSave, wire.TierCostsPairLoadMeasureReason, wire.TierCostsPairLoad, wire.TierCostsPairToJsonMeasure, wire.TierCostsPairToJson, wire.TierCostsPairTableType, nil})
+		}},
+		{"ResetRowPair", false, func(t *testing.T, name string, samples []namedSample) {
+			runVariable(t, name, samples, varOps[wire.ResetRowPair]{
+				builder((*wire.ResetRowPairBuilder).Init, (*wire.ResetRowPairBuilder).GetRoot, func(b *wire.ResetRowPairBuilder) *wire.TableArena { return &b.Arena }, wire.ResetRowPairFromJson),
+				wire.ResetRowPairMeasure, wire.ResetRowPairSave, wire.ResetRowPairLoadMeasureReason, wire.ResetRowPairLoad, wire.ResetRowPairToJsonMeasure, wire.ResetRowPairToJson, wire.ResetRowPairTableType, nil})
+		}},
+		{"ResetStreamPair", false, func(t *testing.T, name string, samples []namedSample) {
+			runVariable(t, name, samples, varOps[wire.ResetStreamPair]{
+				builder((*wire.ResetStreamPairBuilder).Init, (*wire.ResetStreamPairBuilder).GetRoot, func(b *wire.ResetStreamPairBuilder) *wire.TableArena { return &b.Arena }, wire.ResetStreamPairFromJson),
+				wire.ResetStreamPairMeasure, wire.ResetStreamPairSave, wire.ResetStreamPairLoadMeasureReason, wire.ResetStreamPairLoad, wire.ResetStreamPairToJsonMeasure, wire.ResetStreamPairToJson, wire.ResetStreamPairTableType, nil})
+		}},
+		{"StreamBasePair", false, func(t *testing.T, name string, samples []namedSample) {
+			runVariable(t, name, samples, varOps[wire.StreamBasePair]{
+				builder((*wire.StreamBasePairBuilder).Init, (*wire.StreamBasePairBuilder).GetRoot, func(b *wire.StreamBasePairBuilder) *wire.TableArena { return &b.Arena }, wire.StreamBasePairFromJson),
+				wire.StreamBasePairMeasure, wire.StreamBasePairSave, wire.StreamBasePairLoadMeasureReason, wire.StreamBasePairLoad, wire.StreamBasePairToJsonMeasure, wire.StreamBasePairToJson, wire.StreamBasePairTableType, nil})
 		}},
 	}
 }
@@ -1518,19 +1565,13 @@ func sourceCases() []sourceCase {
 		out = append(out, sourceCase{table: table, small: func() any { return build(false) }, large: func() any { return build(true) }})
 	}
 	add("WhereRecord", func(large bool) any {
-		return filled(large, map[string]int{"Landings": sprint.MaxRecentLandings, "Critical": 5, "Blockers": 3}, nil, func(w *store.WhereRecord) {
+		return filled(large, map[string]int{"Landings": sprint.MaxRecentLandings + 1, "Critical": 6, "Blockers": 4}, nil, func(w *store.WhereRecord) {
 			// five held streams: the record holds every stream the sprint has
 			for i := 0; i < 5; i++ {
 				w.HeldStreams[fmt.Sprintf("held-stream-%d", i)] = i + 1
 			}
 			if !large {
 				w.Landings = []int64{testClock, testClock + 1, testClock + 2}
-			}
-			if len(w.Critical) > 5 {
-				w.Critical = w.Critical[:5]
-			}
-			if len(w.Blockers) > 3 {
-				w.Blockers = w.Blockers[:3]
 			}
 		})
 	})
@@ -1539,13 +1580,7 @@ func sourceCases() []sourceCase {
 	add("RefusedRecord", func(large bool) any { return filled[sprint.RefusedRecord](large, nil, nil, nil) })
 	add("Beat", func(large bool) any { return filled[sprint.Beat](large, nil, nil, nil) })
 	add("CheckRecord", func(large bool) any {
-		return filled(large, map[string]int{"Findings": store.MaxCheckFindings}, map[string]bool{"Digest": true}, func(r *store.CheckRecord) {
-			r.Digest = sprint.CardsDigest(nil)
-			for i := range r.Cards {
-				sum := sha256.Sum256([]byte(r.Cards[i].ID))
-				r.Cards[i].Brief = hex.EncodeToString(sum[:])
-			}
-		})
+		return filled[store.CheckRecord](large, map[string]int{"Findings": store.MaxCheckFindings + 1}, nil, nil)
 	})
 	add("FleetDropDebt", func(large bool) any { return filled[dropDebtSource](large, nil, nil, nil) })
 	add("ResetMark", func(large bool) any { return filled[sprint.ResetMark](large, nil, nil, nil) })
@@ -1556,7 +1591,7 @@ func sourceCases() []sourceCase {
 	add("Stuck", func(large bool) any { return filled[store.Stuck](large, nil, nil, nil) })
 	add("LogIndex", func(large bool) any { return filled[logIndexSource](large, nil, nil, nil) })
 	add("Machine", func(large bool) any {
-		return filled[store.Machine](large, map[string]int{"Spans": store.MaxStopSpans}, nil, nil)
+		return filled[store.Machine](large, map[string]int{"Spans": store.MaxStopSpans + 1}, nil, nil)
 	})
 	add("Heartbeat", func(large bool) any { return filled[store.Heartbeat](large, nil, nil, nil) })
 	add("HeldRecord", func(large bool) any { return filled[store.OpRecord](large, nil, nil, nil) })
@@ -1614,20 +1649,122 @@ func runSources(t *testing.T) {
 		})
 	}
 
-	// past the page the old form had: the large where record holds 200 entries
-	// in every list and map and 10,000 landings; one landing more is refused
+	// past every cap the code names on one writer path: the large where record
+	// holds 10,001 landings, 6 critical cards and 4 blockers, the large check
+	// record 201 findings and the large machine 1,001 spans, each read back whole
+	// in all three forms; the readers of the stored records keep any count
 	for _, j := range jobs {
-		if j.table != "WhereRecord" || j.label != "large" {
+		if j.label != "large" {
 			continue
 		}
 		m := decode(t, j.js).(map[string]any)
-		assert.Len(t, m["landings"], sprint.MaxRecentLandings, "the large where record holds the most landings the code keeps")
-		assert.GreaterOrEqual(t, len(m["held_streams"].(map[string]any)), bigCount, "and 200 held streams")
-		t.Run("WhereRecord/past the landings", func(t *testing.T) {
+		switch j.table {
+		case "WhereRecord":
+			assert.Len(t, m["landings"], sprint.MaxRecentLandings+1, "the large where record holds one landing past the most the writer keeps")
+			assert.Len(t, m["critical"], 6)
+			assert.Len(t, m["blockers"], 4)
+			assert.GreaterOrEqual(t, len(m["held_streams"].([]any)), bigCount, "and 200 held streams")
+		case "CheckRecord":
+			assert.Len(t, m["findings"], store.MaxCheckFindings+1)
+		case "Machine":
+			assert.Len(t, m["spans"], store.MaxStopSpans+1)
+		}
+	}
+	for _, pc := range pastCaps() {
+		t.Run("past/"+pc.table+"/"+pc.what, func(t *testing.T) {
 			t.Parallel()
-			over := withField(t, j.js, "landings", repeatOf(json.Number(fmt.Sprint(testClock)), sprint.MaxRecentLandings+1))
-			run["WhereRecord"].run(t, "WhereRecord", []namedSample{{"refused landings", over}})
+			ti := info[pc.table]
+			m := decode(t, defaultSamples(ti)[0].json).(map[string]any)
+			pc.edit(t, m)
+			run[pc.table].run(t, pc.table, []namedSample{{"past " + pc.what, encode(t, m)}})
 		})
+	}
+	// a map key past 128 or 135 bytes: every pair list of every table reads a
+	// 200-byte key back whole
+	for _, v := range wire.UnitView().Tables {
+		m := decode(t, defaultSamples(v.Type)[0].json).(map[string]any)
+		if !longKeys(m, v.Type) {
+			continue
+		}
+		t.Run("longkeys/"+v.Name, func(t *testing.T) {
+			t.Parallel()
+			run[v.Name].run(t, v.Name, []namedSample{{"long keys", encode(t, m)}})
+		})
+	}
+}
+
+// longKeys sets the key of the first entry of every pair list the table holds,
+// at any depth, to 200 bytes (past the 128 and 135 the code names), and says
+// whether it found one.
+func longKeys(m map[string]any, ti *wire.TableTypeInfo) bool {
+	found := false
+	for i := range ti.Fields {
+		f := &ti.Fields[i]
+		if f.Table == nil {
+			continue
+		}
+		ft := f.Table()
+		switch v := m[f.Json].(type) {
+		case []any:
+			for j, e := range v {
+				em, ok := e.(map[string]any)
+				if !ok {
+					continue
+				}
+				if j == 0 && len(ft.Fields) == 2 && ft.Fields[0].Json == "key" {
+					em["key"] = strings.Repeat("k", 200)
+					found = true
+				}
+				found = longKeys(em, ft) || found
+			}
+		case map[string]any:
+			found = longKeys(v, ft) || found
+		}
+	}
+	return found
+}
+
+// pastCase is one value past a cap the code names on one writer path: the
+// table, what is past and the edit that puts it in the table's small sample.
+type pastCase struct {
+	table, what string
+	edit        func(t *testing.T, m map[string]any)
+}
+
+func pastCaps() []pastCase {
+	text := func(table, key string, n int) pastCase {
+		return pastCase{table, key + fmt.Sprint(n), func(t *testing.T, m map[string]any) { m[key] = strings.Repeat("~", n) }}
+	}
+	list := func(table, key string, n int) pastCase {
+		return pastCase{table, fmt.Sprintf("%s %d entries", key, n), func(t *testing.T, m map[string]any) {
+			var elem any = json.Number(fmt.Sprint(testClock))
+			if l, ok := m[key].([]any); ok && len(l) > 0 {
+				elem = l[0]
+			}
+			m[key] = repeatOf(elem, n)
+		}}
+	}
+	return []pastCase{
+		text("CardID", "id", 600),
+		text("RowName", "name", 200),
+		text("FleetMachineRow", "name", 200),
+		text("Landing", "worker", 200),
+		text("Landing", "stream", 200),
+		text("CriticalCard", "id", 600),
+		text("ArchivedFleetCard", "row", 200),
+		text("CheckedCard", "id", 600),
+		text("CheckedCard", "stream", 200),
+		text("CheckedCard", "brief", 100),
+		text("CheckRecord", "digest", 100),
+		text("LogLine", "cause", 400),
+		text("Timer", "note", 600),
+		list("Note", "primaries", sprint.MaxListed+1),
+		list("WhereRecord", "landings", sprint.MaxRecentLandings+1),
+		list("WhereRecord", "critical", 6),
+		list("WhereRecord", "blockers", 4),
+		list("CheckRecord", "findings", store.MaxCheckFindings+1),
+		list("Machine", "spans", store.MaxStopSpans+1),
+		list("MeterFiles", "top", hostload.FilesTop+1),
 	}
 }
 
@@ -1679,84 +1816,22 @@ func rowBound(t *testing.T) {
 	require.Len(t, name, sprint.MaxIDLen)
 }
 
+// bounds is every bound the schema still declares. A bound stays only where
+// every path enforces it. The caps the writers keep (a card id, a fleet row, a
+// stream word, a note's primaries, the where record's landings, critical cards
+// and blockers, the check record's findings, the machine's spans, the file
+// holders, a log line's cause, a timer's note, a sha256 in hex) are not on the
+// readers' side: readWhere (where.go:230-235) and CheckRecordOf
+// (check_record.go:46-51) are plain json.Unmarshal and keep any length, count
+// and key, so each of those is open in the schema and round-trips past its cap
+// (pastCaps, longKeys).
 func bounds() []bound {
 	return []bound{
-		{"CardID.id", 515, "internal/sprint/schema.go:296-311 (ValidCardID)", cardIDBound},
-		{"CriticalCard.id", 515, "internal/sprint/schema.go:296-311 (ValidCardID), weight.go:131-143", cardIDBound},
-		{"CheckedCard.id", 515, "internal/sprint/schema.go:296-311 (ValidCardID), cardcheck.go:672-682", cardIDBound},
-		{"FleetMachineRow.name", 128, "internal/sprint/fleet_sync.go:90 (ValidID of a member)", idWord},
-		{"RowName.name", 135, "internal/sprint/select_batch.go:54 (friend. and a ValidID friend)", rowBound},
-		{"Landing.worker", 135, "internal/sprint/landed_series.go:150-170 (a fleet row), select_batch.go:54", rowBound},
-		{"Landing.stream", 128, "internal/sprint/steps_work.go:168 (ValidID of a stream)", idWord},
-		{"ArchivedFleetCard.row", 135, "internal/sprint/archived_totals.go:38 (a fleet row), select_batch.go:54", rowBound},
-		{"CheckedCard.stream", 128, "internal/sprint/steps_work.go:168 (ValidID of a stream)", idWord},
-		{"CheckedCard.brief", 64, "internal/sprint/cardcheck.go:678-680 (sha256, hex)", func(t *testing.T) {
-			sum := sha256.Sum256([]byte("brief"))
-			require.Len(t, hex.EncodeToString(sum[:]), 64)
-		}},
-		{"CheckRecord.digest", 64, "internal/sprint/cardcheck.go:687-692 (CardsDigest: sha256, hex)", func(t *testing.T) {
-			require.Len(t, sprint.CardsDigest(nil), 64)
-			require.Len(t, sprint.CardsDigest([]sprint.CheckedCard{{ID: "a", Stream: "s", Brief: "b"}}), 64)
-		}},
-		{"LogLine.cause", 300, "internal/sprint/store/engine.go:1103-1104 and 1527-1528 (cut to MaxCause), log.go:68", func(t *testing.T) {
-			require.Equal(t, 300, sprint.MaxCause)
-		}},
-		{"Timer.note", 512, "internal/sprint/timers.go:67-75 (ValidTimerNote), timers.go:21", func(t *testing.T) {
-			require.Equal(t, 512, sprint.MaxTimerNote)
-			require.NoError(t, sprint.ValidTimerNote(strings.Repeat("a", sprint.MaxTimerNote)))
-			require.Error(t, sprint.ValidTimerNote(strings.Repeat("a", sprint.MaxTimerNote+1)))
-		}},
-		{"Note.primaries", 50, "internal/sprint/notes.go:406-412 (Note.Bound cuts to MaxListed)", func(t *testing.T) {
-			require.Equal(t, 50, sprint.MaxListed)
-			n := sprint.Note{Kind: sprint.Happened, Primaries: make([]string, sprint.MaxListed+1)}.Bound()
-			require.Len(t, n.Primaries, sprint.MaxListed)
-			n = sprint.Note{Kind: sprint.Happened, Primaries: make([]string, sprint.MaxListed)}.Bound()
-			require.Len(t, n.Primaries, sprint.MaxListed)
-		}},
-		{"CheckRecord.findings", 200, "internal/sprint/store/check_record.go:80-81 (PutCardCheck cuts to MaxCheckFindings)", func(t *testing.T) {
-			require.Equal(t, 200, store.MaxCheckFindings)
-		}},
-		{"Machine.spans", 1000, "internal/sprint/store/machine_transition.go:172-173 and 449-450 (cut to MaxStopSpans), tick.go:65", func(t *testing.T) {
-			require.Equal(t, 1000, store.MaxStopSpans)
-		}},
-		{"WhereRecord.landings", 10000, "internal/sprint/rate.go:91 (RecentLandings keeps the newest MaxRecentLandings), where.go:176", func(t *testing.T) {
-			require.Equal(t, 10000, sprint.MaxRecentLandings)
-			now := time.Unix(testClock+20000, 0)
-			first := time.Unix(testClock, 0)
-			landed := make([]time.Time, sprint.MaxRecentLandings+1)
-			for i := range landed {
-				landed[i] = now.Add(-time.Duration(len(landed)-i) * time.Millisecond)
-			}
-			require.Len(t, sprint.RecentLandings(landed, nil, first, now), sprint.MaxRecentLandings)
-		}},
-		{"WhereRecord.critical", 5, "internal/sprint/weight.go:131-143 (Critical keeps n), where.go:162 (n is 5)", nil},
-		{"WhereRecord.blockers", 3, "internal/sprint/idle.go:117-129 (IdleBlockers keeps n), where.go:166 (n is 3)", nil},
-		{"MeterFiles.top", 10, "nova-tools pkg/hostload/files.go:147-155 (TopHolders keeps n), files.go:26 (FilesTop)", func(t *testing.T) {
-			require.Equal(t, 10, hostload.FilesTop)
-			hs := make([]hostload.Holder, hostload.FilesTop+5)
-			for i := range hs {
-				hs[i] = hostload.Holder{PID: i + 1, Open: i}
-			}
-			require.Len(t, hostload.TopHolders(hs, hostload.FilesTop), hostload.FilesTop)
-		}},
-		{"Heartbeat.revisions", 4, "internal/sprint/store/tick.go:195 (Revisions is [4]uint64)", func(t *testing.T) {
+		{"Heartbeat.revisions", 4, "tick.go:199 (Revisions is [4]uint64: every writer, tick.go:945, 1016 and 1130, assigns the array, every reader, tick.go:383 and 406 through getJSON, unmarshals into it)", func(t *testing.T) {
 			var h store.Heartbeat
 			require.Len(t, h.Revisions, 4)
+			require.Equal(t, 4, len(store.All))
 		}},
-		{"WhereRecord.held_streams.key", 128, "internal/sprint/steps_work.go:168 (ValidID of a stream)", idWord},
-		{"WhereRecord.sentinels.key", 128, "internal/sprint/steps_work.go:168 (ValidID of a stream)", idWord},
-		{"WhereRecord.streams.key", 128, "internal/sprint/steps_work.go:168 (ValidID of a stream)", idWord},
-		{"WhereRecord.dealt_fleet.key", 128, "internal/sprint/store/presence.go:257 (ValidID of a friend)", idWord},
-		{"WhereRecord.stream_priorities.key", 128, "internal/sprint/steps_work.go:168 (ValidID of a stream)", idWord},
-		{"WhereRecord.row_cards.key", 135, "internal/sprint/select_batch.go:54 (a fleet row)", rowBound},
-		{"WhereRecord.fix_states.key", 135, "internal/sprint/select_batch.go:54 (a fleet row)", rowBound},
-		{"WhereRecord.row_working.key", 135, "internal/sprint/select_batch.go:54 (a fleet row)", rowBound},
-		{"TierCosts.readers.key", 128, "internal/sprint/readers.go:176 (ValidID of a reader)", idWord},
-		{"StageTimes.streams.key", 128, "internal/sprint/steps_work.go:168 (ValidID of a stream)", idWord},
-		{"ResetMark.rows.key", 135, "internal/sprint/select_batch.go:54 (a fleet row)", rowBound},
-		{"ResetMark.streams.key", 128, "internal/sprint/steps_work.go:168 (ValidID of a stream)", idWord},
-		{"StatsRecord.streams.key", 128, "internal/sprint/steps_work.go:168 (ValidID of a stream)", idWord},
-		{"StatsArchive.streams.key", 128, "internal/sprint/steps_work.go:168 (ValidID of a stream)", idWord},
 	}
 }
 
@@ -1910,10 +1985,10 @@ func TestViewRowsGolden(t *testing.T) {
 		}
 
 		// the bound walk is not vacuous: it finds the declared bounds
-		assert.Len(t, stringFields(wire.CardIDTableType()), 1, "CardID's id")
-		assert.Len(t, arrayFields(wire.NoteTableType()), 1, "Note's primaries")
-		assert.Len(t, arrayFields(wire.WhereRecordTableType()), 3, "WhereRecord's landings, critical and blockers")
-		assert.Len(t, mapFields(wire.WhereRecordTableType()), 8, "WhereRecord's eight maps")
+		assert.Empty(t, stringFields(wire.CardIDTableType()), "CardID's id is open")
+		assert.Empty(t, arrayFields(wire.NoteTableType()), "Note's primaries are open")
+		assert.Empty(t, arrayFields(wire.WhereRecordTableType()), "WhereRecord's landings, critical and blockers are open")
+		assert.Empty(t, mapFields(wire.WhereRecordTableType()), "WhereRecord has no map: its keys are unbounded text in pair lists")
 
 		_, err = os.Stat(filepath.Join(root, "viewrows.schema"))
 		require.NoError(t, err, "schemas/viewrows/viewrows.schema is committed")

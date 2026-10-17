@@ -1,24 +1,10 @@
 schema-lock 7
 package viewrowswire
 
-fixed table CardID layout=0x273f481e85662568 lineage=0xf86419d19324b230
-    field id id=0x08b72e07b55c3ac0 kind=12 width=520 default=bytes: cap=515
-    lineage wire=0xde66dbf2427a122f record=519 bytes=0200000072c920ef64ff6cc80d0702000001000000c03a5cb5072eb7080c0702000000000000
-
 fixed table DayGap layout=0xce7142dd3a7652de lineage=0xae7d39b3e2c90ed2
     field provider id=0xd02b4c8c65fb54dc kind=11 width=8 default=0.0
     field provider_internal id=0x8f19a26151ce74bc kind=11 width=8 default=0.0
     lineage wire=0x7bd23f6815163d80 record=16 bytes=030000003745cdcf13beac470d1000000002000000dc54fb658c4c2bd00b0800000000000000bc74ce5161a2198f0b0800000000000000
-
-fixed table FleetMachineRow layout=0xd6b14a0eab185879 lineage=0x1741416076b7bb65
-    field name id=0xc4bcadba8e631b86 kind=12 width=136 default=bytes: cap=128
-    lineage wire=0x0fd287a6e3862595 record=132 bytes=02000000f87a2c3df2492b6e0d8400000001000000861b638ebaadbcc40c8400000000000000
-
-fixed table Landing layout=0xa117046e05ffeb59 lineage=0x4e1ef7af3b692b37
-    field at id=0x089c4e07b545a968 kind=5 width=8 default=0
-    field worker id=0xa51a677d5b590177 kind=12 width=140 default=bytes: cap=135
-    field stream id=0x4f6a36d8e8907985 kind=12 width=136 default=bytes: cap=128
-    lineage wire=0x15d3c9b5158dc815 record=279 bytes=040000003c9a080b71d8a92f0d170100000300000068a945b5074e9c080508000000000000007701595b7d671aa50c8b00000000000000857990e8d8366a4f0c8400000000000000
 
 fixed table LoadSample layout=0xc67f1d024a189f0d lineage=0xde142ed5dad87f63
     field at id=0x089c4e07b545a968 kind=5 width=8 default=0
@@ -46,10 +32,6 @@ fixed table ResetRow layout=0xc5f1961498ae96f9 lineage=0xb4d7d5a247addc9a
     field ok id=0x08b05d07b5566bef kind=5 width=8 default=0
     field failed id=0xd7338946b42394f4 kind=5 width=8 default=0
     lineage wire=0xf2297cd0c3bdcd02 record=16 bytes=03000000046acf99d0a904530d1000000002000000ef6b56b5075db008050800000000000000f49423b4468933d7050800000000000000
-
-fixed table RowName layout=0xe105c98179a20402 lineage=0x81657cd8c0d923cc
-    field name id=0xc4bcadba8e631b86 kind=12 width=140 default=bytes: cap=135
-    lineage wire=0xdc231ddb0f3be9ec record=139 bytes=0200000080b53bf35d7eaace0d8b00000001000000861b638ebaadbcc40c8b00000000000000
 
 fixed table RttSample layout=0x07dfaa5c9cf4cfd4 lineage=0xdf6f8aca982a83ad
     field start id=0xee5d97ad45ad251f kind=5 width=8 default=0

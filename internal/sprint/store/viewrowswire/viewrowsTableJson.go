@@ -3057,40 +3057,30 @@ func tableJsonDecimalKey(text []byte, signed bool, width int) (uint64, bool) {
 
 // ---- json walk: end ----
 
-// CardIDFromJson fills one CardID from a JSON text (docs/SPEC-TABLES.md §16).
-// A nil report is allowed; every tolerance event still decides the same way.
-func CardIDFromJson(value *CardID, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), CardIDTableType(), text, report)
+func CardIDFromJson(builder *CardIDBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), CardIDTableType(), &builder.Main, text, report)
 }
-
-// CardIDToJsonMeasure is the exact size of CardID's JSON text, writing nothing.
-func CardIDToJsonMeasure(value *CardID) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), CardIDTableType(), nil)
+func CardIDToJsonMeasure(value *CardID, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), CardIDTableType(), nil, allocator...)
 }
-
-// CardIDToJson writes CardID's JSON text into the caller's slice and returns the
-// bytes written — exactly CardIDToJsonMeasure's answer — or -1 when it is short.
-func CardIDToJson(value *CardID, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), CardIDTableType(), buffer)
+func CardIDToJson(value *CardID, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), CardIDTableType(), buffer, allocator...)
 }
-
-// RowNameFromJson fills one RowName from a JSON text (docs/SPEC-TABLES.md §16).
-// A nil report is allowed; every tolerance event still decides the same way.
-func RowNameFromJson(value *RowName, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), RowNameTableType(), text, report)
+func RowNameFromJson(builder *RowNameBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), RowNameTableType(), &builder.Main, text, report)
 }
-
-// RowNameToJsonMeasure is the exact size of RowName's JSON text, writing nothing.
-func RowNameToJsonMeasure(value *RowName) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), RowNameTableType(), nil)
+func RowNameToJsonMeasure(value *RowName, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), RowNameTableType(), nil, allocator...)
 }
-
-// RowNameToJson writes RowName's JSON text into the caller's slice and returns the
-// bytes written — exactly RowNameToJsonMeasure's answer — or -1 when it is short.
-func RowNameToJson(value *RowName, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), RowNameTableType(), buffer)
+func RowNameToJson(value *RowName, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), RowNameTableType(), buffer, allocator...)
 }
-
 func LineFromJson(builder *LineBuilder, text []byte, report *TableReport) bool {
 	if builder.Arena.Locked {
 		return false
@@ -3151,6 +3141,30 @@ func IntListToJsonMeasure(value *IntList, allocator ...TableAllocator) int64 {
 func IntListToJson(value *IntList, buffer []byte, allocator ...TableAllocator) int64 {
 	return tableRegionToJson(unsafe.Pointer(value), IntListTableType(), buffer, allocator...)
 }
+func IntListPairFromJson(builder *IntListPairBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), IntListPairTableType(), &builder.Main, text, report)
+}
+func IntListPairToJsonMeasure(value *IntListPair, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), IntListPairTableType(), nil, allocator...)
+}
+func IntListPairToJson(value *IntListPair, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), IntListPairTableType(), buffer, allocator...)
+}
+func LineListPairFromJson(builder *LineListPairBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), LineListPairTableType(), &builder.Main, text, report)
+}
+func LineListPairToJsonMeasure(value *LineListPair, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), LineListPairTableType(), nil, allocator...)
+}
+func LineListPairToJson(value *LineListPair, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), LineListPairTableType(), buffer, allocator...)
+}
 
 // StageStatFromJson fills one StageStat from a JSON text (docs/SPEC-TABLES.md §16).
 // A nil report is allowed; every tolerance event still decides the same way.
@@ -3192,6 +3206,18 @@ func StageStatsToJsonMeasure(value *StageStats, allocator ...TableAllocator) int
 }
 func StageStatsToJson(value *StageStats, buffer []byte, allocator ...TableAllocator) int64 {
 	return tableRegionToJson(unsafe.Pointer(value), StageStatsTableType(), buffer, allocator...)
+}
+func StreamStagesPairFromJson(builder *StreamStagesPairBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), StreamStagesPairTableType(), &builder.Main, text, report)
+}
+func StreamStagesPairToJsonMeasure(value *StreamStagesPair, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), StreamStagesPairTableType(), nil, allocator...)
+}
+func StreamStagesPairToJson(value *StreamStagesPair, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), StreamStagesPairTableType(), buffer, allocator...)
 }
 func StageTimesFromJson(builder *StageTimesBuilder, text []byte, report *TableReport) bool {
 	if builder.Arena.Locked {
@@ -3240,6 +3266,18 @@ func ReaderSpendToJsonMeasure(value *ReaderSpend, allocator ...TableAllocator) i
 }
 func ReaderSpendToJson(value *ReaderSpend, buffer []byte, allocator ...TableAllocator) int64 {
 	return tableRegionToJson(unsafe.Pointer(value), ReaderSpendTableType(), buffer, allocator...)
+}
+func ReaderSpendPairFromJson(builder *ReaderSpendPairBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), ReaderSpendPairTableType(), &builder.Main, text, report)
+}
+func ReaderSpendPairToJsonMeasure(value *ReaderSpendPair, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), ReaderSpendPairTableType(), nil, allocator...)
+}
+func ReaderSpendPairToJson(value *ReaderSpendPair, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), ReaderSpendPairTableType(), buffer, allocator...)
 }
 
 // DayGapFromJson fills one DayGap from a JSON text (docs/SPEC-TABLES.md §16).
@@ -3319,24 +3357,18 @@ func CriticalCardToJsonMeasure(value *CriticalCard, allocator ...TableAllocator)
 func CriticalCardToJson(value *CriticalCard, buffer []byte, allocator ...TableAllocator) int64 {
 	return tableRegionToJson(unsafe.Pointer(value), CriticalCardTableType(), buffer, allocator...)
 }
-
-// LandingFromJson fills one Landing from a JSON text (docs/SPEC-TABLES.md §16).
-// A nil report is allowed; every tolerance event still decides the same way.
-func LandingFromJson(value *Landing, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), LandingTableType(), text, report)
+func LandingFromJson(builder *LandingBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), LandingTableType(), &builder.Main, text, report)
 }
-
-// LandingToJsonMeasure is the exact size of Landing's JSON text, writing nothing.
-func LandingToJsonMeasure(value *Landing) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), LandingTableType(), nil)
+func LandingToJsonMeasure(value *Landing, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), LandingTableType(), nil, allocator...)
 }
-
-// LandingToJson writes Landing's JSON text into the caller's slice and returns the
-// bytes written — exactly LandingToJsonMeasure's answer — or -1 when it is short.
-func LandingToJson(value *Landing, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), LandingTableType(), buffer)
+func LandingToJson(value *Landing, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), LandingTableType(), buffer, allocator...)
 }
-
 func ArchivedFleetCardFromJson(builder *ArchivedFleetCardBuilder, text []byte, report *TableReport) bool {
 	if builder.Arena.Locked {
 		return false
@@ -3455,6 +3487,30 @@ func NoteToJsonMeasure(value *Note, allocator ...TableAllocator) int64 {
 }
 func NoteToJson(value *Note, buffer []byte, allocator ...TableAllocator) int64 {
 	return tableRegionToJson(unsafe.Pointer(value), NoteTableType(), buffer, allocator...)
+}
+func SentinelPairFromJson(builder *SentinelPairBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), SentinelPairTableType(), &builder.Main, text, report)
+}
+func SentinelPairToJsonMeasure(value *SentinelPair, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), SentinelPairTableType(), nil, allocator...)
+}
+func SentinelPairToJson(value *SentinelPair, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), SentinelPairTableType(), buffer, allocator...)
+}
+func TierCostsPairFromJson(builder *TierCostsPairBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), TierCostsPairTableType(), &builder.Main, text, report)
+}
+func TierCostsPairToJsonMeasure(value *TierCostsPair, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), TierCostsPairTableType(), nil, allocator...)
+}
+func TierCostsPairToJson(value *TierCostsPair, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), TierCostsPairTableType(), buffer, allocator...)
 }
 func WhereRecordFromJson(builder *WhereRecordBuilder, text []byte, report *TableReport) bool {
 	if builder.Arena.Locked {
@@ -3689,24 +3745,18 @@ func CheckRecordToJsonMeasure(value *CheckRecord, allocator ...TableAllocator) i
 func CheckRecordToJson(value *CheckRecord, buffer []byte, allocator ...TableAllocator) int64 {
 	return tableRegionToJson(unsafe.Pointer(value), CheckRecordTableType(), buffer, allocator...)
 }
-
-// FleetMachineRowFromJson fills one FleetMachineRow from a JSON text (docs/SPEC-TABLES.md §16).
-// A nil report is allowed; every tolerance event still decides the same way.
-func FleetMachineRowFromJson(value *FleetMachineRow, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), FleetMachineRowTableType(), text, report)
+func FleetMachineRowFromJson(builder *FleetMachineRowBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), FleetMachineRowTableType(), &builder.Main, text, report)
 }
-
-// FleetMachineRowToJsonMeasure is the exact size of FleetMachineRow's JSON text, writing nothing.
-func FleetMachineRowToJsonMeasure(value *FleetMachineRow) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), FleetMachineRowTableType(), nil)
+func FleetMachineRowToJsonMeasure(value *FleetMachineRow, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), FleetMachineRowTableType(), nil, allocator...)
 }
-
-// FleetMachineRowToJson writes FleetMachineRow's JSON text into the caller's slice and returns the
-// bytes written — exactly FleetMachineRowToJsonMeasure's answer — or -1 when it is short.
-func FleetMachineRowToJson(value *FleetMachineRow, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), FleetMachineRowTableType(), buffer)
+func FleetMachineRowToJson(value *FleetMachineRow, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), FleetMachineRowTableType(), buffer, allocator...)
 }
-
 func FleetDropDebtFromJson(builder *FleetDropDebtBuilder, text []byte, report *TableReport) bool {
 	if builder.Arena.Locked {
 		return false
@@ -3749,6 +3799,30 @@ func ResetStreamToJsonMeasure(value *ResetStream, allocator ...TableAllocator) i
 func ResetStreamToJson(value *ResetStream, buffer []byte, allocator ...TableAllocator) int64 {
 	return tableRegionToJson(unsafe.Pointer(value), ResetStreamTableType(), buffer, allocator...)
 }
+func ResetRowPairFromJson(builder *ResetRowPairBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), ResetRowPairTableType(), &builder.Main, text, report)
+}
+func ResetRowPairToJsonMeasure(value *ResetRowPair, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), ResetRowPairTableType(), nil, allocator...)
+}
+func ResetRowPairToJson(value *ResetRowPair, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), ResetRowPairTableType(), buffer, allocator...)
+}
+func ResetStreamPairFromJson(builder *ResetStreamPairBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), ResetStreamPairTableType(), &builder.Main, text, report)
+}
+func ResetStreamPairToJsonMeasure(value *ResetStreamPair, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), ResetStreamPairTableType(), nil, allocator...)
+}
+func ResetStreamPairToJson(value *ResetStreamPair, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), ResetStreamPairTableType(), buffer, allocator...)
+}
 func ResetMarkFromJson(builder *ResetMarkBuilder, text []byte, report *TableReport) bool {
 	if builder.Arena.Locked {
 		return false
@@ -3784,6 +3858,18 @@ func StreamBaseToJsonMeasure(value *StreamBase, allocator ...TableAllocator) int
 }
 func StreamBaseToJson(value *StreamBase, buffer []byte, allocator ...TableAllocator) int64 {
 	return tableRegionToJson(unsafe.Pointer(value), StreamBaseTableType(), buffer, allocator...)
+}
+func StreamBasePairFromJson(builder *StreamBasePairBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), StreamBasePairTableType(), &builder.Main, text, report)
+}
+func StreamBasePairToJsonMeasure(value *StreamBasePair, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), StreamBasePairTableType(), nil, allocator...)
+}
+func StreamBasePairToJson(value *StreamBasePair, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), StreamBasePairTableType(), buffer, allocator...)
 }
 func KindTimeFromJson(builder *KindTimeBuilder, text []byte, report *TableReport) bool {
 	if builder.Arena.Locked {
