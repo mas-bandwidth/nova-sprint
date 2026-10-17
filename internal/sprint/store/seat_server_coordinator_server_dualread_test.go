@@ -75,12 +75,12 @@ func TestSeatServerCoordinatorServerDualRead(t *testing.T) {
 	assert.EqualValues(t, 2, counts["json"])
 	assert.EqualValues(t, 2, counts["legacy"])
 
-	// The writer still writes the legacy form (S4: readers first).
+	// The writer now writes the table wire (S4: writers second), never the legacy form.
 	require.NoError(t, st.SetServer(ctx, want))
 	raw, ok, err := kv.GetKey(ctx, keyServer)
 	require.NoError(t, err)
 	require.True(t, ok)
-	assert.True(t, LegacyObject([]byte(raw)), raw)
+	assert.Equal(t, byte(1), raw[0], raw)
 
 	// A damaged value of each form is refused by name, never read as none.
 	assertDamageRefused(t, rows, "SERVERRECORD", f)

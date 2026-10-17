@@ -8,6 +8,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/friendrowswire"
+	"github.com/mas-bandwidth/nova-tools/pkg/schemaread"
 )
 
 // The coordinator's seat (docs/SPEC-SPRINT.md, "Handing over the seat"): the
@@ -277,14 +278,17 @@ func (st *Store) SetServerActor(ctx context.Context, actor string) error {
 
 // SetServer writes the server's record r, its At the clock's reading: the
 // server's report of itself, which seat, handover and land read. It writes
-// nothing else, and never the coordinator key.
+// the table form (S4): the variable table wire (form byte 1), never the legacy
+// JSON. A value the table cannot hold is refused by name before a byte is
+// written (Write checks first). It writes nothing else, and never the
+// coordinator key.
 func (st *Store) SetServer(ctx context.Context, r ServerRecord) error {
 	kv, ok := st.B.(KV)
 	if !ok {
 		return nil // a backend that keeps no keys has no server's record
 	}
 	r.At = st.now()
-	b, err := json.Marshal(r)
+	b, err := st.serverRows().Write(&r, schemaread.FormBinary)
 	if err != nil {
 		return err
 	}
