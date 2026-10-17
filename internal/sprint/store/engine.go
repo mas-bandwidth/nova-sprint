@@ -285,8 +285,10 @@ func (e *OpConflictError) Error() string {
 // replay is the recorded result of the step's caller operation id, refused as
 // a conflict when it was recorded for another verb or other arguments.
 func replay(step Step, raw string) (Result, error) {
-	var rec Result
-	if err := json.Unmarshal([]byte(raw), &rec); err != nil {
+	// the recorded result, read through STEPRESULT in any form; a damaged
+	// result is refused by name, never replayed as an empty one (S2, C13)
+	rec, err := opRows.stepResult(raw)
+	if err != nil {
 		return Result{Verb: step.Verb}, fmt.Errorf("operation %s: its recorded result is unreadable: %w", step.CallerOp, err)
 	}
 	if rec.Verb != step.Verb {
@@ -2586,12 +2588,18 @@ func (st *Store) withSkips(op OpRecord, skips []Skip) OpRecord {
 		}
 	}
 	op.Log = kept
-	var res Result
-	if op.Result != "" && json.Unmarshal([]byte(op.Result), &res) == nil {
-		res.Skipped = lines
-		res.Notes++
-		if body, err := json.Marshal(res); err == nil {
-			op.Result = string(body)
+	// The result is read through STEPRESULT in any form. A result it cannot
+	// read is left as recorded on purpose: the skip's judgment is still
+	// raised, and the replay of the caller's operation id refuses that result
+	// by name (replay); the refusal is counted under STEPRESULT (S2, S4, C13).
+	// The result is written back legacy (S4).
+	if op.Result != "" {
+		if res, err := opRows.stepResult(op.Result); err == nil {
+			res.Skipped = lines
+			res.Notes++
+			if body, err := json.Marshal(res); err == nil {
+				op.Result = string(body)
+			}
 		}
 	}
 	return op
