@@ -10,6 +10,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/friendrowswire"
+	"github.com/mas-bandwidth/nova-tools/pkg/schemaread"
 )
 
 // The lanes (sprint/lane.go; docs/SPEC-SPRINT.md section 18): one record per lane
@@ -199,6 +200,32 @@ func (st *Store) lanes(ctx context.Context, kind string) (sprint.Lanes, KV, erro
 	return out, kv, nil
 }
 
+// writeLanes writes the lanes record in the variable-table form (S1, S2, S4):
+// the JSON object keyed by machine the reader keeps (presenceRowMap), each
+// machine's value the schema JSON text of its Lane table. A value the table
+// cannot hold (one that does not read back through the table) is refused by
+// name before any byte is written; the legacy form is never written as a
+// fallback.
+func (st *Store) writeLanes(ctx context.Context, kv KV, kind string, ls sprint.Lanes) error {
+	rows := st.lanesRows()
+	out := make(map[string]json.RawMessage, len(ls))
+	for m, l := range ls {
+		b, err := rows.Write(&l, schemaread.FormJSON)
+		if err != nil {
+			return fmt.Errorf("LANES REFUSED: save_refused; run: %s", rowCheckHelp)
+		}
+		if _, _, rerr := rows.Read(b); rerr != nil {
+			return fmt.Errorf("LANES REFUSED: unholdable; run: %s", rowCheckHelp)
+		}
+		out[m] = b
+	}
+	raw, err := json.Marshal(out)
+	if err != nil {
+		return err
+	}
+	return kv.SetKey(ctx, laneKey(kind), string(raw))
+}
+
 // LaneStep is a take (give false) or a give of who on machine's lanes of kind at the
 // store's clock: the answer, with the record written.
 func (st *Store) LaneStep(ctx context.Context, kind, machine, who string, give bool) (sprint.LaneAnswer, error) {
@@ -225,11 +252,7 @@ func (st *Store) LaneStep(ctx context.Context, kind, machine, who string, give b
 	} else {
 		ls, ans = ls.Take(machine, who, width, now)
 	}
-	b, err := json.Marshal(ls)
-	if err != nil {
-		return ans, err
-	}
-	return ans, kv.SetKey(ctx, laneKey(kind), string(b))
+	return ans, st.writeLanes(ctx, kv, kind, ls)
 }
 
 // LaneRows is every machine's lanes of every kind at the store's clock, the timeouts
