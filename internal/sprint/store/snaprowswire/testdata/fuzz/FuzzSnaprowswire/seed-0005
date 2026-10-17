@@ -1,0 +1,3 @@
+go test fuzz v1
+byte('\x01')
+[]byte("{\n  \"operation_id\": null,\n  \"digest\": null,\n  \"actor\": null,\n  \"selected_count\": 0,\n  \"guard_count\": 0,\n  \"changed_count\": 0,\n  \"members\": [],\n  \"props\": []\n}\n")

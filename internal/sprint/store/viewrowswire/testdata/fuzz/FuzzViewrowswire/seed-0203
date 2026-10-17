@@ -1,0 +1,3 @@
+go test fuzz v1
+byte('\x43')
+[]byte("{\n  \"holder\": null,\n  \"generation\": 0,\n  \"from\": null,\n  \"at\": 0,\n  \"by\": null,\n  \"taken\": false,\n  \"approved_by\": null,\n  \"reason\": null\n}\n")

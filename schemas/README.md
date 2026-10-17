@@ -54,8 +54,8 @@ The pin line's exact form is
 
 - `<pseudo-version>` is the Go pseudo-version of one exact schema commit, never a branch
   and never `@latest`. The commit the two tracers verified end to end is
-  `4d9941fbc7fd420b560739e48256d5b5e2892cdc`, pseudo-version
-  `v2.5.1-0.20261014163537-4d9941fbc7fd`.
+  `54e0eda7d20b5776fce4f24971f0a332dd596660`, pseudo-version
+  `v2.5.1-0.20261017153557-54e0eda7d20b`.
 - `<schemas dir>` is the area's directory relative to the package:
   `../../schemas/<area>` from `pkg/<area>wire/`.
 - `go run <module>@<version>` needs no `go get` and changes nothing in `go.mod` or

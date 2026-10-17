@@ -174,8 +174,19 @@ func donePageFromWire(w donewire.DoneRecord) donePage {
 	return donePage{rec: r, pages: pages}
 }
 
-// doneWireReport preserves the fixed decoder's refusal precedence and reasons (S2).
+// doneWireReport preserves the fixed decoder's refusal precedence and reasons (S2). The
+// generated decoder names a malformed header, a reserved byte and a bound overrun more
+// finely than the store's vocabulary, so they map to the store's reasons; a layout the
+// lineage does not hold maps to layout_newer, the name an older build refuses it by.
 func doneWireReport(rep donewire.TableReport, n int64) RowReport {
+	switch rep.Reason {
+	case "truncated", "reserved_not_zero":
+		return RowReport{Malformed: true, Reason: "malformed"}
+	case "count_over_bound", "length_over_bound":
+		return RowReport{Clamped: 1, Reason: "clamped"}
+	case "layout_unknown":
+		return RowReport{Reason: "layout_newer"}
+	}
 	switch {
 	case n < 0 && rep.Reason != "":
 		return RowReport{Reason: rep.Reason}

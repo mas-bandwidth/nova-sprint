@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: NONE — this generated output is yours, under terms of
 // your choice. See the LICENSE exception in the schema compiler; the compiler is
 // AGPL-3.0, its output is not.
-// package snaprowswire — the BLOCK FORM (docs/SPEC-TABLES.md §19): producer and consumer.
+// package snaprowswire — the BLOCK FORM (mas-bandwidth/schema docs/SPEC-TABLES.md §19): producer and consumer.
 //
 // NOTHING DECLARES THIS FORM. Every fixed table has one, and it is emitted on
 // the side: compile this file when you build or read a block. The unit's
-// <Base>Table.go carries not one symbol of it.
+// <Base>Table.go carries none of its entry points; the blittable <Name>Row
+// records it lays out are the core's, shared with the cooked form.
 //
 // It is UNSAFE by nature, not by taste: a block is memory another language
 // wrote, and pointing at it without a copy is the whole point (§12.1).
@@ -26,14 +27,14 @@ import (
 )
 
 // TableBlockMagic identifies a schema block and carries the byte-order check
-// with it (docs/SPEC-TABLES.md §19.1). It is stored in the producer's NATIVE
+// with it (mas-bandwidth/schema docs/SPEC-TABLES.md §19.1). It is stored in the producer's NATIVE
 // order; a consumer that reads back the byte-swapped value has found a foreign
 // byte order, and one that reads back anything else has not found a block at
 // all.
 const TableBlockMagic uint64 = 0x4b4c42414d484353
 
 // TableBlockByteOrder is THIS BUILD's byte order, as the prologue carries it
-// (docs/SPEC-TABLES.md §20.3): 1 little, 2 big. A block written by a build of
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §20.3): 1 little, 2 big. A block written by a build of
 // the other order is REFUSED by BlockOpen — a fix-up path is a named
 // obligation, not something a consumer improvises row by row.
 //
@@ -82,7 +83,7 @@ func (r TableBlockRows[T]) At(i int32) *T {
 
 // ---- block fill path: end ----
 
-// ---- reflection over a block (docs/SPEC-TABLES.md §8, §19.2) ----
+// ---- reflection over a block (mas-bandwidth/schema docs/SPEC-TABLES.md §8, §19.2) ----
 //
 // The descriptors are the mechanism, and they are what retires a hand-kept
 // mirror: a consumer holding them reads the triples out of an instance and
@@ -109,7 +110,7 @@ type TableBlockFieldInfo struct {
 	Stride       uint32 // THIS BUILD's pitch, to assert against — never to index with (§19.2)
 
 	// ---- what a GENERIC ROW WALK needs, in the vocabulary TableFieldInfo
-	// already uses (docs/SPEC-TABLES.md §8.1), so ONE walker reads a cooked
+	// already uses (mas-bandwidth/schema docs/SPEC-TABLES.md §8.1), so ONE walker reads a cooked
 	// node and a block row without learning a second one. Where the field
 	// starts is the pair above; this is everything after it.
 	IsArray       bool   // inline storage of ArrayBound slots at ElemSize (bytes included)
@@ -133,7 +134,7 @@ type TableBlockFieldInfo struct {
 // that array's ROW, and so on down.
 type TableBlockInfo struct {
 	Name         string
-	BuildVersion uint64 // the unit's (docs/SPEC-TABLES.md §20)
+	BuildVersion uint64 // the unit's (mas-bandwidth/schema docs/SPEC-TABLES.md §20)
 	Size         uint32 // the record's own size: a projection's, or a row's
 	Align        uint32
 	NumFields    int32
@@ -164,7 +165,7 @@ type TableBlockRefusal struct {
 
 // The BLITTABLE records: one per record the block form touches, laid out to
 // the C ABI with GENERATED PADDING FIELDS wherever the layout has interior
-// padding (docs/SPEC-TABLES.md §19.3). Explicit padding is chosen over relying
+// padding (mas-bandwidth/schema docs/SPEC-TABLES.md §19.3). Explicit padding is chosen over relying
 // on Go's own inter-field padding matching C's, because that is an
 // assumption, and an assumption is what this form exists to delete: the
 // padding puts every field where the model says, and the init below proves
@@ -184,7 +185,7 @@ type TableBlockRefusal struct {
 // another block's row, and the two differ by the prologue.
 type TokensBlockProjection struct {
 	Magic        uint64 // generated: identifies a schema block
-	BuildVersion uint64 // generated: the unit's build version (docs/SPEC-TABLES.md §20)
+	BuildVersion uint64 // generated: the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20)
 	ByteOrder    uint64 // generated: 1 little, 2 big
 	Input        int64
 	CacheRead    int64
@@ -204,13 +205,13 @@ type TokensBlockProjection struct {
 // another block's row, and the two differ by the prologue.
 type SnapshotCountsBlockProjection struct {
 	Magic        uint64 // generated: identifies a schema block
-	BuildVersion uint64 // generated: the unit's build version (docs/SPEC-TABLES.md §20)
+	BuildVersion uint64 // generated: the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20)
 	ByteOrder    uint64 // generated: 1 little, 2 big
 	Keys         int64
 	Cards        int64
 }
 
-// The LAYOUT CONTRACT's Go half (docs/SPEC-TABLES.md §19.3), run ONCE at
+// The LAYOUT CONTRACT's Go half (mas-bandwidth/schema docs/SPEC-TABLES.md §19.3), run ONCE at
 // package initialisation. It REFUSES rather than guesses: a runtime whose
 // model disagrees with the one the compiler derived stops the program where
 // it starts, rather than pointing at a row and reading the wrong bytes.
@@ -241,7 +242,7 @@ func init() {
 func tableBlockLayoutSize(what string, got, want uintptr) {
 	if got != want {
 		panic(fmt.Sprintf("schema block layout: %s is %d bytes in this runtime and %d in the schema "+
-			"the C++ side asserts — the two sides disagree about the bytes (docs/SPEC-TABLES.md §19.3)", what, got, want))
+			"the C++ side asserts — the two sides disagree about the bytes (mas-bandwidth/schema docs/SPEC-TABLES.md §19.3)", what, got, want))
 	}
 }
 
@@ -249,7 +250,7 @@ func tableBlockLayoutSize(what string, got, want uintptr) {
 func tableBlockLayoutOffset(what string, got, want uintptr) {
 	if got != want {
 		panic(fmt.Sprintf("schema block layout: %s sits at %d in this runtime and %d in the schema "+
-			"the C++ side asserts — the two sides disagree about the bytes (docs/SPEC-TABLES.md §19.3)", what, got, want))
+			"the C++ side asserts — the two sides disagree about the bytes (mas-bandwidth/schema docs/SPEC-TABLES.md §19.3)", what, got, want))
 	}
 }
 
@@ -297,28 +298,28 @@ func init() {
 	}
 }
 
-// table Word has NO block form: it is VARIABLE-LENGTH: Word.text is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table Word has NO block form: it is VARIABLE-LENGTH: Word.text is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table Pair has NO block form: it is VARIABLE-LENGTH: Pair.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table Pair has NO block form: it is VARIABLE-LENGTH: Pair.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table Flag has NO block form: it is VARIABLE-LENGTH: Flag.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table Flag has NO block form: it is VARIABLE-LENGTH: Flag.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table EpochFlag has NO block form: it is VARIABLE-LENGTH: a pointer or a map in its by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table EpochFlag has NO block form: it is VARIABLE-LENGTH: a pointer or a map in its by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table Image has NO block form: it is VARIABLE-LENGTH: Image.data is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table Image has NO block form: it is VARIABLE-LENGTH: Image.data is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
 // TokensBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
-// from the declared maxima (docs/SPEC-TABLES.md §19.1). A Go consumer does
+// from the declared maxima (mas-bandwidth/schema docs/SPEC-TABLES.md §19.1). A Go consumer does
 // not allocate a block — the bytes are handed to it — but it caps by this: a
 // playback buffer, a recording, a scratch copy all size from the generated
 // constant rather than from a number a person wrote down beside it.
@@ -457,36 +458,36 @@ func TokensBlockBytes(b *TokensBlock) int64 {
 // through the graph.
 func (b *TokensBlock) Type() *TableBlockInfo { return &tableBlockRecords[1] }
 
-// table TokenCount has NO block form: it is VARIABLE-LENGTH: TokenCount.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table TokenCount has NO block form: it is VARIABLE-LENGTH: TokenCount.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table RawRecord has NO block form: it is VARIABLE-LENGTH: RawRecord.harness is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table RawRecord has NO block form: it is VARIABLE-LENGTH: RawRecord.harness is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table RawUsage has NO block form: it is VARIABLE-LENGTH: RawUsage.records is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table RawUsage has NO block form: it is VARIABLE-LENGTH: RawUsage.records is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table Usage has NO block form: it is VARIABLE-LENGTH: Usage.billing is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table Usage has NO block form: it is VARIABLE-LENGTH: Usage.billing is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table Total has NO block form: it is VARIABLE-LENGTH: Total.predicted_usd is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table Total has NO block form: it is VARIABLE-LENGTH: Total.predicted_usd is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table Consumer has NO block form: it is VARIABLE-LENGTH: Consumer.kind is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table Consumer has NO block form: it is VARIABLE-LENGTH: Consumer.kind is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table CardCostView has NO block form: it is VARIABLE-LENGTH: CardCostView.consumers is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table CardCostView has NO block form: it is VARIABLE-LENGTH: CardCostView.consumers is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
 // SnapshotCountsBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
-// from the declared maxima (docs/SPEC-TABLES.md §19.1). A Go consumer does
+// from the declared maxima (mas-bandwidth/schema docs/SPEC-TABLES.md §19.1). A Go consumer does
 // not allocate a block — the bytes are handed to it — but it caps by this: a
 // playback buffer, a recording, a scratch copy all size from the generated
 // constant rather than from a number a person wrote down beside it.
@@ -625,150 +626,150 @@ func SnapshotCountsBlockBytes(b *SnapshotCountsBlock) int64 {
 // through the graph.
 func (b *SnapshotCountsBlock) Type() *TableBlockInfo { return &tableBlockRecords[0] }
 
-// table SnapshotTaken has NO block form: it is VARIABLE-LENGTH: SnapshotTaken.file is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table SnapshotTaken has NO block form: it is VARIABLE-LENGTH: SnapshotTaken.file is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table ColumnCount has NO block form: it is VARIABLE-LENGTH: ColumnCount.column is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table ColumnCount has NO block form: it is VARIABLE-LENGTH: ColumnCount.column is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table BackupCounts has NO block form: it is VARIABLE-LENGTH: BackupCounts.columns is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table BackupCounts has NO block form: it is VARIABLE-LENGTH: BackupCounts.columns is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table DumpKey has NO block form: it is VARIABLE-LENGTH: DumpKey.key is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table DumpKey has NO block form: it is VARIABLE-LENGTH: DumpKey.key is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table StatePart has NO block form: it is VARIABLE-LENGTH: StatePart.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table StatePart has NO block form: it is VARIABLE-LENGTH: StatePart.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table SprintState has NO block form: it is VARIABLE-LENGTH: SprintState.parts is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table SprintState has NO block form: it is VARIABLE-LENGTH: SprintState.parts is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table Column has NO block form: it is VARIABLE-LENGTH: Column.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table Column has NO block form: it is VARIABLE-LENGTH: Column.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table ScoredMember has NO block form: it is VARIABLE-LENGTH: ScoredMember.member is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table ScoredMember has NO block form: it is VARIABLE-LENGTH: ScoredMember.member is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table Cell has NO block form: it is VARIABLE-LENGTH: Cell.key is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table Cell has NO block form: it is VARIABLE-LENGTH: Cell.key is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table Row has NO block form: it is VARIABLE-LENGTH: Row.key is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table Row has NO block form: it is VARIABLE-LENGTH: Row.key is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table NTable has NO block form: it is VARIABLE-LENGTH: NTable.epoch_key is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table NTable has NO block form: it is VARIABLE-LENGTH: NTable.epoch_key is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table View has NO block form: it is VARIABLE-LENGTH: View.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table View has NO block form: it is VARIABLE-LENGTH: View.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table FieldChange has NO block form: it is VARIABLE-LENGTH: FieldChange.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table FieldChange has NO block form: it is VARIABLE-LENGTH: FieldChange.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table BatchMemberDelta has NO block form: it is VARIABLE-LENGTH: BatchMemberDelta.id is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table BatchMemberDelta has NO block form: it is VARIABLE-LENGTH: BatchMemberDelta.id is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table BatchDelta has NO block form: it is VARIABLE-LENGTH: BatchDelta.operation_id is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table BatchDelta has NO block form: it is VARIABLE-LENGTH: BatchDelta.operation_id is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table Receipt has NO block form: it is VARIABLE-LENGTH: Receipt.id is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table Receipt has NO block form: it is VARIABLE-LENGTH: Receipt.id is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table Field has NO block form: it is VARIABLE-LENGTH: Field.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table Field has NO block form: it is VARIABLE-LENGTH: Field.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table MemberSnapshot has NO block form: it is VARIABLE-LENGTH: MemberSnapshot.row is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table MemberSnapshot has NO block form: it is VARIABLE-LENGTH: MemberSnapshot.row is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table MemberEntry has NO block form: it is VARIABLE-LENGTH: MemberEntry.id is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table MemberEntry has NO block form: it is VARIABLE-LENGTH: MemberEntry.id is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table ChangeSnapshot has NO block form: it is VARIABLE-LENGTH: ChangeSnapshot.verb is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table ChangeSnapshot has NO block form: it is VARIABLE-LENGTH: ChangeSnapshot.verb is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table OpEntry has NO block form: it is VARIABLE-LENGTH: OpEntry.key is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table OpEntry has NO block form: it is VARIABLE-LENGTH: OpEntry.key is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table TextRow has NO block form: it is VARIABLE-LENGTH: TextRow.row is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table TextRow has NO block form: it is VARIABLE-LENGTH: TextRow.row is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table EpochSnapshot has NO block form: it is VARIABLE-LENGTH: EpochSnapshot.rows is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table EpochSnapshot has NO block form: it is VARIABLE-LENGTH: EpochSnapshot.rows is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table EpochEntry has NO block form: it is VARIABLE-LENGTH: EpochSnapshot.rows is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table EpochEntry has NO block form: it is VARIABLE-LENGTH: EpochSnapshot.rows is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table TableSnapshot has NO block form: it is VARIABLE-LENGTH: NTable.epoch_key is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table TableSnapshot has NO block form: it is VARIABLE-LENGTH: NTable.epoch_key is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table TableEntry has NO block form: it is VARIABLE-LENGTH: TableEntry.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table TableEntry has NO block form: it is VARIABLE-LENGTH: TableEntry.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table ResidueSnap has NO block form: it is VARIABLE-LENGTH: ResidueSnap.keys is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table ResidueSnap has NO block form: it is VARIABLE-LENGTH: ResidueSnap.keys is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table ResidueEntry has NO block form: it is VARIABLE-LENGTH: ResidueEntry.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table ResidueEntry has NO block form: it is VARIABLE-LENGTH: ResidueEntry.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table ViewEntry has NO block form: it is VARIABLE-LENGTH: ViewEntry.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table ViewEntry has NO block form: it is VARIABLE-LENGTH: ViewEntry.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table NoteSnapshot has NO block form: it is VARIABLE-LENGTH: NoteSnapshot.id is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table NoteSnapshot has NO block form: it is VARIABLE-LENGTH: NoteSnapshot.id is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table LineSnapshot has NO block form: it is VARIABLE-LENGTH: LineSnapshot.id is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table LineSnapshot has NO block form: it is VARIABLE-LENGTH: LineSnapshot.id is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table NoteEntry has NO block form: it is VARIABLE-LENGTH: NoteEntry.id is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table NoteEntry has NO block form: it is VARIABLE-LENGTH: NoteEntry.id is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table TimeEntry has NO block form: it is VARIABLE-LENGTH: TimeEntry.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table TimeEntry has NO block form: it is VARIABLE-LENGTH: TimeEntry.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table LogSnapshot has NO block form: it is VARIABLE-LENGTH: LogSnapshot.fence is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table LogSnapshot has NO block form: it is VARIABLE-LENGTH: LogSnapshot.fence is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table LogEntry has NO block form: it is VARIABLE-LENGTH: LogSnapshot.fence is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table LogEntry has NO block form: it is VARIABLE-LENGTH: LogSnapshot.fence is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table MemSnapshot has NO block form: it is VARIABLE-LENGTH: MemSnapshot.tables is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table MemSnapshot has NO block form: it is VARIABLE-LENGTH: MemSnapshot.tables is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table MemDumpMember has NO block form: it is VARIABLE-LENGTH: MemDumpMember.table_name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table MemDumpMember has NO block form: it is VARIABLE-LENGTH: MemDumpMember.table_name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.

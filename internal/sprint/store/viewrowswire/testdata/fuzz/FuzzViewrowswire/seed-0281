@@ -1,0 +1,3 @@
+go test fuzz v1
+byte('\x5d')
+[]byte("{\n  \"key\": null,\n  \"costs\": {\n    \"tiers\": [],\n    \"per_landed\": null,\n    \"cost_by_tier\": [],\n    \"total_cost\": null,\n    \"total_usd\": null,\n    \"landed_usd\": null,\n    \"work_cost\": null,\n    \"read_cost\": null,\n    \"decide_cost\": null,\n    \"decide_unpriced\": 0,\n    \"dropped_cards\": 0,\n    \"carried_cards\": 0,\n    \"read_tokens\": 0,\n    \"reads_today\": [],\n    \"unpriced_runs\": 0,\n    \"reads_no_tokens\": 0,\n    \"readers\": [],\n    \"in_flight\": null,\n    \"unreconciled\": null,\n    \"reconciles\": []\n  }\n}\n")

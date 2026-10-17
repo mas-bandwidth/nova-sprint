@@ -1,0 +1,3 @@
+go test fuzz v1
+byte('\x29')
+[]byte("{\n  \"def\": {\n    \"epoch_key\": null,\n    \"epoch_field\": null,\n    \"member_prefix\": null,\n    \"epoch\": 0,\n    \"revision\": 0,\n    \"name\": null,\n    \"columns\": [],\n    \"footer_label\": null,\n    \"hidden\": [],\n    \"hidden_table\": false,\n    \"sort\": null,\n    \"rows\": [],\n    \"props\": []\n  },\n  \"epochs\": [],\n  \"wrote\": [],\n  \"rev\": 0,\n  \"members\": [],\n  \"ops\": [],\n  \"changes\": []\n}\n")

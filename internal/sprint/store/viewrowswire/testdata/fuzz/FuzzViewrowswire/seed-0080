@@ -1,0 +1,3 @@
+go test fuzz v1
+byte('\x1a')
+[]byte("{\n  \"type\": null,\n  \"subject\": null,\n  \"why\": null,\n  \"friend\": null,\n  \"run\": null\n}\n")

@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"maps"
 	"slices"
@@ -230,19 +229,16 @@ func (r *Redis) RecordIDs(ctx context.Context, table string) ([]string, error) {
 		}
 		for _, msg := range msgs {
 			s, _ := msg.Values["members"].(string)
-			if s == "" || s == "[]" || s == "{}" {
-				continue
-			}
-			var ms []struct {
-				ID string `json:"id"`
-			}
-			if err := json.Unmarshal([]byte(s), &ms); err != nil {
+			// the change's members, read through MEMBERS in any form; a damaged
+			// list is refused by name, never read as naming none (S2, C13)
+			ms, err := r.opRowSet().memberIDs(s)
+			if err != nil {
 				return nil, fmt.Errorf("change %s of %s: its members are unreadable: %w", msg.ID, table, err)
 			}
-			for _, m := range ms {
-				if m.ID != "" && !seen[m.ID] {
-					seen[m.ID] = true
-					out = append(out, m.ID)
+			for _, id := range ms {
+				if id != "" && !seen[id] {
+					seen[id] = true
+					out = append(out, id)
 				}
 			}
 		}

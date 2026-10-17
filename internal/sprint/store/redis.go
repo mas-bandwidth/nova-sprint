@@ -1,17 +1,21 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/redis/go-redis/v9"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/oprowswire"
 	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
@@ -34,12 +38,16 @@ type Redis struct {
 	// delete's transaction after its read and before its EXEC: the seam a test
 	// writes another writer's change through (RowsDelIf).
 	beforeExec func()
+	// rows is this backend's operation rows' readers (opRowSet), shared with
+	// its pinned copies, so their counts are this backend's alone (S4).
+	rows *opRowCodecs
 }
 
 func (r *Redis) key(name string) string { return r.Names.KeyAt(name, r.Pinned) }
 
 // AtEpoch is the backend pinned to an epoch.
 func (r *Redis) AtEpoch(epoch uint64, old bool) Backend {
+	r.opRowSet() // the copy shares this backend's readers (S4)
 	c := *r
 	c.Pinned, c.Old = epoch, old
 	return &c
@@ -102,13 +110,15 @@ func (r *Redis) AdvanceEpoch(ctx context.Context, from uint64, at time.Time, own
 		if err != nil && !errors.Is(err, redis.Nil) {
 			return err
 		}
-		var held OpRecord
+		// the holder's id, read through HELDLOCK in any form; a damaged
+		// value is refused by name, never read as an empty fence (S2, C13)
+		held := ""
 		if body != "" {
-			if err := json.Unmarshal([]byte(body), &held); err != nil {
+			if held, err = r.opRowSet().heldID(body); err != nil {
 				return err
 			}
 		}
-		if held.ID != id {
+		if held != id {
 			moved = true
 			return nil
 		}
@@ -628,14 +638,35 @@ func (r *Redis) ReadFence(ctx context.Context) (Fence, error) {
 	return fenceOf(mget, llen)
 }
 
-// queueFence queues the fence's read on a pipeline: the fence, its
-// generation and the machine's state, and the queue's length.
-func (r *Redis) queueFence(ctx context.Context, p redis.Pipeliner) (*redis.SliceCmd, *redis.IntCmd) {
-	return p.MGet(ctx, r.key(keyFence), r.key(keyGen), r.Names.Key(keyMachine), r.Names.Key(keyStuck)), p.LLen(ctx, r.key(keyQueue))
+// fenceCmd is the fence's queued read and the readers of the backend that
+// queued it, so the record it holds is counted on that backend alone (S4).
+type fenceCmd struct {
+	*redis.SliceCmd
+	rows *opRowCodecs
 }
 
+// queueFence queues the fence's read on a pipeline: the fence, its
+// generation and the machine's state, and the queue's length.
+func (r *Redis) queueFence(ctx context.Context, p redis.Pipeliner) (*fenceCmd, *redis.IntCmd) {
+	mget := p.MGet(ctx, r.key(keyFence), r.key(keyGen), r.Names.Key(keyMachine), r.Names.Key(keyStuck))
+	return &fenceCmd{SliceCmd: mget, rows: r.opRowSet()}, p.LLen(ctx, r.key(keyQueue))
+}
+
+// fenceReply is the fence's MGET reply: a fenceCmd a backend queued, or a
+// bare reply.
+type fenceReply interface{ Result() ([]any, error) }
+
+// opRowsBare reads the record of a bare fence reply, one no backend queued
+// (queueFence makes every reply the store reads a fenceCmd). It is registered
+// on no check, so no store's counts include it (S4).
+var opRowsBare = newOpRowCodecs()
+
 // fenceOf is the fence a pipeline read.
-func fenceOf(mget *redis.SliceCmd, llen *redis.IntCmd) (Fence, error) {
+func fenceOf(mget fenceReply, llen *redis.IntCmd) (Fence, error) {
+	rows := opRowsBare
+	if f, ok := mget.(*fenceCmd); ok && f.rows != nil {
+		rows = f.rows
+	}
 	vals, err := mget.Result()
 	if err != nil {
 		return Fence{}, err
@@ -659,11 +690,13 @@ func fenceOf(mget *redis.SliceCmd, llen *redis.IntCmd) (Fence, error) {
 		f.Stuck, _ = vals[3].(string)
 	}
 	if s, ok := vals[0].(string); ok {
-		var op OpRecord
-		if err := json.Unmarshal([]byte(s), &op); err != nil {
+		// the whole record, read through OPRECORD in any form; a damaged
+		// record is refused by name (S2, C13)
+		op, err := rows.fenceRecord(s)
+		if err != nil {
 			return f, fmt.Errorf("the fence holds an unreadable operation record: %w", err)
 		}
-		f.Pending = &op
+		f.Pending = op
 	}
 	return f, nil
 }
@@ -716,7 +749,10 @@ func (r *Redis) Release(ctx context.Context, op OpRecord, commit bool) error {
 	fence := r.key(keyFence)
 	// The fence holds this operation when its record begins with this
 	// operation's id (json.Marshal writes OpRecord's id first): read that
-	// much of it, not the whole record, which carries every manifest.
+	// much of it, not the whole record, which carries every manifest. Every
+	// writer of the fence still writes the legacy record (S4: readers first),
+	// so the prefix holds; a writer that switches the fence to a table form
+	// switches this check with it (TestOpRowsDualRead pins the prefix).
 	id, err := json.Marshal(op.ID)
 	if err != nil {
 		return err
@@ -780,11 +816,12 @@ func (r *Redis) heldOp(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var held OpRecord
-	if json.Unmarshal([]byte(cur), &held) != nil {
-		return "", fmt.Errorf("the fence holds an unreadable operation record")
+	// read through HELDLOCK in any form, refused by name when damaged (S2, C13)
+	id, err := r.opRowSet().heldID(cur)
+	if err != nil {
+		return "", fmt.Errorf("the fence holds an unreadable operation record: %w", err)
 	}
-	return held.ID, nil
+	return id, nil
 }
 
 // released says a release whose transaction kept failing is done: the fence
@@ -901,8 +938,10 @@ func (r *Redis) commit(ctx context.Context, p redis.Pipeliner, op OpRecord) erro
 			return err
 		}
 		if raw != "" {
-			var ts sprint.Timers
-			if err := json.Unmarshal([]byte(raw), &ts); err != nil {
+			// read through TIMERS in any form, refused by name when damaged
+			// (S2, C13); the record is written back legacy (S4)
+			ts, _, err := r.opRowSet().timers.Read([]byte(raw))
+			if err != nil {
 				return err
 			}
 			closing := map[string]bool{}
@@ -938,13 +977,7 @@ func (r *Redis) QueueRead(ctx context.Context) ([]sprint.QueuedChange, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make([]sprint.QueuedChange, len(raw))
-	for i, b := range raw {
-		if err := json.Unmarshal([]byte(b), &out[i]); err != nil {
-			return nil, fmt.Errorf("the work table's queue holds an unreadable entry: %w", err)
-		}
-	}
-	return out, nil
+	return r.opRowSet().queueEntries(raw)
 }
 
 func (r *Redis) Done(ctx context.Context, callerOp string) (string, bool, error) {
@@ -985,8 +1018,10 @@ func (r *Redis) SetReview(ctx context.Context, noteID string, at, set time.Time)
 	if err != nil {
 		return err
 	}
-	var n sprint.Note
-	if err := json.Unmarshal([]byte(raw), &n); err != nil {
+	// read through NOTES in any form, refused by name when damaged (S2,
+	// C13); written back legacy (S4)
+	n, _, err := r.opRowSet().notes.Read([]byte(raw))
+	if err != nil {
 		return err
 	}
 	n.Review, n.ReviewSet = at, set
@@ -1068,8 +1103,9 @@ func (r *Redis) openOf(ctx context.Context, open map[string]string) ([]sprint.Op
 		if !ok {
 			continue
 		}
-		var n sprint.Note
-		if err := json.Unmarshal([]byte(s), &n); err != nil {
+		// read through NOTES in any form, refused by name when damaged (S2, C13)
+		n, _, err := r.opRowSet().notes.Read([]byte(s))
+		if err != nil {
 			return nil, fmt.Errorf("notification %s: %w", ids[i], err)
 		}
 		notes[ids[i]] = n
@@ -1108,13 +1144,7 @@ func rangeSince[T any](ctx context.Context, c redis.UniversalClient, key, after 
 }
 
 func (r *Redis) NotesSince(ctx context.Context, after string, max int) ([]sprint.Note, []string, error) {
-	return rangeSince(ctx, r.C, r.key(keyInbox), after, max, func(v map[string]any) (sprint.Note, error) {
-		var n sprint.Note
-		if s, ok := v["note"].(string); ok && json.Unmarshal([]byte(s), &n) == nil {
-			return n, nil
-		}
-		return n, errors.New("no note")
-	})
+	return rangeSince(ctx, r.C, r.key(keyInbox), after, max, r.opRowSet().inboxNote)
 }
 
 func (r *Redis) Tails(ctx context.Context) (string, string, error) {
@@ -1134,13 +1164,7 @@ func (r *Redis) Tails(ctx context.Context) (string, string, error) {
 }
 
 func (r *Redis) LogSince(ctx context.Context, after string, max int) ([]sprint.Line, []string, error) {
-	return rangeSince(ctx, r.C, r.key(keyLog), after, max, func(v map[string]any) (sprint.Line, error) {
-		var l sprint.Line
-		if s, ok := v["line"].(string); ok && json.Unmarshal([]byte(s), &l) == nil {
-			return l, nil
-		}
-		return l, errors.New("no line")
-	})
+	return rangeSince(ctx, r.C, r.key(keyLog), after, max, r.opRowSet().logLine)
 }
 
 func (r *Redis) Cursor(ctx context.Context) (string, error) {
@@ -1279,7 +1303,7 @@ func (r *Redis) tableChanges(ctx context.Context, table string, from, to uint64,
 				if !twinVerbs[ev.verb] {
 					return gap(fmt.Sprintf("a write %q at revision %d names no records", ev.verb, ev.after))
 				}
-				named, err := changeIDs(ev)
+				named, err := r.opRowSet().changeIDs(ev)
 				if err != nil {
 					return gap(fmt.Sprintf("the event at revision %d is unreadable: %v", ev.after, err))
 				}
@@ -1309,20 +1333,14 @@ func readChange(v map[string]any) changeEvent {
 	return ev
 }
 
-// changeIDs is the records an event names: the members it moved and every
-// entry of its batch's account.
-func changeIDs(ev changeEvent) ([]string, error) {
-	var out []string
-	var moved []struct {
-		ID string `json:"id"`
-	}
-	if ev.members != "" && ev.members != "[]" && ev.members != "{}" {
-		if err := json.Unmarshal([]byte(ev.members), &moved); err != nil {
-			return nil, err
-		}
-	}
-	for _, m := range moved {
-		out = append(out, m.ID)
+// changeIDs is the records an event names, read through these readers: the
+// moved members and the members of the batch's account through MEMBERS in any form, refused by name
+// when damaged (S2, C13). The account's envelope is nova-tables' own protocol
+// and stays its JSON.
+func (c *opRowCodecs) changeIDs(ev changeEvent) ([]string, error) {
+	out, err := c.memberIDs(ev.members)
+	if err != nil {
+		return nil, err
 	}
 	if ev.batchDelta != "" {
 		var d struct {
@@ -1333,17 +1351,19 @@ func changeIDs(ev changeEvent) ([]string, error) {
 		}
 		// a batch that changed no record (a properties-only apply, such as promoted) is
 		// encoded by the store's cjson with its empty members as {}: it names none
-		var members []struct {
-			ID string `json:"id"`
-		}
-		if m := strings.TrimSpace(string(d.Members)); m != "" && m != "{}" && m != "null" {
-			if err := json.Unmarshal(d.Members, &members); err != nil {
-				return nil, err
+		// a table form inside the account is a JSON string holding it (S2)
+		raw := string(d.Members)
+		if len(raw) > 0 && raw[0] == '"' {
+			var text string
+			if err := json.Unmarshal(d.Members, &text); err == nil {
+				raw = text
 			}
 		}
-		for _, m := range members {
-			out = append(out, m.ID)
+		members, err := c.memberIDs(raw)
+		if err != nil {
+			return nil, err
 		}
+		out = append(out, members...)
 	} else if ev.verb == "apply" {
 		return nil, fmt.Errorf("a batch event without its account")
 	}
@@ -1446,4 +1466,1305 @@ func orderOnly(args string) bool {
 		}
 	}
 	return true
+}
+
+// ---------------------------------------------------------------------------
+// The operation rows' readers (the reader-first half of the schema-table
+// adoption of the op journal, the held lock, the notes and note lines, the
+// timers, the queued changes, the members a table change names and the step
+// result: S4 and C13, readers first, then writers). Each record is read through
+// the store row reader (rowcodec.go, pkg/schemaread) from the generated tables
+// of oprowswire (schemas/oprows/oprows.schema): the table wire (form byte 1),
+// the padded standard base64 of that wire, the schema JSON text of a variable
+// table, and the legacy JSON every writer still writes (S2). A damaged value is
+// refused by name, `<RECORD> REFUSED: <reason>; run: nova-sprint check`, and
+// every read is counted under its record and its form (S4). These reads run in
+// the Redis backend, which has no Store, so the readers are registered
+// per backend: each Redis holds its own (Redis.opRowSet), a Store registers the
+// set of the backend it holds (Store.opRowSet), and a backend that is not a
+// Redis has a set per store; so one store's counts are never another's (S4).
+// Writers stay legacy: the writer switch is a later card, which reads these
+// counts first. The fence's release and relock still find the operation they
+// hold by the legacy record's `{"id":` prefix (Release, Relock); a writer that
+// switches the fence to a table form switches that check with it.
+
+// opTable is one generated table of oprowswire as the row reader uses it, W
+// its generated record: the wire's load, the schema JSON text's load and the
+// table's JSON text and wire of a loaded record (S1, S2). measure is nil for a
+// fixed table, whose load decides alone, and fromJSON reads only for SaveWire:
+// a fixed table has no JSON text form (S1, oprows.schema).
+type opTable[W any] struct {
+	measure  func(wire []byte) (int64, error)
+	load     func(wire []byte, report *oprowswire.TableReport) *W
+	fromJSON func(text []byte, report *oprowswire.TableReport) (*W, bool)
+	toJSON   func(*W) []byte
+	save     func(*W) []byte
+	fixed    bool
+}
+
+// opVariable is a variable table's opTable from its generated functions (S1).
+func opVariable[W any, B any](
+	measure func([]byte) (int64, error),
+	load func(region, wire []byte, report *oprowswire.TableReport) *W,
+	init func(*B) bool, from func(*B, []byte, *oprowswire.TableReport) bool, lock func(*B) bool, root func(*B) *W,
+	jsonMeasure func(*W) int64, toJSON func(*W, []byte) int64,
+	wireMeasure func(*W) int64, save func(*W, []byte) int64,
+) opTable[W] {
+	return opTable[W]{
+		measure: measure,
+		load: func(wire []byte, rep *oprowswire.TableReport) *W {
+			n, err := measure(wire)
+			if err != nil || n < 0 {
+				return nil
+			}
+			return load(presenceRegion(n), wire, rep)
+		},
+		fromJSON: func(text []byte, rep *oprowswire.TableReport) (*W, bool) {
+			b := new(B)
+			if !init(b) {
+				return nil, false
+			}
+			if !from(b, text, rep) || !lock(b) {
+				return nil, false
+			}
+			return root(b), true
+		},
+		toJSON: func(w *W) []byte {
+			buf := make([]byte, max(jsonMeasure(w), 0))
+			return buf[:max(toJSON(w, buf), 0)]
+		},
+		save: func(w *W) []byte {
+			m := wireMeasure(w)
+			if m < 0 {
+				return nil
+			}
+			buf := make([]byte, m)
+			n := save(w, buf)
+			if n < 0 {
+				return nil
+			}
+			return buf[:n]
+		},
+	}
+}
+
+// opReport is the generated report as the strict read decides on it. S2: a key
+// given twice is malformed, never last-wins.
+func opReport(r *oprowswire.TableReport) RowReport {
+	return RowReport{
+		Unknown: int(r.Unknown), KindMismatch: int(r.KindMismatch), Clamped: int(r.Clamped),
+		Malformed: r.Malformed, Duplicate: int(r.Duplicate), Reason: r.Reason,
+	}
+}
+
+// opRowFns adapts one record to the row reader (S1, S2): T is the store's Go
+// record, M its schema JSON shape (the generated text's keys) and W the
+// generated record. A loaded table is read into T through its schema JSON text,
+// so the wire, its base64 and the JSON text decode to one value. legacy says a
+// value is today's legacy text and loadLegacy reads it; a nil legacy is
+// opLegacyObject and a nil loadLegacy DecodeLegacy (S2).
+func opRowFns[T, M, W any](name string, tab opTable[W], to func(*T) (M, bool), from func(*M) (T, bool), legacy func([]byte) bool, loadLegacy func(*T, []byte) RowReport) RowFns[T] {
+	if legacy == nil {
+		legacy = opLegacyObject
+	}
+	if loadLegacy == nil {
+		loadLegacy = DecodeLegacy[T]
+	}
+	value := func(v *T, w *W) RowReport {
+		dec := json.NewDecoder(bytes.NewReader(tab.toJSON(w)))
+		dec.DisallowUnknownFields()
+		var m M
+		if err := dec.Decode(&m); err != nil {
+			return RowReport{Malformed: true}
+		}
+		t, ok := from(&m)
+		if !ok {
+			return RowReport{Malformed: true}
+		}
+		*v = t
+		return RowReport{}
+	}
+	table := func(v *T) *W {
+		m, ok := to(v)
+		if !ok {
+			return nil
+		}
+		text, err := json.Marshal(m)
+		if err != nil {
+			return nil
+		}
+		var rep oprowswire.TableReport
+		w, ok := tab.fromJSON(text, &rep)
+		if !ok || w == nil || opReport(&rep).refuses() {
+			return nil
+		}
+		return w
+	}
+	fns := RowFns[T]{
+		Name:  name,
+		Forms: []byte{1}, // the table wire of oprows.schema, fixed and variable alike (S1)
+		Reset: func(v *T) { var zero T; *v = zero },
+		LoadWire: func(v *T, wire []byte) RowReport {
+			var rep oprowswire.TableReport
+			w := tab.load(wire, &rep)
+			if w == nil {
+				return RowReport{Malformed: true, Reason: rep.Reason}
+			}
+			if rr := opReport(&rep); rr.refuses() {
+				return rr
+			}
+			rr := value(v, w)
+			rr.Unknown = int(rep.Unknown)
+			return rr
+		},
+		Legacy:     legacy,
+		LoadLegacy: loadLegacy,
+		SaveWire: func(v *T) []byte {
+			if w := table(v); w != nil {
+				return tab.save(w)
+			}
+			return nil
+		},
+	}
+	if tab.measure != nil {
+		fns.Measure = func(wire []byte) error {
+			_, err := tab.measure(wire)
+			return err
+		}
+	}
+	if !tab.fixed {
+		// S1: a variable table also travels as its schema JSON text.
+		fns.LoadJSON = func(v *T, text []byte) RowReport {
+			var rep oprowswire.TableReport
+			w, ok := tab.fromJSON(text, &rep)
+			rr := opReport(&rep)
+			if !ok || w == nil {
+				rr.Malformed = true
+				return rr
+			}
+			if rr.refuses() {
+				return rr
+			}
+			out := value(v, w)
+			out.Unknown = rr.Unknown
+			return out
+		}
+		fns.SaveJSON = func(v *T) []byte {
+			if w := table(v); w != nil {
+				return tab.toJSON(w)
+			}
+			return nil
+		}
+	}
+	return fns
+}
+
+// opLegacyObject reports today's legacy JSON: an object as encoding/json writes
+// it, on one line. The generated writer's schema JSON text spans lines, so a
+// schema text that lost its closing newline is still read as schema text, and
+// is never read as a legacy record whose keys it does not share (S2).
+func opLegacyObject(in []byte) bool {
+	t := bytes.TrimSpace(in)
+	return len(t) > 0 && t[0] == '{' && bytes.IndexByte(t, '\n') < 0
+}
+
+// opValue is one element of a wrapped list of words (Name128, Name256, Name400,
+// Text512: oprows.schema, an array of string(N) wraps its element).
+type opValue struct {
+	Value string `json:"value"`
+}
+
+// opValues is a list of words as the schema's wrapped list.
+func opValues(in []string) []opValue {
+	out := make([]opValue, len(in))
+	for i, s := range in {
+		out[i] = opValue{Value: s}
+	}
+	return out
+}
+
+// opStrings is opValues read back; an empty list is nil, as encoding/json
+// reads an omitted list.
+func opStrings(in []opValue) []string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]string, len(in))
+	for i, v := range in {
+		out[i] = v.Value
+	}
+	return out
+}
+
+// opNanos is a time as oprows.schema holds it: Unix nanoseconds UTC, 0 for the
+// zero time.
+func opNanos(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.UnixNano()
+}
+
+// opTimeOf is opNanos read back, in UTC.
+func opTimeOf(n int64) time.Time {
+	if n == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, n).UTC()
+}
+
+// opInt32 is a count the schema holds as int32; ok is false past its range.
+func opInt32(n int) (int64, bool) {
+	return int64(n), n >= -1<<31 && n < 1<<31
+}
+
+// ---------------------------------------------------------------------------
+// The held lock (HELDLOCK): the identity of the operation the fence holds, the
+// part of it a read that only asks whose the fence is takes (AdvanceEpoch,
+// heldOp). The generated HeldLock fixed table reads the id, the verb and the
+// time of a lock's image, and of an operation record's image too: the table
+// wire skips the fields it does not name as newer data.
+
+// heldLock is the fence's holder as HeldLock reads it; Lock is the legacy
+// record's flag, which the fixed table does not hold.
+type heldLock struct {
+	ID   string    `json:"id"`
+	Lock bool      `json:"lock,omitempty"`
+	Verb string    `json:"verb"`
+	At   time.Time `json:"at"`
+}
+
+type heldLockSchema struct {
+	ID   string `json:"id"`
+	Verb string `json:"verb"`
+	At   int64  `json:"at"`
+}
+
+func heldLockTable() opTable[oprowswire.HeldLock] {
+	return opTable[oprowswire.HeldLock]{
+		fixed: true,
+		load: func(wire []byte, rep *oprowswire.TableReport) *oprowswire.HeldLock {
+			var w oprowswire.HeldLock
+			oprowswire.HeldLockReset(&w)
+			if !oprowswire.HeldLockLoad(&w, wire, rep) {
+				return nil
+			}
+			return &w
+		},
+		fromJSON: func(text []byte, rep *oprowswire.TableReport) (*oprowswire.HeldLock, bool) {
+			var w oprowswire.HeldLock
+			oprowswire.HeldLockReset(&w)
+			return &w, oprowswire.HeldLockFromJson(&w, text, rep)
+		},
+		toJSON: func(w *oprowswire.HeldLock) []byte {
+			buf := make([]byte, max(oprowswire.HeldLockToJsonMeasure(w), 0))
+			return buf[:max(oprowswire.HeldLockToJson(w, buf), 0)]
+		},
+		save: func(w *oprowswire.HeldLock) []byte {
+			buf := make([]byte, max(oprowswire.HeldLockMeasure(w), 0))
+			n := oprowswire.HeldLockSave(w, buf)
+			if n < 0 {
+				return nil
+			}
+			return buf[:n]
+		},
+	}
+}
+
+// heldLockRowFns is HELDLOCK (S1, S2, S4). The fixed table has no JSON text
+// form (S1); a fence value that is JSON text is the operation record's, read
+// whole through its table and its holder taken from it.
+func heldLockRowFns() RowFns[heldLock] {
+	fns := opRowFns("HELDLOCK", heldLockTable(), func(h *heldLock) (heldLockSchema, bool) {
+		return heldLockSchema{ID: h.ID, Verb: h.Verb, At: opNanos(h.At)}, true
+	}, func(m *heldLockSchema) (heldLock, bool) {
+		return heldLock{ID: m.ID, Verb: m.Verb, At: opTimeOf(m.At)}, true
+	}, nil, nil)
+	record := opRecordRowFns().LoadJSON
+	fns.LoadJSON = func(v *heldLock, text []byte) RowReport {
+		var op OpRecord
+		rr := record(&op, text)
+		if !rr.refuses() {
+			*v = heldLock{ID: op.ID, Lock: op.Lock, Verb: op.Verb, At: op.At}
+		}
+		return rr
+	}
+	return fns
+}
+
+// ---------------------------------------------------------------------------
+// The timers (TIMERS, sprint.Timers).
+
+type opTimerSchema struct {
+	ID    string `json:"id"`
+	Wakes string `json:"wakes"`
+	Due   int64  `json:"due"`
+	Note  string `json:"note"`
+	By    string `json:"by"`
+	Set   int64  `json:"set"`
+}
+
+type opTimersSchema struct {
+	OpenTimers []opTimerSchema `json:"open_timers"`
+}
+
+func opTimersTo(ts *sprint.Timers) opTimersSchema {
+	s := opTimersSchema{OpenTimers: make([]opTimerSchema, len(ts.Open))}
+	for i, t := range ts.Open {
+		s.OpenTimers[i] = opTimerSchema{ID: t.ID, Wakes: t.For, Due: opNanos(t.Due), Note: t.Note, By: t.By, Set: opNanos(t.Set)}
+	}
+	return s
+}
+
+func opTimersFrom(m *opTimersSchema) sprint.Timers {
+	var ts sprint.Timers
+	for _, t := range m.OpenTimers {
+		ts.Open = append(ts.Open, sprint.Timer{ID: t.ID, For: t.Wakes, Due: opTimeOf(t.Due), Note: t.Note, By: t.By, Set: opTimeOf(t.Set)})
+	}
+	return ts
+}
+
+func timersTable() opTable[oprowswire.Timers] {
+	return opVariable(oprowswire.TimersLoadMeasureReason, oprowswire.TimersLoad,
+		func(b *oprowswire.TimersBuilder) bool { return b.Init() }, oprowswire.TimersFromJson,
+		func(b *oprowswire.TimersBuilder) bool { return b.Lock() }, func(b *oprowswire.TimersBuilder) *oprowswire.Timers { return b.AsConst() },
+		func(w *oprowswire.Timers) int64 { return oprowswire.TimersToJsonMeasure(w) },
+		func(w *oprowswire.Timers, buf []byte) int64 { return oprowswire.TimersToJson(w, buf) },
+		func(w *oprowswire.Timers) int64 { return oprowswire.TimersMeasure(w) },
+		func(w *oprowswire.Timers, buf []byte) int64 { return oprowswire.TimersSave(w, buf) })
+}
+
+// timersRowFns is TIMERS (S1, S2, S4). Its one field is the open timers, so a
+// read that skipped an unknown field and read no timer is refused (opSoleList).
+func timersRowFns() RowFns[sprint.Timers] {
+	return opSoleList(opRowFns("TIMERS", timersTable(), func(ts *sprint.Timers) (opTimersSchema, bool) {
+		return opTimersTo(ts), true
+	}, func(m *opTimersSchema) (sprint.Timers, bool) {
+		return opTimersFrom(m), true
+	}, nil, loadLegacyTimers), func(ts *sprint.Timers) bool { return len(ts.Open) > 0 })
+}
+
+// loadLegacyTimers reads today's legacy timers, `{"open":[...]}`, and `{}` for
+// none (sprint.Timers omits an empty list). A legacy object that names a key
+// other than open and reads no timer is a damaged key, refused no_known_field,
+// never read as no timers (S2).
+func loadLegacyTimers(v *sprint.Timers, in []byte) RowReport {
+	if rr := DecodeLegacy(v, in); rr.refuses() {
+		return rr
+	}
+	if len(v.Open) > 0 {
+		return RowReport{}
+	}
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(in, &keys); err != nil {
+		return RowReport{Malformed: true, Reason: "legacy_json_unreadable"}
+	}
+	for k := range keys {
+		if k != "open" {
+			return RowReport{Unknown: len(keys), Reason: opNoKnownField}
+		}
+	}
+	return RowReport{}
+}
+
+// opNoKnownField is the refusal of a single-list record read with an unknown
+// field and no list: the one field's key or id was damaged, so the list would
+// read as empty (S2: damage is refused by name, never read as absent).
+const opNoKnownField = "no_known_field"
+
+// opSoleList guards a record whose only field is one list (TIMERS, MEMBERS):
+// a table wire or schema JSON text load that skipped an unknown field and read
+// no element of the list is refused no_known_field. Readers update before
+// writers (S4), so an unknown field beside an absent list is damage to the
+// list's id or key, never a newer writer's field (S2).
+func opSoleList[T any](fns RowFns[T], read func(*T) bool) RowFns[T] {
+	guard := func(load func(*T, []byte) RowReport) func(*T, []byte) RowReport {
+		if load == nil {
+			return nil
+		}
+		return func(v *T, in []byte) RowReport {
+			rr := load(v, in)
+			if !rr.refuses() && rr.Unknown > 0 && !read(v) {
+				return RowReport{Unknown: rr.Unknown, Reason: opNoKnownField}
+			}
+			return rr
+		}
+	}
+	fns.LoadWire = guard(fns.LoadWire)
+	fns.LoadJSON = guard(fns.LoadJSON)
+	return fns
+}
+
+// ---------------------------------------------------------------------------
+// The members a table change names (MEMBERS): the members list of a change
+// event, the members of its batch's account and the teardown member list. The
+// legacy form is the list the table layer writes, `[{"id":...},...]`, whose
+// entries carry more than the id; the schema's MemberList is an object.
+
+type opMemberSchema struct {
+	ID string `json:"id"`
+}
+
+type opMemberListSchema struct {
+	Members []opMemberSchema `json:"members"`
+}
+
+func memberListTable() opTable[oprowswire.MemberList] {
+	return opVariable(oprowswire.MemberListLoadMeasureReason, oprowswire.MemberListLoad,
+		func(b *oprowswire.MemberListBuilder) bool { return b.Init() }, oprowswire.MemberListFromJson,
+		func(b *oprowswire.MemberListBuilder) bool { return b.Lock() }, func(b *oprowswire.MemberListBuilder) *oprowswire.MemberList { return b.AsConst() },
+		func(w *oprowswire.MemberList) int64 { return oprowswire.MemberListToJsonMeasure(w) },
+		func(w *oprowswire.MemberList, buf []byte) int64 { return oprowswire.MemberListToJson(w, buf) },
+		func(w *oprowswire.MemberList) int64 { return oprowswire.MemberListMeasure(w) },
+		func(w *oprowswire.MemberList, buf []byte) int64 { return oprowswire.MemberListSave(w, buf) })
+}
+
+// legacyMemberList says a value is the table layer's list, today's legacy form.
+func legacyMemberList(in []byte) bool {
+	t := bytes.TrimLeft(in, " \t\r\n")
+	return len(t) > 0 && t[0] == '['
+}
+
+// loadLegacyMemberList reads the table layer's list: each entry's id, the rest
+// of the entry being the table layer's own (S2). The table layer writes an id
+// in every entry, so an entry with none is a damaged key, refused
+// no_known_field, never read as a member named "" (S2).
+func loadLegacyMemberList(v *[]string, in []byte) RowReport {
+	var ms []opMemberSchema
+	if err := json.Unmarshal(in, &ms); err != nil {
+		return RowReport{Malformed: true, Reason: "legacy_json_unreadable"}
+	}
+	*v = nil
+	for _, m := range ms {
+		if m.ID == "" {
+			*v = nil
+			return RowReport{Reason: opNoKnownField}
+		}
+		*v = append(*v, m.ID)
+	}
+	return RowReport{}
+}
+
+// membersRowFns is MEMBERS (S1, S2, S4). Its one field is the members, so a
+// read that skipped an unknown field and read no member is refused (opSoleList).
+func membersRowFns() RowFns[[]string] {
+	return opSoleList(opRowFns("MEMBERS", memberListTable(), func(ids *[]string) (opMemberListSchema, bool) {
+		s := opMemberListSchema{Members: make([]opMemberSchema, len(*ids))}
+		for i, id := range *ids {
+			s.Members[i] = opMemberSchema{ID: id}
+		}
+		return s, true
+	}, func(m *opMemberListSchema) ([]string, bool) {
+		var out []string
+		for _, e := range m.Members {
+			if e.ID == "" {
+				// every member the table layer names has an id: an entry with
+				// none is damage, never a member named "" (S2)
+				return nil, false
+			}
+			out = append(out, e.ID)
+		}
+		return out, true
+	}, legacyMemberList, loadLegacyMemberList), func(ids *[]string) bool { return len(*ids) > 0 })
+}
+
+// ---------------------------------------------------------------------------
+// The notes and note lines (NOTES, sprint.Note; LOGLINES, sprint.Line).
+
+type opTransitionSchema struct {
+	State   string    `json:"state"`
+	Cause   string    `json:"cause"`
+	Waiting int64     `json:"waiting"`
+	Owners  []opValue `json:"owners"`
+}
+
+type opDecisionSchema struct {
+	Lane            string    `json:"lane"`
+	To              string    `json:"to"`
+	From            string    `json:"from"`
+	Set             string    `json:"set"`
+	Body            string    `json:"body"`
+	Token           string    `json:"token"`
+	PreparedAt      int64     `json:"prepared_at"`
+	RetryBefore     int64     `json:"retry_before"`
+	SentAt          int64     `json:"sent_at"`
+	Fault           string    `json:"fault"`
+	Reports         []opValue `json:"reports"`
+	UnknownReceipts int64     `json:"unknown_receipts"`
+}
+
+type opCoordinatorSchema struct {
+	CoveredBy   string `json:"covered_by"`
+	From        string `json:"from"`
+	To          string `json:"to"`
+	Token       string `json:"token"`
+	Subject     string `json:"subject"`
+	Body        string `json:"body"`
+	Episode     string `json:"episode"`
+	Sent        bool   `json:"sent"`
+	RetryBefore int64  `json:"retry_before"`
+}
+
+type opNoteSchema struct {
+	ID                     string               `json:"id"`
+	SafeDefault            string               `json:"safe_default"`
+	DefaultCoordinatorTold bool                 `json:"default_coordinator_told"`
+	DefaultOwnerTold       bool                 `json:"default_owner_told"`
+	Alias                  string               `json:"alias"`
+	Kind                   string               `json:"kind"`
+	NoteType               string               `json:"note_type"`
+	Stream                 string               `json:"stream"`
+	Primaries              []opValue            `json:"primaries"`
+	Count                  int64                `json:"count"`
+	What                   string               `json:"what"`
+	Who                    string               `json:"who"`
+	Attempt                int64                `json:"attempt"`
+	Before                 int64                `json:"before"`
+	At                     int64                `json:"at"`
+	Decisions              []opValue            `json:"decisions"`
+	Marked                 bool                 `json:"marked"`
+	Answers                string               `json:"answers"`
+	Suspects               []opValue            `json:"suspects"`
+	Card                   string               `json:"card"`
+	Other                  string               `json:"other"`
+	Tier                   string               `json:"tier"`
+	OtherStream            string               `json:"other_stream"`
+	StreamLevel            bool                 `json:"stream_level"`
+	SprintLevel            bool                 `json:"sprint_level"`
+	Needs                  []opValue            `json:"needs"`
+	Review                 int64                `json:"review"`
+	ReviewSet              int64                `json:"review_set"`
+	To                     string               `json:"to"`
+	Hint                   string               `json:"hint"`
+	StreamTransition       *opTransitionSchema  `json:"stream_transition,omitempty"`
+	DecisionDelivery       *opDecisionSchema    `json:"decision_delivery,omitempty"`
+	CoordinatorDelivery    *opCoordinatorSchema `json:"coordinator_delivery,omitempty"`
+}
+
+func opNoteTo(n *sprint.Note) (opNoteSchema, bool) {
+	count, ok1 := opInt32(n.Count)
+	attempt, ok2 := opInt32(n.Attempt)
+	before, ok3 := opInt32(n.Before)
+	s := opNoteSchema{
+		ID: n.ID, SafeDefault: n.SafeDefault, DefaultCoordinatorTold: n.DefaultCoordinatorTold, DefaultOwnerTold: n.DefaultOwnerTold,
+		Alias: n.Alias, Kind: n.Kind, NoteType: n.Type, Stream: n.Stream, Primaries: opValues(n.Primaries), Count: count,
+		What: n.What, Who: n.Who, Attempt: attempt, Before: before, At: opNanos(n.At), Decisions: opValues(n.Decisions),
+		Marked: n.Marked, Answers: n.Answers, Suspects: opValues(n.Suspects), Card: n.Card, Other: n.Other, Tier: n.Tier,
+		OtherStream: n.OtherStream, StreamLevel: n.StreamLevel, SprintLevel: n.SprintLevel, Needs: opValues(n.Needs),
+		Review: opNanos(n.Review), ReviewSet: opNanos(n.ReviewSet), To: n.To, Hint: n.Hint,
+	}
+	ok4 := true
+	if t := n.StreamTransition; t != nil {
+		w, ok := opInt32(t.Waiting)
+		ok4 = ok
+		s.StreamTransition = &opTransitionSchema{State: t.State, Cause: t.Cause, Waiting: w, Owners: opValues(t.Owners)}
+	}
+	ok5 := true
+	if d := n.DecisionDelivery; d != nil {
+		u, ok := opInt32(d.UnknownReceipts)
+		ok5 = ok
+		s.DecisionDelivery = &opDecisionSchema{
+			Lane: d.Lane, To: d.To, From: d.From, Set: d.Set, Body: d.Body, Token: d.Token,
+			PreparedAt: opNanos(d.PreparedAt), RetryBefore: opNanos(d.RetryBefore), SentAt: opNanos(d.SentAt),
+			Fault: d.Fault, Reports: opValues(d.Reports), UnknownReceipts: u,
+		}
+	}
+	if c := n.CoordinatorDelivery; c != nil {
+		s.CoordinatorDelivery = &opCoordinatorSchema{
+			CoveredBy: c.CoveredBy, From: c.From, To: c.To, Token: c.Token, Subject: c.Subject, Body: c.Body,
+			Episode: c.Episode, Sent: c.Sent, RetryBefore: opNanos(c.RetryBefore),
+		}
+	}
+	return s, ok1 && ok2 && ok3 && ok4 && ok5
+}
+
+func opNoteFrom(m *opNoteSchema) sprint.Note {
+	n := sprint.Note{
+		ID: m.ID, SafeDefault: m.SafeDefault, DefaultCoordinatorTold: m.DefaultCoordinatorTold, DefaultOwnerTold: m.DefaultOwnerTold,
+		Alias: m.Alias, Kind: m.Kind, Type: m.NoteType, Stream: m.Stream, Primaries: opStrings(m.Primaries), Count: int(m.Count),
+		What: m.What, Who: m.Who, Attempt: int(m.Attempt), Before: int(m.Before), At: opTimeOf(m.At), Decisions: opStrings(m.Decisions),
+		Marked: m.Marked, Answers: m.Answers, Suspects: opStrings(m.Suspects), Card: m.Card, Other: m.Other, Tier: m.Tier,
+		OtherStream: m.OtherStream, StreamLevel: m.StreamLevel, SprintLevel: m.SprintLevel, Needs: opStrings(m.Needs),
+		Review: opTimeOf(m.Review), ReviewSet: opTimeOf(m.ReviewSet), To: m.To, Hint: m.Hint,
+	}
+	if t := m.StreamTransition; t != nil {
+		n.StreamTransition = &sprint.StreamTransition{State: t.State, Cause: t.Cause, Waiting: int(t.Waiting), Owners: opStrings(t.Owners)}
+	}
+	if d := m.DecisionDelivery; d != nil {
+		n.DecisionDelivery = &sprint.DecisionDelivery{
+			Lane: d.Lane, To: d.To, From: d.From, Set: d.Set, Body: d.Body, Token: d.Token,
+			PreparedAt: opTimeOf(d.PreparedAt), RetryBefore: opTimeOf(d.RetryBefore), SentAt: opTimeOf(d.SentAt),
+			Fault: d.Fault, Reports: opStrings(d.Reports), UnknownReceipts: int(d.UnknownReceipts),
+		}
+	}
+	if c := m.CoordinatorDelivery; c != nil {
+		n.CoordinatorDelivery = &sprint.CoordinatorDelivery{
+			CoveredBy: c.CoveredBy, From: c.From, To: c.To, Token: c.Token, Subject: c.Subject, Body: c.Body,
+			Episode: c.Episode, Sent: c.Sent, RetryBefore: opTimeOf(c.RetryBefore),
+		}
+	}
+	return n
+}
+
+func noteTable() opTable[oprowswire.Note] {
+	return opVariable(oprowswire.NoteLoadMeasureReason, oprowswire.NoteLoad,
+		func(b *oprowswire.NoteBuilder) bool { return b.Init() }, oprowswire.NoteFromJson,
+		func(b *oprowswire.NoteBuilder) bool { return b.Lock() }, func(b *oprowswire.NoteBuilder) *oprowswire.Note { return b.AsConst() },
+		func(w *oprowswire.Note) int64 { return oprowswire.NoteToJsonMeasure(w) },
+		func(w *oprowswire.Note, buf []byte) int64 { return oprowswire.NoteToJson(w, buf) },
+		func(w *oprowswire.Note) int64 { return oprowswire.NoteMeasure(w) },
+		func(w *oprowswire.Note, buf []byte) int64 { return oprowswire.NoteSave(w, buf) })
+}
+
+// notesRowFns is NOTES (S1, S2, S4).
+func notesRowFns() RowFns[sprint.Note] {
+	return opRowFns("NOTES", noteTable(), opNoteTo, func(m *opNoteSchema) (sprint.Note, bool) {
+		return opNoteFrom(m), true
+	}, nil, nil)
+}
+
+type opCardTextSchema struct {
+	Name string  `json:"name"`
+	Text *string `json:"text"`
+}
+
+type opPairSchema struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+type opLineSchema struct {
+	Kind      string             `json:"kind"`
+	At        int64              `json:"at"`
+	Epoch     uint64             `json:"epoch"`
+	Op        string             `json:"op"`
+	Card      string             `json:"card"`
+	Cards     []opValue          `json:"cards"`
+	Primary   string             `json:"primary"`
+	Stream    string             `json:"stream"`
+	TableName string             `json:"table_name"`
+	From      string             `json:"from"`
+	To        string             `json:"to"`
+	Removed   bool               `json:"removed"`
+	Gen       int64              `json:"gen"`
+	Actor     string             `json:"actor"`
+	Verb      string             `json:"verb"`
+	Cause     string             `json:"cause"`
+	Answers   []opValue          `json:"answers"`
+	Text      []opCardTextSchema `json:"text"`
+	Set       []opPairSchema     `json:"set"`
+	Note      *opNoteSchema      `json:"note,omitempty"`
+}
+
+// opKeys is a map's keys in order: oprows.schema holds a map as a list of
+// pairs in key order.
+func opKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func opLineTo(l *sprint.Line) (opLineSchema, bool) {
+	gen, ok := opInt32(l.Gen)
+	s := opLineSchema{
+		Kind: l.Kind, At: opNanos(l.At), Epoch: l.Epoch, Op: l.Op, Card: l.Card, Cards: opValues(l.Cards),
+		Primary: l.Primary, Stream: l.Stream, TableName: l.Table, From: l.From, To: l.To, Removed: l.Removed,
+		Gen: gen, Actor: l.Actor, Verb: l.Verb, Cause: l.Cause, Answers: opValues(l.Answers),
+		Text: []opCardTextSchema{}, Set: []opPairSchema{},
+	}
+	for _, k := range opKeys(l.Text) {
+		t := l.Text[k]
+		ok = ok && len(t) <= sprint.MaxCardTextBytes // the blob's bound (oprows.schema CardText)
+		s.Text = append(s.Text, opCardTextSchema{Name: k, Text: &t})
+	}
+	for _, k := range opKeys(l.Set) {
+		s.Set = append(s.Set, opPairSchema{Name: k, Value: l.Set[k]})
+	}
+	if l.Note != nil {
+		n, nok := opNoteTo(l.Note)
+		ok = ok && nok
+		s.Note = &n
+	}
+	return s, ok
+}
+
+// opLineFrom reads a line back. A card text is a blob, which declares no bound:
+// the reader holds it to sprint.MaxCardTextBytes (oprows.schema CardText).
+func opLineFrom(m *opLineSchema) (sprint.Line, bool) {
+	l := sprint.Line{
+		Kind: m.Kind, At: opTimeOf(m.At), Epoch: m.Epoch, Op: m.Op, Card: m.Card, Cards: opStrings(m.Cards),
+		Primary: m.Primary, Stream: m.Stream, Table: m.TableName, From: m.From, To: m.To, Removed: m.Removed,
+		Gen: int(m.Gen), Actor: m.Actor, Verb: m.Verb, Cause: m.Cause, Answers: opStrings(m.Answers),
+	}
+	for _, t := range m.Text {
+		if t.Text != nil && len(*t.Text) > sprint.MaxCardTextBytes {
+			return sprint.Line{}, false
+		}
+		if l.Text == nil {
+			l.Text = map[string]string{}
+		}
+		if t.Text != nil {
+			l.Text[t.Name] = *t.Text
+		} else {
+			l.Text[t.Name] = ""
+		}
+	}
+	for _, p := range m.Set {
+		if l.Set == nil {
+			l.Set = map[string]string{}
+		}
+		l.Set[p.Name] = p.Value
+	}
+	if m.Note != nil {
+		n := opNoteFrom(m.Note)
+		l.Note = &n
+	}
+	return l, true
+}
+
+func logLineTable() opTable[oprowswire.LogLine] {
+	return opVariable(oprowswire.LogLineLoadMeasureReason, oprowswire.LogLineLoad,
+		func(b *oprowswire.LogLineBuilder) bool { return b.Init() }, oprowswire.LogLineFromJson,
+		func(b *oprowswire.LogLineBuilder) bool { return b.Lock() }, func(b *oprowswire.LogLineBuilder) *oprowswire.LogLine { return b.AsConst() },
+		func(w *oprowswire.LogLine) int64 { return oprowswire.LogLineToJsonMeasure(w) },
+		func(w *oprowswire.LogLine, buf []byte) int64 { return oprowswire.LogLineToJson(w, buf) },
+		func(w *oprowswire.LogLine) int64 { return oprowswire.LogLineMeasure(w) },
+		func(w *oprowswire.LogLine, buf []byte) int64 { return oprowswire.LogLineSave(w, buf) })
+}
+
+// logLinesRowFns is LOGLINES (S1, S2, S4).
+func logLinesRowFns() RowFns[sprint.Line] {
+	return opRowFns("LOGLINES", logLineTable(), opLineTo, opLineFrom, nil, nil)
+}
+
+// ---------------------------------------------------------------------------
+// The queued changes (QUEUE, sprint.QueuedChange): the work table's queue and
+// an operation's own. The entry is a nova-tables batch member entry, its own
+// protocol, held whole as a blob: its legacy JSON bytes.
+
+type opPropSchema struct {
+	TableName string `json:"table_name"`
+	Name      string `json:"name"`
+	Value     string `json:"value"`
+	Was       string `json:"was"`
+	WasAbsent bool   `json:"was_absent"`
+}
+
+type opQueuedSchema struct {
+	Entry *[]byte       `json:"entry"`
+	Prop  *opPropSchema `json:"prop,omitempty"`
+	Verb  string        `json:"verb"`
+	Actor string        `json:"actor"`
+	Moved string        `json:"moved"`
+}
+
+func opQueuedTo(q *sprint.QueuedChange) (opQueuedSchema, bool) {
+	s := opQueuedSchema{Verb: q.Verb, Actor: q.Actor, Moved: q.Moved}
+	if q.Entry != nil {
+		b, err := json.Marshal(q.Entry)
+		if err != nil {
+			return s, false
+		}
+		s.Entry = &b
+	}
+	if p := q.Prop; p != nil {
+		s.Prop = &opPropSchema{TableName: p.Table, Name: p.Name, Value: p.Value, Was: p.Was, WasAbsent: p.WasAbsent}
+	}
+	return s, true
+}
+
+func opQueuedFrom(m *opQueuedSchema) (sprint.QueuedChange, bool) {
+	q := sprint.QueuedChange{Verb: m.Verb, Actor: m.Actor, Moved: m.Moved}
+	if m.Entry != nil {
+		var e ntable.BatchMemberEntry
+		if err := json.Unmarshal(*m.Entry, &e); err != nil {
+			return sprint.QueuedChange{}, false
+		}
+		q.Entry = &e
+	}
+	if p := m.Prop; p != nil {
+		q.Prop = &sprint.PropWrite{Table: p.TableName, Name: p.Name, Value: p.Value, Was: p.Was, WasAbsent: p.WasAbsent}
+	}
+	return q, true
+}
+
+func queuedTable() opTable[oprowswire.QueuedChange] {
+	return opVariable(oprowswire.QueuedChangeLoadMeasureReason, oprowswire.QueuedChangeLoad,
+		func(b *oprowswire.QueuedChangeBuilder) bool { return b.Init() }, oprowswire.QueuedChangeFromJson,
+		func(b *oprowswire.QueuedChangeBuilder) bool { return b.Lock() }, func(b *oprowswire.QueuedChangeBuilder) *oprowswire.QueuedChange { return b.AsConst() },
+		func(w *oprowswire.QueuedChange) int64 { return oprowswire.QueuedChangeToJsonMeasure(w) },
+		func(w *oprowswire.QueuedChange, buf []byte) int64 { return oprowswire.QueuedChangeToJson(w, buf) },
+		func(w *oprowswire.QueuedChange) int64 { return oprowswire.QueuedChangeMeasure(w) },
+		func(w *oprowswire.QueuedChange, buf []byte) int64 { return oprowswire.QueuedChangeSave(w, buf) })
+}
+
+// queueRowFns is QUEUE (S1, S2, S4).
+func queueRowFns() RowFns[sprint.QueuedChange] {
+	return opRowFns("QUEUE", queuedTable(), opQueuedTo, opQueuedFrom, nil, nil)
+}
+
+// ---------------------------------------------------------------------------
+// The step result (STEPRESULT, Result): what a step did, recorded under the
+// caller's operation id and replayed by it.
+
+type opRefusalSchema struct {
+	ID  string `json:"id"`
+	Why string `json:"why"`
+}
+
+type opTableCountSchema struct {
+	Name  string `json:"name"`
+	Count int64  `json:"count"`
+}
+
+type opResultSchema struct {
+	Verb     string               `json:"verb"`
+	Op       string               `json:"op"`
+	Moved    []opValue            `json:"moved"`
+	Refused  []opRefusalSchema    `json:"refused"`
+	Notes    int64                `json:"notes"`
+	Raised   []opValue            `json:"raised"`
+	Said     []opValue            `json:"said"`
+	Attempts int64                `json:"attempts"`
+	Replay   bool                 `json:"replay"`
+	Repaired []opValue            `json:"repaired"`
+	Pending  string               `json:"pending"`
+	Skipped  []opValue            `json:"skipped"`
+	Args     string               `json:"args"`
+	Lost     bool                 `json:"lost"`
+	Tables   []opTableCountSchema `json:"tables"`
+	Drained  []*opResultSchema    `json:"drained"`
+}
+
+func opResultTo(r *Result) (opResultSchema, bool) {
+	notes, ok1 := opInt32(r.Notes)
+	attempts, ok2 := opInt32(r.Attempts)
+	ok := ok1 && ok2
+	s := opResultSchema{
+		Verb: r.Verb, Op: r.Op, Moved: opValues(r.Moved), Refused: make([]opRefusalSchema, len(r.Refused)), Notes: notes,
+		Raised: opValues(r.Raised), Said: opValues(r.Said), Attempts: attempts, Replay: r.Replay, Repaired: opValues(r.Repaired),
+		Pending: r.Pending, Skipped: opValues(r.Skipped), Args: r.Args, Lost: r.Lost,
+		Tables: []opTableCountSchema{}, Drained: []*opResultSchema{},
+	}
+	for i, f := range r.Refused {
+		s.Refused[i] = opRefusalSchema{ID: f.Key, Why: f.Why}
+	}
+	keys := make([]string, 0, len(r.Tables))
+	for k := range r.Tables {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		n, nok := opInt32(r.Tables[k])
+		ok = ok && nok
+		s.Tables = append(s.Tables, opTableCountSchema{Name: k, Count: n})
+	}
+	for i := range r.Drained {
+		d, dok := opResultTo(&r.Drained[i])
+		ok = ok && dok
+		s.Drained = append(s.Drained, &d)
+	}
+	return s, ok
+}
+
+func opResultFrom(m *opResultSchema) Result {
+	r := Result{
+		Verb: m.Verb, Op: m.Op, Moved: opStrings(m.Moved), Notes: int(m.Notes), Raised: opStrings(m.Raised),
+		Said: opStrings(m.Said), Attempts: int(m.Attempts), Replay: m.Replay, Repaired: opStrings(m.Repaired),
+		Pending: m.Pending, Skipped: opStrings(m.Skipped), Args: m.Args, Lost: m.Lost,
+	}
+	for _, f := range m.Refused {
+		r.Refused = append(r.Refused, sprint.Refusal{Key: f.ID, Why: f.Why})
+	}
+	for _, t := range m.Tables {
+		if r.Tables == nil {
+			r.Tables = map[string]int{}
+		}
+		r.Tables[t.Name] = int(t.Count)
+	}
+	for _, d := range m.Drained {
+		if d != nil {
+			r.Drained = append(r.Drained, opResultFrom(d))
+		}
+	}
+	return r
+}
+
+func stepResultTable() opTable[oprowswire.StepResult] {
+	return opVariable(oprowswire.StepResultLoadMeasureReason, oprowswire.StepResultLoad,
+		func(b *oprowswire.StepResultBuilder) bool { return b.Init() }, oprowswire.StepResultFromJson,
+		func(b *oprowswire.StepResultBuilder) bool { return b.Lock() }, func(b *oprowswire.StepResultBuilder) *oprowswire.StepResult { return b.AsConst() },
+		func(w *oprowswire.StepResult) int64 { return oprowswire.StepResultToJsonMeasure(w) },
+		func(w *oprowswire.StepResult, buf []byte) int64 { return oprowswire.StepResultToJson(w, buf) },
+		func(w *oprowswire.StepResult) int64 { return oprowswire.StepResultMeasure(w) },
+		func(w *oprowswire.StepResult, buf []byte) int64 { return oprowswire.StepResultSave(w, buf) })
+}
+
+// stepResultRowFns is STEPRESULT (S1, S2, S4). The request digest a result
+// carries (args, store.ArgsOf) is read with it: the table holds it to its 24
+// characters (oprows.schema RequestDigest, StepResult.args).
+func stepResultRowFns() RowFns[Result] {
+	return opRowFns("STEPRESULT", stepResultTable(), opResultTo, func(m *opResultSchema) (Result, bool) {
+		return opResultFrom(m), true
+	}, nil, nil)
+}
+
+// ---------------------------------------------------------------------------
+// The operation journal record (OPRECORD, OpRecord): the record the fence
+// holds, whole. Its manifests and its queued changes' entries are nova-tables'
+// own protocol, held whole as blobs of their legacy JSON bytes; its result is
+// the step result's record (the legacy record holds it as JSON text).
+
+type opManifestSchema struct {
+	TableName string  `json:"table_name"`
+	Data      *[]byte `json:"data"`
+}
+
+type opSeatSchema struct {
+	Holder     string `json:"holder"`
+	Generation uint64 `json:"generation"`
+	From       string `json:"from"`
+	At         int64  `json:"at"`
+	By         string `json:"by"`
+	Taken      bool   `json:"taken"`
+	ApprovedBy string `json:"approved_by"`
+	Reason     string `json:"reason"`
+}
+
+type opRecordSchema struct {
+	ID          string             `json:"id"`
+	IsLock      bool               `json:"is_lock"`
+	Verb        string             `json:"verb"`
+	At          int64              `json:"at"`
+	Manifests   []opManifestSchema `json:"manifests"`
+	Notes       []opNoteSchema     `json:"notes"`
+	Decided     []opNoteSchema     `json:"decided"`
+	Log         []opLineSchema     `json:"log"`
+	Updates     []opNoteSchema     `json:"updates"`
+	Closes      []opValue          `json:"closes"`
+	Streams     []opValue          `json:"streams"`
+	CallerOp    string             `json:"caller_op"`
+	Result      *opResultSchema    `json:"result"`
+	Stuck       string             `json:"stuck"`
+	Queue       []opQueuedSchema   `json:"queue"`
+	Drain       int64              `json:"drain"`
+	Seat        *opSeatSchema      `json:"seat,omitempty"`
+	CloseTimers []opValue          `json:"close_timers"`
+	Timers      *opTimersSchema    `json:"timers"`
+}
+
+func opNotesTo(ns []sprint.Note) ([]opNoteSchema, bool) {
+	out := make([]opNoteSchema, len(ns))
+	ok := true
+	for i := range ns {
+		s, sok := opNoteTo(&ns[i])
+		ok = ok && sok
+		out[i] = s
+	}
+	return out, ok
+}
+
+func opNotesFrom(ms []opNoteSchema) []sprint.Note {
+	if len(ms) == 0 {
+		return nil
+	}
+	out := make([]sprint.Note, len(ms))
+	for i := range ms {
+		out[i] = opNoteFrom(&ms[i])
+	}
+	return out
+}
+
+func opRecordTo(o *OpRecord) (opRecordSchema, bool) {
+	drain, ok := opInt32(o.Drain)
+	s := opRecordSchema{
+		ID: o.ID, IsLock: o.Lock, Verb: o.Verb, At: opNanos(o.At), Manifests: make([]opManifestSchema, len(o.Manifests)),
+		Log: make([]opLineSchema, len(o.Log)), Closes: opValues(o.Closes), Streams: opValues(o.Streams), CallerOp: o.CallerOp,
+		Stuck: o.Stuck, Queue: make([]opQueuedSchema, len(o.Queue)), Drain: drain, CloseTimers: opValues(o.CloseTimers),
+	}
+	for i, m := range o.Manifests {
+		b, err := json.Marshal(m)
+		if err != nil {
+			return s, false
+		}
+		s.Manifests[i] = opManifestSchema{TableName: m.Table, Data: &b}
+	}
+	var nok, dok, uok bool
+	s.Notes, nok = opNotesTo(o.Notes)
+	s.Decided, dok = opNotesTo(o.Decided)
+	s.Updates, uok = opNotesTo(o.Updates)
+	ok = ok && nok && dok && uok
+	for i := range o.Log {
+		l, lok := opLineTo(&o.Log[i])
+		ok = ok && lok
+		s.Log[i] = l
+	}
+	if o.Result != "" {
+		var r Result
+		if err := json.Unmarshal([]byte(o.Result), &r); err != nil {
+			return s, false
+		}
+		rs, rok := opResultTo(&r)
+		ok = ok && rok
+		s.Result = &rs
+	}
+	for i := range o.Queue {
+		q, qok := opQueuedTo(&o.Queue[i])
+		ok = ok && qok
+		s.Queue[i] = q
+	}
+	if c := o.Seat; c != nil {
+		s.Seat = &opSeatSchema{Holder: c.Holder, Generation: c.Generation, From: c.From, At: opNanos(c.At), By: c.By, Taken: c.Taken, ApprovedBy: c.ApprovedBy, Reason: c.Reason}
+	}
+	if o.Timers != nil {
+		ts := opTimersTo(o.Timers)
+		s.Timers = &ts
+	}
+	return s, ok
+}
+
+// opRecordFrom reads an operation record back. A manifest is a blob, which
+// declares no bound: the reader holds it to ntable.LimitManifestBytes
+// (oprows.schema Manifest), and its bytes are the manifest's own, never
+// decoded past what OpRecord holds.
+func opRecordFrom(m *opRecordSchema) (OpRecord, bool) {
+	o := OpRecord{
+		ID: m.ID, Lock: m.IsLock, Verb: m.Verb, At: opTimeOf(m.At), Notes: opNotesFrom(m.Notes), Decided: opNotesFrom(m.Decided),
+		Updates: opNotesFrom(m.Updates), Closes: opStrings(m.Closes), Streams: opStrings(m.Streams), CallerOp: m.CallerOp,
+		Stuck: m.Stuck, Drain: int(m.Drain), CloseTimers: opStrings(m.CloseTimers),
+	}
+	for _, mf := range m.Manifests {
+		var bm ntable.BatchManifest
+		if mf.Data == nil || len(*mf.Data) > ntable.LimitManifestBytes || json.Unmarshal(*mf.Data, &bm) != nil || bm.Table != mf.TableName {
+			return OpRecord{}, false
+		}
+		o.Manifests = append(o.Manifests, bm)
+	}
+	for i := range m.Log {
+		l, ok := opLineFrom(&m.Log[i])
+		if !ok {
+			return OpRecord{}, false
+		}
+		o.Log = append(o.Log, l)
+	}
+	if m.Result != nil {
+		body, err := json.Marshal(opResultFrom(m.Result))
+		if err != nil {
+			return OpRecord{}, false
+		}
+		o.Result = string(body)
+	}
+	for i := range m.Queue {
+		q, ok := opQueuedFrom(&m.Queue[i])
+		if !ok {
+			return OpRecord{}, false
+		}
+		o.Queue = append(o.Queue, q)
+	}
+	if c := m.Seat; c != nil {
+		o.Seat = &sprint.SeatChange{Holder: c.Holder, Generation: c.Generation, From: c.From, At: opTimeOf(c.At), By: c.By, Taken: c.Taken, ApprovedBy: c.ApprovedBy, Reason: c.Reason}
+	}
+	if m.Timers != nil {
+		ts := opTimersFrom(m.Timers)
+		o.Timers = &ts
+	}
+	return o, true
+}
+
+func opRecordTable() opTable[oprowswire.OpRecord] {
+	return opVariable(oprowswire.OpRecordLoadMeasureReason, oprowswire.OpRecordLoad,
+		func(b *oprowswire.OpRecordBuilder) bool { return b.Init() }, oprowswire.OpRecordFromJson,
+		func(b *oprowswire.OpRecordBuilder) bool { return b.Lock() }, func(b *oprowswire.OpRecordBuilder) *oprowswire.OpRecord { return b.AsConst() },
+		func(w *oprowswire.OpRecord) int64 { return oprowswire.OpRecordToJsonMeasure(w) },
+		func(w *oprowswire.OpRecord, buf []byte) int64 { return oprowswire.OpRecordToJson(w, buf) },
+		func(w *oprowswire.OpRecord) int64 { return oprowswire.OpRecordMeasure(w) },
+		func(w *oprowswire.OpRecord, buf []byte) int64 { return oprowswire.OpRecordSave(w, buf) })
+}
+
+// opRecordRowFns is OPRECORD (S1, S2, S4).
+func opRecordRowFns() RowFns[OpRecord] {
+	return opRowFns("OPRECORD", opRecordTable(), opRecordTo, opRecordFrom, nil, nil)
+}
+
+// ---------------------------------------------------------------------------
+// The readers and the read helpers the read sites call.
+
+// opRowCodecs is the operation rows' readers.
+type opRowCodecs struct {
+	op      *RowCodec[OpRecord]
+	lock    *RowCodec[heldLock]
+	notes   *RowCodec[sprint.Note]
+	lines   *RowCodec[sprint.Line]
+	timers  *RowCodec[sprint.Timers]
+	queue   *RowCodec[sprint.QueuedChange]
+	members *RowCodec[[]string]
+	result  *RowCodec[Result]
+}
+
+func newOpRowCodecs() *opRowCodecs {
+	return &opRowCodecs{
+		op:      NewRowCodec(opRecordRowFns()),
+		lock:    NewRowCodec(heldLockRowFns()),
+		notes:   NewRowCodec(notesRowFns()),
+		lines:   NewRowCodec(logLinesRowFns()),
+		timers:  NewRowCodec(timersRowFns()),
+		queue:   NewRowCodec(queueRowFns()),
+		members: NewRowCodec(membersRowFns()),
+		result:  NewRowCodec(stepResultRowFns()),
+	}
+}
+
+// register counts every reader of the set on st's check (S4).
+func (c *opRowCodecs) register(st *Store) {
+	c.op.Register(st)
+	c.lock.Register(st)
+	c.notes.Register(st)
+	c.lines.Register(st)
+	c.timers.Register(st)
+	c.queue.Register(st)
+	c.members.Register(st)
+	c.result.Register(st)
+}
+
+// opRowsListed is a set no record is ever read through, registered process-
+// wide only so every store's check lists the eight records, at zero before
+// their first read (S4). Its counts stay zero, so it adds nothing to any
+// store's counts: the reads themselves count on the set of the store or the
+// backend that made them (opRowSet).
+var opRowsListed = func() *opRowCodecs {
+	c := newOpRowCodecs()
+	c.op.RegisterProcess()
+	c.lock.RegisterProcess()
+	c.notes.RegisterProcess()
+	c.lines.RegisterProcess()
+	c.timers.RegisterProcess()
+	c.queue.RegisterProcess()
+	c.members.RegisterProcess()
+	c.result.RegisterProcess()
+	return c
+}()
+
+// opRowsMu guards the lazy make of a backend's readers (Redis.opRowSet).
+var opRowsMu sync.Mutex
+
+// opRowSet is this backend's operation rows' readers, made on first use and
+// shared with its pinned copies (AtEpoch). Every read this backend makes
+// counts here, so two backends, and two tests, never share a count (S4).
+func (r *Redis) opRowSet() *opRowCodecs {
+	opRowsMu.Lock()
+	defer opRowsMu.Unlock()
+	if r.rows == nil {
+		r.rows = newOpRowCodecs()
+	}
+	return r.rows
+}
+
+// opRowSetter is a backend that holds its own operation rows' readers.
+type opRowSetter interface{ opRowSet() *opRowCodecs }
+
+// opRowSets holds the readers of a store whose backend holds none, keyed by
+// the store's done reader, which its pinned copies share (S4).
+var opRowSets sync.Map
+
+// opRowSet is the operation rows' readers this store reads through, registered
+// on it so its check reports their per-form counts (S4): its backend's when
+// the backend holds its own (a Redis), else this store's own.
+func (st *Store) opRowSet() *opRowCodecs {
+	var c *opRowCodecs
+	if b, ok := st.B.(opRowSetter); ok {
+		c = b.opRowSet()
+	} else {
+		key := st.doneRows()
+		v, ok := opRowSets.Load(key)
+		if !ok {
+			v, _ = opRowSets.LoadOrStore(key, newOpRowCodecs())
+		}
+		c = v.(*opRowCodecs)
+	}
+	c.register(st)
+	return c
+}
+
+// heldID is the id of the operation a fence value holds, read through HELDLOCK;
+// a value it cannot read is refused by name, never read as an empty fence (S2).
+func (c *opRowCodecs) heldID(raw string) (string, error) {
+	h, _, err := c.lock.Read([]byte(raw))
+	if err != nil {
+		return "", err
+	}
+	return h.ID, nil
+}
+
+// fenceRecord is the operation record a fence value holds, read through
+// OPRECORD and refused by name when damaged (S2).
+func (c *opRowCodecs) fenceRecord(raw string) (*OpRecord, error) {
+	op, _, err := c.op.Read([]byte(raw))
+	if err != nil {
+		return nil, err
+	}
+	return &op, nil
+}
+
+// memberIDs is the members a change names, read through MEMBERS: the table
+// layer's list, the table wire, its base64 or the schema JSON text. An empty
+// value or the table layer's empty list names none (S2).
+func (c *opRowCodecs) memberIDs(raw string) ([]string, error) {
+	if m := strings.TrimSpace(raw); m == "" || m == "[]" || m == "{}" || m == "null" {
+		return nil, nil
+	}
+	ids, _, err := c.members.Read([]byte(raw))
+	return ids, err
+}
+
+// stepResult is a recorded step result read through STEPRESULT (S2).
+func (c *opRowCodecs) stepResult(raw string) (Result, error) {
+	r, _, err := c.result.Read([]byte(raw))
+	return r, err
+}
+
+// queueEntries is the work table's queue read through QUEUE in any form; a
+// damaged entry is refused by name (S2, C13).
+func (c *opRowCodecs) queueEntries(raw []string) ([]sprint.QueuedChange, error) {
+	out := make([]sprint.QueuedChange, len(raw))
+	for i, b := range raw {
+		q, _, err := c.queue.Read([]byte(b))
+		if err != nil {
+			return nil, fmt.Errorf("the work table's queue holds an unreadable entry: %w", err)
+		}
+		out[i] = q
+	}
+	return out, nil
+}
+
+// errNoEntry is a stream entry that holds no value of its record.
+var errNoEntry = errors.New("no entry")
+
+// inboxNote is one inbox entry's note read through NOTES in any form. The
+// inbox read skips an entry it cannot read on purpose (rangeSince: an entry
+// whose decode fails is skipped whole, so one damaged note does not hide the
+// rest); a damaged note is still refused by name and counted under NOTES as a
+// refusal (S2, S4, C13), never read as an empty note.
+func (c *opRowCodecs) inboxNote(v map[string]any) (sprint.Note, error) {
+	s, ok := v["note"].(string)
+	if !ok {
+		return sprint.Note{}, errNoEntry
+	}
+	n, _, err := c.notes.Read([]byte(s))
+	return n, err
+}
+
+// logLine is one log entry's line read through LOGLINES in any form. The log
+// read skips an entry it cannot read on purpose (rangeSince, as inboxNote); a
+// damaged line is refused by name and counted under LOGLINES as a refusal (S2,
+// S4, C13), never read as an empty line.
+func (c *opRowCodecs) logLine(v map[string]any) (sprint.Line, error) {
+	s, ok := v["line"].(string)
+	if !ok {
+		return sprint.Line{}, errNoEntry
+	}
+	l, _, err := c.lines.Read([]byte(s))
+	return l, err
 }

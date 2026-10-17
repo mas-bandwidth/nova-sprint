@@ -83,7 +83,7 @@ func TestRowCodecForms(t *testing.T) {
 	assert.Equal(t, schemaread.FormBinary, form, "a damaged fixed image is still the binary form")
 	var ref *schemaread.Refusal
 	require.ErrorAs(t, err, &ref)
-	assert.Equal(t, "DONEFIXTURE REFUSED: layout_newer; run: nova-sprint check", err.Error())
+	assert.Equal(t, "DONEFIXTURE REFUSED: layout_unknown; run: nova-sprint check", err.Error())
 
 	_, _, err = done.Read(nil)
 	assert.EqualError(t, err, "DONEFIXTURE REFUSED: unknown_form; run: nova-sprint check")
@@ -97,7 +97,7 @@ func TestRowCodecForms(t *testing.T) {
 
 	assert.Equal(t, map[string]uint64{
 		"binary": 2, "base64": 1, "json": 1, "legacy": 1,
-		"unknown_fields": 0, "refused_layout_newer": 1, "refused_unknown_form": 1,
+		"unknown_fields": 0, "refused_layout_unknown": 1, "refused_unknown_form": 1,
 	}, done.Counts().Snapshot())
 	assert.Equal(t, map[string]uint64{
 		"binary": 1, "base64": 0, "json": 0, "legacy": 0, "unknown_fields": 0,

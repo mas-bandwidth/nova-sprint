@@ -1,0 +1,3 @@
+go test fuzz v1
+byte('\x12')
+[]byte("{\n  \"epoch\": 0,\n  \"log\": {\n    \"fence\": null,\n    \"gen\": 0,\n    \"done\": [],\n    \"progress\": [],\n    \"inbox\": [],\n    \"lines\": [],\n    \"notes\": [],\n    \"aliases\": [],\n    \"answered\": [],\n    \"open\": [],\n    \"cursor\": null,\n    \"queue\": []\n  }\n}\n")
