@@ -72,6 +72,15 @@ func TestStrangersWriteFixed(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, many, got, "paged strangers read back equal")
 
+	// A narrower record drops the surplus pages the wider record left (S1).
+	require.NoError(t, st.putStrangers(ctx, strangers))
+	_, ok2, err := kv.GetKey(ctx, "strangers:1")
+	require.NoError(t, err)
+	require.False(t, ok2, "a narrower record drops the surplus page")
+	got, err = st.strangers(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, strangers, got)
+
 	// A value the fixed form cannot hold is refused by name before a byte is written (a
 	// name past the 128-byte ValidID bound), never written in the legacy form as a
 	// fallback.
