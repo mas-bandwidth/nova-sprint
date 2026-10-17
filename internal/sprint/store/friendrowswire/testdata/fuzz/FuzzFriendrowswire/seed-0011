@@ -1,0 +1,3 @@
+go test fuzz v1
+byte('\x03')
+[]byte("{\n  \"held\": false,\n  \"at\": null,\n  \"by\": null,\n  \"width\": 0,\n  \"class\": null,\n  \"mode\": null,\n  \"streams\": null,\n  \"kinds\": null,\n  \"config_dir\": null,\n  \"pronouns\": null,\n  \"session\": null,\n  \"token_cap\": 0,\n  \"token_cap_set\": false,\n  \"roles\": null,\n  \"billing\": null,\n  \"reason\": null,\n  \"until\": null,\n  \"return\": false\n}\n")
