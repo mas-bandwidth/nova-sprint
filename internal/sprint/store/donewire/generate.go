@@ -5,4 +5,4 @@
 // 2026-10-15); go run fetches it, so generating needs the network and the build does not.
 package donewire
 
-//go:generate go run github.com/mas-bandwidth/schema/v2/cmd/schema@v2.5.1-0.20261014163537-4d9941fbc7fd generate --lang go --out . ../../../../schemas/store
+//go:generate go run github.com/mas-bandwidth/schema/v2/cmd/schema@v2.5.1-0.20261017153557-54e0eda7d20b generate --lang go --out . ../../../../schemas/store
