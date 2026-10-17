@@ -9,7 +9,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
 - [The sprint system](#the-sprint-system) (219)
 - [Setup, release and operations](#setup-release-and-operations) (70)
-- [Docs, models and the repository](#docs-models-and-the-repository) (23)
+- [Docs, models and the repository](#docs-models-and-the-repository) (24)
 - [Friend AIs](#friend-ais) (21)
 - [Moved out of the sprint on 2026-10-15: nova-local](#moved-out-of-the-sprint-on-2026-10-15-nova-local) (1)
 - [Moved out of the sprint on 2026-10-15: v13-blockers](#moved-out-of-the-sprint-on-2026-10-15-v13-blockers) (19)
@@ -2670,6 +2670,16 @@ Every repository's roadmap renders as one section per area and one table of user
 Target: v1.7
 
 From: the owner, 2026-10-17: the standard format for all roadmaps, including nova tools and nova sprint
+
+### One roadmap format for every repository, one renderer, and defer writes it
+
+Every repository (nova-sprint, nova-tools, schema, rocketnet, ideas and the rest) keeps its roadmap in one form, and one renderer produces the feature-table ROADMAP.md (generated check marks and crosses, as schema's is; see roadmap-as-feature-tables). nova-sprint defer, and anything else that writes a roadmap, writes that one form. Existing roadmaps are migrated once. Problem, two forms today: nova-sprint keeps docs/roadmap.sexp as `(roadmap "v1" ...)` rendered by `go tool roadmap` (make roadmap); mas-bandwidth/schema keeps its roadmap as `(:schema 1 :root ... :nodes (...))` rendered to ROADMAP.md by tools/roadmap/render.lisp. nova-sprint defer writes a deferred card's brief into a checkout's docs/roadmap.sexp, but only in the sprint's own form, so on schema it refused: `does not decode: roadmap: top: want one (roadmap "v1" ...) form`, and the schema non-Go streams had to be recorded by hand. Smallest fix: choose the one form with the owner, make the single renderer read it, make defer and every writer emit it, and migrate each existing roadmap once with a check that the rendered ROADMAP.md is unchanged in content. Tools: nova-sprint defer, the roadmap renderer (go tool roadmap), schema tools/roadmap/render.lisp. Tests are unit tests: no real time, no sockets, no network.
+
+Why it waits: Two roadmap forms mean defer cannot write to schema, and records are made by hand.
+
+Target: v1.7
+
+From: the owner, 2026-10-17: 'please log this for v1.7. We should have only one roadmap format.'
 
 ## Friend AIs
 
