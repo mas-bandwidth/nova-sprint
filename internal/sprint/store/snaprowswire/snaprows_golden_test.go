@@ -697,7 +697,7 @@ func arr(v ...any) []any { return v }
 func words(s ...string) []any {
 	out := []any{}
 	for _, w := range s {
-		out = append(out, obj{"text": w})
+		out = append(out, w)
 	}
 	return out
 }
@@ -751,7 +751,7 @@ func sampleSet(t *testing.T) map[string]string {
 		"defaults_owed": 21, "logs": arr(obj{"epoch": 21, "log": logSnap}), "kv": arr(obj{"name": "coordinator", "value": "rowan"}), "seq": 9}
 
 	s := map[string]any{
-		"Word": obj{"text": "alpha"}, "Pair": obj{"name": "stream", "value": "s1"}, "Flag": obj{"name": "r2", "on": true}, "EpochFlag": obj{"epoch": 21, "on": true},
+		"Pair": obj{"name": "stream", "value": "s1"}, "Flag": obj{"name": "r2", "on": true}, "EpochFlag": obj{"epoch": 21, "on": true},
 		"Image": obj{"data": queued}, "TokenCount": obj{"name": "input_tokens", "count": 4200}, "RawRecord": rawRecord, "RawUsage": rawUsage, "Usage": usage,
 		"Total": total, "Consumer": consumer,
 		"CardCostView": obj{"consumers": arr(consumer, consumer), "total": total, "cut": 3, "carried_usd": "0.5", "carried_from": "a7", "carried_to": "a9"},
@@ -880,7 +880,7 @@ func unpairs(v any, nameKey string) any {
 func wordsOf(v any) []any {
 	out := []any{}
 	for _, s := range lst(v) {
-		out = append(out, obj{"text": s})
+		out = append(out, s)
 	}
 	return out
 }
@@ -892,7 +892,7 @@ func unwordsOf(v any) any {
 	}
 	out := []any{}
 	for _, e := range l {
-		out = append(out, e.(map[string]any)["text"])
+		out = append(out, e)
 	}
 	return out
 }
@@ -1736,7 +1736,7 @@ func TestNothingSerializedLacksATable(t *testing.T) {
 		}
 	}
 	// every table is held by a struct of the area or is an entry of a map or list
-	entries := map[string]bool{"Word": true, "Pair": true, "Flag": true, "EpochFlag": true, "Image": true, "TokenCount": true, "ColumnCount": true, "StatePart": true,
+	entries := map[string]bool{"Pair": true, "Flag": true, "EpochFlag": true, "Image": true, "TokenCount": true, "ColumnCount": true, "StatePart": true,
 		"FieldChange": true, "Field": true, "MemberEntry": true, "OpEntry": true, "TextRow": true, "EpochEntry": true, "TableEntry": true, "ResidueEntry": true,
 		"ViewEntry": true, "NoteEntry": true, "TimeEntry": true, "LogEntry": true}
 	held := map[string]bool{}
@@ -1805,7 +1805,7 @@ func TestSnapshotAndCostGolden(t *testing.T) {
 	sort.Strings(want)
 	sort.Strings(names)
 	require.Equal(t, want, names, "the area's tables")
-	require.Len(t, want, 51)
+	require.Len(t, want, 50)
 
 	for name, run := range fixed {
 		t.Run("fixed/"+name, func(t *testing.T) {
@@ -1834,7 +1834,8 @@ func TestSnapshotAndCostGolden(t *testing.T) {
 			}
 		}
 		sort.Strings(inBase)
-		assert.Equal(t, want, inBase, "the baseline covers every table of the area")
+		assert.Subset(t, inBase, want, "the baseline covers every table of the area")
+		assert.Equal(t, len(want)+6, len(inBase), "the baseline covers the six plain-text-list element tables")
 
 		// the open walk is not vacuous: the five fields that were once declared bounded are open
 		named := func(fs []wire.TableFieldInfo, name string) bool {
@@ -1862,11 +1863,6 @@ func TestSnapshotAndCostGolden(t *testing.T) {
 // variableCases is the mechanical part of this file: one entry per variable table.
 func variableCases(s map[string]string) map[string]func(t *testing.T) {
 	return map[string]func(t *testing.T){
-		"Word": func(t *testing.T) {
-			runVariable(t, "Word", s["Word"], varOps[wire.Word]{
-				builder((*wire.WordBuilder).Init, (*wire.WordBuilder).GetRoot, func(b *wire.WordBuilder) *wire.TableArena { return &b.Arena }, wire.WordFromJson),
-				wire.WordMeasure, wire.WordSave, wire.WordLoadMeasureReason, wire.WordLoad, wire.WordToJsonMeasure, wire.WordToJson, wire.WordTableType, nil})
-		},
 		"Pair": func(t *testing.T) {
 			runVariable(t, "Pair", s["Pair"], varOps[wire.Pair]{
 				builder((*wire.PairBuilder).Init, (*wire.PairBuilder).GetRoot, func(b *wire.PairBuilder) *wire.TableArena { return &b.Arena }, wire.PairFromJson),
@@ -2110,7 +2106,7 @@ func variableCases(s map[string]string) map[string]func(t *testing.T) {
 	}
 }
 
-var variableNames = []string{"Word", "Pair", "Flag", "EpochFlag", "Image", "TokenCount", "RawRecord", "RawUsage", "Usage", "Total", "Consumer", "CardCostView", "SnapshotTaken", "ColumnCount", "BackupCounts", "DumpKey", "StatePart", "SprintState", "Column", "ScoredMember", "Cell", "Row", "NTable", "View", "FieldChange", "BatchMemberDelta", "BatchDelta", "Receipt", "Field", "MemberSnapshot", "MemberEntry", "ChangeSnapshot", "OpEntry", "TextRow", "EpochSnapshot", "EpochEntry", "TableSnapshot", "TableEntry", "ResidueSnap", "ResidueEntry", "ViewEntry", "NoteSnapshot", "LineSnapshot", "NoteEntry", "TimeEntry", "LogSnapshot", "LogEntry", "MemSnapshot", "MemDumpMember"}
+var variableNames = []string{"Pair", "Flag", "EpochFlag", "Image", "TokenCount", "RawRecord", "RawUsage", "Usage", "Total", "Consumer", "CardCostView", "SnapshotTaken", "ColumnCount", "BackupCounts", "DumpKey", "StatePart", "SprintState", "Column", "ScoredMember", "Cell", "Row", "NTable", "View", "FieldChange", "BatchMemberDelta", "BatchDelta", "Receipt", "Field", "MemberSnapshot", "MemberEntry", "ChangeSnapshot", "OpEntry", "TextRow", "EpochSnapshot", "EpochEntry", "TableSnapshot", "TableEntry", "ResidueSnap", "ResidueEntry", "ViewEntry", "NoteSnapshot", "LineSnapshot", "NoteEntry", "TimeEntry", "LogSnapshot", "LogEntry", "MemSnapshot", "MemDumpMember"}
 
 // tableInfos is every table of the area by name.
 func tableInfos() map[string]*wire.TableTypeInfo {
@@ -2165,6 +2161,5 @@ func tableInfos() map[string]*wire.TableTypeInfo {
 		"Usage":            wire.UsageTableType(),
 		"View":             wire.ViewTableType(),
 		"ViewEntry":        wire.ViewEntryTableType(),
-		"Word":             wire.WordTableType(),
 	}
 }
