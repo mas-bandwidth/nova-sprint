@@ -46,19 +46,19 @@ func TestDoneReadsCountPerForm(t *testing.T) {
 	legacy, err := json.Marshal(want)
 	require.NoError(t, err)
 	got, count, why = st.decodeDonePage(string(legacy))
-	require.Empty(t, why)
-	assert.Equal(t, uint32(1), count)
-	assert.Equal(t, want.Done, got.Done)
+	assert.Equal(t, "legacy_json_retired", why)
+	assert.Equal(t, DoneRecord{}, got)
+	assert.Zero(t, count)
 
 	_, _, why = st.decodeDonePage(`{"epoch":`)
-	assert.Equal(t, "legacy_json_unreadable", why)
+	assert.Equal(t, "legacy_json_retired", why)
 
 	report, _, err = st.Check(ctx, 1)
 	require.NoError(t, err)
 	counts := report.RowForms["DONERECORD"]
 	assert.EqualValues(t, 1, counts["binary"])
 	assert.EqualValues(t, 2, counts["legacy"])
-	assert.EqualValues(t, 1, counts["refused_legacy_json_unreadable"])
+	assert.EqualValues(t, 2, counts["refused_legacy_json_retired"])
 }
 
 func TestDoneRewriteCounted(t *testing.T) {
@@ -88,15 +88,21 @@ func TestDoneRewriteCounted(t *testing.T) {
 
 	first, err := pinned.readDoneRecord(ctx, kv)
 	require.NoError(t, err)
-	assert.Equal(t, "legacy-cursor", first.Cursor)
+	assert.Equal(t, DoneRecord{Epoch: pinned.epoch}, first)
 	counts := codec.Counts().Snapshot()
 	assert.EqualValues(t, 1, counts["legacy"])
+	assert.EqualValues(t, 1, counts["refused_legacy_json_retired"])
 	assert.Zero(t, counts["binary"])
 
 	second, err := pinned.readDoneRecord(ctx, kv)
 	require.NoError(t, err)
 	assert.Equal(t, first, second)
+	after, ok, err := kv.GetKey(ctx, keyDoneRecord)
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Equal(t, string(legacy), after, "the refused legacy page is left as stored")
 	counts = codec.Counts().Snapshot()
-	assert.EqualValues(t, 1, counts["legacy"])
-	assert.EqualValues(t, 1, counts["binary"])
+	assert.EqualValues(t, 2, counts["legacy"])
+	assert.EqualValues(t, 2, counts["refused_legacy_json_retired"])
+	assert.Zero(t, counts["binary"])
 }

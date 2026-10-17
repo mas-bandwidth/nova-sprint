@@ -21,7 +21,7 @@ import (
 //  1. Compaction to one entry per (row, kind, card) keeps sprint.CountDone equal at every mark.
 //  2. Every stored page is a form-3 fixed table holding at most 95 entries, and a 310-completion
 //     record round-trips across 4 pages (95 + 95 + 95 + 25) and is deleted whole by Teardown.
-//  3. Legacy JSON (first byte '{') is read once and rewritten into the fixed paged form.
+//  3. Legacy JSON (first byte '{') is refused by name and left as stored.
 //  4. An older build meeting a newer layout (donewire/v2) refuses by name (layout_newer) and
 //     writes nothing over the newer record (OlderBuildNeverWritesNewerLayout), while DoneSince
 //     reads the epoch's log whole; v2 reads a v1 page silently; hostile images refuse by name.
@@ -151,7 +151,7 @@ func TestDoneRecordFixedPaged(t *testing.T) {
 			return b
 		}), "clamped"},
 		{"text ill formed", mut(func(b []byte) []byte { b[bodyAt+8+4] = 0xff; return b }), "text_ill_formed"},
-		{"legacy json unreadable", `{"epoch":`, "legacy_json_unreadable"},
+		{"legacy json retired", `{"epoch":`, "legacy_json_retired"},
 	} {
 		dec, _, why := pinned.decodeDonePage(tc.image)
 		assert.Equal(t, tc.why, why, tc.name)
@@ -204,7 +204,7 @@ func TestDoneRecordFixedPaged(t *testing.T) {
 		assert.Equal(t, wantCounts, sinceCounts, "DoneSince equal at mark %v", mark)
 	}
 
-	// 3. Legacy JSON (first byte '{') is read once and rewritten into fixed paged form.
+	// 3. Legacy JSON (first byte '{') is refused by name and left as stored.
 	legacyBytes, err := json.Marshal(DoneRecord{
 		Epoch:  pinned.epoch,
 		Cursor: got.Cursor,
@@ -213,23 +213,14 @@ func TestDoneRecordFixedPaged(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, byte('{'), legacyBytes[0])
 	require.NoError(t, kv.SetKey(h.ctx, keyDoneRecord, string(legacyBytes)))
-	for _, pk := range pageKeys[1:] {
-		_, _ = m.DeleteKeys(h.ctx, []string{pinned.Names.Key(pk)})
-	}
 
 	fromLegacy, err := pinned.readDoneRecord(h.ctx, kv)
 	require.NoError(t, err)
-	require.Len(t, fromLegacy.Done, 310, "legacy JSON read compacts 325 entries to 310")
-	rewritten, ok, err := kv.GetKey(h.ctx, keyDoneRecord)
+	assert.Equal(t, DoneRecord{Epoch: pinned.epoch}, fromLegacy, "the legacy page is never decoded")
+	kept, ok, err := kv.GetKey(h.ctx, keyDoneRecord)
 	require.NoError(t, err)
 	require.True(t, ok)
-	require.Equal(t, donewire.TableFixedForm, rewritten[0], "legacy JSON is rewritten to fixed form on first read")
-	for i, pk := range pageKeys {
-		raw, ok, err := kv.GetKey(h.ctx, pk)
-		require.NoError(t, err)
-		require.True(t, ok, "rewritten page %d (%s) exists", i, pk)
-		require.Equal(t, donewire.TableFixedForm, raw[0], "rewritten page %d (%s) is fixed form", i, pk)
-	}
+	assert.Equal(t, string(legacyBytes), kept, "the refused legacy page is left as stored")
 
 	// 4. An older layout meeting a newer record refuses by name (layout_newer) and writes nothing.
 	var v2Rec donewirev2.DoneRecord
@@ -257,7 +248,7 @@ func TestDoneRecordFixedPaged(t *testing.T) {
 	assert.Equal(t, sprint.CountDone(uncompacted, time.Time{}), fallbackCounts)
 
 	// Restore the 4-page fixed record and verify Teardown deletes every page.
-	require.NoError(t, pinned.keepDone(h.ctx, kv, string(legacyBytes), true))
+	require.NoError(t, kv.SetKey(h.ctx, keyDoneRecord, page0Raw))
 	duringKeys := m.Keys(h.st.Names)
 	for _, pk := range pageKeys {
 		require.True(t, slices.Contains(duringKeys, h.st.Names.Key(pk)), "key %s present before Teardown", pk)
