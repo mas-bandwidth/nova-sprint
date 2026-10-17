@@ -74,203 +74,26 @@ func (st *Store) keepStops(ctx context.Context, tw *Twin, rec StopsRecord) error
 	return nil
 }
 
-// stopsPage is one stops record decoded by the stops row reader (S1, S2).
-type stopsPage struct {
-	rec StopsRecord
-}
+// stopsOps is the stops record's generated variable table (viewrowswire StopsRecord; S1).
+var stopsOps = viewOps[viewrowswire.StopsRecord]{"StopsRecord",
+	viewBuilder((*viewrowswire.StopsRecordBuilder).Init, (*viewrowswire.StopsRecordBuilder).GetRoot, func(b *viewrowswire.StopsRecordBuilder) *viewrowswire.TableArena { return &b.Arena }, viewrowswire.StopsRecordFromJson),
+	viewrowswire.StopsRecordMeasure, viewrowswire.StopsRecordSave, viewrowswire.StopsRecordLoadMeasureReason, viewrowswire.StopsRecordLoad, viewrowswire.StopsRecordToJsonMeasure, viewrowswire.StopsRecordToJson}
 
-// stopSchema is one automatic stop's schema JSON (S4).
-type stopSchema struct {
-	Kind    string `json:"kind"`
-	Subject string `json:"subject"`
-	Since   int64  `json:"since,omitempty"`
-	What    string `json:"what"`
-	Effect  string `json:"effect"`
-	Undo    string `json:"undo"`
-	Signal  string `json:"signal"`
-}
-
-// seatWaitsSchema is the seat's waits in schema JSON.
-type seatWaitsSchema struct {
-	Judgments  int64  `json:"judgments"`
-	Overdue    int64  `json:"overdue"`
-	OldestID   string `json:"oldest_id,omitempty"`
-	OldestType string `json:"oldest_type,omitempty"`
-	OldestAt   int64  `json:"oldest_at,omitempty"`
-	Level      int64  `json:"level"`
-}
-
-// stopsSchema is the schema JSON of the stops record: times in Unix nanoseconds.
-type stopsSchema struct {
-	Epoch uint64          `json:"epoch"`
-	At    int64           `json:"at"`
-	Seat  seatWaitsSchema `json:"seat"`
-	Stops []stopSchema    `json:"stops"`
-}
-
-func stopsToSchema(r StopsRecord) stopsSchema {
-	return stopsSchema{Epoch: r.Epoch, At: rowTimeNanos(r.At),
-		Seat: seatWaitsSchema{Judgments: int64(r.Seat.Judgments), Overdue: int64(r.Seat.Overdue),
-			OldestID: r.Seat.OldestID, OldestType: r.Seat.OldestType,
-			OldestAt: rowTimeNanos(r.Seat.OldestAt), Level: int64(r.Seat.Level)},
-		Stops: stopsToSchemaStops(r.Stops)}
-}
-
-func stopsToSchemaStops(ss []sprint.Stop) []stopSchema {
-	if ss == nil {
-		return nil
-	}
-	out := make([]stopSchema, len(ss))
-	for i, s := range ss {
-		out[i] = stopSchema{Kind: s.Kind, Subject: s.Subject, Since: rowTimeNanos(s.Since),
-			What: s.What, Effect: s.Effect, Undo: s.Undo, Signal: s.Signal}
-	}
-	return out
-}
-
-func stopsFromSchema(z stopsSchema) StopsRecord {
-	return StopsRecord{Epoch: z.Epoch, At: doneTimeOf(z.At),
-		Seat: sprint.SeatWaits{Judgments: int(z.Seat.Judgments), Overdue: int(z.Seat.Overdue),
-			OldestID: z.Seat.OldestID, OldestType: z.Seat.OldestType,
-			OldestAt: doneTimeOf(z.Seat.OldestAt), Level: int(z.Seat.Level)},
-		Stops: stopsFromSchemaStops(z.Stops)}
-}
-
-func stopsFromSchemaStops(ss []stopSchema) []sprint.Stop {
-	if ss == nil {
-		return nil
-	}
-	out := make([]sprint.Stop, len(ss))
-	for i, s := range ss {
-		out[i] = sprint.Stop{Kind: s.Kind, Subject: s.Subject, Since: doneTimeOf(s.Since),
-			What: s.What, Effect: s.Effect, Undo: s.Undo, Signal: s.Signal}
-	}
-	return out
-}
-
-// stopsRowFns adapts the variable table and today's legacy JSON reader to the store row codec (S1, S2).
-func stopsRowFns() RowFns[stopsPage] {
-	return RowFns[stopsPage]{
-		Name: "STOPSRECORD", Forms: variableWireForms(),
-		Reset:    func(v *stopsPage) { *v = stopsPage{} },
-		LoadWire: stopsLoadWire, LoadJSON: stopsLoadJSON,
-		Legacy:     legacyObject,
-		LoadLegacy: stopsLoadLegacy,
-		SaveWire:   func(v *stopsPage) []byte { return stopsSaveWireRec(v.rec) },
-		SaveJSON:   func(v *stopsPage) []byte { return stopsSaveJSONRec(v.rec) },
-	}
-}
-
-// stopsRows makes and registers the one stops reader on this Store (S4).
-func (st *Store) stopsRows() *RowCodec[stopsPage] {
-	if st == nil {
-		return nil
-	}
-	lazyMu.Lock()
-	defer lazyMu.Unlock()
-	b := st.viewCodecsLocked()
-	if b.stops == nil {
-		b.stops = NewRowCodec(stopsRowFns())
-	}
-	b.stops.Register(st)
-	return b.stops
-}
-
-// stopsLoadWire adapts the generated variable table to the stops record (S1, S2).
-func stopsLoadWire(v *stopsPage, wire []byte) RowReport {
-	size, err := viewrowswire.StopsRecordLoadMeasureReason(wire)
+// stopsOfRaw reads the stored stops record through c, in any of its forms (S2). A record
+// that does not read is none, on purpose, for where: the dashboard shows no stops line
+// rather than no dashboard, and the tick writes the record again within StopsRefresh. The
+// refusal is counted on c by its name (S4).
+func stopsOfRaw(c *RowCodec[StopsRecord], raw string, ok bool) (StopsRecord, bool) {
+	r, ok, err := viewRead(c, raw, ok)
 	if err != nil {
-		return RowReport{Reason: err.Error()}
-	}
-	var rep viewrowswire.TableReport
-	out := viewrowswire.StopsRecordLoad(make([]byte, size), wire, &rep)
-	if out == nil {
-		return tableReportRow(rep)
-	}
-	buf := make([]byte, viewrowswire.StopsRecordToJsonMeasure(out))
-	n := viewrowswire.StopsRecordToJson(out, buf)
-	var z stopsSchema
-	if err := json.Unmarshal(buf[:n], &z); err != nil {
-		return RowReport{Malformed: true, Reason: "malformed"}
-	}
-	v.rec = stopsFromSchema(z)
-	return RowReport{}
-}
-
-// stopsLoadJSON adapts the generated schema JSON form to the stops record (S2).
-func stopsLoadJSON(v *stopsPage, text []byte) RowReport {
-	var builder viewrowswire.StopsRecordBuilder
-	if !builder.Init() {
-		return RowReport{Malformed: true, Reason: "malformed"}
-	}
-	var rep viewrowswire.TableReport
-	if !viewrowswire.StopsRecordFromJson(&builder, text, &rep) {
-		return tableReportRow(rep)
-	}
-	root := builder.GetRoot()
-	buf := make([]byte, viewrowswire.StopsRecordMeasure(root, &builder.Arena))
-	n := viewrowswire.StopsRecordSave(root, buf, &builder.Arena)
-	if n < 0 {
-		return RowReport{Malformed: true, Reason: "malformed"}
-	}
-	return stopsLoadWire(v, buf[:n])
-}
-
-// stopsSaveWire writes the stops record as the variable table wire (S2).
-func stopsSaveWireRec(r StopsRecord) []byte {
-	b, err := json.Marshal(stopsToSchema(r))
-	if err != nil {
-		return nil
-	}
-	var builder viewrowswire.StopsRecordBuilder
-	if !builder.Init() {
-		return nil
-	}
-	var rep viewrowswire.TableReport
-	if !viewrowswire.StopsRecordFromJson(&builder, b, &rep) {
-		return nil
-	}
-	root := builder.GetRoot()
-	size := viewrowswire.StopsRecordMeasure(root, &builder.Arena)
-	if size < 0 {
-		return nil
-	}
-	buf := make([]byte, size)
-	n := viewrowswire.StopsRecordSave(root, buf, &builder.Arena)
-	if n < 0 {
-		return nil
-	}
-	return buf[:n]
-}
-
-// stopsSaveJSON writes the stops record as the schema JSON text (S2).
-func stopsSaveJSONRec(r StopsRecord) []byte {
-	b, err := json.Marshal(stopsToSchema(r))
-	if err != nil {
-		return nil
-	}
-	return b
-}
-
-// stopsLoadLegacy keeps today's JSON stops record decoder (S2, S4).
-func stopsLoadLegacy(v *stopsPage, raw []byte) RowReport {
-	if err := json.Unmarshal(raw, &v.rec); err != nil {
-		return RowReport{Malformed: true, Reason: "legacy_json_unreadable"}
-	}
-	return RowReport{}
-}
-
-// readStops is the stops record as stored; false when there is none or it does not read.
-func readStops(raw string, ok bool) (StopsRecord, bool) {
-	var r StopsRecord
-	if !ok || json.Unmarshal([]byte(raw), &r) != nil {
 		return StopsRecord{}, false
 	}
-	return r, true
+	return r, ok
 }
 
 // StopsKept is the stops record the tick last wrote, when it is of the pinned epoch; false
 // when there is none (before the first tick, after a clear, or a store that keeps no records).
+// A record that does not read is the named refusal (S2), counted on the stops reader (S4).
 func (st *Store) StopsKept(ctx context.Context) (StopsRecord, bool, error) {
 	kv, err := st.kv()
 	if err != nil {
@@ -280,15 +103,11 @@ func (st *Store) StopsKept(ctx context.Context) (StopsRecord, bool, error) {
 	if err != nil {
 		return StopsRecord{}, false, err
 	}
-	if !ok {
-		return StopsRecord{}, false, nil
-	}
-	page, _, err := st.stopsRows().Read([]byte(v))
+	r, ok, err := viewRead(st.viewRows().stops, v, ok)
 	if err != nil {
-		return StopsRecord{}, false, nil
+		return StopsRecord{}, false, err
 	}
-	r := page.rec
-	return r, r.Epoch == st.epoch, nil
+	return r, ok && r.Epoch == st.epoch, nil
 }
 
 // StopsNow is the stops record counted now from a fresh read of the sprint, as the tick
