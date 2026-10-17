@@ -211,8 +211,13 @@ func (st *Store) readerStates(ctx context.Context, readers []string, now time.Ti
 		var b sprint.Beat
 		var hold readerHold
 		if oks[2*i] {
-			// ignored: an unreadable record is no beat, which the next beat replaces
-			_ = json.Unmarshal([]byte(vals[2*i]), &b)
+			// ignored (S4): an unreadable record is no beat, which the next beat replaces;
+			// the read is counted under BEAT and the refusal is counted, by name (S2)
+			var err error
+			b, _, err = st.presenceRows().beat.Read([]byte(vals[2*i]))
+			if err != nil {
+				b = sprint.Beat{}
+			}
 		}
 		if oks[2*i+1] {
 			// ignored: an unreadable record is no hold, which the next reader away or reader up replaces
