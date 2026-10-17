@@ -100,11 +100,6 @@ var fuzzRoots = []fuzzRoot{
 	fuzzBuilder("Beat", func(b *BeatBuilder, w []byte, r *TableReport) bool { return BeatLoadBuilder(b, w, r) }, func(b *BeatBuilder, w []byte, r *TableReport) bool { return BeatFromJson(b, w, r) }, func(v *Beat) []byte { return fuzzImage(BeatMeasure(v), func(b []byte) int64 { return BeatSave(v, b) }) }, func(v *Beat) []byte {
 		return fuzzImage(BeatToJsonMeasure(v), func(b []byte) int64 { return BeatToJson(v, b) })
 	}),
-	fuzzBuilder("FactWord", func(b *FactWordBuilder, w []byte, r *TableReport) bool { return FactWordLoadBuilder(b, w, r) }, func(b *FactWordBuilder, w []byte, r *TableReport) bool { return FactWordFromJson(b, w, r) }, func(v *FactWord) []byte {
-		return fuzzImage(FactWordMeasure(v), func(b []byte) int64 { return FactWordSave(v, b) })
-	}, func(v *FactWord) []byte {
-		return fuzzImage(FactWordToJsonMeasure(v), func(b []byte) int64 { return FactWordToJson(v, b) })
-	}),
 	fuzzBuilder("Files", func(b *FilesBuilder, w []byte, r *TableReport) bool { return FilesLoadBuilder(b, w, r) }, func(b *FilesBuilder, w []byte, r *TableReport) bool { return FilesFromJson(b, w, r) }, func(v *Files) []byte {
 		return fuzzImage(FilesMeasure(v), func(b []byte) int64 { return FilesSave(v, b) })
 	}, func(v *Files) []byte {
@@ -153,11 +148,6 @@ var fuzzRoots = []fuzzRoot{
 	}, func(v *LiveSight) []byte {
 		return fuzzImage(LiveSightToJsonMeasure(v), func(b []byte) int64 { return LiveSightToJson(v, b) })
 	}),
-	fuzzBuilder("LiveWord", func(b *LiveWordBuilder, w []byte, r *TableReport) bool { return LiveWordLoadBuilder(b, w, r) }, func(b *LiveWordBuilder, w []byte, r *TableReport) bool { return LiveWordFromJson(b, w, r) }, func(v *LiveWord) []byte {
-		return fuzzImage(LiveWordMeasure(v), func(b []byte) int64 { return LiveWordSave(v, b) })
-	}, func(v *LiveWord) []byte {
-		return fuzzImage(LiveWordToJsonMeasure(v), func(b []byte) int64 { return LiveWordToJson(v, b) })
-	}),
 	fuzzBuilder("LoadSample", func(b *LoadSampleBuilder, w []byte, r *TableReport) bool { return LoadSampleLoadBuilder(b, w, r) }, func(b *LoadSampleBuilder, w []byte, r *TableReport) bool { return LoadSampleFromJson(b, w, r) }, func(v *LoadSample) []byte {
 		return fuzzImage(LoadSampleMeasure(v), func(b []byte) int64 { return LoadSampleSave(v, b) })
 	}, func(v *LoadSample) []byte {
@@ -177,11 +167,6 @@ var fuzzRoots = []fuzzRoot{
 		return fuzzImage(ReaderHoldMeasure(v), func(b []byte) int64 { return ReaderHoldSave(v, b) })
 	}, func(v *ReaderHold) []byte {
 		return fuzzImage(ReaderHoldToJsonMeasure(v), func(b []byte) int64 { return ReaderHoldToJson(v, b) })
-	}),
-	fuzzBuilder("RunWord", func(b *RunWordBuilder, w []byte, r *TableReport) bool { return RunWordLoadBuilder(b, w, r) }, func(b *RunWordBuilder, w []byte, r *TableReport) bool { return RunWordFromJson(b, w, r) }, func(v *RunWord) []byte {
-		return fuzzImage(RunWordMeasure(v), func(b []byte) int64 { return RunWordSave(v, b) })
-	}, func(v *RunWord) []byte {
-		return fuzzImage(RunWordToJsonMeasure(v), func(b []byte) int64 { return RunWordToJson(v, b) })
 	}),
 	fuzzBuilder("SeatChange", func(b *SeatChangeBuilder, w []byte, r *TableReport) bool { return SeatChangeLoadBuilder(b, w, r) }, func(b *SeatChangeBuilder, w []byte, r *TableReport) bool { return SeatChangeFromJson(b, w, r) }, func(v *SeatChange) []byte {
 		return fuzzImage(SeatChangeMeasure(v), func(b []byte) int64 { return SeatChangeSave(v, b) })

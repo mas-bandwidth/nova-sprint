@@ -67,9 +67,8 @@ func init() {
 
 var tableUnitView = UnitViewInfo{Package: "friendrowswire", ProtocolId: 0x72749af04742ba61,
 	NumTypes: 0, Types: []ViewType{},
-	NumTables: 21, Tables: []ViewType{
+	NumTables: 18, Tables: []ViewType{
 		{Name: "Beat", File: "friendrows.schema", Table: true, Type: &BeatTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
-		{Name: "FactWord", File: "friendrows.schema", Table: true, Type: &FactWordTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "Files", File: "friendrows.schema", Table: true, Type: &FilesTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "FriendEntry", File: "friendrows.schema", Table: true, Type: &FriendEntryTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "FriendReport", File: "friendrows.schema", Table: true, Type: &FriendReportTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -80,12 +79,10 @@ var tableUnitView = UnitViewInfo{Package: "friendrowswire", ProtocolId: 0x72749a
 		{Name: "LaneHold", File: "friendrows.schema", Table: true, Type: &LaneHoldTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "LaneWait", File: "friendrows.schema", Table: true, Type: &LaneWaitTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "LiveSight", File: "friendrows.schema", Table: true, Type: &LiveSightTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
-		{Name: "LiveWord", File: "friendrows.schema", Table: true, Type: &LiveWordTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "LoadSample", File: "friendrows.schema", Table: true, Type: &LoadSampleTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "Login", File: "friendrows.schema", Table: true, Type: &LoginTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "Meter", File: "friendrows.schema", Table: true, Type: &MeterTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "ReaderHold", File: "friendrows.schema", Table: true, Type: &ReaderHoldTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
-		{Name: "RunWord", File: "friendrows.schema", Table: true, Type: &RunWordTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "SeatChange", File: "friendrows.schema", Table: true, Type: &SeatChangeTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "ServerRecord", File: "friendrows.schema", Table: true, Type: &ServerRecordTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "Ticks", File: "friendrows.schema", Table: true, Type: &TicksTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},

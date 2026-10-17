@@ -129,6 +129,12 @@ func tableJsonIsFlags(f *TableFieldInfo) bool { return f.EnumName != nil && f.Va
 func tableJsonIsEnum(f *TableFieldInfo) bool { return f.VariantId != nil && f.Arms == nil }
 
 func tableJsonShape(f *TableFieldInfo) byte {
+	if f.TextList != 0 {
+		return 'a'
+	}
+	if f.Kind == 13 && !f.Pointer && !f.IsArray && !f.List && f.Table != nil && f.Table().JsonArray {
+		return 'a'
+	}
 	switch {
 	case f.Kind == 12 || f.Kind == 33: // string
 		return 's'
@@ -160,6 +166,12 @@ func tableJsonShape(f *TableFieldInfo) byte {
 
 // the ELEMENT shape of an array field — the same classifier one level down
 func tableJsonElementShape(f *TableFieldInfo) byte {
+	if f.TextList != 0 {
+		return 's'
+	}
+	if f.Kind == 13 && !f.Pointer && f.Table != nil && f.Table().JsonArray {
+		return 'a'
+	}
 	if f.Pointer {
 		if f.Table == nil {
 			return 's'
@@ -439,6 +451,17 @@ func tableJsonWriteFloat(out *tableJsonOut, value float64, single bool) bool {
 // tableJsonWriteScalar writes one scalar at one storage address: a nested
 // object, a union, a vocabulary, or a number.
 func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+	if f.Unbounded {
+		t, ok := tableTextBytes((*TableRef)(storage), nil)
+		if !ok {
+			return false
+		}
+		tableJsonWriteString(out, t)
+		return true
+	}
+	if f.TextList != 0 {
+		return tableJsonWriteTextElement(out, storage, f)
+	}
 	if f.Pointer {
 		return tableJsonWritePointer(out, (*int64)(storage), f, depth)
 	}
@@ -561,7 +584,7 @@ func tableJsonWriteField(out *tableJsonOut, base unsafe.Pointer, f *TableFieldIn
 		tableJsonWriteWString(out, unsafe.Slice((*uint16)(storage), tableJsonCount(base, f)))
 		return true
 	}
-	if f.Kind == 12 {
+	if f.Kind == 12 && f.TextList == 0 {
 		tableJsonWriteString(out, tableJsonBytes(storage, tableJsonCount(base, f)))
 		return true
 	}
@@ -631,6 +654,9 @@ func tableJsonWriteValue(out *tableJsonOut, base unsafe.Pointer, info *TableType
 func tableJsonWriteLabeledValue(out *tableJsonOut, base unsafe.Pointer, info *TableTypeInfo, depth int32, label uint64) bool {
 	if depth > tableJsonMaxDepth {
 		return false
+	}
+	if info.JsonArray && label == 0 && len(info.Fields) == 1 {
+		return tableJsonWriteField(out, base, &info.Fields[0], depth)
 	}
 	any := label != 0
 	if any {
@@ -1165,6 +1191,9 @@ func tableJsonNameIs(name string, key []byte) bool {
 
 // tableJsonReadScalar places one scalar at one storage address.
 func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+	if f.TextList != 0 {
+		return tableJsonReadTextElement(in, storage, f, depth)
+	}
 	if f.Pointer {
 		return tableJsonReadPointer(in, (*int64)(storage), f, depth+1)
 	}
@@ -1501,6 +1530,9 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 	if f.List {
 		return tableJsonReadList(in, storage, f, depth)
 	}
+	if f.Unbounded {
+		return tableJsonReadText(in, (*TableRef)(storage))
+	}
 	if f.Kind == 33 {
 		units := unsafe.Slice((*uint16)(storage), f.ArrayBound)
 		clear(units)
@@ -1511,7 +1543,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 		tableJsonSetCount(base, f, n)
 		return true
 	}
-	if f.Kind == 12 {
+	if f.Kind == 12 && f.TextList == 0 {
 		length, ok := in.scanString(tableJsonBytes(storage, f.ArrayBound))
 		if !ok {
 			return false
@@ -1675,7 +1707,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 				if !in.skipValue(depth + 1) {
 					return false
 				}
-			case in.valueShape() != shape && !(f.Pointer && in.valueShape() == 'z'):
+			case in.valueShape() != shape && !((f.Pointer || f.TextList == 2) && in.valueShape() == 'z'):
 				in.report.KindMismatch++
 				if !in.skipValue(depth + 1) {
 					return false
@@ -1741,7 +1773,7 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 				if !in.skipValue(depth + 1) {
 					return false
 				}
-			case in.valueShape() != shape && !(f.Pointer && in.valueShape() == 'z'):
+			case in.valueShape() != shape && !((f.Pointer || f.TextList == 2) && in.valueShape() == 'z'):
 				in.report.KindMismatch++
 				if !in.skipValue(depth + 1) {
 					return false
@@ -1782,6 +1814,16 @@ func tableJsonReadTable(in *tableJsonIn, base unsafe.Pointer, info *TableTypeInf
 	if depth > tableJsonMaxDepth {
 		in.bad = true
 		return false
+	}
+	if info.JsonArray && len(info.Fields) == 1 {
+		if in.peek() != '[' {
+			if in.report != nil && in.report.Reason == "" {
+				in.report.Reason = "json_root_not_array: " + info.Name
+			}
+			in.bad = true
+			return false
+		}
+		return tableJsonReadField(in, base, &info.Fields[0], depth)
 	}
 	if in.peek() != '{' {
 		in.bad = true
@@ -2662,7 +2704,7 @@ func tableJsonReadList(in *tableJsonIn, holder unsafe.Pointer, f *TableFieldInfo
 		if f.Kind == 13 && !f.Pointer {
 			f.Table().Reset(p)
 		}
-		if in.valueShape() != shape && !(f.Pointer && in.valueShape() == 'z') {
+		if in.valueShape() != shape && !((f.Pointer || f.TextList == 2) && in.valueShape() == 'z') {
 			in.report.KindMismatch++
 			if !in.skipValue(depth + 1) {
 				return false
@@ -2754,7 +2796,17 @@ func tableJsonReadMap(in *tableJsonIn, p unsafe.Pointer, f *TableFieldInfo, dept
 		good := true
 		var k tableMapKey
 		if key.Kind == 12 {
-			if n > key.ArrayBound {
+			if key.Unbounded {
+				memory, ref := in.graph.alloc(9 + int64(n))
+				if memory == nil {
+					in.bad = true
+					return false
+				}
+				*(*TableBlob)(memory) = TableBlob{Length: uint32(n)}
+				k.text = unsafe.Slice((*byte)(unsafe.Add(memory, 8)), int(n))
+				k.blob = ref
+				_, ok = in.scanString(k.text)
+			} else if n > key.ArrayBound {
 				in.report.Clamped++
 				in.pos = probe.pos
 				good = false
@@ -2800,7 +2852,10 @@ func tableJsonReadMap(in *tableJsonIn, p unsafe.Pointer, f *TableFieldInfo, dept
 				in.report.Duplicate++
 			}
 			entry.Reset(slot)
-			tableMapStoreKey(slot, key, k)
+			if !tableMapStoreKeyed(slot, key, k, nil) {
+				in.bad = true
+				return false
+			}
 			shape := in.valueShape()
 			if value.Optional && shape == 'z' {
 				if !in.literal("null") {
@@ -2984,6 +3039,77 @@ func tableTimestampNanos(t time.Time) (int64, bool) {
 
 // tableTimestampTime is the UTC time of a count; every count is legal.
 func tableTimestampTime(n int64) time.Time { return time.Unix(0, n).UTC() }
+
+// tableJsonWriteTextElement writes one text-list element (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §2.13, §16.2): its string, or null for an absent ?string(M) element.
+func tableJsonWriteTextElement(out *tableJsonOut, p unsafe.Pointer, f *TableFieldInfo) bool {
+	v := &f.Table().Fields[0]
+	if f.TextList == 2 && tableJsonGetRaw(unsafe.Add(p, uintptr(v.PresentOffset)), 1) == 0 {
+		out.text("null")
+		return true
+	}
+	if v.Unbounded {
+		t, ok := tableTextBytes((*TableRef)(unsafe.Add(p, uintptr(v.Offset))), nil)
+		if !ok {
+			return false
+		}
+		tableJsonWriteString(out, t)
+		return true
+	}
+	n := tableJsonCount(p, v)
+	if n < 0 || n > v.ArrayBound {
+		return false
+	}
+	tableJsonWriteString(out, tableJsonBytes(unsafe.Add(p, uintptr(v.Offset)), n))
+	return true
+}
+
+// tableJsonReadTextElement reads one: a string, or null where the element may be
+// absent; the caller's shape check has already counted every other JSON type.
+func tableJsonReadTextElement(in *tableJsonIn, p unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+	t := f.Table()
+	t.Reset(p)
+	if in.valueShape() == 'z' {
+		return in.literal("null")
+	}
+	v := &t.Fields[0]
+	if !tableJsonReadField(in, p, v, depth) {
+		return false
+	}
+	if f.TextList == 2 {
+		tableJsonSetRaw(unsafe.Add(p, uintptr(v.PresentOffset)), 1, 1)
+	}
+	return true
+}
+
+func tableJsonReadText(in *tableJsonIn, slot *TableRef) bool {
+	*slot = 0
+	probe := *in
+	n, ok := probe.scanString(nil)
+	if !ok {
+		in.bad = true
+		return false
+	}
+	if n == 0 {
+		_, ok = in.scanString(nil)
+		return ok
+	}
+	if in.graph == nil || in.graph.alloc == nil {
+		in.bad = true
+		return false
+	}
+	memory, ref := in.graph.alloc(9 + int64(n))
+	if memory == nil {
+		in.bad = true
+		return false
+	}
+	*(*TableBlob)(memory) = TableBlob{Length: uint32(n)}
+	if _, ok = in.scanString(unsafe.Slice((*byte)(unsafe.Add(memory, 8)), int(n))); !ok {
+		return false
+	}
+	*slot = ref
+	return true
+}
 
 // ---- json walk: end ----
 
@@ -3552,79 +3678,6 @@ func MeterLoadText(text string, report *TableReport) (*Meter, error) {
 	return builder.AsConst(), nil
 }
 
-func RunWordFromJson(builder *RunWordBuilder, text []byte, report *TableReport) bool {
-	if builder.Arena.Locked {
-		return false
-	}
-	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), RunWordTableType(), &builder.Main, text, report)
-}
-func RunWordToJsonMeasure(value *RunWord, allocator ...TableAllocator) int64 {
-	return tableRegionToJson(unsafe.Pointer(value), RunWordTableType(), nil, allocator...)
-}
-func RunWordToJson(value *RunWord, buffer []byte, allocator ...TableAllocator) int64 {
-	return tableRegionToJson(unsafe.Pointer(value), RunWordTableType(), buffer, allocator...)
-}
-
-// RunWordSaveText returns the base64 of RunWord's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.8): the whole file, form byte first, so the text keeps the form byte,
-// the framing check and every versioning guarantee and is opaque. It takes
-// the write context RunWordSave takes.
-func RunWordSaveText(value *RunWord, context ...TableWriteContext) (string, error) {
-	n, err := RunWordMeasureReason(value, context...)
-	if err != nil {
-		return "", err
-	}
-	if n < 0 {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
-	buf := make([]byte, n)
-	if RunWordSave(value, buf, context...) != n {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
-	return base64.StdEncoding.EncodeToString(buf), nil
-}
-
-// RunWordLoadText reads one RunWord from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.8) into a builder of its own and returns the locked root, as RunWordReadStrict
-// does: it is the STRICT read (§6.5) and refuses whenever the read's report
-// holds an error (TableReport.Err), whatever the tolerant LoadBuilder answered,
-// so a recovered value never comes back. It refuses by name: base64_damaged
-// when the body does not decode, unknown_form when the decoded wire's form byte
-// is not one this build carries, wire_damaged for framing damage, and the
-// report's own reason (malformed, clamped, kind_mismatch, ...) otherwise. A nil
-// report is allowed; a supplied one receives THIS read's report, so earlier
-// counts in it never decide.
-func RunWordLoadText(text string, report *TableReport) (*RunWord, error) {
-	if report != nil {
-		*report = TableReport{}
-	}
-	wire, err := base64.StdEncoding.DecodeString(text)
-	if err != nil {
-		return nil, tableRefuseError(TableRefuseBase64Damaged)
-	}
-	var builder RunWordBuilder
-	if !builder.Init() {
-		return nil, tableRefuseError(TableRefuseAllocationFailed)
-	}
-	var read TableReport
-	ok := RunWordLoadBuilder(&builder, wire, &read)
-	if report != nil {
-		*report = read
-	}
-	if err := read.Err(); err != nil || !ok {
-		builder.Shutdown()
-		if err != nil {
-			return nil, err
-		}
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
-	if !builder.Lock() {
-		builder.Shutdown()
-		return nil, tableRefuseError(TableRefuseAllocationFailed)
-	}
-	return builder.AsConst(), nil
-}
-
 func FriendReportFromJson(builder *FriendReportBuilder, text []byte, report *TableReport) bool {
 	if builder.Arena.Locked {
 		return false
@@ -3681,152 +3734,6 @@ func FriendReportLoadText(text string, report *TableReport) (*FriendReport, erro
 	}
 	var read TableReport
 	ok := FriendReportLoadBuilder(&builder, wire, &read)
-	if report != nil {
-		*report = read
-	}
-	if err := read.Err(); err != nil || !ok {
-		builder.Shutdown()
-		if err != nil {
-			return nil, err
-		}
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
-	if !builder.Lock() {
-		builder.Shutdown()
-		return nil, tableRefuseError(TableRefuseAllocationFailed)
-	}
-	return builder.AsConst(), nil
-}
-
-func LiveWordFromJson(builder *LiveWordBuilder, text []byte, report *TableReport) bool {
-	if builder.Arena.Locked {
-		return false
-	}
-	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), LiveWordTableType(), &builder.Main, text, report)
-}
-func LiveWordToJsonMeasure(value *LiveWord, allocator ...TableAllocator) int64 {
-	return tableRegionToJson(unsafe.Pointer(value), LiveWordTableType(), nil, allocator...)
-}
-func LiveWordToJson(value *LiveWord, buffer []byte, allocator ...TableAllocator) int64 {
-	return tableRegionToJson(unsafe.Pointer(value), LiveWordTableType(), buffer, allocator...)
-}
-
-// LiveWordSaveText returns the base64 of LiveWord's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.8): the whole file, form byte first, so the text keeps the form byte,
-// the framing check and every versioning guarantee and is opaque. It takes
-// the write context LiveWordSave takes.
-func LiveWordSaveText(value *LiveWord, context ...TableWriteContext) (string, error) {
-	n, err := LiveWordMeasureReason(value, context...)
-	if err != nil {
-		return "", err
-	}
-	if n < 0 {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
-	buf := make([]byte, n)
-	if LiveWordSave(value, buf, context...) != n {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
-	return base64.StdEncoding.EncodeToString(buf), nil
-}
-
-// LiveWordLoadText reads one LiveWord from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.8) into a builder of its own and returns the locked root, as LiveWordReadStrict
-// does: it is the STRICT read (§6.5) and refuses whenever the read's report
-// holds an error (TableReport.Err), whatever the tolerant LoadBuilder answered,
-// so a recovered value never comes back. It refuses by name: base64_damaged
-// when the body does not decode, unknown_form when the decoded wire's form byte
-// is not one this build carries, wire_damaged for framing damage, and the
-// report's own reason (malformed, clamped, kind_mismatch, ...) otherwise. A nil
-// report is allowed; a supplied one receives THIS read's report, so earlier
-// counts in it never decide.
-func LiveWordLoadText(text string, report *TableReport) (*LiveWord, error) {
-	if report != nil {
-		*report = TableReport{}
-	}
-	wire, err := base64.StdEncoding.DecodeString(text)
-	if err != nil {
-		return nil, tableRefuseError(TableRefuseBase64Damaged)
-	}
-	var builder LiveWordBuilder
-	if !builder.Init() {
-		return nil, tableRefuseError(TableRefuseAllocationFailed)
-	}
-	var read TableReport
-	ok := LiveWordLoadBuilder(&builder, wire, &read)
-	if report != nil {
-		*report = read
-	}
-	if err := read.Err(); err != nil || !ok {
-		builder.Shutdown()
-		if err != nil {
-			return nil, err
-		}
-		return nil, tableRefuseError(TableRefuseWireDamaged)
-	}
-	if !builder.Lock() {
-		builder.Shutdown()
-		return nil, tableRefuseError(TableRefuseAllocationFailed)
-	}
-	return builder.AsConst(), nil
-}
-
-func FactWordFromJson(builder *FactWordBuilder, text []byte, report *TableReport) bool {
-	if builder.Arena.Locked {
-		return false
-	}
-	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), FactWordTableType(), &builder.Main, text, report)
-}
-func FactWordToJsonMeasure(value *FactWord, allocator ...TableAllocator) int64 {
-	return tableRegionToJson(unsafe.Pointer(value), FactWordTableType(), nil, allocator...)
-}
-func FactWordToJson(value *FactWord, buffer []byte, allocator ...TableAllocator) int64 {
-	return tableRegionToJson(unsafe.Pointer(value), FactWordTableType(), buffer, allocator...)
-}
-
-// FactWordSaveText returns the base64 of FactWord's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.8): the whole file, form byte first, so the text keeps the form byte,
-// the framing check and every versioning guarantee and is opaque. It takes
-// the write context FactWordSave takes.
-func FactWordSaveText(value *FactWord, context ...TableWriteContext) (string, error) {
-	n, err := FactWordMeasureReason(value, context...)
-	if err != nil {
-		return "", err
-	}
-	if n < 0 {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
-	buf := make([]byte, n)
-	if FactWordSave(value, buf, context...) != n {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
-	return base64.StdEncoding.EncodeToString(buf), nil
-}
-
-// FactWordLoadText reads one FactWord from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.8) into a builder of its own and returns the locked root, as FactWordReadStrict
-// does: it is the STRICT read (§6.5) and refuses whenever the read's report
-// holds an error (TableReport.Err), whatever the tolerant LoadBuilder answered,
-// so a recovered value never comes back. It refuses by name: base64_damaged
-// when the body does not decode, unknown_form when the decoded wire's form byte
-// is not one this build carries, wire_damaged for framing damage, and the
-// report's own reason (malformed, clamped, kind_mismatch, ...) otherwise. A nil
-// report is allowed; a supplied one receives THIS read's report, so earlier
-// counts in it never decide.
-func FactWordLoadText(text string, report *TableReport) (*FactWord, error) {
-	if report != nil {
-		*report = TableReport{}
-	}
-	wire, err := base64.StdEncoding.DecodeString(text)
-	if err != nil {
-		return nil, tableRefuseError(TableRefuseBase64Damaged)
-	}
-	var builder FactWordBuilder
-	if !builder.Init() {
-		return nil, tableRefuseError(TableRefuseAllocationFailed)
-	}
-	var read TableReport
-	ok := FactWordLoadBuilder(&builder, wire, &read)
 	if report != nil {
 		*report = read
 	}
