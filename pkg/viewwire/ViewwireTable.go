@@ -27,12 +27,10 @@ import (
 // ArchivedViewRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type ArchivedViewRow struct {
-	Streams    TableList[ArchivedViewStreamsTextRow]
-	Cards      int64
-	Landed     int64
-	Cost       [129]byte // string(128): buffer, used length beside it
-	_          [3]byte   // generated padding
-	CostLength int32
+	Streams TableList[ArchivedViewStreamsTextRow]
+	Cards   int64
+	Landed  int64
+	Cost    int64 // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // ArchivedViewStreamsTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -46,19 +44,13 @@ type ArchivedViewStreamsTextRow struct {
 // CostCheckRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type CostCheckRow struct {
-	StreamsUsd       [129]byte // string(128): buffer, used length beside it
-	_                [3]byte   // generated padding
-	StreamsUsdLength int32
-	CardsUsd         [129]byte // string(128): buffer, used length beside it
-	_                [3]byte   // generated padding
-	CardsUsdLength   int32
-	GapUsd           [129]byte // string(128): buffer, used length beside it
-	_                [3]byte   // generated padding
-	GapUsdLength     int32
-	Ok               bool
-	_                [7]byte // generated padding
-	Orphans          TableList[CostCheckOrphansTextRow]
-	Unlisted         int64
+	StreamsUsd int64 // *: signed self-relative delta, zero is null (§6.3)
+	CardsUsd   int64 // *: signed self-relative delta, zero is null (§6.3)
+	GapUsd     int64 // *: signed self-relative delta, zero is null (§6.3)
+	Ok         bool
+	_          [7]byte // generated padding
+	Orphans    TableList[CostCheckOrphansTextRow]
+	Unlisted   int64
 }
 
 // CostCheckOrphansTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -74,15 +66,12 @@ type CostReconcileRecordRow struct {
 	Provider       [129]byte // string(128): buffer, used length beside it
 	_              [3]byte   // generated padding
 	ProviderLength int32
-	At             [65]byte // string(64): buffer, used length beside it
-	_              [3]byte  // generated padding
-	AtLength       int32
+	At             int64 // *: signed self-relative delta, zero is null (§6.3)
 	Known          bool
-	Note           [1025]byte // string(1024): buffer, used length beside it
-	_              [2]byte    // generated padding
-	NoteLength     int32
-	Day            [65]byte // string(64): buffer, used length beside it
-	_              [3]byte  // generated padding
+	_              [7]byte  // generated padding
+	Note           int64    // *: signed self-relative delta, zero is null (§6.3)
+	Day            [11]byte // string(10): buffer, used length beside it
+	_              [1]byte  // generated padding
 	DayLength      int32
 	Used           float64
 	InternalCount  float64
@@ -95,8 +84,8 @@ type CostReconcileRecordRow struct {
 // CostReconcileRecordDaysEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type CostReconcileRecordDaysEntryRow struct {
-	Key       [65]byte // string(64): buffer, used length beside it
-	_         [3]byte  // generated padding
+	Key       [11]byte // string(10): buffer, used length beside it
+	_         [1]byte  // generated padding
 	KeyLength int32
 	Value     DayGapRow
 }
@@ -104,12 +93,10 @@ type CostReconcileRecordDaysEntryRow struct {
 // CriticalCardRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type CriticalCardRow struct {
-	Id          [516]byte // string(515): buffer, used length beside it
-	IdLength    int32
-	Behind      int64
-	State       [33]byte // string(32): buffer, used length beside it
-	_           [3]byte  // generated padding
-	StateLength int32
+	Id       [516]byte // string(515): buffer, used length beside it
+	IdLength int32
+	Behind   int64
+	State    int64 // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // DayGapRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -122,30 +109,22 @@ type DayGapRow struct {
 // DealtCardRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type DealtCardRow struct {
-	Id             [516]byte // string(515): buffer, used length beside it
-	IdLength       int32
-	Primary        [516]byte // string(515): buffer, used length beside it
-	PrimaryLength  int32
-	Stream         [129]byte // string(128): buffer, used length beside it
-	_              [3]byte   // generated padding
-	StreamLength   int32
-	Member         [136]byte // string(135): buffer, used length beside it
-	MemberLength   int32
-	State          [33]byte // string(32): buffer, used length beside it
-	_              [3]byte  // generated padding
-	StateLength    int32
-	_              [4]byte // generated padding
-	Since          int64
-	Deadline       int64
-	Branch         [513]byte // string(512): buffer, used length beside it
-	_              [3]byte   // generated padding
-	BranchLength   int32
-	Priority       [33]byte // string(32): buffer, used length beside it
-	_              [3]byte  // generated padding
-	PriorityLength int32
-	Tier           [65]byte // string(64): buffer, used length beside it
-	_              [3]byte  // generated padding
-	TierLength     int32
+	Id            [516]byte // string(515): buffer, used length beside it
+	IdLength      int32
+	Primary       [516]byte // string(515): buffer, used length beside it
+	PrimaryLength int32
+	Stream        [129]byte // string(128): buffer, used length beside it
+	_             [3]byte   // generated padding
+	StreamLength  int32
+	Member        [136]byte // string(135): buffer, used length beside it
+	MemberLength  int32
+	_             [4]byte // generated padding
+	State         int64   // *: signed self-relative delta, zero is null (§6.3)
+	Since         int64
+	Deadline      int64
+	Branch        int64 // *: signed self-relative delta, zero is null (§6.3)
+	Priority      int64 // *: signed self-relative delta, zero is null (§6.3)
+	Tier          int64 // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // DecisionSummaryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -162,8 +141,8 @@ type DecisionSummaryRow struct {
 // DecisionSummaryReceiptHistoryTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type DecisionSummaryReceiptHistoryTextRow struct {
-	Value       [1025]byte // string(1024): buffer, used length beside it
-	_           [3]byte    // generated padding
+	Value       [65537]byte // string(65536): buffer, used length beside it
+	_           [3]byte     // generated padding
 	ValueLength int32
 }
 
@@ -185,17 +164,12 @@ type FriendReportRow struct {
 	_                  [7]byte // generated padding
 	Active             int64
 	Paced              int64
-	PacedPresent       bool      // ?: one byte, in Go's model as in C++
-	Window             [129]byte // string(128): buffer, used length beside it
-	_                  [2]byte   // generated padding
-	WindowLength       int32
+	PacedPresent       bool    // ?: one byte, in Go's model as in C++
+	_                  [7]byte // generated padding
+	Window             int64   // *: signed self-relative delta, zero is null (§6.3)
 	Until              int64
-	Reason             [1025]byte // string(1024): buffer, used length beside it
-	_                  [3]byte    // generated padding
-	ReasonLength       int32
-	Build              [129]byte // string(128): buffer, used length beside it
-	_                  [3]byte   // generated padding
-	BuildLength        int32
+	Reason             int64 // *: signed self-relative delta, zero is null (§6.3)
+	Build              int64 // *: signed self-relative delta, zero is null (§6.3)
 	Started            int64
 	Present            int64
 }
@@ -203,120 +177,80 @@ type FriendReportRow struct {
 // FriendReportRunningTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type FriendReportRunningTextRow struct {
-	Value       [516]byte // string(515): buffer, used length beside it
+	Value       [65537]byte // string(65536): buffer, used length beside it
+	_           [3]byte     // generated padding
 	ValueLength int32
 }
 
 // FriendRowRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type FriendRowRow struct {
-	Name              [129]byte // string(128): buffer, used length beside it
-	_                 [3]byte   // generated padding
-	NameLength        int32
-	Ready             int64
-	Working           int64
-	Held              int64
-	Stale             int64
-	DealtFleet        int64
-	Width             int64
-	Ok                int64
-	Failed            int64
-	Redealt           int64
-	Status            [33]byte // string(32): buffer, used length beside it
-	_                 [3]byte  // generated padding
-	StatusLength      int32
-	FriendClass       [65]byte // string(64): buffer, used length beside it
-	_                 [3]byte  // generated padding
-	FriendClassLength int32
-	Mode              [65]byte // string(64): buffer, used length beside it
-	_                 [3]byte  // generated padding
-	ModeLength        int32
-	Session           [65]byte // string(64): buffer, used length beside it
-	_                 [3]byte  // generated padding
-	SessionLength     int32
-	Roles             [257]byte // string(256): buffer, used length beside it
-	_                 [3]byte   // generated padding
-	RolesLength       int32
-	LoadAvg           float64
-	Report            FriendReportRow
-	ReportPresent     bool    // ?FriendReport: one byte, in Go's model as in C++
-	_                 [7]byte // generated padding
-	Active            int64
-	Tokens            int64
-	Charged           [129]byte // string(128): buffer, used length beside it
-	_                 [3]byte   // generated padding
-	ChargedLength     int32
-	Billing           [65]byte // string(64): buffer, used length beside it
-	_                 [3]byte  // generated padding
-	BillingLength     int32
-	Beat              int64
-	Evidence          [1025]byte // string(1024): buffer, used length beside it
-	_                 [3]byte    // generated padding
-	EvidenceLength    int32
-	Reason            [1025]byte // string(1024): buffer, used length beside it
-	_                 [3]byte    // generated padding
-	ReasonLength      int32
-	Until             int64
+	Name        [129]byte // string(128): buffer, used length beside it
+	_           [3]byte   // generated padding
+	NameLength  int32
+	Ready       int64
+	Working     int64
+	Held        int64
+	Stale       int64
+	DealtFleet  int64
+	Width       int64
+	Ok          int64
+	Failed      int64
+	Redealt     int64
+	Status      int64 // *: signed self-relative delta, zero is null (§6.3)
+	FriendClass int64 // *: signed self-relative delta, zero is null (§6.3)
+	Mode        int64 // *: signed self-relative delta, zero is null (§6.3)
+	Session     int64 // *: signed self-relative delta, zero is null (§6.3)
+	Roles       int64 // *: signed self-relative delta, zero is null (§6.3)
+	LoadAvg     float64
+	Report      int64 // *FriendReport: signed self-relative delta, zero is null (§6.3)
+	Active      int64
+	Tokens      int64
+	Charged     int64 // *: signed self-relative delta, zero is null (§6.3)
+	Billing     int64 // *: signed self-relative delta, zero is null (§6.3)
+	Beat        int64
+	Evidence    int64 // *: signed self-relative delta, zero is null (§6.3)
+	Reason      int64 // *: signed self-relative delta, zero is null (§6.3)
+	Until       int64
 }
 
 // GoalViewRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type GoalViewRow struct {
-	Name        [129]byte // string(128): buffer, used length beside it
-	_           [3]byte   // generated padding
-	NameLength  int32
-	Route       [129]byte // string(128): buffer, used length beside it
-	_           [3]byte   // generated padding
-	RouteLength int32
-	Last        int64
-	Count       int64
-	State       [33]byte // string(32): buffer, used length beside it
-	_           [3]byte  // generated padding
-	StateLength int32
-	Error       [1025]byte // string(1024): buffer, used length beside it
-	_           [3]byte    // generated padding
-	ErrorLength int32
-	Text        [1025]byte // string(1024): buffer, used length beside it
-	_           [3]byte    // generated padding
-	TextLength  int32
+	Name       [65]byte // string(64): buffer, used length beside it
+	_          [3]byte  // generated padding
+	NameLength int32
+	Route      int64 // *: signed self-relative delta, zero is null (§6.3)
+	Last       int64
+	Count      int64
+	State      int64       // *: signed self-relative delta, zero is null (§6.3)
+	Error      int64       // *: signed self-relative delta, zero is null (§6.3)
+	Text       [65537]byte // string(65536): buffer, used length beside it
+	_          [3]byte     // generated padding
+	TextLength int32
 }
 
 // HoldViewRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type HoldViewRow struct {
-	Kind          [33]byte // string(32): buffer, used length beside it
-	_             [3]byte  // generated padding
-	KindLength    int32
-	Name          [516]byte // string(515): buffer, used length beside it
-	NameLength    int32
-	Reason        [1025]byte // string(1024): buffer, used length beside it
-	_             [3]byte    // generated padding
-	ReasonLength  int32
-	By            [136]byte // string(135): buffer, used length beside it
-	ByLength      int32
-	At            [65]byte // string(64): buffer, used length beside it
-	_             [3]byte  // generated padding
-	AtLength      int32
-	HandedBack    bool
-	Cause         [513]byte // string(512): buffer, used length beside it
-	_             [2]byte   // generated padding
-	CauseLength   int32
-	Who           [136]byte // string(135): buffer, used length beside it
-	WhoLength     int32
-	Release       [257]byte // string(256): buffer, used length beside it
-	_             [3]byte   // generated padding
-	ReleaseLength int32
+	Kind       int64     // *: signed self-relative delta, zero is null (§6.3)
+	Name       [516]byte // string(515): buffer, used length beside it
+	NameLength int32
+	Reason     int64 // *: signed self-relative delta, zero is null (§6.3)
+	By         int64 // *: signed self-relative delta, zero is null (§6.3)
+	At         int64 // *: signed self-relative delta, zero is null (§6.3)
+	HandedBack bool
+	_          [7]byte // generated padding
+	Cause      int64   // *: signed self-relative delta, zero is null (§6.3)
+	Who        int64   // *: signed self-relative delta, zero is null (§6.3)
+	Release    int64   // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // JudgmentRefRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type JudgmentRefRow struct {
-	Id         [129]byte // string(128): buffer, used length beside it
-	_          [3]byte   // generated padding
-	IdLength   int32
-	Kind       [33]byte // string(32): buffer, used length beside it
-	_          [3]byte  // generated padding
-	KindLength int32
+	Id         int64     // *: signed self-relative delta, zero is null (§6.3)
+	Kind       int64     // *: signed self-relative delta, zero is null (§6.3)
 	Card       [516]byte // string(515): buffer, used length beside it
 	CardLength int32
 }
@@ -324,35 +258,31 @@ type JudgmentRefRow struct {
 // LandedSeriesRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type LandedSeriesRow struct {
-	Generated       [65]byte // string(64): buffer, used length beside it
-	_               [3]byte  // generated padding
-	GeneratedLength int32
-	GeneratedEpoch  int64
-	BucketSeconds   int64
-	Start           int64
-	Buckets         int64
-	Friends         TableList[int64]
-	Fleet           TableList[int64]
-	Totals          SeriesTotalsRow
-	LastHour        SeriesLastHourRow
-	Workers         TableMap[LandedSeriesWorkersEntryRow]
+	Generated      int64 // *: signed self-relative delta, zero is null (§6.3)
+	GeneratedEpoch int64
+	BucketSeconds  int64
+	Start          int64
+	Buckets        int64
+	Friends        TableList[int64]
+	Fleet          TableList[int64]
+	Totals         SeriesTotalsRow
+	LastHour       SeriesLastHourRow
+	Workers        TableMap[LandedSeriesWorkersEntryRow]
 }
 
 // LandedSeriesWorkersEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type LandedSeriesWorkersEntryRow struct {
-	Key       [129]byte // string(128): buffer, used length beside it
-	_         [3]byte   // generated padding
+	Key       [136]byte // string(135): buffer, used length beside it
 	KeyLength int32
+	_         [4]byte // generated padding
 	Value     int64
 }
 
 // LaneRowRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type LaneRowRow struct {
-	Kind          [33]byte // string(32): buffer, used length beside it
-	_             [3]byte  // generated padding
-	KindLength    int32
+	Kind          int64     // *: signed self-relative delta, zero is null (§6.3)
 	Machine       [129]byte // string(128): buffer, used length beside it
 	_             [3]byte   // generated padding
 	MachineLength int32
@@ -365,14 +295,16 @@ type LaneRowRow struct {
 // LaneRowHeldTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type LaneRowHeldTextRow struct {
-	Value       [516]byte // string(515): buffer, used length beside it
+	Value       [258]byte // string(257): buffer, used length beside it
+	_           [2]byte   // generated padding
 	ValueLength int32
 }
 
 // LaneRowWaitingTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type LaneRowWaitingTextRow struct {
-	Value       [516]byte // string(515): buffer, used length beside it
+	Value       [258]byte // string(257): buffer, used length beside it
+	_           [2]byte   // generated padding
 	ValueLength int32
 }
 
@@ -383,13 +315,10 @@ type MergeRowRow struct {
 	Review                  int64
 	LandedPer30m            int64
 	OldestMergingMin        int64
-	OldestMergingMinPresent bool      // ?: one byte, in Go's model as in C++
-	BaseGate                [129]byte // string(128): buffer, used length beside it
-	_                       [2]byte   // generated padding
-	BaseGateLength          int32
-	FailingTest             [1025]byte // string(1024): buffer, used length beside it
-	_                       [3]byte    // generated padding
-	FailingTestLength       int32
+	OldestMergingMinPresent bool    // ?: one byte, in Go's model as in C++
+	_                       [7]byte // generated padding
+	BaseGate                int64   // *: signed self-relative delta, zero is null (§6.3)
+	FailingTest             int64   // *: signed self-relative delta, zero is null (§6.3)
 	BaseLacks               int64
 	DevLacks                int64
 	SyncMinutes             int64
@@ -408,9 +337,7 @@ type MergingCardRow struct {
 	Stream       [129]byte // string(128): buffer, used length beside it
 	_            [3]byte   // generated padding
 	StreamLength int32
-	Head         [65]byte // string(64): buffer, used length beside it
-	_            [3]byte  // generated padding
-	HeadLength   int32
+	Head         int64 // *: signed self-relative delta, zero is null (§6.3)
 	Attempt      int64
 }
 
@@ -430,29 +357,23 @@ type NameListNamesTextRow struct {
 // PrimaryRowRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type PrimaryRowRow struct {
-	Id              [516]byte // string(515): buffer, used length beside it
-	IdLength        int32
-	Stream          [129]byte // string(128): buffer, used length beside it
-	_               [3]byte   // generated padding
-	StreamLength    int32
-	Column          [33]byte // string(32): buffer, used length beside it
-	_               [3]byte  // generated padding
-	ColumnLength    int32
-	State           [33]byte // string(32): buffer, used length beside it
-	_               [3]byte  // generated padding
-	StateLength     int32
-	Score           float64
-	Fields          TableMap[PrimaryRowFieldsEntryRow]
-	TierShown       [65]byte // string(64): buffer, used length beside it
-	_               [3]byte  // generated padding
-	TierShownLength int32
+	Id           [516]byte // string(515): buffer, used length beside it
+	IdLength     int32
+	Stream       [129]byte // string(128): buffer, used length beside it
+	_            [3]byte   // generated padding
+	StreamLength int32
+	Column       int64 // *: signed self-relative delta, zero is null (§6.3)
+	State        int64 // *: signed self-relative delta, zero is null (§6.3)
+	Score        float64
+	Fields       TableMap[PrimaryRowFieldsEntryRow]
+	TierShown    int64 // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // PrimaryRowFieldsEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type PrimaryRowFieldsEntryRow struct {
-	Key       [65]byte // string(64): buffer, used length beside it
-	_         [3]byte  // generated padding
+	Key       [129]byte // string(128): buffer, used length beside it
+	_         [3]byte   // generated padding
 	KeyLength int32
 	Value     int64 // *: signed self-relative delta, zero is null (§6.3)
 }
@@ -468,27 +389,25 @@ type ProviderGapReportRow struct {
 // ProviderGapReportTiersTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type ProviderGapReportTiersTextRow struct {
-	Value       [65]byte // string(64): buffer, used length beside it
-	_           [3]byte  // generated padding
+	Value       [129]byte // string(128): buffer, used length beside it
+	_           [3]byte   // generated padding
 	ValueLength int32
 }
 
 // ProviderProblemRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type ProviderProblemRow struct {
-	Name          [129]byte // string(128): buffer, used length beside it
-	_             [3]byte   // generated padding
-	NameLength    int32
-	Problem       [1025]byte // string(1024): buffer, used length beside it
-	_             [3]byte    // generated padding
-	ProblemLength int32
+	Name       [129]byte // string(128): buffer, used length beside it
+	_          [3]byte   // generated padding
+	NameLength int32
+	Problem    int64 // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // ProviderTierRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type ProviderTierRow struct {
-	Tier       [65]byte // string(64): buffer, used length beside it
-	_          [3]byte  // generated padding
+	Tier       [129]byte // string(128): buffer, used length beside it
+	_          [3]byte   // generated padding
 	TierLength int32
 	InRoutes   int64
 	Enabled    int64
@@ -497,34 +416,21 @@ type ProviderTierRow struct {
 // ProviderViewRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type ProviderViewRow struct {
-	Name            [129]byte // string(128): buffer, used length beside it
-	_               [3]byte   // generated padding
-	NameLength      int32
-	Balance         [129]byte // string(128): buffer, used length beside it
-	_               [3]byte   // generated padding
-	BalanceLength   int32
-	BalanceAt       [65]byte // string(64): buffer, used length beside it
-	_               [3]byte  // generated padding
-	BalanceAtLength int32
-	SpendHour       float64
-	State           [33]byte // string(32): buffer, used length beside it
-	_               [3]byte  // generated padding
-	StateLength     int32
-	Note            [1025]byte // string(1024): buffer, used length beside it
-	_               [3]byte    // generated padding
-	NoteLength      int32
-	Limit           [1025]byte // string(1024): buffer, used length beside it
-	_               [3]byte    // generated padding
-	LimitLength     int32
-	Billing         [65]byte // string(64): buffer, used length beside it
-	_               [3]byte  // generated padding
-	BillingLength   int32
-	Funded          bool
-	FundedPresent   bool       // ?: one byte, in Go's model as in C++
-	Problem         [1025]byte // string(1024): buffer, used length beside it
-	_               [1]byte    // generated padding
-	ProblemLength   int32
-	Tiers           TableList[ProviderTierRow]
+	Name          [129]byte // string(128): buffer, used length beside it
+	_             [3]byte   // generated padding
+	NameLength    int32
+	Balance       int64 // *: signed self-relative delta, zero is null (§6.3)
+	BalanceAt     int64 // *: signed self-relative delta, zero is null (§6.3)
+	SpendHour     float64
+	State         int64 // *: signed self-relative delta, zero is null (§6.3)
+	Note          int64 // *: signed self-relative delta, zero is null (§6.3)
+	Limit         int64 // *: signed self-relative delta, zero is null (§6.3)
+	Billing       int64 // *: signed self-relative delta, zero is null (§6.3)
+	Funded        bool
+	FundedPresent bool    // ?: one byte, in Go's model as in C++
+	_             [6]byte // generated padding
+	Problem       int64   // *: signed self-relative delta, zero is null (§6.3)
+	Tiers         TableList[ProviderTierRow]
 }
 
 // ReadCardCountsRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -538,26 +444,20 @@ type ReadCardCountsRow struct {
 // ReadDayRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type ReadDayRow struct {
-	Usd       [129]byte // string(128): buffer, used length beside it
-	_         [3]byte   // generated padding
-	UsdLength int32
-	Tokens    int64
-	Reads     int64
+	Usd    int64 // *: signed self-relative delta, zero is null (§6.3)
+	Tokens int64
+	Reads  int64
 }
 
 // ReaderSpendRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type ReaderSpendRow struct {
-	Reads         int64
-	Priced        int64
-	Usd           [129]byte // string(128): buffer, used length beside it
-	_             [3]byte   // generated padding
-	UsdLength     int32
-	HourPriced    int64
-	HourUsd       [129]byte // string(128): buffer, used length beside it
-	_             [3]byte   // generated padding
-	HourUsdLength int32
-	Tokens        int64
+	Reads      int64
+	Priced     int64
+	Usd        int64 // *: signed self-relative delta, zero is null (§6.3)
+	HourPriced int64
+	HourUsd    int64 // *: signed self-relative delta, zero is null (§6.3)
+	Tokens     int64
 }
 
 // ReadsWindowRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -577,32 +477,23 @@ type RouteGapRow struct {
 	Provider       [129]byte // string(128): buffer, used length beside it
 	_              [3]byte   // generated padding
 	ProviderLength int32
-	Tier           [65]byte // string(64): buffer, used length beside it
-	_              [3]byte  // generated padding
+	Tier           [129]byte // string(128): buffer, used length beside it
+	_              [3]byte   // generated padding
 	TierLength     int32
 }
 
 // SeatChangeRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type SeatChangeRow struct {
-	Holder           [136]byte // string(135): buffer, used length beside it
-	HolderLength     int32
-	_                [4]byte // generated padding
-	Generation       uint64
-	From             [136]byte // string(135): buffer, used length beside it
-	FromLength       int32
-	_                [4]byte // generated padding
-	At               int64
-	By               [136]byte // string(135): buffer, used length beside it
-	ByLength         int32
-	Taken            bool
-	ApprovedBy       [136]byte // string(135): buffer, used length beside it
-	_                [3]byte   // generated padding
-	ApprovedByLength int32
-	Reason           [513]byte // string(512): buffer, used length beside it
-	_                [3]byte   // generated padding
-	ReasonLength     int32
-	_                [4]byte // generated padding
+	Holder     int64 // *: signed self-relative delta, zero is null (§6.3)
+	Generation uint64
+	From       int64 // *: signed self-relative delta, zero is null (§6.3)
+	At         int64
+	By         int64 // *: signed self-relative delta, zero is null (§6.3)
+	Taken      bool
+	_          [7]byte // generated padding
+	ApprovedBy int64   // *: signed self-relative delta, zero is null (§6.3)
+	Reason     int64   // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // SeatWaitsRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -610,12 +501,8 @@ type SeatChangeRow struct {
 type SeatWaitsRow struct {
 	Judgments        int64
 	Overdue          int64
-	OldestId         [129]byte // string(128): buffer, used length beside it
-	_                [3]byte   // generated padding
-	OldestIdLength   int32
-	OldestType       [129]byte // string(128): buffer, used length beside it
-	_                [3]byte   // generated padding
-	OldestTypeLength int32
+	OldestId         int64 // *: signed self-relative delta, zero is null (§6.3)
+	OldestType       int64 // *: signed self-relative delta, zero is null (§6.3)
 	OldestAt         int64
 	Level            int64
 	OldestAgeSeconds int64
@@ -640,14 +527,10 @@ type SeriesTotalsRow struct {
 // ServerBeatRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type ServerBeatRow struct {
-	Version       [129]byte // string(128): buffer, used length beside it
-	_             [3]byte   // generated padding
-	VersionLength int32
-	Commit        [129]byte // string(128): buffer, used length beside it
-	_             [3]byte   // generated padding
-	CommitLength  int32
-	Started       int64
-	At            int64
+	Version int64 // *: signed self-relative delta, zero is null (§6.3)
+	Commit  int64 // *: signed self-relative delta, zero is null (§6.3)
+	Started int64
+	At      int64
 }
 
 // StageStatRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -668,8 +551,8 @@ type StageTimesRow struct {
 // StageTimesAllEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type StageTimesAllEntryRow struct {
-	Key       [65]byte // string(64): buffer, used length beside it
-	_         [3]byte  // generated padding
+	Key       [10]byte // string(9): buffer, used length beside it
+	_         [2]byte  // generated padding
 	KeyLength int32
 	Value     StageStatRow
 }
@@ -686,8 +569,8 @@ type StageTimesStreamsEntryRow struct {
 // StageTimesStreamsEntryValueEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type StageTimesStreamsEntryValueEntryRow struct {
-	Key       [65]byte // string(64): buffer, used length beside it
-	_         [3]byte  // generated padding
+	Key       [10]byte // string(9): buffer, used length beside it
+	_         [2]byte  // generated padding
 	KeyLength int32
 	Value     StageStatRow
 }
@@ -695,15 +578,11 @@ type StageTimesStreamsEntryValueEntryRow struct {
 // StatsResetViewRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type StatsResetViewRow struct {
-	At           int64
-	By           [136]byte // string(135): buffer, used length beside it
-	ByLength     int32
-	Reason       [1025]byte // string(1024): buffer, used length beside it
-	_            [3]byte    // generated padding
-	ReasonLength int32
-	_            [4]byte // generated padding
-	Landed       int64
-	Streams      TableMap[StatsResetViewStreamsEntryRow]
+	At      int64
+	By      int64 // *: signed self-relative delta, zero is null (§6.3)
+	Reason  int64 // *: signed self-relative delta, zero is null (§6.3)
+	Landed  int64
+	Streams TableMap[StatsResetViewStreamsEntryRow]
 }
 
 // StatsResetViewStreamsEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -718,126 +597,85 @@ type StatsResetViewStreamsEntryRow struct {
 // StopRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type StopRow struct {
-	Kind          [65]byte // string(64): buffer, used length beside it
-	_             [3]byte  // generated padding
-	KindLength    int32
+	Kind          int64     // *: signed self-relative delta, zero is null (§6.3)
 	Subject       [516]byte // string(515): buffer, used length beside it
 	SubjectLength int32
 	Since         int64
-	What          [1025]byte // string(1024): buffer, used length beside it
-	_             [3]byte    // generated padding
-	WhatLength    int32
-	Effect        [1025]byte // string(1024): buffer, used length beside it
-	_             [3]byte    // generated padding
-	EffectLength  int32
-	Undo          [1025]byte // string(1024): buffer, used length beside it
-	_             [3]byte    // generated padding
-	UndoLength    int32
-	Signal        [1025]byte // string(1024): buffer, used length beside it
-	_             [3]byte    // generated padding
-	SignalLength  int32
+	What          int64 // *: signed self-relative delta, zero is null (§6.3)
+	Effect        int64 // *: signed self-relative delta, zero is null (§6.3)
+	Undo          int64 // *: signed self-relative delta, zero is null (§6.3)
+	Signal        int64 // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // StreamClockRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type StreamClockRow struct {
-	Stream            [129]byte // string(128): buffer, used length beside it
-	_                 [3]byte   // generated padding
-	StreamLength      int32
-	Release           [129]byte // string(128): buffer, used length beside it
-	_                 [3]byte   // generated padding
-	ReleaseLength     int32
-	Display           [257]byte // string(256): buffer, used length beside it
-	_                 [3]byte   // generated padding
-	DisplayLength     int32
-	State             [33]byte // string(32): buffer, used length beside it
-	_                 [3]byte  // generated padding
-	StateLength       int32
-	Since             int64
-	Progress          int64
-	Empty             bool
-	Held              bool
-	Reason            [513]byte // string(512): buffer, used length beside it
-	_                 [1]byte   // generated padding
-	ReasonLength      int32
-	HeldCards         int64
-	Quiet             int64
-	Promotion         [257]byte // string(256): buffer, used length beside it
-	_                 [3]byte   // generated padding
-	PromotionLength   int32
-	TierBlocked       [65]byte // string(64): buffer, used length beside it
-	_                 [3]byte  // generated padding
-	TierBlockedLength int32
+	Stream       [129]byte // string(128): buffer, used length beside it
+	_            [3]byte   // generated padding
+	StreamLength int32
+	Release      int64 // *: signed self-relative delta, zero is null (§6.3)
+	Display      int64 // *: signed self-relative delta, zero is null (§6.3)
+	State        int64 // *: signed self-relative delta, zero is null (§6.3)
+	Since        int64
+	Progress     int64
+	Empty        bool
+	Held         bool
+	_            [6]byte // generated padding
+	Reason       int64   // *: signed self-relative delta, zero is null (§6.3)
+	HeldCards    int64
+	Quiet        int64
+	Promotion    int64 // *: signed self-relative delta, zero is null (§6.3)
+	TierBlocked  int64 // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // TierCostsRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type TierCostsRow struct {
-	Tiers              TableMap[TierCostsTiersEntryRow]
-	PerLanded          [129]byte // string(128): buffer, used length beside it
-	_                  [3]byte   // generated padding
-	PerLandedLength    int32
-	CostByTier         TableMap[TierCostsCostByTierEntryRow]
-	TotalCost          [129]byte // string(128): buffer, used length beside it
-	_                  [3]byte   // generated padding
-	TotalCostLength    int32
-	TotalUsd           [129]byte // string(128): buffer, used length beside it
-	_                  [3]byte   // generated padding
-	TotalUsdLength     int32
-	LandedUsd          [129]byte // string(128): buffer, used length beside it
-	_                  [3]byte   // generated padding
-	LandedUsdLength    int32
-	WorkCost           [129]byte // string(128): buffer, used length beside it
-	_                  [3]byte   // generated padding
-	WorkCostLength     int32
-	ReadCost           [129]byte // string(128): buffer, used length beside it
-	_                  [3]byte   // generated padding
-	ReadCostLength     int32
-	DecideCost         [129]byte // string(128): buffer, used length beside it
-	_                  [3]byte   // generated padding
-	DecideCostLength   int32
-	DecideUnpriced     int64
-	DroppedCards       int64
-	CarriedCards       int64
-	ReadTokens         int64
-	ReadsToday         TableMap[TierCostsReadsTodayEntryRow]
-	UnpricedRuns       int64
-	ReadsNoTokens      int64
-	Readers            TableMap[TierCostsReadersEntryRow]
-	InFlight           [129]byte // string(128): buffer, used length beside it
-	_                  [3]byte   // generated padding
-	InFlightLength     int32
-	Unreconciled       [129]byte // string(128): buffer, used length beside it
-	_                  [3]byte   // generated padding
-	UnreconciledLength int32
-	Reconciles         TableList[CostReconcileRecordRow]
+	Tiers          TableMap[TierCostsTiersEntryRow]
+	PerLanded      int64 // *: signed self-relative delta, zero is null (§6.3)
+	CostByTier     TableMap[TierCostsCostByTierEntryRow]
+	TotalCost      int64 // *: signed self-relative delta, zero is null (§6.3)
+	TotalUsd       int64 // *: signed self-relative delta, zero is null (§6.3)
+	LandedUsd      int64 // *: signed self-relative delta, zero is null (§6.3)
+	WorkCost       int64 // *: signed self-relative delta, zero is null (§6.3)
+	ReadCost       int64 // *: signed self-relative delta, zero is null (§6.3)
+	DecideCost     int64 // *: signed self-relative delta, zero is null (§6.3)
+	DecideUnpriced int64
+	DroppedCards   int64
+	CarriedCards   int64
+	ReadTokens     int64
+	ReadsToday     TableMap[TierCostsReadsTodayEntryRow]
+	UnpricedRuns   int64
+	ReadsNoTokens  int64
+	Readers        TableMap[TierCostsReadersEntryRow]
+	InFlight       int64 // *: signed self-relative delta, zero is null (§6.3)
+	Unreconciled   int64 // *: signed self-relative delta, zero is null (§6.3)
+	Reconciles     TableList[CostReconcileRecordRow]
 }
 
 // TierCostsCostByTierEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type TierCostsCostByTierEntryRow struct {
-	Key         [65]byte // string(64): buffer, used length beside it
-	_           [3]byte  // generated padding
-	KeyLength   int32
-	Value       [129]byte // string(128): buffer, used length beside it
-	_           [3]byte   // generated padding
-	ValueLength int32
+	Key       [129]byte // string(128): buffer, used length beside it
+	_         [3]byte   // generated padding
+	KeyLength int32
+	Value     int64 // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // TierCostsReadersEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type TierCostsReadersEntryRow struct {
-	Key       [129]byte // string(128): buffer, used length beside it
-	_         [3]byte   // generated padding
+	Key       [136]byte // string(135): buffer, used length beside it
 	KeyLength int32
+	_         [4]byte // generated padding
 	Value     ReaderSpendRow
 }
 
 // TierCostsReadsTodayEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type TierCostsReadsTodayEntryRow struct {
-	Key       [65]byte // string(64): buffer, used length beside it
-	_         [3]byte  // generated padding
+	Key       [129]byte // string(128): buffer, used length beside it
+	_         [3]byte   // generated padding
 	KeyLength int32
 	Value     ReadDayRow
 }
@@ -845,8 +683,8 @@ type TierCostsReadsTodayEntryRow struct {
 // TierCostsTiersEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type TierCostsTiersEntryRow struct {
-	Key       [65]byte // string(64): buffer, used length beside it
-	_         [3]byte  // generated padding
+	Key       [129]byte // string(128): buffer, used length beside it
+	_         [3]byte   // generated padding
 	KeyLength int32
 	Value     int64
 }
@@ -859,9 +697,7 @@ type WhereViewRow struct {
 	Landed               int64
 	All                  int64
 	Held                 int64
-	Summary              [1025]byte // string(1024): buffer, used length beside it
-	_                    [3]byte    // generated padding
-	SummaryLength        int32
+	Summary              int64 // *: signed self-relative delta, zero is null (§6.3)
 	ArchivedCards        int64
 	ArchivedLanded       int64
 	Done                 bool
@@ -869,18 +705,13 @@ type WhereViewRow struct {
 	Tables               TableMap[WhereViewTablesEntryRow]
 	Tiers                TableMap[WhereViewTiersEntryRow]
 	StreamCosts          TableMap[WhereViewStreamCostsEntryRow]
-	CostCheck            CostCheckRow
-	CostCheckPresent     bool      // ?CostCheck: one byte, in Go's model as in C++
-	FirstTime            [257]byte // string(256): buffer, used length beside it
-	_                    [2]byte   // generated padding
-	FirstTimeLength      int32
+	CostCheck            int64 // *CostCheck: signed self-relative delta, zero is null (§6.3)
+	FirstTime            int64 // *: signed self-relative delta, zero is null (§6.3)
 	FirstTimeTarget      int64
 	FirstTimeWindow      int64
 	FirstTimeUnderTarget TableList[WhereViewFirstTimeUnderTargetTextRow]
 	FirstTimeRoutes      TableMap[WhereViewFirstTimeRoutesEntryRow]
-	ReadSpend            [1025]byte // string(1024): buffer, used length beside it
-	_                    [3]byte    // generated padding
-	ReadSpendLength      int32
+	ReadSpend            int64 // *: signed self-relative delta, zero is null (§6.3)
 	Streams              TableList[StreamClockRow]
 	StageTimes           StageTimesRow
 	StageTimesPresent    bool    // ?StageTimes: one byte, in Go's model as in C++
@@ -888,44 +719,23 @@ type WhereViewRow struct {
 	Stalled              TableList[WhereViewStalledTextRow]
 	Critical             TableList[CriticalCardRow]
 	Blockers             TableList[WhereViewBlockersTextRow]
-	Idle                 [1025]byte // string(1024): buffer, used length beside it
-	_                    [3]byte    // generated padding
-	IdleLength           int32
-	Coordinator          [136]byte // string(135): buffer, used length beside it
-	CoordinatorLength    int32
-	Pending              [257]byte // string(256): buffer, used length beside it
-	_                    [3]byte   // generated padding
-	PendingLength        int32
-	_                    [4]byte // generated padding
+	Idle                 int64 // *: signed self-relative delta, zero is null (§6.3)
+	Coordinator          int64 // *: signed self-relative delta, zero is null (§6.3)
+	Pending              int64 // *: signed self-relative delta, zero is null (§6.3)
 	Epoch                uint64
 	Cleared              int64
-	Machine              [513]byte // string(512): buffer, used length beside it
-	_                    [3]byte   // generated padding
-	MachineLength        int32
-	ServerVersion        [129]byte // string(128): buffer, used length beside it
-	_                    [3]byte   // generated padding
-	ServerVersionLength  int32
-	Server               ServerBeatRow
-	ServerPresent        bool     // ?ServerBeat: one byte, in Go's model as in C++
-	FleetWork            [17]byte // string(16): buffer, used length beside it
-	_                    [2]byte  // generated padding
-	FleetWorkLength      int32
-	FriendsWork          [17]byte // string(16): buffer, used length beside it
-	_                    [3]byte  // generated padding
-	FriendsWorkLength    int32
+	Machine              int64 // *: signed self-relative delta, zero is null (§6.3)
+	ServerVersion        int64 // *: signed self-relative delta, zero is null (§6.3)
+	Server               int64 // *ServerBeat: signed self-relative delta, zero is null (§6.3)
+	FleetWork            int64 // *: signed self-relative delta, zero is null (§6.3)
+	FriendsWork          int64 // *: signed self-relative delta, zero is null (§6.3)
 	FleetTiers           TableList[WhereViewFleetTiersTextRow]
 	FriendsTiers         TableList[WhereViewFriendsTiersTextRow]
-	ReadsNeeded          [33]byte // string(32): buffer, used length beside it
-	_                    [3]byte  // generated padding
-	ReadsNeededLength    int32
+	ReadsNeeded          int64 // *: signed self-relative delta, zero is null (§6.3)
 	Goals                TableList[GoalViewRow]
-	Seat                 SeatChangeRow
-	SeatPresent          bool    // ?SeatChange: one byte, in Go's model as in C++
-	_                    [7]byte // generated padding
+	Seat                 int64 // *SeatChange: signed self-relative delta, zero is null (§6.3)
 	Holds                TableList[HoldViewRow]
-	SeatWaits            SeatWaitsRow
-	SeatWaitsPresent     bool    // ?SeatWaits: one byte, in Go's model as in C++
-	_                    [7]byte // generated padding
+	SeatWaits            int64 // *SeatWaits: signed self-relative delta, zero is null (§6.3)
 	Stops                TableList[StopRow]
 	Providers            TableList[ProviderViewRow]
 	ProviderGaps         ProviderGapReportRow
@@ -934,16 +744,10 @@ type WhereViewRow struct {
 	Merging              TableList[MergingCardRow]
 	Judgments            TableList[JudgmentRefRow]
 	Rows                 TableList[PrimaryRowRow]
-	Archived             ArchivedViewRow
-	ArchivedPresent      bool    // ?ArchivedView: one byte, in Go's model as in C++
-	_                    [7]byte // generated padding
-	StatsReset           StatsResetViewRow
-	StatsResetPresent    bool    // ?StatsResetView: one byte, in Go's model as in C++
-	_                    [7]byte // generated padding
+	Archived             int64 // *ArchivedView: signed self-relative delta, zero is null (§6.3)
+	StatsReset           int64 // *StatsResetView: signed self-relative delta, zero is null (§6.3)
 	Ready                int64
-	Backup               [17]byte // string(16): buffer, used length beside it
-	_                    [3]byte  // generated padding
-	BackupLength         int32
+	Backup               int64 // *: signed self-relative delta, zero is null (§6.3)
 	ReadsWaiting         int64
 	ReadsWindow          ReadsWindowRow
 	ReadCards            ReadCardCountsRow
@@ -951,9 +755,7 @@ type WhereViewRow struct {
 	Priorities           TableMap[WhereViewPrioritiesEntryRow]
 	StreamPriorities     TableMap[WhereViewStreamPrioritiesEntryRow]
 	Width                int64
-	Buffer               [33]byte // string(32): buffer, used length beside it
-	_                    [3]byte  // generated padding
-	BufferLength         int32
+	Buffer               int64 // *: signed self-relative delta, zero is null (§6.3)
 	Low                  bool
 	_                    [7]byte // generated padding
 	MergeRow             MergeRowRow
@@ -965,28 +767,24 @@ type WhereViewRow struct {
 	StoreRttP99Ms        float64
 	StoreRttP99MsPresent bool    // ?: one byte, in Go's model as in C++
 	_                    [7]byte // generated padding
-	LandedSeries         LandedSeriesRow
-	LandedSeriesPresent  bool    // ?LandedSeries: one byte, in Go's model as in C++
-	_                    [7]byte // generated padding
+	LandedSeries         int64   // *LandedSeries: signed self-relative delta, zero is null (§6.3)
 }
 
 // WhereViewBlockersTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type WhereViewBlockersTextRow struct {
-	Value       [1025]byte // string(1024): buffer, used length beside it
-	_           [3]byte    // generated padding
+	Value       [65711]byte // string(65710): buffer, used length beside it
+	_           [1]byte     // generated padding
 	ValueLength int32
 }
 
 // WhereViewFirstTimeRoutesEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type WhereViewFirstTimeRoutesEntryRow struct {
-	Key         [129]byte // string(128): buffer, used length beside it
-	_           [3]byte   // generated padding
-	KeyLength   int32
-	Value       [257]byte // string(256): buffer, used length beside it
-	_           [3]byte   // generated padding
-	ValueLength int32
+	Key       [129]byte // string(128): buffer, used length beside it
+	_         [3]byte   // generated padding
+	KeyLength int32
+	Value     int64 // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // WhereViewFirstTimeUnderTargetTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -1000,24 +798,24 @@ type WhereViewFirstTimeUnderTargetTextRow struct {
 // WhereViewFleetTiersTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type WhereViewFleetTiersTextRow struct {
-	Value       [65]byte // string(64): buffer, used length beside it
-	_           [3]byte  // generated padding
+	Value       [9]byte // string(8): buffer, used length beside it
+	_           [3]byte // generated padding
 	ValueLength int32
 }
 
 // WhereViewFriendsTiersTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type WhereViewFriendsTiersTextRow struct {
-	Value       [65]byte // string(64): buffer, used length beside it
-	_           [3]byte  // generated padding
+	Value       [9]byte // string(8): buffer, used length beside it
+	_           [3]byte // generated padding
 	ValueLength int32
 }
 
 // WhereViewPrioritiesEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type WhereViewPrioritiesEntryRow struct {
-	Key       [33]byte // string(32): buffer, used length beside it
-	_         [3]byte  // generated padding
+	Key       [9]byte // string(8): buffer, used length beside it
+	_         [3]byte // generated padding
 	KeyLength int32
 	Value     NameListRow
 }
@@ -1025,8 +823,8 @@ type WhereViewPrioritiesEntryRow struct {
 // WhereViewReleasesEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type WhereViewReleasesEntryRow struct {
-	Key       [129]byte // string(128): buffer, used length beside it
-	_         [3]byte   // generated padding
+	Key       [65537]byte // string(65536): buffer, used length beside it
+	_         [3]byte     // generated padding
 	KeyLength int32
 	Value     int64
 }
@@ -1051,20 +849,18 @@ type WhereViewStreamCostsEntryRow struct {
 // WhereViewStreamPrioritiesEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type WhereViewStreamPrioritiesEntryRow struct {
-	Key         [129]byte // string(128): buffer, used length beside it
-	_           [3]byte   // generated padding
-	KeyLength   int32
-	Value       [33]byte // string(32): buffer, used length beside it
-	_           [3]byte  // generated padding
-	ValueLength int32
+	Key       [129]byte // string(128): buffer, used length beside it
+	_         [3]byte   // generated padding
+	KeyLength int32
+	Value     int64 // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // WhereViewTablesEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type WhereViewTablesEntryRow struct {
-	Key       [65]byte // string(64): buffer, used length beside it
-	_         [3]byte  // generated padding
+	Key       [8]byte // string(7): buffer, used length beside it
 	KeyLength int32
+	_         [4]byte // generated padding
 	Value     TableMap[WhereViewTablesEntryValueEntryRow]
 }
 
@@ -1089,8 +885,8 @@ type WhereViewTablesEntryValueEntryValueEntryRow struct {
 // WhereViewTiersEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type WhereViewTiersEntryRow struct {
-	Key       [65]byte // string(64): buffer, used length beside it
-	_         [3]byte  // generated padding
+	Key       [129]byte // string(128): buffer, used length beside it
+	_         [3]byte   // generated padding
 	KeyLength int32
 	Value     int64
 }
@@ -1098,7 +894,7 @@ type WhereViewTiersEntryRow struct {
 // BuildVersion is the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20): the
 // one digest a block carries and BlockOpen compares, and the fact §3.3's
 // announcement carries before the first body so a peer's build is knowable.
-const BuildVersion uint64 = 0x218395ec18ce07a0
+const BuildVersion uint64 = 0x9b05bf437904756e
 
 // TableReport is the table-wire read report — the permissive contract's
 // ledger. Silence (all zero) means the data matched this reader's schema

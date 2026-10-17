@@ -22,15 +22,40 @@
 //     time.Time (a time before 1678 has no timestamp);
 //   - a nil Go slice is `null` today and `[]` here;
 //   - a Go *int, *float64 or *bool that is nil is `null` today (no omitempty) or an
-//     absent key, and an absent key here (an optional field).
+//     absent key, and an absent key here (an optional field);
+//   - a text field that is a *string is an optional field too: the Go string ""
+//     is the text "" here, and a table written without it has the key absent.
 //
-// Bounds: where the code enforces a bound, the field's bound is the code's and its
-// comment names the rule. Where it enforces none, the bound is chosen to fit the
-// record, and the comment says "chosen". A value past a bound is refused at the
+// Bounds: a bound in this file is a bound the code enforces, and the comment of the
+// field names the rule with its file and line (a path under internal/ or cmd/ is
+// this repository's; pkg/config and pkg/ntable are nova-tools'). Text that no code
+// bounds is a *string, a blob held at its used size, with no bound declared. Three
+// places cannot be a *string, a map's key, an element of a text list and a
+// string(N) the compiler stores inline; where the code bounds one of them by a
+// rule, the rule is its bound, and where the code bounds it by none the comment
+// says "NO RULE BOUNDS IT" and gives the ceiling the schema language leaves
+// (an unbounded text-list element, []*string, is a follow-on of the compiler,
+// docs/SPEC-TABLES.md section 15). A value past a declared bound is refused at the
 // reader, never clamped into a record. A list the code does not count is unbounded,
 // sized by content. A cell of a table is a field value of the nova-tables layer,
 // held at its used size as a blob and held by the reader to
 // ntable.LimitFieldValueBytes (64 KiB) as a constraint, never a string(65536).
+//
+// The rules the bounds cite:
+//   - a ValidID word: at most 128 bytes (internal/sprint/schema.go:289, MaxIDLen
+//     :292); a stream key is one (internal/sprint/steps_work.go:168);
+//   - a card id: at most 4 dot-joined ValidID words, 4*128 + 3 = 515
+//     (internal/sprint/schema.go:296-311);
+//   - a worker or member: a ValidID word or friend.<name> with the name a ValidID
+//     word, 7 + 128 = 135 (cmd/nova-sprint/serve.go:208, internal/sprint/
+//     friend_deal.go:51); a reader is reader-<machine>, 7 + 128 = 135
+//     (internal/sprint/readers.go:171-178);
+//   - a row name of nova-config (a route, a provider, a tier, a friend): at most 128
+//     bytes (pkg/config/kind.go:179 MaxName, checked by ValidateName, kind.go:1071);
+//   - a member id of the nova-tables layer: at most 256 bytes
+//     (pkg/ntable/limits.go:12, checked at pkg/ntable/store.go:1070);
+//   - a field value of the nova-tables layer: at most 64 KiB
+//     (pkg/ntable/limits.go:13, checked at pkg/ntable/store.go:959).
 //
 // Counts, ints and sums are int64 (Go int and int64 alike), epochs uint64, money
 // and card text stay the strings the code writes.
@@ -44,8 +69,8 @@ package viewwire
 // level's open primaries (sprint.PriorityCounts).
 table NameList | json = "array"
 {
-    // sprint.ValidCardID: at most 4 dot-joined ValidID words of MaxIDLen (128)
-    // bytes each, so 4*128 + 3 = 515.
+    // a card id: sprint.ValidCardID, at most 4 dot-joined ValidID words of 128
+    // bytes each, so 4*128 + 3 = 515 (internal/sprint/schema.go:296-311).
     names []string(515)
 }
 
@@ -61,8 +86,11 @@ table DecisionSummary
     delivery_faults int64
     receipt_unknown int64
     // a receipt history line (the text frame prints it after "DECISION RECEIPT
-    // HISTORY: "); chosen 1024, no bound is enforced today.
-    receipt_history []string(1024)
+    // HISTORY: "), "from=<from> to=<to>: <what>" (internal/sprint/seat_answers.go:
+    // 525). NO RULE BOUNDS IT: a note's what is cut by no rule (notes.go:241) and
+    // the line is not cut. The ceiling is 65536, the 64 KiB of
+    // ntable.LimitFieldValueBytes, the most text a field of the store holds.
+    receipt_history []string(65536)
 }
 
 // ---------------------------------------------------------------------------
@@ -71,8 +99,8 @@ table DecisionSummary
 // ReadDay is sprint.ReadDay: the reads a route priced on the tick's UTC day.
 table ReadDay
 {
-    // the exact dollars, a decimal text (cardcost.Sum); chosen 128.
-    usd    string(128)
+    // the exact dollars, a decimal text (cardcost.Sum); no rule bounds it.
+    usd    *string
     tokens int64
     reads  int64
 }
@@ -82,9 +110,9 @@ table ReaderSpend
 {
     reads       int64
     priced      int64
-    usd         string(128)
+    usd         *string
     hour_priced int64
-    hour_usd    string(128)
+    hour_usd    *string
     tokens      int64
 }
 
@@ -99,15 +127,16 @@ table DayGap
 // reconciliation (LatestReconciles).
 table CostReconcileRecord
 {
-    // a provider name: a ValidID word (128).
+    // a provider: a nova-config row, at most 128 bytes (pkg/config/kind.go:179).
     provider string(128)
-    // a time, as text; chosen 64.
-    at       string(64)
+    // a time, as text.
+    at       *string
     known    bool
-    // why the figure is unknown; chosen 1024.
-    note     string(1024)
-    // a UTC day, 2006-01-02; chosen 64.
-    day      string(64)
+    // why the figure is unknown.
+    note     *string
+    // a UTC day, time.DateOnly "2006-01-02", 10 bytes
+    // (internal/sprint/cost_reconcile.go:254, cost_view.go:224).
+    day      string(10)
     // the provider's count of day.
     used     float64
     // the sprint's records of day.
@@ -118,49 +147,55 @@ table CostReconcileRecord
     gap   float64
     // |gap| over used.
     share float64
-    // day -> counts, a UTC day (64).
-    days map[string(64)]DayGap
+    // day -> counts, a UTC day, time.DateOnly, 10 bytes
+    // (internal/sprint/cost_reconcile.go:254).
+    days map[string(10)]DayGap
 }
 
 // TierCosts is sprint.TierCosts: a stream's cards by tier and its spend. Money is
-// dollars and cents text, "-" or "" for none, chosen 128 (the exact sums, usd, run
-// to many digits).
+// dollars and cents text, "-" or "" for none (the exact sums, usd, run to many
+// digits); no rule bounds a money text.
 table TierCosts
 {
-    // tier word (sprint.TierWord) -> cards; chosen 64.
-    tiers          map[string(64)]int64
-    per_landed     string(128)
+    // tier word (sprint.TierWord) -> cards. A tier is a nova-config row, at most
+    // 128 bytes (pkg/config/kind.go:179), and a brief that names a tier other than
+    // flash, pro, heavy or frontier, "none" aside, is refused
+    // (internal/sprint/steps_edit.go:555).
+    tiers          map[string(128)]int64
+    per_landed     *string
     // tier -> money.
-    cost_by_tier   map[string(64)]string(128)
-    total_cost     string(128)
-    total_usd      string(128)
-    landed_usd     string(128)
-    work_cost      string(128)
-    read_cost      string(128)
-    decide_cost    string(128)
+    cost_by_tier   map[string(128)]*string
+    total_cost     *string
+    total_usd      *string
+    landed_usd     *string
+    work_cost      *string
+    read_cost      *string
+    decide_cost    *string
     decide_unpriced int64
     dropped_cards  int64
     carried_cards  int64
     read_tokens    int64
-    // route (WhySubscription or "-") -> the day's reads; chosen 64.
-    reads_today    map[string(64)]ReadDay
+    // route (a nova-config row, at most 128 bytes, pkg/config/kind.go:179; or
+    // WhySubscription, "subscription", or "-") -> the day's reads.
+    reads_today    map[string(128)]ReadDay
     unpriced_runs  int64
     reads_no_tokens int64
-    // reader name (a ValidID word, 128) -> its spend.
-    readers        map[string(128)]ReaderSpend
-    in_flight      string(128)
-    unreconciled   string(128)
+    // reader name -> its spend: reader-<machine>, 7 + 128 = 135
+    // (internal/sprint/readers.go:171-178).
+    readers        map[string(135)]ReaderSpend
+    in_flight      *string
+    unreconciled   *string
     reconciles     []CostReconcileRecord
 }
 
 // CostCheck is sprint.CostCheck: the streams' sums against every card's own.
 table CostCheck
 {
-    streams_usd string(128)
-    cards_usd   string(128)
-    gap_usd     string(128)
+    streams_usd *string
+    cards_usd   *string
+    gap_usd     *string
     ok          bool
-    // the cards a stream's list does not name, ValidCardID.
+    // the cards a stream's list does not name, ValidCardID (515).
     orphans     []string(515)
     unlisted    int64
 }
@@ -173,23 +208,24 @@ table CostCheck
 // name as their key.
 table StreamClock
 {
-    // the stream's key: a ValidID word (128).
+    // the stream's key: a ValidID word (internal/sprint/steps_work.go:168).
     stream      string(128) | json = "Stream"
-    release     string(128) | json = "Release"
+    // the stream's release and display name are set with no rule on their text.
+    release     *string | json = "Release"
     // sprint.StreamDisplay: a display name, "point-fix-" plus a release or the key.
-    display     string(256) | json = "Display"
-    state       string(32)  | json = "State"
+    display     *string | json = "Display"
+    state       *string | json = "State"
     since       timestamp   | json = "Since"
     progress    timestamp   | json = "Progress"
     empty       bool        | json = "Empty"
     held        bool        | json = "Held"
-    // the coordinator's hold reason; chosen 512.
-    reason      string(512) | json = "Reason"
+    // the coordinator's hold reason.
+    reason      *string | json = "Reason"
     held_cards  int64
     quiet       timestamp   | json = "Quiet"
-    // LandProtectedAny or the repositories (FieldLandProtected); chosen 256.
-    promotion   string(256) | json = "Promotion"
-    tier_blocked string(64) | json = "TierBlocked"
+    // LandProtectedAny or the repositories (FieldLandProtected).
+    promotion   *string | json = "Promotion"
+    tier_blocked *string | json = "TierBlocked"
 }
 
 // StageStat is sprint.StageStat: the median and p90 seconds of a stage over the
@@ -204,10 +240,12 @@ table StageStat
 // StageTimes is sprint.StageTimes: stage name -> stat, overall and per stream.
 table StageTimes
 {
-    // the stages: needs, deal, take, work, rework, read_wait, read, accept, merge (64).
-    all     map[string(64)]StageStat
-    // stream (128) -> stage (64) -> stat.
-    streams map[string(128)]map[string(64)]StageStat
+    // the stages the code writes: needs, deal, take, work, rework, read_wait, read,
+    // accept, merge (internal/sprint/cycletime.go:21-33, StageOrder); the longest is
+    // read_wait, 9 bytes.
+    all     map[string(9)]StageStat
+    // stream (128) -> stage (9).
+    streams map[string(128)]map[string(9)]StageStat
 }
 
 // CriticalCard is sprint.CriticalCard: one of the five heaviest cards.
@@ -215,7 +253,7 @@ table CriticalCard
 {
     id     string(515)
     behind int64
-    state  string(32)
+    state  *string
 }
 
 // ---------------------------------------------------------------------------
@@ -224,53 +262,59 @@ table CriticalCard
 
 table GoalView
 {
-    name  string(128)
-    route string(128)
+    // a goal's name: 1 to 64 bytes (internal/sprint/remind.go:76-78, ValidGoalName).
+    name  string(64)
+    // file:<path> or bus:<dir> (remind.go:105): a path, no rule bounds it.
+    route *string
     last  timestamp
     count int64
     // "ok", "waiting" (not pushed yet) or "failed".
-    state string(32)
-    error string(1024)
-    text  string(1024)
+    state *string
+    error *string
+    // the goal's text: at most MaxCardTextBytes, 64 KiB
+    // (internal/sprint/remind.go:91-98 ValidGoalText, passed store.MaxCardTextBytes
+    // at cmd/nova-sprint/goal.go:76; the constant is internal/sprint/steps_review.go:2176).
+    text  string(65536)
 }
 
 table SeatChange
 {
-    holder      string(135)
+    holder      *string
     generation  uint64
-    from        string(135)
+    from        *string
     at          timestamp
-    by          string(135)
+    by          *string
     taken       bool
-    approved_by string(135)
-    // chosen 512, as the operation rows hold it.
-    reason      string(512)
+    approved_by *string
+    reason      *string
 }
 
 table HoldView
 {
-    kind    string(32)
-    // a stream, a member or a card.
+    kind    *string
+    // a stream (128), a member (135) or a card (515): the longest is a card id
+    // (internal/sprint/schema.go:296-311).
     name    string(515)
-    reason  string(1024)
-    by      string(135)
-    // a time as text; chosen 64.
-    at      string(64)
+    reason  *string
+    by      *string
+    at      *string
     handed_back bool | json = "return"
-    cause   string(512)
-    who     string(135)
-    release string(256)
+    cause   *string
+    who     *string
+    release *string
 }
 
 table Stop
 {
-    kind    string(64)
+    kind    *string
+    // a card (515), a stream (128), a member (135) or a route (128): the longest is
+    // a card id (internal/sprint/schema.go:296-311).
     subject string(515)
     since   timestamp
-    what    string(1024)
-    effect  string(1024)
-    undo    string(1024)
-    signal  string(1024)
+    what    *string
+    effect  *string
+    undo    *string
+    signal  *string
 }
 
 // SeatWaits is the seat's waits as where carries them (seatWaitsView): the
@@ -280,8 +324,8 @@ table SeatWaits
 {
     judgments  int64
     overdue    int64
-    oldest_id  string(128)
-    oldest_type string(128)
+    oldest_id  *string
+    oldest_type *string
     oldest_at  timestamp
     level      int64
     oldest_age_seconds int64
@@ -291,8 +335,8 @@ table SeatWaits
 // ServerBeat is serverBeatView: the server's heartbeat while it is fresh.
 table ServerBeat
 {
-    version string(128)
-    commit  string(128)
+    version *string
+    commit  *string
     started timestamp
     at      timestamp
 }
@@ -302,7 +346,8 @@ table ServerBeat
 
 table ProviderTier
 {
-    tier    string(64)
+    // a tier: a nova-config row, at most 128 bytes (pkg/config/kind.go:179).
+    tier    string(128)
     // the tier's routes in this provider.
     in_routes int64 | json = "in"
     enabled int64
@@ -310,39 +355,45 @@ table ProviderTier
 
 table ProviderView
 {
+    // a provider: a nova-config row, at most 128 bytes (pkg/config/kind.go:179).
     name       string(128)
     // dollars and cents rounded up, or "unknown".
-    balance    string(128)
-    balance_at string(64)
+    balance    *string
+    balance_at *string
     spend_hour float64
-    state      string(32)
-    note       string(1024)
-    limit      string(1024)
-    billing    string(64)
+    // "serving", or "resting until <RFC 3339 time>" and the cause
+    // (internal/sprint/balance.go:246).
+    state      *string
+    note       *string
+    limit      *string
+    billing    *string
     funded     ?bool
-    problem    string(1024)
+    problem    *string
     tiers      []ProviderTier
 }
 
 table ProviderProblem
 {
+    // a provider: a nova-config row, at most 128 bytes (pkg/config/kind.go:179).
     name    string(128)
-    problem string(1024)
+    problem *string
 }
 
 table RouteGap
 {
+    // a route and its provider and tier: nova-config rows, at most 128 bytes each
+    // (pkg/config/kind.go:179).
     route    string(128)
     provider string(128)
-    tier     string(64)
+    tier     string(128)
 }
 
 table ProviderGapReport
 {
     invalid_providers []ProviderProblem
     routes            []RouteGap
-    // tier words (64).
-    tiers             []string(64)
+    // tier words: nova-config rows, at most 128 bytes each (pkg/config/kind.go:179).
+    tiers             []string(128)
 }
 
 // ---------------------------------------------------------------------------
@@ -352,11 +403,14 @@ table ProviderGapReport
 
 table LaneRow
 {
-    kind    string(32)
+    kind    *string
+    // a machine: a ValidID word (cmd/nova-sprint/serve.go:191).
     machine string(128)
     width   int64
-    held    []string(515)
-    waiting []string(515)
+    // who holds or waits: a ValidID word, or two joined by one /, 128 + 1 + 128 =
+    // 257 (internal/sprint/lane.go:107-113, ValidLaneWho).
+    held    []string(257)
+    waiting []string(257)
     since   timestamp
 }
 
@@ -365,29 +419,31 @@ table DealtCard
     id       string(515)
     primary  string(515)
     stream   string(128)
+    // a worker or member: a ValidID word or friend.<name>, 7 + 128 = 135
+    // (cmd/nova-sprint/serve.go:208).
     member   string(135)
-    state    string(32)
+    state    *string
     since    timestamp
     deadline timestamp
-    // the branch the work is pushed to; a git ref, chosen 512.
-    branch   string(512)
-    priority string(32)
-    tier     string(64)
+    // the branch the work is pushed to; a git ref, no rule bounds it.
+    branch   *string
+    priority *string
+    tier     *string
 }
 
 table MergingCard
 {
     id      string(515)
     stream  string(128)
-    // a commit id, 40 hex characters or an abbreviation; chosen 64.
-    head    string(64)
+    // a commit id, 40 hex characters or an abbreviation; no rule bounds it.
+    head    *string
     attempt int64
 }
 
 table JudgmentRef
 {
-    id   string(128)
-    kind string(32)
+    id   *string
+    kind *string
     card string(515)
 }
 
@@ -395,14 +451,17 @@ table PrimaryRow
 {
     id     string(515)
     stream string(128)
-    column string(32)
+    column *string
     // a deprecated alias of column for one release (SPEC-SPRINT section 11).
-    state  string(32)
+    state  *string
     score  float64
-    // the row's fields but the brief: a field name (64) -> its text, a field value
-    // of the nova-tables layer (ntable.LimitFieldValueBytes), held at its used size.
-    fields map[string(64)]*string
-    tier_shown string(64)
+    // the row's fields but the brief: a field name -> its text, a field value of the
+    // nova-tables layer (ntable.LimitFieldValueBytes), held at its used size. A field
+    // name is a word the sprint writes (a Field constant, or a read take's number);
+    // NO RULE BOUNDS IT, and the key takes 128 bytes as a ceiling (the length of a
+    // nova-config row name, pkg/config/kind.go:179).
+    fields map[string(128)]*string
+    tier_shown *string
 }
 
 // ---------------------------------------------------------------------------
@@ -412,17 +471,18 @@ table PrimaryRow
 
 table ArchivedView
 {
+    // the archived streams: ValidID words (internal/sprint/steps_work.go:168).
     streams []string(128)
     cards   int64
     landed  int64
-    cost    string(128)
+    cost    *string
 }
 
 table StatsResetView
 {
     at      timestamp
-    by      string(135)
-    reason  string(1024)
+    by      *string
+    reason  *string
     landed  int64
     // stream -> cards landed since the mark.
     streams map[string(128)]int64
@@ -450,9 +510,9 @@ table MergeRow
     review             int64
     landed_per_30m     int64
     oldest_merging_min ?int64
-    base_gate          string(128)
-    // the base's failing test; chosen 1024.
-    failing_test       string(1024)
+    base_gate          *string
+    // the base's failing test.
+    failing_test       *string
     base_lacks         int64
     dev_lacks          int64
     sync_minutes       ?int64
@@ -461,24 +521,28 @@ table MergeRow
 
 table FriendReport
 {
-    running      []string(515)
+    // the cards she is running (work card ids or her job names), the comma list of
+    // `friend beat --running` (cmd/nova-sprint/friends.go:385, sprint.Split). NO
+    // RULE BOUNDS IT: the ceiling is 65536, the 64 KiB of ntable.LimitFieldValueBytes.
+    running      []string(65536)
     working      ?int64
     queue        ?int64
     width        ?int64
     stop_returns ?int64
     active       timestamp
     paced        ?int64
-    // her windows' use, "5h 62% 7d 31%"; chosen 128.
-    window       string(128)
+    // her windows' use, "5h 62% 7d 31%".
+    window       *string
     until        timestamp
-    reason       string(1024)
-    build        string(128)
+    reason       *string
+    build        *string
     started      timestamp
     present      timestamp
 }
 
 table FriendRow
 {
+    // a friend: a nova-config row, at most 128 bytes (pkg/config/kind.go:179).
     name        string(128)
     ready       int64
     working     int64
@@ -489,20 +553,20 @@ table FriendRow
     ok          int64
     failed      int64
     redealt     int64
-    status      string(32)
-    friend_class string(64) | json = "class"
-    mode        string(64)
-    session     string(64)
-    roles       string(256)
+    status      *string
+    friend_class *string | json = "class"
+    mode        *string
+    session     *string
+    roles       *string
     load_avg    float64 | json = "load"
-    report      ?FriendReport
+    report      *FriendReport
     active      timestamp
     tokens      int64
-    charged     string(128)
-    billing     string(64)
+    charged     *string
+    billing     *string
     beat        timestamp
-    evidence    string(1024)
-    reason      string(1024)
+    evidence    *string
+    reason      *string
     until       timestamp
 }
 
@@ -524,7 +588,7 @@ table SeriesLastHour
 
 table LandedSeries
 {
-    generated       string(64)
+    generated       *string
     generated_epoch int64 | json = "generatedEpoch"
     bucket_seconds  int64 | json = "bucketSeconds"
     start           int64
@@ -533,8 +597,9 @@ table LandedSeries
     fleet           []int64
     totals          SeriesTotals
     last_hour       SeriesLastHour | json = "lastHour"
-    // worker name (128) -> cards landed.
-    workers         map[string(128)]int64
+    // worker (a fleet row: a ValidID word or friend.<name>, 7 + 128 = 135,
+    // cmd/nova-sprint/serve.go:208) -> cards landed.
+    workers         map[string(135)]int64
 }
 
 // ---------------------------------------------------------------------------
@@ -548,63 +613,75 @@ table WhereView
     all       int64
     // behind a sentinel not released, or admitted held: in the ETA.
     held      int64
-    // "<landed>/<all> <percent> -> ETA <time> ...": the summary line; chosen 1024.
-    summary   string(1024)
+    // "<landed>/<all> <percent> -> ETA <time> ...": the summary line.
+    summary   *string
     archived_cards  int64
     archived_landed int64
     done      bool
     // table -> row -> column -> cell as printed (every cell of every row, the shape
     // the dashboard's pull reads, sprintdash.sprintCopy). The table is a logical
-    // table name (64), the row its key (a member id, ntable.LimitMemberIDBytes 256),
-    // the column its name (128); a cell is the text as a blob, held to
-    // ntable.LimitFieldValueBytes.
-    tables map[string(64)]map[string(256)]map[string(128)]*string
-    // tier word -> cards.
-    tiers  map[string(64)]int64
+    // table name the code writes: work, readers, merge, friends or fleet, the
+    // longest 7 bytes (internal/sprint/schema.go:14-18 and :36); the row its key (a
+    // member id, ntable.LimitMemberIDBytes 256); the column its name, a word the
+    // sprint writes, NO RULE BOUNDS IT and the key takes 128 bytes as a ceiling
+    // (pkg/config/kind.go:179); a cell is the
+    // text as a blob, held to ntable.LimitFieldValueBytes.
+    tables map[string(7)]map[string(256)]map[string(128)]*string
+    // tier word -> cards; a tier is a nova-config row, at most 128 bytes
+    // (pkg/config/kind.go:179).
+    tiers  map[string(128)]int64
     // stream (128) -> its cards by tier and its spend.
     stream_costs map[string(128)]TierCosts
-    cost_check   ?CostCheck
-    // the first-time rate and count text; chosen 256.
-    first_time              string(256)
+    cost_check   *CostCheck
+    // the first-time rate and count text, "<pct>% <first>/<counted>" or "-".
+    first_time              *string
     first_time_target       int64
     first_time_window       int64
+    // the streams under the target: ValidID words (steps_work.go:168).
     first_time_under_target []string(128)
-    // route (128) -> first-time text (256).
-    first_time_routes       map[string(128)]string(256)
-    // the day's read spend per route, one line; chosen 1024.
-    read_spend  string(1024)
+    // route (a nova-config row, at most 128 bytes, pkg/config/kind.go:179) -> first-time text.
+    first_time_routes       map[string(128)]*string
+    // the day's read spend per route, one line.
+    read_spend  *string
     streams     []StreamClock
     stage_times ?StageTimes
+    // the stalled streams: ValidID words (steps_work.go:168).
     stalled     []string(128)
     critical    []CriticalCard
-    // a blocker line (sprint.IdleBlockers); chosen 1024.
-    blockers    []string(1024)
-    idle        string(1024)
-    coordinator string(135)
-    // the pending operation's id (ntable.LimitMemberIDBytes).
-    pending     string(256)
+    // a blocker line (sprint.IdleBlockers, internal/sprint/idle.go:151-177): at most
+    // 65710 bytes, the longest being a stopped stream's, "<count> behind stream
+    // <stream> stopped (<cause>)": 20 (the count) + 8 (" behind ") + 7 ("stream ")
+    // + 128 (the stream, steps_work.go:168) + 10 (" stopped (") + 65536 (the cause,
+    // a field value of the store, pkg/ntable/limits.go:13) + 1 (")").
+    blockers    []string(65710)
+    idle        *string
+    coordinator *string
+    // the pending operation's id.
+    pending     *string
     epoch       uint64
     cleared     timestamp
-    machine     string(512)
-    server_version string(128)
-    server      ?ServerBeat
+    machine     *string
+    server_version *string
+    server      *ServerBeat
     // "on" or "off".
-    fleet_work   string(16)
-    friends_work string(16)
+    fleet_work   *string
+    friends_work *string
     // the tiers each side may take: the list. SHAPE: today `"all"` (a string) when
     // every tier may be taken, else the list; here the list, and "all" is the
     // list ["all"] (sprint.TiersAll). A reader that tests for the string reads the
-    // list instead.
-    fleet_tiers   []string(64)
-    friends_tiers []string(64)
+    // list instead. Each word is "all" or a tier of flash, pro, heavy and frontier
+    // (internal/sprint/settings.go:167-188, sideTiersWord, with capLadder,
+    // lane_cap.go:35), the longest frontier, 8 bytes.
+    fleet_tiers   []string(8)
+    friends_tiers []string(8)
     // the reads every card in review needs: the count as text, or "default"
     // (sprint.ReadTierDefault). SHAPE: today a JSON number when set, here its
     // decimal text.
-    reads_needed string(32)
+    reads_needed *string
     goals        []GoalView
-    seat         ?SeatChange
+    seat         *SeatChange
     holds        []HoldView
-    seat_waits   ?SeatWaits
+    seat_waits   *SeatWaits
     stops        []Stop
     providers    []ProviderView
     provider_gaps ProviderGapReport
@@ -613,27 +690,31 @@ table WhereView
     merging      []MergingCard
     judgments    []JudgmentRef
     rows         []PrimaryRow
-    archived     ?ArchivedView
-    stats_reset  ?StatsResetView
+    archived     *ArchivedView
+    stats_reset  *StatsResetView
     ready        int64
-    backup       string(16)
+    backup       *string
     reads_waiting int64
     reads_window ReadsWindow
     read_cards   ReadCardCounts
     fix          int64
-    // level (32) -> the open primaries at it.
-    priorities        map[string(32)]NameList
-    // stream (128) -> its default level (32).
-    stream_priorities map[string(128)]string(32)
+    // level -> the open primaries at it. A level is one of the priorities (blocker,
+    // critical, fix, high, normal, low; internal/sprint/priority.go:48, set only
+    // from those at :90 and :278), the longest critical, 8 bytes.
+    priorities        map[string(8)]NameList
+    // stream (128) -> its default level.
+    stream_priorities map[string(128)]*string
     width        int64
     // "<ready>/<2*width>".
-    buffer       string(32)
+    buffer       *string
     low          bool
     merge_row    MergeRow
     friends      []FriendRow
-    // release (128) -> cards left.
-    releases     map[string(128)]int64
+    // release -> cards left: a stream's release is a field value of its control
+    // card (internal/sprint/settings.go:35), bounded by the store's field value limit
+    // alone, 64 KiB (pkg/ntable/limits.go:13, checked at pkg/ntable/store.go:959).
+    releases     map[string(65536)]int64
     store_rtt_p50_ms ?float64
     store_rtt_p99_ms ?float64
-    landed_series    ?LandedSeries | json = "landedSeries"
+    landed_series    *LandedSeries | json = "landedSeries"
 }

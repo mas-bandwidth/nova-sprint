@@ -91,7 +91,7 @@ func NameListNamesTextSaveMessageBody(w *TableMessageWriter, value *NameListName
 			return false
 		}
 		if value.ValueLength > 0 {
-			w.Put(14, TableMessageRefBitsHere)
+			w.Put(271, TableMessageRefBitsHere)
 			if value.ValueLength < 0 || value.ValueLength > 515 {
 				return false
 			}
@@ -259,7 +259,7 @@ func NameListSaveMessageBody(w *TableMessageWriter, value *NameList) bool {
 			return false
 		}
 		if value.Names.Count > 0 {
-			w.Put(125, TableMessageRefBitsHere)
+			w.Put(128, TableMessageRefBitsHere)
 			if value.Names.Count < 0 {
 				return false
 			}
@@ -408,7 +408,7 @@ func DecisionSummaryReceiptHistoryTextLoadMessageBodyRetain(r *TableRetainMessag
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(65536)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -431,15 +431,15 @@ func DecisionSummaryReceiptHistoryTextLoadMessageBodyRetain(r *TableRetainMessag
 }
 func DecisionSummaryReceiptHistoryTextSaveMessageBody(w *TableMessageWriter, value *DecisionSummaryReceiptHistoryText) bool {
 	{
-		if value.ValueLength < 0 || value.ValueLength > 1024 {
+		if value.ValueLength < 0 || value.ValueLength > 65536 {
 			return false
 		}
 		if value.ValueLength > 0 {
 			w.Put(1, TableMessageRefBitsHere)
-			if value.ValueLength < 0 || value.ValueLength > 1024 {
+			if value.ValueLength < 0 || value.ValueLength > 65536 {
 				return false
 			}
-			w.Put(uint64(value.ValueLength), 11)
+			w.Put(uint64(value.ValueLength), 17)
 			w.Raw(value.Value[:value.ValueLength])
 		}
 	}
@@ -494,7 +494,7 @@ func DecisionSummaryReceiptHistoryTextLoadMessageBody(r *TableMessageReader, val
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(65536)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -735,7 +735,7 @@ func DecisionSummaryLoadMessageBodyRetain(r *TableRetainMessageReader, value *De
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.ReceiptHistory))
 					r.Retain.discard(r.Path, true, 5)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 1032, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 65544, 4) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -743,7 +743,7 @@ func DecisionSummaryLoadMessageBodyRetain(r *TableRetainMessageReader, value *De
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*DecisionSummaryReceiptHistoryTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 1032))
+						p := (*DecisionSummaryReceiptHistoryTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 65544))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -775,31 +775,31 @@ func DecisionSummaryLoadMessageBodyRetain(r *TableRetainMessageReader, value *De
 func DecisionSummarySaveMessageBody(w *TableMessageWriter, value *DecisionSummary) bool {
 	{
 		if value.Count != 0 {
-			w.Put(48, TableMessageRefBitsHere)
+			w.Put(50, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Count), uint64(0))
 		}
 	}
 	{
 		if value.Oldest != 0 {
-			w.Put(49, TableMessageRefBitsHere)
+			w.Put(51, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Oldest), uint64(0))
 		}
 	}
 	{
 		if value.DefaultsHour != 0 {
-			w.Put(50, TableMessageRefBitsHere)
+			w.Put(52, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.DefaultsHour), uint64(0))
 		}
 	}
 	{
 		if value.DeliveryFaults != 0 {
-			w.Put(51, TableMessageRefBitsHere)
+			w.Put(53, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.DeliveryFaults), uint64(0))
 		}
 	}
 	{
 		if value.ReceiptUnknown != 0 {
-			w.Put(52, TableMessageRefBitsHere)
+			w.Put(54, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.ReceiptUnknown), uint64(0))
 		}
 	}
@@ -808,7 +808,7 @@ func DecisionSummarySaveMessageBody(w *TableMessageWriter, value *DecisionSummar
 			return false
 		}
 		if value.ReceiptHistory.Count > 0 {
-			w.Put(53, TableMessageRefBitsHere)
+			w.Put(55, TableMessageRefBitsHere)
 			if value.ReceiptHistory.Count < 0 {
 				return false
 			}
@@ -1051,7 +1051,7 @@ func DecisionSummaryLoadMessageBody(r *TableMessageReader, value *DecisionSummar
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.ReceiptHistory))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 1032, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 65544, 4) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -1059,7 +1059,7 @@ func DecisionSummaryLoadMessageBody(r *TableMessageReader, value *DecisionSummar
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*DecisionSummaryReceiptHistoryTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 1032))
+						p := (*DecisionSummaryReceiptHistoryTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 65544))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -1104,7 +1104,7 @@ func ReadDayLoadMessageBodyRetain(r *TableRetainMessageReader, value *ReadDay) b
 		case 0x4c52b1193dcce7e7:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -1117,28 +1117,12 @@ func ReadDayLoadMessageBodyRetain(r *TableRetainMessageReader, value *ReadDay) b
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Usd[:])
-					copy(value.Usd[:], text[:kept])
-					value.UsdLength = int32(kept)
+					r.Nodes.Resolve(&value.Usd, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -1225,27 +1209,28 @@ func ReadDayLoadMessageBodyRetain(r *TableRetainMessageReader, value *ReadDay) b
 }
 func ReadDaySaveMessageBody(w *TableMessageWriter, value *ReadDay) bool {
 	{
-		if value.UsdLength < 0 || value.UsdLength > 128 {
-			return false
-		}
-		if value.UsdLength > 0 {
-			w.Put(143, TableMessageRefBitsHere)
-			if value.UsdLength < 0 || value.UsdLength > 128 {
-				return false
+		if value.Usd != 0 {
+			w.Put(147, TableMessageRefBitsHere)
+			if value.Usd == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Usd)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.UsdLength), 8)
-			w.Raw(value.Usd[:value.UsdLength])
 		}
 	}
 	{
 		if value.Tokens != 0 {
-			w.Put(82, TableMessageRefBitsHere)
+			w.Put(84, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Tokens), uint64(0))
 		}
 	}
 	{
 		if value.Reads != 0 {
-			w.Put(144, TableMessageRefBitsHere)
+			w.Put(148, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Reads), uint64(0))
 		}
 	}
@@ -1272,7 +1257,7 @@ func ReadDayLoadMessageBody(r *TableMessageReader, value *ReadDay) bool {
 		case 0x4c52b1193dcce7e7:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -1285,28 +1270,12 @@ func ReadDayLoadMessageBody(r *TableMessageReader, value *ReadDay) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Usd[:])
-					copy(value.Usd[:], text[:kept])
-					value.UsdLength = int32(kept)
+					r.Nodes.Resolve(&value.Usd, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -1482,7 +1451,7 @@ func ReaderSpendLoadMessageBodyRetain(r *TableRetainMessageReader, value *Reader
 		case 0x4c52b1193dcce7e7:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -1495,28 +1464,12 @@ func ReaderSpendLoadMessageBodyRetain(r *TableRetainMessageReader, value *Reader
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Usd[:])
-					copy(value.Usd[:], text[:kept])
-					value.UsdLength = int32(kept)
+					r.Nodes.Resolve(&value.Usd, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -1560,7 +1513,7 @@ func ReaderSpendLoadMessageBodyRetain(r *TableRetainMessageReader, value *Reader
 		case 0x10a5819c3ff93bc0:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -1573,28 +1526,12 @@ func ReaderSpendLoadMessageBodyRetain(r *TableRetainMessageReader, value *Reader
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.HourUsd[:])
-					copy(value.HourUsd[:], text[:kept])
-					value.HourUsdLength = int32(kept)
+					r.Nodes.Resolve(&value.HourUsd, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -1647,51 +1584,53 @@ func ReaderSpendLoadMessageBodyRetain(r *TableRetainMessageReader, value *Reader
 func ReaderSpendSaveMessageBody(w *TableMessageWriter, value *ReaderSpend) bool {
 	{
 		if value.Reads != 0 {
-			w.Put(144, TableMessageRefBitsHere)
+			w.Put(148, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Reads), uint64(0))
 		}
 	}
 	{
 		if value.Priced != 0 {
-			w.Put(145, TableMessageRefBitsHere)
+			w.Put(149, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Priced), uint64(0))
 		}
 	}
 	{
-		if value.UsdLength < 0 || value.UsdLength > 128 {
-			return false
-		}
-		if value.UsdLength > 0 {
-			w.Put(143, TableMessageRefBitsHere)
-			if value.UsdLength < 0 || value.UsdLength > 128 {
-				return false
+		if value.Usd != 0 {
+			w.Put(147, TableMessageRefBitsHere)
+			if value.Usd == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Usd)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.UsdLength), 8)
-			w.Raw(value.Usd[:value.UsdLength])
 		}
 	}
 	{
 		if value.HourPriced != 0 {
-			w.Put(146, TableMessageRefBitsHere)
+			w.Put(150, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.HourPriced), uint64(0))
 		}
 	}
 	{
-		if value.HourUsdLength < 0 || value.HourUsdLength > 128 {
-			return false
-		}
-		if value.HourUsdLength > 0 {
-			w.Put(147, TableMessageRefBitsHere)
-			if value.HourUsdLength < 0 || value.HourUsdLength > 128 {
-				return false
+		if value.HourUsd != 0 {
+			w.Put(151, TableMessageRefBitsHere)
+			if value.HourUsd == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.HourUsd)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.HourUsdLength), 8)
-			w.Raw(value.HourUsd[:value.HourUsdLength])
 		}
 	}
 	{
 		if value.Tokens != 0 {
-			w.Put(82, TableMessageRefBitsHere)
+			w.Put(84, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Tokens), uint64(0))
 		}
 	}
@@ -1788,7 +1727,7 @@ func ReaderSpendLoadMessageBody(r *TableMessageReader, value *ReaderSpend) bool 
 		case 0x4c52b1193dcce7e7:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -1801,28 +1740,12 @@ func ReaderSpendLoadMessageBody(r *TableMessageReader, value *ReaderSpend) bool 
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Usd[:])
-					copy(value.Usd[:], text[:kept])
-					value.UsdLength = int32(kept)
+					r.Nodes.Resolve(&value.Usd, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -1866,7 +1789,7 @@ func ReaderSpendLoadMessageBody(r *TableMessageReader, value *ReaderSpend) bool 
 		case 0x10a5819c3ff93bc0:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -1879,28 +1802,12 @@ func ReaderSpendLoadMessageBody(r *TableMessageReader, value *ReaderSpend) bool 
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.HourUsd[:])
-					copy(value.HourUsd[:], text[:kept])
-					value.HourUsdLength = int32(kept)
+					r.Nodes.Resolve(&value.HourUsd, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -2060,13 +1967,13 @@ func DayGapLoadMessageBodyRetain(r *TableRetainMessageReader, value *DayGap) boo
 func DayGapSaveMessageBody(w *TableMessageWriter, value *DayGap) bool {
 	{
 		if value.Provider != 0.0 {
-			w.Put(39, TableMessageRefBitsHere)
+			w.Put(41, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.Provider), uint64(0))
 		}
 	}
 	{
 		if value.InternalCount != 0.0 {
-			w.Put(31, TableMessageRefBitsHere)
+			w.Put(33, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.InternalCount), uint64(0))
 		}
 	}
@@ -2228,7 +2135,7 @@ func CostReconcileRecordDaysEntryLoadMessageBodyRetain(r *TableRetainMessageRead
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(10)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -2276,15 +2183,15 @@ func CostReconcileRecordDaysEntryLoadMessageBodyRetain(r *TableRetainMessageRead
 }
 func CostReconcileRecordDaysEntrySaveMessageBody(w *TableMessageWriter, value *CostReconcileRecordDaysEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 64 {
+		if value.KeyLength < 0 || value.KeyLength > 10 {
 			return false
 		}
 		if value.KeyLength > 0 {
 			w.Put(2, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 64 {
+			if value.KeyLength < 0 || value.KeyLength > 10 {
 				return false
 			}
-			w.Put(uint64(value.KeyLength), 7)
+			w.Put(uint64(value.KeyLength), 4)
 			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
@@ -2353,7 +2260,7 @@ func CostReconcileRecordDaysEntryLoadMessageBody(r *TableMessageReader, value *C
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(10)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -2458,7 +2365,7 @@ func CostReconcileRecordLoadMessageBodyRetain(r *TableRetainMessageReader, value
 		case 0x089c4e07b545a968:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -2471,28 +2378,12 @@ func CostReconcileRecordLoadMessageBodyRetain(r *TableRetainMessageReader, value
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.At[:])
-					copy(value.At[:], text[:kept])
-					value.AtLength = int32(kept)
+					r.Nodes.Resolve(&value.At, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -2533,7 +2424,7 @@ func CostReconcileRecordLoadMessageBodyRetain(r *TableRetainMessageReader, value
 		case 0x3bf8fbbad1587cdd:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -2546,28 +2437,12 @@ func CostReconcileRecordLoadMessageBodyRetain(r *TableRetainMessageReader, value
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Note[:])
-					copy(value.Note[:], text[:kept])
-					value.NoteLength = int32(kept)
+					r.Nodes.Resolve(&value.Note, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -2604,7 +2479,7 @@ func CostReconcileRecordLoadMessageBodyRetain(r *TableRetainMessageReader, value
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(10)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -2840,7 +2715,7 @@ func CostReconcileRecordLoadMessageBodyRetain(r *TableRetainMessageReader, value
 					field := &CostReconcileRecordTableFields[10]
 					holder := (*tableContainer)(unsafe.Pointer(&value.Days))
 					r.Retain.discard(r.Path, true, 10)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 88, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 32, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -2887,7 +2762,7 @@ func CostReconcileRecordLoadMessageBodyRetain(r *TableRetainMessageReader, value
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*CostReconcileRecordDaysEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 88))
+							p = (*CostReconcileRecordDaysEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 32))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -2929,7 +2804,7 @@ func CostReconcileRecordSaveMessageBody(w *TableMessageWriter, value *CostReconc
 			return false
 		}
 		if value.ProviderLength > 0 {
-			w.Put(25, TableMessageRefBitsHere)
+			w.Put(27, TableMessageRefBitsHere)
 			if value.ProviderLength < 0 || value.ProviderLength > 128 {
 				return false
 			}
@@ -2938,21 +2813,22 @@ func CostReconcileRecordSaveMessageBody(w *TableMessageWriter, value *CostReconc
 		}
 	}
 	{
-		if value.AtLength < 0 || value.AtLength > 64 {
-			return false
-		}
-		if value.AtLength > 0 {
-			w.Put(26, TableMessageRefBitsHere)
-			if value.AtLength < 0 || value.AtLength > 64 {
-				return false
+		if value.At != 0 {
+			w.Put(28, TableMessageRefBitsHere)
+			if value.At == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.At)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.AtLength), 7)
-			w.Raw(value.At[:value.AtLength])
 		}
 	}
 	{
 		if value.Known != false {
-			w.Put(27, TableMessageRefBitsHere)
+			w.Put(29, TableMessageRefBitsHere)
 			if value.Known {
 				w.Put(1, 1)
 			} else {
@@ -2961,58 +2837,59 @@ func CostReconcileRecordSaveMessageBody(w *TableMessageWriter, value *CostReconc
 		}
 	}
 	{
-		if value.NoteLength < 0 || value.NoteLength > 1024 {
-			return false
-		}
-		if value.NoteLength > 0 {
-			w.Put(28, TableMessageRefBitsHere)
-			if value.NoteLength < 0 || value.NoteLength > 1024 {
-				return false
+		if value.Note != 0 {
+			w.Put(30, TableMessageRefBitsHere)
+			if value.Note == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Note)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.NoteLength), 11)
-			w.Raw(value.Note[:value.NoteLength])
 		}
 	}
 	{
-		if value.DayLength < 0 || value.DayLength > 64 {
+		if value.DayLength < 0 || value.DayLength > 10 {
 			return false
 		}
 		if value.DayLength > 0 {
-			w.Put(29, TableMessageRefBitsHere)
-			if value.DayLength < 0 || value.DayLength > 64 {
+			w.Put(31, TableMessageRefBitsHere)
+			if value.DayLength < 0 || value.DayLength > 10 {
 				return false
 			}
-			w.Put(uint64(value.DayLength), 7)
+			w.Put(uint64(value.DayLength), 4)
 			w.Raw(value.Day[:value.DayLength])
 		}
 	}
 	{
 		if value.Used != 0.0 {
-			w.Put(30, TableMessageRefBitsHere)
+			w.Put(32, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.Used), uint64(0))
 		}
 	}
 	{
 		if value.InternalCount != 0.0 {
-			w.Put(31, TableMessageRefBitsHere)
+			w.Put(33, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.InternalCount), uint64(0))
 		}
 	}
 	{
 		if value.InternalReads != 0.0 {
-			w.Put(32, TableMessageRefBitsHere)
+			w.Put(34, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.InternalReads), uint64(0))
 		}
 	}
 	{
 		if value.Gap != 0.0 {
-			w.Put(33, TableMessageRefBitsHere)
+			w.Put(35, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.Gap), uint64(0))
 		}
 	}
 	{
 		if value.Share != 0.0 {
-			w.Put(34, TableMessageRefBitsHere)
+			w.Put(36, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.Share), uint64(0))
 		}
 	}
@@ -3021,7 +2898,7 @@ func CostReconcileRecordSaveMessageBody(w *TableMessageWriter, value *CostReconc
 			return false
 		}
 		if value.Days.Count > 0 {
-			w.Put(35, TableMessageRefBitsHere)
+			w.Put(37, TableMessageRefBitsHere)
 			if value.Days.Count < 0 {
 				return false
 			}
@@ -3109,7 +2986,7 @@ func CostReconcileRecordLoadMessageBody(r *TableMessageReader, value *CostReconc
 		case 0x089c4e07b545a968:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -3122,28 +2999,12 @@ func CostReconcileRecordLoadMessageBody(r *TableMessageReader, value *CostReconc
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.At[:])
-					copy(value.At[:], text[:kept])
-					value.AtLength = int32(kept)
+					r.Nodes.Resolve(&value.At, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -3184,7 +3045,7 @@ func CostReconcileRecordLoadMessageBody(r *TableMessageReader, value *CostReconc
 		case 0x3bf8fbbad1587cdd:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -3197,28 +3058,12 @@ func CostReconcileRecordLoadMessageBody(r *TableMessageReader, value *CostReconc
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Note[:])
-					copy(value.Note[:], text[:kept])
-					value.NoteLength = int32(kept)
+					r.Nodes.Resolve(&value.Note, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -3255,7 +3100,7 @@ func CostReconcileRecordLoadMessageBody(r *TableMessageReader, value *CostReconc
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(10)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -3490,7 +3335,7 @@ func CostReconcileRecordLoadMessageBody(r *TableMessageReader, value *CostReconc
 					}
 					field := &CostReconcileRecordTableFields[10]
 					holder := (*tableContainer)(unsafe.Pointer(&value.Days))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 88, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 32, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -3537,7 +3382,7 @@ func CostReconcileRecordLoadMessageBody(r *TableMessageReader, value *CostReconc
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*CostReconcileRecordDaysEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 88))
+							p = (*CostReconcileRecordDaysEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 32))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -3617,7 +3462,7 @@ func TierCostsTiersEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -3673,21 +3518,21 @@ func TierCostsTiersEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value
 }
 func TierCostsTiersEntrySaveMessageBody(w *TableMessageWriter, value *TierCostsTiersEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 64 {
+		if value.KeyLength < 0 || value.KeyLength > 128 {
 			return false
 		}
 		if value.KeyLength > 0 {
-			w.Put(2, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 64 {
+			w.Put(5, TableMessageRefBitsHere)
+			if value.KeyLength < 0 || value.KeyLength > 128 {
 				return false
 			}
-			w.Put(uint64(value.KeyLength), 7)
+			w.Put(uint64(value.KeyLength), 8)
 			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
 		if value.Value != 0 {
-			w.Put(6, TableMessageRefBitsHere)
+			w.Put(7, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Value), uint64(0))
 		}
 	}
@@ -3742,7 +3587,7 @@ func TierCostsTiersEntryLoadMessageBody(r *TableMessageReader, value *TierCostsT
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -3845,7 +3690,7 @@ func TierCostsCostByTierEntryLoadMessageBodyRetain(r *TableRetainMessageReader, 
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -3858,7 +3703,7 @@ func TierCostsCostByTierEntryLoadMessageBodyRetain(r *TableRetainMessageReader, 
 		case 0x7ce4fd9430e80cea:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -3871,28 +3716,12 @@ func TierCostsCostByTierEntryLoadMessageBodyRetain(r *TableRetainMessageReader, 
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Value[:])
-					copy(value.Value[:], text[:kept])
-					value.ValueLength = int32(kept)
+					r.Nodes.Resolve(&value.Value, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -3909,29 +3738,30 @@ func TierCostsCostByTierEntryLoadMessageBodyRetain(r *TableRetainMessageReader, 
 }
 func TierCostsCostByTierEntrySaveMessageBody(w *TableMessageWriter, value *TierCostsCostByTierEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 64 {
+		if value.KeyLength < 0 || value.KeyLength > 128 {
 			return false
 		}
 		if value.KeyLength > 0 {
-			w.Put(2, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 64 {
+			w.Put(5, TableMessageRefBitsHere)
+			if value.KeyLength < 0 || value.KeyLength > 128 {
 				return false
 			}
-			w.Put(uint64(value.KeyLength), 7)
+			w.Put(uint64(value.KeyLength), 8)
 			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
-		if value.ValueLength < 0 || value.ValueLength > 128 {
-			return false
-		}
-		if value.ValueLength > 0 {
-			w.Put(4, TableMessageRefBitsHere)
-			if value.ValueLength < 0 || value.ValueLength > 128 {
-				return false
+		if value.Value != 0 {
+			w.Put(9, TableMessageRefBitsHere)
+			if value.Value == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Value)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ValueLength), 8)
-			w.Raw(value.Value[:value.ValueLength])
 		}
 	}
 	w.Put(0, TableMessageRefBitsHere)
@@ -3985,7 +3815,7 @@ func TierCostsCostByTierEntryLoadMessageBody(r *TableMessageReader, value *TierC
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -3998,7 +3828,7 @@ func TierCostsCostByTierEntryLoadMessageBody(r *TableMessageReader, value *TierC
 		case 0x7ce4fd9430e80cea:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -4011,28 +3841,12 @@ func TierCostsCostByTierEntryLoadMessageBody(r *TableMessageReader, value *TierC
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Value[:])
-					copy(value.Value[:], text[:kept])
-					value.ValueLength = int32(kept)
+					r.Nodes.Resolve(&value.Value, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -4096,7 +3910,7 @@ func TierCostsReadsTodayEntryLoadMessageBodyRetain(r *TableRetainMessageReader, 
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -4144,15 +3958,15 @@ func TierCostsReadsTodayEntryLoadMessageBodyRetain(r *TableRetainMessageReader, 
 }
 func TierCostsReadsTodayEntrySaveMessageBody(w *TableMessageWriter, value *TierCostsReadsTodayEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 64 {
+		if value.KeyLength < 0 || value.KeyLength > 128 {
 			return false
 		}
 		if value.KeyLength > 0 {
-			w.Put(2, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 64 {
+			w.Put(5, TableMessageRefBitsHere)
+			if value.KeyLength < 0 || value.KeyLength > 128 {
 				return false
 			}
-			w.Put(uint64(value.KeyLength), 7)
+			w.Put(uint64(value.KeyLength), 8)
 			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
@@ -4221,7 +4035,7 @@ func TierCostsReadsTodayEntryLoadMessageBody(r *TableMessageReader, value *TierC
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -4311,7 +4125,7 @@ func TierCostsReadersEntryLoadMessageBodyRetain(r *TableRetainMessageReader, val
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -4359,12 +4173,12 @@ func TierCostsReadersEntryLoadMessageBodyRetain(r *TableRetainMessageReader, val
 }
 func TierCostsReadersEntrySaveMessageBody(w *TableMessageWriter, value *TierCostsReadersEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
+		if value.KeyLength < 0 || value.KeyLength > 135 {
 			return false
 		}
 		if value.KeyLength > 0 {
-			w.Put(5, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 128 {
+			w.Put(15, TableMessageRefBitsHere)
+			if value.KeyLength < 0 || value.KeyLength > 135 {
 				return false
 			}
 			w.Put(uint64(value.KeyLength), 8)
@@ -4436,7 +4250,7 @@ func TierCostsReadersEntryLoadMessageBody(r *TableMessageReader, value *TierCost
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -4519,7 +4333,7 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 					field := &TierCostsTableFields[0]
 					holder := (*tableContainer)(unsafe.Pointer(&value.Tiers))
 					r.Retain.discard(r.Path, true, 0)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 80, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -4566,7 +4380,7 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*TierCostsTiersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 80))
+							p = (*TierCostsTiersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -4596,7 +4410,7 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 		case 0x50dcfb7833db1c01:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -4609,28 +4423,12 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.PerLanded[:])
-					copy(value.PerLanded[:], text[:kept])
-					value.PerLandedLength = int32(kept)
+					r.Nodes.Resolve(&value.PerLanded, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -4660,7 +4458,7 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 					field := &TierCostsTableFields[2]
 					holder := (*tableContainer)(unsafe.Pointer(&value.CostByTier))
 					r.Retain.discard(r.Path, true, 2)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 208, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -4707,7 +4505,7 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*TierCostsCostByTierEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 208))
+							p = (*TierCostsCostByTierEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -4737,7 +4535,7 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 		case 0x42e380b861ee97d7:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -4750,28 +4548,12 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.TotalCost[:])
-					copy(value.TotalCost[:], text[:kept])
-					value.TotalCostLength = int32(kept)
+					r.Nodes.Resolve(&value.TotalCost, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -4780,7 +4562,7 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 		case 0x95676bba1360fcfe:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -4793,28 +4575,12 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.TotalUsd[:])
-					copy(value.TotalUsd[:], text[:kept])
-					value.TotalUsdLength = int32(kept)
+					r.Nodes.Resolve(&value.TotalUsd, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -4823,7 +4589,7 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 		case 0xc4724b6b4f7cf32e:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -4836,28 +4602,12 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.LandedUsd[:])
-					copy(value.LandedUsd[:], text[:kept])
-					value.LandedUsdLength = int32(kept)
+					r.Nodes.Resolve(&value.LandedUsd, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -4866,7 +4616,7 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 		case 0xed90c66b452f42d0:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -4879,28 +4629,12 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.WorkCost[:])
-					copy(value.WorkCost[:], text[:kept])
-					value.WorkCostLength = int32(kept)
+					r.Nodes.Resolve(&value.WorkCost, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -4909,7 +4643,7 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 		case 0x04d23c7555fd602f:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -4922,28 +4656,12 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.ReadCost[:])
-					copy(value.ReadCost[:], text[:kept])
-					value.ReadCostLength = int32(kept)
+					r.Nodes.Resolve(&value.ReadCost, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -4952,7 +4670,7 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 		case 0xf5b4630751f7ecab:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -4965,28 +4683,12 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.DecideCost[:])
-					copy(value.DecideCost[:], text[:kept])
-					value.DecideCostLength = int32(kept)
+					r.Nodes.Resolve(&value.DecideCost, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -5156,7 +4858,7 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 					field := &TierCostsTableFields[13]
 					holder := (*tableContainer)(unsafe.Pointer(&value.ReadsToday))
 					r.Retain.discard(r.Path, true, 13)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 224, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 160, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -5203,7 +4905,7 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*TierCostsReadsTodayEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 224))
+							p = (*TierCostsReadsTodayEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 160))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -5324,7 +5026,7 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 					field := &TierCostsTableFields[16]
 					holder := (*tableContainer)(unsafe.Pointer(&value.Readers))
 					r.Retain.discard(r.Path, true, 16)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 440, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 192, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -5371,7 +5073,7 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*TierCostsReadersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 440))
+							p = (*TierCostsReadersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 192))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -5401,7 +5103,7 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 		case 0x9c758c73deb84ac9:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -5414,28 +5116,12 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.InFlight[:])
-					copy(value.InFlight[:], text[:kept])
-					value.InFlightLength = int32(kept)
+					r.Nodes.Resolve(&value.InFlight, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -5444,7 +5130,7 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 		case 0xd3382d08eeea28a6:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -5457,28 +5143,12 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Unreconciled[:])
-					copy(value.Unreconciled[:], text[:kept])
-					value.UnreconciledLength = int32(kept)
+					r.Nodes.Resolve(&value.Unreconciled, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -5511,7 +5181,7 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Reconciles))
 					r.Retain.discard(r.Path, true, 19)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 1368, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 232, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -5519,7 +5189,7 @@ func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCost
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*CostReconcileRecordRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 1368))
+						p := (*CostReconcileRecordRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 232))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -5554,7 +5224,7 @@ func TierCostsSaveMessageBody(w *TableMessageWriter, value *TierCosts) bool {
 			return false
 		}
 		if value.Tiers.Count > 0 {
-			w.Put(141, TableMessageRefBitsHere)
+			w.Put(145, TableMessageRefBitsHere)
 			if value.Tiers.Count < 0 {
 				return false
 			}
@@ -5577,16 +5247,17 @@ func TierCostsSaveMessageBody(w *TableMessageWriter, value *TierCosts) bool {
 		}
 	}
 	{
-		if value.PerLandedLength < 0 || value.PerLandedLength > 128 {
-			return false
-		}
-		if value.PerLandedLength > 0 {
-			w.Put(188, TableMessageRefBitsHere)
-			if value.PerLandedLength < 0 || value.PerLandedLength > 128 {
-				return false
+		if value.PerLanded != 0 {
+			w.Put(191, TableMessageRefBitsHere)
+			if value.PerLanded == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.PerLanded)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.PerLandedLength), 8)
-			w.Raw(value.PerLanded[:value.PerLandedLength])
 		}
 	}
 	{
@@ -5594,7 +5265,7 @@ func TierCostsSaveMessageBody(w *TableMessageWriter, value *TierCosts) bool {
 			return false
 		}
 		if value.CostByTier.Count > 0 {
-			w.Put(189, TableMessageRefBitsHere)
+			w.Put(192, TableMessageRefBitsHere)
 			if value.CostByTier.Count < 0 {
 				return false
 			}
@@ -5617,104 +5288,110 @@ func TierCostsSaveMessageBody(w *TableMessageWriter, value *TierCosts) bool {
 		}
 	}
 	{
-		if value.TotalCostLength < 0 || value.TotalCostLength > 128 {
-			return false
-		}
-		if value.TotalCostLength > 0 {
-			w.Put(190, TableMessageRefBitsHere)
-			if value.TotalCostLength < 0 || value.TotalCostLength > 128 {
-				return false
-			}
-			w.Put(uint64(value.TotalCostLength), 8)
-			w.Raw(value.TotalCost[:value.TotalCostLength])
-		}
-	}
-	{
-		if value.TotalUsdLength < 0 || value.TotalUsdLength > 128 {
-			return false
-		}
-		if value.TotalUsdLength > 0 {
-			w.Put(191, TableMessageRefBitsHere)
-			if value.TotalUsdLength < 0 || value.TotalUsdLength > 128 {
-				return false
-			}
-			w.Put(uint64(value.TotalUsdLength), 8)
-			w.Raw(value.TotalUsd[:value.TotalUsdLength])
-		}
-	}
-	{
-		if value.LandedUsdLength < 0 || value.LandedUsdLength > 128 {
-			return false
-		}
-		if value.LandedUsdLength > 0 {
-			w.Put(192, TableMessageRefBitsHere)
-			if value.LandedUsdLength < 0 || value.LandedUsdLength > 128 {
-				return false
-			}
-			w.Put(uint64(value.LandedUsdLength), 8)
-			w.Raw(value.LandedUsd[:value.LandedUsdLength])
-		}
-	}
-	{
-		if value.WorkCostLength < 0 || value.WorkCostLength > 128 {
-			return false
-		}
-		if value.WorkCostLength > 0 {
+		if value.TotalCost != 0 {
 			w.Put(193, TableMessageRefBitsHere)
-			if value.WorkCostLength < 0 || value.WorkCostLength > 128 {
-				return false
+			if value.TotalCost == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.TotalCost)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.WorkCostLength), 8)
-			w.Raw(value.WorkCost[:value.WorkCostLength])
 		}
 	}
 	{
-		if value.ReadCostLength < 0 || value.ReadCostLength > 128 {
-			return false
-		}
-		if value.ReadCostLength > 0 {
+		if value.TotalUsd != 0 {
 			w.Put(194, TableMessageRefBitsHere)
-			if value.ReadCostLength < 0 || value.ReadCostLength > 128 {
-				return false
+			if value.TotalUsd == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.TotalUsd)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ReadCostLength), 8)
-			w.Raw(value.ReadCost[:value.ReadCostLength])
 		}
 	}
 	{
-		if value.DecideCostLength < 0 || value.DecideCostLength > 128 {
-			return false
-		}
-		if value.DecideCostLength > 0 {
+		if value.LandedUsd != 0 {
 			w.Put(195, TableMessageRefBitsHere)
-			if value.DecideCostLength < 0 || value.DecideCostLength > 128 {
-				return false
+			if value.LandedUsd == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.LandedUsd)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.DecideCostLength), 8)
-			w.Raw(value.DecideCost[:value.DecideCostLength])
+		}
+	}
+	{
+		if value.WorkCost != 0 {
+			w.Put(196, TableMessageRefBitsHere)
+			if value.WorkCost == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.WorkCost)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
+			}
+		}
+	}
+	{
+		if value.ReadCost != 0 {
+			w.Put(197, TableMessageRefBitsHere)
+			if value.ReadCost == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.ReadCost)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
+			}
+		}
+	}
+	{
+		if value.DecideCost != 0 {
+			w.Put(198, TableMessageRefBitsHere)
+			if value.DecideCost == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.DecideCost)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
+			}
 		}
 	}
 	{
 		if value.DecideUnpriced != 0 {
-			w.Put(196, TableMessageRefBitsHere)
+			w.Put(199, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.DecideUnpriced), uint64(0))
 		}
 	}
 	{
 		if value.DroppedCards != 0 {
-			w.Put(197, TableMessageRefBitsHere)
+			w.Put(200, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.DroppedCards), uint64(0))
 		}
 	}
 	{
 		if value.CarriedCards != 0 {
-			w.Put(198, TableMessageRefBitsHere)
+			w.Put(201, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.CarriedCards), uint64(0))
 		}
 	}
 	{
 		if value.ReadTokens != 0 {
-			w.Put(199, TableMessageRefBitsHere)
+			w.Put(202, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.ReadTokens), uint64(0))
 		}
 	}
@@ -5723,7 +5400,7 @@ func TierCostsSaveMessageBody(w *TableMessageWriter, value *TierCosts) bool {
 			return false
 		}
 		if value.ReadsToday.Count > 0 {
-			w.Put(200, TableMessageRefBitsHere)
+			w.Put(203, TableMessageRefBitsHere)
 			if value.ReadsToday.Count < 0 {
 				return false
 			}
@@ -5747,13 +5424,13 @@ func TierCostsSaveMessageBody(w *TableMessageWriter, value *TierCosts) bool {
 	}
 	{
 		if value.UnpricedRuns != 0 {
-			w.Put(201, TableMessageRefBitsHere)
+			w.Put(204, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.UnpricedRuns), uint64(0))
 		}
 	}
 	{
 		if value.ReadsNoTokens != 0 {
-			w.Put(202, TableMessageRefBitsHere)
+			w.Put(205, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.ReadsNoTokens), uint64(0))
 		}
 	}
@@ -5762,7 +5439,7 @@ func TierCostsSaveMessageBody(w *TableMessageWriter, value *TierCosts) bool {
 			return false
 		}
 		if value.Readers.Count > 0 {
-			w.Put(203, TableMessageRefBitsHere)
+			w.Put(206, TableMessageRefBitsHere)
 			if value.Readers.Count < 0 {
 				return false
 			}
@@ -5785,29 +5462,31 @@ func TierCostsSaveMessageBody(w *TableMessageWriter, value *TierCosts) bool {
 		}
 	}
 	{
-		if value.InFlightLength < 0 || value.InFlightLength > 128 {
-			return false
-		}
-		if value.InFlightLength > 0 {
-			w.Put(204, TableMessageRefBitsHere)
-			if value.InFlightLength < 0 || value.InFlightLength > 128 {
-				return false
+		if value.InFlight != 0 {
+			w.Put(207, TableMessageRefBitsHere)
+			if value.InFlight == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.InFlight)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.InFlightLength), 8)
-			w.Raw(value.InFlight[:value.InFlightLength])
 		}
 	}
 	{
-		if value.UnreconciledLength < 0 || value.UnreconciledLength > 128 {
-			return false
-		}
-		if value.UnreconciledLength > 0 {
-			w.Put(205, TableMessageRefBitsHere)
-			if value.UnreconciledLength < 0 || value.UnreconciledLength > 128 {
-				return false
+		if value.Unreconciled != 0 {
+			w.Put(208, TableMessageRefBitsHere)
+			if value.Unreconciled == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Unreconciled)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.UnreconciledLength), 8)
-			w.Raw(value.Unreconciled[:value.UnreconciledLength])
 		}
 	}
 	{
@@ -5815,7 +5494,7 @@ func TierCostsSaveMessageBody(w *TableMessageWriter, value *TierCosts) bool {
 			return false
 		}
 		if value.Reconciles.Count > 0 {
-			w.Put(206, TableMessageRefBitsHere)
+			w.Put(209, TableMessageRefBitsHere)
 			if value.Reconciles.Count < 0 {
 				return false
 			}
@@ -5880,7 +5559,7 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 					}
 					field := &TierCostsTableFields[0]
 					holder := (*tableContainer)(unsafe.Pointer(&value.Tiers))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 80, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -5927,7 +5606,7 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*TierCostsTiersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 80))
+							p = (*TierCostsTiersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -5952,7 +5631,7 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 		case 0x50dcfb7833db1c01:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -5965,28 +5644,12 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.PerLanded[:])
-					copy(value.PerLanded[:], text[:kept])
-					value.PerLandedLength = int32(kept)
+					r.Nodes.Resolve(&value.PerLanded, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -6015,7 +5678,7 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 					}
 					field := &TierCostsTableFields[2]
 					holder := (*tableContainer)(unsafe.Pointer(&value.CostByTier))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 208, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -6062,7 +5725,7 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*TierCostsCostByTierEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 208))
+							p = (*TierCostsCostByTierEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -6087,7 +5750,7 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 		case 0x42e380b861ee97d7:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -6100,28 +5763,12 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.TotalCost[:])
-					copy(value.TotalCost[:], text[:kept])
-					value.TotalCostLength = int32(kept)
+					r.Nodes.Resolve(&value.TotalCost, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -6130,7 +5777,7 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 		case 0x95676bba1360fcfe:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -6143,28 +5790,12 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.TotalUsd[:])
-					copy(value.TotalUsd[:], text[:kept])
-					value.TotalUsdLength = int32(kept)
+					r.Nodes.Resolve(&value.TotalUsd, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -6173,7 +5804,7 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 		case 0xc4724b6b4f7cf32e:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -6186,28 +5817,12 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.LandedUsd[:])
-					copy(value.LandedUsd[:], text[:kept])
-					value.LandedUsdLength = int32(kept)
+					r.Nodes.Resolve(&value.LandedUsd, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -6216,7 +5831,7 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 		case 0xed90c66b452f42d0:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -6229,28 +5844,12 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.WorkCost[:])
-					copy(value.WorkCost[:], text[:kept])
-					value.WorkCostLength = int32(kept)
+					r.Nodes.Resolve(&value.WorkCost, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -6259,7 +5858,7 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 		case 0x04d23c7555fd602f:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -6272,28 +5871,12 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.ReadCost[:])
-					copy(value.ReadCost[:], text[:kept])
-					value.ReadCostLength = int32(kept)
+					r.Nodes.Resolve(&value.ReadCost, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -6302,7 +5885,7 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 		case 0xf5b4630751f7ecab:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -6315,28 +5898,12 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.DecideCost[:])
-					copy(value.DecideCost[:], text[:kept])
-					value.DecideCostLength = int32(kept)
+					r.Nodes.Resolve(&value.DecideCost, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -6505,7 +6072,7 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 					}
 					field := &TierCostsTableFields[13]
 					holder := (*tableContainer)(unsafe.Pointer(&value.ReadsToday))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 224, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 160, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -6552,7 +6119,7 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*TierCostsReadsTodayEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 224))
+							p = (*TierCostsReadsTodayEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 160))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -6667,7 +6234,7 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 					}
 					field := &TierCostsTableFields[16]
 					holder := (*tableContainer)(unsafe.Pointer(&value.Readers))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 440, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 192, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -6714,7 +6281,7 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*TierCostsReadersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 440))
+							p = (*TierCostsReadersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 192))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -6739,7 +6306,7 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 		case 0x9c758c73deb84ac9:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -6752,28 +6319,12 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.InFlight[:])
-					copy(value.InFlight[:], text[:kept])
-					value.InFlightLength = int32(kept)
+					r.Nodes.Resolve(&value.InFlight, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -6782,7 +6333,7 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 		case 0xd3382d08eeea28a6:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -6795,28 +6346,12 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Unreconciled[:])
-					copy(value.Unreconciled[:], text[:kept])
-					value.UnreconciledLength = int32(kept)
+					r.Nodes.Resolve(&value.Unreconciled, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -6848,7 +6383,7 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Reconciles))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 1368, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 232, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -6856,7 +6391,7 @@ func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*CostReconcileRecordRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 1368))
+						p := (*CostReconcileRecordRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 232))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -6956,7 +6491,7 @@ func CostCheckOrphansTextSaveMessageBody(w *TableMessageWriter, value *CostCheck
 			return false
 		}
 		if value.ValueLength > 0 {
-			w.Put(14, TableMessageRefBitsHere)
+			w.Put(271, TableMessageRefBitsHere)
 			if value.ValueLength < 0 || value.ValueLength > 515 {
 				return false
 			}
@@ -7057,7 +6592,7 @@ func CostCheckLoadMessageBodyRetain(r *TableRetainMessageReader, value *CostChec
 		case 0xb57920a53585fe21:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -7070,28 +6605,12 @@ func CostCheckLoadMessageBodyRetain(r *TableRetainMessageReader, value *CostChec
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.StreamsUsd[:])
-					copy(value.StreamsUsd[:], text[:kept])
-					value.StreamsUsdLength = int32(kept)
+					r.Nodes.Resolve(&value.StreamsUsd, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -7100,7 +6619,7 @@ func CostCheckLoadMessageBodyRetain(r *TableRetainMessageReader, value *CostChec
 		case 0xba4a4ffe7d45c8fb:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -7113,28 +6632,12 @@ func CostCheckLoadMessageBodyRetain(r *TableRetainMessageReader, value *CostChec
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.CardsUsd[:])
-					copy(value.CardsUsd[:], text[:kept])
-					value.CardsUsdLength = int32(kept)
+					r.Nodes.Resolve(&value.CardsUsd, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -7143,7 +6646,7 @@ func CostCheckLoadMessageBodyRetain(r *TableRetainMessageReader, value *CostChec
 		case 0x24ac263c9141e420:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -7156,28 +6659,12 @@ func CostCheckLoadMessageBodyRetain(r *TableRetainMessageReader, value *CostChec
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.GapUsd[:])
-					copy(value.GapUsd[:], text[:kept])
-					value.GapUsdLength = int32(kept)
+					r.Nodes.Resolve(&value.GapUsd, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -7316,47 +6803,50 @@ func CostCheckLoadMessageBodyRetain(r *TableRetainMessageReader, value *CostChec
 }
 func CostCheckSaveMessageBody(w *TableMessageWriter, value *CostCheck) bool {
 	{
-		if value.StreamsUsdLength < 0 || value.StreamsUsdLength > 128 {
-			return false
-		}
-		if value.StreamsUsdLength > 0 {
-			w.Put(19, TableMessageRefBitsHere)
-			if value.StreamsUsdLength < 0 || value.StreamsUsdLength > 128 {
-				return false
-			}
-			w.Put(uint64(value.StreamsUsdLength), 8)
-			w.Raw(value.StreamsUsd[:value.StreamsUsdLength])
-		}
-	}
-	{
-		if value.CardsUsdLength < 0 || value.CardsUsdLength > 128 {
-			return false
-		}
-		if value.CardsUsdLength > 0 {
-			w.Put(20, TableMessageRefBitsHere)
-			if value.CardsUsdLength < 0 || value.CardsUsdLength > 128 {
-				return false
-			}
-			w.Put(uint64(value.CardsUsdLength), 8)
-			w.Raw(value.CardsUsd[:value.CardsUsdLength])
-		}
-	}
-	{
-		if value.GapUsdLength < 0 || value.GapUsdLength > 128 {
-			return false
-		}
-		if value.GapUsdLength > 0 {
+		if value.StreamsUsd != 0 {
 			w.Put(21, TableMessageRefBitsHere)
-			if value.GapUsdLength < 0 || value.GapUsdLength > 128 {
-				return false
+			if value.StreamsUsd == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.StreamsUsd)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.GapUsdLength), 8)
-			w.Raw(value.GapUsd[:value.GapUsdLength])
+		}
+	}
+	{
+		if value.CardsUsd != 0 {
+			w.Put(22, TableMessageRefBitsHere)
+			if value.CardsUsd == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.CardsUsd)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
+			}
+		}
+	}
+	{
+		if value.GapUsd != 0 {
+			w.Put(23, TableMessageRefBitsHere)
+			if value.GapUsd == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.GapUsd)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
+			}
 		}
 	}
 	{
 		if value.Ok != false {
-			w.Put(22, TableMessageRefBitsHere)
+			w.Put(24, TableMessageRefBitsHere)
 			if value.Ok {
 				w.Put(1, 1)
 			} else {
@@ -7369,7 +6859,7 @@ func CostCheckSaveMessageBody(w *TableMessageWriter, value *CostCheck) bool {
 			return false
 		}
 		if value.Orphans.Count > 0 {
-			w.Put(23, TableMessageRefBitsHere)
+			w.Put(25, TableMessageRefBitsHere)
 			if value.Orphans.Count < 0 {
 				return false
 			}
@@ -7393,7 +6883,7 @@ func CostCheckSaveMessageBody(w *TableMessageWriter, value *CostCheck) bool {
 	}
 	{
 		if value.Unlisted != 0 {
-			w.Put(24, TableMessageRefBitsHere)
+			w.Put(26, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Unlisted), uint64(0))
 		}
 	}
@@ -7420,7 +6910,7 @@ func CostCheckLoadMessageBody(r *TableMessageReader, value *CostCheck) bool {
 		case 0xb57920a53585fe21:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -7433,28 +6923,12 @@ func CostCheckLoadMessageBody(r *TableMessageReader, value *CostCheck) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.StreamsUsd[:])
-					copy(value.StreamsUsd[:], text[:kept])
-					value.StreamsUsdLength = int32(kept)
+					r.Nodes.Resolve(&value.StreamsUsd, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -7463,7 +6937,7 @@ func CostCheckLoadMessageBody(r *TableMessageReader, value *CostCheck) bool {
 		case 0xba4a4ffe7d45c8fb:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -7476,28 +6950,12 @@ func CostCheckLoadMessageBody(r *TableMessageReader, value *CostCheck) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.CardsUsd[:])
-					copy(value.CardsUsd[:], text[:kept])
-					value.CardsUsdLength = int32(kept)
+					r.Nodes.Resolve(&value.CardsUsd, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -7506,7 +6964,7 @@ func CostCheckLoadMessageBody(r *TableMessageReader, value *CostCheck) bool {
 		case 0x24ac263c9141e420:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -7519,28 +6977,12 @@ func CostCheckLoadMessageBody(r *TableMessageReader, value *CostCheck) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.GapUsd[:])
-					copy(value.GapUsd[:], text[:kept])
-					value.GapUsdLength = int32(kept)
+					r.Nodes.Resolve(&value.GapUsd, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -7735,7 +7177,7 @@ func StreamClockLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stream
 		case 0xa63d4c9b882b10fe:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -7748,28 +7190,12 @@ func StreamClockLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stream
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Release[:])
-					copy(value.Release[:], text[:kept])
-					value.ReleaseLength = int32(kept)
+					r.Nodes.Resolve(&value.Release, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -7778,7 +7204,7 @@ func StreamClockLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stream
 		case 0xe64d0ef45ab45695:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -7791,28 +7217,12 @@ func StreamClockLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stream
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(256)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Display[:])
-					copy(value.Display[:], text[:kept])
-					value.DisplayLength = int32(kept)
+					r.Nodes.Resolve(&value.Display, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -7821,7 +7231,7 @@ func StreamClockLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stream
 		case 0xee63aaad45b1b116:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -7834,28 +7244,12 @@ func StreamClockLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stream
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.State[:])
-					copy(value.State[:], text[:kept])
-					value.StateLength = int32(kept)
+					r.Nodes.Resolve(&value.State, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -7998,7 +7392,7 @@ func StreamClockLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stream
 		case 0x65e8d7f3474f2639:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -8011,28 +7405,12 @@ func StreamClockLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stream
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(512)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Reason[:])
-					copy(value.Reason[:], text[:kept])
-					value.ReasonLength = int32(kept)
+					r.Nodes.Resolve(&value.Reason, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -8111,7 +7489,7 @@ func StreamClockLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stream
 		case 0x7199c9dc1d25fa0a:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -8124,28 +7502,12 @@ func StreamClockLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stream
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(256)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Promotion[:])
-					copy(value.Promotion[:], text[:kept])
-					value.PromotionLength = int32(kept)
+					r.Nodes.Resolve(&value.Promotion, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -8154,7 +7516,7 @@ func StreamClockLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stream
 		case 0x670085da242ce106:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -8167,28 +7529,12 @@ func StreamClockLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stream
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.TierBlocked[:])
-					copy(value.TierBlocked[:], text[:kept])
-					value.TierBlockedLength = int32(kept)
+					r.Nodes.Resolve(&value.TierBlocked, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -8209,7 +7555,7 @@ func StreamClockSaveMessageBody(w *TableMessageWriter, value *StreamClock) bool 
 			return false
 		}
 		if value.StreamLength > 0 {
-			w.Put(41, TableMessageRefBitsHere)
+			w.Put(43, TableMessageRefBitsHere)
 			if value.StreamLength < 0 || value.StreamLength > 128 {
 				return false
 			}
@@ -8218,59 +7564,62 @@ func StreamClockSaveMessageBody(w *TableMessageWriter, value *StreamClock) bool 
 		}
 	}
 	{
-		if value.ReleaseLength < 0 || value.ReleaseLength > 128 {
-			return false
-		}
-		if value.ReleaseLength > 0 {
-			w.Put(179, TableMessageRefBitsHere)
-			if value.ReleaseLength < 0 || value.ReleaseLength > 128 {
-				return false
+		if value.Release != 0 {
+			w.Put(100, TableMessageRefBitsHere)
+			if value.Release == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Release)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ReleaseLength), 8)
-			w.Raw(value.Release[:value.ReleaseLength])
 		}
 	}
 	{
-		if value.DisplayLength < 0 || value.DisplayLength > 256 {
-			return false
-		}
-		if value.DisplayLength > 0 {
-			w.Put(180, TableMessageRefBitsHere)
-			if value.DisplayLength < 0 || value.DisplayLength > 256 {
-				return false
+		if value.Display != 0 {
+			w.Put(183, TableMessageRefBitsHere)
+			if value.Display == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Display)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.DisplayLength), 9)
-			w.Raw(value.Display[:value.DisplayLength])
 		}
 	}
 	{
-		if value.StateLength < 0 || value.StateLength > 32 {
-			return false
-		}
-		if value.StateLength > 0 {
-			w.Put(38, TableMessageRefBitsHere)
-			if value.StateLength < 0 || value.StateLength > 32 {
-				return false
+		if value.State != 0 {
+			w.Put(40, TableMessageRefBitsHere)
+			if value.State == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.State)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.StateLength), 6)
-			w.Raw(value.State[:value.StateLength])
 		}
 	}
 	{
 		if value.Since != 0 {
-			w.Put(43, TableMessageRefBitsHere)
+			w.Put(45, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Since), uint64(0))
 		}
 	}
 	{
 		if value.Progress != 0 {
-			w.Put(181, TableMessageRefBitsHere)
+			w.Put(184, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Progress), uint64(0))
 		}
 	}
 	{
 		if value.Empty != false {
-			w.Put(182, TableMessageRefBitsHere)
+			w.Put(185, TableMessageRefBitsHere)
 			if value.Empty {
 				w.Put(1, 1)
 			} else {
@@ -8280,7 +7629,7 @@ func StreamClockSaveMessageBody(w *TableMessageWriter, value *StreamClock) bool 
 	}
 	{
 		if value.Held != false {
-			w.Put(183, TableMessageRefBitsHere)
+			w.Put(186, TableMessageRefBitsHere)
 			if value.Held {
 				w.Put(1, 1)
 			} else {
@@ -8289,54 +7638,57 @@ func StreamClockSaveMessageBody(w *TableMessageWriter, value *StreamClock) bool 
 		}
 	}
 	{
-		if value.ReasonLength < 0 || value.ReasonLength > 512 {
-			return false
-		}
-		if value.ReasonLength > 0 {
-			w.Put(155, TableMessageRefBitsHere)
-			if value.ReasonLength < 0 || value.ReasonLength > 512 {
-				return false
+		if value.Reason != 0 {
+			w.Put(65, TableMessageRefBitsHere)
+			if value.Reason == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Reason)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ReasonLength), 10)
-			w.Raw(value.Reason[:value.ReasonLength])
 		}
 	}
 	{
 		if value.HeldCards != 0 {
-			w.Put(184, TableMessageRefBitsHere)
+			w.Put(187, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.HeldCards), uint64(0))
 		}
 	}
 	{
 		if value.Quiet != 0 {
-			w.Put(185, TableMessageRefBitsHere)
+			w.Put(188, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Quiet), uint64(0))
 		}
 	}
 	{
-		if value.PromotionLength < 0 || value.PromotionLength > 256 {
-			return false
-		}
-		if value.PromotionLength > 0 {
-			w.Put(186, TableMessageRefBitsHere)
-			if value.PromotionLength < 0 || value.PromotionLength > 256 {
-				return false
+		if value.Promotion != 0 {
+			w.Put(189, TableMessageRefBitsHere)
+			if value.Promotion == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Promotion)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.PromotionLength), 9)
-			w.Raw(value.Promotion[:value.PromotionLength])
 		}
 	}
 	{
-		if value.TierBlockedLength < 0 || value.TierBlockedLength > 64 {
-			return false
-		}
-		if value.TierBlockedLength > 0 {
-			w.Put(187, TableMessageRefBitsHere)
-			if value.TierBlockedLength < 0 || value.TierBlockedLength > 64 {
-				return false
+		if value.TierBlocked != 0 {
+			w.Put(190, TableMessageRefBitsHere)
+			if value.TierBlocked == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.TierBlocked)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.TierBlockedLength), 7)
-			w.Raw(value.TierBlocked[:value.TierBlockedLength])
 		}
 	}
 	w.Put(0, TableMessageRefBitsHere)
@@ -8405,7 +7757,7 @@ func StreamClockLoadMessageBody(r *TableMessageReader, value *StreamClock) bool 
 		case 0xa63d4c9b882b10fe:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -8418,28 +7770,12 @@ func StreamClockLoadMessageBody(r *TableMessageReader, value *StreamClock) bool 
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Release[:])
-					copy(value.Release[:], text[:kept])
-					value.ReleaseLength = int32(kept)
+					r.Nodes.Resolve(&value.Release, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -8448,7 +7784,7 @@ func StreamClockLoadMessageBody(r *TableMessageReader, value *StreamClock) bool 
 		case 0xe64d0ef45ab45695:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -8461,28 +7797,12 @@ func StreamClockLoadMessageBody(r *TableMessageReader, value *StreamClock) bool 
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(256)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Display[:])
-					copy(value.Display[:], text[:kept])
-					value.DisplayLength = int32(kept)
+					r.Nodes.Resolve(&value.Display, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -8491,7 +7811,7 @@ func StreamClockLoadMessageBody(r *TableMessageReader, value *StreamClock) bool 
 		case 0xee63aaad45b1b116:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -8504,28 +7824,12 @@ func StreamClockLoadMessageBody(r *TableMessageReader, value *StreamClock) bool 
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.State[:])
-					copy(value.State[:], text[:kept])
-					value.StateLength = int32(kept)
+					r.Nodes.Resolve(&value.State, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -8668,7 +7972,7 @@ func StreamClockLoadMessageBody(r *TableMessageReader, value *StreamClock) bool 
 		case 0x65e8d7f3474f2639:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -8681,28 +7985,12 @@ func StreamClockLoadMessageBody(r *TableMessageReader, value *StreamClock) bool 
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(512)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Reason[:])
-					copy(value.Reason[:], text[:kept])
-					value.ReasonLength = int32(kept)
+					r.Nodes.Resolve(&value.Reason, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -8781,7 +8069,7 @@ func StreamClockLoadMessageBody(r *TableMessageReader, value *StreamClock) bool 
 		case 0x7199c9dc1d25fa0a:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -8794,28 +8082,12 @@ func StreamClockLoadMessageBody(r *TableMessageReader, value *StreamClock) bool 
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(256)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Promotion[:])
-					copy(value.Promotion[:], text[:kept])
-					value.PromotionLength = int32(kept)
+					r.Nodes.Resolve(&value.Promotion, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -8824,7 +8096,7 @@ func StreamClockLoadMessageBody(r *TableMessageReader, value *StreamClock) bool 
 		case 0x670085da242ce106:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -8837,28 +8109,12 @@ func StreamClockLoadMessageBody(r *TableMessageReader, value *StreamClock) bool 
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.TierBlocked[:])
-					copy(value.TierBlocked[:], text[:kept])
-					value.TierBlockedLength = int32(kept)
+					r.Nodes.Resolve(&value.TierBlocked, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -9018,19 +8274,19 @@ func StageStatLoadMessageBodyRetain(r *TableRetainMessageReader, value *StageSta
 func StageStatSaveMessageBody(w *TableMessageWriter, value *StageStat) bool {
 	{
 		if value.Median != 0.0 {
-			w.Put(168, TableMessageRefBitsHere)
+			w.Put(172, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.Median), uint64(0))
 		}
 	}
 	{
 		if value.P90 != 0.0 {
-			w.Put(169, TableMessageRefBitsHere)
+			w.Put(173, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.P90), uint64(0))
 		}
 	}
 	{
 		if value.N != 0 {
-			w.Put(170, TableMessageRefBitsHere)
+			w.Put(174, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.N), uint64(0))
 		}
 	}
@@ -9227,7 +8483,7 @@ func StageTimesAllEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value 
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(9)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -9275,15 +8531,15 @@ func StageTimesAllEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value 
 }
 func StageTimesAllEntrySaveMessageBody(w *TableMessageWriter, value *StageTimesAllEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 64 {
+		if value.KeyLength < 0 || value.KeyLength > 9 {
 			return false
 		}
 		if value.KeyLength > 0 {
-			w.Put(2, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 64 {
+			w.Put(176, TableMessageRefBitsHere)
+			if value.KeyLength < 0 || value.KeyLength > 9 {
 				return false
 			}
-			w.Put(uint64(value.KeyLength), 7)
+			w.Put(uint64(value.KeyLength), 4)
 			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
@@ -9352,7 +8608,7 @@ func StageTimesAllEntryLoadMessageBody(r *TableMessageReader, value *StageTimesA
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(9)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -9442,7 +8698,7 @@ func StageTimesStreamsEntryValueEntryLoadMessageBodyRetain(r *TableRetainMessage
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(9)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -9490,15 +8746,15 @@ func StageTimesStreamsEntryValueEntryLoadMessageBodyRetain(r *TableRetainMessage
 }
 func StageTimesStreamsEntryValueEntrySaveMessageBody(w *TableMessageWriter, value *StageTimesStreamsEntryValueEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 64 {
+		if value.KeyLength < 0 || value.KeyLength > 9 {
 			return false
 		}
 		if value.KeyLength > 0 {
-			w.Put(2, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 64 {
+			w.Put(176, TableMessageRefBitsHere)
+			if value.KeyLength < 0 || value.KeyLength > 9 {
 				return false
 			}
-			w.Put(uint64(value.KeyLength), 7)
+			w.Put(uint64(value.KeyLength), 4)
 			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
@@ -9567,7 +8823,7 @@ func StageTimesStreamsEntryValueEntryLoadMessageBody(r *TableMessageReader, valu
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(9)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -9691,7 +8947,7 @@ func StageTimesStreamsEntryLoadMessageBodyRetain(r *TableRetainMessageReader, va
 					field := &StageTimesStreamsEntryTableFields[1]
 					holder := (*tableContainer)(unsafe.Pointer(&value.Value))
 					r.Retain.discard(r.Path, true, 1)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 96, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 40, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -9738,7 +8994,7 @@ func StageTimesStreamsEntryLoadMessageBodyRetain(r *TableRetainMessageReader, va
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*StageTimesStreamsEntryValueEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 96))
+							p = (*StageTimesStreamsEntryValueEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 40))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -9793,7 +9049,7 @@ func StageTimesStreamsEntrySaveMessageBody(w *TableMessageWriter, value *StageTi
 			return false
 		}
 		if value.Value.Count > 0 {
-			w.Put(11, TableMessageRefBitsHere)
+			w.Put(13, TableMessageRefBitsHere)
 			if value.Value.Count < 0 {
 				return false
 			}
@@ -9899,7 +9155,7 @@ func StageTimesStreamsEntryLoadMessageBody(r *TableMessageReader, value *StageTi
 					}
 					field := &StageTimesStreamsEntryTableFields[1]
 					holder := (*tableContainer)(unsafe.Pointer(&value.Value))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 96, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 40, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -9946,7 +9202,7 @@ func StageTimesStreamsEntryLoadMessageBody(r *TableMessageReader, value *StageTi
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*StageTimesStreamsEntryValueEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 96))
+							p = (*StageTimesStreamsEntryValueEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 40))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -10019,7 +9275,7 @@ func StageTimesLoadMessageBodyRetain(r *TableRetainMessageReader, value *StageTi
 					field := &StageTimesTableFields[0]
 					holder := (*tableContainer)(unsafe.Pointer(&value.All))
 					r.Retain.discard(r.Path, true, 0)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 96, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 40, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -10066,7 +9322,7 @@ func StageTimesLoadMessageBodyRetain(r *TableRetainMessageReader, value *StageTi
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*StageTimesAllEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 96))
+							p = (*StageTimesAllEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 40))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -10206,7 +9462,7 @@ func StageTimesSaveMessageBody(w *TableMessageWriter, value *StageTimes) bool {
 			return false
 		}
 		if value.All.Count > 0 {
-			w.Put(171, TableMessageRefBitsHere)
+			w.Put(175, TableMessageRefBitsHere)
 			if value.All.Count < 0 {
 				return false
 			}
@@ -10233,7 +9489,7 @@ func StageTimesSaveMessageBody(w *TableMessageWriter, value *StageTimes) bool {
 			return false
 		}
 		if value.Streams.Count > 0 {
-			w.Put(172, TableMessageRefBitsHere)
+			w.Put(177, TableMessageRefBitsHere)
 			if value.Streams.Count < 0 {
 				return false
 			}
@@ -10298,7 +9554,7 @@ func StageTimesLoadMessageBody(r *TableMessageReader, value *StageTimes) bool {
 					}
 					field := &StageTimesTableFields[0]
 					holder := (*tableContainer)(unsafe.Pointer(&value.All))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 96, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 40, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -10345,7 +9601,7 @@ func StageTimesLoadMessageBody(r *TableMessageReader, value *StageTimes) bool {
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*StageTimesAllEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 96))
+							p = (*StageTimesAllEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 40))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -10567,7 +9823,7 @@ func CriticalCardLoadMessageBodyRetain(r *TableRetainMessageReader, value *Criti
 		case 0xee63aaad45b1b116:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -10580,28 +9836,12 @@ func CriticalCardLoadMessageBodyRetain(r *TableRetainMessageReader, value *Criti
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.State[:])
-					copy(value.State[:], text[:kept])
-					value.StateLength = int32(kept)
+					r.Nodes.Resolve(&value.State, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -10622,7 +9862,7 @@ func CriticalCardSaveMessageBody(w *TableMessageWriter, value *CriticalCard) boo
 			return false
 		}
 		if value.IdLength > 0 {
-			w.Put(36, TableMessageRefBitsHere)
+			w.Put(38, TableMessageRefBitsHere)
 			if value.IdLength < 0 || value.IdLength > 515 {
 				return false
 			}
@@ -10632,21 +9872,22 @@ func CriticalCardSaveMessageBody(w *TableMessageWriter, value *CriticalCard) boo
 	}
 	{
 		if value.Behind != 0 {
-			w.Put(37, TableMessageRefBitsHere)
+			w.Put(39, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Behind), uint64(0))
 		}
 	}
 	{
-		if value.StateLength < 0 || value.StateLength > 32 {
-			return false
-		}
-		if value.StateLength > 0 {
-			w.Put(38, TableMessageRefBitsHere)
-			if value.StateLength < 0 || value.StateLength > 32 {
-				return false
+		if value.State != 0 {
+			w.Put(40, TableMessageRefBitsHere)
+			if value.State == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.State)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.StateLength), 6)
-			w.Raw(value.State[:value.StateLength])
 		}
 	}
 	w.Put(0, TableMessageRefBitsHere)
@@ -10750,7 +9991,7 @@ func CriticalCardLoadMessageBody(r *TableMessageReader, value *CriticalCard) boo
 		case 0xee63aaad45b1b116:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -10763,28 +10004,12 @@ func CriticalCardLoadMessageBody(r *TableMessageReader, value *CriticalCard) boo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.State[:])
-					copy(value.State[:], text[:kept])
-					value.StateLength = int32(kept)
+					r.Nodes.Resolve(&value.State, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -10848,7 +10073,7 @@ func GoalViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *GoalView)
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -10863,7 +10088,7 @@ func GoalViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *GoalView)
 		case 0x3127fb469f19ebde:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -10876,28 +10101,12 @@ func GoalViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *GoalView)
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Route[:])
-					copy(value.Route[:], text[:kept])
-					value.RouteLength = int32(kept)
+					r.Nodes.Resolve(&value.Route, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -10976,7 +10185,7 @@ func GoalViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *GoalView)
 		case 0xee63aaad45b1b116:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -10989,28 +10198,12 @@ func GoalViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *GoalView)
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.State[:])
-					copy(value.State[:], text[:kept])
-					value.StateLength = int32(kept)
+					r.Nodes.Resolve(&value.State, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -11019,7 +10212,7 @@ func GoalViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *GoalView)
 		case 0x9f7452dd75d54d31:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -11032,28 +10225,12 @@ func GoalViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *GoalView)
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Error[:])
-					copy(value.Error[:], text[:kept])
-					value.ErrorLength = int32(kept)
+					r.Nodes.Resolve(&value.Error, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -11090,7 +10267,7 @@ func GoalViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *GoalView)
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(65536)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -11113,79 +10290,82 @@ func GoalViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *GoalView)
 }
 func GoalViewSaveMessageBody(w *TableMessageWriter, value *GoalView) bool {
 	{
-		if value.NameLength < 0 || value.NameLength > 128 {
+		if value.NameLength < 0 || value.NameLength > 64 {
 			return false
 		}
 		if value.NameLength > 0 {
-			w.Put(67, TableMessageRefBitsHere)
-			if value.NameLength < 0 || value.NameLength > 128 {
+			w.Put(89, TableMessageRefBitsHere)
+			if value.NameLength < 0 || value.NameLength > 64 {
 				return false
 			}
-			w.Put(uint64(value.NameLength), 8)
+			w.Put(uint64(value.NameLength), 7)
 			w.Raw(value.Name[:value.NameLength])
 		}
 	}
 	{
-		if value.RouteLength < 0 || value.RouteLength > 128 {
-			return false
-		}
-		if value.RouteLength > 0 {
-			w.Put(87, TableMessageRefBitsHere)
-			if value.RouteLength < 0 || value.RouteLength > 128 {
-				return false
+		if value.Route != 0 {
+			w.Put(90, TableMessageRefBitsHere)
+			if value.Route == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Route)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.RouteLength), 8)
-			w.Raw(value.Route[:value.RouteLength])
 		}
 	}
 	{
 		if value.Last != 0 {
-			w.Put(88, TableMessageRefBitsHere)
+			w.Put(91, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Last), uint64(0))
 		}
 	}
 	{
 		if value.Count != 0 {
-			w.Put(48, TableMessageRefBitsHere)
+			w.Put(50, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Count), uint64(0))
 		}
 	}
 	{
-		if value.StateLength < 0 || value.StateLength > 32 {
-			return false
-		}
-		if value.StateLength > 0 {
-			w.Put(38, TableMessageRefBitsHere)
-			if value.StateLength < 0 || value.StateLength > 32 {
-				return false
+		if value.State != 0 {
+			w.Put(40, TableMessageRefBitsHere)
+			if value.State == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.State)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.StateLength), 6)
-			w.Raw(value.State[:value.StateLength])
 		}
 	}
 	{
-		if value.ErrorLength < 0 || value.ErrorLength > 1024 {
-			return false
-		}
-		if value.ErrorLength > 0 {
-			w.Put(89, TableMessageRefBitsHere)
-			if value.ErrorLength < 0 || value.ErrorLength > 1024 {
-				return false
+		if value.Error != 0 {
+			w.Put(92, TableMessageRefBitsHere)
+			if value.Error == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Error)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ErrorLength), 11)
-			w.Raw(value.Error[:value.ErrorLength])
 		}
 	}
 	{
-		if value.TextLength < 0 || value.TextLength > 1024 {
+		if value.TextLength < 0 || value.TextLength > 65536 {
 			return false
 		}
 		if value.TextLength > 0 {
-			w.Put(90, TableMessageRefBitsHere)
-			if value.TextLength < 0 || value.TextLength > 1024 {
+			w.Put(93, TableMessageRefBitsHere)
+			if value.TextLength < 0 || value.TextLength > 65536 {
 				return false
 			}
-			w.Put(uint64(value.TextLength), 11)
+			w.Put(uint64(value.TextLength), 17)
 			w.Raw(value.Text[:value.TextLength])
 		}
 	}
@@ -11240,7 +10420,7 @@ func GoalViewLoadMessageBody(r *TableMessageReader, value *GoalView) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -11255,7 +10435,7 @@ func GoalViewLoadMessageBody(r *TableMessageReader, value *GoalView) bool {
 		case 0x3127fb469f19ebde:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -11268,28 +10448,12 @@ func GoalViewLoadMessageBody(r *TableMessageReader, value *GoalView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Route[:])
-					copy(value.Route[:], text[:kept])
-					value.RouteLength = int32(kept)
+					r.Nodes.Resolve(&value.Route, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -11368,7 +10532,7 @@ func GoalViewLoadMessageBody(r *TableMessageReader, value *GoalView) bool {
 		case 0xee63aaad45b1b116:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -11381,28 +10545,12 @@ func GoalViewLoadMessageBody(r *TableMessageReader, value *GoalView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.State[:])
-					copy(value.State[:], text[:kept])
-					value.StateLength = int32(kept)
+					r.Nodes.Resolve(&value.State, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -11411,7 +10559,7 @@ func GoalViewLoadMessageBody(r *TableMessageReader, value *GoalView) bool {
 		case 0x9f7452dd75d54d31:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -11424,28 +10572,12 @@ func GoalViewLoadMessageBody(r *TableMessageReader, value *GoalView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Error[:])
-					copy(value.Error[:], text[:kept])
-					value.ErrorLength = int32(kept)
+					r.Nodes.Resolve(&value.Error, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -11482,7 +10614,7 @@ func GoalViewLoadMessageBody(r *TableMessageReader, value *GoalView) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(65536)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -11524,7 +10656,7 @@ func SeatChangeLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatCha
 		case 0x630853b55c723d4f:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -11537,28 +10669,12 @@ func SeatChangeLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatCha
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Holder[:])
-					copy(value.Holder[:], text[:kept])
-					value.HolderLength = int32(kept)
+					r.Nodes.Resolve(&value.Holder, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -11602,7 +10718,7 @@ func SeatChangeLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatCha
 		case 0x7f845078d7a5c0b5:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -11615,28 +10731,12 @@ func SeatChangeLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatCha
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.From[:])
-					copy(value.From[:], text[:kept])
-					value.FromLength = int32(kept)
+					r.Nodes.Resolve(&value.From, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -11680,7 +10780,7 @@ func SeatChangeLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatCha
 		case 0x08a64b07b54df8d4:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -11693,28 +10793,12 @@ func SeatChangeLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatCha
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.By[:])
-					copy(value.By[:], text[:kept])
-					value.ByLength = int32(kept)
+					r.Nodes.Resolve(&value.By, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -11755,7 +10839,7 @@ func SeatChangeLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatCha
 		case 0xd820e861048719da:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -11768,28 +10852,12 @@ func SeatChangeLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatCha
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.ApprovedBy[:])
-					copy(value.ApprovedBy[:], text[:kept])
-					value.ApprovedByLength = int32(kept)
+					r.Nodes.Resolve(&value.ApprovedBy, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -11798,7 +10866,7 @@ func SeatChangeLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatCha
 		case 0x65e8d7f3474f2639:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -11811,28 +10879,12 @@ func SeatChangeLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatCha
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(512)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Reason[:])
-					copy(value.Reason[:], text[:kept])
-					value.ReasonLength = int32(kept)
+					r.Nodes.Resolve(&value.Reason, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -11849,59 +10901,62 @@ func SeatChangeLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatCha
 }
 func SeatChangeSaveMessageBody(w *TableMessageWriter, value *SeatChange) bool {
 	{
-		if value.HolderLength < 0 || value.HolderLength > 135 {
-			return false
-		}
-		if value.HolderLength > 0 {
-			w.Put(149, TableMessageRefBitsHere)
-			if value.HolderLength < 0 || value.HolderLength > 135 {
-				return false
+		if value.Holder != 0 {
+			w.Put(154, TableMessageRefBitsHere)
+			if value.Holder == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Holder)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.HolderLength), 8)
-			w.Raw(value.Holder[:value.HolderLength])
 		}
 	}
 	{
 		if value.Generation != 0 {
-			w.Put(150, TableMessageRefBitsHere)
+			w.Put(155, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 9, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Generation), uint64(0))
 		}
 	}
 	{
-		if value.FromLength < 0 || value.FromLength > 135 {
-			return false
-		}
-		if value.FromLength > 0 {
-			w.Put(151, TableMessageRefBitsHere)
-			if value.FromLength < 0 || value.FromLength > 135 {
-				return false
+		if value.From != 0 {
+			w.Put(156, TableMessageRefBitsHere)
+			if value.From == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.From)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.FromLength), 8)
-			w.Raw(value.From[:value.FromLength])
 		}
 	}
 	{
 		if value.At != 0 {
-			w.Put(152, TableMessageRefBitsHere)
+			w.Put(157, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.At), uint64(0))
 		}
 	}
 	{
-		if value.ByLength < 0 || value.ByLength > 135 {
-			return false
-		}
-		if value.ByLength > 0 {
-			w.Put(93, TableMessageRefBitsHere)
-			if value.ByLength < 0 || value.ByLength > 135 {
-				return false
+		if value.By != 0 {
+			w.Put(96, TableMessageRefBitsHere)
+			if value.By == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.By)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ByLength), 8)
-			w.Raw(value.By[:value.ByLength])
 		}
 	}
 	{
 		if value.Taken != false {
-			w.Put(153, TableMessageRefBitsHere)
+			w.Put(158, TableMessageRefBitsHere)
 			if value.Taken {
 				w.Put(1, 1)
 			} else {
@@ -11910,29 +10965,31 @@ func SeatChangeSaveMessageBody(w *TableMessageWriter, value *SeatChange) bool {
 		}
 	}
 	{
-		if value.ApprovedByLength < 0 || value.ApprovedByLength > 135 {
-			return false
-		}
-		if value.ApprovedByLength > 0 {
-			w.Put(154, TableMessageRefBitsHere)
-			if value.ApprovedByLength < 0 || value.ApprovedByLength > 135 {
-				return false
+		if value.ApprovedBy != 0 {
+			w.Put(159, TableMessageRefBitsHere)
+			if value.ApprovedBy == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.ApprovedBy)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ApprovedByLength), 8)
-			w.Raw(value.ApprovedBy[:value.ApprovedByLength])
 		}
 	}
 	{
-		if value.ReasonLength < 0 || value.ReasonLength > 512 {
-			return false
-		}
-		if value.ReasonLength > 0 {
-			w.Put(155, TableMessageRefBitsHere)
-			if value.ReasonLength < 0 || value.ReasonLength > 512 {
-				return false
+		if value.Reason != 0 {
+			w.Put(65, TableMessageRefBitsHere)
+			if value.Reason == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Reason)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ReasonLength), 10)
-			w.Raw(value.Reason[:value.ReasonLength])
 		}
 	}
 	w.Put(0, TableMessageRefBitsHere)
@@ -11958,7 +11015,7 @@ func SeatChangeLoadMessageBody(r *TableMessageReader, value *SeatChange) bool {
 		case 0x630853b55c723d4f:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -11971,28 +11028,12 @@ func SeatChangeLoadMessageBody(r *TableMessageReader, value *SeatChange) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Holder[:])
-					copy(value.Holder[:], text[:kept])
-					value.HolderLength = int32(kept)
+					r.Nodes.Resolve(&value.Holder, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -12036,7 +11077,7 @@ func SeatChangeLoadMessageBody(r *TableMessageReader, value *SeatChange) bool {
 		case 0x7f845078d7a5c0b5:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -12049,28 +11090,12 @@ func SeatChangeLoadMessageBody(r *TableMessageReader, value *SeatChange) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.From[:])
-					copy(value.From[:], text[:kept])
-					value.FromLength = int32(kept)
+					r.Nodes.Resolve(&value.From, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -12114,7 +11139,7 @@ func SeatChangeLoadMessageBody(r *TableMessageReader, value *SeatChange) bool {
 		case 0x08a64b07b54df8d4:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -12127,28 +11152,12 @@ func SeatChangeLoadMessageBody(r *TableMessageReader, value *SeatChange) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.By[:])
-					copy(value.By[:], text[:kept])
-					value.ByLength = int32(kept)
+					r.Nodes.Resolve(&value.By, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -12189,7 +11198,7 @@ func SeatChangeLoadMessageBody(r *TableMessageReader, value *SeatChange) bool {
 		case 0xd820e861048719da:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -12202,28 +11211,12 @@ func SeatChangeLoadMessageBody(r *TableMessageReader, value *SeatChange) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.ApprovedBy[:])
-					copy(value.ApprovedBy[:], text[:kept])
-					value.ApprovedByLength = int32(kept)
+					r.Nodes.Resolve(&value.ApprovedBy, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -12232,7 +11225,7 @@ func SeatChangeLoadMessageBody(r *TableMessageReader, value *SeatChange) bool {
 		case 0x65e8d7f3474f2639:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -12245,28 +11238,12 @@ func SeatChangeLoadMessageBody(r *TableMessageReader, value *SeatChange) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(512)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Reason[:])
-					copy(value.Reason[:], text[:kept])
-					value.ReasonLength = int32(kept)
+					r.Nodes.Resolve(&value.Reason, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -12302,7 +11279,7 @@ func HoldViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *HoldView)
 		case 0xef9c96d721673243:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -12315,28 +11292,12 @@ func HoldViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *HoldView)
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Kind[:])
-					copy(value.Kind[:], text[:kept])
-					value.KindLength = int32(kept)
+					r.Nodes.Resolve(&value.Kind, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -12388,7 +11349,7 @@ func HoldViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *HoldView)
 		case 0x65e8d7f3474f2639:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -12401,28 +11362,12 @@ func HoldViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *HoldView)
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Reason[:])
-					copy(value.Reason[:], text[:kept])
-					value.ReasonLength = int32(kept)
+					r.Nodes.Resolve(&value.Reason, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -12431,7 +11376,7 @@ func HoldViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *HoldView)
 		case 0x08a64b07b54df8d4:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -12444,28 +11389,12 @@ func HoldViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *HoldView)
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.By[:])
-					copy(value.By[:], text[:kept])
-					value.ByLength = int32(kept)
+					r.Nodes.Resolve(&value.By, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -12474,7 +11403,7 @@ func HoldViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *HoldView)
 		case 0x089c4e07b545a968:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -12487,28 +11416,12 @@ func HoldViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *HoldView)
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.At[:])
-					copy(value.At[:], text[:kept])
-					value.AtLength = int32(kept)
+					r.Nodes.Resolve(&value.At, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -12549,7 +11462,7 @@ func HoldViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *HoldView)
 		case 0xb733af3b0d745380:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -12562,28 +11475,12 @@ func HoldViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *HoldView)
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(512)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Cause[:])
-					copy(value.Cause[:], text[:kept])
-					value.CauseLength = int32(kept)
+					r.Nodes.Resolve(&value.Cause, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -12592,7 +11489,7 @@ func HoldViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *HoldView)
 		case 0x5ec5fc194891690f:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -12605,28 +11502,12 @@ func HoldViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *HoldView)
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Who[:])
-					copy(value.Who[:], text[:kept])
-					value.WhoLength = int32(kept)
+					r.Nodes.Resolve(&value.Who, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -12635,7 +11516,7 @@ func HoldViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *HoldView)
 		case 0xa63d4c9b882b10fe:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -12648,28 +11529,12 @@ func HoldViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *HoldView)
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(256)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Release[:])
-					copy(value.Release[:], text[:kept])
-					value.ReleaseLength = int32(kept)
+					r.Nodes.Resolve(&value.Release, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -12686,16 +11551,17 @@ func HoldViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *HoldView)
 }
 func HoldViewSaveMessageBody(w *TableMessageWriter, value *HoldView) bool {
 	{
-		if value.KindLength < 0 || value.KindLength > 32 {
-			return false
-		}
-		if value.KindLength > 0 {
-			w.Put(91, TableMessageRefBitsHere)
-			if value.KindLength < 0 || value.KindLength > 32 {
-				return false
+		if value.Kind != 0 {
+			w.Put(94, TableMessageRefBitsHere)
+			if value.Kind == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Kind)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.KindLength), 6)
-			w.Raw(value.Kind[:value.KindLength])
 		}
 	}
 	{
@@ -12703,7 +11569,7 @@ func HoldViewSaveMessageBody(w *TableMessageWriter, value *HoldView) bool {
 			return false
 		}
 		if value.NameLength > 0 {
-			w.Put(92, TableMessageRefBitsHere)
+			w.Put(95, TableMessageRefBitsHere)
 			if value.NameLength < 0 || value.NameLength > 515 {
 				return false
 			}
@@ -12712,47 +11578,50 @@ func HoldViewSaveMessageBody(w *TableMessageWriter, value *HoldView) bool {
 		}
 	}
 	{
-		if value.ReasonLength < 0 || value.ReasonLength > 1024 {
-			return false
-		}
-		if value.ReasonLength > 0 {
-			w.Put(63, TableMessageRefBitsHere)
-			if value.ReasonLength < 0 || value.ReasonLength > 1024 {
-				return false
+		if value.Reason != 0 {
+			w.Put(65, TableMessageRefBitsHere)
+			if value.Reason == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Reason)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ReasonLength), 11)
-			w.Raw(value.Reason[:value.ReasonLength])
 		}
 	}
 	{
-		if value.ByLength < 0 || value.ByLength > 135 {
-			return false
-		}
-		if value.ByLength > 0 {
-			w.Put(93, TableMessageRefBitsHere)
-			if value.ByLength < 0 || value.ByLength > 135 {
-				return false
+		if value.By != 0 {
+			w.Put(96, TableMessageRefBitsHere)
+			if value.By == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.By)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ByLength), 8)
-			w.Raw(value.By[:value.ByLength])
 		}
 	}
 	{
-		if value.AtLength < 0 || value.AtLength > 64 {
-			return false
-		}
-		if value.AtLength > 0 {
-			w.Put(26, TableMessageRefBitsHere)
-			if value.AtLength < 0 || value.AtLength > 64 {
-				return false
+		if value.At != 0 {
+			w.Put(28, TableMessageRefBitsHere)
+			if value.At == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.At)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.AtLength), 7)
-			w.Raw(value.At[:value.AtLength])
 		}
 	}
 	{
 		if value.HandedBack != false {
-			w.Put(94, TableMessageRefBitsHere)
+			w.Put(97, TableMessageRefBitsHere)
 			if value.HandedBack {
 				w.Put(1, 1)
 			} else {
@@ -12761,42 +11630,45 @@ func HoldViewSaveMessageBody(w *TableMessageWriter, value *HoldView) bool {
 		}
 	}
 	{
-		if value.CauseLength < 0 || value.CauseLength > 512 {
-			return false
-		}
-		if value.CauseLength > 0 {
-			w.Put(95, TableMessageRefBitsHere)
-			if value.CauseLength < 0 || value.CauseLength > 512 {
-				return false
+		if value.Cause != 0 {
+			w.Put(98, TableMessageRefBitsHere)
+			if value.Cause == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Cause)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.CauseLength), 10)
-			w.Raw(value.Cause[:value.CauseLength])
 		}
 	}
 	{
-		if value.WhoLength < 0 || value.WhoLength > 135 {
-			return false
-		}
-		if value.WhoLength > 0 {
-			w.Put(96, TableMessageRefBitsHere)
-			if value.WhoLength < 0 || value.WhoLength > 135 {
-				return false
+		if value.Who != 0 {
+			w.Put(99, TableMessageRefBitsHere)
+			if value.Who == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Who)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.WhoLength), 8)
-			w.Raw(value.Who[:value.WhoLength])
 		}
 	}
 	{
-		if value.ReleaseLength < 0 || value.ReleaseLength > 256 {
-			return false
-		}
-		if value.ReleaseLength > 0 {
-			w.Put(97, TableMessageRefBitsHere)
-			if value.ReleaseLength < 0 || value.ReleaseLength > 256 {
-				return false
+		if value.Release != 0 {
+			w.Put(100, TableMessageRefBitsHere)
+			if value.Release == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Release)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ReleaseLength), 9)
-			w.Raw(value.Release[:value.ReleaseLength])
 		}
 	}
 	w.Put(0, TableMessageRefBitsHere)
@@ -12822,7 +11694,7 @@ func HoldViewLoadMessageBody(r *TableMessageReader, value *HoldView) bool {
 		case 0xef9c96d721673243:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -12835,28 +11707,12 @@ func HoldViewLoadMessageBody(r *TableMessageReader, value *HoldView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Kind[:])
-					copy(value.Kind[:], text[:kept])
-					value.KindLength = int32(kept)
+					r.Nodes.Resolve(&value.Kind, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -12908,7 +11764,7 @@ func HoldViewLoadMessageBody(r *TableMessageReader, value *HoldView) bool {
 		case 0x65e8d7f3474f2639:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -12921,28 +11777,12 @@ func HoldViewLoadMessageBody(r *TableMessageReader, value *HoldView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Reason[:])
-					copy(value.Reason[:], text[:kept])
-					value.ReasonLength = int32(kept)
+					r.Nodes.Resolve(&value.Reason, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -12951,7 +11791,7 @@ func HoldViewLoadMessageBody(r *TableMessageReader, value *HoldView) bool {
 		case 0x08a64b07b54df8d4:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -12964,28 +11804,12 @@ func HoldViewLoadMessageBody(r *TableMessageReader, value *HoldView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.By[:])
-					copy(value.By[:], text[:kept])
-					value.ByLength = int32(kept)
+					r.Nodes.Resolve(&value.By, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -12994,7 +11818,7 @@ func HoldViewLoadMessageBody(r *TableMessageReader, value *HoldView) bool {
 		case 0x089c4e07b545a968:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -13007,28 +11831,12 @@ func HoldViewLoadMessageBody(r *TableMessageReader, value *HoldView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.At[:])
-					copy(value.At[:], text[:kept])
-					value.AtLength = int32(kept)
+					r.Nodes.Resolve(&value.At, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -13069,7 +11877,7 @@ func HoldViewLoadMessageBody(r *TableMessageReader, value *HoldView) bool {
 		case 0xb733af3b0d745380:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -13082,28 +11890,12 @@ func HoldViewLoadMessageBody(r *TableMessageReader, value *HoldView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(512)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Cause[:])
-					copy(value.Cause[:], text[:kept])
-					value.CauseLength = int32(kept)
+					r.Nodes.Resolve(&value.Cause, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -13112,7 +11904,7 @@ func HoldViewLoadMessageBody(r *TableMessageReader, value *HoldView) bool {
 		case 0x5ec5fc194891690f:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -13125,28 +11917,12 @@ func HoldViewLoadMessageBody(r *TableMessageReader, value *HoldView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Who[:])
-					copy(value.Who[:], text[:kept])
-					value.WhoLength = int32(kept)
+					r.Nodes.Resolve(&value.Who, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -13155,7 +11931,7 @@ func HoldViewLoadMessageBody(r *TableMessageReader, value *HoldView) bool {
 		case 0xa63d4c9b882b10fe:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -13168,28 +11944,12 @@ func HoldViewLoadMessageBody(r *TableMessageReader, value *HoldView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(256)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Release[:])
-					copy(value.Release[:], text[:kept])
-					value.ReleaseLength = int32(kept)
+					r.Nodes.Resolve(&value.Release, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -13225,7 +11985,7 @@ func StopLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stop) bool {
 		case 0xef9c96d721673243:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -13238,28 +11998,12 @@ func StopLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stop) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Kind[:])
-					copy(value.Kind[:], text[:kept])
-					value.KindLength = int32(kept)
+					r.Nodes.Resolve(&value.Kind, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -13346,7 +12090,7 @@ func StopLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stop) bool {
 		case 0x9be8c5f64f26c30f:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -13359,28 +12103,12 @@ func StopLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stop) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.What[:])
-					copy(value.What[:], text[:kept])
-					value.WhatLength = int32(kept)
+					r.Nodes.Resolve(&value.What, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -13389,7 +12117,7 @@ func StopLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stop) bool {
 		case 0x36c1c83b51f24394:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -13402,28 +12130,12 @@ func StopLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stop) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Effect[:])
-					copy(value.Effect[:], text[:kept])
-					value.EffectLength = int32(kept)
+					r.Nodes.Resolve(&value.Effect, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -13432,7 +12144,7 @@ func StopLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stop) bool {
 		case 0x64bde8e4857adf2f:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -13445,28 +12157,12 @@ func StopLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stop) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Undo[:])
-					copy(value.Undo[:], text[:kept])
-					value.UndoLength = int32(kept)
+					r.Nodes.Resolve(&value.Undo, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -13475,7 +12171,7 @@ func StopLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stop) bool {
 		case 0x5062cd8f7a7fd349:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -13488,28 +12184,12 @@ func StopLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stop) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Signal[:])
-					copy(value.Signal[:], text[:kept])
-					value.SignalLength = int32(kept)
+					r.Nodes.Resolve(&value.Signal, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -13526,16 +12206,17 @@ func StopLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stop) bool {
 }
 func StopSaveMessageBody(w *TableMessageWriter, value *Stop) bool {
 	{
-		if value.KindLength < 0 || value.KindLength > 64 {
-			return false
-		}
-		if value.KindLength > 0 {
-			w.Put(173, TableMessageRefBitsHere)
-			if value.KindLength < 0 || value.KindLength > 64 {
-				return false
+		if value.Kind != 0 {
+			w.Put(94, TableMessageRefBitsHere)
+			if value.Kind == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Kind)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.KindLength), 7)
-			w.Raw(value.Kind[:value.KindLength])
 		}
 	}
 	{
@@ -13543,7 +12224,7 @@ func StopSaveMessageBody(w *TableMessageWriter, value *Stop) bool {
 			return false
 		}
 		if value.SubjectLength > 0 {
-			w.Put(174, TableMessageRefBitsHere)
+			w.Put(178, TableMessageRefBitsHere)
 			if value.SubjectLength < 0 || value.SubjectLength > 515 {
 				return false
 			}
@@ -13553,60 +12234,64 @@ func StopSaveMessageBody(w *TableMessageWriter, value *Stop) bool {
 	}
 	{
 		if value.Since != 0 {
-			w.Put(43, TableMessageRefBitsHere)
+			w.Put(45, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Since), uint64(0))
 		}
 	}
 	{
-		if value.WhatLength < 0 || value.WhatLength > 1024 {
-			return false
-		}
-		if value.WhatLength > 0 {
-			w.Put(175, TableMessageRefBitsHere)
-			if value.WhatLength < 0 || value.WhatLength > 1024 {
-				return false
+		if value.What != 0 {
+			w.Put(179, TableMessageRefBitsHere)
+			if value.What == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.What)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.WhatLength), 11)
-			w.Raw(value.What[:value.WhatLength])
 		}
 	}
 	{
-		if value.EffectLength < 0 || value.EffectLength > 1024 {
-			return false
-		}
-		if value.EffectLength > 0 {
-			w.Put(176, TableMessageRefBitsHere)
-			if value.EffectLength < 0 || value.EffectLength > 1024 {
-				return false
+		if value.Effect != 0 {
+			w.Put(180, TableMessageRefBitsHere)
+			if value.Effect == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Effect)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.EffectLength), 11)
-			w.Raw(value.Effect[:value.EffectLength])
 		}
 	}
 	{
-		if value.UndoLength < 0 || value.UndoLength > 1024 {
-			return false
-		}
-		if value.UndoLength > 0 {
-			w.Put(177, TableMessageRefBitsHere)
-			if value.UndoLength < 0 || value.UndoLength > 1024 {
-				return false
+		if value.Undo != 0 {
+			w.Put(181, TableMessageRefBitsHere)
+			if value.Undo == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Undo)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.UndoLength), 11)
-			w.Raw(value.Undo[:value.UndoLength])
 		}
 	}
 	{
-		if value.SignalLength < 0 || value.SignalLength > 1024 {
-			return false
-		}
-		if value.SignalLength > 0 {
-			w.Put(178, TableMessageRefBitsHere)
-			if value.SignalLength < 0 || value.SignalLength > 1024 {
-				return false
+		if value.Signal != 0 {
+			w.Put(182, TableMessageRefBitsHere)
+			if value.Signal == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Signal)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.SignalLength), 11)
-			w.Raw(value.Signal[:value.SignalLength])
 		}
 	}
 	w.Put(0, TableMessageRefBitsHere)
@@ -13632,7 +12317,7 @@ func StopLoadMessageBody(r *TableMessageReader, value *Stop) bool {
 		case 0xef9c96d721673243:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -13645,28 +12330,12 @@ func StopLoadMessageBody(r *TableMessageReader, value *Stop) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Kind[:])
-					copy(value.Kind[:], text[:kept])
-					value.KindLength = int32(kept)
+					r.Nodes.Resolve(&value.Kind, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -13753,7 +12422,7 @@ func StopLoadMessageBody(r *TableMessageReader, value *Stop) bool {
 		case 0x9be8c5f64f26c30f:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -13766,28 +12435,12 @@ func StopLoadMessageBody(r *TableMessageReader, value *Stop) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.What[:])
-					copy(value.What[:], text[:kept])
-					value.WhatLength = int32(kept)
+					r.Nodes.Resolve(&value.What, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -13796,7 +12449,7 @@ func StopLoadMessageBody(r *TableMessageReader, value *Stop) bool {
 		case 0x36c1c83b51f24394:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -13809,28 +12462,12 @@ func StopLoadMessageBody(r *TableMessageReader, value *Stop) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Effect[:])
-					copy(value.Effect[:], text[:kept])
-					value.EffectLength = int32(kept)
+					r.Nodes.Resolve(&value.Effect, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -13839,7 +12476,7 @@ func StopLoadMessageBody(r *TableMessageReader, value *Stop) bool {
 		case 0x64bde8e4857adf2f:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -13852,28 +12489,12 @@ func StopLoadMessageBody(r *TableMessageReader, value *Stop) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Undo[:])
-					copy(value.Undo[:], text[:kept])
-					value.UndoLength = int32(kept)
+					r.Nodes.Resolve(&value.Undo, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -13882,7 +12503,7 @@ func StopLoadMessageBody(r *TableMessageReader, value *Stop) bool {
 		case 0x5062cd8f7a7fd349:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -13895,28 +12516,12 @@ func StopLoadMessageBody(r *TableMessageReader, value *Stop) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Signal[:])
-					copy(value.Signal[:], text[:kept])
-					value.SignalLength = int32(kept)
+					r.Nodes.Resolve(&value.Signal, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -14022,7 +12627,7 @@ func SeatWaitsLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatWait
 		case 0x40286155ce1935ae:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -14035,28 +12640,12 @@ func SeatWaitsLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatWait
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.OldestId[:])
-					copy(value.OldestId[:], text[:kept])
-					value.OldestIdLength = int32(kept)
+					r.Nodes.Resolve(&value.OldestId, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -14065,7 +12654,7 @@ func SeatWaitsLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatWait
 		case 0xf8e42f20bf747d1b:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -14078,28 +12667,12 @@ func SeatWaitsLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatWait
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.OldestType[:])
-					copy(value.OldestType[:], text[:kept])
-					value.OldestTypeLength = int32(kept)
+					r.Nodes.Resolve(&value.OldestType, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -14257,63 +12830,65 @@ func SeatWaitsLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatWait
 func SeatWaitsSaveMessageBody(w *TableMessageWriter, value *SeatWaits) bool {
 	{
 		if value.Judgments != 0 {
-			w.Put(156, TableMessageRefBitsHere)
+			w.Put(160, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Judgments), uint64(0))
 		}
 	}
 	{
 		if value.Overdue != 0 {
-			w.Put(157, TableMessageRefBitsHere)
+			w.Put(161, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Overdue), uint64(0))
 		}
 	}
 	{
-		if value.OldestIdLength < 0 || value.OldestIdLength > 128 {
-			return false
-		}
-		if value.OldestIdLength > 0 {
-			w.Put(158, TableMessageRefBitsHere)
-			if value.OldestIdLength < 0 || value.OldestIdLength > 128 {
-				return false
+		if value.OldestId != 0 {
+			w.Put(162, TableMessageRefBitsHere)
+			if value.OldestId == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.OldestId)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.OldestIdLength), 8)
-			w.Raw(value.OldestId[:value.OldestIdLength])
 		}
 	}
 	{
-		if value.OldestTypeLength < 0 || value.OldestTypeLength > 128 {
-			return false
-		}
-		if value.OldestTypeLength > 0 {
-			w.Put(159, TableMessageRefBitsHere)
-			if value.OldestTypeLength < 0 || value.OldestTypeLength > 128 {
-				return false
+		if value.OldestType != 0 {
+			w.Put(163, TableMessageRefBitsHere)
+			if value.OldestType == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.OldestType)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.OldestTypeLength), 8)
-			w.Raw(value.OldestType[:value.OldestTypeLength])
 		}
 	}
 	{
 		if value.OldestAt != 0 {
-			w.Put(160, TableMessageRefBitsHere)
+			w.Put(164, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.OldestAt), uint64(0))
 		}
 	}
 	{
 		if value.Level != 0 {
-			w.Put(161, TableMessageRefBitsHere)
+			w.Put(165, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Level), uint64(0))
 		}
 	}
 	{
 		if value.OldestAgeSeconds != 0 {
-			w.Put(162, TableMessageRefBitsHere)
+			w.Put(166, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.OldestAgeSeconds), uint64(0))
 		}
 	}
 	{
 		if value.At != 0 {
-			w.Put(152, TableMessageRefBitsHere)
+			w.Put(157, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.At), uint64(0))
 		}
 	}
@@ -14410,7 +12985,7 @@ func SeatWaitsLoadMessageBody(r *TableMessageReader, value *SeatWaits) bool {
 		case 0x40286155ce1935ae:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -14423,28 +12998,12 @@ func SeatWaitsLoadMessageBody(r *TableMessageReader, value *SeatWaits) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.OldestId[:])
-					copy(value.OldestId[:], text[:kept])
-					value.OldestIdLength = int32(kept)
+					r.Nodes.Resolve(&value.OldestId, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -14453,7 +13012,7 @@ func SeatWaitsLoadMessageBody(r *TableMessageReader, value *SeatWaits) bool {
 		case 0xf8e42f20bf747d1b:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -14466,28 +13025,12 @@ func SeatWaitsLoadMessageBody(r *TableMessageReader, value *SeatWaits) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.OldestType[:])
-					copy(value.OldestType[:], text[:kept])
-					value.OldestTypeLength = int32(kept)
+					r.Nodes.Resolve(&value.OldestType, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -14663,7 +13206,7 @@ func ServerBeatLoadMessageBodyRetain(r *TableRetainMessageReader, value *ServerB
 		case 0xbb62c62c9808ea37:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -14676,28 +13219,12 @@ func ServerBeatLoadMessageBodyRetain(r *TableRetainMessageReader, value *ServerB
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Version[:])
-					copy(value.Version[:], text[:kept])
-					value.VersionLength = int32(kept)
+					r.Nodes.Resolve(&value.Version, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -14706,7 +13233,7 @@ func ServerBeatLoadMessageBodyRetain(r *TableRetainMessageReader, value *ServerB
 		case 0x7da7727ca39ddcdc:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -14719,28 +13246,12 @@ func ServerBeatLoadMessageBodyRetain(r *TableRetainMessageReader, value *ServerB
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Commit[:])
-					copy(value.Commit[:], text[:kept])
-					value.CommitLength = int32(kept)
+					r.Nodes.Resolve(&value.Commit, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -14827,40 +13338,42 @@ func ServerBeatLoadMessageBodyRetain(r *TableRetainMessageReader, value *ServerB
 }
 func ServerBeatSaveMessageBody(w *TableMessageWriter, value *ServerBeat) bool {
 	{
-		if value.VersionLength < 0 || value.VersionLength > 128 {
-			return false
-		}
-		if value.VersionLength > 0 {
-			w.Put(166, TableMessageRefBitsHere)
-			if value.VersionLength < 0 || value.VersionLength > 128 {
-				return false
+		if value.Version != 0 {
+			w.Put(170, TableMessageRefBitsHere)
+			if value.Version == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Version)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.VersionLength), 8)
-			w.Raw(value.Version[:value.VersionLength])
 		}
 	}
 	{
-		if value.CommitLength < 0 || value.CommitLength > 128 {
-			return false
-		}
-		if value.CommitLength > 0 {
-			w.Put(167, TableMessageRefBitsHere)
-			if value.CommitLength < 0 || value.CommitLength > 128 {
-				return false
+		if value.Commit != 0 {
+			w.Put(171, TableMessageRefBitsHere)
+			if value.Commit == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Commit)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.CommitLength), 8)
-			w.Raw(value.Commit[:value.CommitLength])
 		}
 	}
 	{
 		if value.Started != 0 {
-			w.Put(65, TableMessageRefBitsHere)
+			w.Put(67, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Started), uint64(0))
 		}
 	}
 	{
 		if value.At != 0 {
-			w.Put(152, TableMessageRefBitsHere)
+			w.Put(157, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.At), uint64(0))
 		}
 	}
@@ -14887,7 +13400,7 @@ func ServerBeatLoadMessageBody(r *TableMessageReader, value *ServerBeat) bool {
 		case 0xbb62c62c9808ea37:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -14900,28 +13413,12 @@ func ServerBeatLoadMessageBody(r *TableMessageReader, value *ServerBeat) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Version[:])
-					copy(value.Version[:], text[:kept])
-					value.VersionLength = int32(kept)
+					r.Nodes.Resolve(&value.Version, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -14930,7 +13427,7 @@ func ServerBeatLoadMessageBody(r *TableMessageReader, value *ServerBeat) bool {
 		case 0x7da7727ca39ddcdc:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -14943,28 +13440,12 @@ func ServerBeatLoadMessageBody(r *TableMessageReader, value *ServerBeat) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Commit[:])
-					copy(value.Commit[:], text[:kept])
-					value.CommitLength = int32(kept)
+					r.Nodes.Resolve(&value.Commit, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -15098,7 +13579,7 @@ func ProviderTierLoadMessageBodyRetain(r *TableRetainMessageReader, value *Provi
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -15191,27 +13672,27 @@ func ProviderTierLoadMessageBodyRetain(r *TableRetainMessageReader, value *Provi
 }
 func ProviderTierSaveMessageBody(w *TableMessageWriter, value *ProviderTier) bool {
 	{
-		if value.TierLength < 0 || value.TierLength > 64 {
+		if value.TierLength < 0 || value.TierLength > 128 {
 			return false
 		}
 		if value.TierLength > 0 {
-			w.Put(47, TableMessageRefBitsHere)
-			if value.TierLength < 0 || value.TierLength > 64 {
+			w.Put(137, TableMessageRefBitsHere)
+			if value.TierLength < 0 || value.TierLength > 128 {
 				return false
 			}
-			w.Put(uint64(value.TierLength), 7)
+			w.Put(uint64(value.TierLength), 8)
 			w.Raw(value.Tier[:value.TierLength])
 		}
 	}
 	{
 		if value.InRoutes != 0 {
-			w.Put(134, TableMessageRefBitsHere)
+			w.Put(138, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.InRoutes), uint64(0))
 		}
 	}
 	{
 		if value.Enabled != 0 {
-			w.Put(135, TableMessageRefBitsHere)
+			w.Put(139, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Enabled), uint64(0))
 		}
 	}
@@ -15266,7 +13747,7 @@ func ProviderTierLoadMessageBody(r *TableMessageReader, value *ProviderTier) boo
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -15421,7 +13902,7 @@ func ProviderViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Provi
 		case 0x420234a0f998390b:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -15434,28 +13915,12 @@ func ProviderViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Provi
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Balance[:])
-					copy(value.Balance[:], text[:kept])
-					value.BalanceLength = int32(kept)
+					r.Nodes.Resolve(&value.Balance, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -15464,7 +13929,7 @@ func ProviderViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Provi
 		case 0xe548666cccbba2e9:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -15477,28 +13942,12 @@ func ProviderViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Provi
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.BalanceAt[:])
-					copy(value.BalanceAt[:], text[:kept])
-					value.BalanceAtLength = int32(kept)
+					r.Nodes.Resolve(&value.BalanceAt, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -15547,7 +13996,7 @@ func ProviderViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Provi
 		case 0xee63aaad45b1b116:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -15560,28 +14009,12 @@ func ProviderViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Provi
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.State[:])
-					copy(value.State[:], text[:kept])
-					value.StateLength = int32(kept)
+					r.Nodes.Resolve(&value.State, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -15590,7 +14023,7 @@ func ProviderViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Provi
 		case 0x3bf8fbbad1587cdd:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -15603,28 +14036,12 @@ func ProviderViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Provi
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Note[:])
-					copy(value.Note[:], text[:kept])
-					value.NoteLength = int32(kept)
+					r.Nodes.Resolve(&value.Note, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -15633,7 +14050,7 @@ func ProviderViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Provi
 		case 0x760d7da9ffd99754:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -15646,28 +14063,12 @@ func ProviderViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Provi
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Limit[:])
-					copy(value.Limit[:], text[:kept])
-					value.LimitLength = int32(kept)
+					r.Nodes.Resolve(&value.Limit, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -15676,7 +14077,7 @@ func ProviderViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Provi
 		case 0x4005570295afd25c:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -15689,28 +14090,12 @@ func ProviderViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Provi
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Billing[:])
-					copy(value.Billing[:], text[:kept])
-					value.BillingLength = int32(kept)
+					r.Nodes.Resolve(&value.Billing, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -15752,7 +14137,7 @@ func ProviderViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Provi
 		case 0x353d837f64e7b85c:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -15765,28 +14150,12 @@ func ProviderViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Provi
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Problem[:])
-					copy(value.Problem[:], text[:kept])
-					value.ProblemLength = int32(kept)
+					r.Nodes.Resolve(&value.Problem, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -15819,7 +14188,7 @@ func ProviderViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Provi
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Tiers))
 					r.Retain.discard(r.Path, true, 10)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 88, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 152, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -15827,7 +14196,7 @@ func ProviderViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Provi
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*ProviderTierRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 88))
+						p := (*ProviderTierRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 152))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -15862,7 +14231,7 @@ func ProviderViewSaveMessageBody(w *TableMessageWriter, value *ProviderView) boo
 			return false
 		}
 		if value.NameLength > 0 {
-			w.Put(67, TableMessageRefBitsHere)
+			w.Put(69, TableMessageRefBitsHere)
 			if value.NameLength < 0 || value.NameLength > 128 {
 				return false
 			}
@@ -15871,93 +14240,99 @@ func ProviderViewSaveMessageBody(w *TableMessageWriter, value *ProviderView) boo
 		}
 	}
 	{
-		if value.BalanceLength < 0 || value.BalanceLength > 128 {
-			return false
-		}
-		if value.BalanceLength > 0 {
-			w.Put(136, TableMessageRefBitsHere)
-			if value.BalanceLength < 0 || value.BalanceLength > 128 {
-				return false
+		if value.Balance != 0 {
+			w.Put(140, TableMessageRefBitsHere)
+			if value.Balance == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Balance)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.BalanceLength), 8)
-			w.Raw(value.Balance[:value.BalanceLength])
 		}
 	}
 	{
-		if value.BalanceAtLength < 0 || value.BalanceAtLength > 64 {
-			return false
-		}
-		if value.BalanceAtLength > 0 {
-			w.Put(137, TableMessageRefBitsHere)
-			if value.BalanceAtLength < 0 || value.BalanceAtLength > 64 {
-				return false
+		if value.BalanceAt != 0 {
+			w.Put(141, TableMessageRefBitsHere)
+			if value.BalanceAt == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.BalanceAt)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.BalanceAtLength), 7)
-			w.Raw(value.BalanceAt[:value.BalanceAtLength])
 		}
 	}
 	{
 		if value.SpendHour != 0.0 {
-			w.Put(138, TableMessageRefBitsHere)
+			w.Put(142, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.SpendHour), uint64(0))
 		}
 	}
 	{
-		if value.StateLength < 0 || value.StateLength > 32 {
-			return false
-		}
-		if value.StateLength > 0 {
-			w.Put(38, TableMessageRefBitsHere)
-			if value.StateLength < 0 || value.StateLength > 32 {
-				return false
+		if value.State != 0 {
+			w.Put(40, TableMessageRefBitsHere)
+			if value.State == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.State)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.StateLength), 6)
-			w.Raw(value.State[:value.StateLength])
 		}
 	}
 	{
-		if value.NoteLength < 0 || value.NoteLength > 1024 {
-			return false
-		}
-		if value.NoteLength > 0 {
-			w.Put(28, TableMessageRefBitsHere)
-			if value.NoteLength < 0 || value.NoteLength > 1024 {
-				return false
+		if value.Note != 0 {
+			w.Put(30, TableMessageRefBitsHere)
+			if value.Note == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Note)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.NoteLength), 11)
-			w.Raw(value.Note[:value.NoteLength])
 		}
 	}
 	{
-		if value.LimitLength < 0 || value.LimitLength > 1024 {
-			return false
-		}
-		if value.LimitLength > 0 {
-			w.Put(139, TableMessageRefBitsHere)
-			if value.LimitLength < 0 || value.LimitLength > 1024 {
-				return false
+		if value.Limit != 0 {
+			w.Put(143, TableMessageRefBitsHere)
+			if value.Limit == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Limit)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.LimitLength), 11)
-			w.Raw(value.Limit[:value.LimitLength])
 		}
 	}
 	{
-		if value.BillingLength < 0 || value.BillingLength > 64 {
-			return false
-		}
-		if value.BillingLength > 0 {
-			w.Put(84, TableMessageRefBitsHere)
-			if value.BillingLength < 0 || value.BillingLength > 64 {
-				return false
+		if value.Billing != 0 {
+			w.Put(86, TableMessageRefBitsHere)
+			if value.Billing == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Billing)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.BillingLength), 7)
-			w.Raw(value.Billing[:value.BillingLength])
 		}
 	}
 	{
 		if value.FundedPresent {
 			if true {
-				w.Put(140, TableMessageRefBitsHere)
+				w.Put(144, TableMessageRefBitsHere)
 				if value.Funded {
 					w.Put(1, 1)
 				} else {
@@ -15967,16 +14342,17 @@ func ProviderViewSaveMessageBody(w *TableMessageWriter, value *ProviderView) boo
 		}
 	}
 	{
-		if value.ProblemLength < 0 || value.ProblemLength > 1024 {
-			return false
-		}
-		if value.ProblemLength > 0 {
-			w.Put(133, TableMessageRefBitsHere)
-			if value.ProblemLength < 0 || value.ProblemLength > 1024 {
-				return false
+		if value.Problem != 0 {
+			w.Put(136, TableMessageRefBitsHere)
+			if value.Problem == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Problem)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ProblemLength), 11)
-			w.Raw(value.Problem[:value.ProblemLength])
 		}
 	}
 	{
@@ -15984,7 +14360,7 @@ func ProviderViewSaveMessageBody(w *TableMessageWriter, value *ProviderView) boo
 			return false
 		}
 		if value.Tiers.Count > 0 {
-			w.Put(141, TableMessageRefBitsHere)
+			w.Put(145, TableMessageRefBitsHere)
 			if value.Tiers.Count < 0 {
 				return false
 			}
@@ -16072,7 +14448,7 @@ func ProviderViewLoadMessageBody(r *TableMessageReader, value *ProviderView) boo
 		case 0x420234a0f998390b:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -16085,28 +14461,12 @@ func ProviderViewLoadMessageBody(r *TableMessageReader, value *ProviderView) boo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Balance[:])
-					copy(value.Balance[:], text[:kept])
-					value.BalanceLength = int32(kept)
+					r.Nodes.Resolve(&value.Balance, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -16115,7 +14475,7 @@ func ProviderViewLoadMessageBody(r *TableMessageReader, value *ProviderView) boo
 		case 0xe548666cccbba2e9:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -16128,28 +14488,12 @@ func ProviderViewLoadMessageBody(r *TableMessageReader, value *ProviderView) boo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.BalanceAt[:])
-					copy(value.BalanceAt[:], text[:kept])
-					value.BalanceAtLength = int32(kept)
+					r.Nodes.Resolve(&value.BalanceAt, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -16198,7 +14542,7 @@ func ProviderViewLoadMessageBody(r *TableMessageReader, value *ProviderView) boo
 		case 0xee63aaad45b1b116:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -16211,28 +14555,12 @@ func ProviderViewLoadMessageBody(r *TableMessageReader, value *ProviderView) boo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.State[:])
-					copy(value.State[:], text[:kept])
-					value.StateLength = int32(kept)
+					r.Nodes.Resolve(&value.State, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -16241,7 +14569,7 @@ func ProviderViewLoadMessageBody(r *TableMessageReader, value *ProviderView) boo
 		case 0x3bf8fbbad1587cdd:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -16254,28 +14582,12 @@ func ProviderViewLoadMessageBody(r *TableMessageReader, value *ProviderView) boo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Note[:])
-					copy(value.Note[:], text[:kept])
-					value.NoteLength = int32(kept)
+					r.Nodes.Resolve(&value.Note, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -16284,7 +14596,7 @@ func ProviderViewLoadMessageBody(r *TableMessageReader, value *ProviderView) boo
 		case 0x760d7da9ffd99754:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -16297,28 +14609,12 @@ func ProviderViewLoadMessageBody(r *TableMessageReader, value *ProviderView) boo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Limit[:])
-					copy(value.Limit[:], text[:kept])
-					value.LimitLength = int32(kept)
+					r.Nodes.Resolve(&value.Limit, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -16327,7 +14623,7 @@ func ProviderViewLoadMessageBody(r *TableMessageReader, value *ProviderView) boo
 		case 0x4005570295afd25c:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -16340,28 +14636,12 @@ func ProviderViewLoadMessageBody(r *TableMessageReader, value *ProviderView) boo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Billing[:])
-					copy(value.Billing[:], text[:kept])
-					value.BillingLength = int32(kept)
+					r.Nodes.Resolve(&value.Billing, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -16403,7 +14683,7 @@ func ProviderViewLoadMessageBody(r *TableMessageReader, value *ProviderView) boo
 		case 0x353d837f64e7b85c:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -16416,28 +14696,12 @@ func ProviderViewLoadMessageBody(r *TableMessageReader, value *ProviderView) boo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Problem[:])
-					copy(value.Problem[:], text[:kept])
-					value.ProblemLength = int32(kept)
+					r.Nodes.Resolve(&value.Problem, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -16469,7 +14733,7 @@ func ProviderViewLoadMessageBody(r *TableMessageReader, value *ProviderView) boo
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Tiers))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 88, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 152, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -16477,7 +14741,7 @@ func ProviderViewLoadMessageBody(r *TableMessageReader, value *ProviderView) boo
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*ProviderTierRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 88))
+						p := (*ProviderTierRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 152))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -16565,7 +14829,7 @@ func ProviderProblemLoadMessageBodyRetain(r *TableRetainMessageReader, value *Pr
 		case 0x353d837f64e7b85c:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -16578,28 +14842,12 @@ func ProviderProblemLoadMessageBodyRetain(r *TableRetainMessageReader, value *Pr
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Problem[:])
-					copy(value.Problem[:], text[:kept])
-					value.ProblemLength = int32(kept)
+					r.Nodes.Resolve(&value.Problem, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -16620,7 +14868,7 @@ func ProviderProblemSaveMessageBody(w *TableMessageWriter, value *ProviderProble
 			return false
 		}
 		if value.NameLength > 0 {
-			w.Put(67, TableMessageRefBitsHere)
+			w.Put(69, TableMessageRefBitsHere)
 			if value.NameLength < 0 || value.NameLength > 128 {
 				return false
 			}
@@ -16629,16 +14877,17 @@ func ProviderProblemSaveMessageBody(w *TableMessageWriter, value *ProviderProble
 		}
 	}
 	{
-		if value.ProblemLength < 0 || value.ProblemLength > 1024 {
-			return false
-		}
-		if value.ProblemLength > 0 {
-			w.Put(133, TableMessageRefBitsHere)
-			if value.ProblemLength < 0 || value.ProblemLength > 1024 {
-				return false
+		if value.Problem != 0 {
+			w.Put(136, TableMessageRefBitsHere)
+			if value.Problem == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Problem)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ProblemLength), 11)
-			w.Raw(value.Problem[:value.ProblemLength])
 		}
 	}
 	w.Put(0, TableMessageRefBitsHere)
@@ -16707,7 +14956,7 @@ func ProviderProblemLoadMessageBody(r *TableMessageReader, value *ProviderProble
 		case 0x353d837f64e7b85c:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -16720,28 +14969,12 @@ func ProviderProblemLoadMessageBody(r *TableMessageReader, value *ProviderProble
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Problem[:])
-					copy(value.Problem[:], text[:kept])
-					value.ProblemLength = int32(kept)
+					r.Nodes.Resolve(&value.Problem, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -16891,7 +15124,7 @@ func RouteGapLoadMessageBodyRetain(r *TableRetainMessageReader, value *RouteGap)
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -16918,7 +15151,7 @@ func RouteGapSaveMessageBody(w *TableMessageWriter, value *RouteGap) bool {
 			return false
 		}
 		if value.RouteLength > 0 {
-			w.Put(87, TableMessageRefBitsHere)
+			w.Put(153, TableMessageRefBitsHere)
 			if value.RouteLength < 0 || value.RouteLength > 128 {
 				return false
 			}
@@ -16931,7 +15164,7 @@ func RouteGapSaveMessageBody(w *TableMessageWriter, value *RouteGap) bool {
 			return false
 		}
 		if value.ProviderLength > 0 {
-			w.Put(25, TableMessageRefBitsHere)
+			w.Put(27, TableMessageRefBitsHere)
 			if value.ProviderLength < 0 || value.ProviderLength > 128 {
 				return false
 			}
@@ -16940,15 +15173,15 @@ func RouteGapSaveMessageBody(w *TableMessageWriter, value *RouteGap) bool {
 		}
 	}
 	{
-		if value.TierLength < 0 || value.TierLength > 64 {
+		if value.TierLength < 0 || value.TierLength > 128 {
 			return false
 		}
 		if value.TierLength > 0 {
-			w.Put(47, TableMessageRefBitsHere)
-			if value.TierLength < 0 || value.TierLength > 64 {
+			w.Put(137, TableMessageRefBitsHere)
+			if value.TierLength < 0 || value.TierLength > 128 {
 				return false
 			}
-			w.Put(uint64(value.TierLength), 7)
+			w.Put(uint64(value.TierLength), 8)
 			w.Raw(value.Tier[:value.TierLength])
 		}
 	}
@@ -17089,7 +15322,7 @@ func RouteGapLoadMessageBody(r *TableMessageReader, value *RouteGap) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -17159,7 +15392,7 @@ func ProviderGapReportTiersTextLoadMessageBodyRetain(r *TableRetainMessageReader
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -17182,15 +15415,15 @@ func ProviderGapReportTiersTextLoadMessageBodyRetain(r *TableRetainMessageReader
 }
 func ProviderGapReportTiersTextSaveMessageBody(w *TableMessageWriter, value *ProviderGapReportTiersText) bool {
 	{
-		if value.ValueLength < 0 || value.ValueLength > 64 {
+		if value.ValueLength < 0 || value.ValueLength > 128 {
 			return false
 		}
 		if value.ValueLength > 0 {
-			w.Put(7, TableMessageRefBitsHere)
-			if value.ValueLength < 0 || value.ValueLength > 64 {
+			w.Put(4, TableMessageRefBitsHere)
+			if value.ValueLength < 0 || value.ValueLength > 128 {
 				return false
 			}
-			w.Put(uint64(value.ValueLength), 7)
+			w.Put(uint64(value.ValueLength), 8)
 			w.Raw(value.Value[:value.ValueLength])
 		}
 	}
@@ -17245,7 +15478,7 @@ func ProviderGapReportTiersTextLoadMessageBody(r *TableMessageReader, value *Pro
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -17311,7 +15544,7 @@ func ProviderGapReportLoadMessageBodyRetain(r *TableRetainMessageReader, value *
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.InvalidProviders))
 					r.Retain.discard(r.Path, true, 0)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 1168, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -17319,7 +15552,7 @@ func ProviderGapReportLoadMessageBodyRetain(r *TableRetainMessageReader, value *
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*ProviderProblemRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 1168))
+						p := (*ProviderProblemRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 144))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -17366,7 +15599,7 @@ func ProviderGapReportLoadMessageBodyRetain(r *TableRetainMessageReader, value *
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Routes))
 					r.Retain.discard(r.Path, true, 1)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 344, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 408, 4) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -17374,7 +15607,7 @@ func ProviderGapReportLoadMessageBodyRetain(r *TableRetainMessageReader, value *
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*RouteGapRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 344))
+						p := (*RouteGapRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 408))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -17421,7 +15654,7 @@ func ProviderGapReportLoadMessageBodyRetain(r *TableRetainMessageReader, value *
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Tiers))
 					r.Retain.discard(r.Path, true, 2)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 72, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 136, 4) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -17429,7 +15662,7 @@ func ProviderGapReportLoadMessageBodyRetain(r *TableRetainMessageReader, value *
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*ProviderGapReportTiersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 72))
+						p := (*ProviderGapReportTiersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 136))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -17464,7 +15697,7 @@ func ProviderGapReportSaveMessageBody(w *TableMessageWriter, value *ProviderGapR
 			return false
 		}
 		if value.InvalidProviders.Count > 0 {
-			w.Put(130, TableMessageRefBitsHere)
+			w.Put(133, TableMessageRefBitsHere)
 			if value.InvalidProviders.Count < 0 {
 				return false
 			}
@@ -17491,7 +15724,7 @@ func ProviderGapReportSaveMessageBody(w *TableMessageWriter, value *ProviderGapR
 			return false
 		}
 		if value.Routes.Count > 0 {
-			w.Put(131, TableMessageRefBitsHere)
+			w.Put(134, TableMessageRefBitsHere)
 			if value.Routes.Count < 0 {
 				return false
 			}
@@ -17518,7 +15751,7 @@ func ProviderGapReportSaveMessageBody(w *TableMessageWriter, value *ProviderGapR
 			return false
 		}
 		if value.Tiers.Count > 0 {
-			w.Put(132, TableMessageRefBitsHere)
+			w.Put(135, TableMessageRefBitsHere)
 			if value.Tiers.Count < 0 {
 				return false
 			}
@@ -17586,7 +15819,7 @@ func ProviderGapReportLoadMessageBody(r *TableMessageReader, value *ProviderGapR
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.InvalidProviders))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 1168, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -17594,7 +15827,7 @@ func ProviderGapReportLoadMessageBody(r *TableMessageReader, value *ProviderGapR
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*ProviderProblemRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 1168))
+						p := (*ProviderProblemRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 144))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -17635,7 +15868,7 @@ func ProviderGapReportLoadMessageBody(r *TableMessageReader, value *ProviderGapR
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Routes))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 344, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 408, 4) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -17643,7 +15876,7 @@ func ProviderGapReportLoadMessageBody(r *TableMessageReader, value *ProviderGapR
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*RouteGapRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 344))
+						p := (*RouteGapRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 408))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -17684,7 +15917,7 @@ func ProviderGapReportLoadMessageBody(r *TableMessageReader, value *ProviderGapR
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Tiers))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 72, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 136, 4) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -17692,7 +15925,7 @@ func ProviderGapReportLoadMessageBody(r *TableMessageReader, value *ProviderGapR
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*ProviderGapReportTiersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 72))
+						p := (*ProviderGapReportTiersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 136))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -17765,7 +15998,7 @@ func LaneRowHeldTextLoadMessageBodyRetain(r *TableRetainMessageReader, value *La
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(515)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(257)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -17788,15 +16021,15 @@ func LaneRowHeldTextLoadMessageBodyRetain(r *TableRetainMessageReader, value *La
 }
 func LaneRowHeldTextSaveMessageBody(w *TableMessageWriter, value *LaneRowHeldText) bool {
 	{
-		if value.ValueLength < 0 || value.ValueLength > 515 {
+		if value.ValueLength < 0 || value.ValueLength > 257 {
 			return false
 		}
 		if value.ValueLength > 0 {
-			w.Put(14, TableMessageRefBitsHere)
-			if value.ValueLength < 0 || value.ValueLength > 515 {
+			w.Put(16, TableMessageRefBitsHere)
+			if value.ValueLength < 0 || value.ValueLength > 257 {
 				return false
 			}
-			w.Put(uint64(value.ValueLength), 10)
+			w.Put(uint64(value.ValueLength), 9)
 			w.Raw(value.Value[:value.ValueLength])
 		}
 	}
@@ -17851,7 +16084,7 @@ func LaneRowHeldTextLoadMessageBody(r *TableMessageReader, value *LaneRowHeldTex
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(515)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(257)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -17921,7 +16154,7 @@ func LaneRowWaitingTextLoadMessageBodyRetain(r *TableRetainMessageReader, value 
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(515)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(257)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -17944,15 +16177,15 @@ func LaneRowWaitingTextLoadMessageBodyRetain(r *TableRetainMessageReader, value 
 }
 func LaneRowWaitingTextSaveMessageBody(w *TableMessageWriter, value *LaneRowWaitingText) bool {
 	{
-		if value.ValueLength < 0 || value.ValueLength > 515 {
+		if value.ValueLength < 0 || value.ValueLength > 257 {
 			return false
 		}
 		if value.ValueLength > 0 {
-			w.Put(14, TableMessageRefBitsHere)
-			if value.ValueLength < 0 || value.ValueLength > 515 {
+			w.Put(16, TableMessageRefBitsHere)
+			if value.ValueLength < 0 || value.ValueLength > 257 {
 				return false
 			}
-			w.Put(uint64(value.ValueLength), 10)
+			w.Put(uint64(value.ValueLength), 9)
 			w.Raw(value.Value[:value.ValueLength])
 		}
 	}
@@ -18007,7 +16240,7 @@ func LaneRowWaitingTextLoadMessageBody(r *TableMessageReader, value *LaneRowWait
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(515)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(257)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -18049,7 +16282,7 @@ func LaneRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *LaneRow) b
 		case 0xef9c96d721673243:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -18062,28 +16295,12 @@ func LaneRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *LaneRow) b
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Kind[:])
-					copy(value.Kind[:], text[:kept])
-					value.KindLength = int32(kept)
+					r.Nodes.Resolve(&value.Kind, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -18194,7 +16411,7 @@ func LaneRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *LaneRow) b
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Held))
 					r.Retain.discard(r.Path, true, 3)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 520, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 264, 4) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -18202,7 +16419,7 @@ func LaneRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *LaneRow) b
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*LaneRowHeldTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 520))
+						p := (*LaneRowHeldTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 264))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -18249,7 +16466,7 @@ func LaneRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *LaneRow) b
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Waiting))
 					r.Retain.discard(r.Path, true, 4)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 520, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 264, 4) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -18257,7 +16474,7 @@ func LaneRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *LaneRow) b
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*LaneRowWaitingTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 520))
+						p := (*LaneRowWaitingTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 264))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -18323,16 +16540,17 @@ func LaneRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *LaneRow) b
 }
 func LaneRowSaveMessageBody(w *TableMessageWriter, value *LaneRow) bool {
 	{
-		if value.KindLength < 0 || value.KindLength > 32 {
-			return false
-		}
-		if value.KindLength > 0 {
-			w.Put(91, TableMessageRefBitsHere)
-			if value.KindLength < 0 || value.KindLength > 32 {
-				return false
+		if value.Kind != 0 {
+			w.Put(94, TableMessageRefBitsHere)
+			if value.Kind == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Kind)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.KindLength), 6)
-			w.Raw(value.Kind[:value.KindLength])
 		}
 	}
 	{
@@ -18340,7 +16558,7 @@ func LaneRowSaveMessageBody(w *TableMessageWriter, value *LaneRow) bool {
 			return false
 		}
 		if value.MachineLength > 0 {
-			w.Put(110, TableMessageRefBitsHere)
+			w.Put(113, TableMessageRefBitsHere)
 			if value.MachineLength < 0 || value.MachineLength > 128 {
 				return false
 			}
@@ -18350,7 +16568,7 @@ func LaneRowSaveMessageBody(w *TableMessageWriter, value *LaneRow) bool {
 	}
 	{
 		if value.Width != 0 {
-			w.Put(57, TableMessageRefBitsHere)
+			w.Put(59, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Width), uint64(0))
 		}
 	}
@@ -18359,7 +16577,7 @@ func LaneRowSaveMessageBody(w *TableMessageWriter, value *LaneRow) bool {
 			return false
 		}
 		if value.Held.Count > 0 {
-			w.Put(111, TableMessageRefBitsHere)
+			w.Put(114, TableMessageRefBitsHere)
 			if value.Held.Count < 0 {
 				return false
 			}
@@ -18386,7 +16604,7 @@ func LaneRowSaveMessageBody(w *TableMessageWriter, value *LaneRow) bool {
 			return false
 		}
 		if value.Waiting.Count > 0 {
-			w.Put(112, TableMessageRefBitsHere)
+			w.Put(115, TableMessageRefBitsHere)
 			if value.Waiting.Count < 0 {
 				return false
 			}
@@ -18410,7 +16628,7 @@ func LaneRowSaveMessageBody(w *TableMessageWriter, value *LaneRow) bool {
 	}
 	{
 		if value.Since != 0 {
-			w.Put(43, TableMessageRefBitsHere)
+			w.Put(45, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Since), uint64(0))
 		}
 	}
@@ -18437,7 +16655,7 @@ func LaneRowLoadMessageBody(r *TableMessageReader, value *LaneRow) bool {
 		case 0xef9c96d721673243:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -18450,28 +16668,12 @@ func LaneRowLoadMessageBody(r *TableMessageReader, value *LaneRow) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Kind[:])
-					copy(value.Kind[:], text[:kept])
-					value.KindLength = int32(kept)
+					r.Nodes.Resolve(&value.Kind, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -18581,7 +16783,7 @@ func LaneRowLoadMessageBody(r *TableMessageReader, value *LaneRow) bool {
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Held))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 520, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 264, 4) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -18589,7 +16791,7 @@ func LaneRowLoadMessageBody(r *TableMessageReader, value *LaneRow) bool {
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*LaneRowHeldTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 520))
+						p := (*LaneRowHeldTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 264))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -18630,7 +16832,7 @@ func LaneRowLoadMessageBody(r *TableMessageReader, value *LaneRow) bool {
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Waiting))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 520, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 264, 4) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -18638,7 +16840,7 @@ func LaneRowLoadMessageBody(r *TableMessageReader, value *LaneRow) bool {
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*LaneRowWaitingTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 520))
+						p := (*LaneRowWaitingTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 264))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -18890,7 +17092,7 @@ func DealtCardLoadMessageBodyRetain(r *TableRetainMessageReader, value *DealtCar
 		case 0xee63aaad45b1b116:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -18903,28 +17105,12 @@ func DealtCardLoadMessageBodyRetain(r *TableRetainMessageReader, value *DealtCar
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.State[:])
-					copy(value.State[:], text[:kept])
-					value.StateLength = int32(kept)
+					r.Nodes.Resolve(&value.State, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -19003,7 +17189,7 @@ func DealtCardLoadMessageBodyRetain(r *TableRetainMessageReader, value *DealtCar
 		case 0x919ec0f651278ba5:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -19016,28 +17202,12 @@ func DealtCardLoadMessageBodyRetain(r *TableRetainMessageReader, value *DealtCar
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(512)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Branch[:])
-					copy(value.Branch[:], text[:kept])
-					value.BranchLength = int32(kept)
+					r.Nodes.Resolve(&value.Branch, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -19046,7 +17216,7 @@ func DealtCardLoadMessageBodyRetain(r *TableRetainMessageReader, value *DealtCar
 		case 0xf5b6ea8c35ac1e89:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -19059,28 +17229,12 @@ func DealtCardLoadMessageBodyRetain(r *TableRetainMessageReader, value *DealtCar
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Priority[:])
-					copy(value.Priority[:], text[:kept])
-					value.PriorityLength = int32(kept)
+					r.Nodes.Resolve(&value.Priority, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -19089,7 +17243,7 @@ func DealtCardLoadMessageBodyRetain(r *TableRetainMessageReader, value *DealtCar
 		case 0x1e6f84ef2eb65989:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -19102,28 +17256,12 @@ func DealtCardLoadMessageBodyRetain(r *TableRetainMessageReader, value *DealtCar
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Tier[:])
-					copy(value.Tier[:], text[:kept])
-					value.TierLength = int32(kept)
+					r.Nodes.Resolve(&value.Tier, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -19144,7 +17282,7 @@ func DealtCardSaveMessageBody(w *TableMessageWriter, value *DealtCard) bool {
 			return false
 		}
 		if value.IdLength > 0 {
-			w.Put(36, TableMessageRefBitsHere)
+			w.Put(38, TableMessageRefBitsHere)
 			if value.IdLength < 0 || value.IdLength > 515 {
 				return false
 			}
@@ -19157,7 +17295,7 @@ func DealtCardSaveMessageBody(w *TableMessageWriter, value *DealtCard) bool {
 			return false
 		}
 		if value.PrimaryLength > 0 {
-			w.Put(40, TableMessageRefBitsHere)
+			w.Put(42, TableMessageRefBitsHere)
 			if value.PrimaryLength < 0 || value.PrimaryLength > 515 {
 				return false
 			}
@@ -19170,7 +17308,7 @@ func DealtCardSaveMessageBody(w *TableMessageWriter, value *DealtCard) bool {
 			return false
 		}
 		if value.StreamLength > 0 {
-			w.Put(41, TableMessageRefBitsHere)
+			w.Put(43, TableMessageRefBitsHere)
 			if value.StreamLength < 0 || value.StreamLength > 128 {
 				return false
 			}
@@ -19183,7 +17321,7 @@ func DealtCardSaveMessageBody(w *TableMessageWriter, value *DealtCard) bool {
 			return false
 		}
 		if value.MemberLength > 0 {
-			w.Put(42, TableMessageRefBitsHere)
+			w.Put(44, TableMessageRefBitsHere)
 			if value.MemberLength < 0 || value.MemberLength > 135 {
 				return false
 			}
@@ -19192,67 +17330,71 @@ func DealtCardSaveMessageBody(w *TableMessageWriter, value *DealtCard) bool {
 		}
 	}
 	{
-		if value.StateLength < 0 || value.StateLength > 32 {
-			return false
-		}
-		if value.StateLength > 0 {
-			w.Put(38, TableMessageRefBitsHere)
-			if value.StateLength < 0 || value.StateLength > 32 {
-				return false
+		if value.State != 0 {
+			w.Put(40, TableMessageRefBitsHere)
+			if value.State == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.State)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.StateLength), 6)
-			w.Raw(value.State[:value.StateLength])
 		}
 	}
 	{
 		if value.Since != 0 {
-			w.Put(43, TableMessageRefBitsHere)
+			w.Put(45, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Since), uint64(0))
 		}
 	}
 	{
 		if value.Deadline != 0 {
-			w.Put(44, TableMessageRefBitsHere)
+			w.Put(46, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Deadline), uint64(0))
 		}
 	}
 	{
-		if value.BranchLength < 0 || value.BranchLength > 512 {
-			return false
-		}
-		if value.BranchLength > 0 {
-			w.Put(45, TableMessageRefBitsHere)
-			if value.BranchLength < 0 || value.BranchLength > 512 {
-				return false
-			}
-			w.Put(uint64(value.BranchLength), 10)
-			w.Raw(value.Branch[:value.BranchLength])
-		}
-	}
-	{
-		if value.PriorityLength < 0 || value.PriorityLength > 32 {
-			return false
-		}
-		if value.PriorityLength > 0 {
-			w.Put(46, TableMessageRefBitsHere)
-			if value.PriorityLength < 0 || value.PriorityLength > 32 {
-				return false
-			}
-			w.Put(uint64(value.PriorityLength), 6)
-			w.Raw(value.Priority[:value.PriorityLength])
-		}
-	}
-	{
-		if value.TierLength < 0 || value.TierLength > 64 {
-			return false
-		}
-		if value.TierLength > 0 {
+		if value.Branch != 0 {
 			w.Put(47, TableMessageRefBitsHere)
-			if value.TierLength < 0 || value.TierLength > 64 {
-				return false
+			if value.Branch == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Branch)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.TierLength), 7)
-			w.Raw(value.Tier[:value.TierLength])
+		}
+	}
+	{
+		if value.Priority != 0 {
+			w.Put(48, TableMessageRefBitsHere)
+			if value.Priority == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Priority)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
+			}
+		}
+	}
+	{
+		if value.Tier != 0 {
+			w.Put(49, TableMessageRefBitsHere)
+			if value.Tier == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Tier)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
+			}
 		}
 	}
 	w.Put(0, TableMessageRefBitsHere)
@@ -19450,7 +17592,7 @@ func DealtCardLoadMessageBody(r *TableMessageReader, value *DealtCard) bool {
 		case 0xee63aaad45b1b116:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -19463,28 +17605,12 @@ func DealtCardLoadMessageBody(r *TableMessageReader, value *DealtCard) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.State[:])
-					copy(value.State[:], text[:kept])
-					value.StateLength = int32(kept)
+					r.Nodes.Resolve(&value.State, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -19563,7 +17689,7 @@ func DealtCardLoadMessageBody(r *TableMessageReader, value *DealtCard) bool {
 		case 0x919ec0f651278ba5:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -19576,28 +17702,12 @@ func DealtCardLoadMessageBody(r *TableMessageReader, value *DealtCard) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(512)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Branch[:])
-					copy(value.Branch[:], text[:kept])
-					value.BranchLength = int32(kept)
+					r.Nodes.Resolve(&value.Branch, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -19606,7 +17716,7 @@ func DealtCardLoadMessageBody(r *TableMessageReader, value *DealtCard) bool {
 		case 0xf5b6ea8c35ac1e89:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -19619,28 +17729,12 @@ func DealtCardLoadMessageBody(r *TableMessageReader, value *DealtCard) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Priority[:])
-					copy(value.Priority[:], text[:kept])
-					value.PriorityLength = int32(kept)
+					r.Nodes.Resolve(&value.Priority, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -19649,7 +17743,7 @@ func DealtCardLoadMessageBody(r *TableMessageReader, value *DealtCard) bool {
 		case 0x1e6f84ef2eb65989:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -19662,28 +17756,12 @@ func DealtCardLoadMessageBody(r *TableMessageReader, value *DealtCard) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Tier[:])
-					copy(value.Tier[:], text[:kept])
-					value.TierLength = int32(kept)
+					r.Nodes.Resolve(&value.Tier, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -19805,7 +17883,7 @@ func MergingCardLoadMessageBodyRetain(r *TableRetainMessageReader, value *Mergin
 		case 0x0a8f12cc5f9a0c03:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -19818,28 +17896,12 @@ func MergingCardLoadMessageBodyRetain(r *TableRetainMessageReader, value *Mergin
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Head[:])
-					copy(value.Head[:], text[:kept])
-					value.HeadLength = int32(kept)
+					r.Nodes.Resolve(&value.Head, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -19895,7 +17957,7 @@ func MergingCardSaveMessageBody(w *TableMessageWriter, value *MergingCard) bool 
 			return false
 		}
 		if value.IdLength > 0 {
-			w.Put(36, TableMessageRefBitsHere)
+			w.Put(38, TableMessageRefBitsHere)
 			if value.IdLength < 0 || value.IdLength > 515 {
 				return false
 			}
@@ -19908,7 +17970,7 @@ func MergingCardSaveMessageBody(w *TableMessageWriter, value *MergingCard) bool 
 			return false
 		}
 		if value.StreamLength > 0 {
-			w.Put(41, TableMessageRefBitsHere)
+			w.Put(43, TableMessageRefBitsHere)
 			if value.StreamLength < 0 || value.StreamLength > 128 {
 				return false
 			}
@@ -19917,21 +17979,22 @@ func MergingCardSaveMessageBody(w *TableMessageWriter, value *MergingCard) bool 
 		}
 	}
 	{
-		if value.HeadLength < 0 || value.HeadLength > 64 {
-			return false
-		}
-		if value.HeadLength > 0 {
-			w.Put(123, TableMessageRefBitsHere)
-			if value.HeadLength < 0 || value.HeadLength > 64 {
-				return false
+		if value.Head != 0 {
+			w.Put(126, TableMessageRefBitsHere)
+			if value.Head == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Head)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.HeadLength), 7)
-			w.Raw(value.Head[:value.HeadLength])
 		}
 	}
 	{
 		if value.Attempt != 0 {
-			w.Put(124, TableMessageRefBitsHere)
+			w.Put(127, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Attempt), uint64(0))
 		}
 	}
@@ -20044,7 +18107,7 @@ func MergingCardLoadMessageBody(r *TableMessageReader, value *MergingCard) bool 
 		case 0x0a8f12cc5f9a0c03:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -20057,28 +18120,12 @@ func MergingCardLoadMessageBody(r *TableMessageReader, value *MergingCard) bool 
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Head[:])
-					copy(value.Head[:], text[:kept])
-					value.HeadLength = int32(kept)
+					r.Nodes.Resolve(&value.Head, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -20149,7 +18196,7 @@ func JudgmentRefLoadMessageBodyRetain(r *TableRetainMessageReader, value *Judgme
 		case 0x08b72e07b55c3ac0:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -20162,28 +18209,12 @@ func JudgmentRefLoadMessageBodyRetain(r *TableRetainMessageReader, value *Judgme
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Id[:])
-					copy(value.Id[:], text[:kept])
-					value.IdLength = int32(kept)
+					r.Nodes.Resolve(&value.Id, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -20192,7 +18223,7 @@ func JudgmentRefLoadMessageBodyRetain(r *TableRetainMessageReader, value *Judgme
 		case 0xef9c96d721673243:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -20205,28 +18236,12 @@ func JudgmentRefLoadMessageBodyRetain(r *TableRetainMessageReader, value *Judgme
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Kind[:])
-					copy(value.Kind[:], text[:kept])
-					value.KindLength = int32(kept)
+					r.Nodes.Resolve(&value.Kind, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -20286,29 +18301,31 @@ func JudgmentRefLoadMessageBodyRetain(r *TableRetainMessageReader, value *Judgme
 }
 func JudgmentRefSaveMessageBody(w *TableMessageWriter, value *JudgmentRef) bool {
 	{
-		if value.IdLength < 0 || value.IdLength > 128 {
-			return false
-		}
-		if value.IdLength > 0 {
-			w.Put(98, TableMessageRefBitsHere)
-			if value.IdLength < 0 || value.IdLength > 128 {
-				return false
+		if value.Id != 0 {
+			w.Put(101, TableMessageRefBitsHere)
+			if value.Id == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Id)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.IdLength), 8)
-			w.Raw(value.Id[:value.IdLength])
 		}
 	}
 	{
-		if value.KindLength < 0 || value.KindLength > 32 {
-			return false
-		}
-		if value.KindLength > 0 {
-			w.Put(91, TableMessageRefBitsHere)
-			if value.KindLength < 0 || value.KindLength > 32 {
-				return false
+		if value.Kind != 0 {
+			w.Put(94, TableMessageRefBitsHere)
+			if value.Kind == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Kind)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.KindLength), 6)
-			w.Raw(value.Kind[:value.KindLength])
 		}
 	}
 	{
@@ -20316,7 +18333,7 @@ func JudgmentRefSaveMessageBody(w *TableMessageWriter, value *JudgmentRef) bool 
 			return false
 		}
 		if value.CardLength > 0 {
-			w.Put(99, TableMessageRefBitsHere)
+			w.Put(102, TableMessageRefBitsHere)
 			if value.CardLength < 0 || value.CardLength > 515 {
 				return false
 			}
@@ -20347,7 +18364,7 @@ func JudgmentRefLoadMessageBody(r *TableMessageReader, value *JudgmentRef) bool 
 		case 0x08b72e07b55c3ac0:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -20360,28 +18377,12 @@ func JudgmentRefLoadMessageBody(r *TableMessageReader, value *JudgmentRef) bool 
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Id[:])
-					copy(value.Id[:], text[:kept])
-					value.IdLength = int32(kept)
+					r.Nodes.Resolve(&value.Id, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -20390,7 +18391,7 @@ func JudgmentRefLoadMessageBody(r *TableMessageReader, value *JudgmentRef) bool 
 		case 0xef9c96d721673243:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -20403,28 +18404,12 @@ func JudgmentRefLoadMessageBody(r *TableMessageReader, value *JudgmentRef) bool 
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Kind[:])
-					copy(value.Kind[:], text[:kept])
-					value.KindLength = int32(kept)
+					r.Nodes.Resolve(&value.Kind, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -20531,7 +18516,7 @@ func PrimaryRowFieldsEntryLoadMessageBodyRetain(r *TableRetainMessageReader, val
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -20579,21 +18564,21 @@ func PrimaryRowFieldsEntryLoadMessageBodyRetain(r *TableRetainMessageReader, val
 }
 func PrimaryRowFieldsEntrySaveMessageBody(w *TableMessageWriter, value *PrimaryRowFieldsEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 64 {
+		if value.KeyLength < 0 || value.KeyLength > 128 {
 			return false
 		}
 		if value.KeyLength > 0 {
-			w.Put(2, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 64 {
+			w.Put(5, TableMessageRefBitsHere)
+			if value.KeyLength < 0 || value.KeyLength > 128 {
 				return false
 			}
-			w.Put(uint64(value.KeyLength), 7)
+			w.Put(uint64(value.KeyLength), 8)
 			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
 		if value.Value != 0 {
-			w.Put(13, TableMessageRefBitsHere)
+			w.Put(9, TableMessageRefBitsHere)
 			if value.Value == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -20656,7 +18641,7 @@ func PrimaryRowFieldsEntryLoadMessageBody(r *TableMessageReader, value *PrimaryR
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -20809,7 +18794,7 @@ func PrimaryRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *Primary
 		case 0x5f531287628bf287:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -20822,28 +18807,12 @@ func PrimaryRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *Primary
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Column[:])
-					copy(value.Column[:], text[:kept])
-					value.ColumnLength = int32(kept)
+					r.Nodes.Resolve(&value.Column, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -20852,7 +18821,7 @@ func PrimaryRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *Primary
 		case 0xee63aaad45b1b116:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -20865,28 +18834,12 @@ func PrimaryRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *Primary
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.State[:])
-					copy(value.State[:], text[:kept])
-					value.StateLength = int32(kept)
+					r.Nodes.Resolve(&value.State, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -20956,7 +18909,7 @@ func PrimaryRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *Primary
 					field := &PrimaryRowTableFields[5]
 					holder := (*tableContainer)(unsafe.Pointer(&value.Fields))
 					r.Retain.discard(r.Path, true, 5)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 80, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -21003,7 +18956,7 @@ func PrimaryRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *Primary
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*PrimaryRowFieldsEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 80))
+							p = (*PrimaryRowFieldsEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -21033,7 +18986,7 @@ func PrimaryRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *Primary
 		case 0x040a2f1d0213e01b:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -21046,28 +18999,12 @@ func PrimaryRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *Primary
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.TierShown[:])
-					copy(value.TierShown[:], text[:kept])
-					value.TierShownLength = int32(kept)
+					r.Nodes.Resolve(&value.TierShown, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -21088,7 +19025,7 @@ func PrimaryRowSaveMessageBody(w *TableMessageWriter, value *PrimaryRow) bool {
 			return false
 		}
 		if value.IdLength > 0 {
-			w.Put(36, TableMessageRefBitsHere)
+			w.Put(38, TableMessageRefBitsHere)
 			if value.IdLength < 0 || value.IdLength > 515 {
 				return false
 			}
@@ -21101,7 +19038,7 @@ func PrimaryRowSaveMessageBody(w *TableMessageWriter, value *PrimaryRow) bool {
 			return false
 		}
 		if value.StreamLength > 0 {
-			w.Put(41, TableMessageRefBitsHere)
+			w.Put(43, TableMessageRefBitsHere)
 			if value.StreamLength < 0 || value.StreamLength > 128 {
 				return false
 			}
@@ -21110,34 +19047,36 @@ func PrimaryRowSaveMessageBody(w *TableMessageWriter, value *PrimaryRow) bool {
 		}
 	}
 	{
-		if value.ColumnLength < 0 || value.ColumnLength > 32 {
-			return false
-		}
-		if value.ColumnLength > 0 {
-			w.Put(126, TableMessageRefBitsHere)
-			if value.ColumnLength < 0 || value.ColumnLength > 32 {
-				return false
+		if value.Column != 0 {
+			w.Put(129, TableMessageRefBitsHere)
+			if value.Column == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Column)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ColumnLength), 6)
-			w.Raw(value.Column[:value.ColumnLength])
 		}
 	}
 	{
-		if value.StateLength < 0 || value.StateLength > 32 {
-			return false
-		}
-		if value.StateLength > 0 {
-			w.Put(38, TableMessageRefBitsHere)
-			if value.StateLength < 0 || value.StateLength > 32 {
-				return false
+		if value.State != 0 {
+			w.Put(40, TableMessageRefBitsHere)
+			if value.State == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.State)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.StateLength), 6)
-			w.Raw(value.State[:value.StateLength])
 		}
 	}
 	{
 		if value.Score != 0.0 {
-			w.Put(127, TableMessageRefBitsHere)
+			w.Put(130, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.Score), uint64(0))
 		}
 	}
@@ -21146,7 +19085,7 @@ func PrimaryRowSaveMessageBody(w *TableMessageWriter, value *PrimaryRow) bool {
 			return false
 		}
 		if value.Fields.Count > 0 {
-			w.Put(128, TableMessageRefBitsHere)
+			w.Put(131, TableMessageRefBitsHere)
 			if value.Fields.Count < 0 {
 				return false
 			}
@@ -21169,16 +19108,17 @@ func PrimaryRowSaveMessageBody(w *TableMessageWriter, value *PrimaryRow) bool {
 		}
 	}
 	{
-		if value.TierShownLength < 0 || value.TierShownLength > 64 {
-			return false
-		}
-		if value.TierShownLength > 0 {
-			w.Put(129, TableMessageRefBitsHere)
-			if value.TierShownLength < 0 || value.TierShownLength > 64 {
-				return false
+		if value.TierShown != 0 {
+			w.Put(132, TableMessageRefBitsHere)
+			if value.TierShown == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.TierShown)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.TierShownLength), 7)
-			w.Raw(value.TierShown[:value.TierShownLength])
 		}
 	}
 	w.Put(0, TableMessageRefBitsHere)
@@ -21290,7 +19230,7 @@ func PrimaryRowLoadMessageBody(r *TableMessageReader, value *PrimaryRow) bool {
 		case 0x5f531287628bf287:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -21303,28 +19243,12 @@ func PrimaryRowLoadMessageBody(r *TableMessageReader, value *PrimaryRow) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Column[:])
-					copy(value.Column[:], text[:kept])
-					value.ColumnLength = int32(kept)
+					r.Nodes.Resolve(&value.Column, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -21333,7 +19257,7 @@ func PrimaryRowLoadMessageBody(r *TableMessageReader, value *PrimaryRow) bool {
 		case 0xee63aaad45b1b116:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -21346,28 +19270,12 @@ func PrimaryRowLoadMessageBody(r *TableMessageReader, value *PrimaryRow) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.State[:])
-					copy(value.State[:], text[:kept])
-					value.StateLength = int32(kept)
+					r.Nodes.Resolve(&value.State, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -21436,7 +19344,7 @@ func PrimaryRowLoadMessageBody(r *TableMessageReader, value *PrimaryRow) bool {
 					}
 					field := &PrimaryRowTableFields[5]
 					holder := (*tableContainer)(unsafe.Pointer(&value.Fields))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 80, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -21483,7 +19391,7 @@ func PrimaryRowLoadMessageBody(r *TableMessageReader, value *PrimaryRow) bool {
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*PrimaryRowFieldsEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 80))
+							p = (*PrimaryRowFieldsEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -21508,7 +19416,7 @@ func PrimaryRowLoadMessageBody(r *TableMessageReader, value *PrimaryRow) bool {
 		case 0x040a2f1d0213e01b:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -21521,28 +19429,12 @@ func PrimaryRowLoadMessageBody(r *TableMessageReader, value *PrimaryRow) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.TierShown[:])
-					copy(value.TierShown[:], text[:kept])
-					value.TierShownLength = int32(kept)
+					r.Nodes.Resolve(&value.TierShown, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -21859,7 +19751,7 @@ func ArchivedViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Archi
 		case 0x0bef0691197c9f78:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -21872,28 +19764,12 @@ func ArchivedViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Archi
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Cost[:])
-					copy(value.Cost[:], text[:kept])
-					value.CostLength = int32(kept)
+					r.Nodes.Resolve(&value.Cost, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -21914,7 +19790,7 @@ func ArchivedViewSaveMessageBody(w *TableMessageWriter, value *ArchivedView) boo
 			return false
 		}
 		if value.Streams.Count > 0 {
-			w.Put(15, TableMessageRefBitsHere)
+			w.Put(17, TableMessageRefBitsHere)
 			if value.Streams.Count < 0 {
 				return false
 			}
@@ -21938,27 +19814,28 @@ func ArchivedViewSaveMessageBody(w *TableMessageWriter, value *ArchivedView) boo
 	}
 	{
 		if value.Cards != 0 {
-			w.Put(16, TableMessageRefBitsHere)
+			w.Put(18, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Cards), uint64(0))
 		}
 	}
 	{
 		if value.Landed != 0 {
-			w.Put(17, TableMessageRefBitsHere)
+			w.Put(19, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Landed), uint64(0))
 		}
 	}
 	{
-		if value.CostLength < 0 || value.CostLength > 128 {
-			return false
-		}
-		if value.CostLength > 0 {
-			w.Put(18, TableMessageRefBitsHere)
-			if value.CostLength < 0 || value.CostLength > 128 {
-				return false
+		if value.Cost != 0 {
+			w.Put(20, TableMessageRefBitsHere)
+			if value.Cost == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Cost)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.CostLength), 8)
-			w.Raw(value.Cost[:value.CostLength])
 		}
 	}
 	w.Put(0, TableMessageRefBitsHere)
@@ -22103,7 +19980,7 @@ func ArchivedViewLoadMessageBody(r *TableMessageReader, value *ArchivedView) boo
 		case 0x0bef0691197c9f78:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -22116,28 +19993,12 @@ func ArchivedViewLoadMessageBody(r *TableMessageReader, value *ArchivedView) boo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Cost[:])
-					copy(value.Cost[:], text[:kept])
-					value.CostLength = int32(kept)
+					r.Nodes.Resolve(&value.Cost, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -22271,7 +20132,7 @@ func StatsResetViewStreamsEntrySaveMessageBody(w *TableMessageWriter, value *Sta
 	}
 	{
 		if value.Value != 0 {
-			w.Put(6, TableMessageRefBitsHere)
+			w.Put(7, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Value), uint64(0))
 		}
 	}
@@ -22436,7 +20297,7 @@ func StatsResetViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Sta
 		case 0x08a64b07b54df8d4:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -22449,28 +20310,12 @@ func StatsResetViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Sta
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.By[:])
-					copy(value.By[:], text[:kept])
-					value.ByLength = int32(kept)
+					r.Nodes.Resolve(&value.By, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -22479,7 +20324,7 @@ func StatsResetViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Sta
 		case 0x65e8d7f3474f2639:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -22492,28 +20337,12 @@ func StatsResetViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Sta
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Reason[:])
-					copy(value.Reason[:], text[:kept])
-					value.ReasonLength = int32(kept)
+					r.Nodes.Resolve(&value.Reason, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -22664,39 +20493,41 @@ func StatsResetViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Sta
 func StatsResetViewSaveMessageBody(w *TableMessageWriter, value *StatsResetView) bool {
 	{
 		if value.At != 0 {
-			w.Put(152, TableMessageRefBitsHere)
+			w.Put(157, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.At), uint64(0))
 		}
 	}
 	{
-		if value.ByLength < 0 || value.ByLength > 135 {
-			return false
-		}
-		if value.ByLength > 0 {
-			w.Put(93, TableMessageRefBitsHere)
-			if value.ByLength < 0 || value.ByLength > 135 {
-				return false
+		if value.By != 0 {
+			w.Put(96, TableMessageRefBitsHere)
+			if value.By == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.By)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ByLength), 8)
-			w.Raw(value.By[:value.ByLength])
 		}
 	}
 	{
-		if value.ReasonLength < 0 || value.ReasonLength > 1024 {
-			return false
-		}
-		if value.ReasonLength > 0 {
-			w.Put(63, TableMessageRefBitsHere)
-			if value.ReasonLength < 0 || value.ReasonLength > 1024 {
-				return false
+		if value.Reason != 0 {
+			w.Put(65, TableMessageRefBitsHere)
+			if value.Reason == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Reason)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ReasonLength), 11)
-			w.Raw(value.Reason[:value.ReasonLength])
 		}
 	}
 	{
 		if value.Landed != 0 {
-			w.Put(17, TableMessageRefBitsHere)
+			w.Put(19, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Landed), uint64(0))
 		}
 	}
@@ -22705,7 +20536,7 @@ func StatsResetViewSaveMessageBody(w *TableMessageWriter, value *StatsResetView)
 			return false
 		}
 		if value.Streams.Count > 0 {
-			w.Put(172, TableMessageRefBitsHere)
+			w.Put(177, TableMessageRefBitsHere)
 			if value.Streams.Count < 0 {
 				return false
 			}
@@ -22785,7 +20616,7 @@ func StatsResetViewLoadMessageBody(r *TableMessageReader, value *StatsResetView)
 		case 0x08a64b07b54df8d4:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -22798,28 +20629,12 @@ func StatsResetViewLoadMessageBody(r *TableMessageReader, value *StatsResetView)
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.By[:])
-					copy(value.By[:], text[:kept])
-					value.ByLength = int32(kept)
+					r.Nodes.Resolve(&value.By, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -22828,7 +20643,7 @@ func StatsResetViewLoadMessageBody(r *TableMessageReader, value *StatsResetView)
 		case 0x65e8d7f3474f2639:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -22841,28 +20656,12 @@ func StatsResetViewLoadMessageBody(r *TableMessageReader, value *StatsResetView)
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Reason[:])
-					copy(value.Reason[:], text[:kept])
-					value.ReasonLength = int32(kept)
+					r.Nodes.Resolve(&value.Reason, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -23139,19 +20938,19 @@ func ReadsWindowLoadMessageBodyRetain(r *TableRetainMessageReader, value *ReadsW
 func ReadsWindowSaveMessageBody(w *TableMessageWriter, value *ReadsWindow) bool {
 	{
 		if value.Ok != 0 {
-			w.Put(72, TableMessageRefBitsHere)
+			w.Put(74, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Ok), uint64(0))
 		}
 	}
 	{
 		if value.Broken != 0 {
-			w.Put(148, TableMessageRefBitsHere)
+			w.Put(152, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Broken), uint64(0))
 		}
 	}
 	{
 		if value.Since != 0 {
-			w.Put(43, TableMessageRefBitsHere)
+			w.Put(45, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Since), uint64(0))
 		}
 	}
@@ -23424,19 +21223,19 @@ func ReadCardCountsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Rea
 func ReadCardCountsSaveMessageBody(w *TableMessageWriter, value *ReadCardCounts) bool {
 	{
 		if value.Ready != 0 {
-			w.Put(68, TableMessageRefBitsHere)
+			w.Put(70, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Ready), uint64(0))
 		}
 	}
 	{
 		if value.Working != 0 {
-			w.Put(55, TableMessageRefBitsHere)
+			w.Put(57, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Working), uint64(0))
 		}
 	}
 	{
 		if value.Done != 0 {
-			w.Put(142, TableMessageRefBitsHere)
+			w.Put(146, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Done), uint64(0))
 		}
 	}
@@ -23736,7 +21535,7 @@ func MergeRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *MergeRow)
 		case 0x0d6d96f08a89ac12:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -23749,28 +21548,12 @@ func MergeRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *MergeRow)
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.BaseGate[:])
-					copy(value.BaseGate[:], text[:kept])
-					value.BaseGateLength = int32(kept)
+					r.Nodes.Resolve(&value.BaseGate, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -23779,7 +21562,7 @@ func MergeRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *MergeRow)
 		case 0x8bfe4129424d5e20:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -23792,28 +21575,12 @@ func MergeRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *MergeRow)
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.FailingTest[:])
-					copy(value.FailingTest[:], text[:kept])
-					value.FailingTestLength = int32(kept)
+					r.Nodes.Resolve(&value.FailingTest, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -23973,72 +21740,74 @@ func MergeRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *MergeRow)
 func MergeRowSaveMessageBody(w *TableMessageWriter, value *MergeRow) bool {
 	{
 		if value.Merging != 0 {
-			w.Put(113, TableMessageRefBitsHere)
+			w.Put(116, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Merging), uint64(0))
 		}
 	}
 	{
 		if value.Review != 0 {
-			w.Put(114, TableMessageRefBitsHere)
+			w.Put(117, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Review), uint64(0))
 		}
 	}
 	{
 		if value.LandedPer30m != 0 {
-			w.Put(115, TableMessageRefBitsHere)
+			w.Put(118, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.LandedPer30m), uint64(0))
 		}
 	}
 	{
 		if value.OldestMergingMinPresent {
 			if true {
-				w.Put(116, TableMessageRefBitsHere)
+				w.Put(119, TableMessageRefBitsHere)
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.OldestMergingMin), uint64(0))
 			}
 		}
 	}
 	{
-		if value.BaseGateLength < 0 || value.BaseGateLength > 128 {
-			return false
-		}
-		if value.BaseGateLength > 0 {
-			w.Put(117, TableMessageRefBitsHere)
-			if value.BaseGateLength < 0 || value.BaseGateLength > 128 {
-				return false
+		if value.BaseGate != 0 {
+			w.Put(120, TableMessageRefBitsHere)
+			if value.BaseGate == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.BaseGate)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.BaseGateLength), 8)
-			w.Raw(value.BaseGate[:value.BaseGateLength])
 		}
 	}
 	{
-		if value.FailingTestLength < 0 || value.FailingTestLength > 1024 {
-			return false
-		}
-		if value.FailingTestLength > 0 {
-			w.Put(118, TableMessageRefBitsHere)
-			if value.FailingTestLength < 0 || value.FailingTestLength > 1024 {
-				return false
+		if value.FailingTest != 0 {
+			w.Put(121, TableMessageRefBitsHere)
+			if value.FailingTest == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.FailingTest)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.FailingTestLength), 11)
-			w.Raw(value.FailingTest[:value.FailingTestLength])
 		}
 	}
 	{
 		if value.BaseLacks != 0 {
-			w.Put(119, TableMessageRefBitsHere)
+			w.Put(122, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.BaseLacks), uint64(0))
 		}
 	}
 	{
 		if value.DevLacks != 0 {
-			w.Put(120, TableMessageRefBitsHere)
+			w.Put(123, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.DevLacks), uint64(0))
 		}
 	}
 	{
 		if value.SyncMinutesPresent {
 			if true {
-				w.Put(121, TableMessageRefBitsHere)
+				w.Put(124, TableMessageRefBitsHere)
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.SyncMinutes), uint64(0))
 			}
 		}
@@ -24046,7 +21815,7 @@ func MergeRowSaveMessageBody(w *TableMessageWriter, value *MergeRow) bool {
 	{
 		if value.PromotionMinutesPresent {
 			if true {
-				w.Put(122, TableMessageRefBitsHere)
+				w.Put(125, TableMessageRefBitsHere)
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.PromotionMinutes), uint64(0))
 			}
 		}
@@ -24215,7 +21984,7 @@ func MergeRowLoadMessageBody(r *TableMessageReader, value *MergeRow) bool {
 		case 0x0d6d96f08a89ac12:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -24228,28 +21997,12 @@ func MergeRowLoadMessageBody(r *TableMessageReader, value *MergeRow) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.BaseGate[:])
-					copy(value.BaseGate[:], text[:kept])
-					value.BaseGateLength = int32(kept)
+					r.Nodes.Resolve(&value.BaseGate, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -24258,7 +22011,7 @@ func MergeRowLoadMessageBody(r *TableMessageReader, value *MergeRow) bool {
 		case 0x8bfe4129424d5e20:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -24271,28 +22024,12 @@ func MergeRowLoadMessageBody(r *TableMessageReader, value *MergeRow) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.FailingTest[:])
-					copy(value.FailingTest[:], text[:kept])
-					value.FailingTestLength = int32(kept)
+					r.Nodes.Resolve(&value.FailingTest, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -24498,7 +22235,7 @@ func FriendReportRunningTextLoadMessageBodyRetain(r *TableRetainMessageReader, v
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(515)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(65536)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -24521,15 +22258,15 @@ func FriendReportRunningTextLoadMessageBodyRetain(r *TableRetainMessageReader, v
 }
 func FriendReportRunningTextSaveMessageBody(w *TableMessageWriter, value *FriendReportRunningText) bool {
 	{
-		if value.ValueLength < 0 || value.ValueLength > 515 {
+		if value.ValueLength < 0 || value.ValueLength > 65536 {
 			return false
 		}
 		if value.ValueLength > 0 {
-			w.Put(14, TableMessageRefBitsHere)
-			if value.ValueLength < 0 || value.ValueLength > 515 {
+			w.Put(1, TableMessageRefBitsHere)
+			if value.ValueLength < 0 || value.ValueLength > 65536 {
 				return false
 			}
-			w.Put(uint64(value.ValueLength), 10)
+			w.Put(uint64(value.ValueLength), 17)
 			w.Raw(value.Value[:value.ValueLength])
 		}
 	}
@@ -24584,7 +22321,7 @@ func FriendReportRunningTextLoadMessageBody(r *TableMessageReader, value *Friend
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(515)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(65536)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -24650,7 +22387,7 @@ func FriendReportLoadMessageBodyRetain(r *TableRetainMessageReader, value *Frien
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Running))
 					r.Retain.discard(r.Path, true, 0)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 520, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 65544, 4) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -24658,7 +22395,7 @@ func FriendReportLoadMessageBodyRetain(r *TableRetainMessageReader, value *Frien
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*FriendReportRunningTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 520))
+						p := (*FriendReportRunningTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 65544))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -24896,7 +22633,7 @@ func FriendReportLoadMessageBodyRetain(r *TableRetainMessageReader, value *Frien
 		case 0x71f304ea62c01cbd:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -24909,28 +22646,12 @@ func FriendReportLoadMessageBodyRetain(r *TableRetainMessageReader, value *Frien
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Window[:])
-					copy(value.Window[:], text[:kept])
-					value.WindowLength = int32(kept)
+					r.Nodes.Resolve(&value.Window, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -24974,7 +22695,7 @@ func FriendReportLoadMessageBodyRetain(r *TableRetainMessageReader, value *Frien
 		case 0x65e8d7f3474f2639:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -24987,28 +22708,12 @@ func FriendReportLoadMessageBodyRetain(r *TableRetainMessageReader, value *Frien
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Reason[:])
-					copy(value.Reason[:], text[:kept])
-					value.ReasonLength = int32(kept)
+					r.Nodes.Resolve(&value.Reason, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -25017,7 +22722,7 @@ func FriendReportLoadMessageBodyRetain(r *TableRetainMessageReader, value *Frien
 		case 0x802517e298c70b03:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -25030,28 +22735,12 @@ func FriendReportLoadMessageBodyRetain(r *TableRetainMessageReader, value *Frien
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Build[:])
-					copy(value.Build[:], text[:kept])
-					value.BuildLength = int32(kept)
+					r.Nodes.Resolve(&value.Build, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -25142,7 +22831,7 @@ func FriendReportSaveMessageBody(w *TableMessageWriter, value *FriendReport) boo
 			return false
 		}
 		if value.Running.Count > 0 {
-			w.Put(54, TableMessageRefBitsHere)
+			w.Put(56, TableMessageRefBitsHere)
 			if value.Running.Count < 0 {
 				return false
 			}
@@ -25167,7 +22856,7 @@ func FriendReportSaveMessageBody(w *TableMessageWriter, value *FriendReport) boo
 	{
 		if value.WorkingPresent {
 			if true {
-				w.Put(55, TableMessageRefBitsHere)
+				w.Put(57, TableMessageRefBitsHere)
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Working), uint64(0))
 			}
 		}
@@ -25175,7 +22864,7 @@ func FriendReportSaveMessageBody(w *TableMessageWriter, value *FriendReport) boo
 	{
 		if value.QueuePresent {
 			if true {
-				w.Put(56, TableMessageRefBitsHere)
+				w.Put(58, TableMessageRefBitsHere)
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Queue), uint64(0))
 			}
 		}
@@ -25183,7 +22872,7 @@ func FriendReportSaveMessageBody(w *TableMessageWriter, value *FriendReport) boo
 	{
 		if value.WidthPresent {
 			if true {
-				w.Put(57, TableMessageRefBitsHere)
+				w.Put(59, TableMessageRefBitsHere)
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Width), uint64(0))
 			}
 		}
@@ -25191,79 +22880,82 @@ func FriendReportSaveMessageBody(w *TableMessageWriter, value *FriendReport) boo
 	{
 		if value.StopReturnsPresent {
 			if true {
-				w.Put(58, TableMessageRefBitsHere)
+				w.Put(60, TableMessageRefBitsHere)
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.StopReturns), uint64(0))
 			}
 		}
 	}
 	{
 		if value.Active != 0 {
-			w.Put(59, TableMessageRefBitsHere)
+			w.Put(61, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Active), uint64(0))
 		}
 	}
 	{
 		if value.PacedPresent {
 			if true {
-				w.Put(60, TableMessageRefBitsHere)
+				w.Put(62, TableMessageRefBitsHere)
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Paced), uint64(0))
 			}
 		}
 	}
 	{
-		if value.WindowLength < 0 || value.WindowLength > 128 {
-			return false
-		}
-		if value.WindowLength > 0 {
-			w.Put(61, TableMessageRefBitsHere)
-			if value.WindowLength < 0 || value.WindowLength > 128 {
-				return false
+		if value.Window != 0 {
+			w.Put(63, TableMessageRefBitsHere)
+			if value.Window == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Window)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.WindowLength), 8)
-			w.Raw(value.Window[:value.WindowLength])
 		}
 	}
 	{
 		if value.Until != 0 {
-			w.Put(62, TableMessageRefBitsHere)
+			w.Put(64, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Until), uint64(0))
 		}
 	}
 	{
-		if value.ReasonLength < 0 || value.ReasonLength > 1024 {
-			return false
-		}
-		if value.ReasonLength > 0 {
-			w.Put(63, TableMessageRefBitsHere)
-			if value.ReasonLength < 0 || value.ReasonLength > 1024 {
-				return false
+		if value.Reason != 0 {
+			w.Put(65, TableMessageRefBitsHere)
+			if value.Reason == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Reason)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ReasonLength), 11)
-			w.Raw(value.Reason[:value.ReasonLength])
 		}
 	}
 	{
-		if value.BuildLength < 0 || value.BuildLength > 128 {
-			return false
-		}
-		if value.BuildLength > 0 {
-			w.Put(64, TableMessageRefBitsHere)
-			if value.BuildLength < 0 || value.BuildLength > 128 {
-				return false
+		if value.Build != 0 {
+			w.Put(66, TableMessageRefBitsHere)
+			if value.Build == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Build)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.BuildLength), 8)
-			w.Raw(value.Build[:value.BuildLength])
 		}
 	}
 	{
 		if value.Started != 0 {
-			w.Put(65, TableMessageRefBitsHere)
+			w.Put(67, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Started), uint64(0))
 		}
 	}
 	{
 		if value.Present != 0 {
-			w.Put(66, TableMessageRefBitsHere)
+			w.Put(68, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Present), uint64(0))
 		}
 	}
@@ -25313,7 +23005,7 @@ func FriendReportLoadMessageBody(r *TableMessageReader, value *FriendReport) boo
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Running))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 520, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 65544, 4) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -25321,7 +23013,7 @@ func FriendReportLoadMessageBody(r *TableMessageReader, value *FriendReport) boo
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*FriendReportRunningTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 520))
+						p := (*FriendReportRunningTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 65544))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -25554,7 +23246,7 @@ func FriendReportLoadMessageBody(r *TableMessageReader, value *FriendReport) boo
 		case 0x71f304ea62c01cbd:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -25567,28 +23259,12 @@ func FriendReportLoadMessageBody(r *TableMessageReader, value *FriendReport) boo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Window[:])
-					copy(value.Window[:], text[:kept])
-					value.WindowLength = int32(kept)
+					r.Nodes.Resolve(&value.Window, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -25632,7 +23308,7 @@ func FriendReportLoadMessageBody(r *TableMessageReader, value *FriendReport) boo
 		case 0x65e8d7f3474f2639:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -25645,28 +23321,12 @@ func FriendReportLoadMessageBody(r *TableMessageReader, value *FriendReport) boo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Reason[:])
-					copy(value.Reason[:], text[:kept])
-					value.ReasonLength = int32(kept)
+					r.Nodes.Resolve(&value.Reason, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -25675,7 +23335,7 @@ func FriendReportLoadMessageBody(r *TableMessageReader, value *FriendReport) boo
 		case 0x802517e298c70b03:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -25688,28 +23348,12 @@ func FriendReportLoadMessageBody(r *TableMessageReader, value *FriendReport) boo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Build[:])
-					copy(value.Build[:], text[:kept])
-					value.BuildLength = int32(kept)
+					r.Nodes.Resolve(&value.Build, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -25876,13 +23520,13 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 						r.Report.Malformed = true
 						return false
 					}
-					payload3 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload3.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload1 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload1.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload3.Signed(entry.Shape.Kind)
+						v := payload1.Signed(entry.Shape.Kind)
 						value.Ready = int64(v)
 					}
 				}
@@ -25911,13 +23555,13 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 						r.Report.Malformed = true
 						return false
 					}
-					payload4 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload4.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload2 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload2.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload4.Signed(entry.Shape.Kind)
+						v := payload2.Signed(entry.Shape.Kind)
 						value.Working = int64(v)
 					}
 				}
@@ -25946,13 +23590,13 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 						r.Report.Malformed = true
 						return false
 					}
-					payload5 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload5.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload3 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload3.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload5.Signed(entry.Shape.Kind)
+						v := payload3.Signed(entry.Shape.Kind)
 						value.Held = int64(v)
 					}
 				}
@@ -25981,13 +23625,13 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 						r.Report.Malformed = true
 						return false
 					}
-					payload6 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload6.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload4 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload4.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload6.Signed(entry.Shape.Kind)
+						v := payload4.Signed(entry.Shape.Kind)
 						value.Stale = int64(v)
 					}
 				}
@@ -26016,13 +23660,13 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 						r.Report.Malformed = true
 						return false
 					}
-					payload7 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload7.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload5 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload5.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload7.Signed(entry.Shape.Kind)
+						v := payload5.Signed(entry.Shape.Kind)
 						value.DealtFleet = int64(v)
 					}
 				}
@@ -26051,13 +23695,13 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 						r.Report.Malformed = true
 						return false
 					}
-					payload8 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload8.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload6 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload6.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload8.Signed(entry.Shape.Kind)
+						v := payload6.Signed(entry.Shape.Kind)
 						value.Width = int64(v)
 					}
 				}
@@ -26086,13 +23730,13 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 						r.Report.Malformed = true
 						return false
 					}
-					payload9 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload9.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload7 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload7.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload9.Signed(entry.Shape.Kind)
+						v := payload7.Signed(entry.Shape.Kind)
 						value.Ok = int64(v)
 					}
 				}
@@ -26121,13 +23765,13 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 						r.Report.Malformed = true
 						return false
 					}
-					payload10 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload10.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload8 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload8.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload10.Signed(entry.Shape.Kind)
+						v := payload8.Signed(entry.Shape.Kind)
 						value.Failed = int64(v)
 					}
 				}
@@ -26156,13 +23800,13 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 						r.Report.Malformed = true
 						return false
 					}
-					payload11 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload11.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload9 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload9.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload11.Signed(entry.Shape.Kind)
+						v := payload9.Signed(entry.Shape.Kind)
 						value.Redealt = int64(v)
 					}
 				}
@@ -26173,7 +23817,7 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 		case 0xc4d5696d6cc12c2f:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -26186,28 +23830,12 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Status[:])
-					copy(value.Status[:], text[:kept])
-					value.StatusLength = int32(kept)
+					r.Nodes.Resolve(&value.Status, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -26216,7 +23844,7 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 		case 0xdba1b249f09a7d76:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -26229,28 +23857,12 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.FriendClass[:])
-					copy(value.FriendClass[:], text[:kept])
-					value.FriendClassLength = int32(kept)
+					r.Nodes.Resolve(&value.FriendClass, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -26259,7 +23871,7 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 		case 0x0d3deba2c41dadb2:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -26272,28 +23884,12 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Mode[:])
-					copy(value.Mode[:], text[:kept])
-					value.ModeLength = int32(kept)
+					r.Nodes.Resolve(&value.Mode, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -26302,7 +23898,7 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 		case 0x3ca2c49553a457d7:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -26315,28 +23911,12 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Session[:])
-					copy(value.Session[:], text[:kept])
-					value.SessionLength = int32(kept)
+					r.Nodes.Resolve(&value.Session, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -26345,7 +23925,7 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 		case 0x584d04462430003e:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -26358,28 +23938,12 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(256)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Roles[:])
-					copy(value.Roles[:], text[:kept])
-					value.RolesLength = int32(kept)
+					r.Nodes.Resolve(&value.Roles, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -26406,17 +23970,17 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 						r.Report.Malformed = true
 						return false
 					}
-					payload12 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload12.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload10 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload10.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
 						var v float64
 						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload12.Get32()))
+							v = math.Float64frombits(tableWidenFloat(payload10.Get32()))
 						} else {
-							v = math.Float64frombits(payload12.Get64())
+							v = math.Float64frombits(payload10.Get64())
 						}
 						value.LoadAvg = v
 					}
@@ -26428,7 +23992,7 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 		case 0xadae49645df2840b:
 			{
 				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -26441,14 +24005,13 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 					}
 				}
 				{
-					payload13 := r.Path
-					r.Path = r.Path.step(16, uint32(0))
-					if !FriendReportLoadMessageBodyRetain(r, &value.Report) {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
+						r.Report.Malformed = true
 						return false
 					}
-					r.Path = payload13
+					r.Nodes.Resolve(&value.Report, index, 0xcccd7b8be68a49a3, &r.Report)
 				}
-				value.ReportPresent = true
 				if widened {
 					r.Report.Widened++
 				}
@@ -26474,13 +24037,13 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 						r.Report.Malformed = true
 						return false
 					}
-					payload14 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload14.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload11 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload11.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload14.Signed(entry.Shape.Kind)
+						v := payload11.Signed(entry.Shape.Kind)
 						value.Active = int64(v)
 					}
 				}
@@ -26509,13 +24072,13 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 						r.Report.Malformed = true
 						return false
 					}
-					payload15 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload15.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload12 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload12.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload15.Signed(entry.Shape.Kind)
+						v := payload12.Signed(entry.Shape.Kind)
 						value.Tokens = int64(v)
 					}
 				}
@@ -26526,7 +24089,7 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 		case 0xef8897783be7abef:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -26539,28 +24102,12 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Charged[:])
-					copy(value.Charged[:], text[:kept])
-					value.ChargedLength = int32(kept)
+					r.Nodes.Resolve(&value.Charged, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -26569,7 +24116,7 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 		case 0x4005570295afd25c:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -26582,28 +24129,12 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Billing[:])
-					copy(value.Billing[:], text[:kept])
-					value.BillingLength = int32(kept)
+					r.Nodes.Resolve(&value.Billing, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -26630,13 +24161,13 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 						r.Report.Malformed = true
 						return false
 					}
-					payload16 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload16.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload13 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload13.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload16.Signed(entry.Shape.Kind)
+						v := payload13.Signed(entry.Shape.Kind)
 						value.Beat = int64(v)
 					}
 				}
@@ -26647,7 +24178,7 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 		case 0xae70fc8f5906c564:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -26660,28 +24191,12 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Evidence[:])
-					copy(value.Evidence[:], text[:kept])
-					value.EvidenceLength = int32(kept)
+					r.Nodes.Resolve(&value.Evidence, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -26690,7 +24205,7 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 		case 0x65e8d7f3474f2639:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -26703,28 +24218,12 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Reason[:])
-					copy(value.Reason[:], text[:kept])
-					value.ReasonLength = int32(kept)
+					r.Nodes.Resolve(&value.Reason, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -26751,13 +24250,13 @@ func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRo
 						r.Report.Malformed = true
 						return false
 					}
-					payload17 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload17.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload14 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload14.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload17.Signed(entry.Shape.Kind)
+						v := payload14.Signed(entry.Shape.Kind)
 						value.Until = int64(v)
 					}
 				}
@@ -26780,7 +24279,7 @@ func FriendRowSaveMessageBody(w *TableMessageWriter, value *FriendRow) bool {
 			return false
 		}
 		if value.NameLength > 0 {
-			w.Put(67, TableMessageRefBitsHere)
+			w.Put(69, TableMessageRefBitsHere)
 			if value.NameLength < 0 || value.NameLength > 128 {
 				return false
 			}
@@ -26790,212 +24289,225 @@ func FriendRowSaveMessageBody(w *TableMessageWriter, value *FriendRow) bool {
 	}
 	{
 		if value.Ready != 0 {
-			w.Put(68, TableMessageRefBitsHere)
+			w.Put(70, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Ready), uint64(0))
 		}
 	}
 	{
 		if value.Working != 0 {
-			w.Put(55, TableMessageRefBitsHere)
+			w.Put(57, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Working), uint64(0))
 		}
 	}
 	{
 		if value.Held != 0 {
-			w.Put(69, TableMessageRefBitsHere)
+			w.Put(71, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Held), uint64(0))
 		}
 	}
 	{
 		if value.Stale != 0 {
-			w.Put(70, TableMessageRefBitsHere)
+			w.Put(72, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Stale), uint64(0))
 		}
 	}
 	{
 		if value.DealtFleet != 0 {
-			w.Put(71, TableMessageRefBitsHere)
+			w.Put(73, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.DealtFleet), uint64(0))
 		}
 	}
 	{
 		if value.Width != 0 {
-			w.Put(57, TableMessageRefBitsHere)
+			w.Put(59, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Width), uint64(0))
 		}
 	}
 	{
 		if value.Ok != 0 {
-			w.Put(72, TableMessageRefBitsHere)
+			w.Put(74, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Ok), uint64(0))
 		}
 	}
 	{
 		if value.Failed != 0 {
-			w.Put(73, TableMessageRefBitsHere)
+			w.Put(75, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Failed), uint64(0))
 		}
 	}
 	{
 		if value.Redealt != 0 {
-			w.Put(74, TableMessageRefBitsHere)
+			w.Put(76, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Redealt), uint64(0))
 		}
 	}
 	{
-		if value.StatusLength < 0 || value.StatusLength > 32 {
-			return false
-		}
-		if value.StatusLength > 0 {
-			w.Put(75, TableMessageRefBitsHere)
-			if value.StatusLength < 0 || value.StatusLength > 32 {
-				return false
-			}
-			w.Put(uint64(value.StatusLength), 6)
-			w.Raw(value.Status[:value.StatusLength])
-		}
-	}
-	{
-		if value.FriendClassLength < 0 || value.FriendClassLength > 64 {
-			return false
-		}
-		if value.FriendClassLength > 0 {
-			w.Put(76, TableMessageRefBitsHere)
-			if value.FriendClassLength < 0 || value.FriendClassLength > 64 {
-				return false
-			}
-			w.Put(uint64(value.FriendClassLength), 7)
-			w.Raw(value.FriendClass[:value.FriendClassLength])
-		}
-	}
-	{
-		if value.ModeLength < 0 || value.ModeLength > 64 {
-			return false
-		}
-		if value.ModeLength > 0 {
+		if value.Status != 0 {
 			w.Put(77, TableMessageRefBitsHere)
-			if value.ModeLength < 0 || value.ModeLength > 64 {
-				return false
+			if value.Status == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Status)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ModeLength), 7)
-			w.Raw(value.Mode[:value.ModeLength])
 		}
 	}
 	{
-		if value.SessionLength < 0 || value.SessionLength > 64 {
-			return false
-		}
-		if value.SessionLength > 0 {
+		if value.FriendClass != 0 {
 			w.Put(78, TableMessageRefBitsHere)
-			if value.SessionLength < 0 || value.SessionLength > 64 {
-				return false
+			if value.FriendClass == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.FriendClass)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.SessionLength), 7)
-			w.Raw(value.Session[:value.SessionLength])
 		}
 	}
 	{
-		if value.RolesLength < 0 || value.RolesLength > 256 {
-			return false
-		}
-		if value.RolesLength > 0 {
+		if value.Mode != 0 {
 			w.Put(79, TableMessageRefBitsHere)
-			if value.RolesLength < 0 || value.RolesLength > 256 {
-				return false
+			if value.Mode == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Mode)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.RolesLength), 9)
-			w.Raw(value.Roles[:value.RolesLength])
+		}
+	}
+	{
+		if value.Session != 0 {
+			w.Put(80, TableMessageRefBitsHere)
+			if value.Session == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Session)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
+			}
+		}
+	}
+	{
+		if value.Roles != 0 {
+			w.Put(81, TableMessageRefBitsHere)
+			if value.Roles == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Roles)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
+			}
 		}
 	}
 	{
 		if value.LoadAvg != 0.0 {
-			w.Put(80, TableMessageRefBitsHere)
+			w.Put(82, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.LoadAvg), uint64(0))
 		}
 	}
 	{
-		if value.ReportPresent {
-			if true {
-				w.Put(81, TableMessageRefBitsHere)
-				if !FriendReportSaveMessageBody(w, &value.Report) {
+		if value.Report != 0 {
+			w.Put(83, TableMessageRefBitsHere)
+			if value.Report == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Report)
+				if !ok {
 					return false
 				}
+				w.Put(index, w.IndexBits)
 			}
 		}
 	}
 	{
 		if value.Active != 0 {
-			w.Put(59, TableMessageRefBitsHere)
+			w.Put(61, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Active), uint64(0))
 		}
 	}
 	{
 		if value.Tokens != 0 {
-			w.Put(82, TableMessageRefBitsHere)
+			w.Put(84, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Tokens), uint64(0))
 		}
 	}
 	{
-		if value.ChargedLength < 0 || value.ChargedLength > 128 {
-			return false
-		}
-		if value.ChargedLength > 0 {
-			w.Put(83, TableMessageRefBitsHere)
-			if value.ChargedLength < 0 || value.ChargedLength > 128 {
-				return false
+		if value.Charged != 0 {
+			w.Put(85, TableMessageRefBitsHere)
+			if value.Charged == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Charged)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ChargedLength), 8)
-			w.Raw(value.Charged[:value.ChargedLength])
 		}
 	}
 	{
-		if value.BillingLength < 0 || value.BillingLength > 64 {
-			return false
-		}
-		if value.BillingLength > 0 {
-			w.Put(84, TableMessageRefBitsHere)
-			if value.BillingLength < 0 || value.BillingLength > 64 {
-				return false
+		if value.Billing != 0 {
+			w.Put(86, TableMessageRefBitsHere)
+			if value.Billing == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Billing)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.BillingLength), 7)
-			w.Raw(value.Billing[:value.BillingLength])
 		}
 	}
 	{
 		if value.Beat != 0 {
-			w.Put(85, TableMessageRefBitsHere)
+			w.Put(87, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Beat), uint64(0))
 		}
 	}
 	{
-		if value.EvidenceLength < 0 || value.EvidenceLength > 1024 {
-			return false
-		}
-		if value.EvidenceLength > 0 {
-			w.Put(86, TableMessageRefBitsHere)
-			if value.EvidenceLength < 0 || value.EvidenceLength > 1024 {
-				return false
+		if value.Evidence != 0 {
+			w.Put(88, TableMessageRefBitsHere)
+			if value.Evidence == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Evidence)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.EvidenceLength), 11)
-			w.Raw(value.Evidence[:value.EvidenceLength])
 		}
 	}
 	{
-		if value.ReasonLength < 0 || value.ReasonLength > 1024 {
-			return false
-		}
-		if value.ReasonLength > 0 {
-			w.Put(63, TableMessageRefBitsHere)
-			if value.ReasonLength < 0 || value.ReasonLength > 1024 {
-				return false
+		if value.Reason != 0 {
+			w.Put(65, TableMessageRefBitsHere)
+			if value.Reason == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Reason)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ReasonLength), 11)
-			w.Raw(value.Reason[:value.ReasonLength])
 		}
 	}
 	{
 		if value.Until != 0 {
-			w.Put(62, TableMessageRefBitsHere)
+			w.Put(64, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Until), uint64(0))
 		}
 	}
@@ -27380,7 +24892,7 @@ func FriendRowLoadMessageBody(r *TableMessageReader, value *FriendRow) bool {
 		case 0xc4d5696d6cc12c2f:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -27393,28 +24905,12 @@ func FriendRowLoadMessageBody(r *TableMessageReader, value *FriendRow) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Status[:])
-					copy(value.Status[:], text[:kept])
-					value.StatusLength = int32(kept)
+					r.Nodes.Resolve(&value.Status, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -27423,7 +24919,7 @@ func FriendRowLoadMessageBody(r *TableMessageReader, value *FriendRow) bool {
 		case 0xdba1b249f09a7d76:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -27436,28 +24932,12 @@ func FriendRowLoadMessageBody(r *TableMessageReader, value *FriendRow) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.FriendClass[:])
-					copy(value.FriendClass[:], text[:kept])
-					value.FriendClassLength = int32(kept)
+					r.Nodes.Resolve(&value.FriendClass, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -27466,7 +24946,7 @@ func FriendRowLoadMessageBody(r *TableMessageReader, value *FriendRow) bool {
 		case 0x0d3deba2c41dadb2:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -27479,28 +24959,12 @@ func FriendRowLoadMessageBody(r *TableMessageReader, value *FriendRow) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Mode[:])
-					copy(value.Mode[:], text[:kept])
-					value.ModeLength = int32(kept)
+					r.Nodes.Resolve(&value.Mode, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -27509,7 +24973,7 @@ func FriendRowLoadMessageBody(r *TableMessageReader, value *FriendRow) bool {
 		case 0x3ca2c49553a457d7:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -27522,28 +24986,12 @@ func FriendRowLoadMessageBody(r *TableMessageReader, value *FriendRow) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Session[:])
-					copy(value.Session[:], text[:kept])
-					value.SessionLength = int32(kept)
+					r.Nodes.Resolve(&value.Session, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -27552,7 +25000,7 @@ func FriendRowLoadMessageBody(r *TableMessageReader, value *FriendRow) bool {
 		case 0x584d04462430003e:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -27565,28 +25013,12 @@ func FriendRowLoadMessageBody(r *TableMessageReader, value *FriendRow) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(256)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Roles[:])
-					copy(value.Roles[:], text[:kept])
-					value.RolesLength = int32(kept)
+					r.Nodes.Resolve(&value.Roles, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -27635,7 +25067,7 @@ func FriendRowLoadMessageBody(r *TableMessageReader, value *FriendRow) bool {
 		case 0xadae49645df2840b:
 			{
 				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -27647,10 +25079,14 @@ func FriendRowLoadMessageBody(r *TableMessageReader, value *FriendRow) bool {
 						break
 					}
 				}
-				if !FriendReportLoadMessageBody(r, &value.Report) {
-					return false
+				{
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
+						r.Report.Malformed = true
+						return false
+					}
+					r.Nodes.Resolve(&value.Report, index, 0xcccd7b8be68a49a3, &r.Report)
 				}
-				value.ReportPresent = true
 				if widened {
 					r.Report.Widened++
 				}
@@ -27728,7 +25164,7 @@ func FriendRowLoadMessageBody(r *TableMessageReader, value *FriendRow) bool {
 		case 0xef8897783be7abef:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -27741,28 +25177,12 @@ func FriendRowLoadMessageBody(r *TableMessageReader, value *FriendRow) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Charged[:])
-					copy(value.Charged[:], text[:kept])
-					value.ChargedLength = int32(kept)
+					r.Nodes.Resolve(&value.Charged, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -27771,7 +25191,7 @@ func FriendRowLoadMessageBody(r *TableMessageReader, value *FriendRow) bool {
 		case 0x4005570295afd25c:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -27784,28 +25204,12 @@ func FriendRowLoadMessageBody(r *TableMessageReader, value *FriendRow) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Billing[:])
-					copy(value.Billing[:], text[:kept])
-					value.BillingLength = int32(kept)
+					r.Nodes.Resolve(&value.Billing, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -27849,7 +25253,7 @@ func FriendRowLoadMessageBody(r *TableMessageReader, value *FriendRow) bool {
 		case 0xae70fc8f5906c564:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -27862,28 +25266,12 @@ func FriendRowLoadMessageBody(r *TableMessageReader, value *FriendRow) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Evidence[:])
-					copy(value.Evidence[:], text[:kept])
-					value.EvidenceLength = int32(kept)
+					r.Nodes.Resolve(&value.Evidence, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -27892,7 +25280,7 @@ func FriendRowLoadMessageBody(r *TableMessageReader, value *FriendRow) bool {
 		case 0x65e8d7f3474f2639:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -27905,28 +25293,12 @@ func FriendRowLoadMessageBody(r *TableMessageReader, value *FriendRow) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Reason[:])
-					copy(value.Reason[:], text[:kept])
-					value.ReasonLength = int32(kept)
+					r.Nodes.Resolve(&value.Reason, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -28111,19 +25483,19 @@ func SeriesTotalsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Serie
 func SeriesTotalsSaveMessageBody(w *TableMessageWriter, value *SeriesTotals) bool {
 	{
 		if value.Friends != 0 {
-			w.Put(163, TableMessageRefBitsHere)
+			w.Put(167, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Friends), uint64(0))
 		}
 	}
 	{
 		if value.Fleet != 0 {
-			w.Put(164, TableMessageRefBitsHere)
+			w.Put(168, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Fleet), uint64(0))
 		}
 	}
 	{
 		if value.Unknown != 0 {
-			w.Put(165, TableMessageRefBitsHere)
+			w.Put(169, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Unknown), uint64(0))
 		}
 	}
@@ -28361,13 +25733,13 @@ func SeriesLastHourLoadMessageBodyRetain(r *TableRetainMessageReader, value *Ser
 func SeriesLastHourSaveMessageBody(w *TableMessageWriter, value *SeriesLastHour) bool {
 	{
 		if value.Friends != 0 {
-			w.Put(163, TableMessageRefBitsHere)
+			w.Put(167, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Friends), uint64(0))
 		}
 	}
 	{
 		if value.Fleet != 0 {
-			w.Put(164, TableMessageRefBitsHere)
+			w.Put(168, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Fleet), uint64(0))
 		}
 	}
@@ -28519,7 +25891,7 @@ func LandedSeriesWorkersEntryLoadMessageBodyRetain(r *TableRetainMessageReader, 
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -28575,12 +25947,12 @@ func LandedSeriesWorkersEntryLoadMessageBodyRetain(r *TableRetainMessageReader, 
 }
 func LandedSeriesWorkersEntrySaveMessageBody(w *TableMessageWriter, value *LandedSeriesWorkersEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
+		if value.KeyLength < 0 || value.KeyLength > 135 {
 			return false
 		}
 		if value.KeyLength > 0 {
-			w.Put(5, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 128 {
+			w.Put(15, TableMessageRefBitsHere)
+			if value.KeyLength < 0 || value.KeyLength > 135 {
 				return false
 			}
 			w.Put(uint64(value.KeyLength), 8)
@@ -28589,7 +25961,7 @@ func LandedSeriesWorkersEntrySaveMessageBody(w *TableMessageWriter, value *Lande
 	}
 	{
 		if value.Value != 0 {
-			w.Put(6, TableMessageRefBitsHere)
+			w.Put(7, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Value), uint64(0))
 		}
 	}
@@ -28644,7 +26016,7 @@ func LandedSeriesWorkersEntryLoadMessageBody(r *TableMessageReader, value *Lande
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -28719,7 +26091,7 @@ func LandedSeriesLoadMessageBodyRetain(r *TableRetainMessageReader, value *Lande
 		case 0xe062a9743d7b3b62:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -28732,28 +26104,12 @@ func LandedSeriesLoadMessageBodyRetain(r *TableRetainMessageReader, value *Lande
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Generated[:])
-					copy(value.Generated[:], text[:kept])
-					value.GeneratedLength = int32(kept)
+					r.Nodes.Resolve(&value.Generated, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -29103,7 +26459,7 @@ func LandedSeriesLoadMessageBodyRetain(r *TableRetainMessageReader, value *Lande
 					field := &LandedSeriesTableFields[9]
 					holder := (*tableContainer)(unsafe.Pointer(&value.Workers))
 					r.Retain.discard(r.Path, true, 9)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 152, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -29150,7 +26506,7 @@ func LandedSeriesLoadMessageBodyRetain(r *TableRetainMessageReader, value *Lande
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*LandedSeriesWorkersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
+							p = (*LandedSeriesWorkersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 152))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -29188,39 +26544,40 @@ func LandedSeriesLoadMessageBodyRetain(r *TableRetainMessageReader, value *Lande
 }
 func LandedSeriesSaveMessageBody(w *TableMessageWriter, value *LandedSeries) bool {
 	{
-		if value.GeneratedLength < 0 || value.GeneratedLength > 64 {
-			return false
-		}
-		if value.GeneratedLength > 0 {
-			w.Put(100, TableMessageRefBitsHere)
-			if value.GeneratedLength < 0 || value.GeneratedLength > 64 {
-				return false
+		if value.Generated != 0 {
+			w.Put(103, TableMessageRefBitsHere)
+			if value.Generated == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Generated)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.GeneratedLength), 7)
-			w.Raw(value.Generated[:value.GeneratedLength])
 		}
 	}
 	{
 		if value.GeneratedEpoch != 0 {
-			w.Put(101, TableMessageRefBitsHere)
+			w.Put(104, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.GeneratedEpoch), uint64(0))
 		}
 	}
 	{
 		if value.BucketSeconds != 0 {
-			w.Put(102, TableMessageRefBitsHere)
+			w.Put(105, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.BucketSeconds), uint64(0))
 		}
 	}
 	{
 		if value.Start != 0 {
-			w.Put(103, TableMessageRefBitsHere)
+			w.Put(106, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Start), uint64(0))
 		}
 	}
 	{
 		if value.Buckets != 0 {
-			w.Put(104, TableMessageRefBitsHere)
+			w.Put(107, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Buckets), uint64(0))
 		}
 	}
@@ -29229,7 +26586,7 @@ func LandedSeriesSaveMessageBody(w *TableMessageWriter, value *LandedSeries) boo
 			return false
 		}
 		if value.Friends.Count > 0 {
-			w.Put(105, TableMessageRefBitsHere)
+			w.Put(108, TableMessageRefBitsHere)
 			if value.Friends.Count < 0 {
 				return false
 			}
@@ -29254,7 +26611,7 @@ func LandedSeriesSaveMessageBody(w *TableMessageWriter, value *LandedSeries) boo
 			return false
 		}
 		if value.Fleet.Count > 0 {
-			w.Put(106, TableMessageRefBitsHere)
+			w.Put(109, TableMessageRefBitsHere)
 			if value.Fleet.Count < 0 {
 				return false
 			}
@@ -29282,7 +26639,7 @@ func LandedSeriesSaveMessageBody(w *TableMessageWriter, value *LandedSeries) boo
 			return false
 		}
 		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(107, TableMessageRefBitsHere)
+			w.Put(110, TableMessageRefBitsHere)
 			if !SeriesTotalsSaveMessageBody(w, &value.Totals) {
 				return false
 			}
@@ -29296,7 +26653,7 @@ func LandedSeriesSaveMessageBody(w *TableMessageWriter, value *LandedSeries) boo
 			return false
 		}
 		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(108, TableMessageRefBitsHere)
+			w.Put(111, TableMessageRefBitsHere)
 			if !SeriesLastHourSaveMessageBody(w, &value.LastHour) {
 				return false
 			}
@@ -29307,7 +26664,7 @@ func LandedSeriesSaveMessageBody(w *TableMessageWriter, value *LandedSeries) boo
 			return false
 		}
 		if value.Workers.Count > 0 {
-			w.Put(109, TableMessageRefBitsHere)
+			w.Put(112, TableMessageRefBitsHere)
 			if value.Workers.Count < 0 {
 				return false
 			}
@@ -29352,7 +26709,7 @@ func LandedSeriesLoadMessageBody(r *TableMessageReader, value *LandedSeries) boo
 		case 0xe062a9743d7b3b62:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -29365,28 +26722,12 @@ func LandedSeriesLoadMessageBody(r *TableMessageReader, value *LandedSeries) boo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Generated[:])
-					copy(value.Generated[:], text[:kept])
-					value.GeneratedLength = int32(kept)
+					r.Nodes.Resolve(&value.Generated, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -29723,7 +27064,7 @@ func LandedSeriesLoadMessageBody(r *TableMessageReader, value *LandedSeries) boo
 					}
 					field := &LandedSeriesTableFields[9]
 					holder := (*tableContainer)(unsafe.Pointer(&value.Workers))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 152, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -29770,7 +27111,7 @@ func LandedSeriesLoadMessageBody(r *TableMessageReader, value *LandedSeries) boo
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*LandedSeriesWorkersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
+							p = (*LandedSeriesWorkersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 152))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -29912,7 +27253,7 @@ func WhereViewTablesEntryValueEntryValueEntrySaveMessageBody(w *TableMessageWrit
 	}
 	{
 		if value.Value != 0 {
-			w.Put(13, TableMessageRefBitsHere)
+			w.Put(9, TableMessageRefBitsHere)
 			if value.Value == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -30193,7 +27534,7 @@ func WhereViewTablesEntryValueEntrySaveMessageBody(w *TableMessageWriter, value 
 			return false
 		}
 		if value.KeyLength > 0 {
-			w.Put(12, TableMessageRefBitsHere)
+			w.Put(14, TableMessageRefBitsHere)
 			if value.KeyLength < 0 || value.KeyLength > 256 {
 				return false
 			}
@@ -30206,7 +27547,7 @@ func WhereViewTablesEntryValueEntrySaveMessageBody(w *TableMessageWriter, value 
 			return false
 		}
 		if value.Value.Count > 0 {
-			w.Put(11, TableMessageRefBitsHere)
+			w.Put(13, TableMessageRefBitsHere)
 			if value.Value.Count < 0 {
 				return false
 			}
@@ -30439,7 +27780,7 @@ func WhereViewTablesEntryLoadMessageBodyRetain(r *TableRetainMessageReader, valu
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(7)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -30558,15 +27899,15 @@ func WhereViewTablesEntryLoadMessageBodyRetain(r *TableRetainMessageReader, valu
 }
 func WhereViewTablesEntrySaveMessageBody(w *TableMessageWriter, value *WhereViewTablesEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 64 {
+		if value.KeyLength < 0 || value.KeyLength > 7 {
 			return false
 		}
 		if value.KeyLength > 0 {
-			w.Put(2, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 64 {
+			w.Put(12, TableMessageRefBitsHere)
+			if value.KeyLength < 0 || value.KeyLength > 7 {
 				return false
 			}
-			w.Put(uint64(value.KeyLength), 7)
+			w.Put(uint64(value.KeyLength), 3)
 			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
@@ -30575,7 +27916,7 @@ func WhereViewTablesEntrySaveMessageBody(w *TableMessageWriter, value *WhereView
 			return false
 		}
 		if value.Value.Count > 0 {
-			w.Put(11, TableMessageRefBitsHere)
+			w.Put(13, TableMessageRefBitsHere)
 			if value.Value.Count < 0 {
 				return false
 			}
@@ -30648,7 +27989,7 @@ func WhereViewTablesEntryLoadMessageBody(r *TableMessageReader, value *WhereView
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(7)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -30808,7 +28149,7 @@ func WhereViewTiersEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -30864,21 +28205,21 @@ func WhereViewTiersEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value
 }
 func WhereViewTiersEntrySaveMessageBody(w *TableMessageWriter, value *WhereViewTiersEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 64 {
+		if value.KeyLength < 0 || value.KeyLength > 128 {
 			return false
 		}
 		if value.KeyLength > 0 {
-			w.Put(2, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 64 {
+			w.Put(5, TableMessageRefBitsHere)
+			if value.KeyLength < 0 || value.KeyLength > 128 {
 				return false
 			}
-			w.Put(uint64(value.KeyLength), 7)
+			w.Put(uint64(value.KeyLength), 8)
 			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
 		if value.Value != 0 {
-			w.Put(6, TableMessageRefBitsHere)
+			w.Put(7, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Value), uint64(0))
 		}
 	}
@@ -30933,7 +28274,7 @@ func WhereViewTiersEntryLoadMessageBody(r *TableMessageReader, value *WhereViewT
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -31420,7 +28761,7 @@ func WhereViewFirstTimeRoutesEntryLoadMessageBodyRetain(r *TableRetainMessageRea
 		case 0x7ce4fd9430e80cea:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -31433,28 +28774,12 @@ func WhereViewFirstTimeRoutesEntryLoadMessageBodyRetain(r *TableRetainMessageRea
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(256)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Value[:])
-					copy(value.Value[:], text[:kept])
-					value.ValueLength = int32(kept)
+					r.Nodes.Resolve(&value.Value, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -31484,16 +28809,17 @@ func WhereViewFirstTimeRoutesEntrySaveMessageBody(w *TableMessageWriter, value *
 		}
 	}
 	{
-		if value.ValueLength < 0 || value.ValueLength > 256 {
-			return false
-		}
-		if value.ValueLength > 0 {
-			w.Put(10, TableMessageRefBitsHere)
-			if value.ValueLength < 0 || value.ValueLength > 256 {
-				return false
+		if value.Value != 0 {
+			w.Put(9, TableMessageRefBitsHere)
+			if value.Value == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Value)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ValueLength), 9)
-			w.Raw(value.Value[:value.ValueLength])
 		}
 	}
 	w.Put(0, TableMessageRefBitsHere)
@@ -31560,7 +28886,7 @@ func WhereViewFirstTimeRoutesEntryLoadMessageBody(r *TableMessageReader, value *
 		case 0x7ce4fd9430e80cea:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -31573,28 +28899,12 @@ func WhereViewFirstTimeRoutesEntryLoadMessageBody(r *TableMessageReader, value *
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(256)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Value[:])
-					copy(value.Value[:], text[:kept])
-					value.ValueLength = int32(kept)
+					r.Nodes.Resolve(&value.Value, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -31814,7 +29124,7 @@ func WhereViewBlockersTextLoadMessageBodyRetain(r *TableRetainMessageReader, val
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(65710)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -31837,15 +29147,15 @@ func WhereViewBlockersTextLoadMessageBodyRetain(r *TableRetainMessageReader, val
 }
 func WhereViewBlockersTextSaveMessageBody(w *TableMessageWriter, value *WhereViewBlockersText) bool {
 	{
-		if value.ValueLength < 0 || value.ValueLength > 1024 {
+		if value.ValueLength < 0 || value.ValueLength > 65710 {
 			return false
 		}
 		if value.ValueLength > 0 {
-			w.Put(1, TableMessageRefBitsHere)
-			if value.ValueLength < 0 || value.ValueLength > 1024 {
+			w.Put(6, TableMessageRefBitsHere)
+			if value.ValueLength < 0 || value.ValueLength > 65710 {
 				return false
 			}
-			w.Put(uint64(value.ValueLength), 11)
+			w.Put(uint64(value.ValueLength), 17)
 			w.Raw(value.Value[:value.ValueLength])
 		}
 	}
@@ -31900,7 +29210,7 @@ func WhereViewBlockersTextLoadMessageBody(r *TableMessageReader, value *WhereVie
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(65710)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -31970,7 +29280,7 @@ func WhereViewFleetTiersTextLoadMessageBodyRetain(r *TableRetainMessageReader, v
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(8)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -31993,15 +29303,15 @@ func WhereViewFleetTiersTextLoadMessageBodyRetain(r *TableRetainMessageReader, v
 }
 func WhereViewFleetTiersTextSaveMessageBody(w *TableMessageWriter, value *WhereViewFleetTiersText) bool {
 	{
-		if value.ValueLength < 0 || value.ValueLength > 64 {
+		if value.ValueLength < 0 || value.ValueLength > 8 {
 			return false
 		}
 		if value.ValueLength > 0 {
-			w.Put(7, TableMessageRefBitsHere)
-			if value.ValueLength < 0 || value.ValueLength > 64 {
+			w.Put(8, TableMessageRefBitsHere)
+			if value.ValueLength < 0 || value.ValueLength > 8 {
 				return false
 			}
-			w.Put(uint64(value.ValueLength), 7)
+			w.Put(uint64(value.ValueLength), 4)
 			w.Raw(value.Value[:value.ValueLength])
 		}
 	}
@@ -32056,7 +29366,7 @@ func WhereViewFleetTiersTextLoadMessageBody(r *TableMessageReader, value *WhereV
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(8)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -32126,7 +29436,7 @@ func WhereViewFriendsTiersTextLoadMessageBodyRetain(r *TableRetainMessageReader,
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(8)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -32149,15 +29459,15 @@ func WhereViewFriendsTiersTextLoadMessageBodyRetain(r *TableRetainMessageReader,
 }
 func WhereViewFriendsTiersTextSaveMessageBody(w *TableMessageWriter, value *WhereViewFriendsTiersText) bool {
 	{
-		if value.ValueLength < 0 || value.ValueLength > 64 {
+		if value.ValueLength < 0 || value.ValueLength > 8 {
 			return false
 		}
 		if value.ValueLength > 0 {
-			w.Put(7, TableMessageRefBitsHere)
-			if value.ValueLength < 0 || value.ValueLength > 64 {
+			w.Put(8, TableMessageRefBitsHere)
+			if value.ValueLength < 0 || value.ValueLength > 8 {
 				return false
 			}
-			w.Put(uint64(value.ValueLength), 7)
+			w.Put(uint64(value.ValueLength), 4)
 			w.Raw(value.Value[:value.ValueLength])
 		}
 	}
@@ -32212,7 +29522,7 @@ func WhereViewFriendsTiersTextLoadMessageBody(r *TableMessageReader, value *Wher
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(64)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(8)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -32282,7 +29592,7 @@ func WhereViewPrioritiesEntryLoadMessageBodyRetain(r *TableRetainMessageReader, 
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(8)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -32330,15 +29640,15 @@ func WhereViewPrioritiesEntryLoadMessageBodyRetain(r *TableRetainMessageReader, 
 }
 func WhereViewPrioritiesEntrySaveMessageBody(w *TableMessageWriter, value *WhereViewPrioritiesEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 32 {
+		if value.KeyLength < 0 || value.KeyLength > 8 {
 			return false
 		}
 		if value.KeyLength > 0 {
-			w.Put(9, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 32 {
+			w.Put(11, TableMessageRefBitsHere)
+			if value.KeyLength < 0 || value.KeyLength > 8 {
 				return false
 			}
-			w.Put(uint64(value.KeyLength), 6)
+			w.Put(uint64(value.KeyLength), 4)
 			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
@@ -32407,7 +29717,7 @@ func WhereViewPrioritiesEntryLoadMessageBody(r *TableMessageReader, value *Where
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(8)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -32510,7 +29820,7 @@ func WhereViewStreamPrioritiesEntryLoadMessageBodyRetain(r *TableRetainMessageRe
 		case 0x7ce4fd9430e80cea:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -32523,28 +29833,12 @@ func WhereViewStreamPrioritiesEntryLoadMessageBodyRetain(r *TableRetainMessageRe
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Value[:])
-					copy(value.Value[:], text[:kept])
-					value.ValueLength = int32(kept)
+					r.Nodes.Resolve(&value.Value, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -32574,16 +29868,17 @@ func WhereViewStreamPrioritiesEntrySaveMessageBody(w *TableMessageWriter, value 
 		}
 	}
 	{
-		if value.ValueLength < 0 || value.ValueLength > 32 {
-			return false
-		}
-		if value.ValueLength > 0 {
-			w.Put(8, TableMessageRefBitsHere)
-			if value.ValueLength < 0 || value.ValueLength > 32 {
-				return false
+		if value.Value != 0 {
+			w.Put(9, TableMessageRefBitsHere)
+			if value.Value == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Value)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ValueLength), 6)
-			w.Raw(value.Value[:value.ValueLength])
 		}
 	}
 	w.Put(0, TableMessageRefBitsHere)
@@ -32650,7 +29945,7 @@ func WhereViewStreamPrioritiesEntryLoadMessageBody(r *TableMessageReader, value 
 		case 0x7ce4fd9430e80cea:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -32663,28 +29958,12 @@ func WhereViewStreamPrioritiesEntryLoadMessageBody(r *TableMessageReader, value 
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Value[:])
-					copy(value.Value[:], text[:kept])
-					value.ValueLength = int32(kept)
+					r.Nodes.Resolve(&value.Value, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -32748,7 +30027,7 @@ func WhereViewReleasesEntryLoadMessageBodyRetain(r *TableRetainMessageReader, va
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(65536)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -32804,21 +30083,21 @@ func WhereViewReleasesEntryLoadMessageBodyRetain(r *TableRetainMessageReader, va
 }
 func WhereViewReleasesEntrySaveMessageBody(w *TableMessageWriter, value *WhereViewReleasesEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
+		if value.KeyLength < 0 || value.KeyLength > 65536 {
 			return false
 		}
 		if value.KeyLength > 0 {
-			w.Put(5, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 128 {
+			w.Put(10, TableMessageRefBitsHere)
+			if value.KeyLength < 0 || value.KeyLength > 65536 {
 				return false
 			}
-			w.Put(uint64(value.KeyLength), 8)
+			w.Put(uint64(value.KeyLength), 17)
 			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
 		if value.Value != 0 {
-			w.Put(6, TableMessageRefBitsHere)
+			w.Put(7, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Value), uint64(0))
 		}
 	}
@@ -32873,7 +30152,7 @@ func WhereViewReleasesEntryLoadMessageBody(r *TableMessageReader, value *WhereVi
 						r.Report.Malformed = true
 						return false
 					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
+					kept := tableUtf8Clamp(text, min(int64(n), int64(65536)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -32961,12 +30240,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					payload137 := r.Path
+					payload123 := r.Path
 					r.Path = r.Path.step(0, uint32(0))
 					if !DecisionSummaryLoadMessageBodyRetain(r, &value.Decisions) {
 						return false
 					}
-					r.Path = payload137
+					r.Path = payload123
 				}
 				if widened {
 					r.Report.Widened++
@@ -32993,13 +30272,13 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						r.Report.Malformed = true
 						return false
 					}
-					payload138 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload138.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload124 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload124.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload138.Signed(entry.Shape.Kind)
+						v := payload124.Signed(entry.Shape.Kind)
 						value.At = int64(v)
 					}
 				}
@@ -33028,13 +30307,13 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						r.Report.Malformed = true
 						return false
 					}
-					payload139 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload139.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload125 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload125.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload139.Signed(entry.Shape.Kind)
+						v := payload125.Signed(entry.Shape.Kind)
 						value.Landed = int64(v)
 					}
 				}
@@ -33063,13 +30342,13 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						r.Report.Malformed = true
 						return false
 					}
-					payload140 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload140.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload126 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload126.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload140.Signed(entry.Shape.Kind)
+						v := payload126.Signed(entry.Shape.Kind)
 						value.All = int64(v)
 					}
 				}
@@ -33098,13 +30377,13 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						r.Report.Malformed = true
 						return false
 					}
-					payload141 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload141.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload127 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload127.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload141.Signed(entry.Shape.Kind)
+						v := payload127.Signed(entry.Shape.Kind)
 						value.Held = int64(v)
 					}
 				}
@@ -33115,7 +30394,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 		case 0xa3c2813bcd780513:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -33128,28 +30407,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Summary[:])
-					copy(value.Summary[:], text[:kept])
-					value.SummaryLength = int32(kept)
+					r.Nodes.Resolve(&value.Summary, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -33176,13 +30439,13 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						r.Report.Malformed = true
 						return false
 					}
-					payload142 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload142.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload128 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload128.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload142.Signed(entry.Shape.Kind)
+						v := payload128.Signed(entry.Shape.Kind)
 						value.ArchivedCards = int64(v)
 					}
 				}
@@ -33211,13 +30474,13 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						r.Report.Malformed = true
 						return false
 					}
-					payload143 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload143.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload129 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload129.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload143.Signed(entry.Shape.Kind)
+						v := payload129.Signed(entry.Shape.Kind)
 						value.ArchivedLanded = int64(v)
 					}
 				}
@@ -33246,12 +30509,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						r.Report.Malformed = true
 						return false
 					}
-					payload144 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload144.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload130 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload130.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
-					value.Done = payload144.Get8() != 0
+					value.Done = payload130.Get8() != 0
 				}
 				if widened {
 					r.Report.Widened++
@@ -33281,7 +30544,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					field := &WhereViewTableFields[9]
 					holder := (*tableContainer)(unsafe.Pointer(&value.Tables))
 					r.Retain.discard(r.Path, true, 9)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 88, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 32, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -33328,7 +30591,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*WhereViewTablesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 88))
+							p = (*WhereViewTablesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 32))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -33336,12 +30599,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 							holder.Count++
 						}
 						{
-							payload145 := r.Path
+							payload131 := r.Path
 							r.Path = r.Path.step(9, uint32(holder.Count-1))
 							if !WhereViewTablesEntryLoadMessageBodyRetain(r, p) {
 								return false
 							}
-							r.Path = payload145
+							r.Path = payload131
 						}
 						if r.Bits.Offset != end {
 							r.Report.Malformed = true
@@ -33379,7 +30642,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					field := &WhereViewTableFields[10]
 					holder := (*tableContainer)(unsafe.Pointer(&value.Tiers))
 					r.Retain.discard(r.Path, true, 10)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 80, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -33426,7 +30689,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*WhereViewTiersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 80))
+							p = (*WhereViewTiersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -33434,12 +30697,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 							holder.Count++
 						}
 						{
-							payload146 := r.Path
+							payload132 := r.Path
 							r.Path = r.Path.step(10, uint32(holder.Count-1))
 							if !WhereViewTiersEntryLoadMessageBodyRetain(r, p) {
 								return false
 							}
-							r.Path = payload146
+							r.Path = payload132
 						}
 						if r.Bits.Offset != end {
 							r.Report.Malformed = true
@@ -33477,7 +30740,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					field := &WhereViewTableFields[11]
 					holder := (*tableContainer)(unsafe.Pointer(&value.StreamCosts))
 					r.Retain.discard(r.Path, true, 11)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 1488, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 336, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -33524,7 +30787,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*WhereViewStreamCostsEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 1488))
+							p = (*WhereViewStreamCostsEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 336))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -33532,12 +30795,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 							holder.Count++
 						}
 						{
-							payload147 := r.Path
+							payload133 := r.Path
 							r.Path = r.Path.step(11, uint32(holder.Count-1))
 							if !WhereViewStreamCostsEntryLoadMessageBodyRetain(r, p) {
 								return false
 							}
-							r.Path = payload147
+							r.Path = payload133
 						}
 						if r.Bits.Offset != end {
 							r.Report.Malformed = true
@@ -33554,7 +30817,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 		case 0xbea0bc892d25d607:
 			{
 				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -33567,14 +30830,13 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					payload148 := r.Path
-					r.Path = r.Path.step(12, uint32(0))
-					if !CostCheckLoadMessageBodyRetain(r, &value.CostCheck) {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
+						r.Report.Malformed = true
 						return false
 					}
-					r.Path = payload148
+					r.Nodes.Resolve(&value.CostCheck, index, 0xd15dc0f47785f8a0, &r.Report)
 				}
-				value.CostCheckPresent = true
 				if widened {
 					r.Report.Widened++
 				}
@@ -33582,7 +30844,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 		case 0x63a9b7c8db210dfb:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -33595,28 +30857,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(256)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.FirstTime[:])
-					copy(value.FirstTime[:], text[:kept])
-					value.FirstTimeLength = int32(kept)
+					r.Nodes.Resolve(&value.FirstTime, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -33643,13 +30889,13 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						r.Report.Malformed = true
 						return false
 					}
-					payload149 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload149.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload134 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload134.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload149.Signed(entry.Shape.Kind)
+						v := payload134.Signed(entry.Shape.Kind)
 						value.FirstTimeTarget = int64(v)
 					}
 				}
@@ -33678,13 +30924,13 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						r.Report.Malformed = true
 						return false
 					}
-					payload150 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload150.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload135 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload135.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload150.Signed(entry.Shape.Kind)
+						v := payload135.Signed(entry.Shape.Kind)
 						value.FirstTimeWindow = int64(v)
 					}
 				}
@@ -33734,12 +30980,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						}
 						holder.Count++
 						{
-							payload151 := r.Path
+							payload136 := r.Path
 							r.Path = r.Path.step(16, uint32(i))
 							if !WhereViewFirstTimeUnderTargetTextLoadMessageBodyRetain(r, &(*p)) {
 								return false
 							}
-							r.Path = payload151
+							r.Path = payload136
 						}
 					}
 				}
@@ -33771,7 +31017,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					field := &WhereViewTableFields[17]
 					holder := (*tableContainer)(unsafe.Pointer(&value.FirstTimeRoutes))
 					r.Retain.discard(r.Path, true, 17)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 400, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -33818,7 +31064,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*WhereViewFirstTimeRoutesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 400))
+							p = (*WhereViewFirstTimeRoutesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -33826,12 +31072,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 							holder.Count++
 						}
 						{
-							payload152 := r.Path
+							payload137 := r.Path
 							r.Path = r.Path.step(17, uint32(holder.Count-1))
 							if !WhereViewFirstTimeRoutesEntryLoadMessageBodyRetain(r, p) {
 								return false
 							}
-							r.Path = payload152
+							r.Path = payload137
 						}
 						if r.Bits.Offset != end {
 							r.Report.Malformed = true
@@ -33848,7 +31094,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 		case 0x8da0655a706978ba:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -33861,28 +31107,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.ReadSpend[:])
-					copy(value.ReadSpend[:], text[:kept])
-					value.ReadSpendLength = int32(kept)
+					r.Nodes.Resolve(&value.ReadSpend, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -33915,7 +31145,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Streams))
 					r.Retain.discard(r.Path, true, 19)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 1464, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 224, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -33923,19 +31153,19 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*StreamClockRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 1464))
+						p := (*StreamClockRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 224))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
 						}
 						holder.Count++
 						{
-							payload153 := r.Path
+							payload138 := r.Path
 							r.Path = r.Path.step(19, uint32(i))
 							if !StreamClockLoadMessageBodyRetain(r, &(*p)) {
 								return false
 							}
-							r.Path = payload153
+							r.Path = payload138
 						}
 					}
 				}
@@ -33959,12 +31189,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					payload154 := r.Path
+					payload139 := r.Path
 					r.Path = r.Path.step(20, uint32(0))
 					if !StageTimesLoadMessageBodyRetain(r, &value.StageTimes) {
 						return false
 					}
-					r.Path = payload154
+					r.Path = payload139
 				}
 				value.StageTimesPresent = true
 				if widened {
@@ -34013,12 +31243,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						}
 						holder.Count++
 						{
-							payload155 := r.Path
+							payload140 := r.Path
 							r.Path = r.Path.step(21, uint32(i))
 							if !WhereViewStalledTextLoadMessageBodyRetain(r, &(*p)) {
 								return false
 							}
-							r.Path = payload155
+							r.Path = payload140
 						}
 					}
 				}
@@ -34053,7 +31283,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Critical))
 					r.Retain.discard(r.Path, true, 22)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 568, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 536, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -34061,19 +31291,19 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*CriticalCardRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 568))
+						p := (*CriticalCardRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 536))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
 						}
 						holder.Count++
 						{
-							payload156 := r.Path
+							payload141 := r.Path
 							r.Path = r.Path.step(22, uint32(i))
 							if !CriticalCardLoadMessageBodyRetain(r, &(*p)) {
 								return false
 							}
-							r.Path = payload156
+							r.Path = payload141
 						}
 					}
 				}
@@ -34108,7 +31338,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Blockers))
 					r.Retain.discard(r.Path, true, 23)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 1032, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 65716, 4) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -34116,19 +31346,19 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*WhereViewBlockersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 1032))
+						p := (*WhereViewBlockersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 65716))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
 						}
 						holder.Count++
 						{
-							payload157 := r.Path
+							payload142 := r.Path
 							r.Path = r.Path.step(23, uint32(i))
 							if !WhereViewBlockersTextLoadMessageBodyRetain(r, &(*p)) {
 								return false
 							}
-							r.Path = payload157
+							r.Path = payload142
 						}
 					}
 				}
@@ -34139,7 +31369,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 		case 0x9e9b04c54923ae13:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -34152,28 +31382,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Idle[:])
-					copy(value.Idle[:], text[:kept])
-					value.IdleLength = int32(kept)
+					r.Nodes.Resolve(&value.Idle, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -34182,7 +31396,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 		case 0x20cd038d974113f1:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -34195,28 +31409,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Coordinator[:])
-					copy(value.Coordinator[:], text[:kept])
-					value.CoordinatorLength = int32(kept)
+					r.Nodes.Resolve(&value.Coordinator, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -34225,7 +31423,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 		case 0x52dea0d6eeb5083c:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -34238,28 +31436,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(256)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Pending[:])
-					copy(value.Pending[:], text[:kept])
-					value.PendingLength = int32(kept)
+					r.Nodes.Resolve(&value.Pending, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -34286,13 +31468,13 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						r.Report.Malformed = true
 						return false
 					}
-					payload158 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload158.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload143 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload143.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload158.Unsigned(entry.Shape.Kind)
+						v := payload143.Unsigned(entry.Shape.Kind)
 						value.Epoch = uint64(v)
 					}
 				}
@@ -34321,13 +31503,13 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						r.Report.Malformed = true
 						return false
 					}
-					payload159 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload159.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload144 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload144.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload159.Signed(entry.Shape.Kind)
+						v := payload144.Signed(entry.Shape.Kind)
 						value.Cleared = int64(v)
 					}
 				}
@@ -34338,7 +31520,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 		case 0x385157cb98d7be6e:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -34351,28 +31533,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(512)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Machine[:])
-					copy(value.Machine[:], text[:kept])
-					value.MachineLength = int32(kept)
+					r.Nodes.Resolve(&value.Machine, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -34381,7 +31547,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 		case 0xbcf35c56fa51bfd9:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -34394,28 +31560,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.ServerVersion[:])
-					copy(value.ServerVersion[:], text[:kept])
-					value.ServerVersionLength = int32(kept)
+					r.Nodes.Resolve(&value.ServerVersion, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -34424,7 +31574,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 		case 0x7294d77db181ded2:
 			{
 				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -34437,14 +31587,13 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					payload160 := r.Path
-					r.Path = r.Path.step(31, uint32(0))
-					if !ServerBeatLoadMessageBodyRetain(r, &value.Server) {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
+						r.Report.Malformed = true
 						return false
 					}
-					r.Path = payload160
+					r.Nodes.Resolve(&value.Server, index, 0x5b1ed46937b3d7fa, &r.Report)
 				}
-				value.ServerPresent = true
 				if widened {
 					r.Report.Widened++
 				}
@@ -34452,7 +31601,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 		case 0xb9a400e2ab1a653d:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -34465,28 +31614,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(16)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.FleetWork[:])
-					copy(value.FleetWork[:], text[:kept])
-					value.FleetWorkLength = int32(kept)
+					r.Nodes.Resolve(&value.FleetWork, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -34495,7 +31628,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 		case 0x7b989cbd26ec648a:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -34508,28 +31641,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(16)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.FriendsWork[:])
-					copy(value.FriendsWork[:], text[:kept])
-					value.FriendsWorkLength = int32(kept)
+					r.Nodes.Resolve(&value.FriendsWork, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -34562,7 +31679,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.FleetTiers))
 					r.Retain.discard(r.Path, true, 34)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 72, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 16, 4) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -34570,19 +31687,19 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*WhereViewFleetTiersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 72))
+						p := (*WhereViewFleetTiersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 16))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
 						}
 						holder.Count++
 						{
-							payload161 := r.Path
+							payload145 := r.Path
 							r.Path = r.Path.step(34, uint32(i))
 							if !WhereViewFleetTiersTextLoadMessageBodyRetain(r, &(*p)) {
 								return false
 							}
-							r.Path = payload161
+							r.Path = payload145
 						}
 					}
 				}
@@ -34617,7 +31734,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.FriendsTiers))
 					r.Retain.discard(r.Path, true, 35)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 72, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 16, 4) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -34625,19 +31742,19 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*WhereViewFriendsTiersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 72))
+						p := (*WhereViewFriendsTiersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 16))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
 						}
 						holder.Count++
 						{
-							payload162 := r.Path
+							payload146 := r.Path
 							r.Path = r.Path.step(35, uint32(i))
 							if !WhereViewFriendsTiersTextLoadMessageBodyRetain(r, &(*p)) {
 								return false
 							}
-							r.Path = payload162
+							r.Path = payload146
 						}
 					}
 				}
@@ -34648,7 +31765,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 		case 0xac4c97888e22525a:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -34661,28 +31778,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.ReadsNeeded[:])
-					copy(value.ReadsNeeded[:], text[:kept])
-					value.ReadsNeededLength = int32(kept)
+					r.Nodes.Resolve(&value.ReadsNeeded, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -34715,7 +31816,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Goals))
 					r.Retain.discard(r.Path, true, 37)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 2392, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 65656, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -34723,19 +31824,19 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*GoalViewRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 2392))
+						p := (*GoalViewRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 65656))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
 						}
 						holder.Count++
 						{
-							payload163 := r.Path
+							payload147 := r.Path
 							r.Path = r.Path.step(37, uint32(i))
 							if !GoalViewLoadMessageBodyRetain(r, &(*p)) {
 								return false
 							}
-							r.Path = payload163
+							r.Path = payload147
 						}
 					}
 				}
@@ -34746,7 +31847,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 		case 0x2d08f118d3f933e8:
 			{
 				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -34759,14 +31860,13 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					payload164 := r.Path
-					r.Path = r.Path.step(38, uint32(0))
-					if !SeatChangeLoadMessageBodyRetain(r, &value.Seat) {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
+						r.Report.Malformed = true
 						return false
 					}
-					r.Path = payload164
+					r.Nodes.Resolve(&value.Seat, index, 0x3269794dbb88fca0, &r.Report)
 				}
-				value.SeatPresent = true
 				if widened {
 					r.Report.Widened++
 				}
@@ -34798,7 +31898,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Holds))
 					r.Retain.discard(r.Path, true, 39)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 2728, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 584, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -34806,19 +31906,19 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*HoldViewRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 2728))
+						p := (*HoldViewRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 584))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
 						}
 						holder.Count++
 						{
-							payload165 := r.Path
+							payload148 := r.Path
 							r.Path = r.Path.step(39, uint32(i))
 							if !HoldViewLoadMessageBodyRetain(r, &(*p)) {
 								return false
 							}
-							r.Path = payload165
+							r.Path = payload148
 						}
 					}
 				}
@@ -34829,7 +31929,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 		case 0x218eaf820c8b56d9:
 			{
 				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -34842,14 +31942,13 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					payload166 := r.Path
-					r.Path = r.Path.step(40, uint32(0))
-					if !SeatWaitsLoadMessageBodyRetain(r, &value.SeatWaits) {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
+						r.Report.Malformed = true
 						return false
 					}
-					r.Path = payload166
+					r.Nodes.Resolve(&value.SeatWaits, index, 0x55a9023aeba12d7e, &r.Report)
 				}
-				value.SeatWaitsPresent = true
 				if widened {
 					r.Report.Widened++
 				}
@@ -34881,7 +31980,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Stops))
 					r.Retain.discard(r.Path, true, 41)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 4728, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 568, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -34889,19 +31988,19 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*StopRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 4728))
+						p := (*StopRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 568))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
 						}
 						holder.Count++
 						{
-							payload167 := r.Path
+							payload149 := r.Path
 							r.Path = r.Path.step(41, uint32(i))
 							if !StopLoadMessageBodyRetain(r, &(*p)) {
 								return false
 							}
-							r.Path = payload167
+							r.Path = payload149
 						}
 					}
 				}
@@ -34936,7 +32035,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Providers))
 					r.Retain.discard(r.Path, true, 42)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 3576, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 224, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -34944,19 +32043,19 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*ProviderViewRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 3576))
+						p := (*ProviderViewRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 224))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
 						}
 						holder.Count++
 						{
-							payload168 := r.Path
+							payload150 := r.Path
 							r.Path = r.Path.step(42, uint32(i))
 							if !ProviderViewLoadMessageBodyRetain(r, &(*p)) {
 								return false
 							}
-							r.Path = payload168
+							r.Path = payload150
 						}
 					}
 				}
@@ -34980,12 +32079,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					payload169 := r.Path
+					payload151 := r.Path
 					r.Path = r.Path.step(43, uint32(0))
 					if !ProviderGapReportLoadMessageBodyRetain(r, &value.ProviderGaps) {
 						return false
 					}
-					r.Path = payload169
+					r.Path = payload151
 				}
 				if widened {
 					r.Report.Widened++
@@ -35018,7 +32117,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Lanes))
 					r.Retain.discard(r.Path, true, 44)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 224, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 192, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -35026,19 +32125,19 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*LaneRowRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 224))
+						p := (*LaneRowRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 192))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
 						}
 						holder.Count++
 						{
-							payload170 := r.Path
+							payload152 := r.Path
 							r.Path = r.Path.step(44, uint32(i))
 							if !LaneRowLoadMessageBodyRetain(r, &(*p)) {
 								return false
 							}
-							r.Path = payload170
+							r.Path = payload152
 						}
 					}
 				}
@@ -35073,7 +32172,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Cards))
 					r.Retain.discard(r.Path, true, 45)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 2008, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 1368, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -35081,19 +32180,19 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*DealtCardRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 2008))
+						p := (*DealtCardRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 1368))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
 						}
 						holder.Count++
 						{
-							payload171 := r.Path
+							payload153 := r.Path
 							r.Path = r.Path.step(45, uint32(i))
 							if !DealtCardLoadMessageBodyRetain(r, &(*p)) {
 								return false
 							}
-							r.Path = payload171
+							r.Path = payload153
 						}
 					}
 				}
@@ -35128,7 +32227,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Merging))
 					r.Retain.discard(r.Path, true, 46)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 736, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 672, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -35136,19 +32235,19 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*MergingCardRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 736))
+						p := (*MergingCardRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 672))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
 						}
 						holder.Count++
 						{
-							payload172 := r.Path
+							payload154 := r.Path
 							r.Path = r.Path.step(46, uint32(i))
 							if !MergingCardLoadMessageBodyRetain(r, &(*p)) {
 								return false
 							}
-							r.Path = payload172
+							r.Path = payload154
 						}
 					}
 				}
@@ -35183,7 +32282,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Judgments))
 					r.Retain.discard(r.Path, true, 47)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 696, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 536, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -35191,19 +32290,19 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*JudgmentRefRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 696))
+						p := (*JudgmentRefRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 536))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
 						}
 						holder.Count++
 						{
-							payload173 := r.Path
+							payload155 := r.Path
 							r.Path = r.Path.step(47, uint32(i))
 							if !JudgmentRefLoadMessageBodyRetain(r, &(*p)) {
 								return false
 							}
-							r.Path = payload173
+							r.Path = payload155
 						}
 					}
 				}
@@ -35238,7 +32337,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Rows))
 					r.Retain.discard(r.Path, true, 48)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 832, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 704, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -35246,19 +32345,19 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*PrimaryRowRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 832))
+						p := (*PrimaryRowRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 704))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
 						}
 						holder.Count++
 						{
-							payload174 := r.Path
+							payload156 := r.Path
 							r.Path = r.Path.step(48, uint32(i))
 							if !PrimaryRowLoadMessageBodyRetain(r, &(*p)) {
 								return false
 							}
-							r.Path = payload174
+							r.Path = payload156
 						}
 					}
 				}
@@ -35269,7 +32368,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 		case 0xe17417fb33768153:
 			{
 				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -35282,14 +32381,13 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					payload175 := r.Path
-					r.Path = r.Path.step(49, uint32(0))
-					if !ArchivedViewLoadMessageBodyRetain(r, &value.Archived) {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
+						r.Report.Malformed = true
 						return false
 					}
-					r.Path = payload175
+					r.Nodes.Resolve(&value.Archived, index, 0x71e32bddcd9524b6, &r.Report)
 				}
-				value.ArchivedPresent = true
 				if widened {
 					r.Report.Widened++
 				}
@@ -35297,7 +32395,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 		case 0xf113ecd5ed794504:
 			{
 				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -35310,14 +32408,13 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					payload176 := r.Path
-					r.Path = r.Path.step(50, uint32(0))
-					if !StatsResetViewLoadMessageBodyRetain(r, &value.StatsReset) {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
+						r.Report.Malformed = true
 						return false
 					}
-					r.Path = payload176
+					r.Nodes.Resolve(&value.StatsReset, index, 0x6d882f133edf2f4e, &r.Report)
 				}
-				value.StatsResetPresent = true
 				if widened {
 					r.Report.Widened++
 				}
@@ -35343,13 +32440,13 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						r.Report.Malformed = true
 						return false
 					}
-					payload177 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload177.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload157 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload157.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload177.Signed(entry.Shape.Kind)
+						v := payload157.Signed(entry.Shape.Kind)
 						value.Ready = int64(v)
 					}
 				}
@@ -35360,7 +32457,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 		case 0x8f75c61dfd19093f:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -35373,28 +32470,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(16)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Backup[:])
-					copy(value.Backup[:], text[:kept])
-					value.BackupLength = int32(kept)
+					r.Nodes.Resolve(&value.Backup, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -35421,13 +32502,13 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						r.Report.Malformed = true
 						return false
 					}
-					payload178 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload178.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload158 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload158.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload178.Signed(entry.Shape.Kind)
+						v := payload158.Signed(entry.Shape.Kind)
 						value.ReadsWaiting = int64(v)
 					}
 				}
@@ -35451,12 +32532,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					payload179 := r.Path
+					payload159 := r.Path
 					r.Path = r.Path.step(54, uint32(0))
 					if !ReadsWindowLoadMessageBodyRetain(r, &value.ReadsWindow) {
 						return false
 					}
-					r.Path = payload179
+					r.Path = payload159
 				}
 				if widened {
 					r.Report.Widened++
@@ -35478,12 +32559,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					payload180 := r.Path
+					payload160 := r.Path
 					r.Path = r.Path.step(55, uint32(0))
 					if !ReadCardCountsLoadMessageBodyRetain(r, &value.ReadCards) {
 						return false
 					}
-					r.Path = payload180
+					r.Path = payload160
 				}
 				if widened {
 					r.Report.Widened++
@@ -35510,13 +32591,13 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						r.Report.Malformed = true
 						return false
 					}
-					payload181 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload181.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload161 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload161.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload181.Signed(entry.Shape.Kind)
+						v := payload161.Signed(entry.Shape.Kind)
 						value.Fix = int64(v)
 					}
 				}
@@ -35548,7 +32629,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					field := &WhereViewTableFields[57]
 					holder := (*tableContainer)(unsafe.Pointer(&value.Priorities))
 					r.Retain.discard(r.Path, true, 57)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 56, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 32, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -35595,7 +32676,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*WhereViewPrioritiesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 56))
+							p = (*WhereViewPrioritiesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 32))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -35603,12 +32684,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 							holder.Count++
 						}
 						{
-							payload182 := r.Path
+							payload162 := r.Path
 							r.Path = r.Path.step(57, uint32(holder.Count-1))
 							if !WhereViewPrioritiesEntryLoadMessageBodyRetain(r, p) {
 								return false
 							}
-							r.Path = payload182
+							r.Path = payload162
 						}
 						if r.Bits.Offset != end {
 							r.Report.Malformed = true
@@ -35646,7 +32727,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					field := &WhereViewTableFields[58]
 					holder := (*tableContainer)(unsafe.Pointer(&value.StreamPriorities))
 					r.Retain.discard(r.Path, true, 58)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 176, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -35693,7 +32774,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*WhereViewStreamPrioritiesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 176))
+							p = (*WhereViewStreamPrioritiesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -35701,12 +32782,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 							holder.Count++
 						}
 						{
-							payload183 := r.Path
+							payload163 := r.Path
 							r.Path = r.Path.step(58, uint32(holder.Count-1))
 							if !WhereViewStreamPrioritiesEntryLoadMessageBodyRetain(r, p) {
 								return false
 							}
-							r.Path = payload183
+							r.Path = payload163
 						}
 						if r.Bits.Offset != end {
 							r.Report.Malformed = true
@@ -35741,13 +32822,13 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						r.Report.Malformed = true
 						return false
 					}
-					payload184 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload184.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload164 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload164.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload184.Signed(entry.Shape.Kind)
+						v := payload164.Signed(entry.Shape.Kind)
 						value.Width = int64(v)
 					}
 				}
@@ -35758,7 +32839,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 		case 0xd86c0af0b398153b:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -35771,28 +32852,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Buffer[:])
-					copy(value.Buffer[:], text[:kept])
-					value.BufferLength = int32(kept)
+					r.Nodes.Resolve(&value.Buffer, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -35819,12 +32884,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						r.Report.Malformed = true
 						return false
 					}
-					payload185 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload185.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload165 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload165.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
-					value.Low = payload185.Get8() != 0
+					value.Low = payload165.Get8() != 0
 				}
 				if widened {
 					r.Report.Widened++
@@ -35846,12 +32911,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					payload186 := r.Path
+					payload166 := r.Path
 					r.Path = r.Path.step(62, uint32(0))
 					if !MergeRowLoadMessageBodyRetain(r, &value.MergeRow) {
 						return false
 					}
-					r.Path = payload186
+					r.Path = payload166
 				}
 				if widened {
 					r.Report.Widened++
@@ -35884,7 +32949,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Friends))
 					r.Retain.discard(r.Path, true, 63)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 4472, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 328, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -35892,19 +32957,19 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*FriendRowRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 4472))
+						p := (*FriendRowRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 328))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
 						}
 						holder.Count++
 						{
-							payload187 := r.Path
+							payload167 := r.Path
 							r.Path = r.Path.step(63, uint32(i))
 							if !FriendRowLoadMessageBodyRetain(r, &(*p)) {
 								return false
 							}
-							r.Path = payload187
+							r.Path = payload167
 						}
 					}
 				}
@@ -35936,7 +33001,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					field := &WhereViewTableFields[64]
 					holder := (*tableContainer)(unsafe.Pointer(&value.Releases))
 					r.Retain.discard(r.Path, true, 64)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 65552, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -35983,7 +33048,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*WhereViewReleasesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
+							p = (*WhereViewReleasesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 65552))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -35991,12 +33056,12 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 							holder.Count++
 						}
 						{
-							payload188 := r.Path
+							payload168 := r.Path
 							r.Path = r.Path.step(64, uint32(holder.Count-1))
 							if !WhereViewReleasesEntryLoadMessageBodyRetain(r, p) {
 								return false
 							}
-							r.Path = payload188
+							r.Path = payload168
 						}
 						if r.Bits.Offset != end {
 							r.Report.Malformed = true
@@ -36031,17 +33096,17 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						r.Report.Malformed = true
 						return false
 					}
-					payload189 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload189.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload169 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload169.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
 						var v float64
 						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload189.Get32()))
+							v = math.Float64frombits(tableWidenFloat(payload169.Get32()))
 						} else {
-							v = math.Float64frombits(payload189.Get64())
+							v = math.Float64frombits(payload169.Get64())
 						}
 						value.StoreRttP50Ms = v
 					}
@@ -36072,17 +33137,17 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 						r.Report.Malformed = true
 						return false
 					}
-					payload190 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload190.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload170 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
+					if !payload170.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
 						var v float64
 						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload190.Get32()))
+							v = math.Float64frombits(tableWidenFloat(payload170.Get32()))
 						} else {
-							v = math.Float64frombits(payload190.Get64())
+							v = math.Float64frombits(payload170.Get64())
 						}
 						value.StoreRttP99Ms = v
 					}
@@ -36095,7 +33160,7 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 		case 0x602a969dcf5c554f:
 			{
 				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -36108,14 +33173,13 @@ func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereVie
 					}
 				}
 				{
-					payload191 := r.Path
-					r.Path = r.Path.step(67, uint32(0))
-					if !LandedSeriesLoadMessageBodyRetain(r, &value.LandedSeries) {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
+						r.Report.Malformed = true
 						return false
 					}
-					r.Path = payload191
+					r.Nodes.Resolve(&value.LandedSeries, index, 0x6eeace6e976c6068, &r.Report)
 				}
-				value.LandedSeriesPresent = true
 				if widened {
 					r.Report.Widened++
 				}
@@ -36138,7 +33202,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(207, TableMessageRefBitsHere)
+			w.Put(210, TableMessageRefBitsHere)
 			if !DecisionSummarySaveMessageBody(w, &value.Decisions) {
 				return false
 			}
@@ -36146,56 +33210,57 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 	}
 	{
 		if value.At != 0 {
-			w.Put(152, TableMessageRefBitsHere)
+			w.Put(157, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.At), uint64(0))
 		}
 	}
 	{
 		if value.Landed != 0 {
-			w.Put(17, TableMessageRefBitsHere)
+			w.Put(19, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Landed), uint64(0))
 		}
 	}
 	{
 		if value.All != 0 {
-			w.Put(208, TableMessageRefBitsHere)
+			w.Put(211, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.All), uint64(0))
 		}
 	}
 	{
 		if value.Held != 0 {
-			w.Put(69, TableMessageRefBitsHere)
+			w.Put(71, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Held), uint64(0))
 		}
 	}
 	{
-		if value.SummaryLength < 0 || value.SummaryLength > 1024 {
-			return false
-		}
-		if value.SummaryLength > 0 {
-			w.Put(209, TableMessageRefBitsHere)
-			if value.SummaryLength < 0 || value.SummaryLength > 1024 {
-				return false
+		if value.Summary != 0 {
+			w.Put(212, TableMessageRefBitsHere)
+			if value.Summary == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Summary)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.SummaryLength), 11)
-			w.Raw(value.Summary[:value.SummaryLength])
 		}
 	}
 	{
 		if value.ArchivedCards != 0 {
-			w.Put(210, TableMessageRefBitsHere)
+			w.Put(213, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.ArchivedCards), uint64(0))
 		}
 	}
 	{
 		if value.ArchivedLanded != 0 {
-			w.Put(211, TableMessageRefBitsHere)
+			w.Put(214, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.ArchivedLanded), uint64(0))
 		}
 	}
 	{
 		if value.Done != false {
-			w.Put(212, TableMessageRefBitsHere)
+			w.Put(215, TableMessageRefBitsHere)
 			if value.Done {
 				w.Put(1, 1)
 			} else {
@@ -36208,7 +33273,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.Tables.Count > 0 {
-			w.Put(213, TableMessageRefBitsHere)
+			w.Put(216, TableMessageRefBitsHere)
 			if value.Tables.Count < 0 {
 				return false
 			}
@@ -36235,7 +33300,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.Tiers.Count > 0 {
-			w.Put(141, TableMessageRefBitsHere)
+			w.Put(145, TableMessageRefBitsHere)
 			if value.Tiers.Count < 0 {
 				return false
 			}
@@ -36262,7 +33327,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.StreamCosts.Count > 0 {
-			w.Put(214, TableMessageRefBitsHere)
+			w.Put(217, TableMessageRefBitsHere)
 			if value.StreamCosts.Count < 0 {
 				return false
 			}
@@ -36285,37 +33350,42 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 		}
 	}
 	{
-		if value.CostCheckPresent {
-			if true {
-				w.Put(215, TableMessageRefBitsHere)
-				if !CostCheckSaveMessageBody(w, &value.CostCheck) {
+		if value.CostCheck != 0 {
+			w.Put(218, TableMessageRefBitsHere)
+			if value.CostCheck == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.CostCheck)
+				if !ok {
 					return false
 				}
+				w.Put(index, w.IndexBits)
 			}
 		}
 	}
 	{
-		if value.FirstTimeLength < 0 || value.FirstTimeLength > 256 {
-			return false
-		}
-		if value.FirstTimeLength > 0 {
-			w.Put(216, TableMessageRefBitsHere)
-			if value.FirstTimeLength < 0 || value.FirstTimeLength > 256 {
-				return false
+		if value.FirstTime != 0 {
+			w.Put(219, TableMessageRefBitsHere)
+			if value.FirstTime == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.FirstTime)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.FirstTimeLength), 9)
-			w.Raw(value.FirstTime[:value.FirstTimeLength])
 		}
 	}
 	{
 		if value.FirstTimeTarget != 0 {
-			w.Put(217, TableMessageRefBitsHere)
+			w.Put(220, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.FirstTimeTarget), uint64(0))
 		}
 	}
 	{
 		if value.FirstTimeWindow != 0 {
-			w.Put(218, TableMessageRefBitsHere)
+			w.Put(221, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.FirstTimeWindow), uint64(0))
 		}
 	}
@@ -36324,7 +33394,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.FirstTimeUnderTarget.Count > 0 {
-			w.Put(219, TableMessageRefBitsHere)
+			w.Put(222, TableMessageRefBitsHere)
 			if value.FirstTimeUnderTarget.Count < 0 {
 				return false
 			}
@@ -36351,7 +33421,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.FirstTimeRoutes.Count > 0 {
-			w.Put(220, TableMessageRefBitsHere)
+			w.Put(223, TableMessageRefBitsHere)
 			if value.FirstTimeRoutes.Count < 0 {
 				return false
 			}
@@ -36374,16 +33444,17 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 		}
 	}
 	{
-		if value.ReadSpendLength < 0 || value.ReadSpendLength > 1024 {
-			return false
-		}
-		if value.ReadSpendLength > 0 {
-			w.Put(221, TableMessageRefBitsHere)
-			if value.ReadSpendLength < 0 || value.ReadSpendLength > 1024 {
-				return false
+		if value.ReadSpend != 0 {
+			w.Put(224, TableMessageRefBitsHere)
+			if value.ReadSpend == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.ReadSpend)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ReadSpendLength), 11)
-			w.Raw(value.ReadSpend[:value.ReadSpendLength])
 		}
 	}
 	{
@@ -36391,7 +33462,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.Streams.Count > 0 {
-			w.Put(172, TableMessageRefBitsHere)
+			w.Put(177, TableMessageRefBitsHere)
 			if value.Streams.Count < 0 {
 				return false
 			}
@@ -36416,7 +33487,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 	{
 		if value.StageTimesPresent {
 			if true {
-				w.Put(222, TableMessageRefBitsHere)
+				w.Put(225, TableMessageRefBitsHere)
 				if !StageTimesSaveMessageBody(w, &value.StageTimes) {
 					return false
 				}
@@ -36428,7 +33499,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.Stalled.Count > 0 {
-			w.Put(223, TableMessageRefBitsHere)
+			w.Put(226, TableMessageRefBitsHere)
 			if value.Stalled.Count < 0 {
 				return false
 			}
@@ -36455,7 +33526,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.Critical.Count > 0 {
-			w.Put(224, TableMessageRefBitsHere)
+			w.Put(227, TableMessageRefBitsHere)
 			if value.Critical.Count < 0 {
 				return false
 			}
@@ -36482,7 +33553,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.Blockers.Count > 0 {
-			w.Put(225, TableMessageRefBitsHere)
+			w.Put(228, TableMessageRefBitsHere)
 			if value.Blockers.Count < 0 {
 				return false
 			}
@@ -36505,116 +33576,127 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 		}
 	}
 	{
-		if value.IdleLength < 0 || value.IdleLength > 1024 {
-			return false
-		}
-		if value.IdleLength > 0 {
-			w.Put(226, TableMessageRefBitsHere)
-			if value.IdleLength < 0 || value.IdleLength > 1024 {
-				return false
+		if value.Idle != 0 {
+			w.Put(229, TableMessageRefBitsHere)
+			if value.Idle == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Idle)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.IdleLength), 11)
-			w.Raw(value.Idle[:value.IdleLength])
 		}
 	}
 	{
-		if value.CoordinatorLength < 0 || value.CoordinatorLength > 135 {
-			return false
-		}
-		if value.CoordinatorLength > 0 {
-			w.Put(227, TableMessageRefBitsHere)
-			if value.CoordinatorLength < 0 || value.CoordinatorLength > 135 {
-				return false
+		if value.Coordinator != 0 {
+			w.Put(230, TableMessageRefBitsHere)
+			if value.Coordinator == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Coordinator)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.CoordinatorLength), 8)
-			w.Raw(value.Coordinator[:value.CoordinatorLength])
 		}
 	}
 	{
-		if value.PendingLength < 0 || value.PendingLength > 256 {
-			return false
-		}
-		if value.PendingLength > 0 {
-			w.Put(228, TableMessageRefBitsHere)
-			if value.PendingLength < 0 || value.PendingLength > 256 {
-				return false
+		if value.Pending != 0 {
+			w.Put(231, TableMessageRefBitsHere)
+			if value.Pending == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Pending)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.PendingLength), 9)
-			w.Raw(value.Pending[:value.PendingLength])
 		}
 	}
 	{
 		if value.Epoch != 0 {
-			w.Put(229, TableMessageRefBitsHere)
+			w.Put(232, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 9, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Epoch), uint64(0))
 		}
 	}
 	{
 		if value.Cleared != 0 {
-			w.Put(230, TableMessageRefBitsHere)
+			w.Put(233, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Cleared), uint64(0))
 		}
 	}
 	{
-		if value.MachineLength < 0 || value.MachineLength > 512 {
-			return false
-		}
-		if value.MachineLength > 0 {
-			w.Put(231, TableMessageRefBitsHere)
-			if value.MachineLength < 0 || value.MachineLength > 512 {
-				return false
-			}
-			w.Put(uint64(value.MachineLength), 10)
-			w.Raw(value.Machine[:value.MachineLength])
-		}
-	}
-	{
-		if value.ServerVersionLength < 0 || value.ServerVersionLength > 128 {
-			return false
-		}
-		if value.ServerVersionLength > 0 {
-			w.Put(232, TableMessageRefBitsHere)
-			if value.ServerVersionLength < 0 || value.ServerVersionLength > 128 {
-				return false
-			}
-			w.Put(uint64(value.ServerVersionLength), 8)
-			w.Raw(value.ServerVersion[:value.ServerVersionLength])
-		}
-	}
-	{
-		if value.ServerPresent {
-			if true {
-				w.Put(233, TableMessageRefBitsHere)
-				if !ServerBeatSaveMessageBody(w, &value.Server) {
+		if value.Machine != 0 {
+			w.Put(234, TableMessageRefBitsHere)
+			if value.Machine == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Machine)
+				if !ok {
 					return false
 				}
+				w.Put(index, w.IndexBits)
 			}
 		}
 	}
 	{
-		if value.FleetWorkLength < 0 || value.FleetWorkLength > 16 {
-			return false
-		}
-		if value.FleetWorkLength > 0 {
-			w.Put(234, TableMessageRefBitsHere)
-			if value.FleetWorkLength < 0 || value.FleetWorkLength > 16 {
-				return false
-			}
-			w.Put(uint64(value.FleetWorkLength), 5)
-			w.Raw(value.FleetWork[:value.FleetWorkLength])
-		}
-	}
-	{
-		if value.FriendsWorkLength < 0 || value.FriendsWorkLength > 16 {
-			return false
-		}
-		if value.FriendsWorkLength > 0 {
+		if value.ServerVersion != 0 {
 			w.Put(235, TableMessageRefBitsHere)
-			if value.FriendsWorkLength < 0 || value.FriendsWorkLength > 16 {
-				return false
+			if value.ServerVersion == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.ServerVersion)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.FriendsWorkLength), 5)
-			w.Raw(value.FriendsWork[:value.FriendsWorkLength])
+		}
+	}
+	{
+		if value.Server != 0 {
+			w.Put(236, TableMessageRefBitsHere)
+			if value.Server == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Server)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
+			}
+		}
+	}
+	{
+		if value.FleetWork != 0 {
+			w.Put(237, TableMessageRefBitsHere)
+			if value.FleetWork == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.FleetWork)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
+			}
+		}
+	}
+	{
+		if value.FriendsWork != 0 {
+			w.Put(238, TableMessageRefBitsHere)
+			if value.FriendsWork == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.FriendsWork)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
+			}
 		}
 	}
 	{
@@ -36622,7 +33704,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.FleetTiers.Count > 0 {
-			w.Put(236, TableMessageRefBitsHere)
+			w.Put(239, TableMessageRefBitsHere)
 			if value.FleetTiers.Count < 0 {
 				return false
 			}
@@ -36649,7 +33731,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.FriendsTiers.Count > 0 {
-			w.Put(237, TableMessageRefBitsHere)
+			w.Put(240, TableMessageRefBitsHere)
 			if value.FriendsTiers.Count < 0 {
 				return false
 			}
@@ -36672,16 +33754,17 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 		}
 	}
 	{
-		if value.ReadsNeededLength < 0 || value.ReadsNeededLength > 32 {
-			return false
-		}
-		if value.ReadsNeededLength > 0 {
-			w.Put(238, TableMessageRefBitsHere)
-			if value.ReadsNeededLength < 0 || value.ReadsNeededLength > 32 {
-				return false
+		if value.ReadsNeeded != 0 {
+			w.Put(241, TableMessageRefBitsHere)
+			if value.ReadsNeeded == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.ReadsNeeded)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ReadsNeededLength), 6)
-			w.Raw(value.ReadsNeeded[:value.ReadsNeededLength])
 		}
 	}
 	{
@@ -36689,7 +33772,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.Goals.Count > 0 {
-			w.Put(239, TableMessageRefBitsHere)
+			w.Put(242, TableMessageRefBitsHere)
 			if value.Goals.Count < 0 {
 				return false
 			}
@@ -36712,12 +33795,16 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 		}
 	}
 	{
-		if value.SeatPresent {
-			if true {
-				w.Put(240, TableMessageRefBitsHere)
-				if !SeatChangeSaveMessageBody(w, &value.Seat) {
+		if value.Seat != 0 {
+			w.Put(243, TableMessageRefBitsHere)
+			if value.Seat == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Seat)
+				if !ok {
 					return false
 				}
+				w.Put(index, w.IndexBits)
 			}
 		}
 	}
@@ -36726,7 +33813,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.Holds.Count > 0 {
-			w.Put(241, TableMessageRefBitsHere)
+			w.Put(244, TableMessageRefBitsHere)
 			if value.Holds.Count < 0 {
 				return false
 			}
@@ -36749,12 +33836,16 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 		}
 	}
 	{
-		if value.SeatWaitsPresent {
-			if true {
-				w.Put(242, TableMessageRefBitsHere)
-				if !SeatWaitsSaveMessageBody(w, &value.SeatWaits) {
+		if value.SeatWaits != 0 {
+			w.Put(245, TableMessageRefBitsHere)
+			if value.SeatWaits == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.SeatWaits)
+				if !ok {
 					return false
 				}
+				w.Put(index, w.IndexBits)
 			}
 		}
 	}
@@ -36763,7 +33854,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.Stops.Count > 0 {
-			w.Put(243, TableMessageRefBitsHere)
+			w.Put(246, TableMessageRefBitsHere)
 			if value.Stops.Count < 0 {
 				return false
 			}
@@ -36790,7 +33881,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.Providers.Count > 0 {
-			w.Put(244, TableMessageRefBitsHere)
+			w.Put(247, TableMessageRefBitsHere)
 			if value.Providers.Count < 0 {
 				return false
 			}
@@ -36820,7 +33911,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(245, TableMessageRefBitsHere)
+			w.Put(248, TableMessageRefBitsHere)
 			if !ProviderGapReportSaveMessageBody(w, &value.ProviderGaps) {
 				return false
 			}
@@ -36831,7 +33922,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.Lanes.Count > 0 {
-			w.Put(246, TableMessageRefBitsHere)
+			w.Put(249, TableMessageRefBitsHere)
 			if value.Lanes.Count < 0 {
 				return false
 			}
@@ -36858,7 +33949,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.Cards.Count > 0 {
-			w.Put(247, TableMessageRefBitsHere)
+			w.Put(250, TableMessageRefBitsHere)
 			if value.Cards.Count < 0 {
 				return false
 			}
@@ -36885,7 +33976,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.Merging.Count > 0 {
-			w.Put(248, TableMessageRefBitsHere)
+			w.Put(251, TableMessageRefBitsHere)
 			if value.Merging.Count < 0 {
 				return false
 			}
@@ -36912,7 +34003,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.Judgments.Count > 0 {
-			w.Put(249, TableMessageRefBitsHere)
+			w.Put(252, TableMessageRefBitsHere)
 			if value.Judgments.Count < 0 {
 				return false
 			}
@@ -36939,7 +34030,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.Rows.Count > 0 {
-			w.Put(250, TableMessageRefBitsHere)
+			w.Put(253, TableMessageRefBitsHere)
 			if value.Rows.Count < 0 {
 				return false
 			}
@@ -36962,47 +34053,56 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 		}
 	}
 	{
-		if value.ArchivedPresent {
-			if true {
-				w.Put(251, TableMessageRefBitsHere)
-				if !ArchivedViewSaveMessageBody(w, &value.Archived) {
+		if value.Archived != 0 {
+			w.Put(254, TableMessageRefBitsHere)
+			if value.Archived == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Archived)
+				if !ok {
 					return false
 				}
+				w.Put(index, w.IndexBits)
 			}
 		}
 	}
 	{
-		if value.StatsResetPresent {
-			if true {
-				w.Put(252, TableMessageRefBitsHere)
-				if !StatsResetViewSaveMessageBody(w, &value.StatsReset) {
+		if value.StatsReset != 0 {
+			w.Put(255, TableMessageRefBitsHere)
+			if value.StatsReset == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.StatsReset)
+				if !ok {
 					return false
 				}
+				w.Put(index, w.IndexBits)
 			}
 		}
 	}
 	{
 		if value.Ready != 0 {
-			w.Put(68, TableMessageRefBitsHere)
+			w.Put(70, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Ready), uint64(0))
 		}
 	}
 	{
-		if value.BackupLength < 0 || value.BackupLength > 16 {
-			return false
-		}
-		if value.BackupLength > 0 {
-			w.Put(253, TableMessageRefBitsHere)
-			if value.BackupLength < 0 || value.BackupLength > 16 {
-				return false
+		if value.Backup != 0 {
+			w.Put(256, TableMessageRefBitsHere)
+			if value.Backup == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Backup)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.BackupLength), 5)
-			w.Raw(value.Backup[:value.BackupLength])
 		}
 	}
 	{
 		if value.ReadsWaiting != 0 {
-			w.Put(254, TableMessageRefBitsHere)
+			w.Put(257, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.ReadsWaiting), uint64(0))
 		}
 	}
@@ -37014,7 +34114,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(255, TableMessageRefBitsHere)
+			w.Put(258, TableMessageRefBitsHere)
 			if !ReadsWindowSaveMessageBody(w, &value.ReadsWindow) {
 				return false
 			}
@@ -37028,7 +34128,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(256, TableMessageRefBitsHere)
+			w.Put(259, TableMessageRefBitsHere)
 			if !ReadCardCountsSaveMessageBody(w, &value.ReadCards) {
 				return false
 			}
@@ -37036,7 +34136,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 	}
 	{
 		if value.Fix != 0 {
-			w.Put(257, TableMessageRefBitsHere)
+			w.Put(260, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Fix), uint64(0))
 		}
 	}
@@ -37045,7 +34145,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.Priorities.Count > 0 {
-			w.Put(258, TableMessageRefBitsHere)
+			w.Put(261, TableMessageRefBitsHere)
 			if value.Priorities.Count < 0 {
 				return false
 			}
@@ -37072,7 +34172,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.StreamPriorities.Count > 0 {
-			w.Put(259, TableMessageRefBitsHere)
+			w.Put(262, TableMessageRefBitsHere)
 			if value.StreamPriorities.Count < 0 {
 				return false
 			}
@@ -37096,26 +34196,27 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 	}
 	{
 		if value.Width != 0 {
-			w.Put(57, TableMessageRefBitsHere)
+			w.Put(59, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Width), uint64(0))
 		}
 	}
 	{
-		if value.BufferLength < 0 || value.BufferLength > 32 {
-			return false
-		}
-		if value.BufferLength > 0 {
-			w.Put(260, TableMessageRefBitsHere)
-			if value.BufferLength < 0 || value.BufferLength > 32 {
-				return false
+		if value.Buffer != 0 {
+			w.Put(263, TableMessageRefBitsHere)
+			if value.Buffer == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Buffer)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.BufferLength), 6)
-			w.Raw(value.Buffer[:value.BufferLength])
 		}
 	}
 	{
 		if value.Low != false {
-			w.Put(261, TableMessageRefBitsHere)
+			w.Put(264, TableMessageRefBitsHere)
 			if value.Low {
 				w.Put(1, 1)
 			} else {
@@ -37131,7 +34232,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(262, TableMessageRefBitsHere)
+			w.Put(265, TableMessageRefBitsHere)
 			if !MergeRowSaveMessageBody(w, &value.MergeRow) {
 				return false
 			}
@@ -37142,7 +34243,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.Friends.Count > 0 {
-			w.Put(263, TableMessageRefBitsHere)
+			w.Put(266, TableMessageRefBitsHere)
 			if value.Friends.Count < 0 {
 				return false
 			}
@@ -37169,7 +34270,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 			return false
 		}
 		if value.Releases.Count > 0 {
-			w.Put(264, TableMessageRefBitsHere)
+			w.Put(267, TableMessageRefBitsHere)
 			if value.Releases.Count < 0 {
 				return false
 			}
@@ -37194,7 +34295,7 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 	{
 		if value.StoreRttP50MsPresent {
 			if true {
-				w.Put(265, TableMessageRefBitsHere)
+				w.Put(268, TableMessageRefBitsHere)
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.StoreRttP50Ms), uint64(0))
 			}
 		}
@@ -37202,18 +34303,22 @@ func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
 	{
 		if value.StoreRttP99MsPresent {
 			if true {
-				w.Put(266, TableMessageRefBitsHere)
+				w.Put(269, TableMessageRefBitsHere)
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.StoreRttP99Ms), uint64(0))
 			}
 		}
 	}
 	{
-		if value.LandedSeriesPresent {
-			if true {
-				w.Put(267, TableMessageRefBitsHere)
-				if !LandedSeriesSaveMessageBody(w, &value.LandedSeries) {
+		if value.LandedSeries != 0 {
+			w.Put(270, TableMessageRefBitsHere)
+			if value.LandedSeries == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.LandedSeries)
+				if !ok {
 					return false
 				}
+				w.Put(index, w.IndexBits)
 			}
 		}
 	}
@@ -37402,7 +34507,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 		case 0xa3c2813bcd780513:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -37415,28 +34520,12 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Summary[:])
-					copy(value.Summary[:], text[:kept])
-					value.SummaryLength = int32(kept)
+					r.Nodes.Resolve(&value.Summary, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -37567,7 +34656,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					}
 					field := &WhereViewTableFields[9]
 					holder := (*tableContainer)(unsafe.Pointer(&value.Tables))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 88, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 32, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -37614,7 +34703,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*WhereViewTablesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 88))
+							p = (*WhereViewTablesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 32))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -37659,7 +34748,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					}
 					field := &WhereViewTableFields[10]
 					holder := (*tableContainer)(unsafe.Pointer(&value.Tiers))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 80, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -37706,7 +34795,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*WhereViewTiersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 80))
+							p = (*WhereViewTiersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -37751,7 +34840,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					}
 					field := &WhereViewTableFields[11]
 					holder := (*tableContainer)(unsafe.Pointer(&value.StreamCosts))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 1488, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 336, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -37798,7 +34887,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*WhereViewStreamCostsEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 1488))
+							p = (*WhereViewStreamCostsEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 336))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -37823,30 +34912,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 		case 0xbea0bc892d25d607:
 			{
 				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				if !CostCheckLoadMessageBody(r, &value.CostCheck) {
-					return false
-				}
-				value.CostCheckPresent = true
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x63a9b7c8db210dfb:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -37859,28 +34925,39 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
+					r.Nodes.Resolve(&value.CostCheck, index, 0xd15dc0f47785f8a0, &r.Report)
+				}
+				if widened {
+					r.Report.Widened++
+				}
+			}
+		case 0x63a9b7c8db210dfb:
+			{
+				widened := false
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
+					if false {
+						widened = true
+					} else {
+						r.Report.KindMismatch++
+						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
+							r.Report.Malformed = true
+							return false
+						}
+						break
+					}
+				}
+				{
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(256)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.FirstTime[:])
-					copy(value.FirstTime[:], text[:kept])
-					value.FirstTimeLength = int32(kept)
+					r.Nodes.Resolve(&value.FirstTime, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -38028,7 +35105,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					}
 					field := &WhereViewTableFields[17]
 					holder := (*tableContainer)(unsafe.Pointer(&value.FirstTimeRoutes))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 400, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -38075,7 +35152,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*WhereViewFirstTimeRoutesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 400))
+							p = (*WhereViewFirstTimeRoutesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -38100,7 +35177,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 		case 0x8da0655a706978ba:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -38113,28 +35190,12 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.ReadSpend[:])
-					copy(value.ReadSpend[:], text[:kept])
-					value.ReadSpendLength = int32(kept)
+					r.Nodes.Resolve(&value.ReadSpend, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -38166,7 +35227,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Streams))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 1464, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 224, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -38174,7 +35235,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*StreamClockRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 1464))
+						p := (*StreamClockRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 224))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -38287,7 +35348,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Critical))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 568, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 536, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -38295,7 +35356,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*CriticalCardRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 568))
+						p := (*CriticalCardRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 536))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -38336,7 +35397,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Blockers))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 1032, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 65716, 4) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -38344,7 +35405,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*WhereViewBlockersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 1032))
+						p := (*WhereViewBlockersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 65716))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -38362,7 +35423,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 		case 0x9e9b04c54923ae13:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -38375,28 +35436,12 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(1024)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Idle[:])
-					copy(value.Idle[:], text[:kept])
-					value.IdleLength = int32(kept)
+					r.Nodes.Resolve(&value.Idle, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -38405,7 +35450,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 		case 0x20cd038d974113f1:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -38418,28 +35463,12 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Coordinator[:])
-					copy(value.Coordinator[:], text[:kept])
-					value.CoordinatorLength = int32(kept)
+					r.Nodes.Resolve(&value.Coordinator, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -38448,7 +35477,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 		case 0x52dea0d6eeb5083c:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -38461,28 +35490,12 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(256)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Pending[:])
-					copy(value.Pending[:], text[:kept])
-					value.PendingLength = int32(kept)
+					r.Nodes.Resolve(&value.Pending, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -38561,7 +35574,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 		case 0x385157cb98d7be6e:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -38574,28 +35587,12 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(512)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Machine[:])
-					copy(value.Machine[:], text[:kept])
-					value.MachineLength = int32(kept)
+					r.Nodes.Resolve(&value.Machine, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -38604,7 +35601,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 		case 0xbcf35c56fa51bfd9:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -38617,28 +35614,12 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.ServerVersion[:])
-					copy(value.ServerVersion[:], text[:kept])
-					value.ServerVersionLength = int32(kept)
+					r.Nodes.Resolve(&value.ServerVersion, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -38647,30 +35628,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 		case 0x7294d77db181ded2:
 			{
 				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				if !ServerBeatLoadMessageBody(r, &value.Server) {
-					return false
-				}
-				value.ServerPresent = true
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xb9a400e2ab1a653d:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -38683,28 +35641,39 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
+					r.Nodes.Resolve(&value.Server, index, 0x5b1ed46937b3d7fa, &r.Report)
+				}
+				if widened {
+					r.Report.Widened++
+				}
+			}
+		case 0xb9a400e2ab1a653d:
+			{
+				widened := false
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
+					if false {
+						widened = true
+					} else {
+						r.Report.KindMismatch++
+						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
+							r.Report.Malformed = true
+							return false
+						}
+						break
+					}
+				}
+				{
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(16)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.FleetWork[:])
-					copy(value.FleetWork[:], text[:kept])
-					value.FleetWorkLength = int32(kept)
+					r.Nodes.Resolve(&value.FleetWork, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -38713,7 +35682,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 		case 0x7b989cbd26ec648a:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -38726,28 +35695,12 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(16)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.FriendsWork[:])
-					copy(value.FriendsWork[:], text[:kept])
-					value.FriendsWorkLength = int32(kept)
+					r.Nodes.Resolve(&value.FriendsWork, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -38779,7 +35732,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.FleetTiers))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 72, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 16, 4) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -38787,7 +35740,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*WhereViewFleetTiersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 72))
+						p := (*WhereViewFleetTiersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 16))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -38828,7 +35781,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.FriendsTiers))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 72, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 16, 4) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -38836,7 +35789,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*WhereViewFriendsTiersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 72))
+						p := (*WhereViewFriendsTiersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 16))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -38854,7 +35807,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 		case 0xac4c97888e22525a:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -38867,28 +35820,12 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.ReadsNeeded[:])
-					copy(value.ReadsNeeded[:], text[:kept])
-					value.ReadsNeededLength = int32(kept)
+					r.Nodes.Resolve(&value.ReadsNeeded, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -38920,7 +35857,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Goals))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 2392, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 65656, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -38928,7 +35865,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*GoalViewRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 2392))
+						p := (*GoalViewRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 65656))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -38946,7 +35883,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 		case 0x2d08f118d3f933e8:
 			{
 				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -38958,10 +35895,14 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						break
 					}
 				}
-				if !SeatChangeLoadMessageBody(r, &value.Seat) {
-					return false
+				{
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
+						r.Report.Malformed = true
+						return false
+					}
+					r.Nodes.Resolve(&value.Seat, index, 0x3269794dbb88fca0, &r.Report)
 				}
-				value.SeatPresent = true
 				if widened {
 					r.Report.Widened++
 				}
@@ -38992,7 +35933,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Holds))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 2728, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 584, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -39000,7 +35941,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*HoldViewRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 2728))
+						p := (*HoldViewRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 584))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -39018,7 +35959,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 		case 0x218eaf820c8b56d9:
 			{
 				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -39030,10 +35971,14 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						break
 					}
 				}
-				if !SeatWaitsLoadMessageBody(r, &value.SeatWaits) {
-					return false
+				{
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
+						r.Report.Malformed = true
+						return false
+					}
+					r.Nodes.Resolve(&value.SeatWaits, index, 0x55a9023aeba12d7e, &r.Report)
 				}
-				value.SeatWaitsPresent = true
 				if widened {
 					r.Report.Widened++
 				}
@@ -39064,7 +36009,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Stops))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 4728, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 568, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -39072,7 +36017,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*StopRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 4728))
+						p := (*StopRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 568))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -39113,7 +36058,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Providers))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 3576, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 224, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -39121,7 +36066,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*ProviderViewRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 3576))
+						p := (*ProviderViewRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 224))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -39184,7 +36129,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Lanes))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 224, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 192, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -39192,7 +36137,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*LaneRowRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 224))
+						p := (*LaneRowRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 192))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -39233,7 +36178,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Cards))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 2008, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 1368, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -39241,7 +36186,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*DealtCardRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 2008))
+						p := (*DealtCardRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 1368))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -39282,7 +36227,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Merging))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 736, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 672, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -39290,7 +36235,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*MergingCardRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 736))
+						p := (*MergingCardRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 672))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -39331,7 +36276,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Judgments))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 696, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 536, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -39339,7 +36284,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*JudgmentRefRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 696))
+						p := (*JudgmentRefRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 536))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -39380,7 +36325,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Rows))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 832, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 704, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -39388,7 +36333,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*PrimaryRowRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 832))
+						p := (*PrimaryRowRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 704))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -39406,7 +36351,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 		case 0xe17417fb33768153:
 			{
 				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -39418,10 +36363,14 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						break
 					}
 				}
-				if !ArchivedViewLoadMessageBody(r, &value.Archived) {
-					return false
+				{
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
+						r.Report.Malformed = true
+						return false
+					}
+					r.Nodes.Resolve(&value.Archived, index, 0x71e32bddcd9524b6, &r.Report)
 				}
-				value.ArchivedPresent = true
 				if widened {
 					r.Report.Widened++
 				}
@@ -39429,7 +36378,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 		case 0xf113ecd5ed794504:
 			{
 				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -39441,10 +36390,14 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						break
 					}
 				}
-				if !StatsResetViewLoadMessageBody(r, &value.StatsReset) {
-					return false
+				{
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
+						r.Report.Malformed = true
+						return false
+					}
+					r.Nodes.Resolve(&value.StatsReset, index, 0x6d882f133edf2f4e, &r.Report)
 				}
-				value.StatsResetPresent = true
 				if widened {
 					r.Report.Widened++
 				}
@@ -39487,7 +36440,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 		case 0x8f75c61dfd19093f:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -39500,28 +36453,12 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(16)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Backup[:])
-					copy(value.Backup[:], text[:kept])
-					value.BackupLength = int32(kept)
+					r.Nodes.Resolve(&value.Backup, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -39664,7 +36601,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					}
 					field := &WhereViewTableFields[57]
 					holder := (*tableContainer)(unsafe.Pointer(&value.Priorities))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 56, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 32, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -39711,7 +36648,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*WhereViewPrioritiesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 56))
+							p = (*WhereViewPrioritiesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 32))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -39756,7 +36693,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					}
 					field := &WhereViewTableFields[58]
 					holder := (*tableContainer)(unsafe.Pointer(&value.StreamPriorities))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 176, 4) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -39803,7 +36740,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*WhereViewStreamPrioritiesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 176))
+							p = (*WhereViewStreamPrioritiesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -39863,7 +36800,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 		case 0xd86c0af0b398153b:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -39876,28 +36813,12 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(32)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Buffer[:])
-					copy(value.Buffer[:], text[:kept])
-					value.BufferLength = int32(kept)
+					r.Nodes.Resolve(&value.Buffer, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -39983,7 +36904,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						return false
 					}
 					holder := (*tableContainer)(unsafe.Pointer(&value.Friends))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 4472, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 328, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -39991,7 +36912,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
 					for i := uint64(0); i < count; i++ {
-						p := (*FriendRowRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 4472))
+						p := (*FriendRowRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 328))
 						if p == nil {
 							r.Report.Malformed = true
 							return false
@@ -40029,7 +36950,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 					}
 					field := &WhereViewTableFields[64]
 					holder := (*tableContainer)(unsafe.Pointer(&value.Releases))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
+					if !tableContainerFill(&r.Nodes.Carve, holder, count, 65552, 8) {
 						r.Report.Malformed = true
 						return false
 					}
@@ -40076,7 +36997,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						if order == 0 {
 							r.Report.Duplicate++
 						} else {
-							p = (*WhereViewReleasesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
+							p = (*WhereViewReleasesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 65552))
 							if p == nil {
 								r.Report.Malformed = true
 								return false
@@ -40183,7 +37104,7 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 		case 0x602a969dcf5c554f:
 			{
 				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -40195,10 +37116,14 @@ func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
 						break
 					}
 				}
-				if !LandedSeriesLoadMessageBody(r, &value.LandedSeries) {
-					return false
+				{
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
+						r.Report.Malformed = true
+						return false
+					}
+					r.Nodes.Resolve(&value.LandedSeries, index, 0x6eeace6e976c6068, &r.Report)
 				}
-				value.LandedSeriesPresent = true
 				if widened {
 					r.Report.Widened++
 				}
