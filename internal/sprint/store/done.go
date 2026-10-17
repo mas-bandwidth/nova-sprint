@@ -3,8 +3,10 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -36,6 +38,112 @@ const (
 // doneFixedPlanRoom is the plan scratch DoneRecordFixedLoad is handed: the identity plan's
 // entries and room for any lineage plan (it refuses plan_too_large past it).
 var doneFixedPlanRoom = 2 * len(donewire.DoneRecordFixedPlan.Entries)
+
+// doneCodec is the done record's row reader (a8-store-row-codec), built once for per-form
+// counting. Every stored page read passes through it so the read is counted once under its
+// form (S2, S4). Registration on the store's CheckReport needs a store-construction site
+// outside this file, which the retire card provides as a proposed diff: until one registers
+// it, row_forms shows no DONERECORD counts.
+var (
+	doneCodecOnce sync.Once
+	doneCodec     *RowCodec[donewire.DoneRecord]
+)
+
+func getDoneCodec() *RowCodec[donewire.DoneRecord] {
+	doneCodecOnce.Do(func() {
+		doneCodec = NewRowCodec(RowFns[donewire.DoneRecord]{
+			Name:  "DONERECORD",
+			Reset: func(v *donewire.DoneRecord) { donewire.DoneRecordReset(v) },
+			Measure: func(wire []byte) error {
+				if int64(len(wire)) < donewire.DoneRecordFixedMeasure(1) {
+					return errors.New("wire_damaged")
+				}
+				return nil
+			},
+			LoadWire:   doneLoadWire,
+			LoadJSON:   doneLoadJSON,
+			Legacy:     LegacyObject,
+			LoadLegacy: doneLoadLegacy,
+			SaveWire: func(v *donewire.DoneRecord) []byte {
+				n := donewire.DoneRecordFixedMeasure(1)
+				buf := make([]byte, n)
+				if donewire.DoneRecordFixedSave([]donewire.DoneRecord{*v}, buf) != n {
+					return nil
+				}
+				return buf
+			},
+			SaveJSON: func(v *donewire.DoneRecord) []byte {
+				n := donewire.DoneRecordToJsonMeasure(v)
+				if n < 0 {
+					return nil
+				}
+				buf := make([]byte, n)
+				if donewire.DoneRecordToJson(v, buf) != n {
+					return nil
+				}
+				return buf
+			},
+		})
+	})
+	return doneCodec
+}
+
+// doneReport maps one generated fixed-table report and load count to the strict read's
+// RowReport (the same mapping the fixed load returns today).
+func doneReport(rep donewire.TableReport, n int64) RowReport {
+	rr := RowReport{
+		Unknown: int(rep.Unknown), KindMismatch: int(rep.KindMismatch), Clamped: int(rep.Clamped),
+		Malformed: rep.Malformed, Duplicate: int(rep.Duplicate), Reason: rep.Reason,
+	}
+	if n < 0 && rr.Reason == "" && !rr.Malformed {
+		rr.Malformed = true
+	}
+	if n >= 0 && n != 1 && rr.Reason == "" {
+		rr.Malformed = true
+		rr.Reason = "record_count"
+	}
+	return rr
+}
+
+func doneLoadWire(v *donewire.DoneRecord, wire []byte) RowReport {
+	out := make([]donewire.DoneRecord, 1)
+	plan := make([]donewire.TableFixedEntry, 2*len(donewire.DoneRecordFixedPlan.Entries))
+	var rep donewire.TableReport
+	n := donewire.DoneRecordFixedLoad(out, wire, plan, &rep)
+	if n == 1 {
+		*v = out[0]
+	}
+	return doneReport(rep, n)
+}
+
+func doneLoadJSON(v *donewire.DoneRecord, text []byte) RowReport {
+	var rep donewire.TableReport
+	ok := donewire.DoneRecordFromJson(v, text, &rep)
+	rr := doneReport(rep, 1)
+	if !ok && rr.Reason == "" && !rr.Malformed {
+		rr.Malformed = true
+	}
+	return rr
+}
+
+func doneLoadLegacy(v *donewire.DoneRecord, in []byte) RowReport {
+	var leg struct {
+		Epoch  uint64 `json:"epoch"`
+		Cursor string `json:"cursor"`
+		Pages  uint32 `json:"pages"`
+	}
+	if err := json.Unmarshal(in, &leg); err != nil {
+		return RowReport{Malformed: true, Reason: "legacy_json_unreadable"}
+	}
+	donewire.DoneRecordReset(v)
+	if len(leg.Cursor) > len(v.Cursor) {
+		return RowReport{Clamped: 1}
+	}
+	v.Epoch = leg.Epoch
+	v.Pages = leg.Pages
+	v.CursorLength = int32(copy(v.Cursor[:], leg.Cursor))
+	return RowReport{}
+}
 
 // DoneRecord is the done record: the epoch, the stream id of the last log line read, and the
 // compacted completions of the lines read across all pages.
@@ -107,10 +215,20 @@ func doneText(dst []byte, s string) (int32, string) {
 // decodeDonePage decodes one stored page of the done record (fixed form, or legacy JSON when
 // raw[0] == '{'), returning the page's record, the total page count declared on the page, or
 // the refusal reason that read nothing.
+//
+// The legacy JSON branch and the read-time rewrite below are the piece of Aspect 8 the card
+// a8-store-done-retire-legacy-json retires. They are not yet removed: retirement is gated on
+// the per-form counter (rowcodec's row_forms, nova-sprint check --json) showing zero legacy
+// reads of the done record over one adopt cycle, which is deployment evidence no test can
+// produce, so this card stops not-done with the branch in place. The next attempt wires the
+// done read through RowCodec and registers it (a store-construction file outside this PATHS
+// list), then, once a deployed cycle shows zero legacy reads, deletes this branch and the
+// rewrite and names a legacy page a refusal.
 func decodeDonePage(raw string) (DoneRecord, uint32, string) {
 	if raw == "" {
 		return DoneRecord{}, 0, "empty"
 	}
+	getDoneCodec().Read([]byte(raw))
 	if raw[0] == '{' {
 		var r DoneRecord
 		if err := json.Unmarshal([]byte(raw), &r); err != nil {
