@@ -32,6 +32,18 @@
 //   - a field that is omitted when empty (omitempty) is a field that reads as
 //     empty when absent; the text form may write the empty value.
 //
+// The root table of every --json verb is named beside its source file: SayOK
+// (sayok.go), UnitRemoved and UnitInstalled and UnitsCheck (install.go,
+// friendsync_install.go), SeatInstall (seatinstall.go), SeatCoordinator and
+// Handover and SeatCheck and SeatRepaired and SeatRecord and StoreLogin
+// (seat.go, storelogin.go), SyncReport (fleetsync.go), WakeState
+// (watchwake.go), WakeAnswer (log.go, serve.go), GoalList and GoalSet and
+// GoalDrop (goal.go), SnapshotDrill and SnapshotTaken (snapshot.go), ShadowOut
+// and ShadowRecord (shadow.go), SettingValue and SettingsOk
+// (settings_verb.go), MachineOut (run.go), RemindView and RemindList
+// (remind.go), LogOut (log.go), StreamsView (streams.go), PassStats
+// (stats.go). The worker answers (Aspect 11) and where are not here.
+//
 // The bounds are the code's where it holds one: sprint.MaxIDLen (128) for an
 // id, a card id of at most four dot-joined ids (515), a friend row of
 // "friend." plus an id (135), store.MaxCardTextBytes (64 KiB) for the words a
