@@ -166,8 +166,12 @@ func (st *Store) ReaderBeatDraining(ctx context.Context, reader, noRoom string, 
 		return true, err
 	}
 	if ok {
-		// ignored: an unreadable record is a first beat, which this write replaces
-		_ = json.Unmarshal([]byte(raw), &prev)
+		// ignored on purpose (S4): an unreadable prior beat is a first beat, which this write
+		// replaces; it is read through the BEAT row reader in every form (S1, S2), and a
+		// refusal is counted by name on Check (rowcodec.go) rather than read as a record
+		if prev, _, err = st.presenceRows().beat.Read([]byte(raw)); err != nil {
+			prev = sprint.Beat{}
+		}
 	}
 	now := st.now()
 	b := sprint.Beat{At: now.UTC().Truncate(time.Second), NoRoom: noRoom}
