@@ -3106,7 +3106,7 @@ order the cards were dealt in, so a card brought to the front of its stream by
   a name that is neither a route nor a provider of one, or (wake) nothing resting
   (`TestTheCoordinatorRestsAndWakesRoutes`).
   The property is one per provider, never one per route, so the table's properties
-  (64, `ntable.LimitTableProps`) grow with the providers. At 100 routes over two
+  (1024, `ntable.LimitTableProps`) grow with the providers. At 100 routes over two
   providers, every route rested, the fleet table holds 4 properties
   (`TestTwoRoutesOfOneProviderAreOneProperty`,
   `TestAHundredRoutesRestedByRule3StayUnderThePropertyCap`). A property
@@ -3122,7 +3122,7 @@ order the cards were dealt in, so a card brought to the front of its stream by
   and ci-03's repeated attempts were reworks from the coordinator's own answer loop.
   - A provider rests as one: its rest is ONE fleet table property, `provider_rest_<provider>`
     (`<began> <ends|open> <card|-> <cause> [balance=<x>] <words>`), never a copy on each
-    route, so a rest is one write and the table's properties (64, `ntable.LimitTableProps`)
+    route, so a rest is one write and the table's properties (1024, `ntable.LimitTableProps`)
     grow with the providers and never with the routes (`TestTheFleetPropertiesAtAHundredRoutesStayUnderTheBound`). A
     route rests while its rule-3 line or its provider's rest holds, the one that ends later
     deciding (`sprint.RouteRests`); `routes` prints each route's `rested_until=`.
@@ -7422,7 +7422,7 @@ internal/sprint/stats_tidy.go):
   them to the fleet table's one property `carried_medians` (`sprint.PropCarriedMedians`,
   `row=<seconds>,<samples>` for each tidied row, a blank between), in the same step. One
   property for the whole fleet, not one a row: a table holds at most
-  `ntable.LimitTableProps` (64), and on 2026-10-10 a tidy of 66 rows wrote 66 properties
+  `ntable.LimitTableProps` (1024 since nova-tools v1.5.2; 64 then), and on 2026-10-10 a tidy of 66 rows wrote 66 properties
   and the store refused at the bound, so a fleet wider than 64 rows could not be tidied
   (`stats_reset.go`, `StatsRecord.Reset`, the same lesson for the mark). The deadline
   rules use the carried median while the row's live sample is smaller than the carried
