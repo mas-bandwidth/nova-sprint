@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/viewrowswire"
 )
 
 // The where record (docs/SPEC-SPRINT.md section 1): what where shows that the
@@ -225,6 +227,198 @@ func costExtras(s *sprint.Snapshot) map[string][]string {
 	return out
 }
 
+// variableWireForms lets the generated variable loader preserve refusal reasons for every form byte
+// instead of having the row reader reject one first (S2).
+func variableWireForms() []byte {
+	forms := make([]byte, 256)
+	for i := range forms {
+		forms[i] = byte(i)
+	}
+	return forms
+}
+
+// legacyObject is a record's legacy JSON text as distinct from the schema JSON
+// text: both open with '{'. Today every writer writes the legacy form, so a
+// reader treats any text JSON as legacy (S2, S4).
+func legacyObject(in []byte) bool { return len(in) > 0 && in[0] == '{' }
+
+// rowTimeNanos is a stored time's Unix nanoseconds UTC; the zero time is 0.
+func rowTimeNanos(t time.Time) int64 { return t.UnixNano() }
+
+// tableReportRow carries a generated variable table's report into the row codec,
+// refusing damage by the report's own name (S2).
+func tableReportRow(rep viewrowswire.TableReport) RowReport {
+	rr := RowReport{Unknown: int(rep.Unknown), KindMismatch: int(rep.KindMismatch), Clamped: int(rep.Clamped),
+		Malformed: rep.Malformed, Duplicate: int(rep.Duplicate), Reason: rep.Reason}
+	if rr.Reason == "" && !rr.Malformed && rr.Duplicate == 0 && rr.Clamped == 0 && rr.Unknown == 0 && rr.KindMismatch == 0 {
+		rr.Malformed = true
+	}
+	return rr
+}
+
+// rowViewCodecs holds the view-row readers one Store registers (S4). A store's
+// readers live here, keyed by the store pointer, so one test's counts are not
+// another's, as the registration map is.
+type rowViewCodecs struct {
+	where *RowCodec[wherePage]
+	stops *RowCodec[stopsPage]
+	check *RowCodec[checkPage]
+	stuck *RowCodec[stuckPage]
+}
+
+// rowCodecs is each Store's view-row readers.
+var rowCodecs sync.Map // *Store -> *rowViewCodecs
+
+// viewCodecsLocked is the store's view-row readers, made while lazyMu is held (S4).
+func (st *Store) viewCodecsLocked() *rowViewCodecs {
+	if st == nil {
+		return nil
+	}
+	v, _ := rowCodecs.LoadOrStore(st, &rowViewCodecs{})
+	return v.(*rowViewCodecs)
+}
+
+// wherePage is one where record decoded by the where row reader (S1, S2).
+type wherePage struct {
+	rec WhereRecord
+}
+
+// whereRowFns adapts the variable table and today's legacy JSON reader to the store row codec (S1, S2).
+func whereRowFns() RowFns[wherePage] {
+	return RowFns[wherePage]{
+		Name: "WHERERECORD", Forms: variableWireForms(),
+		Reset:    func(v *wherePage) { *v = wherePage{} },
+		LoadWire: whereLoadWire, LoadJSON: whereLoadJSON,
+		Legacy:     legacyObject,
+		LoadLegacy: whereLoadLegacy,
+		SaveWire:   func(v *wherePage) []byte { return whereSaveWireRec(v.rec) },
+		SaveJSON:   func(v *wherePage) []byte { return whereSaveJSONRec(v.rec) },
+	}
+}
+
+// whereRows makes and registers the one where reader on this Store (S4).
+func (st *Store) whereRows() *RowCodec[wherePage] {
+	if st == nil {
+		return nil
+	}
+	lazyMu.Lock()
+	defer lazyMu.Unlock()
+	b := st.viewCodecsLocked()
+	if b.where == nil {
+		b.where = NewRowCodec(whereRowFns())
+	}
+	b.where.Register(st)
+	return b.where
+}
+
+// whereFromRaw reads the stored where record through the registered row codec
+// (S1, S2, S4); false when absent or refused.
+func (st *Store) whereFromRaw(raw string, ok bool) (WhereRecord, bool) {
+	if !ok || raw == "" {
+		return WhereRecord{}, false
+	}
+	page, _, err := st.whereRows().Read([]byte(raw))
+	if err != nil {
+		return WhereRecord{}, false
+	}
+	return page.rec, true
+}
+
+// whereLoadWire reads a where record from its variable table image. The store's
+// legacy JSON and the schema JSON differ in their maps (objects versus lists of
+// pairs) and times, so the wire is decoded to the schema JSON and re-read as
+// the schema text; the full field mapping is the pending writer-switch work
+// (S2). A wire this build cannot map is refused by name.
+func whereLoadWire(v *wherePage, wire []byte) RowReport {
+	size, err := viewrowswire.WhereRecordLoadMeasureReason(wire)
+	if err != nil {
+		return RowReport{Reason: err.Error()}
+	}
+	var rep viewrowswire.TableReport
+	out := viewrowswire.WhereRecordLoad(make([]byte, size), wire, &rep)
+	if out == nil {
+		return tableReportRow(rep)
+	}
+	buf := make([]byte, viewrowswire.WhereRecordToJsonMeasure(out))
+	n := viewrowswire.WhereRecordToJson(out, buf)
+	para, err := whereFromSchemaJSON(buf[:n])
+	if err != nil {
+		return RowReport{Malformed: true, Reason: "malformed"}
+	}
+	v.rec = para
+	return RowReport{}
+}
+
+// whereLoadJSON adapts the generated schema JSON form to the where record (S2).
+func whereLoadJSON(v *wherePage, text []byte) RowReport {
+	para, err := whereFromSchemaJSON(text)
+	if err != nil {
+		return RowReport{Malformed: true, Reason: "malformed"}
+	}
+	v.rec = para
+	return RowReport{}
+}
+
+// whereSaveWire writes the where record as the variable table wire (S2).
+func whereSaveWireRec(r WhereRecord) []byte {
+	b, err := whereToSchemaJSON(r)
+	if err != nil {
+		return nil
+	}
+	var builder viewrowswire.WhereRecordBuilder
+	if !builder.Init() {
+		return nil
+	}
+	var rep viewrowswire.TableReport
+	if !viewrowswire.WhereRecordFromJson(&builder, b, &rep) {
+		return nil
+	}
+	root := builder.GetRoot()
+	size := viewrowswire.WhereRecordMeasure(root, &builder.Arena)
+	if size < 0 {
+		return nil
+	}
+	buf := make([]byte, size)
+	n := viewrowswire.WhereRecordSave(root, buf, &builder.Arena)
+	if n < 0 {
+		return nil
+	}
+	return buf[:n]
+}
+
+// whereSaveJSON writes the where record as the schema JSON text (S2).
+func whereSaveJSONRec(r WhereRecord) []byte {
+	b, err := whereToSchemaJSON(r)
+	if err != nil {
+		return nil
+	}
+	return b
+}
+
+// whereLoadLegacy keeps today's JSON where record decoder (S2, S4).
+func whereLoadLegacy(v *wherePage, raw []byte) RowReport {
+	if err := json.Unmarshal(raw, &v.rec); err != nil {
+		return RowReport{Malformed: true, Reason: "legacy_json_unreadable"}
+	}
+	return RowReport{}
+}
+
+// whereToSchemaJSON converts the store's where record to the schema JSON text.
+// S2: the schema JSON is the form a reader accepts beside the legacy JSON. The
+// maps and the times a single pass cannot carry are not yet mapped here; this
+// card's writers stay legacy, so this is the pending writer-switch work.
+func whereToSchemaJSON(r WhereRecord) ([]byte, error) {
+	return json.Marshal(r)
+}
+
+// whereFromSchemaJSON reads the schema JSON text back into the store's where
+// record. The schema's maps are lists of pairs and its times Unix nanoseconds,
+// which the store's JSON does not share; until that mapping lands, a schema
+// text is refused rather than mis-read.
+func whereFromSchemaJSON(text []byte) (WhereRecord, error) {
+	return WhereRecord{}, fmt.Errorf("where schema JSON mapping is pending")
+}
+
 // readWhere is the where record as stored; false when there is none or it
 // does not read.
 func readWhere(raw string, ok bool) (WhereRecord, bool) {
@@ -271,7 +465,7 @@ func (st *Store) keepWhere(ctx context.Context, m Machine) error {
 	stamp := stats.statsStamp(st.epoch)
 	// a record from before the series, or the archived streams' figures, were counted is
 	// counted again once, tables still or not
-	if r, ok := readWhere(vals[0], oks[0]); ok && r.Epoch == st.epoch && r.Rev == shapes[0].Revision && r.FleetRev == shapes[1].Revision && r.Stats == stamp && r.SeriesCounted && r.ArchivedCounted && r.DecisionHoldsCounted {
+	if r, ok := st.whereFromRaw(vals[0], oks[0]); ok && r.Epoch == st.epoch && r.Rev == shapes[0].Revision && r.FleetRev == shapes[1].Revision && r.Stats == stamp && r.SeriesCounted && r.ArchivedCounted && r.DecisionHoldsCounted {
 		return nil
 	}
 	tw := st.twin()
@@ -560,7 +754,7 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 		if r, ok := readStops(vals[5], oks[5]); ok && r.Epoch == st.epoch {
 			f.Stops, f.HasStops = r, true
 		}
-		r, ok := readWhere(vals[2], oks[2])
+		r, ok := st.whereFromRaw(vals[2], oks[2])
 		// the landed series' landings are taken from any record of the pinned epoch that
 		// counted them, as of the tick's last count (WhereRecord.Series): the series is a
 		// day of landings in 10-minute buckets, never the cards' counts
