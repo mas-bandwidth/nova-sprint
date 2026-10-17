@@ -53,6 +53,13 @@ type CheckReport struct {
 	// InFlight says the pending operation is younger than the grace: its
 	// writer is at it, and only the rules that always hold are judged.
 	InFlight bool `json:"in_flight,omitempty"`
+	// RowForms is the store row reader's per-record, per-form read counts
+	// (rowcodec.go): binary, base64, json, legacy, unknown_fields and
+	// refused_<reason>. S2 counts each read once, on the form read. S4: the
+	// counts are the evidence a later card reads before that record's writer
+	// switches. nova-sprint check --json prints this object as row_forms.
+	// No stored record is counted until its card registers the reader.
+	RowForms map[string]map[string]uint64 `json:"row_forms"`
 }
 
 // Check reads the four tables between two reads of the fence and holds them to
@@ -69,6 +76,9 @@ func (st *Store) Check(ctx context.Context, reads int) (CheckReport, *sprint.Sna
 // caller that holds them itself as the log grows (the property test).
 func (st *Store) check(ctx context.Context, reads int, streams bool) (CheckReport, *sprint.Snapshot, error) {
 	ctx = withBudget(ctx)
+	// The per-form counter is registered on the store the caller holds. pin
+	// returns a clone, and the clone is not a second reader. S4.
+	forms := st.rowFormCounts()
 	st, err := st.pin(ctx)
 	if err != nil {
 		return CheckReport{}, nil, err
@@ -161,8 +171,10 @@ func (st *Store) check(ctx context.Context, reads int, streams bool) (CheckRepor
 			}
 		}
 		sort.SliceStable(rep.Violations, func(i, j int) bool { return rep.Violations[i].Rule < rep.Violations[j].Rule })
+		rep.RowForms = forms // S4: the per-form counter rides on the check answer
 		return rep, s, nil
 	}
+	rep.RowForms = forms
 	return rep, nil, fmt.Errorf("the sprint kept changing through %d reads; run check again", rep.Reads)
 }
 
