@@ -32,7 +32,10 @@ func statusJSONKeys() []string {
 // standard base64, the schema JSON text and today's legacy form, damage is
 // refused by name, and reads are counted per form. The table must cover every
 // Status field for the four forms to read alike; a field the table lacks stops
-// the card HOLD (RECIPE step 2).
+// the card HOLD (RECIPE step 2). The generated FriendStatus table (nova-tools
+// pkg/friendfilewire, v1.5.0) still lacks the status fields below, so the four
+// forms cannot read alike until its schema gains them (a table change is its
+// own card); this test is red at head and pins the gap.
 func TestSprintFriendStatusDualRead(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
