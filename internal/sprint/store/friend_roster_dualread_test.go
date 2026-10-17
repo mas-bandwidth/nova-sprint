@@ -212,7 +212,8 @@ func TestFriendRosterRowsDualRead(t *testing.T) {
 		}
 	}
 
-	// Writers still write the legacy form (S4: readers first).
+	// The roster writer still writes the legacy form (S4: readers first); the member beat
+	// (BeatFacts) now writes the table wire (S4: writers second), never the legacy form.
 	require.NoError(t, putRoster(ctx, kv, map[string]friendEntry{"ann": entry}))
 	raw, ok, err := kv.GetKey(ctx, keyFriends)
 	require.NoError(t, err)
@@ -224,12 +225,13 @@ func TestFriendRosterRowsDualRead(t *testing.T) {
 	raw, ok, err = kv.GetKey(ctx, beatKey("m5"))
 	require.NoError(t, err)
 	require.True(t, ok)
-	assert.True(t, LegacyObject([]byte(raw)), raw)
+	assert.Equal(t, byte(1), raw[0], raw)
 
 	// The read sites that carry a record into the next write read it from the table forms:
 	// the friend's proof and check record (FriendBeatLive), her row (friendRowsOf, with a
 	// one-shot friend's member beat, oneShotBeats), a member's last beat (BeatFacts) and the
-	// touch of a held member's beat (TouchBeat); each write is still legacy.
+	// touch of a held member's beat (TouchBeat); BeatFacts writes the table form, the others
+	// still legacy until their writer cards.
 	live := entry
 	live.Session = ""
 	require.NoError(t, putRoster(ctx, kv, map[string]friendEntry{"ann": entry, "dee": live}))

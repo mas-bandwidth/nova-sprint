@@ -17,6 +17,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/friendrowswire"
 	"github.com/mas-bandwidth/nova-tools/pkg/hostload"
 	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/schemaread"
 )
 
 // A fleet member's beats (sprint/presence.go): one record per member under
@@ -233,9 +234,18 @@ func (st *Store) BeatFacts(ctx context.Context, member string, given *float64, s
 	if b.Facts = prev.Facts; facts != nil {
 		b.Facts = facts
 	}
-	out, err := json.Marshal(b)
+	// The beat is written as the table form (S1, S4): the variable table wire (form byte
+	// 1), never today's legacy JSON. A value the table cannot hold is refused by name
+	// before a byte is written (S2); nothing falls back to the legacy form.
+	if why := beatTableRefusal(&b); why != "" {
+		return b, fmt.Errorf("BEAT REFUSED: %s; run: %s", why, rowCheckHelp)
+	}
+	out, err := st.presenceRows().beat.Write(&b, schemaread.FormBinary)
 	if err != nil {
 		return b, err
+	}
+	if len(out) == 0 {
+		return b, fmt.Errorf("BEAT REFUSED: malformed; run: %s", rowCheckHelp)
 	}
 	if err := kv.SetKey(ctx, beatKey(member), string(out)); err != nil {
 		return b, err
@@ -244,6 +254,42 @@ func (st *Store) BeatFacts(ctx context.Context, member string, given *float64, s
 		return b, nil // a one-shot friend's row is the roster's (beatable), never a stranger
 	}
 	return b, st.noteStranger(ctx, member)
+}
+
+// beatTimeHolds says the beat table holds t: a zero time is null, and every other time
+// round-trips through the schema time field's int64 nanoseconds. S1, S2.
+func beatTimeHolds(t time.Time) bool {
+	if t.IsZero() {
+		return true
+	}
+	n := t.UnixNano()
+	return time.Unix(0, n).Equal(t)
+}
+
+// beatTableRefusal names why the beat table cannot hold b, or "" when it can. A time
+// outside the schema's int64 nanoseconds (the bound doneFixedPageOf keeps for the done
+// record) writes bytes the reader refuses, so the writer refuses it before any byte is
+// written. S1, S2.
+func beatTableRefusal(b *sprint.Beat) string {
+	times := []time.Time{b.At, b.LiveSince, b.DrainingSince, b.Meter.TopAt}
+	if f := b.Meter.Files; f != nil {
+		times = append(times, f.At, f.TopAt)
+	}
+	if r := b.Friend; r != nil {
+		times = append(times, r.Active, r.Until, r.Started, r.Present)
+	}
+	for _, s := range b.Samples {
+		times = append(times, s.At)
+	}
+	for _, at := range b.LiveSeen {
+		times = append(times, at)
+	}
+	for _, at := range times {
+		if !beatTimeHolds(at) {
+			return "time_out_of_range"
+		}
+	}
+	return ""
 }
 
 // beatable says whether member may beat: a machine's name, or a one-shot friend's row
