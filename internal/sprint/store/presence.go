@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -8,9 +9,12 @@ import (
 	"runtime"
 	"slices"
 	"sort"
+	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/friendrowswire"
 	"github.com/mas-bandwidth/nova-tools/pkg/hostload"
 	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
@@ -41,7 +45,11 @@ func (st *Store) strangers(ctx context.Context) (map[string]stranger, error) {
 	if err != nil || !ok {
 		return out, err
 	}
-	_ = json.Unmarshal([]byte(raw), &out)
+	// An unreadable record is read as none on purpose: the next stranger's note writes it
+	// whole again. The refusal is named and counted under STRANGERS (S2, S4).
+	if s, err := presenceRow(st.presenceRows().stranger, []byte(raw)); err == nil && s != nil {
+		out = s
+	}
 	return out, nil
 }
 
@@ -188,9 +196,11 @@ func (st *Store) BeatFacts(ctx context.Context, member string, given *float64, s
 		return prev, err
 	}
 	if ok {
-		// An unreadable record is a first beat: the next write replaces it.
-		// ignored: an unreadable record is a first beat, which the next write replaces (see the comment above)
-		_ = json.Unmarshal([]byte(raw), &prev)
+		// An unreadable record is a first beat on purpose: the next write replaces it. The
+		// refusal is named and counted under BEAT (S2, S4).
+		if b, err := presenceRow(st.presenceRows().beat, []byte(raw)); err == nil {
+			prev = b
+		}
 	}
 	now := st.now()
 	pct, how, meter := 0.0, sprint.HowGiven, prev.Meter
@@ -277,9 +287,11 @@ func (st *Store) TouchBeat(ctx context.Context, member string) (bool, error) {
 	if err != nil || !ok {
 		return false, err
 	}
-	var b sprint.Beat
-	if err := json.Unmarshal([]byte(raw), &b); err != nil || !b.Beaten() {
-		return false, nil // an unreadable record is no beat: the next beat replaces it
+	// An unreadable record is no beat on purpose: the next beat replaces it. The refusal is
+	// named and counted under BEAT (S2, S4).
+	b, err := presenceRow(st.presenceRows().beat, []byte(raw))
+	if err != nil || !b.Beaten() {
+		return false, nil
 	}
 	b.At = st.now().UTC().Truncate(time.Second)
 	out, err := json.Marshal(b)
@@ -308,47 +320,473 @@ func (st *Store) Beats(ctx context.Context, members []string) (map[string]sprint
 	if err != nil {
 		return nil, err
 	}
+	rows := st.presenceRows().beat
 	for i, m := range members {
-		var b sprint.Beat
-		if i < len(oks) && oks[i] && json.Unmarshal([]byte(vals[i]), &b) == nil {
+		if i >= len(oks) || !oks[i] {
+			continue
+		}
+		// An unreadable record is no beat on purpose, as for a member that never beat: the
+		// member reads down until its next beat replaces it. The refusal is named and counted
+		// under BEAT (S2, S4).
+		if b, err := presenceRow(rows, []byte(vals[i])); err == nil {
 			out[m] = b
 		}
 	}
 	return out, nil
 }
 
-// friendEntryWire renders one roster entry as its fixed-table wire image. S1: the
-// fixed table is the server-owned form the dual-read card adopts; writers stay legacy
-// here, so this is only the reader-first proof's fixture.
-func friendEntryWire(e friendEntry) ([]byte, error) {
-	return nil, fmt.Errorf("FRIENDENTRY wire write not implemented")
+// The friend roster and presence rows' readers (the reader-first half of the schema-table
+// adoption of these rows: S4, readers first, then writers). Each record is read through the
+// store row reader (rowcodec.go) from the generated variable tables of friendrowswire
+// (schemas/friendrows/friendrows.schema): the table wire (form byte 1; a unit that holds a
+// variable table emits no fixed form, friendrows.schema), the padded standard base64 of that
+// wire and the schema JSON text, and today's legacy JSON (S2). A damaged value is refused by
+// name, `<RECORD> REFUSED: <reason>; run: nova-sprint check`, and every read is counted under
+// its record and its form (S4). Writers still write the legacy form: the writer switch is a
+// later card, which reads these counts first.
+
+// presenceRowSets is each store's friend roster and presence readers, keyed by the store's
+// done reader: every pinned copy of a store shares that one reader (Store.clone), so a store
+// and its copies count into one set (S4).
+var presenceRowSets sync.Map
+
+// presenceRowCodecs is one store's readers of the friend roster and presence rows.
+type presenceRowCodecs struct {
+	entry    *RowCodec[friendEntry]
+	status   *RowCodec[friendStatus]
+	beat     *RowCodec[sprint.Beat]
+	stranger *RowCodec[map[string]stranger]
 }
 
-// decodeFriendEntry reads one roster entry from any form (S2): the fixed image, the
-// padded standard base64 of that image, or today's legacy JSON. A refused value is
-// named. S4: each read is counted under the form read.
-func decodeFriendEntry(in []byte) (friendEntry, error) {
-	return friendEntry{}, fmt.Errorf("FRIENDENTRY REFUSED: not implemented; run: nova-sprint check")
+// presenceRows is this store's readers of the friend roster and presence rows, registered on
+// it so its Check reports their per-form counts (S4).
+func (st *Store) presenceRows() *presenceRowCodecs {
+	key := st.doneRows()
+	v, ok := presenceRowSets.Load(key)
+	if !ok {
+		v, _ = presenceRowSets.LoadOrStore(key, &presenceRowCodecs{
+			entry:    NewRowCodec(friendEntryRowFns()),
+			status:   NewRowCodec(friendStatusRowFns()),
+			beat:     NewRowCodec(beatRowFns()),
+			stranger: NewRowCodec(strangerRowFns()),
+		})
+	}
+	c := v.(*presenceRowCodecs)
+	c.entry.Register(st)
+	c.status.Register(st)
+	c.beat.Register(st)
+	c.stranger.Register(st)
+	return c
 }
 
-// friendStatusWire renders one friend status record as its fixed-table wire image. S1.
-func friendStatusWire(s friendStatus) ([]byte, error) {
-	return nil, fmt.Errorf("FRIENDSTATUS wire write not implemented")
+// friendTable is one generated variable table of friendrowswire as the row reader uses it, W
+// its generated record: the wire's measure and load, the schema JSON text's load, and the
+// table's JSON text and wire of a loaded record (S1, S2).
+type friendTable[W any] struct {
+	measure  func(wire []byte) (int64, error)
+	load     func(region, wire []byte, report *friendrowswire.TableReport) *W
+	fromJSON func(text []byte, report *friendrowswire.TableReport) (*W, bool)
+	toJSON   func(*W) []byte
+	save     func(*W) []byte
 }
 
-// decodeFriendStatus reads one friend status record from any form (S2). S4: counted per form.
-func decodeFriendStatus(in []byte) (friendStatus, error) {
-	return friendStatus{}, fmt.Errorf("FRIENDSTATUS REFUSED: not implemented; run: nova-sprint check")
+// presenceRegion is an aligned buffer of n bytes for a region load.
+func presenceRegion(n int64) []byte {
+	raw := make([]byte, n+63)
+	off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
+	return raw[off : off+uintptr(n)]
 }
 
-// beatWire renders one member or friend beat as its fixed-table wire image. S1.
-func beatWire(b sprint.Beat) ([]byte, error) {
-	return nil, fmt.Errorf("BEAT wire write not implemented")
+// presenceReport is the generated report as the strict read decides on it. S2: a key given
+// twice is malformed, never last-wins.
+func presenceReport(r *friendrowswire.TableReport) RowReport {
+	return RowReport{
+		Unknown: int(r.Unknown), KindMismatch: int(r.KindMismatch), Clamped: int(r.Clamped),
+		Malformed: r.Malformed, Duplicate: int(r.Duplicate), Reason: r.Reason,
+	}
 }
 
-// decodeBeat reads one member or friend beat from any form (S2). S4: counted per form.
-func decodeBeat(in []byte) (sprint.Beat, error) {
-	return sprint.Beat{}, fmt.Errorf("BEAT REFUSED: not implemented; run: nova-sprint check")
+// refuses says the strict read refuses a load with this report (schemaread.Reader.Read).
+func (r RowReport) refuses() bool {
+	return r.Reason != "" || r.Malformed || r.Duplicate > 0 || r.KindMismatch > 0 || r.Clamped > 0
+}
+
+// presenceRowFns adapts one record to the row reader (S1, S2): T is the store's Go record, M
+// its schema JSON shape (the generated text's keys), W the generated record. A loaded table is
+// read into T through its schema JSON text, so the wire, its base64 and the JSON text decode
+// to one value; legacy is today's encoding/json text of T.
+func presenceRowFns[T, M, W any](name string, tab friendTable[W], to func(*T) M, from func(*M) (T, bool)) RowFns[T] {
+	value := func(v *T, w *W) RowReport {
+		dec := json.NewDecoder(bytes.NewReader(tab.toJSON(w)))
+		dec.DisallowUnknownFields()
+		var m M
+		if err := dec.Decode(&m); err != nil {
+			return RowReport{Malformed: true}
+		}
+		t, ok := from(&m)
+		if !ok {
+			return RowReport{Malformed: true}
+		}
+		*v = t
+		return RowReport{}
+	}
+	table := func(v *T) *W {
+		text, err := json.Marshal(to(v))
+		if err != nil {
+			return nil
+		}
+		var rep friendrowswire.TableReport
+		w, ok := tab.fromJSON(text, &rep)
+		if !ok || presenceReport(&rep).refuses() {
+			return nil
+		}
+		return w
+	}
+	return RowFns[T]{
+		Name:  name,
+		Forms: []byte{1}, // the table wire: friendrows.schema emits no fixed form (S1)
+		Reset: func(v *T) { var zero T; *v = zero },
+		Measure: func(wire []byte) error {
+			_, err := tab.measure(wire)
+			return err
+		},
+		LoadWire: func(v *T, wire []byte) RowReport {
+			n, err := tab.measure(wire)
+			if err != nil || n < 0 {
+				return RowReport{Malformed: true}
+			}
+			var rep friendrowswire.TableReport
+			w := tab.load(presenceRegion(n), wire, &rep)
+			if w == nil {
+				return RowReport{Malformed: true, Reason: rep.Reason}
+			}
+			if rr := presenceReport(&rep); rr.refuses() {
+				return rr
+			}
+			rr := value(v, w)
+			rr.Unknown = int(rep.Unknown)
+			return rr
+		},
+		LoadJSON: func(v *T, text []byte) RowReport {
+			var rep friendrowswire.TableReport
+			w, ok := tab.fromJSON(text, &rep)
+			rr := presenceReport(&rep)
+			if !ok || w == nil {
+				rr.Malformed = true
+				return rr
+			}
+			if rr.refuses() {
+				return rr
+			}
+			out := value(v, w)
+			out.Unknown = rr.Unknown
+			return out
+		},
+		Legacy:     LegacyObject,
+		LoadLegacy: DecodeLegacy[T],
+		SaveWire: func(v *T) []byte {
+			if w := table(v); w != nil {
+				return tab.save(w)
+			}
+			return nil
+		},
+		SaveJSON: func(v *T) []byte {
+			if w := table(v); w != nil {
+				return tab.toJSON(w)
+			}
+			return nil
+		},
+	}
+}
+
+// presenceRow reads one stored value of a record. A value a JSON object holds as a JSON
+// string (the base64 of a table's wire, inside a roster object) is read as that string's
+// text. S2.
+func presenceRow[T any](c *RowCodec[T], raw []byte) (T, error) {
+	if len(raw) > 0 && raw[0] == '"' {
+		var s string
+		if err := json.Unmarshal(raw, &s); err == nil {
+			raw = []byte(s)
+		}
+	}
+	v, _, err := c.Read(raw)
+	return v, err
+}
+
+// rowTime is a time.Time as the schema's open text: RFC3339Nano, as encoding/json writes it,
+// and null for the zero time (friendrows.schema, "Source time.Time JSON").
+func rowTime(t time.Time) *string {
+	if t.IsZero() {
+		return nil
+	}
+	s := t.Format(time.RFC3339Nano)
+	return &s
+}
+
+// rowTimeOf is rowTime read back, as encoding/json reads a time.Time; ok is false for a text
+// that is not one.
+func rowTimeOf(s *string) (time.Time, bool) {
+	var t time.Time
+	if s == nil || *s == "" {
+		return t, true
+	}
+	if err := t.UnmarshalText([]byte(*s)); err != nil {
+		return time.Time{}, false
+	}
+	return t, true
+}
+
+// rowText is a string as the schema's open text: null when empty (friendrows.schema).
+func rowText(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// rowTextOf is rowText read back.
+func rowTextOf(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// rowInt is an optional integer as the schema's ?int64.
+func rowInt(p *int) *int64 {
+	if p == nil {
+		return nil
+	}
+	v := int64(*p)
+	return &v
+}
+
+// rowIntOf is rowInt read back.
+func rowIntOf(p *int64) *int {
+	if p == nil {
+		return nil
+	}
+	v := int(*p)
+	return &v
+}
+
+// rowWord is one word of an open word list (RunWord, LiveWord, FactWord).
+type rowWord struct {
+	Text *string `json:"text"`
+}
+
+func rowWords(ws []string) []rowWord {
+	var out []rowWord
+	for _, w := range ws {
+		out = append(out, rowWord{Text: rowText(w)})
+	}
+	return out
+}
+
+func rowWordsOf(ws []rowWord) []string {
+	var out []string
+	for _, w := range ws {
+		out = append(out, rowTextOf(w.Text))
+	}
+	return out
+}
+
+// beatSchema is the Beat table's schema JSON text (friendrows.schema Beat). An empty list is
+// left out: the table reader reads a null list as a kind mismatch.
+type beatSchema struct {
+	At            *string             `json:"at"`
+	Load          float64             `json:"load"`
+	Cores         int64               `json:"cores"`
+	How           *string             `json:"how"`
+	Samples       []loadSampleSchema  `json:"samples,omitempty"`
+	Meter         meterSchema         `json:"meter"`
+	Friend        *friendReportSchema `json:"friend"`
+	StopReturns   int64               `json:"stop_returns"`
+	NoRoom        *string             `json:"no_room"`
+	Live          []rowWord           `json:"live,omitempty"`
+	LiveKnown     bool                `json:"live_known"`
+	LiveSince     *string             `json:"live_since"`
+	LiveSeen      []liveSightSchema   `json:"live_seen,omitempty"`
+	Draining      bool                `json:"draining"`
+	DrainingSince *string             `json:"draining_since"`
+	Facts         []rowWord           `json:"facts,omitempty"`
+}
+
+type loadSampleSchema struct {
+	Pct float64 `json:"pct"`
+	At  *string `json:"at"`
+}
+
+type meterSchema struct {
+	Ticks  *ticksSchema `json:"ticks"`
+	TopAt  *string      `json:"top_at"`
+	TopPct float64      `json:"top_pct"`
+	Files  *filesSchema `json:"files"`
+}
+
+type ticksSchema struct {
+	Busy  uint64 `json:"busy"`
+	Total uint64 `json:"total"`
+}
+
+type filesSchema struct {
+	At     *string        `json:"at"`
+	Open   int64          `json:"open"`
+	Max    int64          `json:"max"`
+	Warn   int64          `json:"warn"`
+	Alarm  int64          `json:"alarm"`
+	Top    []holderSchema `json:"top,omitempty"`
+	TopAt  *string        `json:"top_at"`
+	TopErr *string        `json:"top_err"`
+}
+
+type holderSchema struct {
+	PID     int64   `json:"pid"`
+	Command *string `json:"cmd"`
+	User    *string `json:"user"`
+	Open    int64   `json:"open"`
+}
+
+type friendReportSchema struct {
+	Running     []rowWord `json:"running,omitempty"`
+	Working     *int64    `json:"working"`
+	Queue       *int64    `json:"queue"`
+	Width       *int64    `json:"width"`
+	StopReturns *int64    `json:"stop_returns"`
+	Paced       *int64    `json:"paced"`
+	Active      *string   `json:"active"`
+	Window      *string   `json:"window"`
+	Until       *string   `json:"until"`
+	Reason      *string   `json:"reason"`
+	Build       *string   `json:"build"`
+	Started     *string   `json:"started"`
+	Present     *string   `json:"present"`
+}
+
+type liveSightSchema struct {
+	Entry *string `json:"entry"`
+	At    *string `json:"at"`
+}
+
+// beatTable is the generated Beat table (S1, S2).
+func beatTable() friendTable[friendrowswire.Beat] {
+	return friendTable[friendrowswire.Beat]{
+		measure: friendrowswire.BeatLoadMeasureReason,
+		load:    friendrowswire.BeatLoad,
+		fromJSON: func(text []byte, rep *friendrowswire.TableReport) (*friendrowswire.Beat, bool) {
+			var b friendrowswire.BeatBuilder
+			if !b.Init() {
+				return nil, false
+			}
+			if !friendrowswire.BeatFromJson(&b, text, rep) || !b.Lock() {
+				return nil, false
+			}
+			return b.AsConst(), true
+		},
+		toJSON: func(w *friendrowswire.Beat) []byte {
+			buf := make([]byte, max(friendrowswire.BeatToJsonMeasure(w), 0))
+			return buf[:max(friendrowswire.BeatToJson(w, buf), 0)]
+		},
+		save: func(w *friendrowswire.Beat) []byte {
+			buf := make([]byte, max(friendrowswire.BeatMeasure(w), 0))
+			return buf[:max(friendrowswire.BeatSave(w, buf), 0)]
+		},
+	}
+}
+
+// beatRowFns is the member, friend and reader beat (sprint.Beat) as the row reader reads it:
+// BEAT (S1, S2, S4).
+func beatRowFns() RowFns[sprint.Beat] {
+	return presenceRowFns("BEAT", beatTable(), beatToSchema, beatOfSchema)
+}
+
+func beatToSchema(b *sprint.Beat) beatSchema {
+	m := beatSchema{
+		At: rowTime(b.At), Load: b.Load, Cores: int64(b.Cores), How: rowText(b.How),
+		StopReturns: int64(b.StopReturns), NoRoom: rowText(b.NoRoom), Live: rowWords(b.Live),
+		LiveKnown: b.LiveKnown, LiveSince: rowTime(b.LiveSince), Draining: b.Draining,
+		DrainingSince: rowTime(b.DrainingSince), Facts: rowWords(b.Facts),
+		Meter: meterSchema{TopAt: rowTime(b.Meter.TopAt), TopPct: b.Meter.TopPct},
+	}
+	for _, s := range b.Samples {
+		m.Samples = append(m.Samples, loadSampleSchema{Pct: s.Pct, At: rowTime(s.At)})
+	}
+	if t := b.Meter.Ticks; t != nil {
+		m.Meter.Ticks = &ticksSchema{Busy: t.Busy, Total: t.Total}
+	}
+	if f := b.Meter.Files; f != nil {
+		fs := &filesSchema{At: rowTime(f.At), Open: int64(f.Open), Max: int64(f.Max), Warn: int64(f.Warn), Alarm: int64(f.Alarm), TopAt: rowTime(f.TopAt), TopErr: rowText(f.TopErr)}
+		for _, h := range f.Top {
+			fs.Top = append(fs.Top, holderSchema{PID: int64(h.PID), Command: rowText(h.Command), User: rowText(h.User), Open: int64(h.Open)})
+		}
+		m.Meter.Files = fs
+	}
+	if r := b.Friend; r != nil {
+		m.Friend = &friendReportSchema{
+			Running: rowWords(r.Running), Working: rowInt(r.Working), Queue: rowInt(r.Queue), Width: rowInt(r.Width),
+			StopReturns: rowInt(r.StopReturns), Paced: rowInt(r.Paced), Active: rowTime(r.Active), Window: rowText(r.Window),
+			Until: rowTime(r.Until), Reason: rowText(r.Reason), Build: rowText(r.Build), Started: rowTime(r.Started), Present: rowTime(r.Present),
+		}
+	}
+	for _, e := range slices.Sorted(maps.Keys(b.LiveSeen)) {
+		m.LiveSeen = append(m.LiveSeen, liveSightSchema{Entry: rowText(e), At: rowTime(b.LiveSeen[e])})
+	}
+	return m
+}
+
+func beatOfSchema(m *beatSchema) (sprint.Beat, bool) {
+	ok := true
+	at := func(s *string) time.Time {
+		t, good := rowTimeOf(s)
+		ok = ok && good
+		return t
+	}
+	b := sprint.Beat{
+		At: at(m.At), Load: m.Load, Cores: int(m.Cores), How: rowTextOf(m.How),
+		StopReturns: int(m.StopReturns), NoRoom: rowTextOf(m.NoRoom), Live: rowWordsOf(m.Live),
+		LiveKnown: m.LiveKnown, LiveSince: at(m.LiveSince), Draining: m.Draining,
+		DrainingSince: at(m.DrainingSince), Facts: rowWordsOf(m.Facts),
+		Meter: hostload.State{TopAt: at(m.Meter.TopAt), TopPct: m.Meter.TopPct},
+	}
+	for _, s := range m.Samples {
+		b.Samples = append(b.Samples, sprint.LoadSample{Pct: s.Pct, At: at(s.At)})
+	}
+	if t := m.Meter.Ticks; t != nil {
+		b.Meter.Ticks = &hostload.Ticks{Busy: t.Busy, Total: t.Total}
+	}
+	if f := m.Meter.Files; f != nil {
+		fs := &hostload.Files{At: at(f.At), Open: int(f.Open), Max: int(f.Max), Warn: int(f.Warn), Alarm: int(f.Alarm), TopAt: at(f.TopAt), TopErr: rowTextOf(f.TopErr)}
+		for _, h := range f.Top {
+			fs.Top = append(fs.Top, hostload.Holder{PID: int(h.PID), Command: rowTextOf(h.Command), User: rowTextOf(h.User), Open: int(h.Open)})
+		}
+		b.Meter.Files = fs
+	}
+	if r := m.Friend; r != nil {
+		b.Friend = &sprint.FriendReport{
+			Running: rowWordsOf(r.Running), Working: rowIntOf(r.Working), Queue: rowIntOf(r.Queue), Width: rowIntOf(r.Width),
+			StopReturns: rowIntOf(r.StopReturns), Paced: rowIntOf(r.Paced), Active: at(r.Active), Window: rowTextOf(r.Window),
+			Until: at(r.Until), Reason: rowTextOf(r.Reason), Build: rowTextOf(r.Build), Started: at(r.Started), Present: at(r.Present),
+		}
+	}
+	for _, s := range m.LiveSeen {
+		if b.LiveSeen == nil {
+			b.LiveSeen = map[string]time.Time{}
+		}
+		b.LiveSeen[rowTextOf(s.Entry)] = at(s.At)
+	}
+	return b, ok
+}
+
+// strangerRowFns is the strangers record as the row reader reads it: STRANGERS, today's
+// legacy JSON alone. friendrows.schema declares no table for it, so a table form is refused
+// by name (unknown_form); the record is counted with the others (S2, S4).
+func strangerRowFns() RowFns[map[string]stranger] {
+	return RowFns[map[string]stranger]{
+		Name:       "STRANGERS",
+		Reset:      func(v *map[string]stranger) { *v = nil },
+		Legacy:     LegacyObject,
+		LoadLegacy: DecodeLegacy[map[string]stranger],
+	}
 }
 
 // getKeys reads machine records, in one exchange where the store can.

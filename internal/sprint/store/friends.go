@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/friendrowswire"
 	"github.com/mas-bandwidth/nova-tools/hook"
 	"github.com/mas-bandwidth/nova-tools/pkg/buildinfo"
+	"github.com/mas-bandwidth/nova-tools/pkg/schemaread"
 )
 
 // Sprint owns the roster, hold and work reports. Only nova-hook owns liveness.
@@ -183,8 +185,14 @@ func (st *Store) roster(ctx context.Context) (map[string]friendEntry, KV, error)
 	if err != nil || !ok {
 		return out, kv, err
 	}
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return nil, kv, fmt.Errorf("the friends record cannot be read (%v); run: nova-sprint friend sync", err)
+	// S2: each entry in any form; a damaged one is refused by name (FRIENDENTRY REFUSED), never
+	// read as no friend.
+	r, err := presenceRowMap(st.presenceRows().entry, []byte(raw))
+	if err != nil {
+		return nil, kv, err
+	}
+	if r != nil {
+		out = r
 	}
 	return out, kv, nil
 }
@@ -329,7 +337,11 @@ func (st *Store) FriendBeatLive(ctx context.Context, friend string, rep sprint.F
 	if vals, oks, err := getKeys(ctx, kv, []string{friendBeatKey(friend)}); err != nil {
 		return sprint.Beat{}, err
 	} else if len(oks) == 1 && oks[0] {
-		_ = json.Unmarshal([]byte(vals[0]), &prev) // ignored: an unreadable record holds no check and no proof
+		// An unreadable record holds no check and no proof, on purpose: this beat replaces it.
+		// The refusal is named and counted under BEAT (S2, S4).
+		if b, err := presenceRow(st.presenceRows().beat, []byte(vals[0])); err == nil {
+			prev = b
+		}
 	}
 	b := sprint.Beat{At: now}
 	if len(rep.Running) > 0 || rep.Working != nil || rep.Queue != nil || rep.Width != nil || !rep.Active.IsZero() {
@@ -584,8 +596,14 @@ func (st *Store) storedFriendStatus(ctx context.Context, kv KV) (map[string]frie
 	if err != nil || !ok {
 		return out, err
 	}
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return nil, fmt.Errorf("the friend status record cannot be read (%v); the next tick writes it again", err)
+	// S2: each friend's status in any form; a damaged one is refused by name (FRIENDSTATUS
+	// REFUSED), which the next tick's write replaces.
+	r, err := presenceRowMap(st.presenceRows().status, []byte(raw))
+	if err != nil {
+		return nil, err
+	}
+	if r != nil {
+		out = r
 	}
 	return out, nil
 }
@@ -624,7 +642,11 @@ func (st *Store) friendRowsOf(ctx context.Context) ([]string, map[string]FriendR
 		} else {
 			var b sprint.Beat
 			if i < len(oks) && oks[i] {
-				_ = json.Unmarshal([]byte(vals[i]), &b)
+				// An unreadable beat is none on purpose: she reads down until her next beat
+				// replaces it. The refusal is named and counted under BEAT (S2, S4).
+				if got, err := presenceRow(st.presenceRows().beat, []byte(vals[i])); err == nil {
+					b = got
+				}
 			}
 			row.Load, row.Report, row.Beat = b.Load, b.Friend, b.At
 			if b.Friend != nil {
@@ -701,7 +723,11 @@ func (st *Store) oneShotBeats(ctx context.Context, kv KV, names []string, r map[
 	for i, n := range ones {
 		var b sprint.Beat
 		if i < len(oks) && oks[i] {
-			_ = json.Unmarshal([]byte(vals[i]), &b) // an unreadable beat is none: the member reads down until it beats again
+			// An unreadable beat is none on purpose: the member reads down until it beats
+			// again. The refusal is named and counted under BEAT (S2, S4).
+			if got, err := presenceRow(st.presenceRows().beat, []byte(vals[i])); err == nil {
+				b = got
+			}
 		}
 		out[n] = b
 	}
@@ -795,8 +821,11 @@ func (st *Store) FriendBeatOf(ctx context.Context, friend string) (sprint.Beat, 
 	if err != nil || !ok {
 		return b, err
 	}
-	// ignored: an unreadable record is no beat, which the next beat replaces (FriendRows)
-	_ = json.Unmarshal([]byte(raw), &b)
+	// An unreadable record is no beat on purpose, which the next beat replaces (FriendRows).
+	// The refusal is named and counted under BEAT (S2, S4).
+	if got, err := presenceRow(st.presenceRows().beat, []byte(raw)); err == nil {
+		b = got
+	}
 	return b, nil
 }
 
@@ -846,9 +875,164 @@ func (st *Store) FriendBeats(ctx context.Context) (map[string]sprint.Beat, error
 	for i, n := range names {
 		var b sprint.Beat
 		if i < len(oks) && oks[i] {
-			_ = json.Unmarshal([]byte(vals[i]), &b) // ignored: an unreadable record is no beat
+			// An unreadable record is no beat on purpose. The refusal is named and counted
+			// under BEAT (S2, S4).
+			if got, err := presenceRow(st.presenceRows().beat, []byte(vals[i])); err == nil {
+				b = got
+			}
 		}
 		out[n] = b
 	}
 	return out, nil
+}
+
+// presenceRowMap reads a record the store keeps as one JSON object keyed by name (the roster,
+// the friend status record): each value through c, so an entry is read alike from today's
+// legacy JSON or the padded standard base64 of its table wire (a JSON string), and is counted
+// under its record and form (S2, S4). A schema JSON text held in the object loses its closing
+// newline there and reads as legacy text, whose keys it shares (friendrows.schema). A row that
+// is not such an object is refused by name.
+func presenceRowMap[T any](c *RowCodec[T], raw []byte) (map[string]T, error) {
+	var vals map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &vals); err != nil {
+		// read whole, so the refusal names its reason and is counted
+		if _, err := presenceRow(c, raw); err != nil {
+			return nil, err
+		}
+		return nil, &schemaread.Refusal{Name: c.rowName(), Reason: schemaread.ReasonUnknownForm, Help: rowCheckHelp}
+	}
+	out := make(map[string]T, len(vals))
+	for k, v := range vals {
+		e, err := presenceRow(c, v)
+		if err != nil {
+			return nil, err
+		}
+		out[k] = e
+	}
+	return out, nil
+}
+
+// friendEntrySchema is the FriendEntry table's schema JSON text (friendrows.schema FriendEntry).
+type friendEntrySchema struct {
+	Held        bool    `json:"held"`
+	At          *string `json:"at"`
+	By          *string `json:"by"`
+	Width       int64   `json:"width"`
+	Class       *string `json:"class"`
+	Mode        *string `json:"mode"`
+	Streams     *string `json:"streams"`
+	Kinds       *string `json:"kinds"`
+	ConfigDir   *string `json:"config_dir"`
+	Pronouns    *string `json:"pronouns"`
+	Session     *string `json:"session"`
+	TokenCap    int64   `json:"token_cap"`
+	TokenCapSet bool    `json:"token_cap_set"`
+	Roles       *string `json:"roles"`
+	Billing     *string `json:"billing"`
+	Reason      *string `json:"reason"`
+	Until       *string `json:"until"`
+	Return      bool    `json:"return"`
+}
+
+// friendEntryTable is the generated FriendEntry table (S1, S2).
+func friendEntryTable() friendTable[friendrowswire.FriendEntry] {
+	return friendTable[friendrowswire.FriendEntry]{
+		measure: friendrowswire.FriendEntryLoadMeasureReason,
+		load:    friendrowswire.FriendEntryLoad,
+		fromJSON: func(text []byte, rep *friendrowswire.TableReport) (*friendrowswire.FriendEntry, bool) {
+			var b friendrowswire.FriendEntryBuilder
+			if !b.Init() {
+				return nil, false
+			}
+			if !friendrowswire.FriendEntryFromJson(&b, text, rep) || !b.Lock() {
+				return nil, false
+			}
+			return b.AsConst(), true
+		},
+		toJSON: func(w *friendrowswire.FriendEntry) []byte {
+			buf := make([]byte, max(friendrowswire.FriendEntryToJsonMeasure(w), 0))
+			return buf[:max(friendrowswire.FriendEntryToJson(w, buf), 0)]
+		},
+		save: func(w *friendrowswire.FriendEntry) []byte {
+			buf := make([]byte, max(friendrowswire.FriendEntryMeasure(w), 0))
+			return buf[:max(friendrowswire.FriendEntrySave(w, buf), 0)]
+		},
+	}
+}
+
+// friendEntryRowFns is one roster entry as the row reader reads it: FRIENDENTRY (S1, S2, S4).
+func friendEntryRowFns() RowFns[friendEntry] {
+	return presenceRowFns("FRIENDENTRY", friendEntryTable(), func(e *friendEntry) friendEntrySchema {
+		return friendEntrySchema{
+			Held: e.Held, At: rowTime(e.At), By: rowText(e.By), Width: int64(e.Width), Class: rowText(e.Class),
+			Mode: rowText(e.Mode), Streams: rowText(e.Streams), Kinds: rowText(e.Kinds), ConfigDir: rowText(e.ConfigDir),
+			Pronouns: rowText(e.Pronouns), Session: rowText(e.Session), TokenCap: e.TokenCap, TokenCapSet: e.TokenCapSet,
+			Roles: rowText(e.Roles), Billing: rowText(e.Billing), Reason: rowText(e.Reason), Until: rowTime(e.Until), Return: e.Return,
+		}
+	}, func(m *friendEntrySchema) (friendEntry, bool) {
+		at, okAt := rowTimeOf(m.At)
+		until, okUntil := rowTimeOf(m.Until)
+		return friendEntry{
+			Held: m.Held, At: at, By: rowTextOf(m.By), Width: int(m.Width), Class: rowTextOf(m.Class),
+			Mode: rowTextOf(m.Mode), Streams: rowTextOf(m.Streams), Kinds: rowTextOf(m.Kinds), ConfigDir: rowTextOf(m.ConfigDir),
+			Pronouns: rowTextOf(m.Pronouns), Session: rowTextOf(m.Session), TokenCap: m.TokenCap, TokenCapSet: m.TokenCapSet,
+			Roles: rowTextOf(m.Roles), Billing: rowTextOf(m.Billing), Reason: rowTextOf(m.Reason), Until: until, Return: m.Return,
+		}, okAt && okUntil
+	})
+}
+
+// friendStatusSchema is the FriendStatus table's schema JSON text (friendrows.schema
+// FriendStatus). Why is not stored.
+type friendStatusSchema struct {
+	Status     *string `json:"status"`
+	Reason     *string `json:"reason"`
+	Until      *string `json:"until"`
+	Evidence   *string `json:"evidence"`
+	WorkerLive bool    `json:"worker_live"`
+	Unhooked   bool    `json:"unhooked"`
+	At         *string `json:"at"`
+}
+
+// friendStatusTable is the generated FriendStatus table (S1, S2).
+func friendStatusTable() friendTable[friendrowswire.FriendStatus] {
+	return friendTable[friendrowswire.FriendStatus]{
+		measure: friendrowswire.FriendStatusLoadMeasureReason,
+		load:    friendrowswire.FriendStatusLoad,
+		fromJSON: func(text []byte, rep *friendrowswire.TableReport) (*friendrowswire.FriendStatus, bool) {
+			var b friendrowswire.FriendStatusBuilder
+			if !b.Init() {
+				return nil, false
+			}
+			if !friendrowswire.FriendStatusFromJson(&b, text, rep) || !b.Lock() {
+				return nil, false
+			}
+			return b.AsConst(), true
+		},
+		toJSON: func(w *friendrowswire.FriendStatus) []byte {
+			buf := make([]byte, max(friendrowswire.FriendStatusToJsonMeasure(w), 0))
+			return buf[:max(friendrowswire.FriendStatusToJson(w, buf), 0)]
+		},
+		save: func(w *friendrowswire.FriendStatus) []byte {
+			buf := make([]byte, max(friendrowswire.FriendStatusMeasure(w), 0))
+			return buf[:max(friendrowswire.FriendStatusSave(w, buf), 0)]
+		},
+	}
+}
+
+// friendStatusRowFns is one friend's derived status as the row reader reads it: FRIENDSTATUS
+// (S1, S2, S4).
+func friendStatusRowFns() RowFns[friendStatus] {
+	return presenceRowFns("FRIENDSTATUS", friendStatusTable(), func(s *friendStatus) friendStatusSchema {
+		return friendStatusSchema{
+			Status: rowText(s.Status), Reason: rowText(s.Reason), Until: rowTime(s.Until), Evidence: rowText(s.Evidence),
+			WorkerLive: s.WorkerLive, Unhooked: s.Unhooked, At: rowTime(s.At),
+		}
+	}, func(m *friendStatusSchema) (friendStatus, bool) {
+		until, okUntil := rowTimeOf(m.Until)
+		at, okAt := rowTimeOf(m.At)
+		return friendStatus{
+			Status: rowTextOf(m.Status), Reason: rowTextOf(m.Reason), Until: until, Evidence: rowTextOf(m.Evidence),
+			WorkerLive: m.WorkerLive, Unhooked: m.Unhooked, At: at,
+		}, okUntil && okAt
+	})
 }
