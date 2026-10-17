@@ -197,8 +197,21 @@ func (st *Store) roster(ctx context.Context) (map[string]friendEntry, KV, error)
 	return out, kv, nil
 }
 
+// putRoster writes the friend roster in the friend-entry table form (S1, S2): each entry as
+// the padded standard base64 of its variable-table wire, in one JSON object keyed by the
+// friend's name. A value the table cannot hold is refused by name before any byte is written;
+// the roster is never written in the legacy form as a fallback (S4).
 func putRoster(ctx context.Context, kv KV, r map[string]friendEntry) error {
-	b, err := json.Marshal(r)
+	c := NewRowCodec(friendEntryRowFns())
+	obj := make(map[string]string, len(r))
+	for name, e := range r {
+		b, err := c.Write(&e, schemaread.FormBase64)
+		if err != nil {
+			return fmt.Errorf("friend %s: %w", name, err)
+		}
+		obj[name] = string(b)
+	}
+	b, err := json.Marshal(obj)
 	if err != nil {
 		return err
 	}
