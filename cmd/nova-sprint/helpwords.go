@@ -79,8 +79,9 @@ words:
                reads and merges are of that head
   the stream's base  a first attempt's base in its packet: the branch its brief's BASE: line names
                (a rework is staged at that branch's tip, the last pushed work carried on top)
-  held         a fleet member's status while fleet down or fleet sync holds it, whatever it beats;
-               card's HELD line names what holds a primary from stalling
+  held         the status of a member, reader, friend or stream that hold (or fleet sync) holds, whatever it beats;
+               card's HELD line names what holds a primary from stalling: (a) an outside actor, before its deadline;
+               (b) the next tick moves it or writes the judgment named; (c) an open judgment; (d) it waits on something held; (e) the machine is STOPPED
   stuck        the merge column of a card that could not merge: its stream stops until resume
   staging      native checking out the card's repository at its start commit before any child
                runs; staging refused is the member's failure, and the card goes to another member

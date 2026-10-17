@@ -44,7 +44,9 @@ func (ta *testApp) returnedForARead(seatAccept bool) {
 	ta.ok("read --as reader-a --ok --limit 100")
 	ta.ok("read --as reader-b --ok --limit 100")
 	ta.ok("accept s1-1")
-	ta.shortReads("s1-1", "reader-a")
+	// a third read needed: accepted short of its reads, through the verb, never an outside
+	// write (start refuses while check fails)
+	ta.ok("set --reads 3")
 	ta.ok("repair")
 	require.Equal(ta.t, sprint.Review, ta.primary("s1-1").Col, "repair returned it for its missing read")
 	ta.ok("ask --limit 100")

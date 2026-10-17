@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,7 +13,43 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
+
+// DO NOT REMOVE THIS WITHOUT GLENN'S EXPLICIT PERMISSION
+// start refuses while check would fail (the owner, 2026-10-16: a sprint was started with
+// 241 violations unseen): with none it proceeds; with one it prints the violation and the
+// remedy, and the machine stays STOPPED.
+func TestStartRefusesWhileCheckFindsAViolation(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("add --stream s1 --count 1 --one")
+	ta.deal(1)
+	ta.clean()
+	ta.ok("start")
+	require.True(t, ta.machineRunning(), "no violation: the start proceeds")
+	ta.ok("stop --reason 'an outside writer moves a card' --until 30m")
+
+	// an outside writer moves a fleet card: a move no log line records (rule 13)
+	st, err := ta.a.store(common{redis: "mem:0", actor: "tester"})
+	require.NoError(t, err)
+	snap, err := st.Load(context.Background(), store.All, nil)
+	require.NoError(t, err)
+	wc := snap.Fleet.Card("s1-1.w1")
+	require.NotNil(t, wc)
+	_, err = ta.m.Apply(context.Background(), ntable.BatchManifest{Schema: 1, Table: st.Names.Table(sprint.Fleet), Epoch: "0",
+		ExpectedTableRevision: fmt.Sprint(snap.Fleet.Revision), OperationID: "outside-move",
+		Members: []ntable.BatchMemberEntry{{ID: wc.ID, Expect: &ntable.MemberExpect{Revision: fmt.Sprint(wc.Rev)},
+			Move: &ntable.MemberMoveOp{Row: wc.Row, Col: sprint.Withdrawn}}}})
+	require.NoError(t, err)
+
+	code, out, errs := ta.do("start")
+	require.Equal(t, 1, code, "refused: %s%s", out, errs)
+	assert.Contains(t, errs, "VIOLATION rule 13: ")
+	assert.Contains(t, errs, "violations; nothing was written; run: nova-sprint check")
+	assert.False(t, ta.machineRunning(), "the machine stays STOPPED")
+}
 
 // A held need is found at check and while the sprint runs (v1.2.17,
 // a-missing-or-blocked-need-is-found-at-check-and-while-running): start computes the unresolved

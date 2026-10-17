@@ -28,7 +28,7 @@ the checks the verb runs, and leaves no record in the log.
    friend, reader, goal, stream, lane, merge-window). Every judgment in the inbox prints the commands
    that answer it: copy them and fill in each `'<...>'` (`nova-sprint help`, "reading the inbox
    and answering a judgment").
-2. Ask what is waiting on you. usage: `nova-sprint view coordinator [--all] [--since <cursor>] [--json]`.
+2. Ask what is waiting on you. usage: `nova-sprint view coordinator [--all] [--since <cursor>] [--needs] [--json]`.
    Run `nova-sprint view coordinator --needs`. It lists every decision waiting on the coordinator
    (open judgments, held sentinels, stopped streams, held cards), ranked by the cards blocked
    behind each (`nova-sprint help view coordinator`; SPEC-SPRINT.md section 11,
@@ -65,12 +65,12 @@ the checks the verb runs, and leaves no record in the log.
    refused with `You must hook in first`. Spec: SPEC-SPRINT.md section 11, "The hook";
    SPRINT-COORDINATOR-SEAT.md, "The hook under a Monitor"; nova-tools SPEC-HOOK.md, "Roles and
    pushes".
-2. See what changed. usage: `nova-sprint view coordinator [--all] [--since <cursor>] [--json]`.
+2. See what changed. usage: `nova-sprint view coordinator [--all] [--since <cursor>] [--needs] [--json]`.
    Run `nova-sprint view coordinator`, keep the cursor it prints, and next time run
    `nova-sprint view coordinator --since <cursor>`. The second run leaves out every item the
    earlier view showed that has not changed (it counts them as same) and counts the ones that
    stand no more (gone). Spec: SPEC-SPRINT.md section 11, "Role views".
-3. Read the inbox. usage: `nova-sprint inbox [--open <group>] [--read] [--wait [--timeout <duration>] [--push <dir>]] [--deadline <duration>] [--stale <duration>]`.
+3. Read the inbox. usage: `nova-sprint inbox [--open <group>] [--read] [--wait [--timeout <duration>] [--push <dir>]] [--deadline <duration>] [--stale <duration>] [--json]`.
    Run `nova-sprint inbox`, then `nova-sprint inbox --open <id>` for every member of a group.
    `nova-sprint inbox --wait` blocks until a judgment, or a note to the coordinator, that was not
    in the inbox when the wait began, or until the machine stops. Spec: SPEC-SPRINT.md section 8,

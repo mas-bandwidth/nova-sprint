@@ -32,6 +32,11 @@
 \*   "arms"        the server arms a record that is not hooked: HookedOnlyByTheSeat.
 \*   "provefailed" the server proves the sprint push after a failed send: GateMeansAWayIn.
 \*   "resendsame" each look repeats an unchanged warning before ReminderEvery.
+\*   "wentfails"  a re-send of a key that already went to the holder (sentKeys), which the
+\*                bus refuses as already gone under its token, counts as a failed send and
+\*                the key is not told: WentKeysAreTold. That was coordinator_push.go send
+\*                before the aged-token fix: after a restart every look re-sent the key, was
+\*                refused, unproved the sprint push and told nothing, a deadlock.
 \* The reminder clock is elapsed minutes, saturated at ReminderEvery (30), not
 \* an unbounded wall clock. open abstracts the warning-eligible judgment ID set;
 \* fresh key delivery and warning delivery remain distinct sends. Resetting the
@@ -111,17 +116,29 @@ Start == ~up /\ up' = TRUE /\ UNCHANGED <<reminderVars, open, told, sent, holder
 \* What the look sends: every open key not told. A look that reads a new holder starts from
 \* nothing told (here the told set is the holder's; "keepold" keeps it).
 Fresh == open \ told
+
+\* The bus's memory of what went: the keys it already took for a name. A restart (Stop) and
+\* a new holder clear told but not sent, so a later look re-sends keys in sentKeys. The bus
+\* answers such a re-send that the message already went under its token (its token past
+\* its life), and the design counts that answer as a delivery: the key is told and the send
+\* did not fail (coordinator_push.go send, busMessageWent). In LegacyLook that is the plain goes branch: a
+\* re-sent key is told like a fresh one and failedNow is ~busUp. "wentfails" is the old code.
+SentKeys(n) == {k \in Keys : <<n, k>> \in sent}
+sentKeys == SentKeys(holder)
 WarningDue == open # {} /\ (open # warned \/ warnAge = ReminderEvery \/ Broken = "resendsame")
 
 LegacyLook ==
   /\ up
   /\ LET fresh == Fresh
+         \* the re-sent keys the bus answers "went", counted failed and untold ("wentfails")
+         went == IF Broken = "wentfails" /\ busUp THEN fresh \cap sentKeys ELSE {}
          goes == fresh # {} /\ busUp
          toldNow == IF Broken = "toldfirst" THEN (told \cap open) \cup fresh
-                    ELSE IF goes THEN (told \cap open) \cup fresh ELSE told \cap open
+                    ELSE IF goes THEN (told \cap open) \cup (fresh \ went) ELSE told \cap open
          warnDue == WarningDue
          warns == warnDue /\ busUp
-         failedNow == IF fresh = {} /\ ~warnDue THEN failed ELSE ~busUp
+         failedNow == IF went # {} THEN TRUE
+                      ELSE IF fresh = {} /\ ~warnDue THEN failed ELSE ~busUp
      IN /\ told' = toldNow
         /\ sent' = IF goes THEN sent \cup ({holder} \X fresh) ELSE sent
         /\ failed' = failedNow
@@ -235,4 +252,15 @@ GateMeansAWayIn == Gate => up /\ ~failed
 OpenKeysReachTheHolder ==
   \A k \in Keys, n \in Names :
     <>[](up /\ busUp /\ holder = n) => [](k \in open => <>(k \notin open \/ <<n, k>> \in sent))
+
+\* A key that already went to the holder and is open but not told (a restart or a new
+\* holder cleared told) is told by a look whose send did not fail, once the server runs, the
+\* bus takes sends and the seat stays put, or it is answered first. OpenKeysReachTheHolder
+\* cannot see the old code's deadlock: the key is in sent already. Under "wentfails" the key
+\* stays in Fresh, so Recover never runs, every look fails and the gate stays unproven.
+WentKeysAreTold ==
+  \A k \in Keys, n \in Names :
+    <>[](up /\ busUp /\ holder = n) =>
+      [](k \in open \cap sentKeys /\ k \notin told =>
+           <>(k \notin open \/ (k \in told /\ ~failed)))
 =============================================================================

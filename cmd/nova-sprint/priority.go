@@ -140,7 +140,7 @@ func (a *app) printPriority(st *store.Store, ids []string, asJSON bool, stdout, 
 			return a.readFailed("priority", err, stderr)
 		}
 		if v.Primary == nil {
-			fmt.Fprintf(stderr, "%s priority: no primary %s; run: nova-sprint where\n", prog, oneline.Escape(id))
+			fmt.Fprintf(stderr, "%s priority REFUSED: no primary %s; run: nova-sprint where\n", prog, oneline.Escape(id))
 			return 1
 		}
 		l, src := sprint.CardPriority(v.Primary)

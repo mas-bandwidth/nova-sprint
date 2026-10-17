@@ -266,6 +266,17 @@ func (a *app) coordinatorPass(ctx context.Context) (read bool) {
 			attemptedHolder = true
 		}
 		if err := a.bus(ctx, m, func(s string) { a.serveSay("%s", s) }); err != nil {
+			if busMessageWent(err) {
+				// The bus already carried this message under this token: it went, and
+				// the token has aged past its life, so the bus will never carry it
+				// again. That is a delivery, not a failure: told, and the sprint push
+				// stays proven. Counting it as a failure unproved the push on every
+				// look and refused every coordinator write, the verb that would have
+				// cleared the message included (v1.4.6, 2026-10-16: STREAM STOPPED
+				// tool-review-2026-10-15, resent by a restarted server a day later).
+				a.serveSay("COORDINATOR PUSH to=%s: %q went under its token before; told: %s", to, m.Subject, oneline.Escape(err.Error()))
+				return true
+			}
 			a.serveSay("COORDINATOR PUSH to=%s: %q could not be sent, sent again at the next look: %s", to, m.Subject, oneline.Escape(err.Error()))
 			if to == l.holder {
 				failed = true
@@ -938,4 +949,20 @@ func (a *app) decisionPass(ctx context.Context) {
 			a.serveSay("DECISIONS OWED: %s delivery pending: %s", lane, fault)
 		}
 	}
+}
+
+// busMessageWent says the bus refused a send because the message already went under
+// its token and the token has aged past its life (pkg/bus replay): the message is on
+// the bus, and no retry will ever carry it again.
+func busMessageWent(err error) bool {
+	var r *bus.Refusal
+	if !errors.As(err, &r) {
+		return false
+	}
+	for _, p := range r.Problems {
+		if strings.Contains(p, "the message went, and is not sent again") {
+			return true
+		}
+	}
+	return false
 }

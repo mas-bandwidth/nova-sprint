@@ -703,6 +703,7 @@ MCCoordinatorPushBrokenKeepold.cfg	MCCoordinatorPush.tla	invariant	ToldWasSent	i
 MCCoordinatorPushBrokenArms.cfg	MCCoordinatorPush.tla	invariant	HookedOnlyByTheSeat	ignore-terminal	coordinatorpush	required	-
 MCCoordinatorPushBrokenProvefailed.cfg	MCCoordinatorPush.tla	invariant	GateMeansAWayIn	ignore-terminal	coordinatorpush	required	-
 MCCoordinatorPushBrokenResendSame.cfg	MCCoordinatorPush.tla	invariant	SameSetNotResentWithin	ignore-terminal	coordinatorpush	required	-
+MCCoordinatorPushBrokenWentfails.cfg	MCCoordinatorPush.tla	temporal	WentKeysAreTold	ignore-terminal	coordinatorpush	required	-
 MCStateEpisode.cfg	MCStateEpisode.tla	pass	-	ignore-terminal	stateepisode	required	-
 MCStateEpisodeBrokenAckFirst.cfg	MCStateEpisode.tla	invariant	ReceiptMeansSent	ignore-terminal	stateepisode	required	-
 MCStateEpisodeBrokenVolatile.cfg	MCStateEpisode.tla	invariant	DurableReceipt	ignore-terminal	stateepisode	required	-
@@ -742,6 +743,8 @@ MCSprintRulesFirstTimeBrokenNoClear.cfg	MCSprintRules.tla	invariant	FirstTimeCle
 MCSoftDependency.cfg	MCSoftDependency.tla	pass	-	ignore-terminal	softdependency	required	-
 MCSoftDependencyBrokenBlocksDeal.cfg	MCSoftDependency.tla	invariant	SoftNeverBlocksDeal	ignore-terminal	softdependency	required	-
 MCSoftDependencyBrokenAnyOrder.cfg	MCSoftDependency.tla	invariant	SoftLandsInOrder	ignore-terminal	softdependency	required	-
+MCSoftDependencyBrokenSoftIsHard.cfg	MCSoftDependency.tla	invariant	SoftIsOrderOnly	ignore-terminal	softdependency	required	-
+MCSoftDependencyBrokenHeldBlocksBatch.cfg	MCSoftDependency.tla	invariant	HeldNeverEmptiesBatch	ignore-terminal	softdependency	required	-
 MCDirtyTickEnv.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-handback	required	-
 MCDirtyTickBrokenEnvRedo.cfg	MCDirtyTick.tla	action	EnvNeverRedoes	ignore-terminal	dirtytick-witnesses	required	-
 MCLandBoundConflictCarry.cfg	MCLandBound.tla	pass	-	ignore-terminal	land	required	-

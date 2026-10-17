@@ -30,7 +30,7 @@ beside it (where --json --cards: holds; handover), and the hold is a line
 of the log. A fleet member's hold may name its cause, --cause j<n> (a
 judgment open now): the tick ends the hold in the step that sees the
 judgment answered or retired, and logs "released: cause <x> resolved" to
-the seat. A doctor check is no cause in v1.2.x: --cause doctor:<check> is
+the seat. A doctor check is no cause: --cause doctor:<check> is
 refused. A member's hold with no cause is
 reported to the seat every two hours until it is released or names one;
 where lists each held member's cause, its age and the verb that releases it.`) + "\n" + strings.TrimSpace(`

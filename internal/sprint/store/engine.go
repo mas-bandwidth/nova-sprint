@@ -759,7 +759,7 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 				debt = append(append([]StopLease(nil), debt...), activeStopLeases(snap)...)
 			}
 			if owed := stopDebtMutation(plan, debt); owed != nil {
-				why := fmt.Sprintf("STOP owns %s:%s@%d: cancel its child and run nova-sprint stop-return --as %s %s@%d --reason '<observed child exit>' before %s", owed.Row, owed.ID, owed.Gen, owed.Row, owed.ID, owed.Gen, step.Verb)
+				why := fmt.Sprintf("STOP owns %s:%s@%d: cancel its child and run nova-sprint stop-return --as %s %s@%d --epoch <n> --reason '<observed child exit>' before %s", owed.Row, owed.ID, owed.Gen, owed.Row, owed.ID, owed.Gen, step.Verb)
 				return refuseWhole(res, plan, why)
 			}
 		}

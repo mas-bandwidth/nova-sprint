@@ -22,7 +22,7 @@ const releaseHoldWords = `release resolves a wait on a release: a sentinel or a 
 // `nova-sprint help` prints it whole, and a verb's -h prints that verb's own
 // line in its place (verbExits; docs/STANDARD.md section 2, "Every verb's -h
 // quotes the table, or the verb's own"; tool ledger P5, X9).
-const exitLine = "exit codes: 0 done, 1 failed or incomplete (including refused), 2 usage or a store that did not answer (fleet sync --check: there is drift), 3 fleet sync or friend sync could not read the config, or run: its binary was replaced (its supervisor starts the new one)"
+const exitLine = "exit codes: 0 done, 1 failed or incomplete (including refused), 2 usage or a store that did not answer (under fleet sync --check, 2 is drift alone, with DRIFT lines; a store that did not answer is 3 there), 3 fleet sync or friend sync could not read the config, or run: its binary was replaced (its supervisor starts the new one)"
 
 // verbExit is a verb's own exit codes where they are not the common three.
 var verbExit = map[string]string{
