@@ -79,12 +79,14 @@ func TestHoldsReaderHoldDualRead(t *testing.T) {
 		assert.EqualValues(t, n, report.RowForms["READERHOLD"][form], form)
 	}
 
-	// The store's writer still writes the legacy form (S4: readers first).
+	// The store's writer writes the ReaderHold variable table's wire now (S4:
+	// readers first, then writers); the kept dual reader reads it in the
+	// damaged-value block below.
 	require.NoError(t, st.SetReaderAway(ctx, "writer", true, "coordinator"))
 	raw, ok, err := kv.GetKey(ctx, readerAwayKey("writer"))
 	require.NoError(t, err)
 	require.True(t, ok)
-	assert.True(t, LegacyObject([]byte(raw)), raw)
+	assert.False(t, LegacyObject([]byte(raw)), raw)
 
 	// A damaged value of each form is refused by name, never read as a record.
 	assertDamageRefused(t, codec, "READERHOLD", f)
@@ -104,7 +106,7 @@ func TestHoldsReaderHoldDualRead(t *testing.T) {
 	got = readerHolds()
 	assert.NotContains(t, got, "binary", "a damaged hold reads as no hold, counted")
 	after := codec.Counts().Snapshot()
-	assert.EqualValues(t, before["binary"]+1, after["binary"], "the damaged hold's form is counted")
+	assert.EqualValues(t, before["binary"]+2, after["binary"], "the writer's hold and the damaged hold's form are counted")
 	refused := func(m map[string]uint64) uint64 {
 		var n uint64
 		for k, v := range m {

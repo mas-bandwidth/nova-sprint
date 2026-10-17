@@ -10,6 +10,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/friendrowswire"
+	"github.com/mas-bandwidth/nova-tools/pkg/schemaread"
 )
 
 // A reader's presence (sprint/readers.go; docs/SPEC-SPRINT.md section 6): two
@@ -223,7 +224,9 @@ func (st *Store) SetReaderRetired(ctx context.Context, reader, who string) error
 }
 
 // setReaderHold writes the coordinator's hold of a reader, stamped and signed
-// when it holds anything, empty when it releases.
+// when it holds anything, empty when it releases. It writes the ReaderHold
+// variable table's wire (S1, S4: readers first, then writers); the legacy JSON
+// writer is gone and is never a fallback.
 func (st *Store) setReaderHold(ctx context.Context, reader string, hold readerHold, who string) error {
 	kv, err := st.rootKV()
 	if err != nil {
@@ -239,11 +242,28 @@ func (st *Store) setReaderHold(ctx context.Context, reader string, hold readerHo
 	if hold.Away {
 		hold.At, hold.By = st.now().UTC().Truncate(time.Second), who
 	}
-	out, err := json.Marshal(hold)
+	return st.writeReaderHold(ctx, kv, reader, hold)
+}
+
+// writeReaderHold writes hold through the READERHOLD row codec in the variable
+// table's wire (S1, S2, S4). A value the table cannot hold is refused by name
+// before the store key is written; it is never written in the legacy form. The
+// round trip is the table's own bound check: the generated load refuses text
+// the wire cannot carry and counts the read under its form.
+func (st *Store) writeReaderHold(ctx context.Context, kv KV, reader string, hold readerHold) error {
+	c := st.readerHoldRows()
+	wire, err := c.Write(&hold, schemaread.FormBinary)
 	if err != nil {
 		return err
 	}
-	return kv.SetKey(ctx, readerAwayKey(reader), string(out))
+	back, _, err := c.Read(wire)
+	if err != nil {
+		return err
+	}
+	if back != hold {
+		return &schemaread.Refusal{Name: c.rowName(), Reason: "text_ill_formed", Help: rowCheckHelp}
+	}
+	return kv.SetKey(ctx, readerAwayKey(reader), string(wire))
 }
 
 // ForgetReaders deletes the beat and the hold of readers taken off the readers

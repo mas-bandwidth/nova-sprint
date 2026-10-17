@@ -68,13 +68,14 @@ func TestReaderStatesHoldDualRead(t *testing.T) {
 		assert.EqualValues(t, n, report.RowForms["READERHOLD"][form], form)
 	}
 
-	// The store's writer still writes the legacy form (S4: readers first).
+	// The store's writer writes the ReaderHold variable table's wire now (S4:
+	// readers first, then writers); the kept dual reader reads it below.
 	require.NoError(t, m.RowsAdd(ctx, st.Names.Table(sprint.Readers), []string{"writer"}))
 	require.NoError(t, st.SetReaderAway(ctx, "writer", true, "coordinator"))
 	raw, ok, err := kv.GetKey(ctx, readerAwayKey("writer"))
 	require.NoError(t, err)
 	require.True(t, ok)
-	assert.True(t, LegacyObject([]byte(raw)), raw)
+	assert.False(t, LegacyObject([]byte(raw)), raw)
 
 	// A damaged value of each form is refused by name, never read as a record.
 	assertDamageRefused(t, codec, "READERHOLD", f)
