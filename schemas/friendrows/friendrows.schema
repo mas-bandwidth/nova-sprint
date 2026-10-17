@@ -1,0 +1,403 @@
+// friendrows.schema: the sprint store's friend, beat, hold, lane and seat
+// records as FIXED tables (S1). The sprint server is the only writer and the
+// only reader, and the server is upgraded first: a newer reader reads an older
+// image, an older reader refuses a newer one as layout_newer.
+//
+// A fixed record carries no map, no pointer and no unbounded list. A JSON
+// object the store writes today is a counted array of entries here, and the
+// key stays the store key, not a field, wherever the Go struct has no field
+// for it. A time.Time is int64 Unix nanoseconds UTC, and 0 is the zero time.
+// A *T is ?T. A float64 stays a float64: the compiler accepts a numeric range
+// on an integer, not on a float64, so a clamp the code applies to a percent
+// is named in the comment and is not a declared range.
+//
+// Where the code states a minimum and no ceiling, the declared max is the
+// storage type's own. SPEC §4.6 requires a max beside a min, and a legal wire
+// value the storage would truncate is refused at compile time. The code's
+// ceiling is the minimum; the max is the compiler's.
+package friendrowswire
+
+// FriendEntry is one friend in the roster (store/friends.go friendEntry).
+// keyFriends is a JSON object keyed by the friend's name, a ValidID of at
+// most MaxIDLen (128). The name is that key. It is not a field of the struct.
+fixed table FriendEntry
+{
+    held bool
+    // Unix nanoseconds UTC; 0 is the zero time.
+    at int64
+    // the coordinator who holds her: a ValidID, MaxIDLen 128 (schema.go).
+    by string(128)
+    // 0 means the roster has not set a width (json omitempty). checkFriend
+    // requires at least 1 when the config row sets one, and states no ceiling.
+    // The stored field therefore declares no numeric range.
+    width int32
+    // her tiers, comma joined. "flash,frontier,heavy,pro" is 27 bytes. The
+    // store states no length. 64 is this field's ceiling. json "class":
+    // class is a reserved word.
+    tier_class string(64) | json = "class"
+    // FriendModes: "batch" or "one-shot" (8). Empty is batch.
+    mode string(8)
+    // comma-separated globs. checkFriend reads each with path.Match and
+    // states no length. 1024 is this field's ceiling, not that check's.
+    streams string(1024)
+    // the same rule as streams.
+    kinds string(1024)
+    // an absolute path when set (checkFriend). The check states no length.
+    // 1024 is this field's ceiling.
+    config_dir string(1024)
+    // FriendPronounSets; the longest is "they/them" (9).
+    pronouns string(16)
+    // "one-shot" (FriendOneShot, 8) or empty for a live session.
+    session string(8)
+    // FriendTokenCap: a negative text is not a cap; an explicit 0 is no cap.
+    // The code states no ceiling. The max is int64's own (SPEC §4.6).
+    token_cap int64 | min = 0, max = 9223372036854775807
+    token_cap_set bool
+    // comma joined. "builder,may-hold,reader" is 23. The store states no
+    // length. 64 is this field's ceiling.
+    roles string(64)
+    // metered, plan, both or subscription (12). Empty means subscription.
+    billing string(16)
+    // friend down and hold --reason. oneLineText, where a beat uses it, is
+    // at most 1024 and not a control character. The control-character rule
+    // has no schema attribute; the declared bound is the length.
+    reason string(1024)
+    // Unix nanoseconds UTC; 0 is the zero time (json omitzero).
+    until int64
+    // json "return": return is a reserved word.
+    give_back bool | json = "return"
+}
+
+// FriendStatus is the server's derived word for one friend (store/friends.go
+// friendStatus), the record keyFriendStatus keeps. The friend's name is the
+// JSON object's key, not a field. Why is json:"-" and is not stored. Evidence
+// is the stored proof word ("nova-hook proven", "held", "member beat", or the
+// hook's reason). The friend beat flags --pong, --check and --run are accepted
+// by the server and are not fields of any stored struct.
+fixed table FriendStatus
+{
+    // FriendStates: "up", "held", "down".
+    status string(8)
+    // a hook reason or a hold reason. The store states no length. 1024 is
+    // this field's ceiling.
+    reason string(1024)
+    // Unix nanoseconds UTC; 0 is the zero time.
+    until int64
+    evidence string(1024)
+    worker_live bool
+    unhooked bool
+    // Unix nanoseconds UTC; 0 is the zero time.
+    at int64
+}
+
+// LoadSample is one beat's load (presence.go). NextBeat keeps the samples in
+// (at - LoadWindow, at) and then appends the current second, so a record it
+// writes holds at most 11. LoadWindow is 10s and the stamp is truncated to a
+// second. pct is clampLoad onto 0..LoadMax (100). A float64 declares no range.
+fixed table LoadSample
+{
+    // Unix nanoseconds UTC; 0 is the zero time.
+    at int64
+    pct float64
+}
+
+// Ticks is one reading of the kernel CPU counters (hostload.Ticks).
+fixed table Ticks
+{
+    busy uint64
+    total uint64
+}
+
+// Holder is one process and how many file descriptors it has open
+// (hostload.Holder). The command and the user have no length in the reader.
+// 128 and 64 are this table's ceilings. json "cmd" keeps today's key.
+fixed table Holder
+{
+    pid int32
+    command string(128) | json = "cmd"
+    user string(64)
+    open int32
+}
+
+// Files is one reading of the machine's open descriptors (hostload.Files).
+// FilesTop is 10. Warn and alarm are the bounds the reading was taken
+// against, not a maximum of the count. top_err has no length in the reader.
+// 256 is this field's ceiling.
+fixed table Files
+{
+    // Unix nanoseconds UTC; 0 is the zero time.
+    at int64
+    open int32
+    max int32
+    warn int32
+    alarm int32
+    top [..10]Holder
+    // Unix nanoseconds UTC; 0 is the zero time.
+    top_at int64
+    top_err string(256)
+}
+
+// Meter is the measuring state the next beat starts from (hostload.State).
+// A *Ticks and a *Files are ?T. top_pct is capped at hostload.MaxPercent
+// (1000) by capped. A float64 declares no range.
+fixed table Meter
+{
+    ticks ?Ticks
+    // Unix nanoseconds UTC; 0 is the zero time.
+    top_at int64
+    top_pct float64
+    files ?Files
+}
+
+// RunWord is one card id or job name in a friend's running list. runningIDs
+// accepts a joined list of at most 4096 bytes, letters, digits and . _ - ~.
+// validCardID is at most 256. One 4096-byte token that joined list allows
+// does not fit a fixed string beside the rest of a beat; 256 is the card id's
+// own bound.
+fixed table RunWord
+{
+    text string(256)
+}
+
+// FriendReport is what a friend's beat reports (presence.go FriendReport).
+// A *int is ?int32. Go's int is the platform int; the counts the flags accept
+// fit int32, and a fixed field names its width. wholeAtLeast states the
+// minimum and no ceiling, so the max is int32's own (SPEC §4.6).
+fixed table FriendReport
+{
+    // at most 15, so a list of 256-byte ids still joins inside 4096
+    // (15*256 + 14 commas). The flag's single 4096-byte token does not fit.
+    running [..15]RunWord
+    // friendBeatFlags --working: wholeAtLeast(0).
+    working ?int32 | min = 0, max = 2147483647
+    // friendBeatFlags --queue: wholeAtLeast(0).
+    queue ?int32 | min = 0, max = 2147483647
+    // friendBeatFlags --width: wholeAtLeast(1). No ceiling on the flag.
+    // checkFriend states the same minimum and no machine ceiling.
+    // The minimum is not a declared range: an optional's absent value is the
+    // type's zero, a range that excludes zero is refused, and an optional
+    // takes no specified default (SPEC-TABLES §2.3, SPEC §4.6).
+    width ?int32
+    // a whole number of at least 0. The flag states no ceiling.
+    stop_returns ?int32 | min = 0, max = 2147483647
+    // her paced width. The struct states no numeric floor. 0 is a reported
+    // zero; absent is the ? not set. No ceiling.
+    paced ?int32 | min = 0, max = 2147483647
+    // Unix nanoseconds UTC; 0 is the zero time.
+    active int64
+    // "5h 62% 7d 31%" is the shape the struct names. No length is stated.
+    // 64 is this field's ceiling.
+    window string(64)
+    // Unix nanoseconds UTC; 0 is the zero time.
+    until int64
+    // friendBeatFlags --reason: oneLineText, at most 1024.
+    reason string(1024)
+    // the daemon's version line. The beat states no length. 256 is this
+    // field's ceiling.
+    build string(256)
+    // Unix nanoseconds UTC; 0 is the zero time.
+    started int64
+    // Unix nanoseconds UTC; 0 is the zero time.
+    present int64
+}
+
+// LiveWord is one entry of a beat's live set: <card>@<gen> or
+// <card>@<gen>:held. validCardID is at most 256, the generation is a decimal
+// int, and the held mark is ":held", so 256 + 1 + 19 + 5 = 281.
+fixed table LiveWord
+{
+    text string(281)
+}
+
+// FactWord is one gate fact. FactWords requires a ValidID, at most MaxIDLen
+// (128), not beginning with "-". The beat states no count.
+fixed table FactWord
+{
+    text string(128)
+}
+
+// LiveSight is one entry of Beat.LiveSeen, a JSON object keyed by the live
+// entry. A fixed table has no map, so the pair is an entry. at is Unix
+// nanoseconds UTC; 0 is the zero time.
+fixed table LiveSight
+{
+    entry string(281)
+    at int64
+}
+
+// Beat is a member's, a friend's or a reader's presence record (presence.go
+// Beat). The store key is beat:<member>, friend-beat:<friend> or
+// reader-beat:<reader>. The name is that key, not a field. load is float64.
+// A member beat is clampLoad onto 0..LoadMax (100). A friend's --load is at
+// least 0 and has no upper bound. hostload caps a measured percent at
+// MaxPercent (1000). A float64 declares no range, so none of those clamps is
+// a declared bound. cores has no range. stop_returns is a whole number of at
+// least 0 (serve.go workerVerb) and the flag states no ceiling.
+//
+// live.go maxLiveEntries is 512. A fixed body is at most 65536 bytes, which
+// cannot hold 512 entries of string(281) beside the rest of this record, nor
+// a live_seen of the same width. 64 is the count that fits. liveSeenKeep is a
+// time, not a count.
+fixed table Beat
+{
+    // Unix nanoseconds UTC; 0 is the zero time.
+    at int64
+    // json "load": load is a generated Dart table verb (SPEC-TABLES §11).
+    // The clamps are clampLoad onto LoadMax (100), hostload.MaxPercent
+    // (1000), and friend beat --load at least 0 with no upper bound. A
+    // float64 declares no range.
+    load_pct float64 | json = "load"
+    cores int32
+    // hostload.HowCPU "cpu", HowLoad1 "load1", HowGiven "given".
+    how string(8)
+    samples [..11]LoadSample
+    meter Meter
+    // json "friend": friend is a reserved word. Nil on a machine's beat.
+    report ?FriendReport | json = "friend"
+    // serve.go: a whole number of at least 0, no ceiling (SPEC §4.6).
+    stop_returns int32 | min = 0, max = 2147483647
+    // fleet beat --no-room states no length. DrainWord plus a member's own
+    // word is the shape. 1024 is this field's ceiling, not the verb's.
+    no_room string(1024)
+    live [..64]LiveWord
+    live_known bool
+    // Unix nanoseconds UTC; 0 is the zero time.
+    live_since int64
+    live_seen [..64]LiveSight
+    draining bool
+    // Unix nanoseconds UTC; 0 is the zero time.
+    draining_since int64
+    // FactWords states no count. 32 is this field's ceiling.
+    facts [..32]FactWord
+}
+
+// ReaderHold is the coordinator's hold of a reader (store/readers.go
+// readerHold). The store key is reader-away:<reader>. The name is that key.
+fixed table ReaderHold
+{
+    away bool
+    retired bool
+    // Unix nanoseconds UTC; 0 is the zero time.
+    at int64
+    // a ValidID, MaxIDLen 128.
+    by string(128)
+    held bool
+    // the hold's reason. The store states no length. 1024 is this field's
+    // ceiling. oneLineText, where a verb uses it, is 1024.
+    reason string(1024)
+    // json "return": return is a reserved word.
+    give_back bool | json = "return"
+}
+
+// HoldView is one hold in force (hold.go HoldView), the held card where --json
+// shows. At is the RFC3339 stamp the view already stores, not a time.Time.
+// MaxCardTextBytes is 65536 and does not fit one fixed string; a hold reason
+// here is 1024, the oneLineText length. HoldReleaseVerb is "nova-sprint unhold "
+// or "nova-sprint friend unhold " plus the name.
+fixed table HoldView
+{
+    // HoldMember, HoldFriend and the other hold kinds are short words.
+    kind string(16)
+    // a ValidID (128) or a friend row "friend." plus a ValidID (135).
+    name string(135)
+    reason string(1024)
+    // a ValidID, MaxIDLen 128.
+    by string(128)
+    // stamp() is time.RFC3339, 20 bytes for a UTC second, 32 with a zone.
+    at string(32)
+    // json "return": return is a reserved word.
+    give_back bool | json = "return"
+    cause string(64)
+    // a ValidID, MaxIDLen 128.
+    who string(128)
+    release string(256)
+}
+
+// LaneHold is one holder of a lane (lane.go). ValidLaneWho is a ValidID
+// (128) or two ValidIDs joined by one slash (128+1+128 = 257).
+fixed table LaneHold
+{
+    who string(257)
+    // Unix nanoseconds UTC; 0 is the zero time.
+    since int64
+    // Unix nanoseconds UTC; 0 is the zero time.
+    seen int64
+    claimed bool
+}
+
+// LaneWait is one waiter (lane.go). The same who as LaneHold.
+fixed table LaneWait
+{
+    who string(257)
+    // Unix nanoseconds UTC; 0 is the zero time.
+    since int64
+    // Unix nanoseconds UTC; 0 is the zero time.
+    seen int64
+}
+
+// Lane is one machine's lanes of one kind (lane.go): holders and queue, oldest
+// first. The store keeps Lanes, a JSON object keyed by machine, under
+// lanes:<kind> (store/lane.go laneKey). The machine and the kind are that key.
+// They are not fields of Lane. The code states no count of holders or waiters.
+// LaneWidth is at least 1 and states no ceiling. 64 is the count that fits
+// under the 65536-byte body beside both arrays.
+fixed table Lane
+{
+    holders [..64]LaneHold
+    queue [..64]LaneWait
+}
+
+// SeatChange is one change of the coordinator's seat (seat.go). The store key
+// is "seat". NotSeat requires a ValidID holder and a non-empty reason, and
+// states no length for the reason. 1024 is this field's ceiling.
+fixed table SeatChange
+{
+    // a ValidID, MaxIDLen 128.
+    holder string(128)
+    generation uint64
+    // a ValidID, MaxIDLen 128.
+    from string(128)
+    // Unix nanoseconds UTC; 0 is the zero time.
+    at int64
+    // a ValidID, MaxIDLen 128.
+    by string(128)
+    taken bool
+    // a ValidID, MaxIDLen 128. json keeps today's key.
+    approved_by string(128)
+    reason string(1024)
+}
+
+// ServerRecord is the server's heartbeat (store/seat.go), the store key
+// "server". Version, commit and host have no length in SetServer. 128 and
+// 256 are this table's ceilings. PID is int32: a pid fits, and Go's int is
+// the platform int.
+fixed table ServerRecord
+{
+    // a ValidID, MaxIDLen 128.
+    actor string(128)
+    // Unix nanoseconds UTC; 0 is the zero time.
+    at int64
+    version string(128)
+    commit string(128)
+    // Unix nanoseconds UTC; 0 is the zero time.
+    started int64
+    land bool
+    pid int32
+    host string(256)
+}
+
+// Login is the seat login record (cmd/nova-sprint/storelogin.go storeLogin).
+// It names where the password lives. It holds no secret value. recordedLogin
+// refuses an empty redis or user and states no length. 1024 is each field's
+// ceiling. json "as" and "secret": as is a reserved word, and secret_name
+// says the field is the nova-secrets name, never a password.
+fixed table Login
+{
+    redis string(1024)
+    user string(128)
+    store string(1024)
+    seat_as string(128) | json = "as"
+    key string(1024)
+    sops string(1024)
+    secret_name string(256) | json = "secret"
+}
