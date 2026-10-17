@@ -3,9 +3,11 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/friendrowswire"
 )
 
 // The coordinator's seat (docs/SPEC-SPRINT.md, "Handing over the seat"): the
@@ -257,9 +259,11 @@ func (st *Store) SeatServerCoordinator(ctx context.Context) (sprint.SeatChange, 
 		return s, false, r, false, "", err
 	}
 	if oks[0] {
-		if err := json.Unmarshal([]byte(vals[0]), &s); err != nil {
-			return s, false, r, false, "", err
+		seat, _, err := st.seatRows().seat.Read([]byte(vals[0]))
+		if err != nil {
+			return s, false, r, false, "", err // the refusal names the seat record by name (S2)
 		}
+		s = seat
 	}
 	fresh := false
 	if oks[1] {
@@ -310,6 +314,97 @@ func seatGenerationOf(raw string, ok bool) (uint64, error) {
 		return 0, err
 	}
 	return max(s.Generation, sprint.FirstSeatGeneration), nil
+}
+
+// The seat change record reads through the store row codec (S1, S2, S4) from
+// the generated variable table of friendrowswire (schemas/friendrows/friendrows.schema):
+// the table wire (form byte 1; a unit that holds a variable table emits no fixed form),
+// the padded standard base64 of that wire and the schema JSON text, and today's legacy
+// JSON. A damaged value is refused by name, and every read is counted under the form it
+// was read in. Writers still write the legacy form; the writer switch is a later card.
+
+// seatRowSets is each store's seat reader, keyed by the store's done reader: every pinned
+// copy of a store shares that one reader (Store.clone), so a store and its copies count
+// into one set (S4).
+var seatRowSets sync.Map
+
+// seatRowCodecs is one store's reader of the seat change record.
+type seatRowCodecs struct {
+	seat *RowCodec[sprint.SeatChange]
+}
+
+// seatRows is this store's reader of the seat change record, registered on it so its Check
+// reports the reader's per-form counts (S4).
+func (st *Store) seatRows() *seatRowCodecs {
+	key := st.doneRows()
+	v, ok := seatRowSets.Load(key)
+	if !ok {
+		v, _ = seatRowSets.LoadOrStore(key, &seatRowCodecs{
+			seat: NewRowCodec(seatRowFns()),
+		})
+	}
+	c := v.(*seatRowCodecs)
+	c.seat.Register(st)
+	return c
+}
+
+// seatSchema is the SeatChange table's schema JSON text (friendrows.schema SeatChange).
+type seatSchema struct {
+	Holder     string  `json:"holder"`
+	Generation uint64  `json:"generation"`
+	From       string  `json:"from"`
+	At         *string `json:"at"`
+	By         string  `json:"by"`
+	Taken      bool    `json:"taken"`
+	ApprovedBy string  `json:"approved_by"`
+	Reason     string  `json:"reason"`
+}
+
+// seatTable is the generated SeatChange table (S1, S2).
+func seatTable() friendTable[friendrowswire.SeatChange] {
+	return friendTable[friendrowswire.SeatChange]{
+		measure: friendrowswire.SeatChangeLoadMeasureReason,
+		load:    friendrowswire.SeatChangeLoad,
+		fromJSON: func(text []byte, rep *friendrowswire.TableReport) (*friendrowswire.SeatChange, bool) {
+			var b friendrowswire.SeatChangeBuilder
+			if !b.Init() {
+				return nil, false
+			}
+			if !friendrowswire.SeatChangeFromJson(&b, text, rep) || !b.Lock() {
+				return nil, false
+			}
+			return b.AsConst(), true
+		},
+		toJSON: func(w *friendrowswire.SeatChange) []byte {
+			buf := make([]byte, max(friendrowswire.SeatChangeToJsonMeasure(w), 0))
+			return buf[:max(friendrowswire.SeatChangeToJson(w, buf), 0)]
+		},
+		save: func(w *friendrowswire.SeatChange) []byte {
+			buf := make([]byte, max(friendrowswire.SeatChangeMeasure(w), 0))
+			return buf[:max(friendrowswire.SeatChangeSave(w, buf), 0)]
+		},
+	}
+}
+
+// seatRowFns is the seat change record (sprint.SeatChange) as the row reader reads it:
+// SEATCHANGE (S1, S2, S4).
+func seatRowFns() RowFns[sprint.SeatChange] {
+	return presenceRowFns("SEATCHANGE", seatTable(), seatToSchema, seatOfSchema)
+}
+
+func seatToSchema(s *sprint.SeatChange) seatSchema {
+	return seatSchema{
+		Holder: s.Holder, Generation: s.Generation, From: s.From,
+		At: rowTime(s.At), By: s.By, Taken: s.Taken, ApprovedBy: s.ApprovedBy, Reason: s.Reason,
+	}
+}
+
+func seatOfSchema(m *seatSchema) (sprint.SeatChange, bool) {
+	at, ok := rowTimeOf(m.At)
+	return sprint.SeatChange{
+		Holder: m.Holder, Generation: m.Generation, From: m.From,
+		At: at, By: m.By, Taken: m.Taken, ApprovedBy: m.ApprovedBy, Reason: m.Reason,
+	}, ok
 }
 
 // Owner is the sprint's owner as init recorded it, "" when none was.
