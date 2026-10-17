@@ -800,7 +800,7 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 // isGlobalBoolFlag reports whether the flag name is a known boolean flag that does not take an argument.
 func isGlobalBoolFlag(name string) bool {
 	switch name {
-	case "json", "dry-run", "help", "h", "version", "shadow", "answer-rules", "idle-alarm",
+	case "json", "dry-run", "help", "h", "version", "shadow", "answer-rules", "idle-alarm", "retire-only",
 		"one", "held", "heavy", "read-ok", "allow-personal-base", "allow-shared-paths", "return", "drop-who":
 		return true
 	default:
