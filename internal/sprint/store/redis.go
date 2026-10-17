@@ -17,6 +17,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/oprowswire"
 	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/schemaread"
 )
 
 // Redis is the Backend of a Redis store holding the table layer's function
@@ -626,7 +627,7 @@ const (
 	keyCursor   = "cursor"   // STRING, the coordinator's last read stream id
 	keyProgress = "progress" // HASH stream -> RFC3339 time of its last progress
 	keyDone     = "done"     // HASH caller operation id -> result
-	keyQueue    = "queue"    // LIST of the work table's queued changes (sprint.QueuedChange, JSON), oldest first
+	keyQueue    = "queue"    // LIST of the work table's queued changes (sprint.QueuedChange: the QUEUE table wire, or the legacy JSON an older writer left), oldest first
 )
 
 func (r *Redis) ReadFence(ctx context.Context) (Fence, error) {
@@ -839,12 +840,14 @@ func (r *Redis) commit(ctx context.Context, p redis.Pipeliner, op OpRecord) erro
 	if op.Drain > 0 {
 		p.LTrim(ctx, r.key(keyQueue), int64(op.Drain), -1)
 	}
+	rows := r.opRowSet()
 	for _, x := range op.Queue {
-		body, err := json.Marshal(x)
+		// written as the QUEUE table wire (S1, S4: writers second)
+		body, err := rows.queueRow(x)
 		if err != nil {
 			return err
 		}
-		p.RPush(ctx, r.key(keyQueue), string(body))
+		p.RPush(ctx, r.key(keyQueue), body)
 	}
 	for _, line := range op.Log {
 		body, err := json.Marshal(line)
@@ -878,7 +881,10 @@ func (r *Redis) commit(ctx context.Context, p redis.Pipeliner, op OpRecord) erro
 		p.HSet(ctx, r.key(keyAliases), "n", n)
 	}
 	for _, n := range notes {
-		body, err := json.Marshal(n.Bound())
+		// the note is written as the NOTES table wire (S1, S4: writers
+		// second); its log line stays legacy until every log reader reads
+		// the table form (load.go logAt reads the legacy line alone)
+		body, err := rows.noteRow(n.Bound())
 		if err != nil {
 			return err
 		}
@@ -887,16 +893,17 @@ func (r *Redis) commit(ctx context.Context, p redis.Pipeliner, op OpRecord) erro
 			return err
 		}
 		p.XAdd(ctx, &redis.XAddArgs{Stream: r.key(keyLog), Values: []any{"line", string(lb)}})
-		p.XAdd(ctx, &redis.XAddArgs{Stream: r.key(keyInbox), Values: []any{"note", string(body)}})
+		p.XAdd(ctx, &redis.XAddArgs{Stream: r.key(keyInbox), Values: []any{"note", body}})
 		if n.Kind == sprint.Judgment || n.Kind == sprint.Acknowledged {
-			p.HSet(ctx, r.key(keyNotes), n.ID, string(body))
+			p.HSet(ctx, r.key(keyNotes), n.ID, body)
 			for _, s := range n.Subjects() {
 				p.HSet(ctx, r.key(keyOpen), sprint.OpenKey(n.ID, s), n.ID)
 			}
 		}
 	}
 	for _, n := range op.Updates {
-		body, err := json.Marshal(n.Bound())
+		// written as the NOTES table wire (S1, S4); its line stays legacy
+		body, err := rows.noteRow(n.Bound())
 		if err != nil {
 			return err
 		}
@@ -906,7 +913,7 @@ func (r *Redis) commit(ctx context.Context, p redis.Pipeliner, op OpRecord) erro
 		if err != nil {
 			return err
 		}
-		p.HSet(ctx, r.key(keyNotes), n.ID, string(body))
+		p.HSet(ctx, r.key(keyNotes), n.ID, body)
 		p.XAdd(ctx, &redis.XAddArgs{Stream: r.key(keyLog), Values: []any{"line", string(lb)}})
 	}
 	if len(op.Closes) > 0 {
@@ -2768,3 +2775,35 @@ func (c *opRowCodecs) logLine(v map[string]any) (sprint.Line, error) {
 	l, _, err := c.lines.Read([]byte(s))
 	return l, err
 }
+
+// ---------------------------------------------------------------------------
+// The writers (S4: writers second, after every reader of the record reads the
+// table form). A switched writer emits the record's table wire (S1), as the
+// done record's writer stores its fixed image (done.go encodeDonePages).
+
+// reasonNotHeld is the refusal reason of a value the table cannot hold: its
+// generated save makes no image of it.
+const reasonNotHeld = "not_held"
+
+// writeRow is v as its record's table wire. A value the table cannot hold is
+// refused by name (`<RECORD> REFUSED: <reason>; run: nova-sprint check`)
+// before a byte is written, and never written in the legacy form instead (S1,
+// S2, S4).
+func writeRow[T any](c *RowCodec[T], v T) (string, error) {
+	b, err := c.Write(&v, schemaread.FormBinary)
+	if err != nil {
+		return "", err
+	}
+	if len(b) == 0 {
+		return "", &schemaread.Refusal{Name: c.rowName(), Reason: reasonNotHeld, Help: rowCheckHelp}
+	}
+	return string(b), nil
+}
+
+// noteRow is a note as the NOTES table wire: the inbox entry and the
+// judgment the notes hash holds (S1, S4).
+func (c *opRowCodecs) noteRow(n sprint.Note) (string, error) { return writeRow(c.notes, n) }
+
+// queueRow is a queued change as the QUEUE table wire: one entry of the work
+// table's queue (S1, S4).
+func (c *opRowCodecs) queueRow(q sprint.QueuedChange) (string, error) { return writeRow(c.queue, q) }
