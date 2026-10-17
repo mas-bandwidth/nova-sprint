@@ -1,0 +1,3 @@
+go test fuzz v1
+byte('\x04')
+[]byte("{\n  \"running\": [],\n  \"active\": null,\n  \"window\": null,\n  \"until\": null,\n  \"reason\": null,\n  \"build\": null,\n  \"started\": null,\n  \"present\": null\n}\n")
