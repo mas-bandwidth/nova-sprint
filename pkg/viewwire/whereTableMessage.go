@@ -91,7 +91,7 @@ func NameListNamesTextSaveMessageBody(w *TableMessageWriter, value *NameListName
 			return false
 		}
 		if value.ValueLength > 0 {
-			w.Put(269, TableMessageRefBitsHere)
+			w.Put(266, TableMessageRefBitsHere)
 			if value.ValueLength < 0 || value.ValueLength > 515 {
 				return false
 			}
@@ -259,7 +259,7 @@ func NameListSaveMessageBody(w *TableMessageWriter, value *NameList) bool {
 			return false
 		}
 		if value.Names.Count > 0 {
-			w.Put(128, TableMessageRefBitsHere)
+			w.Put(125, TableMessageRefBitsHere)
 			if value.Names.Count < 0 {
 				return false
 			}
@@ -342,730 +342,6 @@ func NameListLoadMessageBody(r *TableMessageReader, value *NameList) bool {
 						}
 						holder.Count++
 						if !NameListNamesTextLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func DecisionSummaryReceiptHistoryTextLoadMessageBodyRetain(r *TableRetainMessageReader, value *DecisionSummaryReceiptHistoryText) bool {
-	DecisionSummaryReceiptHistoryTextReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(65536)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Value[:])
-					copy(value.Value[:], text[:kept])
-					value.ValueLength = int32(kept)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func DecisionSummaryReceiptHistoryTextSaveMessageBody(w *TableMessageWriter, value *DecisionSummaryReceiptHistoryText) bool {
-	{
-		if value.ValueLength < 0 || value.ValueLength > 65536 {
-			return false
-		}
-		if value.ValueLength > 0 {
-			w.Put(1, TableMessageRefBitsHere)
-			if value.ValueLength < 0 || value.ValueLength > 65536 {
-				return false
-			}
-			w.Put(uint64(value.ValueLength), 17)
-			w.Raw(value.Value[:value.ValueLength])
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func DecisionSummaryReceiptHistoryTextLoadMessageBody(r *TableMessageReader, value *DecisionSummaryReceiptHistoryText) bool {
-	DecisionSummaryReceiptHistoryTextReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(65536)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Value[:])
-					copy(value.Value[:], text[:kept])
-					value.ValueLength = int32(kept)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func DecisionSummaryLoadMessageBodyRetain(r *TableRetainMessageReader, value *DecisionSummary) bool {
-	DecisionSummaryReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0xb1e5e28e4479a274:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload4 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload4.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload4.Signed(entry.Shape.Kind)
-						value.Count = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xde4de77a5252cece:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload5 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload5.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload5.Signed(entry.Shape.Kind)
-						value.Oldest = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x276d35df5cfd0f6e:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload6 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload6.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload6.Signed(entry.Shape.Kind)
-						value.DefaultsHour = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xde82709534144743:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload7 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload7.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload7.Signed(entry.Shape.Kind)
-						value.DeliveryFaults = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xd8d8259ade3ffc16:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload8 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload8.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload8.Signed(entry.Shape.Kind)
-						value.ReceiptUnknown = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x15a4dafc6352fcb4:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 12 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.ReceiptHistory))
-					r.Retain.discard(r.Path, true, 5)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 65544, 4) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*DecisionSummaryReceiptHistoryTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 65544))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload9 := r.Path
-							r.Path = r.Path.step(5, uint32(i))
-							if !DecisionSummaryReceiptHistoryTextLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload9
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func DecisionSummarySaveMessageBody(w *TableMessageWriter, value *DecisionSummary) bool {
-	{
-		if value.Count != 0 {
-			w.Put(50, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Count), uint64(0))
-		}
-	}
-	{
-		if value.Oldest != 0 {
-			w.Put(51, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Oldest), uint64(0))
-		}
-	}
-	{
-		if value.DefaultsHour != 0 {
-			w.Put(52, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.DefaultsHour), uint64(0))
-		}
-	}
-	{
-		if value.DeliveryFaults != 0 {
-			w.Put(53, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.DeliveryFaults), uint64(0))
-		}
-	}
-	{
-		if value.ReceiptUnknown != 0 {
-			w.Put(54, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.ReceiptUnknown), uint64(0))
-		}
-	}
-	{
-		if value.ReceiptHistory.Count < 0 {
-			return false
-		}
-		if value.ReceiptHistory.Count > 0 {
-			w.Put(55, TableMessageRefBitsHere)
-			if value.ReceiptHistory.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.ReceiptHistory.Count), 32)
-			field := &DecisionSummaryTableFields[5]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.ReceiptHistory)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.ReceiptHistory.Count; i++ {
-				p := (*DecisionSummaryReceiptHistoryTextRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !DecisionSummaryReceiptHistoryTextSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func DecisionSummaryLoadMessageBody(r *TableMessageReader, value *DecisionSummary) bool {
-	DecisionSummaryReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0xb1e5e28e4479a274:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload7 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload7.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload7.Signed(entry.Shape.Kind)
-						value.Count = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xde4de77a5252cece:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload8 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload8.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload8.Signed(entry.Shape.Kind)
-						value.Oldest = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x276d35df5cfd0f6e:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload9 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload9.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload9.Signed(entry.Shape.Kind)
-						value.DefaultsHour = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xde82709534144743:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload10 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload10.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload10.Signed(entry.Shape.Kind)
-						value.DeliveryFaults = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xd8d8259ade3ffc16:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload11 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload11.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload11.Signed(entry.Shape.Kind)
-						value.ReceiptUnknown = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x15a4dafc6352fcb4:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 12 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.ReceiptHistory))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 65544, 4) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*DecisionSummaryReceiptHistoryTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 65544))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !DecisionSummaryReceiptHistoryTextLoadMessageBody(r, &(*p)) {
 							return false
 						}
 					}
@@ -1210,7 +486,7 @@ func ReadDayLoadMessageBodyRetain(r *TableRetainMessageReader, value *ReadDay) b
 func ReadDaySaveMessageBody(w *TableMessageWriter, value *ReadDay) bool {
 	{
 		if value.Usd != 0 {
-			w.Put(146, TableMessageRefBitsHere)
+			w.Put(143, TableMessageRefBitsHere)
 			if value.Usd == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -1224,13 +500,13 @@ func ReadDaySaveMessageBody(w *TableMessageWriter, value *ReadDay) bool {
 	}
 	{
 		if value.Tokens != 0 {
-			w.Put(84, TableMessageRefBitsHere)
+			w.Put(82, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Tokens), uint64(0))
 		}
 	}
 	{
 		if value.Reads != 0 {
-			w.Put(147, TableMessageRefBitsHere)
+			w.Put(144, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Reads), uint64(0))
 		}
 	}
@@ -1302,13 +578,13 @@ func ReadDayLoadMessageBody(r *TableMessageReader, value *ReadDay) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload12 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload12.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload7 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload7.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload12.Signed(entry.Shape.Kind)
+						v := payload7.Signed(entry.Shape.Kind)
 						value.Tokens = int64(v)
 					}
 				}
@@ -1337,13 +613,13 @@ func ReadDayLoadMessageBody(r *TableMessageReader, value *ReadDay) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload13 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload13.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload8 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload8.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload13.Signed(entry.Shape.Kind)
+						v := payload8.Signed(entry.Shape.Kind)
 						value.Reads = int64(v)
 					}
 				}
@@ -1584,19 +860,19 @@ func ReaderSpendLoadMessageBodyRetain(r *TableRetainMessageReader, value *Reader
 func ReaderSpendSaveMessageBody(w *TableMessageWriter, value *ReaderSpend) bool {
 	{
 		if value.Reads != 0 {
-			w.Put(147, TableMessageRefBitsHere)
+			w.Put(144, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Reads), uint64(0))
 		}
 	}
 	{
 		if value.Priced != 0 {
-			w.Put(148, TableMessageRefBitsHere)
+			w.Put(145, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Priced), uint64(0))
 		}
 	}
 	{
 		if value.Usd != 0 {
-			w.Put(146, TableMessageRefBitsHere)
+			w.Put(143, TableMessageRefBitsHere)
 			if value.Usd == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -1610,13 +886,13 @@ func ReaderSpendSaveMessageBody(w *TableMessageWriter, value *ReaderSpend) bool 
 	}
 	{
 		if value.HourPriced != 0 {
-			w.Put(149, TableMessageRefBitsHere)
+			w.Put(146, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.HourPriced), uint64(0))
 		}
 	}
 	{
 		if value.HourUsd != 0 {
-			w.Put(150, TableMessageRefBitsHere)
+			w.Put(147, TableMessageRefBitsHere)
 			if value.HourUsd == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -1630,7 +906,7 @@ func ReaderSpendSaveMessageBody(w *TableMessageWriter, value *ReaderSpend) bool 
 	}
 	{
 		if value.Tokens != 0 {
-			w.Put(84, TableMessageRefBitsHere)
+			w.Put(82, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Tokens), uint64(0))
 		}
 	}
@@ -1675,13 +951,13 @@ func ReaderSpendLoadMessageBody(r *TableMessageReader, value *ReaderSpend) bool 
 						r.Report.Malformed = true
 						return false
 					}
-					payload14 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload14.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload9 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload9.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload14.Signed(entry.Shape.Kind)
+						v := payload9.Signed(entry.Shape.Kind)
 						value.Reads = int64(v)
 					}
 				}
@@ -1710,13 +986,13 @@ func ReaderSpendLoadMessageBody(r *TableMessageReader, value *ReaderSpend) bool 
 						r.Report.Malformed = true
 						return false
 					}
-					payload15 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload15.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload10 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload10.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload15.Signed(entry.Shape.Kind)
+						v := payload10.Signed(entry.Shape.Kind)
 						value.Priced = int64(v)
 					}
 				}
@@ -1772,13 +1048,13 @@ func ReaderSpendLoadMessageBody(r *TableMessageReader, value *ReaderSpend) bool 
 						r.Report.Malformed = true
 						return false
 					}
-					payload16 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload16.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload11 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload11.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload16.Signed(entry.Shape.Kind)
+						v := payload11.Signed(entry.Shape.Kind)
 						value.HourPriced = int64(v)
 					}
 				}
@@ -1834,13 +1110,13 @@ func ReaderSpendLoadMessageBody(r *TableMessageReader, value *ReaderSpend) bool 
 						r.Report.Malformed = true
 						return false
 					}
-					payload17 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload17.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload12 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload12.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload17.Signed(entry.Shape.Kind)
+						v := payload12.Signed(entry.Shape.Kind)
 						value.Tokens = int64(v)
 					}
 				}
@@ -1967,13 +1243,13 @@ func DayGapLoadMessageBodyRetain(r *TableRetainMessageReader, value *DayGap) boo
 func DayGapSaveMessageBody(w *TableMessageWriter, value *DayGap) bool {
 	{
 		if value.Provider != 0.0 {
-			w.Put(41, TableMessageRefBitsHere)
+			w.Put(39, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.Provider), uint64(0))
 		}
 	}
 	{
 		if value.InternalCount != 0.0 {
-			w.Put(33, TableMessageRefBitsHere)
+			w.Put(31, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.InternalCount), uint64(0))
 		}
 	}
@@ -2018,17 +1294,17 @@ func DayGapLoadMessageBody(r *TableMessageReader, value *DayGap) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload18 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload18.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload13 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload13.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
 						var v float64
 						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload18.Get32()))
+							v = math.Float64frombits(tableWidenFloat(payload13.Get32()))
 						} else {
-							v = math.Float64frombits(payload18.Get64())
+							v = math.Float64frombits(payload13.Get64())
 						}
 						value.Provider = v
 					}
@@ -2058,17 +1334,17 @@ func DayGapLoadMessageBody(r *TableMessageReader, value *DayGap) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload19 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload19.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload14 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload14.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
 						var v float64
 						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload19.Get32()))
+							v = math.Float64frombits(tableWidenFloat(payload14.Get32()))
 						} else {
-							v = math.Float64frombits(payload19.Get64())
+							v = math.Float64frombits(payload14.Get64())
 						}
 						value.InternalCount = v
 					}
@@ -2785,7 +2061,7 @@ func CostReconcileRecordLoadMessageBodyRetain(r *TableRetainMessageReader, value
 func CostReconcileRecordSaveMessageBody(w *TableMessageWriter, value *CostReconcileRecord) bool {
 	{
 		if value.Provider != 0 {
-			w.Put(27, TableMessageRefBitsHere)
+			w.Put(25, TableMessageRefBitsHere)
 			if value.Provider == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -2799,7 +2075,7 @@ func CostReconcileRecordSaveMessageBody(w *TableMessageWriter, value *CostReconc
 	}
 	{
 		if value.At != 0 {
-			w.Put(28, TableMessageRefBitsHere)
+			w.Put(26, TableMessageRefBitsHere)
 			if value.At == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -2813,7 +2089,7 @@ func CostReconcileRecordSaveMessageBody(w *TableMessageWriter, value *CostReconc
 	}
 	{
 		if value.Known != false {
-			w.Put(29, TableMessageRefBitsHere)
+			w.Put(27, TableMessageRefBitsHere)
 			if value.Known {
 				w.Put(1, 1)
 			} else {
@@ -2823,7 +2099,7 @@ func CostReconcileRecordSaveMessageBody(w *TableMessageWriter, value *CostReconc
 	}
 	{
 		if value.Note != 0 {
-			w.Put(30, TableMessageRefBitsHere)
+			w.Put(28, TableMessageRefBitsHere)
 			if value.Note == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -2840,7 +2116,7 @@ func CostReconcileRecordSaveMessageBody(w *TableMessageWriter, value *CostReconc
 			return false
 		}
 		if value.DayLength > 0 {
-			w.Put(31, TableMessageRefBitsHere)
+			w.Put(29, TableMessageRefBitsHere)
 			if value.DayLength < 0 || value.DayLength > 10 {
 				return false
 			}
@@ -2850,31 +2126,31 @@ func CostReconcileRecordSaveMessageBody(w *TableMessageWriter, value *CostReconc
 	}
 	{
 		if value.Used != 0.0 {
-			w.Put(32, TableMessageRefBitsHere)
+			w.Put(30, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.Used), uint64(0))
 		}
 	}
 	{
 		if value.InternalCount != 0.0 {
-			w.Put(33, TableMessageRefBitsHere)
+			w.Put(31, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.InternalCount), uint64(0))
 		}
 	}
 	{
 		if value.InternalReads != 0.0 {
-			w.Put(34, TableMessageRefBitsHere)
+			w.Put(32, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.InternalReads), uint64(0))
 		}
 	}
 	{
 		if value.Gap != 0.0 {
-			w.Put(35, TableMessageRefBitsHere)
+			w.Put(33, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.Gap), uint64(0))
 		}
 	}
 	{
 		if value.Share != 0.0 {
-			w.Put(36, TableMessageRefBitsHere)
+			w.Put(34, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.Share), uint64(0))
 		}
 	}
@@ -2883,7 +2159,7 @@ func CostReconcileRecordSaveMessageBody(w *TableMessageWriter, value *CostReconc
 			return false
 		}
 		if value.Days.Count > 0 {
-			w.Put(37, TableMessageRefBitsHere)
+			w.Put(35, TableMessageRefBitsHere)
 			if value.Days.Count < 0 {
 				return false
 			}
@@ -3000,12 +2276,12 @@ func CostReconcileRecordLoadMessageBody(r *TableMessageReader, value *CostReconc
 						r.Report.Malformed = true
 						return false
 					}
-					payload23 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload23.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload18 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload18.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
-					value.Known = payload23.Get8() != 0
+					value.Known = payload18.Get8() != 0
 				}
 				if widened {
 					r.Report.Widened++
@@ -3102,17 +2378,17 @@ func CostReconcileRecordLoadMessageBody(r *TableMessageReader, value *CostReconc
 						r.Report.Malformed = true
 						return false
 					}
-					payload24 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload24.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload19 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload19.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
 						var v float64
 						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload24.Get32()))
+							v = math.Float64frombits(tableWidenFloat(payload19.Get32()))
 						} else {
-							v = math.Float64frombits(payload24.Get64())
+							v = math.Float64frombits(payload19.Get64())
 						}
 						value.Used = v
 					}
@@ -3142,17 +2418,17 @@ func CostReconcileRecordLoadMessageBody(r *TableMessageReader, value *CostReconc
 						r.Report.Malformed = true
 						return false
 					}
-					payload25 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload25.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload20 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload20.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
 						var v float64
 						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload25.Get32()))
+							v = math.Float64frombits(tableWidenFloat(payload20.Get32()))
 						} else {
-							v = math.Float64frombits(payload25.Get64())
+							v = math.Float64frombits(payload20.Get64())
 						}
 						value.InternalCount = v
 					}
@@ -3182,17 +2458,17 @@ func CostReconcileRecordLoadMessageBody(r *TableMessageReader, value *CostReconc
 						r.Report.Malformed = true
 						return false
 					}
-					payload26 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload26.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload21 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload21.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
 						var v float64
 						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload26.Get32()))
+							v = math.Float64frombits(tableWidenFloat(payload21.Get32()))
 						} else {
-							v = math.Float64frombits(payload26.Get64())
+							v = math.Float64frombits(payload21.Get64())
 						}
 						value.InternalReads = v
 					}
@@ -3222,17 +2498,17 @@ func CostReconcileRecordLoadMessageBody(r *TableMessageReader, value *CostReconc
 						r.Report.Malformed = true
 						return false
 					}
-					payload27 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload27.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload22 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload22.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
 						var v float64
 						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload27.Get32()))
+							v = math.Float64frombits(tableWidenFloat(payload22.Get32()))
 						} else {
-							v = math.Float64frombits(payload27.Get64())
+							v = math.Float64frombits(payload22.Get64())
 						}
 						value.Gap = v
 					}
@@ -3262,17 +2538,17 @@ func CostReconcileRecordLoadMessageBody(r *TableMessageReader, value *CostReconc
 						r.Report.Malformed = true
 						return false
 					}
-					payload28 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload28.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload23 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload23.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
 						var v float64
 						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload28.Get32()))
+							v = math.Float64frombits(tableWidenFloat(payload23.Get32()))
 						} else {
-							v = math.Float64frombits(payload28.Get64())
+							v = math.Float64frombits(payload23.Get64())
 						}
 						value.Share = v
 					}
@@ -3382,3008 +2658,6 @@ func CostReconcileRecordLoadMessageBody(r *TableMessageReader, value *CostReconc
 		}
 	}
 }
-func TierCostsTiersEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCostsTiersEntry) bool {
-	TierCostsTiersEntryReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload1 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload1.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload1.Signed(entry.Shape.Kind)
-						value.Value = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func TierCostsTiersEntrySaveMessageBody(w *TableMessageWriter, value *TierCostsTiersEntry) bool {
-	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
-			return false
-		}
-		if value.KeyLength > 0 {
-			w.Put(5, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 128 {
-				return false
-			}
-			w.Put(uint64(value.KeyLength), 8)
-			w.Raw(value.Key[:value.KeyLength])
-		}
-	}
-	{
-		if value.Value != 0 {
-			w.Put(7, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Value), uint64(0))
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func TierCostsTiersEntryLoadMessageBody(r *TableMessageReader, value *TierCostsTiersEntry) bool {
-	TierCostsTiersEntryReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload29 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload29.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload29.Signed(entry.Shape.Kind)
-						value.Value = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func TierCostsCostByTierEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCostsCostByTierEntry) bool {
-	TierCostsCostByTierEntryReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Value, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func TierCostsCostByTierEntrySaveMessageBody(w *TableMessageWriter, value *TierCostsCostByTierEntry) bool {
-	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
-			return false
-		}
-		if value.KeyLength > 0 {
-			w.Put(5, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 128 {
-				return false
-			}
-			w.Put(uint64(value.KeyLength), 8)
-			w.Raw(value.Key[:value.KeyLength])
-		}
-	}
-	{
-		if value.Value != 0 {
-			w.Put(9, TableMessageRefBitsHere)
-			if value.Value == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Value)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func TierCostsCostByTierEntryLoadMessageBody(r *TableMessageReader, value *TierCostsCostByTierEntry) bool {
-	TierCostsCostByTierEntryReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Value, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func TierCostsReadsTodayEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCostsReadsTodayEntry) bool {
-	TierCostsReadsTodayEntryReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					payload3 := r.Path
-					r.Path = r.Path.step(1, uint32(0))
-					if !ReadDayLoadMessageBodyRetain(r, &value.Value) {
-						return false
-					}
-					r.Path = payload3
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func TierCostsReadsTodayEntrySaveMessageBody(w *TableMessageWriter, value *TierCostsReadsTodayEntry) bool {
-	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
-			return false
-		}
-		if value.KeyLength > 0 {
-			w.Put(5, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 128 {
-				return false
-			}
-			w.Put(uint64(value.KeyLength), 8)
-			w.Raw(value.Key[:value.KeyLength])
-		}
-	}
-	{
-		probe := *w
-		probe.Measuring = true
-		probe.Bits = 0
-		if !ReadDaySaveMessageBody(&probe, &value.Value) {
-			return false
-		}
-		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(3, TableMessageRefBitsHere)
-			if !ReadDaySaveMessageBody(w, &value.Value) {
-				return false
-			}
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func TierCostsReadsTodayEntryLoadMessageBody(r *TableMessageReader, value *TierCostsReadsTodayEntry) bool {
-	TierCostsReadsTodayEntryReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				if !ReadDayLoadMessageBody(r, &value.Value) {
-					return false
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func TierCostsReadersEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCostsReadersEntry) bool {
-	TierCostsReadersEntryReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					payload3 := r.Path
-					r.Path = r.Path.step(1, uint32(0))
-					if !ReaderSpendLoadMessageBodyRetain(r, &value.Value) {
-						return false
-					}
-					r.Path = payload3
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func TierCostsReadersEntrySaveMessageBody(w *TableMessageWriter, value *TierCostsReadersEntry) bool {
-	{
-		if value.KeyLength < 0 || value.KeyLength > 135 {
-			return false
-		}
-		if value.KeyLength > 0 {
-			w.Put(15, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 135 {
-				return false
-			}
-			w.Put(uint64(value.KeyLength), 8)
-			w.Raw(value.Key[:value.KeyLength])
-		}
-	}
-	{
-		probe := *w
-		probe.Measuring = true
-		probe.Bits = 0
-		if !ReaderSpendSaveMessageBody(&probe, &value.Value) {
-			return false
-		}
-		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(3, TableMessageRefBitsHere)
-			if !ReaderSpendSaveMessageBody(w, &value.Value) {
-				return false
-			}
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func TierCostsReadersEntryLoadMessageBody(r *TableMessageReader, value *TierCostsReadersEntry) bool {
-	TierCostsReadersEntryReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				if !ReaderSpendLoadMessageBody(r, &value.Value) {
-					return false
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func TierCostsLoadMessageBodyRetain(r *TableRetainMessageReader, value *TierCosts) bool {
-	TierCostsReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x6dd8dc6c5fdae3ce:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &TierCostsTableFields[0]
-					holder := (*tableContainer)(unsafe.Pointer(&value.Tiers))
-					r.Retain.discard(r.Path, true, 0)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *TierCostsTiersEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(r.tableMessagePlainReader, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*TierCostsTiersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						{
-							payload26 := r.Path
-							r.Path = r.Path.step(0, uint32(holder.Count-1))
-							if !TierCostsTiersEntryLoadMessageBodyRetain(r, p) {
-								return false
-							}
-							r.Path = payload26
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x50dcfb7833db1c01:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.PerLanded, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x23b885a1b02092b5:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &TierCostsTableFields[2]
-					holder := (*tableContainer)(unsafe.Pointer(&value.CostByTier))
-					r.Retain.discard(r.Path, true, 2)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *TierCostsCostByTierEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(r.tableMessagePlainReader, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*TierCostsCostByTierEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						{
-							payload27 := r.Path
-							r.Path = r.Path.step(2, uint32(holder.Count-1))
-							if !TierCostsCostByTierEntryLoadMessageBodyRetain(r, p) {
-								return false
-							}
-							r.Path = payload27
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x42e380b861ee97d7:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.TotalCost, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x95676bba1360fcfe:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.TotalUsd, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xc4724b6b4f7cf32e:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.LandedUsd, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xed90c66b452f42d0:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.WorkCost, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x04d23c7555fd602f:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.ReadCost, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xf5b4630751f7ecab:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.DecideCost, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x88f2fad76c7ccc5e:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload28 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload28.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload28.Signed(entry.Shape.Kind)
-						value.DecideUnpriced = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x464b2d5e2b76af9d:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload29 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload29.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload29.Signed(entry.Shape.Kind)
-						value.DroppedCards = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x37262ce770037539:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload30 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload30.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload30.Signed(entry.Shape.Kind)
-						value.CarriedCards = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xfce73b3551b7fd98:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload31 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload31.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload31.Signed(entry.Shape.Kind)
-						value.ReadTokens = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xe917efab029e6660:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &TierCostsTableFields[13]
-					holder := (*tableContainer)(unsafe.Pointer(&value.ReadsToday))
-					r.Retain.discard(r.Path, true, 13)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 160, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *TierCostsReadsTodayEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(r.tableMessagePlainReader, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*TierCostsReadsTodayEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 160))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						{
-							payload32 := r.Path
-							r.Path = r.Path.step(13, uint32(holder.Count-1))
-							if !TierCostsReadsTodayEntryLoadMessageBodyRetain(r, p) {
-								return false
-							}
-							r.Path = payload32
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xd34e990c15da5154:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload33 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload33.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload33.Signed(entry.Shape.Kind)
-						value.UnpricedRuns = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x99c9ddb4fdd50e57:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload34 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload34.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload34.Signed(entry.Shape.Kind)
-						value.ReadsNoTokens = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x81027a1935117cdf:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &TierCostsTableFields[16]
-					holder := (*tableContainer)(unsafe.Pointer(&value.Readers))
-					r.Retain.discard(r.Path, true, 16)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 192, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *TierCostsReadersEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(r.tableMessagePlainReader, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*TierCostsReadersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 192))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						{
-							payload35 := r.Path
-							r.Path = r.Path.step(16, uint32(holder.Count-1))
-							if !TierCostsReadersEntryLoadMessageBodyRetain(r, p) {
-								return false
-							}
-							r.Path = payload35
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x9c758c73deb84ac9:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.InFlight, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xd3382d08eeea28a6:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Unreconciled, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x1b80529daa6d58ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Reconciles))
-					r.Retain.discard(r.Path, true, 19)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 104, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*CostReconcileRecordRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 104))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload36 := r.Path
-							r.Path = r.Path.step(19, uint32(i))
-							if !CostReconcileRecordLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload36
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func TierCostsSaveMessageBody(w *TableMessageWriter, value *TierCosts) bool {
-	{
-		if value.Tiers.Count < 0 {
-			return false
-		}
-		if value.Tiers.Count > 0 {
-			w.Put(144, TableMessageRefBitsHere)
-			if value.Tiers.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Tiers.Count), 32)
-			field := &TierCostsTableFields[0]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Tiers)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Tiers.Count; i++ {
-				p := (*TierCostsTiersEntryRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !TierCostsTiersEntrySaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.PerLanded != 0 {
-			w.Put(189, TableMessageRefBitsHere)
-			if value.PerLanded == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.PerLanded)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.CostByTier.Count < 0 {
-			return false
-		}
-		if value.CostByTier.Count > 0 {
-			w.Put(190, TableMessageRefBitsHere)
-			if value.CostByTier.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.CostByTier.Count), 32)
-			field := &TierCostsTableFields[2]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.CostByTier)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.CostByTier.Count; i++ {
-				p := (*TierCostsCostByTierEntryRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !TierCostsCostByTierEntrySaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.TotalCost != 0 {
-			w.Put(191, TableMessageRefBitsHere)
-			if value.TotalCost == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.TotalCost)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.TotalUsd != 0 {
-			w.Put(192, TableMessageRefBitsHere)
-			if value.TotalUsd == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.TotalUsd)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.LandedUsd != 0 {
-			w.Put(193, TableMessageRefBitsHere)
-			if value.LandedUsd == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.LandedUsd)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.WorkCost != 0 {
-			w.Put(194, TableMessageRefBitsHere)
-			if value.WorkCost == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.WorkCost)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.ReadCost != 0 {
-			w.Put(195, TableMessageRefBitsHere)
-			if value.ReadCost == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.ReadCost)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.DecideCost != 0 {
-			w.Put(196, TableMessageRefBitsHere)
-			if value.DecideCost == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.DecideCost)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.DecideUnpriced != 0 {
-			w.Put(197, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.DecideUnpriced), uint64(0))
-		}
-	}
-	{
-		if value.DroppedCards != 0 {
-			w.Put(198, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.DroppedCards), uint64(0))
-		}
-	}
-	{
-		if value.CarriedCards != 0 {
-			w.Put(199, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.CarriedCards), uint64(0))
-		}
-	}
-	{
-		if value.ReadTokens != 0 {
-			w.Put(200, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.ReadTokens), uint64(0))
-		}
-	}
-	{
-		if value.ReadsToday.Count < 0 {
-			return false
-		}
-		if value.ReadsToday.Count > 0 {
-			w.Put(201, TableMessageRefBitsHere)
-			if value.ReadsToday.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.ReadsToday.Count), 32)
-			field := &TierCostsTableFields[13]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.ReadsToday)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.ReadsToday.Count; i++ {
-				p := (*TierCostsReadsTodayEntryRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !TierCostsReadsTodayEntrySaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.UnpricedRuns != 0 {
-			w.Put(202, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.UnpricedRuns), uint64(0))
-		}
-	}
-	{
-		if value.ReadsNoTokens != 0 {
-			w.Put(203, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.ReadsNoTokens), uint64(0))
-		}
-	}
-	{
-		if value.Readers.Count < 0 {
-			return false
-		}
-		if value.Readers.Count > 0 {
-			w.Put(204, TableMessageRefBitsHere)
-			if value.Readers.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Readers.Count), 32)
-			field := &TierCostsTableFields[16]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Readers)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Readers.Count; i++ {
-				p := (*TierCostsReadersEntryRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !TierCostsReadersEntrySaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.InFlight != 0 {
-			w.Put(205, TableMessageRefBitsHere)
-			if value.InFlight == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.InFlight)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Unreconciled != 0 {
-			w.Put(206, TableMessageRefBitsHere)
-			if value.Unreconciled == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Unreconciled)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Reconciles.Count < 0 {
-			return false
-		}
-		if value.Reconciles.Count > 0 {
-			w.Put(207, TableMessageRefBitsHere)
-			if value.Reconciles.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Reconciles.Count), 32)
-			field := &TierCostsTableFields[19]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Reconciles)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Reconciles.Count; i++ {
-				p := (*CostReconcileRecordRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !CostReconcileRecordSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func TierCostsLoadMessageBody(r *TableMessageReader, value *TierCosts) bool {
-	TierCostsReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x6dd8dc6c5fdae3ce:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &TierCostsTableFields[0]
-					holder := (*tableContainer)(unsafe.Pointer(&value.Tiers))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *TierCostsTiersEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(*r, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*TierCostsTiersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						if !TierCostsTiersEntryLoadMessageBody(r, p) {
-							return false
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x50dcfb7833db1c01:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.PerLanded, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x23b885a1b02092b5:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &TierCostsTableFields[2]
-					holder := (*tableContainer)(unsafe.Pointer(&value.CostByTier))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *TierCostsCostByTierEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(*r, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*TierCostsCostByTierEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						if !TierCostsCostByTierEntryLoadMessageBody(r, p) {
-							return false
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x42e380b861ee97d7:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.TotalCost, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x95676bba1360fcfe:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.TotalUsd, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xc4724b6b4f7cf32e:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.LandedUsd, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xed90c66b452f42d0:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.WorkCost, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x04d23c7555fd602f:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.ReadCost, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xf5b4630751f7ecab:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.DecideCost, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x88f2fad76c7ccc5e:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload45 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload45.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload45.Signed(entry.Shape.Kind)
-						value.DecideUnpriced = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x464b2d5e2b76af9d:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload46 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload46.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload46.Signed(entry.Shape.Kind)
-						value.DroppedCards = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x37262ce770037539:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload47 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload47.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload47.Signed(entry.Shape.Kind)
-						value.CarriedCards = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xfce73b3551b7fd98:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload48 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload48.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload48.Signed(entry.Shape.Kind)
-						value.ReadTokens = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xe917efab029e6660:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &TierCostsTableFields[13]
-					holder := (*tableContainer)(unsafe.Pointer(&value.ReadsToday))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 160, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *TierCostsReadsTodayEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(*r, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*TierCostsReadsTodayEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 160))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						if !TierCostsReadsTodayEntryLoadMessageBody(r, p) {
-							return false
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xd34e990c15da5154:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload49 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload49.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload49.Signed(entry.Shape.Kind)
-						value.UnpricedRuns = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x99c9ddb4fdd50e57:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload50 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload50.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload50.Signed(entry.Shape.Kind)
-						value.ReadsNoTokens = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x81027a1935117cdf:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &TierCostsTableFields[16]
-					holder := (*tableContainer)(unsafe.Pointer(&value.Readers))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 192, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *TierCostsReadersEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(*r, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*TierCostsReadersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 192))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						if !TierCostsReadersEntryLoadMessageBody(r, p) {
-							return false
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x9c758c73deb84ac9:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.InFlight, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xd3382d08eeea28a6:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Unreconciled, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x1b80529daa6d58ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Reconciles))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 104, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*CostReconcileRecordRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 104))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !CostReconcileRecordLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
 func CostCheckOrphansTextLoadMessageBodyRetain(r *TableRetainMessageReader, value *CostCheckOrphansText) bool {
 	CostCheckOrphansTextReset(value)
 	r.Retain.discard(r.Path, false, 0)
@@ -6460,7 +2734,7 @@ func CostCheckOrphansTextSaveMessageBody(w *TableMessageWriter, value *CostCheck
 			return false
 		}
 		if value.ValueLength > 0 {
-			w.Put(269, TableMessageRefBitsHere)
+			w.Put(266, TableMessageRefBitsHere)
 			if value.ValueLength < 0 || value.ValueLength > 515 {
 				return false
 			}
@@ -6773,7 +3047,7 @@ func CostCheckLoadMessageBodyRetain(r *TableRetainMessageReader, value *CostChec
 func CostCheckSaveMessageBody(w *TableMessageWriter, value *CostCheck) bool {
 	{
 		if value.StreamsUsd != 0 {
-			w.Put(21, TableMessageRefBitsHere)
+			w.Put(19, TableMessageRefBitsHere)
 			if value.StreamsUsd == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -6787,7 +3061,7 @@ func CostCheckSaveMessageBody(w *TableMessageWriter, value *CostCheck) bool {
 	}
 	{
 		if value.CardsUsd != 0 {
-			w.Put(22, TableMessageRefBitsHere)
+			w.Put(20, TableMessageRefBitsHere)
 			if value.CardsUsd == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -6801,7 +3075,7 @@ func CostCheckSaveMessageBody(w *TableMessageWriter, value *CostCheck) bool {
 	}
 	{
 		if value.GapUsd != 0 {
-			w.Put(23, TableMessageRefBitsHere)
+			w.Put(21, TableMessageRefBitsHere)
 			if value.GapUsd == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -6815,7 +3089,7 @@ func CostCheckSaveMessageBody(w *TableMessageWriter, value *CostCheck) bool {
 	}
 	{
 		if value.Ok != false {
-			w.Put(24, TableMessageRefBitsHere)
+			w.Put(22, TableMessageRefBitsHere)
 			if value.Ok {
 				w.Put(1, 1)
 			} else {
@@ -6828,7 +3102,7 @@ func CostCheckSaveMessageBody(w *TableMessageWriter, value *CostCheck) bool {
 			return false
 		}
 		if value.Orphans.Count > 0 {
-			w.Put(25, TableMessageRefBitsHere)
+			w.Put(23, TableMessageRefBitsHere)
 			if value.Orphans.Count < 0 {
 				return false
 			}
@@ -6852,7 +3126,7 @@ func CostCheckSaveMessageBody(w *TableMessageWriter, value *CostCheck) bool {
 	}
 	{
 		if value.Unlisted != 0 {
-			w.Put(26, TableMessageRefBitsHere)
+			w.Put(24, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Unlisted), uint64(0))
 		}
 	}
@@ -6978,12 +3252,12 @@ func CostCheckLoadMessageBody(r *TableMessageReader, value *CostCheck) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload54 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload54.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload42 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload42.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
-					value.Ok = payload54.Get8() != 0
+					value.Ok = payload42.Get8() != 0
 				}
 				if widened {
 					r.Report.Widened++
@@ -7059,13 +3333,13 @@ func CostCheckLoadMessageBody(r *TableMessageReader, value *CostCheck) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload55 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload55.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload43 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload43.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload55.Signed(entry.Shape.Kind)
+						v := payload43.Signed(entry.Shape.Kind)
 						value.Unlisted = int64(v)
 					}
 				}
@@ -7524,7 +3798,7 @@ func StreamClockSaveMessageBody(w *TableMessageWriter, value *StreamClock) bool 
 			return false
 		}
 		if value.StreamLength > 0 {
-			w.Put(43, TableMessageRefBitsHere)
+			w.Put(41, TableMessageRefBitsHere)
 			if value.StreamLength < 0 || value.StreamLength > 128 {
 				return false
 			}
@@ -7534,7 +3808,7 @@ func StreamClockSaveMessageBody(w *TableMessageWriter, value *StreamClock) bool 
 	}
 	{
 		if value.Release != 0 {
-			w.Put(100, TableMessageRefBitsHere)
+			w.Put(97, TableMessageRefBitsHere)
 			if value.Release == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -7548,7 +3822,7 @@ func StreamClockSaveMessageBody(w *TableMessageWriter, value *StreamClock) bool 
 	}
 	{
 		if value.Display != 0 {
-			w.Put(181, TableMessageRefBitsHere)
+			w.Put(178, TableMessageRefBitsHere)
 			if value.Display == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -7562,7 +3836,7 @@ func StreamClockSaveMessageBody(w *TableMessageWriter, value *StreamClock) bool 
 	}
 	{
 		if value.State != 0 {
-			w.Put(40, TableMessageRefBitsHere)
+			w.Put(38, TableMessageRefBitsHere)
 			if value.State == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -7576,19 +3850,19 @@ func StreamClockSaveMessageBody(w *TableMessageWriter, value *StreamClock) bool 
 	}
 	{
 		if value.Since != 0 {
-			w.Put(45, TableMessageRefBitsHere)
+			w.Put(43, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Since), uint64(0))
 		}
 	}
 	{
 		if value.Progress != 0 {
-			w.Put(182, TableMessageRefBitsHere)
+			w.Put(179, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Progress), uint64(0))
 		}
 	}
 	{
 		if value.Empty != false {
-			w.Put(183, TableMessageRefBitsHere)
+			w.Put(180, TableMessageRefBitsHere)
 			if value.Empty {
 				w.Put(1, 1)
 			} else {
@@ -7598,7 +3872,7 @@ func StreamClockSaveMessageBody(w *TableMessageWriter, value *StreamClock) bool 
 	}
 	{
 		if value.Held != false {
-			w.Put(184, TableMessageRefBitsHere)
+			w.Put(181, TableMessageRefBitsHere)
 			if value.Held {
 				w.Put(1, 1)
 			} else {
@@ -7608,7 +3882,7 @@ func StreamClockSaveMessageBody(w *TableMessageWriter, value *StreamClock) bool 
 	}
 	{
 		if value.Reason != 0 {
-			w.Put(65, TableMessageRefBitsHere)
+			w.Put(63, TableMessageRefBitsHere)
 			if value.Reason == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -7622,19 +3896,19 @@ func StreamClockSaveMessageBody(w *TableMessageWriter, value *StreamClock) bool 
 	}
 	{
 		if value.HeldCards != 0 {
-			w.Put(185, TableMessageRefBitsHere)
+			w.Put(182, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.HeldCards), uint64(0))
 		}
 	}
 	{
 		if value.Quiet != 0 {
-			w.Put(186, TableMessageRefBitsHere)
+			w.Put(183, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Quiet), uint64(0))
 		}
 	}
 	{
 		if value.Promotion != 0 {
-			w.Put(187, TableMessageRefBitsHere)
+			w.Put(184, TableMessageRefBitsHere)
 			if value.Promotion == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -7648,7 +3922,7 @@ func StreamClockSaveMessageBody(w *TableMessageWriter, value *StreamClock) bool 
 	}
 	{
 		if value.TierBlocked != 0 {
-			w.Put(188, TableMessageRefBitsHere)
+			w.Put(185, TableMessageRefBitsHere)
 			if value.TierBlocked == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -7825,13 +4099,13 @@ func StreamClockLoadMessageBody(r *TableMessageReader, value *StreamClock) bool 
 						r.Report.Malformed = true
 						return false
 					}
-					payload56 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload56.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload44 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload44.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload56.Signed(entry.Shape.Kind)
+						v := payload44.Signed(entry.Shape.Kind)
 						value.Since = int64(v)
 					}
 				}
@@ -7860,13 +4134,13 @@ func StreamClockLoadMessageBody(r *TableMessageReader, value *StreamClock) bool 
 						r.Report.Malformed = true
 						return false
 					}
-					payload57 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload57.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload45 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload45.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload57.Signed(entry.Shape.Kind)
+						v := payload45.Signed(entry.Shape.Kind)
 						value.Progress = int64(v)
 					}
 				}
@@ -7895,12 +4169,12 @@ func StreamClockLoadMessageBody(r *TableMessageReader, value *StreamClock) bool 
 						r.Report.Malformed = true
 						return false
 					}
-					payload58 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload58.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload46 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload46.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
-					value.Empty = payload58.Get8() != 0
+					value.Empty = payload46.Get8() != 0
 				}
 				if widened {
 					r.Report.Widened++
@@ -7927,12 +4201,12 @@ func StreamClockLoadMessageBody(r *TableMessageReader, value *StreamClock) bool 
 						r.Report.Malformed = true
 						return false
 					}
-					payload59 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload59.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload47 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload47.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
-					value.Held = payload59.Get8() != 0
+					value.Held = payload47.Get8() != 0
 				}
 				if widened {
 					r.Report.Widened++
@@ -7986,13 +4260,13 @@ func StreamClockLoadMessageBody(r *TableMessageReader, value *StreamClock) bool 
 						r.Report.Malformed = true
 						return false
 					}
-					payload60 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload60.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload48 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload48.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload60.Signed(entry.Shape.Kind)
+						v := payload48.Signed(entry.Shape.Kind)
 						value.HeldCards = int64(v)
 					}
 				}
@@ -8021,13 +4295,13 @@ func StreamClockLoadMessageBody(r *TableMessageReader, value *StreamClock) bool 
 						r.Report.Malformed = true
 						return false
 					}
-					payload61 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload61.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload49 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload49.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload61.Signed(entry.Shape.Kind)
+						v := payload49.Signed(entry.Shape.Kind)
 						value.Quiet = int64(v)
 					}
 				}
@@ -8243,19 +4517,19 @@ func StageStatLoadMessageBodyRetain(r *TableRetainMessageReader, value *StageSta
 func StageStatSaveMessageBody(w *TableMessageWriter, value *StageStat) bool {
 	{
 		if value.Median != 0.0 {
-			w.Put(170, TableMessageRefBitsHere)
+			w.Put(167, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.Median), uint64(0))
 		}
 	}
 	{
 		if value.P90 != 0.0 {
-			w.Put(171, TableMessageRefBitsHere)
+			w.Put(168, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.P90), uint64(0))
 		}
 	}
 	{
 		if value.N != 0 {
-			w.Put(172, TableMessageRefBitsHere)
+			w.Put(169, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.N), uint64(0))
 		}
 	}
@@ -8300,17 +4574,17 @@ func StageStatLoadMessageBody(r *TableMessageReader, value *StageStat) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload62 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload62.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload50 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload50.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
 						var v float64
 						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload62.Get32()))
+							v = math.Float64frombits(tableWidenFloat(payload50.Get32()))
 						} else {
-							v = math.Float64frombits(payload62.Get64())
+							v = math.Float64frombits(payload50.Get64())
 						}
 						value.Median = v
 					}
@@ -8340,17 +4614,17 @@ func StageStatLoadMessageBody(r *TableMessageReader, value *StageStat) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload63 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload63.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload51 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload51.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
 						var v float64
 						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload63.Get32()))
+							v = math.Float64frombits(tableWidenFloat(payload51.Get32()))
 						} else {
-							v = math.Float64frombits(payload63.Get64())
+							v = math.Float64frombits(payload51.Get64())
 						}
 						value.P90 = v
 					}
@@ -8380,13 +4654,13 @@ func StageStatLoadMessageBody(r *TableMessageReader, value *StageStat) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload64 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload64.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload52 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload52.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload64.Signed(entry.Shape.Kind)
+						v := payload52.Signed(entry.Shape.Kind)
 						value.N = int64(v)
 					}
 				}
@@ -8504,7 +4778,7 @@ func StageTimesAllEntrySaveMessageBody(w *TableMessageWriter, value *StageTimesA
 			return false
 		}
 		if value.KeyLength > 0 {
-			w.Put(174, TableMessageRefBitsHere)
+			w.Put(171, TableMessageRefBitsHere)
 			if value.KeyLength < 0 || value.KeyLength > 9 {
 				return false
 			}
@@ -8719,7 +4993,7 @@ func StageTimesStreamsEntryValueEntrySaveMessageBody(w *TableMessageWriter, valu
 			return false
 		}
 		if value.KeyLength > 0 {
-			w.Put(174, TableMessageRefBitsHere)
+			w.Put(171, TableMessageRefBitsHere)
 			if value.KeyLength < 0 || value.KeyLength > 9 {
 				return false
 			}
@@ -9431,7 +5705,7 @@ func StageTimesSaveMessageBody(w *TableMessageWriter, value *StageTimes) bool {
 			return false
 		}
 		if value.All.Count > 0 {
-			w.Put(173, TableMessageRefBitsHere)
+			w.Put(170, TableMessageRefBitsHere)
 			if value.All.Count < 0 {
 				return false
 			}
@@ -9458,7 +5732,7 @@ func StageTimesSaveMessageBody(w *TableMessageWriter, value *StageTimes) bool {
 			return false
 		}
 		if value.Streams.Count > 0 {
-			w.Put(175, TableMessageRefBitsHere)
+			w.Put(172, TableMessageRefBitsHere)
 			if value.Streams.Count < 0 {
 				return false
 			}
@@ -9831,7 +6105,7 @@ func CriticalCardSaveMessageBody(w *TableMessageWriter, value *CriticalCard) boo
 			return false
 		}
 		if value.IdLength > 0 {
-			w.Put(38, TableMessageRefBitsHere)
+			w.Put(36, TableMessageRefBitsHere)
 			if value.IdLength < 0 || value.IdLength > 515 {
 				return false
 			}
@@ -9841,13 +6115,13 @@ func CriticalCardSaveMessageBody(w *TableMessageWriter, value *CriticalCard) boo
 	}
 	{
 		if value.Behind != 0 {
-			w.Put(39, TableMessageRefBitsHere)
+			w.Put(37, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Behind), uint64(0))
 		}
 	}
 	{
 		if value.State != 0 {
-			w.Put(40, TableMessageRefBitsHere)
+			w.Put(38, TableMessageRefBitsHere)
 			if value.State == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -9943,13 +6217,13 @@ func CriticalCardLoadMessageBody(r *TableMessageReader, value *CriticalCard) boo
 						r.Report.Malformed = true
 						return false
 					}
-					payload74 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload74.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload62 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload62.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload74.Signed(entry.Shape.Kind)
+						v := payload62.Signed(entry.Shape.Kind)
 						value.Behind = int64(v)
 					}
 				}
@@ -10263,7 +6537,7 @@ func GoalViewSaveMessageBody(w *TableMessageWriter, value *GoalView) bool {
 			return false
 		}
 		if value.NameLength > 0 {
-			w.Put(89, TableMessageRefBitsHere)
+			w.Put(87, TableMessageRefBitsHere)
 			if value.NameLength < 0 || value.NameLength > 64 {
 				return false
 			}
@@ -10273,7 +6547,7 @@ func GoalViewSaveMessageBody(w *TableMessageWriter, value *GoalView) bool {
 	}
 	{
 		if value.Route != 0 {
-			w.Put(90, TableMessageRefBitsHere)
+			w.Put(88, TableMessageRefBitsHere)
 			if value.Route == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -10287,19 +6561,19 @@ func GoalViewSaveMessageBody(w *TableMessageWriter, value *GoalView) bool {
 	}
 	{
 		if value.Last != 0 {
-			w.Put(91, TableMessageRefBitsHere)
+			w.Put(89, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Last), uint64(0))
 		}
 	}
 	{
 		if value.Count != 0 {
-			w.Put(50, TableMessageRefBitsHere)
+			w.Put(48, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Count), uint64(0))
 		}
 	}
 	{
 		if value.State != 0 {
-			w.Put(40, TableMessageRefBitsHere)
+			w.Put(38, TableMessageRefBitsHere)
 			if value.State == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -10313,7 +6587,7 @@ func GoalViewSaveMessageBody(w *TableMessageWriter, value *GoalView) bool {
 	}
 	{
 		if value.Error != 0 {
-			w.Put(92, TableMessageRefBitsHere)
+			w.Put(90, TableMessageRefBitsHere)
 			if value.Error == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -10330,7 +6604,7 @@ func GoalViewSaveMessageBody(w *TableMessageWriter, value *GoalView) bool {
 			return false
 		}
 		if value.TextLength > 0 {
-			w.Put(93, TableMessageRefBitsHere)
+			w.Put(91, TableMessageRefBitsHere)
 			if value.TextLength < 0 || value.TextLength > 65536 {
 				return false
 			}
@@ -10449,13 +6723,13 @@ func GoalViewLoadMessageBody(r *TableMessageReader, value *GoalView) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload75 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload75.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload63 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload63.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload75.Signed(entry.Shape.Kind)
+						v := payload63.Signed(entry.Shape.Kind)
 						value.Last = int64(v)
 					}
 				}
@@ -10484,13 +6758,13 @@ func GoalViewLoadMessageBody(r *TableMessageReader, value *GoalView) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload76 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload76.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload64 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload64.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload76.Signed(entry.Shape.Kind)
+						v := payload64.Signed(entry.Shape.Kind)
 						value.Count = int64(v)
 					}
 				}
@@ -10871,7 +7145,7 @@ func SeatChangeLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatCha
 func SeatChangeSaveMessageBody(w *TableMessageWriter, value *SeatChange) bool {
 	{
 		if value.Holder != 0 {
-			w.Put(152, TableMessageRefBitsHere)
+			w.Put(149, TableMessageRefBitsHere)
 			if value.Holder == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -10885,13 +7159,13 @@ func SeatChangeSaveMessageBody(w *TableMessageWriter, value *SeatChange) bool {
 	}
 	{
 		if value.Generation != 0 {
-			w.Put(153, TableMessageRefBitsHere)
+			w.Put(150, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 9, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Generation), uint64(0))
 		}
 	}
 	{
 		if value.From != 0 {
-			w.Put(154, TableMessageRefBitsHere)
+			w.Put(151, TableMessageRefBitsHere)
 			if value.From == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -10905,13 +7179,13 @@ func SeatChangeSaveMessageBody(w *TableMessageWriter, value *SeatChange) bool {
 	}
 	{
 		if value.At != 0 {
-			w.Put(155, TableMessageRefBitsHere)
+			w.Put(152, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.At), uint64(0))
 		}
 	}
 	{
 		if value.By != 0 {
-			w.Put(96, TableMessageRefBitsHere)
+			w.Put(93, TableMessageRefBitsHere)
 			if value.By == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -10925,7 +7199,7 @@ func SeatChangeSaveMessageBody(w *TableMessageWriter, value *SeatChange) bool {
 	}
 	{
 		if value.Taken != false {
-			w.Put(156, TableMessageRefBitsHere)
+			w.Put(153, TableMessageRefBitsHere)
 			if value.Taken {
 				w.Put(1, 1)
 			} else {
@@ -10935,7 +7209,7 @@ func SeatChangeSaveMessageBody(w *TableMessageWriter, value *SeatChange) bool {
 	}
 	{
 		if value.ApprovedBy != 0 {
-			w.Put(157, TableMessageRefBitsHere)
+			w.Put(154, TableMessageRefBitsHere)
 			if value.ApprovedBy == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -10949,7 +7223,7 @@ func SeatChangeSaveMessageBody(w *TableMessageWriter, value *SeatChange) bool {
 	}
 	{
 		if value.Reason != 0 {
-			w.Put(65, TableMessageRefBitsHere)
+			w.Put(63, TableMessageRefBitsHere)
 			if value.Reason == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -11029,13 +7303,13 @@ func SeatChangeLoadMessageBody(r *TableMessageReader, value *SeatChange) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload77 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload77.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload65 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload65.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload77.Unsigned(entry.Shape.Kind)
+						v := payload65.Unsigned(entry.Shape.Kind)
 						value.Generation = uint64(v)
 					}
 				}
@@ -11091,13 +7365,13 @@ func SeatChangeLoadMessageBody(r *TableMessageReader, value *SeatChange) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload78 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload78.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload66 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload66.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload78.Signed(entry.Shape.Kind)
+						v := payload66.Signed(entry.Shape.Kind)
 						value.At = int64(v)
 					}
 				}
@@ -11153,12 +7427,12 @@ func SeatChangeLoadMessageBody(r *TableMessageReader, value *SeatChange) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload79 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload79.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload67 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload67.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
-					value.Taken = payload79.Get8() != 0
+					value.Taken = payload67.Get8() != 0
 				}
 				if widened {
 					r.Report.Widened++
@@ -11275,7 +7549,7 @@ func HoldViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *HoldView)
 		case 0xc4bcadba8e631b86:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -11288,28 +7562,12 @@ func HoldViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *HoldView)
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(515)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Name[:])
-					copy(value.Name[:], text[:kept])
-					value.NameLength = int32(kept)
+					r.Nodes.Resolve(&value.Name, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -11521,7 +7779,7 @@ func HoldViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *HoldView)
 func HoldViewSaveMessageBody(w *TableMessageWriter, value *HoldView) bool {
 	{
 		if value.Kind != 0 {
-			w.Put(94, TableMessageRefBitsHere)
+			w.Put(92, TableMessageRefBitsHere)
 			if value.Kind == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -11534,21 +7792,22 @@ func HoldViewSaveMessageBody(w *TableMessageWriter, value *HoldView) bool {
 		}
 	}
 	{
-		if value.NameLength < 0 || value.NameLength > 515 {
-			return false
-		}
-		if value.NameLength > 0 {
-			w.Put(95, TableMessageRefBitsHere)
-			if value.NameLength < 0 || value.NameLength > 515 {
-				return false
+		if value.Name != 0 {
+			w.Put(67, TableMessageRefBitsHere)
+			if value.Name == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Name)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.NameLength), 10)
-			w.Raw(value.Name[:value.NameLength])
 		}
 	}
 	{
 		if value.Reason != 0 {
-			w.Put(65, TableMessageRefBitsHere)
+			w.Put(63, TableMessageRefBitsHere)
 			if value.Reason == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -11562,7 +7821,7 @@ func HoldViewSaveMessageBody(w *TableMessageWriter, value *HoldView) bool {
 	}
 	{
 		if value.By != 0 {
-			w.Put(96, TableMessageRefBitsHere)
+			w.Put(93, TableMessageRefBitsHere)
 			if value.By == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -11576,7 +7835,7 @@ func HoldViewSaveMessageBody(w *TableMessageWriter, value *HoldView) bool {
 	}
 	{
 		if value.At != 0 {
-			w.Put(28, TableMessageRefBitsHere)
+			w.Put(26, TableMessageRefBitsHere)
 			if value.At == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -11590,7 +7849,7 @@ func HoldViewSaveMessageBody(w *TableMessageWriter, value *HoldView) bool {
 	}
 	{
 		if value.HandedBack != false {
-			w.Put(97, TableMessageRefBitsHere)
+			w.Put(94, TableMessageRefBitsHere)
 			if value.HandedBack {
 				w.Put(1, 1)
 			} else {
@@ -11600,7 +7859,7 @@ func HoldViewSaveMessageBody(w *TableMessageWriter, value *HoldView) bool {
 	}
 	{
 		if value.Cause != 0 {
-			w.Put(98, TableMessageRefBitsHere)
+			w.Put(95, TableMessageRefBitsHere)
 			if value.Cause == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -11614,7 +7873,7 @@ func HoldViewSaveMessageBody(w *TableMessageWriter, value *HoldView) bool {
 	}
 	{
 		if value.Who != 0 {
-			w.Put(99, TableMessageRefBitsHere)
+			w.Put(96, TableMessageRefBitsHere)
 			if value.Who == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -11628,7 +7887,7 @@ func HoldViewSaveMessageBody(w *TableMessageWriter, value *HoldView) bool {
 	}
 	{
 		if value.Release != 0 {
-			w.Put(100, TableMessageRefBitsHere)
+			w.Put(97, TableMessageRefBitsHere)
 			if value.Release == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -11690,7 +7949,7 @@ func HoldViewLoadMessageBody(r *TableMessageReader, value *HoldView) bool {
 		case 0xc4bcadba8e631b86:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -11703,28 +7962,12 @@ func HoldViewLoadMessageBody(r *TableMessageReader, value *HoldView) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(515)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Name[:])
-					copy(value.Name[:], text[:kept])
-					value.NameLength = int32(kept)
+					r.Nodes.Resolve(&value.Name, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -11832,12 +8075,12 @@ func HoldViewLoadMessageBody(r *TableMessageReader, value *HoldView) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload80 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload80.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload68 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload68.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
-					value.HandedBack = payload80.Get8() != 0
+					value.HandedBack = payload68.Get8() != 0
 				}
 				if widened {
 					r.Report.Widened++
@@ -11981,7 +8224,7 @@ func StopLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stop) bool {
 		case 0x9640735281e90c0f:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -11994,28 +8237,12 @@ func StopLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stop) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(515)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Subject[:])
-					copy(value.Subject[:], text[:kept])
-					value.SubjectLength = int32(kept)
+					r.Nodes.Resolve(&value.Subject, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -12176,7 +8403,7 @@ func StopLoadMessageBodyRetain(r *TableRetainMessageReader, value *Stop) bool {
 func StopSaveMessageBody(w *TableMessageWriter, value *Stop) bool {
 	{
 		if value.Kind != 0 {
-			w.Put(94, TableMessageRefBitsHere)
+			w.Put(92, TableMessageRefBitsHere)
 			if value.Kind == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -12189,27 +8416,28 @@ func StopSaveMessageBody(w *TableMessageWriter, value *Stop) bool {
 		}
 	}
 	{
-		if value.SubjectLength < 0 || value.SubjectLength > 515 {
-			return false
-		}
-		if value.SubjectLength > 0 {
-			w.Put(176, TableMessageRefBitsHere)
-			if value.SubjectLength < 0 || value.SubjectLength > 515 {
-				return false
+		if value.Subject != 0 {
+			w.Put(173, TableMessageRefBitsHere)
+			if value.Subject == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Subject)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.SubjectLength), 10)
-			w.Raw(value.Subject[:value.SubjectLength])
 		}
 	}
 	{
 		if value.Since != 0 {
-			w.Put(45, TableMessageRefBitsHere)
+			w.Put(43, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Since), uint64(0))
 		}
 	}
 	{
 		if value.What != 0 {
-			w.Put(177, TableMessageRefBitsHere)
+			w.Put(174, TableMessageRefBitsHere)
 			if value.What == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -12223,7 +8451,7 @@ func StopSaveMessageBody(w *TableMessageWriter, value *Stop) bool {
 	}
 	{
 		if value.Effect != 0 {
-			w.Put(178, TableMessageRefBitsHere)
+			w.Put(175, TableMessageRefBitsHere)
 			if value.Effect == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -12237,7 +8465,7 @@ func StopSaveMessageBody(w *TableMessageWriter, value *Stop) bool {
 	}
 	{
 		if value.Undo != 0 {
-			w.Put(179, TableMessageRefBitsHere)
+			w.Put(176, TableMessageRefBitsHere)
 			if value.Undo == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -12251,7 +8479,7 @@ func StopSaveMessageBody(w *TableMessageWriter, value *Stop) bool {
 	}
 	{
 		if value.Signal != 0 {
-			w.Put(180, TableMessageRefBitsHere)
+			w.Put(177, TableMessageRefBitsHere)
 			if value.Signal == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -12313,7 +8541,7 @@ func StopLoadMessageBody(r *TableMessageReader, value *Stop) bool {
 		case 0x9640735281e90c0f:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -12326,28 +8554,12 @@ func StopLoadMessageBody(r *TableMessageReader, value *Stop) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(515)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Subject[:])
-					copy(value.Subject[:], text[:kept])
-					value.SubjectLength = int32(kept)
+					r.Nodes.Resolve(&value.Subject, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -12374,13 +8586,13 @@ func StopLoadMessageBody(r *TableMessageReader, value *Stop) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload81 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload81.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload69 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload69.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload81.Signed(entry.Shape.Kind)
+						v := payload69.Signed(entry.Shape.Kind)
 						value.Since = int64(v)
 					}
 				}
@@ -12799,19 +9011,19 @@ func SeatWaitsLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatWait
 func SeatWaitsSaveMessageBody(w *TableMessageWriter, value *SeatWaits) bool {
 	{
 		if value.Judgments != 0 {
-			w.Put(158, TableMessageRefBitsHere)
+			w.Put(155, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Judgments), uint64(0))
 		}
 	}
 	{
 		if value.Overdue != 0 {
-			w.Put(159, TableMessageRefBitsHere)
+			w.Put(156, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Overdue), uint64(0))
 		}
 	}
 	{
 		if value.OldestId != 0 {
-			w.Put(160, TableMessageRefBitsHere)
+			w.Put(157, TableMessageRefBitsHere)
 			if value.OldestId == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -12825,7 +9037,7 @@ func SeatWaitsSaveMessageBody(w *TableMessageWriter, value *SeatWaits) bool {
 	}
 	{
 		if value.OldestType != 0 {
-			w.Put(161, TableMessageRefBitsHere)
+			w.Put(158, TableMessageRefBitsHere)
 			if value.OldestType == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -12839,25 +9051,25 @@ func SeatWaitsSaveMessageBody(w *TableMessageWriter, value *SeatWaits) bool {
 	}
 	{
 		if value.OldestAt != 0 {
-			w.Put(162, TableMessageRefBitsHere)
+			w.Put(159, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.OldestAt), uint64(0))
 		}
 	}
 	{
 		if value.Level != 0 {
-			w.Put(163, TableMessageRefBitsHere)
+			w.Put(160, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Level), uint64(0))
 		}
 	}
 	{
 		if value.OldestAgeSeconds != 0 {
-			w.Put(164, TableMessageRefBitsHere)
+			w.Put(161, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.OldestAgeSeconds), uint64(0))
 		}
 	}
 	{
 		if value.At != 0 {
-			w.Put(155, TableMessageRefBitsHere)
+			w.Put(152, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.At), uint64(0))
 		}
 	}
@@ -12902,13 +9114,13 @@ func SeatWaitsLoadMessageBody(r *TableMessageReader, value *SeatWaits) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload82 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload82.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload70 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload70.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload82.Signed(entry.Shape.Kind)
+						v := payload70.Signed(entry.Shape.Kind)
 						value.Judgments = int64(v)
 					}
 				}
@@ -12937,13 +9149,13 @@ func SeatWaitsLoadMessageBody(r *TableMessageReader, value *SeatWaits) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload83 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload83.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload71 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload71.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload83.Signed(entry.Shape.Kind)
+						v := payload71.Signed(entry.Shape.Kind)
 						value.Overdue = int64(v)
 					}
 				}
@@ -13026,13 +9238,13 @@ func SeatWaitsLoadMessageBody(r *TableMessageReader, value *SeatWaits) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload84 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload84.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload72 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload72.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload84.Signed(entry.Shape.Kind)
+						v := payload72.Signed(entry.Shape.Kind)
 						value.OldestAt = int64(v)
 					}
 				}
@@ -13061,13 +9273,13 @@ func SeatWaitsLoadMessageBody(r *TableMessageReader, value *SeatWaits) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload85 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload85.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload73 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload73.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload85.Signed(entry.Shape.Kind)
+						v := payload73.Signed(entry.Shape.Kind)
 						value.Level = int64(v)
 					}
 				}
@@ -13096,13 +9308,13 @@ func SeatWaitsLoadMessageBody(r *TableMessageReader, value *SeatWaits) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload86 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload86.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload74 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload74.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload86.Signed(entry.Shape.Kind)
+						v := payload74.Signed(entry.Shape.Kind)
 						value.OldestAgeSeconds = int64(v)
 					}
 				}
@@ -13131,13 +9343,13 @@ func SeatWaitsLoadMessageBody(r *TableMessageReader, value *SeatWaits) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload87 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload87.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload75 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload75.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload87.Signed(entry.Shape.Kind)
+						v := payload75.Signed(entry.Shape.Kind)
 						value.At = int64(v)
 					}
 				}
@@ -13308,7 +9520,7 @@ func ServerBeatLoadMessageBodyRetain(r *TableRetainMessageReader, value *ServerB
 func ServerBeatSaveMessageBody(w *TableMessageWriter, value *ServerBeat) bool {
 	{
 		if value.Version != 0 {
-			w.Put(168, TableMessageRefBitsHere)
+			w.Put(165, TableMessageRefBitsHere)
 			if value.Version == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -13322,7 +9534,7 @@ func ServerBeatSaveMessageBody(w *TableMessageWriter, value *ServerBeat) bool {
 	}
 	{
 		if value.Commit != 0 {
-			w.Put(169, TableMessageRefBitsHere)
+			w.Put(166, TableMessageRefBitsHere)
 			if value.Commit == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -13336,13 +9548,13 @@ func ServerBeatSaveMessageBody(w *TableMessageWriter, value *ServerBeat) bool {
 	}
 	{
 		if value.Started != 0 {
-			w.Put(67, TableMessageRefBitsHere)
+			w.Put(65, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Started), uint64(0))
 		}
 	}
 	{
 		if value.At != 0 {
-			w.Put(155, TableMessageRefBitsHere)
+			w.Put(152, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.At), uint64(0))
 		}
 	}
@@ -13441,13 +9653,13 @@ func ServerBeatLoadMessageBody(r *TableMessageReader, value *ServerBeat) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload88 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload88.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload76 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload76.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload88.Signed(entry.Shape.Kind)
+						v := payload76.Signed(entry.Shape.Kind)
 						value.Started = int64(v)
 					}
 				}
@@ -13476,13 +9688,13 @@ func ServerBeatLoadMessageBody(r *TableMessageReader, value *ServerBeat) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload89 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload89.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload77 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload77.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload89.Signed(entry.Shape.Kind)
+						v := payload77.Signed(entry.Shape.Kind)
 						value.At = int64(v)
 					}
 				}
@@ -13626,7 +9838,7 @@ func ProviderTierLoadMessageBodyRetain(r *TableRetainMessageReader, value *Provi
 func ProviderTierSaveMessageBody(w *TableMessageWriter, value *ProviderTier) bool {
 	{
 		if value.Tier != 0 {
-			w.Put(49, TableMessageRefBitsHere)
+			w.Put(47, TableMessageRefBitsHere)
 			if value.Tier == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -13640,13 +9852,13 @@ func ProviderTierSaveMessageBody(w *TableMessageWriter, value *ProviderTier) boo
 	}
 	{
 		if value.InRoutes != 0 {
-			w.Put(137, TableMessageRefBitsHere)
+			w.Put(134, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.InRoutes), uint64(0))
 		}
 	}
 	{
 		if value.Enabled != 0 {
-			w.Put(138, TableMessageRefBitsHere)
+			w.Put(135, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Enabled), uint64(0))
 		}
 	}
@@ -13718,13 +9930,13 @@ func ProviderTierLoadMessageBody(r *TableMessageReader, value *ProviderTier) boo
 						r.Report.Malformed = true
 						return false
 					}
-					payload90 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload90.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload78 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload78.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload90.Signed(entry.Shape.Kind)
+						v := payload78.Signed(entry.Shape.Kind)
 						value.InRoutes = int64(v)
 					}
 				}
@@ -13753,13 +9965,13 @@ func ProviderTierLoadMessageBody(r *TableMessageReader, value *ProviderTier) boo
 						r.Report.Malformed = true
 						return false
 					}
-					payload91 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload91.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload79 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload79.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload91.Signed(entry.Shape.Kind)
+						v := payload79.Signed(entry.Shape.Kind)
 						value.Enabled = int64(v)
 					}
 				}
@@ -14150,7 +10362,7 @@ func ProviderViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Provi
 func ProviderViewSaveMessageBody(w *TableMessageWriter, value *ProviderView) bool {
 	{
 		if value.Name != 0 {
-			w.Put(69, TableMessageRefBitsHere)
+			w.Put(67, TableMessageRefBitsHere)
 			if value.Name == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -14164,7 +10376,7 @@ func ProviderViewSaveMessageBody(w *TableMessageWriter, value *ProviderView) boo
 	}
 	{
 		if value.Balance != 0 {
-			w.Put(139, TableMessageRefBitsHere)
+			w.Put(136, TableMessageRefBitsHere)
 			if value.Balance == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -14178,7 +10390,7 @@ func ProviderViewSaveMessageBody(w *TableMessageWriter, value *ProviderView) boo
 	}
 	{
 		if value.BalanceAt != 0 {
-			w.Put(140, TableMessageRefBitsHere)
+			w.Put(137, TableMessageRefBitsHere)
 			if value.BalanceAt == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -14192,13 +10404,13 @@ func ProviderViewSaveMessageBody(w *TableMessageWriter, value *ProviderView) boo
 	}
 	{
 		if value.SpendHour != 0.0 {
-			w.Put(141, TableMessageRefBitsHere)
+			w.Put(138, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.SpendHour), uint64(0))
 		}
 	}
 	{
 		if value.State != 0 {
-			w.Put(40, TableMessageRefBitsHere)
+			w.Put(38, TableMessageRefBitsHere)
 			if value.State == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -14212,7 +10424,7 @@ func ProviderViewSaveMessageBody(w *TableMessageWriter, value *ProviderView) boo
 	}
 	{
 		if value.Note != 0 {
-			w.Put(30, TableMessageRefBitsHere)
+			w.Put(28, TableMessageRefBitsHere)
 			if value.Note == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -14226,7 +10438,7 @@ func ProviderViewSaveMessageBody(w *TableMessageWriter, value *ProviderView) boo
 	}
 	{
 		if value.Limit != 0 {
-			w.Put(142, TableMessageRefBitsHere)
+			w.Put(139, TableMessageRefBitsHere)
 			if value.Limit == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -14240,7 +10452,7 @@ func ProviderViewSaveMessageBody(w *TableMessageWriter, value *ProviderView) boo
 	}
 	{
 		if value.Billing != 0 {
-			w.Put(86, TableMessageRefBitsHere)
+			w.Put(84, TableMessageRefBitsHere)
 			if value.Billing == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -14255,7 +10467,7 @@ func ProviderViewSaveMessageBody(w *TableMessageWriter, value *ProviderView) boo
 	{
 		if value.FundedPresent {
 			if true {
-				w.Put(143, TableMessageRefBitsHere)
+				w.Put(140, TableMessageRefBitsHere)
 				if value.Funded {
 					w.Put(1, 1)
 				} else {
@@ -14266,7 +10478,7 @@ func ProviderViewSaveMessageBody(w *TableMessageWriter, value *ProviderView) boo
 	}
 	{
 		if value.Problem != 0 {
-			w.Put(136, TableMessageRefBitsHere)
+			w.Put(133, TableMessageRefBitsHere)
 			if value.Problem == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -14283,7 +10495,7 @@ func ProviderViewSaveMessageBody(w *TableMessageWriter, value *ProviderView) boo
 			return false
 		}
 		if value.Tiers.Count > 0 {
-			w.Put(144, TableMessageRefBitsHere)
+			w.Put(141, TableMessageRefBitsHere)
 			if value.Tiers.Count < 0 {
 				return false
 			}
@@ -14427,17 +10639,17 @@ func ProviderViewLoadMessageBody(r *TableMessageReader, value *ProviderView) boo
 						r.Report.Malformed = true
 						return false
 					}
-					payload95 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload95.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload83 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload83.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
 						var v float64
 						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload95.Get32()))
+							v = math.Float64frombits(tableWidenFloat(payload83.Get32()))
 						} else {
-							v = math.Float64frombits(payload95.Get64())
+							v = math.Float64frombits(payload83.Get64())
 						}
 						value.SpendHour = v
 					}
@@ -14575,12 +10787,12 @@ func ProviderViewLoadMessageBody(r *TableMessageReader, value *ProviderView) boo
 						r.Report.Malformed = true
 						return false
 					}
-					payload96 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload96.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload84 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload84.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
-					value.Funded = payload96.Get8() != 0
+					value.Funded = payload84.Get8() != 0
 				}
 				value.FundedPresent = true
 				if widened {
@@ -14756,7 +10968,7 @@ func ProviderProblemLoadMessageBodyRetain(r *TableRetainMessageReader, value *Pr
 func ProviderProblemSaveMessageBody(w *TableMessageWriter, value *ProviderProblem) bool {
 	{
 		if value.Name != 0 {
-			w.Put(69, TableMessageRefBitsHere)
+			w.Put(67, TableMessageRefBitsHere)
 			if value.Name == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -14770,7 +10982,7 @@ func ProviderProblemSaveMessageBody(w *TableMessageWriter, value *ProviderProble
 	}
 	{
 		if value.Problem != 0 {
-			w.Put(136, TableMessageRefBitsHere)
+			w.Put(133, TableMessageRefBitsHere)
 			if value.Problem == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -14976,7 +11188,7 @@ func RouteGapLoadMessageBodyRetain(r *TableRetainMessageReader, value *RouteGap)
 func RouteGapSaveMessageBody(w *TableMessageWriter, value *RouteGap) bool {
 	{
 		if value.Route != 0 {
-			w.Put(90, TableMessageRefBitsHere)
+			w.Put(88, TableMessageRefBitsHere)
 			if value.Route == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -14990,7 +11202,7 @@ func RouteGapSaveMessageBody(w *TableMessageWriter, value *RouteGap) bool {
 	}
 	{
 		if value.Provider != 0 {
-			w.Put(27, TableMessageRefBitsHere)
+			w.Put(25, TableMessageRefBitsHere)
 			if value.Provider == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -15004,7 +11216,7 @@ func RouteGapSaveMessageBody(w *TableMessageWriter, value *RouteGap) bool {
 	}
 	{
 		if value.Tier != 0 {
-			w.Put(49, TableMessageRefBitsHere)
+			w.Put(47, TableMessageRefBitsHere)
 			if value.Tier == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -15126,612 +11338,6 @@ func RouteGapLoadMessageBody(r *TableMessageReader, value *RouteGap) bool {
 		}
 	}
 }
-func ProviderGapReportTiersTextLoadMessageBodyRetain(r *TableRetainMessageReader, value *ProviderGapReportTiersText) bool {
-	ProviderGapReportTiersTextReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Value[:])
-					copy(value.Value[:], text[:kept])
-					value.ValueLength = int32(kept)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func ProviderGapReportTiersTextSaveMessageBody(w *TableMessageWriter, value *ProviderGapReportTiersText) bool {
-	{
-		if value.ValueLength < 0 || value.ValueLength > 128 {
-			return false
-		}
-		if value.ValueLength > 0 {
-			w.Put(4, TableMessageRefBitsHere)
-			if value.ValueLength < 0 || value.ValueLength > 128 {
-				return false
-			}
-			w.Put(uint64(value.ValueLength), 8)
-			w.Raw(value.Value[:value.ValueLength])
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func ProviderGapReportTiersTextLoadMessageBody(r *TableMessageReader, value *ProviderGapReportTiersText) bool {
-	ProviderGapReportTiersTextReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Value[:])
-					copy(value.Value[:], text[:kept])
-					value.ValueLength = int32(kept)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func ProviderGapReportLoadMessageBodyRetain(r *TableRetainMessageReader, value *ProviderGapReport) bool {
-	ProviderGapReportReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0xe4f259631b941965:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.InvalidProviders))
-					r.Retain.discard(r.Path, true, 0)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 16, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*ProviderProblemRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 16))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload14 := r.Path
-							r.Path = r.Path.step(0, uint32(i))
-							if !ProviderProblemLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload14
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xa0dba600590b76f7:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Routes))
-					r.Retain.discard(r.Path, true, 1)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 24, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*RouteGapRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 24))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload15 := r.Path
-							r.Path = r.Path.step(1, uint32(i))
-							if !RouteGapLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload15
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x6dd8dc6c5fdae3ce:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 12 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Tiers))
-					r.Retain.discard(r.Path, true, 2)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 136, 4) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*ProviderGapReportTiersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 136))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload16 := r.Path
-							r.Path = r.Path.step(2, uint32(i))
-							if !ProviderGapReportTiersTextLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload16
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func ProviderGapReportSaveMessageBody(w *TableMessageWriter, value *ProviderGapReport) bool {
-	{
-		if value.InvalidProviders.Count < 0 {
-			return false
-		}
-		if value.InvalidProviders.Count > 0 {
-			w.Put(133, TableMessageRefBitsHere)
-			if value.InvalidProviders.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.InvalidProviders.Count), 32)
-			field := &ProviderGapReportTableFields[0]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.InvalidProviders)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.InvalidProviders.Count; i++ {
-				p := (*ProviderProblemRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !ProviderProblemSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.Routes.Count < 0 {
-			return false
-		}
-		if value.Routes.Count > 0 {
-			w.Put(134, TableMessageRefBitsHere)
-			if value.Routes.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Routes.Count), 32)
-			field := &ProviderGapReportTableFields[1]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Routes)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Routes.Count; i++ {
-				p := (*RouteGapRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !RouteGapSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.Tiers.Count < 0 {
-			return false
-		}
-		if value.Tiers.Count > 0 {
-			w.Put(135, TableMessageRefBitsHere)
-			if value.Tiers.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Tiers.Count), 32)
-			field := &ProviderGapReportTableFields[2]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Tiers)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Tiers.Count; i++ {
-				p := (*ProviderGapReportTiersTextRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !ProviderGapReportTiersTextSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func ProviderGapReportLoadMessageBody(r *TableMessageReader, value *ProviderGapReport) bool {
-	ProviderGapReportReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0xe4f259631b941965:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.InvalidProviders))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 16, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*ProviderProblemRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 16))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !ProviderProblemLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xa0dba600590b76f7:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Routes))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 24, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*RouteGapRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 24))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !RouteGapLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x6dd8dc6c5fdae3ce:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 12 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Tiers))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 136, 4) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*ProviderGapReportTiersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 136))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !ProviderGapReportTiersTextLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
 func LaneRowHeldTextLoadMessageBodyRetain(r *TableRetainMessageReader, value *LaneRowHeldText) bool {
 	LaneRowHeldTextReset(value)
 	r.Retain.discard(r.Path, false, 0)
@@ -15808,7 +11414,7 @@ func LaneRowHeldTextSaveMessageBody(w *TableMessageWriter, value *LaneRowHeldTex
 			return false
 		}
 		if value.ValueLength > 0 {
-			w.Put(16, TableMessageRefBitsHere)
+			w.Put(14, TableMessageRefBitsHere)
 			if value.ValueLength < 0 || value.ValueLength > 257 {
 				return false
 			}
@@ -15964,7 +11570,7 @@ func LaneRowWaitingTextSaveMessageBody(w *TableMessageWriter, value *LaneRowWait
 			return false
 		}
 		if value.ValueLength > 0 {
-			w.Put(16, TableMessageRefBitsHere)
+			w.Put(14, TableMessageRefBitsHere)
 			if value.ValueLength < 0 || value.ValueLength > 257 {
 				return false
 			}
@@ -16324,7 +11930,7 @@ func LaneRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *LaneRow) b
 func LaneRowSaveMessageBody(w *TableMessageWriter, value *LaneRow) bool {
 	{
 		if value.Kind != 0 {
-			w.Put(94, TableMessageRefBitsHere)
+			w.Put(92, TableMessageRefBitsHere)
 			if value.Kind == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -16341,7 +11947,7 @@ func LaneRowSaveMessageBody(w *TableMessageWriter, value *LaneRow) bool {
 			return false
 		}
 		if value.MachineLength > 0 {
-			w.Put(113, TableMessageRefBitsHere)
+			w.Put(110, TableMessageRefBitsHere)
 			if value.MachineLength < 0 || value.MachineLength > 128 {
 				return false
 			}
@@ -16351,7 +11957,7 @@ func LaneRowSaveMessageBody(w *TableMessageWriter, value *LaneRow) bool {
 	}
 	{
 		if value.Width != 0 {
-			w.Put(59, TableMessageRefBitsHere)
+			w.Put(57, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Width), uint64(0))
 		}
 	}
@@ -16360,7 +11966,7 @@ func LaneRowSaveMessageBody(w *TableMessageWriter, value *LaneRow) bool {
 			return false
 		}
 		if value.Held.Count > 0 {
-			w.Put(114, TableMessageRefBitsHere)
+			w.Put(111, TableMessageRefBitsHere)
 			if value.Held.Count < 0 {
 				return false
 			}
@@ -16387,7 +11993,7 @@ func LaneRowSaveMessageBody(w *TableMessageWriter, value *LaneRow) bool {
 			return false
 		}
 		if value.Waiting.Count > 0 {
-			w.Put(115, TableMessageRefBitsHere)
+			w.Put(112, TableMessageRefBitsHere)
 			if value.Waiting.Count < 0 {
 				return false
 			}
@@ -16411,7 +12017,7 @@ func LaneRowSaveMessageBody(w *TableMessageWriter, value *LaneRow) bool {
 	}
 	{
 		if value.Since != 0 {
-			w.Put(45, TableMessageRefBitsHere)
+			w.Put(43, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Since), uint64(0))
 		}
 	}
@@ -16526,13 +12132,13 @@ func LaneRowLoadMessageBody(r *TableMessageReader, value *LaneRow) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload112 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload112.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload100 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload100.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload112.Signed(entry.Shape.Kind)
+						v := payload100.Signed(entry.Shape.Kind)
 						value.Width = int64(v)
 					}
 				}
@@ -16659,13 +12265,13 @@ func LaneRowLoadMessageBody(r *TableMessageReader, value *LaneRow) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload113 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload113.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload101 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload101.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload113.Signed(entry.Shape.Kind)
+						v := payload101.Signed(entry.Shape.Kind)
 						value.Since = int64(v)
 					}
 				}
@@ -17049,7 +12655,7 @@ func DealtCardSaveMessageBody(w *TableMessageWriter, value *DealtCard) bool {
 			return false
 		}
 		if value.IdLength > 0 {
-			w.Put(38, TableMessageRefBitsHere)
+			w.Put(36, TableMessageRefBitsHere)
 			if value.IdLength < 0 || value.IdLength > 515 {
 				return false
 			}
@@ -17062,7 +12668,7 @@ func DealtCardSaveMessageBody(w *TableMessageWriter, value *DealtCard) bool {
 			return false
 		}
 		if value.PrimaryLength > 0 {
-			w.Put(42, TableMessageRefBitsHere)
+			w.Put(40, TableMessageRefBitsHere)
 			if value.PrimaryLength < 0 || value.PrimaryLength > 515 {
 				return false
 			}
@@ -17075,7 +12681,7 @@ func DealtCardSaveMessageBody(w *TableMessageWriter, value *DealtCard) bool {
 			return false
 		}
 		if value.StreamLength > 0 {
-			w.Put(43, TableMessageRefBitsHere)
+			w.Put(41, TableMessageRefBitsHere)
 			if value.StreamLength < 0 || value.StreamLength > 128 {
 				return false
 			}
@@ -17085,7 +12691,7 @@ func DealtCardSaveMessageBody(w *TableMessageWriter, value *DealtCard) bool {
 	}
 	{
 		if value.Member != 0 {
-			w.Put(44, TableMessageRefBitsHere)
+			w.Put(42, TableMessageRefBitsHere)
 			if value.Member == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -17099,7 +12705,7 @@ func DealtCardSaveMessageBody(w *TableMessageWriter, value *DealtCard) bool {
 	}
 	{
 		if value.State != 0 {
-			w.Put(40, TableMessageRefBitsHere)
+			w.Put(38, TableMessageRefBitsHere)
 			if value.State == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -17113,19 +12719,19 @@ func DealtCardSaveMessageBody(w *TableMessageWriter, value *DealtCard) bool {
 	}
 	{
 		if value.Since != 0 {
-			w.Put(45, TableMessageRefBitsHere)
+			w.Put(43, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Since), uint64(0))
 		}
 	}
 	{
 		if value.Deadline != 0 {
-			w.Put(46, TableMessageRefBitsHere)
+			w.Put(44, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Deadline), uint64(0))
 		}
 	}
 	{
 		if value.Branch != 0 {
-			w.Put(47, TableMessageRefBitsHere)
+			w.Put(45, TableMessageRefBitsHere)
 			if value.Branch == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -17139,7 +12745,7 @@ func DealtCardSaveMessageBody(w *TableMessageWriter, value *DealtCard) bool {
 	}
 	{
 		if value.Priority != 0 {
-			w.Put(48, TableMessageRefBitsHere)
+			w.Put(46, TableMessageRefBitsHere)
 			if value.Priority == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -17153,7 +12759,7 @@ func DealtCardSaveMessageBody(w *TableMessageWriter, value *DealtCard) bool {
 	}
 	{
 		if value.Tier != 0 {
-			w.Put(49, TableMessageRefBitsHere)
+			w.Put(47, TableMessageRefBitsHere)
 			if value.Tier == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -17389,13 +12995,13 @@ func DealtCardLoadMessageBody(r *TableMessageReader, value *DealtCard) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload114 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload114.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload102 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload102.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload114.Signed(entry.Shape.Kind)
+						v := payload102.Signed(entry.Shape.Kind)
 						value.Since = int64(v)
 					}
 				}
@@ -17424,13 +13030,13 @@ func DealtCardLoadMessageBody(r *TableMessageReader, value *DealtCard) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload115 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload115.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload103 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload103.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload115.Signed(entry.Shape.Kind)
+						v := payload103.Signed(entry.Shape.Kind)
 						value.Deadline = int64(v)
 					}
 				}
@@ -17709,7 +13315,7 @@ func MergingCardSaveMessageBody(w *TableMessageWriter, value *MergingCard) bool 
 			return false
 		}
 		if value.IdLength > 0 {
-			w.Put(38, TableMessageRefBitsHere)
+			w.Put(36, TableMessageRefBitsHere)
 			if value.IdLength < 0 || value.IdLength > 515 {
 				return false
 			}
@@ -17722,7 +13328,7 @@ func MergingCardSaveMessageBody(w *TableMessageWriter, value *MergingCard) bool 
 			return false
 		}
 		if value.StreamLength > 0 {
-			w.Put(43, TableMessageRefBitsHere)
+			w.Put(41, TableMessageRefBitsHere)
 			if value.StreamLength < 0 || value.StreamLength > 128 {
 				return false
 			}
@@ -17732,7 +13338,7 @@ func MergingCardSaveMessageBody(w *TableMessageWriter, value *MergingCard) bool 
 	}
 	{
 		if value.Head != 0 {
-			w.Put(126, TableMessageRefBitsHere)
+			w.Put(123, TableMessageRefBitsHere)
 			if value.Head == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -17746,7 +13352,7 @@ func MergingCardSaveMessageBody(w *TableMessageWriter, value *MergingCard) bool 
 	}
 	{
 		if value.Attempt != 0 {
-			w.Put(127, TableMessageRefBitsHere)
+			w.Put(124, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Attempt), uint64(0))
 		}
 	}
@@ -17904,13 +13510,13 @@ func MergingCardLoadMessageBody(r *TableMessageReader, value *MergingCard) bool 
 						r.Report.Malformed = true
 						return false
 					}
-					payload116 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload116.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload104 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload104.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload116.Signed(entry.Shape.Kind)
+						v := payload104.Signed(entry.Shape.Kind)
 						value.Attempt = int64(v)
 					}
 				}
@@ -18054,7 +13660,7 @@ func JudgmentRefLoadMessageBodyRetain(r *TableRetainMessageReader, value *Judgme
 func JudgmentRefSaveMessageBody(w *TableMessageWriter, value *JudgmentRef) bool {
 	{
 		if value.Id != 0 {
-			w.Put(101, TableMessageRefBitsHere)
+			w.Put(98, TableMessageRefBitsHere)
 			if value.Id == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -18068,7 +13674,7 @@ func JudgmentRefSaveMessageBody(w *TableMessageWriter, value *JudgmentRef) bool 
 	}
 	{
 		if value.Kind != 0 {
-			w.Put(94, TableMessageRefBitsHere)
+			w.Put(92, TableMessageRefBitsHere)
 			if value.Kind == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -18085,7 +13691,7 @@ func JudgmentRefSaveMessageBody(w *TableMessageWriter, value *JudgmentRef) bool 
 			return false
 		}
 		if value.CardLength > 0 {
-			w.Put(102, TableMessageRefBitsHere)
+			w.Put(99, TableMessageRefBitsHere)
 			if value.CardLength < 0 || value.CardLength > 515 {
 				return false
 			}
@@ -18205,988 +13811,6 @@ func JudgmentRefLoadMessageBody(r *TableMessageReader, value *JudgmentRef) bool 
 					clear(value.Card[:])
 					copy(value.Card[:], text[:kept])
 					value.CardLength = int32(kept)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func PrimaryRowFieldsEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *PrimaryRowFieldsEntry) bool {
-	PrimaryRowFieldsEntryReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Value, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func PrimaryRowFieldsEntrySaveMessageBody(w *TableMessageWriter, value *PrimaryRowFieldsEntry) bool {
-	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
-			return false
-		}
-		if value.KeyLength > 0 {
-			w.Put(5, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 128 {
-				return false
-			}
-			w.Put(uint64(value.KeyLength), 8)
-			w.Raw(value.Key[:value.KeyLength])
-		}
-	}
-	{
-		if value.Value != 0 {
-			w.Put(9, TableMessageRefBitsHere)
-			if value.Value == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Value)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func PrimaryRowFieldsEntryLoadMessageBody(r *TableMessageReader, value *PrimaryRowFieldsEntry) bool {
-	PrimaryRowFieldsEntryReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Value, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func PrimaryRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *PrimaryRow) bool {
-	PrimaryRowReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x08b72e07b55c3ac0:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(515)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Id[:])
-					copy(value.Id[:], text[:kept])
-					value.IdLength = int32(kept)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x4f6a36d8e8907985:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Stream[:])
-					copy(value.Stream[:], text[:kept])
-					value.StreamLength = int32(kept)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x5f531287628bf287:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Column, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xee63aaad45b1b116:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.State, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xc10e63fbe7f624f5:
-			{
-				widened := false
-				if entry.Shape.Kind != 11 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 11) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload6 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload6.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						var v float64
-						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload6.Get32()))
-						} else {
-							v = math.Float64frombits(payload6.Get64())
-						}
-						value.Score = v
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x490e596d24847edc:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &PrimaryRowTableFields[5]
-					holder := (*tableContainer)(unsafe.Pointer(&value.Fields))
-					r.Retain.discard(r.Path, true, 5)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *PrimaryRowFieldsEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(r.tableMessagePlainReader, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*PrimaryRowFieldsEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						{
-							payload7 := r.Path
-							r.Path = r.Path.step(5, uint32(holder.Count-1))
-							if !PrimaryRowFieldsEntryLoadMessageBodyRetain(r, p) {
-								return false
-							}
-							r.Path = payload7
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x040a2f1d0213e01b:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.TierShown, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func PrimaryRowSaveMessageBody(w *TableMessageWriter, value *PrimaryRow) bool {
-	{
-		if value.IdLength < 0 || value.IdLength > 515 {
-			return false
-		}
-		if value.IdLength > 0 {
-			w.Put(38, TableMessageRefBitsHere)
-			if value.IdLength < 0 || value.IdLength > 515 {
-				return false
-			}
-			w.Put(uint64(value.IdLength), 10)
-			w.Raw(value.Id[:value.IdLength])
-		}
-	}
-	{
-		if value.StreamLength < 0 || value.StreamLength > 128 {
-			return false
-		}
-		if value.StreamLength > 0 {
-			w.Put(43, TableMessageRefBitsHere)
-			if value.StreamLength < 0 || value.StreamLength > 128 {
-				return false
-			}
-			w.Put(uint64(value.StreamLength), 8)
-			w.Raw(value.Stream[:value.StreamLength])
-		}
-	}
-	{
-		if value.Column != 0 {
-			w.Put(129, TableMessageRefBitsHere)
-			if value.Column == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Column)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.State != 0 {
-			w.Put(40, TableMessageRefBitsHere)
-			if value.State == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.State)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Score != 0.0 {
-			w.Put(130, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.Score), uint64(0))
-		}
-	}
-	{
-		if value.Fields.Count < 0 {
-			return false
-		}
-		if value.Fields.Count > 0 {
-			w.Put(131, TableMessageRefBitsHere)
-			if value.Fields.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Fields.Count), 32)
-			field := &PrimaryRowTableFields[5]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Fields)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Fields.Count; i++ {
-				p := (*PrimaryRowFieldsEntryRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !PrimaryRowFieldsEntrySaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.TierShown != 0 {
-			w.Put(132, TableMessageRefBitsHere)
-			if value.TierShown == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.TierShown)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func PrimaryRowLoadMessageBody(r *TableMessageReader, value *PrimaryRow) bool {
-	PrimaryRowReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x08b72e07b55c3ac0:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(515)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Id[:])
-					copy(value.Id[:], text[:kept])
-					value.IdLength = int32(kept)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x4f6a36d8e8907985:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Stream[:])
-					copy(value.Stream[:], text[:kept])
-					value.StreamLength = int32(kept)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x5f531287628bf287:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Column, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xee63aaad45b1b116:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.State, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xc10e63fbe7f624f5:
-			{
-				widened := false
-				if entry.Shape.Kind != 11 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 11) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload120 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload120.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						var v float64
-						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload120.Get32()))
-						} else {
-							v = math.Float64frombits(payload120.Get64())
-						}
-						value.Score = v
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x490e596d24847edc:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &PrimaryRowTableFields[5]
-					holder := (*tableContainer)(unsafe.Pointer(&value.Fields))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *PrimaryRowFieldsEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(*r, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*PrimaryRowFieldsEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						if !PrimaryRowFieldsEntryLoadMessageBody(r, p) {
-							return false
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x040a2f1d0213e01b:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.TierShown, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -19542,7 +14166,7 @@ func ArchivedViewSaveMessageBody(w *TableMessageWriter, value *ArchivedView) boo
 			return false
 		}
 		if value.Streams.Count > 0 {
-			w.Put(17, TableMessageRefBitsHere)
+			w.Put(15, TableMessageRefBitsHere)
 			if value.Streams.Count < 0 {
 				return false
 			}
@@ -19566,19 +14190,19 @@ func ArchivedViewSaveMessageBody(w *TableMessageWriter, value *ArchivedView) boo
 	}
 	{
 		if value.Cards != 0 {
-			w.Put(18, TableMessageRefBitsHere)
+			w.Put(16, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Cards), uint64(0))
 		}
 	}
 	{
 		if value.Landed != 0 {
-			w.Put(19, TableMessageRefBitsHere)
+			w.Put(17, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Landed), uint64(0))
 		}
 	}
 	{
 		if value.Cost != 0 {
-			w.Put(20, TableMessageRefBitsHere)
+			w.Put(18, TableMessageRefBitsHere)
 			if value.Cost == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -19680,13 +14304,13 @@ func ArchivedViewLoadMessageBody(r *TableMessageReader, value *ArchivedView) boo
 						r.Report.Malformed = true
 						return false
 					}
-					payload124 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload124.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload111 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload111.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload124.Signed(entry.Shape.Kind)
+						v := payload111.Signed(entry.Shape.Kind)
 						value.Cards = int64(v)
 					}
 				}
@@ -19715,13 +14339,13 @@ func ArchivedViewLoadMessageBody(r *TableMessageReader, value *ArchivedView) boo
 						r.Report.Malformed = true
 						return false
 					}
-					payload125 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload125.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload112 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload112.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload125.Signed(entry.Shape.Kind)
+						v := payload112.Signed(entry.Shape.Kind)
 						value.Landed = int64(v)
 					}
 				}
@@ -19970,13 +14594,13 @@ func StatsResetViewStreamsEntryLoadMessageBody(r *TableMessageReader, value *Sta
 						r.Report.Malformed = true
 						return false
 					}
-					payload126 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload126.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload113 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload113.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload126.Signed(entry.Shape.Kind)
+						v := payload113.Signed(entry.Shape.Kind)
 						value.Value = int64(v)
 					}
 				}
@@ -20245,13 +14869,13 @@ func StatsResetViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *Sta
 func StatsResetViewSaveMessageBody(w *TableMessageWriter, value *StatsResetView) bool {
 	{
 		if value.At != 0 {
-			w.Put(155, TableMessageRefBitsHere)
+			w.Put(152, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.At), uint64(0))
 		}
 	}
 	{
 		if value.By != 0 {
-			w.Put(96, TableMessageRefBitsHere)
+			w.Put(93, TableMessageRefBitsHere)
 			if value.By == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -20265,7 +14889,7 @@ func StatsResetViewSaveMessageBody(w *TableMessageWriter, value *StatsResetView)
 	}
 	{
 		if value.Reason != 0 {
-			w.Put(65, TableMessageRefBitsHere)
+			w.Put(63, TableMessageRefBitsHere)
 			if value.Reason == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -20279,7 +14903,7 @@ func StatsResetViewSaveMessageBody(w *TableMessageWriter, value *StatsResetView)
 	}
 	{
 		if value.Landed != 0 {
-			w.Put(19, TableMessageRefBitsHere)
+			w.Put(17, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Landed), uint64(0))
 		}
 	}
@@ -20288,7 +14912,7 @@ func StatsResetViewSaveMessageBody(w *TableMessageWriter, value *StatsResetView)
 			return false
 		}
 		if value.Streams.Count > 0 {
-			w.Put(175, TableMessageRefBitsHere)
+			w.Put(172, TableMessageRefBitsHere)
 			if value.Streams.Count < 0 {
 				return false
 			}
@@ -20351,13 +14975,13 @@ func StatsResetViewLoadMessageBody(r *TableMessageReader, value *StatsResetView)
 						r.Report.Malformed = true
 						return false
 					}
-					payload130 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload130.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload117 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload117.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload130.Signed(entry.Shape.Kind)
+						v := payload117.Signed(entry.Shape.Kind)
 						value.At = int64(v)
 					}
 				}
@@ -20440,13 +15064,13 @@ func StatsResetViewLoadMessageBody(r *TableMessageReader, value *StatsResetView)
 						r.Report.Malformed = true
 						return false
 					}
-					payload131 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload131.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload118 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload118.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload131.Signed(entry.Shape.Kind)
+						v := payload118.Signed(entry.Shape.Kind)
 						value.Landed = int64(v)
 					}
 				}
@@ -20690,19 +15314,19 @@ func ReadsWindowLoadMessageBodyRetain(r *TableRetainMessageReader, value *ReadsW
 func ReadsWindowSaveMessageBody(w *TableMessageWriter, value *ReadsWindow) bool {
 	{
 		if value.Ok != 0 {
-			w.Put(74, TableMessageRefBitsHere)
+			w.Put(72, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Ok), uint64(0))
 		}
 	}
 	{
 		if value.Broken != 0 {
-			w.Put(151, TableMessageRefBitsHere)
+			w.Put(148, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Broken), uint64(0))
 		}
 	}
 	{
 		if value.Since != 0 {
-			w.Put(45, TableMessageRefBitsHere)
+			w.Put(43, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Since), uint64(0))
 		}
 	}
@@ -20747,13 +15371,13 @@ func ReadsWindowLoadMessageBody(r *TableMessageReader, value *ReadsWindow) bool 
 						r.Report.Malformed = true
 						return false
 					}
-					payload132 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload132.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload119 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload119.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload132.Signed(entry.Shape.Kind)
+						v := payload119.Signed(entry.Shape.Kind)
 						value.Ok = int64(v)
 					}
 				}
@@ -20782,13 +15406,13 @@ func ReadsWindowLoadMessageBody(r *TableMessageReader, value *ReadsWindow) bool 
 						r.Report.Malformed = true
 						return false
 					}
-					payload133 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload133.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload120 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload120.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload133.Signed(entry.Shape.Kind)
+						v := payload120.Signed(entry.Shape.Kind)
 						value.Broken = int64(v)
 					}
 				}
@@ -20817,13 +15441,13 @@ func ReadsWindowLoadMessageBody(r *TableMessageReader, value *ReadsWindow) bool 
 						r.Report.Malformed = true
 						return false
 					}
-					payload134 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload134.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload121 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload121.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload134.Signed(entry.Shape.Kind)
+						v := payload121.Signed(entry.Shape.Kind)
 						value.Since = int64(v)
 					}
 				}
@@ -20975,19 +15599,19 @@ func ReadCardCountsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Rea
 func ReadCardCountsSaveMessageBody(w *TableMessageWriter, value *ReadCardCounts) bool {
 	{
 		if value.Ready != 0 {
-			w.Put(70, TableMessageRefBitsHere)
+			w.Put(68, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Ready), uint64(0))
 		}
 	}
 	{
 		if value.Working != 0 {
-			w.Put(57, TableMessageRefBitsHere)
+			w.Put(55, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Working), uint64(0))
 		}
 	}
 	{
 		if value.Done != 0 {
-			w.Put(145, TableMessageRefBitsHere)
+			w.Put(142, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Done), uint64(0))
 		}
 	}
@@ -21032,13 +15656,13 @@ func ReadCardCountsLoadMessageBody(r *TableMessageReader, value *ReadCardCounts)
 						r.Report.Malformed = true
 						return false
 					}
-					payload135 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload135.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload122 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload122.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload135.Signed(entry.Shape.Kind)
+						v := payload122.Signed(entry.Shape.Kind)
 						value.Ready = int64(v)
 					}
 				}
@@ -21067,13 +15691,13 @@ func ReadCardCountsLoadMessageBody(r *TableMessageReader, value *ReadCardCounts)
 						r.Report.Malformed = true
 						return false
 					}
-					payload136 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload136.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload123 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload123.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload136.Signed(entry.Shape.Kind)
+						v := payload123.Signed(entry.Shape.Kind)
 						value.Working = int64(v)
 					}
 				}
@@ -21102,13 +15726,13 @@ func ReadCardCountsLoadMessageBody(r *TableMessageReader, value *ReadCardCounts)
 						r.Report.Malformed = true
 						return false
 					}
-					payload137 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload137.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload124 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload124.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload137.Signed(entry.Shape.Kind)
+						v := payload124.Signed(entry.Shape.Kind)
 						value.Done = int64(v)
 					}
 				}
@@ -21492,33 +16116,33 @@ func MergeRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *MergeRow)
 func MergeRowSaveMessageBody(w *TableMessageWriter, value *MergeRow) bool {
 	{
 		if value.Merging != 0 {
-			w.Put(116, TableMessageRefBitsHere)
+			w.Put(113, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Merging), uint64(0))
 		}
 	}
 	{
 		if value.Review != 0 {
-			w.Put(117, TableMessageRefBitsHere)
+			w.Put(114, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Review), uint64(0))
 		}
 	}
 	{
 		if value.LandedPer30m != 0 {
-			w.Put(118, TableMessageRefBitsHere)
+			w.Put(115, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.LandedPer30m), uint64(0))
 		}
 	}
 	{
 		if value.OldestMergingMinPresent {
 			if true {
-				w.Put(119, TableMessageRefBitsHere)
+				w.Put(116, TableMessageRefBitsHere)
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.OldestMergingMin), uint64(0))
 			}
 		}
 	}
 	{
 		if value.BaseGate != 0 {
-			w.Put(120, TableMessageRefBitsHere)
+			w.Put(117, TableMessageRefBitsHere)
 			if value.BaseGate == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -21532,7 +16156,7 @@ func MergeRowSaveMessageBody(w *TableMessageWriter, value *MergeRow) bool {
 	}
 	{
 		if value.FailingTest != 0 {
-			w.Put(121, TableMessageRefBitsHere)
+			w.Put(118, TableMessageRefBitsHere)
 			if value.FailingTest == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -21546,20 +16170,20 @@ func MergeRowSaveMessageBody(w *TableMessageWriter, value *MergeRow) bool {
 	}
 	{
 		if value.BaseLacks != 0 {
-			w.Put(122, TableMessageRefBitsHere)
+			w.Put(119, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.BaseLacks), uint64(0))
 		}
 	}
 	{
 		if value.DevLacks != 0 {
-			w.Put(123, TableMessageRefBitsHere)
+			w.Put(120, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.DevLacks), uint64(0))
 		}
 	}
 	{
 		if value.SyncMinutesPresent {
 			if true {
-				w.Put(124, TableMessageRefBitsHere)
+				w.Put(121, TableMessageRefBitsHere)
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.SyncMinutes), uint64(0))
 			}
 		}
@@ -21567,7 +16191,7 @@ func MergeRowSaveMessageBody(w *TableMessageWriter, value *MergeRow) bool {
 	{
 		if value.PromotionMinutesPresent {
 			if true {
-				w.Put(125, TableMessageRefBitsHere)
+				w.Put(122, TableMessageRefBitsHere)
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.PromotionMinutes), uint64(0))
 			}
 		}
@@ -21613,13 +16237,13 @@ func MergeRowLoadMessageBody(r *TableMessageReader, value *MergeRow) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload138 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload138.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload125 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload125.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload138.Signed(entry.Shape.Kind)
+						v := payload125.Signed(entry.Shape.Kind)
 						value.Merging = int64(v)
 					}
 				}
@@ -21648,13 +16272,13 @@ func MergeRowLoadMessageBody(r *TableMessageReader, value *MergeRow) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload139 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload139.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload126 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload126.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload139.Signed(entry.Shape.Kind)
+						v := payload126.Signed(entry.Shape.Kind)
 						value.Review = int64(v)
 					}
 				}
@@ -21683,13 +16307,13 @@ func MergeRowLoadMessageBody(r *TableMessageReader, value *MergeRow) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload140 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload140.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload127 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload127.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload140.Signed(entry.Shape.Kind)
+						v := payload127.Signed(entry.Shape.Kind)
 						value.LandedPer30m = int64(v)
 					}
 				}
@@ -21718,13 +16342,13 @@ func MergeRowLoadMessageBody(r *TableMessageReader, value *MergeRow) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload141 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload141.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload128 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload128.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload141.Signed(entry.Shape.Kind)
+						v := payload128.Signed(entry.Shape.Kind)
 						value.OldestMergingMin = int64(v)
 					}
 				}
@@ -21808,13 +16432,13 @@ func MergeRowLoadMessageBody(r *TableMessageReader, value *MergeRow) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload142 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload142.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload129 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload129.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload142.Signed(entry.Shape.Kind)
+						v := payload129.Signed(entry.Shape.Kind)
 						value.BaseLacks = int64(v)
 					}
 				}
@@ -21843,13 +16467,13 @@ func MergeRowLoadMessageBody(r *TableMessageReader, value *MergeRow) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload143 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload143.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload130 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload130.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload143.Signed(entry.Shape.Kind)
+						v := payload130.Signed(entry.Shape.Kind)
 						value.DevLacks = int64(v)
 					}
 				}
@@ -21878,13 +16502,13 @@ func MergeRowLoadMessageBody(r *TableMessageReader, value *MergeRow) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload144 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload144.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload131 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload131.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload144.Signed(entry.Shape.Kind)
+						v := payload131.Signed(entry.Shape.Kind)
 						value.SyncMinutes = int64(v)
 					}
 				}
@@ -21914,3148 +16538,17 @@ func MergeRowLoadMessageBody(r *TableMessageReader, value *MergeRow) bool {
 						r.Report.Malformed = true
 						return false
 					}
-					payload145 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload145.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload132 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload132.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload145.Signed(entry.Shape.Kind)
+						v := payload132.Signed(entry.Shape.Kind)
 						value.PromotionMinutes = int64(v)
 					}
 				}
 				value.PromotionMinutesPresent = true
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func FriendReportRunningTextLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendReportRunningText) bool {
-	FriendReportRunningTextReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(65536)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Value[:])
-					copy(value.Value[:], text[:kept])
-					value.ValueLength = int32(kept)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func FriendReportRunningTextSaveMessageBody(w *TableMessageWriter, value *FriendReportRunningText) bool {
-	{
-		if value.ValueLength < 0 || value.ValueLength > 65536 {
-			return false
-		}
-		if value.ValueLength > 0 {
-			w.Put(1, TableMessageRefBitsHere)
-			if value.ValueLength < 0 || value.ValueLength > 65536 {
-				return false
-			}
-			w.Put(uint64(value.ValueLength), 17)
-			w.Raw(value.Value[:value.ValueLength])
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func FriendReportRunningTextLoadMessageBody(r *TableMessageReader, value *FriendReportRunningText) bool {
-	FriendReportRunningTextReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(65536)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Value[:])
-					copy(value.Value[:], text[:kept])
-					value.ValueLength = int32(kept)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func FriendReportLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendReport) bool {
-	FriendReportReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x60147fb4fa4a8e0c:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 12 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Running))
-					r.Retain.discard(r.Path, true, 0)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 65544, 4) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*FriendReportRunningTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 65544))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload4 := r.Path
-							r.Path = r.Path.step(0, uint32(i))
-							if !FriendReportRunningTextLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload4
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x08879e024cb91288:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload5 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload5.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload5.Signed(entry.Shape.Kind)
-						value.Working = int64(v)
-					}
-				}
-				value.WorkingPresent = true
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xb11e8b146c5a21d8:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload6 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload6.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload6.Signed(entry.Shape.Kind)
-						value.Queue = int64(v)
-					}
-				}
-				value.QueuePresent = true
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xdbdacd932fd1e9bf:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload7 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload7.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload7.Signed(entry.Shape.Kind)
-						value.Width = int64(v)
-					}
-				}
-				value.WidthPresent = true
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xea14e391abc0c981:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload8 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload8.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload8.Signed(entry.Shape.Kind)
-						value.StopReturns = int64(v)
-					}
-				}
-				value.StopReturnsPresent = true
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x6580790b036f0c6f:
-			{
-				widened := false
-				if entry.Shape.Kind != 36 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload9 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload9.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload9.Signed(entry.Shape.Kind)
-						value.Active = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x8a2a33a758314d6a:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload10 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload10.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload10.Signed(entry.Shape.Kind)
-						value.Paced = int64(v)
-					}
-				}
-				value.PacedPresent = true
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x71f304ea62c01cbd:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Window, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x1fcc8b4e81fbac2f:
-			{
-				widened := false
-				if entry.Shape.Kind != 36 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload11 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload11.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload11.Signed(entry.Shape.Kind)
-						value.Until = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x65e8d7f3474f2639:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Reason, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x802517e298c70b03:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Build, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xc732f2e2fbe9f15e:
-			{
-				widened := false
-				if entry.Shape.Kind != 36 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload12 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload12.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload12.Signed(entry.Shape.Kind)
-						value.Started = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x6f3f2303c0258eac:
-			{
-				widened := false
-				if entry.Shape.Kind != 36 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload13 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload13.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload13.Signed(entry.Shape.Kind)
-						value.Present = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func FriendReportSaveMessageBody(w *TableMessageWriter, value *FriendReport) bool {
-	{
-		if value.Running.Count < 0 {
-			return false
-		}
-		if value.Running.Count > 0 {
-			w.Put(56, TableMessageRefBitsHere)
-			if value.Running.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Running.Count), 32)
-			field := &FriendReportTableFields[0]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Running)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Running.Count; i++ {
-				p := (*FriendReportRunningTextRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !FriendReportRunningTextSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.WorkingPresent {
-			if true {
-				w.Put(57, TableMessageRefBitsHere)
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Working), uint64(0))
-			}
-		}
-	}
-	{
-		if value.QueuePresent {
-			if true {
-				w.Put(58, TableMessageRefBitsHere)
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Queue), uint64(0))
-			}
-		}
-	}
-	{
-		if value.WidthPresent {
-			if true {
-				w.Put(59, TableMessageRefBitsHere)
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Width), uint64(0))
-			}
-		}
-	}
-	{
-		if value.StopReturnsPresent {
-			if true {
-				w.Put(60, TableMessageRefBitsHere)
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.StopReturns), uint64(0))
-			}
-		}
-	}
-	{
-		if value.Active != 0 {
-			w.Put(61, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Active), uint64(0))
-		}
-	}
-	{
-		if value.PacedPresent {
-			if true {
-				w.Put(62, TableMessageRefBitsHere)
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Paced), uint64(0))
-			}
-		}
-	}
-	{
-		if value.Window != 0 {
-			w.Put(63, TableMessageRefBitsHere)
-			if value.Window == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Window)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Until != 0 {
-			w.Put(64, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Until), uint64(0))
-		}
-	}
-	{
-		if value.Reason != 0 {
-			w.Put(65, TableMessageRefBitsHere)
-			if value.Reason == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Reason)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Build != 0 {
-			w.Put(66, TableMessageRefBitsHere)
-			if value.Build == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Build)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Started != 0 {
-			w.Put(67, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Started), uint64(0))
-		}
-	}
-	{
-		if value.Present != 0 {
-			w.Put(68, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Present), uint64(0))
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func FriendReportLoadMessageBody(r *TableMessageReader, value *FriendReport) bool {
-	FriendReportReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x60147fb4fa4a8e0c:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 12 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Running))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 65544, 4) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*FriendReportRunningTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 65544))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !FriendReportRunningTextLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x08879e024cb91288:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload149 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload149.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload149.Signed(entry.Shape.Kind)
-						value.Working = int64(v)
-					}
-				}
-				value.WorkingPresent = true
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xb11e8b146c5a21d8:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload150 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload150.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload150.Signed(entry.Shape.Kind)
-						value.Queue = int64(v)
-					}
-				}
-				value.QueuePresent = true
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xdbdacd932fd1e9bf:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload151 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload151.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload151.Signed(entry.Shape.Kind)
-						value.Width = int64(v)
-					}
-				}
-				value.WidthPresent = true
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xea14e391abc0c981:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload152 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload152.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload152.Signed(entry.Shape.Kind)
-						value.StopReturns = int64(v)
-					}
-				}
-				value.StopReturnsPresent = true
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x6580790b036f0c6f:
-			{
-				widened := false
-				if entry.Shape.Kind != 36 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload153 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload153.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload153.Signed(entry.Shape.Kind)
-						value.Active = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x8a2a33a758314d6a:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload154 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload154.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload154.Signed(entry.Shape.Kind)
-						value.Paced = int64(v)
-					}
-				}
-				value.PacedPresent = true
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x71f304ea62c01cbd:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Window, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x1fcc8b4e81fbac2f:
-			{
-				widened := false
-				if entry.Shape.Kind != 36 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload155 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload155.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload155.Signed(entry.Shape.Kind)
-						value.Until = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x65e8d7f3474f2639:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Reason, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x802517e298c70b03:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Build, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xc732f2e2fbe9f15e:
-			{
-				widened := false
-				if entry.Shape.Kind != 36 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload156 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload156.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload156.Signed(entry.Shape.Kind)
-						value.Started = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x6f3f2303c0258eac:
-			{
-				widened := false
-				if entry.Shape.Kind != 36 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload157 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload157.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload157.Signed(entry.Shape.Kind)
-						value.Present = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func FriendRowLoadMessageBodyRetain(r *TableRetainMessageReader, value *FriendRow) bool {
-	FriendRowReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0xc4bcadba8e631b86:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Name, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x8935baf305f374b4:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload1 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload1.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload1.Signed(entry.Shape.Kind)
-						value.Ready = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x08879e024cb91288:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload2 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload2.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload2.Signed(entry.Shape.Kind)
-						value.Working = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x0a9904cc5fa248be:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload3 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload3.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload3.Signed(entry.Shape.Kind)
-						value.Held = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xee7f9aad45ca109e:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload4 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload4.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload4.Signed(entry.Shape.Kind)
-						value.Stale = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xc622641fb86276a6:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload5 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload5.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload5.Signed(entry.Shape.Kind)
-						value.DealtFleet = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xdbdacd932fd1e9bf:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload6 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload6.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload6.Signed(entry.Shape.Kind)
-						value.Width = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x08b05d07b5566bef:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload7 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload7.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload7.Signed(entry.Shape.Kind)
-						value.Ok = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xd7338946b42394f4:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload8 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload8.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload8.Signed(entry.Shape.Kind)
-						value.Failed = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x689b045e641856f6:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload9 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload9.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload9.Signed(entry.Shape.Kind)
-						value.Redealt = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xc4d5696d6cc12c2f:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Status, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xdba1b249f09a7d76:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.FriendClass, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x0d3deba2c41dadb2:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Mode, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x3ca2c49553a457d7:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Session, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x584d04462430003e:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Roles, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x63e493431a37822e:
-			{
-				widened := false
-				if entry.Shape.Kind != 11 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 11) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload10 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload10.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						var v float64
-						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload10.Get32()))
-						} else {
-							v = math.Float64frombits(payload10.Get64())
-						}
-						value.LoadAvg = v
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xadae49645df2840b:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Report, index, 0xcccd7b8be68a49a3, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x6580790b036f0c6f:
-			{
-				widened := false
-				if entry.Shape.Kind != 36 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload11 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload11.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload11.Signed(entry.Shape.Kind)
-						value.Active = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x93fab8f021712b13:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload12 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload12.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload12.Signed(entry.Shape.Kind)
-						value.Tokens = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xef8897783be7abef:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Charged, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x4005570295afd25c:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Billing, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x75e7429b95100805:
-			{
-				widened := false
-				if entry.Shape.Kind != 36 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload13 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload13.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload13.Signed(entry.Shape.Kind)
-						value.Beat = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xae70fc8f5906c564:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Evidence, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x65e8d7f3474f2639:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Reason, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x1fcc8b4e81fbac2f:
-			{
-				widened := false
-				if entry.Shape.Kind != 36 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload14 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload14.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload14.Signed(entry.Shape.Kind)
-						value.Until = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func FriendRowSaveMessageBody(w *TableMessageWriter, value *FriendRow) bool {
-	{
-		if value.Name != 0 {
-			w.Put(69, TableMessageRefBitsHere)
-			if value.Name == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Name)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Ready != 0 {
-			w.Put(70, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Ready), uint64(0))
-		}
-	}
-	{
-		if value.Working != 0 {
-			w.Put(57, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Working), uint64(0))
-		}
-	}
-	{
-		if value.Held != 0 {
-			w.Put(71, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Held), uint64(0))
-		}
-	}
-	{
-		if value.Stale != 0 {
-			w.Put(72, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Stale), uint64(0))
-		}
-	}
-	{
-		if value.DealtFleet != 0 {
-			w.Put(73, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.DealtFleet), uint64(0))
-		}
-	}
-	{
-		if value.Width != 0 {
-			w.Put(59, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Width), uint64(0))
-		}
-	}
-	{
-		if value.Ok != 0 {
-			w.Put(74, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Ok), uint64(0))
-		}
-	}
-	{
-		if value.Failed != 0 {
-			w.Put(75, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Failed), uint64(0))
-		}
-	}
-	{
-		if value.Redealt != 0 {
-			w.Put(76, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Redealt), uint64(0))
-		}
-	}
-	{
-		if value.Status != 0 {
-			w.Put(77, TableMessageRefBitsHere)
-			if value.Status == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Status)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.FriendClass != 0 {
-			w.Put(78, TableMessageRefBitsHere)
-			if value.FriendClass == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.FriendClass)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Mode != 0 {
-			w.Put(79, TableMessageRefBitsHere)
-			if value.Mode == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Mode)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Session != 0 {
-			w.Put(80, TableMessageRefBitsHere)
-			if value.Session == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Session)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Roles != 0 {
-			w.Put(81, TableMessageRefBitsHere)
-			if value.Roles == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Roles)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.LoadAvg != 0.0 {
-			w.Put(82, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.LoadAvg), uint64(0))
-		}
-	}
-	{
-		if value.Report != 0 {
-			w.Put(83, TableMessageRefBitsHere)
-			if value.Report == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Report)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Active != 0 {
-			w.Put(61, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Active), uint64(0))
-		}
-	}
-	{
-		if value.Tokens != 0 {
-			w.Put(84, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Tokens), uint64(0))
-		}
-	}
-	{
-		if value.Charged != 0 {
-			w.Put(85, TableMessageRefBitsHere)
-			if value.Charged == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Charged)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Billing != 0 {
-			w.Put(86, TableMessageRefBitsHere)
-			if value.Billing == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Billing)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Beat != 0 {
-			w.Put(87, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Beat), uint64(0))
-		}
-	}
-	{
-		if value.Evidence != 0 {
-			w.Put(88, TableMessageRefBitsHere)
-			if value.Evidence == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Evidence)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Reason != 0 {
-			w.Put(65, TableMessageRefBitsHere)
-			if value.Reason == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Reason)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Until != 0 {
-			w.Put(64, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Until), uint64(0))
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func FriendRowLoadMessageBody(r *TableMessageReader, value *FriendRow) bool {
-	FriendRowReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0xc4bcadba8e631b86:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Name, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x8935baf305f374b4:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload158 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload158.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload158.Signed(entry.Shape.Kind)
-						value.Ready = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x08879e024cb91288:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload159 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload159.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload159.Signed(entry.Shape.Kind)
-						value.Working = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x0a9904cc5fa248be:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload160 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload160.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload160.Signed(entry.Shape.Kind)
-						value.Held = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xee7f9aad45ca109e:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload161 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload161.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload161.Signed(entry.Shape.Kind)
-						value.Stale = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xc622641fb86276a6:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload162 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload162.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload162.Signed(entry.Shape.Kind)
-						value.DealtFleet = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xdbdacd932fd1e9bf:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload163 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload163.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload163.Signed(entry.Shape.Kind)
-						value.Width = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x08b05d07b5566bef:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload164 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload164.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload164.Signed(entry.Shape.Kind)
-						value.Ok = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xd7338946b42394f4:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload165 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload165.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload165.Signed(entry.Shape.Kind)
-						value.Failed = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x689b045e641856f6:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload166 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload166.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload166.Signed(entry.Shape.Kind)
-						value.Redealt = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xc4d5696d6cc12c2f:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Status, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xdba1b249f09a7d76:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.FriendClass, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x0d3deba2c41dadb2:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Mode, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x3ca2c49553a457d7:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Session, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x584d04462430003e:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Roles, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x63e493431a37822e:
-			{
-				widened := false
-				if entry.Shape.Kind != 11 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 11) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload167 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload167.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						var v float64
-						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload167.Get32()))
-						} else {
-							v = math.Float64frombits(payload167.Get64())
-						}
-						value.LoadAvg = v
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xadae49645df2840b:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Report, index, 0xcccd7b8be68a49a3, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x6580790b036f0c6f:
-			{
-				widened := false
-				if entry.Shape.Kind != 36 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload168 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload168.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload168.Signed(entry.Shape.Kind)
-						value.Active = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x93fab8f021712b13:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload169 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload169.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload169.Signed(entry.Shape.Kind)
-						value.Tokens = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xef8897783be7abef:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Charged, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x4005570295afd25c:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Billing, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x75e7429b95100805:
-			{
-				widened := false
-				if entry.Shape.Kind != 36 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload170 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload170.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload170.Signed(entry.Shape.Kind)
-						value.Beat = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xae70fc8f5906c564:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Evidence, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x65e8d7f3474f2639:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Reason, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x1fcc8b4e81fbac2f:
-			{
-				widened := false
-				if entry.Shape.Kind != 36 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload171 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload171.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload171.Signed(entry.Shape.Kind)
-						value.Until = int64(v)
-					}
-				}
 				if widened {
 					r.Report.Widened++
 				}
@@ -25204,19 +16697,19 @@ func SeriesTotalsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Serie
 func SeriesTotalsSaveMessageBody(w *TableMessageWriter, value *SeriesTotals) bool {
 	{
 		if value.Friends != 0 {
-			w.Put(165, TableMessageRefBitsHere)
+			w.Put(162, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Friends), uint64(0))
 		}
 	}
 	{
 		if value.Fleet != 0 {
-			w.Put(166, TableMessageRefBitsHere)
+			w.Put(163, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Fleet), uint64(0))
 		}
 	}
 	{
 		if value.Unknown != 0 {
-			w.Put(167, TableMessageRefBitsHere)
+			w.Put(164, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Unknown), uint64(0))
 		}
 	}
@@ -25261,13 +16754,13 @@ func SeriesTotalsLoadMessageBody(r *TableMessageReader, value *SeriesTotals) boo
 						r.Report.Malformed = true
 						return false
 					}
-					payload172 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload172.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload136 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload136.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload172.Signed(entry.Shape.Kind)
+						v := payload136.Signed(entry.Shape.Kind)
 						value.Friends = int64(v)
 					}
 				}
@@ -25296,13 +16789,13 @@ func SeriesTotalsLoadMessageBody(r *TableMessageReader, value *SeriesTotals) boo
 						r.Report.Malformed = true
 						return false
 					}
-					payload173 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload173.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload137 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload137.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload173.Signed(entry.Shape.Kind)
+						v := payload137.Signed(entry.Shape.Kind)
 						value.Fleet = int64(v)
 					}
 				}
@@ -25331,13 +16824,13 @@ func SeriesTotalsLoadMessageBody(r *TableMessageReader, value *SeriesTotals) boo
 						r.Report.Malformed = true
 						return false
 					}
-					payload174 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload174.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload138 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload138.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload174.Signed(entry.Shape.Kind)
+						v := payload138.Signed(entry.Shape.Kind)
 						value.Unknown = int64(v)
 					}
 				}
@@ -25454,13 +16947,13 @@ func SeriesLastHourLoadMessageBodyRetain(r *TableRetainMessageReader, value *Ser
 func SeriesLastHourSaveMessageBody(w *TableMessageWriter, value *SeriesLastHour) bool {
 	{
 		if value.Friends != 0 {
-			w.Put(165, TableMessageRefBitsHere)
+			w.Put(162, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Friends), uint64(0))
 		}
 	}
 	{
 		if value.Fleet != 0 {
-			w.Put(166, TableMessageRefBitsHere)
+			w.Put(163, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Fleet), uint64(0))
 		}
 	}
@@ -25505,13 +16998,13 @@ func SeriesLastHourLoadMessageBody(r *TableMessageReader, value *SeriesLastHour)
 						r.Report.Malformed = true
 						return false
 					}
-					payload175 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload175.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload139 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload139.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload175.Signed(entry.Shape.Kind)
+						v := payload139.Signed(entry.Shape.Kind)
 						value.Friends = int64(v)
 					}
 				}
@@ -25540,2716 +17033,15 @@ func SeriesLastHourLoadMessageBody(r *TableMessageReader, value *SeriesLastHour)
 						r.Report.Malformed = true
 						return false
 					}
-					payload176 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload176.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload140 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload140.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload176.Signed(entry.Shape.Kind)
+						v := payload140.Signed(entry.Shape.Kind)
 						value.Fleet = int64(v)
 					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func LandedSeriesWorkersEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *LandedSeriesWorkersEntry) bool {
-	LandedSeriesWorkersEntryReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload1 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload1.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload1.Signed(entry.Shape.Kind)
-						value.Value = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func LandedSeriesWorkersEntrySaveMessageBody(w *TableMessageWriter, value *LandedSeriesWorkersEntry) bool {
-	{
-		if value.KeyLength < 0 || value.KeyLength > 135 {
-			return false
-		}
-		if value.KeyLength > 0 {
-			w.Put(15, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 135 {
-				return false
-			}
-			w.Put(uint64(value.KeyLength), 8)
-			w.Raw(value.Key[:value.KeyLength])
-		}
-	}
-	{
-		if value.Value != 0 {
-			w.Put(7, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Value), uint64(0))
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func LandedSeriesWorkersEntryLoadMessageBody(r *TableMessageReader, value *LandedSeriesWorkersEntry) bool {
-	LandedSeriesWorkersEntryReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(135)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload177 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload177.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload177.Signed(entry.Shape.Kind)
-						value.Value = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func LandedSeriesLoadMessageBodyRetain(r *TableRetainMessageReader, value *LandedSeries) bool {
-	LandedSeriesReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0xe062a9743d7b3b62:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Generated, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x78c6c53f71b4665c:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload16 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload16.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload16.Signed(entry.Shape.Kind)
-						value.GeneratedEpoch = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x6777b21b07cb9b85:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload17 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload17.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload17.Signed(entry.Shape.Kind)
-						value.BucketSeconds = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xee5d97ad45ad251f:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload18 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload18.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload18.Signed(entry.Shape.Kind)
-						value.Start = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x8e6f0f4c374d336c:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload19 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload19.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload19.Signed(entry.Shape.Kind)
-						value.Buckets = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x82a6b14733b2685a:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 5 {
-					if entry.Shape.Kind == 14 && tableKindWidens(entry.Element.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Friends))
-					r.Retain.discard(r.Path, true, 5)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 8, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*int64)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 8))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							var raw [16]byte
-							if !tableMessageReadScalar(&r.Bits, element.Shape, &raw) {
-								r.Report.Malformed = true
-								return false
-							}
-							payload20 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-							if !payload20.Has(tableKindBytes(element.Shape.Kind)) {
-								r.Report.Malformed = true
-								return false
-							}
-							{
-								v := payload20.Signed(element.Shape.Kind)
-								(*p) = int64(v)
-							}
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xf775f8a97470ae4f:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 5 {
-					if entry.Shape.Kind == 14 && tableKindWidens(entry.Element.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Fleet))
-					r.Retain.discard(r.Path, true, 6)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 8, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*int64)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 8))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							var raw [16]byte
-							if !tableMessageReadScalar(&r.Bits, element.Shape, &raw) {
-								r.Report.Malformed = true
-								return false
-							}
-							payload21 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-							if !payload21.Has(tableKindBytes(element.Shape.Kind)) {
-								r.Report.Malformed = true
-								return false
-							}
-							{
-								v := payload21.Signed(element.Shape.Kind)
-								(*p) = int64(v)
-							}
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x10d39cf61f152e4a:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					payload22 := r.Path
-					r.Path = r.Path.step(7, uint32(0))
-					if !SeriesTotalsLoadMessageBodyRetain(r, &value.Totals) {
-						return false
-					}
-					r.Path = payload22
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x8e172d5541ef4700:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					payload23 := r.Path
-					r.Path = r.Path.step(8, uint32(0))
-					if !SeriesLastHourLoadMessageBodyRetain(r, &value.LastHour) {
-						return false
-					}
-					r.Path = payload23
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xe4dede02383cb9cc:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &LandedSeriesTableFields[9]
-					holder := (*tableContainer)(unsafe.Pointer(&value.Workers))
-					r.Retain.discard(r.Path, true, 9)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 152, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *LandedSeriesWorkersEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(r.tableMessagePlainReader, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*LandedSeriesWorkersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 152))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						{
-							payload24 := r.Path
-							r.Path = r.Path.step(9, uint32(holder.Count-1))
-							if !LandedSeriesWorkersEntryLoadMessageBodyRetain(r, p) {
-								return false
-							}
-							r.Path = payload24
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func LandedSeriesSaveMessageBody(w *TableMessageWriter, value *LandedSeries) bool {
-	{
-		if value.Generated != 0 {
-			w.Put(103, TableMessageRefBitsHere)
-			if value.Generated == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Generated)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.GeneratedEpoch != 0 {
-			w.Put(104, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.GeneratedEpoch), uint64(0))
-		}
-	}
-	{
-		if value.BucketSeconds != 0 {
-			w.Put(105, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.BucketSeconds), uint64(0))
-		}
-	}
-	{
-		if value.Start != 0 {
-			w.Put(106, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Start), uint64(0))
-		}
-	}
-	{
-		if value.Buckets != 0 {
-			w.Put(107, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Buckets), uint64(0))
-		}
-	}
-	{
-		if value.Friends.Count < 0 {
-			return false
-		}
-		if value.Friends.Count > 0 {
-			w.Put(108, TableMessageRefBitsHere)
-			if value.Friends.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Friends.Count), 32)
-			field := &LandedSeriesTableFields[5]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Friends)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Friends.Count; i++ {
-				p := (*int64)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64((*p)), uint64(0))
-			}
-		}
-	}
-	{
-		if value.Fleet.Count < 0 {
-			return false
-		}
-		if value.Fleet.Count > 0 {
-			w.Put(109, TableMessageRefBitsHere)
-			if value.Fleet.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Fleet.Count), 32)
-			field := &LandedSeriesTableFields[6]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Fleet)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Fleet.Count; i++ {
-				p := (*int64)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64((*p)), uint64(0))
-			}
-		}
-	}
-	{
-		probe := *w
-		probe.Measuring = true
-		probe.Bits = 0
-		if !SeriesTotalsSaveMessageBody(&probe, &value.Totals) {
-			return false
-		}
-		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(110, TableMessageRefBitsHere)
-			if !SeriesTotalsSaveMessageBody(w, &value.Totals) {
-				return false
-			}
-		}
-	}
-	{
-		probe := *w
-		probe.Measuring = true
-		probe.Bits = 0
-		if !SeriesLastHourSaveMessageBody(&probe, &value.LastHour) {
-			return false
-		}
-		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(111, TableMessageRefBitsHere)
-			if !SeriesLastHourSaveMessageBody(w, &value.LastHour) {
-				return false
-			}
-		}
-	}
-	{
-		if value.Workers.Count < 0 {
-			return false
-		}
-		if value.Workers.Count > 0 {
-			w.Put(112, TableMessageRefBitsHere)
-			if value.Workers.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Workers.Count), 32)
-			field := &LandedSeriesTableFields[9]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Workers)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Workers.Count; i++ {
-				p := (*LandedSeriesWorkersEntryRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !LandedSeriesWorkersEntrySaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func LandedSeriesLoadMessageBody(r *TableMessageReader, value *LandedSeries) bool {
-	LandedSeriesReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0xe062a9743d7b3b62:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Generated, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x78c6c53f71b4665c:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload187 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload187.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload187.Signed(entry.Shape.Kind)
-						value.GeneratedEpoch = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x6777b21b07cb9b85:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload188 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload188.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload188.Signed(entry.Shape.Kind)
-						value.BucketSeconds = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xee5d97ad45ad251f:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload189 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload189.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload189.Signed(entry.Shape.Kind)
-						value.Start = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x8e6f0f4c374d336c:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload190 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload190.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload190.Signed(entry.Shape.Kind)
-						value.Buckets = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x82a6b14733b2685a:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 5 {
-					if entry.Shape.Kind == 14 && tableKindWidens(entry.Element.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Friends))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 8, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*int64)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 8))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							var raw [16]byte
-							if !tableMessageReadScalar(&r.Bits, element.Shape, &raw) {
-								r.Report.Malformed = true
-								return false
-							}
-							payload191 := TableReader{Buffer: raw[:], Report: &r.Report}
-							if !payload191.Has(tableKindBytes(element.Shape.Kind)) {
-								r.Report.Malformed = true
-								return false
-							}
-							{
-								v := payload191.Signed(element.Shape.Kind)
-								(*p) = int64(v)
-							}
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xf775f8a97470ae4f:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 5 {
-					if entry.Shape.Kind == 14 && tableKindWidens(entry.Element.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Fleet))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 8, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*int64)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 8))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							var raw [16]byte
-							if !tableMessageReadScalar(&r.Bits, element.Shape, &raw) {
-								r.Report.Malformed = true
-								return false
-							}
-							payload192 := TableReader{Buffer: raw[:], Report: &r.Report}
-							if !payload192.Has(tableKindBytes(element.Shape.Kind)) {
-								r.Report.Malformed = true
-								return false
-							}
-							{
-								v := payload192.Signed(element.Shape.Kind)
-								(*p) = int64(v)
-							}
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x10d39cf61f152e4a:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				if !SeriesTotalsLoadMessageBody(r, &value.Totals) {
-					return false
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x8e172d5541ef4700:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				if !SeriesLastHourLoadMessageBody(r, &value.LastHour) {
-					return false
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xe4dede02383cb9cc:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &LandedSeriesTableFields[9]
-					holder := (*tableContainer)(unsafe.Pointer(&value.Workers))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 152, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *LandedSeriesWorkersEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(*r, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*LandedSeriesWorkersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 152))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						if !LandedSeriesWorkersEntryLoadMessageBody(r, p) {
-							return false
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func WhereViewTablesEntryValueEntryValueEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereViewTablesEntryValueEntryValueEntry) bool {
-	WhereViewTablesEntryValueEntryValueEntryReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Value, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func WhereViewTablesEntryValueEntryValueEntrySaveMessageBody(w *TableMessageWriter, value *WhereViewTablesEntryValueEntryValueEntry) bool {
-	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
-			return false
-		}
-		if value.KeyLength > 0 {
-			w.Put(5, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 128 {
-				return false
-			}
-			w.Put(uint64(value.KeyLength), 8)
-			w.Raw(value.Key[:value.KeyLength])
-		}
-	}
-	{
-		if value.Value != 0 {
-			w.Put(9, TableMessageRefBitsHere)
-			if value.Value == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Value)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func WhereViewTablesEntryValueEntryValueEntryLoadMessageBody(r *TableMessageReader, value *WhereViewTablesEntryValueEntryValueEntry) bool {
-	WhereViewTablesEntryValueEntryValueEntryReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Value, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func WhereViewTablesEntryValueEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereViewTablesEntryValueEntry) bool {
-	WhereViewTablesEntryValueEntryReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(256)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &WhereViewTablesEntryValueEntryTableFields[1]
-					holder := (*tableContainer)(unsafe.Pointer(&value.Value))
-					r.Retain.discard(r.Path, true, 1)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *WhereViewTablesEntryValueEntryValueEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(r.tableMessagePlainReader, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*WhereViewTablesEntryValueEntryValueEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						{
-							payload6 := r.Path
-							r.Path = r.Path.step(1, uint32(holder.Count-1))
-							if !WhereViewTablesEntryValueEntryValueEntryLoadMessageBodyRetain(r, p) {
-								return false
-							}
-							r.Path = payload6
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func WhereViewTablesEntryValueEntrySaveMessageBody(w *TableMessageWriter, value *WhereViewTablesEntryValueEntry) bool {
-	{
-		if value.KeyLength < 0 || value.KeyLength > 256 {
-			return false
-		}
-		if value.KeyLength > 0 {
-			w.Put(14, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 256 {
-				return false
-			}
-			w.Put(uint64(value.KeyLength), 9)
-			w.Raw(value.Key[:value.KeyLength])
-		}
-	}
-	{
-		if value.Value.Count < 0 {
-			return false
-		}
-		if value.Value.Count > 0 {
-			w.Put(13, TableMessageRefBitsHere)
-			if value.Value.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Value.Count), 32)
-			field := &WhereViewTablesEntryValueEntryTableFields[1]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Value)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Value.Count; i++ {
-				p := (*WhereViewTablesEntryValueEntryValueEntryRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !WhereViewTablesEntryValueEntryValueEntrySaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func WhereViewTablesEntryValueEntryLoadMessageBody(r *TableMessageReader, value *WhereViewTablesEntryValueEntry) bool {
-	WhereViewTablesEntryValueEntryReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(256)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &WhereViewTablesEntryValueEntryTableFields[1]
-					holder := (*tableContainer)(unsafe.Pointer(&value.Value))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *WhereViewTablesEntryValueEntryValueEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(*r, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*WhereViewTablesEntryValueEntryValueEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						if !WhereViewTablesEntryValueEntryValueEntryLoadMessageBody(r, p) {
-							return false
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func WhereViewTablesEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereViewTablesEntry) bool {
-	WhereViewTablesEntryReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(7)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &WhereViewTablesEntryTableFields[1]
-					holder := (*tableContainer)(unsafe.Pointer(&value.Value))
-					r.Retain.discard(r.Path, true, 1)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 280, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *WhereViewTablesEntryValueEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(r.tableMessagePlainReader, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*WhereViewTablesEntryValueEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 280))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						{
-							payload6 := r.Path
-							r.Path = r.Path.step(1, uint32(holder.Count-1))
-							if !WhereViewTablesEntryValueEntryLoadMessageBodyRetain(r, p) {
-								return false
-							}
-							r.Path = payload6
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func WhereViewTablesEntrySaveMessageBody(w *TableMessageWriter, value *WhereViewTablesEntry) bool {
-	{
-		if value.KeyLength < 0 || value.KeyLength > 7 {
-			return false
-		}
-		if value.KeyLength > 0 {
-			w.Put(12, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 7 {
-				return false
-			}
-			w.Put(uint64(value.KeyLength), 3)
-			w.Raw(value.Key[:value.KeyLength])
-		}
-	}
-	{
-		if value.Value.Count < 0 {
-			return false
-		}
-		if value.Value.Count > 0 {
-			w.Put(13, TableMessageRefBitsHere)
-			if value.Value.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Value.Count), 32)
-			field := &WhereViewTablesEntryTableFields[1]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Value)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Value.Count; i++ {
-				p := (*WhereViewTablesEntryValueEntryRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !WhereViewTablesEntryValueEntrySaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func WhereViewTablesEntryLoadMessageBody(r *TableMessageReader, value *WhereViewTablesEntry) bool {
-	WhereViewTablesEntryReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(7)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &WhereViewTablesEntryTableFields[1]
-					holder := (*tableContainer)(unsafe.Pointer(&value.Value))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 280, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *WhereViewTablesEntryValueEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(*r, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*WhereViewTablesEntryValueEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 280))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						if !WhereViewTablesEntryValueEntryLoadMessageBody(r, p) {
-							return false
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func WhereViewTiersEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereViewTiersEntry) bool {
-	WhereViewTiersEntryReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload1 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload1.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload1.Signed(entry.Shape.Kind)
-						value.Value = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func WhereViewTiersEntrySaveMessageBody(w *TableMessageWriter, value *WhereViewTiersEntry) bool {
-	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
-			return false
-		}
-		if value.KeyLength > 0 {
-			w.Put(5, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 128 {
-				return false
-			}
-			w.Put(uint64(value.KeyLength), 8)
-			w.Raw(value.Key[:value.KeyLength])
-		}
-	}
-	{
-		if value.Value != 0 {
-			w.Put(7, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Value), uint64(0))
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func WhereViewTiersEntryLoadMessageBody(r *TableMessageReader, value *WhereViewTiersEntry) bool {
-	WhereViewTiersEntryReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload199 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload199.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload199.Signed(entry.Shape.Kind)
-						value.Value = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func WhereViewStreamCostsEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereViewStreamCostsEntry) bool {
-	WhereViewStreamCostsEntryReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					payload3 := r.Path
-					r.Path = r.Path.step(1, uint32(0))
-					if !TierCostsLoadMessageBodyRetain(r, &value.Value) {
-						return false
-					}
-					r.Path = payload3
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func WhereViewStreamCostsEntrySaveMessageBody(w *TableMessageWriter, value *WhereViewStreamCostsEntry) bool {
-	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
-			return false
-		}
-		if value.KeyLength > 0 {
-			w.Put(5, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 128 {
-				return false
-			}
-			w.Put(uint64(value.KeyLength), 8)
-			w.Raw(value.Key[:value.KeyLength])
-		}
-	}
-	{
-		probe := *w
-		probe.Measuring = true
-		probe.Bits = 0
-		if !TierCostsSaveMessageBody(&probe, &value.Value) {
-			return false
-		}
-		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(3, TableMessageRefBitsHere)
-			if !TierCostsSaveMessageBody(w, &value.Value) {
-				return false
-			}
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func WhereViewStreamCostsEntryLoadMessageBody(r *TableMessageReader, value *WhereViewStreamCostsEntry) bool {
-	WhereViewStreamCostsEntryReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				if !TierCostsLoadMessageBody(r, &value.Value) {
-					return false
 				}
 				if widened {
 					r.Report.Widened++
@@ -28420,226 +17212,6 @@ func WhereViewFirstTimeUnderTargetTextLoadMessageBody(r *TableMessageReader, val
 		}
 	}
 }
-func WhereViewFirstTimeRoutesEntryLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereViewFirstTimeRoutesEntry) bool {
-	WhereViewFirstTimeRoutesEntryReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Value, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func WhereViewFirstTimeRoutesEntrySaveMessageBody(w *TableMessageWriter, value *WhereViewFirstTimeRoutesEntry) bool {
-	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
-			return false
-		}
-		if value.KeyLength > 0 {
-			w.Put(5, TableMessageRefBitsHere)
-			if value.KeyLength < 0 || value.KeyLength > 128 {
-				return false
-			}
-			w.Put(uint64(value.KeyLength), 8)
-			w.Raw(value.Key[:value.KeyLength])
-		}
-	}
-	{
-		if value.Value != 0 {
-			w.Put(9, TableMessageRefBitsHere)
-			if value.Value == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Value)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func WhereViewFirstTimeRoutesEntryLoadMessageBody(r *TableMessageReader, value *WhereViewFirstTimeRoutesEntry) bool {
-	WhereViewFirstTimeRoutesEntryReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x3dc94a19365b10ec:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Key[:])
-					copy(value.Key[:], text[:kept])
-					value.KeyLength = int32(kept)
-				}
-				_ = widened
-			}
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Value, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
 func WhereViewStalledTextLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereViewStalledText) bool {
 	WhereViewStalledTextReset(value)
 	r.Retain.discard(r.Path, false, 0)
@@ -28776,162 +17348,6 @@ func WhereViewStalledTextLoadMessageBody(r *TableMessageReader, value *WhereView
 						return false
 					}
 					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Value[:])
-					copy(value.Value[:], text[:kept])
-					value.ValueLength = int32(kept)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func WhereViewBlockersTextLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereViewBlockersText) bool {
-	WhereViewBlockersTextReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(65710)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Value[:])
-					copy(value.Value[:], text[:kept])
-					value.ValueLength = int32(kept)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func WhereViewBlockersTextSaveMessageBody(w *TableMessageWriter, value *WhereViewBlockersText) bool {
-	{
-		if value.ValueLength < 0 || value.ValueLength > 65710 {
-			return false
-		}
-		if value.ValueLength > 0 {
-			w.Put(6, TableMessageRefBitsHere)
-			if value.ValueLength < 0 || value.ValueLength > 65710 {
-				return false
-			}
-			w.Put(uint64(value.ValueLength), 17)
-			w.Raw(value.Value[:value.ValueLength])
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func WhereViewBlockersTextLoadMessageBody(r *TableMessageReader, value *WhereViewBlockersText) bool {
-	WhereViewBlockersTextReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0x7ce4fd9430e80cea:
-			{
-				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(65710)))
 					if kept < int64(n) {
 						r.Report.Clamped++
 					}
@@ -29904,6946 +18320,15 @@ func WhereViewReleasesEntryLoadMessageBody(r *TableMessageReader, value *WhereVi
 						r.Report.Malformed = true
 						return false
 					}
-					payload200 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload200.Has(tableKindBytes(entry.Shape.Kind)) {
+					payload156 := TableReader{Buffer: raw[:], Report: &r.Report}
+					if !payload156.Has(tableKindBytes(entry.Shape.Kind)) {
 						r.Report.Malformed = true
 						return false
 					}
 					{
-						v := payload200.Signed(entry.Shape.Kind)
+						v := payload156.Signed(entry.Shape.Kind)
 						value.Value = int64(v)
 					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func WhereViewLoadMessageBodyRetain(r *TableRetainMessageReader, value *WhereView) bool {
-	WhereViewReset(value)
-	r.Retain.discard(r.Path, false, 0)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0xe280a3451e738170:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					payload123 := r.Path
-					r.Path = r.Path.step(0, uint32(0))
-					if !DecisionSummaryLoadMessageBodyRetain(r, &value.Decisions) {
-						return false
-					}
-					r.Path = payload123
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x089c4e07b545a968:
-			{
-				widened := false
-				if entry.Shape.Kind != 36 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload124 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload124.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload124.Signed(entry.Shape.Kind)
-						value.At = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xdd3bf9933387198d:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload125 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload125.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload125.Signed(entry.Shape.Kind)
-						value.Landed = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xe6f09b190519daa4:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload126 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload126.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload126.Signed(entry.Shape.Kind)
-						value.All = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x0a9904cc5fa248be:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload127 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload127.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload127.Signed(entry.Shape.Kind)
-						value.Held = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xa3c2813bcd780513:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Summary, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xb0f3e4834046d1ab:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload128 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload128.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload128.Signed(entry.Shape.Kind)
-						value.ArchivedCards = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x28dedfcefcb74068:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload129 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload129.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload129.Signed(entry.Shape.Kind)
-						value.ArchivedLanded = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xdc51fb6761fd6e91:
-			{
-				widened := false
-				if entry.Shape.Kind != 1 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload130 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload130.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					value.Done = payload130.Get8() != 0
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xe26607dbf29ff924:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &WhereViewTableFields[9]
-					holder := (*tableContainer)(unsafe.Pointer(&value.Tables))
-					r.Retain.discard(r.Path, true, 9)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 32, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *WhereViewTablesEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(r.tableMessagePlainReader, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*WhereViewTablesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 32))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						{
-							payload131 := r.Path
-							r.Path = r.Path.step(9, uint32(holder.Count-1))
-							if !WhereViewTablesEntryLoadMessageBodyRetain(r, p) {
-								return false
-							}
-							r.Path = payload131
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x6dd8dc6c5fdae3ce:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &WhereViewTableFields[10]
-					holder := (*tableContainer)(unsafe.Pointer(&value.Tiers))
-					r.Retain.discard(r.Path, true, 10)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *WhereViewTiersEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(r.tableMessagePlainReader, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*WhereViewTiersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						{
-							payload132 := r.Path
-							r.Path = r.Path.step(10, uint32(holder.Count-1))
-							if !WhereViewTiersEntryLoadMessageBodyRetain(r, p) {
-								return false
-							}
-							r.Path = payload132
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x13daa19ec34623d4:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &WhereViewTableFields[11]
-					holder := (*tableContainer)(unsafe.Pointer(&value.StreamCosts))
-					r.Retain.discard(r.Path, true, 11)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 336, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *WhereViewStreamCostsEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(r.tableMessagePlainReader, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*WhereViewStreamCostsEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 336))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						{
-							payload133 := r.Path
-							r.Path = r.Path.step(11, uint32(holder.Count-1))
-							if !WhereViewStreamCostsEntryLoadMessageBodyRetain(r, p) {
-								return false
-							}
-							r.Path = payload133
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xbea0bc892d25d607:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.CostCheck, index, 0xd15dc0f47785f8a0, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x63a9b7c8db210dfb:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.FirstTime, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x5ae642b8a707f7b5:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload134 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload134.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload134.Signed(entry.Shape.Kind)
-						value.FirstTimeTarget = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x549433427fd14530:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload135 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload135.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload135.Signed(entry.Shape.Kind)
-						value.FirstTimeWindow = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x609ecda98b3bee32:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 12 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.FirstTimeUnderTarget))
-					r.Retain.discard(r.Path, true, 16)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 136, 4) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*WhereViewFirstTimeUnderTargetTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 136))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload136 := r.Path
-							r.Path = r.Path.step(16, uint32(i))
-							if !WhereViewFirstTimeUnderTargetTextLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload136
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xe02360359c269026:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &WhereViewTableFields[17]
-					holder := (*tableContainer)(unsafe.Pointer(&value.FirstTimeRoutes))
-					r.Retain.discard(r.Path, true, 17)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *WhereViewFirstTimeRoutesEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(r.tableMessagePlainReader, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*WhereViewFirstTimeRoutesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						{
-							payload137 := r.Path
-							r.Path = r.Path.step(17, uint32(holder.Count-1))
-							if !WhereViewFirstTimeRoutesEntryLoadMessageBodyRetain(r, p) {
-								return false
-							}
-							r.Path = payload137
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x8da0655a706978ba:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.ReadSpend, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x81f528932d7f3d02:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Streams))
-					r.Retain.discard(r.Path, true, 19)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 224, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*StreamClockRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 224))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload138 := r.Path
-							r.Path = r.Path.step(19, uint32(i))
-							if !StreamClockLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload138
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x072531ee7becec74:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					payload139 := r.Path
-					r.Path = r.Path.step(20, uint32(0))
-					if !StageTimesLoadMessageBodyRetain(r, &value.StageTimes) {
-						return false
-					}
-					r.Path = payload139
-				}
-				value.StageTimesPresent = true
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x063f5b3659619e10:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 12 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Stalled))
-					r.Retain.discard(r.Path, true, 21)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 136, 4) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*WhereViewStalledTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 136))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload140 := r.Path
-							r.Path = r.Path.step(21, uint32(i))
-							if !WhereViewStalledTextLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload140
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x387748cc2ad39108:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Critical))
-					r.Retain.discard(r.Path, true, 22)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 536, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*CriticalCardRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 536))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload141 := r.Path
-							r.Path = r.Path.step(22, uint32(i))
-							if !CriticalCardLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload141
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x274d62c1e1e8ead2:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 12 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Blockers))
-					r.Retain.discard(r.Path, true, 23)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 65716, 4) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*WhereViewBlockersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 65716))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload142 := r.Path
-							r.Path = r.Path.step(23, uint32(i))
-							if !WhereViewBlockersTextLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload142
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x9e9b04c54923ae13:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Idle, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x20cd038d974113f1:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Coordinator, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x52dea0d6eeb5083c:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Pending, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xfc9697d1196e6ba6:
-			{
-				widened := false
-				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload143 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload143.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload143.Unsigned(entry.Shape.Kind)
-						value.Epoch = uint64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x149c1b1c0a825473:
-			{
-				widened := false
-				if entry.Shape.Kind != 36 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload144 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload144.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload144.Signed(entry.Shape.Kind)
-						value.Cleared = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x385157cb98d7be6e:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Machine, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xbcf35c56fa51bfd9:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.ServerVersion, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x7294d77db181ded2:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Server, index, 0x5b1ed46937b3d7fa, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xb9a400e2ab1a653d:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.FleetWork, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x7b989cbd26ec648a:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.FriendsWork, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x7f1b4a5c41ecd465:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 12 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.FleetTiers))
-					r.Retain.discard(r.Path, true, 34)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 16, 4) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*WhereViewFleetTiersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 16))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload145 := r.Path
-							r.Path = r.Path.step(34, uint32(i))
-							if !WhereViewFleetTiersTextLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload145
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xe685131756c58824:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 12 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.FriendsTiers))
-					r.Retain.discard(r.Path, true, 35)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 16, 4) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*WhereViewFriendsTiersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 16))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload146 := r.Path
-							r.Path = r.Path.step(35, uint32(i))
-							if !WhereViewFriendsTiersTextLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload146
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xac4c97888e22525a:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.ReadsNeeded, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x6bd3bccef38de2bf:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Goals))
-					r.Retain.discard(r.Path, true, 37)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 65656, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*GoalViewRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 65656))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload147 := r.Path
-							r.Path = r.Path.step(37, uint32(i))
-							if !GoalViewLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload147
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x2d08f118d3f933e8:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Seat, index, 0x3269794dbb88fca0, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x7477287ad37c50f1:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Holds))
-					r.Retain.discard(r.Path, true, 39)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 584, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*HoldViewRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 584))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload148 := r.Path
-							r.Path = r.Path.step(39, uint32(i))
-							if !HoldViewLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload148
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x218eaf820c8b56d9:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.SeatWaits, index, 0x55a9023aeba12d7e, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x44f536ad76b6a942:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Stops))
-					r.Retain.discard(r.Path, true, 41)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 568, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*StopRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 568))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload149 := r.Path
-							r.Path = r.Path.step(41, uint32(i))
-							if !StopLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload149
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xb4e7c1914a10e55d:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Providers))
-					r.Retain.discard(r.Path, true, 42)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 96, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*ProviderViewRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 96))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload150 := r.Path
-							r.Path = r.Path.step(42, uint32(i))
-							if !ProviderViewLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload150
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x2f607b226cfbebd0:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					payload151 := r.Path
-					r.Path = r.Path.step(43, uint32(0))
-					if !ProviderGapReportLoadMessageBodyRetain(r, &value.ProviderGaps) {
-						return false
-					}
-					r.Path = payload151
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xd14829ec544a2fb4:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Lanes))
-					r.Retain.discard(r.Path, true, 44)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 192, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*LaneRowRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 192))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload152 := r.Path
-							r.Path = r.Path.step(44, uint32(i))
-							if !LaneRowLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload152
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xaf9dac3b097689c4:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Cards))
-					r.Retain.discard(r.Path, true, 45)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 1232, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*DealtCardRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 1232))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload153 := r.Path
-							r.Path = r.Path.step(45, uint32(i))
-							if !DealtCardLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload153
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x1bdb1ee8587d58f0:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Merging))
-					r.Retain.discard(r.Path, true, 46)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 672, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*MergingCardRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 672))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload154 := r.Path
-							r.Path = r.Path.step(46, uint32(i))
-							if !MergingCardLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload154
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x96f1955a44843146:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Judgments))
-					r.Retain.discard(r.Path, true, 47)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 536, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*JudgmentRefRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 536))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload155 := r.Path
-							r.Path = r.Path.step(47, uint32(i))
-							if !JudgmentRefLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload155
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xa3a7061ff10a8138:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Rows))
-					r.Retain.discard(r.Path, true, 48)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 704, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*PrimaryRowRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 704))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload156 := r.Path
-							r.Path = r.Path.step(48, uint32(i))
-							if !PrimaryRowLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload156
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xe17417fb33768153:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Archived, index, 0x71e32bddcd9524b6, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xf113ecd5ed794504:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.StatsReset, index, 0x6d882f133edf2f4e, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x8935baf305f374b4:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload157 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload157.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload157.Signed(entry.Shape.Kind)
-						value.Ready = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x8f75c61dfd19093f:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Backup, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x7c66a4f6c72a2f32:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload158 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload158.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload158.Signed(entry.Shape.Kind)
-						value.ReadsWaiting = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xa15579321342d2f7:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					payload159 := r.Path
-					r.Path = r.Path.step(54, uint32(0))
-					if !ReadsWindowLoadMessageBodyRetain(r, &value.ReadsWindow) {
-						return false
-					}
-					r.Path = payload159
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x43175e54072048dd:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					payload160 := r.Path
-					r.Path = r.Path.step(55, uint32(0))
-					if !ReadCardCountsLoadMessageBodyRetain(r, &value.ReadCards) {
-						return false
-					}
-					r.Path = payload160
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xdc9e7e18fec93bb8:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload161 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload161.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload161.Signed(entry.Shape.Kind)
-						value.Fix = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xc6293a6425e1ff65:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &WhereViewTableFields[57]
-					holder := (*tableContainer)(unsafe.Pointer(&value.Priorities))
-					r.Retain.discard(r.Path, true, 57)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 32, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *WhereViewPrioritiesEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(r.tableMessagePlainReader, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*WhereViewPrioritiesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 32))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						{
-							payload162 := r.Path
-							r.Path = r.Path.step(57, uint32(holder.Count-1))
-							if !WhereViewPrioritiesEntryLoadMessageBodyRetain(r, p) {
-								return false
-							}
-							r.Path = payload162
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xa11df2a73cf40d42:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &WhereViewTableFields[58]
-					holder := (*tableContainer)(unsafe.Pointer(&value.StreamPriorities))
-					r.Retain.discard(r.Path, true, 58)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *WhereViewStreamPrioritiesEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(r.tableMessagePlainReader, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*WhereViewStreamPrioritiesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						{
-							payload163 := r.Path
-							r.Path = r.Path.step(58, uint32(holder.Count-1))
-							if !WhereViewStreamPrioritiesEntryLoadMessageBodyRetain(r, p) {
-								return false
-							}
-							r.Path = payload163
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xdbdacd932fd1e9bf:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload164 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload164.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload164.Signed(entry.Shape.Kind)
-						value.Width = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xd86c0af0b398153b:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Buffer, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x125083191daf6f61:
-			{
-				widened := false
-				if entry.Shape.Kind != 1 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload165 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload165.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					value.Low = payload165.Get8() != 0
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xcf0cc5aad6d89b8c:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					payload166 := r.Path
-					r.Path = r.Path.step(62, uint32(0))
-					if !MergeRowLoadMessageBodyRetain(r, &value.MergeRow) {
-						return false
-					}
-					r.Path = payload166
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x82a6b14733b2685a:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Friends))
-					r.Retain.discard(r.Path, true, 63)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 200, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*FriendRowRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 200))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						{
-							payload167 := r.Path
-							r.Path = r.Path.step(63, uint32(i))
-							if !FriendRowLoadMessageBodyRetain(r, &(*p)) {
-								return false
-							}
-							r.Path = payload167
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xa539b948612d1f97:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &WhereViewTableFields[64]
-					holder := (*tableContainer)(unsafe.Pointer(&value.Releases))
-					r.Retain.discard(r.Path, true, 64)
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 65552, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *WhereViewReleasesEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(r.tableMessagePlainReader, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*WhereViewReleasesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 65552))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						{
-							payload168 := r.Path
-							r.Path = r.Path.step(64, uint32(holder.Count-1))
-							if !WhereViewReleasesEntryLoadMessageBodyRetain(r, p) {
-								return false
-							}
-							r.Path = payload168
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xf603e23e20725712:
-			{
-				widened := false
-				if entry.Shape.Kind != 11 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 11) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload169 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload169.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						var v float64
-						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload169.Get32()))
-						} else {
-							v = math.Float64frombits(payload169.Get64())
-						}
-						value.StoreRttP50Ms = v
-					}
-				}
-				value.StoreRttP50MsPresent = true
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xa899b225b2fb8c07:
-			{
-				widened := false
-				if entry.Shape.Kind != 11 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 11) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload170 := tableRetainPlainReader{Buffer: raw[:], Report: &r.Report}
-					if !payload170.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						var v float64
-						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload170.Get32()))
-						} else {
-							v = math.Float64frombits(payload170.Get64())
-						}
-						value.StoreRttP99Ms = v
-					}
-				}
-				value.StoreRttP99MsPresent = true
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x602a969dcf5c554f:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.LandedSeries, index, 0x6eeace6e976c6068, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		default:
-			r.Report.Unknown++
-			if !r.capture(entry) {
-				r.Report.Malformed = true
-				return false
-			}
-		}
-	}
-}
-func WhereViewSaveMessageBody(w *TableMessageWriter, value *WhereView) bool {
-	{
-		probe := *w
-		probe.Measuring = true
-		probe.Bits = 0
-		if !DecisionSummarySaveMessageBody(&probe, &value.Decisions) {
-			return false
-		}
-		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(208, TableMessageRefBitsHere)
-			if !DecisionSummarySaveMessageBody(w, &value.Decisions) {
-				return false
-			}
-		}
-	}
-	{
-		if value.At != 0 {
-			w.Put(155, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.At), uint64(0))
-		}
-	}
-	{
-		if value.Landed != 0 {
-			w.Put(19, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Landed), uint64(0))
-		}
-	}
-	{
-		if value.All != 0 {
-			w.Put(209, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.All), uint64(0))
-		}
-	}
-	{
-		if value.Held != 0 {
-			w.Put(71, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Held), uint64(0))
-		}
-	}
-	{
-		if value.Summary != 0 {
-			w.Put(210, TableMessageRefBitsHere)
-			if value.Summary == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Summary)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.ArchivedCards != 0 {
-			w.Put(211, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.ArchivedCards), uint64(0))
-		}
-	}
-	{
-		if value.ArchivedLanded != 0 {
-			w.Put(212, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.ArchivedLanded), uint64(0))
-		}
-	}
-	{
-		if value.Done != false {
-			w.Put(213, TableMessageRefBitsHere)
-			if value.Done {
-				w.Put(1, 1)
-			} else {
-				w.Put(0, 1)
-			}
-		}
-	}
-	{
-		if value.Tables.Count < 0 {
-			return false
-		}
-		if value.Tables.Count > 0 {
-			w.Put(214, TableMessageRefBitsHere)
-			if value.Tables.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Tables.Count), 32)
-			field := &WhereViewTableFields[9]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Tables)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Tables.Count; i++ {
-				p := (*WhereViewTablesEntryRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !WhereViewTablesEntrySaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.Tiers.Count < 0 {
-			return false
-		}
-		if value.Tiers.Count > 0 {
-			w.Put(144, TableMessageRefBitsHere)
-			if value.Tiers.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Tiers.Count), 32)
-			field := &WhereViewTableFields[10]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Tiers)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Tiers.Count; i++ {
-				p := (*WhereViewTiersEntryRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !WhereViewTiersEntrySaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.StreamCosts.Count < 0 {
-			return false
-		}
-		if value.StreamCosts.Count > 0 {
-			w.Put(215, TableMessageRefBitsHere)
-			if value.StreamCosts.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.StreamCosts.Count), 32)
-			field := &WhereViewTableFields[11]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.StreamCosts)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.StreamCosts.Count; i++ {
-				p := (*WhereViewStreamCostsEntryRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !WhereViewStreamCostsEntrySaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.CostCheck != 0 {
-			w.Put(216, TableMessageRefBitsHere)
-			if value.CostCheck == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.CostCheck)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.FirstTime != 0 {
-			w.Put(217, TableMessageRefBitsHere)
-			if value.FirstTime == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.FirstTime)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.FirstTimeTarget != 0 {
-			w.Put(218, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.FirstTimeTarget), uint64(0))
-		}
-	}
-	{
-		if value.FirstTimeWindow != 0 {
-			w.Put(219, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.FirstTimeWindow), uint64(0))
-		}
-	}
-	{
-		if value.FirstTimeUnderTarget.Count < 0 {
-			return false
-		}
-		if value.FirstTimeUnderTarget.Count > 0 {
-			w.Put(220, TableMessageRefBitsHere)
-			if value.FirstTimeUnderTarget.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.FirstTimeUnderTarget.Count), 32)
-			field := &WhereViewTableFields[16]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.FirstTimeUnderTarget)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.FirstTimeUnderTarget.Count; i++ {
-				p := (*WhereViewFirstTimeUnderTargetTextRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !WhereViewFirstTimeUnderTargetTextSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.FirstTimeRoutes.Count < 0 {
-			return false
-		}
-		if value.FirstTimeRoutes.Count > 0 {
-			w.Put(221, TableMessageRefBitsHere)
-			if value.FirstTimeRoutes.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.FirstTimeRoutes.Count), 32)
-			field := &WhereViewTableFields[17]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.FirstTimeRoutes)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.FirstTimeRoutes.Count; i++ {
-				p := (*WhereViewFirstTimeRoutesEntryRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !WhereViewFirstTimeRoutesEntrySaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.ReadSpend != 0 {
-			w.Put(222, TableMessageRefBitsHere)
-			if value.ReadSpend == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.ReadSpend)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Streams.Count < 0 {
-			return false
-		}
-		if value.Streams.Count > 0 {
-			w.Put(175, TableMessageRefBitsHere)
-			if value.Streams.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Streams.Count), 32)
-			field := &WhereViewTableFields[19]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Streams)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Streams.Count; i++ {
-				p := (*StreamClockRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !StreamClockSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.StageTimesPresent {
-			if true {
-				w.Put(223, TableMessageRefBitsHere)
-				if !StageTimesSaveMessageBody(w, &value.StageTimes) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.Stalled.Count < 0 {
-			return false
-		}
-		if value.Stalled.Count > 0 {
-			w.Put(224, TableMessageRefBitsHere)
-			if value.Stalled.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Stalled.Count), 32)
-			field := &WhereViewTableFields[21]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Stalled)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Stalled.Count; i++ {
-				p := (*WhereViewStalledTextRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !WhereViewStalledTextSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.Critical.Count < 0 {
-			return false
-		}
-		if value.Critical.Count > 0 {
-			w.Put(225, TableMessageRefBitsHere)
-			if value.Critical.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Critical.Count), 32)
-			field := &WhereViewTableFields[22]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Critical)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Critical.Count; i++ {
-				p := (*CriticalCardRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !CriticalCardSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.Blockers.Count < 0 {
-			return false
-		}
-		if value.Blockers.Count > 0 {
-			w.Put(226, TableMessageRefBitsHere)
-			if value.Blockers.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Blockers.Count), 32)
-			field := &WhereViewTableFields[23]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Blockers)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Blockers.Count; i++ {
-				p := (*WhereViewBlockersTextRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !WhereViewBlockersTextSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.Idle != 0 {
-			w.Put(227, TableMessageRefBitsHere)
-			if value.Idle == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Idle)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Coordinator != 0 {
-			w.Put(228, TableMessageRefBitsHere)
-			if value.Coordinator == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Coordinator)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Pending != 0 {
-			w.Put(229, TableMessageRefBitsHere)
-			if value.Pending == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Pending)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Epoch != 0 {
-			w.Put(230, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 9, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Epoch), uint64(0))
-		}
-	}
-	{
-		if value.Cleared != 0 {
-			w.Put(231, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 36, Packing: 0, Bits: -1, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Cleared), uint64(0))
-		}
-	}
-	{
-		if value.Machine != 0 {
-			w.Put(232, TableMessageRefBitsHere)
-			if value.Machine == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Machine)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.ServerVersion != 0 {
-			w.Put(233, TableMessageRefBitsHere)
-			if value.ServerVersion == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.ServerVersion)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Server != 0 {
-			w.Put(234, TableMessageRefBitsHere)
-			if value.Server == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Server)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.FleetWork != 0 {
-			w.Put(235, TableMessageRefBitsHere)
-			if value.FleetWork == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.FleetWork)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.FriendsWork != 0 {
-			w.Put(236, TableMessageRefBitsHere)
-			if value.FriendsWork == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.FriendsWork)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.FleetTiers.Count < 0 {
-			return false
-		}
-		if value.FleetTiers.Count > 0 {
-			w.Put(237, TableMessageRefBitsHere)
-			if value.FleetTiers.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.FleetTiers.Count), 32)
-			field := &WhereViewTableFields[34]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.FleetTiers)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.FleetTiers.Count; i++ {
-				p := (*WhereViewFleetTiersTextRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !WhereViewFleetTiersTextSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.FriendsTiers.Count < 0 {
-			return false
-		}
-		if value.FriendsTiers.Count > 0 {
-			w.Put(238, TableMessageRefBitsHere)
-			if value.FriendsTiers.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.FriendsTiers.Count), 32)
-			field := &WhereViewTableFields[35]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.FriendsTiers)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.FriendsTiers.Count; i++ {
-				p := (*WhereViewFriendsTiersTextRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !WhereViewFriendsTiersTextSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.ReadsNeeded != 0 {
-			w.Put(239, TableMessageRefBitsHere)
-			if value.ReadsNeeded == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.ReadsNeeded)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Goals.Count < 0 {
-			return false
-		}
-		if value.Goals.Count > 0 {
-			w.Put(240, TableMessageRefBitsHere)
-			if value.Goals.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Goals.Count), 32)
-			field := &WhereViewTableFields[37]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Goals)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Goals.Count; i++ {
-				p := (*GoalViewRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !GoalViewSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.Seat != 0 {
-			w.Put(241, TableMessageRefBitsHere)
-			if value.Seat == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Seat)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Holds.Count < 0 {
-			return false
-		}
-		if value.Holds.Count > 0 {
-			w.Put(242, TableMessageRefBitsHere)
-			if value.Holds.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Holds.Count), 32)
-			field := &WhereViewTableFields[39]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Holds)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Holds.Count; i++ {
-				p := (*HoldViewRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !HoldViewSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.SeatWaits != 0 {
-			w.Put(243, TableMessageRefBitsHere)
-			if value.SeatWaits == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.SeatWaits)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Stops.Count < 0 {
-			return false
-		}
-		if value.Stops.Count > 0 {
-			w.Put(244, TableMessageRefBitsHere)
-			if value.Stops.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Stops.Count), 32)
-			field := &WhereViewTableFields[41]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Stops)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Stops.Count; i++ {
-				p := (*StopRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !StopSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.Providers.Count < 0 {
-			return false
-		}
-		if value.Providers.Count > 0 {
-			w.Put(245, TableMessageRefBitsHere)
-			if value.Providers.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Providers.Count), 32)
-			field := &WhereViewTableFields[42]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Providers)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Providers.Count; i++ {
-				p := (*ProviderViewRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !ProviderViewSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		probe := *w
-		probe.Measuring = true
-		probe.Bits = 0
-		if !ProviderGapReportSaveMessageBody(&probe, &value.ProviderGaps) {
-			return false
-		}
-		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(246, TableMessageRefBitsHere)
-			if !ProviderGapReportSaveMessageBody(w, &value.ProviderGaps) {
-				return false
-			}
-		}
-	}
-	{
-		if value.Lanes.Count < 0 {
-			return false
-		}
-		if value.Lanes.Count > 0 {
-			w.Put(247, TableMessageRefBitsHere)
-			if value.Lanes.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Lanes.Count), 32)
-			field := &WhereViewTableFields[44]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Lanes)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Lanes.Count; i++ {
-				p := (*LaneRowRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !LaneRowSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.Cards.Count < 0 {
-			return false
-		}
-		if value.Cards.Count > 0 {
-			w.Put(248, TableMessageRefBitsHere)
-			if value.Cards.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Cards.Count), 32)
-			field := &WhereViewTableFields[45]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Cards)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Cards.Count; i++ {
-				p := (*DealtCardRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !DealtCardSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.Merging.Count < 0 {
-			return false
-		}
-		if value.Merging.Count > 0 {
-			w.Put(249, TableMessageRefBitsHere)
-			if value.Merging.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Merging.Count), 32)
-			field := &WhereViewTableFields[46]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Merging)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Merging.Count; i++ {
-				p := (*MergingCardRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !MergingCardSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.Judgments.Count < 0 {
-			return false
-		}
-		if value.Judgments.Count > 0 {
-			w.Put(250, TableMessageRefBitsHere)
-			if value.Judgments.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Judgments.Count), 32)
-			field := &WhereViewTableFields[47]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Judgments)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Judgments.Count; i++ {
-				p := (*JudgmentRefRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !JudgmentRefSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.Rows.Count < 0 {
-			return false
-		}
-		if value.Rows.Count > 0 {
-			w.Put(251, TableMessageRefBitsHere)
-			if value.Rows.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Rows.Count), 32)
-			field := &WhereViewTableFields[48]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Rows)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Rows.Count; i++ {
-				p := (*PrimaryRowRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !PrimaryRowSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.Archived != 0 {
-			w.Put(252, TableMessageRefBitsHere)
-			if value.Archived == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Archived)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.StatsReset != 0 {
-			w.Put(253, TableMessageRefBitsHere)
-			if value.StatsReset == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.StatsReset)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Ready != 0 {
-			w.Put(70, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Ready), uint64(0))
-		}
-	}
-	{
-		if value.Backup != 0 {
-			w.Put(254, TableMessageRefBitsHere)
-			if value.Backup == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Backup)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.ReadsWaiting != 0 {
-			w.Put(255, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.ReadsWaiting), uint64(0))
-		}
-	}
-	{
-		probe := *w
-		probe.Measuring = true
-		probe.Bits = 0
-		if !ReadsWindowSaveMessageBody(&probe, &value.ReadsWindow) {
-			return false
-		}
-		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(256, TableMessageRefBitsHere)
-			if !ReadsWindowSaveMessageBody(w, &value.ReadsWindow) {
-				return false
-			}
-		}
-	}
-	{
-		probe := *w
-		probe.Measuring = true
-		probe.Bits = 0
-		if !ReadCardCountsSaveMessageBody(&probe, &value.ReadCards) {
-			return false
-		}
-		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(257, TableMessageRefBitsHere)
-			if !ReadCardCountsSaveMessageBody(w, &value.ReadCards) {
-				return false
-			}
-		}
-	}
-	{
-		if value.Fix != 0 {
-			w.Put(258, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Fix), uint64(0))
-		}
-	}
-	{
-		if value.Priorities.Count < 0 {
-			return false
-		}
-		if value.Priorities.Count > 0 {
-			w.Put(259, TableMessageRefBitsHere)
-			if value.Priorities.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Priorities.Count), 32)
-			field := &WhereViewTableFields[57]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Priorities)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Priorities.Count; i++ {
-				p := (*WhereViewPrioritiesEntryRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !WhereViewPrioritiesEntrySaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.StreamPriorities.Count < 0 {
-			return false
-		}
-		if value.StreamPriorities.Count > 0 {
-			w.Put(260, TableMessageRefBitsHere)
-			if value.StreamPriorities.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.StreamPriorities.Count), 32)
-			field := &WhereViewTableFields[58]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.StreamPriorities)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.StreamPriorities.Count; i++ {
-				p := (*WhereViewStreamPrioritiesEntryRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !WhereViewStreamPrioritiesEntrySaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.Width != 0 {
-			w.Put(59, TableMessageRefBitsHere)
-			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Width), uint64(0))
-		}
-	}
-	{
-		if value.Buffer != 0 {
-			w.Put(261, TableMessageRefBitsHere)
-			if value.Buffer == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.Buffer)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	{
-		if value.Low != false {
-			w.Put(262, TableMessageRefBitsHere)
-			if value.Low {
-				w.Put(1, 1)
-			} else {
-				w.Put(0, 1)
-			}
-		}
-	}
-	{
-		probe := *w
-		probe.Measuring = true
-		probe.Bits = 0
-		if !MergeRowSaveMessageBody(&probe, &value.MergeRow) {
-			return false
-		}
-		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(263, TableMessageRefBitsHere)
-			if !MergeRowSaveMessageBody(w, &value.MergeRow) {
-				return false
-			}
-		}
-	}
-	{
-		if value.Friends.Count < 0 {
-			return false
-		}
-		if value.Friends.Count > 0 {
-			w.Put(264, TableMessageRefBitsHere)
-			if value.Friends.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Friends.Count), 32)
-			field := &WhereViewTableFields[63]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Friends)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Friends.Count; i++ {
-				p := (*FriendRowRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !FriendRowSaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.Releases.Count < 0 {
-			return false
-		}
-		if value.Releases.Count > 0 {
-			w.Put(265, TableMessageRefBitsHere)
-			if value.Releases.Count < 0 {
-				return false
-			}
-			w.Put(uint64(value.Releases.Count), 32)
-			field := &WhereViewTableFields[64]
-			if field.Kind == 6 {
-				w.Align()
-			}
-			cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Releases)), field, w.Numbering.arena)
-			defer cursor.Release()
-			for i := int32(0); i < value.Releases.Count; i++ {
-				p := (*WhereViewReleasesEntryRow)(cursor.Next())
-				if p == nil {
-					return false
-				}
-				if !WhereViewReleasesEntrySaveMessageBody(w, &(*p)) {
-					return false
-				}
-			}
-		}
-	}
-	{
-		if value.StoreRttP50MsPresent {
-			if true {
-				w.Put(266, TableMessageRefBitsHere)
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.StoreRttP50Ms), uint64(0))
-			}
-		}
-	}
-	{
-		if value.StoreRttP99MsPresent {
-			if true {
-				w.Put(267, TableMessageRefBitsHere)
-				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 11, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, math.Float64bits(value.StoreRttP99Ms), uint64(0))
-			}
-		}
-	}
-	{
-		if value.LandedSeries != 0 {
-			w.Put(268, TableMessageRefBitsHere)
-			if value.LandedSeries == 0 {
-				w.Put(0, w.IndexBits)
-			} else {
-				index, ok := w.Numbering.Index(&value.LandedSeries)
-				if !ok {
-					return false
-				}
-				w.Put(index, w.IndexBits)
-			}
-		}
-	}
-	w.Put(0, TableMessageRefBitsHere)
-	return !w.Overflow
-}
-func WhereViewLoadMessageBody(r *TableMessageReader, value *WhereView) bool {
-	WhereViewReset(value)
-	for {
-		ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
-		if !ok {
-			r.Report.Malformed = true
-			return false
-		}
-		if ref == 0 {
-			return true
-		}
-		entry, ok := r.Vocabulary.Entry(ref)
-		if !ok || entry.Id >= 0xfffffffffffffffd {
-			r.Report.Malformed = true
-			return false
-		}
-		switch entry.Id {
-		case 0xe280a3451e738170:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				if !DecisionSummaryLoadMessageBody(r, &value.Decisions) {
-					return false
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x089c4e07b545a968:
-			{
-				widened := false
-				if entry.Shape.Kind != 36 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload273 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload273.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload273.Signed(entry.Shape.Kind)
-						value.At = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xdd3bf9933387198d:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload274 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload274.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload274.Signed(entry.Shape.Kind)
-						value.Landed = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xe6f09b190519daa4:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload275 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload275.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload275.Signed(entry.Shape.Kind)
-						value.All = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x0a9904cc5fa248be:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload276 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload276.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload276.Signed(entry.Shape.Kind)
-						value.Held = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xa3c2813bcd780513:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Summary, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xb0f3e4834046d1ab:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload277 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload277.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload277.Signed(entry.Shape.Kind)
-						value.ArchivedCards = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x28dedfcefcb74068:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload278 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload278.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload278.Signed(entry.Shape.Kind)
-						value.ArchivedLanded = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xdc51fb6761fd6e91:
-			{
-				widened := false
-				if entry.Shape.Kind != 1 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload279 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload279.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					value.Done = payload279.Get8() != 0
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xe26607dbf29ff924:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &WhereViewTableFields[9]
-					holder := (*tableContainer)(unsafe.Pointer(&value.Tables))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 32, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *WhereViewTablesEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(*r, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*WhereViewTablesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 32))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						if !WhereViewTablesEntryLoadMessageBody(r, p) {
-							return false
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x6dd8dc6c5fdae3ce:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &WhereViewTableFields[10]
-					holder := (*tableContainer)(unsafe.Pointer(&value.Tiers))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *WhereViewTiersEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(*r, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*WhereViewTiersEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						if !WhereViewTiersEntryLoadMessageBody(r, p) {
-							return false
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x13daa19ec34623d4:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &WhereViewTableFields[11]
-					holder := (*tableContainer)(unsafe.Pointer(&value.StreamCosts))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 336, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *WhereViewStreamCostsEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(*r, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*WhereViewStreamCostsEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 336))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						if !WhereViewStreamCostsEntryLoadMessageBody(r, p) {
-							return false
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xbea0bc892d25d607:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.CostCheck, index, 0xd15dc0f47785f8a0, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x63a9b7c8db210dfb:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.FirstTime, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x5ae642b8a707f7b5:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload280 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload280.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload280.Signed(entry.Shape.Kind)
-						value.FirstTimeTarget = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x549433427fd14530:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload281 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload281.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload281.Signed(entry.Shape.Kind)
-						value.FirstTimeWindow = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x609ecda98b3bee32:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 12 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.FirstTimeUnderTarget))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 136, 4) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*WhereViewFirstTimeUnderTargetTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 136))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !WhereViewFirstTimeUnderTargetTextLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xe02360359c269026:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &WhereViewTableFields[17]
-					holder := (*tableContainer)(unsafe.Pointer(&value.FirstTimeRoutes))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *WhereViewFirstTimeRoutesEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(*r, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*WhereViewFirstTimeRoutesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						if !WhereViewFirstTimeRoutesEntryLoadMessageBody(r, p) {
-							return false
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x8da0655a706978ba:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.ReadSpend, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x81f528932d7f3d02:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Streams))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 224, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*StreamClockRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 224))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !StreamClockLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x072531ee7becec74:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				if !StageTimesLoadMessageBody(r, &value.StageTimes) {
-					return false
-				}
-				value.StageTimesPresent = true
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x063f5b3659619e10:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 12 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Stalled))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 136, 4) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*WhereViewStalledTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 136))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !WhereViewStalledTextLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x387748cc2ad39108:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Critical))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 536, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*CriticalCardRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 536))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !CriticalCardLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x274d62c1e1e8ead2:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 12 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Blockers))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 65716, 4) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*WhereViewBlockersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 65716))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !WhereViewBlockersTextLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x9e9b04c54923ae13:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Idle, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x20cd038d974113f1:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Coordinator, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x52dea0d6eeb5083c:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Pending, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xfc9697d1196e6ba6:
-			{
-				widened := false
-				if entry.Shape.Kind != 9 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 9) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload282 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload282.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload282.Unsigned(entry.Shape.Kind)
-						value.Epoch = uint64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x149c1b1c0a825473:
-			{
-				widened := false
-				if entry.Shape.Kind != 36 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload283 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload283.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload283.Signed(entry.Shape.Kind)
-						value.Cleared = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x385157cb98d7be6e:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Machine, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xbcf35c56fa51bfd9:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.ServerVersion, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x7294d77db181ded2:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Server, index, 0x5b1ed46937b3d7fa, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xb9a400e2ab1a653d:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.FleetWork, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x7b989cbd26ec648a:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.FriendsWork, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x7f1b4a5c41ecd465:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 12 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.FleetTiers))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 16, 4) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*WhereViewFleetTiersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 16))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !WhereViewFleetTiersTextLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xe685131756c58824:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 12 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.FriendsTiers))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 16, 4) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*WhereViewFriendsTiersTextRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 16))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !WhereViewFriendsTiersTextLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xac4c97888e22525a:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.ReadsNeeded, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x6bd3bccef38de2bf:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Goals))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 65656, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*GoalViewRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 65656))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !GoalViewLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x2d08f118d3f933e8:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Seat, index, 0x3269794dbb88fca0, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x7477287ad37c50f1:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Holds))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 584, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*HoldViewRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 584))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !HoldViewLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x218eaf820c8b56d9:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.SeatWaits, index, 0x55a9023aeba12d7e, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x44f536ad76b6a942:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Stops))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 568, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*StopRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 568))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !StopLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xb4e7c1914a10e55d:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Providers))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 96, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*ProviderViewRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 96))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !ProviderViewLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x2f607b226cfbebd0:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				if !ProviderGapReportLoadMessageBody(r, &value.ProviderGaps) {
-					return false
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xd14829ec544a2fb4:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Lanes))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 192, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*LaneRowRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 192))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !LaneRowLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xaf9dac3b097689c4:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Cards))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 1232, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*DealtCardRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 1232))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !DealtCardLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x1bdb1ee8587d58f0:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Merging))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 672, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*MergingCardRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 672))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !MergingCardLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x96f1955a44843146:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Judgments))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 536, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*JudgmentRefRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 536))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !JudgmentRefLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xa3a7061ff10a8138:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Rows))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 704, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*PrimaryRowRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 704))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !PrimaryRowLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xe17417fb33768153:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Archived, index, 0x71e32bddcd9524b6, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xf113ecd5ed794504:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.StatsReset, index, 0x6d882f133edf2f4e, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x8935baf305f374b4:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload284 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload284.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload284.Signed(entry.Shape.Kind)
-						value.Ready = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x8f75c61dfd19093f:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Backup, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x7c66a4f6c72a2f32:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload285 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload285.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload285.Signed(entry.Shape.Kind)
-						value.ReadsWaiting = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xa15579321342d2f7:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				if !ReadsWindowLoadMessageBody(r, &value.ReadsWindow) {
-					return false
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x43175e54072048dd:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				if !ReadCardCountsLoadMessageBody(r, &value.ReadCards) {
-					return false
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xdc9e7e18fec93bb8:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload286 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload286.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload286.Signed(entry.Shape.Kind)
-						value.Fix = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xc6293a6425e1ff65:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &WhereViewTableFields[57]
-					holder := (*tableContainer)(unsafe.Pointer(&value.Priorities))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 32, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *WhereViewPrioritiesEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(*r, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*WhereViewPrioritiesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 32))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						if !WhereViewPrioritiesEntryLoadMessageBody(r, p) {
-							return false
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xa11df2a73cf40d42:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &WhereViewTableFields[58]
-					holder := (*tableContainer)(unsafe.Pointer(&value.StreamPriorities))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 144, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *WhereViewStreamPrioritiesEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(*r, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*WhereViewStreamPrioritiesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 144))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						if !WhereViewStreamPrioritiesEntryLoadMessageBody(r, p) {
-							return false
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xdbdacd932fd1e9bf:
-			{
-				widened := false
-				if entry.Shape.Kind != 5 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 5) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload287 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload287.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						v := payload287.Signed(entry.Shape.Kind)
-						value.Width = int64(v)
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xd86c0af0b398153b:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.Buffer, index, 0x704be0d8faaffc58, &r.Report)
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x125083191daf6f61:
-			{
-				widened := false
-				if entry.Shape.Kind != 1 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload288 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload288.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					value.Low = payload288.Get8() != 0
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xcf0cc5aad6d89b8c:
-			{
-				widened := false
-				if entry.Shape.Kind != 13 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				if !MergeRowLoadMessageBody(r, &value.MergeRow) {
-					return false
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x82a6b14733b2685a:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					if entry.Element.Kind == 6 && !r.Bits.Align() {
-						r.Report.Malformed = true
-						return false
-					}
-					holder := (*tableContainer)(unsafe.Pointer(&value.Friends))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 200, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					element := TableMessageEntry{Shape: entry.Element}
-					_ = element
-					for i := uint64(0); i < count; i++ {
-						p := (*FriendRowRow)(tableContainerFillAt(&r.Nodes.Carve, holder, int32(i), 200))
-						if p == nil {
-							r.Report.Malformed = true
-							return false
-						}
-						holder.Count++
-						if !FriendRowLoadMessageBody(r, &(*p)) {
-							return false
-						}
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xa539b948612d1f97:
-			{
-				widened := false
-				if entry.Shape.Kind != 14 || entry.Element.Kind != 13 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					count, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok {
-						r.Report.Malformed = true
-						return false
-					}
-					field := &WhereViewTableFields[64]
-					holder := (*tableContainer)(unsafe.Pointer(&value.Releases))
-					if !tableContainerFill(&r.Nodes.Carve, holder, count, 65552, 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					holder.Count = 0
-					var last tableMapKey
-					var prior *WhereViewReleasesEntryRow
-					mapWidened := false
-					for i := uint64(0); i < count; i++ {
-						key, end, bad, over, wide, whole := tableMessageMapReadKey(*r, &field.Table().Fields[0])
-						if !whole {
-							r.Report.Malformed = true
-							return false
-						}
-						if wide && !mapWidened {
-							mapWidened = true
-							r.Report.Widened++
-						}
-						if bad {
-							*holder = tableContainer{}
-							r.Report.KindMismatch++
-							r.Bits.Offset = end
-							for j := i + 1; j < count; j++ {
-								if !tableMessageSkipBody(&r.Bits, r.Vocabulary, r.IndexBits, 0) {
-									r.Report.Malformed = true
-									return false
-								}
-							}
-							break
-						}
-						if over {
-							r.Report.Clamped++
-							r.Bits.Offset = end
-							continue
-						}
-						order := -1
-						if prior != nil {
-							order = tableMapKeyOrder(last, key, &field.Table().Fields[0])
-						}
-						if order > 0 {
-							r.Report.Malformed = true
-							return false
-						}
-						p := prior
-						if order == 0 {
-							r.Report.Duplicate++
-						} else {
-							p = (*WhereViewReleasesEntryRow)(tableContainerFillAt(&r.Nodes.Carve, holder, holder.Count, 65552))
-							if p == nil {
-								r.Report.Malformed = true
-								return false
-							}
-							holder.Count++
-						}
-						if !WhereViewReleasesEntryLoadMessageBody(r, p) {
-							return false
-						}
-						if r.Bits.Offset != end {
-							r.Report.Malformed = true
-							return false
-						}
-						last = key
-						prior = p
-					}
-				}
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xf603e23e20725712:
-			{
-				widened := false
-				if entry.Shape.Kind != 11 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 11) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload289 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload289.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						var v float64
-						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload289.Get32()))
-						} else {
-							v = math.Float64frombits(payload289.Get64())
-						}
-						value.StoreRttP50Ms = v
-					}
-				}
-				value.StoreRttP50MsPresent = true
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0xa899b225b2fb8c07:
-			{
-				widened := false
-				if entry.Shape.Kind != 11 || entry.Element.Kind != 0 {
-					if entry.Element.Kind == 0 && tableKindWidens(entry.Shape.Kind, 11) {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					var raw [16]byte
-					if !tableMessageReadScalar(&r.Bits, entry.Shape, &raw) {
-						r.Report.Malformed = true
-						return false
-					}
-					payload290 := TableReader{Buffer: raw[:], Report: &r.Report}
-					if !payload290.Has(tableKindBytes(entry.Shape.Kind)) {
-						r.Report.Malformed = true
-						return false
-					}
-					{
-						var v float64
-						if entry.Shape.Kind == 10 {
-							v = math.Float64frombits(tableWidenFloat(payload290.Get32()))
-						} else {
-							v = math.Float64frombits(payload290.Get64())
-						}
-						value.StoreRttP99Ms = v
-					}
-				}
-				value.StoreRttP99MsPresent = true
-				if widened {
-					r.Report.Widened++
-				}
-			}
-		case 0x602a969dcf5c554f:
-			{
-				widened := false
-				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
-					if false {
-						widened = true
-					} else {
-						r.Report.KindMismatch++
-						if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
-							r.Report.Malformed = true
-							return false
-						}
-						break
-					}
-				}
-				{
-					index, ok := r.Bits.Get(r.IndexBits)
-					if !ok || r.IndexBits <= 0 {
-						r.Report.Malformed = true
-						return false
-					}
-					r.Nodes.Resolve(&value.LandedSeries, index, 0x6eeace6e976c6068, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -36880,34 +18365,6 @@ func init() {
 	NameListTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool { return NameListSaveMessageBody(w, (*NameList)(p)) }
 	NameListTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
 		ok := NameListLoadMessageBody(&r, (*NameList)(p))
-		return r, ok
-	}
-}
-
-func init() {
-	DecisionSummaryReceiptHistoryTextTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := DecisionSummaryReceiptHistoryTextLoadMessageBodyRetain(&r, (*DecisionSummaryReceiptHistoryText)(p))
-		return r, ok
-	}
-	DecisionSummaryReceiptHistoryTextTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return DecisionSummaryReceiptHistoryTextSaveMessageBody(w, (*DecisionSummaryReceiptHistoryText)(p))
-	}
-	DecisionSummaryReceiptHistoryTextTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := DecisionSummaryReceiptHistoryTextLoadMessageBody(&r, (*DecisionSummaryReceiptHistoryText)(p))
-		return r, ok
-	}
-}
-
-func init() {
-	DecisionSummaryTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := DecisionSummaryLoadMessageBodyRetain(&r, (*DecisionSummary)(p))
-		return r, ok
-	}
-	DecisionSummaryTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return DecisionSummarySaveMessageBody(w, (*DecisionSummary)(p))
-	}
-	DecisionSummaryTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := DecisionSummaryLoadMessageBody(&r, (*DecisionSummary)(p))
 		return r, ok
 	}
 }
@@ -36974,76 +18431,6 @@ func init() {
 	}
 	CostReconcileRecordTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
 		ok := CostReconcileRecordLoadMessageBody(&r, (*CostReconcileRecord)(p))
-		return r, ok
-	}
-}
-
-func init() {
-	TierCostsTiersEntryTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := TierCostsTiersEntryLoadMessageBodyRetain(&r, (*TierCostsTiersEntry)(p))
-		return r, ok
-	}
-	TierCostsTiersEntryTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return TierCostsTiersEntrySaveMessageBody(w, (*TierCostsTiersEntry)(p))
-	}
-	TierCostsTiersEntryTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := TierCostsTiersEntryLoadMessageBody(&r, (*TierCostsTiersEntry)(p))
-		return r, ok
-	}
-}
-
-func init() {
-	TierCostsCostByTierEntryTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := TierCostsCostByTierEntryLoadMessageBodyRetain(&r, (*TierCostsCostByTierEntry)(p))
-		return r, ok
-	}
-	TierCostsCostByTierEntryTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return TierCostsCostByTierEntrySaveMessageBody(w, (*TierCostsCostByTierEntry)(p))
-	}
-	TierCostsCostByTierEntryTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := TierCostsCostByTierEntryLoadMessageBody(&r, (*TierCostsCostByTierEntry)(p))
-		return r, ok
-	}
-}
-
-func init() {
-	TierCostsReadsTodayEntryTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := TierCostsReadsTodayEntryLoadMessageBodyRetain(&r, (*TierCostsReadsTodayEntry)(p))
-		return r, ok
-	}
-	TierCostsReadsTodayEntryTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return TierCostsReadsTodayEntrySaveMessageBody(w, (*TierCostsReadsTodayEntry)(p))
-	}
-	TierCostsReadsTodayEntryTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := TierCostsReadsTodayEntryLoadMessageBody(&r, (*TierCostsReadsTodayEntry)(p))
-		return r, ok
-	}
-}
-
-func init() {
-	TierCostsReadersEntryTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := TierCostsReadersEntryLoadMessageBodyRetain(&r, (*TierCostsReadersEntry)(p))
-		return r, ok
-	}
-	TierCostsReadersEntryTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return TierCostsReadersEntrySaveMessageBody(w, (*TierCostsReadersEntry)(p))
-	}
-	TierCostsReadersEntryTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := TierCostsReadersEntryLoadMessageBody(&r, (*TierCostsReadersEntry)(p))
-		return r, ok
-	}
-}
-
-func init() {
-	TierCostsTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := TierCostsLoadMessageBodyRetain(&r, (*TierCosts)(p))
-		return r, ok
-	}
-	TierCostsTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return TierCostsSaveMessageBody(w, (*TierCosts)(p))
-	}
-	TierCostsTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := TierCostsLoadMessageBody(&r, (*TierCosts)(p))
 		return r, ok
 	}
 }
@@ -37307,34 +18694,6 @@ func init() {
 }
 
 func init() {
-	ProviderGapReportTiersTextTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := ProviderGapReportTiersTextLoadMessageBodyRetain(&r, (*ProviderGapReportTiersText)(p))
-		return r, ok
-	}
-	ProviderGapReportTiersTextTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return ProviderGapReportTiersTextSaveMessageBody(w, (*ProviderGapReportTiersText)(p))
-	}
-	ProviderGapReportTiersTextTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := ProviderGapReportTiersTextLoadMessageBody(&r, (*ProviderGapReportTiersText)(p))
-		return r, ok
-	}
-}
-
-func init() {
-	ProviderGapReportTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := ProviderGapReportLoadMessageBodyRetain(&r, (*ProviderGapReport)(p))
-		return r, ok
-	}
-	ProviderGapReportTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return ProviderGapReportSaveMessageBody(w, (*ProviderGapReport)(p))
-	}
-	ProviderGapReportTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := ProviderGapReportLoadMessageBody(&r, (*ProviderGapReport)(p))
-		return r, ok
-	}
-}
-
-func init() {
 	LaneRowHeldTextTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
 		ok := LaneRowHeldTextLoadMessageBodyRetain(&r, (*LaneRowHeldText)(p))
 		return r, ok
@@ -37412,34 +18771,6 @@ func init() {
 	}
 	JudgmentRefTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
 		ok := JudgmentRefLoadMessageBody(&r, (*JudgmentRef)(p))
-		return r, ok
-	}
-}
-
-func init() {
-	PrimaryRowFieldsEntryTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := PrimaryRowFieldsEntryLoadMessageBodyRetain(&r, (*PrimaryRowFieldsEntry)(p))
-		return r, ok
-	}
-	PrimaryRowFieldsEntryTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return PrimaryRowFieldsEntrySaveMessageBody(w, (*PrimaryRowFieldsEntry)(p))
-	}
-	PrimaryRowFieldsEntryTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := PrimaryRowFieldsEntryLoadMessageBody(&r, (*PrimaryRowFieldsEntry)(p))
-		return r, ok
-	}
-}
-
-func init() {
-	PrimaryRowTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := PrimaryRowLoadMessageBodyRetain(&r, (*PrimaryRow)(p))
-		return r, ok
-	}
-	PrimaryRowTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return PrimaryRowSaveMessageBody(w, (*PrimaryRow)(p))
-	}
-	PrimaryRowTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := PrimaryRowLoadMessageBody(&r, (*PrimaryRow)(p))
 		return r, ok
 	}
 }
@@ -37541,48 +18872,6 @@ func init() {
 }
 
 func init() {
-	FriendReportRunningTextTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := FriendReportRunningTextLoadMessageBodyRetain(&r, (*FriendReportRunningText)(p))
-		return r, ok
-	}
-	FriendReportRunningTextTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return FriendReportRunningTextSaveMessageBody(w, (*FriendReportRunningText)(p))
-	}
-	FriendReportRunningTextTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := FriendReportRunningTextLoadMessageBody(&r, (*FriendReportRunningText)(p))
-		return r, ok
-	}
-}
-
-func init() {
-	FriendReportTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := FriendReportLoadMessageBodyRetain(&r, (*FriendReport)(p))
-		return r, ok
-	}
-	FriendReportTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return FriendReportSaveMessageBody(w, (*FriendReport)(p))
-	}
-	FriendReportTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := FriendReportLoadMessageBody(&r, (*FriendReport)(p))
-		return r, ok
-	}
-}
-
-func init() {
-	FriendRowTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := FriendRowLoadMessageBodyRetain(&r, (*FriendRow)(p))
-		return r, ok
-	}
-	FriendRowTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return FriendRowSaveMessageBody(w, (*FriendRow)(p))
-	}
-	FriendRowTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := FriendRowLoadMessageBody(&r, (*FriendRow)(p))
-		return r, ok
-	}
-}
-
-func init() {
 	SeriesTotalsTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
 		ok := SeriesTotalsLoadMessageBodyRetain(&r, (*SeriesTotals)(p))
 		return r, ok
@@ -37611,104 +18900,6 @@ func init() {
 }
 
 func init() {
-	LandedSeriesWorkersEntryTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := LandedSeriesWorkersEntryLoadMessageBodyRetain(&r, (*LandedSeriesWorkersEntry)(p))
-		return r, ok
-	}
-	LandedSeriesWorkersEntryTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return LandedSeriesWorkersEntrySaveMessageBody(w, (*LandedSeriesWorkersEntry)(p))
-	}
-	LandedSeriesWorkersEntryTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := LandedSeriesWorkersEntryLoadMessageBody(&r, (*LandedSeriesWorkersEntry)(p))
-		return r, ok
-	}
-}
-
-func init() {
-	LandedSeriesTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := LandedSeriesLoadMessageBodyRetain(&r, (*LandedSeries)(p))
-		return r, ok
-	}
-	LandedSeriesTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return LandedSeriesSaveMessageBody(w, (*LandedSeries)(p))
-	}
-	LandedSeriesTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := LandedSeriesLoadMessageBody(&r, (*LandedSeries)(p))
-		return r, ok
-	}
-}
-
-func init() {
-	WhereViewTablesEntryValueEntryValueEntryTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := WhereViewTablesEntryValueEntryValueEntryLoadMessageBodyRetain(&r, (*WhereViewTablesEntryValueEntryValueEntry)(p))
-		return r, ok
-	}
-	WhereViewTablesEntryValueEntryValueEntryTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return WhereViewTablesEntryValueEntryValueEntrySaveMessageBody(w, (*WhereViewTablesEntryValueEntryValueEntry)(p))
-	}
-	WhereViewTablesEntryValueEntryValueEntryTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := WhereViewTablesEntryValueEntryValueEntryLoadMessageBody(&r, (*WhereViewTablesEntryValueEntryValueEntry)(p))
-		return r, ok
-	}
-}
-
-func init() {
-	WhereViewTablesEntryValueEntryTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := WhereViewTablesEntryValueEntryLoadMessageBodyRetain(&r, (*WhereViewTablesEntryValueEntry)(p))
-		return r, ok
-	}
-	WhereViewTablesEntryValueEntryTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return WhereViewTablesEntryValueEntrySaveMessageBody(w, (*WhereViewTablesEntryValueEntry)(p))
-	}
-	WhereViewTablesEntryValueEntryTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := WhereViewTablesEntryValueEntryLoadMessageBody(&r, (*WhereViewTablesEntryValueEntry)(p))
-		return r, ok
-	}
-}
-
-func init() {
-	WhereViewTablesEntryTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := WhereViewTablesEntryLoadMessageBodyRetain(&r, (*WhereViewTablesEntry)(p))
-		return r, ok
-	}
-	WhereViewTablesEntryTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return WhereViewTablesEntrySaveMessageBody(w, (*WhereViewTablesEntry)(p))
-	}
-	WhereViewTablesEntryTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := WhereViewTablesEntryLoadMessageBody(&r, (*WhereViewTablesEntry)(p))
-		return r, ok
-	}
-}
-
-func init() {
-	WhereViewTiersEntryTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := WhereViewTiersEntryLoadMessageBodyRetain(&r, (*WhereViewTiersEntry)(p))
-		return r, ok
-	}
-	WhereViewTiersEntryTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return WhereViewTiersEntrySaveMessageBody(w, (*WhereViewTiersEntry)(p))
-	}
-	WhereViewTiersEntryTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := WhereViewTiersEntryLoadMessageBody(&r, (*WhereViewTiersEntry)(p))
-		return r, ok
-	}
-}
-
-func init() {
-	WhereViewStreamCostsEntryTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := WhereViewStreamCostsEntryLoadMessageBodyRetain(&r, (*WhereViewStreamCostsEntry)(p))
-		return r, ok
-	}
-	WhereViewStreamCostsEntryTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return WhereViewStreamCostsEntrySaveMessageBody(w, (*WhereViewStreamCostsEntry)(p))
-	}
-	WhereViewStreamCostsEntryTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := WhereViewStreamCostsEntryLoadMessageBody(&r, (*WhereViewStreamCostsEntry)(p))
-		return r, ok
-	}
-}
-
-func init() {
 	WhereViewFirstTimeUnderTargetTextTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
 		ok := WhereViewFirstTimeUnderTargetTextLoadMessageBodyRetain(&r, (*WhereViewFirstTimeUnderTargetText)(p))
 		return r, ok
@@ -37723,20 +18914,6 @@ func init() {
 }
 
 func init() {
-	WhereViewFirstTimeRoutesEntryTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := WhereViewFirstTimeRoutesEntryLoadMessageBodyRetain(&r, (*WhereViewFirstTimeRoutesEntry)(p))
-		return r, ok
-	}
-	WhereViewFirstTimeRoutesEntryTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return WhereViewFirstTimeRoutesEntrySaveMessageBody(w, (*WhereViewFirstTimeRoutesEntry)(p))
-	}
-	WhereViewFirstTimeRoutesEntryTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := WhereViewFirstTimeRoutesEntryLoadMessageBody(&r, (*WhereViewFirstTimeRoutesEntry)(p))
-		return r, ok
-	}
-}
-
-func init() {
 	WhereViewStalledTextTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
 		ok := WhereViewStalledTextLoadMessageBodyRetain(&r, (*WhereViewStalledText)(p))
 		return r, ok
@@ -37746,20 +18923,6 @@ func init() {
 	}
 	WhereViewStalledTextTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
 		ok := WhereViewStalledTextLoadMessageBody(&r, (*WhereViewStalledText)(p))
-		return r, ok
-	}
-}
-
-func init() {
-	WhereViewBlockersTextTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := WhereViewBlockersTextLoadMessageBodyRetain(&r, (*WhereViewBlockersText)(p))
-		return r, ok
-	}
-	WhereViewBlockersTextTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return WhereViewBlockersTextSaveMessageBody(w, (*WhereViewBlockersText)(p))
-	}
-	WhereViewBlockersTextTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := WhereViewBlockersTextLoadMessageBody(&r, (*WhereViewBlockersText)(p))
 		return r, ok
 	}
 }
@@ -37830,20 +18993,6 @@ func init() {
 	}
 	WhereViewReleasesEntryTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
 		ok := WhereViewReleasesEntryLoadMessageBody(&r, (*WhereViewReleasesEntry)(p))
-		return r, ok
-	}
-}
-
-func init() {
-	WhereViewTableInfo.LoadMessageBodyRetain = func(r TableRetainMessageReader, p unsafe.Pointer) (TableRetainMessageReader, bool) {
-		ok := WhereViewLoadMessageBodyRetain(&r, (*WhereView)(p))
-		return r, ok
-	}
-	WhereViewTableInfo.SaveMessageBody = func(w *TableMessageWriter, p unsafe.Pointer) bool {
-		return WhereViewSaveMessageBody(w, (*WhereView)(p))
-	}
-	WhereViewTableInfo.LoadMessageBody = func(r TableMessageReader, p unsafe.Pointer) (TableMessageReader, bool) {
-		ok := WhereViewLoadMessageBody(&r, (*WhereView)(p))
 		return r, ok
 	}
 }

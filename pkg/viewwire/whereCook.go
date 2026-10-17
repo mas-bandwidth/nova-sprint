@@ -200,8 +200,8 @@ func init() {
 	tableCookLayoutOffset("DecisionSummaryRow.DeliveryFaults", unsafe.Offsetof(DecisionSummaryRow{}.DeliveryFaults), 24)
 	tableCookLayoutOffset("DecisionSummaryRow.ReceiptUnknown", unsafe.Offsetof(DecisionSummaryRow{}.ReceiptUnknown), 32)
 	tableCookLayoutOffset("DecisionSummaryRow.ReceiptHistory", unsafe.Offsetof(DecisionSummaryRow{}.ReceiptHistory), 40)
-	tableCookLayoutSize("DecisionSummaryReceiptHistoryTextRow", unsafe.Sizeof(DecisionSummaryReceiptHistoryTextRow{}), 65544)
-	tableCookLayoutSize("DecisionSummaryReceiptHistoryTextRow alignment", unsafe.Alignof(DecisionSummaryReceiptHistoryTextRow{}), 4)
+	tableCookLayoutSize("DecisionSummaryReceiptHistoryTextRow", unsafe.Sizeof(DecisionSummaryReceiptHistoryTextRow{}), 8)
+	tableCookLayoutSize("DecisionSummaryReceiptHistoryTextRow alignment", unsafe.Alignof(DecisionSummaryReceiptHistoryTextRow{}), 8)
 	tableCookLayoutOffset("DecisionSummaryReceiptHistoryTextRow.Value", unsafe.Offsetof(DecisionSummaryReceiptHistoryTextRow{}.Value), 0)
 	tableCookLayoutSize("FriendReportRow", unsafe.Sizeof(FriendReportRow{}), 152)
 	tableCookLayoutSize("FriendReportRow alignment", unsafe.Alignof(FriendReportRow{}), 8)
@@ -218,8 +218,8 @@ func init() {
 	tableCookLayoutOffset("FriendReportRow.Build", unsafe.Offsetof(FriendReportRow{}.Build), 128)
 	tableCookLayoutOffset("FriendReportRow.Started", unsafe.Offsetof(FriendReportRow{}.Started), 136)
 	tableCookLayoutOffset("FriendReportRow.Present", unsafe.Offsetof(FriendReportRow{}.Present), 144)
-	tableCookLayoutSize("FriendReportRunningTextRow", unsafe.Sizeof(FriendReportRunningTextRow{}), 65544)
-	tableCookLayoutSize("FriendReportRunningTextRow alignment", unsafe.Alignof(FriendReportRunningTextRow{}), 4)
+	tableCookLayoutSize("FriendReportRunningTextRow", unsafe.Sizeof(FriendReportRunningTextRow{}), 8)
+	tableCookLayoutSize("FriendReportRunningTextRow alignment", unsafe.Alignof(FriendReportRunningTextRow{}), 8)
 	tableCookLayoutOffset("FriendReportRunningTextRow.Value", unsafe.Offsetof(FriendReportRunningTextRow{}.Value), 0)
 	tableCookLayoutSize("FriendRowRow", unsafe.Sizeof(FriendRowRow{}), 200)
 	tableCookLayoutSize("FriendRowRow alignment", unsafe.Alignof(FriendRowRow{}), 8)
@@ -257,17 +257,17 @@ func init() {
 	tableCookLayoutOffset("GoalViewRow.State", unsafe.Offsetof(GoalViewRow{}.State), 96)
 	tableCookLayoutOffset("GoalViewRow.Error", unsafe.Offsetof(GoalViewRow{}.Error), 104)
 	tableCookLayoutOffset("GoalViewRow.Text", unsafe.Offsetof(GoalViewRow{}.Text), 112)
-	tableCookLayoutSize("HoldViewRow", unsafe.Sizeof(HoldViewRow{}), 584)
+	tableCookLayoutSize("HoldViewRow", unsafe.Sizeof(HoldViewRow{}), 72)
 	tableCookLayoutSize("HoldViewRow alignment", unsafe.Alignof(HoldViewRow{}), 8)
 	tableCookLayoutOffset("HoldViewRow.Kind", unsafe.Offsetof(HoldViewRow{}.Kind), 0)
 	tableCookLayoutOffset("HoldViewRow.Name", unsafe.Offsetof(HoldViewRow{}.Name), 8)
-	tableCookLayoutOffset("HoldViewRow.Reason", unsafe.Offsetof(HoldViewRow{}.Reason), 528)
-	tableCookLayoutOffset("HoldViewRow.By", unsafe.Offsetof(HoldViewRow{}.By), 536)
-	tableCookLayoutOffset("HoldViewRow.At", unsafe.Offsetof(HoldViewRow{}.At), 544)
-	tableCookLayoutOffset("HoldViewRow.HandedBack", unsafe.Offsetof(HoldViewRow{}.HandedBack), 552)
-	tableCookLayoutOffset("HoldViewRow.Cause", unsafe.Offsetof(HoldViewRow{}.Cause), 560)
-	tableCookLayoutOffset("HoldViewRow.Who", unsafe.Offsetof(HoldViewRow{}.Who), 568)
-	tableCookLayoutOffset("HoldViewRow.Release", unsafe.Offsetof(HoldViewRow{}.Release), 576)
+	tableCookLayoutOffset("HoldViewRow.Reason", unsafe.Offsetof(HoldViewRow{}.Reason), 16)
+	tableCookLayoutOffset("HoldViewRow.By", unsafe.Offsetof(HoldViewRow{}.By), 24)
+	tableCookLayoutOffset("HoldViewRow.At", unsafe.Offsetof(HoldViewRow{}.At), 32)
+	tableCookLayoutOffset("HoldViewRow.HandedBack", unsafe.Offsetof(HoldViewRow{}.HandedBack), 40)
+	tableCookLayoutOffset("HoldViewRow.Cause", unsafe.Offsetof(HoldViewRow{}.Cause), 48)
+	tableCookLayoutOffset("HoldViewRow.Who", unsafe.Offsetof(HoldViewRow{}.Who), 56)
+	tableCookLayoutOffset("HoldViewRow.Release", unsafe.Offsetof(HoldViewRow{}.Release), 64)
 	tableCookLayoutSize("JudgmentRefRow", unsafe.Sizeof(JudgmentRefRow{}), 536)
 	tableCookLayoutSize("JudgmentRefRow alignment", unsafe.Alignof(JudgmentRefRow{}), 8)
 	tableCookLayoutOffset("JudgmentRefRow.Id", unsafe.Offsetof(JudgmentRefRow{}.Id), 0)
@@ -285,10 +285,10 @@ func init() {
 	tableCookLayoutOffset("LandedSeriesRow.Totals", unsafe.Offsetof(LandedSeriesRow{}.Totals), 72)
 	tableCookLayoutOffset("LandedSeriesRow.LastHour", unsafe.Offsetof(LandedSeriesRow{}.LastHour), 96)
 	tableCookLayoutOffset("LandedSeriesRow.Workers", unsafe.Offsetof(LandedSeriesRow{}.Workers), 112)
-	tableCookLayoutSize("LandedSeriesWorkersEntryRow", unsafe.Sizeof(LandedSeriesWorkersEntryRow{}), 152)
+	tableCookLayoutSize("LandedSeriesWorkersEntryRow", unsafe.Sizeof(LandedSeriesWorkersEntryRow{}), 16)
 	tableCookLayoutSize("LandedSeriesWorkersEntryRow alignment", unsafe.Alignof(LandedSeriesWorkersEntryRow{}), 8)
 	tableCookLayoutOffset("LandedSeriesWorkersEntryRow.Key", unsafe.Offsetof(LandedSeriesWorkersEntryRow{}.Key), 0)
-	tableCookLayoutOffset("LandedSeriesWorkersEntryRow.Value", unsafe.Offsetof(LandedSeriesWorkersEntryRow{}.Value), 144)
+	tableCookLayoutOffset("LandedSeriesWorkersEntryRow.Value", unsafe.Offsetof(LandedSeriesWorkersEntryRow{}.Value), 8)
 	tableCookLayoutSize("LaneRowRow", unsafe.Sizeof(LaneRowRow{}), 192)
 	tableCookLayoutSize("LaneRowRow alignment", unsafe.Alignof(LaneRowRow{}), 8)
 	tableCookLayoutOffset("LaneRowRow.Kind", unsafe.Offsetof(LaneRowRow{}.Kind), 0)
@@ -336,17 +336,17 @@ func init() {
 	tableCookLayoutOffset("PrimaryRowRow.Score", unsafe.Offsetof(PrimaryRowRow{}.Score), 672)
 	tableCookLayoutOffset("PrimaryRowRow.Fields", unsafe.Offsetof(PrimaryRowRow{}.Fields), 680)
 	tableCookLayoutOffset("PrimaryRowRow.TierShown", unsafe.Offsetof(PrimaryRowRow{}.TierShown), 696)
-	tableCookLayoutSize("PrimaryRowFieldsEntryRow", unsafe.Sizeof(PrimaryRowFieldsEntryRow{}), 144)
+	tableCookLayoutSize("PrimaryRowFieldsEntryRow", unsafe.Sizeof(PrimaryRowFieldsEntryRow{}), 16)
 	tableCookLayoutSize("PrimaryRowFieldsEntryRow alignment", unsafe.Alignof(PrimaryRowFieldsEntryRow{}), 8)
 	tableCookLayoutOffset("PrimaryRowFieldsEntryRow.Key", unsafe.Offsetof(PrimaryRowFieldsEntryRow{}.Key), 0)
-	tableCookLayoutOffset("PrimaryRowFieldsEntryRow.Value", unsafe.Offsetof(PrimaryRowFieldsEntryRow{}.Value), 136)
+	tableCookLayoutOffset("PrimaryRowFieldsEntryRow.Value", unsafe.Offsetof(PrimaryRowFieldsEntryRow{}.Value), 8)
 	tableCookLayoutSize("ProviderGapReportRow", unsafe.Sizeof(ProviderGapReportRow{}), 48)
 	tableCookLayoutSize("ProviderGapReportRow alignment", unsafe.Alignof(ProviderGapReportRow{}), 8)
 	tableCookLayoutOffset("ProviderGapReportRow.InvalidProviders", unsafe.Offsetof(ProviderGapReportRow{}.InvalidProviders), 0)
 	tableCookLayoutOffset("ProviderGapReportRow.Routes", unsafe.Offsetof(ProviderGapReportRow{}.Routes), 16)
 	tableCookLayoutOffset("ProviderGapReportRow.Tiers", unsafe.Offsetof(ProviderGapReportRow{}.Tiers), 32)
-	tableCookLayoutSize("ProviderGapReportTiersTextRow", unsafe.Sizeof(ProviderGapReportTiersTextRow{}), 136)
-	tableCookLayoutSize("ProviderGapReportTiersTextRow alignment", unsafe.Alignof(ProviderGapReportTiersTextRow{}), 4)
+	tableCookLayoutSize("ProviderGapReportTiersTextRow", unsafe.Sizeof(ProviderGapReportTiersTextRow{}), 8)
+	tableCookLayoutSize("ProviderGapReportTiersTextRow alignment", unsafe.Alignof(ProviderGapReportTiersTextRow{}), 8)
 	tableCookLayoutOffset("ProviderGapReportTiersTextRow.Value", unsafe.Offsetof(ProviderGapReportTiersTextRow{}.Value), 0)
 	tableCookLayoutSize("ProviderProblemRow", unsafe.Sizeof(ProviderProblemRow{}), 16)
 	tableCookLayoutSize("ProviderProblemRow alignment", unsafe.Alignof(ProviderProblemRow{}), 8)
@@ -465,15 +465,15 @@ func init() {
 	tableCookLayoutSize("StatsResetViewStreamsEntryRow alignment", unsafe.Alignof(StatsResetViewStreamsEntryRow{}), 8)
 	tableCookLayoutOffset("StatsResetViewStreamsEntryRow.Key", unsafe.Offsetof(StatsResetViewStreamsEntryRow{}.Key), 0)
 	tableCookLayoutOffset("StatsResetViewStreamsEntryRow.Value", unsafe.Offsetof(StatsResetViewStreamsEntryRow{}.Value), 136)
-	tableCookLayoutSize("StopRow", unsafe.Sizeof(StopRow{}), 568)
+	tableCookLayoutSize("StopRow", unsafe.Sizeof(StopRow{}), 56)
 	tableCookLayoutSize("StopRow alignment", unsafe.Alignof(StopRow{}), 8)
 	tableCookLayoutOffset("StopRow.Kind", unsafe.Offsetof(StopRow{}.Kind), 0)
 	tableCookLayoutOffset("StopRow.Subject", unsafe.Offsetof(StopRow{}.Subject), 8)
-	tableCookLayoutOffset("StopRow.Since", unsafe.Offsetof(StopRow{}.Since), 528)
-	tableCookLayoutOffset("StopRow.What", unsafe.Offsetof(StopRow{}.What), 536)
-	tableCookLayoutOffset("StopRow.Effect", unsafe.Offsetof(StopRow{}.Effect), 544)
-	tableCookLayoutOffset("StopRow.Undo", unsafe.Offsetof(StopRow{}.Undo), 552)
-	tableCookLayoutOffset("StopRow.Signal", unsafe.Offsetof(StopRow{}.Signal), 560)
+	tableCookLayoutOffset("StopRow.Since", unsafe.Offsetof(StopRow{}.Since), 16)
+	tableCookLayoutOffset("StopRow.What", unsafe.Offsetof(StopRow{}.What), 24)
+	tableCookLayoutOffset("StopRow.Effect", unsafe.Offsetof(StopRow{}.Effect), 32)
+	tableCookLayoutOffset("StopRow.Undo", unsafe.Offsetof(StopRow{}.Undo), 40)
+	tableCookLayoutOffset("StopRow.Signal", unsafe.Offsetof(StopRow{}.Signal), 48)
 	tableCookLayoutSize("StreamClockRow", unsafe.Sizeof(StreamClockRow{}), 224)
 	tableCookLayoutSize("StreamClockRow alignment", unsafe.Alignof(StreamClockRow{}), 8)
 	tableCookLayoutOffset("StreamClockRow.Stream", unsafe.Offsetof(StreamClockRow{}.Stream), 0)
@@ -511,22 +511,22 @@ func init() {
 	tableCookLayoutOffset("TierCostsRow.InFlight", unsafe.Offsetof(TierCostsRow{}.InFlight), 168)
 	tableCookLayoutOffset("TierCostsRow.Unreconciled", unsafe.Offsetof(TierCostsRow{}.Unreconciled), 176)
 	tableCookLayoutOffset("TierCostsRow.Reconciles", unsafe.Offsetof(TierCostsRow{}.Reconciles), 184)
-	tableCookLayoutSize("TierCostsCostByTierEntryRow", unsafe.Sizeof(TierCostsCostByTierEntryRow{}), 144)
+	tableCookLayoutSize("TierCostsCostByTierEntryRow", unsafe.Sizeof(TierCostsCostByTierEntryRow{}), 16)
 	tableCookLayoutSize("TierCostsCostByTierEntryRow alignment", unsafe.Alignof(TierCostsCostByTierEntryRow{}), 8)
 	tableCookLayoutOffset("TierCostsCostByTierEntryRow.Key", unsafe.Offsetof(TierCostsCostByTierEntryRow{}.Key), 0)
-	tableCookLayoutOffset("TierCostsCostByTierEntryRow.Value", unsafe.Offsetof(TierCostsCostByTierEntryRow{}.Value), 136)
-	tableCookLayoutSize("TierCostsReadersEntryRow", unsafe.Sizeof(TierCostsReadersEntryRow{}), 192)
+	tableCookLayoutOffset("TierCostsCostByTierEntryRow.Value", unsafe.Offsetof(TierCostsCostByTierEntryRow{}.Value), 8)
+	tableCookLayoutSize("TierCostsReadersEntryRow", unsafe.Sizeof(TierCostsReadersEntryRow{}), 56)
 	tableCookLayoutSize("TierCostsReadersEntryRow alignment", unsafe.Alignof(TierCostsReadersEntryRow{}), 8)
 	tableCookLayoutOffset("TierCostsReadersEntryRow.Key", unsafe.Offsetof(TierCostsReadersEntryRow{}.Key), 0)
-	tableCookLayoutOffset("TierCostsReadersEntryRow.Value", unsafe.Offsetof(TierCostsReadersEntryRow{}.Value), 144)
-	tableCookLayoutSize("TierCostsReadsTodayEntryRow", unsafe.Sizeof(TierCostsReadsTodayEntryRow{}), 160)
+	tableCookLayoutOffset("TierCostsReadersEntryRow.Value", unsafe.Offsetof(TierCostsReadersEntryRow{}.Value), 8)
+	tableCookLayoutSize("TierCostsReadsTodayEntryRow", unsafe.Sizeof(TierCostsReadsTodayEntryRow{}), 32)
 	tableCookLayoutSize("TierCostsReadsTodayEntryRow alignment", unsafe.Alignof(TierCostsReadsTodayEntryRow{}), 8)
 	tableCookLayoutOffset("TierCostsReadsTodayEntryRow.Key", unsafe.Offsetof(TierCostsReadsTodayEntryRow{}.Key), 0)
-	tableCookLayoutOffset("TierCostsReadsTodayEntryRow.Value", unsafe.Offsetof(TierCostsReadsTodayEntryRow{}.Value), 136)
-	tableCookLayoutSize("TierCostsTiersEntryRow", unsafe.Sizeof(TierCostsTiersEntryRow{}), 144)
+	tableCookLayoutOffset("TierCostsReadsTodayEntryRow.Value", unsafe.Offsetof(TierCostsReadsTodayEntryRow{}.Value), 8)
+	tableCookLayoutSize("TierCostsTiersEntryRow", unsafe.Sizeof(TierCostsTiersEntryRow{}), 16)
 	tableCookLayoutSize("TierCostsTiersEntryRow alignment", unsafe.Alignof(TierCostsTiersEntryRow{}), 8)
 	tableCookLayoutOffset("TierCostsTiersEntryRow.Key", unsafe.Offsetof(TierCostsTiersEntryRow{}.Key), 0)
-	tableCookLayoutOffset("TierCostsTiersEntryRow.Value", unsafe.Offsetof(TierCostsTiersEntryRow{}.Value), 136)
+	tableCookLayoutOffset("TierCostsTiersEntryRow.Value", unsafe.Offsetof(TierCostsTiersEntryRow{}.Value), 8)
 	tableCookLayoutSize("WhereViewRow", unsafe.Sizeof(WhereViewRow{}), 1000)
 	tableCookLayoutSize("WhereViewRow alignment", unsafe.Alignof(WhereViewRow{}), 8)
 	tableCookLayoutOffset("WhereViewRow.Decisions", unsafe.Offsetof(WhereViewRow{}.Decisions), 0)
@@ -597,13 +597,13 @@ func init() {
 	tableCookLayoutOffset("WhereViewRow.StoreRttP50Ms", unsafe.Offsetof(WhereViewRow{}.StoreRttP50Ms), 960)
 	tableCookLayoutOffset("WhereViewRow.StoreRttP99Ms", unsafe.Offsetof(WhereViewRow{}.StoreRttP99Ms), 976)
 	tableCookLayoutOffset("WhereViewRow.LandedSeries", unsafe.Offsetof(WhereViewRow{}.LandedSeries), 992)
-	tableCookLayoutSize("WhereViewBlockersTextRow", unsafe.Sizeof(WhereViewBlockersTextRow{}), 65716)
-	tableCookLayoutSize("WhereViewBlockersTextRow alignment", unsafe.Alignof(WhereViewBlockersTextRow{}), 4)
+	tableCookLayoutSize("WhereViewBlockersTextRow", unsafe.Sizeof(WhereViewBlockersTextRow{}), 8)
+	tableCookLayoutSize("WhereViewBlockersTextRow alignment", unsafe.Alignof(WhereViewBlockersTextRow{}), 8)
 	tableCookLayoutOffset("WhereViewBlockersTextRow.Value", unsafe.Offsetof(WhereViewBlockersTextRow{}.Value), 0)
-	tableCookLayoutSize("WhereViewFirstTimeRoutesEntryRow", unsafe.Sizeof(WhereViewFirstTimeRoutesEntryRow{}), 144)
+	tableCookLayoutSize("WhereViewFirstTimeRoutesEntryRow", unsafe.Sizeof(WhereViewFirstTimeRoutesEntryRow{}), 16)
 	tableCookLayoutSize("WhereViewFirstTimeRoutesEntryRow alignment", unsafe.Alignof(WhereViewFirstTimeRoutesEntryRow{}), 8)
 	tableCookLayoutOffset("WhereViewFirstTimeRoutesEntryRow.Key", unsafe.Offsetof(WhereViewFirstTimeRoutesEntryRow{}.Key), 0)
-	tableCookLayoutOffset("WhereViewFirstTimeRoutesEntryRow.Value", unsafe.Offsetof(WhereViewFirstTimeRoutesEntryRow{}.Value), 136)
+	tableCookLayoutOffset("WhereViewFirstTimeRoutesEntryRow.Value", unsafe.Offsetof(WhereViewFirstTimeRoutesEntryRow{}.Value), 8)
 	tableCookLayoutSize("WhereViewFirstTimeUnderTargetTextRow", unsafe.Sizeof(WhereViewFirstTimeUnderTargetTextRow{}), 136)
 	tableCookLayoutSize("WhereViewFirstTimeUnderTargetTextRow alignment", unsafe.Alignof(WhereViewFirstTimeUnderTargetTextRow{}), 4)
 	tableCookLayoutOffset("WhereViewFirstTimeUnderTargetTextRow.Value", unsafe.Offsetof(WhereViewFirstTimeUnderTargetTextRow{}.Value), 0)
@@ -636,18 +636,18 @@ func init() {
 	tableCookLayoutSize("WhereViewTablesEntryRow alignment", unsafe.Alignof(WhereViewTablesEntryRow{}), 8)
 	tableCookLayoutOffset("WhereViewTablesEntryRow.Key", unsafe.Offsetof(WhereViewTablesEntryRow{}.Key), 0)
 	tableCookLayoutOffset("WhereViewTablesEntryRow.Value", unsafe.Offsetof(WhereViewTablesEntryRow{}.Value), 16)
-	tableCookLayoutSize("WhereViewTablesEntryValueEntryRow", unsafe.Sizeof(WhereViewTablesEntryValueEntryRow{}), 280)
+	tableCookLayoutSize("WhereViewTablesEntryValueEntryRow", unsafe.Sizeof(WhereViewTablesEntryValueEntryRow{}), 24)
 	tableCookLayoutSize("WhereViewTablesEntryValueEntryRow alignment", unsafe.Alignof(WhereViewTablesEntryValueEntryRow{}), 8)
 	tableCookLayoutOffset("WhereViewTablesEntryValueEntryRow.Key", unsafe.Offsetof(WhereViewTablesEntryValueEntryRow{}.Key), 0)
-	tableCookLayoutOffset("WhereViewTablesEntryValueEntryRow.Value", unsafe.Offsetof(WhereViewTablesEntryValueEntryRow{}.Value), 264)
-	tableCookLayoutSize("WhereViewTablesEntryValueEntryValueEntryRow", unsafe.Sizeof(WhereViewTablesEntryValueEntryValueEntryRow{}), 144)
+	tableCookLayoutOffset("WhereViewTablesEntryValueEntryRow.Value", unsafe.Offsetof(WhereViewTablesEntryValueEntryRow{}.Value), 8)
+	tableCookLayoutSize("WhereViewTablesEntryValueEntryValueEntryRow", unsafe.Sizeof(WhereViewTablesEntryValueEntryValueEntryRow{}), 16)
 	tableCookLayoutSize("WhereViewTablesEntryValueEntryValueEntryRow alignment", unsafe.Alignof(WhereViewTablesEntryValueEntryValueEntryRow{}), 8)
 	tableCookLayoutOffset("WhereViewTablesEntryValueEntryValueEntryRow.Key", unsafe.Offsetof(WhereViewTablesEntryValueEntryValueEntryRow{}.Key), 0)
-	tableCookLayoutOffset("WhereViewTablesEntryValueEntryValueEntryRow.Value", unsafe.Offsetof(WhereViewTablesEntryValueEntryValueEntryRow{}.Value), 136)
-	tableCookLayoutSize("WhereViewTiersEntryRow", unsafe.Sizeof(WhereViewTiersEntryRow{}), 144)
+	tableCookLayoutOffset("WhereViewTablesEntryValueEntryValueEntryRow.Value", unsafe.Offsetof(WhereViewTablesEntryValueEntryValueEntryRow{}.Value), 8)
+	tableCookLayoutSize("WhereViewTiersEntryRow", unsafe.Sizeof(WhereViewTiersEntryRow{}), 16)
 	tableCookLayoutSize("WhereViewTiersEntryRow alignment", unsafe.Alignof(WhereViewTiersEntryRow{}), 8)
 	tableCookLayoutOffset("WhereViewTiersEntryRow.Key", unsafe.Offsetof(WhereViewTiersEntryRow{}.Key), 0)
-	tableCookLayoutOffset("WhereViewTiersEntryRow.Value", unsafe.Offsetof(WhereViewTiersEntryRow{}.Value), 136)
+	tableCookLayoutOffset("WhereViewTiersEntryRow.Value", unsafe.Offsetof(WhereViewTiersEntryRow{}.Value), 8)
 }
 
 // tableCookLayoutSize refuses a record this runtime lays out at a different
@@ -782,9 +782,9 @@ func init() {
 		},
 	}
 	tableCookRecords[10] = TableCookInfo{
-		Name: "DecisionSummaryReceiptHistoryText", Size: 65544, Align: 4, NumFields: 1,
+		Name: "DecisionSummaryReceiptHistoryText", Size: 8, Align: 8, NumFields: 1,
 		Fields: []TableCookFieldInfo{
-			{Name: "value", Offset: 0, Size: 65544, ElemSize: 65544, IsArray: false, ArrayBound: 65536, IsPointer: false, CountOffset: 65540, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "value", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 0, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageString},
 		},
 	}
 	tableCookRecords[11] = TableCookInfo{
@@ -806,9 +806,9 @@ func init() {
 		},
 	}
 	tableCookRecords[12] = TableCookInfo{
-		Name: "FriendReportRunningText", Size: 65544, Align: 4, NumFields: 1,
+		Name: "FriendReportRunningText", Size: 8, Align: 8, NumFields: 1,
 		Fields: []TableCookFieldInfo{
-			{Name: "value", Offset: 0, Size: 65544, ElemSize: 65544, IsArray: false, ArrayBound: 65536, IsPointer: false, CountOffset: 65540, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "value", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 0, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageString},
 		},
 	}
 	tableCookRecords[13] = TableCookInfo{
@@ -854,17 +854,17 @@ func init() {
 		},
 	}
 	tableCookRecords[15] = TableCookInfo{
-		Name: "HoldView", Size: 584, Align: 8, NumFields: 9,
+		Name: "HoldView", Size: 72, Align: 8, NumFields: 9,
 		Fields: []TableCookFieldInfo{
 			{Name: "kind", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "name", Offset: 8, Size: 520, ElemSize: 520, IsArray: false, ArrayBound: 515, IsPointer: false, CountOffset: 524, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "reason", Offset: 528, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "by", Offset: 536, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "at", Offset: 544, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "handed_back", Offset: 552, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
-			{Name: "cause", Offset: 560, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "who", Offset: 568, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "release", Offset: 576, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "name", Offset: 8, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "reason", Offset: 16, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "by", Offset: 24, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "at", Offset: 32, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "handed_back", Offset: 40, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
+			{Name: "cause", Offset: 48, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "who", Offset: 56, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "release", Offset: 64, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 		},
 	}
 	tableCookRecords[16] = TableCookInfo{
@@ -891,10 +891,10 @@ func init() {
 		},
 	}
 	tableCookRecords[18] = TableCookInfo{
-		Name: "LandedSeriesWorkersEntry", Size: 152, Align: 8, NumFields: 2,
+		Name: "LandedSeriesWorkersEntry", Size: 16, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
-			{Name: "key", Offset: 0, Size: 140, ElemSize: 140, IsArray: false, ArrayBound: 135, IsPointer: false, CountOffset: 136, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "value", Offset: 144, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+			{Name: "key", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 0, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "value", Offset: 8, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 		},
 	}
 	tableCookRecords[19] = TableCookInfo{
@@ -969,10 +969,10 @@ func init() {
 		},
 	}
 	tableCookRecords[27] = TableCookInfo{
-		Name: "PrimaryRowFieldsEntry", Size: 144, Align: 8, NumFields: 2,
+		Name: "PrimaryRowFieldsEntry", Size: 16, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
-			{Name: "key", Offset: 0, Size: 136, ElemSize: 136, IsArray: false, ArrayBound: 128, IsPointer: false, CountOffset: 132, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "value", Offset: 136, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "key", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 0, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "value", Offset: 8, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 		},
 	}
 	tableCookRecords[28] = TableCookInfo{
@@ -984,9 +984,9 @@ func init() {
 		},
 	}
 	tableCookRecords[29] = TableCookInfo{
-		Name: "ProviderGapReportTiersText", Size: 136, Align: 4, NumFields: 1,
+		Name: "ProviderGapReportTiersText", Size: 8, Align: 8, NumFields: 1,
 		Fields: []TableCookFieldInfo{
-			{Name: "value", Offset: 0, Size: 136, ElemSize: 136, IsArray: false, ArrayBound: 128, IsPointer: false, CountOffset: 132, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "value", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 0, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageString},
 		},
 	}
 	tableCookRecords[30] = TableCookInfo{
@@ -1167,15 +1167,15 @@ func init() {
 		},
 	}
 	tableCookRecords[50] = TableCookInfo{
-		Name: "Stop", Size: 568, Align: 8, NumFields: 7,
+		Name: "Stop", Size: 56, Align: 8, NumFields: 7,
 		Fields: []TableCookFieldInfo{
 			{Name: "kind", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "subject", Offset: 8, Size: 520, ElemSize: 520, IsArray: false, ArrayBound: 515, IsPointer: false, CountOffset: 524, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "since", Offset: 528, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
-			{Name: "what", Offset: 536, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "effect", Offset: 544, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "undo", Offset: 552, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "signal", Offset: 560, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "subject", Offset: 8, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "since", Offset: 16, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+			{Name: "what", Offset: 24, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "effect", Offset: 32, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "undo", Offset: 40, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "signal", Offset: 48, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 		},
 	}
 	tableCookRecords[51] = TableCookInfo{
@@ -1222,31 +1222,31 @@ func init() {
 		},
 	}
 	tableCookRecords[53] = TableCookInfo{
-		Name: "TierCostsCostByTierEntry", Size: 144, Align: 8, NumFields: 2,
+		Name: "TierCostsCostByTierEntry", Size: 16, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
-			{Name: "key", Offset: 0, Size: 136, ElemSize: 136, IsArray: false, ArrayBound: 128, IsPointer: false, CountOffset: 132, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "value", Offset: 136, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "key", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 0, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "value", Offset: 8, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 		},
 	}
 	tableCookRecords[54] = TableCookInfo{
-		Name: "TierCostsReadersEntry", Size: 192, Align: 8, NumFields: 2,
+		Name: "TierCostsReadersEntry", Size: 56, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
-			{Name: "key", Offset: 0, Size: 140, ElemSize: 140, IsArray: false, ArrayBound: 135, IsPointer: false, CountOffset: 136, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "value", Offset: 144, Size: 48, ElemSize: 48, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "key", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 0, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "value", Offset: 8, Size: 48, ElemSize: 48, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
 	tableCookRecords[55] = TableCookInfo{
-		Name: "TierCostsReadsTodayEntry", Size: 160, Align: 8, NumFields: 2,
+		Name: "TierCostsReadsTodayEntry", Size: 32, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
-			{Name: "key", Offset: 0, Size: 136, ElemSize: 136, IsArray: false, ArrayBound: 128, IsPointer: false, CountOffset: 132, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "value", Offset: 136, Size: 24, ElemSize: 24, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "key", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 0, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "value", Offset: 8, Size: 24, ElemSize: 24, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
 	tableCookRecords[56] = TableCookInfo{
-		Name: "TierCostsTiersEntry", Size: 144, Align: 8, NumFields: 2,
+		Name: "TierCostsTiersEntry", Size: 16, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
-			{Name: "key", Offset: 0, Size: 136, ElemSize: 136, IsArray: false, ArrayBound: 128, IsPointer: false, CountOffset: 132, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "value", Offset: 136, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+			{Name: "key", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 0, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "value", Offset: 8, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 		},
 	}
 	tableCookRecords[57] = TableCookInfo{
@@ -1323,16 +1323,16 @@ func init() {
 		},
 	}
 	tableCookRecords[58] = TableCookInfo{
-		Name: "WhereViewBlockersText", Size: 65716, Align: 4, NumFields: 1,
+		Name: "WhereViewBlockersText", Size: 8, Align: 8, NumFields: 1,
 		Fields: []TableCookFieldInfo{
-			{Name: "value", Offset: 0, Size: 65716, ElemSize: 65716, IsArray: false, ArrayBound: 65710, IsPointer: false, CountOffset: 65712, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "value", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 0, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageString},
 		},
 	}
 	tableCookRecords[59] = TableCookInfo{
-		Name: "WhereViewFirstTimeRoutesEntry", Size: 144, Align: 8, NumFields: 2,
+		Name: "WhereViewFirstTimeRoutesEntry", Size: 16, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
-			{Name: "key", Offset: 0, Size: 136, ElemSize: 136, IsArray: false, ArrayBound: 128, IsPointer: false, CountOffset: 132, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "value", Offset: 136, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "key", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 0, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "value", Offset: 8, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 		},
 	}
 	tableCookRecords[60] = TableCookInfo{
@@ -1395,24 +1395,24 @@ func init() {
 		},
 	}
 	tableCookRecords[69] = TableCookInfo{
-		Name: "WhereViewTablesEntryValueEntry", Size: 280, Align: 8, NumFields: 2,
+		Name: "WhereViewTablesEntryValueEntry", Size: 24, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
-			{Name: "key", Offset: 0, Size: 264, ElemSize: 264, IsArray: false, ArrayBound: 256, IsPointer: false, CountOffset: 260, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "value", Offset: 264, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "key", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 0, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "value", Offset: 8, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
 	tableCookRecords[70] = TableCookInfo{
-		Name: "WhereViewTablesEntryValueEntryValueEntry", Size: 144, Align: 8, NumFields: 2,
+		Name: "WhereViewTablesEntryValueEntryValueEntry", Size: 16, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
-			{Name: "key", Offset: 0, Size: 136, ElemSize: 136, IsArray: false, ArrayBound: 128, IsPointer: false, CountOffset: 132, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "value", Offset: 136, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "key", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 0, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "value", Offset: 8, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 		},
 	}
 	tableCookRecords[71] = TableCookInfo{
-		Name: "WhereViewTiersEntry", Size: 144, Align: 8, NumFields: 2,
+		Name: "WhereViewTiersEntry", Size: 16, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
-			{Name: "key", Offset: 0, Size: 136, ElemSize: 136, IsArray: false, ArrayBound: 128, IsPointer: false, CountOffset: 132, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "value", Offset: 136, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+			{Name: "key", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 0, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "value", Offset: 8, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 		},
 	}
 	tableCookRecords[0].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[1] }
@@ -2934,7 +2934,7 @@ type HoldViewCook struct {
 // accessors are members free to spell them that way, and a package constant
 // per table per fact would claim names §11 does not.
 func (c HoldViewCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
-func (c HoldViewCook) RootSize() int64        { return 584 }
+func (c HoldViewCook) RootSize() int64        { return 72 }
 func (c HoldViewCook) RootAlign() int64       { return 8 }
 
 // Root is the root record at the region's base. It is a POINTER and not a
@@ -2981,7 +2981,7 @@ func (cook *HoldViewCook) Open(base unsafe.Pointer, length int64) error {
 	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 584 {
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 72 {
 		return TableRefuseTruncated
 	}
 	if uint64(uintptr(base))%alignment != 0 {
@@ -3037,7 +3037,7 @@ type StopCook struct {
 // accessors are members free to spell them that way, and a package constant
 // per table per fact would claim names §11 does not.
 func (c StopCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
-func (c StopCook) RootSize() int64        { return 568 }
+func (c StopCook) RootSize() int64        { return 56 }
 func (c StopCook) RootAlign() int64       { return 8 }
 
 // Root is the root record at the region's base. It is a POINTER and not a
@@ -3084,7 +3084,7 @@ func (cook *StopCook) Open(base unsafe.Pointer, length int64) error {
 	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 568 {
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 56 {
 		return TableRefuseTruncated
 	}
 	if uint64(uintptr(base))%alignment != 0 {
@@ -5488,7 +5488,7 @@ func WhereViewAt(slot *int64, arena ...*TableArena) *WhereViewRow {
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c WhereViewCook) Type() *TableCookInfo { return &tableCookRecords[57] }
 
-const tableCookBuildVersion uint64 = 0x008d8ff938beb14d
+const tableCookBuildVersion uint64 = 0x4590b0eeb57fa7e8
 
 // TableByteOrder selects the target order, independently of the writing host.
 type TableByteOrder uint8
@@ -5559,6 +5559,9 @@ func (w *tableCookWriter) field(base unsafe.Pointer, f *TableFieldInfo, at int64
 			return false
 		}
 		w.put(at+int64(f.CookCountOffset), uint64(used), 4)
+	}
+	if f.Unbounded {
+		return w.text(p, dest, live)
 	}
 	if !f.Pointer && (f.TypeName == "string" || f.TypeName == "bytes" || f.TypeName == "wstring") {
 		width := f.CookElemSize
@@ -5754,6 +5757,28 @@ func (w *tableCookWriter) container(p unsafe.Pointer, f *TableFieldInfo, at int6
 		if elem == nil || !w.value(elem, f, start+int64(i)*int64(f.CookElemSize), true) {
 			return false
 		}
+	}
+	return true
+}
+
+func (w *tableCookWriter) text(slot unsafe.Pointer, at int64, live bool) bool {
+	if w.numbering == nil {
+		return false
+	}
+	t, ok := tableTextBytes((*TableRef)(slot), w.numbering.arena)
+	if !ok {
+		return false
+	}
+	if !live || len(t) == 0 {
+		return true
+	}
+	w.at = (w.at + 7) &^ 7
+	start := w.at
+	w.at += tableRegionRound(9 + int64(len(t)))
+	w.put(at, uint64(start-at), 8)
+	if w.buffer != nil {
+		w.put(start, uint64(len(t)), 4)
+		copy(w.buffer[start+8:start+8+int64(len(t))], t)
 	}
 	return true
 }

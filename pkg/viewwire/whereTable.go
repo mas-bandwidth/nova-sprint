@@ -1114,8 +1114,7 @@ func NameListNamesAppend(worker *TableWorker, value *NameList, text string) bool
 // DecisionSummaryReceiptHistoryTextReset restores DecisionSummaryReceiptHistoryText's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func DecisionSummaryReceiptHistoryTextReset(value *DecisionSummaryReceiptHistoryText) {
-	clear(value.Value[:])
-	value.ValueLength = 0
+	value.Value = 0
 }
 
 func DecisionSummaryReceiptHistoryTextMeasureBody(value *DecisionSummaryReceiptHistoryText, ids *TableIds) int64 {
@@ -1135,53 +1134,20 @@ func DecisionSummaryReceiptHistoryTextSaveBody(w *TableWriter, value *DecisionSu
 }
 func DecisionSummaryReceiptHistoryTextSaveBodyFields(w *TableWriter, value *DecisionSummaryReceiptHistoryText) bool {
 	{
-		if value.ValueLength < 0 || value.ValueLength > 65536 {
-			return false
-		}
-		if value.ValueLength > 0 {
+		if tableTextRides(&value.Value, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(147, 0x7ce4fd9430e80cea); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.ValueLength < 0 || value.ValueLength > 65536 {
-				return false
-			}
 			{
-				n := int(value.ValueLength)
-				var hi, z uint64
-				p := value.Value[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Value[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Value[:n]) {
+				text, ok := tableTextBytes(&value.Value, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.ValueLength)) {
-				w.putLebWide(uint64(value.ValueLength))
-			}
-			w.Raw(value.Value[:value.ValueLength])
 		}
 	}
 	return !w.Overflow && !w.Ids.Overflow
@@ -1224,23 +1190,23 @@ func DecisionSummaryReceiptHistoryTextLoadBody(r *TableReader, value *DecisionSu
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "DecisionSummary.receipt_history")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Value[:])
-				value.ValueLength = 0
+				tableTextMalformed(r.Report, "DecisionSummary.receipt_history")
+				value.Value = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 65536 {
-				keep = tableUtf8Clamp(sub.Buffer, 65536)
-				r.Report.Clamped++
-				tableTextClamped(r.Report, "DecisionSummary.receipt_history")
+			if !tableTextPlace(&r.Nodes.Carve, &value.Value, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "DecisionSummary.receipt_history")
+				break
 			}
-			clear(value.Value[:])
-			copy(value.Value[:keep], sub.Buffer)
-			value.ValueLength = int32(keep)
 		default:
 			r.Report.Unknown++
 			if !r.Skip(kind) {
@@ -1268,53 +1234,20 @@ func DecisionSummaryReceiptHistoryTextSaveBodyRetain(w *TableRetainWriter, value
 }
 func DecisionSummaryReceiptHistoryTextSaveBodyFieldsRetain(w *TableRetainWriter, value *DecisionSummaryReceiptHistoryText) bool {
 	{
-		if value.ValueLength < 0 || value.ValueLength > 65536 {
-			return false
-		}
-		if value.ValueLength > 0 {
+		if tableTextRides(&value.Value, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(147, 0x7ce4fd9430e80cea); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.ValueLength < 0 || value.ValueLength > 65536 {
-				return false
-			}
 			{
-				n := int(value.ValueLength)
-				var hi, z uint64
-				p := value.Value[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Value[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Value[:n]) {
+				text, ok := tableTextBytes(&value.Value, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.ValueLength)) {
-				w.putLebWide(uint64(value.ValueLength))
-			}
-			w.Raw(value.Value[:value.ValueLength])
 		}
 	}
 	if !tableRetainTail(w) {
@@ -1361,23 +1294,23 @@ func DecisionSummaryReceiptHistoryTextLoadBodyRetain(r *TableRetainReader, value
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "DecisionSummary.receipt_history")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Value[:])
-				value.ValueLength = 0
+				tableTextMalformed(r.Report, "DecisionSummary.receipt_history")
+				value.Value = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 65536 {
-				keep = tableUtf8Clamp(sub.Buffer, 65536)
-				r.Report.Clamped++
-				tableTextClamped(r.Report, "DecisionSummary.receipt_history")
+			if !tableTextPlace(&r.Nodes.Carve, &value.Value, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "DecisionSummary.receipt_history")
+				break
 			}
-			clear(value.Value[:])
-			copy(value.Value[:keep], sub.Buffer)
-			value.ValueLength = int32(keep)
 		default:
 			r.Report.Unknown++
 			if !r.capture(fieldID, kind) {
@@ -1477,46 +1410,16 @@ func DecisionSummarySaveBodyFields(w *TableWriter, value *DecisionSummary) bool 
 					}
 					{
 						text := &(*p)
-						if text.ValueLength < 0 || text.ValueLength > 65536 {
-							return false
-						}
 						{
-							n := int(text.ValueLength)
-							var hi, z uint64
-							p := text.Value[:n]
-							for len(p) >= 16 {
-								x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-								hi |= x | y
-								z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-								p = p[16:]
-							}
-							if len(p) >= 8 {
-								x := tableUtf8Word(p)
-								hi |= x
-								z |= (x - 0x0101010101010101) &^ x
-								p = p[8:]
-							}
-							if len(p) > 0 {
-								if n >= 8 {
-									x := tableUtf8Word(text.Value[n-8:])
-									hi |= x
-									z |= (x - 0x0101010101010101) &^ x
-								} else {
-									for _, c := range p {
-										x := uint64(c)
-										hi |= x
-										z |= (x - 1) &^ x
-									}
-								}
-							}
-							if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(text.Value[:n]) {
+							text, ok := tableTextBytes(&text.Value, payload4.Ids.Numbering.arena)
+							if !ok || !tableUtf8Valid(text) {
 								return false
 							}
+							if !payload4.putLebPair(uint64(len(text))) {
+								payload4.putLebWide(uint64(len(text)))
+							}
+							payload4.Raw(text)
 						}
-						if !payload4.putLebPair(uint64(text.ValueLength)) {
-							payload4.putLebWide(uint64(text.ValueLength))
-						}
-						payload4.Raw(text.Value[:text.ValueLength])
 					}
 				}
 				if payload4.Overflow {
@@ -1542,46 +1445,16 @@ func DecisionSummarySaveBodyFields(w *TableWriter, value *DecisionSummary) bool 
 						}
 						{
 							text := &(*p)
-							if text.ValueLength < 0 || text.ValueLength > 65536 {
-								return false
-							}
 							{
-								n := int(text.ValueLength)
-								var hi, z uint64
-								p := text.Value[:n]
-								for len(p) >= 16 {
-									x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-									hi |= x | y
-									z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-									p = p[16:]
-								}
-								if len(p) >= 8 {
-									x := tableUtf8Word(p)
-									hi |= x
-									z |= (x - 0x0101010101010101) &^ x
-									p = p[8:]
-								}
-								if len(p) > 0 {
-									if n >= 8 {
-										x := tableUtf8Word(text.Value[n-8:])
-										hi |= x
-										z |= (x - 0x0101010101010101) &^ x
-									} else {
-										for _, c := range p {
-											x := uint64(c)
-											hi |= x
-											z |= (x - 1) &^ x
-										}
-									}
-								}
-								if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(text.Value[:n]) {
+								text, ok := tableTextBytes(&text.Value, w.Ids.Numbering.arena)
+								if !ok || !tableUtf8Valid(text) {
 									return false
 								}
+								if !w.putLebPair(uint64(len(text))) {
+									w.putLebWide(uint64(len(text)))
+								}
+								w.Raw(text)
 							}
-							if !w.putLebPair(uint64(text.ValueLength)) {
-								w.putLebWide(uint64(text.ValueLength))
-							}
-							w.Raw(text.Value[:text.ValueLength])
 						}
 					}
 				}
@@ -1793,7 +1666,7 @@ func DecisionSummaryLoadBody(r *TableReader, value *DecisionSummary) bool {
 					r.Report.Widened++
 				}
 				slot := (*tableContainer)(unsafe.Pointer(&value.ReceiptHistory))
-				if !tableContainerFill(&sub.Nodes.Carve, slot, count, int64(unsafe.Sizeof(*new(DecisionSummaryReceiptHistoryTextRow))), 4) {
+				if !tableContainerFill(&sub.Nodes.Carve, slot, count, int64(unsafe.Sizeof(*new(DecisionSummaryReceiptHistoryTextRow))), 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -1813,22 +1686,24 @@ func DecisionSummaryLoadBody(r *TableReader, value *DecisionSummary) bool {
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "DecisionSummary.receipt_history")
 							break
 						}
 						if !tableUtf8Valid(elem.Buffer) {
 							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "DecisionSummary.receipt_history")
 							DecisionSummaryReceiptHistoryTextReset(&(*p))
 							break
 						}
-						keep := int64(len(elem.Buffer))
-						if keep > 65536 {
-							keep = tableUtf8Clamp(elem.Buffer, 65536)
-							r.Report.Clamped++
-							tableTextClamped(r.Report, "DecisionSummary.receipt_history")
+						if !tableTextPlace(&sub.Nodes.Carve, &(*p).Value, elem.Buffer) {
+							if sub.Nodes.Carve.Refused {
+								r.Take(sub)
+								return false
+							}
+							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "DecisionSummary.receipt_history")
+							break
 						}
-						clear((*p).Value[:])
-						copy((*p).Value[:keep], elem.Buffer)
-						(*p).ValueLength = int32(keep)
 						landed = true
 					}
 					if !landed {
@@ -1954,46 +1829,16 @@ func DecisionSummarySaveBodyFieldsRetain(w *TableRetainWriter, value *DecisionSu
 					}
 					{
 						text := &(*p)
-						if text.ValueLength < 0 || text.ValueLength > 65536 {
-							return false
-						}
 						{
-							n := int(text.ValueLength)
-							var hi, z uint64
-							p := text.Value[:n]
-							for len(p) >= 16 {
-								x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-								hi |= x | y
-								z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-								p = p[16:]
-							}
-							if len(p) >= 8 {
-								x := tableUtf8Word(p)
-								hi |= x
-								z |= (x - 0x0101010101010101) &^ x
-								p = p[8:]
-							}
-							if len(p) > 0 {
-								if n >= 8 {
-									x := tableUtf8Word(text.Value[n-8:])
-									hi |= x
-									z |= (x - 0x0101010101010101) &^ x
-								} else {
-									for _, c := range p {
-										x := uint64(c)
-										hi |= x
-										z |= (x - 1) &^ x
-									}
-								}
-							}
-							if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(text.Value[:n]) {
+							text, ok := tableTextBytes(&text.Value, payload1.Ids.Numbering.arena)
+							if !ok || !tableUtf8Valid(text) {
 								return false
 							}
+							if !payload1.putLebPair(uint64(len(text))) {
+								payload1.putLebWide(uint64(len(text)))
+							}
+							payload1.Raw(text)
 						}
-						if !payload1.putLebPair(uint64(text.ValueLength)) {
-							payload1.putLebWide(uint64(text.ValueLength))
-						}
-						payload1.Raw(text.Value[:text.ValueLength])
 					}
 				}
 				if payload1.Overflow {
@@ -2019,46 +1864,16 @@ func DecisionSummarySaveBodyFieldsRetain(w *TableRetainWriter, value *DecisionSu
 						}
 						{
 							text := &(*p)
-							if text.ValueLength < 0 || text.ValueLength > 65536 {
-								return false
-							}
 							{
-								n := int(text.ValueLength)
-								var hi, z uint64
-								p := text.Value[:n]
-								for len(p) >= 16 {
-									x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-									hi |= x | y
-									z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-									p = p[16:]
-								}
-								if len(p) >= 8 {
-									x := tableUtf8Word(p)
-									hi |= x
-									z |= (x - 0x0101010101010101) &^ x
-									p = p[8:]
-								}
-								if len(p) > 0 {
-									if n >= 8 {
-										x := tableUtf8Word(text.Value[n-8:])
-										hi |= x
-										z |= (x - 0x0101010101010101) &^ x
-									} else {
-										for _, c := range p {
-											x := uint64(c)
-											hi |= x
-											z |= (x - 1) &^ x
-										}
-									}
-								}
-								if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(text.Value[:n]) {
+								text, ok := tableTextBytes(&text.Value, w.Ids.Numbering.arena)
+								if !ok || !tableUtf8Valid(text) {
 									return false
 								}
+								if !w.putLebPair(uint64(len(text))) {
+									w.putLebWide(uint64(len(text)))
+								}
+								w.Raw(text)
 							}
-							if !w.putLebPair(uint64(text.ValueLength)) {
-								w.putLebWide(uint64(text.ValueLength))
-							}
-							w.Raw(text.Value[:text.ValueLength])
 						}
 					}
 				}
@@ -2275,7 +2090,7 @@ func DecisionSummaryLoadBodyRetain(r *TableRetainReader, value *DecisionSummary)
 				}
 				r.Retain.discard(r.Path, true, 5)
 				slot := (*tableContainer)(unsafe.Pointer(&value.ReceiptHistory))
-				if !tableContainerFill(&sub.Nodes.Carve, slot, count, int64(unsafe.Sizeof(*new(DecisionSummaryReceiptHistoryTextRow))), 4) {
+				if !tableContainerFill(&sub.Nodes.Carve, slot, count, int64(unsafe.Sizeof(*new(DecisionSummaryReceiptHistoryTextRow))), 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -2295,22 +2110,24 @@ func DecisionSummaryLoadBodyRetain(r *TableRetainReader, value *DecisionSummary)
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "DecisionSummary.receipt_history")
 							break
 						}
 						if !tableUtf8Valid(elem.Buffer) {
 							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "DecisionSummary.receipt_history")
 							DecisionSummaryReceiptHistoryTextReset(&(*p))
 							break
 						}
-						keep := int64(len(elem.Buffer))
-						if keep > 65536 {
-							keep = tableUtf8Clamp(elem.Buffer, 65536)
-							r.Report.Clamped++
-							tableTextClamped(r.Report, "DecisionSummary.receipt_history")
+						if !tableTextPlace(&sub.Nodes.Carve, &(*p).Value, elem.Buffer) {
+							if sub.Nodes.Carve.Refused {
+								r.Take(sub)
+								return false
+							}
+							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "DecisionSummary.receipt_history")
+							break
 						}
-						clear((*p).Value[:])
-						copy((*p).Value[:keep], elem.Buffer)
-						(*p).ValueLength = int32(keep)
 						landed = true
 					}
 					if !landed {
@@ -2483,30 +2300,34 @@ func DecisionSummaryReceiptHistoryEach(holder *TableList[DecisionSummaryReceiptH
 	return true
 }
 
-// DecisionSummaryReceiptHistoryTextAt is element i of DecisionSummary.receipt_history (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13): a view into the
-// storage that allocates nothing, and false past the count or for an absent element.
+// DecisionSummaryReceiptHistoryTextAt is element i of DecisionSummary.receipt_history (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13.1): a view into its
+// blob record that allocates nothing, and false past the count or for an absent element.
 func DecisionSummaryReceiptHistoryTextAt(value *DecisionSummary, i int32, arena ...*TableArena) ([]byte, bool) {
 	if value == nil {
 		return nil, false
 	}
 	p := value.ReceiptHistory.At(i, arena...)
-	if p == nil || p.ValueLength < 0 || p.ValueLength > 65536 {
+	if p == nil {
 		return nil, false
 	}
-	return p.Value[:p.ValueLength], true
+	return tableTextBytes(&p.Value, tableOptionalArena(arena))
 }
 
-// DecisionSummaryReceiptHistoryAppend appends one element to DecisionSummary.receipt_history, false past either bound (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13).
+// DecisionSummaryReceiptHistoryAppend appends one element to DecisionSummary.receipt_history, false past the count bound or when
+// the arena refuses (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13.1).
 func DecisionSummaryReceiptHistoryAppend(worker *TableWorker, value *DecisionSummary, text string) bool {
-	if len(text) > 65536 || !tableUtf8Valid(unsafe.Slice(unsafe.StringData(text), len(text))) {
+	if !tableUtf8Valid(unsafe.Slice(unsafe.StringData(text), len(text))) {
+		return false
+	}
+	ref, ok := tableTextStore(worker, text)
+	if !ok {
 		return false
 	}
 	p := DecisionSummaryReceiptHistoryAdd(worker, &value.ReceiptHistory)
 	if p == nil {
 		return false
 	}
-	copy(p.Value[:], text)
-	p.ValueLength = int32(len(text))
+	p.Value = ref
 	return true
 }
 
@@ -4755,7 +4576,7 @@ func CostReconcileRecordSaveBodyFields(w *TableWriter, value *CostReconcileRecor
 			}
 			{
 				mark := w.Ids.Count
-				payload20 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload15 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Days)), &CostReconcileRecordTableFields[10], w.Ids.Numbering.arena)
 				defer cursor.Release()
 				for i := int32(0); i < value.Days.Count; i++ {
@@ -4764,28 +4585,28 @@ func CostReconcileRecordSaveBodyFields(w *TableWriter, value *CostReconcileRecor
 						return false
 					}
 					{
-						mark := payload20.Ids.Count
-						n := CostReconcileRecordDaysEntryMeasureBody(&(*p), payload20.Ids)
+						mark := payload15.Ids.Count
+						n := CostReconcileRecordDaysEntryMeasureBody(&(*p), payload15.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload20.putLebPair(uint64(n)) {
-							payload20.putLebWide(uint64(n))
+						if !payload15.putLebPair(uint64(n)) {
+							payload15.putLebWide(uint64(n))
 						}
-						if payload20.Measuring {
-							payload20.Advance(n)
+						if payload15.Measuring {
+							payload15.Advance(n)
 						} else {
-							payload20.Ids.Truncate(mark)
-							if !CostReconcileRecordDaysEntrySaveBody(&payload20, &(*p)) {
+							payload15.Ids.Truncate(mark)
+							if !CostReconcileRecordDaysEntrySaveBody(&payload15, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload20.Overflow {
+				if payload15.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Days.Count)) + payload20.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Days.Count)) + payload15.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -6098,8 +5919,7 @@ func CostReconcileRecordDaysIndexFind(index TableMapIndex, holder *TableMap[Cost
 // TierCostsTiersEntryReset restores TierCostsTiersEntry's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func TierCostsTiersEntryReset(value *TierCostsTiersEntry) {
-	clear(value.Key[:])
-	value.KeyLength = 0
+	value.Key = 0
 	value.Value = 0
 }
 
@@ -6120,53 +5940,20 @@ func TierCostsTiersEntrySaveBody(w *TableWriter, value *TierCostsTiersEntry) boo
 }
 func TierCostsTiersEntrySaveBodyFields(w *TableWriter, value *TierCostsTiersEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
-			return false
-		}
-		if value.KeyLength > 0 {
+		if tableTextRides(&value.Key, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(68, 0x3dc94a19365b10ec); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.KeyLength < 0 || value.KeyLength > 128 {
-				return false
-			}
 			{
-				n := int(value.KeyLength)
-				var hi, z uint64
-				p := value.Key[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Key[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Key[:n]) {
+				text, ok := tableTextBytes(&value.Key, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.KeyLength)) {
-				w.putLebWide(uint64(value.KeyLength))
-			}
-			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
@@ -6217,22 +6004,23 @@ func TierCostsTiersEntryLoadBody(r *TableReader, value *TierCostsTiersEntry) boo
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "TierCosts.tiers")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Key[:])
-				value.KeyLength = 0
+				tableTextMalformed(r.Report, "TierCosts.tiers")
+				value.Key = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
+			if !tableTextPlace(&r.Nodes.Carve, &value.Key, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "TierCosts.tiers")
+				break
 			}
-			clear(value.Key[:])
-			copy(value.Key[:keep], sub.Buffer)
-			value.KeyLength = int32(keep)
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
@@ -6289,53 +6077,20 @@ func TierCostsTiersEntrySaveBodyRetain(w *TableRetainWriter, value *TierCostsTie
 }
 func TierCostsTiersEntrySaveBodyFieldsRetain(w *TableRetainWriter, value *TierCostsTiersEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
-			return false
-		}
-		if value.KeyLength > 0 {
+		if tableTextRides(&value.Key, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(68, 0x3dc94a19365b10ec); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.KeyLength < 0 || value.KeyLength > 128 {
-				return false
-			}
 			{
-				n := int(value.KeyLength)
-				var hi, z uint64
-				p := value.Key[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Key[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Key[:n]) {
+				text, ok := tableTextBytes(&value.Key, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.KeyLength)) {
-				w.putLebWide(uint64(value.KeyLength))
-			}
-			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
@@ -6390,22 +6145,23 @@ func TierCostsTiersEntryLoadBodyRetain(r *TableRetainReader, value *TierCostsTie
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "TierCosts.tiers")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Key[:])
-				value.KeyLength = 0
+				tableTextMalformed(r.Report, "TierCosts.tiers")
+				value.Key = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
+			if !tableTextPlace(&r.Nodes.Carve, &value.Key, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "TierCosts.tiers")
+				break
 			}
-			clear(value.Key[:])
-			copy(value.Key[:keep], sub.Buffer)
-			value.KeyLength = int32(keep)
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
@@ -6448,8 +6204,7 @@ func TierCostsTiersEntryLoadBodyRetain(r *TableRetainReader, value *TierCostsTie
 // TierCostsCostByTierEntryReset restores TierCostsCostByTierEntry's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func TierCostsCostByTierEntryReset(value *TierCostsCostByTierEntry) {
-	clear(value.Key[:])
-	value.KeyLength = 0
+	value.Key = 0
 	value.Value = 0
 }
 
@@ -6470,53 +6225,20 @@ func TierCostsCostByTierEntrySaveBody(w *TableWriter, value *TierCostsCostByTier
 }
 func TierCostsCostByTierEntrySaveBodyFields(w *TableWriter, value *TierCostsCostByTierEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
-			return false
-		}
-		if value.KeyLength > 0 {
+		if tableTextRides(&value.Key, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(68, 0x3dc94a19365b10ec); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.KeyLength < 0 || value.KeyLength > 128 {
-				return false
-			}
 			{
-				n := int(value.KeyLength)
-				var hi, z uint64
-				p := value.Key[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Key[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Key[:n]) {
+				text, ok := tableTextBytes(&value.Key, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.KeyLength)) {
-				w.putLebWide(uint64(value.KeyLength))
-			}
-			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
@@ -6579,22 +6301,23 @@ func TierCostsCostByTierEntryLoadBody(r *TableReader, value *TierCostsCostByTier
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "TierCosts.cost_by_tier")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Key[:])
-				value.KeyLength = 0
+				tableTextMalformed(r.Report, "TierCosts.cost_by_tier")
+				value.Key = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
+			if !tableTextPlace(&r.Nodes.Carve, &value.Key, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "TierCosts.cost_by_tier")
+				break
 			}
-			clear(value.Key[:])
-			copy(value.Key[:keep], sub.Buffer)
-			value.KeyLength = int32(keep)
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 17 {
 				r.Report.KindMismatch++
@@ -6644,53 +6367,20 @@ func TierCostsCostByTierEntrySaveBodyRetain(w *TableRetainWriter, value *TierCos
 }
 func TierCostsCostByTierEntrySaveBodyFieldsRetain(w *TableRetainWriter, value *TierCostsCostByTierEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
-			return false
-		}
-		if value.KeyLength > 0 {
+		if tableTextRides(&value.Key, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(68, 0x3dc94a19365b10ec); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.KeyLength < 0 || value.KeyLength > 128 {
-				return false
-			}
 			{
-				n := int(value.KeyLength)
-				var hi, z uint64
-				p := value.Key[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Key[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Key[:n]) {
+				text, ok := tableTextBytes(&value.Key, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.KeyLength)) {
-				w.putLebWide(uint64(value.KeyLength))
-			}
-			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
@@ -6757,22 +6447,23 @@ func TierCostsCostByTierEntryLoadBodyRetain(r *TableRetainReader, value *TierCos
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "TierCosts.cost_by_tier")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Key[:])
-				value.KeyLength = 0
+				tableTextMalformed(r.Report, "TierCosts.cost_by_tier")
+				value.Key = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
+			if !tableTextPlace(&r.Nodes.Carve, &value.Key, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "TierCosts.cost_by_tier")
+				break
 			}
-			clear(value.Key[:])
-			copy(value.Key[:keep], sub.Buffer)
-			value.KeyLength = int32(keep)
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 17 {
 				r.Report.KindMismatch++
@@ -6808,8 +6499,7 @@ func TierCostsCostByTierEntryLoadBodyRetain(r *TableRetainReader, value *TierCos
 // TierCostsReadsTodayEntryReset restores TierCostsReadsTodayEntry's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func TierCostsReadsTodayEntryReset(value *TierCostsReadsTodayEntry) {
-	clear(value.Key[:])
-	value.KeyLength = 0
+	value.Key = 0
 	ReadDayReset(&value.Value)
 }
 
@@ -6830,53 +6520,20 @@ func TierCostsReadsTodayEntrySaveBody(w *TableWriter, value *TierCostsReadsToday
 }
 func TierCostsReadsTodayEntrySaveBodyFields(w *TableWriter, value *TierCostsReadsTodayEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
-			return false
-		}
-		if value.KeyLength > 0 {
+		if tableTextRides(&value.Key, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(68, 0x3dc94a19365b10ec); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.KeyLength < 0 || value.KeyLength > 128 {
-				return false
-			}
 			{
-				n := int(value.KeyLength)
-				var hi, z uint64
-				p := value.Key[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Key[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Key[:n]) {
+				text, ok := tableTextBytes(&value.Key, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.KeyLength)) {
-				w.putLebWide(uint64(value.KeyLength))
-			}
-			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
@@ -6946,22 +6603,23 @@ func TierCostsReadsTodayEntryLoadBody(r *TableReader, value *TierCostsReadsToday
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "TierCosts.reads_today")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Key[:])
-				value.KeyLength = 0
+				tableTextMalformed(r.Report, "TierCosts.reads_today")
+				value.Key = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
+			if !tableTextPlace(&r.Nodes.Carve, &value.Key, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "TierCosts.reads_today")
+				break
 			}
-			clear(value.Key[:])
-			copy(value.Key[:keep], sub.Buffer)
-			value.KeyLength = int32(keep)
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 13 {
 				r.Report.KindMismatch++
@@ -7017,53 +6675,20 @@ func TierCostsReadsTodayEntrySaveBodyRetain(w *TableRetainWriter, value *TierCos
 }
 func TierCostsReadsTodayEntrySaveBodyFieldsRetain(w *TableRetainWriter, value *TierCostsReadsTodayEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
-			return false
-		}
-		if value.KeyLength > 0 {
+		if tableTextRides(&value.Key, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(68, 0x3dc94a19365b10ec); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.KeyLength < 0 || value.KeyLength > 128 {
-				return false
-			}
 			{
-				n := int(value.KeyLength)
-				var hi, z uint64
-				p := value.Key[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Key[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Key[:n]) {
+				text, ok := tableTextBytes(&value.Key, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.KeyLength)) {
-				w.putLebWide(uint64(value.KeyLength))
-			}
-			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
@@ -7177,22 +6802,23 @@ func TierCostsReadsTodayEntryLoadBodyRetain(r *TableRetainReader, value *TierCos
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "TierCosts.reads_today")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Key[:])
-				value.KeyLength = 0
+				tableTextMalformed(r.Report, "TierCosts.reads_today")
+				value.Key = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
+			if !tableTextPlace(&r.Nodes.Carve, &value.Key, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "TierCosts.reads_today")
+				break
 			}
-			clear(value.Key[:])
-			copy(value.Key[:keep], sub.Buffer)
-			value.KeyLength = int32(keep)
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 13 {
 				r.Report.KindMismatch++
@@ -7235,8 +6861,7 @@ func TierCostsReadsTodayEntryLoadBodyRetain(r *TableRetainReader, value *TierCos
 // TierCostsReadersEntryReset restores TierCostsReadersEntry's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func TierCostsReadersEntryReset(value *TierCostsReadersEntry) {
-	clear(value.Key[:])
-	value.KeyLength = 0
+	value.Key = 0
 	ReaderSpendReset(&value.Value)
 }
 
@@ -7257,53 +6882,20 @@ func TierCostsReadersEntrySaveBody(w *TableWriter, value *TierCostsReadersEntry)
 }
 func TierCostsReadersEntrySaveBodyFields(w *TableWriter, value *TierCostsReadersEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 135 {
-			return false
-		}
-		if value.KeyLength > 0 {
+		if tableTextRides(&value.Key, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(68, 0x3dc94a19365b10ec); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.KeyLength < 0 || value.KeyLength > 135 {
-				return false
-			}
 			{
-				n := int(value.KeyLength)
-				var hi, z uint64
-				p := value.Key[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Key[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Key[:n]) {
+				text, ok := tableTextBytes(&value.Key, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.KeyLength)) {
-				w.putLebWide(uint64(value.KeyLength))
-			}
-			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
@@ -7373,22 +6965,23 @@ func TierCostsReadersEntryLoadBody(r *TableReader, value *TierCostsReadersEntry)
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "TierCosts.readers")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Key[:])
-				value.KeyLength = 0
+				tableTextMalformed(r.Report, "TierCosts.readers")
+				value.Key = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 135 {
-				keep = tableUtf8Clamp(sub.Buffer, 135)
-				r.Report.Clamped++
+			if !tableTextPlace(&r.Nodes.Carve, &value.Key, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "TierCosts.readers")
+				break
 			}
-			clear(value.Key[:])
-			copy(value.Key[:keep], sub.Buffer)
-			value.KeyLength = int32(keep)
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 13 {
 				r.Report.KindMismatch++
@@ -7444,53 +7037,20 @@ func TierCostsReadersEntrySaveBodyRetain(w *TableRetainWriter, value *TierCostsR
 }
 func TierCostsReadersEntrySaveBodyFieldsRetain(w *TableRetainWriter, value *TierCostsReadersEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 135 {
-			return false
-		}
-		if value.KeyLength > 0 {
+		if tableTextRides(&value.Key, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(68, 0x3dc94a19365b10ec); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.KeyLength < 0 || value.KeyLength > 135 {
-				return false
-			}
 			{
-				n := int(value.KeyLength)
-				var hi, z uint64
-				p := value.Key[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Key[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Key[:n]) {
+				text, ok := tableTextBytes(&value.Key, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.KeyLength)) {
-				w.putLebWide(uint64(value.KeyLength))
-			}
-			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
@@ -7604,22 +7164,23 @@ func TierCostsReadersEntryLoadBodyRetain(r *TableRetainReader, value *TierCostsR
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "TierCosts.readers")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Key[:])
-				value.KeyLength = 0
+				tableTextMalformed(r.Report, "TierCosts.readers")
+				value.Key = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 135 {
-				keep = tableUtf8Clamp(sub.Buffer, 135)
-				r.Report.Clamped++
+			if !tableTextPlace(&r.Nodes.Carve, &value.Key, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "TierCosts.readers")
+				break
 			}
-			clear(value.Key[:])
-			copy(value.Key[:keep], sub.Buffer)
-			value.KeyLength = int32(keep)
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 13 {
 				r.Report.KindMismatch++
@@ -7713,7 +7274,7 @@ func TierCostsSaveBodyFields(w *TableWriter, value *TierCosts) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload30 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload24 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Tiers)), &TierCostsTableFields[0], w.Ids.Numbering.arena)
 				defer cursor.Release()
 				for i := int32(0); i < value.Tiers.Count; i++ {
@@ -7722,28 +7283,28 @@ func TierCostsSaveBodyFields(w *TableWriter, value *TierCosts) bool {
 						return false
 					}
 					{
-						mark := payload30.Ids.Count
-						n := TierCostsTiersEntryMeasureBody(&(*p), payload30.Ids)
+						mark := payload24.Ids.Count
+						n := TierCostsTiersEntryMeasureBody(&(*p), payload24.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload30.putLebPair(uint64(n)) {
-							payload30.putLebWide(uint64(n))
+						if !payload24.putLebPair(uint64(n)) {
+							payload24.putLebWide(uint64(n))
 						}
-						if payload30.Measuring {
-							payload30.Advance(n)
+						if payload24.Measuring {
+							payload24.Advance(n)
 						} else {
-							payload30.Ids.Truncate(mark)
-							if !TierCostsTiersEntrySaveBody(&payload30, &(*p)) {
+							payload24.Ids.Truncate(mark)
+							if !TierCostsTiersEntrySaveBody(&payload24, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload30.Overflow {
+				if payload24.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Tiers.Count)) + payload30.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Tiers.Count)) + payload24.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -7818,7 +7379,7 @@ func TierCostsSaveBodyFields(w *TableWriter, value *TierCosts) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload33 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload27 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.CostByTier)), &TierCostsTableFields[2], w.Ids.Numbering.arena)
 				defer cursor.Release()
 				for i := int32(0); i < value.CostByTier.Count; i++ {
@@ -7827,28 +7388,28 @@ func TierCostsSaveBodyFields(w *TableWriter, value *TierCosts) bool {
 						return false
 					}
 					{
-						mark := payload33.Ids.Count
-						n := TierCostsCostByTierEntryMeasureBody(&(*p), payload33.Ids)
+						mark := payload27.Ids.Count
+						n := TierCostsCostByTierEntryMeasureBody(&(*p), payload27.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload33.putLebPair(uint64(n)) {
-							payload33.putLebWide(uint64(n))
+						if !payload27.putLebPair(uint64(n)) {
+							payload27.putLebWide(uint64(n))
 						}
-						if payload33.Measuring {
-							payload33.Advance(n)
+						if payload27.Measuring {
+							payload27.Advance(n)
 						} else {
-							payload33.Ids.Truncate(mark)
-							if !TierCostsCostByTierEntrySaveBody(&payload33, &(*p)) {
+							payload27.Ids.Truncate(mark)
+							if !TierCostsCostByTierEntrySaveBody(&payload27, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload33.Overflow {
+				if payload27.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.CostByTier.Count)) + payload33.Offset
+				n := int64(1) + tableLebBytes(uint64(value.CostByTier.Count)) + payload27.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -8055,7 +7616,7 @@ func TierCostsSaveBodyFields(w *TableWriter, value *TierCosts) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload36 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload30 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.ReadsToday)), &TierCostsTableFields[13], w.Ids.Numbering.arena)
 				defer cursor.Release()
 				for i := int32(0); i < value.ReadsToday.Count; i++ {
@@ -8064,28 +7625,28 @@ func TierCostsSaveBodyFields(w *TableWriter, value *TierCosts) bool {
 						return false
 					}
 					{
-						mark := payload36.Ids.Count
-						n := TierCostsReadsTodayEntryMeasureBody(&(*p), payload36.Ids)
+						mark := payload30.Ids.Count
+						n := TierCostsReadsTodayEntryMeasureBody(&(*p), payload30.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload36.putLebPair(uint64(n)) {
-							payload36.putLebWide(uint64(n))
+						if !payload30.putLebPair(uint64(n)) {
+							payload30.putLebWide(uint64(n))
 						}
-						if payload36.Measuring {
-							payload36.Advance(n)
+						if payload30.Measuring {
+							payload30.Advance(n)
 						} else {
-							payload36.Ids.Truncate(mark)
-							if !TierCostsReadsTodayEntrySaveBody(&payload36, &(*p)) {
+							payload30.Ids.Truncate(mark)
+							if !TierCostsReadsTodayEntrySaveBody(&payload30, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload36.Overflow {
+				if payload30.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.ReadsToday.Count)) + payload36.Offset
+				n := int64(1) + tableLebBytes(uint64(value.ReadsToday.Count)) + payload30.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -8156,7 +7717,7 @@ func TierCostsSaveBodyFields(w *TableWriter, value *TierCosts) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload39 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload33 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Readers)), &TierCostsTableFields[16], w.Ids.Numbering.arena)
 				defer cursor.Release()
 				for i := int32(0); i < value.Readers.Count; i++ {
@@ -8165,28 +7726,28 @@ func TierCostsSaveBodyFields(w *TableWriter, value *TierCosts) bool {
 						return false
 					}
 					{
-						mark := payload39.Ids.Count
-						n := TierCostsReadersEntryMeasureBody(&(*p), payload39.Ids)
+						mark := payload33.Ids.Count
+						n := TierCostsReadersEntryMeasureBody(&(*p), payload33.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload39.putLebPair(uint64(n)) {
-							payload39.putLebWide(uint64(n))
+						if !payload33.putLebPair(uint64(n)) {
+							payload33.putLebWide(uint64(n))
 						}
-						if payload39.Measuring {
-							payload39.Advance(n)
+						if payload33.Measuring {
+							payload33.Advance(n)
 						} else {
-							payload39.Ids.Truncate(mark)
-							if !TierCostsReadersEntrySaveBody(&payload39, &(*p)) {
+							payload33.Ids.Truncate(mark)
+							if !TierCostsReadersEntrySaveBody(&payload33, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload39.Overflow {
+				if payload33.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Readers.Count)) + payload39.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Readers.Count)) + payload33.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -8281,7 +7842,7 @@ func TierCostsSaveBodyFields(w *TableWriter, value *TierCosts) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload42 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload36 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Reconciles)), int64(unsafe.Sizeof(*new(CostReconcileRecordRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Reconciles.Count; i++ {
 					p := (*CostReconcileRecordRow)(cursor.Next())
@@ -8289,28 +7850,28 @@ func TierCostsSaveBodyFields(w *TableWriter, value *TierCosts) bool {
 						return false
 					}
 					{
-						mark := payload42.Ids.Count
-						n := CostReconcileRecordMeasureBody(&(*p), payload42.Ids)
+						mark := payload36.Ids.Count
+						n := CostReconcileRecordMeasureBody(&(*p), payload36.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload42.putLebPair(uint64(n)) {
-							payload42.putLebWide(uint64(n))
+						if !payload36.putLebPair(uint64(n)) {
+							payload36.putLebWide(uint64(n))
 						}
-						if payload42.Measuring {
-							payload42.Advance(n)
+						if payload36.Measuring {
+							payload36.Advance(n)
 						} else {
-							payload42.Ids.Truncate(mark)
-							if !CostReconcileRecordSaveBody(&payload42, &(*p)) {
+							payload36.Ids.Truncate(mark)
+							if !CostReconcileRecordSaveBody(&payload36, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload42.Overflow {
+				if payload36.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Reconciles.Count)) + payload42.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Reconciles.Count)) + payload36.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -8409,7 +7970,7 @@ func TierCostsLoadBody(r *TableReader, value *TierCosts) bool {
 				}
 				field := &TierCostsTableFields[0]
 				holder := (*tableContainer)(unsafe.Pointer(&value.Tiers))
-				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 144, 8) {
+				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 16, 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -8425,6 +7986,7 @@ func TierCostsLoadBody(r *TableReader, value *TierCosts) bool {
 					elem, ok := sub.Body()
 					if !ok {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.tiers")
 						break
 					}
 					key, bad, over, wide, whole := tableMapReadKey(elem, &field.Table().Fields[0])
@@ -8439,6 +8001,7 @@ func TierCostsLoadBody(r *TableReader, value *TierCosts) bool {
 					}
 					if !whole {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.tiers")
 						break
 					}
 					if over {
@@ -8451,13 +8014,14 @@ func TierCostsLoadBody(r *TableReader, value *TierCosts) bool {
 					}
 					if order > 0 {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.tiers")
 						break
 					}
 					p := prior
 					if order == 0 {
 						r.Report.Duplicate++
 					} else {
-						p = (*TierCostsTiersEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 144))
+						p = (*TierCostsTiersEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 16))
 						if p == nil {
 							r.Report.Malformed = true
 							break
@@ -8527,7 +8091,7 @@ func TierCostsLoadBody(r *TableReader, value *TierCosts) bool {
 				}
 				field := &TierCostsTableFields[2]
 				holder := (*tableContainer)(unsafe.Pointer(&value.CostByTier))
-				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 144, 8) {
+				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 16, 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -8543,6 +8107,7 @@ func TierCostsLoadBody(r *TableReader, value *TierCosts) bool {
 					elem, ok := sub.Body()
 					if !ok {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.cost_by_tier")
 						break
 					}
 					key, bad, over, wide, whole := tableMapReadKey(elem, &field.Table().Fields[0])
@@ -8557,6 +8122,7 @@ func TierCostsLoadBody(r *TableReader, value *TierCosts) bool {
 					}
 					if !whole {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.cost_by_tier")
 						break
 					}
 					if over {
@@ -8569,13 +8135,14 @@ func TierCostsLoadBody(r *TableReader, value *TierCosts) bool {
 					}
 					if order > 0 {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.cost_by_tier")
 						break
 					}
 					p := prior
 					if order == 0 {
 						r.Report.Duplicate++
 					} else {
-						p = (*TierCostsCostByTierEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 144))
+						p = (*TierCostsCostByTierEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 16))
 						if p == nil {
 							r.Report.Malformed = true
 							break
@@ -8846,7 +8413,7 @@ func TierCostsLoadBody(r *TableReader, value *TierCosts) bool {
 				}
 				field := &TierCostsTableFields[13]
 				holder := (*tableContainer)(unsafe.Pointer(&value.ReadsToday))
-				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 160, 8) {
+				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 32, 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -8862,6 +8429,7 @@ func TierCostsLoadBody(r *TableReader, value *TierCosts) bool {
 					elem, ok := sub.Body()
 					if !ok {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.reads_today")
 						break
 					}
 					key, bad, over, wide, whole := tableMapReadKey(elem, &field.Table().Fields[0])
@@ -8876,6 +8444,7 @@ func TierCostsLoadBody(r *TableReader, value *TierCosts) bool {
 					}
 					if !whole {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.reads_today")
 						break
 					}
 					if over {
@@ -8888,13 +8457,14 @@ func TierCostsLoadBody(r *TableReader, value *TierCosts) bool {
 					}
 					if order > 0 {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.reads_today")
 						break
 					}
 					p := prior
 					if order == 0 {
 						r.Report.Duplicate++
 					} else {
-						p = (*TierCostsReadsTodayEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 160))
+						p = (*TierCostsReadsTodayEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 32))
 						if p == nil {
 							r.Report.Malformed = true
 							break
@@ -9005,7 +8575,7 @@ func TierCostsLoadBody(r *TableReader, value *TierCosts) bool {
 				}
 				field := &TierCostsTableFields[16]
 				holder := (*tableContainer)(unsafe.Pointer(&value.Readers))
-				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 192, 8) {
+				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 56, 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -9021,6 +8591,7 @@ func TierCostsLoadBody(r *TableReader, value *TierCosts) bool {
 					elem, ok := sub.Body()
 					if !ok {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.readers")
 						break
 					}
 					key, bad, over, wide, whole := tableMapReadKey(elem, &field.Table().Fields[0])
@@ -9035,6 +8606,7 @@ func TierCostsLoadBody(r *TableReader, value *TierCosts) bool {
 					}
 					if !whole {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.readers")
 						break
 					}
 					if over {
@@ -9047,13 +8619,14 @@ func TierCostsLoadBody(r *TableReader, value *TierCosts) bool {
 					}
 					if order > 0 {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.readers")
 						break
 					}
 					p := prior
 					if order == 0 {
 						r.Report.Duplicate++
 					} else {
-						p = (*TierCostsReadersEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 192))
+						p = (*TierCostsReadersEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 56))
 						if p == nil {
 							r.Report.Malformed = true
 							break
@@ -10000,7 +9573,7 @@ func TierCostsLoadBodyRetain(r *TableRetainReader, value *TierCosts) bool {
 				}
 				field := &TierCostsTableFields[0]
 				holder := (*tableContainer)(unsafe.Pointer(&value.Tiers))
-				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 144, 8) {
+				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 16, 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -10017,6 +9590,7 @@ func TierCostsLoadBodyRetain(r *TableRetainReader, value *TierCosts) bool {
 					elem, ok := sub.Body()
 					if !ok {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.tiers")
 						break
 					}
 					key, bad, over, wide, whole := tableMapReadKey(elem.tableRetainPlainReader, &field.Table().Fields[0])
@@ -10031,6 +9605,7 @@ func TierCostsLoadBodyRetain(r *TableRetainReader, value *TierCosts) bool {
 					}
 					if !whole {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.tiers")
 						break
 					}
 					if over {
@@ -10043,13 +9618,14 @@ func TierCostsLoadBodyRetain(r *TableRetainReader, value *TierCosts) bool {
 					}
 					if order > 0 {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.tiers")
 						break
 					}
 					p := prior
 					if order == 0 {
 						r.Report.Duplicate++
 					} else {
-						p = (*TierCostsTiersEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 144))
+						p = (*TierCostsTiersEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 16))
 						if p == nil {
 							r.Report.Malformed = true
 							break
@@ -10120,7 +9696,7 @@ func TierCostsLoadBodyRetain(r *TableRetainReader, value *TierCosts) bool {
 				}
 				field := &TierCostsTableFields[2]
 				holder := (*tableContainer)(unsafe.Pointer(&value.CostByTier))
-				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 144, 8) {
+				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 16, 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -10137,6 +9713,7 @@ func TierCostsLoadBodyRetain(r *TableRetainReader, value *TierCosts) bool {
 					elem, ok := sub.Body()
 					if !ok {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.cost_by_tier")
 						break
 					}
 					key, bad, over, wide, whole := tableMapReadKey(elem.tableRetainPlainReader, &field.Table().Fields[0])
@@ -10151,6 +9728,7 @@ func TierCostsLoadBodyRetain(r *TableRetainReader, value *TierCosts) bool {
 					}
 					if !whole {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.cost_by_tier")
 						break
 					}
 					if over {
@@ -10163,13 +9741,14 @@ func TierCostsLoadBodyRetain(r *TableRetainReader, value *TierCosts) bool {
 					}
 					if order > 0 {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.cost_by_tier")
 						break
 					}
 					p := prior
 					if order == 0 {
 						r.Report.Duplicate++
 					} else {
-						p = (*TierCostsCostByTierEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 144))
+						p = (*TierCostsCostByTierEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 16))
 						if p == nil {
 							r.Report.Malformed = true
 							break
@@ -10441,7 +10020,7 @@ func TierCostsLoadBodyRetain(r *TableRetainReader, value *TierCosts) bool {
 				}
 				field := &TierCostsTableFields[13]
 				holder := (*tableContainer)(unsafe.Pointer(&value.ReadsToday))
-				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 160, 8) {
+				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 32, 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -10458,6 +10037,7 @@ func TierCostsLoadBodyRetain(r *TableRetainReader, value *TierCosts) bool {
 					elem, ok := sub.Body()
 					if !ok {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.reads_today")
 						break
 					}
 					key, bad, over, wide, whole := tableMapReadKey(elem.tableRetainPlainReader, &field.Table().Fields[0])
@@ -10472,6 +10052,7 @@ func TierCostsLoadBodyRetain(r *TableRetainReader, value *TierCosts) bool {
 					}
 					if !whole {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.reads_today")
 						break
 					}
 					if over {
@@ -10484,13 +10065,14 @@ func TierCostsLoadBodyRetain(r *TableRetainReader, value *TierCosts) bool {
 					}
 					if order > 0 {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.reads_today")
 						break
 					}
 					p := prior
 					if order == 0 {
 						r.Report.Duplicate++
 					} else {
-						p = (*TierCostsReadsTodayEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 160))
+						p = (*TierCostsReadsTodayEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 32))
 						if p == nil {
 							r.Report.Malformed = true
 							break
@@ -10602,7 +10184,7 @@ func TierCostsLoadBodyRetain(r *TableRetainReader, value *TierCosts) bool {
 				}
 				field := &TierCostsTableFields[16]
 				holder := (*tableContainer)(unsafe.Pointer(&value.Readers))
-				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 192, 8) {
+				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 56, 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -10619,6 +10201,7 @@ func TierCostsLoadBodyRetain(r *TableRetainReader, value *TierCosts) bool {
 					elem, ok := sub.Body()
 					if !ok {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.readers")
 						break
 					}
 					key, bad, over, wide, whole := tableMapReadKey(elem.tableRetainPlainReader, &field.Table().Fields[0])
@@ -10633,6 +10216,7 @@ func TierCostsLoadBodyRetain(r *TableRetainReader, value *TierCosts) bool {
 					}
 					if !whole {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.readers")
 						break
 					}
 					if over {
@@ -10645,13 +10229,14 @@ func TierCostsLoadBodyRetain(r *TableRetainReader, value *TierCosts) bool {
 					}
 					if order > 0 {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "TierCosts.readers")
 						break
 					}
 					p := prior
 					if order == 0 {
 						r.Report.Duplicate++
 					} else {
-						p = (*TierCostsReadersEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 192))
+						p = (*TierCostsReadersEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 56))
 						if p == nil {
 							r.Report.Malformed = true
 							break
@@ -10926,7 +10511,7 @@ func (b *TierCostsBuilder) Shutdown() {
 	b.root = 0
 }
 func TierCostsTiersInsert(worker *TableWorker, holder *TableMap[TierCostsTiersEntryRow], key string) *int64 {
-	p, _ := tableMapPlace(worker, (*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[0], tableMapKey{text: []byte(key)})
+	p, _ := tableMapPlace(worker, (*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[0], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))})
 	if p == nil {
 		return nil
 	}
@@ -10937,7 +10522,7 @@ func TierCostsTiersInsert(worker *TableWorker, holder *TableMap[TierCostsTiersEn
 	return &entry.Value
 }
 func TierCostsTiersFind(arena *TableArena, holder *TableMap[TierCostsTiersEntryRow], key string) *int64 {
-	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[0], tableMapKey{text: []byte(key)}, arena)
+	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[0], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))}, arena)
 	if p == nil {
 		return nil
 	}
@@ -10945,14 +10530,14 @@ func TierCostsTiersFind(arena *TableArena, holder *TableMap[TierCostsTiersEntryR
 	return &entry.Value
 }
 func TierCostsTiersErase(arena *TableArena, holder *TableMap[TierCostsTiersEntryRow], key string) bool {
-	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[0], tableMapKey{text: []byte(key)}, arena)
+	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[0], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))}, arena)
 	return tableContainerErase(arena, (*tableContainer)(unsafe.Pointer(holder)), p, int64(unsafe.Sizeof(TierCostsTiersEntryRow{})))
 }
 func TierCostsTiersEach(holder *TableMap[TierCostsTiersEntryRow], visit func(string, *int64) bool, arena ...*TableArena) bool {
 	c := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)), int64(unsafe.Sizeof(TierCostsTiersEntryRow{})), tableOptionalArena(arena))
 	for i := int32(0); i < holder.Count; i++ {
 		entry := (*TierCostsTiersEntryRow)(c.Next())
-		if entry == nil || !visit(string(entry.Key[:entry.KeyLength]), &entry.Value) {
+		if entry == nil || !visit(tableTextString(&entry.Key, tableOptionalArena(arena)), &entry.Value) {
 			return false
 		}
 	}
@@ -10965,7 +10550,7 @@ func TierCostsTiersIndex(holder *TableMap[TierCostsTiersEntryRow], storage []byt
 	return tableMapIndex((*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[0], storage)
 }
 func TierCostsTiersIndexFind(index TableMapIndex, holder *TableMap[TierCostsTiersEntryRow], key string) *int64 {
-	p := tableMapIndexFind(index, (*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[0], tableMapKey{text: []byte(key)})
+	p := tableMapIndexFind(index, (*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[0], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))})
 	if p == nil {
 		return nil
 	}
@@ -10973,7 +10558,7 @@ func TierCostsTiersIndexFind(index TableMapIndex, holder *TableMap[TierCostsTier
 	return &entry.Value
 }
 func TierCostsCostByTierInsert(worker *TableWorker, holder *TableMap[TierCostsCostByTierEntryRow], key string) *int64 {
-	p, _ := tableMapPlace(worker, (*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[2], tableMapKey{text: []byte(key)})
+	p, _ := tableMapPlace(worker, (*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[2], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))})
 	if p == nil {
 		return nil
 	}
@@ -10984,7 +10569,7 @@ func TierCostsCostByTierInsert(worker *TableWorker, holder *TableMap[TierCostsCo
 	return &entry.Value
 }
 func TierCostsCostByTierFind(arena *TableArena, holder *TableMap[TierCostsCostByTierEntryRow], key string) *int64 {
-	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[2], tableMapKey{text: []byte(key)}, arena)
+	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[2], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))}, arena)
 	if p == nil {
 		return nil
 	}
@@ -10992,14 +10577,14 @@ func TierCostsCostByTierFind(arena *TableArena, holder *TableMap[TierCostsCostBy
 	return &entry.Value
 }
 func TierCostsCostByTierErase(arena *TableArena, holder *TableMap[TierCostsCostByTierEntryRow], key string) bool {
-	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[2], tableMapKey{text: []byte(key)}, arena)
+	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[2], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))}, arena)
 	return tableContainerErase(arena, (*tableContainer)(unsafe.Pointer(holder)), p, int64(unsafe.Sizeof(TierCostsCostByTierEntryRow{})))
 }
 func TierCostsCostByTierEach(holder *TableMap[TierCostsCostByTierEntryRow], visit func(string, *int64) bool, arena ...*TableArena) bool {
 	c := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)), int64(unsafe.Sizeof(TierCostsCostByTierEntryRow{})), tableOptionalArena(arena))
 	for i := int32(0); i < holder.Count; i++ {
 		entry := (*TierCostsCostByTierEntryRow)(c.Next())
-		if entry == nil || !visit(string(entry.Key[:entry.KeyLength]), &entry.Value) {
+		if entry == nil || !visit(tableTextString(&entry.Key, tableOptionalArena(arena)), &entry.Value) {
 			return false
 		}
 	}
@@ -11012,7 +10597,7 @@ func TierCostsCostByTierIndex(holder *TableMap[TierCostsCostByTierEntryRow], sto
 	return tableMapIndex((*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[2], storage)
 }
 func TierCostsCostByTierIndexFind(index TableMapIndex, holder *TableMap[TierCostsCostByTierEntryRow], key string) *int64 {
-	p := tableMapIndexFind(index, (*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[2], tableMapKey{text: []byte(key)})
+	p := tableMapIndexFind(index, (*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[2], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))})
 	if p == nil {
 		return nil
 	}
@@ -11020,7 +10605,7 @@ func TierCostsCostByTierIndexFind(index TableMapIndex, holder *TableMap[TierCost
 	return &entry.Value
 }
 func TierCostsReadsTodayInsert(worker *TableWorker, holder *TableMap[TierCostsReadsTodayEntryRow], key string) *ReadDayRow {
-	p, _ := tableMapPlace(worker, (*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[13], tableMapKey{text: []byte(key)})
+	p, _ := tableMapPlace(worker, (*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[13], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))})
 	if p == nil {
 		return nil
 	}
@@ -11031,7 +10616,7 @@ func TierCostsReadsTodayInsert(worker *TableWorker, holder *TableMap[TierCostsRe
 	return &entry.Value
 }
 func TierCostsReadsTodayFind(arena *TableArena, holder *TableMap[TierCostsReadsTodayEntryRow], key string) *ReadDayRow {
-	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[13], tableMapKey{text: []byte(key)}, arena)
+	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[13], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))}, arena)
 	if p == nil {
 		return nil
 	}
@@ -11039,14 +10624,14 @@ func TierCostsReadsTodayFind(arena *TableArena, holder *TableMap[TierCostsReadsT
 	return &entry.Value
 }
 func TierCostsReadsTodayErase(arena *TableArena, holder *TableMap[TierCostsReadsTodayEntryRow], key string) bool {
-	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[13], tableMapKey{text: []byte(key)}, arena)
+	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[13], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))}, arena)
 	return tableContainerErase(arena, (*tableContainer)(unsafe.Pointer(holder)), p, int64(unsafe.Sizeof(TierCostsReadsTodayEntryRow{})))
 }
 func TierCostsReadsTodayEach(holder *TableMap[TierCostsReadsTodayEntryRow], visit func(string, *ReadDayRow) bool, arena ...*TableArena) bool {
 	c := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)), int64(unsafe.Sizeof(TierCostsReadsTodayEntryRow{})), tableOptionalArena(arena))
 	for i := int32(0); i < holder.Count; i++ {
 		entry := (*TierCostsReadsTodayEntryRow)(c.Next())
-		if entry == nil || !visit(string(entry.Key[:entry.KeyLength]), &entry.Value) {
+		if entry == nil || !visit(tableTextString(&entry.Key, tableOptionalArena(arena)), &entry.Value) {
 			return false
 		}
 	}
@@ -11059,7 +10644,7 @@ func TierCostsReadsTodayIndex(holder *TableMap[TierCostsReadsTodayEntryRow], sto
 	return tableMapIndex((*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[13], storage)
 }
 func TierCostsReadsTodayIndexFind(index TableMapIndex, holder *TableMap[TierCostsReadsTodayEntryRow], key string) *ReadDayRow {
-	p := tableMapIndexFind(index, (*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[13], tableMapKey{text: []byte(key)})
+	p := tableMapIndexFind(index, (*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[13], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))})
 	if p == nil {
 		return nil
 	}
@@ -11067,7 +10652,7 @@ func TierCostsReadsTodayIndexFind(index TableMapIndex, holder *TableMap[TierCost
 	return &entry.Value
 }
 func TierCostsReadersInsert(worker *TableWorker, holder *TableMap[TierCostsReadersEntryRow], key string) *ReaderSpendRow {
-	p, _ := tableMapPlace(worker, (*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[16], tableMapKey{text: []byte(key)})
+	p, _ := tableMapPlace(worker, (*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[16], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))})
 	if p == nil {
 		return nil
 	}
@@ -11078,7 +10663,7 @@ func TierCostsReadersInsert(worker *TableWorker, holder *TableMap[TierCostsReade
 	return &entry.Value
 }
 func TierCostsReadersFind(arena *TableArena, holder *TableMap[TierCostsReadersEntryRow], key string) *ReaderSpendRow {
-	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[16], tableMapKey{text: []byte(key)}, arena)
+	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[16], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))}, arena)
 	if p == nil {
 		return nil
 	}
@@ -11086,14 +10671,14 @@ func TierCostsReadersFind(arena *TableArena, holder *TableMap[TierCostsReadersEn
 	return &entry.Value
 }
 func TierCostsReadersErase(arena *TableArena, holder *TableMap[TierCostsReadersEntryRow], key string) bool {
-	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[16], tableMapKey{text: []byte(key)}, arena)
+	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[16], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))}, arena)
 	return tableContainerErase(arena, (*tableContainer)(unsafe.Pointer(holder)), p, int64(unsafe.Sizeof(TierCostsReadersEntryRow{})))
 }
 func TierCostsReadersEach(holder *TableMap[TierCostsReadersEntryRow], visit func(string, *ReaderSpendRow) bool, arena ...*TableArena) bool {
 	c := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)), int64(unsafe.Sizeof(TierCostsReadersEntryRow{})), tableOptionalArena(arena))
 	for i := int32(0); i < holder.Count; i++ {
 		entry := (*TierCostsReadersEntryRow)(c.Next())
-		if entry == nil || !visit(string(entry.Key[:entry.KeyLength]), &entry.Value) {
+		if entry == nil || !visit(tableTextString(&entry.Key, tableOptionalArena(arena)), &entry.Value) {
 			return false
 		}
 	}
@@ -11106,7 +10691,7 @@ func TierCostsReadersIndex(holder *TableMap[TierCostsReadersEntryRow], storage [
 	return tableMapIndex((*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[16], storage)
 }
 func TierCostsReadersIndexFind(index TableMapIndex, holder *TableMap[TierCostsReadersEntryRow], key string) *ReaderSpendRow {
-	p := tableMapIndexFind(index, (*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[16], tableMapKey{text: []byte(key)})
+	p := tableMapIndexFind(index, (*tableContainer)(unsafe.Pointer(holder)), &TierCostsTableFields[16], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))})
 	if p == nil {
 		return nil
 	}
@@ -11524,7 +11109,7 @@ func CostCheckSaveBodyFields(w *TableWriter, value *CostCheck) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload51 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload39 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Orphans)), int64(unsafe.Sizeof(*new(CostCheckOrphansTextRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Orphans.Count; i++ {
 					p := (*CostCheckOrphansTextRow)(cursor.Next())
@@ -11569,16 +11154,16 @@ func CostCheckSaveBodyFields(w *TableWriter, value *CostCheck) bool {
 								return false
 							}
 						}
-						if !payload51.putLebPair(uint64(text.ValueLength)) {
-							payload51.putLebWide(uint64(text.ValueLength))
+						if !payload39.putLebPair(uint64(text.ValueLength)) {
+							payload39.putLebWide(uint64(text.ValueLength))
 						}
-						payload51.Raw(text.Value[:text.ValueLength])
+						payload39.Raw(text.Value[:text.ValueLength])
 					}
 				}
-				if payload51.Overflow {
+				if payload39.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Orphans.Count)) + payload51.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Orphans.Count)) + payload39.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -15199,7 +14784,7 @@ func StageTimesStreamsEntrySaveBodyFields(w *TableWriter, value *StageTimesStrea
 			}
 			{
 				mark := w.Ids.Count
-				payload65 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload53 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Value)), &StageTimesStreamsEntryTableFields[1], w.Ids.Numbering.arena)
 				defer cursor.Release()
 				for i := int32(0); i < value.Value.Count; i++ {
@@ -15208,28 +14793,28 @@ func StageTimesStreamsEntrySaveBodyFields(w *TableWriter, value *StageTimesStrea
 						return false
 					}
 					{
-						mark := payload65.Ids.Count
-						n := StageTimesStreamsEntryValueEntryMeasureBody(&(*p), payload65.Ids)
+						mark := payload53.Ids.Count
+						n := StageTimesStreamsEntryValueEntryMeasureBody(&(*p), payload53.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload65.putLebPair(uint64(n)) {
-							payload65.putLebWide(uint64(n))
+						if !payload53.putLebPair(uint64(n)) {
+							payload53.putLebWide(uint64(n))
 						}
-						if payload65.Measuring {
-							payload65.Advance(n)
+						if payload53.Measuring {
+							payload53.Advance(n)
 						} else {
-							payload65.Ids.Truncate(mark)
-							if !StageTimesStreamsEntryValueEntrySaveBody(&payload65, &(*p)) {
+							payload53.Ids.Truncate(mark)
+							if !StageTimesStreamsEntryValueEntrySaveBody(&payload53, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload65.Overflow {
+				if payload53.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Value.Count)) + payload65.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Value.Count)) + payload53.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -15865,7 +15450,7 @@ func StageTimesSaveBodyFields(w *TableWriter, value *StageTimes) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload68 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload56 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.All)), &StageTimesTableFields[0], w.Ids.Numbering.arena)
 				defer cursor.Release()
 				for i := int32(0); i < value.All.Count; i++ {
@@ -15874,28 +15459,28 @@ func StageTimesSaveBodyFields(w *TableWriter, value *StageTimes) bool {
 						return false
 					}
 					{
-						mark := payload68.Ids.Count
-						n := StageTimesAllEntryMeasureBody(&(*p), payload68.Ids)
+						mark := payload56.Ids.Count
+						n := StageTimesAllEntryMeasureBody(&(*p), payload56.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload68.putLebPair(uint64(n)) {
-							payload68.putLebWide(uint64(n))
+						if !payload56.putLebPair(uint64(n)) {
+							payload56.putLebWide(uint64(n))
 						}
-						if payload68.Measuring {
-							payload68.Advance(n)
+						if payload56.Measuring {
+							payload56.Advance(n)
 						} else {
-							payload68.Ids.Truncate(mark)
-							if !StageTimesAllEntrySaveBody(&payload68, &(*p)) {
+							payload56.Ids.Truncate(mark)
+							if !StageTimesAllEntrySaveBody(&payload56, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload68.Overflow {
+				if payload56.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.All.Count)) + payload68.Offset
+				n := int64(1) + tableLebBytes(uint64(value.All.Count)) + payload56.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -15950,7 +15535,7 @@ func StageTimesSaveBodyFields(w *TableWriter, value *StageTimes) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload71 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload59 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Streams)), &StageTimesTableFields[1], w.Ids.Numbering.arena)
 				defer cursor.Release()
 				for i := int32(0); i < value.Streams.Count; i++ {
@@ -15959,28 +15544,28 @@ func StageTimesSaveBodyFields(w *TableWriter, value *StageTimes) bool {
 						return false
 					}
 					{
-						mark := payload71.Ids.Count
-						n := StageTimesStreamsEntryMeasureBody(&(*p), payload71.Ids)
+						mark := payload59.Ids.Count
+						n := StageTimesStreamsEntryMeasureBody(&(*p), payload59.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload71.putLebPair(uint64(n)) {
-							payload71.putLebWide(uint64(n))
+						if !payload59.putLebPair(uint64(n)) {
+							payload59.putLebWide(uint64(n))
 						}
-						if payload71.Measuring {
-							payload71.Advance(n)
+						if payload59.Measuring {
+							payload59.Advance(n)
 						} else {
-							payload71.Ids.Truncate(mark)
-							if !StageTimesStreamsEntrySaveBody(&payload71, &(*p)) {
+							payload59.Ids.Truncate(mark)
+							if !StageTimesStreamsEntrySaveBody(&payload59, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload71.Overflow {
+				if payload59.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Streams.Count)) + payload71.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Streams.Count)) + payload59.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -19314,8 +18899,7 @@ func (b *SeatChangeBuilder) Shutdown() {
 // the value already holds. The reader calls it before overlaying.
 func HoldViewReset(value *HoldView) {
 	value.Kind = 0
-	clear(value.Name[:])
-	value.NameLength = 0
+	value.Name = 0
 	value.Reason = 0
 	value.By = 0
 	value.At = 0
@@ -19362,53 +18946,23 @@ func HoldViewSaveBodyFields(w *TableWriter, value *HoldView) bool {
 		}
 	}
 	{
-		if value.NameLength < 0 || value.NameLength > 515 {
-			return false
-		}
-		if value.NameLength > 0 {
-			if ref := w.Ids.refAtHit(227, 0xc4bcadba8e631b86); !w.headerPair(ref, 12) {
-				w.headerRest(ref, 12)
+		if value.Name != 0 {
+			if ref := w.Ids.refAtHit(227, 0xc4bcadba8e631b86); !w.headerPair(ref, 17) {
+				w.headerRest(ref, 17)
 			}
-			if value.NameLength < 0 || value.NameLength > 515 {
-				return false
-			}
-			{
-				n := int(value.NameLength)
-				var hi, z uint64
-				p := value.Name[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
+			if value.Name == 0 {
+				if !w.putLebPair(0) {
+					w.putLebWide(0)
 				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Name[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Name[:n]) {
+			} else {
+				index, ok := w.Ids.Numbering.Index(&value.Name)
+				if !ok {
 					return false
 				}
+				if !w.putLebPair(index) {
+					w.putLebWide(index)
+				}
 			}
-			if !w.putLebPair(uint64(value.NameLength)) {
-				w.putLebWide(uint64(value.NameLength))
-			}
-			w.Raw(value.Name[:value.NameLength])
 		}
 	}
 	{
@@ -19589,7 +19143,7 @@ func HoldViewLoadBody(r *TableReader, value *HoldView) bool {
 				r.Nodes.Resolve(&value.Kind, index, 0x704be0d8faaffc58, r.Report)
 			}
 		case 0xc4bcadba8e631b86: // name
-			if kind != 12 {
+			if kind != 17 {
 				r.Report.KindMismatch++
 				if !r.Skip(kind) {
 					r.Report.Malformed = true
@@ -19597,25 +19151,14 @@ func HoldViewLoadBody(r *TableReader, value *HoldView) bool {
 				}
 				break
 			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
-				return false
+			{
+				index, ok := r.Leb()
+				if !ok {
+					r.Report.Malformed = true
+					return false
+				}
+				r.Nodes.Resolve(&value.Name, index, 0x704be0d8faaffc58, r.Report)
 			}
-			if !tableUtf8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Name[:])
-				value.NameLength = 0
-				break
-			}
-			keep := int64(len(sub.Buffer))
-			if keep > 515 {
-				keep = tableUtf8Clamp(sub.Buffer, 515)
-				r.Report.Clamped++
-			}
-			clear(value.Name[:])
-			copy(value.Name[:keep], sub.Buffer)
-			value.NameLength = int32(keep)
 		case 0x65e8d7f3474f2639: // reason
 			if kind != 17 {
 				r.Report.KindMismatch++
@@ -19799,53 +19342,23 @@ func HoldViewSaveBodyFieldsRetain(w *TableRetainWriter, value *HoldView) bool {
 		}
 	}
 	{
-		if value.NameLength < 0 || value.NameLength > 515 {
-			return false
-		}
-		if value.NameLength > 0 {
-			if ref := w.Ids.refAtHit(227, 0xc4bcadba8e631b86); !w.headerPair(ref, 12) {
-				w.headerRest(ref, 12)
+		if value.Name != 0 {
+			if ref := w.Ids.refAtHit(227, 0xc4bcadba8e631b86); !w.headerPair(ref, 17) {
+				w.headerRest(ref, 17)
 			}
-			if value.NameLength < 0 || value.NameLength > 515 {
-				return false
-			}
-			{
-				n := int(value.NameLength)
-				var hi, z uint64
-				p := value.Name[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
+			if value.Name == 0 {
+				if !w.putLebPair(0) {
+					w.putLebWide(0)
 				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Name[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Name[:n]) {
+			} else {
+				index, ok := w.Ids.Numbering.Index(&value.Name)
+				if !ok {
 					return false
 				}
+				if !w.putLebPair(index) {
+					w.putLebWide(index)
+				}
 			}
-			if !w.putLebPair(uint64(value.NameLength)) {
-				w.putLebWide(uint64(value.NameLength))
-			}
-			w.Raw(value.Name[:value.NameLength])
 		}
 	}
 	{
@@ -20030,7 +19543,7 @@ func HoldViewLoadBodyRetain(r *TableRetainReader, value *HoldView) bool {
 				r.Nodes.Resolve(&value.Kind, index, 0x704be0d8faaffc58, r.Report)
 			}
 		case 0xc4bcadba8e631b86: // name
-			if kind != 12 {
+			if kind != 17 {
 				r.Report.KindMismatch++
 				if !r.Skip(kind) {
 					r.Report.Malformed = true
@@ -20038,25 +19551,14 @@ func HoldViewLoadBodyRetain(r *TableRetainReader, value *HoldView) bool {
 				}
 				break
 			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
-				return false
+			{
+				index, ok := r.Leb()
+				if !ok {
+					r.Report.Malformed = true
+					return false
+				}
+				r.Nodes.Resolve(&value.Name, index, 0x704be0d8faaffc58, r.Report)
 			}
-			if !tableUtf8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Name[:])
-				value.NameLength = 0
-				break
-			}
-			keep := int64(len(sub.Buffer))
-			if keep > 515 {
-				keep = tableUtf8Clamp(sub.Buffer, 515)
-				r.Report.Clamped++
-			}
-			clear(value.Name[:])
-			copy(value.Name[:keep], sub.Buffer)
-			value.NameLength = int32(keep)
 		case 0x65e8d7f3474f2639: // reason
 			if kind != 17 {
 				r.Report.KindMismatch++
@@ -20311,8 +19813,7 @@ func (b *HoldViewBuilder) Shutdown() {
 // the value already holds. The reader calls it before overlaying.
 func StopReset(value *Stop) {
 	value.Kind = 0
-	clear(value.Subject[:])
-	value.SubjectLength = 0
+	value.Subject = 0
 	value.Since = 0
 	value.What = 0
 	value.Effect = 0
@@ -20374,53 +19875,23 @@ func StopSaveBodyFields(w *TableWriter, value *Stop) bool {
 		}
 	}
 	{
-		if value.SubjectLength < 0 || value.SubjectLength > 515 {
-			return false
-		}
-		if value.SubjectLength > 0 {
-			if ref := w.Ids.refAtHit(184, 0x9640735281e90c0f); !w.headerPair(ref, 12) {
-				w.headerRest(ref, 12)
+		if value.Subject != 0 {
+			if ref := w.Ids.refAtHit(184, 0x9640735281e90c0f); !w.headerPair(ref, 17) {
+				w.headerRest(ref, 17)
 			}
-			if value.SubjectLength < 0 || value.SubjectLength > 515 {
-				return false
-			}
-			{
-				n := int(value.SubjectLength)
-				var hi, z uint64
-				p := value.Subject[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
+			if value.Subject == 0 {
+				if !w.putLebPair(0) {
+					w.putLebWide(0)
 				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Subject[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Subject[:n]) {
+			} else {
+				index, ok := w.Ids.Numbering.Index(&value.Subject)
+				if !ok {
 					return false
 				}
+				if !w.putLebPair(index) {
+					w.putLebWide(index)
+				}
 			}
-			if !w.putLebPair(uint64(value.SubjectLength)) {
-				w.putLebWide(uint64(value.SubjectLength))
-			}
-			w.Raw(value.Subject[:value.SubjectLength])
 		}
 	}
 	{
@@ -20557,7 +20028,7 @@ func StopLoadBody(r *TableReader, value *Stop) bool {
 				r.Nodes.Resolve(&value.Kind, index, 0x704be0d8faaffc58, r.Report)
 			}
 		case 0x9640735281e90c0f: // subject
-			if kind != 12 {
+			if kind != 17 {
 				r.Report.KindMismatch++
 				if !r.Skip(kind) {
 					r.Report.Malformed = true
@@ -20565,25 +20036,14 @@ func StopLoadBody(r *TableReader, value *Stop) bool {
 				}
 				break
 			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
-				return false
+			{
+				index, ok := r.Leb()
+				if !ok {
+					r.Report.Malformed = true
+					return false
+				}
+				r.Nodes.Resolve(&value.Subject, index, 0x704be0d8faaffc58, r.Report)
 			}
-			if !tableUtf8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Subject[:])
-				value.SubjectLength = 0
-				break
-			}
-			keep := int64(len(sub.Buffer))
-			if keep > 515 {
-				keep = tableUtf8Clamp(sub.Buffer, 515)
-				r.Report.Clamped++
-			}
-			clear(value.Subject[:])
-			copy(value.Subject[:keep], sub.Buffer)
-			value.SubjectLength = int32(keep)
 		case 0x2b827d4f5e0ada9d: // since
 			if kind != 36 {
 				r.Report.KindMismatch++
@@ -20736,53 +20196,23 @@ func StopSaveBodyFieldsRetain(w *TableRetainWriter, value *Stop) bool {
 		}
 	}
 	{
-		if value.SubjectLength < 0 || value.SubjectLength > 515 {
-			return false
-		}
-		if value.SubjectLength > 0 {
-			if ref := w.Ids.refAtHit(184, 0x9640735281e90c0f); !w.headerPair(ref, 12) {
-				w.headerRest(ref, 12)
+		if value.Subject != 0 {
+			if ref := w.Ids.refAtHit(184, 0x9640735281e90c0f); !w.headerPair(ref, 17) {
+				w.headerRest(ref, 17)
 			}
-			if value.SubjectLength < 0 || value.SubjectLength > 515 {
-				return false
-			}
-			{
-				n := int(value.SubjectLength)
-				var hi, z uint64
-				p := value.Subject[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
+			if value.Subject == 0 {
+				if !w.putLebPair(0) {
+					w.putLebWide(0)
 				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Subject[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Subject[:n]) {
+			} else {
+				index, ok := w.Ids.Numbering.Index(&value.Subject)
+				if !ok {
 					return false
 				}
+				if !w.putLebPair(index) {
+					w.putLebWide(index)
+				}
 			}
-			if !w.putLebPair(uint64(value.SubjectLength)) {
-				w.putLebWide(uint64(value.SubjectLength))
-			}
-			w.Raw(value.Subject[:value.SubjectLength])
 		}
 	}
 	{
@@ -20923,7 +20353,7 @@ func StopLoadBodyRetain(r *TableRetainReader, value *Stop) bool {
 				r.Nodes.Resolve(&value.Kind, index, 0x704be0d8faaffc58, r.Report)
 			}
 		case 0x9640735281e90c0f: // subject
-			if kind != 12 {
+			if kind != 17 {
 				r.Report.KindMismatch++
 				if !r.Skip(kind) {
 					r.Report.Malformed = true
@@ -20931,25 +20361,14 @@ func StopLoadBodyRetain(r *TableRetainReader, value *Stop) bool {
 				}
 				break
 			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
-				return false
+			{
+				index, ok := r.Leb()
+				if !ok {
+					r.Report.Malformed = true
+					return false
+				}
+				r.Nodes.Resolve(&value.Subject, index, 0x704be0d8faaffc58, r.Report)
 			}
-			if !tableUtf8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Subject[:])
-				value.SubjectLength = 0
-				break
-			}
-			keep := int64(len(sub.Buffer))
-			if keep > 515 {
-				keep = tableUtf8Clamp(sub.Buffer, 515)
-				r.Report.Clamped++
-			}
-			clear(value.Subject[:])
-			copy(value.Subject[:keep], sub.Buffer)
-			value.SubjectLength = int32(keep)
 		case 0x2b827d4f5e0ada9d: // since
 			if kind != 36 {
 				r.Report.KindMismatch++
@@ -23297,7 +22716,7 @@ func ProviderViewSaveBodyFields(w *TableWriter, value *ProviderView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload92 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload80 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Tiers)), int64(unsafe.Sizeof(*new(ProviderTierRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Tiers.Count; i++ {
 					p := (*ProviderTierRow)(cursor.Next())
@@ -23305,28 +22724,28 @@ func ProviderViewSaveBodyFields(w *TableWriter, value *ProviderView) bool {
 						return false
 					}
 					{
-						mark := payload92.Ids.Count
-						n := ProviderTierMeasureBody(&(*p), payload92.Ids)
+						mark := payload80.Ids.Count
+						n := ProviderTierMeasureBody(&(*p), payload80.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload92.putLebPair(uint64(n)) {
-							payload92.putLebWide(uint64(n))
+						if !payload80.putLebPair(uint64(n)) {
+							payload80.putLebWide(uint64(n))
 						}
-						if payload92.Measuring {
-							payload92.Advance(n)
+						if payload80.Measuring {
+							payload80.Advance(n)
 						} else {
-							payload92.Ids.Truncate(mark)
-							if !ProviderTierSaveBody(&payload92, &(*p)) {
+							payload80.Ids.Truncate(mark)
+							if !ProviderTierSaveBody(&payload80, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload92.Overflow {
+				if payload80.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Tiers.Count)) + payload92.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Tiers.Count)) + payload80.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -25337,8 +24756,7 @@ func (b *RouteGapBuilder) Shutdown() {
 // ProviderGapReportTiersTextReset restores ProviderGapReportTiersText's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func ProviderGapReportTiersTextReset(value *ProviderGapReportTiersText) {
-	clear(value.Value[:])
-	value.ValueLength = 0
+	value.Value = 0
 }
 
 func ProviderGapReportTiersTextMeasureBody(value *ProviderGapReportTiersText, ids *TableIds) int64 {
@@ -25358,53 +24776,20 @@ func ProviderGapReportTiersTextSaveBody(w *TableWriter, value *ProviderGapReport
 }
 func ProviderGapReportTiersTextSaveBodyFields(w *TableWriter, value *ProviderGapReportTiersText) bool {
 	{
-		if value.ValueLength < 0 || value.ValueLength > 128 {
-			return false
-		}
-		if value.ValueLength > 0 {
+		if tableTextRides(&value.Value, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(147, 0x7ce4fd9430e80cea); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.ValueLength < 0 || value.ValueLength > 128 {
-				return false
-			}
 			{
-				n := int(value.ValueLength)
-				var hi, z uint64
-				p := value.Value[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Value[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Value[:n]) {
+				text, ok := tableTextBytes(&value.Value, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.ValueLength)) {
-				w.putLebWide(uint64(value.ValueLength))
-			}
-			w.Raw(value.Value[:value.ValueLength])
 		}
 	}
 	return !w.Overflow && !w.Ids.Overflow
@@ -25447,23 +24832,23 @@ func ProviderGapReportTiersTextLoadBody(r *TableReader, value *ProviderGapReport
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "ProviderGapReport.tiers")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Value[:])
-				value.ValueLength = 0
+				tableTextMalformed(r.Report, "ProviderGapReport.tiers")
+				value.Value = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
-				tableTextClamped(r.Report, "ProviderGapReport.tiers")
+			if !tableTextPlace(&r.Nodes.Carve, &value.Value, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "ProviderGapReport.tiers")
+				break
 			}
-			clear(value.Value[:])
-			copy(value.Value[:keep], sub.Buffer)
-			value.ValueLength = int32(keep)
 		default:
 			r.Report.Unknown++
 			if !r.Skip(kind) {
@@ -25491,53 +24876,20 @@ func ProviderGapReportTiersTextSaveBodyRetain(w *TableRetainWriter, value *Provi
 }
 func ProviderGapReportTiersTextSaveBodyFieldsRetain(w *TableRetainWriter, value *ProviderGapReportTiersText) bool {
 	{
-		if value.ValueLength < 0 || value.ValueLength > 128 {
-			return false
-		}
-		if value.ValueLength > 0 {
+		if tableTextRides(&value.Value, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(147, 0x7ce4fd9430e80cea); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.ValueLength < 0 || value.ValueLength > 128 {
-				return false
-			}
 			{
-				n := int(value.ValueLength)
-				var hi, z uint64
-				p := value.Value[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Value[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Value[:n]) {
+				text, ok := tableTextBytes(&value.Value, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.ValueLength)) {
-				w.putLebWide(uint64(value.ValueLength))
-			}
-			w.Raw(value.Value[:value.ValueLength])
 		}
 	}
 	if !tableRetainTail(w) {
@@ -25584,23 +24936,23 @@ func ProviderGapReportTiersTextLoadBodyRetain(r *TableRetainReader, value *Provi
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "ProviderGapReport.tiers")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Value[:])
-				value.ValueLength = 0
+				tableTextMalformed(r.Report, "ProviderGapReport.tiers")
+				value.Value = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
-				tableTextClamped(r.Report, "ProviderGapReport.tiers")
+			if !tableTextPlace(&r.Nodes.Carve, &value.Value, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "ProviderGapReport.tiers")
+				break
 			}
-			clear(value.Value[:])
-			copy(value.Value[:keep], sub.Buffer)
-			value.ValueLength = int32(keep)
 		default:
 			r.Report.Unknown++
 			if !r.capture(fieldID, kind) {
@@ -25648,7 +25000,7 @@ func ProviderGapReportSaveBodyFields(w *TableWriter, value *ProviderGapReport) b
 			}
 			{
 				mark := w.Ids.Count
-				payload97 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload85 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.InvalidProviders)), int64(unsafe.Sizeof(*new(ProviderProblemRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.InvalidProviders.Count; i++ {
 					p := (*ProviderProblemRow)(cursor.Next())
@@ -25656,28 +25008,28 @@ func ProviderGapReportSaveBodyFields(w *TableWriter, value *ProviderGapReport) b
 						return false
 					}
 					{
-						mark := payload97.Ids.Count
-						n := ProviderProblemMeasureBody(&(*p), payload97.Ids)
+						mark := payload85.Ids.Count
+						n := ProviderProblemMeasureBody(&(*p), payload85.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload97.putLebPair(uint64(n)) {
-							payload97.putLebWide(uint64(n))
+						if !payload85.putLebPair(uint64(n)) {
+							payload85.putLebWide(uint64(n))
 						}
-						if payload97.Measuring {
-							payload97.Advance(n)
+						if payload85.Measuring {
+							payload85.Advance(n)
 						} else {
-							payload97.Ids.Truncate(mark)
-							if !ProviderProblemSaveBody(&payload97, &(*p)) {
+							payload85.Ids.Truncate(mark)
+							if !ProviderProblemSaveBody(&payload85, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload97.Overflow {
+				if payload85.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.InvalidProviders.Count)) + payload97.Offset
+				n := int64(1) + tableLebBytes(uint64(value.InvalidProviders.Count)) + payload85.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -25731,7 +25083,7 @@ func ProviderGapReportSaveBodyFields(w *TableWriter, value *ProviderGapReport) b
 			}
 			{
 				mark := w.Ids.Count
-				payload100 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload88 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Routes)), int64(unsafe.Sizeof(*new(RouteGapRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Routes.Count; i++ {
 					p := (*RouteGapRow)(cursor.Next())
@@ -25739,28 +25091,28 @@ func ProviderGapReportSaveBodyFields(w *TableWriter, value *ProviderGapReport) b
 						return false
 					}
 					{
-						mark := payload100.Ids.Count
-						n := RouteGapMeasureBody(&(*p), payload100.Ids)
+						mark := payload88.Ids.Count
+						n := RouteGapMeasureBody(&(*p), payload88.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload100.putLebPair(uint64(n)) {
-							payload100.putLebWide(uint64(n))
+						if !payload88.putLebPair(uint64(n)) {
+							payload88.putLebWide(uint64(n))
 						}
-						if payload100.Measuring {
-							payload100.Advance(n)
+						if payload88.Measuring {
+							payload88.Advance(n)
 						} else {
-							payload100.Ids.Truncate(mark)
-							if !RouteGapSaveBody(&payload100, &(*p)) {
+							payload88.Ids.Truncate(mark)
+							if !RouteGapSaveBody(&payload88, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload100.Overflow {
+				if payload88.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Routes.Count)) + payload100.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Routes.Count)) + payload88.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -25814,7 +25166,7 @@ func ProviderGapReportSaveBodyFields(w *TableWriter, value *ProviderGapReport) b
 			}
 			{
 				mark := w.Ids.Count
-				payload103 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload91 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Tiers)), int64(unsafe.Sizeof(*new(ProviderGapReportTiersTextRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Tiers.Count; i++ {
 					p := (*ProviderGapReportTiersTextRow)(cursor.Next())
@@ -25823,52 +25175,22 @@ func ProviderGapReportSaveBodyFields(w *TableWriter, value *ProviderGapReport) b
 					}
 					{
 						text := &(*p)
-						if text.ValueLength < 0 || text.ValueLength > 128 {
-							return false
-						}
 						{
-							n := int(text.ValueLength)
-							var hi, z uint64
-							p := text.Value[:n]
-							for len(p) >= 16 {
-								x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-								hi |= x | y
-								z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-								p = p[16:]
-							}
-							if len(p) >= 8 {
-								x := tableUtf8Word(p)
-								hi |= x
-								z |= (x - 0x0101010101010101) &^ x
-								p = p[8:]
-							}
-							if len(p) > 0 {
-								if n >= 8 {
-									x := tableUtf8Word(text.Value[n-8:])
-									hi |= x
-									z |= (x - 0x0101010101010101) &^ x
-								} else {
-									for _, c := range p {
-										x := uint64(c)
-										hi |= x
-										z |= (x - 1) &^ x
-									}
-								}
-							}
-							if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(text.Value[:n]) {
+							text, ok := tableTextBytes(&text.Value, payload91.Ids.Numbering.arena)
+							if !ok || !tableUtf8Valid(text) {
 								return false
 							}
+							if !payload91.putLebPair(uint64(len(text))) {
+								payload91.putLebWide(uint64(len(text)))
+							}
+							payload91.Raw(text)
 						}
-						if !payload103.putLebPair(uint64(text.ValueLength)) {
-							payload103.putLebWide(uint64(text.ValueLength))
-						}
-						payload103.Raw(text.Value[:text.ValueLength])
 					}
 				}
-				if payload103.Overflow {
+				if payload91.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Tiers.Count)) + payload103.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Tiers.Count)) + payload91.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -25888,46 +25210,16 @@ func ProviderGapReportSaveBodyFields(w *TableWriter, value *ProviderGapReport) b
 						}
 						{
 							text := &(*p)
-							if text.ValueLength < 0 || text.ValueLength > 128 {
-								return false
-							}
 							{
-								n := int(text.ValueLength)
-								var hi, z uint64
-								p := text.Value[:n]
-								for len(p) >= 16 {
-									x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-									hi |= x | y
-									z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-									p = p[16:]
-								}
-								if len(p) >= 8 {
-									x := tableUtf8Word(p)
-									hi |= x
-									z |= (x - 0x0101010101010101) &^ x
-									p = p[8:]
-								}
-								if len(p) > 0 {
-									if n >= 8 {
-										x := tableUtf8Word(text.Value[n-8:])
-										hi |= x
-										z |= (x - 0x0101010101010101) &^ x
-									} else {
-										for _, c := range p {
-											x := uint64(c)
-											hi |= x
-											z |= (x - 1) &^ x
-										}
-									}
-								}
-								if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(text.Value[:n]) {
+								text, ok := tableTextBytes(&text.Value, w.Ids.Numbering.arena)
+								if !ok || !tableUtf8Valid(text) {
 									return false
 								}
+								if !w.putLebPair(uint64(len(text))) {
+									w.putLebWide(uint64(len(text)))
+								}
+								w.Raw(text)
 							}
-							if !w.putLebPair(uint64(text.ValueLength)) {
-								w.putLebWide(uint64(text.ValueLength))
-							}
-							w.Raw(text.Value[:text.ValueLength])
 						}
 					}
 				}
@@ -26156,7 +25448,7 @@ func ProviderGapReportLoadBody(r *TableReader, value *ProviderGapReport) bool {
 					r.Report.Widened++
 				}
 				slot := (*tableContainer)(unsafe.Pointer(&value.Tiers))
-				if !tableContainerFill(&sub.Nodes.Carve, slot, count, int64(unsafe.Sizeof(*new(ProviderGapReportTiersTextRow))), 4) {
+				if !tableContainerFill(&sub.Nodes.Carve, slot, count, int64(unsafe.Sizeof(*new(ProviderGapReportTiersTextRow))), 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -26176,22 +25468,24 @@ func ProviderGapReportLoadBody(r *TableReader, value *ProviderGapReport) bool {
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "ProviderGapReport.tiers")
 							break
 						}
 						if !tableUtf8Valid(elem.Buffer) {
 							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "ProviderGapReport.tiers")
 							ProviderGapReportTiersTextReset(&(*p))
 							break
 						}
-						keep := int64(len(elem.Buffer))
-						if keep > 128 {
-							keep = tableUtf8Clamp(elem.Buffer, 128)
-							r.Report.Clamped++
-							tableTextClamped(r.Report, "ProviderGapReport.tiers")
+						if !tableTextPlace(&sub.Nodes.Carve, &(*p).Value, elem.Buffer) {
+							if sub.Nodes.Carve.Refused {
+								r.Take(sub)
+								return false
+							}
+							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "ProviderGapReport.tiers")
+							break
 						}
-						clear((*p).Value[:])
-						copy((*p).Value[:keep], elem.Buffer)
-						(*p).ValueLength = int32(keep)
 						landed = true
 					}
 					if !landed {
@@ -26463,46 +25757,16 @@ func ProviderGapReportSaveBodyFieldsRetain(w *TableRetainWriter, value *Provider
 					}
 					{
 						text := &(*p)
-						if text.ValueLength < 0 || text.ValueLength > 128 {
-							return false
-						}
 						{
-							n := int(text.ValueLength)
-							var hi, z uint64
-							p := text.Value[:n]
-							for len(p) >= 16 {
-								x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-								hi |= x | y
-								z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-								p = p[16:]
-							}
-							if len(p) >= 8 {
-								x := tableUtf8Word(p)
-								hi |= x
-								z |= (x - 0x0101010101010101) &^ x
-								p = p[8:]
-							}
-							if len(p) > 0 {
-								if n >= 8 {
-									x := tableUtf8Word(text.Value[n-8:])
-									hi |= x
-									z |= (x - 0x0101010101010101) &^ x
-								} else {
-									for _, c := range p {
-										x := uint64(c)
-										hi |= x
-										z |= (x - 1) &^ x
-									}
-								}
-							}
-							if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(text.Value[:n]) {
+							text, ok := tableTextBytes(&text.Value, payload11.Ids.Numbering.arena)
+							if !ok || !tableUtf8Valid(text) {
 								return false
 							}
+							if !payload11.putLebPair(uint64(len(text))) {
+								payload11.putLebWide(uint64(len(text)))
+							}
+							payload11.Raw(text)
 						}
-						if !payload11.putLebPair(uint64(text.ValueLength)) {
-							payload11.putLebWide(uint64(text.ValueLength))
-						}
-						payload11.Raw(text.Value[:text.ValueLength])
 					}
 				}
 				if payload11.Overflow {
@@ -26528,46 +25792,16 @@ func ProviderGapReportSaveBodyFieldsRetain(w *TableRetainWriter, value *Provider
 						}
 						{
 							text := &(*p)
-							if text.ValueLength < 0 || text.ValueLength > 128 {
-								return false
-							}
 							{
-								n := int(text.ValueLength)
-								var hi, z uint64
-								p := text.Value[:n]
-								for len(p) >= 16 {
-									x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-									hi |= x | y
-									z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-									p = p[16:]
-								}
-								if len(p) >= 8 {
-									x := tableUtf8Word(p)
-									hi |= x
-									z |= (x - 0x0101010101010101) &^ x
-									p = p[8:]
-								}
-								if len(p) > 0 {
-									if n >= 8 {
-										x := tableUtf8Word(text.Value[n-8:])
-										hi |= x
-										z |= (x - 0x0101010101010101) &^ x
-									} else {
-										for _, c := range p {
-											x := uint64(c)
-											hi |= x
-											z |= (x - 1) &^ x
-										}
-									}
-								}
-								if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(text.Value[:n]) {
+								text, ok := tableTextBytes(&text.Value, w.Ids.Numbering.arena)
+								if !ok || !tableUtf8Valid(text) {
 									return false
 								}
+								if !w.putLebPair(uint64(len(text))) {
+									w.putLebWide(uint64(len(text)))
+								}
+								w.Raw(text)
 							}
-							if !w.putLebPair(uint64(text.ValueLength)) {
-								w.putLebWide(uint64(text.ValueLength))
-							}
-							w.Raw(text.Value[:text.ValueLength])
 						}
 					}
 				}
@@ -26805,7 +26039,7 @@ func ProviderGapReportLoadBodyRetain(r *TableRetainReader, value *ProviderGapRep
 				}
 				r.Retain.discard(r.Path, true, 2)
 				slot := (*tableContainer)(unsafe.Pointer(&value.Tiers))
-				if !tableContainerFill(&sub.Nodes.Carve, slot, count, int64(unsafe.Sizeof(*new(ProviderGapReportTiersTextRow))), 4) {
+				if !tableContainerFill(&sub.Nodes.Carve, slot, count, int64(unsafe.Sizeof(*new(ProviderGapReportTiersTextRow))), 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -26825,22 +26059,24 @@ func ProviderGapReportLoadBodyRetain(r *TableRetainReader, value *ProviderGapRep
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "ProviderGapReport.tiers")
 							break
 						}
 						if !tableUtf8Valid(elem.Buffer) {
 							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "ProviderGapReport.tiers")
 							ProviderGapReportTiersTextReset(&(*p))
 							break
 						}
-						keep := int64(len(elem.Buffer))
-						if keep > 128 {
-							keep = tableUtf8Clamp(elem.Buffer, 128)
-							r.Report.Clamped++
-							tableTextClamped(r.Report, "ProviderGapReport.tiers")
+						if !tableTextPlace(&sub.Nodes.Carve, &(*p).Value, elem.Buffer) {
+							if sub.Nodes.Carve.Refused {
+								r.Take(sub)
+								return false
+							}
+							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "ProviderGapReport.tiers")
+							break
 						}
-						clear((*p).Value[:])
-						copy((*p).Value[:keep], elem.Buffer)
-						(*p).ValueLength = int32(keep)
 						landed = true
 					}
 					if !landed {
@@ -27055,30 +26291,34 @@ func ProviderGapReportTiersEach(holder *TableList[ProviderGapReportTiersTextRow]
 	return true
 }
 
-// ProviderGapReportTiersTextAt is element i of ProviderGapReport.tiers (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13): a view into the
-// storage that allocates nothing, and false past the count or for an absent element.
+// ProviderGapReportTiersTextAt is element i of ProviderGapReport.tiers (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13.1): a view into its
+// blob record that allocates nothing, and false past the count or for an absent element.
 func ProviderGapReportTiersTextAt(value *ProviderGapReport, i int32, arena ...*TableArena) ([]byte, bool) {
 	if value == nil {
 		return nil, false
 	}
 	p := value.Tiers.At(i, arena...)
-	if p == nil || p.ValueLength < 0 || p.ValueLength > 128 {
+	if p == nil {
 		return nil, false
 	}
-	return p.Value[:p.ValueLength], true
+	return tableTextBytes(&p.Value, tableOptionalArena(arena))
 }
 
-// ProviderGapReportTiersAppend appends one element to ProviderGapReport.tiers, false past either bound (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13).
+// ProviderGapReportTiersAppend appends one element to ProviderGapReport.tiers, false past the count bound or when
+// the arena refuses (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13.1).
 func ProviderGapReportTiersAppend(worker *TableWorker, value *ProviderGapReport, text string) bool {
-	if len(text) > 128 || !tableUtf8Valid(unsafe.Slice(unsafe.StringData(text), len(text))) {
+	if !tableUtf8Valid(unsafe.Slice(unsafe.StringData(text), len(text))) {
+		return false
+	}
+	ref, ok := tableTextStore(worker, text)
+	if !ok {
 		return false
 	}
 	p := ProviderGapReportTiersAdd(worker, &value.Tiers)
 	if p == nil {
 		return false
 	}
-	copy(p.Value[:], text)
-	p.ValueLength = int32(len(text))
+	p.Value = ref
 	return true
 }
 
@@ -27772,7 +27012,7 @@ func LaneRowSaveBodyFields(w *TableWriter, value *LaneRow) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload106 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload94 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Held)), int64(unsafe.Sizeof(*new(LaneRowHeldTextRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Held.Count; i++ {
 					p := (*LaneRowHeldTextRow)(cursor.Next())
@@ -27817,16 +27057,16 @@ func LaneRowSaveBodyFields(w *TableWriter, value *LaneRow) bool {
 								return false
 							}
 						}
-						if !payload106.putLebPair(uint64(text.ValueLength)) {
-							payload106.putLebWide(uint64(text.ValueLength))
+						if !payload94.putLebPair(uint64(text.ValueLength)) {
+							payload94.putLebWide(uint64(text.ValueLength))
 						}
-						payload106.Raw(text.Value[:text.ValueLength])
+						payload94.Raw(text.Value[:text.ValueLength])
 					}
 				}
-				if payload106.Overflow {
+				if payload94.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Held.Count)) + payload106.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Held.Count)) + payload94.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -27905,7 +27145,7 @@ func LaneRowSaveBodyFields(w *TableWriter, value *LaneRow) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload109 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload97 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Waiting)), int64(unsafe.Sizeof(*new(LaneRowWaitingTextRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Waiting.Count; i++ {
 					p := (*LaneRowWaitingTextRow)(cursor.Next())
@@ -27950,16 +27190,16 @@ func LaneRowSaveBodyFields(w *TableWriter, value *LaneRow) bool {
 								return false
 							}
 						}
-						if !payload109.putLebPair(uint64(text.ValueLength)) {
-							payload109.putLebWide(uint64(text.ValueLength))
+						if !payload97.putLebPair(uint64(text.ValueLength)) {
+							payload97.putLebWide(uint64(text.ValueLength))
 						}
-						payload109.Raw(text.Value[:text.ValueLength])
+						payload97.Raw(text.Value[:text.ValueLength])
 					}
 				}
-				if payload109.Overflow {
+				if payload97.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Waiting.Count)) + payload109.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Waiting.Count)) + payload97.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -31790,8 +31030,7 @@ func (b *JudgmentRefBuilder) Shutdown() {
 // PrimaryRowFieldsEntryReset restores PrimaryRowFieldsEntry's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func PrimaryRowFieldsEntryReset(value *PrimaryRowFieldsEntry) {
-	clear(value.Key[:])
-	value.KeyLength = 0
+	value.Key = 0
 	value.Value = 0
 }
 
@@ -31812,53 +31051,20 @@ func PrimaryRowFieldsEntrySaveBody(w *TableWriter, value *PrimaryRowFieldsEntry)
 }
 func PrimaryRowFieldsEntrySaveBodyFields(w *TableWriter, value *PrimaryRowFieldsEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
-			return false
-		}
-		if value.KeyLength > 0 {
+		if tableTextRides(&value.Key, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(68, 0x3dc94a19365b10ec); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.KeyLength < 0 || value.KeyLength > 128 {
-				return false
-			}
 			{
-				n := int(value.KeyLength)
-				var hi, z uint64
-				p := value.Key[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Key[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Key[:n]) {
+				text, ok := tableTextBytes(&value.Key, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.KeyLength)) {
-				w.putLebWide(uint64(value.KeyLength))
-			}
-			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
@@ -31921,22 +31127,23 @@ func PrimaryRowFieldsEntryLoadBody(r *TableReader, value *PrimaryRowFieldsEntry)
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "PrimaryRow.fields")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Key[:])
-				value.KeyLength = 0
+				tableTextMalformed(r.Report, "PrimaryRow.fields")
+				value.Key = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
+			if !tableTextPlace(&r.Nodes.Carve, &value.Key, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "PrimaryRow.fields")
+				break
 			}
-			clear(value.Key[:])
-			copy(value.Key[:keep], sub.Buffer)
-			value.KeyLength = int32(keep)
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 17 {
 				r.Report.KindMismatch++
@@ -31986,53 +31193,20 @@ func PrimaryRowFieldsEntrySaveBodyRetain(w *TableRetainWriter, value *PrimaryRow
 }
 func PrimaryRowFieldsEntrySaveBodyFieldsRetain(w *TableRetainWriter, value *PrimaryRowFieldsEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
-			return false
-		}
-		if value.KeyLength > 0 {
+		if tableTextRides(&value.Key, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(68, 0x3dc94a19365b10ec); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.KeyLength < 0 || value.KeyLength > 128 {
-				return false
-			}
 			{
-				n := int(value.KeyLength)
-				var hi, z uint64
-				p := value.Key[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Key[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Key[:n]) {
+				text, ok := tableTextBytes(&value.Key, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.KeyLength)) {
-				w.putLebWide(uint64(value.KeyLength))
-			}
-			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
@@ -32099,22 +31273,23 @@ func PrimaryRowFieldsEntryLoadBodyRetain(r *TableRetainReader, value *PrimaryRow
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "PrimaryRow.fields")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Key[:])
-				value.KeyLength = 0
+				tableTextMalformed(r.Report, "PrimaryRow.fields")
+				value.Key = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
+			if !tableTextPlace(&r.Nodes.Carve, &value.Key, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "PrimaryRow.fields")
+				break
 			}
-			clear(value.Key[:])
-			copy(value.Key[:keep], sub.Buffer)
-			value.KeyLength = int32(keep)
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 17 {
 				r.Report.KindMismatch++
@@ -32338,7 +31513,7 @@ func PrimaryRowSaveBodyFields(w *TableWriter, value *PrimaryRow) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload117 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload105 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Fields)), &PrimaryRowTableFields[5], w.Ids.Numbering.arena)
 				defer cursor.Release()
 				for i := int32(0); i < value.Fields.Count; i++ {
@@ -32347,28 +31522,28 @@ func PrimaryRowSaveBodyFields(w *TableWriter, value *PrimaryRow) bool {
 						return false
 					}
 					{
-						mark := payload117.Ids.Count
-						n := PrimaryRowFieldsEntryMeasureBody(&(*p), payload117.Ids)
+						mark := payload105.Ids.Count
+						n := PrimaryRowFieldsEntryMeasureBody(&(*p), payload105.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload117.putLebPair(uint64(n)) {
-							payload117.putLebWide(uint64(n))
+						if !payload105.putLebPair(uint64(n)) {
+							payload105.putLebWide(uint64(n))
 						}
-						if payload117.Measuring {
-							payload117.Advance(n)
+						if payload105.Measuring {
+							payload105.Advance(n)
 						} else {
-							payload117.Ids.Truncate(mark)
-							if !PrimaryRowFieldsEntrySaveBody(&payload117, &(*p)) {
+							payload105.Ids.Truncate(mark)
+							if !PrimaryRowFieldsEntrySaveBody(&payload105, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload117.Overflow {
+				if payload105.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Fields.Count)) + payload117.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Fields.Count)) + payload105.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -32612,7 +31787,7 @@ func PrimaryRowLoadBody(r *TableReader, value *PrimaryRow) bool {
 				}
 				field := &PrimaryRowTableFields[5]
 				holder := (*tableContainer)(unsafe.Pointer(&value.Fields))
-				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 144, 8) {
+				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 16, 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -32628,6 +31803,7 @@ func PrimaryRowLoadBody(r *TableReader, value *PrimaryRow) bool {
 					elem, ok := sub.Body()
 					if !ok {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "PrimaryRow.fields")
 						break
 					}
 					key, bad, over, wide, whole := tableMapReadKey(elem, &field.Table().Fields[0])
@@ -32642,6 +31818,7 @@ func PrimaryRowLoadBody(r *TableReader, value *PrimaryRow) bool {
 					}
 					if !whole {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "PrimaryRow.fields")
 						break
 					}
 					if over {
@@ -32654,13 +31831,14 @@ func PrimaryRowLoadBody(r *TableReader, value *PrimaryRow) bool {
 					}
 					if order > 0 {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "PrimaryRow.fields")
 						break
 					}
 					p := prior
 					if order == 0 {
 						r.Report.Duplicate++
 					} else {
-						p = (*PrimaryRowFieldsEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 144))
+						p = (*PrimaryRowFieldsEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 16))
 						if p == nil {
 							r.Report.Malformed = true
 							break
@@ -33195,7 +32373,7 @@ func PrimaryRowLoadBodyRetain(r *TableRetainReader, value *PrimaryRow) bool {
 				}
 				field := &PrimaryRowTableFields[5]
 				holder := (*tableContainer)(unsafe.Pointer(&value.Fields))
-				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 144, 8) {
+				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 16, 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -33212,6 +32390,7 @@ func PrimaryRowLoadBodyRetain(r *TableRetainReader, value *PrimaryRow) bool {
 					elem, ok := sub.Body()
 					if !ok {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "PrimaryRow.fields")
 						break
 					}
 					key, bad, over, wide, whole := tableMapReadKey(elem.tableRetainPlainReader, &field.Table().Fields[0])
@@ -33226,6 +32405,7 @@ func PrimaryRowLoadBodyRetain(r *TableRetainReader, value *PrimaryRow) bool {
 					}
 					if !whole {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "PrimaryRow.fields")
 						break
 					}
 					if over {
@@ -33238,13 +32418,14 @@ func PrimaryRowLoadBodyRetain(r *TableRetainReader, value *PrimaryRow) bool {
 					}
 					if order > 0 {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "PrimaryRow.fields")
 						break
 					}
 					p := prior
 					if order == 0 {
 						r.Report.Duplicate++
 					} else {
-						p = (*PrimaryRowFieldsEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 144))
+						p = (*PrimaryRowFieldsEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 16))
 						if p == nil {
 							r.Report.Malformed = true
 							break
@@ -33419,7 +32600,7 @@ func (b *PrimaryRowBuilder) Shutdown() {
 	b.root = 0
 }
 func PrimaryRowFieldsInsert(worker *TableWorker, holder *TableMap[PrimaryRowFieldsEntryRow], key string) *int64 {
-	p, _ := tableMapPlace(worker, (*tableContainer)(unsafe.Pointer(holder)), &PrimaryRowTableFields[5], tableMapKey{text: []byte(key)})
+	p, _ := tableMapPlace(worker, (*tableContainer)(unsafe.Pointer(holder)), &PrimaryRowTableFields[5], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))})
 	if p == nil {
 		return nil
 	}
@@ -33430,7 +32611,7 @@ func PrimaryRowFieldsInsert(worker *TableWorker, holder *TableMap[PrimaryRowFiel
 	return &entry.Value
 }
 func PrimaryRowFieldsFind(arena *TableArena, holder *TableMap[PrimaryRowFieldsEntryRow], key string) *int64 {
-	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &PrimaryRowTableFields[5], tableMapKey{text: []byte(key)}, arena)
+	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &PrimaryRowTableFields[5], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))}, arena)
 	if p == nil {
 		return nil
 	}
@@ -33438,14 +32619,14 @@ func PrimaryRowFieldsFind(arena *TableArena, holder *TableMap[PrimaryRowFieldsEn
 	return &entry.Value
 }
 func PrimaryRowFieldsErase(arena *TableArena, holder *TableMap[PrimaryRowFieldsEntryRow], key string) bool {
-	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &PrimaryRowTableFields[5], tableMapKey{text: []byte(key)}, arena)
+	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &PrimaryRowTableFields[5], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))}, arena)
 	return tableContainerErase(arena, (*tableContainer)(unsafe.Pointer(holder)), p, int64(unsafe.Sizeof(PrimaryRowFieldsEntryRow{})))
 }
 func PrimaryRowFieldsEach(holder *TableMap[PrimaryRowFieldsEntryRow], visit func(string, *int64) bool, arena ...*TableArena) bool {
 	c := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)), int64(unsafe.Sizeof(PrimaryRowFieldsEntryRow{})), tableOptionalArena(arena))
 	for i := int32(0); i < holder.Count; i++ {
 		entry := (*PrimaryRowFieldsEntryRow)(c.Next())
-		if entry == nil || !visit(string(entry.Key[:entry.KeyLength]), &entry.Value) {
+		if entry == nil || !visit(tableTextString(&entry.Key, tableOptionalArena(arena)), &entry.Value) {
 			return false
 		}
 	}
@@ -33458,7 +32639,7 @@ func PrimaryRowFieldsIndex(holder *TableMap[PrimaryRowFieldsEntryRow], storage [
 	return tableMapIndex((*tableContainer)(unsafe.Pointer(holder)), &PrimaryRowTableFields[5], storage)
 }
 func PrimaryRowFieldsIndexFind(index TableMapIndex, holder *TableMap[PrimaryRowFieldsEntryRow], key string) *int64 {
-	p := tableMapIndexFind(index, (*tableContainer)(unsafe.Pointer(holder)), &PrimaryRowTableFields[5], tableMapKey{text: []byte(key)})
+	p := tableMapIndexFind(index, (*tableContainer)(unsafe.Pointer(holder)), &PrimaryRowTableFields[5], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))})
 	if p == nil {
 		return nil
 	}
@@ -33781,7 +32962,7 @@ func ArchivedViewSaveBodyFields(w *TableWriter, value *ArchivedView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload121 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload108 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Streams)), int64(unsafe.Sizeof(*new(ArchivedViewStreamsTextRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Streams.Count; i++ {
 					p := (*ArchivedViewStreamsTextRow)(cursor.Next())
@@ -33826,16 +33007,16 @@ func ArchivedViewSaveBodyFields(w *TableWriter, value *ArchivedView) bool {
 								return false
 							}
 						}
-						if !payload121.putLebPair(uint64(text.ValueLength)) {
-							payload121.putLebWide(uint64(text.ValueLength))
+						if !payload108.putLebPair(uint64(text.ValueLength)) {
+							payload108.putLebWide(uint64(text.ValueLength))
 						}
-						payload121.Raw(text.Value[:text.ValueLength])
+						payload108.Raw(text.Value[:text.ValueLength])
 					}
 				}
-				if payload121.Overflow {
+				if payload108.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Streams.Count)) + payload121.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Streams.Count)) + payload108.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -35187,7 +34368,7 @@ func StatsResetViewSaveBodyFields(w *TableWriter, value *StatsResetView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload127 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload114 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Streams)), &StatsResetViewTableFields[4], w.Ids.Numbering.arena)
 				defer cursor.Release()
 				for i := int32(0); i < value.Streams.Count; i++ {
@@ -35196,28 +34377,28 @@ func StatsResetViewSaveBodyFields(w *TableWriter, value *StatsResetView) bool {
 						return false
 					}
 					{
-						mark := payload127.Ids.Count
-						n := StatsResetViewStreamsEntryMeasureBody(&(*p), payload127.Ids)
+						mark := payload114.Ids.Count
+						n := StatsResetViewStreamsEntryMeasureBody(&(*p), payload114.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload127.putLebPair(uint64(n)) {
-							payload127.putLebWide(uint64(n))
+						if !payload114.putLebPair(uint64(n)) {
+							payload114.putLebWide(uint64(n))
 						}
-						if payload127.Measuring {
-							payload127.Advance(n)
+						if payload114.Measuring {
+							payload114.Advance(n)
 						} else {
-							payload127.Ids.Truncate(mark)
-							if !StatsResetViewStreamsEntrySaveBody(&payload127, &(*p)) {
+							payload114.Ids.Truncate(mark)
+							if !StatsResetViewStreamsEntrySaveBody(&payload114, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload127.Overflow {
+				if payload114.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Streams.Count)) + payload127.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Streams.Count)) + payload114.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -38077,8 +37258,7 @@ func (b *MergeRowBuilder) Shutdown() {
 // FriendReportRunningTextReset restores FriendReportRunningText's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func FriendReportRunningTextReset(value *FriendReportRunningText) {
-	clear(value.Value[:])
-	value.ValueLength = 0
+	value.Value = 0
 }
 
 func FriendReportRunningTextMeasureBody(value *FriendReportRunningText, ids *TableIds) int64 {
@@ -38098,53 +37278,20 @@ func FriendReportRunningTextSaveBody(w *TableWriter, value *FriendReportRunningT
 }
 func FriendReportRunningTextSaveBodyFields(w *TableWriter, value *FriendReportRunningText) bool {
 	{
-		if value.ValueLength < 0 || value.ValueLength > 65536 {
-			return false
-		}
-		if value.ValueLength > 0 {
+		if tableTextRides(&value.Value, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(147, 0x7ce4fd9430e80cea); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.ValueLength < 0 || value.ValueLength > 65536 {
-				return false
-			}
 			{
-				n := int(value.ValueLength)
-				var hi, z uint64
-				p := value.Value[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Value[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Value[:n]) {
+				text, ok := tableTextBytes(&value.Value, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.ValueLength)) {
-				w.putLebWide(uint64(value.ValueLength))
-			}
-			w.Raw(value.Value[:value.ValueLength])
 		}
 	}
 	return !w.Overflow && !w.Ids.Overflow
@@ -38187,23 +37334,23 @@ func FriendReportRunningTextLoadBody(r *TableReader, value *FriendReportRunningT
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "FriendReport.running")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Value[:])
-				value.ValueLength = 0
+				tableTextMalformed(r.Report, "FriendReport.running")
+				value.Value = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 65536 {
-				keep = tableUtf8Clamp(sub.Buffer, 65536)
-				r.Report.Clamped++
-				tableTextClamped(r.Report, "FriendReport.running")
+			if !tableTextPlace(&r.Nodes.Carve, &value.Value, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "FriendReport.running")
+				break
 			}
-			clear(value.Value[:])
-			copy(value.Value[:keep], sub.Buffer)
-			value.ValueLength = int32(keep)
 		default:
 			r.Report.Unknown++
 			if !r.Skip(kind) {
@@ -38231,53 +37378,20 @@ func FriendReportRunningTextSaveBodyRetain(w *TableRetainWriter, value *FriendRe
 }
 func FriendReportRunningTextSaveBodyFieldsRetain(w *TableRetainWriter, value *FriendReportRunningText) bool {
 	{
-		if value.ValueLength < 0 || value.ValueLength > 65536 {
-			return false
-		}
-		if value.ValueLength > 0 {
+		if tableTextRides(&value.Value, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(147, 0x7ce4fd9430e80cea); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.ValueLength < 0 || value.ValueLength > 65536 {
-				return false
-			}
 			{
-				n := int(value.ValueLength)
-				var hi, z uint64
-				p := value.Value[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Value[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Value[:n]) {
+				text, ok := tableTextBytes(&value.Value, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.ValueLength)) {
-				w.putLebWide(uint64(value.ValueLength))
-			}
-			w.Raw(value.Value[:value.ValueLength])
 		}
 	}
 	if !tableRetainTail(w) {
@@ -38324,23 +37438,23 @@ func FriendReportRunningTextLoadBodyRetain(r *TableRetainReader, value *FriendRe
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "FriendReport.running")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Value[:])
-				value.ValueLength = 0
+				tableTextMalformed(r.Report, "FriendReport.running")
+				value.Value = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 65536 {
-				keep = tableUtf8Clamp(sub.Buffer, 65536)
-				r.Report.Clamped++
-				tableTextClamped(r.Report, "FriendReport.running")
+			if !tableTextPlace(&r.Nodes.Carve, &value.Value, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "FriendReport.running")
+				break
 			}
-			clear(value.Value[:])
-			copy(value.Value[:keep], sub.Buffer)
-			value.ValueLength = int32(keep)
 		default:
 			r.Report.Unknown++
 			if !r.capture(fieldID, kind) {
@@ -38471,7 +37585,7 @@ func FriendReportSaveBodyFields(w *TableWriter, value *FriendReport) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload146 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload133 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Running)), int64(unsafe.Sizeof(*new(FriendReportRunningTextRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Running.Count; i++ {
 					p := (*FriendReportRunningTextRow)(cursor.Next())
@@ -38480,52 +37594,22 @@ func FriendReportSaveBodyFields(w *TableWriter, value *FriendReport) bool {
 					}
 					{
 						text := &(*p)
-						if text.ValueLength < 0 || text.ValueLength > 65536 {
-							return false
-						}
 						{
-							n := int(text.ValueLength)
-							var hi, z uint64
-							p := text.Value[:n]
-							for len(p) >= 16 {
-								x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-								hi |= x | y
-								z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-								p = p[16:]
-							}
-							if len(p) >= 8 {
-								x := tableUtf8Word(p)
-								hi |= x
-								z |= (x - 0x0101010101010101) &^ x
-								p = p[8:]
-							}
-							if len(p) > 0 {
-								if n >= 8 {
-									x := tableUtf8Word(text.Value[n-8:])
-									hi |= x
-									z |= (x - 0x0101010101010101) &^ x
-								} else {
-									for _, c := range p {
-										x := uint64(c)
-										hi |= x
-										z |= (x - 1) &^ x
-									}
-								}
-							}
-							if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(text.Value[:n]) {
+							text, ok := tableTextBytes(&text.Value, payload133.Ids.Numbering.arena)
+							if !ok || !tableUtf8Valid(text) {
 								return false
 							}
+							if !payload133.putLebPair(uint64(len(text))) {
+								payload133.putLebWide(uint64(len(text)))
+							}
+							payload133.Raw(text)
 						}
-						if !payload146.putLebPair(uint64(text.ValueLength)) {
-							payload146.putLebWide(uint64(text.ValueLength))
-						}
-						payload146.Raw(text.Value[:text.ValueLength])
 					}
 				}
-				if payload146.Overflow {
+				if payload133.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Running.Count)) + payload146.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Running.Count)) + payload133.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -38545,46 +37629,16 @@ func FriendReportSaveBodyFields(w *TableWriter, value *FriendReport) bool {
 						}
 						{
 							text := &(*p)
-							if text.ValueLength < 0 || text.ValueLength > 65536 {
-								return false
-							}
 							{
-								n := int(text.ValueLength)
-								var hi, z uint64
-								p := text.Value[:n]
-								for len(p) >= 16 {
-									x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-									hi |= x | y
-									z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-									p = p[16:]
-								}
-								if len(p) >= 8 {
-									x := tableUtf8Word(p)
-									hi |= x
-									z |= (x - 0x0101010101010101) &^ x
-									p = p[8:]
-								}
-								if len(p) > 0 {
-									if n >= 8 {
-										x := tableUtf8Word(text.Value[n-8:])
-										hi |= x
-										z |= (x - 0x0101010101010101) &^ x
-									} else {
-										for _, c := range p {
-											x := uint64(c)
-											hi |= x
-											z |= (x - 1) &^ x
-										}
-									}
-								}
-								if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(text.Value[:n]) {
+								text, ok := tableTextBytes(&text.Value, w.Ids.Numbering.arena)
+								if !ok || !tableUtf8Valid(text) {
 									return false
 								}
+								if !w.putLebPair(uint64(len(text))) {
+									w.putLebWide(uint64(len(text)))
+								}
+								w.Raw(text)
 							}
-							if !w.putLebPair(uint64(text.ValueLength)) {
-								w.putLebWide(uint64(text.ValueLength))
-							}
-							w.Raw(text.Value[:text.ValueLength])
 						}
 					}
 				}
@@ -38793,7 +37847,7 @@ func FriendReportLoadBody(r *TableReader, value *FriendReport) bool {
 					r.Report.Widened++
 				}
 				slot := (*tableContainer)(unsafe.Pointer(&value.Running))
-				if !tableContainerFill(&sub.Nodes.Carve, slot, count, int64(unsafe.Sizeof(*new(FriendReportRunningTextRow))), 4) {
+				if !tableContainerFill(&sub.Nodes.Carve, slot, count, int64(unsafe.Sizeof(*new(FriendReportRunningTextRow))), 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -38813,22 +37867,24 @@ func FriendReportLoadBody(r *TableReader, value *FriendReport) bool {
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "FriendReport.running")
 							break
 						}
 						if !tableUtf8Valid(elem.Buffer) {
 							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "FriendReport.running")
 							FriendReportRunningTextReset(&(*p))
 							break
 						}
-						keep := int64(len(elem.Buffer))
-						if keep > 65536 {
-							keep = tableUtf8Clamp(elem.Buffer, 65536)
-							r.Report.Clamped++
-							tableTextClamped(r.Report, "FriendReport.running")
+						if !tableTextPlace(&sub.Nodes.Carve, &(*p).Value, elem.Buffer) {
+							if sub.Nodes.Carve.Refused {
+								r.Take(sub)
+								return false
+							}
+							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "FriendReport.running")
+							break
 						}
-						clear((*p).Value[:])
-						copy((*p).Value[:keep], elem.Buffer)
-						(*p).ValueLength = int32(keep)
 						landed = true
 					}
 					if !landed {
@@ -39188,46 +38244,16 @@ func FriendReportSaveBodyFieldsRetain(w *TableRetainWriter, value *FriendReport)
 					}
 					{
 						text := &(*p)
-						if text.ValueLength < 0 || text.ValueLength > 65536 {
-							return false
-						}
 						{
-							n := int(text.ValueLength)
-							var hi, z uint64
-							p := text.Value[:n]
-							for len(p) >= 16 {
-								x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-								hi |= x | y
-								z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-								p = p[16:]
-							}
-							if len(p) >= 8 {
-								x := tableUtf8Word(p)
-								hi |= x
-								z |= (x - 0x0101010101010101) &^ x
-								p = p[8:]
-							}
-							if len(p) > 0 {
-								if n >= 8 {
-									x := tableUtf8Word(text.Value[n-8:])
-									hi |= x
-									z |= (x - 0x0101010101010101) &^ x
-								} else {
-									for _, c := range p {
-										x := uint64(c)
-										hi |= x
-										z |= (x - 1) &^ x
-									}
-								}
-							}
-							if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(text.Value[:n]) {
+							text, ok := tableTextBytes(&text.Value, payload1.Ids.Numbering.arena)
+							if !ok || !tableUtf8Valid(text) {
 								return false
 							}
+							if !payload1.putLebPair(uint64(len(text))) {
+								payload1.putLebWide(uint64(len(text)))
+							}
+							payload1.Raw(text)
 						}
-						if !payload1.putLebPair(uint64(text.ValueLength)) {
-							payload1.putLebWide(uint64(text.ValueLength))
-						}
-						payload1.Raw(text.Value[:text.ValueLength])
 					}
 				}
 				if payload1.Overflow {
@@ -39253,46 +38279,16 @@ func FriendReportSaveBodyFieldsRetain(w *TableRetainWriter, value *FriendReport)
 						}
 						{
 							text := &(*p)
-							if text.ValueLength < 0 || text.ValueLength > 65536 {
-								return false
-							}
 							{
-								n := int(text.ValueLength)
-								var hi, z uint64
-								p := text.Value[:n]
-								for len(p) >= 16 {
-									x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-									hi |= x | y
-									z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-									p = p[16:]
-								}
-								if len(p) >= 8 {
-									x := tableUtf8Word(p)
-									hi |= x
-									z |= (x - 0x0101010101010101) &^ x
-									p = p[8:]
-								}
-								if len(p) > 0 {
-									if n >= 8 {
-										x := tableUtf8Word(text.Value[n-8:])
-										hi |= x
-										z |= (x - 0x0101010101010101) &^ x
-									} else {
-										for _, c := range p {
-											x := uint64(c)
-											hi |= x
-											z |= (x - 1) &^ x
-										}
-									}
-								}
-								if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(text.Value[:n]) {
+								text, ok := tableTextBytes(&text.Value, w.Ids.Numbering.arena)
+								if !ok || !tableUtf8Valid(text) {
 									return false
 								}
+								if !w.putLebPair(uint64(len(text))) {
+									w.putLebWide(uint64(len(text)))
+								}
+								w.Raw(text)
 							}
-							if !w.putLebPair(uint64(text.ValueLength)) {
-								w.putLebWide(uint64(text.ValueLength))
-							}
-							w.Raw(text.Value[:text.ValueLength])
 						}
 					}
 				}
@@ -39506,7 +38502,7 @@ func FriendReportLoadBodyRetain(r *TableRetainReader, value *FriendReport) bool 
 				}
 				r.Retain.discard(r.Path, true, 0)
 				slot := (*tableContainer)(unsafe.Pointer(&value.Running))
-				if !tableContainerFill(&sub.Nodes.Carve, slot, count, int64(unsafe.Sizeof(*new(FriendReportRunningTextRow))), 4) {
+				if !tableContainerFill(&sub.Nodes.Carve, slot, count, int64(unsafe.Sizeof(*new(FriendReportRunningTextRow))), 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -39526,22 +38522,24 @@ func FriendReportLoadBodyRetain(r *TableRetainReader, value *FriendReport) bool 
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "FriendReport.running")
 							break
 						}
 						if !tableUtf8Valid(elem.Buffer) {
 							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "FriendReport.running")
 							FriendReportRunningTextReset(&(*p))
 							break
 						}
-						keep := int64(len(elem.Buffer))
-						if keep > 65536 {
-							keep = tableUtf8Clamp(elem.Buffer, 65536)
-							r.Report.Clamped++
-							tableTextClamped(r.Report, "FriendReport.running")
+						if !tableTextPlace(&sub.Nodes.Carve, &(*p).Value, elem.Buffer) {
+							if sub.Nodes.Carve.Refused {
+								r.Take(sub)
+								return false
+							}
+							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "FriendReport.running")
+							break
 						}
-						clear((*p).Value[:])
-						copy((*p).Value[:keep], elem.Buffer)
-						(*p).ValueLength = int32(keep)
 						landed = true
 					}
 					if !landed {
@@ -39998,30 +38996,34 @@ func FriendReportRunningEach(holder *TableList[FriendReportRunningTextRow], visi
 	return true
 }
 
-// FriendReportRunningTextAt is element i of FriendReport.running (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13): a view into the
-// storage that allocates nothing, and false past the count or for an absent element.
+// FriendReportRunningTextAt is element i of FriendReport.running (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13.1): a view into its
+// blob record that allocates nothing, and false past the count or for an absent element.
 func FriendReportRunningTextAt(value *FriendReport, i int32, arena ...*TableArena) ([]byte, bool) {
 	if value == nil {
 		return nil, false
 	}
 	p := value.Running.At(i, arena...)
-	if p == nil || p.ValueLength < 0 || p.ValueLength > 65536 {
+	if p == nil {
 		return nil, false
 	}
-	return p.Value[:p.ValueLength], true
+	return tableTextBytes(&p.Value, tableOptionalArena(arena))
 }
 
-// FriendReportRunningAppend appends one element to FriendReport.running, false past either bound (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13).
+// FriendReportRunningAppend appends one element to FriendReport.running, false past the count bound or when
+// the arena refuses (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13.1).
 func FriendReportRunningAppend(worker *TableWorker, value *FriendReport, text string) bool {
-	if len(text) > 65536 || !tableUtf8Valid(unsafe.Slice(unsafe.StringData(text), len(text))) {
+	if !tableUtf8Valid(unsafe.Slice(unsafe.StringData(text), len(text))) {
+		return false
+	}
+	ref, ok := tableTextStore(worker, text)
+	if !ok {
 		return false
 	}
 	p := FriendReportRunningAdd(worker, &value.Running)
 	if p == nil {
 		return false
 	}
-	copy(p.Value[:], text)
-	p.ValueLength = int32(len(text))
+	p.Value = ref
 	return true
 }
 
@@ -43050,8 +42052,7 @@ func (b *SeriesLastHourBuilder) Shutdown() {
 // LandedSeriesWorkersEntryReset restores LandedSeriesWorkersEntry's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func LandedSeriesWorkersEntryReset(value *LandedSeriesWorkersEntry) {
-	clear(value.Key[:])
-	value.KeyLength = 0
+	value.Key = 0
 	value.Value = 0
 }
 
@@ -43072,53 +42073,20 @@ func LandedSeriesWorkersEntrySaveBody(w *TableWriter, value *LandedSeriesWorkers
 }
 func LandedSeriesWorkersEntrySaveBodyFields(w *TableWriter, value *LandedSeriesWorkersEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 135 {
-			return false
-		}
-		if value.KeyLength > 0 {
+		if tableTextRides(&value.Key, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(68, 0x3dc94a19365b10ec); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.KeyLength < 0 || value.KeyLength > 135 {
-				return false
-			}
 			{
-				n := int(value.KeyLength)
-				var hi, z uint64
-				p := value.Key[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Key[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Key[:n]) {
+				text, ok := tableTextBytes(&value.Key, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.KeyLength)) {
-				w.putLebWide(uint64(value.KeyLength))
-			}
-			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
@@ -43169,22 +42137,23 @@ func LandedSeriesWorkersEntryLoadBody(r *TableReader, value *LandedSeriesWorkers
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "LandedSeries.workers")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Key[:])
-				value.KeyLength = 0
+				tableTextMalformed(r.Report, "LandedSeries.workers")
+				value.Key = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 135 {
-				keep = tableUtf8Clamp(sub.Buffer, 135)
-				r.Report.Clamped++
+			if !tableTextPlace(&r.Nodes.Carve, &value.Key, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "LandedSeries.workers")
+				break
 			}
-			clear(value.Key[:])
-			copy(value.Key[:keep], sub.Buffer)
-			value.KeyLength = int32(keep)
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
@@ -43241,53 +42210,20 @@ func LandedSeriesWorkersEntrySaveBodyRetain(w *TableRetainWriter, value *LandedS
 }
 func LandedSeriesWorkersEntrySaveBodyFieldsRetain(w *TableRetainWriter, value *LandedSeriesWorkersEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 135 {
-			return false
-		}
-		if value.KeyLength > 0 {
+		if tableTextRides(&value.Key, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(68, 0x3dc94a19365b10ec); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.KeyLength < 0 || value.KeyLength > 135 {
-				return false
-			}
 			{
-				n := int(value.KeyLength)
-				var hi, z uint64
-				p := value.Key[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Key[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Key[:n]) {
+				text, ok := tableTextBytes(&value.Key, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.KeyLength)) {
-				w.putLebWide(uint64(value.KeyLength))
-			}
-			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
@@ -43342,22 +42278,23 @@ func LandedSeriesWorkersEntryLoadBodyRetain(r *TableRetainReader, value *LandedS
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "LandedSeries.workers")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Key[:])
-				value.KeyLength = 0
+				tableTextMalformed(r.Report, "LandedSeries.workers")
+				value.Key = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 135 {
-				keep = tableUtf8Clamp(sub.Buffer, 135)
-				r.Report.Clamped++
+			if !tableTextPlace(&r.Nodes.Carve, &value.Key, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "LandedSeries.workers")
+				break
 			}
-			clear(value.Key[:])
-			copy(value.Key[:keep], sub.Buffer)
-			value.KeyLength = int32(keep)
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
@@ -43493,19 +42430,19 @@ func LandedSeriesSaveBodyFields(w *TableWriter, value *LandedSeries) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload178 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload141 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Friends)), int64(unsafe.Sizeof(*new(int64))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Friends.Count; i++ {
 					p := (*int64)(cursor.Next())
 					if p == nil {
 						return false
 					}
-					payload178.Put64(uint64((*p)))
+					payload141.Put64(uint64((*p)))
 				}
-				if payload178.Overflow {
+				if payload141.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Friends.Count)) + payload178.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Friends.Count)) + payload141.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -43542,19 +42479,19 @@ func LandedSeriesSaveBodyFields(w *TableWriter, value *LandedSeries) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload181 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload144 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Fleet)), int64(unsafe.Sizeof(*new(int64))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Fleet.Count; i++ {
 					p := (*int64)(cursor.Next())
 					if p == nil {
 						return false
 					}
-					payload181.Put64(uint64((*p)))
+					payload144.Put64(uint64((*p)))
 				}
-				if payload181.Overflow {
+				if payload144.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Fleet.Count)) + payload181.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Fleet.Count)) + payload144.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -43645,7 +42582,7 @@ func LandedSeriesSaveBodyFields(w *TableWriter, value *LandedSeries) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload184 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload147 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Workers)), &LandedSeriesTableFields[9], w.Ids.Numbering.arena)
 				defer cursor.Release()
 				for i := int32(0); i < value.Workers.Count; i++ {
@@ -43654,28 +42591,28 @@ func LandedSeriesSaveBodyFields(w *TableWriter, value *LandedSeries) bool {
 						return false
 					}
 					{
-						mark := payload184.Ids.Count
-						n := LandedSeriesWorkersEntryMeasureBody(&(*p), payload184.Ids)
+						mark := payload147.Ids.Count
+						n := LandedSeriesWorkersEntryMeasureBody(&(*p), payload147.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload184.putLebPair(uint64(n)) {
-							payload184.putLebWide(uint64(n))
+						if !payload147.putLebPair(uint64(n)) {
+							payload147.putLebWide(uint64(n))
 						}
-						if payload184.Measuring {
-							payload184.Advance(n)
+						if payload147.Measuring {
+							payload147.Advance(n)
 						} else {
-							payload184.Ids.Truncate(mark)
-							if !LandedSeriesWorkersEntrySaveBody(&payload184, &(*p)) {
+							payload147.Ids.Truncate(mark)
+							if !LandedSeriesWorkersEntrySaveBody(&payload147, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload184.Overflow {
+				if payload147.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Workers.Count)) + payload184.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Workers.Count)) + payload147.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -44102,7 +43039,7 @@ func LandedSeriesLoadBody(r *TableReader, value *LandedSeries) bool {
 				}
 				field := &LandedSeriesTableFields[9]
 				holder := (*tableContainer)(unsafe.Pointer(&value.Workers))
-				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 152, 8) {
+				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 16, 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -44118,6 +43055,7 @@ func LandedSeriesLoadBody(r *TableReader, value *LandedSeries) bool {
 					elem, ok := sub.Body()
 					if !ok {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "LandedSeries.workers")
 						break
 					}
 					key, bad, over, wide, whole := tableMapReadKey(elem, &field.Table().Fields[0])
@@ -44132,6 +43070,7 @@ func LandedSeriesLoadBody(r *TableReader, value *LandedSeries) bool {
 					}
 					if !whole {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "LandedSeries.workers")
 						break
 					}
 					if over {
@@ -44144,13 +43083,14 @@ func LandedSeriesLoadBody(r *TableReader, value *LandedSeries) bool {
 					}
 					if order > 0 {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "LandedSeries.workers")
 						break
 					}
 					p := prior
 					if order == 0 {
 						r.Report.Duplicate++
 					} else {
-						p = (*LandedSeriesWorkersEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 152))
+						p = (*LandedSeriesWorkersEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 16))
 						if p == nil {
 							r.Report.Malformed = true
 							break
@@ -44991,7 +43931,7 @@ func LandedSeriesLoadBodyRetain(r *TableRetainReader, value *LandedSeries) bool 
 				}
 				field := &LandedSeriesTableFields[9]
 				holder := (*tableContainer)(unsafe.Pointer(&value.Workers))
-				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 152, 8) {
+				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 16, 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -45008,6 +43948,7 @@ func LandedSeriesLoadBodyRetain(r *TableRetainReader, value *LandedSeries) bool 
 					elem, ok := sub.Body()
 					if !ok {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "LandedSeries.workers")
 						break
 					}
 					key, bad, over, wide, whole := tableMapReadKey(elem.tableRetainPlainReader, &field.Table().Fields[0])
@@ -45022,6 +43963,7 @@ func LandedSeriesLoadBodyRetain(r *TableRetainReader, value *LandedSeries) bool 
 					}
 					if !whole {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "LandedSeries.workers")
 						break
 					}
 					if over {
@@ -45034,13 +43976,14 @@ func LandedSeriesLoadBodyRetain(r *TableRetainReader, value *LandedSeries) bool 
 					}
 					if order > 0 {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "LandedSeries.workers")
 						break
 					}
 					p := prior
 					if order == 0 {
 						r.Report.Duplicate++
 					} else {
-						p = (*LandedSeriesWorkersEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 152))
+						p = (*LandedSeriesWorkersEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 16))
 						if p == nil {
 							r.Report.Malformed = true
 							break
@@ -45248,7 +44191,7 @@ func LandedSeriesFleetEach(holder *TableList[int64], visit func(*int64) bool, ar
 	return true
 }
 func LandedSeriesWorkersInsert(worker *TableWorker, holder *TableMap[LandedSeriesWorkersEntryRow], key string) *int64 {
-	p, _ := tableMapPlace(worker, (*tableContainer)(unsafe.Pointer(holder)), &LandedSeriesTableFields[9], tableMapKey{text: []byte(key)})
+	p, _ := tableMapPlace(worker, (*tableContainer)(unsafe.Pointer(holder)), &LandedSeriesTableFields[9], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))})
 	if p == nil {
 		return nil
 	}
@@ -45259,7 +44202,7 @@ func LandedSeriesWorkersInsert(worker *TableWorker, holder *TableMap[LandedSerie
 	return &entry.Value
 }
 func LandedSeriesWorkersFind(arena *TableArena, holder *TableMap[LandedSeriesWorkersEntryRow], key string) *int64 {
-	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &LandedSeriesTableFields[9], tableMapKey{text: []byte(key)}, arena)
+	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &LandedSeriesTableFields[9], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))}, arena)
 	if p == nil {
 		return nil
 	}
@@ -45267,14 +44210,14 @@ func LandedSeriesWorkersFind(arena *TableArena, holder *TableMap[LandedSeriesWor
 	return &entry.Value
 }
 func LandedSeriesWorkersErase(arena *TableArena, holder *TableMap[LandedSeriesWorkersEntryRow], key string) bool {
-	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &LandedSeriesTableFields[9], tableMapKey{text: []byte(key)}, arena)
+	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &LandedSeriesTableFields[9], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))}, arena)
 	return tableContainerErase(arena, (*tableContainer)(unsafe.Pointer(holder)), p, int64(unsafe.Sizeof(LandedSeriesWorkersEntryRow{})))
 }
 func LandedSeriesWorkersEach(holder *TableMap[LandedSeriesWorkersEntryRow], visit func(string, *int64) bool, arena ...*TableArena) bool {
 	c := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)), int64(unsafe.Sizeof(LandedSeriesWorkersEntryRow{})), tableOptionalArena(arena))
 	for i := int32(0); i < holder.Count; i++ {
 		entry := (*LandedSeriesWorkersEntryRow)(c.Next())
-		if entry == nil || !visit(string(entry.Key[:entry.KeyLength]), &entry.Value) {
+		if entry == nil || !visit(tableTextString(&entry.Key, tableOptionalArena(arena)), &entry.Value) {
 			return false
 		}
 	}
@@ -45287,7 +44230,7 @@ func LandedSeriesWorkersIndex(holder *TableMap[LandedSeriesWorkersEntryRow], sto
 	return tableMapIndex((*tableContainer)(unsafe.Pointer(holder)), &LandedSeriesTableFields[9], storage)
 }
 func LandedSeriesWorkersIndexFind(index TableMapIndex, holder *TableMap[LandedSeriesWorkersEntryRow], key string) *int64 {
-	p := tableMapIndexFind(index, (*tableContainer)(unsafe.Pointer(holder)), &LandedSeriesTableFields[9], tableMapKey{text: []byte(key)})
+	p := tableMapIndexFind(index, (*tableContainer)(unsafe.Pointer(holder)), &LandedSeriesTableFields[9], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))})
 	if p == nil {
 		return nil
 	}
@@ -45298,8 +44241,7 @@ func LandedSeriesWorkersIndexFind(index TableMapIndex, holder *TableMap[LandedSe
 // WhereViewTablesEntryValueEntryValueEntryReset restores WhereViewTablesEntryValueEntryValueEntry's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func WhereViewTablesEntryValueEntryValueEntryReset(value *WhereViewTablesEntryValueEntryValueEntry) {
-	clear(value.Key[:])
-	value.KeyLength = 0
+	value.Key = 0
 	value.Value = 0
 }
 
@@ -45320,53 +44262,20 @@ func WhereViewTablesEntryValueEntryValueEntrySaveBody(w *TableWriter, value *Whe
 }
 func WhereViewTablesEntryValueEntryValueEntrySaveBodyFields(w *TableWriter, value *WhereViewTablesEntryValueEntryValueEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
-			return false
-		}
-		if value.KeyLength > 0 {
+		if tableTextRides(&value.Key, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(68, 0x3dc94a19365b10ec); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.KeyLength < 0 || value.KeyLength > 128 {
-				return false
-			}
 			{
-				n := int(value.KeyLength)
-				var hi, z uint64
-				p := value.Key[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Key[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Key[:n]) {
+				text, ok := tableTextBytes(&value.Key, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.KeyLength)) {
-				w.putLebWide(uint64(value.KeyLength))
-			}
-			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
@@ -45429,22 +44338,23 @@ func WhereViewTablesEntryValueEntryValueEntryLoadBody(r *TableReader, value *Whe
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "WhereViewTablesEntryValueEntry.value")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Key[:])
-				value.KeyLength = 0
+				tableTextMalformed(r.Report, "WhereViewTablesEntryValueEntry.value")
+				value.Key = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
+			if !tableTextPlace(&r.Nodes.Carve, &value.Key, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "WhereViewTablesEntryValueEntry.value")
+				break
 			}
-			clear(value.Key[:])
-			copy(value.Key[:keep], sub.Buffer)
-			value.KeyLength = int32(keep)
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 17 {
 				r.Report.KindMismatch++
@@ -45494,53 +44404,20 @@ func WhereViewTablesEntryValueEntryValueEntrySaveBodyRetain(w *TableRetainWriter
 }
 func WhereViewTablesEntryValueEntryValueEntrySaveBodyFieldsRetain(w *TableRetainWriter, value *WhereViewTablesEntryValueEntryValueEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
-			return false
-		}
-		if value.KeyLength > 0 {
+		if tableTextRides(&value.Key, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(68, 0x3dc94a19365b10ec); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.KeyLength < 0 || value.KeyLength > 128 {
-				return false
-			}
 			{
-				n := int(value.KeyLength)
-				var hi, z uint64
-				p := value.Key[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Key[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Key[:n]) {
+				text, ok := tableTextBytes(&value.Key, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.KeyLength)) {
-				w.putLebWide(uint64(value.KeyLength))
-			}
-			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
@@ -45607,22 +44484,23 @@ func WhereViewTablesEntryValueEntryValueEntryLoadBodyRetain(r *TableRetainReader
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "WhereViewTablesEntryValueEntry.value")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Key[:])
-				value.KeyLength = 0
+				tableTextMalformed(r.Report, "WhereViewTablesEntryValueEntry.value")
+				value.Key = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
+			if !tableTextPlace(&r.Nodes.Carve, &value.Key, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "WhereViewTablesEntryValueEntry.value")
+				break
 			}
-			clear(value.Key[:])
-			copy(value.Key[:keep], sub.Buffer)
-			value.KeyLength = int32(keep)
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 17 {
 				r.Report.KindMismatch++
@@ -45658,8 +44536,7 @@ func WhereViewTablesEntryValueEntryValueEntryLoadBodyRetain(r *TableRetainReader
 // WhereViewTablesEntryValueEntryReset restores WhereViewTablesEntryValueEntry's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func WhereViewTablesEntryValueEntryReset(value *WhereViewTablesEntryValueEntry) {
-	clear(value.Key[:])
-	value.KeyLength = 0
+	value.Key = 0
 	value.Value = TableMap[WhereViewTablesEntryValueEntryValueEntryRow]{}
 }
 
@@ -45680,53 +44557,20 @@ func WhereViewTablesEntryValueEntrySaveBody(w *TableWriter, value *WhereViewTabl
 }
 func WhereViewTablesEntryValueEntrySaveBodyFields(w *TableWriter, value *WhereViewTablesEntryValueEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 256 {
-			return false
-		}
-		if value.KeyLength > 0 {
+		if tableTextRides(&value.Key, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(68, 0x3dc94a19365b10ec); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.KeyLength < 0 || value.KeyLength > 256 {
-				return false
-			}
 			{
-				n := int(value.KeyLength)
-				var hi, z uint64
-				p := value.Key[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Key[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Key[:n]) {
+				text, ok := tableTextBytes(&value.Key, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.KeyLength)) {
-				w.putLebWide(uint64(value.KeyLength))
-			}
-			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
@@ -45742,7 +44586,7 @@ func WhereViewTablesEntryValueEntrySaveBodyFields(w *TableWriter, value *WhereVi
 			}
 			{
 				mark := w.Ids.Count
-				payload193 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload150 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Value)), &WhereViewTablesEntryValueEntryTableFields[1], w.Ids.Numbering.arena)
 				defer cursor.Release()
 				for i := int32(0); i < value.Value.Count; i++ {
@@ -45751,28 +44595,28 @@ func WhereViewTablesEntryValueEntrySaveBodyFields(w *TableWriter, value *WhereVi
 						return false
 					}
 					{
-						mark := payload193.Ids.Count
-						n := WhereViewTablesEntryValueEntryValueEntryMeasureBody(&(*p), payload193.Ids)
+						mark := payload150.Ids.Count
+						n := WhereViewTablesEntryValueEntryValueEntryMeasureBody(&(*p), payload150.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload193.putLebPair(uint64(n)) {
-							payload193.putLebWide(uint64(n))
+						if !payload150.putLebPair(uint64(n)) {
+							payload150.putLebWide(uint64(n))
 						}
-						if payload193.Measuring {
-							payload193.Advance(n)
+						if payload150.Measuring {
+							payload150.Advance(n)
 						} else {
-							payload193.Ids.Truncate(mark)
-							if !WhereViewTablesEntryValueEntryValueEntrySaveBody(&payload193, &(*p)) {
+							payload150.Ids.Truncate(mark)
+							if !WhereViewTablesEntryValueEntryValueEntrySaveBody(&payload150, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload193.Overflow {
+				if payload150.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Value.Count)) + payload193.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Value.Count)) + payload150.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -45854,22 +44698,23 @@ func WhereViewTablesEntryValueEntryLoadBody(r *TableReader, value *WhereViewTabl
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "WhereViewTablesEntry.value")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Key[:])
-				value.KeyLength = 0
+				tableTextMalformed(r.Report, "WhereViewTablesEntry.value")
+				value.Key = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 256 {
-				keep = tableUtf8Clamp(sub.Buffer, 256)
-				r.Report.Clamped++
+			if !tableTextPlace(&r.Nodes.Carve, &value.Key, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "WhereViewTablesEntry.value")
+				break
 			}
-			clear(value.Key[:])
-			copy(value.Key[:keep], sub.Buffer)
-			value.KeyLength = int32(keep)
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 14 {
 				r.Report.KindMismatch++
@@ -45900,7 +44745,7 @@ func WhereViewTablesEntryValueEntryLoadBody(r *TableReader, value *WhereViewTabl
 				}
 				field := &WhereViewTablesEntryValueEntryTableFields[1]
 				holder := (*tableContainer)(unsafe.Pointer(&value.Value))
-				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 144, 8) {
+				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 16, 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -45916,6 +44761,7 @@ func WhereViewTablesEntryValueEntryLoadBody(r *TableReader, value *WhereViewTabl
 					elem, ok := sub.Body()
 					if !ok {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereViewTablesEntryValueEntry.value")
 						break
 					}
 					key, bad, over, wide, whole := tableMapReadKey(elem, &field.Table().Fields[0])
@@ -45930,6 +44776,7 @@ func WhereViewTablesEntryValueEntryLoadBody(r *TableReader, value *WhereViewTabl
 					}
 					if !whole {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereViewTablesEntryValueEntry.value")
 						break
 					}
 					if over {
@@ -45942,13 +44789,14 @@ func WhereViewTablesEntryValueEntryLoadBody(r *TableReader, value *WhereViewTabl
 					}
 					if order > 0 {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereViewTablesEntryValueEntry.value")
 						break
 					}
 					p := prior
 					if order == 0 {
 						r.Report.Duplicate++
 					} else {
-						p = (*WhereViewTablesEntryValueEntryValueEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 144))
+						p = (*WhereViewTablesEntryValueEntryValueEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 16))
 						if p == nil {
 							r.Report.Malformed = true
 							break
@@ -46003,53 +44851,20 @@ func WhereViewTablesEntryValueEntrySaveBodyRetain(w *TableRetainWriter, value *W
 }
 func WhereViewTablesEntryValueEntrySaveBodyFieldsRetain(w *TableRetainWriter, value *WhereViewTablesEntryValueEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 256 {
-			return false
-		}
-		if value.KeyLength > 0 {
+		if tableTextRides(&value.Key, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(68, 0x3dc94a19365b10ec); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.KeyLength < 0 || value.KeyLength > 256 {
-				return false
-			}
 			{
-				n := int(value.KeyLength)
-				var hi, z uint64
-				p := value.Key[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Key[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Key[:n]) {
+				text, ok := tableTextBytes(&value.Key, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.KeyLength)) {
-				w.putLebWide(uint64(value.KeyLength))
-			}
-			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
@@ -46191,22 +45006,23 @@ func WhereViewTablesEntryValueEntryLoadBodyRetain(r *TableRetainReader, value *W
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "WhereViewTablesEntry.value")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Key[:])
-				value.KeyLength = 0
+				tableTextMalformed(r.Report, "WhereViewTablesEntry.value")
+				value.Key = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 256 {
-				keep = tableUtf8Clamp(sub.Buffer, 256)
-				r.Report.Clamped++
+			if !tableTextPlace(&r.Nodes.Carve, &value.Key, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "WhereViewTablesEntry.value")
+				break
 			}
-			clear(value.Key[:])
-			copy(value.Key[:keep], sub.Buffer)
-			value.KeyLength = int32(keep)
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 14 {
 				r.Report.KindMismatch++
@@ -46237,7 +45053,7 @@ func WhereViewTablesEntryValueEntryLoadBodyRetain(r *TableRetainReader, value *W
 				}
 				field := &WhereViewTablesEntryValueEntryTableFields[1]
 				holder := (*tableContainer)(unsafe.Pointer(&value.Value))
-				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 144, 8) {
+				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 16, 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -46254,6 +45070,7 @@ func WhereViewTablesEntryValueEntryLoadBodyRetain(r *TableRetainReader, value *W
 					elem, ok := sub.Body()
 					if !ok {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereViewTablesEntryValueEntry.value")
 						break
 					}
 					key, bad, over, wide, whole := tableMapReadKey(elem.tableRetainPlainReader, &field.Table().Fields[0])
@@ -46268,6 +45085,7 @@ func WhereViewTablesEntryValueEntryLoadBodyRetain(r *TableRetainReader, value *W
 					}
 					if !whole {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereViewTablesEntryValueEntry.value")
 						break
 					}
 					if over {
@@ -46280,13 +45098,14 @@ func WhereViewTablesEntryValueEntryLoadBodyRetain(r *TableRetainReader, value *W
 					}
 					if order > 0 {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereViewTablesEntryValueEntry.value")
 						break
 					}
 					p := prior
 					if order == 0 {
 						r.Report.Duplicate++
 					} else {
-						p = (*WhereViewTablesEntryValueEntryValueEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 144))
+						p = (*WhereViewTablesEntryValueEntryValueEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 16))
 						if p == nil {
 							r.Report.Malformed = true
 							break
@@ -46325,7 +45144,7 @@ func WhereViewTablesEntryValueEntryLoadBodyRetain(r *TableRetainReader, value *W
 	}
 }
 func WhereViewTablesEntryValueEntryValueInsert(worker *TableWorker, holder *TableMap[WhereViewTablesEntryValueEntryValueEntryRow], key string) *int64 {
-	p, _ := tableMapPlace(worker, (*tableContainer)(unsafe.Pointer(holder)), &WhereViewTablesEntryValueEntryTableFields[1], tableMapKey{text: []byte(key)})
+	p, _ := tableMapPlace(worker, (*tableContainer)(unsafe.Pointer(holder)), &WhereViewTablesEntryValueEntryTableFields[1], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))})
 	if p == nil {
 		return nil
 	}
@@ -46336,7 +45155,7 @@ func WhereViewTablesEntryValueEntryValueInsert(worker *TableWorker, holder *Tabl
 	return &entry.Value
 }
 func WhereViewTablesEntryValueEntryValueFind(arena *TableArena, holder *TableMap[WhereViewTablesEntryValueEntryValueEntryRow], key string) *int64 {
-	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &WhereViewTablesEntryValueEntryTableFields[1], tableMapKey{text: []byte(key)}, arena)
+	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &WhereViewTablesEntryValueEntryTableFields[1], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))}, arena)
 	if p == nil {
 		return nil
 	}
@@ -46344,14 +45163,14 @@ func WhereViewTablesEntryValueEntryValueFind(arena *TableArena, holder *TableMap
 	return &entry.Value
 }
 func WhereViewTablesEntryValueEntryValueErase(arena *TableArena, holder *TableMap[WhereViewTablesEntryValueEntryValueEntryRow], key string) bool {
-	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &WhereViewTablesEntryValueEntryTableFields[1], tableMapKey{text: []byte(key)}, arena)
+	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &WhereViewTablesEntryValueEntryTableFields[1], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))}, arena)
 	return tableContainerErase(arena, (*tableContainer)(unsafe.Pointer(holder)), p, int64(unsafe.Sizeof(WhereViewTablesEntryValueEntryValueEntryRow{})))
 }
 func WhereViewTablesEntryValueEntryValueEach(holder *TableMap[WhereViewTablesEntryValueEntryValueEntryRow], visit func(string, *int64) bool, arena ...*TableArena) bool {
 	c := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)), int64(unsafe.Sizeof(WhereViewTablesEntryValueEntryValueEntryRow{})), tableOptionalArena(arena))
 	for i := int32(0); i < holder.Count; i++ {
 		entry := (*WhereViewTablesEntryValueEntryValueEntryRow)(c.Next())
-		if entry == nil || !visit(string(entry.Key[:entry.KeyLength]), &entry.Value) {
+		if entry == nil || !visit(tableTextString(&entry.Key, tableOptionalArena(arena)), &entry.Value) {
 			return false
 		}
 	}
@@ -46364,7 +45183,7 @@ func WhereViewTablesEntryValueEntryValueIndex(holder *TableMap[WhereViewTablesEn
 	return tableMapIndex((*tableContainer)(unsafe.Pointer(holder)), &WhereViewTablesEntryValueEntryTableFields[1], storage)
 }
 func WhereViewTablesEntryValueEntryValueIndexFind(index TableMapIndex, holder *TableMap[WhereViewTablesEntryValueEntryValueEntryRow], key string) *int64 {
-	p := tableMapIndexFind(index, (*tableContainer)(unsafe.Pointer(holder)), &WhereViewTablesEntryValueEntryTableFields[1], tableMapKey{text: []byte(key)})
+	p := tableMapIndexFind(index, (*tableContainer)(unsafe.Pointer(holder)), &WhereViewTablesEntryValueEntryTableFields[1], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))})
 	if p == nil {
 		return nil
 	}
@@ -46439,7 +45258,7 @@ func WhereViewTablesEntrySaveBodyFields(w *TableWriter, value *WhereViewTablesEn
 			}
 			{
 				mark := w.Ids.Count
-				payload196 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload153 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Value)), &WhereViewTablesEntryTableFields[1], w.Ids.Numbering.arena)
 				defer cursor.Release()
 				for i := int32(0); i < value.Value.Count; i++ {
@@ -46448,28 +45267,28 @@ func WhereViewTablesEntrySaveBodyFields(w *TableWriter, value *WhereViewTablesEn
 						return false
 					}
 					{
-						mark := payload196.Ids.Count
-						n := WhereViewTablesEntryValueEntryMeasureBody(&(*p), payload196.Ids)
+						mark := payload153.Ids.Count
+						n := WhereViewTablesEntryValueEntryMeasureBody(&(*p), payload153.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload196.putLebPair(uint64(n)) {
-							payload196.putLebWide(uint64(n))
+						if !payload153.putLebPair(uint64(n)) {
+							payload153.putLebWide(uint64(n))
 						}
-						if payload196.Measuring {
-							payload196.Advance(n)
+						if payload153.Measuring {
+							payload153.Advance(n)
 						} else {
-							payload196.Ids.Truncate(mark)
-							if !WhereViewTablesEntryValueEntrySaveBody(&payload196, &(*p)) {
+							payload153.Ids.Truncate(mark)
+							if !WhereViewTablesEntryValueEntrySaveBody(&payload153, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload196.Overflow {
+				if payload153.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Value.Count)) + payload196.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Value.Count)) + payload153.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -46597,7 +45416,7 @@ func WhereViewTablesEntryLoadBody(r *TableReader, value *WhereViewTablesEntry) b
 				}
 				field := &WhereViewTablesEntryTableFields[1]
 				holder := (*tableContainer)(unsafe.Pointer(&value.Value))
-				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 280, 8) {
+				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 24, 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -46613,6 +45432,7 @@ func WhereViewTablesEntryLoadBody(r *TableReader, value *WhereViewTablesEntry) b
 					elem, ok := sub.Body()
 					if !ok {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereViewTablesEntry.value")
 						break
 					}
 					key, bad, over, wide, whole := tableMapReadKey(elem, &field.Table().Fields[0])
@@ -46627,6 +45447,7 @@ func WhereViewTablesEntryLoadBody(r *TableReader, value *WhereViewTablesEntry) b
 					}
 					if !whole {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereViewTablesEntry.value")
 						break
 					}
 					if over {
@@ -46639,13 +45460,14 @@ func WhereViewTablesEntryLoadBody(r *TableReader, value *WhereViewTablesEntry) b
 					}
 					if order > 0 {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereViewTablesEntry.value")
 						break
 					}
 					p := prior
 					if order == 0 {
 						r.Report.Duplicate++
 					} else {
-						p = (*WhereViewTablesEntryValueEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 280))
+						p = (*WhereViewTablesEntryValueEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 24))
 						if p == nil {
 							r.Report.Malformed = true
 							break
@@ -46914,7 +45736,7 @@ func WhereViewTablesEntryLoadBodyRetain(r *TableRetainReader, value *WhereViewTa
 				}
 				field := &WhereViewTablesEntryTableFields[1]
 				holder := (*tableContainer)(unsafe.Pointer(&value.Value))
-				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 280, 8) {
+				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 24, 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -46931,6 +45753,7 @@ func WhereViewTablesEntryLoadBodyRetain(r *TableRetainReader, value *WhereViewTa
 					elem, ok := sub.Body()
 					if !ok {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereViewTablesEntry.value")
 						break
 					}
 					key, bad, over, wide, whole := tableMapReadKey(elem.tableRetainPlainReader, &field.Table().Fields[0])
@@ -46945,6 +45768,7 @@ func WhereViewTablesEntryLoadBodyRetain(r *TableRetainReader, value *WhereViewTa
 					}
 					if !whole {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereViewTablesEntry.value")
 						break
 					}
 					if over {
@@ -46957,13 +45781,14 @@ func WhereViewTablesEntryLoadBodyRetain(r *TableRetainReader, value *WhereViewTa
 					}
 					if order > 0 {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereViewTablesEntry.value")
 						break
 					}
 					p := prior
 					if order == 0 {
 						r.Report.Duplicate++
 					} else {
-						p = (*WhereViewTablesEntryValueEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 280))
+						p = (*WhereViewTablesEntryValueEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 24))
 						if p == nil {
 							r.Report.Malformed = true
 							break
@@ -47002,7 +45827,7 @@ func WhereViewTablesEntryLoadBodyRetain(r *TableRetainReader, value *WhereViewTa
 	}
 }
 func WhereViewTablesEntryValueInsert(worker *TableWorker, holder *TableMap[WhereViewTablesEntryValueEntryRow], key string) *TableMap[WhereViewTablesEntryValueEntryValueEntryRow] {
-	p, _ := tableMapPlace(worker, (*tableContainer)(unsafe.Pointer(holder)), &WhereViewTablesEntryTableFields[1], tableMapKey{text: []byte(key)})
+	p, _ := tableMapPlace(worker, (*tableContainer)(unsafe.Pointer(holder)), &WhereViewTablesEntryTableFields[1], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))})
 	if p == nil {
 		return nil
 	}
@@ -47013,7 +45838,7 @@ func WhereViewTablesEntryValueInsert(worker *TableWorker, holder *TableMap[Where
 	return &entry.Value
 }
 func WhereViewTablesEntryValueFind(arena *TableArena, holder *TableMap[WhereViewTablesEntryValueEntryRow], key string) *TableMap[WhereViewTablesEntryValueEntryValueEntryRow] {
-	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &WhereViewTablesEntryTableFields[1], tableMapKey{text: []byte(key)}, arena)
+	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &WhereViewTablesEntryTableFields[1], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))}, arena)
 	if p == nil {
 		return nil
 	}
@@ -47021,14 +45846,14 @@ func WhereViewTablesEntryValueFind(arena *TableArena, holder *TableMap[WhereView
 	return &entry.Value
 }
 func WhereViewTablesEntryValueErase(arena *TableArena, holder *TableMap[WhereViewTablesEntryValueEntryRow], key string) bool {
-	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &WhereViewTablesEntryTableFields[1], tableMapKey{text: []byte(key)}, arena)
+	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &WhereViewTablesEntryTableFields[1], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))}, arena)
 	return tableContainerErase(arena, (*tableContainer)(unsafe.Pointer(holder)), p, int64(unsafe.Sizeof(WhereViewTablesEntryValueEntryRow{})))
 }
 func WhereViewTablesEntryValueEach(holder *TableMap[WhereViewTablesEntryValueEntryRow], visit func(string, *TableMap[WhereViewTablesEntryValueEntryValueEntryRow]) bool, arena ...*TableArena) bool {
 	c := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)), int64(unsafe.Sizeof(WhereViewTablesEntryValueEntryRow{})), tableOptionalArena(arena))
 	for i := int32(0); i < holder.Count; i++ {
 		entry := (*WhereViewTablesEntryValueEntryRow)(c.Next())
-		if entry == nil || !visit(string(entry.Key[:entry.KeyLength]), &entry.Value) {
+		if entry == nil || !visit(tableTextString(&entry.Key, tableOptionalArena(arena)), &entry.Value) {
 			return false
 		}
 	}
@@ -47041,7 +45866,7 @@ func WhereViewTablesEntryValueIndex(holder *TableMap[WhereViewTablesEntryValueEn
 	return tableMapIndex((*tableContainer)(unsafe.Pointer(holder)), &WhereViewTablesEntryTableFields[1], storage)
 }
 func WhereViewTablesEntryValueIndexFind(index TableMapIndex, holder *TableMap[WhereViewTablesEntryValueEntryRow], key string) *TableMap[WhereViewTablesEntryValueEntryValueEntryRow] {
-	p := tableMapIndexFind(index, (*tableContainer)(unsafe.Pointer(holder)), &WhereViewTablesEntryTableFields[1], tableMapKey{text: []byte(key)})
+	p := tableMapIndexFind(index, (*tableContainer)(unsafe.Pointer(holder)), &WhereViewTablesEntryTableFields[1], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))})
 	if p == nil {
 		return nil
 	}
@@ -47052,8 +45877,7 @@ func WhereViewTablesEntryValueIndexFind(index TableMapIndex, holder *TableMap[Wh
 // WhereViewTiersEntryReset restores WhereViewTiersEntry's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func WhereViewTiersEntryReset(value *WhereViewTiersEntry) {
-	clear(value.Key[:])
-	value.KeyLength = 0
+	value.Key = 0
 	value.Value = 0
 }
 
@@ -47074,53 +45898,20 @@ func WhereViewTiersEntrySaveBody(w *TableWriter, value *WhereViewTiersEntry) boo
 }
 func WhereViewTiersEntrySaveBodyFields(w *TableWriter, value *WhereViewTiersEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
-			return false
-		}
-		if value.KeyLength > 0 {
+		if tableTextRides(&value.Key, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(68, 0x3dc94a19365b10ec); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.KeyLength < 0 || value.KeyLength > 128 {
-				return false
-			}
 			{
-				n := int(value.KeyLength)
-				var hi, z uint64
-				p := value.Key[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Key[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Key[:n]) {
+				text, ok := tableTextBytes(&value.Key, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.KeyLength)) {
-				w.putLebWide(uint64(value.KeyLength))
-			}
-			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
@@ -47171,22 +45962,23 @@ func WhereViewTiersEntryLoadBody(r *TableReader, value *WhereViewTiersEntry) boo
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "WhereView.tiers")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Key[:])
-				value.KeyLength = 0
+				tableTextMalformed(r.Report, "WhereView.tiers")
+				value.Key = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
+			if !tableTextPlace(&r.Nodes.Carve, &value.Key, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "WhereView.tiers")
+				break
 			}
-			clear(value.Key[:])
-			copy(value.Key[:keep], sub.Buffer)
-			value.KeyLength = int32(keep)
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
@@ -47243,53 +46035,20 @@ func WhereViewTiersEntrySaveBodyRetain(w *TableRetainWriter, value *WhereViewTie
 }
 func WhereViewTiersEntrySaveBodyFieldsRetain(w *TableRetainWriter, value *WhereViewTiersEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
-			return false
-		}
-		if value.KeyLength > 0 {
+		if tableTextRides(&value.Key, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(68, 0x3dc94a19365b10ec); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.KeyLength < 0 || value.KeyLength > 128 {
-				return false
-			}
 			{
-				n := int(value.KeyLength)
-				var hi, z uint64
-				p := value.Key[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Key[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Key[:n]) {
+				text, ok := tableTextBytes(&value.Key, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.KeyLength)) {
-				w.putLebWide(uint64(value.KeyLength))
-			}
-			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
@@ -47344,22 +46103,23 @@ func WhereViewTiersEntryLoadBodyRetain(r *TableRetainReader, value *WhereViewTie
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "WhereView.tiers")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Key[:])
-				value.KeyLength = 0
+				tableTextMalformed(r.Report, "WhereView.tiers")
+				value.Key = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
+			if !tableTextPlace(&r.Nodes.Carve, &value.Key, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "WhereView.tiers")
+				break
 			}
-			clear(value.Key[:])
-			copy(value.Key[:keep], sub.Buffer)
-			value.KeyLength = int32(keep)
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
@@ -48106,8 +46866,7 @@ func WhereViewFirstTimeUnderTargetTextLoadBodyRetain(r *TableRetainReader, value
 // WhereViewFirstTimeRoutesEntryReset restores WhereViewFirstTimeRoutesEntry's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func WhereViewFirstTimeRoutesEntryReset(value *WhereViewFirstTimeRoutesEntry) {
-	clear(value.Key[:])
-	value.KeyLength = 0
+	value.Key = 0
 	value.Value = 0
 }
 
@@ -48128,53 +46887,20 @@ func WhereViewFirstTimeRoutesEntrySaveBody(w *TableWriter, value *WhereViewFirst
 }
 func WhereViewFirstTimeRoutesEntrySaveBodyFields(w *TableWriter, value *WhereViewFirstTimeRoutesEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
-			return false
-		}
-		if value.KeyLength > 0 {
+		if tableTextRides(&value.Key, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(68, 0x3dc94a19365b10ec); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.KeyLength < 0 || value.KeyLength > 128 {
-				return false
-			}
 			{
-				n := int(value.KeyLength)
-				var hi, z uint64
-				p := value.Key[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Key[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Key[:n]) {
+				text, ok := tableTextBytes(&value.Key, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.KeyLength)) {
-				w.putLebWide(uint64(value.KeyLength))
-			}
-			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
@@ -48237,22 +46963,23 @@ func WhereViewFirstTimeRoutesEntryLoadBody(r *TableReader, value *WhereViewFirst
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "WhereView.first_time_routes")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Key[:])
-				value.KeyLength = 0
+				tableTextMalformed(r.Report, "WhereView.first_time_routes")
+				value.Key = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
+			if !tableTextPlace(&r.Nodes.Carve, &value.Key, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "WhereView.first_time_routes")
+				break
 			}
-			clear(value.Key[:])
-			copy(value.Key[:keep], sub.Buffer)
-			value.KeyLength = int32(keep)
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 17 {
 				r.Report.KindMismatch++
@@ -48302,53 +47029,20 @@ func WhereViewFirstTimeRoutesEntrySaveBodyRetain(w *TableRetainWriter, value *Wh
 }
 func WhereViewFirstTimeRoutesEntrySaveBodyFieldsRetain(w *TableRetainWriter, value *WhereViewFirstTimeRoutesEntry) bool {
 	{
-		if value.KeyLength < 0 || value.KeyLength > 128 {
-			return false
-		}
-		if value.KeyLength > 0 {
+		if tableTextRides(&value.Key, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(68, 0x3dc94a19365b10ec); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.KeyLength < 0 || value.KeyLength > 128 {
-				return false
-			}
 			{
-				n := int(value.KeyLength)
-				var hi, z uint64
-				p := value.Key[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Key[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Key[:n]) {
+				text, ok := tableTextBytes(&value.Key, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.KeyLength)) {
-				w.putLebWide(uint64(value.KeyLength))
-			}
-			w.Raw(value.Key[:value.KeyLength])
 		}
 	}
 	{
@@ -48415,22 +47109,23 @@ func WhereViewFirstTimeRoutesEntryLoadBodyRetain(r *TableRetainReader, value *Wh
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "WhereView.first_time_routes")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Key[:])
-				value.KeyLength = 0
+				tableTextMalformed(r.Report, "WhereView.first_time_routes")
+				value.Key = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
+			if !tableTextPlace(&r.Nodes.Carve, &value.Key, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "WhereView.first_time_routes")
+				break
 			}
-			clear(value.Key[:])
-			copy(value.Key[:keep], sub.Buffer)
-			value.KeyLength = int32(keep)
 		case 0x7ce4fd9430e80cea: // value
 			if kind != 17 {
 				r.Report.KindMismatch++
@@ -48743,8 +47438,7 @@ func WhereViewStalledTextLoadBodyRetain(r *TableRetainReader, value *WhereViewSt
 // WhereViewBlockersTextReset restores WhereViewBlockersText's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func WhereViewBlockersTextReset(value *WhereViewBlockersText) {
-	clear(value.Value[:])
-	value.ValueLength = 0
+	value.Value = 0
 }
 
 func WhereViewBlockersTextMeasureBody(value *WhereViewBlockersText, ids *TableIds) int64 {
@@ -48764,53 +47458,20 @@ func WhereViewBlockersTextSaveBody(w *TableWriter, value *WhereViewBlockersText)
 }
 func WhereViewBlockersTextSaveBodyFields(w *TableWriter, value *WhereViewBlockersText) bool {
 	{
-		if value.ValueLength < 0 || value.ValueLength > 65710 {
-			return false
-		}
-		if value.ValueLength > 0 {
+		if tableTextRides(&value.Value, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(147, 0x7ce4fd9430e80cea); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.ValueLength < 0 || value.ValueLength > 65710 {
-				return false
-			}
 			{
-				n := int(value.ValueLength)
-				var hi, z uint64
-				p := value.Value[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Value[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Value[:n]) {
+				text, ok := tableTextBytes(&value.Value, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.ValueLength)) {
-				w.putLebWide(uint64(value.ValueLength))
-			}
-			w.Raw(value.Value[:value.ValueLength])
 		}
 	}
 	return !w.Overflow && !w.Ids.Overflow
@@ -48853,23 +47514,23 @@ func WhereViewBlockersTextLoadBody(r *TableReader, value *WhereViewBlockersText)
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "WhereView.blockers")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Value[:])
-				value.ValueLength = 0
+				tableTextMalformed(r.Report, "WhereView.blockers")
+				value.Value = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 65710 {
-				keep = tableUtf8Clamp(sub.Buffer, 65710)
-				r.Report.Clamped++
-				tableTextClamped(r.Report, "WhereView.blockers")
+			if !tableTextPlace(&r.Nodes.Carve, &value.Value, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "WhereView.blockers")
+				break
 			}
-			clear(value.Value[:])
-			copy(value.Value[:keep], sub.Buffer)
-			value.ValueLength = int32(keep)
 		default:
 			r.Report.Unknown++
 			if !r.Skip(kind) {
@@ -48897,53 +47558,20 @@ func WhereViewBlockersTextSaveBodyRetain(w *TableRetainWriter, value *WhereViewB
 }
 func WhereViewBlockersTextSaveBodyFieldsRetain(w *TableRetainWriter, value *WhereViewBlockersText) bool {
 	{
-		if value.ValueLength < 0 || value.ValueLength > 65710 {
-			return false
-		}
-		if value.ValueLength > 0 {
+		if tableTextRides(&value.Value, w.Ids.Numbering.arena) {
 			if ref := w.Ids.refAtHit(147, 0x7ce4fd9430e80cea); !w.headerPair(ref, 12) {
 				w.headerRest(ref, 12)
 			}
-			if value.ValueLength < 0 || value.ValueLength > 65710 {
-				return false
-			}
 			{
-				n := int(value.ValueLength)
-				var hi, z uint64
-				p := value.Value[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
-				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Value[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Value[:n]) {
+				text, ok := tableTextBytes(&value.Value, w.Ids.Numbering.arena)
+				if !ok || !tableUtf8Valid(text) {
 					return false
 				}
+				if !w.putLebPair(uint64(len(text))) {
+					w.putLebWide(uint64(len(text)))
+				}
+				w.Raw(text)
 			}
-			if !w.putLebPair(uint64(value.ValueLength)) {
-				w.putLebWide(uint64(value.ValueLength))
-			}
-			w.Raw(value.Value[:value.ValueLength])
 		}
 	}
 	if !tableRetainTail(w) {
@@ -48990,23 +47618,23 @@ func WhereViewBlockersTextLoadBodyRetain(r *TableRetainReader, value *WhereViewB
 			sub, ok := r.Body()
 			if !ok {
 				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "WhereView.blockers")
 				return false
 			}
 			if !tableUtf8Valid(sub.Buffer) {
 				r.Report.Malformed = true
-				clear(value.Value[:])
-				value.ValueLength = 0
+				tableTextMalformed(r.Report, "WhereView.blockers")
+				value.Value = 0
 				break
 			}
-			keep := int64(len(sub.Buffer))
-			if keep > 65710 {
-				keep = tableUtf8Clamp(sub.Buffer, 65710)
-				r.Report.Clamped++
-				tableTextClamped(r.Report, "WhereView.blockers")
+			if !tableTextPlace(&r.Nodes.Carve, &value.Value, sub.Buffer) {
+				if r.Nodes.Carve.Refused {
+					return false
+				}
+				r.Report.Malformed = true
+				tableTextMalformed(r.Report, "WhereView.blockers")
+				break
 			}
-			clear(value.Value[:])
-			copy(value.Value[:keep], sub.Buffer)
-			value.ValueLength = int32(keep)
 		default:
 			r.Report.Unknown++
 			if !r.capture(fieldID, kind) {
@@ -50918,7 +49546,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload201 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload157 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Tables)), &WhereViewTableFields[9], w.Ids.Numbering.arena)
 				defer cursor.Release()
 				for i := int32(0); i < value.Tables.Count; i++ {
@@ -50927,28 +49555,28 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 						return false
 					}
 					{
-						mark := payload201.Ids.Count
-						n := WhereViewTablesEntryMeasureBody(&(*p), payload201.Ids)
+						mark := payload157.Ids.Count
+						n := WhereViewTablesEntryMeasureBody(&(*p), payload157.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload201.putLebPair(uint64(n)) {
-							payload201.putLebWide(uint64(n))
+						if !payload157.putLebPair(uint64(n)) {
+							payload157.putLebWide(uint64(n))
 						}
-						if payload201.Measuring {
-							payload201.Advance(n)
+						if payload157.Measuring {
+							payload157.Advance(n)
 						} else {
-							payload201.Ids.Truncate(mark)
-							if !WhereViewTablesEntrySaveBody(&payload201, &(*p)) {
+							payload157.Ids.Truncate(mark)
+							if !WhereViewTablesEntrySaveBody(&payload157, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload201.Overflow {
+				if payload157.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Tables.Count)) + payload201.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Tables.Count)) + payload157.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -51003,7 +49631,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload204 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload160 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Tiers)), &WhereViewTableFields[10], w.Ids.Numbering.arena)
 				defer cursor.Release()
 				for i := int32(0); i < value.Tiers.Count; i++ {
@@ -51012,28 +49640,28 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 						return false
 					}
 					{
-						mark := payload204.Ids.Count
-						n := WhereViewTiersEntryMeasureBody(&(*p), payload204.Ids)
+						mark := payload160.Ids.Count
+						n := WhereViewTiersEntryMeasureBody(&(*p), payload160.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload204.putLebPair(uint64(n)) {
-							payload204.putLebWide(uint64(n))
+						if !payload160.putLebPair(uint64(n)) {
+							payload160.putLebWide(uint64(n))
 						}
-						if payload204.Measuring {
-							payload204.Advance(n)
+						if payload160.Measuring {
+							payload160.Advance(n)
 						} else {
-							payload204.Ids.Truncate(mark)
-							if !WhereViewTiersEntrySaveBody(&payload204, &(*p)) {
+							payload160.Ids.Truncate(mark)
+							if !WhereViewTiersEntrySaveBody(&payload160, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload204.Overflow {
+				if payload160.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Tiers.Count)) + payload204.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Tiers.Count)) + payload160.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -51088,7 +49716,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload207 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload163 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.StreamCosts)), &WhereViewTableFields[11], w.Ids.Numbering.arena)
 				defer cursor.Release()
 				for i := int32(0); i < value.StreamCosts.Count; i++ {
@@ -51097,28 +49725,28 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 						return false
 					}
 					{
-						mark := payload207.Ids.Count
-						n := WhereViewStreamCostsEntryMeasureBody(&(*p), payload207.Ids)
+						mark := payload163.Ids.Count
+						n := WhereViewStreamCostsEntryMeasureBody(&(*p), payload163.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload207.putLebPair(uint64(n)) {
-							payload207.putLebWide(uint64(n))
+						if !payload163.putLebPair(uint64(n)) {
+							payload163.putLebWide(uint64(n))
 						}
-						if payload207.Measuring {
-							payload207.Advance(n)
+						if payload163.Measuring {
+							payload163.Advance(n)
 						} else {
-							payload207.Ids.Truncate(mark)
-							if !WhereViewStreamCostsEntrySaveBody(&payload207, &(*p)) {
+							payload163.Ids.Truncate(mark)
+							if !WhereViewStreamCostsEntrySaveBody(&payload163, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload207.Overflow {
+				if payload163.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.StreamCosts.Count)) + payload207.Offset
+				n := int64(1) + tableLebBytes(uint64(value.StreamCosts.Count)) + payload163.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -51229,7 +49857,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload210 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload166 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.FirstTimeUnderTarget)), int64(unsafe.Sizeof(*new(WhereViewFirstTimeUnderTargetTextRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.FirstTimeUnderTarget.Count; i++ {
 					p := (*WhereViewFirstTimeUnderTargetTextRow)(cursor.Next())
@@ -51274,16 +49902,16 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 								return false
 							}
 						}
-						if !payload210.putLebPair(uint64(text.ValueLength)) {
-							payload210.putLebWide(uint64(text.ValueLength))
+						if !payload166.putLebPair(uint64(text.ValueLength)) {
+							payload166.putLebWide(uint64(text.ValueLength))
 						}
-						payload210.Raw(text.Value[:text.ValueLength])
+						payload166.Raw(text.Value[:text.ValueLength])
 					}
 				}
-				if payload210.Overflow {
+				if payload166.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.FirstTimeUnderTarget.Count)) + payload210.Offset
+				n := int64(1) + tableLebBytes(uint64(value.FirstTimeUnderTarget.Count)) + payload166.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -51362,7 +49990,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload213 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload169 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.FirstTimeRoutes)), &WhereViewTableFields[17], w.Ids.Numbering.arena)
 				defer cursor.Release()
 				for i := int32(0); i < value.FirstTimeRoutes.Count; i++ {
@@ -51371,28 +49999,28 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 						return false
 					}
 					{
-						mark := payload213.Ids.Count
-						n := WhereViewFirstTimeRoutesEntryMeasureBody(&(*p), payload213.Ids)
+						mark := payload169.Ids.Count
+						n := WhereViewFirstTimeRoutesEntryMeasureBody(&(*p), payload169.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload213.putLebPair(uint64(n)) {
-							payload213.putLebWide(uint64(n))
+						if !payload169.putLebPair(uint64(n)) {
+							payload169.putLebWide(uint64(n))
 						}
-						if payload213.Measuring {
-							payload213.Advance(n)
+						if payload169.Measuring {
+							payload169.Advance(n)
 						} else {
-							payload213.Ids.Truncate(mark)
-							if !WhereViewFirstTimeRoutesEntrySaveBody(&payload213, &(*p)) {
+							payload169.Ids.Truncate(mark)
+							if !WhereViewFirstTimeRoutesEntrySaveBody(&payload169, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload213.Overflow {
+				if payload169.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.FirstTimeRoutes.Count)) + payload213.Offset
+				n := int64(1) + tableLebBytes(uint64(value.FirstTimeRoutes.Count)) + payload169.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -51467,7 +50095,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload216 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload172 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Streams)), int64(unsafe.Sizeof(*new(StreamClockRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Streams.Count; i++ {
 					p := (*StreamClockRow)(cursor.Next())
@@ -51475,28 +50103,28 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 						return false
 					}
 					{
-						mark := payload216.Ids.Count
-						n := StreamClockMeasureBody(&(*p), payload216.Ids)
+						mark := payload172.Ids.Count
+						n := StreamClockMeasureBody(&(*p), payload172.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload216.putLebPair(uint64(n)) {
-							payload216.putLebWide(uint64(n))
+						if !payload172.putLebPair(uint64(n)) {
+							payload172.putLebWide(uint64(n))
 						}
-						if payload216.Measuring {
-							payload216.Advance(n)
+						if payload172.Measuring {
+							payload172.Advance(n)
 						} else {
-							payload216.Ids.Truncate(mark)
-							if !StreamClockSaveBody(&payload216, &(*p)) {
+							payload172.Ids.Truncate(mark)
+							if !StreamClockSaveBody(&payload172, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload216.Overflow {
+				if payload172.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Streams.Count)) + payload216.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Streams.Count)) + payload172.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -51579,7 +50207,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload219 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload175 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Stalled)), int64(unsafe.Sizeof(*new(WhereViewStalledTextRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Stalled.Count; i++ {
 					p := (*WhereViewStalledTextRow)(cursor.Next())
@@ -51624,16 +50252,16 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 								return false
 							}
 						}
-						if !payload219.putLebPair(uint64(text.ValueLength)) {
-							payload219.putLebWide(uint64(text.ValueLength))
+						if !payload175.putLebPair(uint64(text.ValueLength)) {
+							payload175.putLebWide(uint64(text.ValueLength))
 						}
-						payload219.Raw(text.Value[:text.ValueLength])
+						payload175.Raw(text.Value[:text.ValueLength])
 					}
 				}
-				if payload219.Overflow {
+				if payload175.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Stalled.Count)) + payload219.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Stalled.Count)) + payload175.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -51712,7 +50340,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload222 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload178 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Critical)), int64(unsafe.Sizeof(*new(CriticalCardRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Critical.Count; i++ {
 					p := (*CriticalCardRow)(cursor.Next())
@@ -51720,28 +50348,28 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 						return false
 					}
 					{
-						mark := payload222.Ids.Count
-						n := CriticalCardMeasureBody(&(*p), payload222.Ids)
+						mark := payload178.Ids.Count
+						n := CriticalCardMeasureBody(&(*p), payload178.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload222.putLebPair(uint64(n)) {
-							payload222.putLebWide(uint64(n))
+						if !payload178.putLebPair(uint64(n)) {
+							payload178.putLebWide(uint64(n))
 						}
-						if payload222.Measuring {
-							payload222.Advance(n)
+						if payload178.Measuring {
+							payload178.Advance(n)
 						} else {
-							payload222.Ids.Truncate(mark)
-							if !CriticalCardSaveBody(&payload222, &(*p)) {
+							payload178.Ids.Truncate(mark)
+							if !CriticalCardSaveBody(&payload178, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload222.Overflow {
+				if payload178.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Critical.Count)) + payload222.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Critical.Count)) + payload178.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -51795,7 +50423,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload225 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload181 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Blockers)), int64(unsafe.Sizeof(*new(WhereViewBlockersTextRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Blockers.Count; i++ {
 					p := (*WhereViewBlockersTextRow)(cursor.Next())
@@ -51804,52 +50432,22 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 					}
 					{
 						text := &(*p)
-						if text.ValueLength < 0 || text.ValueLength > 65710 {
-							return false
-						}
 						{
-							n := int(text.ValueLength)
-							var hi, z uint64
-							p := text.Value[:n]
-							for len(p) >= 16 {
-								x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-								hi |= x | y
-								z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-								p = p[16:]
-							}
-							if len(p) >= 8 {
-								x := tableUtf8Word(p)
-								hi |= x
-								z |= (x - 0x0101010101010101) &^ x
-								p = p[8:]
-							}
-							if len(p) > 0 {
-								if n >= 8 {
-									x := tableUtf8Word(text.Value[n-8:])
-									hi |= x
-									z |= (x - 0x0101010101010101) &^ x
-								} else {
-									for _, c := range p {
-										x := uint64(c)
-										hi |= x
-										z |= (x - 1) &^ x
-									}
-								}
-							}
-							if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(text.Value[:n]) {
+							text, ok := tableTextBytes(&text.Value, payload181.Ids.Numbering.arena)
+							if !ok || !tableUtf8Valid(text) {
 								return false
 							}
+							if !payload181.putLebPair(uint64(len(text))) {
+								payload181.putLebWide(uint64(len(text)))
+							}
+							payload181.Raw(text)
 						}
-						if !payload225.putLebPair(uint64(text.ValueLength)) {
-							payload225.putLebWide(uint64(text.ValueLength))
-						}
-						payload225.Raw(text.Value[:text.ValueLength])
 					}
 				}
-				if payload225.Overflow {
+				if payload181.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Blockers.Count)) + payload225.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Blockers.Count)) + payload181.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -51869,46 +50467,16 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 						}
 						{
 							text := &(*p)
-							if text.ValueLength < 0 || text.ValueLength > 65710 {
-								return false
-							}
 							{
-								n := int(text.ValueLength)
-								var hi, z uint64
-								p := text.Value[:n]
-								for len(p) >= 16 {
-									x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-									hi |= x | y
-									z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-									p = p[16:]
-								}
-								if len(p) >= 8 {
-									x := tableUtf8Word(p)
-									hi |= x
-									z |= (x - 0x0101010101010101) &^ x
-									p = p[8:]
-								}
-								if len(p) > 0 {
-									if n >= 8 {
-										x := tableUtf8Word(text.Value[n-8:])
-										hi |= x
-										z |= (x - 0x0101010101010101) &^ x
-									} else {
-										for _, c := range p {
-											x := uint64(c)
-											hi |= x
-											z |= (x - 1) &^ x
-										}
-									}
-								}
-								if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(text.Value[:n]) {
+								text, ok := tableTextBytes(&text.Value, w.Ids.Numbering.arena)
+								if !ok || !tableUtf8Valid(text) {
 									return false
 								}
+								if !w.putLebPair(uint64(len(text))) {
+									w.putLebWide(uint64(len(text)))
+								}
+								w.Raw(text)
 							}
-							if !w.putLebPair(uint64(text.ValueLength)) {
-								w.putLebWide(uint64(text.ValueLength))
-							}
-							w.Raw(text.Value[:text.ValueLength])
 						}
 					}
 				}
@@ -52104,7 +50672,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload228 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload184 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.FleetTiers)), int64(unsafe.Sizeof(*new(WhereViewFleetTiersTextRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.FleetTiers.Count; i++ {
 					p := (*WhereViewFleetTiersTextRow)(cursor.Next())
@@ -52143,16 +50711,16 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 								return false
 							}
 						}
-						if !payload228.putLebPair(uint64(text.ValueLength)) {
-							payload228.putLebWide(uint64(text.ValueLength))
+						if !payload184.putLebPair(uint64(text.ValueLength)) {
+							payload184.putLebWide(uint64(text.ValueLength))
 						}
-						payload228.Raw(text.Value[:text.ValueLength])
+						payload184.Raw(text.Value[:text.ValueLength])
 					}
 				}
-				if payload228.Overflow {
+				if payload184.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.FleetTiers.Count)) + payload228.Offset
+				n := int64(1) + tableLebBytes(uint64(value.FleetTiers.Count)) + payload184.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -52225,7 +50793,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload231 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload187 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.FriendsTiers)), int64(unsafe.Sizeof(*new(WhereViewFriendsTiersTextRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.FriendsTiers.Count; i++ {
 					p := (*WhereViewFriendsTiersTextRow)(cursor.Next())
@@ -52264,16 +50832,16 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 								return false
 							}
 						}
-						if !payload231.putLebPair(uint64(text.ValueLength)) {
-							payload231.putLebWide(uint64(text.ValueLength))
+						if !payload187.putLebPair(uint64(text.ValueLength)) {
+							payload187.putLebWide(uint64(text.ValueLength))
 						}
-						payload231.Raw(text.Value[:text.ValueLength])
+						payload187.Raw(text.Value[:text.ValueLength])
 					}
 				}
-				if payload231.Overflow {
+				if payload187.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.FriendsTiers.Count)) + payload231.Offset
+				n := int64(1) + tableLebBytes(uint64(value.FriendsTiers.Count)) + payload187.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -52366,7 +50934,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload234 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload190 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Goals)), int64(unsafe.Sizeof(*new(GoalViewRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Goals.Count; i++ {
 					p := (*GoalViewRow)(cursor.Next())
@@ -52374,28 +50942,28 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 						return false
 					}
 					{
-						mark := payload234.Ids.Count
-						n := GoalViewMeasureBody(&(*p), payload234.Ids)
+						mark := payload190.Ids.Count
+						n := GoalViewMeasureBody(&(*p), payload190.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload234.putLebPair(uint64(n)) {
-							payload234.putLebWide(uint64(n))
+						if !payload190.putLebPair(uint64(n)) {
+							payload190.putLebWide(uint64(n))
 						}
-						if payload234.Measuring {
-							payload234.Advance(n)
+						if payload190.Measuring {
+							payload190.Advance(n)
 						} else {
-							payload234.Ids.Truncate(mark)
-							if !GoalViewSaveBody(&payload234, &(*p)) {
+							payload190.Ids.Truncate(mark)
+							if !GoalViewSaveBody(&payload190, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload234.Overflow {
+				if payload190.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Goals.Count)) + payload234.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Goals.Count)) + payload190.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -52469,7 +51037,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload237 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload193 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Holds)), int64(unsafe.Sizeof(*new(HoldViewRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Holds.Count; i++ {
 					p := (*HoldViewRow)(cursor.Next())
@@ -52477,28 +51045,28 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 						return false
 					}
 					{
-						mark := payload237.Ids.Count
-						n := HoldViewMeasureBody(&(*p), payload237.Ids)
+						mark := payload193.Ids.Count
+						n := HoldViewMeasureBody(&(*p), payload193.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload237.putLebPair(uint64(n)) {
-							payload237.putLebWide(uint64(n))
+						if !payload193.putLebPair(uint64(n)) {
+							payload193.putLebWide(uint64(n))
 						}
-						if payload237.Measuring {
-							payload237.Advance(n)
+						if payload193.Measuring {
+							payload193.Advance(n)
 						} else {
-							payload237.Ids.Truncate(mark)
-							if !HoldViewSaveBody(&payload237, &(*p)) {
+							payload193.Ids.Truncate(mark)
+							if !HoldViewSaveBody(&payload193, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload237.Overflow {
+				if payload193.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Holds.Count)) + payload237.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Holds.Count)) + payload193.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -52572,7 +51140,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload240 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload196 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Stops)), int64(unsafe.Sizeof(*new(StopRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Stops.Count; i++ {
 					p := (*StopRow)(cursor.Next())
@@ -52580,28 +51148,28 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 						return false
 					}
 					{
-						mark := payload240.Ids.Count
-						n := StopMeasureBody(&(*p), payload240.Ids)
+						mark := payload196.Ids.Count
+						n := StopMeasureBody(&(*p), payload196.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload240.putLebPair(uint64(n)) {
-							payload240.putLebWide(uint64(n))
+						if !payload196.putLebPair(uint64(n)) {
+							payload196.putLebWide(uint64(n))
 						}
-						if payload240.Measuring {
-							payload240.Advance(n)
+						if payload196.Measuring {
+							payload196.Advance(n)
 						} else {
-							payload240.Ids.Truncate(mark)
-							if !StopSaveBody(&payload240, &(*p)) {
+							payload196.Ids.Truncate(mark)
+							if !StopSaveBody(&payload196, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload240.Overflow {
+				if payload196.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Stops.Count)) + payload240.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Stops.Count)) + payload196.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -52655,7 +51223,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload243 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload199 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Providers)), int64(unsafe.Sizeof(*new(ProviderViewRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Providers.Count; i++ {
 					p := (*ProviderViewRow)(cursor.Next())
@@ -52663,28 +51231,28 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 						return false
 					}
 					{
-						mark := payload243.Ids.Count
-						n := ProviderViewMeasureBody(&(*p), payload243.Ids)
+						mark := payload199.Ids.Count
+						n := ProviderViewMeasureBody(&(*p), payload199.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload243.putLebPair(uint64(n)) {
-							payload243.putLebWide(uint64(n))
+						if !payload199.putLebPair(uint64(n)) {
+							payload199.putLebWide(uint64(n))
 						}
-						if payload243.Measuring {
-							payload243.Advance(n)
+						if payload199.Measuring {
+							payload199.Advance(n)
 						} else {
-							payload243.Ids.Truncate(mark)
-							if !ProviderViewSaveBody(&payload243, &(*p)) {
+							payload199.Ids.Truncate(mark)
+							if !ProviderViewSaveBody(&payload199, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload243.Overflow {
+				if payload199.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Providers.Count)) + payload243.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Providers.Count)) + payload199.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -52765,7 +51333,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload246 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload202 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Lanes)), int64(unsafe.Sizeof(*new(LaneRowRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Lanes.Count; i++ {
 					p := (*LaneRowRow)(cursor.Next())
@@ -52773,28 +51341,28 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 						return false
 					}
 					{
-						mark := payload246.Ids.Count
-						n := LaneRowMeasureBody(&(*p), payload246.Ids)
+						mark := payload202.Ids.Count
+						n := LaneRowMeasureBody(&(*p), payload202.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload246.putLebPair(uint64(n)) {
-							payload246.putLebWide(uint64(n))
+						if !payload202.putLebPair(uint64(n)) {
+							payload202.putLebWide(uint64(n))
 						}
-						if payload246.Measuring {
-							payload246.Advance(n)
+						if payload202.Measuring {
+							payload202.Advance(n)
 						} else {
-							payload246.Ids.Truncate(mark)
-							if !LaneRowSaveBody(&payload246, &(*p)) {
+							payload202.Ids.Truncate(mark)
+							if !LaneRowSaveBody(&payload202, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload246.Overflow {
+				if payload202.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Lanes.Count)) + payload246.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Lanes.Count)) + payload202.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -52848,7 +51416,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload249 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload205 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Cards)), int64(unsafe.Sizeof(*new(DealtCardRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Cards.Count; i++ {
 					p := (*DealtCardRow)(cursor.Next())
@@ -52856,28 +51424,28 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 						return false
 					}
 					{
-						mark := payload249.Ids.Count
-						n := DealtCardMeasureBody(&(*p), payload249.Ids)
+						mark := payload205.Ids.Count
+						n := DealtCardMeasureBody(&(*p), payload205.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload249.putLebPair(uint64(n)) {
-							payload249.putLebWide(uint64(n))
+						if !payload205.putLebPair(uint64(n)) {
+							payload205.putLebWide(uint64(n))
 						}
-						if payload249.Measuring {
-							payload249.Advance(n)
+						if payload205.Measuring {
+							payload205.Advance(n)
 						} else {
-							payload249.Ids.Truncate(mark)
-							if !DealtCardSaveBody(&payload249, &(*p)) {
+							payload205.Ids.Truncate(mark)
+							if !DealtCardSaveBody(&payload205, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload249.Overflow {
+				if payload205.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Cards.Count)) + payload249.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Cards.Count)) + payload205.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -52931,7 +51499,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload252 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload208 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Merging)), int64(unsafe.Sizeof(*new(MergingCardRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Merging.Count; i++ {
 					p := (*MergingCardRow)(cursor.Next())
@@ -52939,28 +51507,28 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 						return false
 					}
 					{
-						mark := payload252.Ids.Count
-						n := MergingCardMeasureBody(&(*p), payload252.Ids)
+						mark := payload208.Ids.Count
+						n := MergingCardMeasureBody(&(*p), payload208.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload252.putLebPair(uint64(n)) {
-							payload252.putLebWide(uint64(n))
+						if !payload208.putLebPair(uint64(n)) {
+							payload208.putLebWide(uint64(n))
 						}
-						if payload252.Measuring {
-							payload252.Advance(n)
+						if payload208.Measuring {
+							payload208.Advance(n)
 						} else {
-							payload252.Ids.Truncate(mark)
-							if !MergingCardSaveBody(&payload252, &(*p)) {
+							payload208.Ids.Truncate(mark)
+							if !MergingCardSaveBody(&payload208, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload252.Overflow {
+				if payload208.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Merging.Count)) + payload252.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Merging.Count)) + payload208.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -53014,7 +51582,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload255 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload211 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Judgments)), int64(unsafe.Sizeof(*new(JudgmentRefRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Judgments.Count; i++ {
 					p := (*JudgmentRefRow)(cursor.Next())
@@ -53022,28 +51590,28 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 						return false
 					}
 					{
-						mark := payload255.Ids.Count
-						n := JudgmentRefMeasureBody(&(*p), payload255.Ids)
+						mark := payload211.Ids.Count
+						n := JudgmentRefMeasureBody(&(*p), payload211.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload255.putLebPair(uint64(n)) {
-							payload255.putLebWide(uint64(n))
+						if !payload211.putLebPair(uint64(n)) {
+							payload211.putLebWide(uint64(n))
 						}
-						if payload255.Measuring {
-							payload255.Advance(n)
+						if payload211.Measuring {
+							payload211.Advance(n)
 						} else {
-							payload255.Ids.Truncate(mark)
-							if !JudgmentRefSaveBody(&payload255, &(*p)) {
+							payload211.Ids.Truncate(mark)
+							if !JudgmentRefSaveBody(&payload211, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload255.Overflow {
+				if payload211.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Judgments.Count)) + payload255.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Judgments.Count)) + payload211.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -53097,7 +51665,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload258 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload214 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Rows)), int64(unsafe.Sizeof(*new(PrimaryRowRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Rows.Count; i++ {
 					p := (*PrimaryRowRow)(cursor.Next())
@@ -53105,28 +51673,28 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 						return false
 					}
 					{
-						mark := payload258.Ids.Count
-						n := PrimaryRowMeasureBody(&(*p), payload258.Ids)
+						mark := payload214.Ids.Count
+						n := PrimaryRowMeasureBody(&(*p), payload214.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload258.putLebPair(uint64(n)) {
-							payload258.putLebWide(uint64(n))
+						if !payload214.putLebPair(uint64(n)) {
+							payload214.putLebWide(uint64(n))
 						}
-						if payload258.Measuring {
-							payload258.Advance(n)
+						if payload214.Measuring {
+							payload214.Advance(n)
 						} else {
-							payload258.Ids.Truncate(mark)
-							if !PrimaryRowSaveBody(&payload258, &(*p)) {
+							payload214.Ids.Truncate(mark)
+							if !PrimaryRowSaveBody(&payload214, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload258.Overflow {
+				if payload214.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Rows.Count)) + payload258.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Rows.Count)) + payload214.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -53318,7 +51886,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload261 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload217 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Priorities)), &WhereViewTableFields[57], w.Ids.Numbering.arena)
 				defer cursor.Release()
 				for i := int32(0); i < value.Priorities.Count; i++ {
@@ -53327,28 +51895,28 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 						return false
 					}
 					{
-						mark := payload261.Ids.Count
-						n := WhereViewPrioritiesEntryMeasureBody(&(*p), payload261.Ids)
+						mark := payload217.Ids.Count
+						n := WhereViewPrioritiesEntryMeasureBody(&(*p), payload217.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload261.putLebPair(uint64(n)) {
-							payload261.putLebWide(uint64(n))
+						if !payload217.putLebPair(uint64(n)) {
+							payload217.putLebWide(uint64(n))
 						}
-						if payload261.Measuring {
-							payload261.Advance(n)
+						if payload217.Measuring {
+							payload217.Advance(n)
 						} else {
-							payload261.Ids.Truncate(mark)
-							if !WhereViewPrioritiesEntrySaveBody(&payload261, &(*p)) {
+							payload217.Ids.Truncate(mark)
+							if !WhereViewPrioritiesEntrySaveBody(&payload217, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload261.Overflow {
+				if payload217.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Priorities.Count)) + payload261.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Priorities.Count)) + payload217.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -53403,7 +51971,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload264 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload220 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.StreamPriorities)), &WhereViewTableFields[58], w.Ids.Numbering.arena)
 				defer cursor.Release()
 				for i := int32(0); i < value.StreamPriorities.Count; i++ {
@@ -53412,28 +51980,28 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 						return false
 					}
 					{
-						mark := payload264.Ids.Count
-						n := WhereViewStreamPrioritiesEntryMeasureBody(&(*p), payload264.Ids)
+						mark := payload220.Ids.Count
+						n := WhereViewStreamPrioritiesEntryMeasureBody(&(*p), payload220.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload264.putLebPair(uint64(n)) {
-							payload264.putLebWide(uint64(n))
+						if !payload220.putLebPair(uint64(n)) {
+							payload220.putLebWide(uint64(n))
 						}
-						if payload264.Measuring {
-							payload264.Advance(n)
+						if payload220.Measuring {
+							payload220.Advance(n)
 						} else {
-							payload264.Ids.Truncate(mark)
-							if !WhereViewStreamPrioritiesEntrySaveBody(&payload264, &(*p)) {
+							payload220.Ids.Truncate(mark)
+							if !WhereViewStreamPrioritiesEntrySaveBody(&payload220, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload264.Overflow {
+				if payload220.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.StreamPriorities.Count)) + payload264.Offset
+				n := int64(1) + tableLebBytes(uint64(value.StreamPriorities.Count)) + payload220.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -53555,7 +52123,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload267 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload223 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(&value.Friends)), int64(unsafe.Sizeof(*new(FriendRowRow))), w.Ids.Numbering.arena)
 				for i := int32(0); i < value.Friends.Count; i++ {
 					p := (*FriendRowRow)(cursor.Next())
@@ -53563,28 +52131,28 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 						return false
 					}
 					{
-						mark := payload267.Ids.Count
-						n := FriendRowMeasureBody(&(*p), payload267.Ids)
+						mark := payload223.Ids.Count
+						n := FriendRowMeasureBody(&(*p), payload223.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload267.putLebPair(uint64(n)) {
-							payload267.putLebWide(uint64(n))
+						if !payload223.putLebPair(uint64(n)) {
+							payload223.putLebWide(uint64(n))
 						}
-						if payload267.Measuring {
-							payload267.Advance(n)
+						if payload223.Measuring {
+							payload223.Advance(n)
 						} else {
-							payload267.Ids.Truncate(mark)
-							if !FriendRowSaveBody(&payload267, &(*p)) {
+							payload223.Ids.Truncate(mark)
+							if !FriendRowSaveBody(&payload223, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload267.Overflow {
+				if payload223.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Friends.Count)) + payload267.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Friends.Count)) + payload223.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -53638,7 +52206,7 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 			}
 			{
 				mark := w.Ids.Count
-				payload270 := TableWriter{Measuring: true, Ids: w.Ids}
+				payload226 := TableWriter{Measuring: true, Ids: w.Ids}
 				cursor := tableMapCursor((*tableContainer)(unsafe.Pointer(&value.Releases)), &WhereViewTableFields[64], w.Ids.Numbering.arena)
 				defer cursor.Release()
 				for i := int32(0); i < value.Releases.Count; i++ {
@@ -53647,28 +52215,28 @@ func WhereViewSaveBodyFields(w *TableWriter, value *WhereView) bool {
 						return false
 					}
 					{
-						mark := payload270.Ids.Count
-						n := WhereViewReleasesEntryMeasureBody(&(*p), payload270.Ids)
+						mark := payload226.Ids.Count
+						n := WhereViewReleasesEntryMeasureBody(&(*p), payload226.Ids)
 						if n < 0 {
 							return false
 						}
-						if !payload270.putLebPair(uint64(n)) {
-							payload270.putLebWide(uint64(n))
+						if !payload226.putLebPair(uint64(n)) {
+							payload226.putLebWide(uint64(n))
 						}
-						if payload270.Measuring {
-							payload270.Advance(n)
+						if payload226.Measuring {
+							payload226.Advance(n)
 						} else {
-							payload270.Ids.Truncate(mark)
-							if !WhereViewReleasesEntrySaveBody(&payload270, &(*p)) {
+							payload226.Ids.Truncate(mark)
+							if !WhereViewReleasesEntrySaveBody(&payload226, &(*p)) {
 								return false
 							}
 						}
 					}
 				}
-				if payload270.Overflow {
+				if payload226.Overflow {
 					return false
 				}
-				n := int64(1) + tableLebBytes(uint64(value.Releases.Count)) + payload270.Offset
+				n := int64(1) + tableLebBytes(uint64(value.Releases.Count)) + payload226.Offset
 				if !w.putLebPair(uint64(n)) {
 					w.putLebWide(uint64(n))
 				}
@@ -54125,7 +52693,7 @@ func WhereViewLoadBody(r *TableReader, value *WhereView) bool {
 				}
 				field := &WhereViewTableFields[10]
 				holder := (*tableContainer)(unsafe.Pointer(&value.Tiers))
-				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 144, 8) {
+				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 16, 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -54141,6 +52709,7 @@ func WhereViewLoadBody(r *TableReader, value *WhereView) bool {
 					elem, ok := sub.Body()
 					if !ok {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereView.tiers")
 						break
 					}
 					key, bad, over, wide, whole := tableMapReadKey(elem, &field.Table().Fields[0])
@@ -54155,6 +52724,7 @@ func WhereViewLoadBody(r *TableReader, value *WhereView) bool {
 					}
 					if !whole {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereView.tiers")
 						break
 					}
 					if over {
@@ -54167,13 +52737,14 @@ func WhereViewLoadBody(r *TableReader, value *WhereView) bool {
 					}
 					if order > 0 {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereView.tiers")
 						break
 					}
 					p := prior
 					if order == 0 {
 						r.Report.Duplicate++
 					} else {
-						p = (*WhereViewTiersEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 144))
+						p = (*WhereViewTiersEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 16))
 						if p == nil {
 							r.Report.Malformed = true
 							break
@@ -54504,7 +53075,7 @@ func WhereViewLoadBody(r *TableReader, value *WhereView) bool {
 				}
 				field := &WhereViewTableFields[17]
 				holder := (*tableContainer)(unsafe.Pointer(&value.FirstTimeRoutes))
-				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 144, 8) {
+				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 16, 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -54520,6 +53091,7 @@ func WhereViewLoadBody(r *TableReader, value *WhereView) bool {
 					elem, ok := sub.Body()
 					if !ok {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereView.first_time_routes")
 						break
 					}
 					key, bad, over, wide, whole := tableMapReadKey(elem, &field.Table().Fields[0])
@@ -54534,6 +53106,7 @@ func WhereViewLoadBody(r *TableReader, value *WhereView) bool {
 					}
 					if !whole {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereView.first_time_routes")
 						break
 					}
 					if over {
@@ -54546,13 +53119,14 @@ func WhereViewLoadBody(r *TableReader, value *WhereView) bool {
 					}
 					if order > 0 {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereView.first_time_routes")
 						break
 					}
 					p := prior
 					if order == 0 {
 						r.Report.Duplicate++
 					} else {
-						p = (*WhereViewFirstTimeRoutesEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 144))
+						p = (*WhereViewFirstTimeRoutesEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 16))
 						if p == nil {
 							r.Report.Malformed = true
 							break
@@ -54895,7 +53469,7 @@ func WhereViewLoadBody(r *TableReader, value *WhereView) bool {
 					r.Report.Widened++
 				}
 				slot := (*tableContainer)(unsafe.Pointer(&value.Blockers))
-				if !tableContainerFill(&sub.Nodes.Carve, slot, count, int64(unsafe.Sizeof(*new(WhereViewBlockersTextRow))), 4) {
+				if !tableContainerFill(&sub.Nodes.Carve, slot, count, int64(unsafe.Sizeof(*new(WhereViewBlockersTextRow))), 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -54915,22 +53489,24 @@ func WhereViewLoadBody(r *TableReader, value *WhereView) bool {
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "WhereView.blockers")
 							break
 						}
 						if !tableUtf8Valid(elem.Buffer) {
 							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "WhereView.blockers")
 							WhereViewBlockersTextReset(&(*p))
 							break
 						}
-						keep := int64(len(elem.Buffer))
-						if keep > 65710 {
-							keep = tableUtf8Clamp(elem.Buffer, 65710)
-							r.Report.Clamped++
-							tableTextClamped(r.Report, "WhereView.blockers")
+						if !tableTextPlace(&sub.Nodes.Carve, &(*p).Value, elem.Buffer) {
+							if sub.Nodes.Carve.Refused {
+								r.Take(sub)
+								return false
+							}
+							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "WhereView.blockers")
+							break
 						}
-						clear((*p).Value[:])
-						copy((*p).Value[:keep], elem.Buffer)
-						(*p).ValueLength = int32(keep)
 						landed = true
 					}
 					if !landed {
@@ -58035,46 +56611,16 @@ func WhereViewSaveBodyFieldsRetain(w *TableRetainWriter, value *WhereView) bool 
 					}
 					{
 						text := &(*p)
-						if text.ValueLength < 0 || text.ValueLength > 65710 {
-							return false
-						}
 						{
-							n := int(text.ValueLength)
-							var hi, z uint64
-							p := text.Value[:n]
-							for len(p) >= 16 {
-								x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-								hi |= x | y
-								z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-								p = p[16:]
-							}
-							if len(p) >= 8 {
-								x := tableUtf8Word(p)
-								hi |= x
-								z |= (x - 0x0101010101010101) &^ x
-								p = p[8:]
-							}
-							if len(p) > 0 {
-								if n >= 8 {
-									x := tableUtf8Word(text.Value[n-8:])
-									hi |= x
-									z |= (x - 0x0101010101010101) &^ x
-								} else {
-									for _, c := range p {
-										x := uint64(c)
-										hi |= x
-										z |= (x - 1) &^ x
-									}
-								}
-							}
-							if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(text.Value[:n]) {
+							text, ok := tableTextBytes(&text.Value, payload41.Ids.Numbering.arena)
+							if !ok || !tableUtf8Valid(text) {
 								return false
 							}
+							if !payload41.putLebPair(uint64(len(text))) {
+								payload41.putLebWide(uint64(len(text)))
+							}
+							payload41.Raw(text)
 						}
-						if !payload41.putLebPair(uint64(text.ValueLength)) {
-							payload41.putLebWide(uint64(text.ValueLength))
-						}
-						payload41.Raw(text.Value[:text.ValueLength])
 					}
 				}
 				if payload41.Overflow {
@@ -58100,46 +56646,16 @@ func WhereViewSaveBodyFieldsRetain(w *TableRetainWriter, value *WhereView) bool 
 						}
 						{
 							text := &(*p)
-							if text.ValueLength < 0 || text.ValueLength > 65710 {
-								return false
-							}
 							{
-								n := int(text.ValueLength)
-								var hi, z uint64
-								p := text.Value[:n]
-								for len(p) >= 16 {
-									x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-									hi |= x | y
-									z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-									p = p[16:]
-								}
-								if len(p) >= 8 {
-									x := tableUtf8Word(p)
-									hi |= x
-									z |= (x - 0x0101010101010101) &^ x
-									p = p[8:]
-								}
-								if len(p) > 0 {
-									if n >= 8 {
-										x := tableUtf8Word(text.Value[n-8:])
-										hi |= x
-										z |= (x - 0x0101010101010101) &^ x
-									} else {
-										for _, c := range p {
-											x := uint64(c)
-											hi |= x
-											z |= (x - 1) &^ x
-										}
-									}
-								}
-								if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(text.Value[:n]) {
+								text, ok := tableTextBytes(&text.Value, w.Ids.Numbering.arena)
+								if !ok || !tableUtf8Valid(text) {
 									return false
 								}
+								if !w.putLebPair(uint64(len(text))) {
+									w.putLebWide(uint64(len(text)))
+								}
+								w.Raw(text)
 							}
-							if !w.putLebPair(uint64(text.ValueLength)) {
-								w.putLebWide(uint64(text.ValueLength))
-							}
-							w.Raw(text.Value[:text.ValueLength])
 						}
 					}
 				}
@@ -60653,7 +59169,7 @@ func WhereViewLoadBodyRetain(r *TableRetainReader, value *WhereView) bool {
 				}
 				field := &WhereViewTableFields[10]
 				holder := (*tableContainer)(unsafe.Pointer(&value.Tiers))
-				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 144, 8) {
+				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 16, 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -60670,6 +59186,7 @@ func WhereViewLoadBodyRetain(r *TableRetainReader, value *WhereView) bool {
 					elem, ok := sub.Body()
 					if !ok {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereView.tiers")
 						break
 					}
 					key, bad, over, wide, whole := tableMapReadKey(elem.tableRetainPlainReader, &field.Table().Fields[0])
@@ -60684,6 +59201,7 @@ func WhereViewLoadBodyRetain(r *TableRetainReader, value *WhereView) bool {
 					}
 					if !whole {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereView.tiers")
 						break
 					}
 					if over {
@@ -60696,13 +59214,14 @@ func WhereViewLoadBodyRetain(r *TableRetainReader, value *WhereView) bool {
 					}
 					if order > 0 {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereView.tiers")
 						break
 					}
 					p := prior
 					if order == 0 {
 						r.Report.Duplicate++
 					} else {
-						p = (*WhereViewTiersEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 144))
+						p = (*WhereViewTiersEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 16))
 						if p == nil {
 							r.Report.Malformed = true
 							break
@@ -61037,7 +59556,7 @@ func WhereViewLoadBodyRetain(r *TableRetainReader, value *WhereView) bool {
 				}
 				field := &WhereViewTableFields[17]
 				holder := (*tableContainer)(unsafe.Pointer(&value.FirstTimeRoutes))
-				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 144, 8) {
+				if !tableContainerFill(&sub.Nodes.Carve, holder, count, 16, 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -61054,6 +59573,7 @@ func WhereViewLoadBodyRetain(r *TableRetainReader, value *WhereView) bool {
 					elem, ok := sub.Body()
 					if !ok {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereView.first_time_routes")
 						break
 					}
 					key, bad, over, wide, whole := tableMapReadKey(elem.tableRetainPlainReader, &field.Table().Fields[0])
@@ -61068,6 +59588,7 @@ func WhereViewLoadBodyRetain(r *TableRetainReader, value *WhereView) bool {
 					}
 					if !whole {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereView.first_time_routes")
 						break
 					}
 					if over {
@@ -61080,13 +59601,14 @@ func WhereViewLoadBodyRetain(r *TableRetainReader, value *WhereView) bool {
 					}
 					if order > 0 {
 						r.Report.Malformed = true
+						tableTextMalformed(r.Report, "WhereView.first_time_routes")
 						break
 					}
 					p := prior
 					if order == 0 {
 						r.Report.Duplicate++
 					} else {
-						p = (*WhereViewFirstTimeRoutesEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 144))
+						p = (*WhereViewFirstTimeRoutesEntryRow)(tableContainerFillAt(&sub.Nodes.Carve, holder, holder.Count, 16))
 						if p == nil {
 							r.Report.Malformed = true
 							break
@@ -61437,7 +59959,7 @@ func WhereViewLoadBodyRetain(r *TableRetainReader, value *WhereView) bool {
 				}
 				r.Retain.discard(r.Path, true, 23)
 				slot := (*tableContainer)(unsafe.Pointer(&value.Blockers))
-				if !tableContainerFill(&sub.Nodes.Carve, slot, count, int64(unsafe.Sizeof(*new(WhereViewBlockersTextRow))), 4) {
+				if !tableContainerFill(&sub.Nodes.Carve, slot, count, int64(unsafe.Sizeof(*new(WhereViewBlockersTextRow))), 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -61457,22 +59979,24 @@ func WhereViewLoadBodyRetain(r *TableRetainReader, value *WhereView) bool {
 						elem, ok := sub.Body()
 						if !ok {
 							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "WhereView.blockers")
 							break
 						}
 						if !tableUtf8Valid(elem.Buffer) {
 							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "WhereView.blockers")
 							WhereViewBlockersTextReset(&(*p))
 							break
 						}
-						keep := int64(len(elem.Buffer))
-						if keep > 65710 {
-							keep = tableUtf8Clamp(elem.Buffer, 65710)
-							r.Report.Clamped++
-							tableTextClamped(r.Report, "WhereView.blockers")
+						if !tableTextPlace(&sub.Nodes.Carve, &(*p).Value, elem.Buffer) {
+							if sub.Nodes.Carve.Refused {
+								r.Take(sub)
+								return false
+							}
+							r.Report.Malformed = true
+							tableTextMalformed(r.Report, "WhereView.blockers")
+							break
 						}
-						clear((*p).Value[:])
-						copy((*p).Value[:keep], elem.Buffer)
-						(*p).ValueLength = int32(keep)
 						landed = true
 					}
 					if !landed {
@@ -63598,7 +62122,7 @@ func WhereViewTablesIndexFind(index TableMapIndex, holder *TableMap[WhereViewTab
 	return &entry.Value
 }
 func WhereViewTiersInsert(worker *TableWorker, holder *TableMap[WhereViewTiersEntryRow], key string) *int64 {
-	p, _ := tableMapPlace(worker, (*tableContainer)(unsafe.Pointer(holder)), &WhereViewTableFields[10], tableMapKey{text: []byte(key)})
+	p, _ := tableMapPlace(worker, (*tableContainer)(unsafe.Pointer(holder)), &WhereViewTableFields[10], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))})
 	if p == nil {
 		return nil
 	}
@@ -63609,7 +62133,7 @@ func WhereViewTiersInsert(worker *TableWorker, holder *TableMap[WhereViewTiersEn
 	return &entry.Value
 }
 func WhereViewTiersFind(arena *TableArena, holder *TableMap[WhereViewTiersEntryRow], key string) *int64 {
-	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &WhereViewTableFields[10], tableMapKey{text: []byte(key)}, arena)
+	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &WhereViewTableFields[10], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))}, arena)
 	if p == nil {
 		return nil
 	}
@@ -63617,14 +62141,14 @@ func WhereViewTiersFind(arena *TableArena, holder *TableMap[WhereViewTiersEntryR
 	return &entry.Value
 }
 func WhereViewTiersErase(arena *TableArena, holder *TableMap[WhereViewTiersEntryRow], key string) bool {
-	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &WhereViewTableFields[10], tableMapKey{text: []byte(key)}, arena)
+	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &WhereViewTableFields[10], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))}, arena)
 	return tableContainerErase(arena, (*tableContainer)(unsafe.Pointer(holder)), p, int64(unsafe.Sizeof(WhereViewTiersEntryRow{})))
 }
 func WhereViewTiersEach(holder *TableMap[WhereViewTiersEntryRow], visit func(string, *int64) bool, arena ...*TableArena) bool {
 	c := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)), int64(unsafe.Sizeof(WhereViewTiersEntryRow{})), tableOptionalArena(arena))
 	for i := int32(0); i < holder.Count; i++ {
 		entry := (*WhereViewTiersEntryRow)(c.Next())
-		if entry == nil || !visit(string(entry.Key[:entry.KeyLength]), &entry.Value) {
+		if entry == nil || !visit(tableTextString(&entry.Key, tableOptionalArena(arena)), &entry.Value) {
 			return false
 		}
 	}
@@ -63637,7 +62161,7 @@ func WhereViewTiersIndex(holder *TableMap[WhereViewTiersEntryRow], storage []byt
 	return tableMapIndex((*tableContainer)(unsafe.Pointer(holder)), &WhereViewTableFields[10], storage)
 }
 func WhereViewTiersIndexFind(index TableMapIndex, holder *TableMap[WhereViewTiersEntryRow], key string) *int64 {
-	p := tableMapIndexFind(index, (*tableContainer)(unsafe.Pointer(holder)), &WhereViewTableFields[10], tableMapKey{text: []byte(key)})
+	p := tableMapIndexFind(index, (*tableContainer)(unsafe.Pointer(holder)), &WhereViewTableFields[10], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))})
 	if p == nil {
 		return nil
 	}
@@ -63740,7 +62264,7 @@ func WhereViewFirstTimeUnderTargetAppend(worker *TableWorker, value *WhereView, 
 	return true
 }
 func WhereViewFirstTimeRoutesInsert(worker *TableWorker, holder *TableMap[WhereViewFirstTimeRoutesEntryRow], key string) *int64 {
-	p, _ := tableMapPlace(worker, (*tableContainer)(unsafe.Pointer(holder)), &WhereViewTableFields[17], tableMapKey{text: []byte(key)})
+	p, _ := tableMapPlace(worker, (*tableContainer)(unsafe.Pointer(holder)), &WhereViewTableFields[17], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))})
 	if p == nil {
 		return nil
 	}
@@ -63751,7 +62275,7 @@ func WhereViewFirstTimeRoutesInsert(worker *TableWorker, holder *TableMap[WhereV
 	return &entry.Value
 }
 func WhereViewFirstTimeRoutesFind(arena *TableArena, holder *TableMap[WhereViewFirstTimeRoutesEntryRow], key string) *int64 {
-	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &WhereViewTableFields[17], tableMapKey{text: []byte(key)}, arena)
+	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &WhereViewTableFields[17], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))}, arena)
 	if p == nil {
 		return nil
 	}
@@ -63759,14 +62283,14 @@ func WhereViewFirstTimeRoutesFind(arena *TableArena, holder *TableMap[WhereViewF
 	return &entry.Value
 }
 func WhereViewFirstTimeRoutesErase(arena *TableArena, holder *TableMap[WhereViewFirstTimeRoutesEntryRow], key string) bool {
-	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &WhereViewTableFields[17], tableMapKey{text: []byte(key)}, arena)
+	p := tableMapFind((*tableContainer)(unsafe.Pointer(holder)), &WhereViewTableFields[17], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))}, arena)
 	return tableContainerErase(arena, (*tableContainer)(unsafe.Pointer(holder)), p, int64(unsafe.Sizeof(WhereViewFirstTimeRoutesEntryRow{})))
 }
 func WhereViewFirstTimeRoutesEach(holder *TableMap[WhereViewFirstTimeRoutesEntryRow], visit func(string, *int64) bool, arena ...*TableArena) bool {
 	c := tableContainerCursorBegin((*tableContainer)(unsafe.Pointer(holder)), int64(unsafe.Sizeof(WhereViewFirstTimeRoutesEntryRow{})), tableOptionalArena(arena))
 	for i := int32(0); i < holder.Count; i++ {
 		entry := (*WhereViewFirstTimeRoutesEntryRow)(c.Next())
-		if entry == nil || !visit(string(entry.Key[:entry.KeyLength]), &entry.Value) {
+		if entry == nil || !visit(tableTextString(&entry.Key, tableOptionalArena(arena)), &entry.Value) {
 			return false
 		}
 	}
@@ -63779,7 +62303,7 @@ func WhereViewFirstTimeRoutesIndex(holder *TableMap[WhereViewFirstTimeRoutesEntr
 	return tableMapIndex((*tableContainer)(unsafe.Pointer(holder)), &WhereViewTableFields[17], storage)
 }
 func WhereViewFirstTimeRoutesIndexFind(index TableMapIndex, holder *TableMap[WhereViewFirstTimeRoutesEntryRow], key string) *int64 {
-	p := tableMapIndexFind(index, (*tableContainer)(unsafe.Pointer(holder)), &WhereViewTableFields[17], tableMapKey{text: []byte(key)})
+	p := tableMapIndexFind(index, (*tableContainer)(unsafe.Pointer(holder)), &WhereViewTableFields[17], tableMapKey{text: unsafe.Slice(unsafe.StringData(key), len(key))})
 	if p == nil {
 		return nil
 	}
@@ -63898,30 +62422,34 @@ func WhereViewBlockersEach(holder *TableList[WhereViewBlockersTextRow], visit fu
 	return true
 }
 
-// WhereViewBlockersTextAt is element i of WhereView.blockers (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13): a view into the
-// storage that allocates nothing, and false past the count or for an absent element.
+// WhereViewBlockersTextAt is element i of WhereView.blockers (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13.1): a view into its
+// blob record that allocates nothing, and false past the count or for an absent element.
 func WhereViewBlockersTextAt(value *WhereView, i int32, arena ...*TableArena) ([]byte, bool) {
 	if value == nil {
 		return nil, false
 	}
 	p := value.Blockers.At(i, arena...)
-	if p == nil || p.ValueLength < 0 || p.ValueLength > 65710 {
+	if p == nil {
 		return nil, false
 	}
-	return p.Value[:p.ValueLength], true
+	return tableTextBytes(&p.Value, tableOptionalArena(arena))
 }
 
-// WhereViewBlockersAppend appends one element to WhereView.blockers, false past either bound (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13).
+// WhereViewBlockersAppend appends one element to WhereView.blockers, false past the count bound or when
+// the arena refuses (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13.1).
 func WhereViewBlockersAppend(worker *TableWorker, value *WhereView, text string) bool {
-	if len(text) > 65710 || !tableUtf8Valid(unsafe.Slice(unsafe.StringData(text), len(text))) {
+	if !tableUtf8Valid(unsafe.Slice(unsafe.StringData(text), len(text))) {
+		return false
+	}
+	ref, ok := tableTextStore(worker, text)
+	if !ok {
 		return false
 	}
 	p := WhereViewBlockersAdd(worker, &value.Blockers)
 	if p == nil {
 		return false
 	}
-	copy(p.Value[:], text)
-	p.ValueLength = int32(len(text))
+	p.Value = ref
 	return true
 }
 func WhereViewFleetTiersAdd(worker *TableWorker, holder *TableList[WhereViewFleetTiersTextRow]) *WhereViewFleetTiersTextRow {
@@ -64440,11 +62968,12 @@ func NameListTableType() *TableTypeInfo { return &NameListTableInfo }
 
 // DecisionSummaryReceiptHistoryTextTableFields is DecisionSummaryReceiptHistoryText's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var DecisionSummaryReceiptHistoryTextTableFields = []TableFieldInfo{
-	{Name: "value", Json: "value", TypeName: "string", DeclaredTypeName: "string", Id: 0x7ce4fd9430e80cea, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 65536, Offset: uint32(unsafe.Offsetof(DecisionSummaryReceiptHistoryText{}.Value)), ElemSize: uint32(unsafe.Sizeof(DecisionSummaryReceiptHistoryText{}.Value)), CountOffset: uint32(unsafe.Offsetof(DecisionSummaryReceiptHistoryText{}.ValueLength)), PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 1, CookCountOffset: 65540, CookPresentOffset: 4294967295,
+	{Name: "value", Json: "value", TypeName: "string", DeclaredTypeName: "string", Id: 0x7ce4fd9430e80cea, Kind: 12, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(DecisionSummaryReceiptHistoryText{}.Value)), ElemSize: uint32(unsafe.Sizeof(DecisionSummaryReceiptHistoryText{}.Value)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 0, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		Unbounded: true,
+		FracBits:  0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -64467,7 +62996,7 @@ func init() {
 		return DecisionSummaryReceiptHistoryTextSaveBodyRetain(w, (*DecisionSummaryReceiptHistoryText)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return DecisionSummaryReceiptHistoryTextLoadBodyRetain(&r, (*DecisionSummaryReceiptHistoryText)(p))
-	}, CookSize: 65544, CookAlign: 4}
+	}, CookSize: 8, CookAlign: 8}
 }
 
 // DecisionSummaryReceiptHistoryTextTableType returns DecisionSummaryReceiptHistoryText's reflection descriptor.
@@ -64534,10 +63063,10 @@ var DecisionSummaryTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "receipt_history", Json: "receipt_history", TypeName: "DecisionSummaryReceiptHistoryText", DeclaredTypeName: "DecisionSummaryReceiptHistoryText", Id: 0x15a4dafc6352fcb4, Kind: 12, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(DecisionSummary{}.ReceiptHistory)), ElemSize: uint32(unsafe.Sizeof(*new(DecisionSummaryReceiptHistoryTextRow))), CountOffset: (uint32(unsafe.Offsetof(DecisionSummary{}.ReceiptHistory))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 40, CookElemSize: 65544, CookCountOffset: 48, CookPresentOffset: 4294967295,
+		CookOffset: 40, CookElemSize: 8, CookCountOffset: 48, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		TextList: 1,
-		List:     true, ElemAlign: 4,
+		List:     true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -64946,11 +63475,12 @@ func CostReconcileRecordTableType() *TableTypeInfo { return &CostReconcileRecord
 
 // TierCostsTiersEntryTableFields is TierCostsTiersEntry's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TierCostsTiersEntryTableFields = []TableFieldInfo{
-	{Name: "key", Json: "key", TypeName: "string", DeclaredTypeName: "string", Id: 0x3dc94a19365b10ec, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 128, Offset: uint32(unsafe.Offsetof(TierCostsTiersEntry{}.Key)), ElemSize: uint32(unsafe.Sizeof(TierCostsTiersEntry{}.Key)), CountOffset: uint32(unsafe.Offsetof(TierCostsTiersEntry{}.KeyLength)), PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 1, CookCountOffset: 132, CookPresentOffset: 4294967295,
+	{Name: "key", Json: "key", TypeName: "string", DeclaredTypeName: "string", Id: 0x3dc94a19365b10ec, Kind: 12, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TierCostsTiersEntry{}.Key)), ElemSize: uint32(unsafe.Sizeof(TierCostsTiersEntry{}.Key)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 0, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		Unbounded: true,
+		FracBits:  0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -64959,7 +63489,7 @@ var TierCostsTiersEntryTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "value", Json: "value", TypeName: "int64", DeclaredTypeName: "int64", Id: 0x7ce4fd9430e80cea, Kind: 5, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TierCostsTiersEntry{}.Value)), ElemSize: uint32(unsafe.Sizeof(TierCostsTiersEntry{}.Value)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 136, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 8, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -64982,7 +63512,7 @@ func init() {
 		return TierCostsTiersEntrySaveBodyRetain(w, (*TierCostsTiersEntry)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return TierCostsTiersEntryLoadBodyRetain(&r, (*TierCostsTiersEntry)(p))
-	}, CookSize: 144, CookAlign: 8}
+	}, CookSize: 16, CookAlign: 8}
 }
 
 // TierCostsTiersEntryTableType returns TierCostsTiersEntry's reflection descriptor.
@@ -64990,11 +63520,12 @@ func TierCostsTiersEntryTableType() *TableTypeInfo { return &TierCostsTiersEntry
 
 // TierCostsCostByTierEntryTableFields is TierCostsCostByTierEntry's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TierCostsCostByTierEntryTableFields = []TableFieldInfo{
-	{Name: "key", Json: "key", TypeName: "string", DeclaredTypeName: "string", Id: 0x3dc94a19365b10ec, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 128, Offset: uint32(unsafe.Offsetof(TierCostsCostByTierEntry{}.Key)), ElemSize: uint32(unsafe.Sizeof(TierCostsCostByTierEntry{}.Key)), CountOffset: uint32(unsafe.Offsetof(TierCostsCostByTierEntry{}.KeyLength)), PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 1, CookCountOffset: 132, CookPresentOffset: 4294967295,
+	{Name: "key", Json: "key", TypeName: "string", DeclaredTypeName: "string", Id: 0x3dc94a19365b10ec, Kind: 12, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TierCostsCostByTierEntry{}.Key)), ElemSize: uint32(unsafe.Sizeof(TierCostsCostByTierEntry{}.Key)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 0, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		Unbounded: true,
+		FracBits:  0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -65003,7 +63534,7 @@ var TierCostsCostByTierEntryTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "value", Json: "value", TypeName: "string", DeclaredTypeName: "string", Id: 0x7ce4fd9430e80cea, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TierCostsCostByTierEntry{}.Value)), ElemSize: uint32(unsafe.Sizeof(TierCostsCostByTierEntry{}.Value)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 136, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 8, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -65026,7 +63557,7 @@ func init() {
 		return TierCostsCostByTierEntrySaveBodyRetain(w, (*TierCostsCostByTierEntry)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return TierCostsCostByTierEntryLoadBodyRetain(&r, (*TierCostsCostByTierEntry)(p))
-	}, CookSize: 144, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
+	}, CookSize: 16, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
 		switch id {
 		}
 		return nil
@@ -65038,11 +63569,12 @@ func TierCostsCostByTierEntryTableType() *TableTypeInfo { return &TierCostsCostB
 
 // TierCostsReadsTodayEntryTableFields is TierCostsReadsTodayEntry's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TierCostsReadsTodayEntryTableFields = []TableFieldInfo{
-	{Name: "key", Json: "key", TypeName: "string", DeclaredTypeName: "string", Id: 0x3dc94a19365b10ec, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 128, Offset: uint32(unsafe.Offsetof(TierCostsReadsTodayEntry{}.Key)), ElemSize: uint32(unsafe.Sizeof(TierCostsReadsTodayEntry{}.Key)), CountOffset: uint32(unsafe.Offsetof(TierCostsReadsTodayEntry{}.KeyLength)), PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 1, CookCountOffset: 132, CookPresentOffset: 4294967295,
+	{Name: "key", Json: "key", TypeName: "string", DeclaredTypeName: "string", Id: 0x3dc94a19365b10ec, Kind: 12, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TierCostsReadsTodayEntry{}.Key)), ElemSize: uint32(unsafe.Sizeof(TierCostsReadsTodayEntry{}.Key)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 0, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		Unbounded: true,
+		FracBits:  0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -65051,7 +63583,7 @@ var TierCostsReadsTodayEntryTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "value", Json: "value", TypeName: "ReadDay", DeclaredTypeName: "ReadDay", Id: 0x7ce4fd9430e80cea, Kind: 13, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TierCostsReadsTodayEntry{}.Value)), ElemSize: uint32(unsafe.Sizeof(TierCostsReadsTodayEntry{}.Value)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 136, CookElemSize: 24, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 8, CookElemSize: 24, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -65074,7 +63606,7 @@ func init() {
 		return TierCostsReadsTodayEntrySaveBodyRetain(w, (*TierCostsReadsTodayEntry)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return TierCostsReadsTodayEntryLoadBodyRetain(&r, (*TierCostsReadsTodayEntry)(p))
-	}, CookSize: 160, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
+	}, CookSize: 32, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
 		switch id {
 		}
 		return nil
@@ -65086,11 +63618,12 @@ func TierCostsReadsTodayEntryTableType() *TableTypeInfo { return &TierCostsReads
 
 // TierCostsReadersEntryTableFields is TierCostsReadersEntry's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TierCostsReadersEntryTableFields = []TableFieldInfo{
-	{Name: "key", Json: "key", TypeName: "string", DeclaredTypeName: "string", Id: 0x3dc94a19365b10ec, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 135, Offset: uint32(unsafe.Offsetof(TierCostsReadersEntry{}.Key)), ElemSize: uint32(unsafe.Sizeof(TierCostsReadersEntry{}.Key)), CountOffset: uint32(unsafe.Offsetof(TierCostsReadersEntry{}.KeyLength)), PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 1, CookCountOffset: 136, CookPresentOffset: 4294967295,
+	{Name: "key", Json: "key", TypeName: "string", DeclaredTypeName: "string", Id: 0x3dc94a19365b10ec, Kind: 12, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TierCostsReadersEntry{}.Key)), ElemSize: uint32(unsafe.Sizeof(TierCostsReadersEntry{}.Key)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 0, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		Unbounded: true,
+		FracBits:  0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -65099,7 +63632,7 @@ var TierCostsReadersEntryTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "value", Json: "value", TypeName: "ReaderSpend", DeclaredTypeName: "ReaderSpend", Id: 0x7ce4fd9430e80cea, Kind: 13, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(TierCostsReadersEntry{}.Value)), ElemSize: uint32(unsafe.Sizeof(TierCostsReadersEntry{}.Value)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 144, CookElemSize: 48, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 8, CookElemSize: 48, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -65122,7 +63655,7 @@ func init() {
 		return TierCostsReadersEntrySaveBodyRetain(w, (*TierCostsReadersEntry)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return TierCostsReadersEntryLoadBodyRetain(&r, (*TierCostsReadersEntry)(p))
-	}, CookSize: 192, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
+	}, CookSize: 56, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
 		switch id {
 		}
 		return nil
@@ -65134,9 +63667,9 @@ func TierCostsReadersEntryTableType() *TableTypeInfo { return &TierCostsReadersE
 
 // TierCostsTableFields is TierCosts's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var TierCostsTableFields = []TableFieldInfo{
-	{Name: "tiers", Json: "tiers", TypeName: "?", DeclaredTypeName: "map[string(128)]int64", Id: 0x6dd8dc6c5fdae3ce, Kind: 13, IsArray: true, Counted: true, Optional: false,
+	{Name: "tiers", Json: "tiers", TypeName: "?", DeclaredTypeName: "map[string]int64", Id: 0x6dd8dc6c5fdae3ce, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(TierCosts{}.Tiers)), ElemSize: uint32(unsafe.Sizeof(*new(TierCostsTiersEntryRow))), CountOffset: (uint32(unsafe.Offsetof(TierCosts{}.Tiers))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 144, CookCountOffset: 8, CookPresentOffset: 4294967295,
+		CookOffset: 0, CookElemSize: 16, CookCountOffset: 8, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		Map: true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -65157,9 +63690,9 @@ var TierCostsTableFields = []TableFieldInfo{
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "cost_by_tier", Json: "cost_by_tier", TypeName: "?", DeclaredTypeName: "map[string(128)]*string", Id: 0x23b885a1b02092b5, Kind: 13, IsArray: true, Counted: true, Optional: false,
+	{Name: "cost_by_tier", Json: "cost_by_tier", TypeName: "?", DeclaredTypeName: "map[string]*string", Id: 0x23b885a1b02092b5, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(TierCosts{}.CostByTier)), ElemSize: uint32(unsafe.Sizeof(*new(TierCostsCostByTierEntryRow))), CountOffset: (uint32(unsafe.Offsetof(TierCosts{}.CostByTier))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 24, CookElemSize: 144, CookCountOffset: 32, CookPresentOffset: 4294967295,
+		CookOffset: 24, CookElemSize: 16, CookCountOffset: 32, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		Map: true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -65279,9 +63812,9 @@ var TierCostsTableFields = []TableFieldInfo{
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "reads_today", Json: "reads_today", TypeName: "?", DeclaredTypeName: "map[string(128)]ReadDay", Id: 0xe917efab029e6660, Kind: 13, IsArray: true, Counted: true, Optional: false,
+	{Name: "reads_today", Json: "reads_today", TypeName: "?", DeclaredTypeName: "map[string]ReadDay", Id: 0xe917efab029e6660, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(TierCosts{}.ReadsToday)), ElemSize: uint32(unsafe.Sizeof(*new(TierCostsReadsTodayEntryRow))), CountOffset: (uint32(unsafe.Offsetof(TierCosts{}.ReadsToday))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 120, CookElemSize: 160, CookCountOffset: 128, CookPresentOffset: 4294967295,
+		CookOffset: 120, CookElemSize: 32, CookCountOffset: 128, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		Map: true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -65313,9 +63846,9 @@ var TierCostsTableFields = []TableFieldInfo{
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "readers", Json: "readers", TypeName: "?", DeclaredTypeName: "map[string(135)]ReaderSpend", Id: 0x81027a1935117cdf, Kind: 13, IsArray: true, Counted: true, Optional: false,
+	{Name: "readers", Json: "readers", TypeName: "?", DeclaredTypeName: "map[string]ReaderSpend", Id: 0x81027a1935117cdf, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(TierCosts{}.Readers)), ElemSize: uint32(unsafe.Sizeof(*new(TierCostsReadersEntryRow))), CountOffset: (uint32(unsafe.Offsetof(TierCosts{}.Readers))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 152, CookElemSize: 192, CookCountOffset: 160, CookPresentOffset: 4294967295,
+		CookOffset: 152, CookElemSize: 56, CookCountOffset: 160, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		Map: true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -66178,11 +64711,11 @@ var HoldViewTableFields = []TableFieldInfo{
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "name", Json: "name", TypeName: "string", DeclaredTypeName: "string", Id: 0xc4bcadba8e631b86, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 515, Offset: uint32(unsafe.Offsetof(HoldView{}.Name)), ElemSize: uint32(unsafe.Sizeof(HoldView{}.Name)), CountOffset: uint32(unsafe.Offsetof(HoldView{}.NameLength)), PresentOffset: 0xffffffff,
-		CookOffset: 8, CookElemSize: 1, CookCountOffset: 524, CookPresentOffset: 4294967295,
+	{Name: "name", Json: "name", TypeName: "string", DeclaredTypeName: "string", Id: 0xc4bcadba8e631b86, Kind: 17, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(HoldView{}.Name)), ElemSize: uint32(unsafe.Sizeof(HoldView{}.Name)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 8, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -66191,7 +64724,7 @@ var HoldViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "reason", Json: "reason", TypeName: "string", DeclaredTypeName: "string", Id: 0x65e8d7f3474f2639, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(HoldView{}.Reason)), ElemSize: uint32(unsafe.Sizeof(HoldView{}.Reason)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 528, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 16, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -66202,7 +64735,7 @@ var HoldViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "by", Json: "by", TypeName: "string", DeclaredTypeName: "string", Id: 0x8a64b07b54df8d4, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(HoldView{}.By)), ElemSize: uint32(unsafe.Sizeof(HoldView{}.By)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 536, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 24, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -66213,7 +64746,7 @@ var HoldViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "at", Json: "at", TypeName: "string", DeclaredTypeName: "string", Id: 0x89c4e07b545a968, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(HoldView{}.At)), ElemSize: uint32(unsafe.Sizeof(HoldView{}.At)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 544, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 32, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -66224,7 +64757,7 @@ var HoldViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "handed_back", Json: "return", TypeName: "bool", DeclaredTypeName: "bool", Id: 0x69c94e2fb1fef89, Kind: 1, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(HoldView{}.HandedBack)), ElemSize: uint32(unsafe.Sizeof(HoldView{}.HandedBack)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 552, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 40, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -66235,7 +64768,7 @@ var HoldViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "cause", Json: "cause", TypeName: "string", DeclaredTypeName: "string", Id: 0xb733af3b0d745380, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(HoldView{}.Cause)), ElemSize: uint32(unsafe.Sizeof(HoldView{}.Cause)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 560, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 48, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -66246,7 +64779,7 @@ var HoldViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "who", Json: "who", TypeName: "string", DeclaredTypeName: "string", Id: 0x5ec5fc194891690f, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(HoldView{}.Who)), ElemSize: uint32(unsafe.Sizeof(HoldView{}.Who)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 568, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 56, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -66257,7 +64790,7 @@ var HoldViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "release", Json: "release", TypeName: "string", DeclaredTypeName: "string", Id: 0xa63d4c9b882b10fe, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(HoldView{}.Release)), ElemSize: uint32(unsafe.Sizeof(HoldView{}.Release)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 576, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 64, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -66272,7 +64805,7 @@ var HoldViewTableFields = []TableFieldInfo{
 var HoldViewTableInfo TableTypeInfo
 
 func init() {
-	HoldViewTableInfo = TableTypeInfo{Name: "HoldView", Size: uint32(unsafe.Sizeof(HoldView{})), NumFields: 9, Fields: HoldViewTableFields, Reset: func(storage unsafe.Pointer) { HoldViewReset((*HoldView)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0xe2eff30a3bf4fa79, Variable: true, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return HoldViewSaveBody(w, (*HoldView)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return HoldViewLoadBody(&r, (*HoldView)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return HoldViewSaveBodyRetain(w, (*HoldView)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return HoldViewLoadBodyRetain(&r, (*HoldView)(p)) }, CookSize: 584, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
+	HoldViewTableInfo = TableTypeInfo{Name: "HoldView", Size: uint32(unsafe.Sizeof(HoldView{})), NumFields: 9, Fields: HoldViewTableFields, Reset: func(storage unsafe.Pointer) { HoldViewReset((*HoldView)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0xe2eff30a3bf4fa79, Variable: true, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return HoldViewSaveBody(w, (*HoldView)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return HoldViewLoadBody(&r, (*HoldView)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return HoldViewSaveBodyRetain(w, (*HoldView)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return HoldViewLoadBodyRetain(&r, (*HoldView)(p)) }, CookSize: 72, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
 		switch id {
 		}
 		return nil
@@ -66295,11 +64828,11 @@ var StopTableFields = []TableFieldInfo{
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "subject", Json: "subject", TypeName: "string", DeclaredTypeName: "string", Id: 0x9640735281e90c0f, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 515, Offset: uint32(unsafe.Offsetof(Stop{}.Subject)), ElemSize: uint32(unsafe.Sizeof(Stop{}.Subject)), CountOffset: uint32(unsafe.Offsetof(Stop{}.SubjectLength)), PresentOffset: 0xffffffff,
-		CookOffset: 8, CookElemSize: 1, CookCountOffset: 524, CookPresentOffset: 4294967295,
+	{Name: "subject", Json: "subject", TypeName: "string", DeclaredTypeName: "string", Id: 0x9640735281e90c0f, Kind: 17, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Stop{}.Subject)), ElemSize: uint32(unsafe.Sizeof(Stop{}.Subject)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 8, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -66308,7 +64841,7 @@ var StopTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "since", Json: "since", TypeName: "timestamp", DeclaredTypeName: "timestamp", Id: 0x2b827d4f5e0ada9d, Kind: 36, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Stop{}.Since)), ElemSize: uint32(unsafe.Sizeof(Stop{}.Since)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 528, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 16, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -66319,7 +64852,7 @@ var StopTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "what", Json: "what", TypeName: "string", DeclaredTypeName: "string", Id: 0x9be8c5f64f26c30f, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Stop{}.What)), ElemSize: uint32(unsafe.Sizeof(Stop{}.What)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 536, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 24, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -66330,7 +64863,7 @@ var StopTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "effect", Json: "effect", TypeName: "string", DeclaredTypeName: "string", Id: 0x36c1c83b51f24394, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Stop{}.Effect)), ElemSize: uint32(unsafe.Sizeof(Stop{}.Effect)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 544, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 32, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -66341,7 +64874,7 @@ var StopTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "undo", Json: "undo", TypeName: "string", DeclaredTypeName: "string", Id: 0x64bde8e4857adf2f, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Stop{}.Undo)), ElemSize: uint32(unsafe.Sizeof(Stop{}.Undo)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 552, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 40, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -66352,7 +64885,7 @@ var StopTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "signal", Json: "signal", TypeName: "string", DeclaredTypeName: "string", Id: 0x5062cd8f7a7fd349, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(Stop{}.Signal)), ElemSize: uint32(unsafe.Sizeof(Stop{}.Signal)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 560, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 48, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -66367,7 +64900,7 @@ var StopTableFields = []TableFieldInfo{
 var StopTableInfo TableTypeInfo
 
 func init() {
-	StopTableInfo = TableTypeInfo{Name: "Stop", Size: uint32(unsafe.Sizeof(Stop{})), NumFields: 7, Fields: StopTableFields, Reset: func(storage unsafe.Pointer) { StopReset((*Stop)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0xd9ad53251f2330a5, Variable: true, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return StopSaveBody(w, (*Stop)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return StopLoadBody(&r, (*Stop)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return StopSaveBodyRetain(w, (*Stop)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return StopLoadBodyRetain(&r, (*Stop)(p)) }, CookSize: 568, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
+	StopTableInfo = TableTypeInfo{Name: "Stop", Size: uint32(unsafe.Sizeof(Stop{})), NumFields: 7, Fields: StopTableFields, Reset: func(storage unsafe.Pointer) { StopReset((*Stop)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0xd9ad53251f2330a5, Variable: true, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return StopSaveBody(w, (*Stop)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return StopLoadBody(&r, (*Stop)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return StopSaveBodyRetain(w, (*Stop)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return StopLoadBodyRetain(&r, (*Stop)(p)) }, CookSize: 56, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
 		switch id {
 		}
 		return nil
@@ -66845,11 +65378,12 @@ func RouteGapTableType() *TableTypeInfo { return &RouteGapTableInfo }
 
 // ProviderGapReportTiersTextTableFields is ProviderGapReportTiersText's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var ProviderGapReportTiersTextTableFields = []TableFieldInfo{
-	{Name: "value", Json: "value", TypeName: "string", DeclaredTypeName: "string", Id: 0x7ce4fd9430e80cea, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 128, Offset: uint32(unsafe.Offsetof(ProviderGapReportTiersText{}.Value)), ElemSize: uint32(unsafe.Sizeof(ProviderGapReportTiersText{}.Value)), CountOffset: uint32(unsafe.Offsetof(ProviderGapReportTiersText{}.ValueLength)), PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 1, CookCountOffset: 132, CookPresentOffset: 4294967295,
+	{Name: "value", Json: "value", TypeName: "string", DeclaredTypeName: "string", Id: 0x7ce4fd9430e80cea, Kind: 12, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProviderGapReportTiersText{}.Value)), ElemSize: uint32(unsafe.Sizeof(ProviderGapReportTiersText{}.Value)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 0, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		Unbounded: true,
+		FracBits:  0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -66870,7 +65404,7 @@ func init() {
 		return ProviderGapReportTiersTextSaveBodyRetain(w, (*ProviderGapReportTiersText)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return ProviderGapReportTiersTextLoadBodyRetain(&r, (*ProviderGapReportTiersText)(p))
-	}, CookSize: 136, CookAlign: 4}
+	}, CookSize: 8, CookAlign: 8}
 }
 
 // ProviderGapReportTiersTextTableType returns ProviderGapReportTiersText's reflection descriptor.
@@ -66906,10 +65440,10 @@ var ProviderGapReportTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "tiers", Json: "tiers", TypeName: "ProviderGapReportTiersText", DeclaredTypeName: "ProviderGapReportTiersText", Id: 0x6dd8dc6c5fdae3ce, Kind: 12, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(ProviderGapReport{}.Tiers)), ElemSize: uint32(unsafe.Sizeof(*new(ProviderGapReportTiersTextRow))), CountOffset: (uint32(unsafe.Offsetof(ProviderGapReport{}.Tiers))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 32, CookElemSize: 136, CookCountOffset: 40, CookPresentOffset: 4294967295,
+		CookOffset: 32, CookElemSize: 8, CookCountOffset: 40, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		TextList: 1,
-		List:     true, ElemAlign: 4,
+		List:     true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -67342,11 +65876,12 @@ func JudgmentRefTableType() *TableTypeInfo { return &JudgmentRefTableInfo }
 
 // PrimaryRowFieldsEntryTableFields is PrimaryRowFieldsEntry's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var PrimaryRowFieldsEntryTableFields = []TableFieldInfo{
-	{Name: "key", Json: "key", TypeName: "string", DeclaredTypeName: "string", Id: 0x3dc94a19365b10ec, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 128, Offset: uint32(unsafe.Offsetof(PrimaryRowFieldsEntry{}.Key)), ElemSize: uint32(unsafe.Sizeof(PrimaryRowFieldsEntry{}.Key)), CountOffset: uint32(unsafe.Offsetof(PrimaryRowFieldsEntry{}.KeyLength)), PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 1, CookCountOffset: 132, CookPresentOffset: 4294967295,
+	{Name: "key", Json: "key", TypeName: "string", DeclaredTypeName: "string", Id: 0x3dc94a19365b10ec, Kind: 12, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(PrimaryRowFieldsEntry{}.Key)), ElemSize: uint32(unsafe.Sizeof(PrimaryRowFieldsEntry{}.Key)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 0, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		Unbounded: true,
+		FracBits:  0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -67355,7 +65890,7 @@ var PrimaryRowFieldsEntryTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "value", Json: "value", TypeName: "string", DeclaredTypeName: "string", Id: 0x7ce4fd9430e80cea, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(PrimaryRowFieldsEntry{}.Value)), ElemSize: uint32(unsafe.Sizeof(PrimaryRowFieldsEntry{}.Value)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 136, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 8, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -67378,7 +65913,7 @@ func init() {
 		return PrimaryRowFieldsEntrySaveBodyRetain(w, (*PrimaryRowFieldsEntry)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return PrimaryRowFieldsEntryLoadBodyRetain(&r, (*PrimaryRowFieldsEntry)(p))
-	}, CookSize: 144, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
+	}, CookSize: 16, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
 		switch id {
 		}
 		return nil
@@ -67445,9 +65980,9 @@ var PrimaryRowTableFields = []TableFieldInfo{
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "fields", Json: "fields", TypeName: "?", DeclaredTypeName: "map[string(128)]*string", Id: 0x490e596d24847edc, Kind: 13, IsArray: true, Counted: true, Optional: false,
+	{Name: "fields", Json: "fields", TypeName: "?", DeclaredTypeName: "map[string]*string", Id: 0x490e596d24847edc, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(PrimaryRow{}.Fields)), ElemSize: uint32(unsafe.Sizeof(*new(PrimaryRowFieldsEntryRow))), CountOffset: (uint32(unsafe.Offsetof(PrimaryRow{}.Fields))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 680, CookElemSize: 144, CookCountOffset: 688, CookPresentOffset: 4294967295,
+		CookOffset: 680, CookElemSize: 16, CookCountOffset: 688, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		Map: true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -67953,11 +66488,12 @@ func MergeRowTableType() *TableTypeInfo { return &MergeRowTableInfo }
 
 // FriendReportRunningTextTableFields is FriendReportRunningText's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var FriendReportRunningTextTableFields = []TableFieldInfo{
-	{Name: "value", Json: "value", TypeName: "string", DeclaredTypeName: "string", Id: 0x7ce4fd9430e80cea, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 65536, Offset: uint32(unsafe.Offsetof(FriendReportRunningText{}.Value)), ElemSize: uint32(unsafe.Sizeof(FriendReportRunningText{}.Value)), CountOffset: uint32(unsafe.Offsetof(FriendReportRunningText{}.ValueLength)), PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 1, CookCountOffset: 65540, CookPresentOffset: 4294967295,
+	{Name: "value", Json: "value", TypeName: "string", DeclaredTypeName: "string", Id: 0x7ce4fd9430e80cea, Kind: 12, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendReportRunningText{}.Value)), ElemSize: uint32(unsafe.Sizeof(FriendReportRunningText{}.Value)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 0, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		Unbounded: true,
+		FracBits:  0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -67978,7 +66514,7 @@ func init() {
 		return FriendReportRunningTextSaveBodyRetain(w, (*FriendReportRunningText)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return FriendReportRunningTextLoadBodyRetain(&r, (*FriendReportRunningText)(p))
-	}, CookSize: 65544, CookAlign: 4}
+	}, CookSize: 8, CookAlign: 8}
 }
 
 // FriendReportRunningTextTableType returns FriendReportRunningText's reflection descriptor.
@@ -67988,10 +66524,10 @@ func FriendReportRunningTextTableType() *TableTypeInfo { return &FriendReportRun
 var FriendReportTableFields = []TableFieldInfo{
 	{Name: "running", Json: "running", TypeName: "FriendReportRunningText", DeclaredTypeName: "FriendReportRunningText", Id: 0x60147fb4fa4a8e0c, Kind: 12, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(FriendReport{}.Running)), ElemSize: uint32(unsafe.Sizeof(*new(FriendReportRunningTextRow))), CountOffset: (uint32(unsafe.Offsetof(FriendReport{}.Running))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 65544, CookCountOffset: 8, CookPresentOffset: 4294967295,
+		CookOffset: 0, CookElemSize: 8, CookCountOffset: 8, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		TextList: 1,
-		List:     true, ElemAlign: 4,
+		List:     true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -68547,11 +67083,12 @@ func SeriesLastHourTableType() *TableTypeInfo { return &SeriesLastHourTableInfo 
 
 // LandedSeriesWorkersEntryTableFields is LandedSeriesWorkersEntry's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var LandedSeriesWorkersEntryTableFields = []TableFieldInfo{
-	{Name: "key", Json: "key", TypeName: "string", DeclaredTypeName: "string", Id: 0x3dc94a19365b10ec, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 135, Offset: uint32(unsafe.Offsetof(LandedSeriesWorkersEntry{}.Key)), ElemSize: uint32(unsafe.Sizeof(LandedSeriesWorkersEntry{}.Key)), CountOffset: uint32(unsafe.Offsetof(LandedSeriesWorkersEntry{}.KeyLength)), PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 1, CookCountOffset: 136, CookPresentOffset: 4294967295,
+	{Name: "key", Json: "key", TypeName: "string", DeclaredTypeName: "string", Id: 0x3dc94a19365b10ec, Kind: 12, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(LandedSeriesWorkersEntry{}.Key)), ElemSize: uint32(unsafe.Sizeof(LandedSeriesWorkersEntry{}.Key)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 0, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		Unbounded: true,
+		FracBits:  0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -68560,7 +67097,7 @@ var LandedSeriesWorkersEntryTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "value", Json: "value", TypeName: "int64", DeclaredTypeName: "int64", Id: 0x7ce4fd9430e80cea, Kind: 5, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(LandedSeriesWorkersEntry{}.Value)), ElemSize: uint32(unsafe.Sizeof(LandedSeriesWorkersEntry{}.Value)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 144, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 8, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -68583,7 +67120,7 @@ func init() {
 		return LandedSeriesWorkersEntrySaveBodyRetain(w, (*LandedSeriesWorkersEntry)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return LandedSeriesWorkersEntryLoadBodyRetain(&r, (*LandedSeriesWorkersEntry)(p))
-	}, CookSize: 152, CookAlign: 8}
+	}, CookSize: 16, CookAlign: 8}
 }
 
 // LandedSeriesWorkersEntryTableType returns LandedSeriesWorkersEntry's reflection descriptor.
@@ -68692,9 +67229,9 @@ var LandedSeriesTableFields = []TableFieldInfo{
 		Arms:  nil,
 		Guard: "", Table: SeriesLastHourTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "workers", Json: "workers", TypeName: "?", DeclaredTypeName: "map[string(135)]int64", Id: 0xe4dede02383cb9cc, Kind: 13, IsArray: true, Counted: true, Optional: false,
+	{Name: "workers", Json: "workers", TypeName: "?", DeclaredTypeName: "map[string]int64", Id: 0xe4dede02383cb9cc, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(LandedSeries{}.Workers)), ElemSize: uint32(unsafe.Sizeof(*new(LandedSeriesWorkersEntryRow))), CountOffset: (uint32(unsafe.Offsetof(LandedSeries{}.Workers))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 112, CookElemSize: 152, CookCountOffset: 120, CookPresentOffset: 4294967295,
+		CookOffset: 112, CookElemSize: 16, CookCountOffset: 120, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		Map: true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -68726,11 +67263,12 @@ func LandedSeriesTableType() *TableTypeInfo { return &LandedSeriesTableInfo }
 
 // WhereViewTablesEntryValueEntryValueEntryTableFields is WhereViewTablesEntryValueEntryValueEntry's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var WhereViewTablesEntryValueEntryValueEntryTableFields = []TableFieldInfo{
-	{Name: "key", Json: "key", TypeName: "string", DeclaredTypeName: "string", Id: 0x3dc94a19365b10ec, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 128, Offset: uint32(unsafe.Offsetof(WhereViewTablesEntryValueEntryValueEntry{}.Key)), ElemSize: uint32(unsafe.Sizeof(WhereViewTablesEntryValueEntryValueEntry{}.Key)), CountOffset: uint32(unsafe.Offsetof(WhereViewTablesEntryValueEntryValueEntry{}.KeyLength)), PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 1, CookCountOffset: 132, CookPresentOffset: 4294967295,
+	{Name: "key", Json: "key", TypeName: "string", DeclaredTypeName: "string", Id: 0x3dc94a19365b10ec, Kind: 12, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WhereViewTablesEntryValueEntryValueEntry{}.Key)), ElemSize: uint32(unsafe.Sizeof(WhereViewTablesEntryValueEntryValueEntry{}.Key)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 0, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		Unbounded: true,
+		FracBits:  0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -68739,7 +67277,7 @@ var WhereViewTablesEntryValueEntryValueEntryTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "value", Json: "value", TypeName: "string", DeclaredTypeName: "string", Id: 0x7ce4fd9430e80cea, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WhereViewTablesEntryValueEntryValueEntry{}.Value)), ElemSize: uint32(unsafe.Sizeof(WhereViewTablesEntryValueEntryValueEntry{}.Value)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 136, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 8, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -68764,7 +67302,7 @@ func init() {
 		return WhereViewTablesEntryValueEntryValueEntrySaveBodyRetain(w, (*WhereViewTablesEntryValueEntryValueEntry)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return WhereViewTablesEntryValueEntryValueEntryLoadBodyRetain(&r, (*WhereViewTablesEntryValueEntryValueEntry)(p))
-	}, CookSize: 144, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
+	}, CookSize: 16, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
 		switch id {
 		}
 		return nil
@@ -68778,20 +67316,21 @@ func WhereViewTablesEntryValueEntryValueEntryTableType() *TableTypeInfo {
 
 // WhereViewTablesEntryValueEntryTableFields is WhereViewTablesEntryValueEntry's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var WhereViewTablesEntryValueEntryTableFields = []TableFieldInfo{
-	{Name: "key", Json: "key", TypeName: "string", DeclaredTypeName: "string", Id: 0x3dc94a19365b10ec, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 256, Offset: uint32(unsafe.Offsetof(WhereViewTablesEntryValueEntry{}.Key)), ElemSize: uint32(unsafe.Sizeof(WhereViewTablesEntryValueEntry{}.Key)), CountOffset: uint32(unsafe.Offsetof(WhereViewTablesEntryValueEntry{}.KeyLength)), PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 1, CookCountOffset: 260, CookPresentOffset: 4294967295,
+	{Name: "key", Json: "key", TypeName: "string", DeclaredTypeName: "string", Id: 0x3dc94a19365b10ec, Kind: 12, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WhereViewTablesEntryValueEntry{}.Key)), ElemSize: uint32(unsafe.Sizeof(WhereViewTablesEntryValueEntry{}.Key)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 0, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		Unbounded: true,
+		FracBits:  0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "value", Json: "value", TypeName: "?", DeclaredTypeName: "map[string(128)]*string", Id: 0x7ce4fd9430e80cea, Kind: 13, IsArray: true, Counted: true, Optional: false,
+	{Name: "value", Json: "value", TypeName: "?", DeclaredTypeName: "map[string]*string", Id: 0x7ce4fd9430e80cea, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(WhereViewTablesEntryValueEntry{}.Value)), ElemSize: uint32(unsafe.Sizeof(*new(WhereViewTablesEntryValueEntryValueEntryRow))), CountOffset: (uint32(unsafe.Offsetof(WhereViewTablesEntryValueEntry{}.Value))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 264, CookElemSize: 144, CookCountOffset: 272, CookPresentOffset: 4294967295,
+		CookOffset: 8, CookElemSize: 16, CookCountOffset: 16, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		Map: true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -68817,7 +67356,7 @@ func init() {
 		return WhereViewTablesEntryValueEntrySaveBodyRetain(w, (*WhereViewTablesEntryValueEntry)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return WhereViewTablesEntryValueEntryLoadBodyRetain(&r, (*WhereViewTablesEntryValueEntry)(p))
-	}, CookSize: 280, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
+	}, CookSize: 24, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
 		switch id {
 		}
 		return nil
@@ -68842,9 +67381,9 @@ var WhereViewTablesEntryTableFields = []TableFieldInfo{
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "value", Json: "value", TypeName: "?", DeclaredTypeName: "map[string(256)]map[string(128)]*string", Id: 0x7ce4fd9430e80cea, Kind: 13, IsArray: true, Counted: true, Optional: false,
+	{Name: "value", Json: "value", TypeName: "?", DeclaredTypeName: "map[string]map[string]*string", Id: 0x7ce4fd9430e80cea, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(WhereViewTablesEntry{}.Value)), ElemSize: uint32(unsafe.Sizeof(*new(WhereViewTablesEntryValueEntryRow))), CountOffset: (uint32(unsafe.Offsetof(WhereViewTablesEntry{}.Value))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 16, CookElemSize: 280, CookCountOffset: 24, CookPresentOffset: 4294967295,
+		CookOffset: 16, CookElemSize: 24, CookCountOffset: 24, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		Map: true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -68880,11 +67419,12 @@ func WhereViewTablesEntryTableType() *TableTypeInfo { return &WhereViewTablesEnt
 
 // WhereViewTiersEntryTableFields is WhereViewTiersEntry's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var WhereViewTiersEntryTableFields = []TableFieldInfo{
-	{Name: "key", Json: "key", TypeName: "string", DeclaredTypeName: "string", Id: 0x3dc94a19365b10ec, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 128, Offset: uint32(unsafe.Offsetof(WhereViewTiersEntry{}.Key)), ElemSize: uint32(unsafe.Sizeof(WhereViewTiersEntry{}.Key)), CountOffset: uint32(unsafe.Offsetof(WhereViewTiersEntry{}.KeyLength)), PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 1, CookCountOffset: 132, CookPresentOffset: 4294967295,
+	{Name: "key", Json: "key", TypeName: "string", DeclaredTypeName: "string", Id: 0x3dc94a19365b10ec, Kind: 12, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WhereViewTiersEntry{}.Key)), ElemSize: uint32(unsafe.Sizeof(WhereViewTiersEntry{}.Key)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 0, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		Unbounded: true,
+		FracBits:  0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -68893,7 +67433,7 @@ var WhereViewTiersEntryTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "value", Json: "value", TypeName: "int64", DeclaredTypeName: "int64", Id: 0x7ce4fd9430e80cea, Kind: 5, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WhereViewTiersEntry{}.Value)), ElemSize: uint32(unsafe.Sizeof(WhereViewTiersEntry{}.Value)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 136, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 8, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -68916,7 +67456,7 @@ func init() {
 		return WhereViewTiersEntrySaveBodyRetain(w, (*WhereViewTiersEntry)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return WhereViewTiersEntryLoadBodyRetain(&r, (*WhereViewTiersEntry)(p))
-	}, CookSize: 144, CookAlign: 8}
+	}, CookSize: 16, CookAlign: 8}
 }
 
 // WhereViewTiersEntryTableType returns WhereViewTiersEntry's reflection descriptor.
@@ -69009,11 +67549,12 @@ func WhereViewFirstTimeUnderTargetTextTableType() *TableTypeInfo {
 
 // WhereViewFirstTimeRoutesEntryTableFields is WhereViewFirstTimeRoutesEntry's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var WhereViewFirstTimeRoutesEntryTableFields = []TableFieldInfo{
-	{Name: "key", Json: "key", TypeName: "string", DeclaredTypeName: "string", Id: 0x3dc94a19365b10ec, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 128, Offset: uint32(unsafe.Offsetof(WhereViewFirstTimeRoutesEntry{}.Key)), ElemSize: uint32(unsafe.Sizeof(WhereViewFirstTimeRoutesEntry{}.Key)), CountOffset: uint32(unsafe.Offsetof(WhereViewFirstTimeRoutesEntry{}.KeyLength)), PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 1, CookCountOffset: 132, CookPresentOffset: 4294967295,
+	{Name: "key", Json: "key", TypeName: "string", DeclaredTypeName: "string", Id: 0x3dc94a19365b10ec, Kind: 12, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WhereViewFirstTimeRoutesEntry{}.Key)), ElemSize: uint32(unsafe.Sizeof(WhereViewFirstTimeRoutesEntry{}.Key)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 0, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		Unbounded: true,
+		FracBits:  0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -69022,7 +67563,7 @@ var WhereViewFirstTimeRoutesEntryTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "value", Json: "value", TypeName: "string", DeclaredTypeName: "string", Id: 0x7ce4fd9430e80cea, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WhereViewFirstTimeRoutesEntry{}.Value)), ElemSize: uint32(unsafe.Sizeof(WhereViewFirstTimeRoutesEntry{}.Value)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 136, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 8, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -69047,7 +67588,7 @@ func init() {
 		return WhereViewFirstTimeRoutesEntrySaveBodyRetain(w, (*WhereViewFirstTimeRoutesEntry)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return WhereViewFirstTimeRoutesEntryLoadBodyRetain(&r, (*WhereViewFirstTimeRoutesEntry)(p))
-	}, CookSize: 144, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
+	}, CookSize: 16, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
 		switch id {
 		}
 		return nil
@@ -69094,11 +67635,12 @@ func WhereViewStalledTextTableType() *TableTypeInfo { return &WhereViewStalledTe
 
 // WhereViewBlockersTextTableFields is WhereViewBlockersText's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var WhereViewBlockersTextTableFields = []TableFieldInfo{
-	{Name: "value", Json: "value", TypeName: "string", DeclaredTypeName: "string", Id: 0x7ce4fd9430e80cea, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 65710, Offset: uint32(unsafe.Offsetof(WhereViewBlockersText{}.Value)), ElemSize: uint32(unsafe.Sizeof(WhereViewBlockersText{}.Value)), CountOffset: uint32(unsafe.Offsetof(WhereViewBlockersText{}.ValueLength)), PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 1, CookCountOffset: 65712, CookPresentOffset: 4294967295,
+	{Name: "value", Json: "value", TypeName: "string", DeclaredTypeName: "string", Id: 0x7ce4fd9430e80cea, Kind: 12, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(WhereViewBlockersText{}.Value)), ElemSize: uint32(unsafe.Sizeof(WhereViewBlockersText{}.Value)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 0, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		Unbounded: true,
+		FracBits:  0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -69119,7 +67661,7 @@ func init() {
 		return WhereViewBlockersTextSaveBodyRetain(w, (*WhereViewBlockersText)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return WhereViewBlockersTextLoadBodyRetain(&r, (*WhereViewBlockersText)(p))
-	}, CookSize: 65716, CookAlign: 4}
+	}, CookSize: 8, CookAlign: 8}
 }
 
 // WhereViewBlockersTextTableType returns WhereViewBlockersText's reflection descriptor.
@@ -69436,7 +67978,7 @@ var WhereViewTableFields = []TableFieldInfo{
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "tables", Json: "tables", TypeName: "?", DeclaredTypeName: "map[string(7)]map[string(256)]map[string(128)]*string", Id: 0xe26607dbf29ff924, Kind: 13, IsArray: true, Counted: true, Optional: false,
+	{Name: "tables", Json: "tables", TypeName: "?", DeclaredTypeName: "map[string(7)]map[string]map[string]*string", Id: 0xe26607dbf29ff924, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(WhereView{}.Tables)), ElemSize: uint32(unsafe.Sizeof(*new(WhereViewTablesEntryRow))), CountOffset: (uint32(unsafe.Offsetof(WhereView{}.Tables))) + 8, PresentOffset: 0xffffffff,
 		CookOffset: 120, CookElemSize: 32, CookCountOffset: 128, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
@@ -69448,9 +67990,9 @@ var WhereViewTableFields = []TableFieldInfo{
 		Arms:  nil,
 		Guard: "", Table: WhereViewTablesEntryTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "tiers", Json: "tiers", TypeName: "?", DeclaredTypeName: "map[string(128)]int64", Id: 0x6dd8dc6c5fdae3ce, Kind: 13, IsArray: true, Counted: true, Optional: false,
+	{Name: "tiers", Json: "tiers", TypeName: "?", DeclaredTypeName: "map[string]int64", Id: 0x6dd8dc6c5fdae3ce, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(WhereView{}.Tiers)), ElemSize: uint32(unsafe.Sizeof(*new(WhereViewTiersEntryRow))), CountOffset: (uint32(unsafe.Offsetof(WhereView{}.Tiers))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 136, CookElemSize: 144, CookCountOffset: 144, CookPresentOffset: 4294967295,
+		CookOffset: 136, CookElemSize: 16, CookCountOffset: 144, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		Map: true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -69529,9 +68071,9 @@ var WhereViewTableFields = []TableFieldInfo{
 		Arms:  nil,
 		Guard: "", Table: WhereViewFirstTimeUnderTargetTextTableType,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "first_time_routes", Json: "first_time_routes", TypeName: "?", DeclaredTypeName: "map[string(128)]*string", Id: 0xe02360359c269026, Kind: 13, IsArray: true, Counted: true, Optional: false,
+	{Name: "first_time_routes", Json: "first_time_routes", TypeName: "?", DeclaredTypeName: "map[string]*string", Id: 0xe02360359c269026, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(WhereView{}.FirstTimeRoutes)), ElemSize: uint32(unsafe.Sizeof(*new(WhereViewFirstTimeRoutesEntryRow))), CountOffset: (uint32(unsafe.Offsetof(WhereView{}.FirstTimeRoutes))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 216, CookElemSize: 144, CookCountOffset: 224, CookPresentOffset: 4294967295,
+		CookOffset: 216, CookElemSize: 16, CookCountOffset: 224, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		Map: true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -69602,10 +68144,10 @@ var WhereViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "blockers", Json: "blockers", TypeName: "WhereViewBlockersText", DeclaredTypeName: "WhereViewBlockersText", Id: 0x274d62c1e1e8ead2, Kind: 12, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(WhereView{}.Blockers)), ElemSize: uint32(unsafe.Sizeof(*new(WhereViewBlockersTextRow))), CountOffset: (uint32(unsafe.Offsetof(WhereView{}.Blockers))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 328, CookElemSize: 65716, CookCountOffset: 336, CookPresentOffset: 4294967295,
+		CookOffset: 328, CookElemSize: 8, CookCountOffset: 336, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		TextList: 1,
-		List:     true, ElemAlign: 4,
+		List:     true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -69785,7 +68327,7 @@ var WhereViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "holds", Json: "holds", TypeName: "HoldView", DeclaredTypeName: "HoldView", Id: 0x7477287ad37c50f1, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(WhereView{}.Holds)), ElemSize: uint32(unsafe.Sizeof(*new(HoldViewRow))), CountOffset: (uint32(unsafe.Offsetof(WhereView{}.Holds))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 488, CookElemSize: 584, CookCountOffset: 496, CookPresentOffset: 4294967295,
+		CookOffset: 488, CookElemSize: 72, CookCountOffset: 496, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		List: true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -69808,7 +68350,7 @@ var WhereViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "stops", Json: "stops", TypeName: "Stop", DeclaredTypeName: "Stop", Id: 0x44f536ad76b6a942, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(WhereView{}.Stops)), ElemSize: uint32(unsafe.Sizeof(*new(StopRow))), CountOffset: (uint32(unsafe.Offsetof(WhereView{}.Stops))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 512, CookElemSize: 568, CookCountOffset: 520, CookPresentOffset: 4294967295,
+		CookOffset: 512, CookElemSize: 56, CookCountOffset: 520, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		List: true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,

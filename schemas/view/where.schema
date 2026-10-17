@@ -29,17 +29,15 @@
 // Bounds: a bound in this file is a bound the code enforces, and the comment of the
 // field names the rule with its file and line (a path under internal/ or cmd/ is
 // this repository's; pkg/config and pkg/ntable are nova-tools'). Text that no code
-// bounds is a *string, a blob held at its used size, with no bound declared. Three
-// places cannot be a *string, a map's key, an element of a text list and a
-// string(N) the compiler stores inline; where the code bounds one of them by a
-// rule, the rule is its bound, and where the code bounds it by none the comment
-// says "NO RULE BOUNDS IT" and gives the ceiling the schema language leaves
-// (an unbounded text-list element, []*string, is a follow-on of the compiler,
-// docs/SPEC-TABLES.md section 15). A value past a declared bound is refused at the
-// reader, never clamped into a record. A list the code does not count is unbounded,
-// sized by content. A cell of a table is a field value of the nova-tables layer,
-// held at its used size as a blob and held by the reader to
-// ntable.LimitFieldValueBytes (64 KiB) as a constraint, never a string(65536).
+// bounds is a *string, a blob held at its used size, with no bound declared. Text
+// that only appears as a list element or a map key, which cannot be a *string, is
+// declared unbounded with the bare spelling ([]string, map[string]T; schema
+// docs/USAGE.md "Unbounded text in lists and map keys"), never a chosen or derived
+// ceiling. A value past a declared bound is refused at the reader, never clamped
+// into a record. A list the code does not count is unbounded, sized by content. A
+// cell of a table is a field value of the nova-tables layer, held at its used size
+// as a blob and held by the reader to ntable.LimitFieldValueBytes (64 KiB) as a
+// constraint, never a string(65536).
 //
 // The rules the bounds cite:
 //   - a ValidID word: at most 128 bytes (internal/sprint/schema.go:289, MaxIDLen
@@ -88,10 +86,8 @@ table DecisionSummary
     // a receipt history line (the text frame prints it after "DECISION RECEIPT
     // HISTORY: "), "from=<from> to=<to>: <what>" (internal/sprint/seat_answers.go:
     // 525). NO RULE BOUNDS IT: a note's what is cut by no rule (notes.go:241) and
-    // the line is not cut. The ceiling is 65536, the 64 KiB of
-    // ntable.LimitFieldValueBytes, the most text a field of the store holds.
-    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
-    receipt_history []string(65536)
+    // the line is not cut, so the element is unbounded ([]string).
+    receipt_history []string
 }
 
 // ---------------------------------------------------------------------------
@@ -158,16 +154,13 @@ table CostReconcileRecord
 // digits); no rule bounds a money text.
 table TierCosts
 {
-    // tier word (sprint.TierWord) -> cards. A tier is a nova-config row, at most
-    // 128 bytes (pkg/config/kind.go:179), and a brief that names a tier other than
-    // flash, pro, heavy or frontier, "none" aside, is refused
-    // (internal/sprint/steps_edit.go:555).
-    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
-    tiers          map[string(128)]int64
+    // tier word (sprint.TierWord) -> cards. NO RULE BOUNDS IT: a tier is any word
+    // the brief's line 1 carries (internal/sprint/cost_view.go:92-99), so the key
+    // is unbounded (map[string]).
+    tiers          map[string]int64
     per_landed     *string
-    // tier -> money.
-    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
-    cost_by_tier   map[string(128)]*string
+    // tier -> money. The tier word is unbounded (internal/sprint/cost_view.go:92-99).
+    cost_by_tier   map[string]*string
     total_cost     *string
     total_usd      *string
     landed_usd     *string
@@ -178,16 +171,14 @@ table TierCosts
     dropped_cards  int64
     carried_cards  int64
     read_tokens    int64
-    // route (a nova-config row, at most 128 bytes, pkg/config/kind.go:179; or
-    // WhySubscription, "subscription", or "-") -> the day's reads.
-    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
-    reads_today    map[string(128)]ReadDay
+    // route (a nova-config row, no length bounds it, pkg/config/kind.go:1018-1025;
+    // or WhySubscription, "subscription", or "-") -> the day's reads, an unbounded key.
+    reads_today    map[string]ReadDay
     unpriced_runs  int64
     reads_no_tokens int64
-    // reader name -> its spend: reader-<machine>, 7 + 128 = 135
-    // (internal/sprint/readers.go:171-178).
-    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
-    readers        map[string(135)]ReaderSpend
+    // reader name -> its spend: reader-<machine> (internal/sprint/readers.go:171-178),
+    // NO RULE BOUNDS IT as a key (a friend row may be named too), so it is unbounded.
+    readers        map[string]ReaderSpend
     in_flight      *string
     unreconciled   *string
     reconciles     []CostReconcileRecord
@@ -297,9 +288,10 @@ table SeatChange
 table HoldView
 {
     kind    *string
-    // a stream (128), a member (135) or a card (515): the longest is a card id
-    // (internal/sprint/schema.go:296-311).
-    name    string(515)
+    // a stream (128), a member (135), a card (515) or a friend name that no length
+    // bounds (internal/sprint/hold.go:152; pkg/config/kind.go:1018-1025), so the
+    // name is unbounded text.
+    name    *string
     reason  *string
     by      *string
     at      *string
@@ -312,9 +304,10 @@ table HoldView
 table Stop
 {
     kind    *string
-    // a card (515), a stream (128), a member (135) or a route (128): the longest is
-    // a card id (internal/sprint/schema.go:296-311).
-    subject string(515)
+    // a card (515), a stream (128), a member (135), a route or a provider that no
+    // length bounds (internal/sprint/stops.go:347,:358; pkg/config/kind.go:
+    // 1018-1025), so the subject is unbounded text.
+    subject *string
     since   timestamp
     what    *string
     effect  *string
@@ -397,9 +390,9 @@ table ProviderGapReport
 {
     invalid_providers []ProviderProblem
     routes            []RouteGap
-    // tier words: nova-config rows, at most 128 bytes each (pkg/config/kind.go:179).
-    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
-    tiers             []string(128)
+    // tier words: nova-config rows, no length bounds them (pkg/config/kind.go:
+    // 1018-1025), so each element is unbounded ([]string).
+    tiers             []string
 }
 
 // ---------------------------------------------------------------------------
@@ -464,10 +457,8 @@ table PrimaryRow
     // the row's fields but the brief: a field name -> its text, a field value of the
     // nova-tables layer (ntable.LimitFieldValueBytes), held at its used size. A field
     // name is a word the sprint writes (a Field constant, or a read take's number);
-    // NO RULE BOUNDS IT, and the key takes 128 bytes as a ceiling (the length of a
-    // nova-config row name, pkg/config/kind.go:179).
-    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
-    fields map[string(128)]*string
+    // NO RULE BOUNDS IT, so the key is unbounded (map[string]).
+    fields map[string]*string
     tier_shown *string
 }
 
@@ -530,9 +521,8 @@ table FriendReport
 {
     // the cards she is running (work card ids or her job names), the comma list of
     // `friend beat --running` (cmd/nova-sprint/friends.go:385, sprint.Split). NO
-    // RULE BOUNDS IT: the ceiling is 65536, the 64 KiB of ntable.LimitFieldValueBytes.
-    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
-    running      []string(65536)
+    // RULE BOUNDS IT: a job name has no length bound, so each element is unbounded.
+    running      []string
     working      ?int64
     queue        ?int64
     width        ?int64
@@ -605,10 +595,10 @@ table LandedSeries
     fleet           []int64
     totals          SeriesTotals
     last_hour       SeriesLastHour | json = "lastHour"
-    // worker (a fleet row: a ValidID word or friend.<name>, 7 + 128 = 135,
-    // cmd/nova-sprint/serve.go:208) -> cards landed.
-    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
-    workers         map[string(135)]int64
+    // worker (a fleet row: a ValidID word or friend.<name>, the name a config row
+    // name that no length bounds, cmd/nova-sprint/serve.go:208) -> cards landed, an
+    // unbounded key.
+    workers         map[string]int64
 }
 
 // ---------------------------------------------------------------------------
@@ -631,16 +621,14 @@ table WhereView
     // the dashboard's pull reads, sprintdash.sprintCopy). The table is a logical
     // table name the code writes: work, readers, merge, friends or fleet, the
     // longest 7 bytes (internal/sprint/schema.go:14-18 and :36); the row its key (a
-    // member id, ntable.LimitMemberIDBytes 256); the column its name, a word the
-    // sprint writes, NO RULE BOUNDS IT and the key takes 128 bytes as a ceiling
-    // (pkg/config/kind.go:179); a cell is the
-    // text as a blob, held to ntable.LimitFieldValueBytes.
-    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
-    tables map[string(7)]map[string(256)]map[string(128)]*string
-    // tier word -> cards; a tier is a nova-config row, at most 128 bytes
-    // (pkg/config/kind.go:179).
-    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
-    tiers  map[string(128)]int64
+    // member id, or a friend name that no length bounds, pkg/config/kind.go:
+    // 1018-1025); the column its name, a word the sprint writes, NO RULE BOUNDS
+    // IT; a cell is the text as a blob, held to ntable.LimitFieldValueBytes. The
+    // row and column keys are unbounded.
+    tables map[string(7)]map[string]map[string]*string
+    // tier word -> cards; a tier is any word the brief's line 1 carries
+    // (internal/sprint/cost_view.go:92-99), so the key is unbounded.
+    tiers  map[string]int64
     // stream (128) -> its cards by tier and its spend.
     stream_costs map[string(128)]TierCosts
     cost_check   *CostCheck
@@ -650,9 +638,9 @@ table WhereView
     first_time_window       int64
     // the streams under the target: ValidID words (steps_work.go:168).
     first_time_under_target []string(128)
-    // route (a nova-config row, at most 128 bytes, pkg/config/kind.go:179) -> first-time text.
-    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
-    first_time_routes       map[string(128)]*string
+    // route (a nova-config row, no length bounds it, pkg/config/kind.go:1018-1025)
+    // -> first-time text.
+    first_time_routes       map[string]*string
     // the day's read spend per route, one line.
     read_spend  *string
     streams     []StreamClock
@@ -660,12 +648,10 @@ table WhereView
     // the stalled streams: ValidID words (steps_work.go:168).
     stalled     []string(128)
     critical    []CriticalCard
-    // a blocker line (sprint.IdleBlockers, internal/sprint/idle.go:151-177): at most
-    // 65710 bytes, the longest being a stopped stream's, "<count> behind stream
-    // <stream> stopped (<cause>)": 20 (the count) + 8 (" behind ") + 7 ("stream ")
-    // + 128 (the stream, steps_work.go:168) + 10 (" stopped (") + 65536 (the cause,
-    // a field value of the store, pkg/ntable/limits.go:13) + 1 (")").
-    blockers    []string(65710)
+    // a blocker line (sprint.IdleBlockers, internal/sprint/idle.go:117-133): NO RULE
+    // BOUNDS IT; the line is a formatted cause the code does not cut, so each
+    // element is unbounded ([]string).
+    blockers    []string
     idle        *string
     coordinator *string
     // the pending operation's id.

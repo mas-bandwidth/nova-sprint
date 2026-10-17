@@ -137,9 +137,7 @@ type DecisionSummaryRow struct {
 // DecisionSummaryReceiptHistoryTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type DecisionSummaryReceiptHistoryTextRow struct {
-	Value       [65537]byte // string(65536): buffer, used length beside it
-	_           [3]byte     // generated padding
-	ValueLength int32
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // FriendReportRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -173,9 +171,7 @@ type FriendReportRow struct {
 // FriendReportRunningTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type FriendReportRunningTextRow struct {
-	Value       [65537]byte // string(65536): buffer, used length beside it
-	_           [3]byte     // generated padding
-	ValueLength int32
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // FriendRowRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -227,9 +223,8 @@ type GoalViewRow struct {
 // HoldViewRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type HoldViewRow struct {
-	Kind       int64     // *: signed self-relative delta, zero is null (§6.3)
-	Name       [516]byte // string(515): buffer, used length beside it
-	NameLength int32
+	Kind       int64 // *: signed self-relative delta, zero is null (§6.3)
+	Name       int64 // *: signed self-relative delta, zero is null (§6.3)
 	Reason     int64 // *: signed self-relative delta, zero is null (§6.3)
 	By         int64 // *: signed self-relative delta, zero is null (§6.3)
 	At         int64 // *: signed self-relative delta, zero is null (§6.3)
@@ -267,10 +262,8 @@ type LandedSeriesRow struct {
 // LandedSeriesWorkersEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type LandedSeriesWorkersEntryRow struct {
-	Key       [136]byte // string(135): buffer, used length beside it
-	KeyLength int32
-	_         [4]byte // generated padding
-	Value     int64
+	Key   int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
+	Value int64
 }
 
 // LaneRowRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -366,10 +359,8 @@ type PrimaryRowRow struct {
 // PrimaryRowFieldsEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type PrimaryRowFieldsEntryRow struct {
-	Key       [129]byte // string(128): buffer, used length beside it
-	_         [3]byte   // generated padding
-	KeyLength int32
-	Value     int64 // *: signed self-relative delta, zero is null (§6.3)
+	Key   int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
+	Value int64 // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // ProviderGapReportRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -383,9 +374,7 @@ type ProviderGapReportRow struct {
 // ProviderGapReportTiersTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type ProviderGapReportTiersTextRow struct {
-	Value       [129]byte // string(128): buffer, used length beside it
-	_           [3]byte   // generated padding
-	ValueLength int32
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // ProviderProblemRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -579,14 +568,13 @@ type StatsResetViewStreamsEntryRow struct {
 // StopRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type StopRow struct {
-	Kind          int64     // *: signed self-relative delta, zero is null (§6.3)
-	Subject       [516]byte // string(515): buffer, used length beside it
-	SubjectLength int32
-	Since         int64
-	What          int64 // *: signed self-relative delta, zero is null (§6.3)
-	Effect        int64 // *: signed self-relative delta, zero is null (§6.3)
-	Undo          int64 // *: signed self-relative delta, zero is null (§6.3)
-	Signal        int64 // *: signed self-relative delta, zero is null (§6.3)
+	Kind    int64 // *: signed self-relative delta, zero is null (§6.3)
+	Subject int64 // *: signed self-relative delta, zero is null (§6.3)
+	Since   int64
+	What    int64 // *: signed self-relative delta, zero is null (§6.3)
+	Effect  int64 // *: signed self-relative delta, zero is null (§6.3)
+	Undo    int64 // *: signed self-relative delta, zero is null (§6.3)
+	Signal  int64 // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // StreamClockRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -638,37 +626,29 @@ type TierCostsRow struct {
 // TierCostsCostByTierEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type TierCostsCostByTierEntryRow struct {
-	Key       [129]byte // string(128): buffer, used length beside it
-	_         [3]byte   // generated padding
-	KeyLength int32
-	Value     int64 // *: signed self-relative delta, zero is null (§6.3)
+	Key   int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
+	Value int64 // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // TierCostsReadersEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type TierCostsReadersEntryRow struct {
-	Key       [136]byte // string(135): buffer, used length beside it
-	KeyLength int32
-	_         [4]byte // generated padding
-	Value     ReaderSpendRow
+	Key   int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
+	Value ReaderSpendRow
 }
 
 // TierCostsReadsTodayEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type TierCostsReadsTodayEntryRow struct {
-	Key       [129]byte // string(128): buffer, used length beside it
-	_         [3]byte   // generated padding
-	KeyLength int32
-	Value     ReadDayRow
+	Key   int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
+	Value ReadDayRow
 }
 
 // TierCostsTiersEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type TierCostsTiersEntryRow struct {
-	Key       [129]byte // string(128): buffer, used length beside it
-	_         [3]byte   // generated padding
-	KeyLength int32
-	Value     int64
+	Key   int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
+	Value int64
 }
 
 // WhereViewRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -755,18 +735,14 @@ type WhereViewRow struct {
 // WhereViewBlockersTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type WhereViewBlockersTextRow struct {
-	Value       [65711]byte // string(65710): buffer, used length beside it
-	_           [1]byte     // generated padding
-	ValueLength int32
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // WhereViewFirstTimeRoutesEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type WhereViewFirstTimeRoutesEntryRow struct {
-	Key       [129]byte // string(128): buffer, used length beside it
-	_         [3]byte   // generated padding
-	KeyLength int32
-	Value     int64 // *: signed self-relative delta, zero is null (§6.3)
+	Key   int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
+	Value int64 // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // WhereViewFirstTimeUnderTargetTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -849,34 +825,28 @@ type WhereViewTablesEntryRow struct {
 // WhereViewTablesEntryValueEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type WhereViewTablesEntryValueEntryRow struct {
-	Key       [257]byte // string(256): buffer, used length beside it
-	_         [3]byte   // generated padding
-	KeyLength int32
-	Value     TableMap[WhereViewTablesEntryValueEntryValueEntryRow]
+	Key   int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
+	Value TableMap[WhereViewTablesEntryValueEntryValueEntryRow]
 }
 
 // WhereViewTablesEntryValueEntryValueEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type WhereViewTablesEntryValueEntryValueEntryRow struct {
-	Key       [129]byte // string(128): buffer, used length beside it
-	_         [3]byte   // generated padding
-	KeyLength int32
-	Value     int64 // *: signed self-relative delta, zero is null (§6.3)
+	Key   int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
+	Value int64 // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // WhereViewTiersEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type WhereViewTiersEntryRow struct {
-	Key       [129]byte // string(128): buffer, used length beside it
-	_         [3]byte   // generated padding
-	KeyLength int32
-	Value     int64
+	Key   int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
+	Value int64
 }
 
 // BuildVersion is the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20): the
 // one digest a block carries and BlockOpen compares, and the fact §3.3's
 // announcement carries before the first body so a peer's build is knowable.
-const BuildVersion uint64 = 0x008d8ff938beb14d
+const BuildVersion uint64 = 0x4590b0eeb57fa7e8
 
 // TableReport is the table-wire read report — the permissive contract's
 // ledger. Silence (all zero) means the data matched this reader's schema
@@ -938,6 +908,7 @@ const TableDocNone = ""
 
 // TableFieldInfo is one field's descriptor.
 type TableFieldInfo struct {
+	Unbounded                                                    bool  // unbounded text (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13.1): the slot names a blob record
 	TextList                                                     uint8 // a text list (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13): 1 string(M) elements, 2 ?string(M)
 	CookOffset, CookElemSize, CookCountOffset, CookPresentOffset uint32
 	List, Map                                                    bool // unbounded by-value containers
@@ -966,6 +937,12 @@ type TableFieldInfo struct {
 	HasRange         bool      // a declared [min, max] (int or float)
 	RangeMin         float64   // NOTE: int64 ranges beyond 2^53 lose precision here
 	RangeMax         float64
+	// EXACT integer ranges (mas-bandwidth/schema docs/SPEC-TABLES.md §8.1): a signed integer kind
+	// fills RangeIntMin/RangeIntMax, an unsigned kind (and bits(N)) fills
+	// RangeUintMin/RangeUintMax, beside the float64 pair which stays for float
+	// and fixed-point ranges. Zero on every other field.
+	RangeIntMin, RangeIntMax   int64
+	RangeUintMin, RangeUintMax uint64
 
 	// EnumMax bounds the vocabulary: enums, the highest valid value (None = 0
 	// is always valid); unions, the arm count (tag range [0, EnumMax]); a
@@ -1122,13 +1099,22 @@ func tableJsonGetSigned(storage unsafe.Pointer, width uint32) int64 {
 type tableMapKey struct {
 	text []byte
 	raw  uint64
+	blob TableRef
 }
 
 func tableMapKeyValid(k tableMapKey, f *TableFieldInfo) bool {
-	return f.Kind != 12 || k.raw == 0 && len(k.text) <= int(f.ArrayBound)
+	return f.Kind != 12 || k.raw == 0 && (f.Unbounded && uint64(len(k.text)) <= 0xffffffff && tableUtf8Valid(k.text) || !f.Unbounded && len(k.text) <= int(f.ArrayBound))
 }
-func tableMapStoredKey(p unsafe.Pointer, f *TableFieldInfo) tableMapKey {
+func tableMapStoredKey(p unsafe.Pointer, f *TableFieldInfo, arena ...*TableArena) tableMapKey {
 	key := tableMapKey{}
+	if f.Unbounded {
+		t, ok := tableTextBytes((*TableRef)(unsafe.Add(p, f.Offset)), tableOptionalArena(arena))
+		if !ok {
+			return tableMapKey{raw: 1}
+		}
+		key.text = t
+		return key
+	}
 	if f.Kind == 12 {
 		n := *(*int32)(unsafe.Add(p, f.CountOffset))
 		if n < 0 || n > f.ArrayBound {
@@ -1364,6 +1350,10 @@ func (r *TableReport) Err() error {
 		return TableMissingRequired{Fields: f}
 	}
 	if r.Malformed {
+		const p = "malformed: "
+		if len(r.Reason) > len(p) && r.Reason[:len(p)] == p {
+			return TableMalformedField{Field: r.Reason[len(p):]}
+		}
 		return TableRefuseMalformed
 	}
 	if r.Clamped > 0 {
@@ -3751,6 +3741,146 @@ type TableClampedField struct{ Field string }
 func (e TableClampedField) Error() string        { return "clamped: " + e.Field }
 func (e TableClampedField) Is(target error) bool { return target == TableRefuseClamped }
 
+// tableTextBytes is the text an unbounded slot names (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §2.13.1): its blob record's bytes, nil for a null slot, which is the empty
+// string. It allocates nothing.
+func tableTextBytes(slot *TableRef, a *TableArena) ([]byte, bool) {
+	if *slot == 0 {
+		return nil, true
+	}
+	p := tableRefAt(slot, a)
+	if p == nil {
+		return nil, false
+	}
+	return unsafe.Slice((*byte)(unsafe.Add(p, 8)), int((*TableBlob)(p).Length)), true
+}
+func tableTextString(slot *TableRef, a *TableArena) string {
+	t, _ := tableTextBytes(slot, a)
+	return string(t)
+}
+func tableTextRides(slot *TableRef, a *TableArena) bool {
+	t, ok := tableTextBytes(slot, a)
+	return !ok || len(t) > 0
+}
+
+// tableTextStore allocates text's blob record in the worker's arena.
+func tableTextStore(w *TableWorker, text string) (TableRef, bool) {
+	return tableTextStoreWith(unsafe.Slice(unsafe.StringData(text), len(text)), w.Alloc)
+}
+func tableTextStoreWith(text []byte, alloc func(int64) (unsafe.Pointer, TableRef)) (TableRef, bool) {
+	if len(text) == 0 {
+		return 0, true
+	}
+	if uint64(len(text)) > 0xffffffff || alloc == nil {
+		return 0, false
+	}
+	p, ref := alloc(9 + int64(len(text)))
+	if p == nil {
+		return 0, false
+	}
+	*(*TableBlob)(p) = TableBlob{Length: uint32(uint64(len(text)))}
+	copy(unsafe.Slice((*byte)(unsafe.Add(p, 8)), len(text)), text)
+	*(*byte)(unsafe.Add(p, 8+len(text))) = 0
+	return ref, true
+}
+
+// tableTextPlace places a read's text: in the builder's arena when the carve
+// has a worker, else carved from the node's extent, which LoadMeasure counted
+// from the framing, so the read path allocates nothing.
+func tableTextPlace(c *TableExtentCarve, slot *TableRef, text []byte) bool {
+	*slot = 0
+	if len(text) == 0 {
+		return true
+	}
+	if uint64(len(text)) > 0xffffffff {
+		return false
+	}
+	if c.Worker != nil {
+		ref, ok := tableTextStoreWith(text, c.Worker.Alloc)
+		if !ok {
+			c.Refused = true
+			c.Worker.refused = true
+			return false
+		}
+		*slot = ref
+		return true
+	}
+	p := c.Alloc(tableRegionRound(9+int64(len(text))), 8)
+	if p == nil {
+		return false
+	}
+	*(*TableBlob)(p) = TableBlob{Length: uint32(uint64(len(text)))}
+	copy(unsafe.Slice((*byte)(unsafe.Add(p, 8)), len(text)), text)
+	*(*byte)(unsafe.Add(p, 8+len(text))) = 0
+	*slot = int64(uintptr(p) - uintptr(unsafe.Pointer(slot)))
+	return true
+}
+func tableTextExtentAdd(at *int64, n int64) TableRefuseReason {
+	if n == 0 {
+		return TableRefuseOk
+	}
+	if uint64(n) > 0xffffffff {
+		return TableRefuseBlobOverSizeCap
+	}
+	*at = (*at + 7) &^ 7
+	*at += tableRegionRound(9 + n)
+	return TableRefuseOk
+}
+
+// tableTextExtentValue packs one unbounded slot into a region's extent.
+func tableTextExtentValue(p, q unsafe.Pointer, a *TableArena, region unsafe.Pointer, at *int64) bool {
+	t, ok := tableTextBytes((*TableRef)(p), a)
+	if !ok {
+		return false
+	}
+	if len(t) == 0 {
+		if q != nil {
+			*(*TableRef)(q) = 0
+		}
+		return true
+	}
+	*at = (*at + 7) &^ 7
+	start := *at
+	*at += tableRegionRound(9 + int64(len(t)))
+	if q != nil {
+		dst := unsafe.Add(region, start)
+		*(*TableBlob)(dst) = TableBlob{Length: uint32(uint64(len(t)))}
+		copy(unsafe.Slice((*byte)(unsafe.Add(dst, 8)), len(t)), t)
+		*(*TableRef)(q) = int64(uintptr(dst) - uintptr(q))
+	}
+	return true
+}
+func tableMapStoreKeyed(p unsafe.Pointer, f *TableFieldInfo, k tableMapKey, alloc func(int64) (unsafe.Pointer, TableRef)) bool {
+	if !f.Unbounded {
+		tableMapStoreKey(p, f, k)
+		return true
+	}
+	slot := (*TableRef)(unsafe.Add(p, f.Offset))
+	if k.blob != 0 {
+		*slot = k.blob
+		return true
+	}
+	ref, ok := tableTextStoreWith(k.text, alloc)
+	*slot = ref
+	return ok
+}
+
+// tableTextMalformed names the text list or map whose element or key a read
+// refused (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13.1), so a strict read can say which field.
+func tableTextMalformed(r *TableReport, field string) {
+	if r != nil && r.Reason == "" {
+		r.Reason = "malformed: " + field
+	}
+}
+
+// TableMalformedField is a strict read's malformed refusal naming the text
+// list or map it refused (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13.1):
+// errors.Is(err, TableRefuseMalformed) holds.
+type TableMalformedField struct{ Field string }
+
+func (e TableMalformedField) Error() string        { return "malformed: " + e.Field }
+func (e TableMalformedField) Is(target error) bool { return target == TableRefuseMalformed }
+
 const tableRegionAlign int64 = 8
 const tableBytesTypeId uint64 = 0x2f2ec0474f1c4fe4
 const tableStringTypeId uint64 = 0x704be0d8faaffc58
@@ -4398,6 +4528,41 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 		}
 		return -1, 0, verdict, reason
 	}
+	probe := r
+	probe.Offset = 0
+	framed := true
+	for {
+		ref, ok := probe.Leb()
+		if !ok {
+			framed = false
+			break
+		}
+		if ref == 0 {
+			break
+		}
+		id, ok := probe.Resolve(ref)
+		if !ok || !probe.Has(1) {
+			framed = false
+			break
+		}
+		kind := probe.Get8()
+		if id == 0xffffffffffffffff {
+			if kind != 12 {
+				framed = false
+				break
+			}
+			if _, ok := probe.Body(); !ok {
+				framed = false
+				break
+			}
+		} else if !probe.Skip(kind) {
+			framed = false
+			break
+		}
+	}
+	if !framed || probe.Offset != int64(len(probe.Buffer)) {
+		return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
+	}
 	data, reason := tableWireNodeBytesReason(r, root)
 	if data < 0 {
 		return -1, 0, TableOpenRefused, reason
@@ -4415,6 +4580,9 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 		if n > 0 {
 			data += n
 		}
+	}
+	if !s.whole() {
+		return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
 	}
 	attribution := int64(s.records+1) * 16
 	return data + attribution, attribution, TableOpenOk, TableRefuseOk
@@ -5132,6 +5300,12 @@ func tableExtentValue(p, q unsafe.Pointer, f *TableFieldInfo, a *TableArena, reg
 	if f.Pointer {
 		return true
 	}
+	if f.Unbounded {
+		return tableTextExtentValue(p, q, a, region, at)
+	}
+	if f.Kind == 12 && f.Table != nil {
+		return tableExtentWalk(p, q, f.Table(), a, region, at)
+	}
 	if f.Kind == 13 && f.Table != nil {
 		return tableExtentWalk(p, q, f.Table(), a, region, at)
 	}
@@ -5204,6 +5378,16 @@ func tableWireExtent(r TableReader, t *TableTypeInfo, at *int64) TableRefuseReas
 			}
 			continue
 		}
+		if kind == 12 && f.Unbounded {
+			body, ok := r.Body()
+			if !ok {
+				return TableRefuseOk
+			}
+			if reason := tableTextExtentAdd(at, int64(len(body.Buffer))); reason != TableRefuseOk {
+				return reason
+			}
+			continue
+		}
 		if kind == 15 && f.Kind == 15 && !f.IsArray {
 			if reason := tableWireUnionExtent(&r, f, at); reason != TableRefuseOk {
 				return reason
@@ -5263,6 +5447,18 @@ func tableWireArrayExtent(r TableReader, f *TableFieldInfo, keyed bool, at *int6
 		}
 		*at = (*at + int64(f.ElemAlign) - 1) & -int64(f.ElemAlign)
 		*at += int64(count) * int64(f.ElemSize)
+	}
+	if kind == 12 && f.Kind == 12 && f.Table != nil && f.Table().Fields[0].Unbounded {
+		for i := uint64(0); i < count && r.Has(1); i++ {
+			body, ok := r.Body()
+			if !ok {
+				return TableRefuseOk
+			}
+			if reason := tableTextExtentAdd(at, int64(len(body.Buffer))); reason != TableRefuseOk {
+				return reason
+			}
+		}
+		return TableRefuseOk
 	}
 	if kind != 13 && kind != 15 {
 		return TableRefuseOk
@@ -5392,11 +5588,11 @@ func tableMapCursor(h *tableContainer, f *TableFieldInfo, a *TableArena) tableCo
 	}
 	key := &f.Table().Fields[0]
 	slices.SortFunc(order, func(x, y int64) int {
-		return tableMapKeyOrder(tableMapStoredKey(a.At(x), key), tableMapStoredKey(a.At(y), key), key)
+		return tableMapKeyOrder(tableMapStoredKey(a.At(x), key, a), tableMapStoredKey(a.At(y), key, a), key)
 	})
 	for i, ref := range order {
-		k := tableMapStoredKey(a.At(ref), key)
-		if !tableMapKeyValid(k, key) || i > 0 && tableMapKeyOrder(tableMapStoredKey(a.At(order[i-1]), key), k, key) >= 0 {
+		k := tableMapStoredKey(a.At(ref), key, a)
+		if !tableMapKeyValid(k, key) || i > 0 && tableMapKeyOrder(tableMapStoredKey(a.At(order[i-1]), key, a), k, key) >= 0 {
 			a.Allocator.free(memory)
 			return bad
 		}
@@ -5438,7 +5634,7 @@ func tableMapFind(h *tableContainer, f *TableFieldInfo, key tableMapKey, a *Tabl
 		if p == nil {
 			return nil
 		}
-		if tableMapKeyOrder(tableMapStoredKey(p, kf), key, kf) == 0 {
+		if tableMapKeyOrder(tableMapStoredKey(p, kf, a), key, kf) == 0 {
 			return p
 		}
 	}
@@ -5456,7 +5652,10 @@ func tableMapPlace(w *TableWorker, h *tableContainer, f *TableFieldInfo, key tab
 		return nil, false
 	}
 	f.Table().Reset(p)
-	tableMapStoreKey(p, &f.Table().Fields[0], key)
+	if !tableMapStoreKeyed(p, &f.Table().Fields[0], key, w.Alloc) {
+		tableContainerErase(w.Arena, h, p, int64(f.ElemSize))
+		return nil, false
+	}
 	return p, false
 }
 func tableMapReadKey(r TableReader, f *TableFieldInfo) (key tableMapKey, bad, over, wide, whole bool) {
@@ -5497,7 +5696,7 @@ func tableMapReadKey(r TableReader, f *TableFieldInfo) (key tableMapKey, bad, ov
 				return
 			}
 			key.text = body.Buffer
-			over = len(key.text) > int(f.ArrayBound)
+			over = !f.Unbounded && len(key.text) > int(f.ArrayBound)
 		} else {
 			size := tableKindBytes(kind)
 			if !r.Has(size) {

@@ -451,6 +451,14 @@ func tableJsonWriteFloat(out *tableJsonOut, value float64, single bool) bool {
 // tableJsonWriteScalar writes one scalar at one storage address: a nested
 // object, a union, a vocabulary, or a number.
 func tableJsonWriteScalar(out *tableJsonOut, storage unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+	if f.Unbounded {
+		t, ok := tableTextBytes((*TableRef)(storage), nil)
+		if !ok {
+			return false
+		}
+		tableJsonWriteString(out, t)
+		return true
+	}
 	if f.TextList != 0 {
 		return tableJsonWriteTextElement(out, storage, f)
 	}
@@ -1460,12 +1468,26 @@ func tableJsonReadScalar(in *tableJsonIn, storage unsafe.Pointer, f *TableFieldI
 		in.report.Clamped++
 	}
 	if f.HasRange {
-		if float64(value) < f.RangeMin {
-			value = int64(f.RangeMin)
-			in.report.Clamped++
-		} else if float64(value) > f.RangeMax {
-			value = int64(f.RangeMax)
-			in.report.Clamped++
+		// an integer field clamps against its EXACT range (mas-bandwidth/schema docs/SPEC-TABLES.md
+		// §8.1) so a bound past 2^53 is not degraded through a float64; float
+		// and fixed-point ranges keep the float64 pair
+		if isSigned {
+			if value < f.RangeIntMin {
+				value = f.RangeIntMin
+				in.report.Clamped++
+			} else if value > f.RangeIntMax {
+				value = f.RangeIntMax
+				in.report.Clamped++
+			}
+		} else {
+			uv := uint64(value)
+			if uv < f.RangeUintMin {
+				value = int64(f.RangeUintMin)
+				in.report.Clamped++
+			} else if uv > f.RangeUintMax {
+				value = int64(f.RangeUintMax)
+				in.report.Clamped++
+			}
 		}
 	}
 	// the field's own storage width is the last bound: a value past it clamps
@@ -1507,6 +1529,9 @@ func tableJsonReadField(in *tableJsonIn, base unsafe.Pointer, f *TableFieldInfo,
 	}
 	if f.List {
 		return tableJsonReadList(in, storage, f, depth)
+	}
+	if f.Unbounded {
+		return tableJsonReadText(in, (*TableRef)(storage))
 	}
 	if f.Kind == 33 {
 		units := unsafe.Slice((*uint16)(storage), f.ArrayBound)
@@ -2771,7 +2796,17 @@ func tableJsonReadMap(in *tableJsonIn, p unsafe.Pointer, f *TableFieldInfo, dept
 		good := true
 		var k tableMapKey
 		if key.Kind == 12 {
-			if n > key.ArrayBound {
+			if key.Unbounded {
+				memory, ref := in.graph.alloc(9 + int64(n))
+				if memory == nil {
+					in.bad = true
+					return false
+				}
+				*(*TableBlob)(memory) = TableBlob{Length: uint32(n)}
+				k.text = unsafe.Slice((*byte)(unsafe.Add(memory, 8)), int(n))
+				k.blob = ref
+				_, ok = in.scanString(k.text)
+			} else if n > key.ArrayBound {
 				in.report.Clamped++
 				in.pos = probe.pos
 				good = false
@@ -2817,7 +2852,10 @@ func tableJsonReadMap(in *tableJsonIn, p unsafe.Pointer, f *TableFieldInfo, dept
 				in.report.Duplicate++
 			}
 			entry.Reset(slot)
-			tableMapStoreKey(slot, key, k)
+			if !tableMapStoreKeyed(slot, key, k, nil) {
+				in.bad = true
+				return false
+			}
 			shape := in.valueShape()
 			if value.Optional && shape == 'z' {
 				if !in.literal("null") {
@@ -3010,6 +3048,14 @@ func tableJsonWriteTextElement(out *tableJsonOut, p unsafe.Pointer, f *TableFiel
 		out.text("null")
 		return true
 	}
+	if v.Unbounded {
+		t, ok := tableTextBytes((*TableRef)(unsafe.Add(p, uintptr(v.Offset))), nil)
+		if !ok {
+			return false
+		}
+		tableJsonWriteString(out, t)
+		return true
+	}
 	n := tableJsonCount(p, v)
 	if n < 0 || n > v.ArrayBound {
 		return false
@@ -3033,6 +3079,35 @@ func tableJsonReadTextElement(in *tableJsonIn, p unsafe.Pointer, f *TableFieldIn
 	if f.TextList == 2 {
 		tableJsonSetRaw(unsafe.Add(p, uintptr(v.PresentOffset)), 1, 1)
 	}
+	return true
+}
+
+func tableJsonReadText(in *tableJsonIn, slot *TableRef) bool {
+	*slot = 0
+	probe := *in
+	n, ok := probe.scanString(nil)
+	if !ok {
+		in.bad = true
+		return false
+	}
+	if n == 0 {
+		_, ok = in.scanString(nil)
+		return ok
+	}
+	if in.graph == nil || in.graph.alloc == nil {
+		in.bad = true
+		return false
+	}
+	memory, ref := in.graph.alloc(9 + int64(n))
+	if memory == nil {
+		in.bad = true
+		return false
+	}
+	*(*TableBlob)(memory) = TableBlob{Length: uint32(n)}
+	if _, ok = in.scanString(unsafe.Slice((*byte)(unsafe.Add(memory, 8)), int(n))); !ok {
+		return false
+	}
+	*slot = ref
 	return true
 }
 

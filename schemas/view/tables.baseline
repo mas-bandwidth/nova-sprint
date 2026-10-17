@@ -2,7 +2,7 @@ schema-tables-baseline 7
 package viewwire
 
 table 04856a6edb59865d.15a4dafc6352fcb4
-    field value id=0x7ce4fd9430e80cea kind=12 size=65536
+    field value id=0x7ce4fd9430e80cea kind=12
 
 table 11aee74ba95388d9.8587736730c8b7ea
     field key id=0x3dc94a19365b10ec kind=12 size=10
@@ -16,13 +16,13 @@ table 28375b546bf6c1b9.13daa19ec34623d4
     field value id=0x7ce4fd9430e80cea kind=13 type=TierCosts
 
 table 28375b546bf6c1b9.274d62c1e1e8ead2
-    field value id=0x7ce4fd9430e80cea kind=12 size=65710
+    field value id=0x7ce4fd9430e80cea kind=12
 
 table 28375b546bf6c1b9.609ecda98b3bee32
     field value id=0x7ce4fd9430e80cea kind=12 size=128
 
 table 28375b546bf6c1b9.6dd8dc6c5fdae3ce
-    field key id=0x3dc94a19365b10ec kind=12 size=128
+    field key id=0x3dc94a19365b10ec kind=12
     field value id=0x7ce4fd9430e80cea kind=5
 
 table 28375b546bf6c1b9.7f1b4a5c41ecd465
@@ -41,38 +41,38 @@ table 28375b546bf6c1b9.c6293a6425e1ff65
     field value id=0x7ce4fd9430e80cea kind=13 type=NameList
 
 table 28375b546bf6c1b9.e02360359c269026
-    field key id=0x3dc94a19365b10ec kind=12 size=128
+    field key id=0x3dc94a19365b10ec kind=12
     field value id=0x7ce4fd9430e80cea kind=17 type=string
 
 table 28375b546bf6c1b9.e26607dbf29ff924
     field key id=0x3dc94a19365b10ec kind=12 size=7
-    field value id=0x7ce4fd9430e80cea kind=14 elem=13 array=map keykind=12 keybound=256
+    field value id=0x7ce4fd9430e80cea kind=14 elem=13 array=map keykind=12 keybound=0
 
 table 28375b546bf6c1b9.e26607dbf29ff924.7ce4fd9430e80cea
-    field key id=0x3dc94a19365b10ec kind=12 size=256
-    field value id=0x7ce4fd9430e80cea kind=14 elem=13 array=map keykind=12 keybound=128
+    field key id=0x3dc94a19365b10ec kind=12
+    field value id=0x7ce4fd9430e80cea kind=14 elem=13 array=map keykind=12 keybound=0
 
 table 28375b546bf6c1b9.e26607dbf29ff924.7ce4fd9430e80cea.7ce4fd9430e80cea
-    field key id=0x3dc94a19365b10ec kind=12 size=128
+    field key id=0x3dc94a19365b10ec kind=12
     field value id=0x7ce4fd9430e80cea kind=17 type=string
 
 table 28375b546bf6c1b9.e685131756c58824
     field value id=0x7ce4fd9430e80cea kind=12 size=8
 
 table 28da53a6fe32b5ad.23b885a1b02092b5
-    field key id=0x3dc94a19365b10ec kind=12 size=128
+    field key id=0x3dc94a19365b10ec kind=12
     field value id=0x7ce4fd9430e80cea kind=17 type=string
 
 table 28da53a6fe32b5ad.6dd8dc6c5fdae3ce
-    field key id=0x3dc94a19365b10ec kind=12 size=128
+    field key id=0x3dc94a19365b10ec kind=12
     field value id=0x7ce4fd9430e80cea kind=5
 
 table 28da53a6fe32b5ad.81027a1935117cdf
-    field key id=0x3dc94a19365b10ec kind=12 size=135
+    field key id=0x3dc94a19365b10ec kind=12
     field value id=0x7ce4fd9430e80cea kind=13 type=ReaderSpend
 
 table 28da53a6fe32b5ad.e917efab029e6660
-    field key id=0x3dc94a19365b10ec kind=12 size=128
+    field key id=0x3dc94a19365b10ec kind=12
     field value id=0x7ce4fd9430e80cea kind=13 type=ReadDay
 
 table 47e32b77f2e320dd.0a9904cc5fa248be
@@ -86,14 +86,14 @@ table 6d882f133edf2f4e.81f528932d7f3d02
     field value id=0x7ce4fd9430e80cea kind=5
 
 table 6eeace6e976c6068.e4dede02383cb9cc
-    field key id=0x3dc94a19365b10ec kind=12 size=135
+    field key id=0x3dc94a19365b10ec kind=12
     field value id=0x7ce4fd9430e80cea kind=5
 
 table 71e32bddcd9524b6.81f528932d7f3d02
     field value id=0x7ce4fd9430e80cea kind=12 size=128
 
 table 781e13061b6f1917.490e596d24847edc
-    field key id=0x3dc94a19365b10ec kind=12 size=128
+    field key id=0x3dc94a19365b10ec kind=12
     field value id=0x7ce4fd9430e80cea kind=17 type=string
 
 table ArchivedView
@@ -205,7 +205,7 @@ table GoalView
 
 table HoldView
     field kind id=0xef9c96d721673243 kind=17 type=string
-    field name id=0xc4bcadba8e631b86 kind=12 size=515
+    field name id=0xc4bcadba8e631b86 kind=17 type=string
     field reason id=0x65e8d7f3474f2639 kind=17 type=string
     field by id=0x08a64b07b54df8d4 kind=17 type=string
     field at id=0x089c4e07b545a968 kind=17 type=string
@@ -229,7 +229,7 @@ table LandedSeries
     field fleet id=0xf775f8a97470ae4f kind=14 elem=5 array=unbounded
     field totals id=0x10d39cf61f152e4a kind=13 type=SeriesTotals
     field last_hour id=0x8e172d5541ef4700 kind=13 type=SeriesLastHour
-    field workers id=0xe4dede02383cb9cc kind=14 elem=13 array=map keykind=12 keybound=135
+    field workers id=0xe4dede02383cb9cc kind=14 elem=13 array=map keykind=12 keybound=0
 
 table LaneRow
     field kind id=0xef9c96d721673243 kind=17 type=string
@@ -266,7 +266,7 @@ table PrimaryRow
     field column id=0x5f531287628bf287 kind=17 type=string
     field state id=0xee63aaad45b1b116 kind=17 type=string
     field score id=0xc10e63fbe7f624f5 kind=11
-    field fields id=0x490e596d24847edc kind=14 elem=13 array=map keykind=12 keybound=128
+    field fields id=0x490e596d24847edc kind=14 elem=13 array=map keykind=12 keybound=0
     field tier_shown id=0x040a2f1d0213e01b kind=17 type=string
 
 table ProviderGapReport
@@ -377,7 +377,7 @@ table StatsResetView
 
 table Stop
     field kind id=0xef9c96d721673243 kind=17 type=string
-    field subject id=0x9640735281e90c0f kind=12 size=515
+    field subject id=0x9640735281e90c0f kind=17 type=string
     field since id=0x2b827d4f5e0ada9d kind=36
     field what id=0x9be8c5f64f26c30f kind=17 type=string
     field effect id=0x36c1c83b51f24394 kind=17 type=string
@@ -400,9 +400,9 @@ table StreamClock
     field tier_blocked id=0x670085da242ce106 kind=17 type=string
 
 table TierCosts
-    field tiers id=0x6dd8dc6c5fdae3ce kind=14 elem=13 array=map keykind=12 keybound=128
+    field tiers id=0x6dd8dc6c5fdae3ce kind=14 elem=13 array=map keykind=12 keybound=0
     field per_landed id=0x50dcfb7833db1c01 kind=17 type=string
-    field cost_by_tier id=0x23b885a1b02092b5 kind=14 elem=13 array=map keykind=12 keybound=128
+    field cost_by_tier id=0x23b885a1b02092b5 kind=14 elem=13 array=map keykind=12 keybound=0
     field total_cost id=0x42e380b861ee97d7 kind=17 type=string
     field total_usd id=0x95676bba1360fcfe kind=17 type=string
     field landed_usd id=0xc4724b6b4f7cf32e kind=17 type=string
@@ -413,10 +413,10 @@ table TierCosts
     field dropped_cards id=0x464b2d5e2b76af9d kind=5
     field carried_cards id=0x37262ce770037539 kind=5
     field read_tokens id=0xfce73b3551b7fd98 kind=5
-    field reads_today id=0xe917efab029e6660 kind=14 elem=13 array=map keykind=12 keybound=128
+    field reads_today id=0xe917efab029e6660 kind=14 elem=13 array=map keykind=12 keybound=0
     field unpriced_runs id=0xd34e990c15da5154 kind=5
     field reads_no_tokens id=0x99c9ddb4fdd50e57 kind=5
-    field readers id=0x81027a1935117cdf kind=14 elem=13 array=map keykind=12 keybound=135
+    field readers id=0x81027a1935117cdf kind=14 elem=13 array=map keykind=12 keybound=0
     field in_flight id=0x9c758c73deb84ac9 kind=17 type=string
     field unreconciled id=0xd3382d08eeea28a6 kind=17 type=string
     field reconciles id=0x1b80529daa6d58ec kind=14 elem=13 type=CostReconcileRecord array=unbounded
@@ -432,14 +432,14 @@ table WhereView
     field archived_landed id=0x28dedfcefcb74068 kind=5
     field done id=0xdc51fb6761fd6e91 kind=1
     field tables id=0xe26607dbf29ff924 kind=14 elem=13 array=map keykind=12 keybound=7
-    field tiers id=0x6dd8dc6c5fdae3ce kind=14 elem=13 array=map keykind=12 keybound=128
+    field tiers id=0x6dd8dc6c5fdae3ce kind=14 elem=13 array=map keykind=12 keybound=0
     field stream_costs id=0x13daa19ec34623d4 kind=14 elem=13 array=map keykind=12 keybound=128
     field cost_check id=0xbea0bc892d25d607 kind=17 type=CostCheck
     field first_time id=0x63a9b7c8db210dfb kind=17 type=string
     field first_time_target id=0x5ae642b8a707f7b5 kind=5
     field first_time_window id=0x549433427fd14530 kind=5
     field first_time_under_target id=0x609ecda98b3bee32 kind=14 elem=12 type=WhereViewFirstTimeUnderTargetText array=unbounded
-    field first_time_routes id=0xe02360359c269026 kind=14 elem=13 array=map keykind=12 keybound=128
+    field first_time_routes id=0xe02360359c269026 kind=14 elem=13 array=map keykind=12 keybound=0
     field read_spend id=0x8da0655a706978ba kind=17 type=string
     field streams id=0x81f528932d7f3d02 kind=14 elem=13 type=StreamClock array=unbounded
     field stage_times id=0x072531ee7becec74 kind=13 type=StageTimes optional=true
@@ -495,13 +495,13 @@ table cab64ccd83a662f2.afb728fff268814f
     field value id=0x7ce4fd9430e80cea kind=12 size=515
 
 table cccd7b8be68a49a3.60147fb4fa4a8e0c
-    field value id=0x7ce4fd9430e80cea kind=12 size=65536
+    field value id=0x7ce4fd9430e80cea kind=12
 
 table d15dc0f47785f8a0.8c20bc9bc44d9848
     field value id=0x7ce4fd9430e80cea kind=12 size=515
 
 table d6db85d6988bc78a.6dd8dc6c5fdae3ce
-    field value id=0x7ce4fd9430e80cea kind=12 size=128
+    field value id=0x7ce4fd9430e80cea kind=12
 
 table ddc8631e5d828d8d.81f528932d7f3d02
     field key id=0x3dc94a19365b10ec kind=12 size=128
@@ -766,3 +766,19 @@ table ddc8631e5d828d8d.e6f09b190519daa4
 - RouteGap.provider: nested table string added [refuse]
 - RouteGap.tier: wire kind 12 -> 17 [refuse]
 - RouteGap.tier: nested table string added [refuse]
+
+### 2026-10-17 (UTC) — a12-defs-where-view: the view area declares only bounds the code enforces; unbounded text list elements and map keys use the unbounded spelling, and two config-name fields become unbounded text
+- HoldView.name: wire kind 12 -> 17 [refuse]
+- HoldView.name: nested table string added [refuse]
+- Stop.subject: wire kind 12 -> 17 [refuse]
+- Stop.subject: nested table string added [refuse]
+- 28375b546bf6c1b9.e26607dbf29ff924.value: map key capacity 256 -> 0 (an entry whose KEY does not fit the new capacity is skipped WHOLE and counted, because a clamped key is a merged entry (docs/SPEC-TABLES.md §2.8)) [warn]
+- 28375b546bf6c1b9.e26607dbf29ff924.7ce4fd9430e80cea.value: map key capacity 128 -> 0 (an entry whose KEY does not fit the new capacity is skipped WHOLE and counted, because a clamped key is a merged entry (docs/SPEC-TABLES.md §2.8)) [warn]
+- LandedSeries.workers: map key capacity 135 -> 0 (an entry whose KEY does not fit the new capacity is skipped WHOLE and counted, because a clamped key is a merged entry (docs/SPEC-TABLES.md §2.8)) [warn]
+- PrimaryRow.fields: map key capacity 128 -> 0 (an entry whose KEY does not fit the new capacity is skipped WHOLE and counted, because a clamped key is a merged entry (docs/SPEC-TABLES.md §2.8)) [warn]
+- TierCosts.tiers: map key capacity 128 -> 0 (an entry whose KEY does not fit the new capacity is skipped WHOLE and counted, because a clamped key is a merged entry (docs/SPEC-TABLES.md §2.8)) [warn]
+- TierCosts.cost_by_tier: map key capacity 128 -> 0 (an entry whose KEY does not fit the new capacity is skipped WHOLE and counted, because a clamped key is a merged entry (docs/SPEC-TABLES.md §2.8)) [warn]
+- TierCosts.reads_today: map key capacity 128 -> 0 (an entry whose KEY does not fit the new capacity is skipped WHOLE and counted, because a clamped key is a merged entry (docs/SPEC-TABLES.md §2.8)) [warn]
+- TierCosts.readers: map key capacity 135 -> 0 (an entry whose KEY does not fit the new capacity is skipped WHOLE and counted, because a clamped key is a merged entry (docs/SPEC-TABLES.md §2.8)) [warn]
+- WhereView.tiers: map key capacity 128 -> 0 (an entry whose KEY does not fit the new capacity is skipped WHOLE and counted, because a clamped key is a merged entry (docs/SPEC-TABLES.md §2.8)) [warn]
+- WhereView.first_time_routes: map key capacity 128 -> 0 (an entry whose KEY does not fit the new capacity is skipped WHOLE and counted, because a clamped key is a merged entry (docs/SPEC-TABLES.md §2.8)) [warn]

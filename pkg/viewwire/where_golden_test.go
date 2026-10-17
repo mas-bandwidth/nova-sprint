@@ -7,10 +7,10 @@ package viewwire_test
 // reads of it) round-trips through pkg/schemaread in all three forms, the binary
 // wire, padded standard base64 of it and the schema JSON text; a value past each
 // declared bound (a string(N), a text list element, a map key at each level) and a
-// damaged image of each form are refused by name, never clamped; a *string field, a
-// text with no declared bound, takes 70000 bytes, past every cap the first
-// definitions chose, in all three forms; and generate.go pins the schema compiler
-// that writes the area.
+// damaged image of each form are refused by name, never clamped; a *string field, an
+// unbounded text list element and an unbounded map key each take 70000 bytes, past
+// every cap the first definitions chose, in all three forms; and generate.go pins the
+// schema compiler that writes the area.
 //
 // Every table is a VARIABLE table (S1: the where object is a message an older
 // reader meets) and travels in all three forms (S2).
@@ -62,9 +62,9 @@ import (
 
 const viewHelp = "nova-sprint where --json"
 
-// pin is the compiler generate.go names: the landing of
-// schema-string-arrays-and-top-level-array-roots on mas-bandwidth/schema.
-const pin = "v2.5.1-0.20261017040935-caea41783528"
+// pin is the compiler generate.go names: the landing that carries text lists,
+// array-root tables and unbounded text list elements and map keys on mas-bandwidth/schema.
+const pin = "v2.5.1-0.20261017153557-54e0eda7d20b"
 
 // variableTables is every table of the area, all variable.
 var variableTables = []string{
@@ -364,18 +364,14 @@ func samples() map[string]string {
 // the compiler's field info holds the count bound only (unbounded here), so the
 // element bound is pinned here and held to the definitions' text below.
 var textBound = map[string]int{
-	"ArchivedView.streams":              128,   // ValidID words (sprint.MaxIDLen)
-	"CostCheck.orphans":                 515,   // sprint.ValidCardID
-	"DecisionSummary.receipt_history":   65536, // no rule bounds it: the ceiling is ntable.LimitFieldValueBytes
-	"FriendReport.running":              65536, // no rule bounds it: the ceiling is ntable.LimitFieldValueBytes
-	"LaneRow.held":                      257,   // sprint.ValidLaneWho: 128 + 1 + 128
+	"ArchivedView.streams":              128, // ValidID words (sprint.MaxIDLen)
+	"CostCheck.orphans":                 515, // sprint.ValidCardID
+	"LaneRow.held":                      257, // sprint.ValidLaneWho: 128 + 1 + 128
 	"LaneRow.waiting":                   257,
 	"NameList.names":                    515,
-	"ProviderGapReport.tiers":           128, // a nova-config row (config.MaxName)
 	"WhereView.first_time_under_target": 128,
 	"WhereView.stalled":                 128,
-	"WhereView.blockers":                65710, // the stopped stream's line, derived in where.schema
-	"WhereView.fleet_tiers":             8,     // frontier
+	"WhereView.fleet_tiers":             8, // frontier
 	"WhereView.friends_tiers":           8,
 }
 
@@ -506,16 +502,20 @@ func openStrings(info *wire.TableTypeInfo) []wire.TableFieldInfo {
 	return out
 }
 
-var mapKeyRE = regexp.MustCompile(`map\[string\((\d+)\)\]`)
+var mapKeyRE = regexp.MustCompile(`map\[string(?:\((\d+)\))?\]`)
 
 // mapKeyLevels is the key bound of each level of a map field, outermost first, as
-// the field's declared type spells them.
+// the field's declared type spells them: 0 is an unbounded key (map[string]T).
 func mapKeyLevels(t *testing.T, f wire.TableFieldInfo) []int {
 	t.Helper()
 	var out []int
 	for _, m := range mapKeyRE.FindAllStringSubmatch(f.DeclaredTypeName, -1) {
-		n, err := strconv.Atoi(m[1])
-		require.NoError(t, err)
+		n := 0
+		if m[1] != "" {
+			var err error
+			n, err = strconv.Atoi(m[1])
+			require.NoError(t, err)
+		}
 		out = append(out, n)
 	}
 	return out
@@ -770,14 +770,19 @@ func runVariable[T any](t *testing.T, name, sample string, o varOps[T]) {
 			}
 		}
 	}
-	// each text list element past its bound is refused clamped
+	// each bounded text list element past its bound is refused clamped; an
+	// unbounded element takes openBytes in the open-text check below
 	for _, f := range textLists(info) {
 		if arrayRoot(info) {
 			break
 		}
+		n, bounded := textBound[name+"."+f.Name]
+		if !bounded {
+			continue
+		}
 		list, _ := decode(t, sample).(map[string]any)[f.Json].([]any)
 		elems := append([]any(nil), list...)
-		long := strings.Repeat("~", textBound[name+"."+f.Name]+1)
+		long := strings.Repeat("~", n+1)
 		got, _, err := r.Read([]byte(withField(t, sample, f.Json, append(elems, long))))
 		assert.Equal(t, schemaread.ReasonClamped, refusalOf(t, name+"."+f.Name, err), "%s.%s: an element past the bound is refused clamped", name, f.Name)
 		assert.Nil(t, got)
@@ -795,13 +800,38 @@ func runVariable[T any](t *testing.T, name, sample string, o varOps[T]) {
 	}
 
 	if !arrayRoot(info) {
-		// each map key past its bound drops its entry and is refused clamped, at
-		// every level of the map, in the JSON text; at the bound it is kept
+		// each bounded map key past its bound drops its entry and is refused
+		// clamped, at every level of the map, in the JSON text; at the bound it is
+		// kept. An unbounded key takes openBytes and survives all three forms.
 		for _, f := range info.Fields {
 			if !f.Map {
 				continue
 			}
 			for d, n := range mapKeyLevels(t, f) {
+				if n == 0 {
+					long := strings.Repeat("k", openBytes)
+					keyDoc := mapKeyDoc(t, sample, f, d, long)
+					kv, _, err := r.Read([]byte(keyDoc))
+					require.NoError(t, err, "%s.%s: an unbounded key of %d bytes at level %d reads", name, f.Name, openBytes, d)
+					keyImg, err := r.Write(&kv, schemaread.FormBinary)
+					require.NoError(t, err)
+					keyB64, err := r.Write(&kv, schemaread.FormBase64)
+					require.NoError(t, err)
+					keyJSON, err := r.Write(&kv, schemaread.FormJSON)
+					require.NoError(t, err)
+					for _, data := range [][]byte{keyImg, keyB64, keyJSON} {
+						back, res, err := r.Read(data)
+						require.NoError(t, err, "%s.%s: the unbounded key reads from %s", name, f.Name, res.Form)
+						canon := decode(t, string(codec.SaveJSON(&back)))
+						node := canon.(map[string]any)[f.Json]
+						for i := 0; i < d; i++ {
+							node = firstValue(t, node)
+						}
+						_, ok := node.(map[string]any)[long]
+						assert.True(t, ok, "%s.%s: the unbounded key survives %s at level %d", name, f.Name, res.Form, d)
+					}
+					continue
+				}
 				_, _, err := r.Read([]byte(mapKeyDoc(t, sample, f, d, strings.Repeat("k", n))))
 				require.NoError(t, err, "%s.%s: a key of %d bytes at level %d is at its bound", name, f.Name, n, d)
 				got, _, err := r.Read([]byte(mapKeyDoc(t, sample, f, d, strings.Repeat("k", n+1))))
@@ -817,6 +847,12 @@ func runVariable[T any](t *testing.T, name, sample string, o varOps[T]) {
 		m := decode(t, sample).(map[string]any)
 		for _, f := range openStrings(info) {
 			m[f.Json] = word(f.Name+":", openBytes)
+		}
+		for _, f := range textLists(info) {
+			if _, bounded := textBound[name+"."+f.Name]; bounded {
+				continue
+			}
+			m[f.Json] = append(m[f.Json].([]any), word(f.Name+":", openBytes))
 		}
 		for _, f := range info.Fields {
 			if f.Map && f.Name != "tables" && !(name == "PrimaryRow" && f.Name == "fields") && strings.HasSuffix(f.DeclaredTypeName, "]*string") {
@@ -1263,17 +1299,17 @@ func longSample(t *testing.T, sample string) string {
 	}
 	m["stalled"] = texts(longEntries, "s", 128)
 	m["first_time_under_target"] = texts(longEntries, "f", 128)
-	m["blockers"] = texts(longBlockers, "b", textBound["WhereView.blockers"])
+	m["blockers"] = texts(longBlockers, "b", openBytes)
 	m["fleet_tiers"] = texts(longEntries, "t", textBound["WhereView.fleet_tiers"])
 	m["friends_tiers"] = texts(longEntries, "u", textBound["WhereView.friends_tiers"])
 	nested := func(key, sub string, v []any) {
 		o := m[key].(map[string]any)
 		o[sub] = v
 	}
-	nested("decisions", "receipt_history", texts(longBlockers, "h", textBound["DecisionSummary.receipt_history"]))
+	nested("decisions", "receipt_history", texts(longBlockers, "h", openBytes))
 	nested("cost_check", "orphans", texts(longEntries, "o", 515))
 	nested("archived", "streams", texts(longEntries, "a", 128))
-	nested("provider_gaps", "tiers", texts(longEntries, "g", textBound["ProviderGapReport.tiers"]))
+	nested("provider_gaps", "tiers", texts(longEntries, "g", openBytes))
 	m["priorities"] = map[string]any{"high": texts(longEntries, "p", 515), "low": texts(longEntries, "q", 515)}
 	for _, key := range []string{"streams", "critical", "goals", "holds", "stops", "providers", "lanes", "cards", "merging", "judgments", "rows", "friends"} {
 		first := m[key].([]any)[0]
@@ -1426,6 +1462,8 @@ func TestWhereViewGolden(t *testing.T) {
 		assert.Len(t, stringFields(wire.WhereViewTableType()), 0, "WhereView declares no bounded string")
 		assert.Len(t, openStrings(wire.WhereViewTableType()), 13, "WhereView's open texts")
 		assert.Len(t, openStrings(wire.ProviderViewTableType()), 8, "ProviderView's open texts, the state among them")
+		assert.Len(t, openStrings(wire.HoldViewTableType()), 8, "HoldView's open texts, the name among them")
+		assert.Len(t, openStrings(wire.StopTableType()), 6, "Stop's open texts, the subject among them")
 		// the config names and the member are open texts: no length bounds a row name of nova-config
 		// (pkg/config/kind.go:1018-1025), so none is declared and the open-text check above holds each
 		// to 70000 bytes in the three forms

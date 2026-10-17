@@ -5,12 +5,11 @@
 // schemas/view/where.schema. Every other .go file here is generated: never edit
 // them; edit the schema and run go generate ./pkg/viewwire.
 //
-// The compiler is pinned by exact commit (mas-bandwidth/schema caea41783528, the
-// landing of schema-string-arrays-and-top-level-array-roots on sprint/schema-go on
-// 2026-10-17): the text lists ([]string keeping the JSON array of strings) and the
-// array root the definitions use are not in the pin the repository's other generated
-// packages name. go run fetches the compiler, so generating needs the network and the
-// build does not.
+// The compiler is pinned by exact commit (mas-bandwidth/schema 54e0eda7d20b, the
+// landing that carries text lists, array-root tables and unbounded text list elements
+// and map keys on sprint/schema-go on 2026-10-17), the pin of this repository's other
+// generated packages. go run fetches the compiler, so generating needs the network and
+// the build does not.
 package viewwire
 
-//go:generate go run github.com/mas-bandwidth/schema/v2/cmd/schema@v2.5.1-0.20261017040935-caea41783528 generate --lang go --out . ../../schemas/view
+//go:generate go run github.com/mas-bandwidth/schema/v2/cmd/schema@v2.5.1-0.20261017153557-54e0eda7d20b generate --lang go --out . ../../schemas/view
