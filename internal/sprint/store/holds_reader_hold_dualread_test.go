@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-tools/pkg/schemaread"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -79,13 +80,6 @@ func TestHoldsReaderHoldDualRead(t *testing.T) {
 		assert.EqualValues(t, n, report.RowForms["READERHOLD"][form], form)
 	}
 
-	// The store's writer still writes the legacy form (S4: readers first).
-	require.NoError(t, st.SetReaderAway(ctx, "writer", true, "coordinator"))
-	raw, ok, err := kv.GetKey(ctx, readerAwayKey("writer"))
-	require.NoError(t, err)
-	require.True(t, ok)
-	assert.True(t, LegacyObject([]byte(raw)), raw)
-
 	// A damaged value of each form is refused by name, never read as a record.
 	assertDamageRefused(t, codec, "READERHOLD", f)
 
@@ -115,4 +109,16 @@ func TestHoldsReaderHoldDualRead(t *testing.T) {
 		return n
 	}
 	assert.Equal(t, refused(before)+1, refused(after), "the damaged hold's refusal is counted")
+
+	// The store's writer writes the ReaderHold table form, which the kept dual
+	// reader reads back equal (S4: writers switched, readers kept).
+	require.NoError(t, st.SetReaderAway(ctx, "writer", true, "coordinator"))
+	raw, ok, err := kv.GetKey(ctx, readerAwayKey("writer"))
+	require.NoError(t, err)
+	require.True(t, ok)
+	want := readerHold{Away: true, At: now, By: "coordinator"}
+	stored, storedForm, err := codec.Read([]byte(raw))
+	require.NoError(t, err)
+	assert.Equal(t, schemaread.FormBinary, storedForm)
+	assert.Equal(t, want, stored)
 }
