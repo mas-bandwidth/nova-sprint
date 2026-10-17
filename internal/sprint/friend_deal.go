@@ -258,7 +258,7 @@ func friendsLeft(wc *Card) []string {
 // alone serve the tier (tierServed), is a card no worker is left for: the tick's judgment
 // of the tier names it (TickDeal).
 func (s *Snapshot) friendsFor(c *Card, tier string) []FriendSeat {
-	gone := cardLeft(c, nil) // the friends a rework moved it off for good
+	var gone []string // the friends a rework moved it off for good
 	if wc := s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt"))); wc != nil && wc.Col == Withdrawn {
 		gone = append(gone, withdrawnFrom(wc)...)
 	}
@@ -476,7 +476,7 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 		}
 		escalated := wc != nil && redealBound(wc)
 		tier := s.DealTier(escalating(s, c))
-		left := cardLeft(c, wc)
+		left := friendsLeft(wc)
 		pinned, pinnedCard := FriendCard(c)
 		leftAtPin := slices.Clone(left)
 		name := pinned
@@ -499,7 +499,7 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 				// back, so it is not stranded ready while one is up with room (the owner's
 				// rule: a held or down friend's cards go to the up friends' ready queues);
 				// never the friend it was withdrawn from or taken back from
-				gone := append(withdrawnFrom(wc), cardLeft(c, nil)...)
+				gone := withdrawnFrom(wc)
 				for _, f := range up {
 					if free[f] > 0 && !slices.Contains(gone, f) && friendTakes(s, seat[f], tier) && friendRestrictionAllows(seat[f], c) {
 						may = append(may, f)
@@ -672,7 +672,7 @@ func friendReclaim(s *Snapshot, seats []FriendSeat, up []string, seat map[string
 // it (friendReclaim), her room, lanes and count taken; false when no friend up may take it.
 func reclaimUnit(s *Snapshot, wc *Card, up []string, seat map[string]FriendSeat, free, lanes, dealt map[string]int, declared map[string]bool, p *Plan) (Unit, bool) {
 	pr := s.Work.Placed(wc.F("primary"))
-	tier, left := s.DealTier(pr), cardLeft(pr, wc)
+	tier, left := s.DealTier(pr), friendsLeft(wc)
 	var may []string
 	for _, f := range up {
 		if lanes[f] > 0 && free[f] > 0 && !slices.Contains(left, f) && friendTakes(s, seat[f], tier) && friendRestrictionAllows(seat[f], pr) {
