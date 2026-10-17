@@ -712,8 +712,14 @@ func viewBuilder[B any, W any](init func(*B, ...viewrowswire.TableAllocator) boo
 // viewReport is a generated table report as the row codec decides on it; a load that
 // returned nothing is malformed when it names nothing else (S2).
 func viewReport(rep viewrowswire.TableReport, ok bool) RowReport {
+	// a text list's damaged element names the field in the reason ("malformed: Note.primaries");
+	// the refusal's reason is the bare token (SPEC-TABLES 2.13.1, S2)
+	reason := rep.Reason
+	if strings.HasPrefix(reason, schemaread.ReasonMalformed+": ") {
+		reason = schemaread.ReasonMalformed
+	}
 	return RowReport{Unknown: int(rep.Unknown), KindMismatch: int(rep.KindMismatch), Clamped: int(rep.Clamped),
-		Malformed: rep.Malformed || !ok, Duplicate: int(rep.Duplicate), Reason: rep.Reason}
+		Malformed: rep.Malformed || !ok, Duplicate: int(rep.Duplicate), Reason: reason}
 }
 
 // viewRefused says the strict read refuses r (rowcodec.go RowReport.schema, S2).
@@ -1056,7 +1062,7 @@ func viewObjTo(gv reflect.Value, info *viewrowswire.TableTypeInfo) (map[string]a
 		if !ok {
 			return nil, viewMapErr(schemaread.ReasonMalformed, "%s.%s: no Go field", info.Name, f.Json)
 		}
-		x, present, err := viewValueTo(gv.FieldByIndex(gf.index), f.TypeName, f.IsArray)
+		x, present, err := viewValueTo(gv.FieldByIndex(gf.index), f.TypeName, f.IsArray, f.TextList != 0)
 		if err != nil {
 			return nil, fmt.Errorf("%s.%s: %w", info.Name, f.Json, err)
 		}
@@ -1069,8 +1075,28 @@ func viewObjTo(gv reflect.Value, info *viewrowswire.TableTypeInfo) (map[string]a
 
 // viewValueTo is one Go value as the schema value of type typ (a list of typ when list);
 // present is false for a nil pointer and an empty map or slice, which the text leaves out.
-func viewValueTo(gv reflect.Value, typ string, list bool) (any, bool, error) {
+func viewValueTo(gv reflect.Value, typ string, list bool, textList bool) (any, bool, error) {
 	if list {
+		// a text list is a plain []string in the text, not a list of wrapper objects (SPEC-TABLES 2.13.1)
+		if textList {
+			switch gv.Kind() {
+			case reflect.Slice:
+				if gv.Len() == 0 {
+					return nil, false, nil
+				}
+				fallthrough
+			case reflect.Array:
+				arr := make([]any, gv.Len())
+				for i := range arr {
+					if gv.Index(i).Kind() != reflect.String {
+						return nil, false, viewMapErr(schemaread.ReasonMalformed, "a Go %s into a text list", gv.Type())
+					}
+					arr[i] = gv.Index(i).String()
+				}
+				return arr, true, nil
+			}
+			return nil, false, viewMapErr(schemaread.ReasonMalformed, "a Go %s into a text list", gv.Type())
+		}
 		switch gv.Kind() {
 		case reflect.Map:
 			if gv.Len() == 0 {
@@ -1085,7 +1111,7 @@ func viewValueTo(gv reflect.Value, typ string, list bool) (any, bool, error) {
 			arr := make([]any, 0, len(keys))
 			for _, k := range keys {
 				vf := &pair.Fields[1]
-				x, present, err := viewValueTo(gv.MapIndex(k), vf.TypeName, vf.IsArray)
+				x, present, err := viewValueTo(gv.MapIndex(k), vf.TypeName, vf.IsArray, vf.TextList != 0)
 				if err != nil {
 					return nil, false, err
 				}
@@ -1102,7 +1128,7 @@ func viewValueTo(gv reflect.Value, typ string, list bool) (any, bool, error) {
 			}
 			arr := make([]any, gv.Len())
 			for i := range arr {
-				x, present, err := viewValueTo(gv.Index(i), typ, false)
+				x, present, err := viewValueTo(gv.Index(i), typ, false, false)
 				if err != nil {
 					return nil, false, err
 				}
@@ -1152,7 +1178,7 @@ func viewValueTo(gv reflect.Value, typ string, list bool) (any, bool, error) {
 			if gv.IsNil() {
 				return nil, false, nil
 			}
-			return viewValueTo(gv.Elem(), typ, false)
+			return viewValueTo(gv.Elem(), typ, false, false)
 		case gv.Kind() == reflect.Struct && gv.Type() != viewTimeType:
 			obj, err := viewObjTo(gv, info)
 			return obj, err == nil, err
@@ -1160,7 +1186,7 @@ func viewValueTo(gv reflect.Value, typ string, list bool) (any, bool, error) {
 			obj := map[string]any{}
 			for i := range info.Fields {
 				f := &info.Fields[i]
-				x, present, err := viewValueTo(gv.Index(i), f.TypeName, f.IsArray)
+				x, present, err := viewValueTo(gv.Index(i), f.TypeName, f.IsArray, f.TextList != 0)
 				if err != nil {
 					return nil, false, err
 				}
@@ -1171,7 +1197,7 @@ func viewValueTo(gv reflect.Value, typ string, list bool) (any, bool, error) {
 			return obj, true, nil
 		case len(info.Fields) == 1:
 			f := &info.Fields[0]
-			x, present, err := viewValueTo(gv, f.TypeName, f.IsArray)
+			x, present, err := viewValueTo(gv, f.TypeName, f.IsArray, f.TextList != 0)
 			if err != nil {
 				return nil, false, err
 			}
@@ -1235,7 +1261,7 @@ func viewObjFrom(obj map[string]any, gv reflect.Value, info *viewrowswire.TableT
 		}
 		fv := gv.FieldByIndex(gf.index)
 		if x, has := obj[f.Json]; has && x != nil {
-			if err := viewValueFrom(x, fv, f.TypeName, f.IsArray); err != nil {
+			if err := viewValueFrom(x, fv, f.TypeName, f.IsArray, f.TextList != 0); err != nil {
 				return fmt.Errorf("%s.%s: %w", info.Name, f.Json, err)
 			}
 		}
@@ -1246,11 +1272,43 @@ func viewObjFrom(obj map[string]any, gv reflect.Value, info *viewrowswire.TableT
 // viewValueFrom sets one Go value from the schema value x of type typ (a list of typ when
 // list). A number past the Go value's range, or a list past a Go array's length, is clamped;
 // a key twice in a map's pairs is malformed, never last-wins (rowcodec.go RowReport).
-func viewValueFrom(x any, gv reflect.Value, typ string, list bool) error {
+func viewValueFrom(x any, gv reflect.Value, typ string, list bool, textList bool) error {
 	if list {
 		arr, ok := x.([]any)
 		if !ok {
 			return viewMapErr(schemaread.ReasonMalformed, "not a list of %s", typ)
+		}
+		// a text list is a plain []string in the text, not a list of wrapper objects (SPEC-TABLES 2.13.1)
+		if textList {
+			switch gv.Kind() {
+			case reflect.Slice:
+				if len(arr) == 0 {
+					return nil
+				}
+				s := reflect.MakeSlice(gv.Type(), len(arr), len(arr))
+				for i, e := range arr {
+					text, ok := e.(string)
+					if !ok {
+						return viewMapErr(schemaread.ReasonMalformed, "a text list element that is not text")
+					}
+					s.Index(i).SetString(text)
+				}
+				gv.Set(s)
+				return nil
+			case reflect.Array:
+				if len(arr) != gv.Len() {
+					return viewMapErr(schemaread.ReasonClamped, "%d into a Go %s", len(arr), gv.Type())
+				}
+				for i, e := range arr {
+					text, ok := e.(string)
+					if !ok {
+						return viewMapErr(schemaread.ReasonMalformed, "a text list element that is not text")
+					}
+					gv.Index(i).SetString(text)
+				}
+				return nil
+			}
+			return viewMapErr(schemaread.ReasonMalformed, "a text list into a Go %s", gv.Type())
 		}
 		switch gv.Kind() {
 		case reflect.Map:
@@ -1280,7 +1338,7 @@ func viewValueFrom(x any, gv reflect.Value, typ string, list bool) error {
 				val := reflect.New(gv.Type().Elem()).Elem()
 				vf := &pair.Fields[1]
 				if y, has := eo[vf.Json]; has && y != nil {
-					if err := viewValueFrom(y, val, vf.TypeName, vf.IsArray); err != nil {
+					if err := viewValueFrom(y, val, vf.TypeName, vf.IsArray, vf.TextList != 0); err != nil {
 						return err
 					}
 				}
@@ -1294,7 +1352,7 @@ func viewValueFrom(x any, gv reflect.Value, typ string, list bool) error {
 			}
 			s := reflect.MakeSlice(gv.Type(), len(arr), len(arr))
 			for i, e := range arr {
-				if err := viewValueFrom(e, s.Index(i), typ, false); err != nil {
+				if err := viewValueFrom(e, s.Index(i), typ, false, false); err != nil {
 					return err
 				}
 			}
@@ -1305,7 +1363,7 @@ func viewValueFrom(x any, gv reflect.Value, typ string, list bool) error {
 				return viewMapErr(schemaread.ReasonClamped, "%d of %s into %d", len(arr), typ, gv.Len())
 			}
 			for i, e := range arr {
-				if err := viewValueFrom(e, gv.Index(i), typ, false); err != nil {
+				if err := viewValueFrom(e, gv.Index(i), typ, false, false); err != nil {
 					return err
 				}
 			}
@@ -1390,7 +1448,7 @@ func viewValueFrom(x any, gv reflect.Value, typ string, list bool) error {
 		case info == nil:
 		case gv.Kind() == reflect.Pointer:
 			p := reflect.New(gv.Type().Elem())
-			if err := viewValueFrom(x, p.Elem(), typ, false); err != nil {
+			if err := viewValueFrom(x, p.Elem(), typ, false, false); err != nil {
 				return err
 			}
 			gv.Set(p)
@@ -1409,7 +1467,7 @@ func viewValueFrom(x any, gv reflect.Value, typ string, list bool) error {
 			for i := range info.Fields {
 				f := &info.Fields[i]
 				if y, has := obj[f.Json]; has && y != nil {
-					if err := viewValueFrom(y, gv.Index(i), f.TypeName, f.IsArray); err != nil {
+					if err := viewValueFrom(y, gv.Index(i), f.TypeName, f.IsArray, f.TextList != 0); err != nil {
 						return err
 					}
 				}
@@ -1422,7 +1480,7 @@ func viewValueFrom(x any, gv reflect.Value, typ string, list bool) error {
 			}
 			f := &info.Fields[0]
 			if y, has := obj[f.Json]; has && y != nil {
-				return viewValueFrom(y, gv, f.TypeName, f.IsArray)
+				return viewValueFrom(y, gv, f.TypeName, f.IsArray, f.TextList != 0)
 			}
 			return nil
 		}

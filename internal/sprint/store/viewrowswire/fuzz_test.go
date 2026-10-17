@@ -123,11 +123,6 @@ var fuzzRoots = []fuzzRoot{
 	fuzzBuilder("Beat", func(b *BeatBuilder, w []byte, r *TableReport) bool { return BeatLoadBuilder(b, w, r) }, func(b *BeatBuilder, w []byte, r *TableReport) bool { return BeatFromJson(b, w, r) }, func(v *Beat) []byte { return fuzzImage(BeatMeasure(v), func(b []byte) int64 { return BeatSave(v, b) }) }, func(v *Beat) []byte {
 		return fuzzImage(BeatToJsonMeasure(v), func(b []byte) int64 { return BeatToJson(v, b) })
 	}),
-	fuzzBuilder("CardID", func(b *CardIDBuilder, w []byte, r *TableReport) bool { return CardIDLoadBuilder(b, w, r) }, func(b *CardIDBuilder, w []byte, r *TableReport) bool { return CardIDFromJson(b, w, r) }, func(v *CardID) []byte {
-		return fuzzImage(CardIDMeasure(v), func(b []byte) int64 { return CardIDSave(v, b) })
-	}, func(v *CardID) []byte {
-		return fuzzImage(CardIDToJsonMeasure(v), func(b []byte) int64 { return CardIDToJson(v, b) })
-	}),
 	fuzzBuilder("CheckedCard", func(b *CheckedCardBuilder, w []byte, r *TableReport) bool { return CheckedCardLoadBuilder(b, w, r) }, func(b *CheckedCardBuilder, w []byte, r *TableReport) bool { return CheckedCardFromJson(b, w, r) }, func(v *CheckedCard) []byte {
 		return fuzzImage(CheckedCardMeasure(v), func(b []byte) int64 { return CheckedCardSave(v, b) })
 	}, func(v *CheckedCard) []byte {
@@ -255,9 +250,6 @@ var fuzzRoots = []fuzzRoot{
 		return fuzzImage(LaneQuietMeasure(v), func(b []byte) int64 { return LaneQuietSave(v, b) })
 	}, func(v *LaneQuiet) []byte {
 		return fuzzImage(LaneQuietToJsonMeasure(v), func(b []byte) int64 { return LaneQuietToJson(v, b) })
-	}),
-	fuzzBuilder("Line", func(b *LineBuilder, w []byte, r *TableReport) bool { return LineLoadBuilder(b, w, r) }, func(b *LineBuilder, w []byte, r *TableReport) bool { return LineFromJson(b, w, r) }, func(v *Line) []byte { return fuzzImage(LineMeasure(v), func(b []byte) int64 { return LineSave(v, b) }) }, func(v *Line) []byte {
-		return fuzzImage(LineToJsonMeasure(v), func(b []byte) int64 { return LineToJson(v, b) })
 	}),
 	fuzzBuilder("LineList", func(b *LineListBuilder, w []byte, r *TableReport) bool { return LineListLoadBuilder(b, w, r) }, func(b *LineListBuilder, w []byte, r *TableReport) bool { return LineListFromJson(b, w, r) }, func(v *LineList) []byte {
 		return fuzzImage(LineListMeasure(v), func(b []byte) int64 { return LineListSave(v, b) })
@@ -449,11 +441,6 @@ var fuzzRoots = []fuzzRoot{
 		return fuzzImage(RouteStatMeasure(v), func(b []byte) int64 { return RouteStatSave(v, b) })
 	}, func(v *RouteStat) []byte {
 		return fuzzImage(RouteStatToJsonMeasure(v), func(b []byte) int64 { return RouteStatToJson(v, b) })
-	}),
-	fuzzBuilder("RowName", func(b *RowNameBuilder, w []byte, r *TableReport) bool { return RowNameLoadBuilder(b, w, r) }, func(b *RowNameBuilder, w []byte, r *TableReport) bool { return RowNameFromJson(b, w, r) }, func(v *RowName) []byte {
-		return fuzzImage(RowNameMeasure(v), func(b []byte) int64 { return RowNameSave(v, b) })
-	}, func(v *RowName) []byte {
-		return fuzzImage(RowNameToJsonMeasure(v), func(b []byte) int64 { return RowNameToJson(v, b) })
 	}),
 	fuzzValue("RttSample", func(v *RttSample, w []byte, r *TableReport) bool { return RttSampleLoad(v, w, r) }, func(v *RttSample, w []byte, r *TableReport) bool { return RttSampleFromJson(v, w, r) }, func(v *RttSample) []byte {
 		return fuzzImage(RttSampleMeasure(v), func(b []byte) int64 { return RttSampleSave(v, b) })

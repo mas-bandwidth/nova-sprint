@@ -1,6 +1,63 @@
 schema-tables-baseline 7
 package viewrowswire
 
+table 29c9cea42ed3624b.11ab2d8ba31717e8
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table 35abc51e742bad0b.5165a1bf1f4e6ce2
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table 35abc51e742bad0b.81f528932d7f3d02
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table 35abc51e742bad0b.8553185090e84610
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table 4b88b8be72be7388.af9dac3b097689c4
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table 51ec9e4d83d3648e.a4dcbf2722883418
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table 5674f7598cdb4d0d.274d62c1e1e8ead2
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table 5674f7598cdb4d0d.71b5a50881106db2
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table 5a4607cb4b223192.8e467f8dc25a4790
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table 6686fcc6d2c8f0bd.1e199200bbd2c715
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table 6686fcc6d2c8f0bd.22b24d859cab0707
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table 6686fcc6d2c8f0bd.4dde811e86af67ba
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table 6686fcc6d2c8f0bd.e280a3451e738170
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table 77a71a561f6ca92b.af9dac3b097689c4
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table 77a71a561f6ca92b.d7316b9dd9f8d444
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table 79d212c1dd4cc5a1.2b7dea192bb7be29
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table 895456a39a622e29.e1742cfb3376a502
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table 909a3241a70a49a4.f2a11d5df6c1be51
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table 946b758f4e2be679.096e4d18bf89481c
+    field value id=0x7ce4fd9430e80cea kind=12
+
 table ArchivedFleetCard
     field row id=0x8a0bc1196111ad9b kind=17 type=string
     field col id=0xf604f3190d016791 kind=17 type=string
@@ -16,7 +73,7 @@ table BatchManifest
     field members id=0x79d594675e391090 kind=14 elem=13 type=BatchMemberEntry array=unbounded
     field props id=0xf9399b246d7ec9d1 kind=14 elem=13 type=TextPair array=unbounded
     field prop_expect id=0x2196b6fab23d2858 kind=14 elem=13 type=TextPair array=unbounded
-    field prop_absent id=0xa4dcbf2722883418 kind=14 elem=13 type=Line array=unbounded
+    field prop_absent id=0xa4dcbf2722883418 kind=14 elem=12 type=BatchManifestPropAbsentText array=unbounded
 
 table BatchMemberEntry
     field id id=0x08b72e07b55c3ac0 kind=17 type=string
@@ -25,7 +82,7 @@ table BatchMemberEntry
     field member_move id=0x57bd3d9902d49501 kind=17 type=MemberMove
     field remove id=0xfff83d536a1d457d kind=1
     field set id=0x823b87195ce20e23 kind=14 elem=13 type=TextPair array=unbounded
-    field unset id=0xf49fb84e699194ba kind=14 elem=13 type=Line array=unbounded
+    field unset id=0xf49fb84e699194ba kind=14 elem=12 type=BatchMemberEntryUnsetText array=unbounded
 
 table Beat
     field at id=0x089c4e07b545a968 kind=5
@@ -37,25 +94,22 @@ table Beat
     field friend_report id=0xd9d742c447a6c234 kind=17 type=FriendReport
     field stop_returns id=0xea14e391abc0c981 kind=5
     field no_room id=0x90ab055b72415078 kind=17 type=string
-    field live id=0xbf6695ad6966058f kind=14 elem=13 type=Line array=unbounded
+    field live id=0xbf6695ad6966058f kind=14 elem=12 type=BeatLiveText array=unbounded
     field live_known id=0xee4d5d6524526827 kind=1
     field live_since id=0x5be056ec01c992da kind=5
     field live_seen id=0x0d16749b8d3694d7 kind=14 elem=13 type=LiveSeenPair array=unbounded
     field draining id=0x445341bdde0ebac7 kind=1
     field draining_since id=0xc4010e578c81f622 kind=5
-    field facts id=0xefa717c1620c4ae4 kind=14 elem=13 type=Line array=unbounded
-
-table CardID
-    field id id=0x08b72e07b55c3ac0 kind=17 type=string
+    field facts id=0xefa717c1620c4ae4 kind=14 elem=12 type=BeatFactsText array=unbounded
 
 table CheckRecord
     field epoch id=0xfc9697d1196e6ba6 kind=9
     field at id=0x089c4e07b545a968 kind=5
     field by id=0x08a64b07b54df8d4 kind=17 type=string
     field clean id=0xf531ec9544a8fc3e kind=1
-    field streams id=0x81f528932d7f3d02 kind=14 elem=13 type=Line array=unbounded
+    field streams id=0x81f528932d7f3d02 kind=14 elem=12 type=CheckRecordStreamsText array=unbounded
     field kinds id=0x8e467f8dc25a4790 kind=17 type=string
-    field findings id=0xb8d942799ce18e2f kind=14 elem=13 type=Line array=unbounded
+    field findings id=0xb8d942799ce18e2f kind=14 elem=12 type=CheckRecordFindingsText array=unbounded
     field cards id=0xaf9dac3b097689c4 kind=14 elem=13 type=CheckedCard array=unbounded
     field digest id=0xc771fca99beaeafd kind=17 type=string
 
@@ -83,7 +137,7 @@ table CostCheck
     field cards_usd id=0xba4a4ffe7d45c8fb kind=17 type=string
     field gap_usd id=0x24ac263c9141e420 kind=17 type=string
     field ok id=0x08b05d07b5566bef kind=1
-    field orphans id=0x8c20bc9bc44d9848 kind=14 elem=13 type=CardID array=unbounded
+    field orphans id=0x8c20bc9bc44d9848 kind=14 elem=12 type=CostCheckOrphansText array=unbounded
     field unlisted id=0x4a9d3fa1d11006d7 kind=5
 
 table CostReconcileRecord
@@ -123,13 +177,13 @@ table DecisionDelivery
     field retry_before id=0xfa2e8461180cfa6d kind=5
     field sent_at id=0x4a1ef4b32bf8fea5 kind=5
     field fault id=0x8e54e4c1bcb53cdf kind=17 type=string
-    field reports id=0x11ab2d8ba31717e8 kind=14 elem=13 type=Line array=unbounded
+    field reports id=0x11ab2d8ba31717e8 kind=14 elem=12 type=DecisionDeliveryReportsText array=unbounded
     field unknown_receipts id=0xc48bbb17ab629fab kind=5
 
 table FieldGuard
     field equals id=0x2fedf26ef08343d4 kind=17 type=string
     field absent id=0xa3d0dfc3e1dbb698 kind=1 optional=true
-    field one_of id=0xf2a11d5df6c1be51 kind=14 elem=13 type=Line array=unbounded
+    field one_of id=0xf2a11d5df6c1be51 kind=14 elem=12 type=FieldGuardOneOfText array=unbounded
 
 table FieldGuardPair
     field field id=0x2c5d047ff4e6ffc7 kind=17 type=string
@@ -142,7 +196,7 @@ table FleetMachineRow
     field name id=0xc4bcadba8e631b86 kind=17 type=string
 
 table FriendReport
-    field running id=0x60147fb4fa4a8e0c kind=14 elem=13 type=Line array=unbounded
+    field running id=0x60147fb4fa4a8e0c kind=14 elem=12 type=FriendReportRunningText array=unbounded
     field working id=0x08879e024cb91288 kind=5 optional=true
     field queue id=0xb11e8b146c5a21d8 kind=5 optional=true
     field width id=0xdbdacd932fd1e9bf kind=5 optional=true
@@ -168,7 +222,7 @@ table Heartbeat
     field all id=0xe6f09b190519daa4 kind=5
     field full id=0x865b7478db00e67c kind=5
     field looked id=0xab56337f892ae537 kind=5
-    field fresh id=0xfcd500563d7a36cf kind=14 elem=13 type=Line array=unbounded
+    field fresh id=0xfcd500563d7a36cf kind=14 elem=12 type=HeartbeatFreshText array=unbounded
     field quiet id=0x4b67b014335f38d7 kind=14 elem=13 type=LaneQuiet array=unbounded
     field suppressed id=0xe692b695e19881d7 kind=13 type=Suppressed
 
@@ -182,15 +236,15 @@ table HeldRecord
     field decided id=0x17557edef437f27f kind=14 elem=13 type=Note array=unbounded
     field log id=0x125073191daf5431 kind=14 elem=13 type=LogLine array=unbounded
     field updates id=0x43ac328ac5ae0e45 kind=14 elem=13 type=Note array=unbounded
-    field closes id=0x8553185090e84610 kind=14 elem=13 type=Line array=unbounded
-    field streams id=0x81f528932d7f3d02 kind=14 elem=13 type=Line array=unbounded
+    field closes id=0x8553185090e84610 kind=14 elem=12 type=HeldRecordClosesText array=unbounded
+    field streams id=0x81f528932d7f3d02 kind=14 elem=12 type=HeldRecordStreamsText array=unbounded
     field caller_op id=0xcc11e62c8c25c9b8 kind=17 type=string
     field result id=0x9b51cd7cd76778c4 kind=17 type=string
     field stuck id=0x9bcdc0ada7f7a0ab kind=17 type=string
     field queue id=0xb11e8b146c5a21d8 kind=14 elem=13 type=QueuedChange array=unbounded
     field drain id=0x16749dc90dc393b9 kind=5
     field seat id=0x2d08f118d3f933e8 kind=17 type=SeatChange
-    field close_timers id=0x5165a1bf1f4e6ce2 kind=14 elem=13 type=Line array=unbounded
+    field close_timers id=0x5165a1bf1f4e6ce2 kind=14 elem=12 type=HeldRecordCloseTimersText array=unbounded
     field timers id=0x2b0159e51fae9103 kind=17 type=Timers
 
 table IntList
@@ -220,11 +274,8 @@ table LaneQuiet
     field friend_name id=0x2bcee2fac7bb6eb5 kind=17 type=string
     field run id=0x89b2a81960c55a4a kind=17 type=string
 
-table Line
-    field text id=0xfa04f4ef1995407e kind=17 type=string
-
 table LineList
-    field items id=0x3e7884bf4f412c6f kind=14 elem=13 type=Line array=unbounded
+    field items id=0x3e7884bf4f412c6f kind=14 elem=12 type=LineListItemsText array=unbounded
 
 table LineListPair
     field key id=0x3dc94a19365b10ec kind=17 type=string
@@ -244,7 +295,7 @@ table LogIndex
 
 table LogIndexEntry
     field name id=0xc4bcadba8e631b86 kind=17 type=string
-    field ids id=0x2b7dea192bb7be29 kind=14 elem=13 type=Line array=unbounded
+    field ids id=0x2b7dea192bb7be29 kind=14 elem=12 type=LogIndexEntryIdsText array=unbounded
 
 table LogLine
     field kind id=0xef9c96d721673243 kind=17 type=string
@@ -252,7 +303,7 @@ table LogLine
     field epoch id=0xfc9697d1196e6ba6 kind=9
     field op id=0x08b05607b556600a kind=17 type=string
     field card id=0xb5614e90e87b455f kind=17 type=string
-    field cards id=0xaf9dac3b097689c4 kind=14 elem=13 type=Line array=unbounded
+    field cards id=0xaf9dac3b097689c4 kind=14 elem=12 type=LogLineCardsText array=unbounded
     field primary id=0xbf31137ff783e939 kind=17 type=string
     field stream id=0x4f6a36d8e8907985 kind=17 type=string
     field logical_table id=0xfd4e73068a03eeeb kind=17 type=string
@@ -263,7 +314,7 @@ table LogLine
     field actor id=0xdcccc5391c47d4da kind=17 type=string
     field verb id=0x673ebb0102773a20 kind=17 type=string
     field cause id=0xb733af3b0d745380 kind=17 type=string
-    field answers id=0xd7316b9dd9f8d444 kind=14 elem=13 type=Line array=unbounded
+    field answers id=0xd7316b9dd9f8d444 kind=14 elem=12 type=LogLineAnswersText array=unbounded
     field text id=0xfa04f4ef1995407e kind=14 elem=13 type=TextPair array=unbounded
     field set id=0x823b87195ce20e23 kind=14 elem=13 type=TextPair array=unbounded
     field note id=0x3bf8fbbad1587cdd kind=17 type=Note
@@ -336,24 +387,24 @@ table Note
     field kind id=0xef9c96d721673243 kind=17 type=string
     field note_type id=0x3d6681a0ead0ced6 kind=17 type=string
     field stream id=0x4f6a36d8e8907985 kind=17 type=string
-    field primaries id=0x1e199200bbd2c715 kind=14 elem=13 type=CardID array=unbounded
+    field primaries id=0x1e199200bbd2c715 kind=14 elem=12 type=NotePrimariesText array=unbounded
     field count id=0xb1e5e28e4479a274 kind=5
     field what id=0x9be8c5f64f26c30f kind=17 type=string
     field who id=0x5ec5fc194891690f kind=17 type=string
     field attempt id=0x63e618bd2b303dee kind=5
     field before id=0xd89aa06245afb2be kind=5
     field at id=0x089c4e07b545a968 kind=5
-    field decisions id=0xe280a3451e738170 kind=14 elem=13 type=Line array=unbounded
+    field decisions id=0xe280a3451e738170 kind=14 elem=12 type=NoteDecisionsText array=unbounded
     field marked id=0xeddcc52b15488641 kind=1
     field answers id=0xd7316b9dd9f8d444 kind=17 type=string
-    field suspects id=0x22b24d859cab0707 kind=14 elem=13 type=Line array=unbounded
+    field suspects id=0x22b24d859cab0707 kind=14 elem=12 type=NoteSuspectsText array=unbounded
     field card id=0xb5614e90e87b455f kind=17 type=string
     field other id=0x0a24ad61c2562a55 kind=17 type=string
     field tier id=0x1e6f84ef2eb65989 kind=17 type=string
     field other_stream id=0x69d9147830b8815e kind=17 type=string
     field stream_level id=0x928b726c815092cc kind=1
     field sprint_level id=0xe432996e4b38a7dc kind=1
-    field needs id=0x4dde811e86af67ba kind=14 elem=13 type=Line array=unbounded
+    field needs id=0x4dde811e86af67ba kind=14 elem=12 type=NoteNeedsText array=unbounded
     field review id=0x0e9718950b3dd3a1 kind=5
     field review_set id=0xb9be9ca27fd4975a kind=5
     field to id=0x08c83907b56ac0a4 kind=17 type=string
@@ -365,7 +416,7 @@ table PlaceExpect
 
 table PriorityCards
     field level id=0xe8ddc90a9d7c709d kind=17 type=string
-    field cards id=0xaf9dac3b097689c4 kind=14 elem=13 type=CardID array=unbounded
+    field cards id=0xaf9dac3b097689c4 kind=14 elem=12 type=PriorityCardsCardsText array=unbounded
 
 table PropWrite
     field logical_table id=0xfd4e73068a03eeeb kind=17 type=string
@@ -441,7 +492,7 @@ table ResetResult
     field replaced id=0xe7f16644073d5f45 kind=17 type=ResetMark
     field dry_run id=0x2493e27bcb234f74 kind=1
     field replay id=0x93e4cd644f65cef2 kind=1
-    field said id=0x096e4d18bf89481c kind=14 elem=13 type=Line array=unbounded
+    field said id=0x096e4d18bf89481c kind=14 elem=12 type=ResetResultSaidText array=unbounded
     field refused id=0xdd362779f48a4b03 kind=17 type=string
 
 table ResetRow
@@ -507,9 +558,6 @@ table RouteStat
     field balance id=0x420234a0f998390b kind=17 type=string
     field balance_at id=0xe548666cccbba2e9 kind=17 type=string
 
-table RowName
-    field name id=0xc4bcadba8e631b86 kind=17 type=string
-
 table RttSample
     field start id=0xee5d97ad45ad251f kind=5
     field us id=0x08c43d07b566de99 kind=5
@@ -566,7 +614,7 @@ table StatsArchive
     field epoch id=0xfc9697d1196e6ba6 kind=9
     field reason id=0x65e8d7f3474f2639 kind=17 type=string
     field by id=0x08a64b07b54df8d4 kind=17 type=string
-    field kinds id=0x8e467f8dc25a4790 kind=14 elem=13 type=Line array=unbounded
+    field kinds id=0x8e467f8dc25a4790 kind=14 elem=12 type=StatsArchiveKindsText array=unbounded
     field state id=0xee63aaad45b1b116 kind=17 type=string
     field error id=0x9f7452dd75d54d31 kind=17 type=string
     field rows id=0xa3a7061ff10a8138 kind=14 elem=13 type=TidyRow array=unbounded
@@ -580,7 +628,7 @@ table StatsRecord
     field by id=0x08a64b07b54df8d4 kind=17 type=string
     field kinds id=0x8e467f8dc25a4790 kind=14 elem=13 type=KindTime array=unbounded
     field streams id=0x81f528932d7f3d02 kind=14 elem=13 type=StreamBasePair array=unbounded
-    field archives id=0xe1742cfb3376a502 kind=14 elem=13 type=Line array=unbounded
+    field archives id=0xe1742cfb3376a502 kind=14 elem=12 type=StatsRecordArchivesText array=unbounded
     field reset_mark id=0x7ace47af1f750108 kind=17 type=ResetMark
     field tidying id=0x7e43376f68f5ebcb kind=17 type=TidyInFlight
 
@@ -627,7 +675,7 @@ table StreamTransition
     field state id=0xee63aaad45b1b116 kind=17 type=string
     field cause id=0xb733af3b0d745380 kind=17 type=string
     field waiting id=0xeac9afef1a00b5e8 kind=5
-    field owners id=0x9746d619fd1fc965 kind=14 elem=13 type=RowName array=unbounded
+    field owners id=0x9746d619fd1fc965 kind=14 elem=12 type=StreamTransitionOwnersText array=unbounded
 
 table Stuck
     field op id=0x08b05607b556600a kind=17 type=string
@@ -664,7 +712,7 @@ table TidyResult
     field archive id=0xbea01422b5f77185 kind=17 type=string
     field dry_run id=0x2493e27bcb234f74 kind=1
     field refused id=0xdd362779f48a4b03 kind=17 type=string
-    field said id=0x096e4d18bf89481c kind=14 elem=13 type=Line array=unbounded
+    field said id=0x096e4d18bf89481c kind=14 elem=12 type=TidyResultSaidText array=unbounded
     field record id=0x9c9327fff79474ac kind=13 type=StatsArchive
     field moved id=0x272cf992fbe8c670 kind=5
     field kept id=0x583876d75cd7d1d9 kind=5
@@ -722,7 +770,7 @@ table WhereRecord
     field held_streams id=0xdf031b708d57a398 kind=14 elem=13 type=IntPair array=unbounded
     field landings id=0xe962b73301e3cb5d kind=14 elem=5 array=unbounded
     field critical id=0x387748cc2ad39108 kind=14 elem=13 type=CriticalCard array=unbounded
-    field blockers id=0x274d62c1e1e8ead2 kind=14 elem=13 type=Line array=unbounded
+    field blockers id=0x274d62c1e1e8ead2 kind=14 elem=12 type=WhereRecordBlockersText array=unbounded
     field sentinels id=0x87835f41ad67b3fa kind=14 elem=13 type=SentinelPair array=unbounded
     field tiers id=0x6dd8dc6c5fdae3ce kind=14 elem=13 type=IntPair array=unbounded
     field streams id=0x81f528932d7f3d02 kind=14 elem=13 type=TierCostsPair array=unbounded
@@ -741,11 +789,109 @@ table WhereRecord
     field stats id=0xee639cad45b1994c kind=17 type=string
     field series id=0x4b0cd17e2c175230 kind=14 elem=13 type=Landing array=unbounded
     field series_counted id=0x387e4f9ba3d1716d kind=1
-    field archived_primaries id=0x71b5a50881106db2 kind=14 elem=13 type=CardID array=unbounded
+    field archived_primaries id=0x71b5a50881106db2 kind=14 elem=12 type=WhereRecordArchivedPrimariesText array=unbounded
     field archived_fleet id=0xb04c30d6db0361a8 kind=14 elem=13 type=ArchivedFleetCard array=unbounded
     field live_stage_times id=0xbc8dd1bc79f0e3eb kind=13 type=StageTimes
     field archived_counted id=0x48d5d6681cb16ffa kind=1
 
+table a07443a7967ec8e5.bf6695ad6966058f
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table a07443a7967ec8e5.efa717c1620c4ae4
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table bb06e4bc7e4e3277.fcd500563d7a36cf
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table cccd7b8be68a49a3.60147fb4fa4a8e0c
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table d15dc0f47785f8a0.8c20bc9bc44d9848
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table d7048d25aff0adf4.096e4d18bf89481c
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table e6aea95d7705da22.9746d619fd1fc965
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table ea7710a370e4d5b7.f49fb84e699194ba
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table f2c130fb55370f2f.3e7884bf4f412c6f
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table f494a5e56142b56e.81f528932d7f3d02
+    field value id=0x7ce4fd9430e80cea kind=12
+
+table f494a5e56142b56e.b8d942799ce18e2f
+    field value id=0x7ce4fd9430e80cea kind=12
+
 ## history
 ### 2026-10-17 (UTC) — first baseline
 - baseline created over 98 tables — data written BEFORE this point is not covered by it
+
+### 2026-10-17 (UTC) — text lists are plain []string (SPEC-TABLES 2.13.1); no record of the wrapper form was written outside the unreleased v15 stream
+- BatchManifest.prop_absent: array element kind 13 -> 12 [refuse]
+- BatchManifest.prop_absent: nested table Line -> BatchManifestPropAbsentText, and BatchManifestPropAbsentText is not described by this baseline [refuse]
+- BatchMemberEntry.unset: array element kind 13 -> 12 [refuse]
+- BatchMemberEntry.unset: nested table Line -> BatchMemberEntryUnsetText, and BatchMemberEntryUnsetText is not described by this baseline [refuse]
+- Beat.live: array element kind 13 -> 12 [refuse]
+- Beat.live: nested table Line -> BeatLiveText, and BeatLiveText is not described by this baseline [refuse]
+- Beat.facts: array element kind 13 -> 12 [refuse]
+- Beat.facts: nested table Line -> BeatFactsText, and BeatFactsText is not described by this baseline [refuse]
+- CheckRecord.streams: array element kind 13 -> 12 [refuse]
+- CheckRecord.streams: nested table Line -> CheckRecordStreamsText, and CheckRecordStreamsText is not described by this baseline [refuse]
+- CheckRecord.findings: array element kind 13 -> 12 [refuse]
+- CheckRecord.findings: nested table Line -> CheckRecordFindingsText, and CheckRecordFindingsText is not described by this baseline [refuse]
+- CostCheck.orphans: array element kind 13 -> 12 [refuse]
+- CostCheck.orphans: nested table CardID -> CostCheckOrphansText, and CostCheckOrphansText is not described by this baseline [refuse]
+- DecisionDelivery.reports: array element kind 13 -> 12 [refuse]
+- DecisionDelivery.reports: nested table Line -> DecisionDeliveryReportsText, and DecisionDeliveryReportsText is not described by this baseline [refuse]
+- FieldGuard.one_of: array element kind 13 -> 12 [refuse]
+- FieldGuard.one_of: nested table Line -> FieldGuardOneOfText, and FieldGuardOneOfText is not described by this baseline [refuse]
+- FriendReport.running: array element kind 13 -> 12 [refuse]
+- FriendReport.running: nested table Line -> FriendReportRunningText, and FriendReportRunningText is not described by this baseline [refuse]
+- Heartbeat.fresh: array element kind 13 -> 12 [refuse]
+- Heartbeat.fresh: nested table Line -> HeartbeatFreshText, and HeartbeatFreshText is not described by this baseline [refuse]
+- HeldRecord.closes: array element kind 13 -> 12 [refuse]
+- HeldRecord.closes: nested table Line -> HeldRecordClosesText, and HeldRecordClosesText is not described by this baseline [refuse]
+- HeldRecord.streams: array element kind 13 -> 12 [refuse]
+- HeldRecord.streams: nested table Line -> HeldRecordStreamsText, and HeldRecordStreamsText is not described by this baseline [refuse]
+- HeldRecord.close_timers: array element kind 13 -> 12 [refuse]
+- HeldRecord.close_timers: nested table Line -> HeldRecordCloseTimersText, and HeldRecordCloseTimersText is not described by this baseline [refuse]
+- LineList.items: array element kind 13 -> 12 [refuse]
+- LineList.items: nested table Line -> LineListItemsText, and LineListItemsText is not described by this baseline [refuse]
+- LogIndexEntry.ids: array element kind 13 -> 12 [refuse]
+- LogIndexEntry.ids: nested table Line -> LogIndexEntryIdsText, and LogIndexEntryIdsText is not described by this baseline [refuse]
+- LogLine.cards: array element kind 13 -> 12 [refuse]
+- LogLine.cards: nested table Line -> LogLineCardsText, and LogLineCardsText is not described by this baseline [refuse]
+- LogLine.answers: array element kind 13 -> 12 [refuse]
+- LogLine.answers: nested table Line -> LogLineAnswersText, and LogLineAnswersText is not described by this baseline [refuse]
+- Note.primaries: array element kind 13 -> 12 [refuse]
+- Note.primaries: nested table CardID -> NotePrimariesText, and NotePrimariesText is not described by this baseline [refuse]
+- Note.decisions: array element kind 13 -> 12 [refuse]
+- Note.decisions: nested table Line -> NoteDecisionsText, and NoteDecisionsText is not described by this baseline [refuse]
+- Note.suspects: array element kind 13 -> 12 [refuse]
+- Note.suspects: nested table Line -> NoteSuspectsText, and NoteSuspectsText is not described by this baseline [refuse]
+- Note.needs: array element kind 13 -> 12 [refuse]
+- Note.needs: nested table Line -> NoteNeedsText, and NoteNeedsText is not described by this baseline [refuse]
+- PriorityCards.cards: array element kind 13 -> 12 [refuse]
+- PriorityCards.cards: nested table CardID -> PriorityCardsCardsText, and PriorityCardsCardsText is not described by this baseline [refuse]
+- ResetResult.said: array element kind 13 -> 12 [refuse]
+- ResetResult.said: nested table Line -> ResetResultSaidText, and ResetResultSaidText is not described by this baseline [refuse]
+- StatsArchive.kinds: array element kind 13 -> 12 [refuse]
+- StatsArchive.kinds: nested table Line -> StatsArchiveKindsText, and StatsArchiveKindsText is not described by this baseline [refuse]
+- StatsRecord.archives: array element kind 13 -> 12 [refuse]
+- StatsRecord.archives: nested table Line -> StatsRecordArchivesText, and StatsRecordArchivesText is not described by this baseline [refuse]
+- StreamTransition.owners: array element kind 13 -> 12 [refuse]
+- StreamTransition.owners: nested table RowName -> StreamTransitionOwnersText, and StreamTransitionOwnersText is not described by this baseline [refuse]
+- TidyResult.said: array element kind 13 -> 12 [refuse]
+- TidyResult.said: nested table Line -> TidyResultSaidText, and TidyResultSaidText is not described by this baseline [refuse]
+- WhereRecord.blockers: array element kind 13 -> 12 [refuse]
+- WhereRecord.blockers: nested table Line -> WhereRecordBlockersText, and WhereRecordBlockersText is not described by this baseline [refuse]
+- WhereRecord.archived_primaries: array element kind 13 -> 12 [refuse]
+- WhereRecord.archived_primaries: nested table CardID -> WhereRecordArchivedPrimariesText, and WhereRecordArchivedPrimariesText is not described by this baseline [refuse]
+- table CardID: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
+- table Line: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
+- table RowName: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]

@@ -44,7 +44,13 @@ type BatchManifestRow struct {
 	Members               TableList[BatchMemberEntryRow]
 	Props                 TableList[TextPairRow]
 	PropExpect            TableList[TextPairRow]
-	PropAbsent            TableList[LineRow]
+	PropAbsent            TableList[BatchManifestPropAbsentTextRow]
+}
+
+// BatchManifestPropAbsentTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type BatchManifestPropAbsentTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // BatchMemberEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -57,7 +63,13 @@ type BatchMemberEntryRow struct {
 	Remove     bool
 	_          [7]byte // generated padding
 	Set        TableList[TextPairRow]
-	Unset      TableList[LineRow]
+	Unset      TableList[BatchMemberEntryUnsetTextRow]
+}
+
+// BatchMemberEntryUnsetTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type BatchMemberEntryUnsetTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // BeatRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -72,7 +84,7 @@ type BeatRow struct {
 	FriendReport  int64 // *FriendReport: signed self-relative delta, zero is null (§6.3)
 	StopReturns   int64
 	NoRoom        int64 // *: signed self-relative delta, zero is null (§6.3)
-	Live          TableList[LineRow]
+	Live          TableList[BeatLiveTextRow]
 	LiveKnown     bool
 	_             [7]byte // generated padding
 	LiveSince     int64
@@ -80,13 +92,19 @@ type BeatRow struct {
 	Draining      bool
 	_             [7]byte // generated padding
 	DrainingSince int64
-	Facts         TableList[LineRow]
+	Facts         TableList[BeatFactsTextRow]
 }
 
-// CardIDRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// BeatFactsTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
-type CardIDRow struct {
-	Id int64 // *: signed self-relative delta, zero is null (§6.3)
+type BeatFactsTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
+}
+
+// BeatLiveTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type BeatLiveTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // CheckRecordRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -97,11 +115,23 @@ type CheckRecordRow struct {
 	By       int64 // *: signed self-relative delta, zero is null (§6.3)
 	Clean    bool
 	_        [7]byte // generated padding
-	Streams  TableList[LineRow]
+	Streams  TableList[CheckRecordStreamsTextRow]
 	Kinds    int64 // *: signed self-relative delta, zero is null (§6.3)
-	Findings TableList[LineRow]
+	Findings TableList[CheckRecordFindingsTextRow]
 	Cards    TableList[CheckedCardRow]
 	Digest   int64 // *: signed self-relative delta, zero is null (§6.3)
+}
+
+// CheckRecordFindingsTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type CheckRecordFindingsTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
+}
+
+// CheckRecordStreamsTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type CheckRecordStreamsTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // CheckedCardRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -138,8 +168,14 @@ type CostCheckRow struct {
 	GapUsd     int64 // *: signed self-relative delta, zero is null (§6.3)
 	Ok         bool
 	_          [7]byte // generated padding
-	Orphans    TableList[CardIDRow]
+	Orphans    TableList[CostCheckOrphansTextRow]
 	Unlisted   int64
+}
+
+// CostCheckOrphansTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type CostCheckOrphansTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // CostReconcileRecordRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -194,8 +230,14 @@ type DecisionDeliveryRow struct {
 	RetryBefore     int64
 	SentAt          int64
 	Fault           int64 // *: signed self-relative delta, zero is null (§6.3)
-	Reports         TableList[LineRow]
+	Reports         TableList[DecisionDeliveryReportsTextRow]
 	UnknownReceipts int64
+}
+
+// DecisionDeliveryReportsTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type DecisionDeliveryReportsTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // FieldGuardRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -205,7 +247,13 @@ type FieldGuardRow struct {
 	Absent        bool
 	AbsentPresent bool    // ?: one byte, in Go's model as in C++
 	_             [6]byte // generated padding
-	OneOf         TableList[LineRow]
+	OneOf         TableList[FieldGuardOneOfTextRow]
+}
+
+// FieldGuardOneOfTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type FieldGuardOneOfTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // FieldGuardPairRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -230,7 +278,7 @@ type FleetMachineRowRow struct {
 // FriendReportRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type FriendReportRow struct {
-	Running            TableList[LineRow]
+	Running            TableList[FriendReportRunningTextRow]
 	Working            int64
 	WorkingPresent     bool    // ?: one byte, in Go's model as in C++
 	_                  [7]byte // generated padding
@@ -255,6 +303,12 @@ type FriendReportRow struct {
 	Present            int64
 }
 
+// FriendReportRunningTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type FriendReportRunningTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
+}
+
 // HeartbeatRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type HeartbeatRow struct {
@@ -269,9 +323,15 @@ type HeartbeatRow struct {
 	All         int64
 	Full        int64
 	Looked      int64
-	Fresh       TableList[LineRow]
+	Fresh       TableList[HeartbeatFreshTextRow]
 	Quiet       TableList[LaneQuietRow]
 	Suppressed  SuppressedRow
+}
+
+// HeartbeatFreshTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type HeartbeatFreshTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // HeldRecordRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -287,16 +347,34 @@ type HeldRecordRow struct {
 	Decided     TableList[NoteRow]
 	Log         TableList[LogLineRow]
 	Updates     TableList[NoteRow]
-	Closes      TableList[LineRow]
-	Streams     TableList[LineRow]
+	Closes      TableList[HeldRecordClosesTextRow]
+	Streams     TableList[HeldRecordStreamsTextRow]
 	CallerOp    int64 // *: signed self-relative delta, zero is null (§6.3)
 	Result      int64 // *: signed self-relative delta, zero is null (§6.3)
 	Stuck       int64 // *: signed self-relative delta, zero is null (§6.3)
 	Queue       TableList[QueuedChangeRow]
 	Drain       int64
 	Seat        int64 // *SeatChange: signed self-relative delta, zero is null (§6.3)
-	CloseTimers TableList[LineRow]
+	CloseTimers TableList[HeldRecordCloseTimersTextRow]
 	Timers      int64 // *Timers: signed self-relative delta, zero is null (§6.3)
+}
+
+// HeldRecordCloseTimersTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type HeldRecordCloseTimersTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
+}
+
+// HeldRecordClosesTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type HeldRecordClosesTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
+}
+
+// HeldRecordStreamsTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type HeldRecordStreamsTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // IntListRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -344,16 +422,16 @@ type LaneQuietRow struct {
 	Run        int64 // *: signed self-relative delta, zero is null (§6.3)
 }
 
-// LineRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type LineRow struct {
-	Text int64 // *: signed self-relative delta, zero is null (§6.3)
-}
-
 // LineListRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type LineListRow struct {
-	Items TableList[LineRow]
+	Items TableList[LineListItemsTextRow]
+}
+
+// LineListItemsTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type LineListItemsTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // LineListPairRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -388,7 +466,13 @@ type LogIndexRow struct {
 // §11), so no declaration in the unit can take it.
 type LogIndexEntryRow struct {
 	Name int64 // *: signed self-relative delta, zero is null (§6.3)
-	Ids  TableList[LineRow]
+	Ids  TableList[LogIndexEntryIdsTextRow]
+}
+
+// LogIndexEntryIdsTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type LogIndexEntryIdsTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // LogLineRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -399,7 +483,7 @@ type LogLineRow struct {
 	Epoch        uint64
 	Op           int64 // *: signed self-relative delta, zero is null (§6.3)
 	Card         int64 // *: signed self-relative delta, zero is null (§6.3)
-	Cards        TableList[LineRow]
+	Cards        TableList[LogLineCardsTextRow]
 	Primary      int64 // *: signed self-relative delta, zero is null (§6.3)
 	Stream       int64 // *: signed self-relative delta, zero is null (§6.3)
 	LogicalTable int64 // *: signed self-relative delta, zero is null (§6.3)
@@ -411,10 +495,22 @@ type LogLineRow struct {
 	Actor        int64 // *: signed self-relative delta, zero is null (§6.3)
 	Verb         int64 // *: signed self-relative delta, zero is null (§6.3)
 	Cause        int64 // *: signed self-relative delta, zero is null (§6.3)
-	Answers      TableList[LineRow]
+	Answers      TableList[LogLineAnswersTextRow]
 	Text         TableList[TextPairRow]
 	Set          TableList[TextPairRow]
 	Note         int64 // *Note: signed self-relative delta, zero is null (§6.3)
+}
+
+// LogLineAnswersTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type LogLineAnswersTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
+}
+
+// LogLineCardsTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type LogLineCardsTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // MachineRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -518,18 +614,18 @@ type NoteRow struct {
 	Kind                   int64   // *: signed self-relative delta, zero is null (§6.3)
 	NoteType               int64   // *: signed self-relative delta, zero is null (§6.3)
 	Stream                 int64   // *: signed self-relative delta, zero is null (§6.3)
-	Primaries              TableList[CardIDRow]
+	Primaries              TableList[NotePrimariesTextRow]
 	Count                  int64
 	What                   int64 // *: signed self-relative delta, zero is null (§6.3)
 	Who                    int64 // *: signed self-relative delta, zero is null (§6.3)
 	Attempt                int64
 	Before                 int64
 	At                     int64
-	Decisions              TableList[LineRow]
+	Decisions              TableList[NoteDecisionsTextRow]
 	Marked                 bool
 	_                      [7]byte // generated padding
 	Answers                int64   // *: signed self-relative delta, zero is null (§6.3)
-	Suspects               TableList[LineRow]
+	Suspects               TableList[NoteSuspectsTextRow]
 	Card                   int64 // *: signed self-relative delta, zero is null (§6.3)
 	Other                  int64 // *: signed self-relative delta, zero is null (§6.3)
 	Tier                   int64 // *: signed self-relative delta, zero is null (§6.3)
@@ -537,11 +633,35 @@ type NoteRow struct {
 	StreamLevel            bool
 	SprintLevel            bool
 	_                      [6]byte // generated padding
-	Needs                  TableList[LineRow]
+	Needs                  TableList[NoteNeedsTextRow]
 	Review                 int64
 	ReviewSet              int64
 	To                     int64 // *: signed self-relative delta, zero is null (§6.3)
 	Hint                   int64 // *: signed self-relative delta, zero is null (§6.3)
+}
+
+// NoteDecisionsTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type NoteDecisionsTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
+}
+
+// NoteNeedsTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type NoteNeedsTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
+}
+
+// NotePrimariesTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type NotePrimariesTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
+}
+
+// NoteSuspectsTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type NoteSuspectsTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // PlaceExpectRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -555,7 +675,13 @@ type PlaceExpectRow struct {
 // §11), so no declaration in the unit can take it.
 type PriorityCardsRow struct {
 	Level int64 // *: signed self-relative delta, zero is null (§6.3)
-	Cards TableList[CardIDRow]
+	Cards TableList[PriorityCardsCardsTextRow]
+}
+
+// PriorityCardsCardsTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type PriorityCardsCardsTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // PropWriteRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -669,8 +795,14 @@ type ResetResultRow struct {
 	DryRun   bool
 	Replay   bool
 	_        [6]byte // generated padding
-	Said     TableList[LineRow]
+	Said     TableList[ResetResultSaidTextRow]
 	Refused  int64 // *: signed self-relative delta, zero is null (§6.3)
+}
+
+// ResetResultSaidTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type ResetResultSaidTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // ResetRowRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -758,12 +890,6 @@ type RouteStatRow struct {
 	RestedFor        int64 // *: signed self-relative delta, zero is null (§6.3)
 	Balance          int64 // *: signed self-relative delta, zero is null (§6.3)
 	BalanceAt        int64 // *: signed self-relative delta, zero is null (§6.3)
-}
-
-// RowNameRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type RowNameRow struct {
-	Name int64 // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // RttSampleRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -855,12 +981,18 @@ type StatsArchiveRow struct {
 	Epoch   uint64
 	Reason  int64 // *: signed self-relative delta, zero is null (§6.3)
 	By      int64 // *: signed self-relative delta, zero is null (§6.3)
-	Kinds   TableList[LineRow]
+	Kinds   TableList[StatsArchiveKindsTextRow]
 	State   int64 // *: signed self-relative delta, zero is null (§6.3)
 	Error   int64 // *: signed self-relative delta, zero is null (§6.3)
 	Rows    TableList[TidyRowRow]
 	Routes  TableList[RouteStatRow]
 	Streams TableList[StreamBasePairRow]
+}
+
+// StatsArchiveKindsTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type StatsArchiveKindsTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // StatsRecordRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -872,9 +1004,15 @@ type StatsRecordRow struct {
 	By        int64 // *: signed self-relative delta, zero is null (§6.3)
 	Kinds     TableList[KindTimeRow]
 	Streams   TableList[StreamBasePairRow]
-	Archives  TableList[LineRow]
+	Archives  TableList[StatsRecordArchivesTextRow]
 	ResetMark int64 // *ResetMark: signed self-relative delta, zero is null (§6.3)
 	Tidying   int64 // *TidyInFlight: signed self-relative delta, zero is null (§6.3)
+}
+
+// StatsRecordArchivesTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type StatsRecordArchivesTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // StopRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -943,7 +1081,13 @@ type StreamTransitionRow struct {
 	State   int64 // *: signed self-relative delta, zero is null (§6.3)
 	Cause   int64 // *: signed self-relative delta, zero is null (§6.3)
 	Waiting int64
-	Owners  TableList[RowNameRow]
+	Owners  TableList[StreamTransitionOwnersTextRow]
+}
+
+// StreamTransitionOwnersTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type StreamTransitionOwnersTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // StuckRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -999,10 +1143,16 @@ type TidyResultRow struct {
 	DryRun  bool
 	_       [7]byte // generated padding
 	Refused int64   // *: signed self-relative delta, zero is null (§6.3)
-	Said    TableList[LineRow]
+	Said    TableList[TidyResultSaidTextRow]
 	Record  StatsArchiveRow
 	Moved   int64
 	Kept    int64
+}
+
+// TidyResultSaidTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type TidyResultSaidTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
 }
 
 // TidyRowRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -1076,7 +1226,7 @@ type WhereRecordRow struct {
 	HeldStreams          TableList[IntPairRow]
 	Landings             TableList[int64]
 	Critical             TableList[CriticalCardRow]
-	Blockers             TableList[LineRow]
+	Blockers             TableList[WhereRecordBlockersTextRow]
 	Sentinels            TableList[SentinelPairRow]
 	Tiers                TableList[IntPairRow]
 	Streams              TableList[TierCostsPairRow]
@@ -1096,17 +1246,29 @@ type WhereRecordRow struct {
 	Series               TableList[LandingRow]
 	SeriesCounted        bool
 	_                    [7]byte // generated padding
-	ArchivedPrimaries    TableList[CardIDRow]
+	ArchivedPrimaries    TableList[WhereRecordArchivedPrimariesTextRow]
 	ArchivedFleet        TableList[ArchivedFleetCardRow]
 	LiveStageTimes       StageTimesRow
 	ArchivedCounted      bool
 	_                    [7]byte // generated padding
 }
 
+// WhereRecordArchivedPrimariesTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type WhereRecordArchivedPrimariesTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
+}
+
+// WhereRecordBlockersTextRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type WhereRecordBlockersTextRow struct {
+	Value int64 // string: unbounded text, self-relative delta to its blob record (§2.13.1)
+}
+
 // BuildVersion is the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20): the
 // one digest a block carries and BlockOpen compares, and the fact §3.3's
 // announcement carries before the first body so a peer's build is knowable.
-const BuildVersion uint64 = 0x0d7a2f98b6c69d8f
+const BuildVersion uint64 = 0xd0513d5bf1a5e3c7
 
 // TableReport is the table-wire read report — the permissive contract's
 // ledger. Silence (all zero) means the data matched this reader's schema
@@ -1168,6 +1330,8 @@ const TableDocNone = ""
 
 // TableFieldInfo is one field's descriptor.
 type TableFieldInfo struct {
+	Unbounded                                                    bool  // unbounded text (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13.1): the slot names a blob record
+	TextList                                                     uint8 // a text list (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13): 1 string(M) elements, 2 ?string(M)
 	CookOffset, CookElemSize, CookCountOffset, CookPresentOffset uint32
 	List, Map                                                    bool // unbounded by-value containers
 	ElemAlign                                                    uint32
@@ -1272,6 +1436,7 @@ type TableUnionInfo struct {
 
 // TableTypeInfo is one type's descriptor.
 type TableTypeInfo struct {
+	JsonArray             bool // json = "array" (mas-bandwidth/schema docs/SPEC-TABLES.md §16.10): the text is the one field's array
 	SaveBodyRetain        func(*TableRetainWriter, unsafe.Pointer) bool
 	LoadBodyRetain        func(TableRetainReader, unsafe.Pointer) bool
 	LoadMessageBodyRetain func(TableRetainMessageReader, unsafe.Pointer) (TableRetainMessageReader, bool)
@@ -1356,13 +1521,22 @@ func tableJsonGetSigned(storage unsafe.Pointer, width uint32) int64 {
 type tableMapKey struct {
 	text []byte
 	raw  uint64
+	blob TableRef
 }
 
 func tableMapKeyValid(k tableMapKey, f *TableFieldInfo) bool {
-	return f.Kind != 12 || k.raw == 0 && len(k.text) <= int(f.ArrayBound)
+	return f.Kind != 12 || k.raw == 0 && (f.Unbounded && uint64(len(k.text)) <= 0xffffffff && tableUtf8Valid(k.text) || !f.Unbounded && len(k.text) <= int(f.ArrayBound))
 }
-func tableMapStoredKey(p unsafe.Pointer, f *TableFieldInfo) tableMapKey {
+func tableMapStoredKey(p unsafe.Pointer, f *TableFieldInfo, arena ...*TableArena) tableMapKey {
 	key := tableMapKey{}
+	if f.Unbounded {
+		t, ok := tableTextBytes((*TableRef)(unsafe.Add(p, f.Offset)), tableOptionalArena(arena))
+		if !ok {
+			return tableMapKey{raw: 1}
+		}
+		key.text = t
+		return key
+	}
 	if f.Kind == 12 {
 		n := *(*int32)(unsafe.Add(p, f.CountOffset))
 		if n < 0 || n > f.ArrayBound {
@@ -1598,9 +1772,17 @@ func (r *TableReport) Err() error {
 		return TableMissingRequired{Fields: f}
 	}
 	if r.Malformed {
+		const p = "malformed: "
+		if len(r.Reason) > len(p) && r.Reason[:len(p)] == p {
+			return TableMalformedField{Field: r.Reason[len(p):]}
+		}
 		return TableRefuseMalformed
 	}
 	if r.Clamped > 0 {
+		const p = "clamped: "
+		if len(r.Reason) > len(p) && r.Reason[:len(p)] == p {
+			return TableClampedField{Field: r.Reason[len(p):]}
+		}
 		return TableRefuseClamped
 	}
 	if r.KindMismatch > 0 {
@@ -1609,7 +1791,7 @@ func (r *TableReport) Err() error {
 	return nil
 }
 
-const tableIdCapacity = 447
+const tableIdCapacity = 474
 const tableIdBuckets = 1024
 
 // TableIds interns the writer's ids in first-use order. Bucket links are
@@ -3966,6 +4148,161 @@ func tableFixedOverlay(ptr unsafe.Pointer, n uintptr) []byte {
 	return unsafe.Slice((*byte)(ptr), n)
 }
 
+// tableTextClamped names the text list whose count or element a read clamped
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13), so a strict read can say which field.
+func tableTextClamped(r *TableReport, field string) {
+	if r != nil && r.Reason == "" {
+		r.Reason = "clamped: " + field
+	}
+}
+
+// TableClampedField is a strict read's clamped refusal naming the text list it
+// clamped (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13): errors.Is(err, TableRefuseClamped) holds.
+type TableClampedField struct{ Field string }
+
+func (e TableClampedField) Error() string        { return "clamped: " + e.Field }
+func (e TableClampedField) Is(target error) bool { return target == TableRefuseClamped }
+
+// tableTextBytes is the text an unbounded slot names (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §2.13.1): its blob record's bytes, nil for a null slot, which is the empty
+// string. It allocates nothing.
+func tableTextBytes(slot *TableRef, a *TableArena) ([]byte, bool) {
+	if *slot == 0 {
+		return nil, true
+	}
+	p := tableRefAt(slot, a)
+	if p == nil {
+		return nil, false
+	}
+	return unsafe.Slice((*byte)(unsafe.Add(p, 8)), int((*TableBlob)(p).Length)), true
+}
+func tableTextString(slot *TableRef, a *TableArena) string {
+	t, _ := tableTextBytes(slot, a)
+	return string(t)
+}
+func tableTextRides(slot *TableRef, a *TableArena) bool {
+	t, ok := tableTextBytes(slot, a)
+	return !ok || len(t) > 0
+}
+
+// tableTextStore allocates text's blob record in the worker's arena.
+func tableTextStore(w *TableWorker, text string) (TableRef, bool) {
+	return tableTextStoreWith(unsafe.Slice(unsafe.StringData(text), len(text)), w.Alloc)
+}
+func tableTextStoreWith(text []byte, alloc func(int64) (unsafe.Pointer, TableRef)) (TableRef, bool) {
+	if len(text) == 0 {
+		return 0, true
+	}
+	if uint64(len(text)) > 0xffffffff || alloc == nil {
+		return 0, false
+	}
+	p, ref := alloc(9 + int64(len(text)))
+	if p == nil {
+		return 0, false
+	}
+	*(*TableBlob)(p) = TableBlob{Length: uint32(uint64(len(text)))}
+	copy(unsafe.Slice((*byte)(unsafe.Add(p, 8)), len(text)), text)
+	*(*byte)(unsafe.Add(p, 8+len(text))) = 0
+	return ref, true
+}
+
+// tableTextPlace places a read's text: in the builder's arena when the carve
+// has a worker, else carved from the node's extent, which LoadMeasure counted
+// from the framing, so the read path allocates nothing.
+func tableTextPlace(c *TableExtentCarve, slot *TableRef, text []byte) bool {
+	*slot = 0
+	if len(text) == 0 {
+		return true
+	}
+	if uint64(len(text)) > 0xffffffff {
+		return false
+	}
+	if c.Worker != nil {
+		ref, ok := tableTextStoreWith(text, c.Worker.Alloc)
+		if !ok {
+			c.Refused = true
+			c.Worker.refused = true
+			return false
+		}
+		*slot = ref
+		return true
+	}
+	p := c.Alloc(tableRegionRound(9+int64(len(text))), 8)
+	if p == nil {
+		return false
+	}
+	*(*TableBlob)(p) = TableBlob{Length: uint32(uint64(len(text)))}
+	copy(unsafe.Slice((*byte)(unsafe.Add(p, 8)), len(text)), text)
+	*(*byte)(unsafe.Add(p, 8+len(text))) = 0
+	*slot = int64(uintptr(p) - uintptr(unsafe.Pointer(slot)))
+	return true
+}
+func tableTextExtentAdd(at *int64, n int64) TableRefuseReason {
+	if n == 0 {
+		return TableRefuseOk
+	}
+	if uint64(n) > 0xffffffff {
+		return TableRefuseBlobOverSizeCap
+	}
+	*at = (*at + 7) &^ 7
+	*at += tableRegionRound(9 + n)
+	return TableRefuseOk
+}
+
+// tableTextExtentValue packs one unbounded slot into a region's extent.
+func tableTextExtentValue(p, q unsafe.Pointer, a *TableArena, region unsafe.Pointer, at *int64) bool {
+	t, ok := tableTextBytes((*TableRef)(p), a)
+	if !ok {
+		return false
+	}
+	if len(t) == 0 {
+		if q != nil {
+			*(*TableRef)(q) = 0
+		}
+		return true
+	}
+	*at = (*at + 7) &^ 7
+	start := *at
+	*at += tableRegionRound(9 + int64(len(t)))
+	if q != nil {
+		dst := unsafe.Add(region, start)
+		*(*TableBlob)(dst) = TableBlob{Length: uint32(uint64(len(t)))}
+		copy(unsafe.Slice((*byte)(unsafe.Add(dst, 8)), len(t)), t)
+		*(*TableRef)(q) = int64(uintptr(dst) - uintptr(q))
+	}
+	return true
+}
+func tableMapStoreKeyed(p unsafe.Pointer, f *TableFieldInfo, k tableMapKey, alloc func(int64) (unsafe.Pointer, TableRef)) bool {
+	if !f.Unbounded {
+		tableMapStoreKey(p, f, k)
+		return true
+	}
+	slot := (*TableRef)(unsafe.Add(p, f.Offset))
+	if k.blob != 0 {
+		*slot = k.blob
+		return true
+	}
+	ref, ok := tableTextStoreWith(k.text, alloc)
+	*slot = ref
+	return ok
+}
+
+// tableTextMalformed names the text list or map whose element or key a read
+// refused (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13.1), so a strict read can say which field.
+func tableTextMalformed(r *TableReport, field string) {
+	if r != nil && r.Reason == "" {
+		r.Reason = "malformed: " + field
+	}
+}
+
+// TableMalformedField is a strict read's malformed refusal naming the text
+// list or map it refused (mas-bandwidth/schema docs/SPEC-TABLES.md §2.13.1):
+// errors.Is(err, TableRefuseMalformed) holds.
+type TableMalformedField struct{ Field string }
+
+func (e TableMalformedField) Error() string        { return "malformed: " + e.Field }
+func (e TableMalformedField) Is(target error) bool { return target == TableRefuseMalformed }
+
 const tableRegionAlign int64 = 8
 const tableBytesTypeId uint64 = 0x2f2ec0474f1c4fe4
 const tableStringTypeId uint64 = 0x704be0d8faaffc58
@@ -5385,6 +5722,12 @@ func tableExtentValue(p, q unsafe.Pointer, f *TableFieldInfo, a *TableArena, reg
 	if f.Pointer {
 		return true
 	}
+	if f.Unbounded {
+		return tableTextExtentValue(p, q, a, region, at)
+	}
+	if f.Kind == 12 && f.Table != nil {
+		return tableExtentWalk(p, q, f.Table(), a, region, at)
+	}
 	if f.Kind == 13 && f.Table != nil {
 		return tableExtentWalk(p, q, f.Table(), a, region, at)
 	}
@@ -5457,6 +5800,16 @@ func tableWireExtent(r TableReader, t *TableTypeInfo, at *int64) TableRefuseReas
 			}
 			continue
 		}
+		if kind == 12 && f.Unbounded {
+			body, ok := r.Body()
+			if !ok {
+				return TableRefuseOk
+			}
+			if reason := tableTextExtentAdd(at, int64(len(body.Buffer))); reason != TableRefuseOk {
+				return reason
+			}
+			continue
+		}
 		if kind == 15 && f.Kind == 15 && !f.IsArray {
 			if reason := tableWireUnionExtent(&r, f, at); reason != TableRefuseOk {
 				return reason
@@ -5516,6 +5869,18 @@ func tableWireArrayExtent(r TableReader, f *TableFieldInfo, keyed bool, at *int6
 		}
 		*at = (*at + int64(f.ElemAlign) - 1) & -int64(f.ElemAlign)
 		*at += int64(count) * int64(f.ElemSize)
+	}
+	if kind == 12 && f.Kind == 12 && f.Table != nil && f.Table().Fields[0].Unbounded {
+		for i := uint64(0); i < count && r.Has(1); i++ {
+			body, ok := r.Body()
+			if !ok {
+				return TableRefuseOk
+			}
+			if reason := tableTextExtentAdd(at, int64(len(body.Buffer))); reason != TableRefuseOk {
+				return reason
+			}
+		}
+		return TableRefuseOk
 	}
 	if kind != 13 && kind != 15 {
 		return TableRefuseOk
@@ -5645,11 +6010,11 @@ func tableMapCursor(h *tableContainer, f *TableFieldInfo, a *TableArena) tableCo
 	}
 	key := &f.Table().Fields[0]
 	slices.SortFunc(order, func(x, y int64) int {
-		return tableMapKeyOrder(tableMapStoredKey(a.At(x), key), tableMapStoredKey(a.At(y), key), key)
+		return tableMapKeyOrder(tableMapStoredKey(a.At(x), key, a), tableMapStoredKey(a.At(y), key, a), key)
 	})
 	for i, ref := range order {
-		k := tableMapStoredKey(a.At(ref), key)
-		if !tableMapKeyValid(k, key) || i > 0 && tableMapKeyOrder(tableMapStoredKey(a.At(order[i-1]), key), k, key) >= 0 {
+		k := tableMapStoredKey(a.At(ref), key, a)
+		if !tableMapKeyValid(k, key) || i > 0 && tableMapKeyOrder(tableMapStoredKey(a.At(order[i-1]), key, a), k, key) >= 0 {
 			a.Allocator.free(memory)
 			return bad
 		}
@@ -5691,7 +6056,7 @@ func tableMapFind(h *tableContainer, f *TableFieldInfo, key tableMapKey, a *Tabl
 		if p == nil {
 			return nil
 		}
-		if tableMapKeyOrder(tableMapStoredKey(p, kf), key, kf) == 0 {
+		if tableMapKeyOrder(tableMapStoredKey(p, kf, a), key, kf) == 0 {
 			return p
 		}
 	}
@@ -5709,7 +6074,10 @@ func tableMapPlace(w *TableWorker, h *tableContainer, f *TableFieldInfo, key tab
 		return nil, false
 	}
 	f.Table().Reset(p)
-	tableMapStoreKey(p, &f.Table().Fields[0], key)
+	if !tableMapStoreKeyed(p, &f.Table().Fields[0], key, w.Alloc) {
+		tableContainerErase(w.Arena, h, p, int64(f.ElemSize))
+		return nil, false
+	}
 	return p, false
 }
 func tableMapReadKey(r TableReader, f *TableFieldInfo) (key tableMapKey, bad, over, wide, whole bool) {
@@ -5750,7 +6118,7 @@ func tableMapReadKey(r TableReader, f *TableFieldInfo) (key tableMapKey, bad, ov
 				return
 			}
 			key.text = body.Buffer
-			over = len(key.text) > int(f.ArrayBound)
+			over = !f.Unbounded && len(key.text) > int(f.ArrayBound)
 		} else {
 			size := tableKindBytes(kind)
 			if !r.Has(size) {
@@ -5841,7 +6209,7 @@ func tableMapIndexFind(index TableMapIndex, h *tableContainer, f *TableFieldInfo
 
 const tableRetainPathDepth = 5
 
-var tableRetainKnown = [...]uint64{0x019d013fd348a6a4, 0x01ed4842eeeaacf8, 0x045fe49e7f2e967e, 0x0460ddad9060af0f, 0x04d23c7555fd602f, 0x0591a059b0712587, 0x0594613d9a1a71c3, 0x06027144dbe6a614, 0x072531ee7becec74, 0x080f5119176d1ff9, 0x087fdebb3c0a9fba, 0x08879e024cb91288, 0x089c4e07b545a968, 0x08a64b07b54df8d4, 0x08b05607b556600a, 0x08b05d07b5566bef, 0x08b72e07b55c3ac0, 0x08c43d07b566de99, 0x08c83907b56ac0a4, 0x096e4d18bf89481c, 0x0a24ad61c2562a55, 0x0a9904cc5fa248be, 0x0b2454b0a7be0b53, 0x0bef0691197c9f78, 0x0c1d312f91108ab9, 0x0d16749b8d3694d7, 0x0e9718950b3dd3a1, 0x10154dbd4fbc697b, 0x10a5819c3ff93bc0, 0x11ab2d8ba31717e8, 0x11aee74ba95388d9, 0x125073191daf5431, 0x1393a33ef089599c, 0x150679cb7599b35d, 0x150f53f8651b4384, 0x159d1d2ce26c4e2e, 0x16749dc90dc393b9, 0x17557edef437f27f, 0x18541c4dcb60c42f, 0x1a3f3d0c1dc62263, 0x1afc641a0aa8fb34, 0x1b80529daa6d58ec, 0x1c2229ffeae48168, 0x1c4cdd7fbc171c47, 0x1c6178ab283942c6, 0x1e199200bbd2c715, 0x1e6f84ef2eb65989, 0x1ebbae8f5810b65b, 0x1f3b3fa2ce7ecac0, 0x1fcc8b4e81fbac2f, 0x2025d2eb6fe2756e, 0x208ad7977190aad8, 0x211fcbbafe5331ab, 0x217097c278bccae7, 0x2196b6fab23d2858, 0x22704b8aa0119e73, 0x22b24d859cab0707, 0x23b885a1b02092b5, 0x2493e27bcb234f74, 0x24ac263c9141e420, 0x2669369049032d0b, 0x26c4b17d50b3c152, 0x272cf992fbe8c670, 0x274d62c1e1e8ead2, 0x28da53a6fe32b5ad, 0x28ed64300a2e09c7, 0x29c9cea42ed3624b, 0x2adcaf27b57fc61a, 0x2b0159e51fae9103, 0x2b7dea192bb7be29, 0x2b827d4f5e0ada9d, 0x2bcee2fac7bb6eb5, 0x2c5d047ff4e6ffc7, 0x2cfadb18d3ecd12a, 0x2d08f118d3f933e8, 0x2d1fe318d40bfaff, 0x2d471cf9d7d95019, 0x2dcede7d543a4ffd, 0x2e9ace113fac97c7, 0x2f2ec0474f1c4fe4, 0x2fa9d8710b089a3c, 0x2fedf26ef08343d4, 0x3127fb469f19ebde, 0x313c6440b18aae09, 0x31f7a26933e5cc0a, 0x3269794dbb88fca0, 0x32e6b0c4205a213e, 0x335f27192ff5d5ed, 0x33d8d54ff455b4ff, 0x35abc51e742bad0b, 0x36c1c83b51f24394, 0x37262ce770037539, 0x387748cc2ad39108, 0x387e4f9ba3d1716d, 0x39868222e749fa8e, 0x3bf8fbbad1587cdd, 0x3ce11ff0eeec30a4, 0x3cf8a6b47fddf8e7, 0x3d6681a0ead0ced6, 0x3dc94a19365b10ec, 0x3e6819a72438e142, 0x3e7884bf4f412c6f, 0x3ee82e8e6d1353d4, 0x3fa741c8085af182, 0x4005570295afd25c, 0x400d4155ce023796, 0x40286155ce1935ae, 0x40906c71b95bdbaa, 0x420234a0f998390b, 0x42e380b861ee97d7, 0x43175e54072048dd, 0x437dfc8ab2566816, 0x43ac328ac5ae0e45, 0x43f7e6225d6a7aea, 0x4406e2a8264d6a3e, 0x445341bdde0ebac7, 0x44f536ad76b6a942, 0x44f7182447ef55cf, 0x464b2d5e2b76af9d, 0x47acbe13cfcd4537, 0x48a799c4762dfb11, 0x48d5d6681cb16ffa, 0x490e596d24847edc, 0x4a1ef4b32bf8fea5, 0x4a2b6cd47cb37eaf, 0x4a9d3fa1d11006d7, 0x4abbaca40bb6fe75, 0x4b0cd17e2c175230, 0x4b67b014335f38d7, 0x4b88b8be72be7388, 0x4c2af935763e77da, 0x4c52b1193dcce7e7, 0x4dc694bbeb944e67, 0x4dde811e86af67ba, 0x4f6a36d8e8907985, 0x5062cd8f7a7fd349, 0x509220bb65a646b7, 0x50dcfb7833db1c01, 0x5125415e093101aa, 0x5165a1bf1f4e6ce2, 0x51b5152ffddbd983, 0x51ec9e4d83d3648e, 0x523dd14f54a423e3, 0x5304a9d099cf6a04, 0x544438a7391e1e26, 0x55a9023aeba12d7e, 0x5674f7598cdb4d0d, 0x56f9bc194465a83c, 0x57bd3d9902d49501, 0x57ded526886927ab, 0x583876d75cd7d1d9, 0x5949326dc12e3b9a, 0x5a4607cb4b223192, 0x5b8da8141a0cf30b, 0x5be056ec01c992da, 0x5c6c347ebc0ab5f5, 0x5dd622876bc646ce, 0x5e39a0f62bea2e31, 0x5eade819487cb532, 0x5ec5ea1948914a79, 0x5ec5fc194891690f, 0x5f79253956596827, 0x5f82477707ad620f, 0x60147fb4fa4a8e0c, 0x60fb367ab6507367, 0x61d5c725b939d1aa, 0x629d70c6ad2d4471, 0x630853b55c723d4f, 0x63e618bd2b303dee, 0x64522cb43b95bbb7, 0x64bde8e4857adf2f, 0x6580790b036f0c6f, 0x65a2607f6d2abb4a, 0x65e8d7f3474f2639, 0x66655dca2c3e8a12, 0x6686fcc6d2c8f0bd, 0x66882cf40f066fe3, 0x66a91b93f0927813, 0x673ebb0102773a20, 0x682c6c6420e800c0, 0x6841d32120de9a5e, 0x69d9147830b8815e, 0x69f800801812a5f0, 0x6d03fef96c701bec, 0x6dd8dc6c5fdae3ce, 0x6e2b49f23d2c7af8, 0x6e308e493acb8858, 0x6f2702dc2da1c9e4, 0x6f3f2303c0258eac, 0x6f4743b8bc5b4eb2, 0x704be0d8faaffc58, 0x70d885806b56289e, 0x711564fd3c8b6f3d, 0x71b5a50881106db2, 0x71f304ea62c01cbd, 0x7341fccc9b1d9b78, 0x758d17ff764667b6, 0x75c4a5c4e4a304ba, 0x76dbdc228f782db8, 0x779748cd7970e246, 0x77a71a561f6ca92b, 0x77af701956600122, 0x77c35c1956708830, 0x78fdcbe2928c3d34, 0x79d212c1dd4cc5a1, 0x79d594675e391090, 0x7ace47af1f750108, 0x7bea41dc962f3db3, 0x7beabc1e060d1e76, 0x7c5146cc084f1809, 0x7c66a4f6c72a2f32, 0x7ce4fd9430e80cea, 0x7d6780e4032b48f2, 0x7d678ae4032b59f0, 0x7e43376f68f5ebcb, 0x7f0ecd81f0b10c7f, 0x7f845078d7a5c0b5, 0x7fd9266c6a3e25b5, 0x802517e298c70b03, 0x81027a1935117cdf, 0x8107fafd0f75af7f, 0x818c426b23e35a14, 0x81f528932d7f3d02, 0x823b87195ce20e23, 0x8553185090e84610, 0x8572880e35379c18, 0x8587736730c8b7ea, 0x865b7478db00e67c, 0x87835f41ad67b3fa, 0x87ccbc73fad2ac1b, 0x88f2fad76c7ccc5e, 0x8935b4f305f36a82, 0x8935baf305f374b4, 0x89492d843ebc9863, 0x895456a39a622e29, 0x89b2a81960c55a4a, 0x89c8a24ec378fea4, 0x89cebd20bf9608d0, 0x89d7ed7f996f1d41, 0x89e9b01960f4aa52, 0x8a0bc1196111ad9b, 0x8a2a33a758314d6a, 0x8aa8356fe0470d77, 0x8c20bc9bc44d9848, 0x8cada599d66ec543, 0x8e467f8dc25a4790, 0x8e54e4c1bcb53cdf, 0x8e713a5ace7cfe69, 0x8f19a26151ce74bc, 0x909a3241a70a49a4, 0x90ab055b72415078, 0x915e54c84747ae4c, 0x926e311ad178314a, 0x926e3c1ad17843fb, 0x9273f90a7d88b56a, 0x928b726c815092cc, 0x93e4cd644f65cef2, 0x93fab8f021712b13, 0x9419dad0d1ece835, 0x946b758f4e2be679, 0x95676bba1360fcfe, 0x9640735281e90c0f, 0x96f1955a44843146, 0x9746d619fd1fc965, 0x98a6617f1dc6aa2c, 0x9979b99727e1d5bd, 0x99c9ddb4fdd50e57, 0x9a9b640e69ad6798, 0x9b51cd7cd76778c4, 0x9bcdc0ada7f7a0ab, 0x9be8c5f64f26c30f, 0x9c758c73deb84ac9, 0x9c9327fff79474ac, 0x9de543933e6e703a, 0x9e2dc24b99181341, 0x9e7c31938395894c, 0x9f7452dd75d54d31, 0xa07443a7967ec8e5, 0xa0dba600590b76f7, 0xa0fcb61231764b6b, 0xa11df2a73cf40d42, 0xa15579321342d2f7, 0xa3a06577243259d2, 0xa3a7061ff10a8138, 0xa3d0dfc3e1dbb698, 0xa458fa402eef98a0, 0xa4dcbf2722883418, 0xa51a677d5b590177, 0xa899b225b2fb8c07, 0xaabe362250e8c5ee, 0xab56337f892ae537, 0xacedb7384eab0a76, 0xad23a478034a0daa, 0xaefd5a191d95e3f7, 0xaf63e34c8601f871, 0xaf9dac3b097689c4, 0xb04c30d6db0361a8, 0xb11e8b146c5a21d8, 0xb164662ad16fa660, 0xb1e5e28e4479a274, 0xb238d277e29fd945, 0xb5614e90e87b455f, 0xb57920a53585fe21, 0xb60bc1250aad44c1, 0xb616f117f5254178, 0xb729e49a23fa98a4, 0xb733af3b0d745380, 0xb8bb9a3531ff3032, 0xb8d942799ce18e2f, 0xb958f90c7334505d, 0xb9be9ca27fd4975a, 0xba4a4ffe7d45c8fb, 0xbb06e4bc7e4e3277, 0xbbaa0e67f346764e, 0xbc8dd1bc79f0e3eb, 0xbe2a85bf4c0ca913, 0xbea01422b5f77185, 0xbea0bc892d25d607, 0xbf31137ff783e939, 0xbf6695ad6966058f, 0xbf779aad69748141, 0xc086a032fe8c7bad, 0xc10e63fbe7f624f5, 0xc2ad17960b16698e, 0xc341febe5aae51e5, 0xc379d129de405f48, 0xc3c7338e4ec23fb1, 0xc3f9c8c777cc7c35, 0xc4010e578c81f622, 0xc4724b6b4f7cf32e, 0xc48bbb17ab629fab, 0xc4bcadba8e631b86, 0xc508b20f32e3956f, 0xc5b2a72c0845a253, 0xc622641fb86276a6, 0xc6293a6425e1ff65, 0xc732f2e2fbe9f15e, 0xc7470a764d8d7a28, 0xc771fca99beaeafd, 0xc86cff64ef20c972, 0xc90e48916e46091c, 0xca643d18f43490d5, 0xca8d3918f4578f1d, 0xcc11e62c8c25c9b8, 0xcccd7b8be68a49a3, 0xcd4de79bc6c93295, 0xcdf048dc776848e9, 0xce57648e554861b7, 0xceaa7e5df33bb580, 0xd02b4c8c65fb54dc, 0xd04e66698d8befd2, 0xd15dc0f47785f8a0, 0xd3382d08eeea28a6, 0xd34e990c15da5154, 0xd47eb8dd3b7c4d97, 0xd4e26d18faaa8af5, 0xd4f05718fab6a2ef, 0xd6a4dbc46c8e8658, 0xd6eeb6f50d7b0592, 0xd7048d25aff0adf4, 0xd7316b9dd9f8d444, 0xd7338946b42394f4, 0xd7bf6215f17640b4, 0xd820e861048719da, 0xd89aa06245afb2be, 0xd98b1e90fd653435, 0xd9ad53251f2330a5, 0xd9d742c447a6c234, 0xdbbf026cdeb9da00, 0xdbdacd932fd1e9bf, 0xdc04396c642e5212, 0xdc51fb6761fd6e91, 0xdcccc5391c47d4da, 0xdd128ca0e493b58f, 0xdd362779f48a4b03, 0xdd3bf9933387198d, 0xddc8631e5d828d8d, 0xde00b6b507ed832d, 0xdf031b708d57a398, 0xe1742cfb3376a502, 0xe1c8109af8eca619, 0xe280a3451e738170, 0xe316d09466679195, 0xe3b1ca6a3b48dddc, 0xe432996e4b38a7dc, 0xe513af0ce75cf351, 0xe548666cccbba2e9, 0xe58c72d2a858e162, 0xe692b695e19881d7, 0xe6aea95d7705da22, 0xe6d215b730981b09, 0xe6f09b190519daa4, 0xe700a2848d46a857, 0xe7f16644073d5f45, 0xe8ddc90a9d7c709d, 0xe917efab029e6660, 0xe962b73301e3cb5d, 0xea14e391abc0c981, 0xea7710a370e4d5b7, 0xeac9afef1a00b5e8, 0xed8d9e40c5ea35a2, 0xed90c66b452f42d0, 0xeddcc52b15488641, 0xee4d5d6524526827, 0xee5d97ad45ad251f, 0xee639cad45b1994c, 0xee63aaad45b1b116, 0xee9dbaad45e3448d, 0xef9c96d721673243, 0xefa717c1620c4ae4, 0xf039a67062f8b1c7, 0xf05b9996c0b40c98, 0xf2a11d5df6c1be51, 0xf2c130fb55370f2f, 0xf494a5e56142b56e, 0xf49fb84e699194ba, 0xf51471f6c390226f, 0xf531ec9544a8fc3e, 0xf5b4630751f7ecab, 0xf5b6ea8c35ac1e89, 0xf5f3a7ddac55be06, 0xf603e23e20725712, 0xf604f3190d016791, 0xf74e5feadea773fd, 0xf770855d63d07966, 0xf84f97b4633670e9, 0xf8e42f20bf747d1b, 0xf90e421e2470877f, 0xf91c0ef23e25f219, 0xf927453fbe6252ef, 0xf9399b246d7ec9d1, 0xf95f3b654f0597c8, 0xf9da199e5b7433ff, 0xfa04f4ef1995407e, 0xfa2e8461180cfa6d, 0xfc9697d1196e6ba6, 0xfcd500563d7a36cf, 0xfce73b3551b7fd98, 0xfd305cb7f3ed652c, 0xfd4e73068a03eeeb, 0xfd6f0e4e166f85bc, 0xfd7bbb6eebc12569, 0xfdf8bb7f3adbc373, 0xfe3930a031d4a5f0, 0xff75d19be2aea620, 0xfff83d536a1d457d, 0xffffffffffffffff}
+var tableRetainKnown = [...]uint64{0x019d013fd348a6a4, 0x01c229011430522e, 0x01cfc24eeee29241, 0x01ed4842eeeaacf8, 0x045fe49e7f2e967e, 0x0460ddad9060af0f, 0x04d23c7555fd602f, 0x0591a059b0712587, 0x0594613d9a1a71c3, 0x06027144dbe6a614, 0x072531ee7becec74, 0x080f5119176d1ff9, 0x087fdebb3c0a9fba, 0x08879e024cb91288, 0x089c4e07b545a968, 0x08a64b07b54df8d4, 0x08b05607b556600a, 0x08b05d07b5566bef, 0x08b72e07b55c3ac0, 0x08c43d07b566de99, 0x08c83907b56ac0a4, 0x096e4d18bf89481c, 0x0a24ad61c2562a55, 0x0a9904cc5fa248be, 0x0b2454b0a7be0b53, 0x0bef0691197c9f78, 0x0c1d312f91108ab9, 0x0cbc11cd0d2708b6, 0x0d16749b8d3694d7, 0x0daba47834e4bbea, 0x0e9718950b3dd3a1, 0x10154dbd4fbc697b, 0x10922b6a0a2a8c72, 0x10a5819c3ff93bc0, 0x11ab2d8ba31717e8, 0x11aee74ba95388d9, 0x125073191daf5431, 0x1393a33ef089599c, 0x150679cb7599b35d, 0x150f53f8651b4384, 0x159d1d2ce26c4e2e, 0x16749dc90dc393b9, 0x17557edef437f27f, 0x18541c4dcb60c42f, 0x1a3f3d0c1dc62263, 0x1afc641a0aa8fb34, 0x1b80529daa6d58ec, 0x1c2229ffeae48168, 0x1c4cdd7fbc171c47, 0x1c6178ab283942c6, 0x1e199200bbd2c715, 0x1e6f84ef2eb65989, 0x1ebbae8f5810b65b, 0x1f3b3fa2ce7ecac0, 0x1fcc8b4e81fbac2f, 0x2025d2eb6fe2756e, 0x208ad7977190aad8, 0x211fcbbafe5331ab, 0x217097c278bccae7, 0x2196b6fab23d2858, 0x22704b8aa0119e73, 0x22b24d859cab0707, 0x23b885a1b02092b5, 0x2493e27bcb234f74, 0x24ac263c9141e420, 0x2669369049032d0b, 0x26c4b17d50b3c152, 0x272cf992fbe8c670, 0x274d62c1e1e8ead2, 0x279e51081bdfc840, 0x28da53a6fe32b5ad, 0x28ed64300a2e09c7, 0x29c9cea42ed3624b, 0x2adcaf27b57fc61a, 0x2b0159e51fae9103, 0x2b7dea192bb7be29, 0x2b827d4f5e0ada9d, 0x2bcee2fac7bb6eb5, 0x2c5d047ff4e6ffc7, 0x2cfadb18d3ecd12a, 0x2d08f118d3f933e8, 0x2d1fe318d40bfaff, 0x2d471cf9d7d95019, 0x2dcede7d543a4ffd, 0x2deac76522c13193, 0x2e9ace113fac97c7, 0x2f2ec0474f1c4fe4, 0x2fa9d8710b089a3c, 0x2fedf26ef08343d4, 0x3127fb469f19ebde, 0x313c6440b18aae09, 0x31f7a26933e5cc0a, 0x3269794dbb88fca0, 0x32e6b0c4205a213e, 0x335f27192ff5d5ed, 0x33d8d54ff455b4ff, 0x35abc51e742bad0b, 0x36c1c83b51f24394, 0x37262ce770037539, 0x387748cc2ad39108, 0x387e4f9ba3d1716d, 0x39868222e749fa8e, 0x3bf8fbbad1587cdd, 0x3ce11ff0eeec30a4, 0x3d6681a0ead0ced6, 0x3dc94a19365b10ec, 0x3e6819a72438e142, 0x3e7884bf4f412c6f, 0x3ee82e8e6d1353d4, 0x3fa741c8085af182, 0x4005570295afd25c, 0x400d4155ce023796, 0x40286155ce1935ae, 0x40906c71b95bdbaa, 0x420234a0f998390b, 0x42e380b861ee97d7, 0x43175e54072048dd, 0x437dfc8ab2566816, 0x43ac328ac5ae0e45, 0x43f7e6225d6a7aea, 0x4406e2a8264d6a3e, 0x445341bdde0ebac7, 0x44f536ad76b6a942, 0x44f7182447ef55cf, 0x464b2d5e2b76af9d, 0x47acbe13cfcd4537, 0x48a799c4762dfb11, 0x48d5d6681cb16ffa, 0x490e596d24847edc, 0x4a1ef4b32bf8fea5, 0x4a2b6cd47cb37eaf, 0x4a9d3fa1d11006d7, 0x4abbaca40bb6fe75, 0x4b0cd17e2c175230, 0x4b67b014335f38d7, 0x4b88b8be72be7388, 0x4c2af935763e77da, 0x4c52b1193dcce7e7, 0x4dc694bbeb944e67, 0x4dde811e86af67ba, 0x4f6a36d8e8907985, 0x5062cd8f7a7fd349, 0x509220bb65a646b7, 0x50dcfb7833db1c01, 0x5125415e093101aa, 0x5165a1bf1f4e6ce2, 0x51b5152ffddbd983, 0x51ec9e4d83d3648e, 0x523dd14f54a423e3, 0x5304a9d099cf6a04, 0x544438a7391e1e26, 0x55a9023aeba12d7e, 0x5674f7598cdb4d0d, 0x56f9bc194465a83c, 0x57bd3d9902d49501, 0x57ded526886927ab, 0x583876d75cd7d1d9, 0x5949326dc12e3b9a, 0x5a4607cb4b223192, 0x5b8da8141a0cf30b, 0x5be056ec01c992da, 0x5c6c347ebc0ab5f5, 0x5d756e265d4ed299, 0x5db13302bab35065, 0x5dd622876bc646ce, 0x5e39a0f62bea2e31, 0x5eade819487cb532, 0x5ec5ea1948914a79, 0x5ec5fc194891690f, 0x5f79253956596827, 0x5f82477707ad620f, 0x60147fb4fa4a8e0c, 0x60fb367ab6507367, 0x61d5c725b939d1aa, 0x629d70c6ad2d4471, 0x630853b55c723d4f, 0x63e618bd2b303dee, 0x64522cb43b95bbb7, 0x64bde8e4857adf2f, 0x6580790b036f0c6f, 0x65a2607f6d2abb4a, 0x65e8d7f3474f2639, 0x66655dca2c3e8a12, 0x6686fcc6d2c8f0bd, 0x66882cf40f066fe3, 0x66a91b93f0927813, 0x673ebb0102773a20, 0x682c6c6420e800c0, 0x6841d32120de9a5e, 0x69d9147830b8815e, 0x69f800801812a5f0, 0x6cddd4d48fa172e7, 0x6d03fef96c701bec, 0x6dd8dc6c5fdae3ce, 0x6e2b49f23d2c7af8, 0x6e308e493acb8858, 0x6f2702dc2da1c9e4, 0x6f3f2303c0258eac, 0x6f4743b8bc5b4eb2, 0x702d0f96dd986752, 0x704be0d8faaffc58, 0x70d885806b56289e, 0x711564fd3c8b6f3d, 0x71b5a50881106db2, 0x71f304ea62c01cbd, 0x7341fccc9b1d9b78, 0x7398dd0bfb7059cc, 0x758d17ff764667b6, 0x75c4a5c4e4a304ba, 0x76dbdc228f782db8, 0x779748cd7970e246, 0x77a71a561f6ca92b, 0x77af701956600122, 0x77c35c1956708830, 0x78fdcbe2928c3d34, 0x79d212c1dd4cc5a1, 0x79d594675e391090, 0x79e2a308c6a53459, 0x7ace47af1f750108, 0x7bea41dc962f3db3, 0x7beabc1e060d1e76, 0x7c5146cc084f1809, 0x7c66a4f6c72a2f32, 0x7ce4fd9430e80cea, 0x7d6780e4032b48f2, 0x7d678ae4032b59f0, 0x7e43376f68f5ebcb, 0x7f0ecd81f0b10c7f, 0x7f845078d7a5c0b5, 0x7fafd620146c90a1, 0x7fd9266c6a3e25b5, 0x802517e298c70b03, 0x81027a1935117cdf, 0x8107fafd0f75af7f, 0x818c426b23e35a14, 0x81f528932d7f3d02, 0x823b87195ce20e23, 0x8553185090e84610, 0x8572880e35379c18, 0x8587736730c8b7ea, 0x865b7478db00e67c, 0x87835f41ad67b3fa, 0x87ccbc73fad2ac1b, 0x88f2fad76c7ccc5e, 0x8935b4f305f36a82, 0x8935baf305f374b4, 0x89492d843ebc9863, 0x895456a39a622e29, 0x89b2a81960c55a4a, 0x89c8a24ec378fea4, 0x89cebd20bf9608d0, 0x89d7ed7f996f1d41, 0x89e9b01960f4aa52, 0x8a0bc1196111ad9b, 0x8a2a33a758314d6a, 0x8aa8356fe0470d77, 0x8c20bc9bc44d9848, 0x8cada599d66ec543, 0x8e467f8dc25a4790, 0x8e54e4c1bcb53cdf, 0x8e713a5ace7cfe69, 0x8f19a26151ce74bc, 0x909a3241a70a49a4, 0x90ab055b72415078, 0x915e54c84747ae4c, 0x926e311ad178314a, 0x926e3c1ad17843fb, 0x9273f90a7d88b56a, 0x928b726c815092cc, 0x93e4cd644f65cef2, 0x93fab8f021712b13, 0x9419dad0d1ece835, 0x946b758f4e2be679, 0x95676bba1360fcfe, 0x9640735281e90c0f, 0x96f1955a44843146, 0x9746d619fd1fc965, 0x97ee0f54f55b58be, 0x98a6617f1dc6aa2c, 0x9979b99727e1d5bd, 0x99c9ddb4fdd50e57, 0x9a9b640e69ad6798, 0x9b51cd7cd76778c4, 0x9bcdc0ada7f7a0ab, 0x9be8c5f64f26c30f, 0x9c758c73deb84ac9, 0x9c9327fff79474ac, 0x9d049a37612cbdb2, 0x9de543933e6e703a, 0x9e2dc24b99181341, 0x9e7c31938395894c, 0x9f7452dd75d54d31, 0xa07443a7967ec8e5, 0xa0dba600590b76f7, 0xa0fcb61231764b6b, 0xa11df2a73cf40d42, 0xa15579321342d2f7, 0xa3a06577243259d2, 0xa3a7061ff10a8138, 0xa3d0dfc3e1dbb698, 0xa458fa402eef98a0, 0xa4dcbf2722883418, 0xa51a677d5b590177, 0xa899b225b2fb8c07, 0xaabe362250e8c5ee, 0xab56337f892ae537, 0xacedb7384eab0a76, 0xad23a478034a0daa, 0xaefd5a191d95e3f7, 0xaf63e34c8601f871, 0xaf9dac3b097689c4, 0xb04c30d6db0361a8, 0xb11e8b146c5a21d8, 0xb164662ad16fa660, 0xb1e5e28e4479a274, 0xb238d277e29fd945, 0xb2b1e32d5aeb15bf, 0xb5614e90e87b455f, 0xb57920a53585fe21, 0xb60bc1250aad44c1, 0xb616f117f5254178, 0xb729e49a23fa98a4, 0xb733af3b0d745380, 0xb8bb9a3531ff3032, 0xb8d942799ce18e2f, 0xb958f90c7334505d, 0xb9be9ca27fd4975a, 0xba4a4ffe7d45c8fb, 0xba90414105adbb01, 0xbb06e4bc7e4e3277, 0xbbaa0e67f346764e, 0xbc1dc8b1b1fedb3f, 0xbc8dd1bc79f0e3eb, 0xbe2a85bf4c0ca913, 0xbea01422b5f77185, 0xbea0bc892d25d607, 0xbf31137ff783e939, 0xbf6695ad6966058f, 0xbf779aad69748141, 0xc086a032fe8c7bad, 0xc10e63fbe7f624f5, 0xc2ad17960b16698e, 0xc341febe5aae51e5, 0xc379d129de405f48, 0xc3c7338e4ec23fb1, 0xc3f9c8c777cc7c35, 0xc4010e578c81f622, 0xc4724b6b4f7cf32e, 0xc48bbb17ab629fab, 0xc4bcadba8e631b86, 0xc508b20f32e3956f, 0xc5b2a72c0845a253, 0xc6045ca11f070958, 0xc622641fb86276a6, 0xc6293a6425e1ff65, 0xc732f2e2fbe9f15e, 0xc7470a764d8d7a28, 0xc771fca99beaeafd, 0xc90e48916e46091c, 0xca643d18f43490d5, 0xca8d3918f4578f1d, 0xcc11e62c8c25c9b8, 0xcccd7b8be68a49a3, 0xcd4de79bc6c93295, 0xcdf048dc776848e9, 0xce57648e554861b7, 0xd02b4c8c65fb54dc, 0xd04e66698d8befd2, 0xd15dc0f47785f8a0, 0xd28137bf64952635, 0xd3382d08eeea28a6, 0xd34e990c15da5154, 0xd47eb8dd3b7c4d97, 0xd4e26d18faaa8af5, 0xd4f05718fab6a2ef, 0xd6a4dbc46c8e8658, 0xd6eeb6f50d7b0592, 0xd7048d25aff0adf4, 0xd7316b9dd9f8d444, 0xd7338946b42394f4, 0xd7bf6215f17640b4, 0xd820e861048719da, 0xd89aa06245afb2be, 0xd98b1e90fd653435, 0xd9ad53251f2330a5, 0xd9d742c447a6c234, 0xdb10f4695143f998, 0xdbbf026cdeb9da00, 0xdbdacd932fd1e9bf, 0xdc04396c642e5212, 0xdc51fb6761fd6e91, 0xdcccc5391c47d4da, 0xdd128ca0e493b58f, 0xdd362779f48a4b03, 0xdd3bf9933387198d, 0xddc8631e5d828d8d, 0xde00b6b507ed832d, 0xdf031b708d57a398, 0xe1742cfb3376a502, 0xe1c8109af8eca619, 0xe280a3451e738170, 0xe316d09466679195, 0xe3b1ca6a3b48dddc, 0xe432996e4b38a7dc, 0xe513af0ce75cf351, 0xe545094b06bd47e8, 0xe548666cccbba2e9, 0xe58c72d2a858e162, 0xe692b695e19881d7, 0xe6aea95d7705da22, 0xe6d215b730981b09, 0xe6f09b190519daa4, 0xe700a2848d46a857, 0xe7f16644073d5f45, 0xe8ddc90a9d7c709d, 0xe917efab029e6660, 0xe962b73301e3cb5d, 0xea14e391abc0c981, 0xea7710a370e4d5b7, 0xeac9afef1a00b5e8, 0xed8d9e40c5ea35a2, 0xed90c66b452f42d0, 0xeddcc52b15488641, 0xee4d5d6524526827, 0xee5d97ad45ad251f, 0xee639cad45b1994c, 0xee63aaad45b1b116, 0xee9dbaad45e3448d, 0xef9c96d721673243, 0xefa717c1620c4ae4, 0xf039a67062f8b1c7, 0xf04e35eb9138685f, 0xf05b9996c0b40c98, 0xf2a11d5df6c1be51, 0xf2c130fb55370f2f, 0xf494a5e56142b56e, 0xf49fb84e699194ba, 0xf51471f6c390226f, 0xf531ec9544a8fc3e, 0xf5b4630751f7ecab, 0xf5b6ea8c35ac1e89, 0xf5f3a7ddac55be06, 0xf603e23e20725712, 0xf604f3190d016791, 0xf6f5d0d5da5d1fc1, 0xf74e5feadea773fd, 0xf770855d63d07966, 0xf83ffc1e16661420, 0xf84f97b4633670e9, 0xf8e42f20bf747d1b, 0xf90e421e2470877f, 0xf91c0ef23e25f219, 0xf927453fbe6252ef, 0xf9399b246d7ec9d1, 0xf95f3b654f0597c8, 0xf9da199e5b7433ff, 0xfa04f4ef1995407e, 0xfa2e8461180cfa6d, 0xfb73862abecb32ab, 0xfb80222d21ea8f65, 0xfc9697d1196e6ba6, 0xfcd500563d7a36cf, 0xfce73b3551b7fd98, 0xfd305cb7f3ed652c, 0xfd4e73068a03eeeb, 0xfd6f0e4e166f85bc, 0xfd7bbb6eebc12569, 0xfd99d20fd217f430, 0xfda9ec62dae6aff9, 0xfdf8bb7f3adbc373, 0xfe3930a031d4a5f0, 0xff75d19be2aea620, 0xfff83d536a1d457d, 0xffffffffffffffff}
 
 // TableRetain owns no storage. The caller supplies both bounded buffers; a
 // whole unknown record that does not fit is dropped and counted once.
