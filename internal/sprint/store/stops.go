@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/viewrowswire"
 )
 
 // The stops record (internal/sprint/stops.go; the owner, 2026-10-10: no silent stops and no
@@ -73,17 +74,26 @@ func (st *Store) keepStops(ctx context.Context, tw *Twin, rec StopsRecord) error
 	return nil
 }
 
-// readStops is the stops record as stored; false when there is none or it does not read.
-func readStops(raw string, ok bool) (StopsRecord, bool) {
-	var r StopsRecord
-	if !ok || json.Unmarshal([]byte(raw), &r) != nil {
+// stopsOps is the stops record's generated variable table (viewrowswire StopsRecord; S1).
+var stopsOps = viewOps[viewrowswire.StopsRecord]{"StopsRecord",
+	viewBuilder((*viewrowswire.StopsRecordBuilder).Init, (*viewrowswire.StopsRecordBuilder).GetRoot, func(b *viewrowswire.StopsRecordBuilder) *viewrowswire.TableArena { return &b.Arena }, viewrowswire.StopsRecordFromJson),
+	viewrowswire.StopsRecordMeasure, viewrowswire.StopsRecordSave, viewrowswire.StopsRecordLoadMeasureReason, viewrowswire.StopsRecordLoad, viewrowswire.StopsRecordToJsonMeasure, viewrowswire.StopsRecordToJson}
+
+// stopsOfRaw reads the stored stops record through c, in any of its forms (S2). A record
+// that does not read is none, on purpose, for where: the dashboard shows no stops line
+// rather than no dashboard, and the tick writes the record again within StopsRefresh. The
+// refusal is counted on c by its name (S4).
+func stopsOfRaw(c *RowCodec[StopsRecord], raw string, ok bool) (StopsRecord, bool) {
+	r, ok, err := viewRead(c, raw, ok)
+	if err != nil {
 		return StopsRecord{}, false
 	}
-	return r, true
+	return r, ok
 }
 
 // StopsKept is the stops record the tick last wrote, when it is of the pinned epoch; false
 // when there is none (before the first tick, after a clear, or a store that keeps no records).
+// A record that does not read is the named refusal (S2), counted on the stops reader (S4).
 func (st *Store) StopsKept(ctx context.Context) (StopsRecord, bool, error) {
 	kv, err := st.kv()
 	if err != nil {
@@ -93,7 +103,10 @@ func (st *Store) StopsKept(ctx context.Context) (StopsRecord, bool, error) {
 	if err != nil {
 		return StopsRecord{}, false, err
 	}
-	r, ok := readStops(v, ok)
+	r, ok, err := viewRead(st.viewRows().stops, v, ok)
+	if err != nil {
+		return StopsRecord{}, false, err
+	}
 	return r, ok && r.Epoch == st.epoch, nil
 }
 

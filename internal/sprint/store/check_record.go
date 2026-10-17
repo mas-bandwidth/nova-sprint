@@ -2,10 +2,10 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/viewrowswire"
 )
 
 // The check record (v1.2.17, start-refuses-until-a-clean-check; docs/SPEC-SPRINT.md section
@@ -41,11 +41,20 @@ type CheckRecord struct {
 // MaxCheckFindings bounds the finding lines a check record keeps (Kinds counts them all).
 const MaxCheckFindings = 200
 
+// checkOps is the check record's generated variable table (viewrowswire CheckRecord; S1).
+var checkOps = viewOps[viewrowswire.CheckRecord]{"CheckRecord",
+	viewBuilder((*viewrowswire.CheckRecordBuilder).Init, (*viewrowswire.CheckRecordBuilder).GetRoot, func(b *viewrowswire.CheckRecordBuilder) *viewrowswire.TableArena { return &b.Arena }, viewrowswire.CheckRecordFromJson),
+	viewrowswire.CheckRecordMeasure, viewrowswire.CheckRecordSave, viewrowswire.CheckRecordLoadMeasureReason, viewrowswire.CheckRecordLoad, viewrowswire.CheckRecordToJsonMeasure, viewrowswire.CheckRecordToJson}
+
 // CheckRecordOf is the epoch's check record of a stored value, and whether there is one: none
-// when absent, unreadable, or another epoch's.
-func CheckRecordOf(raw string, ok bool, epoch uint64) (CheckRecord, bool) {
-	var r CheckRecord
-	if !ok || json.Unmarshal([]byte(raw), &r) != nil || r.Epoch != epoch {
+// when absent, unreadable, or another epoch's. It reads in any of the record's forms (S2)
+// through c, the Store's reader, or the loose reader with none. A record that does not read
+// is none, on purpose: with none, start refuses (tla/MachineReady.tla StartRefusedCheck), so
+// a damaged record can never open the start gate. The refusal is counted on the reader by
+// its name (S4).
+func CheckRecordOf(raw string, ok bool, epoch uint64, c ...*RowCodec[CheckRecord]) (CheckRecord, bool) {
+	r, ok, err := viewRead(viewCodec(viewRowsLoose.check, c), raw, ok)
+	if err != nil || !ok || r.Epoch != epoch {
 		return CheckRecord{}, false
 	}
 	return r, true
@@ -65,7 +74,7 @@ func (st *Store) CardCheck(ctx context.Context) (CheckRecord, bool, error) {
 	if err != nil {
 		return CheckRecord{}, false, err
 	}
-	r, ok := CheckRecordOf(raw, ok, st.epoch)
+	r, ok := CheckRecordOf(raw, ok, st.epoch, st.viewRows().check)
 	return r, ok, nil
 }
 
