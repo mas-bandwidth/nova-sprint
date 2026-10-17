@@ -1,0 +1,1153 @@
+// viewrows.schema: the sprint store's view rows, the records the tick keeps
+// beside the card tables for where, the doctor and the machine: the where
+// record and its stats (where.go), the stop record (stops.go), the doctor's
+// refused-verb record and the members' beats (doctor.go, refused_verbs.go,
+// presence.go), the check record (check_record.go), the fleet drop debt and
+// machine rows (fleet_rows.go), the stats reset and tidy records
+// (stats_reset.go, stats_tidy.go), the stuck record (stuck.go), the load
+// index (load.go) and the tick's machine, heartbeat and held records
+// (tick.go).
+//
+// The form of each record follows the coordinator's form ruling of
+// 2026-10-17 under S1: a FIXED table only where every one of its bounds is a
+// bound the code enforces; any record that holds a text or a list the code
+// does not bound is a VARIABLE table with open lists ([]T) and unbounded text
+// (*string), sized by content and held whole. The bound table of the pull
+// request names, field by field, the file and line of the code that enforces
+// each declared bound; a field with no bound every path enforces has none here.
+//
+// What is bounded here, and by what: one thing only. Heartbeat.revisions is
+// the four table revisions, a Go [4]uint64 (internal/sprint/store/tick.go:199),
+// so every writer (tick.go:945, 1016, 1130) can only assign four and every
+// reader (tick.go:383 and 406 through getJSON, where.go:526 through getKeys)
+// unmarshals into the same array and holds exactly four.
+//
+// Every other cap the code names (a card id of 515 bytes, a fleet row of 135,
+// a stream word of 128, the note's 50 primaries, the where record's 10000
+// landings, 5 critical cards and 3 blockers, the check record's 200 findings,
+// the machine's 1000 spans, the 10 file holders, a log line's 300-byte cause, a
+// timer's 512-byte note, a sha256 in hex) binds one writer path only. The
+// readers of these stored records are plain json.Unmarshal and keep any
+// length, count and map key (readWhere, internal/sprint/store/where.go:230-235;
+// CheckRecordOf, check_record.go:46-51, which does not apply MaxCheckFindings),
+// so none is a bound every path enforces: lists are open ([]T), text is
+// unbounded (*string) and a map keyed by any text is a list of pairs in key
+// order with the key as unbounded text.
+//
+// Times are Unix nanoseconds UTC, 0 for the zero time, except where a comment
+// names another unit. Go ints are int64. A record the Go struct carries with
+// no json tag has its Go field names as its text keys.
+package viewrowswire
+
+// ---------------------------------------------------------------------------
+// Words, lists and pairs.
+
+// CardID is a card's id (sprint.ValidCardID writes it). The readers of the
+// stored records are plain json.Unmarshal and keep any length, so the text is
+// unbounded.
+table CardID
+{
+    id *string
+}
+
+// RowName is one fleet row: a member name or "friend." and a friend name. The
+// readers keep any length, so the text is unbounded.
+table RowName
+{
+    name *string
+}
+
+// Line is one text the code does not bound.
+table Line
+{
+    text *string
+}
+
+// LineList is a list of texts, the value of a map of lists.
+table LineList
+{
+    items []Line
+}
+
+// TextPair is one entry of a string map in key order: a name and its words.
+table TextPair
+{
+    key   *string
+    value *string
+}
+
+// IntPair is one entry of a count map in key order: a name and its count.
+table IntPair
+{
+    key *string
+    n   int64
+}
+
+// IntList is a list of counts by name, the value of a map of count maps.
+table IntList
+{
+    pairs []IntPair
+}
+
+// IntListPair is one entry of a map of count maps in key order: a name and its
+// counts.
+table IntListPair
+{
+    key  *string
+    list IntList
+}
+
+// LineListPair is one entry of a map of text lists in key order.
+table LineListPair
+{
+    key  *string
+    list LineList
+}
+
+// ---------------------------------------------------------------------------
+// Stage times, costs and the small where pieces (internal/sprint).
+
+// StageStat is one stage's median and p90, in seconds, over n cards
+// (sprint.StageStat).
+fixed table StageStat
+{
+    median_s float64
+    p90_s    float64
+    n        int64
+}
+
+// StageStatPair is one stage's figures in a map of stages in key order.
+table StageStatPair
+{
+    stage *string
+    stat  StageStat
+}
+
+// StageStats is one stream's stages.
+table StageStats
+{
+    stages []StageStatPair
+}
+
+// StreamStagesPair is one stream's stages in StageTimes.Streams in key order.
+table StreamStagesPair
+{
+    key   *string
+    stats StageStats
+}
+
+// StageTimes is the stage stats over every stream and per stream
+// (sprint.StageTimes).
+table StageTimes
+{
+    all     []StageStatPair
+    streams []StreamStagesPair
+}
+
+// ReadDay is one route's reads of a UTC day (sprint.ReadDay).
+table ReadDay
+{
+    usd    *string
+    tokens int64
+    reads  int64
+}
+
+// ReadDayPair is one route in TierCosts.ReadsToday.
+table ReadDayPair
+{
+    route *string
+    day   ReadDay
+}
+
+// ReaderSpend is one reader's reads summed (sprint.ReaderSpend).
+table ReaderSpend
+{
+    reads       int64
+    priced      int64
+    usd         *string
+    hour_priced int64
+    hour_usd    *string
+    tokens      int64
+}
+
+// ReaderSpendPair is one reader in TierCosts.Readers in key order.
+table ReaderSpendPair
+{
+    key   *string
+    spend ReaderSpend
+}
+
+// DayGap is one day's reconciliation (sprint.DayGap).
+fixed table DayGap
+{
+    provider          float64
+    provider_internal float64 | json = "internal"
+}
+
+// DayGapPair is one day in CostReconcileRecord.Days.
+table DayGapPair
+{
+    day *string
+    gap DayGap
+}
+
+// CostReconcileRecord is a provider's reconciliation (sprint.CostReconcileRecord).
+table CostReconcileRecord
+{
+    provider          *string
+    at                *string
+    known             bool
+    note              *string
+    day               *string
+    used              float64
+    provider_internal float64      | json = "internal"
+    internal_reads    float64
+    gap               float64
+    share             float64
+    days              []DayGapPair
+}
+
+// TierCosts is one stream's tiers and spend (sprint.TierCosts).
+table TierCosts
+{
+    tiers           []IntPair
+    per_landed      *string
+    cost_by_tier    []TextPair
+    total_cost      *string
+    total_usd       *string
+    landed_usd      *string
+    work_cost       *string
+    read_cost       *string
+    decide_cost     *string
+    decide_unpriced int64
+    dropped_cards   int64
+    carried_cards   int64
+    read_tokens     int64
+    reads_today     []ReadDayPair
+    unpriced_runs   int64
+    reads_no_tokens int64
+    readers         []ReaderSpendPair
+    in_flight       *string
+    unreconciled    *string
+    reconciles      []CostReconcileRecord
+}
+
+// CostCheck is the streams' sums against every card's own total
+// (sprint.CostCheck).
+table CostCheck
+{
+    streams_usd *string
+    cards_usd   *string
+    gap_usd     *string
+    ok          bool
+    orphans     []CardID
+    unlisted    int64
+}
+
+// CriticalCard is one of where's critical lines (sprint.CriticalCard).
+table CriticalCard
+{
+    id     *string
+    behind int64
+    state  *string
+}
+
+// Landing is one card's landing (sprint.Landing): at is Unix seconds, worker
+// a fleet row and stream the card's stream. The readers keep any length, so
+// the texts are unbounded.
+table Landing
+{
+    at     int64
+    worker *string
+    stream *string
+}
+
+// ArchivedFleetCard is a work card of an archived stream in a fleet done cell
+// (sprint.ArchivedFleetCard): at is Unix seconds, 0 with no stamp.
+table ArchivedFleetCard
+{
+    row *string
+    col *string
+    at  int64
+}
+
+// SentinelCounts is one stream's sentinel primaries (store.SentinelCounts).
+table SentinelCounts
+{
+    all    int64
+    landed int64
+    by_col []IntPair
+}
+
+// PriorityCards is the open primaries at one priority level
+// (WhereRecord.Priorities).
+table PriorityCards
+{
+    level *string
+    cards []CardID
+}
+
+// ReadCardCounts is the epoch's read cards (sprint.ReadCardCounts).
+fixed table ReadCardCounts
+{
+    ready   int64
+    working int64
+    done    int64
+}
+
+// ReadsWindowView is the ok and broken verdicts (sprint.ReadsWindowView).
+fixed table ReadsWindowView
+{
+    ok     int64
+    broken int64
+    since  int64
+}
+
+// ---------------------------------------------------------------------------
+// Notes (sprint.Note).
+
+// StreamTransition is a stream notice frozen on a note (sprint.StreamTransition).
+table StreamTransition
+{
+    state   *string
+    cause   *string
+    waiting int64
+    owners  []RowName
+}
+
+// DecisionDelivery is a folded-message obligation (sprint.DecisionDelivery).
+table DecisionDelivery
+{
+    lane             *string
+    to               *string
+    from             *string
+    set              *string
+    body             *string
+    token            *string
+    prepared_at      int64
+    retry_before     int64
+    sent_at          int64
+    fault            *string
+    reports          []Line
+    unknown_receipts int64
+}
+
+// CoordinatorDelivery is the frozen bus message on a note. Its Go fields carry
+// no json tag, so the text keys are the Go names.
+table CoordinatorDelivery
+{
+    covered_by   *string | json = "CoveredBy"
+    from         *string | json = "From"
+    to           *string | json = "To"
+    token        *string | json = "Token"
+    subject      *string | json = "Subject"
+    body         *string | json = "Body"
+    episode      *string | json = "Episode"
+    sent         bool    | json = "Sent"
+    retry_before int64   | json = "RetryBefore"
+}
+
+// Note is one notification (sprint.Note). Note.Bound cuts the listed
+// primaries to MaxListed (50) on the writer's side only; the readers keep any
+// count, so the list is open.
+table Note
+{
+    stream_transition        *StreamTransition
+    id                       *string
+    safe_default             *string
+    decision_delivery        *DecisionDelivery
+    default_coordinator_told bool
+    default_owner_told       bool
+    coordinator_delivery     *CoordinatorDelivery
+    alias                    *string
+    kind                     *string
+    note_type                *string              | json = "type"
+    stream                   *string
+    primaries                []CardID
+    count                    int64
+    what                     *string
+    who                      *string
+    attempt                  int64
+    before                   int64
+    at                       int64
+    decisions                []Line
+    marked                   bool
+    answers                  *string
+    suspects                 []Line
+    card                     *string
+    other                    *string
+    tier                     *string
+    other_stream             *string
+    stream_level             bool
+    sprint_level             bool
+    needs                    []Line
+    review                   int64
+    review_set               int64
+    to                       *string
+    hint                     *string
+}
+
+// ---------------------------------------------------------------------------
+// The where record (where.go).
+
+// SentinelPair is one stream in WhereRecord.Sentinels in key order.
+table SentinelPair
+{
+    key    *string
+    counts SentinelCounts
+}
+
+// TierCostsPair is one stream in WhereRecord.Streams in key order.
+table TierCostsPair
+{
+    key   *string
+    costs TierCosts
+}
+
+// WhereRecord is store.WhereRecord (key "where"). Every list is open and every
+// map is a list of pairs in key order with the key as unbounded text: the
+// readers (readWhere) are plain json.Unmarshal and keep any count and length.
+table WhereRecord
+{
+    decision_holds         []Note
+    decision_holds_counted bool
+    epoch                  uint64
+    rev                    uint64
+    held                   int64
+    held_streams           []IntPair
+    landings               []int64
+    critical               []CriticalCard
+    blockers               []Line
+    sentinels              []SentinelPair
+    tiers                  []IntPair
+    streams                []TierCostsPair
+    cost_check             *CostCheck
+    stage_times            StageTimes
+    dealt_fleet            []IntPair
+    reads_waiting          int64
+    priorities             []PriorityCards
+    stream_priorities      []TextPair
+    reads_window           ReadsWindowView
+    fleet_rev              uint64
+    row_cards              []IntListPair
+    read_cards             ReadCardCounts
+    fix_states             []IntListPair
+    row_working            []LineListPair
+    stats                  *string
+    series                 []Landing
+    series_counted         bool
+    archived_primaries     []CardID
+    archived_fleet         []ArchivedFleetCard
+    live_stage_times       StageTimes
+    archived_counted       bool
+}
+
+// RttSample is one store round-trip sample. The JSON is a pair: start is
+// Unix milliseconds (samples[i][0]) and us is microseconds (samples[i][1]).
+fixed table RttSample
+{
+    start int64
+    us    int64
+}
+
+// StoreRTTRecord is the store round trip (store.StoreRTTRecord, key
+// "store_rtt"): the samples of the last StoreRTTWindow, aged and not counted.
+table StoreRTTRecord
+{
+    at               int64
+    samples          []RttSample
+    store_rtt_p50_ms float64
+    store_rtt_p99_ms float64
+}
+
+// ---------------------------------------------------------------------------
+// The stop record, the refused-verb record and the beats.
+
+// SeatWaits is what waits on the seat (sprint.SeatWaits).
+table SeatWaits
+{
+    judgments   int64
+    overdue     int64
+    oldest_id   *string
+    oldest_type *string
+    oldest_at   int64
+    level       int64
+}
+
+// Stop is one automatic stop that holds (sprint.Stop).
+table Stop
+{
+    kind    *string
+    subject *string
+    since   int64
+    what    *string
+    effect  *string
+    undo    *string
+    signal  *string
+}
+
+// StopsRecord is the stops record (store.StopsRecord, key "stops").
+table StopsRecord
+{
+    epoch uint64
+    at    int64
+    seat  SeatWaits
+    stops []Stop
+}
+
+// RefusedVerb is one verb the server refused (sprint.RefusedVerb). The Go
+// fields carry no json tag, so the text keys are the Go names.
+table RefusedVerb
+{
+    epoch  uint64  | json = "Epoch"
+    at     int64   | json = "At"
+    verb   *string | json = "Verb"
+    member *string | json = "Member"
+    card   *string | json = "Card"
+    argv   *string | json = "Argv"
+    why    *string | json = "Why"
+}
+
+// RefusedRecord is the doctor's refused-verb record (sprint.RefusedRecord,
+// key "refusedrecord"): PruneRefused keeps RefusedWindow and no count.
+table RefusedRecord
+{
+    epoch uint64
+    verbs []RefusedVerb
+}
+
+// LoadSample is one beat's load percent (sprint.LoadSample).
+fixed table LoadSample
+{
+    at  int64
+    pct float64
+}
+
+// MeterTicks is one reading of the kernel CPU counters (hostload.Ticks).
+fixed table MeterTicks
+{
+    busy  uint64
+    total uint64
+}
+
+// MeterHolder is one process and its open descriptors (hostload.Holder).
+table MeterHolder
+{
+    pid     int64
+    command *string | json = "cmd"
+    user    *string
+    open    int64
+}
+
+// MeterFiles is one reading of open file descriptors (hostload.Files): top
+// lists the holders; the writer keeps hostload.FilesTop (10) and the readers
+// keep any count, so the list is open.
+table MeterFiles
+{
+    at      int64
+    open    int64
+    max     int64
+    warn    int64
+    alarm   int64
+    top     []MeterHolder
+    top_at  int64
+    top_err *string
+}
+
+// MeterState is the measuring state the next beat starts from (hostload.State).
+table MeterState
+{
+    ticks   ?MeterTicks
+    top_at  int64
+    top_pct float64
+    files   *MeterFiles
+}
+
+// FriendReport is what a friend's beat reports (sprint.FriendReport). A
+// pointer count is an optional.
+table FriendReport
+{
+    running      []Line
+    working      ?int64
+    queue        ?int64
+    width        ?int64
+    stop_returns ?int64
+    active       int64
+    paced        ?int64
+    window       *string
+    until        int64
+    reason       *string
+    build        *string
+    started      int64
+    present      int64
+}
+
+// LiveSeenPair is one live-set entry's last sighting (Beat.LiveSeen).
+table LiveSeenPair
+{
+    key *string
+    at  int64
+}
+
+// Beat is a member's presence record (sprint.Beat), the beats the doctor reads.
+table Beat
+{
+    at             int64
+    host_load      float64        | json = "load"
+    cores          int64
+    how            *string
+    samples        []LoadSample
+    meter          MeterState
+    friend_report  *FriendReport  | json = "friend"
+    stop_returns   int64
+    no_room        *string
+    live           []Line
+    live_known     bool
+    live_since     int64
+    live_seen      []LiveSeenPair
+    draining       bool
+    draining_since int64
+    facts          []Line
+}
+
+// ---------------------------------------------------------------------------
+// The check record (check_record.go).
+
+// CheckedCard is one card as the check record keeps it (sprint.CheckedCard):
+// brief is the sha256 of the card's brief in hex.
+table CheckedCard
+{
+    id       *string
+    stream   *string
+    tier     *string
+    priority *string
+    needs    *string
+    brief    *string
+}
+
+// CheckRecord is the check record (store.CheckRecord, key "cardcheck"):
+// PutCardCheck cuts the findings to MaxCheckFindings (200) but CheckRecordOf
+// (check_record.go:46-51) does not, so the list is open; digest is
+// sprint.CardsDigest, a sha256 in hex.
+table CheckRecord
+{
+    epoch    uint64
+    at       int64
+    by       *string
+    clean    bool
+    streams  []Line
+    kinds    *string
+    findings []Line
+    cards    []CheckedCard
+    digest   *string
+}
+
+// ---------------------------------------------------------------------------
+// The fleet drop debt (fleet_rows.go).
+
+// FleetMachineRow is one member whose fleet row the cleanup deleted: a member
+// name. The readers keep any length, so the text is unbounded.
+table FleetMachineRow
+{
+    name *string
+}
+
+// FleetDropDebt is the fleet-drop-debt record (key "fleet-drop-debt"): the
+// member names the cleanup owes a beat delete.
+table FleetDropDebt
+{
+    members []FleetMachineRow
+}
+
+// ---------------------------------------------------------------------------
+// The stats reset and tidy records (stats_reset.go, stats_tidy.go).
+
+// ResetRow is one fleet row's done cells at a stats reset (sprint.ResetRow).
+fixed table ResetRow
+{
+    ok     int64
+    failed int64
+}
+
+// ResetStream is one stream's figures at the mark (sprint.ResetStream).
+table ResetStream
+{
+    cost         *string
+    landed       int64
+    total_cost   *string
+    total_usd    *string
+    work_cost    *string
+    read_cost    *string
+    decide_cost  *string
+    cost_by_tier []TextPair
+}
+
+// ResetRowPair is one fleet row in ResetMark.Rows in key order.
+table ResetRowPair
+{
+    key *string
+    row ResetRow
+}
+
+// ResetStreamPair is one stream in ResetMark.Streams in key order.
+table ResetStreamPair
+{
+    key    *string
+    stream ResetStream
+}
+
+// ResetMark is a stats reset (sprint.ResetMark), stored on the stats record.
+table ResetMark
+{
+    at           int64
+    epoch        uint64
+    by           *string
+    reason       *string
+    rows         []ResetRowPair
+    streams      []ResetStreamPair
+    total_cost   *string
+    unreconciled *string
+    op           *string
+}
+
+// ResetResult is what a reset wrote (store.ResetResult).
+table ResetResult
+{
+    mark     ResetMark
+    replaced *ResetMark
+    dry_run  bool
+    replay   bool
+    said     []Line
+    refused  *string
+}
+
+// StreamBase is a stream's landed cost and count (sprint.StreamBase).
+table StreamBase
+{
+    cost   *string
+    landed int64
+}
+
+// StreamBasePair is one stream in StatsRecord.Streams and StatsArchive.Streams
+// in key order.
+table StreamBasePair
+{
+    key     *string
+    figures StreamBase
+}
+
+// KindTime is one tidy kind's last time.
+table KindTime
+{
+    kind *string
+    at   int64
+}
+
+// TidyInFlight is a tidy that began and has not written its end
+// (store.TidyInFlight).
+table TidyInFlight
+{
+    archive *string
+    at      int64
+    mark    int64
+}
+
+// StatsRecord is the last tidy as stored (store.StatsRecord, key "stats"),
+// with the reset mark stats_reset.go writes onto it.
+table StatsRecord
+{
+    epoch      uint64
+    since      int64
+    reason     *string
+    by         *string
+    kinds      []KindTime
+    streams    []StreamBasePair
+    archives   []Line
+    reset_mark *ResetMark       | json = "reset"
+    tidying    *TidyInFlight
+}
+
+// TidyCard is one finished card a tidy took off or kept (sprint.TidyCard).
+table TidyCard
+{
+    id       *string
+    cell     *string
+    why      *string
+    finished int64
+}
+
+// TidyRow is one fleet row's done cells as a tidy found them (sprint.TidyRow).
+table TidyRow
+{
+    row    *string
+    ok     int64
+    failed int64
+    moved  []TidyCard
+    kept   []TidyCard
+}
+
+// RoutePrices is a route's price sheet (cardcost.Prices).
+table RoutePrices
+{
+    input               *string
+    cache_read          *string
+    cache_write         *string
+    output              *string
+    reasoning_as_output bool
+    long_context        int64
+    input_long          *string
+    output_long         *string
+    request             *string
+    billing             *string
+    gateway_percent     *string
+    source              *string
+    as_of               *string
+}
+
+// Route is one route as the store holds it (sprint.Route). Share has json:"-"
+// and is not serialized.
+table Route
+{
+    name     *string
+    tier     *string
+    provider *string
+    model    *string
+    harness  *string
+    tokens   int64
+    usd      *string
+    deadline int64
+    enabled  bool
+    first    bool
+    prices   RoutePrices
+}
+
+// RouteStat is one route's record (sprint.RouteStat).
+table RouteStat
+{
+    route             Route
+    pinned            bool
+    attempts          int64
+    ok                int64
+    failed            int64
+    provider_failures int64
+    mean_wall         *string
+    rested_until      *string
+    rested_for        *string
+    balance           *string
+    balance_at        *string
+}
+
+// StatsArchive is one tidy's archive (store.StatsArchive).
+table StatsArchive
+{
+    at      int64
+    epoch   uint64
+    reason  *string
+    by      *string
+    kinds   []Line
+    state   *string
+    error   *string
+    rows    []TidyRow
+    routes  []RouteStat
+    streams []StreamBasePair
+}
+
+// TidyResult is what a tidy did (store.TidyResult).
+table TidyResult
+{
+    archive *string
+    dry_run bool
+    refused *string
+    said    []Line
+    record  StatsArchive
+    moved   int64
+    kept    int64
+}
+
+// ---------------------------------------------------------------------------
+// The stuck record (stuck.go) and the load index (load.go).
+
+// Stuck is the stuck record (store.Stuck, key "stuck").
+table Stuck
+{
+    op          *string
+    verb        *string
+    at          int64
+    seen        int64
+    why         *string
+    repaired    *string
+    repaired_at int64
+}
+
+// LogIndexEntry is one name's indexed log stream ids.
+table LogIndexEntry
+{
+    name *string
+    ids  []Line
+}
+
+// LogIndex is the load index: the cursor (key "logindexed", a Redis stream
+// id) and the names with their log stream ids (key "logindex").
+table LogIndex
+{
+    cursor  *string
+    entries []LogIndexEntry
+}
+
+// ---------------------------------------------------------------------------
+// The tick's machine, heartbeat and held records (tick.go).
+
+// Span is one time the machine was STOPPED (sprint.Span).
+fixed table Span
+{
+    from int64
+    to   int64
+}
+
+// StopLease is one child the owner must confirm stopped (store.StopLease).
+table StopLease
+{
+    lease_table *string | json = "table"
+    row         *string
+    id          *string
+    gen         int64
+}
+
+// Machine is the state record (store.Machine, key "machine"): the writer cuts
+// the spans to MaxStopSpans (1000) and the readers keep any count, so the list
+// is open. stopped_ns is the total time STOPPED before the
+// current span, in nanoseconds, and started_in the epoch number in decimal.
+table Machine
+{
+    state       *string
+    since       int64
+    who         *string
+    run_seq     uint64
+    stop_issued bool
+    stop_debt   []StopLease
+    stopped_ns  int64
+    spans       []Span
+    cause       *string
+    reason      *string
+    until       int64
+    started_in  *string
+}
+
+// LaneQuiet is a judgment the tick kept from rising (sprint.LaneQuiet).
+table LaneQuiet
+{
+    quiet_type  *string | json = "type"
+    subject     *string
+    why         *string
+    friend_name *string | json = "friend"
+    run         *string
+}
+
+// Suppressed is the count of judgments kept from rising (sprint.Suppressed).
+fixed table Suppressed
+{
+    epoch   uint64
+    n       int64
+    lane    int64
+    readers int64
+    tier    int64
+}
+
+// Heartbeat is the last tick (store.Heartbeat, key "heartbeat"): revisions is
+// the four tables' revisions.
+table Heartbeat
+{
+    at           int64
+    ticks        int64
+    error        *string
+    failures     int64
+    tick_overrun int64
+    due          int64
+    revisions    [4]uint64
+    landed       int64
+    all          int64
+    full         int64
+    looked       int64
+    fresh        []Line
+    quiet        []LaneQuiet
+    suppressed   Suppressed
+}
+
+// PlaceExpect is the expected row and column (ntable.PlaceExpect).
+table PlaceExpect
+{
+    row *string
+    col *string
+}
+
+// FieldGuard is one field check (ntable.FieldGuard): equals is a pointer and
+// absent is an optional.
+table FieldGuard
+{
+    equals *string
+    absent ?bool
+    one_of []Line
+}
+
+// FieldGuardPair is one field in MemberExpect.Fields.
+table FieldGuardPair
+{
+    field *string
+    guard FieldGuard
+}
+
+// MemberExpect guards a member before a mutation (ntable.MemberExpect).
+table MemberExpect
+{
+    absent   bool
+    revision *string
+    place    *PlaceExpect
+    fields   []FieldGuardPair
+}
+
+// MemberCreate places a new member (ntable.MemberCreateOp).
+table MemberCreate
+{
+    row   *string
+    col   *string
+    score float64
+}
+
+// MemberMove moves a member (ntable.MemberMoveOp): score is an optional.
+table MemberMove
+{
+    row   *string
+    col   *string
+    score ?float64
+}
+
+// BatchMemberEntry is one member of a batch (ntable.BatchMemberEntry).
+table BatchMemberEntry
+{
+    id          *string
+    expect      *MemberExpect
+    create      *MemberCreate
+    member_move *MemberMove   | json = "move"
+    remove      bool
+    set         []TextPair
+    unset       []Line
+}
+
+// BatchManifest is one atomic batch (ntable.BatchManifest) on the held
+// operation.
+table BatchManifest
+{
+    schema                  int64
+    logical_table           *string            | json = "table"
+    epoch                   *string
+    expected_table_revision *string
+    operation_id            *string
+    actor                   *string
+    members                 []BatchMemberEntry
+    props                   []TextPair
+    prop_expect             []TextPair
+    prop_absent             []Line
+}
+
+// PropWrite is a table property a step writes (sprint.PropWrite). The Go
+// fields carry no json tag, so the text keys are the Go names.
+table PropWrite
+{
+    logical_table *string | json = "Table"
+    name          *string | json = "Name"
+    value         *string | json = "Value"
+    was           *string | json = "Was"
+    was_absent    bool    | json = "WasAbsent"
+}
+
+// QueuedChange is one work-table change queued for the pump (sprint.QueuedChange).
+table QueuedChange
+{
+    entry *BatchMemberEntry
+    prop  *PropWrite
+    verb  *string
+    actor *string
+    moved *string
+}
+
+// LogLine is one log line on the held operation (sprint.Line): the store cuts
+// cause to MaxCause (300) on two writer paths only, so the text is unbounded.
+table LogLine
+{
+    kind          *string
+    at            int64
+    epoch         uint64
+    op            *string
+    card          *string
+    cards         []Line
+    primary       *string
+    stream        *string
+    logical_table *string    | json = "table"
+    from          *string
+    to            *string
+    removed       bool
+    gen           int64
+    actor         *string
+    verb          *string
+    cause         *string
+    answers       []Line
+    text          []TextPair
+    set           []TextPair
+    note          *Note
+}
+
+// Timer is one timer (sprint.Timer): ValidTimerNote bounds the note to
+// MaxTimerNote (512) on the verb path only, so the text is unbounded.
+table Timer
+{
+    id        *string
+    for_actor *string | json = "for"
+    due       int64
+    note      *string
+    by        *string
+    set       int64
+}
+
+// Timers is the open timers on the held operation (sprint.Timers).
+table Timers
+{
+    open_timers []Timer | json = "open"
+}
+
+// SeatChange is one change of the seat (sprint.SeatChange).
+table SeatChange
+{
+    holder      *string
+    generation  uint64
+    from        *string
+    at          int64
+    by          *string
+    taken       bool
+    approved_by *string
+    reason      *string
+}
+
+// HeldRecord is the fence body tick.go unmarshals as held (store.OpRecord):
+// the operation record the fence holds, whole. It is not a key of its own.
+table HeldRecord
+{
+    id           *string
+    held_lock    bool            | json = "lock"
+    verb         *string
+    at           int64
+    manifests    []BatchManifest
+    notes        []Note
+    decided      []Note
+    log          []LogLine
+    updates      []Note
+    closes       []Line
+    streams      []Line
+    caller_op    *string
+    result       *string
+    stuck        *string
+    queue        []QueuedChange
+    drain        int64
+    seat         *SeatChange
+    close_timers []Line
+    timers       *Timers
+}

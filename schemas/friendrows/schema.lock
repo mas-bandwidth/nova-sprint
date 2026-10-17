@@ -1,0 +1,7 @@
+schema-lock 7
+package friendrowswire
+
+fixed table Ticks layout=0x1b03c0f2ab6ab9b7 lineage=0x482514a27f86b8f5
+    field busy id=0xff75d19be2aea620 kind=9 width=8 default=0
+    field total id=0x2dcede7d543a4ffd kind=9 width=8 default=0
+    lineage wire=0x01a317c3b26a5712 record=16 bytes=03000000159c6ed9d20d323c0d100000000200000020a6aee29bd175ff090800000000000000fd4f3a547ddece2d090800000000000000

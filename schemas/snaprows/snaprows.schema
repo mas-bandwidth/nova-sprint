@@ -1,0 +1,611 @@
+// snaprows.schema: the sprint store's snapshot and restore records and the card
+// cost records the store keeps, as binary wire, padded standard base64 text and
+// the schema JSON text form. Its Go is generated into
+// internal/sprint/store/snaprowswire (go generate ./internal/sprint/store/snaprowswire).
+//
+// The records, each the Go struct it replaces, field by field:
+//
+//   - the snapshot verb's records (store/snapshot.go): SnapshotCounts (38-41),
+//     SnapshotTaken (65-75), BackupCounts (353-356), DumpKey (345-349) and the
+//     dump member (memDumpMember, 707-710);
+//   - the twin's snapshot document (store/mem_snapshot.go 25-113, written at 179
+//     and read at 186): memSnapshot, tableSnapshot, epochSnapshot, memberSnapshot,
+//     changeSnapshot, opSnapshot, residueSnap, logSnapshot, noteSnapshot and
+//     lineSnapshot, with the nova-tables records they hold (ntable.Table, Column,
+//     Row, Cell, Member, View, Receipt, BatchDelta, BatchMemberDelta, FieldChange);
+//   - the restore state (store/restore.go 38-40): SprintState;
+//   - the card cost records (sprint/cost.go): Consumer (195-213) and CardCostView
+//     (333-343), with the cardcost records they hold (Usage, Tokens, Total,
+//     RawUsage, RawRecord).
+//
+// THE FORM (schema owner rule S1, the coordinator's ruling of 2026-10-17): a
+// record is a FIXED table only where every bound it declares is a bound the code
+// enforces; otherwise it is a VARIABLE table, with open lists and unbounded text.
+// A bound is declared only when every path that reads the record enforces it. The
+// records of this area are read by the snapshot read and the restore, and those
+// paths copy every list and every text as they find it: the twin's restore
+// (store/mem_snapshot.go) checks no count and no length, and CardCostOf
+// (sprint/cost.go 352-355) appends every cost record it finds. A limit the code
+// enforces only on a write or on a batch apply (sprint.MaxCostRecords,
+// ntable.MaxViewState, ntable.LimitTableProps, ntable.LimitColumns,
+// ntable.LimitMemberIDBytes, ntable.LimitFieldValueBytes) is therefore no bound of
+// a record here, and no record declares one: every list is open and every text is a
+// *string. Two records are fixed: SnapshotCounts and Tokens hold integers only, so
+// they declare no bound and no bound is unenforced. Every other record holds a
+// string or a list the Go struct leaves open (a file name, a map, a slice, a
+// free-text field), so it is a variable table.
+//
+// THE NESTED RECORDS OF ANOTHER AREA. The twin's log holds the operation record
+// the fence keeps, the notifications, the log lines and the queued changes. Those
+// records are tables of the oprows area (schemas/oprows: OpRecord, Note, LogLine,
+// QueuedChange); this area holds each as the binary wire of that table, a blob
+// (*bytes), so a record has one definition and no second copy can drift. The JSON
+// form carries the blob as padded standard base64 of that wire, and a reader of
+// the snapshot reads the blob with the oprows table's reader.
+//
+// Where a Go map is a field, the table holds a list of entries in the key's sorted
+// order, the order the JSON form writes them. Go int is int64, the width of int on
+// the platforms the tools build for. A time is Unix nanoseconds UTC, 0 for the zero
+// time (as donewire and oprows). A field the Go struct does not serialize
+// (cardcost.Usage.Extra, ntable.BatchMemberDelta.BeforeScore and AfterScore) is not
+// a field here. A text that Go leaves open is a *string and an optional text is a
+// *string that is null when Go holds a nil pointer. Three field names are renamed,
+// because the schema language or C++ reserves them: SnapshotTaken.bytes is size
+// (bytes is a keyword), Usage.long is long_context, and the table field of
+// TableEntry and ResidueSnap is table_snapshot (table is a keyword). Every other
+// field keeps its Go name in snake case.
+package snaprowswire
+
+// ---------------------------------------------------------------------------
+// The words every record shares.
+
+// Word is one text of a list of texts (Go []string): the schema compiler takes
+// no list of text, so the text is wrapped in a table.
+table Word
+{
+    text *string
+}
+
+// Pair is one entry of a string map in key order (Go map[string]string).
+table Pair
+{
+    name  *string
+    value *string
+}
+
+// Flag is one entry of a map[string]bool in key order.
+table Flag
+{
+    name *string
+    on   bool
+}
+
+// EpochFlag is one entry of a map[uint64]bool in epoch order (tableSnapshot.Wrote).
+table EpochFlag
+{
+    epoch uint64
+    on    bool
+}
+
+// Image is the binary wire of one table of the oprows area, held whole and never
+// decoded here (see THE NESTED RECORDS OF ANOTHER AREA).
+table Image
+{
+    data *bytes
+}
+
+// ---------------------------------------------------------------------------
+// The card cost records (sprint/cost.go; nova-tools pkg/cardcost).
+
+// Tokens is cardcost.Tokens (cardcost/predict.go 17-25): what one run spent, by
+// class, -1 where the harness did not report it. Integers only, so it declares no
+// bound: a FIXED table.
+fixed table Tokens
+{
+    input       int64
+    cache_read  int64
+    cache_write int64
+    output      int64
+    reasoning   int64
+    requests    int64
+    max_prompt  int64
+}
+
+// TokenCount is one counter of a raw record (cardcost.RawRecord.Tokens, a
+// map[string]int64), in the key's sorted order.
+table TokenCount
+{
+    name  *string
+    count int64
+}
+
+// RawRecord is cardcost.RawRecord (cardcost/raw.go 25-32): one launch's original
+// counters.
+table RawRecord
+{
+    harness          *string
+    execution        *string
+    source_schema    *string
+    producer_version *string
+    billing          *string
+    tokens           []TokenCount
+}
+
+// RawUsage is cardcost.RawUsage (cardcost/raw.go 35-38).
+table RawUsage
+{
+    version int64
+    records []RawRecord
+}
+
+// Usage is cardcost.Usage (cardcost/usage.go 30-53) without Extra, which Go does
+// not serialize (json:"-"). The pointer raw_usage is null when Go holds nil.
+table Usage
+{
+    billing         *string
+    receipt_version int64
+    raw_usage       *RawUsage
+    wall            *string
+    budget          *string
+    tokens          Tokens
+    model           *string
+    actual_usd      *string
+    actual_by       *string
+    wait_s          int64
+    run_s           int64
+    price_route     *string
+    prices          *string
+    predicted_usd   *string
+    long_context bool
+    unpriced        *string
+}
+
+// Total is cardcost.Total (cardcost/usage.go 323-342).
+table Total
+{
+    records           int64
+    tokens            Tokens
+    wait_s            int64
+    run_s             int64
+    predicted_usd     *string
+    predicted_records int64
+    actual_usd        *string
+    actual_records    int64
+    actual_by         *string
+    charged_usd       *string
+    charged_records   int64
+}
+
+// Consumer is sprint.Consumer (sprint/cost.go 195-213): one consumer of a producer
+// card, its record and its cost.
+table Consumer
+{
+    kind    *string
+    card    *string
+    attempt int64
+    take    int64
+    gen     int64
+    who     *string
+    route   *string
+    model   *string
+    tier    *string
+    end     *string
+    at      *string
+    key     *string
+    usage   Usage
+    cap     *string
+    overrun *string
+}
+
+// CardCostView is sprint.CardCostView (sprint/cost.go 333-343): a producer card's
+// cost. addConsumer (cost.go 293) writes no record past sprint.MaxCostRecords
+// and counts it in cut, but CardCostOf (cost.go 352-355) reads every record it
+// finds, so the list is open.
+table CardCostView
+{
+    consumers    []Consumer
+    total        Total
+    cut          int64
+    carried_usd  *string
+    carried_from *string
+    carried_to   *string
+}
+
+// ---------------------------------------------------------------------------
+// The snapshot verb's records (store/snapshot.go).
+
+// SnapshotCounts is store.SnapshotCounts (snapshot.go 38-41): -1 is unknown.
+// Integers only: a FIXED table.
+fixed table SnapshotCounts
+{
+    keys  int64
+    cards int64
+}
+
+// SnapshotTaken is store.SnapshotTaken (snapshot.go 65-75): one verified snapshot.
+table SnapshotTaken
+{
+    file    *string
+    sha256  *string
+    size    int64
+    counts  SnapshotCounts
+    restore *string
+    pruned  []Word
+}
+
+// ColumnCount is one entry of BackupCounts.Columns (a map[string]int) in the
+// column name's sorted order.
+table ColumnCount
+{
+    column *string
+    count  int64
+}
+
+// BackupCounts is store.BackupCounts (snapshot.go 353-356).
+table BackupCounts
+{
+    keys    int64
+    columns []ColumnCount
+}
+
+// DumpKey is store.DumpKey (snapshot.go 345-349): a key of a RESTORE dump, its
+// time to live in milliseconds (0: none) and its DUMP payload.
+table DumpKey
+{
+    key     *string
+    ttl     int64
+    payload *bytes
+}
+
+// ---------------------------------------------------------------------------
+// The restore state (store/restore.go 38-40).
+
+// StatePart is one entry of SprintState.Parts (a map[string]string) in the part
+// name's sorted order.
+table StatePart
+{
+    name  *string
+    value *string
+}
+
+// SprintState is store.SprintState: a store's logical sprint state, one canonical
+// value per part.
+table SprintState
+{
+    parts []StatePart
+}
+
+// ---------------------------------------------------------------------------
+// The nova-tables records the twin's document holds (nova-tools pkg/ntable).
+
+// Column is ntable.Column (ntable/ntable.go 186-192).
+table Column
+{
+    name       *string
+    label      *string
+    projection *string
+    fold       *string
+    width      int64
+}
+
+// ScoredMember is ntable.Member (ntable/ntable.go 203-206).
+table ScoredMember
+{
+    member *string
+    score  float64
+}
+
+// Cell is ntable.Cell (ntable/ntable.go 212-221).
+table Cell
+{
+    key        *string
+    bound      bool
+    count      int64
+    members    []ScoredMember
+    unread     bool
+    unread_why *string
+}
+
+// Row is ntable.Row (ntable/ntable.go 226-234).
+table Row
+{
+    key     *string
+    label   *string
+    exclude *string
+    owner   *string
+    cells   []Cell
+    texts   []Pair
+    hidden  bool
+}
+
+// NTable is ntable.Table (ntable/ntable.go 245-265).
+table NTable
+{
+    epoch_key     *string
+    epoch_field   *string
+    member_prefix *string
+    epoch         uint64
+    revision      uint64
+    name          *string
+    columns      []Column
+    footer_label *string
+    hidden       []Word
+    hidden_table bool
+    sort         *string
+    rows         []Row
+    props        []Pair
+}
+
+// View is ntable.View (ntable/store.go 1306-1315).
+table View
+{
+    name    *string
+    tables  []Word
+    title   *string
+    summary *string
+    state   *string
+}
+
+// FieldChange is one entry of ntable.BatchMemberDelta.Fields (a
+// map[string]FieldChange) in the field name's sorted order: ntable.FieldChange
+// (ntable/store.go 1567-1574). A nil before or after is null, an absent field.
+table FieldChange
+{
+    name         *string
+    before       *string
+    after        *string
+    before_bytes int64
+    before_sha1  *string
+    after_bytes  int64
+    after_sha1   *string
+}
+
+// BatchMemberDelta is ntable.BatchMemberDelta (ntable/store.go 1577-1593) without
+// BeforeScore and AfterScore, which Go does not serialize (json:"-"); the scores
+// are the exact decimal texts, null when unplaced.
+table BatchMemberDelta
+{
+    id                *string
+    before_place      *string
+    after_place       *string
+    before_score_text *string
+    after_score_text  *string
+    before_rev        *string
+    after_rev         *string
+    fields_set        []Pair
+    fields_unset      []Word
+    fields            []FieldChange
+}
+
+// BatchDelta is ntable.BatchDelta (ntable/store.go 1503-1514).
+table BatchDelta
+{
+    operation_id   *string
+    digest         *string
+    actor          *string
+    selected_count int64
+    guard_count    int64
+    changed_count  int64
+    members        []BatchMemberDelta
+    props          []Pair
+}
+
+// Receipt is ntable.Receipt (ntable/store.go 148-156). The batch delta is null
+// when Go holds nil.
+table Receipt
+{
+    id          *string
+    epoch       uint64
+    before      uint64
+    after       uint64
+    outcome     *string
+    batch_delta *BatchDelta
+    replay      bool
+}
+
+// ---------------------------------------------------------------------------
+// The twin's snapshot document (store/mem_snapshot.go).
+
+// Field is one field of a member (memberSnapshot.Fields, a map[string]string) in
+// the name's sorted order. The snapshot copies a value as it is (mem_snapshot.go
+// 144), so the value declares no bound.
+table Field
+{
+    name  *string
+    value *string
+}
+
+// MemberSnapshot is store.memberSnapshot (mem_snapshot.go 60-68).
+table MemberSnapshot
+{
+    epoch  uint64
+    placed bool
+    row    *string
+    col    *string
+    score  float64
+    rev    uint64
+    fields []Field
+}
+
+// MemberEntry is one entry of tableSnapshot.Members (a map[string]*memberSnapshot)
+// in the id's sorted order.
+table MemberEntry
+{
+    id     *string
+    member MemberSnapshot
+}
+
+// ChangeSnapshot is store.changeSnapshot (mem_snapshot.go 70-76).
+table ChangeSnapshot
+{
+    epoch  uint64
+    before uint64
+    after  uint64
+    verb   *string
+    ids    []Word
+}
+
+// OpEntry is one entry of tableSnapshot.Ops (a map[string]opSnapshot) in the
+// operation key's sorted order: the key and store.opSnapshot (mem_snapshot.go
+// 78-81).
+table OpEntry
+{
+    key     *string
+    body    *string
+    receipt Receipt
+}
+
+// TextRow is one entry of epochSnapshot.Texts (a map[string]map[string]string) in
+// the row's sorted order: the row and its cells' texts in the column's sorted order.
+table TextRow
+{
+    row   *string
+    cells []Pair
+}
+
+// EpochSnapshot is store.epochSnapshot (mem_snapshot.go 53-58).
+table EpochSnapshot
+{
+    rows   []Word
+    hidden []Flag
+    texts  []TextRow
+    props  []Pair
+}
+
+// EpochEntry is one entry of tableSnapshot.Epochs (a map[uint64]*epochSnapshot) in
+// the epoch's order.
+table EpochEntry
+{
+    epoch    uint64
+    snapshot EpochSnapshot
+}
+
+// TableSnapshot is store.tableSnapshot (mem_snapshot.go 41-51).
+table TableSnapshot
+{
+    def     NTable
+    epochs  []EpochEntry
+    wrote   []EpochFlag
+    rev     uint64
+    members []MemberEntry
+    ops     []OpEntry
+    changes []ChangeSnapshot
+}
+
+// TableEntry is one entry of memSnapshot.Tables (a map[string]*tableSnapshot) in
+// the table name's sorted order.
+table TableEntry
+{
+    name  *string
+    table_snapshot TableSnapshot
+}
+
+// ResidueSnap is store.residueSnap (mem_snapshot.go 83-86). The table is null
+// when Go holds nil.
+table ResidueSnap
+{
+    keys  []Flag
+    table_snapshot *TableSnapshot
+}
+
+// ResidueEntry is one entry of memSnapshot.Dropped (a map[string]*residueSnap) in
+// the dropped table's sorted order.
+table ResidueEntry
+{
+    name    *string
+    residue ResidueSnap
+}
+
+// ViewEntry is one entry of memSnapshot.Views (a map[string]ntable.View) in the
+// view name's sorted order.
+table ViewEntry
+{
+    name *string
+    view View
+}
+
+// NoteSnapshot is store.noteSnapshot (mem_snapshot.go 105-108): the notification's
+// id and its note, a sprint.Note held as the oprows Note table.
+table NoteSnapshot
+{
+    id   *string
+    note *bytes
+}
+
+// LineSnapshot is store.lineSnapshot (mem_snapshot.go 110-113): the line's id and
+// its line, a sprint.Line held as the oprows LogLine table.
+table LineSnapshot
+{
+    id   *string
+    line *bytes
+}
+
+// NoteEntry is one entry of logSnapshot.Notes (a map[string]sprint.Note) in the
+// id's sorted order; the note is the oprows Note table.
+table NoteEntry
+{
+    id   *string
+    note *bytes
+}
+
+// TimeEntry is one entry of logSnapshot.Progress (a map[string]time.Time) in the
+// stream's sorted order; at is Unix nanoseconds UTC, 0 for the zero time.
+table TimeEntry
+{
+    name *string
+    at   int64
+}
+
+// LogSnapshot is store.logSnapshot (mem_snapshot.go 88-103). The fence is the oprows
+// OpRecord table, null when Go holds nil; the queue is a list of the oprows
+// QueuedChange table.
+table LogSnapshot
+{
+    fence    *bytes
+    gen      uint64
+    done     []Pair
+    progress []TimeEntry
+    inbox    []NoteSnapshot
+    lines    []LineSnapshot
+    notes    []NoteEntry
+    aliases  []Pair
+    answered []Pair
+    open     []Pair
+    cursor   *string
+    queue    []Image
+}
+
+// LogEntry is one entry of memSnapshot.Logs (a map[uint64]*logSnapshot) in the
+// epoch's order.
+table LogEntry
+{
+    epoch uint64
+    log   LogSnapshot
+}
+
+// MemSnapshot is store.memSnapshot (mem_snapshot.go 25-39): the twin's whole state
+// as one document. cleared is Unix nanoseconds UTC, 0 for the zero time.
+table MemSnapshot
+{
+    version       int64
+    tables        []TableEntry
+    dropped       []ResidueEntry
+    views         []ViewEntry
+    epoch_set     bool
+    epoch         uint64
+    cleared       int64
+    owed          bool
+    defaults_owed uint64
+    logs          []LogEntry
+    kv            []Pair
+    seq           int64
+}
+
+// MemDumpMember is store.memDumpMember (snapshot.go 707-710): a record's key in a
+// twin's dump, the record and its table. The member is null when Go holds nil (the
+// restore refuses such a key).
+table MemDumpMember
+{
+    table_name *string
+    member     *MemberSnapshot
+}
