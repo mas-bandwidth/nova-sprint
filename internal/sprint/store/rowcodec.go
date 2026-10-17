@@ -167,6 +167,11 @@ type rowReg struct {
 // rowRegs holds each store's readers. A store that never registers has no entry.
 var rowRegs sync.Map
 
+// processRows holds the readers registered process-wide, for reads that run
+// with no Store (snapshot and restore). S4: their counts are the evidence a
+// later card reads before that record's writer switches.
+var processRows rowReg
+
 // Register counts this reader on st's CheckReport. S4: the per-form counter
 // is the evidence Check exports. A record card calls it when the store is
 // built.
@@ -187,17 +192,48 @@ func (c *RowCodec[T]) Register(st *Store) {
 	r.mu.Unlock()
 }
 
+// RegisterProcess counts this reader process-wide, for a read that runs with
+// no Store (snapshot and restore). S4: the per-form counter is the evidence a
+// later card reads before that record's writer switches. The same pointer is
+// registered once; a nil codec is a no-op.
+func (c *RowCodec[T]) RegisterProcess() {
+	if c == nil {
+		return
+	}
+	processRows.mu.Lock()
+	for _, registered := range processRows.list {
+		if registered == c {
+			processRows.mu.Unlock()
+			return
+		}
+	}
+	processRows.list = append(processRows.list, c)
+	processRows.mu.Unlock()
+}
+
 // rowFormCounts is the per-record snapshots Check puts on its report. An
 // unregistered store is an empty object, never nil, so check --json always
 // prints row_forms. S4.
 func (st *Store) rowFormCounts() map[string]map[string]uint64 {
 	linkRowReader()
 	out := map[string]map[string]uint64{}
+	// S4: a fresh Store lists every registered dual-read record at zero before
+	// its first read.
+	if st != nil {
+		st.doneRows()
+		st.presenceRows()
+	}
+	// S4: a reader registered process-wide (a snapshot and restore read, which
+	// has no Store) counts into every store's report.
+	processRows.mu.Lock()
+	plist := append([]rowSource(nil), processRows.list...)
+	processRows.mu.Unlock()
+	for _, s := range plist {
+		mergeRowSnapshot(out, s.rowName(), s.rowSnapshot())
+	}
 	if st == nil {
 		return out
 	}
-	// S4: a fresh Store lists DONERECORD at zero before the first page read.
-	st.doneRows()
 	v, ok := rowRegs.Load(st)
 	if !ok {
 		return out
@@ -207,9 +243,22 @@ func (st *Store) rowFormCounts() map[string]map[string]uint64 {
 	list := append([]rowSource(nil), r.list...)
 	r.mu.Unlock()
 	for _, s := range list {
-		out[s.rowName()] = s.rowSnapshot()
+		mergeRowSnapshot(out, s.rowName(), s.rowSnapshot())
 	}
 	return out
+}
+
+// mergeRowSnapshot adds one record's snapshot to out: for a name already
+// present, each form count is added; otherwise the snapshot is put as is. S4.
+func mergeRowSnapshot(out map[string]map[string]uint64, name string, snap map[string]uint64) {
+	existing, ok := out[name]
+	if !ok {
+		out[name] = snap
+		return
+	}
+	for form, n := range snap {
+		existing[form] += n
+	}
 }
 
 // linkRow is one empty value, so check can reach the reader before any record
