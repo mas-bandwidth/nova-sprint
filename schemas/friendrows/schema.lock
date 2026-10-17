@@ -1,37 +1,6 @@
 schema-lock 7
 package friendrowswire
 
-fixed table FactWord layout=0xf6b80bda20a44588 lineage=0xe0232b97baadc339
-    field text id=0xfa04f4ef1995407e kind=12 width=136 default=bytes: cap=128
-    lineage wire=0x15de63d36aa9d92b record=132 bytes=02000000f3a996b7b34c8c070d84000000010000007e409519eff404fa0c8400000000000000
-
-fixed table LaneHold layout=0xb723e0c68aaef7e0 lineage=0x851ce150446ce2fe
-    field who id=0x5ec5fc194891690f kind=12 width=264 default=bytes: cap=257
-    field claimed id=0x57dbd78a7e35f70e kind=1 width=1 default=false
-    field since id=0x2b827d4f5e0ada9d kind=12 width=43 default=bytes: cap=35
-    field seen id=0x2cfadb18d3ecd12a kind=12 width=40 default=bytes: cap=35
-    lineage wire=0xc48b9c17320a46fc record=340 bytes=05000000969fe9281987d5420d54010000040000000f69914819fcc55e0c05010000000000000ef7357e8ad7db570101000000000000009dda0a5e4f7d822b0c27000000000000002ad1ecd318dbfa2c0c2700000000000000
-
-fixed table LaneWait layout=0xbcd9f922d12d3957 lineage=0xc41995dd9eb9347e
-    field who id=0x5ec5fc194891690f kind=12 width=264 default=bytes: cap=257
-    field since id=0x2b827d4f5e0ada9d kind=12 width=40 default=bytes: cap=35
-    field seen id=0x2cfadb18d3ecd12a kind=12 width=40 default=bytes: cap=35
-    lineage wire=0x932a325de8fc556c record=339 bytes=04000000b674560aa8c9f1eb0d53010000030000000f69914819fcc55e0c05010000000000009dda0a5e4f7d822b0c27000000000000002ad1ecd318dbfa2c0c2700000000000000
-
-fixed table LiveSight layout=0x3a1a37f980587f16 lineage=0x1338d5170ea3b122
-    field entry id=0xbe2a85bf4c0ca913 kind=12 width=288 default=bytes: cap=281
-    field at id=0x089c4e07b545a968 kind=12 width=40 default=bytes: cap=35
-    lineage wire=0x9ef67efc3d66b25c record=324 bytes=030000008455f204f8556ab90d440100000200000013a90c4cbf852abe0c1d0100000000000068a945b5074e9c080c2700000000000000
-
-fixed table LiveWord layout=0xd0712159a7320d5c lineage=0x5fc7e990aa0443fd
-    field text id=0xfa04f4ef1995407e kind=12 width=288 default=bytes: cap=281
-    lineage wire=0x71e2a2912f4c7207 record=285 bytes=0200000043ac26c01b0ea65d0d1d010000010000007e409519eff404fa0c1d01000000000000
-
-fixed table LoadSample layout=0x25341c31bb4b53db lineage=0xae6c92b8e6cc69d2
-    field pct id=0x77c35c1956708830 kind=11 width=8 default=0.0
-    field at id=0x089c4e07b545a968 kind=12 width=40 default=bytes: cap=35
-    lineage wire=0x161a97f607b24051 record=47 bytes=03000000530bbea7b054240b0d2f0000000200000030887056195cc3770b080000000000000068a945b5074e9c080c2700000000000000
-
 fixed table Ticks layout=0x1b03c0f2ab6ab9b7 lineage=0x482514a27f86b8f5
     field busy id=0xff75d19be2aea620 kind=9 width=8 default=0
     field total id=0x2dcede7d543a4ffd kind=9 width=8 default=0

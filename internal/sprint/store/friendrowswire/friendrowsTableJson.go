@@ -3081,22 +3081,17 @@ func FriendStatusToJsonMeasure(value *FriendStatus, allocator ...TableAllocator)
 func FriendStatusToJson(value *FriendStatus, buffer []byte, allocator ...TableAllocator) int64 {
 	return tableRegionToJson(unsafe.Pointer(value), FriendStatusTableType(), buffer, allocator...)
 }
-
-// LoadSampleFromJson fills one LoadSample from a JSON text (docs/SPEC-TABLES.md §16).
-// A nil report is allowed; every tolerance event still decides the same way.
-func LoadSampleFromJson(value *LoadSample, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), LoadSampleTableType(), text, report)
+func LoadSampleFromJson(builder *LoadSampleBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), LoadSampleTableType(), &builder.Main, text, report)
 }
-
-// LoadSampleToJsonMeasure is the exact size of LoadSample's JSON text, writing nothing.
-func LoadSampleToJsonMeasure(value *LoadSample) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), LoadSampleTableType(), nil)
+func LoadSampleToJsonMeasure(value *LoadSample, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), LoadSampleTableType(), nil, allocator...)
 }
-
-// LoadSampleToJson writes LoadSample's JSON text into the caller's slice and returns the
-// bytes written — exactly LoadSampleToJsonMeasure's answer — or -1 when it is short.
-func LoadSampleToJson(value *LoadSample, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), LoadSampleTableType(), buffer)
+func LoadSampleToJson(value *LoadSample, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), LoadSampleTableType(), buffer, allocator...)
 }
 
 // TicksFromJson fills one Ticks from a JSON text (docs/SPEC-TABLES.md §16).
@@ -3176,58 +3171,42 @@ func FriendReportToJsonMeasure(value *FriendReport, allocator ...TableAllocator)
 func FriendReportToJson(value *FriendReport, buffer []byte, allocator ...TableAllocator) int64 {
 	return tableRegionToJson(unsafe.Pointer(value), FriendReportTableType(), buffer, allocator...)
 }
-
-// LiveWordFromJson fills one LiveWord from a JSON text (docs/SPEC-TABLES.md §16).
-// A nil report is allowed; every tolerance event still decides the same way.
-func LiveWordFromJson(value *LiveWord, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), LiveWordTableType(), text, report)
+func LiveWordFromJson(builder *LiveWordBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), LiveWordTableType(), &builder.Main, text, report)
 }
-
-// LiveWordToJsonMeasure is the exact size of LiveWord's JSON text, writing nothing.
-func LiveWordToJsonMeasure(value *LiveWord) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), LiveWordTableType(), nil)
+func LiveWordToJsonMeasure(value *LiveWord, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), LiveWordTableType(), nil, allocator...)
 }
-
-// LiveWordToJson writes LiveWord's JSON text into the caller's slice and returns the
-// bytes written — exactly LiveWordToJsonMeasure's answer — or -1 when it is short.
-func LiveWordToJson(value *LiveWord, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), LiveWordTableType(), buffer)
+func LiveWordToJson(value *LiveWord, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), LiveWordTableType(), buffer, allocator...)
 }
-
-// FactWordFromJson fills one FactWord from a JSON text (docs/SPEC-TABLES.md §16).
-// A nil report is allowed; every tolerance event still decides the same way.
-func FactWordFromJson(value *FactWord, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), FactWordTableType(), text, report)
+func FactWordFromJson(builder *FactWordBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), FactWordTableType(), &builder.Main, text, report)
 }
-
-// FactWordToJsonMeasure is the exact size of FactWord's JSON text, writing nothing.
-func FactWordToJsonMeasure(value *FactWord) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), FactWordTableType(), nil)
+func FactWordToJsonMeasure(value *FactWord, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), FactWordTableType(), nil, allocator...)
 }
-
-// FactWordToJson writes FactWord's JSON text into the caller's slice and returns the
-// bytes written — exactly FactWordToJsonMeasure's answer — or -1 when it is short.
-func FactWordToJson(value *FactWord, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), FactWordTableType(), buffer)
+func FactWordToJson(value *FactWord, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), FactWordTableType(), buffer, allocator...)
 }
-
-// LiveSightFromJson fills one LiveSight from a JSON text (docs/SPEC-TABLES.md §16).
-// A nil report is allowed; every tolerance event still decides the same way.
-func LiveSightFromJson(value *LiveSight, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), LiveSightTableType(), text, report)
+func LiveSightFromJson(builder *LiveSightBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), LiveSightTableType(), &builder.Main, text, report)
 }
-
-// LiveSightToJsonMeasure is the exact size of LiveSight's JSON text, writing nothing.
-func LiveSightToJsonMeasure(value *LiveSight) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), LiveSightTableType(), nil)
+func LiveSightToJsonMeasure(value *LiveSight, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), LiveSightTableType(), nil, allocator...)
 }
-
-// LiveSightToJson writes LiveSight's JSON text into the caller's slice and returns the
-// bytes written — exactly LiveSightToJsonMeasure's answer — or -1 when it is short.
-func LiveSightToJson(value *LiveSight, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), LiveSightTableType(), buffer)
+func LiveSightToJson(value *LiveSight, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), LiveSightTableType(), buffer, allocator...)
 }
-
 func BeatFromJson(builder *BeatBuilder, text []byte, report *TableReport) bool {
 	if builder.Arena.Locked {
 		return false
@@ -3264,41 +3243,30 @@ func HoldViewToJsonMeasure(value *HoldView, allocator ...TableAllocator) int64 {
 func HoldViewToJson(value *HoldView, buffer []byte, allocator ...TableAllocator) int64 {
 	return tableRegionToJson(unsafe.Pointer(value), HoldViewTableType(), buffer, allocator...)
 }
-
-// LaneHoldFromJson fills one LaneHold from a JSON text (docs/SPEC-TABLES.md §16).
-// A nil report is allowed; every tolerance event still decides the same way.
-func LaneHoldFromJson(value *LaneHold, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), LaneHoldTableType(), text, report)
+func LaneHoldFromJson(builder *LaneHoldBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), LaneHoldTableType(), &builder.Main, text, report)
 }
-
-// LaneHoldToJsonMeasure is the exact size of LaneHold's JSON text, writing nothing.
-func LaneHoldToJsonMeasure(value *LaneHold) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), LaneHoldTableType(), nil)
+func LaneHoldToJsonMeasure(value *LaneHold, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), LaneHoldTableType(), nil, allocator...)
 }
-
-// LaneHoldToJson writes LaneHold's JSON text into the caller's slice and returns the
-// bytes written — exactly LaneHoldToJsonMeasure's answer — or -1 when it is short.
-func LaneHoldToJson(value *LaneHold, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), LaneHoldTableType(), buffer)
+func LaneHoldToJson(value *LaneHold, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), LaneHoldTableType(), buffer, allocator...)
 }
-
-// LaneWaitFromJson fills one LaneWait from a JSON text (docs/SPEC-TABLES.md §16).
-// A nil report is allowed; every tolerance event still decides the same way.
-func LaneWaitFromJson(value *LaneWait, text []byte, report *TableReport) bool {
-	return tableJsonRead(unsafe.Pointer(value), LaneWaitTableType(), text, report)
+func LaneWaitFromJson(builder *LaneWaitBuilder, text []byte, report *TableReport) bool {
+	if builder.Arena.Locked {
+		return false
+	}
+	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), LaneWaitTableType(), &builder.Main, text, report)
 }
-
-// LaneWaitToJsonMeasure is the exact size of LaneWait's JSON text, writing nothing.
-func LaneWaitToJsonMeasure(value *LaneWait) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), LaneWaitTableType(), nil)
+func LaneWaitToJsonMeasure(value *LaneWait, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), LaneWaitTableType(), nil, allocator...)
 }
-
-// LaneWaitToJson writes LaneWait's JSON text into the caller's slice and returns the
-// bytes written — exactly LaneWaitToJsonMeasure's answer — or -1 when it is short.
-func LaneWaitToJson(value *LaneWait, buffer []byte) int64 {
-	return tableJsonWrite(unsafe.Pointer(value), LaneWaitTableType(), buffer)
+func LaneWaitToJson(value *LaneWait, buffer []byte, allocator ...TableAllocator) int64 {
+	return tableRegionToJson(unsafe.Pointer(value), LaneWaitTableType(), buffer, allocator...)
 }
-
 func LaneFromJson(builder *LaneBuilder, text []byte, report *TableReport) bool {
 	if builder.Arena.Locked {
 		return false

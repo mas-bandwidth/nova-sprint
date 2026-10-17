@@ -28,43 +28,48 @@ const friendRowsHelp = "nova-sprint store friendrows"
 // the schema JSON text (S2), through pkg/schemaread. A value past each
 // declared bound, and a damaged image of each form, is refused by name. The
 // strict reader returns the zero value; it does not hand back a clamped one.
-// A variable table's list as long as the code allows (live, 512) and a text
-// longer than any fixed body (70 KB) round-trip whole.
+// Every bound that stays is a bound every path that writes or reads the value
+// enforces (the pull request's bound table); a value past each removed bound
+// round-trips whole in all three forms (openValues), and the one bound left,
+// FriendStatus.status, is refused one past.
 func TestFriendRowsGolden(t *testing.T) {
 	t.Parallel()
-	// The fixed tables: small bounded structs whose every bound is a code bound.
-	golden(t, row[LoadSample]("LoadSample", LoadSampleReset, LoadSampleMeasure, LoadSampleSave, LoadSampleLoad, LoadSampleFromJson, LoadSampleToJsonMeasure, LoadSampleToJson, LoadSampleTableType))
+	// The one fixed table: two uint64 counters, bounded by their type alone.
 	golden(t, row[Ticks]("Ticks", TicksReset, TicksMeasure, TicksSave, TicksLoad, TicksFromJson, TicksToJsonMeasure, TicksToJson, TicksTableType))
-	golden(t, row[LiveWord]("LiveWord", LiveWordReset, LiveWordMeasure, LiveWordSave, LiveWordLoad, LiveWordFromJson, LiveWordToJsonMeasure, LiveWordToJson, LiveWordTableType))
-	golden(t, row[FactWord]("FactWord", FactWordReset, FactWordMeasure, FactWordSave, FactWordLoad, FactWordFromJson, FactWordToJsonMeasure, FactWordToJson, FactWordTableType))
-	golden(t, row[LiveSight]("LiveSight", LiveSightReset, LiveSightMeasure, LiveSightSave, LiveSightLoad, LiveSightFromJson, LiveSightToJsonMeasure, LiveSightToJson, LiveSightTableType))
-	golden(t, row[LaneHold]("LaneHold", LaneHoldReset, LaneHoldMeasure, LaneHoldSave, LaneHoldLoad, LaneHoldFromJson, LaneHoldToJsonMeasure, LaneHoldToJson, LaneHoldTableType))
-	golden(t, row[LaneWait]("LaneWait", LaneWaitReset, LaneWaitMeasure, LaneWaitSave, LaneWaitLoad, LaneWaitFromJson, LaneWaitToJsonMeasure, LaneWaitToJson, LaneWaitTableType))
 
 	// The variable tables: documents sized by their content.
 	vars := []varRow{
 		vrow("FriendEntry", FriendEntryTableType, FriendEntryLoadMeasureReason, FriendEntryLoad),
 		vrow("FriendStatus", FriendStatusTableType, FriendStatusLoadMeasureReason, FriendStatusLoad),
+		vrow("LoadSample", LoadSampleTableType, LoadSampleLoadMeasureReason, LoadSampleLoad),
 		vrow("Holder", HolderTableType, HolderLoadMeasureReason, HolderLoad),
 		vrow("Files", FilesTableType, FilesLoadMeasureReason, FilesLoad),
 		vrow("Meter", MeterTableType, MeterLoadMeasureReason, MeterLoad),
 		vrow("RunWord", RunWordTableType, RunWordLoadMeasureReason, RunWordLoad),
 		vrow("FriendReport", FriendReportTableType, FriendReportLoadMeasureReason, FriendReportLoad),
+		vrow("LiveWord", LiveWordTableType, LiveWordLoadMeasureReason, LiveWordLoad),
+		vrow("FactWord", FactWordTableType, FactWordLoadMeasureReason, FactWordLoad),
+		vrow("LiveSight", LiveSightTableType, LiveSightLoadMeasureReason, LiveSightLoad),
 		vrow("Beat", BeatTableType, BeatLoadMeasureReason, BeatLoad),
 		vrow("ReaderHold", ReaderHoldTableType, ReaderHoldLoadMeasureReason, ReaderHoldLoad),
 		vrow("HoldView", HoldViewTableType, HoldViewLoadMeasureReason, HoldViewLoad),
+		vrow("LaneHold", LaneHoldTableType, LaneHoldLoadMeasureReason, LaneHoldLoad),
+		vrow("LaneWait", LaneWaitTableType, LaneWaitLoadMeasureReason, LaneWaitLoad),
 		vrow("Lane", LaneTableType, LaneLoadMeasureReason, LaneLoad),
 		vrow("SeatChange", SeatChangeTableType, SeatChangeLoadMeasureReason, SeatChangeLoad),
 		vrow("ServerRecord", ServerRecordTableType, ServerRecordLoadMeasureReason, ServerRecordLoad),
 		vrow("Login", LoginTableType, LoginLoadMeasureReason, LoginLoad),
 	}
+	byName := make(map[string]varRow, len(vars))
 	for _, g := range vars {
 		variableGolden(t, g)
+		byName[g.name] = g
 	}
-	beatLive512(t, vars[7])
-	longReasons(t, vars[11], vars[9])
-	intRanges(t, vars[0], vars[2], vars[3], vars[6], vars[7], vars[12])
-	timestampSemantics(t)
+	onlyRealBounds(t, TicksTableType(), vars)
+	longReasons(t, byName["SeatChange"], byName["HoldView"])
+	intRanges(t, vars...)
+	openValues(t, byName)
+	longTimestamps(t, byName["LoadSample"])
 }
 
 // tableRow is one fixed table's generated functions. A unit that holds a
@@ -687,37 +692,6 @@ func vfill(t *testing.T, w *TableWorker, p unsafe.Pointer, info *TableTypeInfo) 
 	}
 }
 
-// beatLive512 pins the live list at live.go maxLiveEntries (512): 512
-// entries round-trip whole in every form, and 513 is refused by the writer
-// and by the reader.
-func beatLive512(t *testing.T, g varRow) {
-	t.Run("BeatLive512", func(t *testing.T) {
-		t.Parallel()
-		d := g.draft(t)
-		b := (*Beat)(d.root())
-		setTimeText(t, d.root(), g.info, "at", time.Unix(clock, 0).UTC())
-		b.LiveCount = 512
-		for i := range b.Live {
-			n := copy(b.Live[i].Text[:], fmt.Sprintf("card-%d@%d:held", i, i+1))
-			b.Live[i].TextLength = int32(n)
-		}
-		got := (*Beat)(g.roundTrip(t, g.wire(d)).root)
-		if got.LiveCount != 512 {
-			t.Fatalf("live count after a read = %d, want 512", got.LiveCount)
-		}
-		if last := string(got.Live[511].Text[:got.Live[511].TextLength]); last != "card-511@512:held" {
-			t.Fatalf("live[511] = %q", last)
-		}
-		b.LiveCount = 513
-		if _, err := BeatMeasureReason(b, &d.arena); err == nil || err.Error() != "invalid_value" {
-			t.Fatalf("a 513-entry live list: writer err = %v, want invalid_value", err)
-		}
-		if g.wire(d) != nil {
-			t.Fatalf("the writer saved a 513-entry live list")
-		}
-	})
-}
-
 // longReasons pins unbounded reasons at 70 KB through every supported form.
 func longReasons(t *testing.T, seat, hold varRow) {
 	t.Run("SeatChangeReason70KB", func(t *testing.T) {
@@ -725,7 +699,6 @@ func longReasons(t *testing.T, seat, hold varRow) {
 		reason := bytes.Repeat([]byte("seat reason "), 70*1024/12+1)[:70*1024]
 		d := seat.draft(t)
 		s := (*SeatChange)(d.root())
-		setTimeText(t, d.root(), seat.info, "at", time.Unix(clock, 0).UTC())
 		s.Generation = 7
 		TableStringEmplace(&d.worker, &s.Reason, reason)
 		got := (*SeatChange)(seat.roundTrip(t, seat.wire(d)).root)
@@ -853,110 +826,222 @@ func int64Field(t *testing.T, info *TableTypeInfo, p unsafe.Pointer, name string
 	return 0
 }
 
-func timestampSemantics(t *testing.T) {
+// onlyRealBounds requires that the only bound any table declares is the one
+// the bound table keeps: FriendStatus.status, 8 bytes (store/friends.go: the
+// one writer sets one of three words and the one reader shows any other as
+// down). A fixed array, a counted text or a numeric range anywhere else is a
+// bound some path does not enforce.
+func onlyRealBounds(t *testing.T, fixed *TableTypeInfo, rows []varRow) {
 	t.Helper()
-	g := row[LoadSample]("LoadSample", LoadSampleReset, LoadSampleMeasure, LoadSampleSave, LoadSampleLoad, LoadSampleFromJson, LoadSampleToJsonMeasure, LoadSampleToJson, LoadSampleTableType)
-	zone := time.FixedZone("edge", 23*60*60+59*60)
-	values := []time.Time{
-		time.Time{},
-		time.Unix(0, 0).UTC(),
-		time.Date(1970, 1, 1, 0, 0, 0, 1, time.UTC),
-		time.Date(9999, 12, 31, 23, 59, 59, 999999999, zone),
-	}
-	for _, want := range values {
-		var sample LoadSample
-		LoadSampleReset(&sample)
-		fill(unsafe.Pointer(&sample), LoadSampleTableType())
-		setTimeText(t, unsafe.Pointer(&sample), LoadSampleTableType(), "at", want)
-		wantJSON, err := want.MarshalJSON()
-		if err != nil {
-			t.Fatalf("marshal source time %s: %v", want, err)
+	found := map[string]int{}
+	seen := map[string]bool{}
+	var walk func(info *TableTypeInfo)
+	walk = func(info *TableTypeInfo) {
+		if seen[info.Name] {
+			return
 		}
-		var wantText string
-		if err := json.Unmarshal(wantJSON, &wantText); err != nil {
-			t.Fatal(err)
-		}
-		for _, tc := range []struct {
-			form schemaread.Form
-			data []byte
-		}{
-			{schemaread.FormBinary, g.wire(t, &sample)},
-			{schemaread.FormBase64, []byte(base64.StdEncoding.EncodeToString(g.wire(t, &sample)))},
-			{schemaread.FormJSON, g.json(t, &sample)},
-		} {
-			got := g.read(t, tc.data, tc.form)
-			gotText := stringField(t, unsafe.Pointer(&got), LoadSampleTableType(), "at")
-			if gotText != wantText {
-				t.Errorf("%s source time text = %q, want MarshalJSON text %q", tc.form, gotText, wantText)
+		seen[info.Name] = true
+		for i := range info.Fields {
+			f := &info.Fields[i]
+			switch {
+			case f.Counted && f.TypeName == "string" && !f.IsArray:
+				found[info.Name+"."+f.Json] = int(f.ArrayBound)
+			case f.Counted && f.IsArray && !f.List:
+				found[info.Name+"."+f.Json] = int(f.ArrayBound)
+			case f.HasRange:
+				found[info.Name+"."+f.Json] = -1
 			}
-			var actual time.Time
-			if err := json.Unmarshal([]byte(strconv.Quote(gotText)), &actual); err != nil {
-				t.Errorf("%s source time decode %q: %v", tc.form, gotText, err)
-				continue
-			}
-			if !actual.Equal(want) || actual.IsZero() != want.IsZero() {
-				t.Errorf("%s time roundtrip got %s zero=%t, want %s zero=%t", tc.form, actual, actual.IsZero(), want, want.IsZero())
+			if f.Table != nil {
+				walk(f.Table())
 			}
 		}
 	}
+	walk(fixed)
+	for _, r := range rows {
+		walk(r.info)
+	}
+	want := map[string]int{"FriendStatus.status": 8}
+	if len(found) != len(want) {
+		t.Errorf("declared bounds = %v, want only %v", found, want)
+	}
+	for k, v := range want {
+		if found[k] != v {
+			t.Errorf("declared bounds = %v, want %s = %d", found, k, v)
+		}
+	}
+}
 
-	// The schema's string bound preserves source JSON but does not validate its
-	// time domain. Keep that conversion-boundary limitation explicit: source
-	// time.Time decoding rejects these values, while the generated string
-	// reader accepts them because they fit string(35).
-	for _, invalid := range []string{"10000-01-01T00:00:00Z", "2025-02-30T00:00:00Z", "2025-01-01T00:60:00Z", "2025-01-01T00:00:00+1:00"} {
+// longTime is an RFC3339Nano text past the 35 bytes a time.Time marshals to:
+// time.Time accepts any count of fraction digits.
+var longTime = "2026-10-17T01:02:03." + strings.Repeat("123456789", 8) + "Z"
+
+// longText returns n bytes of one letter.
+func longText(n int) string { return strings.Repeat("a", n) }
+
+// longEntries returns n copies of the object.
+func longEntries(n int, obj map[string]any) []any {
+	out := make([]any, n)
+	for i := range out {
+		out[i] = obj
+	}
+	return out
+}
+
+// openValues pins a value past every removed bound in all three forms: each
+// case is read as JSON text, saved as wire, read back from the binary wire,
+// the padded standard base64 and the JSON text, and each read must hold the
+// values it was given. The cases are the removed caps: Beat.samples past 11,
+// live past 512, top holders past 10, RunWord.text past 4096, reason past
+// 1024, a negative paced, token_cap, working, queue and stop_returns, billing
+// past 16, and every string(35) time past 35 bytes, and the texts of the
+// tables that were fixed.
+func openValues(t *testing.T, rows map[string]varRow) {
+	t.Helper()
+	long := longText(5000)
+	sample := map[string]any{"pct": 1.5, "at": longTime}
+	cases := []struct {
+		name string
+		in   map[string]any
+	}{
+		{"FriendEntry", map[string]any{"at": longTime, "until": longTime, "by": longText(300), "mode": longText(40), "pronouns": longText(40), "session": longText(40), "billing": longText(100), "reason": long, "token_cap": json.Number("-5"), "token_cap_set": true, "width": json.Number("-3")}},
+		{"FriendStatus", map[string]any{"status": "down", "at": longTime, "until": longTime, "reason": long, "evidence": long}},
+		{"LoadSample", sample},
+		{"RunWord", map[string]any{"text": longText(4097)}},
+		{"FriendReport", map[string]any{
+			"running": []any{map[string]any{"text": longText(4097)}, map[string]any{"text": longText(70 * 1024)}},
+			"working": json.Number("-1"), "queue": json.Number("-1"), "stop_returns": json.Number("-1"), "paced": json.Number("-1"), "width": json.Number("-1"),
+			"reason": longText(1025), "active": longTime, "until": longTime, "started": longTime, "present": longTime,
+		}},
+		{"LiveWord", map[string]any{"text": longText(400)}},
+		{"FactWord", map[string]any{"text": longText(200)}},
+		{"LiveSight", map[string]any{"entry": longText(400), "at": longTime}},
+		{"LaneHold", map[string]any{"who": longText(300), "claimed": true, "since": longTime, "seen": longTime}},
+		{"LaneWait", map[string]any{"who": longText(300), "since": longTime, "seen": longTime}},
+		{"Lane", map[string]any{
+			"holders": longEntries(3, map[string]any{"who": longText(300), "claimed": true, "since": longTime, "seen": longTime}),
+			"queue":   longEntries(3, map[string]any{"who": longText(300), "since": longTime, "seen": longTime}),
+		}},
+		{"Beat", map[string]any{
+			"at": longTime, "how": longText(40), "live_since": longTime, "draining_since": longTime,
+			"stop_returns": json.Number("-1"),
+			"samples":      longEntries(12, sample),
+			"live":         longEntries(513, map[string]any{"text": longText(400)}),
+			"facts":        longEntries(3, map[string]any{"text": longText(200)}),
+			"live_seen":    longEntries(3, map[string]any{"entry": longText(400), "at": longTime}),
+			"meter":        map[string]any{"top_at": longTime, "files": map[string]any{"at": longTime, "top_at": longTime, "top": longEntries(11, map[string]any{"pid": json.Number("1"), "cmd": "x", "user": "u", "open": json.Number("1")})}},
+			"friend":       map[string]any{"running": longEntries(2, map[string]any{"text": longText(4097)}), "paced": json.Number("-1"), "reason": longText(1025)},
+		}},
+		{"ReaderHold", map[string]any{"at": longTime, "by": longText(300)}},
+		{"HoldView", map[string]any{"kind": longText(40), "name": longText(300), "at": longText(100), "by": longText(300), "who": longText(300)}},
+		{"SeatChange", map[string]any{"holder": longText(300), "from": longText(300), "at": longTime, "by": longText(300), "approved_by": longText(300)}},
+		{"ServerRecord", map[string]any{"actor": longText(300), "at": longTime, "started": longTime}},
+	}
+	for _, c := range cases {
+		g, ok := rows[c.name]
+		if !ok {
+			t.Fatalf("no row %s", c.name)
+		}
+		t.Run("Open"+c.name, func(t *testing.T) {
+			t.Parallel()
+			text, err := json.Marshal(c.in)
+			if err != nil {
+				t.Fatal(err)
+			}
+			first := g.read(t, text, schemaread.FormJSON)
+			got := g.roundTrip(t, g.wireOf(t, first))
+			want := decodeJSON(t, text)
+			have := decodeJSON(t, g.jsonOf(t, got))
+			if why := subset(want, have); why != "" {
+				t.Fatalf("%s: %s", g.name, why)
+			}
+		})
+	}
+}
+
+func decodeJSON(t *testing.T, text []byte) any {
+	t.Helper()
+	dec := json.NewDecoder(bytes.NewReader(text))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		t.Fatalf("json text: %v", err)
+	}
+	return v
+}
+
+// subset says why have does not hold every value of want ("" when it does).
+func subset(want, have any) string {
+	switch w := want.(type) {
+	case map[string]any:
+		h, ok := have.(map[string]any)
+		if !ok {
+			return fmt.Sprintf("want an object, have %T", have)
+		}
+		for k, v := range w {
+			hv, ok := h[k]
+			if !ok {
+				return fmt.Sprintf("field %q lost", k)
+			}
+			if why := subset(v, hv); why != "" {
+				return k + ": " + why
+			}
+		}
+		return ""
+	case []any:
+		h, ok := have.([]any)
+		if !ok || len(h) != len(w) {
+			return fmt.Sprintf("want a list of %d, have %d", len(w), len(h))
+		}
+		for i := range w {
+			if why := subset(w[i], h[i]); why != "" {
+				return fmt.Sprintf("[%d]: %s", i, why)
+			}
+		}
+		return ""
+	}
+	if fmt.Sprint(want) != fmt.Sprint(have) {
+		return fmt.Sprintf("value %.40v changed to %.40v", want, have)
+	}
+	return ""
+}
+
+// longTimestamps pins that a time.Time source value longer than 35 bytes
+// reaches the table whole: the source decoder accepts it and the open text
+// keeps it, in every form.
+func longTimestamps(t *testing.T, g varRow) {
+	t.Run("LongTimestamps", func(t *testing.T) {
+		t.Parallel()
 		var source time.Time
-		if err := json.Unmarshal([]byte(strconv.Quote(invalid)), &source); err == nil {
-			t.Errorf("time.Time accepted invalid source timestamp %q", invalid)
-			continue
+		if err := json.Unmarshal([]byte(strconv.Quote(longTime)), &source); err != nil {
+			t.Fatalf("time.Time refused a long RFC3339 value: %v", err)
 		}
-		text := []byte(`{"at":"` + invalid + `","pct":1}`)
-		if _, _, err := g.reader().Read(text); err != nil {
-			t.Errorf("bounded table string unexpectedly rejected %q: %v", invalid, err)
+		if len(longTime) <= 35 {
+			t.Fatalf("the long time is %d bytes", len(longTime))
 		}
-	}
+		text := []byte(`{"at":"` + longTime + `","pct":1}`)
+		got := g.roundTrip(t, g.wireOf(t, g.read(t, text, schemaread.FormJSON)))
+		if v := stringOf(t, g.info, got.root, "at"); v != longTime {
+			t.Fatalf("at = %q, want %q", v, longTime)
+		}
+		// the table keeps source text and does not judge its time domain.
+		for _, odd := range []string{"10000-01-01T00:00:00Z", "2025-02-30T00:00:00Z"} {
+			in := []byte(`{"at":"` + odd + `","pct":1}`)
+			if _, _, err := g.reader().Read(in); err != nil {
+				t.Errorf("open text refused %q: %v", odd, err)
+			}
+		}
+	})
 }
 
-func setTimeText(t *testing.T, p unsafe.Pointer, info *TableTypeInfo, name string, source time.Time) {
-	t.Helper()
-	encoded, err := source.MarshalJSON()
-	if err != nil {
-		t.Fatalf("marshal %s: %v", name, err)
-	}
-	var text string
-	if err := json.Unmarshal(encoded, &text); err != nil {
-		t.Fatal(err)
-	}
-	for i := range info.Fields {
-		f := &info.Fields[i]
-		if f.Json != name {
-			continue
-		}
-		if f.TypeName != "string" || len(text) > int(f.ArrayBound) {
-			t.Fatalf("%s.%s string length %d exceeds %d", info.Name, name, len(text), f.ArrayBound)
-		}
-		b := unsafe.Slice((*byte)(unsafe.Add(p, f.Offset)), int(f.ArrayBound))
-		clear(b)
-		copy(b, text)
-		*(*int32)(unsafe.Add(p, f.CountOffset)) = int32(len(text))
-		return
-	}
-	t.Fatalf("%s missing string field %s", info.Name, name)
-}
-
-func stringField(t *testing.T, p unsafe.Pointer, info *TableTypeInfo, name string) string {
+func stringOf(t *testing.T, info *TableTypeInfo, p unsafe.Pointer, name string) string {
 	t.Helper()
 	for i := range info.Fields {
 		f := &info.Fields[i]
 		if f.Json == name {
-			n := *(*int32)(unsafe.Add(p, f.CountOffset))
-			if n < 0 || n > int32(f.ArrayBound) {
-				t.Fatalf("%s.%s length %d out of range", info.Name, name, n)
-			}
-			b := unsafe.Slice((*byte)(unsafe.Add(p, f.Offset)), int(n))
-			return string(b)
+			v := TableStringAt((*TableRef)(unsafe.Add(p, f.Offset)))
+			return string(v.Data[:v.Length])
 		}
 	}
-	t.Fatalf("%s missing field %s", info.Name, name)
+	t.Fatalf("%s has no %s field", info.Name, name)
 	return ""
 }

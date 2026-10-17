@@ -175,22 +175,6 @@ type TableBlockRefusal struct {
 // declaration's name, which is the table wire's storage, and one declaration
 // cannot be two types.
 
-// LoadSampleBlockProjection — the block PROJECTION: the table's own instance as it
-// sits at the front of a block, opening with the generated PROLOGUE and
-// carrying, per out-of-line array, the triple that says where its rows are.
-// It is a record like any other and follows the same C ABI rule (§19.3).
-//
-// It is a SEPARATE record from LoadSampleRow: a table can be both a block root and
-// another block's row, and the two differ by the prologue.
-type LoadSampleBlockProjection struct {
-	Magic        uint64 // generated: identifies a schema block
-	BuildVersion uint64 // generated: the unit's build version (docs/SPEC-TABLES.md §20)
-	ByteOrder    uint64 // generated: 1 little, 2 big
-	Pct          float64
-	At           [36]byte // string(35): max length, used length beside it
-	AtLength     int32
-}
-
 // TicksBlockProjection — the block PROJECTION: the table's own instance as it
 // sits at the front of a block, opening with the generated PROLOGUE and
 // carrying, per out-of-line array, the triple that says where its rows are.
@@ -206,147 +190,11 @@ type TicksBlockProjection struct {
 	Total        uint64
 }
 
-// LiveWordBlockProjection — the block PROJECTION: the table's own instance as it
-// sits at the front of a block, opening with the generated PROLOGUE and
-// carrying, per out-of-line array, the triple that says where its rows are.
-// It is a record like any other and follows the same C ABI rule (§19.3).
-//
-// It is a SEPARATE record from LiveWordRow: a table can be both a block root and
-// another block's row, and the two differ by the prologue.
-type LiveWordBlockProjection struct {
-	Magic        uint64    // generated: identifies a schema block
-	BuildVersion uint64    // generated: the unit's build version (docs/SPEC-TABLES.md §20)
-	ByteOrder    uint64    // generated: 1 little, 2 big
-	Text         [282]byte // string(281): max length, used length beside it
-	_            [2]byte   // generated padding
-	TextLength   int32
-}
-
-// FactWordBlockProjection — the block PROJECTION: the table's own instance as it
-// sits at the front of a block, opening with the generated PROLOGUE and
-// carrying, per out-of-line array, the triple that says where its rows are.
-// It is a record like any other and follows the same C ABI rule (§19.3).
-//
-// It is a SEPARATE record from FactWordRow: a table can be both a block root and
-// another block's row, and the two differ by the prologue.
-type FactWordBlockProjection struct {
-	Magic        uint64    // generated: identifies a schema block
-	BuildVersion uint64    // generated: the unit's build version (docs/SPEC-TABLES.md §20)
-	ByteOrder    uint64    // generated: 1 little, 2 big
-	Text         [129]byte // string(128): max length, used length beside it
-	_            [3]byte   // generated padding
-	TextLength   int32
-}
-
-// LiveSightBlockProjection — the block PROJECTION: the table's own instance as it
-// sits at the front of a block, opening with the generated PROLOGUE and
-// carrying, per out-of-line array, the triple that says where its rows are.
-// It is a record like any other and follows the same C ABI rule (§19.3).
-//
-// It is a SEPARATE record from LiveSightRow: a table can be both a block root and
-// another block's row, and the two differ by the prologue.
-type LiveSightBlockProjection struct {
-	Magic        uint64    // generated: identifies a schema block
-	BuildVersion uint64    // generated: the unit's build version (docs/SPEC-TABLES.md §20)
-	ByteOrder    uint64    // generated: 1 little, 2 big
-	Entry        [282]byte // string(281): max length, used length beside it
-	_            [2]byte   // generated padding
-	EntryLength  int32
-	At           [36]byte // string(35): max length, used length beside it
-	AtLength     int32
-}
-
-// LaneHoldBlockProjection — the block PROJECTION: the table's own instance as it
-// sits at the front of a block, opening with the generated PROLOGUE and
-// carrying, per out-of-line array, the triple that says where its rows are.
-// It is a record like any other and follows the same C ABI rule (§19.3).
-//
-// It is a SEPARATE record from LaneHoldRow: a table can be both a block root and
-// another block's row, and the two differ by the prologue.
-type LaneHoldBlockProjection struct {
-	Magic        uint64    // generated: identifies a schema block
-	BuildVersion uint64    // generated: the unit's build version (docs/SPEC-TABLES.md §20)
-	ByteOrder    uint64    // generated: 1 little, 2 big
-	Who          [258]byte // string(257): max length, used length beside it
-	_            [2]byte   // generated padding
-	WhoLength    int32
-	Claimed      bool
-	Since        [36]byte // string(35): max length, used length beside it
-	_            [3]byte  // generated padding
-	SinceLength  int32
-	Seen         [36]byte // string(35): max length, used length beside it
-	SeenLength   int32
-	_            [4]byte // generated padding
-}
-
-// LaneWaitBlockProjection — the block PROJECTION: the table's own instance as it
-// sits at the front of a block, opening with the generated PROLOGUE and
-// carrying, per out-of-line array, the triple that says where its rows are.
-// It is a record like any other and follows the same C ABI rule (§19.3).
-//
-// It is a SEPARATE record from LaneWaitRow: a table can be both a block root and
-// another block's row, and the two differ by the prologue.
-type LaneWaitBlockProjection struct {
-	Magic        uint64    // generated: identifies a schema block
-	BuildVersion uint64    // generated: the unit's build version (docs/SPEC-TABLES.md §20)
-	ByteOrder    uint64    // generated: 1 little, 2 big
-	Who          [258]byte // string(257): max length, used length beside it
-	_            [2]byte   // generated padding
-	WhoLength    int32
-	Since        [36]byte // string(35): max length, used length beside it
-	SinceLength  int32
-	Seen         [36]byte // string(35): max length, used length beside it
-	SeenLength   int32
-}
-
 // The LAYOUT CONTRACT's Go half (docs/SPEC-TABLES.md §19.3), run ONCE at
 // package initialisation. It REFUSES rather than guesses: a runtime whose
 // model disagrees with the one the compiler derived stops the program where
 // it starts, rather than pointing at a row and reading the wrong bytes.
 func init() {
-	tableBlockLayoutSize("FactWordBlockProjection", unsafe.Sizeof(FactWordBlockProjection{}), 160)
-	tableBlockLayoutSize("FactWordBlockProjection alignment", unsafe.Alignof(FactWordBlockProjection{}), 8)
-	tableBlockLayoutOffset("FactWordBlockProjection.Magic", unsafe.Offsetof(FactWordBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("FactWordBlockProjection.BuildVersion", unsafe.Offsetof(FactWordBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("FactWordBlockProjection.ByteOrder", unsafe.Offsetof(FactWordBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("FactWordBlockProjection.Text", unsafe.Offsetof(FactWordBlockProjection{}.Text), 24)
-	tableBlockLayoutSize("LaneHoldBlockProjection", unsafe.Sizeof(LaneHoldBlockProjection{}), 376)
-	tableBlockLayoutSize("LaneHoldBlockProjection alignment", unsafe.Alignof(LaneHoldBlockProjection{}), 8)
-	tableBlockLayoutOffset("LaneHoldBlockProjection.Magic", unsafe.Offsetof(LaneHoldBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("LaneHoldBlockProjection.BuildVersion", unsafe.Offsetof(LaneHoldBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("LaneHoldBlockProjection.ByteOrder", unsafe.Offsetof(LaneHoldBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("LaneHoldBlockProjection.Who", unsafe.Offsetof(LaneHoldBlockProjection{}.Who), 24)
-	tableBlockLayoutOffset("LaneHoldBlockProjection.Claimed", unsafe.Offsetof(LaneHoldBlockProjection{}.Claimed), 288)
-	tableBlockLayoutOffset("LaneHoldBlockProjection.Since", unsafe.Offsetof(LaneHoldBlockProjection{}.Since), 289)
-	tableBlockLayoutOffset("LaneHoldBlockProjection.Seen", unsafe.Offsetof(LaneHoldBlockProjection{}.Seen), 332)
-	tableBlockLayoutSize("LaneWaitBlockProjection", unsafe.Sizeof(LaneWaitBlockProjection{}), 368)
-	tableBlockLayoutSize("LaneWaitBlockProjection alignment", unsafe.Alignof(LaneWaitBlockProjection{}), 8)
-	tableBlockLayoutOffset("LaneWaitBlockProjection.Magic", unsafe.Offsetof(LaneWaitBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("LaneWaitBlockProjection.BuildVersion", unsafe.Offsetof(LaneWaitBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("LaneWaitBlockProjection.ByteOrder", unsafe.Offsetof(LaneWaitBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("LaneWaitBlockProjection.Who", unsafe.Offsetof(LaneWaitBlockProjection{}.Who), 24)
-	tableBlockLayoutOffset("LaneWaitBlockProjection.Since", unsafe.Offsetof(LaneWaitBlockProjection{}.Since), 288)
-	tableBlockLayoutOffset("LaneWaitBlockProjection.Seen", unsafe.Offsetof(LaneWaitBlockProjection{}.Seen), 328)
-	tableBlockLayoutSize("LiveSightBlockProjection", unsafe.Sizeof(LiveSightBlockProjection{}), 352)
-	tableBlockLayoutSize("LiveSightBlockProjection alignment", unsafe.Alignof(LiveSightBlockProjection{}), 8)
-	tableBlockLayoutOffset("LiveSightBlockProjection.Magic", unsafe.Offsetof(LiveSightBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("LiveSightBlockProjection.BuildVersion", unsafe.Offsetof(LiveSightBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("LiveSightBlockProjection.ByteOrder", unsafe.Offsetof(LiveSightBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("LiveSightBlockProjection.Entry", unsafe.Offsetof(LiveSightBlockProjection{}.Entry), 24)
-	tableBlockLayoutOffset("LiveSightBlockProjection.At", unsafe.Offsetof(LiveSightBlockProjection{}.At), 312)
-	tableBlockLayoutSize("LiveWordBlockProjection", unsafe.Sizeof(LiveWordBlockProjection{}), 312)
-	tableBlockLayoutSize("LiveWordBlockProjection alignment", unsafe.Alignof(LiveWordBlockProjection{}), 8)
-	tableBlockLayoutOffset("LiveWordBlockProjection.Magic", unsafe.Offsetof(LiveWordBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("LiveWordBlockProjection.BuildVersion", unsafe.Offsetof(LiveWordBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("LiveWordBlockProjection.ByteOrder", unsafe.Offsetof(LiveWordBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("LiveWordBlockProjection.Text", unsafe.Offsetof(LiveWordBlockProjection{}.Text), 24)
-	tableBlockLayoutSize("LoadSampleBlockProjection", unsafe.Sizeof(LoadSampleBlockProjection{}), 72)
-	tableBlockLayoutSize("LoadSampleBlockProjection alignment", unsafe.Alignof(LoadSampleBlockProjection{}), 8)
-	tableBlockLayoutOffset("LoadSampleBlockProjection.Magic", unsafe.Offsetof(LoadSampleBlockProjection{}.Magic), 0)
-	tableBlockLayoutOffset("LoadSampleBlockProjection.BuildVersion", unsafe.Offsetof(LoadSampleBlockProjection{}.BuildVersion), 8)
-	tableBlockLayoutOffset("LoadSampleBlockProjection.ByteOrder", unsafe.Offsetof(LoadSampleBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("LoadSampleBlockProjection.Pct", unsafe.Offsetof(LoadSampleBlockProjection{}.Pct), 24)
-	tableBlockLayoutOffset("LoadSampleBlockProjection.At", unsafe.Offsetof(LoadSampleBlockProjection{}.At), 32)
 	tableBlockLayoutSize("TicksBlockProjection", unsafe.Sizeof(TicksBlockProjection{}), 40)
 	tableBlockLayoutSize("TicksBlockProjection alignment", unsafe.Alignof(TicksBlockProjection{}), 8)
 	tableBlockLayoutOffset("TicksBlockProjection.Magic", unsafe.Offsetof(TicksBlockProjection{}.Magic), 0)
@@ -377,7 +225,7 @@ func tableBlockLayoutOffset(what string, got, want uintptr) {
 // data, so a reflective read costs a lookup and not a parse. Every record
 // hangs off the element column rather than taking a name of its own, so a
 // walker reaches the whole graph from any block's Type (§8, §19.2).
-var tableBlockRecords = make([]TableBlockInfo, 7)
+var tableBlockRecords = make([]TableBlockInfo, 1)
 
 // The graph is FILLED HERE rather than in the slice's own initializer, and
 // the reason is a language fact: a field's element column names another
@@ -388,62 +236,6 @@ var tableBlockRecords = make([]TableBlockInfo, 7)
 // goroutine with no synchronisation.
 func init() {
 	tableBlockRecords[0] = TableBlockInfo{
-		Name: "FactWord", BuildVersion: BuildVersion, Size: 160, Align: 8, NumFields: 1,
-		Fields: []TableBlockFieldInfo{
-			{Name: "text", Offset: 24, Size: 136, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 156, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: true, Optional: false, ArrayBound: 128, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-		},
-	}
-	tableBlockRecords[1] = TableBlockInfo{
-		Name: "LaneHold", BuildVersion: BuildVersion, Size: 376, Align: 8, NumFields: 4,
-		Fields: []TableBlockFieldInfo{
-			{Name: "who", Offset: 24, Size: 264, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 284, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: true, Optional: false, ArrayBound: 257, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-			{Name: "claimed", Offset: 288, Size: 1, Kind: 1, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-			{Name: "since", Offset: 289, Size: 43, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 328, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: true, Optional: false, ArrayBound: 35, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-			{Name: "seen", Offset: 332, Size: 40, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 368, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: true, Optional: false, ArrayBound: 35, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-		},
-	}
-	tableBlockRecords[2] = TableBlockInfo{
-		Name: "LaneWait", BuildVersion: BuildVersion, Size: 368, Align: 8, NumFields: 3,
-		Fields: []TableBlockFieldInfo{
-			{Name: "who", Offset: 24, Size: 264, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 284, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: true, Optional: false, ArrayBound: 257, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-			{Name: "since", Offset: 288, Size: 40, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 324, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: true, Optional: false, ArrayBound: 35, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-			{Name: "seen", Offset: 328, Size: 40, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 364, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: true, Optional: false, ArrayBound: 35, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-		},
-	}
-	tableBlockRecords[3] = TableBlockInfo{
-		Name: "LiveSight", BuildVersion: BuildVersion, Size: 352, Align: 8, NumFields: 2,
-		Fields: []TableBlockFieldInfo{
-			{Name: "entry", Offset: 24, Size: 288, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 308, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: true, Optional: false, ArrayBound: 281, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-			{Name: "at", Offset: 312, Size: 40, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 348, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: true, Optional: false, ArrayBound: 35, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-		},
-	}
-	tableBlockRecords[4] = TableBlockInfo{
-		Name: "LiveWord", BuildVersion: BuildVersion, Size: 312, Align: 8, NumFields: 1,
-		Fields: []TableBlockFieldInfo{
-			{Name: "text", Offset: 24, Size: 288, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 308, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: true, Optional: false, ArrayBound: 281, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-		},
-	}
-	tableBlockRecords[5] = TableBlockInfo{
-		Name: "LoadSample", BuildVersion: BuildVersion, Size: 72, Align: 8, NumFields: 2,
-		Fields: []TableBlockFieldInfo{
-			{Name: "pct", Offset: 24, Size: 8, Kind: 11, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 8, PresentOffset: 0xffffffff, Element: nil},
-			{Name: "at", Offset: 32, Size: 40, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 68, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: true, Optional: false, ArrayBound: 35, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-		},
-	}
-	tableBlockRecords[6] = TableBlockInfo{
 		Name: "Ticks", BuildVersion: BuildVersion, Size: 40, Align: 8, NumFields: 2,
 		Fields: []TableBlockFieldInfo{
 			{Name: "busy", Offset: 24, Size: 8, Kind: 9, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
@@ -454,7 +246,7 @@ func init() {
 	}
 }
 
-// table FriendEntry has NO block form: it is VARIABLE-LENGTH: FriendEntry.tier_class is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table FriendEntry has NO block form: it is VARIABLE-LENGTH: FriendEntry.at is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -462,145 +254,9 @@ func init() {
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// LoadSampleBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
-// from the declared maxima (docs/SPEC-TABLES.md §19.1). A Go consumer does
-// not allocate a block — the bytes are handed to it — but it caps by this: a
-// playback buffer, a recording, a scratch copy all size from the generated
-// constant rather than from a number a person wrote down beside it.
-const LoadSampleBlockMaxBytes int64 = 128
-
-// LoadSampleBlock is LoadSample's block: a pointer and a length, and then rows in place.
-// Opening one is ONE check and no copy; reading a row is one add (§19.2).
-//
-// The bytes belong to the CONSUMER — a []byte it owns, an mmap, or memory a
-// producer handed across. Nothing here allocates.
-//
-// A block is valid until the next fill over the SAME storage, which
-// invalidates every block over it and every row pointer taken from one.
-type LoadSampleBlock struct {
-	Base       unsafe.Pointer             // the extent's base, 64-byte aligned
-	Projection *LoadSampleBlockProjection // the projection, at offset 0
-	Bytes      int64                      // the extent in use
-}
-
-// ---- block fill path: begin ----
-// ---- block fill path: end ----
-// LoadSampleBlockOpen is the bool convenience for the handle's typed Open error.
-func LoadSampleBlockOpen(block *LoadSampleBlock, base unsafe.Pointer, bytes int64) bool {
-	return block.Open(base, bytes) == nil
-}
-
-// Open reads all prologue and layout words bytewise before the final base
-// alignment check. Every refusal names the first failed clause in SPEC §19.2.
-func (block *LoadSampleBlock) Open(base unsafe.Pointer, bytes int64) error {
-	*block = LoadSampleBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 72 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 72)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
-	}
-	used := int64(72)
-	padding := (64 - (used % 64)) % 64
-	if padding > bytes-used {
-		return TableRefuseTruncated
-	}
-	used += padding
-	if uintptr(base)%64 != 0 {
-		return TableRefuseUnalignedBase
-	}
-	block.Base = base
-	block.Projection = (*LoadSampleBlockProjection)(base)
-	block.Bytes = used
-	return nil
-}
-
-// LoadSampleCounts is gathered before Begin; clamping is the caller's policy.
-type LoadSampleCounts struct {
-}
-
-// LoadSampleBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
-type LoadSampleBlockStorage struct {
-	base       unsafe.Pointer
-	allocation []byte
-	allocator  TableBlockAllocator
-}
-
-func (s *LoadSampleBlockStorage) Create(a TableBlockAllocator) bool {
-	if s == nil || s.allocation != nil || a.Alloc == nil || a.Free == nil {
-		return false
-	}
-	raw := a.Alloc(LoadSampleBlockMaxBytes + 63)
-	if int64(len(raw)) < LoadSampleBlockMaxBytes+63 {
-		if raw != nil {
-			a.Free(raw)
-		}
-		return false
-	}
-	s.allocation = raw
-	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
-	return true
-}
-func (s *LoadSampleBlockStorage) Destroy() {
-	if s != nil && s.allocation != nil {
-		s.allocator.Free(s.allocation)
-		*s = LoadSampleBlockStorage{}
-	}
-}
-
-// ---- block fill path: begin ----
-// LoadSampleBlockBegin writes only the prologue and triples, never rows or padding.
-// Storage and all counts are checked before any byte of the extent changes.
-func LoadSampleBlockBegin(b *LoadSampleBlock, s *LoadSampleBlockStorage, c LoadSampleCounts, refusal *TableBlockRefusal) bool {
-	if refusal != nil {
-		*refusal = TableBlockRefusal{}
-	}
-	if b == nil {
-		return false
-	}
-	if s == nil || s.base == nil {
-		return false
-	}
-	p := (*LoadSampleBlockProjection)(s.base)
-	p.Magic = TableBlockMagic
-	p.BuildVersion = BuildVersion
-	p.ByteOrder = TableBlockByteOrder
-	offset := int64(72)
-	*b = LoadSampleBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
-	return true
-}
-
-func LoadSampleBlockBytes(b *LoadSampleBlock) int64 {
-	if b == nil || b.Projection == nil {
-		return 0
-	}
-	used := int64(72)
-	return (used + 63) &^ int64(63)
-}
-
-// ---- block fill path: end ----
-
-// Type is this block's descriptors: constant data, so a reflective read costs
-// a lookup and not a parse. The row layouts hang off the element column
-// rather than taking names of their own, so a walker reaches every record
-// through the graph.
-func (b *LoadSampleBlock) Type() *TableBlockInfo { return &tableBlockRecords[5] }
+// table LoadSample has NO block form: it is VARIABLE-LENGTH: LoadSample.at is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
 
 // TicksBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
 // from the declared maxima (docs/SPEC-TABLES.md §19.1). A Go consumer does
@@ -740,21 +396,21 @@ func TicksBlockBytes(b *TicksBlock) int64 {
 // a lookup and not a parse. The row layouts hang off the element column
 // rather than taking names of their own, so a walker reaches every record
 // through the graph.
-func (b *TicksBlock) Type() *TableBlockInfo { return &tableBlockRecords[6] }
+func (b *TicksBlock) Type() *TableBlockInfo { return &tableBlockRecords[0] }
 
 // table Holder has NO block form: it is VARIABLE-LENGTH: Holder.command is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table Files has NO block form: it is VARIABLE-LENGTH: Holder.command is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table Files has NO block form: it is VARIABLE-LENGTH: Files.at is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table Meter has NO block form: it is VARIABLE-LENGTH: Meter.files is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table Meter has NO block form: it is VARIABLE-LENGTH: Meter.top_at is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table RunWord has NO block form: it is VARIABLE-LENGTH: a pointer or a map in its by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table RunWord has NO block form: it is VARIABLE-LENGTH: RunWord.text is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -762,727 +418,47 @@ func (b *TicksBlock) Type() *TableBlockInfo { return &tableBlockRecords[6] }
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// LiveWordBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
-// from the declared maxima (docs/SPEC-TABLES.md §19.1). A Go consumer does
-// not allocate a block — the bytes are handed to it — but it caps by this: a
-// playback buffer, a recording, a scratch copy all size from the generated
-// constant rather than from a number a person wrote down beside it.
-const LiveWordBlockMaxBytes int64 = 320
-
-// LiveWordBlock is LiveWord's block: a pointer and a length, and then rows in place.
-// Opening one is ONE check and no copy; reading a row is one add (§19.2).
-//
-// The bytes belong to the CONSUMER — a []byte it owns, an mmap, or memory a
-// producer handed across. Nothing here allocates.
-//
-// A block is valid until the next fill over the SAME storage, which
-// invalidates every block over it and every row pointer taken from one.
-type LiveWordBlock struct {
-	Base       unsafe.Pointer           // the extent's base, 64-byte aligned
-	Projection *LiveWordBlockProjection // the projection, at offset 0
-	Bytes      int64                    // the extent in use
-}
-
-// ---- block fill path: begin ----
-// ---- block fill path: end ----
-// LiveWordBlockOpen is the bool convenience for the handle's typed Open error.
-func LiveWordBlockOpen(block *LiveWordBlock, base unsafe.Pointer, bytes int64) bool {
-	return block.Open(base, bytes) == nil
-}
-
-// Open reads all prologue and layout words bytewise before the final base
-// alignment check. Every refusal names the first failed clause in SPEC §19.2.
-func (block *LiveWordBlock) Open(base unsafe.Pointer, bytes int64) error {
-	*block = LiveWordBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 312 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 312)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
-	}
-	used := int64(312)
-	padding := (64 - (used % 64)) % 64
-	if padding > bytes-used {
-		return TableRefuseTruncated
-	}
-	used += padding
-	if uintptr(base)%64 != 0 {
-		return TableRefuseUnalignedBase
-	}
-	block.Base = base
-	block.Projection = (*LiveWordBlockProjection)(base)
-	block.Bytes = used
-	return nil
-}
-
-// LiveWordCounts is gathered before Begin; clamping is the caller's policy.
-type LiveWordCounts struct {
-}
-
-// LiveWordBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
-type LiveWordBlockStorage struct {
-	base       unsafe.Pointer
-	allocation []byte
-	allocator  TableBlockAllocator
-}
-
-func (s *LiveWordBlockStorage) Create(a TableBlockAllocator) bool {
-	if s == nil || s.allocation != nil || a.Alloc == nil || a.Free == nil {
-		return false
-	}
-	raw := a.Alloc(LiveWordBlockMaxBytes + 63)
-	if int64(len(raw)) < LiveWordBlockMaxBytes+63 {
-		if raw != nil {
-			a.Free(raw)
-		}
-		return false
-	}
-	s.allocation = raw
-	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
-	return true
-}
-func (s *LiveWordBlockStorage) Destroy() {
-	if s != nil && s.allocation != nil {
-		s.allocator.Free(s.allocation)
-		*s = LiveWordBlockStorage{}
-	}
-}
-
-// ---- block fill path: begin ----
-// LiveWordBlockBegin writes only the prologue and triples, never rows or padding.
-// Storage and all counts are checked before any byte of the extent changes.
-func LiveWordBlockBegin(b *LiveWordBlock, s *LiveWordBlockStorage, c LiveWordCounts, refusal *TableBlockRefusal) bool {
-	if refusal != nil {
-		*refusal = TableBlockRefusal{}
-	}
-	if b == nil {
-		return false
-	}
-	if s == nil || s.base == nil {
-		return false
-	}
-	p := (*LiveWordBlockProjection)(s.base)
-	p.Magic = TableBlockMagic
-	p.BuildVersion = BuildVersion
-	p.ByteOrder = TableBlockByteOrder
-	offset := int64(312)
-	*b = LiveWordBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
-	return true
-}
-
-func LiveWordBlockBytes(b *LiveWordBlock) int64 {
-	if b == nil || b.Projection == nil {
-		return 0
-	}
-	used := int64(312)
-	return (used + 63) &^ int64(63)
-}
-
-// ---- block fill path: end ----
-
-// Type is this block's descriptors: constant data, so a reflective read costs
-// a lookup and not a parse. The row layouts hang off the element column
-// rather than taking names of their own, so a walker reaches every record
-// through the graph.
-func (b *LiveWordBlock) Type() *TableBlockInfo { return &tableBlockRecords[4] }
-
-// FactWordBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
-// from the declared maxima (docs/SPEC-TABLES.md §19.1). A Go consumer does
-// not allocate a block — the bytes are handed to it — but it caps by this: a
-// playback buffer, a recording, a scratch copy all size from the generated
-// constant rather than from a number a person wrote down beside it.
-const FactWordBlockMaxBytes int64 = 192
-
-// FactWordBlock is FactWord's block: a pointer and a length, and then rows in place.
-// Opening one is ONE check and no copy; reading a row is one add (§19.2).
-//
-// The bytes belong to the CONSUMER — a []byte it owns, an mmap, or memory a
-// producer handed across. Nothing here allocates.
-//
-// A block is valid until the next fill over the SAME storage, which
-// invalidates every block over it and every row pointer taken from one.
-type FactWordBlock struct {
-	Base       unsafe.Pointer           // the extent's base, 64-byte aligned
-	Projection *FactWordBlockProjection // the projection, at offset 0
-	Bytes      int64                    // the extent in use
-}
-
-// ---- block fill path: begin ----
-// ---- block fill path: end ----
-// FactWordBlockOpen is the bool convenience for the handle's typed Open error.
-func FactWordBlockOpen(block *FactWordBlock, base unsafe.Pointer, bytes int64) bool {
-	return block.Open(base, bytes) == nil
-}
-
-// Open reads all prologue and layout words bytewise before the final base
-// alignment check. Every refusal names the first failed clause in SPEC §19.2.
-func (block *FactWordBlock) Open(base unsafe.Pointer, bytes int64) error {
-	*block = FactWordBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 160 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 160)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
-	}
-	used := int64(160)
-	padding := (64 - (used % 64)) % 64
-	if padding > bytes-used {
-		return TableRefuseTruncated
-	}
-	used += padding
-	if uintptr(base)%64 != 0 {
-		return TableRefuseUnalignedBase
-	}
-	block.Base = base
-	block.Projection = (*FactWordBlockProjection)(base)
-	block.Bytes = used
-	return nil
-}
-
-// FactWordCounts is gathered before Begin; clamping is the caller's policy.
-type FactWordCounts struct {
-}
-
-// FactWordBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
-type FactWordBlockStorage struct {
-	base       unsafe.Pointer
-	allocation []byte
-	allocator  TableBlockAllocator
-}
-
-func (s *FactWordBlockStorage) Create(a TableBlockAllocator) bool {
-	if s == nil || s.allocation != nil || a.Alloc == nil || a.Free == nil {
-		return false
-	}
-	raw := a.Alloc(FactWordBlockMaxBytes + 63)
-	if int64(len(raw)) < FactWordBlockMaxBytes+63 {
-		if raw != nil {
-			a.Free(raw)
-		}
-		return false
-	}
-	s.allocation = raw
-	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
-	return true
-}
-func (s *FactWordBlockStorage) Destroy() {
-	if s != nil && s.allocation != nil {
-		s.allocator.Free(s.allocation)
-		*s = FactWordBlockStorage{}
-	}
-}
-
-// ---- block fill path: begin ----
-// FactWordBlockBegin writes only the prologue and triples, never rows or padding.
-// Storage and all counts are checked before any byte of the extent changes.
-func FactWordBlockBegin(b *FactWordBlock, s *FactWordBlockStorage, c FactWordCounts, refusal *TableBlockRefusal) bool {
-	if refusal != nil {
-		*refusal = TableBlockRefusal{}
-	}
-	if b == nil {
-		return false
-	}
-	if s == nil || s.base == nil {
-		return false
-	}
-	p := (*FactWordBlockProjection)(s.base)
-	p.Magic = TableBlockMagic
-	p.BuildVersion = BuildVersion
-	p.ByteOrder = TableBlockByteOrder
-	offset := int64(160)
-	*b = FactWordBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
-	return true
-}
-
-func FactWordBlockBytes(b *FactWordBlock) int64 {
-	if b == nil || b.Projection == nil {
-		return 0
-	}
-	used := int64(160)
-	return (used + 63) &^ int64(63)
-}
-
-// ---- block fill path: end ----
-
-// Type is this block's descriptors: constant data, so a reflective read costs
-// a lookup and not a parse. The row layouts hang off the element column
-// rather than taking names of their own, so a walker reaches every record
-// through the graph.
-func (b *FactWordBlock) Type() *TableBlockInfo { return &tableBlockRecords[0] }
-
-// LiveSightBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
-// from the declared maxima (docs/SPEC-TABLES.md §19.1). A Go consumer does
-// not allocate a block — the bytes are handed to it — but it caps by this: a
-// playback buffer, a recording, a scratch copy all size from the generated
-// constant rather than from a number a person wrote down beside it.
-const LiveSightBlockMaxBytes int64 = 384
-
-// LiveSightBlock is LiveSight's block: a pointer and a length, and then rows in place.
-// Opening one is ONE check and no copy; reading a row is one add (§19.2).
-//
-// The bytes belong to the CONSUMER — a []byte it owns, an mmap, or memory a
-// producer handed across. Nothing here allocates.
-//
-// A block is valid until the next fill over the SAME storage, which
-// invalidates every block over it and every row pointer taken from one.
-type LiveSightBlock struct {
-	Base       unsafe.Pointer            // the extent's base, 64-byte aligned
-	Projection *LiveSightBlockProjection // the projection, at offset 0
-	Bytes      int64                     // the extent in use
-}
-
-// ---- block fill path: begin ----
-// ---- block fill path: end ----
-// LiveSightBlockOpen is the bool convenience for the handle's typed Open error.
-func LiveSightBlockOpen(block *LiveSightBlock, base unsafe.Pointer, bytes int64) bool {
-	return block.Open(base, bytes) == nil
-}
-
-// Open reads all prologue and layout words bytewise before the final base
-// alignment check. Every refusal names the first failed clause in SPEC §19.2.
-func (block *LiveSightBlock) Open(base unsafe.Pointer, bytes int64) error {
-	*block = LiveSightBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 352 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 352)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
-	}
-	used := int64(352)
-	padding := (64 - (used % 64)) % 64
-	if padding > bytes-used {
-		return TableRefuseTruncated
-	}
-	used += padding
-	if uintptr(base)%64 != 0 {
-		return TableRefuseUnalignedBase
-	}
-	block.Base = base
-	block.Projection = (*LiveSightBlockProjection)(base)
-	block.Bytes = used
-	return nil
-}
-
-// LiveSightCounts is gathered before Begin; clamping is the caller's policy.
-type LiveSightCounts struct {
-}
-
-// LiveSightBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
-type LiveSightBlockStorage struct {
-	base       unsafe.Pointer
-	allocation []byte
-	allocator  TableBlockAllocator
-}
-
-func (s *LiveSightBlockStorage) Create(a TableBlockAllocator) bool {
-	if s == nil || s.allocation != nil || a.Alloc == nil || a.Free == nil {
-		return false
-	}
-	raw := a.Alloc(LiveSightBlockMaxBytes + 63)
-	if int64(len(raw)) < LiveSightBlockMaxBytes+63 {
-		if raw != nil {
-			a.Free(raw)
-		}
-		return false
-	}
-	s.allocation = raw
-	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
-	return true
-}
-func (s *LiveSightBlockStorage) Destroy() {
-	if s != nil && s.allocation != nil {
-		s.allocator.Free(s.allocation)
-		*s = LiveSightBlockStorage{}
-	}
-}
-
-// ---- block fill path: begin ----
-// LiveSightBlockBegin writes only the prologue and triples, never rows or padding.
-// Storage and all counts are checked before any byte of the extent changes.
-func LiveSightBlockBegin(b *LiveSightBlock, s *LiveSightBlockStorage, c LiveSightCounts, refusal *TableBlockRefusal) bool {
-	if refusal != nil {
-		*refusal = TableBlockRefusal{}
-	}
-	if b == nil {
-		return false
-	}
-	if s == nil || s.base == nil {
-		return false
-	}
-	p := (*LiveSightBlockProjection)(s.base)
-	p.Magic = TableBlockMagic
-	p.BuildVersion = BuildVersion
-	p.ByteOrder = TableBlockByteOrder
-	offset := int64(352)
-	*b = LiveSightBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
-	return true
-}
-
-func LiveSightBlockBytes(b *LiveSightBlock) int64 {
-	if b == nil || b.Projection == nil {
-		return 0
-	}
-	used := int64(352)
-	return (used + 63) &^ int64(63)
-}
-
-// ---- block fill path: end ----
-
-// Type is this block's descriptors: constant data, so a reflective read costs
-// a lookup and not a parse. The row layouts hang off the element column
-// rather than taking names of their own, so a walker reaches every record
-// through the graph.
-func (b *LiveSightBlock) Type() *TableBlockInfo { return &tableBlockRecords[3] }
-
-// table Beat has NO block form: it is VARIABLE-LENGTH: Meter.files is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table LiveWord has NO block form: it is VARIABLE-LENGTH: LiveWord.text is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table ReaderHold has NO block form: it is VARIABLE-LENGTH: ReaderHold.reason is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table FactWord has NO block form: it is VARIABLE-LENGTH: FactWord.text is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table HoldView has NO block form: it is VARIABLE-LENGTH: HoldView.reason is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table LiveSight has NO block form: it is VARIABLE-LENGTH: LiveSight.entry is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// LaneHoldBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
-// from the declared maxima (docs/SPEC-TABLES.md §19.1). A Go consumer does
-// not allocate a block — the bytes are handed to it — but it caps by this: a
-// playback buffer, a recording, a scratch copy all size from the generated
-// constant rather than from a number a person wrote down beside it.
-const LaneHoldBlockMaxBytes int64 = 384
+// table Beat has NO block form: it is VARIABLE-LENGTH: Beat.at is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
 
-// LaneHoldBlock is LaneHold's block: a pointer and a length, and then rows in place.
-// Opening one is ONE check and no copy; reading a row is one add (§19.2).
-//
-// The bytes belong to the CONSUMER — a []byte it owns, an mmap, or memory a
-// producer handed across. Nothing here allocates.
-//
-// A block is valid until the next fill over the SAME storage, which
-// invalidates every block over it and every row pointer taken from one.
-type LaneHoldBlock struct {
-	Base       unsafe.Pointer           // the extent's base, 64-byte aligned
-	Projection *LaneHoldBlockProjection // the projection, at offset 0
-	Bytes      int64                    // the extent in use
-}
+// table ReaderHold has NO block form: it is VARIABLE-LENGTH: ReaderHold.at is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
 
-// ---- block fill path: begin ----
-// ---- block fill path: end ----
-// LaneHoldBlockOpen is the bool convenience for the handle's typed Open error.
-func LaneHoldBlockOpen(block *LaneHoldBlock, base unsafe.Pointer, bytes int64) bool {
-	return block.Open(base, bytes) == nil
-}
+// table HoldView has NO block form: it is VARIABLE-LENGTH: HoldView.kind is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
 
-// Open reads all prologue and layout words bytewise before the final base
-// alignment check. Every refusal names the first failed clause in SPEC §19.2.
-func (block *LaneHoldBlock) Open(base unsafe.Pointer, bytes int64) error {
-	*block = LaneHoldBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 376 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 376)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
-	}
-	used := int64(376)
-	padding := (64 - (used % 64)) % 64
-	if padding > bytes-used {
-		return TableRefuseTruncated
-	}
-	used += padding
-	if uintptr(base)%64 != 0 {
-		return TableRefuseUnalignedBase
-	}
-	block.Base = base
-	block.Projection = (*LaneHoldBlockProjection)(base)
-	block.Bytes = used
-	return nil
-}
+// table LaneHold has NO block form: it is VARIABLE-LENGTH: LaneHold.who is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
 
-// LaneHoldCounts is gathered before Begin; clamping is the caller's policy.
-type LaneHoldCounts struct {
-}
-
-// LaneHoldBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
-type LaneHoldBlockStorage struct {
-	base       unsafe.Pointer
-	allocation []byte
-	allocator  TableBlockAllocator
-}
-
-func (s *LaneHoldBlockStorage) Create(a TableBlockAllocator) bool {
-	if s == nil || s.allocation != nil || a.Alloc == nil || a.Free == nil {
-		return false
-	}
-	raw := a.Alloc(LaneHoldBlockMaxBytes + 63)
-	if int64(len(raw)) < LaneHoldBlockMaxBytes+63 {
-		if raw != nil {
-			a.Free(raw)
-		}
-		return false
-	}
-	s.allocation = raw
-	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
-	return true
-}
-func (s *LaneHoldBlockStorage) Destroy() {
-	if s != nil && s.allocation != nil {
-		s.allocator.Free(s.allocation)
-		*s = LaneHoldBlockStorage{}
-	}
-}
-
-// ---- block fill path: begin ----
-// LaneHoldBlockBegin writes only the prologue and triples, never rows or padding.
-// Storage and all counts are checked before any byte of the extent changes.
-func LaneHoldBlockBegin(b *LaneHoldBlock, s *LaneHoldBlockStorage, c LaneHoldCounts, refusal *TableBlockRefusal) bool {
-	if refusal != nil {
-		*refusal = TableBlockRefusal{}
-	}
-	if b == nil {
-		return false
-	}
-	if s == nil || s.base == nil {
-		return false
-	}
-	p := (*LaneHoldBlockProjection)(s.base)
-	p.Magic = TableBlockMagic
-	p.BuildVersion = BuildVersion
-	p.ByteOrder = TableBlockByteOrder
-	offset := int64(376)
-	*b = LaneHoldBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
-	return true
-}
-
-func LaneHoldBlockBytes(b *LaneHoldBlock) int64 {
-	if b == nil || b.Projection == nil {
-		return 0
-	}
-	used := int64(376)
-	return (used + 63) &^ int64(63)
-}
-
-// ---- block fill path: end ----
-
-// Type is this block's descriptors: constant data, so a reflective read costs
-// a lookup and not a parse. The row layouts hang off the element column
-// rather than taking names of their own, so a walker reaches every record
-// through the graph.
-func (b *LaneHoldBlock) Type() *TableBlockInfo { return &tableBlockRecords[1] }
-
-// LaneWaitBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
-// from the declared maxima (docs/SPEC-TABLES.md §19.1). A Go consumer does
-// not allocate a block — the bytes are handed to it — but it caps by this: a
-// playback buffer, a recording, a scratch copy all size from the generated
-// constant rather than from a number a person wrote down beside it.
-const LaneWaitBlockMaxBytes int64 = 384
-
-// LaneWaitBlock is LaneWait's block: a pointer and a length, and then rows in place.
-// Opening one is ONE check and no copy; reading a row is one add (§19.2).
-//
-// The bytes belong to the CONSUMER — a []byte it owns, an mmap, or memory a
-// producer handed across. Nothing here allocates.
-//
-// A block is valid until the next fill over the SAME storage, which
-// invalidates every block over it and every row pointer taken from one.
-type LaneWaitBlock struct {
-	Base       unsafe.Pointer           // the extent's base, 64-byte aligned
-	Projection *LaneWaitBlockProjection // the projection, at offset 0
-	Bytes      int64                    // the extent in use
-}
-
-// ---- block fill path: begin ----
-// ---- block fill path: end ----
-// LaneWaitBlockOpen is the bool convenience for the handle's typed Open error.
-func LaneWaitBlockOpen(block *LaneWaitBlock, base unsafe.Pointer, bytes int64) bool {
-	return block.Open(base, bytes) == nil
-}
-
-// Open reads all prologue and layout words bytewise before the final base
-// alignment check. Every refusal names the first failed clause in SPEC §19.2.
-func (block *LaneWaitBlock) Open(base unsafe.Pointer, bytes int64) error {
-	*block = LaneWaitBlock{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if bytes < 368 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 368)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableBlockMagic {
-		if magic == 0x5343484d41424c4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
-	}
-	used := int64(368)
-	padding := (64 - (used % 64)) % 64
-	if padding > bytes-used {
-		return TableRefuseTruncated
-	}
-	used += padding
-	if uintptr(base)%64 != 0 {
-		return TableRefuseUnalignedBase
-	}
-	block.Base = base
-	block.Projection = (*LaneWaitBlockProjection)(base)
-	block.Bytes = used
-	return nil
-}
-
-// LaneWaitCounts is gathered before Begin; clamping is the caller's policy.
-type LaneWaitCounts struct {
-}
-
-// LaneWaitBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
-type LaneWaitBlockStorage struct {
-	base       unsafe.Pointer
-	allocation []byte
-	allocator  TableBlockAllocator
-}
-
-func (s *LaneWaitBlockStorage) Create(a TableBlockAllocator) bool {
-	if s == nil || s.allocation != nil || a.Alloc == nil || a.Free == nil {
-		return false
-	}
-	raw := a.Alloc(LaneWaitBlockMaxBytes + 63)
-	if int64(len(raw)) < LaneWaitBlockMaxBytes+63 {
-		if raw != nil {
-			a.Free(raw)
-		}
-		return false
-	}
-	s.allocation = raw
-	s.allocator = a
-	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
-	s.base = unsafe.Pointer(&raw[offset])
-	return true
-}
-func (s *LaneWaitBlockStorage) Destroy() {
-	if s != nil && s.allocation != nil {
-		s.allocator.Free(s.allocation)
-		*s = LaneWaitBlockStorage{}
-	}
-}
-
-// ---- block fill path: begin ----
-// LaneWaitBlockBegin writes only the prologue and triples, never rows or padding.
-// Storage and all counts are checked before any byte of the extent changes.
-func LaneWaitBlockBegin(b *LaneWaitBlock, s *LaneWaitBlockStorage, c LaneWaitCounts, refusal *TableBlockRefusal) bool {
-	if refusal != nil {
-		*refusal = TableBlockRefusal{}
-	}
-	if b == nil {
-		return false
-	}
-	if s == nil || s.base == nil {
-		return false
-	}
-	p := (*LaneWaitBlockProjection)(s.base)
-	p.Magic = TableBlockMagic
-	p.BuildVersion = BuildVersion
-	p.ByteOrder = TableBlockByteOrder
-	offset := int64(368)
-	*b = LaneWaitBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
-	return true
-}
-
-func LaneWaitBlockBytes(b *LaneWaitBlock) int64 {
-	if b == nil || b.Projection == nil {
-		return 0
-	}
-	used := int64(368)
-	return (used + 63) &^ int64(63)
-}
-
-// ---- block fill path: end ----
-
-// Type is this block's descriptors: constant data, so a reflective read costs
-// a lookup and not a parse. The row layouts hang off the element column
-// rather than taking names of their own, so a walker reaches every record
-// through the graph.
-func (b *LaneWaitBlock) Type() *TableBlockInfo { return &tableBlockRecords[2] }
+// table LaneWait has NO block form: it is VARIABLE-LENGTH: LaneWait.who is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
 
 // table Lane has NO block form: it is VARIABLE-LENGTH: Lane.holders is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table SeatChange has NO block form: it is VARIABLE-LENGTH: SeatChange.reason is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table SeatChange has NO block form: it is VARIABLE-LENGTH: SeatChange.holder is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table ServerRecord has NO block form: it is VARIABLE-LENGTH: ServerRecord.version is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table ServerRecord has NO block form: it is VARIABLE-LENGTH: ServerRecord.actor is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
