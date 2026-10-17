@@ -80,10 +80,23 @@ func (s *Snapshot) alarmSetting(prop string) (int, bool) {
 //   - ready: none ready (work table) and one or more waiting;
 //   - fleet: the up members working fewer work cards than its percent of their width,
 //     while a primary is ready or waiting, so the fleet has work it does not run.
+//
+// dealableReady is the ready primaries a deal may take: a held ready card (a server-default
+// hold in place, seat_answers.go) is dealt to no one, so it is no ready work.
+func dealableReady(s *Snapshot) int {
+	n := 0
+	for _, c := range s.Work.Column(Ready) {
+		if !IsHeld(c) {
+			n++
+		}
+	}
+	return n
+}
+
 func alarmFacts(s *Snapshot) map[string]string {
 	out := map[string]string{}
 	review, merging := len(s.Work.Column(Review)), len(s.Work.Column(Merging))
-	ready, waiting := len(s.Work.Column(Ready)), len(s.Work.Column(Waiting))
+	ready, waiting := dealableReady(s), len(s.Work.Column(Waiting))
 	if n, on := s.alarmSetting(PropAlarmReview); on && review > n {
 		out[NAlarmReview] = fmt.Sprintf("%d primaries in review, above the alarm of %d: reads or accepts are behind; run: nova-sprint where", review, n)
 	}
@@ -154,7 +167,7 @@ func alarmNow(s *Snapshot, typ string) string {
 	case NAlarmMerging:
 		return fmt.Sprintf("%d primaries merging", len(s.Work.Column(Merging)))
 	case NAlarmReady:
-		return fmt.Sprintf("%d primaries ready, %d waiting", len(s.Work.Column(Ready)), len(s.Work.Column(Waiting)))
+		return fmt.Sprintf("%d primaries ready, %d waiting", dealableReady(s), len(s.Work.Column(Waiting)))
 	}
 	return "the fleet works at its alarm or above, or has no work ready or waiting"
 }

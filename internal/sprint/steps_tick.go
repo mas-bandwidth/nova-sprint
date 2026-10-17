@@ -1093,7 +1093,7 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 			working += s.Fleet.Count(m, Working)
 		}
 		for _, c := range s.Work.Column(Ready) {
-			if !IsSentinel(c) {
+			if !IsSentinel(c) && !IsHeld(c) { // a held ready card is dealt to no one
 				n++
 			}
 		}
@@ -2397,7 +2397,8 @@ func MoveDueKeys(s *Snapshot) []string {
 		}
 	}
 	for _, c := range s.Work.Column(Ready) {
-		if !IsSentinel(c) && AtRedealBound(s, c) == nil {
+		// a held ready card (a server-default hold in place) moves only by release
+		if !IsSentinel(c) && !IsHeld(c) && AtRedealBound(s, c) == nil {
 			keys = append(keys, key(c))
 		}
 	}

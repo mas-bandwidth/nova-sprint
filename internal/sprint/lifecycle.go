@@ -393,6 +393,11 @@ func decisionPark(e ntable.BatchMemberEntry, pre *Snapshot, drained bool) bool {
 	if c == nil || IsSentinel(c) || IsHeld(c) || (c.Col != Ready && c.Col != Review) || e.Set["decision_held_from"] != c.Col {
 		return false
 	}
+	// a ready primary whose work card was withdrawn is held in place, never parked in
+	// waiting (rule 2; tla/SprintTables.tla DecisionParkStep, Rule2Withdrawn)
+	if c.Col == Ready && withdrawnCard(pre, c) {
+		return false
+	}
 	for _, o := range pre.Open {
 		n := o.Note
 		if n.ID == e.Set["held_judgment"] && o.Subject() == c.ID && n.Kind == Judgment && (n.Type == NBound || n.Type == NBriefWrong) {

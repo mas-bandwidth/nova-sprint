@@ -444,7 +444,7 @@ func cardsWaitingFor(s *Snapshot, f FriendSeat, seats map[string]FriendSeat) []i
 	var out []idleWait
 	if s.Work != nil {
 		for _, pr := range s.Work.Column(Ready) {
-			if pr == nil || IsSentinel(pr) || StreamHeld(s, pr.Row) || len(Bench(pr)) > 0 {
+			if pr == nil || IsSentinel(pr) || IsHeld(pr) || StreamHeld(s, pr.Row) || len(Bench(pr)) > 0 {
 				continue
 			}
 			if !friendCouldTake(s, f, pr, nil) {

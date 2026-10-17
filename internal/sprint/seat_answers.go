@@ -455,13 +455,16 @@ func TickDecisionDefaults(s *Snapshot, r TickReq) Plan {
 					break
 				}
 				hold := map[string]string{FieldHeld: stamp(s.Now), "held_by": ServerDefaultActor, "held_reason": reason, "held_judgment": n.ID, "decision_held_from": c.Col}
-				if c.Col == Ready {
-					// a ready primary is held in place: the hold keeps it from every deal
-					// (dealPlan, TickDeal IsHeld) and release clears it where it stands
-					// (releaseHeld). Moved to waiting, a primary whose work card was
-					// withdrawn waited on no need, and check broke rule 2 on the
-					// machine's own step (tla/SprintTables.tla DecisionParkStep,
-					// Rule2Withdrawn, reversed witness parkmoves).
+				if c.Col == Ready && withdrawnCard(s, c) {
+					// a ready primary whose work card was withdrawn is held in place: the
+					// hold keeps it from every deal (dealPlan, TickDeal IsHeld) and release
+					// clears it where it stands (releaseHeld). Moved to waiting, it waited
+					// on no need, and check broke rule 2 on the machine's own step. Any
+					// other ready primary is parked in waiting as before, so a sentinel
+					// insert (Add, which pulls only ready cards with no withdrawn work
+					// card) never meets a held ready card (tla/SprintTables.tla
+					// DecisionParkStep, Rule2Withdrawn, HeldReadyIsWithdrawn; reversed
+					// witnesses parkmoves and parkinplaceall).
 					u.Changes = append(u.Changes, change(Work, setEntry(c, hold)))
 					continue
 				}

@@ -27,7 +27,7 @@ func TestDecisionDefaultParksBoundAtTwiceDeadline(t *testing.T) {
 	require.Empty(t, r.snap().Work.Card("s1-1").F(sprint.FieldHeld))
 	pass(2 * sprint.DeadlineJudgment)
 	c := r.snap().Work.Card("s1-1")
-	require.Equal(t, sprint.Ready, c.Col, "a ready bound primary is held in place at twice its judgment deadline")
+	require.Equal(t, sprint.Waiting, c.Col, "bound primary must be parked at twice its judgment deadline")
 	require.NotEmpty(t, c.F(sprint.FieldHeld))
 	require.Contains(t, c.F("held_reason"), "attempt budget exhausted")
 	require.Equal(t, "server-default", c.F("held_by"))
@@ -39,7 +39,7 @@ func TestDecisionDefaultParksBoundAtTwiceDeadline(t *testing.T) {
 	}
 	require.Positive(t, count, "default must identify its actor and judgment in the audit log")
 	pass(3 * sprint.DeadlineJudgment)
-	require.Equal(t, sprint.Ready, r.snap().Work.Card("s1-1").Col)
+	require.Equal(t, sprint.Waiting, r.snap().Work.Card("s1-1").Col)
 	r.must(store.ReleaseStep(sprint.ReleaseReq{IDs: []string{"s1-1"}, Reason: "reviewed; resume", Who: "coordinator", Coordinator: "coordinator"}))
 	r.must(store.DrainStep())
 	require.Empty(t, r.snap().Work.Card("s1-1").F(sprint.FieldHeld), "coordinator can reverse the safe hold")
@@ -85,6 +85,40 @@ func TestDecisionDefaultHoldsAWithdrawnReadyPrimaryInPlace(t *testing.T) {
 	require.Empty(t, c.F(sprint.FieldHeld), "release clears the hold where it stands")
 	require.Empty(t, c.F("decision_held_from"))
 	require.Empty(t, rule2(r.snap()))
+}
+
+// A sentinel insert meets the server-default holds (the cold read of PR 471): a ready
+// primary with a withdrawn work card is held in place, and add --sentinel never pulls
+// such a card (steps_work.go Add, withdrawnCard); any other ready primary is parked in
+// waiting, so the insert never meets a held ready card it would pull, which the
+// lifecycle's hold guard refuses, refusing the whole add. tla/SprintTables.tla
+// HeldReadyIsWithdrawn, reversed witness parkinplaceall, two-card instance
+// MCSprintTablesDecisionParkingTwo.cfg.
+func TestASentinelInsertMeetsTheServerDefaultHolds(t *testing.T) {
+	r := newHoldRig(t, 3, 0)
+	r.must(store.Step{Verb: "fixture withdrawn", Load: store.All, Plan: func(s *sprint.Snapshot) sprint.Plan {
+		return sprint.Plan{Units: []sprint.Unit{{Key: "s1-2.w1", Changes: []sprint.Change{
+			{Table: sprint.Fleet, Entry: ntable.BatchMemberEntry{ID: "s1-2.w1", Expect: &ntable.MemberExpect{Absent: true}, Create: &ntable.MemberCreateOp{Row: "m1", Col: sprint.Withdrawn}, Set: map[string]string{"primary": "s1-2", "stream": "s1", "attempt": "1", "gen": "2"}}},
+		}}}}
+	}})
+	for _, id := range []string{"s1-2", "s1-3"} {
+		r.must(store.NoteStep("fixture bound", sprint.Note{Kind: sprint.Judgment, Type: sprint.NBound, Stream: "s1", Primaries: []string{id}, Count: 1, At: r.now, What: "budget bound"}))
+	}
+	r.mu.Lock()
+	r.now = r.now.Add(2 * sprint.DeadlineJudgment)
+	r.mu.Unlock()
+	r.must(store.TickPartStep("overdue", sprint.TickOverdue, sprint.TickReq{}, nil, nil, nil))
+	r.must(store.DrainStep())
+	require.NotEmpty(t, r.snap().Work.Card("s1-3").F(sprint.FieldHeld), "both are held")
+	r.must(store.AddStep(sprint.AddReq{Stream: "s1", IDs: []string{"stop-1"}, Sentinel: true, Before: "s1-2"}))
+	r.must(store.DrainStep())
+	s := r.snap()
+	require.NotNil(t, s.Work.Placed("stop-1"), "the insert lands")
+	require.Equal(t, sprint.Ready, s.Work.Card("s1-2").Col, "a withdrawn card is past the stop")
+	require.NotEmpty(t, s.Work.Card("s1-2").F(sprint.FieldHeld))
+	require.Equal(t, sprint.Waiting, s.Work.Card("s1-3").Col)
+	require.NotEmpty(t, s.Work.Card("s1-3").F(sprint.FieldHeld))
+	require.Empty(t, rule2(s))
 }
 
 // rule2 is check's rule 2 violations of the snapshot, no operation pending.

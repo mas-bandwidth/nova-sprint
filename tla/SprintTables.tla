@@ -209,6 +209,10 @@
 \*                  waiting, as seat_answers.go TickDecisionDefaults did
 \*                  before 2026-10-17: a primary whose work card was
 \*                  withdrawn is left waiting on no need (Rule2Withdrawn).
+\*   "parkinplaceall" the hold keeps every ready primary in place, its work
+\*                  card withdrawn or not: a held ready card a sentinel
+\*                  insert would pull, which the lifecycle's hold guard
+\*                  refuses with the whole add (HeldReadyIsWithdrawn).
 \*   "halfstep"     the fence is dropped, so a crash leaves a step half-written
 \*                  (its fleet writes committed, its work-table write pending)
 \*                  and other actions may act on the half-written table; a
@@ -1363,15 +1367,19 @@ ParkFence == parkState = "held" =>
 
 \* Bounded composition: parking is enabled for the one-primary full-Spec
 \* instances; historical three-card instances retain their original action set.
-\* A ready primary is held in place (seat_answers.go TickDecisionDefaults): it
-\* stays ready, the hold fences it from the deal (ParkFence, dealPlan IsHeld),
-\* so a primary whose work card was withdrawn is never left waiting on no need
-\* (Rule2Withdrawn). A primary in review is parked in waiting, its head kept.
+\* A ready primary whose work card was withdrawn is held in place
+\* (seat_answers.go TickDecisionDefaults, withdrawnCard): it stays ready, the
+\* hold fences it from the deal (ParkFence, dealPlan IsHeld), so it is never
+\* left waiting on no need (Rule2Withdrawn), and a sentinel insert never pulls
+\* it (AddMove). Any other ready primary, and one in review, is parked in
+\* waiting (lifecycle.go decisionPark), so an insert never meets a held ready
+\* card (HeldReadyIsWithdrawn). Enabled in the one- and two-primary instances.
+InPlace(c) == state[c] = "ready" /\ (wplace[c] = "withdrawn" \/ Broken = "parkinplaceall")
 DecisionParkStep ==
-  /\ Cardinality(Card) = 1
+  /\ Cardinality(Card) <= 2
   /\ Free /\ parkState = "none" /\ state[ParkCard] \in {"ready", "review"}
   /\ parkBound
-  /\ state' = IF state[ParkCard] = "ready" /\ Broken # "parkmoves"
+  /\ state' = IF InPlace(ParkCard) /\ Broken # "parkmoves"
                THEN state ELSE [state EXCEPT ![ParkCard] = "waiting"]
   /\ pendstate' = state'
   /\ flags' = [NoFlags EXCEPT !.decisionPark = TRUE]
@@ -1498,7 +1506,8 @@ MovesOnlyByTable ==
     \/ state'[c] = state[c]
     \/ Legal(state[c], state'[c])
     \/ /\ c = ParkCard /\ flags'.decisionPark /\ parkBound /\ parkCause'
-       /\ state[c] = "review" /\ state'[c] = "waiting"
+       /\ (state[c] = "review" \/ (state[c] = "ready" /\ wplace[c] # "withdrawn"))
+       /\ state'[c] = "waiting"
     \/ /\ c = ParkCard /\ flags'.decisionRelease /\ parkCause
        /\ state[c] \in {"waiting", "ready"} /\ state'[c] = parkSaved
     \/ /\ state'[c] = "off"
@@ -1509,7 +1518,8 @@ MovesOnlyByTable ==
 \* that has not landed (lifecycle.go needsOpen).
 ReadyToWaitingOnlyByInsertOrNeeds ==
   [][\A c \in Card :
-    state[c] = "ready" /\ state'[c] = "waiting" => flags'.inserting \/ ~((NeedsMet(c))')]_allTableVars
+    state[c] = "ready" /\ state'[c] = "waiting" => flags'.inserting \/ ~((NeedsMet(c))')
+      \/ (c = ParkCard /\ flags'.decisionPark /\ parkBound /\ parkCause' /\ wplace[c] # "withdrawn")]_allTableVars
 
 \* LandedIsFinal: a landed primary stays landed; only a remove takes it off
 \* the table, and it never moves to another state.
@@ -1576,7 +1586,13 @@ RankRefusesLanded == \A c \in Card : state[c] = "landed" => ~ranked[c]
 \* These invariants observe actual lifecycle transitions inside Spec, including
 \* the same-card head and live-read provenance; no disconnected projection.
 ParkingHasCause == parkState = "held" => parkBound /\ parkCause
-  /\ state[ParkCard] = IF parkSaved = "ready" /\ Broken # "parkmoves" THEN "ready" ELSE "waiting"
+  /\ state[ParkCard] \in {"ready", "waiting"}
+
+\* HeldReadyIsWithdrawn: a held ready primary is one whose work card was
+\* withdrawn, the one kind a sentinel insert never pulls (AddMove,
+\* steps_work.go Add withdrawnCard), so the lifecycle's hold guard never
+\* refuses an insert for it.
+HeldReadyIsWithdrawn == parkState = "held" /\ state[ParkCard] = "ready" => wplace[ParkCard] = "withdrawn"
 
 \* Rule2Withdrawn (check.go rule 2, judged when no operation is in flight): a
 \* primary whose work card was withdrawn is ready, or waiting on a named need
