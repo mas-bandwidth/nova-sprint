@@ -186,12 +186,9 @@ type LoadSampleBlockProjection struct {
 	Magic        uint64 // generated: identifies a schema block
 	BuildVersion uint64 // generated: the unit's build version (docs/SPEC-TABLES.md §20)
 	ByteOrder    uint64 // generated: 1 little, 2 big
-	AtNs         int64
-	AtNsPresent  bool    // ?: one byte, in Go's model as in C++
-	_            [7]byte // generated padding
 	Pct          float64
-	AtTime       [36]byte // string(35): max length, used length beside it
-	AtTimeLength int32
+	At           [36]byte // string(35): max length, used length beside it
+	AtLength     int32
 }
 
 // TicksBlockProjection — the block PROJECTION: the table's own instance as it
@@ -255,12 +252,8 @@ type LiveSightBlockProjection struct {
 	Entry        [282]byte // string(281): max length, used length beside it
 	_            [2]byte   // generated padding
 	EntryLength  int32
-	AtNs         int64
-	AtNsPresent  bool     // ?: one byte, in Go's model as in C++
-	AtTime       [36]byte // string(35): max length, used length beside it
-	_            [3]byte  // generated padding
-	AtTimeLength int32
-	_            [4]byte // generated padding
+	At           [36]byte // string(35): max length, used length beside it
+	AtLength     int32
 }
 
 // LaneHoldBlockProjection — the block PROJECTION: the table's own instance as it
@@ -271,24 +264,19 @@ type LiveSightBlockProjection struct {
 // It is a SEPARATE record from LaneHoldRow: a table can be both a block root and
 // another block's row, and the two differ by the prologue.
 type LaneHoldBlockProjection struct {
-	Magic           uint64    // generated: identifies a schema block
-	BuildVersion    uint64    // generated: the unit's build version (docs/SPEC-TABLES.md §20)
-	ByteOrder       uint64    // generated: 1 little, 2 big
-	Who             [258]byte // string(257): max length, used length beside it
-	_               [2]byte   // generated padding
-	WhoLength       int32
-	SinceNs         int64
-	SinceNsPresent  bool    // ?: one byte, in Go's model as in C++
-	_               [7]byte // generated padding
-	SeenNs          int64
-	SeenNsPresent   bool // ?: one byte, in Go's model as in C++
-	Claimed         bool
-	SinceTime       [36]byte // string(35): max length, used length beside it
-	_               [2]byte  // generated padding
-	SinceTimeLength int32
-	SeenTime        [36]byte // string(35): max length, used length beside it
-	SeenTimeLength  int32
-	_               [4]byte // generated padding
+	Magic        uint64    // generated: identifies a schema block
+	BuildVersion uint64    // generated: the unit's build version (docs/SPEC-TABLES.md §20)
+	ByteOrder    uint64    // generated: 1 little, 2 big
+	Who          [258]byte // string(257): max length, used length beside it
+	_            [2]byte   // generated padding
+	WhoLength    int32
+	Claimed      bool
+	Since        [36]byte // string(35): max length, used length beside it
+	_            [3]byte  // generated padding
+	SinceLength  int32
+	Seen         [36]byte // string(35): max length, used length beside it
+	SeenLength   int32
+	_            [4]byte // generated padding
 }
 
 // LaneWaitBlockProjection — the block PROJECTION: the table's own instance as it
@@ -299,23 +287,16 @@ type LaneHoldBlockProjection struct {
 // It is a SEPARATE record from LaneWaitRow: a table can be both a block root and
 // another block's row, and the two differ by the prologue.
 type LaneWaitBlockProjection struct {
-	Magic           uint64    // generated: identifies a schema block
-	BuildVersion    uint64    // generated: the unit's build version (docs/SPEC-TABLES.md §20)
-	ByteOrder       uint64    // generated: 1 little, 2 big
-	Who             [258]byte // string(257): max length, used length beside it
-	_               [2]byte   // generated padding
-	WhoLength       int32
-	SinceNs         int64
-	SinceNsPresent  bool    // ?: one byte, in Go's model as in C++
-	_               [7]byte // generated padding
-	SeenNs          int64
-	SeenNsPresent   bool     // ?: one byte, in Go's model as in C++
-	SinceTime       [36]byte // string(35): max length, used length beside it
-	_               [3]byte  // generated padding
-	SinceTimeLength int32
-	SeenTime        [36]byte // string(35): max length, used length beside it
-	SeenTimeLength  int32
-	_               [4]byte // generated padding
+	Magic        uint64    // generated: identifies a schema block
+	BuildVersion uint64    // generated: the unit's build version (docs/SPEC-TABLES.md §20)
+	ByteOrder    uint64    // generated: 1 little, 2 big
+	Who          [258]byte // string(257): max length, used length beside it
+	_            [2]byte   // generated padding
+	WhoLength    int32
+	Since        [36]byte // string(35): max length, used length beside it
+	SinceLength  int32
+	Seen         [36]byte // string(35): max length, used length beside it
+	SeenLength   int32
 }
 
 // The LAYOUT CONTRACT's Go half (docs/SPEC-TABLES.md §19.3), run ONCE at
@@ -329,49 +310,43 @@ func init() {
 	tableBlockLayoutOffset("FactWordBlockProjection.BuildVersion", unsafe.Offsetof(FactWordBlockProjection{}.BuildVersion), 8)
 	tableBlockLayoutOffset("FactWordBlockProjection.ByteOrder", unsafe.Offsetof(FactWordBlockProjection{}.ByteOrder), 16)
 	tableBlockLayoutOffset("FactWordBlockProjection.Text", unsafe.Offsetof(FactWordBlockProjection{}.Text), 24)
-	tableBlockLayoutSize("LaneHoldBlockProjection", unsafe.Sizeof(LaneHoldBlockProjection{}), 400)
+	tableBlockLayoutSize("LaneHoldBlockProjection", unsafe.Sizeof(LaneHoldBlockProjection{}), 376)
 	tableBlockLayoutSize("LaneHoldBlockProjection alignment", unsafe.Alignof(LaneHoldBlockProjection{}), 8)
 	tableBlockLayoutOffset("LaneHoldBlockProjection.Magic", unsafe.Offsetof(LaneHoldBlockProjection{}.Magic), 0)
 	tableBlockLayoutOffset("LaneHoldBlockProjection.BuildVersion", unsafe.Offsetof(LaneHoldBlockProjection{}.BuildVersion), 8)
 	tableBlockLayoutOffset("LaneHoldBlockProjection.ByteOrder", unsafe.Offsetof(LaneHoldBlockProjection{}.ByteOrder), 16)
 	tableBlockLayoutOffset("LaneHoldBlockProjection.Who", unsafe.Offsetof(LaneHoldBlockProjection{}.Who), 24)
-	tableBlockLayoutOffset("LaneHoldBlockProjection.SinceNs", unsafe.Offsetof(LaneHoldBlockProjection{}.SinceNs), 288)
-	tableBlockLayoutOffset("LaneHoldBlockProjection.SeenNs", unsafe.Offsetof(LaneHoldBlockProjection{}.SeenNs), 304)
-	tableBlockLayoutOffset("LaneHoldBlockProjection.Claimed", unsafe.Offsetof(LaneHoldBlockProjection{}.Claimed), 313)
-	tableBlockLayoutOffset("LaneHoldBlockProjection.SinceTime", unsafe.Offsetof(LaneHoldBlockProjection{}.SinceTime), 314)
-	tableBlockLayoutOffset("LaneHoldBlockProjection.SeenTime", unsafe.Offsetof(LaneHoldBlockProjection{}.SeenTime), 356)
-	tableBlockLayoutSize("LaneWaitBlockProjection", unsafe.Sizeof(LaneWaitBlockProjection{}), 400)
+	tableBlockLayoutOffset("LaneHoldBlockProjection.Claimed", unsafe.Offsetof(LaneHoldBlockProjection{}.Claimed), 288)
+	tableBlockLayoutOffset("LaneHoldBlockProjection.Since", unsafe.Offsetof(LaneHoldBlockProjection{}.Since), 289)
+	tableBlockLayoutOffset("LaneHoldBlockProjection.Seen", unsafe.Offsetof(LaneHoldBlockProjection{}.Seen), 332)
+	tableBlockLayoutSize("LaneWaitBlockProjection", unsafe.Sizeof(LaneWaitBlockProjection{}), 368)
 	tableBlockLayoutSize("LaneWaitBlockProjection alignment", unsafe.Alignof(LaneWaitBlockProjection{}), 8)
 	tableBlockLayoutOffset("LaneWaitBlockProjection.Magic", unsafe.Offsetof(LaneWaitBlockProjection{}.Magic), 0)
 	tableBlockLayoutOffset("LaneWaitBlockProjection.BuildVersion", unsafe.Offsetof(LaneWaitBlockProjection{}.BuildVersion), 8)
 	tableBlockLayoutOffset("LaneWaitBlockProjection.ByteOrder", unsafe.Offsetof(LaneWaitBlockProjection{}.ByteOrder), 16)
 	tableBlockLayoutOffset("LaneWaitBlockProjection.Who", unsafe.Offsetof(LaneWaitBlockProjection{}.Who), 24)
-	tableBlockLayoutOffset("LaneWaitBlockProjection.SinceNs", unsafe.Offsetof(LaneWaitBlockProjection{}.SinceNs), 288)
-	tableBlockLayoutOffset("LaneWaitBlockProjection.SeenNs", unsafe.Offsetof(LaneWaitBlockProjection{}.SeenNs), 304)
-	tableBlockLayoutOffset("LaneWaitBlockProjection.SinceTime", unsafe.Offsetof(LaneWaitBlockProjection{}.SinceTime), 313)
-	tableBlockLayoutOffset("LaneWaitBlockProjection.SeenTime", unsafe.Offsetof(LaneWaitBlockProjection{}.SeenTime), 356)
-	tableBlockLayoutSize("LiveSightBlockProjection", unsafe.Sizeof(LiveSightBlockProjection{}), 368)
+	tableBlockLayoutOffset("LaneWaitBlockProjection.Since", unsafe.Offsetof(LaneWaitBlockProjection{}.Since), 288)
+	tableBlockLayoutOffset("LaneWaitBlockProjection.Seen", unsafe.Offsetof(LaneWaitBlockProjection{}.Seen), 328)
+	tableBlockLayoutSize("LiveSightBlockProjection", unsafe.Sizeof(LiveSightBlockProjection{}), 352)
 	tableBlockLayoutSize("LiveSightBlockProjection alignment", unsafe.Alignof(LiveSightBlockProjection{}), 8)
 	tableBlockLayoutOffset("LiveSightBlockProjection.Magic", unsafe.Offsetof(LiveSightBlockProjection{}.Magic), 0)
 	tableBlockLayoutOffset("LiveSightBlockProjection.BuildVersion", unsafe.Offsetof(LiveSightBlockProjection{}.BuildVersion), 8)
 	tableBlockLayoutOffset("LiveSightBlockProjection.ByteOrder", unsafe.Offsetof(LiveSightBlockProjection{}.ByteOrder), 16)
 	tableBlockLayoutOffset("LiveSightBlockProjection.Entry", unsafe.Offsetof(LiveSightBlockProjection{}.Entry), 24)
-	tableBlockLayoutOffset("LiveSightBlockProjection.AtNs", unsafe.Offsetof(LiveSightBlockProjection{}.AtNs), 312)
-	tableBlockLayoutOffset("LiveSightBlockProjection.AtTime", unsafe.Offsetof(LiveSightBlockProjection{}.AtTime), 321)
+	tableBlockLayoutOffset("LiveSightBlockProjection.At", unsafe.Offsetof(LiveSightBlockProjection{}.At), 312)
 	tableBlockLayoutSize("LiveWordBlockProjection", unsafe.Sizeof(LiveWordBlockProjection{}), 312)
 	tableBlockLayoutSize("LiveWordBlockProjection alignment", unsafe.Alignof(LiveWordBlockProjection{}), 8)
 	tableBlockLayoutOffset("LiveWordBlockProjection.Magic", unsafe.Offsetof(LiveWordBlockProjection{}.Magic), 0)
 	tableBlockLayoutOffset("LiveWordBlockProjection.BuildVersion", unsafe.Offsetof(LiveWordBlockProjection{}.BuildVersion), 8)
 	tableBlockLayoutOffset("LiveWordBlockProjection.ByteOrder", unsafe.Offsetof(LiveWordBlockProjection{}.ByteOrder), 16)
 	tableBlockLayoutOffset("LiveWordBlockProjection.Text", unsafe.Offsetof(LiveWordBlockProjection{}.Text), 24)
-	tableBlockLayoutSize("LoadSampleBlockProjection", unsafe.Sizeof(LoadSampleBlockProjection{}), 88)
+	tableBlockLayoutSize("LoadSampleBlockProjection", unsafe.Sizeof(LoadSampleBlockProjection{}), 72)
 	tableBlockLayoutSize("LoadSampleBlockProjection alignment", unsafe.Alignof(LoadSampleBlockProjection{}), 8)
 	tableBlockLayoutOffset("LoadSampleBlockProjection.Magic", unsafe.Offsetof(LoadSampleBlockProjection{}.Magic), 0)
 	tableBlockLayoutOffset("LoadSampleBlockProjection.BuildVersion", unsafe.Offsetof(LoadSampleBlockProjection{}.BuildVersion), 8)
 	tableBlockLayoutOffset("LoadSampleBlockProjection.ByteOrder", unsafe.Offsetof(LoadSampleBlockProjection{}.ByteOrder), 16)
-	tableBlockLayoutOffset("LoadSampleBlockProjection.AtNs", unsafe.Offsetof(LoadSampleBlockProjection{}.AtNs), 24)
-	tableBlockLayoutOffset("LoadSampleBlockProjection.Pct", unsafe.Offsetof(LoadSampleBlockProjection{}.Pct), 40)
-	tableBlockLayoutOffset("LoadSampleBlockProjection.AtTime", unsafe.Offsetof(LoadSampleBlockProjection{}.AtTime), 48)
+	tableBlockLayoutOffset("LoadSampleBlockProjection.Pct", unsafe.Offsetof(LoadSampleBlockProjection{}.Pct), 24)
+	tableBlockLayoutOffset("LoadSampleBlockProjection.At", unsafe.Offsetof(LoadSampleBlockProjection{}.At), 32)
 	tableBlockLayoutSize("TicksBlockProjection", unsafe.Sizeof(TicksBlockProjection{}), 40)
 	tableBlockLayoutSize("TicksBlockProjection alignment", unsafe.Alignof(TicksBlockProjection{}), 8)
 	tableBlockLayoutOffset("TicksBlockProjection.Magic", unsafe.Offsetof(TicksBlockProjection{}.Magic), 0)
@@ -420,45 +395,35 @@ func init() {
 		},
 	}
 	tableBlockRecords[1] = TableBlockInfo{
-		Name: "LaneHold", BuildVersion: BuildVersion, Size: 400, Align: 8, NumFields: 6,
+		Name: "LaneHold", BuildVersion: BuildVersion, Size: 376, Align: 8, NumFields: 4,
 		Fields: []TableBlockFieldInfo{
 			{Name: "who", Offset: 24, Size: 264, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 284, StrideOffset: 0xffffffff, Stride: 0,
 				IsArray: false, Counted: true, Optional: false, ArrayBound: 257, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-			{Name: "since_ns", Offset: 288, Size: 9, Kind: 5, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: false, Optional: true, ArrayBound: 0, ElemSize: 8, PresentOffset: 296, Element: nil},
-			{Name: "seen_ns", Offset: 304, Size: 9, Kind: 5, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: false, Optional: true, ArrayBound: 0, ElemSize: 8, PresentOffset: 312, Element: nil},
-			{Name: "claimed", Offset: 313, Size: 1, Kind: 1, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+			{Name: "claimed", Offset: 288, Size: 1, Kind: 1, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
 				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-			{Name: "since_time", Offset: 314, Size: 42, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 352, StrideOffset: 0xffffffff, Stride: 0,
+			{Name: "since", Offset: 289, Size: 43, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 328, StrideOffset: 0xffffffff, Stride: 0,
 				IsArray: false, Counted: true, Optional: false, ArrayBound: 35, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-			{Name: "seen_time", Offset: 356, Size: 40, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 392, StrideOffset: 0xffffffff, Stride: 0,
+			{Name: "seen", Offset: 332, Size: 40, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 368, StrideOffset: 0xffffffff, Stride: 0,
 				IsArray: false, Counted: true, Optional: false, ArrayBound: 35, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
 		},
 	}
 	tableBlockRecords[2] = TableBlockInfo{
-		Name: "LaneWait", BuildVersion: BuildVersion, Size: 400, Align: 8, NumFields: 5,
+		Name: "LaneWait", BuildVersion: BuildVersion, Size: 368, Align: 8, NumFields: 3,
 		Fields: []TableBlockFieldInfo{
 			{Name: "who", Offset: 24, Size: 264, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 284, StrideOffset: 0xffffffff, Stride: 0,
 				IsArray: false, Counted: true, Optional: false, ArrayBound: 257, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-			{Name: "since_ns", Offset: 288, Size: 9, Kind: 5, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: false, Optional: true, ArrayBound: 0, ElemSize: 8, PresentOffset: 296, Element: nil},
-			{Name: "seen_ns", Offset: 304, Size: 9, Kind: 5, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: false, Optional: true, ArrayBound: 0, ElemSize: 8, PresentOffset: 312, Element: nil},
-			{Name: "since_time", Offset: 313, Size: 43, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 352, StrideOffset: 0xffffffff, Stride: 0,
+			{Name: "since", Offset: 288, Size: 40, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 324, StrideOffset: 0xffffffff, Stride: 0,
 				IsArray: false, Counted: true, Optional: false, ArrayBound: 35, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-			{Name: "seen_time", Offset: 356, Size: 40, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 392, StrideOffset: 0xffffffff, Stride: 0,
+			{Name: "seen", Offset: 328, Size: 40, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 364, StrideOffset: 0xffffffff, Stride: 0,
 				IsArray: false, Counted: true, Optional: false, ArrayBound: 35, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
 		},
 	}
 	tableBlockRecords[3] = TableBlockInfo{
-		Name: "LiveSight", BuildVersion: BuildVersion, Size: 368, Align: 8, NumFields: 3,
+		Name: "LiveSight", BuildVersion: BuildVersion, Size: 352, Align: 8, NumFields: 2,
 		Fields: []TableBlockFieldInfo{
 			{Name: "entry", Offset: 24, Size: 288, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 308, StrideOffset: 0xffffffff, Stride: 0,
 				IsArray: false, Counted: true, Optional: false, ArrayBound: 281, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
-			{Name: "at_ns", Offset: 312, Size: 9, Kind: 5, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: false, Optional: true, ArrayBound: 0, ElemSize: 8, PresentOffset: 320, Element: nil},
-			{Name: "at_time", Offset: 321, Size: 43, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 360, StrideOffset: 0xffffffff, Stride: 0,
+			{Name: "at", Offset: 312, Size: 40, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 348, StrideOffset: 0xffffffff, Stride: 0,
 				IsArray: false, Counted: true, Optional: false, ArrayBound: 35, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
 		},
 	}
@@ -470,13 +435,11 @@ func init() {
 		},
 	}
 	tableBlockRecords[5] = TableBlockInfo{
-		Name: "LoadSample", BuildVersion: BuildVersion, Size: 88, Align: 8, NumFields: 3,
+		Name: "LoadSample", BuildVersion: BuildVersion, Size: 72, Align: 8, NumFields: 2,
 		Fields: []TableBlockFieldInfo{
-			{Name: "at_ns", Offset: 24, Size: 9, Kind: 5, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
-				IsArray: false, Counted: false, Optional: true, ArrayBound: 0, ElemSize: 8, PresentOffset: 32, Element: nil},
-			{Name: "pct", Offset: 40, Size: 8, Kind: 11, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+			{Name: "pct", Offset: 24, Size: 8, Kind: 11, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
 				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 8, PresentOffset: 0xffffffff, Element: nil},
-			{Name: "at_time", Offset: 48, Size: 40, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 84, StrideOffset: 0xffffffff, Stride: 0,
+			{Name: "at", Offset: 32, Size: 40, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 68, StrideOffset: 0xffffffff, Stride: 0,
 				IsArray: false, Counted: true, Optional: false, ArrayBound: 35, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
 		},
 	}
@@ -534,10 +497,10 @@ func (block *LoadSampleBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if base == nil {
 		return TableRefuseUnalignedBase
 	}
-	if bytes < 88 {
+	if bytes < 72 {
 		return TableRefuseTruncated
 	}
-	header := unsafe.Slice((*byte)(base), 88)
+	header := unsafe.Slice((*byte)(base), 72)
 	magic := binary.NativeEndian.Uint64(header)
 	if magic != TableBlockMagic {
 		if magic == 0x5343484d41424c4b {
@@ -551,7 +514,7 @@ func (block *LoadSampleBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
 		return TableRefuseWrongBuildVersion
 	}
-	used := int64(88)
+	used := int64(72)
 	padding := (64 - (used % 64)) % 64
 	if padding > bytes-used {
 		return TableRefuseTruncated
@@ -618,7 +581,7 @@ func LoadSampleBlockBegin(b *LoadSampleBlock, s *LoadSampleBlockStorage, c LoadS
 	p.Magic = TableBlockMagic
 	p.BuildVersion = BuildVersion
 	p.ByteOrder = TableBlockByteOrder
-	offset := int64(88)
+	offset := int64(72)
 	*b = LoadSampleBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
 	return true
 }
@@ -627,7 +590,7 @@ func LoadSampleBlockBytes(b *LoadSampleBlock) int64 {
 	if b == nil || b.Projection == nil {
 		return 0
 	}
-	used := int64(88)
+	used := int64(72)
 	return (used + 63) &^ int64(63)
 }
 
@@ -1114,10 +1077,10 @@ func (block *LiveSightBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if base == nil {
 		return TableRefuseUnalignedBase
 	}
-	if bytes < 368 {
+	if bytes < 352 {
 		return TableRefuseTruncated
 	}
-	header := unsafe.Slice((*byte)(base), 368)
+	header := unsafe.Slice((*byte)(base), 352)
 	magic := binary.NativeEndian.Uint64(header)
 	if magic != TableBlockMagic {
 		if magic == 0x5343484d41424c4b {
@@ -1131,7 +1094,7 @@ func (block *LiveSightBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
 		return TableRefuseWrongBuildVersion
 	}
-	used := int64(368)
+	used := int64(352)
 	padding := (64 - (used % 64)) % 64
 	if padding > bytes-used {
 		return TableRefuseTruncated
@@ -1198,7 +1161,7 @@ func LiveSightBlockBegin(b *LiveSightBlock, s *LiveSightBlockStorage, c LiveSigh
 	p.Magic = TableBlockMagic
 	p.BuildVersion = BuildVersion
 	p.ByteOrder = TableBlockByteOrder
-	offset := int64(368)
+	offset := int64(352)
 	*b = LiveSightBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
 	return true
 }
@@ -1207,7 +1170,7 @@ func LiveSightBlockBytes(b *LiveSightBlock) int64 {
 	if b == nil || b.Projection == nil {
 		return 0
 	}
-	used := int64(368)
+	used := int64(352)
 	return (used + 63) &^ int64(63)
 }
 
@@ -1236,7 +1199,7 @@ func (b *LiveSightBlock) Type() *TableBlockInfo { return &tableBlockRecords[3] }
 // not allocate a block — the bytes are handed to it — but it caps by this: a
 // playback buffer, a recording, a scratch copy all size from the generated
 // constant rather than from a number a person wrote down beside it.
-const LaneHoldBlockMaxBytes int64 = 448
+const LaneHoldBlockMaxBytes int64 = 384
 
 // LaneHoldBlock is LaneHold's block: a pointer and a length, and then rows in place.
 // Opening one is ONE check and no copy; reading a row is one add (§19.2).
@@ -1266,10 +1229,10 @@ func (block *LaneHoldBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if base == nil {
 		return TableRefuseUnalignedBase
 	}
-	if bytes < 400 {
+	if bytes < 376 {
 		return TableRefuseTruncated
 	}
-	header := unsafe.Slice((*byte)(base), 400)
+	header := unsafe.Slice((*byte)(base), 376)
 	magic := binary.NativeEndian.Uint64(header)
 	if magic != TableBlockMagic {
 		if magic == 0x5343484d41424c4b {
@@ -1283,7 +1246,7 @@ func (block *LaneHoldBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
 		return TableRefuseWrongBuildVersion
 	}
-	used := int64(400)
+	used := int64(376)
 	padding := (64 - (used % 64)) % 64
 	if padding > bytes-used {
 		return TableRefuseTruncated
@@ -1350,7 +1313,7 @@ func LaneHoldBlockBegin(b *LaneHoldBlock, s *LaneHoldBlockStorage, c LaneHoldCou
 	p.Magic = TableBlockMagic
 	p.BuildVersion = BuildVersion
 	p.ByteOrder = TableBlockByteOrder
-	offset := int64(400)
+	offset := int64(376)
 	*b = LaneHoldBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
 	return true
 }
@@ -1359,7 +1322,7 @@ func LaneHoldBlockBytes(b *LaneHoldBlock) int64 {
 	if b == nil || b.Projection == nil {
 		return 0
 	}
-	used := int64(400)
+	used := int64(376)
 	return (used + 63) &^ int64(63)
 }
 
@@ -1376,7 +1339,7 @@ func (b *LaneHoldBlock) Type() *TableBlockInfo { return &tableBlockRecords[1] }
 // not allocate a block — the bytes are handed to it — but it caps by this: a
 // playback buffer, a recording, a scratch copy all size from the generated
 // constant rather than from a number a person wrote down beside it.
-const LaneWaitBlockMaxBytes int64 = 448
+const LaneWaitBlockMaxBytes int64 = 384
 
 // LaneWaitBlock is LaneWait's block: a pointer and a length, and then rows in place.
 // Opening one is ONE check and no copy; reading a row is one add (§19.2).
@@ -1406,10 +1369,10 @@ func (block *LaneWaitBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if base == nil {
 		return TableRefuseUnalignedBase
 	}
-	if bytes < 400 {
+	if bytes < 368 {
 		return TableRefuseTruncated
 	}
-	header := unsafe.Slice((*byte)(base), 400)
+	header := unsafe.Slice((*byte)(base), 368)
 	magic := binary.NativeEndian.Uint64(header)
 	if magic != TableBlockMagic {
 		if magic == 0x5343484d41424c4b {
@@ -1423,7 +1386,7 @@ func (block *LaneWaitBlock) Open(base unsafe.Pointer, bytes int64) error {
 	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
 		return TableRefuseWrongBuildVersion
 	}
-	used := int64(400)
+	used := int64(368)
 	padding := (64 - (used % 64)) % 64
 	if padding > bytes-used {
 		return TableRefuseTruncated
@@ -1490,7 +1453,7 @@ func LaneWaitBlockBegin(b *LaneWaitBlock, s *LaneWaitBlockStorage, c LaneWaitCou
 	p.Magic = TableBlockMagic
 	p.BuildVersion = BuildVersion
 	p.ByteOrder = TableBlockByteOrder
-	offset := int64(400)
+	offset := int64(368)
 	*b = LaneWaitBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
 	return true
 }
@@ -1499,7 +1462,7 @@ func LaneWaitBlockBytes(b *LaneWaitBlock) int64 {
 	if b == nil || b.Projection == nil {
 		return 0
 	}
-	used := int64(400)
+	used := int64(368)
 	return (used + 63) &^ int64(63)
 }
 

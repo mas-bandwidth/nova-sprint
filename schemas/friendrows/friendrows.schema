@@ -108,11 +108,9 @@ table FriendStatus
 // declares no range.
 fixed table LoadSample
 {
-    // The original Unix-nanosecond slot stays at its locked wire offset.
-    at_ns ?int64 | was = "at", deprecated, json = "at_unix_nanos"
     pct float64
     // Source time.Time JSON, RFC3339Nano text (string reader checks length).
-    at_time string(35) | json = "at"
+    at string(35)
 }
 
 // Ticks is one reading of the kernel CPU counters (hostload.Ticks), a fixed
@@ -236,10 +234,8 @@ fixed table FactWord
 fixed table LiveSight
 {
     entry string(281)
-    // The original Unix-nanosecond slot stays at its locked wire offset.
-    at_ns ?int64 | was = "at", deprecated, json = "at_unix_nanos"
     // Source time.Time JSON, RFC3339Nano text (string reader checks length).
-    at_time string(35) | json = "at"
+    at string(35)
 }
 
 // Beat is a member's, a friend's or a reader's presence record (presence.go
@@ -337,27 +333,21 @@ table HoldView
 fixed table LaneHold
 {
     who string(257)
-    // The original Unix-nanosecond slots stay at their locked wire offsets.
-    since_ns ?int64 | was = "since", deprecated, json = "since_unix_nanos"
-    seen_ns ?int64 | was = "seen", deprecated, json = "seen_unix_nanos"
     claimed bool
     // Source time.Time JSON, RFC3339Nano text (string reader checks length).
-    since_time string(35) | json = "since"
+    since string(35)
     // Source time.Time JSON, RFC3339Nano text (string reader checks length).
-    seen_time string(35) | json = "seen"
+    seen string(35)
 }
 
 // LaneWait is one waiter (lane.go), a fixed table. The same who as LaneHold.
 fixed table LaneWait
 {
     who string(257)
-    // The original Unix-nanosecond slots stay at their locked wire offsets.
-    since_ns ?int64 | was = "since", deprecated, json = "since_unix_nanos"
-    seen_ns ?int64 | was = "seen", deprecated, json = "seen_unix_nanos"
     // Source time.Time JSON, RFC3339Nano text (string reader checks length).
-    since_time string(35) | json = "since"
+    since string(35)
     // Source time.Time JSON, RFC3339Nano text (string reader checks length).
-    seen_time string(35) | json = "seen"
+    seen string(35)
 }
 
 // Lane is one machine's lanes of one kind (lane.go): holders and queue, oldest
