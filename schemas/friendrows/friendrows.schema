@@ -85,12 +85,12 @@ table FriendEntry
 // struct.
 table FriendStatus
 {
-    // FriendStates: "up", "held", "down". The one bound that stays: its one
-    // writer (PublishFriendStatus, from deriveFriendStatus) sets it from
-    // PresenceStatus or FriendHookStatus, which return only those words, and
-    // its one reader (FriendRows) shows any other word as down. The bound
-    // table cites each path.
-    status string(8)
+    // FriendStates: "up", "held", "down". The writer (PublishFriendStatus, from
+    // deriveFriendStatus) sets it from PresenceStatus or FriendHookStatus, which
+    // return only those words, but the reader (FriendRows) shows any word
+    // outside FriendStates as down and accepts any length, so status is open
+    // text.
+    status *string
     // a hook reason or a hold reason, composed by the store with no length.
     reason *string
     // Source time.Time JSON, RFC3339Nano text.

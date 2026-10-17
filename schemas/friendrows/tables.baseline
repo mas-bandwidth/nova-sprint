@@ -68,7 +68,7 @@ table FriendReport
     field present id=0x6f3f2303c0258eac kind=17 type=string
 
 table FriendStatus
-    field status id=0xc4d5696d6cc12c2f kind=12 size=8
+    field status id=0xc4d5696d6cc12c2f kind=17 type=string
     field reason id=0x65e8d7f3474f2639 kind=17 type=string
     field until id=0x1fcc8b4e81fbac2f kind=17 type=string
     field evidence id=0xae70fc8f5906c564 kind=17 type=string
@@ -173,3 +173,7 @@ table Ticks
 ## history
 ### 2026-10-17 (UTC) — the unlanded friendrows area opens every bound a code path does not enforce
 - baseline created over 21 tables — data written BEFORE this point is not covered by it
+
+### 2026-10-17 (UTC) — FriendStatus.status becomes open text: FriendRows shows any word outside FriendStates as down and accepts any length
+- FriendStatus.status: wire kind 12 -> 17 [refuse]
+- FriendStatus.status: nested table string added [refuse]

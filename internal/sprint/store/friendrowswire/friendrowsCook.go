@@ -233,16 +233,14 @@ type FriendReportRow struct {
 // FriendStatusRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type FriendStatusRow struct {
-	Status       [9]byte // string(8): buffer, used length beside it
-	_            [3]byte // generated padding
-	StatusLength int32
-	Reason       int64 // *: signed self-relative delta, zero is null (§6.3)
-	Until        int64 // *: signed self-relative delta, zero is null (§6.3)
-	Evidence     int64 // *: signed self-relative delta, zero is null (§6.3)
-	WorkerLive   bool
-	Unhooked     bool
-	_            [6]byte // generated padding
-	At           int64   // *: signed self-relative delta, zero is null (§6.3)
+	Status     int64 // *: signed self-relative delta, zero is null (§6.3)
+	Reason     int64 // *: signed self-relative delta, zero is null (§6.3)
+	Until      int64 // *: signed self-relative delta, zero is null (§6.3)
+	Evidence   int64 // *: signed self-relative delta, zero is null (§6.3)
+	WorkerLive bool
+	Unhooked   bool
+	_          [6]byte // generated padding
+	At         int64   // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // HoldViewRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
@@ -464,15 +462,15 @@ func init() {
 	tableCookLayoutOffset("FriendReportRow.Build", unsafe.Offsetof(FriendReportRow{}.Build), 128)
 	tableCookLayoutOffset("FriendReportRow.Started", unsafe.Offsetof(FriendReportRow{}.Started), 136)
 	tableCookLayoutOffset("FriendReportRow.Present", unsafe.Offsetof(FriendReportRow{}.Present), 144)
-	tableCookLayoutSize("FriendStatusRow", unsafe.Sizeof(FriendStatusRow{}), 56)
+	tableCookLayoutSize("FriendStatusRow", unsafe.Sizeof(FriendStatusRow{}), 48)
 	tableCookLayoutSize("FriendStatusRow alignment", unsafe.Alignof(FriendStatusRow{}), 8)
 	tableCookLayoutOffset("FriendStatusRow.Status", unsafe.Offsetof(FriendStatusRow{}.Status), 0)
-	tableCookLayoutOffset("FriendStatusRow.Reason", unsafe.Offsetof(FriendStatusRow{}.Reason), 16)
-	tableCookLayoutOffset("FriendStatusRow.Until", unsafe.Offsetof(FriendStatusRow{}.Until), 24)
-	tableCookLayoutOffset("FriendStatusRow.Evidence", unsafe.Offsetof(FriendStatusRow{}.Evidence), 32)
-	tableCookLayoutOffset("FriendStatusRow.WorkerLive", unsafe.Offsetof(FriendStatusRow{}.WorkerLive), 40)
-	tableCookLayoutOffset("FriendStatusRow.Unhooked", unsafe.Offsetof(FriendStatusRow{}.Unhooked), 41)
-	tableCookLayoutOffset("FriendStatusRow.At", unsafe.Offsetof(FriendStatusRow{}.At), 48)
+	tableCookLayoutOffset("FriendStatusRow.Reason", unsafe.Offsetof(FriendStatusRow{}.Reason), 8)
+	tableCookLayoutOffset("FriendStatusRow.Until", unsafe.Offsetof(FriendStatusRow{}.Until), 16)
+	tableCookLayoutOffset("FriendStatusRow.Evidence", unsafe.Offsetof(FriendStatusRow{}.Evidence), 24)
+	tableCookLayoutOffset("FriendStatusRow.WorkerLive", unsafe.Offsetof(FriendStatusRow{}.WorkerLive), 32)
+	tableCookLayoutOffset("FriendStatusRow.Unhooked", unsafe.Offsetof(FriendStatusRow{}.Unhooked), 33)
+	tableCookLayoutOffset("FriendStatusRow.At", unsafe.Offsetof(FriendStatusRow{}.At), 40)
 	tableCookLayoutSize("HoldViewRow", unsafe.Sizeof(HoldViewRow{}), 72)
 	tableCookLayoutSize("HoldViewRow alignment", unsafe.Alignof(HoldViewRow{}), 8)
 	tableCookLayoutOffset("HoldViewRow.Kind", unsafe.Offsetof(HoldViewRow{}.Kind), 0)
@@ -686,15 +684,15 @@ func init() {
 		},
 	}
 	tableCookRecords[5] = TableCookInfo{
-		Name: "FriendStatus", Size: 56, Align: 8, NumFields: 7,
+		Name: "FriendStatus", Size: 48, Align: 8, NumFields: 7,
 		Fields: []TableCookFieldInfo{
-			{Name: "status", Offset: 0, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 8, IsPointer: false, CountOffset: 12, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "reason", Offset: 16, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "until", Offset: 24, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "evidence", Offset: 32, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "worker_live", Offset: 40, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
-			{Name: "unhooked", Offset: 41, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
-			{Name: "at", Offset: 48, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "status", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "reason", Offset: 8, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "until", Offset: 16, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "evidence", Offset: 24, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "worker_live", Offset: 32, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
+			{Name: "unhooked", Offset: 33, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
+			{Name: "at", Offset: 40, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 		},
 	}
 	tableCookRecords[6] = TableCookInfo{
@@ -974,7 +972,7 @@ type FriendStatusCook struct {
 // accessors are members free to spell them that way, and a package constant
 // per table per fact would claim names §11 does not.
 func (c FriendStatusCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
-func (c FriendStatusCook) RootSize() int64        { return 56 }
+func (c FriendStatusCook) RootSize() int64        { return 48 }
 func (c FriendStatusCook) RootAlign() int64       { return 8 }
 
 // Root is the root record at the region's base. It is a POINTER and not a
@@ -1021,7 +1019,7 @@ func (cook *FriendStatusCook) Open(base unsafe.Pointer, length int64) error {
 	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 56 {
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 48 {
 		return TableRefuseTruncated
 	}
 	if uint64(uintptr(base))%alignment != 0 {

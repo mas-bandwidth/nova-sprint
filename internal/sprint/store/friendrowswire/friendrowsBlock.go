@@ -250,7 +250,7 @@ func init() {
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table FriendStatus has NO block form: it is VARIABLE-LENGTH: FriendStatus.reason is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table FriendStatus has NO block form: it is VARIABLE-LENGTH: FriendStatus.status is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 

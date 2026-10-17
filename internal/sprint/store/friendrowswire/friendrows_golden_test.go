@@ -28,10 +28,8 @@ const friendRowsHelp = "nova-sprint store friendrows"
 // the schema JSON text (S2), through pkg/schemaread. A value past each
 // declared bound, and a damaged image of each form, is refused by name. The
 // strict reader returns the zero value; it does not hand back a clamped one.
-// Every bound that stays is a bound every path that writes or reads the value
-// enforces (the pull request's bound table); a value past each removed bound
-// round-trips whole in all three forms (openValues), and the one bound left,
-// FriendStatus.status, is refused one past.
+// No table declares a bound: every value the code does not refuse round-trips
+// whole in all three forms (openValues), and no value is refused past a bound.
 func TestFriendRowsGolden(t *testing.T) {
 	t.Parallel()
 	// The one fixed table: two uint64 counters, bounded by their type alone.
@@ -826,11 +824,11 @@ func int64Field(t *testing.T, info *TableTypeInfo, p unsafe.Pointer, name string
 	return 0
 }
 
-// onlyRealBounds requires that the only bound any table declares is the one
-// the bound table keeps: FriendStatus.status, 8 bytes (store/friends.go: the
-// one writer sets one of three words and the one reader shows any other as
-// down). A fixed array, a counted text or a numeric range anywhere else is a
-// bound some path does not enforce.
+// onlyRealBounds requires that no table declares a bound: FriendStatus.status
+// is open text because the reader (FriendRows) shows any word outside
+// FriendStates as down and accepts any length (store/friends.go). A fixed
+// array, a counted text or a numeric range anywhere is a bound some path does
+// not enforce.
 func onlyRealBounds(t *testing.T, fixed *TableTypeInfo, rows []varRow) {
 	t.Helper()
 	found := map[string]int{}
@@ -860,7 +858,7 @@ func onlyRealBounds(t *testing.T, fixed *TableTypeInfo, rows []varRow) {
 	for _, r := range rows {
 		walk(r.info)
 	}
-	want := map[string]int{"FriendStatus.status": 8}
+	want := map[string]int{}
 	if len(found) != len(want) {
 		t.Errorf("declared bounds = %v, want only %v", found, want)
 	}
@@ -904,7 +902,7 @@ func openValues(t *testing.T, rows map[string]varRow) {
 		in   map[string]any
 	}{
 		{"FriendEntry", map[string]any{"at": longTime, "until": longTime, "by": longText(300), "mode": longText(40), "pronouns": longText(40), "session": longText(40), "billing": longText(100), "reason": long, "token_cap": json.Number("-5"), "token_cap_set": true, "width": json.Number("-3")}},
-		{"FriendStatus", map[string]any{"status": "down", "at": longTime, "until": longTime, "reason": long, "evidence": long}},
+		{"FriendStatus", map[string]any{"status": longText(40), "at": longTime, "until": longTime, "reason": long, "evidence": long}},
 		{"LoadSample", sample},
 		{"RunWord", map[string]any{"text": longText(4097)}},
 		{"FriendReport", map[string]any{
