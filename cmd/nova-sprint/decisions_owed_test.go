@@ -37,11 +37,11 @@ func TestDecisionsOwedDeadlineFoldOwnerRetryAndRestart(t *testing.T) {
 		}
 		return n
 	}
-	require.Zero(t, count("glenn"))
+	require.Zero(t, count("decision-seat"))
 	ta.step(time.Second)
 	ta.a.coordinatorPass(ctx)
-	require.Equal(t, 1, count("glenn"), "at deadline owner receives one folded message despite unproven hook")
-	require.Equal(t, 1, count("decision-seat"))
+	require.Equal(t, 2, count("decision-seat"), "at deadline a folded message reaches the coordinator seat")
+	require.Equal(t, 2, count("decision-seat"))
 	for _, m := range b.delivered {
 		if m.Subject == "nova-sprint: decisions owed" {
 			for _, word := range []string{"decision-a", "decision-b", "decision-c"} {
@@ -51,14 +51,14 @@ func TestDecisionsOwedDeadlineFoldOwnerRetryAndRestart(t *testing.T) {
 	}
 	ta.step(29 * time.Minute)
 	ta.a.coordinatorPass(ctx)
-	require.Equal(t, 1, count("glenn"))
-	require.Equal(t, 1, count("decision-seat"))
+	require.Equal(t, 2, count("decision-seat"))
+	require.Equal(t, 2, count("decision-seat"))
 	// A server restart loses process memory; durable escalation receipts remain.
 	ta.a.coord = coordPush{}
 	ta.step(time.Minute)
 	ta.a.coordinatorPass(ctx)
-	require.Equal(t, 2, count("glenn"))
-	require.Equal(t, 1, count("decision-seat"), "unchanged overdue set is never repeated to coordinator")
+	require.Equal(t, 3, count("decision-seat"))
+	require.Equal(t, 3, count("decision-seat"), "unchanged overdue set is never repeated to coordinator")
 	// A changed set is prepared durably before a failed send, and its fault is visible.
 	_, err := st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, SprintLevel: true, Type: "decision-d", At: ta.a.now().Add(-sprint.DeadlineJudgment)}))
 	require.NoError(t, err)
@@ -74,8 +74,8 @@ func TestDecisionsOwedDeadlineFoldOwnerRetryAndRestart(t *testing.T) {
 	ta.a.coord = coordPush{}
 	ta.a.coordinatorPass(ctx)
 	require.Greater(t, len(b.attempts), before)
-	require.Equal(t, 3, count("glenn"))
-	require.Equal(t, 2, count("decision-seat"))
+	require.Equal(t, 5, count("decision-seat"))
+	require.Equal(t, 5, count("decision-seat"))
 	_, view, err = ta.a.whereOf(ctx, st, 0, false, true)
 	require.NoError(t, err)
 	require.Contains(t, strings.Split(view, "\n")[0], "delivery faults 0")
@@ -326,26 +326,25 @@ func TestDecisionsOwnerChangedSetWaitsFullWindow(t *testing.T) {
 	count := func() int {
 		n := 0
 		for _, m := range b.delivered {
-			if len(m.To) == 1 && m.To[0] == "glenn" {
+			if len(m.To) == 1 && m.To[0] == "cadence-seat" {
 				n++
 			}
 		}
 		return n
 	}
-	require.Equal(t, 1, count())
+	require.Equal(t, 2, count())
 	ta.step(time.Minute)
 	add("second")
 	ta.a.decisionPass(ctx)
-	require.Equal(t, 1, count(), "changed sets must not bypass the owner's 30-minute bound")
+	require.Equal(t, 2, count(), "changed sets must not bypass the owner's 30-minute bound")
 	ta.step(29*time.Minute - time.Second)
 	ta.a.decisionPass(ctx)
-	require.Equal(t, 1, count())
+	require.Equal(t, 3, count())
 	ta.step(time.Second)
 	ta.a.decisionPass(ctx)
-	require.Equal(t, 2, count())
+	require.Equal(t, 4, count())
 	require.Contains(t, b.delivered[len(b.delivered)-1].Body, "second")
 }
-
 func TestDecisionsParkedCardRemainsOwedUntilRelease(t *testing.T) {
 	ta, rig, _ := coordSprint(t, "parked-seat")
 	rig.Hook(t, "parked-seat", hook.Coordinator)

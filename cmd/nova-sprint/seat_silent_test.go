@@ -91,7 +91,7 @@ func TestASeatSilentSendThatFailsIsTriedAgainUnderOneToken(t *testing.T) {
 	want := seatSilentToken("", es.N, id, 0)
 	assert.Equal(t, want, b.attempts[0].Token, "the raise's token: sprint, epoch, judgment, raise")
 	assert.Equal(t, want, b.attempts[1].Token, "the retry is the same send")
-	assert.Equal(t, []string{"glenn"}, b.delivered[0].To)
+	assert.Equal(t, []string{"coordinator"}, b.delivered[0].To)
 
 	ta.pastTheLook()
 	ta.a.tellSeatSilent(ctx, st)

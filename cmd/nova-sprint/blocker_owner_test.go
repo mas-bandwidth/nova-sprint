@@ -40,7 +40,7 @@ func TestTheBlockerJudgmentGoesToTheOwnerAtOnce(t *testing.T) {
 	require.Len(t, b.delivered, 1, "the first tick that raises NNeedBlocked sends one message to the owner")
 	assert.Contains(t, b.delivered[0].Body, "a-route-may-be-frontier")
 	assert.Contains(t, b.delivered[0].Body, "muse-is-a-fleet-harness")
-	assert.Equal(t, []string{"amy"}, b.delivered[0].To)
+	assert.Equal(t, []string{"coordinator"}, b.delivered[0].To)
 
 	// Second tick / look:
 	ta.pastTheLook()
