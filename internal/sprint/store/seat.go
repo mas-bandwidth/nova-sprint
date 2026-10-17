@@ -3,9 +3,11 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/friendrowswire"
 )
 
 // The coordinator's seat (docs/SPEC-SPRINT.md, "Handing over the seat"): the
@@ -178,6 +180,88 @@ type ServerRecord struct {
 	Host    string    `json:"host,omitempty"`
 }
 
+// serverSchema is the ServerRecord table's schema JSON text (friendrows.schema
+// ServerRecord).
+type serverSchema struct {
+	Actor   *string `json:"actor"`
+	At      *string `json:"at"`
+	Version *string `json:"version"`
+	Commit  *string `json:"commit"`
+	Started *string `json:"started"`
+	Land    bool    `json:"land"`
+	PID     int64   `json:"pid"`
+	Host    *string `json:"host"`
+}
+
+// serverTable is the generated ServerRecord table (S1, S2).
+func serverTable() friendTable[friendrowswire.ServerRecord] {
+	return friendTable[friendrowswire.ServerRecord]{
+		measure: friendrowswire.ServerRecordLoadMeasureReason,
+		load:    friendrowswire.ServerRecordLoad,
+		fromJSON: func(text []byte, rep *friendrowswire.TableReport) (*friendrowswire.ServerRecord, bool) {
+			var b friendrowswire.ServerRecordBuilder
+			if !b.Init() {
+				return nil, false
+			}
+			if !friendrowswire.ServerRecordFromJson(&b, text, rep) || !b.Lock() {
+				return nil, false
+			}
+			return b.AsConst(), true
+		},
+		toJSON: func(w *friendrowswire.ServerRecord) []byte {
+			buf := make([]byte, max(friendrowswire.ServerRecordToJsonMeasure(w), 0))
+			return buf[:max(friendrowswire.ServerRecordToJson(w, buf), 0)]
+		},
+		save: func(w *friendrowswire.ServerRecord) []byte {
+			buf := make([]byte, max(friendrowswire.ServerRecordMeasure(w), 0))
+			return buf[:max(friendrowswire.ServerRecordSave(w, buf), 0)]
+		},
+	}
+}
+
+// serverRowFns is the server record as the row reader reads it: SERVERRECORD
+// (S1, S2, S4). It reads the fixed form byte 3, the variable table wire, the
+// padded standard base64 of that wire, the schema JSON text and today's legacy
+// JSON (S2).
+func serverRowFns() RowFns[ServerRecord] {
+	return presenceRowFns("SERVERRECORD", serverTable(), func(e *ServerRecord) serverSchema {
+		return serverSchema{
+			Actor: rowText(e.Actor), At: rowTime(e.At), Version: rowText(e.Version),
+			Commit: rowText(e.Commit), Started: rowTime(e.Started), Land: e.Land,
+			PID: int64(e.PID), Host: rowText(e.Host),
+		}
+	}, func(m *serverSchema) (ServerRecord, bool) {
+		at, okAt := rowTimeOf(m.At)
+		started, okStarted := rowTimeOf(m.Started)
+		return ServerRecord{
+			Actor: rowTextOf(m.Actor), At: at, Version: rowTextOf(m.Version),
+			Commit: rowTextOf(m.Commit), Started: started, Land: m.Land,
+			PID: int(m.PID), Host: rowTextOf(m.Host),
+		}, okAt && okStarted
+	})
+}
+
+// serverCodecs holds each store's one server reader, keyed by the store
+// pointer so one test's records are not another's. S4: its counts are the
+// evidence Check exports.
+var serverCodecs sync.Map
+
+// serverRows makes and registers the one server reader on this Store. S2, S4.
+func (st *Store) serverRows() *RowCodec[ServerRecord] {
+	if st == nil {
+		return nil
+	}
+	if v, ok := serverCodecs.Load(st); ok {
+		c := v.(*RowCodec[ServerRecord])
+		c.Register(st)
+		return c
+	}
+	c := NewRowCodec(serverRowFns())
+	serverCodecs.Store(st, c)
+	c.Register(st)
+	return c
+}
+
 // expiringKV is a backend whose keys can expire (Redis): the server's record is
 // written for ServerTTL. A KV without it keeps the record until it is written
 // again, and the reader judges it by its time.
@@ -222,8 +306,13 @@ func (st *Store) Server(ctx context.Context) (ServerRecord, bool, error) {
 	if err != nil || !ok {
 		return r, false, err
 	}
-	if err := json.Unmarshal([]byte(raw), &r); err != nil {
-		return r, false, err
+	// S2: the server record is read through the row codec, which accepts the
+	// fixed image, the padded standard base64 of that image, the schema JSON
+	// text and today's legacy JSON, refuses damage by name and counts each read
+	// per form. A refusal is handed to the caller by name, never read as absent.
+	r, _, err = st.serverRows().Read([]byte(raw))
+	if err != nil {
+		return ServerRecord{}, false, err
 	}
 	if st.now().Sub(r.At) > ServerTTL {
 		return ServerRecord{}, false, nil
