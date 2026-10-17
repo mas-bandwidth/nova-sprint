@@ -153,7 +153,7 @@ func TestDoneRecordFixedPaged(t *testing.T) {
 		{"text ill formed", mut(func(b []byte) []byte { b[bodyAt+8+4] = 0xff; return b }), "text_ill_formed"},
 		{"legacy json unreadable", `{"epoch":`, "legacy_json_unreadable"},
 	} {
-		dec, _, why := decodeDonePage(tc.image)
+		dec, _, why := pinned.decodeDonePage(tc.image)
 		assert.Equal(t, tc.why, why, tc.name)
 		assert.Equal(t, DoneRecord{}, dec, tc.name)
 	}

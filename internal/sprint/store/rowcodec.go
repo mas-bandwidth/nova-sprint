@@ -10,8 +10,8 @@ import (
 
 // The one store row reader. A record card adopts it by passing a generated
 // fixed table's load and measure functions and the record's legacy JSON
-// decoder. No record adopts it here: done.go keeps its own path until its
-// retire card. Reads go through pkg/schemaread, which detects the form,
+// decoder. The done record adopts it in done.go; other records still have
+// their own paths until their cards. Reads go through pkg/schemaread, which detects the form,
 // refuses damage by name and counts each read once under the form read.
 //
 // S1: a server-owned record is a fixed table (form byte 3).
@@ -61,6 +61,9 @@ type RowFns[T any] struct {
 
 	// Form is the fixed form byte. Zero means fixedFormByte. S1.
 	Form byte
+	// Forms replaces Form when set. It lets a record's load inspect every wire
+	// form byte and preserve its existing refusal reasons. S2.
+	Forms []byte
 
 	Reset       func(*T)
 	Measure     func([]byte) error
@@ -86,6 +89,10 @@ func NewRowCodec[T any](fns RowFns[T]) *RowCodec[T] {
 	if form == 0 {
 		form = fixedFormByte
 	}
+	forms := fns.Forms
+	if len(forms) == 0 {
+		forms = []byte{form}
+	}
 	load := func(fn func(*T, []byte) RowReport) func(*T, []byte) schemaread.Report {
 		return func(v *T, in []byte) schemaread.Report {
 			if fn == nil {
@@ -99,7 +106,7 @@ func NewRowCodec[T any](fns RowFns[T]) *RowCodec[T] {
 		Name:        fns.Name,
 		Help:        rowCheckHelp,
 		Reset:       fns.Reset,
-		Forms:       []byte{form},
+		Forms:       forms,
 		Measure:     fns.Measure,
 		LoadWire:    load(fns.LoadWire),
 		LoadJSON:    load(fns.LoadJSON),
@@ -162,7 +169,7 @@ var rowRegs sync.Map
 
 // Register counts this reader on st's CheckReport. S4: the per-form counter
 // is the evidence Check exports. A record card calls it when the store is
-// built; this card registers none of the stored records.
+// built.
 func (c *RowCodec[T]) Register(st *Store) {
 	if c == nil || st == nil {
 		return
@@ -170,6 +177,12 @@ func (c *RowCodec[T]) Register(st *Store) {
 	v, _ := rowRegs.LoadOrStore(st, &rowReg{})
 	r := v.(*rowReg)
 	r.mu.Lock()
+	for _, registered := range r.list {
+		if registered == c {
+			r.mu.Unlock()
+			return
+		}
+	}
 	r.list = append(r.list, c)
 	r.mu.Unlock()
 }
@@ -183,6 +196,8 @@ func (st *Store) rowFormCounts() map[string]map[string]uint64 {
 	if st == nil {
 		return out
 	}
+	// S4: a fresh Store lists DONERECORD at zero before the first page read.
+	st.doneRows()
 	v, ok := rowRegs.Load(st)
 	if !ok {
 		return out
@@ -204,8 +219,8 @@ type linkRow struct{}
 var linkRowOnce sync.Once
 
 // linkRowReader reaches the reader's entry points from check. No stored record
-// is read: a record card registers its own codec, and until one does, row_forms
-// is empty. The check command is what carries the reader in the binary. S4.
+// is read here; each adopting card registers its codec and reports its counts.
+// The check command is what carries the reader in the binary. S4.
 func linkRowReader() {
 	linkRowOnce.Do(func() {
 		c := NewRowCodec(RowFns[linkRow]{Name: "ROW"})

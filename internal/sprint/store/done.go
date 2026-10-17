@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/donewire"
+	"github.com/mas-bandwidth/nova-tools/pkg/schemaread"
 )
 
 // The done record (docs/SPEC-SPRINT.md section 1, done and ok%; schemas/store/store.schema):
@@ -104,38 +106,56 @@ func doneText(dst []byte, s string) (int32, string) {
 	return int32(copy(dst, s)), ""
 }
 
-// decodeDonePage decodes one stored page of the done record (fixed form, or legacy JSON when
-// raw[0] == '{'), returning the page's record, the total page count declared on the page, or
-// the refusal reason that read nothing.
-func decodeDonePage(raw string) (DoneRecord, uint32, string) {
-	if raw == "" {
-		return DoneRecord{}, 0, "empty"
+// donePage is one page decoded by the done row reader (S1, S2).
+type donePage struct {
+	rec   DoneRecord
+	pages uint32
+}
+
+// doneWireForms lets the generated fixed loader preserve refusal reasons for every form byte
+// instead of having the row reader reject one first (S2).
+func doneWireForms() []byte {
+	forms := make([]byte, 256)
+	for i := range forms {
+		forms[i] = byte(i)
 	}
-	if raw[0] == '{' {
-		var r DoneRecord
-		if err := json.Unmarshal([]byte(raw), &r); err != nil {
-			return DoneRecord{}, 0, "legacy_json_unreadable"
-		}
-		r.Done = compactDone(r.Done)
-		return r, 1, ""
+	return forms
+}
+
+// doneRowFns adapts the fixed table and today's legacy JSON reader to the store row codec (S1, S2).
+func doneRowFns() RowFns[donePage] {
+	return RowFns[donePage]{
+		Name: "DONERECORD", Forms: doneWireForms(),
+		Reset:    func(v *donePage) { *v = donePage{} },
+		LoadWire: doneLoadWire, LoadJSON: doneLoadJSON,
+		Legacy:     func(in []byte) bool { return len(in) > 0 && in[0] == '{' },
+		LoadLegacy: doneLoadLegacy,
 	}
-	out := make([]donewire.DoneRecord, 1)
-	plan := make([]donewire.TableFixedEntry, doneFixedPlanRoom)
-	var rep donewire.TableReport
-	n := donewire.DoneRecordFixedLoad(out, []byte(raw), plan, &rep)
-	switch {
-	case n < 0 && rep.Reason != "":
-		return DoneRecord{}, 0, rep.Reason
-	case n < 0 || rep.Malformed:
-		return DoneRecord{}, 0, "malformed"
-	case n != 1:
-		return DoneRecord{}, 0, "record_count"
-	case rep.Clamped != 0:
-		return DoneRecord{}, 0, "clamped"
-	case rep.Unknown != 0 || rep.KindMismatch != 0:
-		return DoneRecord{}, 0, "unknown"
+}
+
+// doneRows makes and registers the one done reader on this Store. S4: its counts are the evidence
+// exported by Check and shared with pinned copies.
+func (st *Store) doneRows() *RowCodec[donePage] {
+	if st == nil {
+		return nil
 	}
-	w := &out[0]
+	lazyMu.Lock()
+	defer lazyMu.Unlock()
+	c := st.doneRowsLocked()
+	c.Register(st)
+	return c
+}
+
+// doneRowsLocked is doneRows while lazyMu is held (S4).
+func (st *Store) doneRowsLocked() *RowCodec[donePage] {
+	if st.doneRowCodec == nil {
+		st.doneRowCodec = NewRowCodec(doneRowFns())
+	}
+	return st.doneRowCodec
+}
+
+// donePageFromWire maps the generated fixed record into the page read by the store (S1).
+func donePageFromWire(w donewire.DoneRecord) donePage {
 	r := DoneRecord{Epoch: w.Epoch, Cursor: string(w.Cursor[:w.CursorLength])}
 	if w.DoneCount > 0 {
 		r.Done = make([]sprint.Completion, w.DoneCount)
@@ -143,17 +163,89 @@ func decodeDonePage(raw string) (DoneRecord, uint32, string) {
 	for i := range r.Done {
 		e := &w.Done[i]
 		r.Done[i] = sprint.Completion{
-			Kind: string(e.Kind[:e.KindLength]),
-			Card: string(e.Card[:e.CardLength]),
-			Row:  string(e.Row[:e.RowLength]),
-			At:   doneTimeOf(e.At),
+			Kind: string(e.Kind[:e.KindLength]), Card: string(e.Card[:e.CardLength]),
+			Row: string(e.Row[:e.RowLength]), At: doneTimeOf(e.At),
 		}
 	}
 	pages := w.Pages
 	if pages == 0 {
 		pages = 1
 	}
-	return r, pages, ""
+	return donePage{rec: r, pages: pages}
+}
+
+// doneWireReport preserves the fixed decoder's refusal precedence and reasons (S2).
+func doneWireReport(rep donewire.TableReport, n int64) RowReport {
+	switch {
+	case n < 0 && rep.Reason != "":
+		return RowReport{Reason: rep.Reason}
+	case n < 0 || rep.Malformed:
+		return RowReport{Malformed: true, Reason: "malformed"}
+	case n != 1:
+		return RowReport{Malformed: true, Reason: "record_count"}
+	case rep.Clamped != 0:
+		return RowReport{Clamped: int(rep.Clamped), Reason: "clamped"}
+	case rep.Unknown != 0 || rep.KindMismatch != 0:
+		return RowReport{Unknown: int(rep.Unknown), KindMismatch: int(rep.KindMismatch), Reason: "unknown"}
+	default:
+		return RowReport{}
+	}
+}
+
+// doneLoadWire adapts the generated fixed table while preserving the prior decoder's refusal reasons (S1, S2).
+func doneLoadWire(v *donePage, wire []byte) RowReport {
+	out := make([]donewire.DoneRecord, 1)
+	plan := make([]donewire.TableFixedEntry, doneFixedPlanRoom)
+	var rep donewire.TableReport
+	n := donewire.DoneRecordFixedLoad(out, wire, plan, &rep)
+	rr := doneWireReport(rep, n)
+	if rr.Reason == "" {
+		*v = donePageFromWire(out[0])
+	}
+	return rr
+}
+
+// doneLoadJSON adapts the generated schema JSON form to the same page value (S2).
+func doneLoadJSON(v *donePage, text []byte) RowReport {
+	var w donewire.DoneRecord
+	var rep donewire.TableReport
+	if !donewire.DoneRecordFromJson(&w, text, &rep) {
+		rr := RowReport{Unknown: int(rep.Unknown), KindMismatch: int(rep.KindMismatch), Clamped: int(rep.Clamped),
+			Malformed: rep.Malformed, Duplicate: int(rep.Duplicate), Reason: rep.Reason}
+		if rr.Reason == "" && !rr.Malformed && rr.Duplicate == 0 && rr.Clamped == 0 && rr.Unknown == 0 && rr.KindMismatch == 0 {
+			rr.Malformed = true
+		}
+		return rr
+	}
+	*v = donePageFromWire(w)
+	return RowReport{}
+}
+
+// doneLoadLegacy keeps today's JSON page decoder and compaction behavior (S2, S4).
+func doneLoadLegacy(v *donePage, raw []byte) RowReport {
+	if err := json.Unmarshal(raw, &v.rec); err != nil {
+		return RowReport{Malformed: true, Reason: "legacy_json_unreadable"}
+	}
+	v.rec.Done = compactDone(v.rec.Done)
+	v.pages = 1
+	return RowReport{}
+}
+
+// decodeDonePage reads one stored page through the registered row codec (S1, S2, S4), returning
+// its record, the declared page count, or the original refusal reason. Empty remains the early return.
+func (st *Store) decodeDonePage(raw string) (DoneRecord, uint32, string) {
+	if raw == "" {
+		return DoneRecord{}, 0, "empty"
+	}
+	page, _, err := st.doneRows().Read([]byte(raw))
+	if err != nil {
+		var refusal *schemaread.Refusal
+		if errors.As(err, &refusal) {
+			return DoneRecord{}, 0, refusal.Reason
+		}
+		return DoneRecord{}, 0, "malformed"
+	}
+	return page.rec, page.pages, ""
 }
 
 // doneFixedPageOf fills w as one fixed-table page of (epoch, cursor, pages, chunk), or returns
@@ -250,7 +342,7 @@ func (st *Store) readDoneFrom(ctx context.Context, kv KV, raw string, ok bool) (
 	if !ok {
 		return DoneRecord{Epoch: st.epoch}, 0, "", nil
 	}
-	r, pages, why := decodeDonePage(raw)
+	r, pages, why := st.decodeDonePage(raw)
 	if why != "" {
 		return DoneRecord{Epoch: st.epoch}, 0, why, nil
 	}
@@ -278,7 +370,7 @@ func (st *Store) readDoneFrom(ctx context.Context, kv KV, raw string, ok bool) (
 			if !pok {
 				return DoneRecord{Epoch: st.epoch}, pages, "missing_page", nil
 			}
-			pr, _, pwhy := decodeDonePage(vals[i])
+			pr, _, pwhy := st.decodeDonePage(vals[i])
 			if pwhy != "" {
 				return DoneRecord{Epoch: st.epoch}, pages, pwhy, nil
 			}
@@ -314,7 +406,7 @@ func (st *Store) donePageKeys(ctx context.Context) []string {
 	if err != nil || !ok {
 		return nil
 	}
-	_, pages, why := decodeDonePage(raw)
+	_, pages, why := st.decodeDonePage(raw)
 	if why != "" || pages <= 1 {
 		return nil
 	}

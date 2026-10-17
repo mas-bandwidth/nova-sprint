@@ -74,6 +74,8 @@ var lazyMu sync.Mutex
 func (st *Store) clone() Store {
 	lazyMu.Lock()
 	defer lazyMu.Unlock()
+	// S4: pinning a Store shares the done reader and its per-form counts.
+	st.doneRowsLocked()
 	return *st
 }
 
