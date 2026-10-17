@@ -78,6 +78,10 @@ func (a *app) cmdHoldKind(verb, kind string, release bool, args []string, stdout
 	if !release && kind != sprint.HoldFriend {
 		fs.BoolVar(&ret, "return", false, "hand back only a member's ready cards; when the member is down, its dead working cards too; hand back a reader's reads asked or begun or withdraw a stream's working cards (default: a member that is up keeps its taken cards and finishes them; what is begun finishes for other names, but a held friend keeps no card either way)")
 	}
+	forceLast := false
+	if !release && (kind == "" || kind == sprint.HoldMember) {
+		fs.BoolVar(&forceLast, "force-last", false, "hold the last member that can run a land gate anyway: every landing will be refused until one is unheld, and the note says no gate bench is left")
+	}
 	cause := new(string)
 	if !release && kind != sprint.HoldFriend {
 		cause = fs.String("cause", "", "what ends a fleet member's hold: a judgment open now (its alias j<n> or its id); the tick releases the hold in the step that sees it end, and logs 'released: cause <x> resolved' to the seat. A hold with no cause is reported every "+sprint.HoldNoCauseEvery.String()+" until it is released or names one")
@@ -141,7 +145,7 @@ func (a *app) cmdHoldKind(verb, kind string, release bool, args []string, stdout
 		fmt.Fprintf(stdout, "%s DRY-RUN names=%s return=%t; nothing was written\n", strings.ToUpper(name), strings.Join(pos, ","), ret)
 		return 0
 	}
-	req := sprint.HoldReq{Names: pos, Release: release, Return: ret, Kind: kind, Reason: *reason, Who: c.actor}
+	req := sprint.HoldReq{Names: pos, Release: release, Return: ret, Kind: kind, Reason: *reason, Who: c.actor, ForceLast: forceLast}
 	if req.Cause = strings.TrimSpace(*cause); req.Cause != "" {
 		if _, doctor := sprint.DoctorCause(req.Cause); doctor {
 			// no doctor cause in v1.2.x (hold_cause.go, DoctorCauseDeferred)
@@ -201,6 +205,13 @@ func (a *app) runHold(verbName, stepVerb string, c common, st *store.Store, r sp
 		line, facts := ok()
 		sayOK(stdout, c.json, verbName, line, facts)
 		return 0
+	}
+	// the last-gate guard is the verb's refuse form: exit 2, the refusal's line on
+	// stderr, nothing written
+	for _, r := range res.Refused {
+		if strings.Contains(r.Why, "leaves no gate bench") {
+			return refuse(stderr, verbName, r.Key+": "+r.Why)
+		}
 	}
 	return a.report(ctx, verbName, c, st, res, err, stdout, stderr)
 }

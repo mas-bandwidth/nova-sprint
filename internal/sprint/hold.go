@@ -86,6 +86,13 @@ type HoldReq struct {
 	Kind   string `json:",omitempty"`
 	Reason string
 	Who    string
+	// ForceLast holds the last member that can run a land gate anyway: the hold passes
+	// and its note says no gate bench is left (--force-last).
+	ForceLast bool `json:",omitempty"`
+	// NoLastGateGuard is the tests' seam: the last-gate guard reads it off (true) to
+	// show the guard a plant removed would be caught by its own test. It is never set
+	// by a verb.
+	NoLastGateGuard bool `json:"-"`
 	// Cause, with a member's hold, is what ends it (hold_cause.go): a judgment as the
 	// coordinator named it (j<n>, or its id), with CauseNote the id it named (a
 	// doctor:<check> cause is refused: DoctorCauseDeferred). The tick ends the hold in the
@@ -194,6 +201,17 @@ func holdElsewhere(n string, kinds []string, release bool) string {
 	return ": " + n + " is a " + holdKindWords[kinds[0]] + "; run: nova-sprint " + verb + " " + n + tail
 }
 
+// gateCapable says a member can run a land gate now: its status is up. A held member is
+// not one at this base (a coordinator's hold writes status down); when the sibling card
+// that lets a held member bench (Snapshot.GateMembers) lands, that should replace this.
+func gateCapable(ctl *Card) bool { return ctl != nil && ctl.F("status") == Up }
+
+// lastGateRefusal is the guard's refusal when a hold would leave no gate bench: the
+// member being held, and the consequence with the override that holds it anyway.
+func lastGateRefusal(member string) Refusal {
+	return Refusal{member, "holding " + member + " leaves no gate bench: every landing will be refused until one is unheld; --force-last holds it anyway"}
+}
+
 // HoldNames is hold and unhold as one step (docs/SPEC-SPRINT.md section 11): every name
 // resolved first (HoldTargets), all or none; then each kind's part, and a happened
 // note per name, the reason in it, so the log holds every hold and release. A dealt
@@ -220,6 +238,38 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 			members = append(members, t.Name)
 		case t.Kind == HoldStream && !r.Release:
 			keep[t.Name] = true
+		}
+	}
+	// A hold that would leave no member able to run a land gate is refused before any
+	// plan is built: every landing would be refused until one is unheld. The members
+	// named here count as gone; release, a member already unable to run a gate, and the
+	// old --return maintenance path (fleet down) are never refused. --force-last
+	// records the override on the note instead.
+	forceLast := false
+	if len(members) > 0 && !r.Release && !r.Return && !r.NoLastGateGuard {
+		named := map[string]bool{}
+		for _, m := range members {
+			named[m] = true
+		}
+		capable, last := 0, ""
+		for _, m := range s.Members() {
+			if named[m] {
+				continue
+			}
+			if gateCapable(s.MemberCtl(m)) {
+				capable++
+			}
+		}
+		for _, m := range members {
+			if gateCapable(s.MemberCtl(m)) {
+				last = m
+			}
+		}
+		if capable == 0 && last != "" {
+			if !r.ForceLast {
+				return Plan{Refused: []Refusal{lastGateRefusal(last)}}
+			}
+			forceLast = true
 		}
 	}
 	var p Plan
@@ -280,7 +330,7 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 				}
 			}
 		}
-		p.Notes = append(p.Notes, holdNote(s, t, r, line))
+		p.Notes = append(p.Notes, holdNote(s, t, r, line, forceLast))
 	}
 	p = Lawful(p)
 	roundWrites(&p, rr, moves)
@@ -297,7 +347,7 @@ func holdWhy(r HoldReq) string {
 
 // holdNote is the happened note of one name held or released: the log's line of the
 // hold, the reason in it.
-func holdNote(s *Snapshot, t HoldTarget, r HoldReq, line string) Note {
+func holdNote(s *Snapshot, t HoldTarget, r HoldReq, line string, forceLast bool) Note {
 	typ, word := NHeld, "held"
 	if r.Release {
 		typ, word = NUnheld, "released from its hold"
@@ -326,6 +376,9 @@ func holdNote(s *Snapshot, t HoldTarget, r HoldReq, line string) Note {
 	}
 	if line != "" {
 		n.What += "; " + line
+	}
+	if forceLast && t.Kind == HoldMember && !r.Release {
+		n.What += "; --force-last: no gate bench left"
 	}
 	return n
 }

@@ -160,7 +160,11 @@ func (a *app) landOnce(ctx context.Context, addr string, more []string, stdout i
 		// not be read. It stands until a pass gets past it or it changes: its lines are
 		// said when it begins, the beat names it every cycle (writeRefused), and its
 		// judgment is single (tla/ServerSwitch.tla LandRefused)
-		if !a.standRefusal(said, coordinator, code) {
+		var streams []string
+		if strings.Contains(said, benchGateUnavailableWhy) {
+			streams = a.queuedStreams(ctx, addr)
+		}
+		if !a.standRefusal(said, coordinator, code, streams) {
 			// the same cause: its judgment and since stand, and its words are not said
 			// again in full (the beat names it, in its latest words); only a queue
 			// outage's error is said again when it changes, being all that tells two
@@ -248,6 +252,23 @@ const (
 	causeQueue   = "queue"
 )
 
+// noGateBenchClass is the class the land loop gives the no-gate-bench refusal, so the
+// streams it names are display only: sprint.LandRefusalKey keys the cause on the class
+// alone and the same outage stays one judgment as its streams change.
+const noGateBenchClass = "no-gate-bench"
+
+// noGateBenchWhy is the cause the no-gate-bench refusal names, and noGateBenchReason is
+// its judgment's text: the streams with cards queued and the verb that restores a bench.
+const noGateBenchWhy = "no gate bench ran the tree gate (every fleet member is down, or held with no gate bench left)"
+
+func noGateBenchReason(streams []string) string {
+	named := strings.Join(streams, ",")
+	if named == "" {
+		named = "-"
+	}
+	return noGateBenchWhy + "; streams: " + named + "; nova-sprint fleet unhold <member> restores it"
+}
+
 // landClass marks a refusal before any batch with its class at the source: the
 // machine-readable code=<class> the land loop keys a standing cause on (with the stream,
 // where one applies), never the human text after it, whose counts, timings, hosts and
@@ -266,6 +287,9 @@ const landQueueUnread = "the merge queue could not be read"
 // what is the refusal's judgment text: its class (and stream) when it has one, its
 // reason and its remedy (sprint.LandRefusalKey reads the class back off it).
 func (r landRefusal) what() string {
+	if r.code == noGateBenchClass {
+		return "code=" + noGateBenchClass + ": " + r.reason
+	}
 	if r.code == "" {
 		return r.reason + "; run: " + r.remedy
 	}
@@ -385,12 +409,16 @@ func landCodeOf(reason string) (code, stream, text string) {
 // same key as the one that stands is the same refusal (its since and its judgment
 // kept), whatever counts, timings or ids its text carries; another replaces it, to be
 // judged anew (tla/ServerSwitch.tla LandRefused). changed says it replaced one.
-func (a *app) standRefusal(said, coord string, code int) (changed bool) {
+func (a *app) standRefusal(said, coord string, code int, streams []string) (changed bool) {
 	kind, reason, remedy := landRefusalOf(said, code)
 	class, stream, reason := landCodeOf(reason)
 	switch {
 	case kind == causeQueue:
 		class, reason = "queue-unread", landQueueUnread // the error's words are in the LAND FAILED line
+	case reason == benchGateUnavailableWhy:
+		// one cause however the streams with queued cards change: the text names them,
+		// the key is the class alone
+		class, stream, reason = noGateBenchClass, "", noGateBenchReason(streams)
 	case class == "" && strings.HasPrefix(reason, "land exited "):
 		class = "fault"
 	}
@@ -427,6 +455,7 @@ func (a *app) clearRefusal() {
 	if r := b.refusal; r != nil || !b.swept {
 		if r != nil {
 			b.closeAs = r.coord
+			b.resume, b.resumeTo = r.code == noGateBenchClass, r.coord
 		}
 		b.closing = true
 		b.closeGen++
@@ -492,6 +521,7 @@ func (a *app) judgeRefusal(ctx context.Context, addr string, w io.Writer) {
 	b := a.landState()
 	b.mu.Lock()
 	closing, closeAs, gen := b.closing, b.closeAs, b.closeGen
+	resume, resumeTo := b.resume, b.resumeTo
 	r := b.refusal
 	var standing landRefusal
 	if r != nil {
@@ -522,7 +552,18 @@ func (a *app) judgeRefusal(ctx context.Context, addr string, w io.Writer) {
 			a.judgeNotWritten(w, "the close of the lander's refusal: the store could not be opened: "+oneline.Err(err))
 			return
 		}
-		res, err := st.Run(ctx, store.Step{Verb: "land", Plan: sprint.LandRefusalClose})
+		res, err := st.Run(ctx, store.Step{Verb: "land", Plan: func(s *sprint.Snapshot) sprint.Plan {
+			p := sprint.LandRefusalClose(s)
+			if resume {
+				to := resumeTo
+				if to == "" {
+					to = s.Coordinator
+				}
+				p.Notes = append(p.Notes, sprint.Note{Kind: sprint.Happened, Type: "landing resumed",
+					What: "landing resumed: a gate bench ran", Who: sprint.MachineActor, To: to, At: s.Now})
+			}
+			return p
+		}})
 		if why := stepNotWritten(res, err); why != "" {
 			a.judgeNotWritten(w, "the close of the lander's refusal: "+why)
 			return
@@ -531,6 +572,7 @@ func (a *app) judgeRefusal(ctx context.Context, addr string, w io.Writer) {
 		b.mu.Lock()
 		if b.closeGen == gen {
 			b.closing, b.swept, b.closeAs = false, true, ""
+			b.resume, b.resumeTo = false, ""
 		}
 		b.mu.Unlock()
 		if r == nil {
@@ -593,6 +635,38 @@ func (a *app) landRun() func(args []string, stdout, stderr io.Writer, gate **hoo
 	return a.land
 }
 
+// queuedStreams is the streams with cards queued to merge, in the merge table's row
+// order: the streams a standing no-gate-bench refusal names. A test's stand-in is
+// landBeat.streamsSeam; a read that fails names none (the refusal still stands).
+func (a *app) queuedStreams(ctx context.Context, addr string) []string {
+	b := a.landState()
+	b.mu.Lock()
+	fn := b.streamsSeam
+	b.mu.Unlock()
+	if fn != nil {
+		streams, err := fn(ctx, addr)
+		if err != nil {
+			return nil
+		}
+		return streams
+	}
+	st, err := a.storeCtx(ctx, common{verb: "where", redis: addr})
+	if err != nil {
+		return nil
+	}
+	s, err := st.Load(ctx, []string{sprint.Merge}, nil)
+	if err != nil || s == nil {
+		return nil
+	}
+	var out []string
+	for _, row := range s.Merge.Rows() {
+		if s.Merge.Count(row, sprint.Queued) > 0 {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
 // landQueued is mergeQueued, or the test's stand-in for it (landBeat.queueSeam).
 func (a *app) landQueued(ctx context.Context, addr string) (n int, coordinator, stream string, err error) {
 	b := a.landState()
@@ -643,6 +717,11 @@ type landBeat struct {
 	refusal        *landRefusal
 	closing, swept bool
 	closeAs        string
+	// resume says the cleared refusal left no gate bench: its close writes one
+	// "landing resumed: a gate bench ran" note to resumeTo, once (a later outage sets
+	// it again).
+	resume   bool
+	resumeTo string
 	// closeGen counts the clears (clearRefusal): a close written for one generation
 	// leaves a later clear's close owed. closing is memory and a restart loses it; what
 	// it owed stays in the store as the lander's acknowledgement, which the next
@@ -650,12 +729,14 @@ type landBeat struct {
 	closeGen int
 	// notWritten is the last LAND JUDGMENT NOT WRITTEN reason said (judgeNotWritten).
 	notWritten string
-	// landSeam, queueSeam and startSeam are the test's stand-ins for land itself, the
-	// merge queue's count and the goroutine a flight runs on: a unit test drives the
-	// loop's beats with no store queue, no git and no real time (nil is the real one).
-	landSeam  func(args []string, stdout, stderr io.Writer, gate **hookGateError) int
-	queueSeam func(ctx context.Context, addr string) (n int, coordinator, stream string, err error)
-	startSeam func(run func())
+	// landSeam, queueSeam, streamsSeam and startSeam are the test's stand-ins for land
+	// itself, the merge queue's count, the streams with queued cards and the goroutine a
+	// flight runs on: a unit test drives the loop's beats with no store queue, no git
+	// and no real time (nil is the real one).
+	landSeam    func(args []string, stdout, stderr io.Writer, gate **hookGateError) int
+	queueSeam   func(ctx context.Context, addr string) (n int, coordinator, stream string, err error)
+	streamsSeam func(ctx context.Context, addr string) ([]string, error)
+	startSeam   func(run func())
 	// pulse is one slot filled each land-loop cycle. A landing waiting to ask
 	// for a Go lane again receives it. The loop's own clock is the wait; the
 	// ask adds none.
