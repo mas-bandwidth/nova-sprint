@@ -131,15 +131,16 @@ func (st *Store) DropMembers(ctx context.Context, keep []string) ([]string, erro
 			return nil
 		}
 		if kv, err := pinned.rootKV(); err == nil {
-			var machine Machine
 			raw, ok, err := kv.GetKey(ctx, keyMachine)
 			if err != nil {
 				return err
 			}
-			if ok && raw != "" {
-				if err := json.Unmarshal([]byte(raw), &machine); err != nil {
-					return fmt.Errorf("the machine's %s record is unreadable: %w", keyMachine, err)
-				}
+			// A damaged machine record is the named refusal, handed on (S1, S2): the
+			// row deletion depends on the machine's STOP debt, so it is never read as
+			// absent or zero.
+			machine, _, err := viewRead(pinned.viewRows().machine, raw, ok && raw != "")
+			if err != nil {
+				return fmt.Errorf("the machine's %s record is unreadable: %w", keyMachine, err)
 			}
 			// only an entry that still owns its card holds the row (stopOwned)
 			debt := owedDebt(s, machine.StopDebt)
