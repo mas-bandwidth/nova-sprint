@@ -245,6 +245,27 @@ func Check(s *Snapshot, pending *Pending) []Violation {
 			out = append(out, Violation{9, fmt.Sprintf("stream %s is stopped (%s) with no open judgment notification", st, ctl.F("cause"))})
 		}
 	}
+	// 11. A stream merging with cards queued while no member can run a land gate: every
+	// landing is refused until a bench is restored (the hold guard's rule, hold.go). No
+	// rule number is free (12-14 are taken), so it is reported under 11.
+	gateBench := false
+	for _, m := range s.Members() {
+		if ctl := s.MemberCtl(m); ctl != nil && ctl.F("status") == Up {
+			gateBench = true
+			break
+		}
+	}
+	if !gateBench {
+		for _, st := range s.Merge.Rows() {
+			ctl := s.StreamCtl(st)
+			if ctl.F("state") != StreamMerging {
+				continue
+			}
+			if n := s.Merge.Count(st, Queued); n > 0 {
+				out = append(out, Violation{11, fmt.Sprintf("stream %s has %d merging card(s) and no member can run a land gate: nova-sprint fleet unhold <member>", st, n)})
+			}
+		}
+	}
 	// 11. A primary anywhere but waiting has every need landed or waived.
 	// A card that gained a need after its attempt was dealt is legal until that
 	// attempt ends: the need applies from its next deal and the finish moves it
