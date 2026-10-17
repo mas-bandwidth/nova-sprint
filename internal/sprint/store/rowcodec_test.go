@@ -83,10 +83,10 @@ func TestRowCodecForms(t *testing.T) {
 	assert.Equal(t, schemaread.FormBinary, form, "a damaged fixed image is still the binary form")
 	var ref *schemaread.Refusal
 	require.ErrorAs(t, err, &ref)
-	assert.Equal(t, "DONERECORD REFUSED: layout_newer; run: nova-sprint check", err.Error())
+	assert.Equal(t, "DONEFIXTURE REFUSED: layout_newer; run: nova-sprint check", err.Error())
 
 	_, _, err = done.Read(nil)
-	assert.EqualError(t, err, "DONERECORD REFUSED: unknown_form; run: nova-sprint check")
+	assert.EqualError(t, err, "DONEFIXTURE REFUSED: unknown_form; run: nova-sprint check")
 
 	noted, err := note.Write(&rowNote{Text: "one"}, schemaread.FormBinary)
 	require.NoError(t, err)
@@ -105,7 +105,7 @@ func TestRowCodecForms(t *testing.T) {
 
 	rep, _, err := st.Check(t.Context(), 1)
 	require.NoError(t, err)
-	assert.Equal(t, done.Counts().Snapshot(), rep.RowForms["DONERECORD"])
+	assert.Equal(t, done.Counts().Snapshot(), rep.RowForms["DONEFIXTURE"])
 	assert.Equal(t, note.Counts().Snapshot(), rep.RowForms["NOTE"])
 
 	// cmdCheck prints json.Marshal of this report. The field name is row_forms.
@@ -115,7 +115,7 @@ func TestRowCodecForms(t *testing.T) {
 	require.NoError(t, json.Unmarshal(b, &decoded))
 	forms, ok := decoded["row_forms"].(map[string]any)
 	require.True(t, ok, "check JSON prints row_forms: %s", b)
-	assert.Contains(t, forms, "DONERECORD")
+	assert.Contains(t, forms, "DONEFIXTURE")
 	assert.Contains(t, forms, "NOTE")
 }
 
@@ -139,7 +139,7 @@ func rowCodecSample() *donewire.DoneRecord {
 
 func rowCodecDoneFns() RowFns[donewire.DoneRecord] {
 	return RowFns[donewire.DoneRecord]{
-		Name:  "DONERECORD",
+		Name:  "DONEFIXTURE",
 		Reset: func(v *donewire.DoneRecord) { donewire.DoneRecordReset(v) },
 		Measure: func(wire []byte) error {
 			if int64(len(wire)) < donewire.DoneRecordFixedMeasure(1) {

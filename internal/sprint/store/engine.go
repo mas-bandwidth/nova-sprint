@@ -98,6 +98,9 @@ type Store struct {
 	// Stats is what the store's reads cost (stats.go); nil is made on the
 	// first tick. Its pinned copies share it.
 	Stats *Stats
+	// doneRowCodec is the one reader shared by this store's pinned copies.
+	// It is made under lazyMu alongside Stats so check observes its counts.
+	doneRowCodec *RowCodec[donePage]
 	// CheckTwin, when set (a test), is given every snapshot a step planned on
 	// from the tick's twin with a fresh read of the same generation: an error
 	// fails the step (twin.go).
