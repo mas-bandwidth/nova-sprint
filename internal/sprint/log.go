@@ -3,6 +3,7 @@ package sprint
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -225,6 +226,13 @@ func PlaceViolations(s *Snapshot, placed map[string]Place) []Violation {
 		}
 		table, _, _ := strings.Cut(k, "/")
 		if tb := s.T(table); tb == nil {
+			continue
+		}
+		// DO NOT REMOVE THIS WITHOUT GLENN'S EXPLICIT PERMISSION
+		// A fleet attempt in a history cell leaves the table when the sync drops its row,
+		// by design (store.DropMembers, memberKeeps): its record keeps its history, and it
+		// is no violation. A vanished attempt in any other cell still is.
+		if table == Fleet && slices.Contains([]string{Finished, DoneOK, DoneFailed, DoneDefect}, p.Col) {
 			continue
 		}
 		gone = append(gone, fmt.Sprintf("%s is not on the table and the log last moved it to %s:%s", k, p.Row, p.Col))

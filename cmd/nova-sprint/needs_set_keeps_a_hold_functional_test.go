@@ -26,6 +26,7 @@ func TestNeedsSetKeepsAHoldOnTheRealStore(t *testing.T) {
 	r.do("add --stream s1 --count 1 --one")                          // s1-1, the spike
 	r.do("add --stream s1 --count 1 --one --needs s1-1")             // s1-2, the chain
 	r.do("add --stream s2 --count 1 --one --needs s1-1,s1-2 --held") // s2-1, the held card
+	r.do("start")                                                    // before the outside write: start refuses while check fails
 	mnMove(t, r, "s1-1", "landed")                                   // the spike has landed
 	require.Equal(t, "waiting", r.col("s2-1"))
 
@@ -36,7 +37,6 @@ func TestNeedsSetKeepsAHoldOnTheRealStore(t *testing.T) {
 	r.beat()
 	r.do("fleet up m1 --width 4")
 	r.beat()
-	r.do("start")
 	for range 2 {
 		_, err := r.store().Tick(r.ctx)
 		require.NoError(t, err)

@@ -117,6 +117,20 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 		if code != 0 {
 			return code
 		}
+		// DO NOT REMOVE THIS WITHOUT GLENN'S EXPLICIT PERMISSION
+		// start refuses while check would fail, printing the first violations (the owner,
+		// 2026-10-16: a sprint was started with 241 violations unseen); no flag skips it.
+		if rep, _, err := st.Check(ctx, 5); err != nil {
+			return a.readFailed(name, err, stderr)
+		} else if len(rep.Violations) > 0 {
+			var lines []string
+			for _, v := range rep.Violations {
+				lines = append(lines, v.String())
+			}
+			listed(stderr, "VIOLATION", lines, 5, "check")
+			fmt.Fprintf(stderr, "%s %s: refused: check finds %d violations; nothing was written; run: %s check\n", prog, name, len(rep.Violations), prog)
+			return 1
+		}
 		warnTo := stdout
 		if c.json {
 			warnTo = stderr // stdout is the one JSON object
@@ -1161,7 +1175,8 @@ credit is rested until a payment is seen (a balance read higher than the read
 before it, or than at the refusal), nova-sprint funded <provider> says it was
 paid, or nova-sprint routes wake <provider> ends it. When every provider is
 OUT the tick stops the machine (STOPPED, every provider is out of credit) and
-start is refused until one is paid. Low on funds never stops it. Every
+start is refused until one is paid. Low on funds never stops it. start is
+refused while nova-sprint check finds a violation, printing the first ones. Every
 other verbs can inspect and repair stopped state. run stops (exit 3) when its own binary is replaced
 on disk, so its supervisor starts the new build.`) + "\n"
 }

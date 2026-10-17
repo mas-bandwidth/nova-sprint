@@ -241,6 +241,23 @@ func TestLogCoverPlaceViolationsChecksEveryPlaceAndRefusesTheRest(t *testing.T) 
 	require.Empty(t, PlaceViolations(&Snapshot{}, placed()))
 }
 
+// DO NOT REMOVE THIS WITHOUT GLENN'S EXPLICIT PERMISSION
+// A fleet attempt the sync reaped with its row from a history cell (finished, ok,
+// failed, defect) is no violation; a vanished working attempt still is.
+func TestLogCoverAReapedTerminalFleetAttemptIsNoViolation(t *testing.T) {
+	t.Parallel()
+	s := &Snapshot{Fleet: logCoverTable(Fleet, []string{"m1"})}
+	placed := map[string]Place{
+		"fleet/p1.w1": {Row: "gone", Col: Finished, Gen: 1},
+		"fleet/p2.w1": {Row: "gone", Col: DoneOK, Gen: 1},
+		"fleet/p3.w1": {Row: "gone", Col: DoneFailed, Gen: 1},
+		"fleet/p4.w1": {Row: "gone", Col: DoneDefect, Gen: 1},
+		"fleet/p5.w1": {Row: "m1", Col: Working, Gen: 1},
+	}
+	require.Equal(t, []Violation{{13, "fleet/p5.w1 is not on the table and the log last moved it to m1:working"}},
+		PlaceViolations(s, placed))
+}
+
 func TestLogCoverNoteLineIsTheNotificationAsWritten(t *testing.T) {
 	t.Parallel()
 	n := Note{ID: "judgment-s1~9", Kind: Judgment, Type: NConflict, Stream: "s1",
