@@ -386,18 +386,53 @@ func (st *Store) seatGeneration(ctx context.Context) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return seatGenerationOf(raw, ok)
+	return st.seatGenerationOf(raw, ok)
 }
 
-// seatGenerationOf is the generation the seat record's bytes carry, raw read
-// with ok as the key read: FirstSeatGeneration for no record, and for a record
-// written before the seat carried one.
+// seatGenerationOf is the generation the seat record carries, read through this store's
+// seat change reader (S1, S2, S4): the table wire, the padded standard base64 of that wire,
+// the schema JSON text and today's legacy JSON decode to one value. A damaged value is
+// refused by name, never read as absent, empty or zero. A record written before the seat
+// carried a generation reads as FirstSeatGeneration. Writers still write the legacy form;
+// the writer switch is a later card (S4).
+func (st *Store) seatGenerationOf(raw string, ok bool) (uint64, error) {
+	return seatGenerationRead(st.seatRows().seat, raw, ok)
+}
+
+// seatGenerationOf is the generation the seat record's bytes carry for a read with no Store
+// (the pipelined load and the Redis view): it reads through the process-wide seat change
+// reader, so those reads count on the per-form evidence Check exports (S4).
 func seatGenerationOf(raw string, ok bool) (uint64, error) {
 	if !ok {
 		return sprint.FirstSeatGeneration, nil
 	}
-	var s sprint.SeatChange
-	if err := json.Unmarshal([]byte(raw), &s); err != nil {
+	return seatGenerationRead(seatGenerationRows(), raw, true)
+}
+
+// seatGenerationProcess is the seat change reader for a read with no Store. S4: its counts
+// are the per-form evidence Check exports.
+var seatGenerationProcess struct {
+	once  sync.Once
+	codec *RowCodec[sprint.SeatChange]
+}
+
+// seatGenerationRows is the process-wide seat change reader, registered once. S2, S4.
+func seatGenerationRows() *RowCodec[sprint.SeatChange] {
+	seatGenerationProcess.once.Do(func() {
+		seatGenerationProcess.codec = NewRowCodec(seatRowFns())
+		seatGenerationProcess.codec.RegisterProcess()
+	})
+	return seatGenerationProcess.codec
+}
+
+// seatGenerationRead is the one generation read of the seat record (S1, S2, S4): it decodes
+// c's form, refuses damage by name, and reads no record as the first generation.
+func seatGenerationRead(c *RowCodec[sprint.SeatChange], raw string, ok bool) (uint64, error) {
+	if !ok {
+		return sprint.FirstSeatGeneration, nil
+	}
+	s, _, err := c.Read([]byte(raw))
+	if err != nil {
 		return 0, err
 	}
 	return max(s.Generation, sprint.FirstSeatGeneration), nil
