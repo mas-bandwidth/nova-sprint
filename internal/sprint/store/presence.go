@@ -727,6 +727,12 @@ func beatOfSchema(m *beatSchema) (sprint.Beat, bool) {
 		DrainingSince: at(m.DrainingSince), Facts: m.Facts,
 		Meter: hostload.State{TopAt: at(m.Meter.TopAt), TopPct: m.Meter.TopPct},
 	}
+	if len(b.Live) == 0 {
+		b.Live = nil
+	}
+	if len(b.Facts) == 0 {
+		b.Facts = nil
+	}
 	for _, s := range m.Samples {
 		b.Samples = append(b.Samples, sprint.LoadSample{Pct: s.Pct, At: at(s.At)})
 	}
@@ -741,11 +747,15 @@ func beatOfSchema(m *beatSchema) (sprint.Beat, bool) {
 		b.Meter.Files = fs
 	}
 	if r := m.Friend; r != nil {
-		b.Friend = &sprint.FriendReport{
+		f := &sprint.FriendReport{
 			Running: r.Running, Working: rowIntOf(r.Working), Queue: rowIntOf(r.Queue), Width: rowIntOf(r.Width),
 			StopReturns: rowIntOf(r.StopReturns), Paced: rowIntOf(r.Paced), Active: at(r.Active), Window: rowTextOf(r.Window),
 			Until: at(r.Until), Reason: rowTextOf(r.Reason), Build: rowTextOf(r.Build), Started: at(r.Started), Present: at(r.Present),
 		}
+		if len(f.Running) == 0 {
+			f.Running = nil
+		}
+		b.Friend = f
 	}
 	for _, s := range m.LiveSeen {
 		if b.LiveSeen == nil {

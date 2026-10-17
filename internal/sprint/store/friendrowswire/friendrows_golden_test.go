@@ -667,6 +667,12 @@ func vfill(t *testing.T, w *TableWorker, p unsafe.Pointer, info *TableTypeInfo) 
 			f.Table().Reset(q)
 			vfill(t, w, q, f.Table())
 			*(*TableRef)(base) = ref
+		case f.TextList != 0:
+			e := tableContainerAppend(w, (*tableContainer)(base), int64(f.ElemSize))
+			if e == nil {
+				t.Fatalf("%s.%s append", info.Name, f.Name)
+			}
+			TableStringEmplace(w, (*TableRef)(e), []byte("a"))
 		case f.List:
 			e := tableContainerAppend(w, (*tableContainer)(base), int64(f.ElemSize))
 			if e == nil {
