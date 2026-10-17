@@ -185,7 +185,7 @@ func TestAnOutOfCreditTakeRestsEveryRouteOfItsProvider(t *testing.T) {
 }
 
 // The fleet table's properties grow with the providers, never with the routes
-// (ntable.LimitTableProps, the 64 a table holds): at 100 routes over two providers and two
+// (ntable.LimitTableProps, the 1024 a table holds): at 100 routes over two providers and two
 // tiers, both providers out of credit and both balances polled, the count is the deal's
 // indexes, one rest and one balance a provider, far under the bound, and the ticks write.
 func TestTheFleetPropertiesAtAHundredRoutesStayUnderTheBound(t *testing.T) {
