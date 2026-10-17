@@ -1,0 +1,3 @@
+go test fuzz v1
+byte('\x4f')
+[]byte("{\n  \"epoch\": 0,\n  \"at\": 0,\n  \"seat\": {\n    \"judgments\": 0,\n    \"overdue\": 0,\n    \"oldest_id\": null,\n    \"oldest_type\": null,\n    \"oldest_at\": 0,\n    \"level\": 0\n  },\n  \"stops\": []\n}\n")

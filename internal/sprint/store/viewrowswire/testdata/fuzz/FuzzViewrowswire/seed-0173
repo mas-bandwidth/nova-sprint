@@ -1,0 +1,3 @@
+go test fuzz v1
+byte('\x39')
+[]byte("{\n  \"mark\": {\n    \"at\": 0,\n    \"epoch\": 0,\n    \"by\": null,\n    \"reason\": null,\n    \"rows\": [],\n    \"streams\": [],\n    \"total_cost\": null,\n    \"unreconciled\": null,\n    \"op\": null\n  },\n  \"replaced\": null,\n  \"dry_run\": false,\n  \"replay\": false,\n  \"said\": [],\n  \"refused\": null\n}\n")

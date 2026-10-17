@@ -1,0 +1,3 @@
+go test fuzz v1
+byte('\x07')
+[]byte("{\n  \"CoveredBy\": null,\n  \"From\": null,\n  \"To\": null,\n  \"Token\": null,\n  \"Subject\": null,\n  \"Body\": null,\n  \"Episode\": null,\n  \"Sent\": false,\n  \"RetryBefore\": 0\n}\n")

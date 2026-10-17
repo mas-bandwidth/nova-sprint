@@ -1,0 +1,3 @@
+go test fuzz v1
+byte('\x21')
+[]byte("{\n  \"cursor\": null,\n  \"entries\": []\n}\n")
