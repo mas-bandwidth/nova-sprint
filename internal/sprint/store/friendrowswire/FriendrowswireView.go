@@ -67,7 +67,7 @@ func init() {
 
 var tableUnitView = UnitViewInfo{Package: "friendrowswire", ProtocolId: 0x72749af04742ba61,
 	NumTypes: 0, Types: []ViewType{},
-	NumTables: 21, Tables: []ViewType{
+	NumTables: 22, Tables: []ViewType{
 		{Name: "Beat", File: "friendrows.schema", Table: true, Type: &BeatTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "FactWord", File: "friendrows.schema", Table: true, Type: &FactWordTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "Files", File: "friendrows.schema", Table: true, Type: &FilesTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -88,6 +88,7 @@ var tableUnitView = UnitViewInfo{Package: "friendrowswire", ProtocolId: 0x72749a
 		{Name: "RunWord", File: "friendrows.schema", Table: true, Type: &RunWordTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "SeatChange", File: "friendrows.schema", Table: true, Type: &SeatChangeTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "ServerRecord", File: "friendrows.schema", Table: true, Type: &ServerRecordTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
+		{Name: "Stranger", File: "friendrows.schema", Table: true, Type: &StrangerTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "Ticks", File: "friendrows.schema", Table: true, Type: &TicksTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 	},
 	NumEnums: 0, Enums: []ViewVocabulary{},

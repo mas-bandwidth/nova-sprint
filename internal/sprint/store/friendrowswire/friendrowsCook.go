@@ -384,6 +384,14 @@ type ServerRecordRow struct {
 	Host    int64 // *: signed self-relative delta, zero is null (§6.3)
 }
 
+// StrangerRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type StrangerRow struct {
+	Seen int64 // *: signed self-relative delta, zero is null (§6.3)
+	Told bool
+	_    [7]byte // generated padding
+}
+
 // TicksRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type TicksRow struct {
@@ -561,6 +569,10 @@ func init() {
 	tableCookLayoutOffset("ServerRecordRow.Land", unsafe.Offsetof(ServerRecordRow{}.Land), 40)
 	tableCookLayoutOffset("ServerRecordRow.Pid", unsafe.Offsetof(ServerRecordRow{}.Pid), 48)
 	tableCookLayoutOffset("ServerRecordRow.Host", unsafe.Offsetof(ServerRecordRow{}.Host), 56)
+	tableCookLayoutSize("StrangerRow", unsafe.Sizeof(StrangerRow{}), 16)
+	tableCookLayoutSize("StrangerRow alignment", unsafe.Alignof(StrangerRow{}), 8)
+	tableCookLayoutOffset("StrangerRow.Seen", unsafe.Offsetof(StrangerRow{}.Seen), 0)
+	tableCookLayoutOffset("StrangerRow.Told", unsafe.Offsetof(StrangerRow{}.Told), 8)
 	tableCookLayoutSize("TicksRow", unsafe.Sizeof(TicksRow{}), 16)
 	tableCookLayoutSize("TicksRow alignment", unsafe.Alignof(TicksRow{}), 8)
 	tableCookLayoutOffset("TicksRow.Busy", unsafe.Offsetof(TicksRow{}.Busy), 0)
@@ -590,7 +602,7 @@ func tableCookLayoutOffset(what string, got, want uintptr) {
 // §11 fact rather than a taste: a name derived from a DECLARATION's own
 // spelling is a name a declaration can collide with, and the checker has no
 // machinery for a prefix-and-name product. One fixed name is one claim.
-var tableCookRecords = make([]TableCookInfo, 21)
+var tableCookRecords = make([]TableCookInfo, 22)
 
 // THE GRAPH IS FILLED HERE rather than in the slice's own initializer, and
 // the reason is a language fact rather than a taste: the DESCRIPTOR GRAPH is
@@ -828,6 +840,13 @@ func init() {
 		},
 	}
 	tableCookRecords[20] = TableCookInfo{
+		Name: "Stranger", Size: 16, Align: 8, NumFields: 2,
+		Fields: []TableCookFieldInfo{
+			{Name: "seen", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "told", Offset: 8, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
+		},
+	}
+	tableCookRecords[21] = TableCookInfo{
 		Name: "Ticks", Size: 16, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
 			{Name: "busy", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
@@ -844,7 +863,7 @@ func init() {
 	tableCookRecords[4].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[17] }
 	tableCookRecords[8].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[9] }
 	tableCookRecords[8].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[10] }
-	tableCookRecords[15].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[20] }
+	tableCookRecords[15].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[21] }
 	tableCookRecords[15].Fields[3].Record = func() *TableCookInfo { return &tableCookRecords[2] }
 }
 
@@ -1054,6 +1073,109 @@ func FriendStatusAt(slot *int64, arena ...*TableArena) *FriendStatusRow {
 // walk follows (docs/SPEC-TABLES.md §8).
 func (c FriendStatusCook) Type() *TableCookInfo { return &tableCookRecords[5] }
 
+// StrangerCook is Stranger's cook: a pointer and a length, and then the root where it
+// lies. Opening one is a HEADER MATCH and no copy; a reference is one add
+// (docs/SPEC-TABLES.md §7).
+//
+// `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
+// functions — StrangerOpen, StrangerAt — and so does Go, because Go has free functions;
+// what is a MEMBER here is only what §11 leaves a language free to make one.
+//
+// THE MEMORY IS THE CONSUMER'S. Nothing here allocates, nothing here copies and
+// nothing here pins: the region must stay put and stay aligned for as long as
+// this handle or anything reached through it is used.
+type StrangerCook struct {
+	Region       unsafe.Pointer // the DATA part's base: the root sits at offset zero
+	RegionLength int64          // data_length, as the header framed it
+}
+
+// §7.1's constants, so a consumer reading this file has the facts and not a
+// description of them. They are METHODS because §11 leaves a language whose
+// accessors are members free to spell them that way, and a package constant
+// per table per fact would claim names §11 does not.
+func (c StrangerCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
+func (c StrangerCook) RootSize() int64        { return 16 }
+func (c StrangerCook) RootAlign() int64       { return 8 }
+
+// Root is the root record at the region's base. It is a POINTER and not a
+// copy: a cooked graph is walked by adding deltas to slot addresses.
+func (c StrangerCook) Root() *StrangerRow { return (*StrangerRow)(c.Region) }
+
+// StrangerOpen is the bool convenience for the typed Open error on the handle.
+func StrangerOpen(cook *StrangerCook, base unsafe.Pointer, length int64) bool {
+	return cook.Open(base, length) == nil
+}
+
+// Open checks the header in SPEC §7 order, bytewise until base alignment is
+// established. A successful match points at the region and allocates nothing.
+func (cook *StrangerCook) Open(base unsafe.Pointer, length int64) error {
+	*cook = StrangerCook{}
+	if base == nil {
+		return TableRefuseUnalignedBase
+	}
+	if length < 64 {
+		return TableRefuseTruncated
+	}
+	header := unsafe.Slice((*byte)(base), 64)
+	magic := binary.NativeEndian.Uint64(header)
+	if magic != TableCookMagic {
+		if magic == 0x5343484d434f4f4b {
+			return TableRefuseForeignOrder
+		}
+		return TableRefuseNotACook
+	}
+	if binary.NativeEndian.Uint64(header[16:]) != TableCookByteOrder {
+		return TableRefuseNotACook
+	}
+	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
+		return TableRefuseWrongBuildVersion
+	}
+	if binary.NativeEndian.Uint64(header[48:]) != 0 || binary.NativeEndian.Uint64(header[56:]) != 0 {
+		return TableRefuseReservedNotZero
+	}
+	alignment := binary.NativeEndian.Uint64(header[40:])
+	if alignment < 8 || alignment > 64 || alignment&(alignment-1) != 0 || alignment%8 != 0 {
+		return TableRefuseBadAlignment
+	}
+	bytes := uint64(length)
+	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
+	dataLength := binary.NativeEndian.Uint64(header[24:])
+	attribution := binary.NativeEndian.Uint64(header[32:])
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 16 {
+		return TableRefuseTruncated
+	}
+	if uint64(uintptr(base))%alignment != 0 {
+		return TableRefuseUnalignedBase
+	}
+	cook.Region = unsafe.Add(base, uintptr(dataOffset))
+	cook.RegionLength = int64(dataLength)
+	return nil
+}
+
+// StrangerAt dereferences a reference, and it is the same call in a locked region
+// and an opened cook because they are the same encoding (§6.3): the slot is
+// eight bytes, SIGNED, self-relative from the SLOT'S OWN ADDRESS, so a deref
+// needs no base pointer and no bounds test, and NULL IS A DELTA OF ZERO.
+// Nothing about this call is the cook's: it is what a region reference is, and
+// a cook is a region written verbatim.
+//
+// It takes the SLOT and not its value, because a self-relative delta means
+// nothing without the address it is relative to.
+func StrangerAt(slot *int64, arena ...*TableArena) *StrangerRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*StrangerRow)(arena[0].At(*slot))
+	}
+	delta := *slot
+	if delta == 0 {
+		return nil
+	}
+	return (*StrangerRow)(unsafe.Add(unsafe.Pointer(slot), uintptr(delta)))
+}
+
+// Type is Stranger's cooked-record descriptor, the head of the graph a reflective
+// walk follows (docs/SPEC-TABLES.md §8).
+func (c StrangerCook) Type() *TableCookInfo { return &tableCookRecords[20] }
+
 // LoadSampleCook is LoadSample's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
 // (docs/SPEC-TABLES.md §7).
@@ -1258,7 +1380,7 @@ func TicksAt(slot *int64, arena ...*TableArena) *TicksRow {
 
 // Type is Ticks's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c TicksCook) Type() *TableCookInfo { return &tableCookRecords[20] }
+func (c TicksCook) Type() *TableCookInfo { return &tableCookRecords[21] }
 
 // HolderCook is Holder's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add

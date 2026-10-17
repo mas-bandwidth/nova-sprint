@@ -269,9 +269,10 @@ func TestFriendRosterRowsDualRead(t *testing.T) {
 	for i := 0; i < len(legacyStrangers); i++ {
 		assertRefused(t, rows.stranger, "STRANGERS", legacyStrangers[:i], "strangers truncated")
 	}
-	// strangers has no table (friendrows.schema): a table form is refused by name
-	assertRefused(t, rows.stranger, "STRANGERS", ef.bin, "strangers as a wire")
-	assertRefused(t, rows.stranger, "STRANGERS", ef.b64, "strangers as base64")
+	// strangers is a table now (friendrows.schema Stranger): one entry reads alike from every
+	// form, and a damaged value is refused by name.
+	strf := rosterFormsOf(t, rows.stranger, stranger{Seen: at(5), Told: true})
+	assertDamageRefused(t, rows.stranger, "STRANGERS", strf)
 
 	// A clamped value is refused: an integer past int64 in the schema JSON text is clamped
 	// by the table reader, and today's decoder refuses it in legacy text. FriendStatus holds

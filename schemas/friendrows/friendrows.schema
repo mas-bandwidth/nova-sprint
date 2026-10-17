@@ -103,6 +103,19 @@ table FriendStatus
     at *string
 }
 
+// Stranger is one unknown machine that beats (presence.go stranger), a variable
+// table. The strangers record (keyStrangers) is a JSON object keyed by the
+// machine's name, and the name is that key, not a field; the roster reads each
+// entry alike (presenceRowMap). A stranger's seen is the source time.Time JSON
+// text and told is whether the coordinator was told of it; noteStranger sets
+// both with no length check, so no field of it is bounded.
+table Stranger
+{
+    // Source time.Time JSON, RFC3339Nano text.
+    seen *string
+    told bool
+}
+
 // LoadSample is one beat's load (presence.go), a variable table. NextBeat
 // keeps the samples in (at - LoadWindow, at) and appends the current second,
 // with no count in the code. pct is clampLoad onto 0..LoadMax (100) for a

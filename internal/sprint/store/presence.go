@@ -17,6 +17,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/friendrowswire"
 	"github.com/mas-bandwidth/nova-tools/pkg/hostload"
 	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
+	"github.com/mas-bandwidth/nova-tools/pkg/schemaread"
 )
 
 // A fleet member's beats (sprint/presence.go): one record per member under
@@ -46,8 +47,8 @@ func (st *Store) strangers(ctx context.Context) (map[string]stranger, error) {
 		return out, err
 	}
 	// An unreadable record is read as none on purpose: the next stranger's note writes it
-	// whole again. The refusal is named and counted under STRANGERS (S2, S4).
-	if s, err := presenceRow(st.presenceRows().stranger, []byte(raw)); err == nil && s != nil {
+	// whole again. Each entry is read through the Stranger table (S2, S4).
+	if s, err := presenceRowMap(st.presenceRows().stranger, []byte(raw)); err == nil && s != nil {
 		out = s
 	}
 	return out, nil
@@ -58,7 +59,19 @@ func (st *Store) putStrangers(ctx context.Context, s map[string]stranger) error 
 	if err != nil {
 		return err
 	}
-	b, err := json.Marshal(s)
+	// S2, S4: each entry is written in the table form, the padded standard base64 of the
+	// Stranger table's wire, so a reader of any form reads it; a value the table cannot hold
+	// is refused by name before a byte of the entry is written, never written in legacy form.
+	c := st.presenceRows().stranger
+	out := make(map[string]string, len(s))
+	for name, x := range s {
+		raw, err := c.Write(&x, schemaread.FormBase64)
+		if err != nil {
+			return fmt.Errorf("strangers: %w", err)
+		}
+		out[name] = string(raw)
+	}
+	b, err := json.Marshal(out)
 	if err != nil {
 		return err
 	}
@@ -355,7 +368,7 @@ type presenceRowCodecs struct {
 	entry    *RowCodec[friendEntry]
 	status   *RowCodec[friendStatus]
 	beat     *RowCodec[sprint.Beat]
-	stranger *RowCodec[map[string]stranger]
+	stranger *RowCodec[stranger]
 }
 
 // presenceRows is this store's readers of the friend roster and presence rows, registered on
@@ -777,16 +790,50 @@ func beatOfSchema(m *beatSchema) (sprint.Beat, bool) {
 	return b, ok
 }
 
-// strangerRowFns is the strangers record as the row reader reads it: STRANGERS, today's
-// legacy JSON alone. friendrows.schema declares no table for it, so a table form is refused
-// by name (unknown_form); the record is counted with the others (S2, S4).
-func strangerRowFns() RowFns[map[string]stranger] {
-	return RowFns[map[string]stranger]{
-		Name:       "STRANGERS",
-		Reset:      func(v *map[string]stranger) { *v = nil },
-		Legacy:     LegacyObject,
-		LoadLegacy: DecodeLegacy[map[string]stranger],
+// strangerSchema is the Stranger table's schema JSON text (friendrows.schema Stranger).
+type strangerSchema struct {
+	Seen *string `json:"seen"`
+	Told bool    `json:"told"`
+}
+
+// strangerTable is the generated Stranger table (S1, S2).
+func strangerTable() friendTable[friendrowswire.Stranger] {
+	return friendTable[friendrowswire.Stranger]{
+		measure: friendrowswire.StrangerLoadMeasureReason,
+		load:    friendrowswire.StrangerLoad,
+		fromJSON: func(text []byte, rep *friendrowswire.TableReport) (*friendrowswire.Stranger, bool) {
+			var b friendrowswire.StrangerBuilder
+			if !b.Init() {
+				return nil, false
+			}
+			if !friendrowswire.StrangerFromJson(&b, text, rep) || !b.Lock() {
+				return nil, false
+			}
+			return b.AsConst(), true
+		},
+		toJSON: func(w *friendrowswire.Stranger) []byte {
+			buf := make([]byte, max(friendrowswire.StrangerToJsonMeasure(w), 0))
+			return buf[:max(friendrowswire.StrangerToJson(w, buf), 0)]
+		},
+		save: func(w *friendrowswire.Stranger) []byte {
+			buf := make([]byte, max(friendrowswire.StrangerMeasure(w), 0))
+			return buf[:max(friendrowswire.StrangerSave(w, buf), 0)]
+		},
 	}
+}
+
+// strangerRowFns is one stranger entry as the row reader reads it: STRANGERS (S1, S2,
+// S4). The strangers record is a JSON object keyed by the machine's name under keyStrangers,
+// and each entry is read through this codec, as the roster reads each entry (presenceRowMap).
+func strangerRowFns() RowFns[stranger] {
+	return presenceRowFns("STRANGERS", strangerTable(),
+		func(s *stranger) strangerSchema {
+			return strangerSchema{Seen: rowTime(s.Seen), Told: s.Told}
+		},
+		func(m *strangerSchema) (stranger, bool) {
+			seen, ok := rowTimeOf(m.Seen)
+			return stranger{Seen: seen, Told: m.Told}, ok
+		})
 }
 
 // getKeys reads machine records, in one exchange where the store can.
