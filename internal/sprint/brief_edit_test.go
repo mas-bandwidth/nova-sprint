@@ -155,15 +155,23 @@ func TestABriefEditKeepsWhatAVerbSet(t *testing.T) {
 
 func TestBriefTierRefusesATLAPathBelowHeavy(t *testing.T) {
 	t.Parallel()
-	// a card whose PATHS name TLA+ model work is the heavy tier's or above: a
-	// re-tier to a tier below heavy is refused, as the lint's
-	// tla-is-heavy-or-above rule refuses it at add (nova-sprint tier <card> --set <t> --reason).
+	// a card whose NEW names a new .tla module writes a model, the heavy tier's work
+	// or above: a re-tier to a tier below heavy is refused, as the lint's
+	// new-model-is-heavy-or-above rule refuses it at add (nova-sprint tier <card> --set <t> --reason).
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "a TLA model tier: frontier\nPATHS: tla/Foo.tla\n\nthe model", Who: "coordinator"}))
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "a TLA model tier: frontier\nPATHS: tla/Bar.tla\nNEW: tla/Bar.tla\n\nthe model", Who: "coordinator"}))
 	p := Brief(w.s, BriefReq{ID: "a-1", Tier: "pro", Who: "coordinator"})
 	require.Len(t, p.Refused, 1)
 	assert.Empty(t, p.Units)
 	assert.Contains(t, p.Refused[0].Why, "a tier below heavy is refused")
+	assert.Contains(t, p.Refused[0].Why, "new-model-is-heavy-or-above")
+
+	// a card that only edits a model tla/ holds is any tier (the owner, 2026-10-17)
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"e-1"}, Brief: "a TLA edit tier: heavy\nPATHS: tla/Foo.tla,tla/Foo.cfg,tla/RUNS.tsv\n\nthe edit", Who: "coordinator"}))
+	p = Brief(w.s, BriefReq{ID: "e-1", Tier: "pro", Who: "coordinator"})
+	require.Empty(t, p.Refused, "a pro card editing tla/Foo.tla passes")
+	w.must(p)
+	assert.Equal(t, "pro", w.s.Work.Placed("e-1").F(FieldTier))
 
 	// heavy and frontier are accepted
 	for _, tier := range []string{"heavy", "frontier"} {
@@ -219,18 +227,19 @@ func TestABriefLeavesOutADroppedNeedAnEarlierRelinkReplaced(t *testing.T) {
 	assert.Contains(t, says, "needs kept: a-1 not added (kept, ")
 }
 
-// --tier with a brief is held to the lint's tla-is-heavy-or-above rule as tier
-// --set is: a brief whose PATHS covers tla/ is refused a tier below heavy, on
-// the ordinary path and on the DEPENDS-ON-only path alike, and heavy passes.
+// --tier with a brief is held to the lint's new-model-is-heavy-or-above rule as
+// tier --set is: a brief whose NEW names a new .tla module is refused a tier below
+// heavy, on the ordinary path and on the DEPENDS-ON-only path alike, and heavy
+// passes; a brief that only edits a model is taken at pro.
 func TestABriefTierFlagRefusesATLAPathBelowHeavy(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b")
 	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"x"}, Brief: "x", Who: "coordinator"}))
 	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"y"}, Brief: "y", Who: "coordinator"}))
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"m"}, Needs: []string{"x"}, Brief: "a model tier: frontier\nPATHS: tla/Foo.tla\nDEPENDS-ON: x\n\nthe model", Who: "coordinator"}))
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"m"}, Needs: []string{"x"}, Brief: "a model tier: frontier\nPATHS: tla/Bar.tla\nNEW: tla/Bar.tla\nDEPENDS-ON: x\n\nthe model", Who: "coordinator"}))
 	for _, c := range []struct{ name, text, needs string }{
-		{"ordinary", "a model tier: frontier\nPATHS: tla/Foo.tla\nDEPENDS-ON: x\n\nthe model, reworded", "x"},
-		{"depends-only", "a model tier: frontier\nPATHS: tla/Foo.tla\nDEPENDS-ON: x,y\n\nthe model", "x,y"},
+		{"ordinary", "a model tier: frontier\nPATHS: tla/Bar.tla\nNEW: tla/Bar.tla\nDEPENDS-ON: x\n\nthe model, reworded", "x"},
+		{"depends-only", "a model tier: frontier\nPATHS: tla/Bar.tla\nNEW: tla/Bar.tla\nDEPENDS-ON: x,y\n\nthe model", "x,y"},
 	} {
 		p := Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "m", Brief: c.text, Needs: Split(c.needs)}}, Tier: "pro", Who: "coordinator"})
 		require.Len(t, p.Refused, 1, c.name)
@@ -239,18 +248,26 @@ func TestABriefTierFlagRefusesATLAPathBelowHeavy(t *testing.T) {
 	}
 
 	// heavy itself is accepted
-	p := Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "m", Brief: "a model tier: frontier\nPATHS: tla/Foo.tla\nDEPENDS-ON: x\n\nthe model, reworded again", Needs: Split("x")}}, Tier: "heavy", Who: "coordinator"})
+	p := Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "m", Brief: "a model tier: frontier\nPATHS: tla/Bar.tla\nNEW: tla/Bar.tla\nDEPENDS-ON: x\n\nthe model, reworded again", Needs: Split("x")}}, Tier: "heavy", Who: "coordinator"})
 	require.Empty(t, p.Refused)
 	w.must(p)
 	assert.Equal(t, "heavy", w.s.Work.Placed("m").F(FieldTier))
+
+	// a brief that only edits tla/Foo.tla is taken at pro
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"e"}, Needs: []string{"x"}, Brief: "an edit tier: heavy\nPATHS: tla/Foo.tla\nDEPENDS-ON: x\n\nthe edit", Who: "coordinator"}))
+	p = Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "e", Brief: "an edit tier: heavy\nPATHS: tla/Foo.tla\nDEPENDS-ON: x\n\nthe edit, reworded", Needs: Split("x")}}, Tier: "pro", Who: "coordinator"})
+	require.Empty(t, p.Refused, "a pro card editing tla/Foo.tla passes")
+	w.must(p)
+	assert.Equal(t, "pro", w.s.Work.Placed("e").F(FieldTier))
 }
 
-// continue --tier is held to the lint's tla-is-heavy-or-above rule as a brief
-// edit's --tier is: a tla/ card is refused a tier below heavy, and heavy passes.
+// continue --tier is held to the lint's new-model-is-heavy-or-above rule as a
+// brief edit's --tier is: a card writing a new tla/ model is refused a tier below
+// heavy, and heavy passes; a card editing a model is taken at pro.
 func TestContinueTierFlagRefusesATLAPathBelowHeavy(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b")
-	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "a TLA model tier: frontier\nPATHS: tla/Foo.tla\n\nthe model", Who: "coordinator"}))
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "a TLA model tier: frontier\nPATHS: tla/Bar.tla\nNEW: tla/Bar.tla\n\nthe model", Who: "coordinator"}))
 	const head = "1111111111111111111111111111111111111111"
 	p := Continue(w.s, ContinueReq{ID: "a-1", Tier: "pro", Carry: head, Note: "x", Who: "coordinator"})
 	require.Len(t, p.Refused, 1)
@@ -261,4 +278,8 @@ func TestContinueTierFlagRefusesATLAPathBelowHeavy(t *testing.T) {
 	require.Empty(t, p.Refused)
 	w.must(p)
 	assert.Equal(t, "heavy", w.s.Work.Placed("a-1").F(FieldTier))
+
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"e-1"}, Brief: "a TLA edit tier: heavy\nPATHS: tla/Foo.tla\n\nthe edit", Who: "coordinator"}))
+	p = Continue(w.s, ContinueReq{ID: "e-1", Tier: "pro", Carry: head, Note: "x", Who: "coordinator"})
+	require.Empty(t, p.Refused, "a pro card editing tla/Foo.tla passes")
 }

@@ -62,9 +62,9 @@ a START file lives in, as its Go files and its tests (<dir>/*.go, <dir>/*_test.g
 the card names. With a checkout every PATHS entry is checked to exist at it, so a card never
 names a path the add would reject. The ledgers: ` + "`nova-card generate -h`" + ` lists them.
 A ledger card is flash and a findings or help card is pro unless --tier says otherwise; a card
-whose PATHS name TLA+ model work (a .tla module, an MC config under tla/) is frontier, as
-nova-sprint add tiers it, and --tier flash or pro on such a card is a red line
-(check=model-tier). The TLC run records tla/RUNS.tsv and tla/CASES.tsv alone are no model.
+whose NEW names a new TLA+ model (a .tla module) is heavy, as nova-sprint add tiers it, and
+--tier flash or pro on such a card is a red line (check=model-tier). Editing what tla/ holds
+(the models, .cfg files, the run records) is any tier.
 A ledger plan is one wave with every card chained to the one before it with DEPENDS-ON: the
 lander resolves a ledger conflict as the union of removals, so adjacent deletions of one
 file no longer conflict at land (docs/SPEC-SPRINT.md section 7). Every card is wave 1, and
@@ -78,7 +78,7 @@ writes. A sprint initialised with --rules holds a brief to that file at
 the add. template prints nova-swarm's card template, the shape every generated brief has.
 
 what it prints:
-  CARDS OK dir=<dir> cards=<n> waves=<k> tier=<t> [frontier=<n>] [shared-paths=yes]   then manifest.tsv in <dir> (--dry-run: the manifest on stdout, dry-run=yes)
+  CARDS OK dir=<dir> cards=<n> waves=<k> tier=<t> [heavy=<n>] [shared-paths=yes]   then manifest.tsv in <dir> (--dry-run: the manifest on stdout, dry-run=yes)
   CARDS NOTE <what was skipped: a row the ledger did not read, a tool with no help>
   LINT DRIFT card=<id> check=<check> line=<n>: <excerpt>              and nothing is written
   LINT OK file=<file>
@@ -365,20 +365,20 @@ func cmdGenerate(args []string, stdout, stderr io.Writer) int {
 	// render, lint, and check the paths against the checkout: nothing is written while
 	// one brief is red
 	briefs := make([]string, len(plan.Cards))
-	red, frontier := 0, 0
+	red, heavy := 0, 0
 	for i := range plan.Cards {
 		c := &plan.Cards[i]
 		c.Paths = card.Paths(h, *c) // computed from the START line, never typed (docs/SPEC-CARD-CONTRACT.md section 6)
 		if *repoDir != "" {
 			cardgen.NewTestFile(c, func(glob string) bool { return existsAt(*repoDir, glob) })
 		}
-		// a card whose PATHS name TLA+ model work is tiered frontier, as nova-sprint add
+		// a card whose NEW names a new TLA+ model is tiered heavy, as nova-sprint add
 		// tiers it (sprint.ModelTier; docs/SPEC-SPRINT.md, the card decides its model): the
 		// source's tier gives way, and a --tier below it is a red line with the add's reason
-		model := len(sprint.ModelPaths(c.Paths)) > 0
+		model := len(swarm.NewModels(c.New)) > 0
 		if model && *tier == "" {
-			c.Tier = cardhdr.RouteFrontier
-			frontier++
+			c.Tier = cardhdr.RouteHeavy
+			heavy++
 		}
 		briefs[i] = cardgen.Render(h, *c)
 		if _, _, why := sprint.ModelTier(briefs[i]); model && why != "" {
@@ -408,7 +408,7 @@ func cmdGenerate(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stdout, "CARDS NOTE skipped %s\n", oneline.Escape(n))
 		}
 		fmt.Fprint(stdout, cardgen.Manifest(plan))
-		fmt.Fprintln(stdout, cardgen.OKLine(*out, plan)+frontierWord(frontier)+" dry-run=yes (nothing written)")
+		fmt.Fprintln(stdout, cardgen.OKLine(*out, plan)+heavyWord(heavy)+" dry-run=yes (nothing written)")
 		return 0
 	}
 	if err := os.MkdirAll(*out, 0o755); err != nil {
@@ -428,20 +428,20 @@ func cmdGenerate(args []string, stdout, stderr io.Writer) int {
 	for _, n := range notes {
 		fmt.Fprintf(stdout, "CARDS NOTE skipped %s\n", oneline.Escape(n))
 	}
-	line := cardgen.OKLine(*out, plan) + frontierWord(frontier)
+	line := cardgen.OKLine(*out, plan) + heavyWord(heavy)
 	fmt.Fprintln(stdout, line)
 	return 0
 }
 
 var shaRE = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
-// frontierWord is the CARDS OK line's count of the cards generate tiered frontier because
-// their PATHS name TLA+ model work; "" when none.
-func frontierWord(n int) string {
+// heavyWord is the CARDS OK line's count of the cards generate tiered heavy because their
+// NEW names a new TLA+ model; "" when none.
+func heavyWord(n int) string {
 	if n == 0 {
 		return ""
 	}
-	return fmt.Sprintf(" frontier=%d", n)
+	return fmt.Sprintf(" heavy=%d", n)
 }
 
 // readCheckout fills the header's empty fields from a checkout: the repository from
