@@ -1,0 +1,3 @@
+go test fuzz v1
+byte('\x2f')
+[]byte("{\n  \"billing\": null,\n  \"receipt_version\": 0,\n  \"raw_usage\": null,\n  \"wall\": null,\n  \"budget\": null,\n  \"tokens\": {\n    \"input\": 0,\n    \"cache_read\": 0,\n    \"cache_write\": 0,\n    \"output\": 0,\n    \"reasoning\": 0,\n    \"requests\": 0,\n    \"max_prompt\": 0\n  },\n  \"model\": null,\n  \"actual_usd\": null,\n  \"actual_by\": null,\n  \"wait_s\": 0,\n  \"run_s\": 0,\n  \"price_route\": null,\n  \"prices\": null,\n  \"predicted_usd\": null,\n  \"long_context\": false,\n  \"unpriced\": null\n}\n")
