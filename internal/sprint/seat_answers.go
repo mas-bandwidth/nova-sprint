@@ -454,7 +454,18 @@ func TickDecisionDefaults(s *Snapshot, r TickReq) Plan {
 					safe = false
 					break
 				}
-				u.Changes = append(u.Changes, change(Work, moveEntry(c, c.Row, Waiting, map[string]string{FieldHeld: stamp(s.Now), "held_by": ServerDefaultActor, "held_reason": reason, "held_judgment": n.ID, "decision_held_from": c.Col})))
+				hold := map[string]string{FieldHeld: stamp(s.Now), "held_by": ServerDefaultActor, "held_reason": reason, "held_judgment": n.ID, "decision_held_from": c.Col}
+				if c.Col == Ready {
+					// a ready primary is held in place: the hold keeps it from every deal
+					// (dealPlan, TickDeal IsHeld) and release clears it where it stands
+					// (releaseHeld). Moved to waiting, a primary whose work card was
+					// withdrawn waited on no need, and check broke rule 2 on the
+					// machine's own step (tla/SprintTables.tla DecisionParkStep,
+					// Rule2Withdrawn, reversed witness parkmoves).
+					u.Changes = append(u.Changes, change(Work, setEntry(c, hold)))
+					continue
+				}
+				u.Changes = append(u.Changes, change(Work, moveEntry(c, c.Row, Waiting, hold)))
 			}
 			if !safe {
 				continue
@@ -690,7 +701,8 @@ func DefaultHeldDecisions(s *Snapshot) []Note {
 	if s == nil || s.Work == nil {
 		return out
 	}
-	for _, c := range s.Work.Column(Waiting) {
+	// waiting (parked from review) or ready (held in place, TickDecisionDefaults)
+	for _, c := range s.Work.Column(Waiting, Ready) {
 		if !IsHeld(c) || c.F("held_by") != ServerDefaultActor {
 			continue
 		}

@@ -596,6 +596,12 @@ func (st *Store) WhereFacts(ctx context.Context, workRev uint64) (WhereFacts, er
 		f.Held, f.HeldStreams = sprint.HeldBack(snap), sprint.HeldBackByStream(snap)
 		f.DecisionHolds = sprint.DefaultHeldDecisions(snap)
 	}
+	// a ready primary the server-default holds in place (sprint.TickDecisionDefaults) is
+	// in the ready column: one more read, on this uncounted path alone; a read that fails
+	// leaves the waiting column's holds, and where answers degraded, as with the stamps
+	if t, rerr := st.workColumn(ctx, sprint.Ready); rerr == nil && t != nil {
+		f.DecisionHolds = append(f.DecisionHolds, sprint.DefaultHeldDecisions(&sprint.Snapshot{Work: t})...)
+	}
 	// the streams' spend from the cards, as the tick counts it (keepWhere), so the cost
 	// column and the tile show the cards as they are when no record of them is there yet
 	if f.Records {

@@ -251,7 +251,11 @@ func unlawful(u Unit, p *Plan) string {
 				if e.Move != nil && e.Move.Col != from && !p.releasing {
 					return "release the server-default hold before moving its primary"
 				}
-				exactRelease := p.releasing && e.Move != nil && e.Move.Col == held.F("decision_held_from")
+				// the release restores the column it was held from: a move back to it, or,
+				// for a ready primary held in place, no move (releaseHeld; tla/SprintTables.tla
+				// DecisionReleaseStep)
+				exactRelease := p.releasing && (e.Move != nil && e.Move.Col == held.F("decision_held_from") ||
+					e.Move == nil && held.Col == held.F("decision_held_from"))
 				if !exactRelease {
 					for _, field := range []string{FieldHeld, "held_by", "held_reason", "held_judgment", "decision_held_from"} {
 						if value, ok := e.Set[field]; ok && value != held.F(field) {

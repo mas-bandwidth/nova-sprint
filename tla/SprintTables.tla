@@ -205,6 +205,10 @@
 \*                  (WaitsAfterWithinNeeds, FinishAgreesWithLifecycle).
 \*   "finishloop"   a refused finish is neither counted nor judged, so it is
 \*                  sent again without end (FinishRefusalsBounded).
+\*   "parkmoves"    the server-default hold of a ready primary moves it to
+\*                  waiting, as seat_answers.go TickDecisionDefaults did
+\*                  before 2026-10-17: a primary whose work card was
+\*                  withdrawn is left waiting on no need (Rule2Withdrawn).
 \*   "halfstep"     the fence is dropped, so a crash leaves a step half-written
 \*                  (its fleet writes committed, its work-table write pending)
 \*                  and other actions may act on the half-written table; a
@@ -940,6 +944,9 @@ AddMove ==
     /\ FenceOK
     /\ ~IsSentinel(c)
     /\ state[c] = "ready"
+    \* a ready card whose work card was withdrawn is past the stop, never pulled
+    \* behind it (steps_work.go Add, withdrawnCard): rule 2 (Rule2Withdrawn)
+    /\ wplace[c] # "withdrawn"
     /\ state' = [state EXCEPT ![c] = "waiting"]
     /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace, mg, sstream, scause, ranked, ci>>
     /\ pendstate' = IF Free THEN state' ELSE pendstate
@@ -1356,11 +1363,16 @@ ParkFence == parkState = "held" =>
 
 \* Bounded composition: parking is enabled for the one-primary full-Spec
 \* instances; historical three-card instances retain their original action set.
+\* A ready primary is held in place (seat_answers.go TickDecisionDefaults): it
+\* stays ready, the hold fences it from the deal (ParkFence, dealPlan IsHeld),
+\* so a primary whose work card was withdrawn is never left waiting on no need
+\* (Rule2Withdrawn). A primary in review is parked in waiting, its head kept.
 DecisionParkStep ==
   /\ Cardinality(Card) = 1
   /\ Free /\ parkState = "none" /\ state[ParkCard] \in {"ready", "review"}
   /\ parkBound
-  /\ state' = [state EXCEPT ![ParkCard] = "waiting"]
+  /\ state' = IF state[ParkCard] = "ready" /\ Broken # "parkmoves"
+               THEN state ELSE [state EXCEPT ![ParkCard] = "waiting"]
   /\ pendstate' = state'
   /\ flags' = [NoFlags EXCEPT !.decisionPark = TRUE]
   /\ parkSaved' = state[ParkCard] /\ parkState' = "held"
@@ -1486,9 +1498,9 @@ MovesOnlyByTable ==
     \/ state'[c] = state[c]
     \/ Legal(state[c], state'[c])
     \/ /\ c = ParkCard /\ flags'.decisionPark /\ parkBound /\ parkCause'
-       /\ state[c] \in {"ready", "review"} /\ state'[c] = "waiting"
+       /\ state[c] = "review" /\ state'[c] = "waiting"
     \/ /\ c = ParkCard /\ flags'.decisionRelease /\ parkCause
-       /\ state[c] = "waiting" /\ state'[c] = parkSaved
+       /\ state[c] \in {"waiting", "ready"} /\ state'[c] = parkSaved
     \/ /\ state'[c] = "off"
        /\ (IsOpen(state[c]) \/ flags'.removing)]_vars
 
@@ -1497,8 +1509,7 @@ MovesOnlyByTable ==
 \* that has not landed (lifecycle.go needsOpen).
 ReadyToWaitingOnlyByInsertOrNeeds ==
   [][\A c \in Card :
-    state[c] = "ready" /\ state'[c] = "waiting" => flags'.inserting \/ ~((NeedsMet(c))')
-      \/ (c = ParkCard /\ flags'.decisionPark /\ parkBound /\ parkCause')]_allTableVars
+    state[c] = "ready" /\ state'[c] = "waiting" => flags'.inserting \/ ~((NeedsMet(c))')]_allTableVars
 
 \* LandedIsFinal: a landed primary stays landed; only a remove takes it off
 \* the table, and it never moves to another state.
@@ -1564,7 +1575,24 @@ RankRefusesLanded == \A c \in Card : state[c] = "landed" => ~ranked[c]
 
 \* These invariants observe actual lifecycle transitions inside Spec, including
 \* the same-card head and live-read provenance; no disconnected projection.
-ParkingHasCause == parkState = "held" => parkBound /\ parkCause /\ state[ParkCard] = "waiting"
+ParkingHasCause == parkState = "held" => parkBound /\ parkCause
+  /\ state[ParkCard] = IF parkSaved = "ready" /\ Broken # "parkmoves" THEN "ready" ELSE "waiting"
+
+\* Rule2Withdrawn (check.go rule 2, judged when no operation is in flight): a
+\* primary whose work card was withdrawn is ready, or waiting on a named need
+\* that has not landed, or waiting with its needs met and resolvable: the
+\* tick's resolve (Resolve, steps_work.go resolveAfter) moves it to ready
+\* before the tick's check reads it (a waive or a landing that met its needs
+\* in another step). A held card is resolved by no step (ParkFence; resolve
+\* skips IsHeld), so a hold that parked it in waiting is a rule 2 break no
+\* step repairs: the server-default hold of a ready primary holds it in place
+\* (DecisionParkStep), and the reversed witness parkmoves breaks this.
+Resolvable(c) == PositionClear(c) /\ NeedsMet(c) /\ ~(c = ParkCard /\ parkState = "held")
+Rule2Withdrawn == Free =>
+  \A c \in Card \ Sentinels :
+    wplace[c] = "withdrawn" /\ IsOpen(state[c]) =>
+      \/ state[c] = "ready"
+      \/ state[c] = "waiting" /\ (~NeedsMet(c) \/ Resolvable(c))
 ParkingRestoresPrestate == [][flags'.decisionRelease => state'[ParkCard] = parkSaved]_allTableVars
 ParkingPreservesWork == parkState = "held" => headGeneration[ParkCard] = parkHead /\ rplace[ParkCard] = parkReads
 =============================================================================

@@ -116,6 +116,23 @@ func (s *Snapshot) GateHostPool(c *Card, ms []string) (out []string, why string)
 	return out, ""
 }
 
+// gateNeedsNow is the gate-host judgment's why for a ready card the tick's deal would
+// deal round its pool (dealPlan: the members up, less the environment-held and the
+// quiet, narrowed to its bench), when no member of that pool carries its GATE-NEEDS;
+// "" when one does, when it names no need, or when the pool is empty (dealPlan's
+// noPoolWhy and the bench's wait say that, never this judgment).
+func gateNeedsNow(s *Snapshot, c *Card, up []string) string {
+	if len(GateNeeds(c.F("brief"))) == 0 {
+		return ""
+	}
+	pool := onlyBench(notQuiet(s, slices.DeleteFunc(slices.Clone(up), s.EnvHeld)), Bench(c))
+	if len(pool) == 0 {
+		return ""
+	}
+	_, why := s.GateHostPool(c, pool)
+	return why
+}
+
 // memberSatisfies says every need is among the member's facts.
 func memberSatisfies(facts, needs []string) bool {
 	for _, n := range needs {
@@ -127,13 +144,23 @@ func memberSatisfies(facts, needs []string) bool {
 }
 
 // gateNeedsWhy is the sentence for a card no member satisfies: the first need none
-// carries, and the members the deal looked at with their facts.
+// carries, and the members the deal looked at with their facts. When every need is
+// carried by some member and none carries them all, it names the needs together.
+// (Before 2026-10-17 it named the first need always: a card needing linux, x86-64
+// read "no member up satisfies GATE-NEEDS linux" beside nine members carrying linux.)
 func gateNeedsWhy(needs []string, ms []string, s *Snapshot) string {
 	var members []string
 	for _, m := range ms {
 		members = append(members, m+" (facts: "+strings.Join(s.MemberFacts(m), ",")+")")
 	}
-	return "no member up satisfies GATE-NEEDS " + needs[0] + " (" + strings.Join(members, "; ") + ")"
+	need := strings.Join(needs, ", ") + " together"
+	for _, n := range needs {
+		if !slices.ContainsFunc(ms, func(m string) bool { return slices.Contains(s.MemberFacts(m), n) }) {
+			need = n
+			break
+		}
+	}
+	return "no member up satisfies GATE-NEEDS " + need + " (" + strings.Join(members, "; ") + ")"
 }
 
 // NGateNeeds is the deal's judgment that no member up satisfies a card's GATE-NEEDS line

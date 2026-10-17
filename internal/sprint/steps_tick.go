@@ -993,6 +993,15 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 			// no other (bench_deal.go); the no-stall rule says why (held.go)
 			continue
 		}
+		if why := gateNeedsNow(s, c, up); why != "" {
+			// no member the deal may give it (dealPlan's pool) carries its GATE-NEEDS: a cond
+			// of notify, raised while it holds and closed in the tick it no longer does, so
+			// a judgment raised while the fleet was down (a server restart) never outlives
+			// its cause (tla/JudgmentRetire.tla GateClosedAfterTick, reversed witness
+			// gate_stays). Raised by dealPlan's own note, nothing closed it.
+			conds = append(conds, cond{typ: NGateNeeds, stream: c.Row, primaries: []string{c.ID}, what: why})
+			continue
+		}
 		ready = append(ready, c)
 	}
 	// a primary whose attempt failed the way the attempt before did (rule 2): the bound's
@@ -1170,7 +1179,7 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	p.Units = append(p.Units, needsWithdrawals(s, r.who())...)
 	restWrites(&p, s, rests, r.who())
 	p.Notes = append(p.Notes, capNotes...)
-	due += notify(&p, s, conds, []string{NNoMember, NStarving, NOverloaded, NAdoptFailed, NDevBehind, NBound, NNoRoute, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NFriendSyncFailing, NMirrorNeed, NHoldNoCause, NMemberIdleReaps}, r)
+	due += notify(&p, s, conds, []string{NNoMember, NStarving, NOverloaded, NAdoptFailed, NDevBehind, NBound, NNoRoute, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NFriendSyncFailing, NMirrorNeed, NHoldNoCause, NMemberIdleReaps, NGateNeeds}, r)
 	// a fault hold the machine placed clears itself here, beside the deal that
 	// gives the healthy member its (probe) card (faultClear): a person's hold
 	// is never lifted by it.
@@ -2105,7 +2114,7 @@ func condKey(typ, subject, card, what string) string {
 		NBaseCIRed,
 		NStopMemberDown, NStopPinWaits, NMemberIdleReaps,
 		NNoFrontierRoom,
-		NMirrorNeed, NMemberPegged:
+		NMirrorNeed, NMemberPegged, NGateNeeds:
 		what = ""
 	case NReadyOver:
 		// one judgment per (reason, tier): the reason is the stable cause, so
@@ -2285,7 +2294,7 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 			if !open[k] {
 				fresh = append(fresh, sub)
 			}
-			if n, ok := judged[k]; ok && (c.typ == NWorkLate || c.typ == NReadLate || c.typ == NFewReaders || c.typ == NStarving || c.typ == NOverloaded || c.typ == NFilesAlarm || c.typ == NReadersBehind || c.typ == NDevBehind || c.typ == NBrokenReadsOutrun || c.typ == NReaderBreaks || c.typ == NFriendSyncFailing || c.typ == NNoFrontierRoom || c.typ == NReadyOver || c.typ == NReviewNoReader || slices.Contains(StopTypes, c.typ)) {
+			if n, ok := judged[k]; ok && (c.typ == NWorkLate || c.typ == NReadLate || c.typ == NFewReaders || c.typ == NStarving || c.typ == NOverloaded || c.typ == NFilesAlarm || c.typ == NReadersBehind || c.typ == NDevBehind || c.typ == NBrokenReadsOutrun || c.typ == NReaderBreaks || c.typ == NFriendSyncFailing || c.typ == NNoFrontierRoom || c.typ == NReadyOver || c.typ == NReviewNoReader || c.typ == NGateNeeds || slices.Contains(StopTypes, c.typ)) {
 				var primaries []string
 				if c.typ == NNoFrontierRoom || c.typ == NReadyOver || c.typ == NReviewNoReader {
 					primaries = c.primaries // the cards it names, rewritten in place as they join or leave the cause

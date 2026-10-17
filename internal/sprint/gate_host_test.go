@@ -119,3 +119,45 @@ func TestACardNoMemberSatisfiesRaisesOneJudgment(t *testing.T) {
 	assert.Contains(t, notes[0].What, "GATE-NEEDS tla")
 	assert.Equal(t, []string{"s1-1"}, notes[0].Primaries)
 }
+
+// TestAGateJudgmentClosesInTheTickItsCauseEnds: 2026-10-17, a server restart left only
+// the studio up for a tick; the deal raised "no member up satisfies a card's GATE-NEEDS"
+// for four linux cards, and it held them and 25 behind them for 35 minutes after the
+// Linux members were back, raised again every 10 minutes, answerable by no verb. The
+// judgment is a cond of the tick's notify now: raised while no member of the deal's pool
+// carries the need, closed in the tick one does, and the card dealt in that tick.
+// tla/JudgmentRetire.tla GateClosedAfterTick, reversed witness gate_stays.
+func TestAGateJudgmentClosesInTheTickItsCauseEnds(t *testing.T) {
+	w := fleetWorld(t, 1, 2, "m-darwin", "m-linux")
+	w.s.MemberCtl("m-darwin").Fields[FieldFacts] = "darwin,go"
+	w.s.MemberCtl("m-linux").Fields[FieldFacts] = "linux,go"
+	w.s.Work.Card("s1-1").Fields["brief"] = "tier: pro\nGATE-NEEDS: linux\n\nThe task.\n"
+	w.must(FleetStep(w.s, FleetReq{Op: "down", Member: "m-linux"}))
+	w.part(TickDeal, TickReq{})
+	require.Len(t, w.openOn("s1-1"), 1, "only the darwin member is up: one judgment names the need")
+	assert.Equal(t, NGateNeeds, w.openOn("s1-1")[0].Note.Type)
+	w.part(TickDeal, TickReq{})
+	require.Len(t, w.notesOf(NGateNeeds), 1, "a standing cause is judged once, never every tick")
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m-linux", Width: 2}))
+	w.part(TickDeal, TickReq{})
+	assert.Empty(t, w.openOn("s1-1"), "the linux member is back: the judgment closes in that tick")
+	wc := w.s.Fleet.Card("s1-1.w1")
+	require.NotNil(t, wc, "and the card is dealt in it")
+	assert.Equal(t, "m-linux", wc.Row)
+}
+
+// TestGateNeedsWhyNamesTheNeedNoMemberCarries: f3dl-perf-scalar-oracle-regen needed linux,
+// x86-64, and its judgment read "no member up satisfies GATE-NEEDS linux" beside nine
+// members whose facts carry linux; it names the need none carries (x86-64), or every need
+// together when each is carried by some member and none carries all.
+func TestGateNeedsWhyNamesTheNeedNoMemberCarries(t *testing.T) {
+	f := NewTable(Fleet)
+	f.SetRows([]string{"m-a", "m-b"})
+	f.Put(&Card{ID: CtlID("m-a"), Row: "m-a", Col: Ctl, Fields: map[string]string{"kind": "member", "status": Up, FieldFacts: "linux,amd64,tla"}})
+	f.Put(&Card{ID: CtlID("m-b"), Row: "m-b", Col: Ctl, Fields: map[string]string{"kind": "member", "status": Up, FieldFacts: "darwin,arm64"}})
+	s := &Snapshot{Now: t0, Fleet: f}
+	_, why := s.GateHostPool(&Card{ID: "c", Fields: map[string]string{"brief": "CARD: c\nGATE-NEEDS: linux, x86-64\n"}}, []string{"m-a", "m-b"})
+	assert.Contains(t, why, "GATE-NEEDS x86-64 (", "the need no member carries")
+	_, why = s.GateHostPool(&Card{ID: "c", Fields: map[string]string{"brief": "CARD: c\nGATE-NEEDS: tla, arm64\n"}}, []string{"m-a", "m-b"})
+	assert.Contains(t, why, "GATE-NEEDS tla, arm64 together (", "each need carried by some member, all by none")
+}
