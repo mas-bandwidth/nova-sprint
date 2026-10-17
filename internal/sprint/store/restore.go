@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	snapwire "github.com/mas-bandwidth/nova-sprint/internal/sprint/store/snaprowswire"
 	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
@@ -371,10 +372,11 @@ func liveForm(part, val string) string {
 	if !row && part != "table "+sprint.Fleet {
 		return val
 	}
-	dec := json.NewDecoder(strings.NewReader(val))
-	dec.UseNumber() // exact numbers: only what is named below is dropped
-	var m map[string]any
-	if dec.Decode(&m) != nil {
+	m, _, err := restorePartRows.Read([]byte(val))
+	if err != nil {
+		// A fleet part that is not the JSON object read here is compared as it is,
+		// on purpose (DiffLive): the refusal is named and counted under
+		// RESTOREPART, never read as an empty part (S2, S4).
 		return val
 	}
 	if !row {
@@ -526,3 +528,45 @@ func (r readOnly) RecordRaw(ctx context.Context, table, key, id string) (map[str
 	}
 	return rr.RecordRaw(ctx, table, key, id)
 }
+
+// restorePartRows reads one fleet part's value for the live comparison
+// (liveForm): today's JSON object, with exact numbers so only what liveForm names
+// is dropped. A part value has no table of its own (SprintState holds it as an
+// open text, snaprows.schema), so its one form is the legacy JSON; any other text
+// is refused by name and counted (S2, S4).
+var restorePartRows = NewRowCodec(RowFns[map[string]any]{
+	Name:   "RESTOREPART",
+	Reset:  func(v *map[string]any) { *v = nil },
+	Legacy: func(in []byte) bool { return len(in) > 0 && in[0] == '{' },
+	LoadLegacy: func(v *map[string]any, in []byte) RowReport {
+		dec := json.NewDecoder(strings.NewReader(string(in)))
+		dec.UseNumber() // exact numbers: only what liveForm names is dropped
+		if err := dec.Decode(v); err != nil {
+			return RowReport{Malformed: true, Reason: "legacy_json_unreadable"}
+		}
+		return RowReport{}
+	},
+})
+
+// sprintStateRows reads the restore state (SprintState) through the snaprows
+// SprintState variable table and the store row reader: its table image, padded
+// standard base64 of it, the schema JSON text, and today's legacy JSON
+// ({"parts":{...}}); a damaged state is refused by name and each read is counted
+// under the form read (S1, S2, S4). The state is built in memory by ReadState and
+// compared in memory by SemanticRestore, so no verb reads a saved state yet; this
+// is the reader one is read back with, and its writer is the form a later writer
+// card emits.
+var sprintStateRows = NewRowCodec(snapRowFns[SprintState]("SPRINTSTATE",
+	snapVariable(snapwire.SprintStateLoadMeasureReason, snapwire.SprintStateLoad, snapwire.SprintStateToJsonMeasure, snapwire.SprintStateToJson,
+		(*snapwire.SprintStateBuilder).Init, (*snapwire.SprintStateBuilder).GetRoot, func(b *snapwire.SprintStateBuilder) *snapwire.TableArena { return &b.Arena },
+		snapwire.SprintStateFromJson, snapwire.SprintStateMeasure, snapwire.SprintStateSave),
+	snapListMarked("parts"),
+	func(v any) (any, error) { return snapObj{"parts": snapPairs(snapMp(v)["parts"], "name")}, nil },
+	func(v any) (any, error) {
+		parts := snapUnpairs(snapMp(v)["parts"], "name")
+		if parts == nil {
+			parts = snapObj{}
+		}
+		return snapObj{"parts": parts}, nil
+	},
+	snapStrict[SprintState]))

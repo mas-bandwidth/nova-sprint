@@ -1,9 +1,11 @@
 package sprint
 
 import (
+	"bytes"
 	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"math/big"
@@ -12,7 +14,9 @@ import (
 	"strconv"
 	"strings"
 
+	snapwire "github.com/mas-bandwidth/nova-sprint/internal/sprint/store/snaprowswire"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
+	"github.com/mas-bandwidth/nova-tools/pkg/schemaread"
 )
 
 // What a card cost (docs/SPEC-SPRINT.md, "What a card cost"): the cost is tracked
@@ -340,6 +344,9 @@ type CardCostView struct {
 	Carried     string `json:"carried_usd,omitempty"`
 	CarriedFrom string `json:"carried_from,omitempty"`
 	CarriedTo   string `json:"carried_to,omitempty"`
+	// Refused is each cost record the reader refused (DecodeConsumer), its key and
+	// the refusal, so a damaged record is shown, never counted as absent (S2).
+	Refused []string `json:"-"`
 }
 
 // CardCostOf is the producer's cost as the primary carries it: its records, in the
@@ -351,9 +358,16 @@ func CardCostOf(pr *Card) CardCostView {
 	}
 	for k, line := range pr.Fields {
 		if key, ok := strings.CutPrefix(k, FieldCostRecord); ok {
-			v.Consumers = append(v.Consumers, parseConsumer(key, line))
+			c, err := DecodeConsumer(key, line)
+			if err != nil {
+				// S2: a damaged record is refused by name and shown, never read as absent
+				v.Refused = append(v.Refused, key+": "+err.Error())
+				continue
+			}
+			v.Consumers = append(v.Consumers, c)
 		}
 	}
+	sort.Strings(v.Refused)
 	sort.Slice(v.Consumers, func(i, j int) bool {
 		a, b := v.Consumers[i], v.Consumers[j]
 		if a.At != b.At {
@@ -394,6 +408,9 @@ func (v CardCostView) CostLines() []string {
 		out = append(out, fmt.Sprintf("COST kind=%s card=%s attempt=%d%s who=%s route=%s model=%s tier=%s end=%s %s wait=%s run=%s predicted_usd=%s actual_usd=%s actual_by=%s cost=%s",
 			c.Kind, c.Card, c.Attempt, take, orDash(c.Who), orDash(cmp.Or(c.Route, u.Route)), orDash(c.Model), orDash(c.Tier), strings.ReplaceAll(c.End, " ", "-"),
 			tokenWords(u.Tokens), seconds(u.Wait), seconds(u.Run), orDash(u.Predicted), orDash(u.Actual), orDash(actualBy), CostWord(u)))
+	}
+	for _, r := range v.Refused {
+		out = append(out, "COST REFUSED "+r) // S2: a damaged record is shown, never dropped
 	}
 	t := v.Total
 	cut := ""
@@ -664,4 +681,208 @@ func (s *Snapshot) receiptBillingRefusal(c *Card, usage string) string {
 		}
 	}
 	return ""
+}
+
+// The card cost record's dual read (schemas/snaprows/snaprows.schema, Consumer;
+// the owner's rules S1, S2 and S4). A cost record on the primary is read alike
+// from today's legacy line (Consumer.line), the Consumer variable table's image
+// (form byte 1, S1: its texts and lists are open), padded standard base64 of that
+// image, and the schema JSON text; a damaged record of any form is refused by name
+// (`CONSUMER REFUSED: <reason>; run: nova-sprint card <id>`) and every read is
+// counted under the form read (ConsumerReader.Counts). Writers still write the line
+// (S4: readers first). This package sits below the store, so the reader is the
+// strict read of pkg/schemaread itself, the one the store row reader wraps.
+
+// consumerVariableForm is the variable table's form byte (S1).
+const consumerVariableForm byte = 1
+
+// consumerReport reduces a generated report to the strict read's (S2).
+func consumerReport(rep snapwire.TableReport, ok bool) schemaread.Report {
+	return schemaread.Report{Unknown: int(rep.Unknown), KindMismatch: int(rep.KindMismatch), Clamped: int(rep.Clamped),
+		Malformed: rep.Malformed || !ok || rep.Duplicate > 0, Reason: rep.Reason}
+}
+
+func consumerRefused(r schemaread.Report) bool {
+	return r.Reason != "" || r.Malformed || r.KindMismatch > 0 || r.Clamped > 0
+}
+
+// consumerText reads a Consumer image out as its schema JSON text (S2).
+func consumerText(w []byte) ([]byte, schemaread.Report) {
+	n, err := snapwire.ConsumerLoadMeasureReason(w)
+	if err != nil {
+		return nil, schemaread.Report{Malformed: true, Reason: err.Error()}
+	}
+	var rep snapwire.TableReport
+	v := snapwire.ConsumerLoad(make([]byte, n), w, &rep)
+	if r := consumerReport(rep, v != nil); consumerRefused(r) {
+		return nil, r
+	}
+	buf := make([]byte, snapwire.ConsumerToJsonMeasure(v))
+	k := snapwire.ConsumerToJson(v, buf)
+	if k < 0 {
+		return nil, schemaread.Report{Malformed: true}
+	}
+	return buf[:k], consumerReport(rep, true)
+}
+
+// consumerImage writes the schema JSON text as a Consumer image (S2).
+func consumerImage(text []byte) ([]byte, schemaread.Report) {
+	var b snapwire.ConsumerBuilder
+	if !b.Init() {
+		return nil, schemaread.Report{Malformed: true}
+	}
+	var rep snapwire.TableReport
+	ok := snapwire.ConsumerFromJson(&b, text, &rep)
+	if r := consumerReport(rep, ok); consumerRefused(r) {
+		return nil, r
+	}
+	m := snapwire.ConsumerMeasure(b.GetRoot(), &b.Arena)
+	if m < 0 {
+		return nil, schemaread.Report{Malformed: true}
+	}
+	buf := make([]byte, m)
+	k := snapwire.ConsumerSave(b.GetRoot(), buf, &b.Arena)
+	if k < 0 {
+		return nil, schemaread.Report{Malformed: true}
+	}
+	return buf[:k], consumerReport(rep, true)
+}
+
+// consumerRename renames one key at every depth: cardcost.Usage's long is the
+// table's long_context (long is reserved, snaprows.schema).
+func consumerRename(v any, from, to string) any {
+	switch x := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, e := range x {
+			if k == from {
+				k = to
+			}
+			out[k] = consumerRename(e, from, to)
+		}
+		return out
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			out[i] = consumerRename(e, from, to)
+		}
+		return out
+	}
+	return v
+}
+
+// consumerFromText decodes the schema JSON text as the Consumer it holds (S2).
+func consumerFromText(c *Consumer, text []byte, r schemaread.Report) schemaread.Report {
+	d := json.NewDecoder(bytes.NewReader(text))
+	d.UseNumber()
+	var tree any
+	if err := d.Decode(&tree); err != nil {
+		return schemaread.Report{Malformed: true, Reason: "image_unmapped"}
+	}
+	raw, err := json.Marshal(consumerRename(tree, "long_context", "long"))
+	if err != nil {
+		return schemaread.Report{Reason: "image_unmapped"}
+	}
+	if err := json.Unmarshal(raw, c); err != nil {
+		return schemaread.Report{Reason: "image_unmapped"}
+	}
+	return r
+}
+
+// consumerWire is the record as its table image: the form a later writer card
+// emits, and the proof's fixture (S1, S4).
+func consumerWire(c Consumer) []byte {
+	raw, err := json.Marshal(c)
+	if err != nil {
+		return nil
+	}
+	var tree any
+	if json.Unmarshal(raw, &tree) != nil {
+		return nil
+	}
+	text, err := json.Marshal(consumerRename(tree, "long", "long_context"))
+	if err != nil {
+		return nil
+	}
+	w, r := consumerImage(text)
+	if consumerRefused(r) {
+		return nil
+	}
+	return w
+}
+
+// consumerLegacy says the text is today's line: Consumer.line opens every record
+// with its kind word, which neither a JSON object nor padded standard base64 can
+// open with ('=' is base64's padding, at its end only) (S2).
+func consumerLegacy(in []byte) bool {
+	return bytes.HasPrefix(bytes.TrimLeft(in, " \t\r\n"), []byte("kind="))
+}
+
+// ConsumerReader is the one strict reader of the cost records; its Counts are the
+// per-form read counter, the evidence a later card reads before the writer
+// switches (S2, S4).
+var ConsumerReader = schemaread.NewReader(&schemaread.Codec[Consumer]{
+	Name: "CONSUMER", Help: "nova-sprint card <id>",
+	Reset: func(c *Consumer) { *c = Consumer{} },
+	Forms: []byte{consumerVariableForm},
+	Measure: func(w []byte) error {
+		_, err := snapwire.ConsumerLoadMeasureReason(w)
+		return err
+	},
+	LoadWire: func(c *Consumer, w []byte) schemaread.Report {
+		text, r := consumerText(w)
+		if consumerRefused(r) {
+			return r
+		}
+		return consumerFromText(c, text, r)
+	},
+	LoadJSON: func(c *Consumer, in []byte) schemaread.Report {
+		w, r := consumerImage(in)
+		if consumerRefused(r) {
+			return r
+		}
+		text, r2 := consumerText(w)
+		if consumerRefused(r2) {
+			return r2
+		}
+		return consumerFromText(c, text, r)
+	},
+	Legacy: consumerLegacy,
+	LoadLegacy: func(c *Consumer, in []byte) schemaread.Report {
+		// S2: a count the line holds that is not a number is refused, never read as zero
+		for _, w := range strings.Fields(string(in)) {
+			k, v, _ := strings.Cut(w, "=")
+			if k == "attempt" || k == "take" || k == "gen" {
+				if _, err := strconv.Atoi(v); err != nil {
+					return schemaread.Report{Malformed: true, Reason: "legacy_line_unreadable"}
+				}
+			}
+		}
+		*c = parseConsumer("", string(in))
+		return schemaread.Report{}
+	},
+	SaveWire: func(c *Consumer) []byte { return consumerWire(*c) },
+	SaveJSON: func(c *Consumer) []byte {
+		w := consumerWire(*c)
+		if w == nil {
+			return nil
+		}
+		text, r := consumerText(w)
+		if consumerRefused(r) {
+			return nil
+		}
+		return text
+	},
+})
+
+// DecodeConsumer reads one cost record of the primary, kept under
+// FieldCostRecord+key, in any of its forms (S2); the record's key is the field's.
+// A refused record is the refusal, never a zero record. Each read is counted (S4).
+func DecodeConsumer(key, value string) (Consumer, error) {
+	c, _, err := ConsumerReader.Read([]byte(value))
+	if err != nil {
+		return Consumer{}, err
+	}
+	c.Key = key
+	return c, nil
 }

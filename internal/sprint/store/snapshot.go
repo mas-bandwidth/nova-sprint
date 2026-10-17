@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	snapwire "github.com/mas-bandwidth/nova-sprint/internal/sprint/store/snaprowswire"
 	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
@@ -318,13 +319,14 @@ func (s MemSource) Save(context.Context) ([]byte, SnapshotCounts, error) {
 type MemTwin struct{ Names sprint.Names }
 
 // Load restores the document into a new Mem (a document of another version is
-// refused) and counts it.
+// refused) and counts it. The document is read once, in any of its forms,
+// through the row reader (memSnapshotRows; S2, S4).
 func (t MemTwin) Load(doc []byte) (SnapshotCounts, error) {
-	if err := NewMem().Restore(doc); err != nil {
-		return SnapshotCounts{Keys: -1, Cards: -1}, err
+	d, _, err := memSnapshotRows.Read(doc)
+	if err != nil {
+		return SnapshotCounts{Keys: -1, Cards: -1}, fmt.Errorf("not a twin snapshot: %w", err)
 	}
-	var d memSnapshot
-	if err := json.Unmarshal(doc, &d); err != nil {
+	if err := NewMem().restoreSnapshot(d); err != nil {
 		return SnapshotCounts{Keys: -1, Cards: -1}, err
 	}
 	c := SnapshotCounts{Keys: len(d.Tables)}
@@ -632,8 +634,8 @@ func MemDump(m *Mem, epoch uint64) ([]DumpKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	var s memSnapshot
-	if err := json.Unmarshal(doc, &s); err != nil {
+	s, _, err := memSnapshotRows.Read(doc) // S2, S4: the one document reader, counted per form
+	if err != nil {
 		return nil, err
 	}
 	var out []DumpKey
@@ -728,29 +730,42 @@ func MemRestore(keys []DumpKey) (*Mem, error) {
 			}
 			return nil
 		}
+		// page reads one page through its row reader, in any of its forms; a
+		// damaged page is refused by name (S2, S4).
+		page := func(err error) error {
+			if err != nil {
+				return fmt.Errorf("the key %s does not restore: %w", k.Key, err)
+			}
+			return nil
+		}
 		var err error
 		switch key := k.Key; {
 		case key == n.Key("mem:meta"):
 			var meta memSnapshot
-			err = dec(&meta)
+			meta, _, err = memSnapshotRows.Read(k.Payload)
+			err = page(err)
 			s.Version, s.EpochSet, s.EpochN, s.Cleared, s.Owed, s.DefaultsOwed, s.Seq = meta.Version, meta.EpochSet, meta.EpochN, meta.Cleared, meta.Owed, meta.DefaultsOwed, meta.Seq
 			sawMeta = true
 		case strings.HasPrefix(key, "view:"):
 			var v ntable.View
-			err = dec(&v)
+			v, _, err = snapViewRows.Read(k.Payload)
+			err = page(err)
 			s.Views[strings.TrimPrefix(key, "view:")] = v
 		case strings.HasPrefix(key, n.Key("mem:kv:")):
+			// a kv value is one JSON string, no record of the snaprows area
 			var v string
 			err = dec(&v)
 			s.KV[strings.TrimPrefix(key, n.Key("mem:kv:"))] = v
 		case strings.HasPrefix(key, n.Key("mem:dropped:")):
 			var r residueSnap
-			err = dec(&r)
+			r, _, err = snapResidueRows.Read(k.Payload)
+			err = page(err)
 			s.Dropped[strings.TrimPrefix(key, n.Key("mem:dropped:"))] = &r
 		case strings.HasPrefix(key, n.Key("mem:log")):
 			e, _ := KeyEpoch(key)
 			var l logSnapshot
-			err = dec(&l)
+			l, _, err = snapLogRows.Read(k.Payload)
+			err = page(err)
 			s.Logs[e] = &l
 		case strings.HasPrefix(key, "table:") && strings.HasSuffix(key, ":epoch"):
 			name, rest, _ := strings.Cut(strings.TrimPrefix(key, "table:"), ":")
@@ -759,18 +774,21 @@ func MemRestore(keys []DumpKey) (*Mem, error) {
 				e, _ = KeyEpoch(key)
 			}
 			var ep epochSnapshot
-			err = dec(&ep)
+			ep, _, err = snapEpochRows.Read(k.Payload)
+			err = page(err)
 			if epochs[name] == nil {
 				epochs[name] = map[uint64]*epochSnapshot{}
 			}
 			epochs[name][e] = &ep
 		case strings.HasPrefix(key, "table:"):
 			var t tableSnapshot
-			err = dec(&t)
+			t, _, err = snapTableRows.Read(k.Payload)
+			err = page(err)
 			s.Tables[strings.TrimPrefix(key, "table:")] = &t
 		default:
 			var m memDumpMember
-			if err = dec(&m); err == nil && m.Member == nil {
+			m, _, err = snapMemberRows.Read(k.Payload)
+			if err = page(err); err == nil && m.Member == nil {
 				err = fmt.Errorf("the key %s is no key of a twin's dump", key)
 			}
 			members = append(members, m)
@@ -810,3 +828,65 @@ func MemRestore(keys []DumpKey) (*Mem, error) {
 	}
 	return m, nil
 }
+
+// The dump's pages, each read through its snaprows variable table and the store
+// row reader (snaprows.schema; S1, S2, S4): a page reads alike from its table
+// image, padded standard base64 of it, the schema JSON text and today's legacy
+// JSON, and a damaged page is refused by name.
+
+func snapOne(f func(any) any) func(any) (any, error) {
+	return func(v any) (any, error) { return f(v), nil }
+}
+
+// fwdDumpMember and invDumpMember map a dump member (MemDumpMember); a null
+// member stays null, and the restore refuses such a key.
+func fwdDumpMember(v any) any {
+	m := snapMp(v)
+	var mem any
+	if m["member"] != nil {
+		mem = fwdMember(m["member"])
+	}
+	return snapObj{"table_name": m["table"], "member": mem}
+}
+
+func invDumpMember(v any) any {
+	m := snapMp(v)
+	var mem any
+	if m["member"] != nil {
+		mem = invMember(m["member"])
+	}
+	return snapObj{"table": snapStr(m["table_name"]), "member": mem}
+}
+
+var (
+	snapViewRows = NewRowCodec(snapRowFns[ntable.View]("VIEW",
+		snapVariable(snapwire.ViewLoadMeasureReason, snapwire.ViewLoad, snapwire.ViewToJsonMeasure, snapwire.ViewToJson,
+			(*snapwire.ViewBuilder).Init, (*snapwire.ViewBuilder).GetRoot, func(b *snapwire.ViewBuilder) *snapwire.TableArena { return &b.Arena },
+			snapwire.ViewFromJson, snapwire.ViewMeasure, snapwire.ViewSave),
+		snapListMarked("tables"), snapOne(fwdView), snapOne(invView), snapStrict[ntable.View]))
+	snapResidueRows = NewRowCodec(snapRowFns[residueSnap]("RESIDUESNAP",
+		snapVariable(snapwire.ResidueSnapLoadMeasureReason, snapwire.ResidueSnapLoad, snapwire.ResidueSnapToJsonMeasure, snapwire.ResidueSnapToJson,
+			(*snapwire.ResidueSnapBuilder).Init, (*snapwire.ResidueSnapBuilder).GetRoot, func(b *snapwire.ResidueSnapBuilder) *snapwire.TableArena { return &b.Arena },
+			snapwire.ResidueSnapFromJson, snapwire.ResidueSnapMeasure, snapwire.ResidueSnapSave),
+		snapListMarked("keys"), snapOne(fwdResidue), snapOne(invResidue), snapStrict[residueSnap]))
+	snapLogRows = NewRowCodec(snapRowFns[logSnapshot]("LOGSNAPSHOT",
+		snapVariable(snapwire.LogSnapshotLoadMeasureReason, snapwire.LogSnapshotLoad, snapwire.LogSnapshotToJsonMeasure, snapwire.LogSnapshotToJson,
+			(*snapwire.LogSnapshotBuilder).Init, (*snapwire.LogSnapshotBuilder).GetRoot, func(b *snapwire.LogSnapshotBuilder) *snapwire.TableArena { return &b.Arena },
+			snapwire.LogSnapshotFromJson, snapwire.LogSnapshotMeasure, snapwire.LogSnapshotSave),
+		snapListMarked("done"), snapOne(fwdLog), snapOne(invLog), snapStrict[logSnapshot]))
+	snapEpochRows = NewRowCodec(snapRowFns[epochSnapshot]("EPOCHSNAPSHOT",
+		snapVariable(snapwire.EpochSnapshotLoadMeasureReason, snapwire.EpochSnapshotLoad, snapwire.EpochSnapshotToJsonMeasure, snapwire.EpochSnapshotToJson,
+			(*snapwire.EpochSnapshotBuilder).Init, (*snapwire.EpochSnapshotBuilder).GetRoot, func(b *snapwire.EpochSnapshotBuilder) *snapwire.TableArena { return &b.Arena },
+			snapwire.EpochSnapshotFromJson, snapwire.EpochSnapshotMeasure, snapwire.EpochSnapshotSave),
+		snapListMarked("hidden"), snapOne(fwdEpoch), snapOne(invEpoch), snapStrict[epochSnapshot]))
+	snapTableRows = NewRowCodec(snapRowFns[tableSnapshot]("TABLESNAPSHOT",
+		snapVariable(snapwire.TableSnapshotLoadMeasureReason, snapwire.TableSnapshotLoad, snapwire.TableSnapshotToJsonMeasure, snapwire.TableSnapshotToJson,
+			(*snapwire.TableSnapshotBuilder).Init, (*snapwire.TableSnapshotBuilder).GetRoot, func(b *snapwire.TableSnapshotBuilder) *snapwire.TableArena { return &b.Arena },
+			snapwire.TableSnapshotFromJson, snapwire.TableSnapshotMeasure, snapwire.TableSnapshotSave),
+		snapListMarked("wrote"), snapOne(fwdTableSnapshot), snapOne(invTableSnapshot), snapStrict[tableSnapshot]))
+	snapMemberRows = NewRowCodec(snapRowFns[memDumpMember]("MEMDUMPMEMBER",
+		snapVariable(snapwire.MemDumpMemberLoadMeasureReason, snapwire.MemDumpMemberLoad, snapwire.MemDumpMemberToJsonMeasure, snapwire.MemDumpMemberToJson,
+			(*snapwire.MemDumpMemberBuilder).Init, (*snapwire.MemDumpMemberBuilder).GetRoot, func(b *snapwire.MemDumpMemberBuilder) *snapwire.TableArena { return &b.Arena },
+			snapwire.MemDumpMemberFromJson, snapwire.MemDumpMemberMeasure, snapwire.MemDumpMemberSave),
+		snapFirstKey("table_name"), snapOne(fwdDumpMember), snapOne(invDumpMember), snapStrict[memDumpMember]))
+)
