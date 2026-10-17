@@ -43,10 +43,7 @@ func TestFriendRowsGolden(t *testing.T) {
 		vrow("Holder", HolderTableType, HolderLoadMeasureReason, HolderLoad),
 		vrow("Files", FilesTableType, FilesLoadMeasureReason, FilesLoad),
 		vrow("Meter", MeterTableType, MeterLoadMeasureReason, MeterLoad),
-		vrow("RunWord", RunWordTableType, RunWordLoadMeasureReason, RunWordLoad),
 		vrow("FriendReport", FriendReportTableType, FriendReportLoadMeasureReason, FriendReportLoad),
-		vrow("LiveWord", LiveWordTableType, LiveWordLoadMeasureReason, LiveWordLoad),
-		vrow("FactWord", FactWordTableType, FactWordLoadMeasureReason, FactWordLoad),
 		vrow("LiveSight", LiveSightTableType, LiveSightLoadMeasureReason, LiveSightLoad),
 		vrow("Beat", BeatTableType, BeatLoadMeasureReason, BeatLoad),
 		vrow("ReaderHold", ReaderHoldTableType, ReaderHoldLoadMeasureReason, ReaderHoldLoad),
@@ -670,6 +667,12 @@ func vfill(t *testing.T, w *TableWorker, p unsafe.Pointer, info *TableTypeInfo) 
 			f.Table().Reset(q)
 			vfill(t, w, q, f.Table())
 			*(*TableRef)(base) = ref
+		case f.TextList != 0:
+			e := tableContainerAppend(w, (*tableContainer)(base), int64(f.ElemSize))
+			if e == nil {
+				t.Fatalf("%s.%s append", info.Name, f.Name)
+			}
+			TableStringEmplace(w, (*TableRef)(e), []byte("a"))
 		case f.List:
 			e := tableContainerAppend(w, (*tableContainer)(base), int64(f.ElemSize))
 			if e == nil {
@@ -876,6 +879,15 @@ var longTime = "2026-10-17T01:02:03." + strings.Repeat("123456789", 8) + "Z"
 // longText returns n bytes of one letter.
 func longText(n int) string { return strings.Repeat("a", n) }
 
+// longTextEntries returns n copies of the text.
+func longTextEntries(n int, text string) []any {
+	out := make([]any, n)
+	for i := range out {
+		out[i] = text
+	}
+	return out
+}
+
 // longEntries returns n copies of the object.
 func longEntries(n int, obj map[string]any) []any {
 	out := make([]any, n)
@@ -889,7 +901,7 @@ func longEntries(n int, obj map[string]any) []any {
 // case is read as JSON text, saved as wire, read back from the binary wire,
 // the padded standard base64 and the JSON text, and each read must hold the
 // values it was given. The cases are the removed caps: Beat.samples past 11,
-// live past 512, top holders past 10, RunWord.text past 4096, reason past
+// live past 512, top holders past 10, reason past
 // 1024, a negative paced, token_cap, working, queue and stop_returns, billing
 // past 16, and every string(35) time past 35 bytes, and the texts of the
 // tables that were fixed.
@@ -904,14 +916,11 @@ func openValues(t *testing.T, rows map[string]varRow) {
 		{"FriendEntry", map[string]any{"at": longTime, "until": longTime, "by": longText(300), "mode": longText(40), "pronouns": longText(40), "session": longText(40), "billing": longText(100), "reason": long, "token_cap": json.Number("-5"), "token_cap_set": true, "width": json.Number("-3")}},
 		{"FriendStatus", map[string]any{"status": longText(40), "at": longTime, "until": longTime, "reason": long, "evidence": long}},
 		{"LoadSample", sample},
-		{"RunWord", map[string]any{"text": longText(4097)}},
 		{"FriendReport", map[string]any{
-			"running": []any{map[string]any{"text": longText(4097)}, map[string]any{"text": longText(70 * 1024)}},
+			"running": []any{longText(4097), longText(70 * 1024)},
 			"working": json.Number("-1"), "queue": json.Number("-1"), "stop_returns": json.Number("-1"), "paced": json.Number("-1"), "width": json.Number("-1"),
 			"reason": longText(1025), "active": longTime, "until": longTime, "started": longTime, "present": longTime,
 		}},
-		{"LiveWord", map[string]any{"text": longText(400)}},
-		{"FactWord", map[string]any{"text": longText(200)}},
 		{"LiveSight", map[string]any{"entry": longText(400), "at": longTime}},
 		{"LaneHold", map[string]any{"who": longText(300), "claimed": true, "since": longTime, "seen": longTime}},
 		{"LaneWait", map[string]any{"who": longText(300), "since": longTime, "seen": longTime}},
@@ -923,11 +932,11 @@ func openValues(t *testing.T, rows map[string]varRow) {
 			"at": longTime, "how": longText(40), "live_since": longTime, "draining_since": longTime,
 			"stop_returns": json.Number("-1"),
 			"samples":      longEntries(12, sample),
-			"live":         longEntries(513, map[string]any{"text": longText(400)}),
-			"facts":        longEntries(3, map[string]any{"text": longText(200)}),
+			"live":         longTextEntries(513, longText(400)),
+			"facts":        longTextEntries(3, longText(200)),
 			"live_seen":    longEntries(3, map[string]any{"entry": longText(400), "at": longTime}),
 			"meter":        map[string]any{"top_at": longTime, "files": map[string]any{"at": longTime, "top_at": longTime, "top": longEntries(11, map[string]any{"pid": json.Number("1"), "cmd": "x", "user": "u", "open": json.Number("1")})}},
-			"friend":       map[string]any{"running": longEntries(2, map[string]any{"text": longText(4097)}), "paced": json.Number("-1"), "reason": longText(1025)},
+			"friend":       map[string]any{"running": longTextEntries(2, longText(4097)), "paced": json.Number("-1"), "reason": longText(1025)},
 		}},
 		{"ReaderHold", map[string]any{"at": longTime, "by": longText(300)}},
 		{"HoldView", map[string]any{"kind": longText(40), "name": longText(300), "at": longText(100), "by": longText(300), "who": longText(300)}},
