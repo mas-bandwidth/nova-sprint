@@ -3,7 +3,6 @@ package store
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"maps"
 	"slices"
 	"time"
@@ -181,8 +180,11 @@ func (st *Store) Holds(ctx context.Context) ([]sprint.HoldView, error) {
 	for i, r := range readers {
 		var h readerHold
 		if i < len(oks) && oks[i] {
-			// ignored: an unreadable record is no hold, which the next hold or unhold replaces
-			_ = json.Unmarshal([]byte(vals[i]), &h)
+			// S2, S4: the hold reads every form. A damaged record is counted as
+			// a refusal and reads as no hold, which the next hold or unhold replaces.
+			if hh, _, err := st.readerHoldRows().Read([]byte(vals[i])); err == nil {
+				h = hh
+			}
 		}
 		if h.Away {
 			out = append(out, sprint.HoldView{Kind: sprint.HoldReader, Name: r, Reason: h.Reason, By: h.By, At: stampOf(h.At), Return: h.Return || !h.Held})
