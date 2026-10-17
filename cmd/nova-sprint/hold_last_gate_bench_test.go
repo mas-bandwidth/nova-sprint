@@ -9,48 +9,56 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 )
 
-// TestHoldRefusesTheLastGateBench is the CLI's half of the hold guard: the last member
-// that can run a land gate cannot be held without --force-last, at exit 2 with the
-// refusal's line and nothing written; a member already down is no refusal.
+// TestHoldRefusesTheLastGateBench is the CLI's half of the hold guard: holding the last
+// member that can run a gate when no other member is a bench is refused, at exit 2 with
+// the refusal's line and nothing written; holding one while another is a coordinator-held
+// (recoverable) bench, and a single-member fleet's own hold, are never refused.
 func TestHoldRefusesTheLastGateBench(t *testing.T) {
 	t.Parallel()
+	// a machine holds m1 (no recoverable bench): holding m2, the last member that can run
+	// a gate, is refused at exit 2 naming it, nothing written
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a --members m1,m2")
-	ta.ok("hold m1 --reason r")
-
+	st, err := ta.a.store(common{redis: "mem:0", actor: "coordinator"})
+	require.NoError(t, err)
+	_, err = st.Run(context.Background(), store.FleetStep(sprint.FleetReq{Op: "hold", Member: "m1", Who: "machine", HeldBy: sprint.HeldByFault}))
+	require.NoError(t, err)
 	code, _, errs := ta.do("hold m2 --reason r")
-	assert.Equal(t, 2, code, errs)
-	assert.Contains(t, errs, "leaves no gate bench")
-	assert.NotContains(t, ta.ok("log"), "member m2 held", "a refused hold writes nothing")
-
-	both := newTestApp(t)
-	both.ok("init --readers reader-a --members m1,m2")
-	code, _, errs = both.do("hold m1 m2 --reason r")
 	assert.Equal(t, 2, code, errs)
 	assert.Contains(t, errs, "m2", "it names the last member that could run a gate")
 	assert.Contains(t, errs, "leaves no gate bench")
-	log := both.ok("log")
-	assert.NotContains(t, log, "member m1 held")
-	assert.NotContains(t, log, "member m2 held")
+	assert.NotContains(t, ta.ok("log"), "member m2 held", "a refused hold writes nothing")
 
-	// a member already down could run no gate now: holding it is never the refusal
-	down := newTestApp(t)
-	down.ok("init --readers reader-a --members m1,m2")
-	down.ok("hold m1 --reason r")
-	down.ok("hold m2 --reason r --force-last")
-	code, _, errs = down.do("hold m2 --reason again")
+	// holding m1 (m2 remains a bench) passes, and a coordinator-held m1 is still a
+	// recoverable bench: holding m2 is then allowed
+	ok := newTestApp(t)
+	ok.ok("init --readers reader-a --members m1,m2")
+	ok.ok("hold m1 --reason r")
+	code, _, errs = ok.do("hold m2 --reason r")
 	assert.Equal(t, 0, code, errs)
+
+	// a single-member fleet holds its only member freely: its routine maintenance flow
+	single := newTestApp(t)
+	single.ok("init --readers reader-a --members m1")
+	code, _, errs = single.do("hold m1 --reason r")
+	assert.Equal(t, 0, code, errs)
+	assert.Contains(t, single.ok("log"), "member m1 held")
 }
 
 // TestHoldForceLastRecordsTheOverride pins the override on the log line: --force-last
-// holds the last bench and says so on the hold's own happened note.
+// holds the last bench (m1 is machine-held, m2 is the last member that can run a gate)
+// and says so on the hold's own happened note.
 func TestHoldForceLastRecordsTheOverride(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a --members m1,m2")
-	ta.ok("hold m1 --reason r")
+	st, err := ta.a.store(common{redis: "mem:0", actor: "coordinator"})
+	require.NoError(t, err)
+	_, err = st.Run(context.Background(), store.FleetStep(sprint.FleetReq{Op: "hold", Member: "m1", Who: "machine", HeldBy: sprint.HeldByFault}))
+	require.NoError(t, err)
 	ta.ok("hold m2 --reason r --force-last")
 	var line string
 	for _, l := range strings.Split(ta.ok("log"), "\n") {

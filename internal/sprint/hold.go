@@ -201,10 +201,19 @@ func holdElsewhere(n string, kinds []string, release bool) string {
 	return ": " + n + " is a " + holdKindWords[kinds[0]] + "; run: nova-sprint " + verb + " " + n + tail
 }
 
-// gateCapable says a member can run a land gate now: its status is up. A held member is
-// not one at this base (a coordinator's hold writes status down); when the sibling card
-// that lets a held member bench (Snapshot.GateMembers) lands, that should replace this.
-func gateCapable(ctl *Card) bool { return ctl != nil && ctl.F("status") == Up }
+// gateCapable says a member can run a land gate now: it is up, or held by the coordinator
+// (a held member with no machine mark and no fault: unheld, it runs a gate again). A
+// member a machine holds (held_by or fault_since) is no bench. When the sibling card that
+// lets a held member bench (Snapshot.GateMembers) lands, that should replace this.
+func gateCapable(ctl *Card) bool {
+	if ctl == nil {
+		return false
+	}
+	if ctl.F("status") == Up {
+		return true
+	}
+	return ctl.F(FieldHeld) != "" && ctl.F(FieldHeldBy) == "" && ctl.F(FieldFaultSince) == ""
+}
 
 // lastGateRefusal is the guard's refusal when a hold would leave no gate bench: the
 // member being held, and the consequence with the override that holds it anyway.
@@ -241,21 +250,26 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 		}
 	}
 	// A hold that would leave no member able to run a land gate is refused before any
-	// plan is built: every landing would be refused until one is unheld. The members
-	// named here count as gone; release, a member already unable to run a gate, and the
-	// old --return maintenance path (fleet down) are never refused. --force-last
-	// records the override on the note instead.
+	// plan is built: every landing would be refused until one is unheld. It fires only
+	// when at least one member is outside the hold (a hold naming every member is a
+	// deliberate full-fleet action) and every such member is already no bench. The
+	// members named here count as gone; release, a member already unable to run a gate,
+	// and the old --return maintenance path (fleet down) are never refused. A fleet of
+	// one member is never refused (its only member is its routine maintenance hold, a
+	// long-standing flow). --force-last records the override on the note instead.
 	forceLast := false
-	if len(members) > 0 && !r.Release && !r.Return && !r.NoLastGateGuard {
+	if len(members) > 0 && !r.Release && !r.Return && !r.NoLastGateGuard && len(s.Members()) >= 2 {
 		named := map[string]bool{}
 		for _, m := range members {
 			named[m] = true
 		}
 		capable, last := 0, ""
+		unnamed := 0
 		for _, m := range s.Members() {
 			if named[m] {
 				continue
 			}
+			unnamed++
 			if gateCapable(s.MemberCtl(m)) {
 				capable++
 			}
@@ -265,7 +279,7 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 				last = m
 			}
 		}
-		if capable == 0 && last != "" {
+		if unnamed > 0 && capable == 0 && last != "" {
 			if !r.ForceLast {
 				return Plan{Refused: []Refusal{lastGateRefusal(last)}}
 			}

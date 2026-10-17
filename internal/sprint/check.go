@@ -250,7 +250,7 @@ func Check(s *Snapshot, pending *Pending) []Violation {
 	// rule number is free (12-14 are taken), so it is reported under 11.
 	gateBench := false
 	for _, m := range s.Members() {
-		if gateCapable(s.MemberCtl(m)) {
+		if ctl := s.MemberCtl(m); ctl != nil && ctl.F("status") == Up {
 			gateBench = true
 			break
 		}
