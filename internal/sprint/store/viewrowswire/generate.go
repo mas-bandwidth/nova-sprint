@@ -6,8 +6,8 @@
 // record, the load index and the tick's machine, heartbeat and held records.
 // Every other .go file here is generated: never edit them; edit the schema and
 // run go generate ./internal/sprint/store/viewrowswire.
-// The compiler is pinned by exact commit (mas-bandwidth/schema 4d9941fbc7fd,
-// main on 2026-10-15); go run fetches it, so generating needs the network and
+// The compiler is pinned by exact commit (mas-bandwidth/schema 54e0eda7d20b,
+// sprint/schema-go on 2026-10-17); go run fetches it, so generating needs the network and
 // the build does not.
 package viewrowswire
 
