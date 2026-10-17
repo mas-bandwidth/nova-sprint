@@ -68,36 +68,3 @@ func TestACardThatWritesAModelIsTieredFrontier(t *testing.T) {
 	}
 	assert.Empty(t, Check(w.s, nil))
 }
-
-// ModelPaths reads which PATHS entries can name a model: a .tla module anywhere, an MC
-// config or the directory itself under a tla/ directory, and a glob that matches either;
-// never a run record, a Go file or a doc.
-func TestModelPathsNameModulesAndConfigsNotRunRecords(t *testing.T) {
-	t.Parallel()
-	for entry, want := range map[string]bool{
-		"tla/Lease.tla":                       true,
-		"tla/MCLease.cfg":                     true,
-		"tla/MC*.cfg":                         true,
-		"tla/*.tla":                           true,
-		"tla/**":                              true,
-		"tla/":                                true,
-		"tla":                                 true,
-		"internal/friend/tla/LaneEnd.tla":     true,
-		"internal/friend/tla/*":               true,
-		"**/*.tla":                            true,
-		"security/**":                         false,
-		"**":                                  false,
-		"internal/x/*":                        false,
-		"tla/RUNS.tsv":                        false,
-		"tla/CASES.tsv":                       false,
-		"tla/*.tsv":                           false,
-		"tla/README.md":                       false,
-		"internal/tlaplus/*.go":               false,
-		"internal/x/config.cfg":               false,
-		"docs/SPEC-SPRINT.md":                 false,
-		"cmd/nova-tla/*.go":                   false,
-		"internal/friend/tla/LaneEnd_test.go": false,
-	} {
-		assert.Equal(t, want, len(ModelPaths([]string{entry})) == 1, entry)
-	}
-}

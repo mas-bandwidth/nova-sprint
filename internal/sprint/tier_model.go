@@ -1,8 +1,6 @@
 package sprint
 
 import (
-	"path"
-	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
@@ -15,30 +13,6 @@ import (
 // NEW line, never its prose: a .tla module (swarm.CardNewModels, the lint's
 // new-model-is-heavy-or-above rule). Editing what tla/ holds (the models, .cfg files, the
 // TLC run records) is any tier.
-
-// modelProbes are the file names a PATHS entry's last part is matched against: a module
-// and a model-checking config.
-var modelProbes = []string{"Model.tla", "MCModel.cfg"}
-
-// ModelPaths is the entries of paths that can name a model: one whose last part is a .tla
-// module or a glob of them (*.tla), anywhere; one under a tla/ directory whose last part
-// is a config or matches a module or a config (*, **, MC*.cfg); and the tla/ directory
-// itself. A bare glob outside tla/ (security/**) names no model.
-func ModelPaths(paths []string) []string {
-	var out []string
-	for _, p := range paths {
-		p = strings.TrimPrefix(strings.TrimSpace(p), "./")
-		dirs := strings.Split(strings.TrimSuffix(p, "/"), "/")
-		base := dirs[len(dirs)-1]
-		inTLA := slices.Contains(dirs[:len(dirs)-1], "tla")
-		module, _ := path.Match(base, modelProbes[0])
-		config, _ := path.Match(base, modelProbes[1])
-		if base == "tla" || strings.HasSuffix(base, ".tla") || inTLA && (module || config || strings.HasSuffix(base, ".cfg")) {
-			out = append(out, p)
-		}
-	}
-	return out
-}
 
 // ModelTier is the brief add admits for a card whose NEW names a new model
 // (swarm.CardNewModels): with tier: heavy on its line 1 when it names no tier, and said
