@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/friendrowswire"
 )
 
 // The lanes (sprint/lane.go; docs/SPEC-SPRINT.md section 18): one record per lane
@@ -58,7 +60,125 @@ func (st *Store) LaneWidth(ctx context.Context) (int, error) {
 	return sprint.LaneWidth(v, set), nil
 }
 
-// lanes reads a kind's record; none is no lane held.
+// laneHoldSchema is the LaneHold table's schema JSON text (friendrows.schema
+// LaneHold): the open text and the nullable stamps.
+type laneHoldSchema struct {
+	Who     *string `json:"who"`
+	Claimed bool    `json:"claimed"`
+	Since   *string `json:"since"`
+	Seen    *string `json:"seen"`
+}
+
+// laneWaitSchema is the LaneWait table's schema JSON text (friendrows.schema
+// LaneWait).
+type laneWaitSchema struct {
+	Who   *string `json:"who"`
+	Since *string `json:"since"`
+	Seen  *string `json:"seen"`
+}
+
+// laneSchema is the Lane table's schema JSON text (friendrows.schema Lane): one
+// machine's holders and queue.
+type laneSchema struct {
+	Holders []laneHoldSchema `json:"holders"`
+	Queue   []laneWaitSchema `json:"queue"`
+}
+
+// laneTable is the generated Lane variable table (S1, S2).
+func laneTable() friendTable[friendrowswire.Lane] {
+	return friendTable[friendrowswire.Lane]{
+		measure: friendrowswire.LaneLoadMeasureReason,
+		load:    friendrowswire.LaneLoad,
+		fromJSON: func(text []byte, rep *friendrowswire.TableReport) (*friendrowswire.Lane, bool) {
+			var b friendrowswire.LaneBuilder
+			if !b.Init() {
+				return nil, false
+			}
+			if !friendrowswire.LaneFromJson(&b, text, rep) || !b.Lock() {
+				return nil, false
+			}
+			return b.AsConst(), true
+		},
+		toJSON: func(w *friendrowswire.Lane) []byte {
+			buf := make([]byte, max(friendrowswire.LaneToJsonMeasure(w), 0))
+			return buf[:max(friendrowswire.LaneToJson(w, buf), 0)]
+		},
+		save: func(w *friendrowswire.Lane) []byte {
+			buf := make([]byte, max(friendrowswire.LaneMeasure(w), 0))
+			return buf[:max(friendrowswire.LaneSave(w, buf), 0)]
+		},
+	}
+}
+
+// laneRowFns adapts the Lane table to the store row reader: LANES (S1, S2, S4).
+// The record is a map of machines, so the map envelope stays today's JSON object
+// and each machine's value reads through the generated Lane table (as the friend
+// roster reads each entry through FriendEntry, presence.go presenceRowMap).
+func laneRowFns() RowFns[sprint.Lane] {
+	return presenceRowFns("LANES", laneTable(), func(l *sprint.Lane) laneSchema {
+		s := laneSchema{
+			Holders: make([]laneHoldSchema, len(l.Holders)),
+			Queue:   make([]laneWaitSchema, len(l.Queue)),
+		}
+		for i, h := range l.Holders {
+			s.Holders[i] = laneHoldSchema{Who: rowText(h.Who), Claimed: h.Claimed, Since: rowTime(h.Since), Seen: rowTime(h.Seen)}
+		}
+		for i, w := range l.Queue {
+			s.Queue[i] = laneWaitSchema{Who: rowText(w.Who), Since: rowTime(w.Since), Seen: rowTime(w.Seen)}
+		}
+		return s
+	}, func(m *laneSchema) (sprint.Lane, bool) {
+		l := sprint.Lane{
+			Holders: make([]sprint.LaneHold, len(m.Holders)),
+			Queue:   make([]sprint.LaneWait, len(m.Queue)),
+		}
+		for i, h := range m.Holders {
+			since, ok := rowTimeOf(h.Since)
+			if !ok {
+				return sprint.Lane{}, false
+			}
+			seen, ok := rowTimeOf(h.Seen)
+			if !ok {
+				return sprint.Lane{}, false
+			}
+			l.Holders[i] = sprint.LaneHold{Who: rowTextOf(h.Who), Claimed: h.Claimed, Since: since, Seen: seen}
+		}
+		for i, w := range m.Queue {
+			since, ok := rowTimeOf(w.Since)
+			if !ok {
+				return sprint.Lane{}, false
+			}
+			seen, ok := rowTimeOf(w.Seen)
+			if !ok {
+				return sprint.Lane{}, false
+			}
+			l.Queue[i] = sprint.LaneWait{Who: rowTextOf(w.Who), Since: since, Seen: seen}
+		}
+		return l, true
+	})
+}
+
+// laneRowSets is each store's lanes reader, keyed by the store's done reader so a
+// pinned copy counts into the store's one reader (S4).
+var laneRowSets sync.Map
+
+// lanesRows is this store's reader of one machine's lanes, registered on it so
+// Check reports its per-form counts (S4).
+func (st *Store) lanesRows() *RowCodec[sprint.Lane] {
+	key := st.doneRows()
+	v, ok := laneRowSets.Load(key)
+	if !ok {
+		v, _ = laneRowSets.LoadOrStore(key, NewRowCodec(laneRowFns()))
+	}
+	c := v.(*RowCodec[sprint.Lane])
+	c.Register(st)
+	return c
+}
+
+// lanes reads a kind's record; none is no lane held. Each machine's value is read
+// alike from today's legacy JSON, its table wire and the padded standard base64 of
+// that wire, and a damaged value is refused by name (S2, C13), never read as no
+// lane held. Writers still write the legacy form (S4).
 func (st *Store) lanes(ctx context.Context, kind string) (sprint.Lanes, KV, error) {
 	kv, err := st.rootKV()
 	if err != nil {
@@ -69,8 +189,12 @@ func (st *Store) lanes(ctx context.Context, kind string) (sprint.Lanes, KV, erro
 	if err != nil || !ok {
 		return out, kv, err
 	}
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return nil, kv, fmt.Errorf("the %s lanes record cannot be read (%v); every holder takes again within %s and waits", kind, err, sprint.LaneWaitFor)
+	read, err := presenceRowMap(st.lanesRows(), []byte(raw))
+	if err != nil {
+		return nil, kv, err
+	}
+	if read != nil {
+		out = read
 	}
 	return out, kv, nil
 }
