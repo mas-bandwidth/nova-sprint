@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -122,14 +121,16 @@ func doneWireForms() []byte {
 	return forms
 }
 
-// doneRowFns adapts the fixed table and today's legacy JSON reader to the store row codec (S1, S2).
+// doneRowFns adapts the fixed table and the retired legacy JSON form to the store row codec (S1, S2, S4).
 func doneRowFns() RowFns[donePage] {
 	return RowFns[donePage]{
 		Name: "DONERECORD", Forms: doneWireForms(),
 		Reset:    func(v *donePage) { *v = donePage{} },
 		LoadWire: doneLoadWire, LoadJSON: doneLoadJSON,
-		Legacy:     func(in []byte) bool { return len(in) > 0 && in[0] == '{' },
-		LoadLegacy: doneLoadLegacy,
+		Legacy: func(in []byte) bool { return len(in) > 0 && in[0] == '{' },
+		LoadLegacy: func(*donePage, []byte) RowReport {
+			return RowReport{Malformed: true, Reason: "legacy_json_retired"}
+		},
 	}
 }
 
@@ -229,16 +230,6 @@ func doneLoadJSON(v *donePage, text []byte) RowReport {
 		return rr
 	}
 	*v = donePageFromWire(w)
-	return RowReport{}
-}
-
-// doneLoadLegacy keeps today's JSON page decoder and compaction behavior (S2, S4).
-func doneLoadLegacy(v *donePage, raw []byte) RowReport {
-	if err := json.Unmarshal(raw, &v.rec); err != nil {
-		return RowReport{Malformed: true, Reason: "legacy_json_unreadable"}
-	}
-	v.rec.Done = compactDone(v.rec.Done)
-	v.pages = 1
 	return RowReport{}
 }
 
@@ -347,8 +338,7 @@ func (st *Store) writeDonePages(ctx context.Context, kv KV, r DoneRecord, prevPa
 }
 
 // readDoneFrom reads the epoch's done record from page 0 (raw, ok) and any follow-on pages in
-// kv (tla/DoneRecord.tla: Current, Readable). Legacy JSON (first byte '{') is read once and
-// rewritten into the fixed paged form.
+// kv (tla/DoneRecord.tla: Current, Readable).
 func (st *Store) readDoneFrom(ctx context.Context, kv KV, raw string, ok bool) (DoneRecord, uint32, string, error) {
 	if !ok {
 		return DoneRecord{Epoch: st.epoch}, 0, "", nil
@@ -359,14 +349,6 @@ func (st *Store) readDoneFrom(ctx context.Context, kv KV, raw string, ok bool) (
 	}
 	if r.Epoch != st.epoch {
 		return DoneRecord{Epoch: st.epoch}, pages, "epoch", nil
-	}
-	if raw[0] == '{' {
-		if kv != nil {
-			if err := st.writeDonePages(ctx, kv, r, 1); err != nil {
-				return DoneRecord{Epoch: st.epoch}, 1, "", err
-			}
-		}
-		return r, uint32(max(1, (len(r.Done)+doneFixedMaxDone-1)/doneFixedMaxDone)), "", nil
 	}
 	if pages > 1 && kv != nil {
 		names := make([]string, pages-1)
