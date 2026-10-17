@@ -46,12 +46,12 @@
 //     :292); a stream key is one (internal/sprint/steps_work.go:168);
 //   - a card id: at most 4 dot-joined ValidID words, 4*128 + 3 = 515
 //     (internal/sprint/schema.go:296-311);
-//   - a worker or member: a ValidID word or friend.<name> with the name a ValidID
-//     word, 7 + 128 = 135 (cmd/nova-sprint/serve.go:208, internal/sprint/
-//     friend_deal.go:51); a reader is reader-<machine>, 7 + 128 = 135
+//   - a worker or member: a ValidID word or friend.<name>, the name a config row
+//     name that no length bounds (cmd/nova-sprint/serve.go:208, internal/sprint/friend_deal.go:51);
+//     a reader is reader-<machine>, 7 + 128 = 135
 //     (internal/sprint/readers.go:171-178);
-//   - a row name of nova-config (a route, a provider, a tier, a friend): at most 128
-//     bytes (pkg/config/kind.go:179 MaxName, checked by ValidateName, kind.go:1071);
+//   - a row name of nova-config (a route, a provider, a tier, a friend): no length;
+//     ValidateName checks the pattern only (pkg/config/kind.go:1018-1025);
 //   - a member id of the nova-tables layer: at most 256 bytes
 //     (pkg/ntable/limits.go:12, checked at pkg/ntable/store.go:1070);
 //   - a field value of the nova-tables layer: at most 64 KiB
@@ -90,6 +90,7 @@ table DecisionSummary
     // 525). NO RULE BOUNDS IT: a note's what is cut by no rule (notes.go:241) and
     // the line is not cut. The ceiling is 65536, the 64 KiB of
     // ntable.LimitFieldValueBytes, the most text a field of the store holds.
+    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
     receipt_history []string(65536)
 }
 
@@ -127,8 +128,8 @@ table DayGap
 // reconciliation (LatestReconciles).
 table CostReconcileRecord
 {
-    // a provider: a nova-config row, at most 128 bytes (pkg/config/kind.go:179).
-    provider string(128)
+    // a provider: a nova-config row, no length bounds it (ValidateName, pkg/config/kind.go:1018-1025, checks the pattern only).
+    provider *string
     // a time, as text.
     at       *string
     known    bool
@@ -161,9 +162,11 @@ table TierCosts
     // 128 bytes (pkg/config/kind.go:179), and a brief that names a tier other than
     // flash, pro, heavy or frontier, "none" aside, is refused
     // (internal/sprint/steps_edit.go:555).
+    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
     tiers          map[string(128)]int64
     per_landed     *string
     // tier -> money.
+    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
     cost_by_tier   map[string(128)]*string
     total_cost     *string
     total_usd      *string
@@ -177,11 +180,13 @@ table TierCosts
     read_tokens    int64
     // route (a nova-config row, at most 128 bytes, pkg/config/kind.go:179; or
     // WhySubscription, "subscription", or "-") -> the day's reads.
+    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
     reads_today    map[string(128)]ReadDay
     unpriced_runs  int64
     reads_no_tokens int64
     // reader name -> its spend: reader-<machine>, 7 + 128 = 135
     // (internal/sprint/readers.go:171-178).
+    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
     readers        map[string(135)]ReaderSpend
     in_flight      *string
     unreconciled   *string
@@ -346,8 +351,8 @@ table ServerBeat
 
 table ProviderTier
 {
-    // a tier: a nova-config row, at most 128 bytes (pkg/config/kind.go:179).
-    tier    string(128)
+    // a tier: a nova-config row, no length bounds it (ValidateName, pkg/config/kind.go:1018-1025).
+    tier    *string
     // the tier's routes in this provider.
     in_routes int64 | json = "in"
     enabled int64
@@ -355,8 +360,8 @@ table ProviderTier
 
 table ProviderView
 {
-    // a provider: a nova-config row, at most 128 bytes (pkg/config/kind.go:179).
-    name       string(128)
+    // a provider: a nova-config row, no length bounds it (ValidateName, pkg/config/kind.go:1018-1025).
+    name       *string
     // dollars and cents rounded up, or "unknown".
     balance    *string
     balance_at *string
@@ -374,18 +379,18 @@ table ProviderView
 
 table ProviderProblem
 {
-    // a provider: a nova-config row, at most 128 bytes (pkg/config/kind.go:179).
-    name    string(128)
+    // a provider: a nova-config row, no length bounds it (ValidateName, pkg/config/kind.go:1018-1025).
+    name    *string
     problem *string
 }
 
 table RouteGap
 {
-    // a route and its provider and tier: nova-config rows, at most 128 bytes each
-    // (pkg/config/kind.go:179).
-    route    string(128)
-    provider string(128)
-    tier     string(128)
+    // a route and its provider and tier: nova-config rows, no length bounds them
+    // (ValidateName, pkg/config/kind.go:1018-1025).
+    route    *string
+    provider *string
+    tier     *string
 }
 
 table ProviderGapReport
@@ -393,6 +398,7 @@ table ProviderGapReport
     invalid_providers []ProviderProblem
     routes            []RouteGap
     // tier words: nova-config rows, at most 128 bytes each (pkg/config/kind.go:179).
+    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
     tiers             []string(128)
 }
 
@@ -419,9 +425,9 @@ table DealtCard
     id       string(515)
     primary  string(515)
     stream   string(128)
-    // a worker or member: a ValidID word or friend.<name>, 7 + 128 = 135
-    // (cmd/nova-sprint/serve.go:208).
-    member   string(135)
+    // a worker or member: a ValidID word or friend.<name>, the name a config row name
+    // that no length bounds (cmd/nova-sprint/serve.go:208; pkg/config/kind.go:1018-1025).
+    member   *string
     state    *string
     since    timestamp
     deadline timestamp
@@ -460,6 +466,7 @@ table PrimaryRow
     // name is a word the sprint writes (a Field constant, or a read take's number);
     // NO RULE BOUNDS IT, and the key takes 128 bytes as a ceiling (the length of a
     // nova-config row name, pkg/config/kind.go:179).
+    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
     fields map[string(128)]*string
     tier_shown *string
 }
@@ -524,6 +531,7 @@ table FriendReport
     // the cards she is running (work card ids or her job names), the comma list of
     // `friend beat --running` (cmd/nova-sprint/friends.go:385, sprint.Split). NO
     // RULE BOUNDS IT: the ceiling is 65536, the 64 KiB of ntable.LimitFieldValueBytes.
+    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
     running      []string(65536)
     working      ?int64
     queue        ?int64
@@ -542,8 +550,8 @@ table FriendReport
 
 table FriendRow
 {
-    // a friend: a nova-config row, at most 128 bytes (pkg/config/kind.go:179).
-    name        string(128)
+    // a friend: a nova-config row, no length bounds it (ValidateName, pkg/config/kind.go:1018-1025).
+    name        *string
     ready       int64
     working     int64
     held        int64
@@ -599,6 +607,7 @@ table LandedSeries
     last_hour       SeriesLastHour | json = "lastHour"
     // worker (a fleet row: a ValidID word or friend.<name>, 7 + 128 = 135,
     // cmd/nova-sprint/serve.go:208) -> cards landed.
+    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
     workers         map[string(135)]int64
 }
 
@@ -626,9 +635,11 @@ table WhereView
     // sprint writes, NO RULE BOUNDS IT and the key takes 128 bytes as a ceiling
     // (pkg/config/kind.go:179); a cell is the
     // text as a blob, held to ntable.LimitFieldValueBytes.
+    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
     tables map[string(7)]map[string(256)]map[string(128)]*string
     // tier word -> cards; a tier is a nova-config row, at most 128 bytes
     // (pkg/config/kind.go:179).
+    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
     tiers  map[string(128)]int64
     // stream (128) -> its cards by tier and its spend.
     stream_costs map[string(128)]TierCosts
@@ -640,6 +651,7 @@ table WhereView
     // the streams under the target: ValidID words (steps_work.go:168).
     first_time_under_target []string(128)
     // route (a nova-config row, at most 128 bytes, pkg/config/kind.go:179) -> first-time text.
+    // OPEN on schema-go-unbounded-text-list-elements-and-map-keys: the ceiling below is a placeholder until the key or element can be unbounded.
     first_time_routes       map[string(128)]*string
     // the day's read spend per route, one line.
     read_spend  *string

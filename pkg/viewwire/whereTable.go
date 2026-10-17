@@ -4556,8 +4556,7 @@ func CostReconcileRecordDaysEntryLoadBodyRetain(r *TableRetainReader, value *Cos
 // CostReconcileRecordReset restores CostReconcileRecord's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func CostReconcileRecordReset(value *CostReconcileRecord) {
-	clear(value.Provider[:])
-	value.ProviderLength = 0
+	value.Provider = 0
 	value.At = 0
 	value.Known = false
 	value.Note = 0
@@ -4588,53 +4587,23 @@ func CostReconcileRecordSaveBody(w *TableWriter, value *CostReconcileRecord) boo
 }
 func CostReconcileRecordSaveBodyFields(w *TableWriter, value *CostReconcileRecord) bool {
 	{
-		if value.ProviderLength < 0 || value.ProviderLength > 128 {
-			return false
-		}
-		if value.ProviderLength > 0 {
-			if ref := w.Ids.refAtHit(239, 0xd02b4c8c65fb54dc); !w.headerPair(ref, 12) {
-				w.headerRest(ref, 12)
+		if value.Provider != 0 {
+			if ref := w.Ids.refAtHit(239, 0xd02b4c8c65fb54dc); !w.headerPair(ref, 17) {
+				w.headerRest(ref, 17)
 			}
-			if value.ProviderLength < 0 || value.ProviderLength > 128 {
-				return false
-			}
-			{
-				n := int(value.ProviderLength)
-				var hi, z uint64
-				p := value.Provider[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
+			if value.Provider == 0 {
+				if !w.putLebPair(0) {
+					w.putLebWide(0)
 				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Provider[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Provider[:n]) {
+			} else {
+				index, ok := w.Ids.Numbering.Index(&value.Provider)
+				if !ok {
 					return false
 				}
+				if !w.putLebPair(index) {
+					w.putLebWide(index)
+				}
 			}
-			if !w.putLebPair(uint64(value.ProviderLength)) {
-				w.putLebWide(uint64(value.ProviderLength))
-			}
-			w.Raw(value.Provider[:value.ProviderLength])
 		}
 	}
 	{
@@ -4887,7 +4856,7 @@ func CostReconcileRecordLoadBody(r *TableReader, value *CostReconcileRecord) boo
 		}
 		switch fieldID {
 		case 0xd02b4c8c65fb54dc: // provider
-			if kind != 12 {
+			if kind != 17 {
 				r.Report.KindMismatch++
 				if !r.Skip(kind) {
 					r.Report.Malformed = true
@@ -4895,25 +4864,14 @@ func CostReconcileRecordLoadBody(r *TableReader, value *CostReconcileRecord) boo
 				}
 				break
 			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
-				return false
+			{
+				index, ok := r.Leb()
+				if !ok {
+					r.Report.Malformed = true
+					return false
+				}
+				r.Nodes.Resolve(&value.Provider, index, 0x704be0d8faaffc58, r.Report)
 			}
-			if !tableUtf8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Provider[:])
-				value.ProviderLength = 0
-				break
-			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
-			}
-			clear(value.Provider[:])
-			copy(value.Provider[:keep], sub.Buffer)
-			value.ProviderLength = int32(keep)
 		case 0x089c4e07b545a968: // at
 			if kind != 17 {
 				r.Report.KindMismatch++
@@ -5308,53 +5266,23 @@ func CostReconcileRecordSaveBodyRetain(w *TableRetainWriter, value *CostReconcil
 }
 func CostReconcileRecordSaveBodyFieldsRetain(w *TableRetainWriter, value *CostReconcileRecord) bool {
 	{
-		if value.ProviderLength < 0 || value.ProviderLength > 128 {
-			return false
-		}
-		if value.ProviderLength > 0 {
-			if ref := w.Ids.refAtHit(239, 0xd02b4c8c65fb54dc); !w.headerPair(ref, 12) {
-				w.headerRest(ref, 12)
+		if value.Provider != 0 {
+			if ref := w.Ids.refAtHit(239, 0xd02b4c8c65fb54dc); !w.headerPair(ref, 17) {
+				w.headerRest(ref, 17)
 			}
-			if value.ProviderLength < 0 || value.ProviderLength > 128 {
-				return false
-			}
-			{
-				n := int(value.ProviderLength)
-				var hi, z uint64
-				p := value.Provider[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
+			if value.Provider == 0 {
+				if !w.putLebPair(0) {
+					w.putLebWide(0)
 				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Provider[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Provider[:n]) {
+			} else {
+				index, ok := w.Ids.Numbering.Index(&value.Provider)
+				if !ok {
 					return false
 				}
+				if !w.putLebPair(index) {
+					w.putLebWide(index)
+				}
 			}
-			if !w.putLebPair(uint64(value.ProviderLength)) {
-				w.putLebWide(uint64(value.ProviderLength))
-			}
-			w.Raw(value.Provider[:value.ProviderLength])
 		}
 	}
 	{
@@ -5621,7 +5549,7 @@ func CostReconcileRecordLoadBodyRetain(r *TableRetainReader, value *CostReconcil
 		}
 		switch fieldID {
 		case 0xd02b4c8c65fb54dc: // provider
-			if kind != 12 {
+			if kind != 17 {
 				r.Report.KindMismatch++
 				if !r.Skip(kind) {
 					r.Report.Malformed = true
@@ -5629,25 +5557,14 @@ func CostReconcileRecordLoadBodyRetain(r *TableRetainReader, value *CostReconcil
 				}
 				break
 			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
-				return false
+			{
+				index, ok := r.Leb()
+				if !ok {
+					r.Report.Malformed = true
+					return false
+				}
+				r.Nodes.Resolve(&value.Provider, index, 0x704be0d8faaffc58, r.Report)
 			}
-			if !tableUtf8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Provider[:])
-				value.ProviderLength = 0
-				break
-			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
-			}
-			clear(value.Provider[:])
-			copy(value.Provider[:keep], sub.Buffer)
-			value.ProviderLength = int32(keep)
 		case 0x089c4e07b545a968: // at
 			if kind != 17 {
 				r.Report.KindMismatch++
@@ -22669,8 +22586,7 @@ func (b *ServerBeatBuilder) Shutdown() {
 // ProviderTierReset restores ProviderTier's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func ProviderTierReset(value *ProviderTier) {
-	clear(value.Tier[:])
-	value.TierLength = 0
+	value.Tier = 0
 	value.InRoutes = 0
 	value.Enabled = 0
 }
@@ -22692,53 +22608,23 @@ func ProviderTierSaveBody(w *TableWriter, value *ProviderTier) bool {
 }
 func ProviderTierSaveBodyFields(w *TableWriter, value *ProviderTier) bool {
 	{
-		if value.TierLength < 0 || value.TierLength > 128 {
-			return false
-		}
-		if value.TierLength > 0 {
-			if ref := w.Ids.refAtHit(32, 0x1e6f84ef2eb65989); !w.headerPair(ref, 12) {
-				w.headerRest(ref, 12)
+		if value.Tier != 0 {
+			if ref := w.Ids.refAtHit(32, 0x1e6f84ef2eb65989); !w.headerPair(ref, 17) {
+				w.headerRest(ref, 17)
 			}
-			if value.TierLength < 0 || value.TierLength > 128 {
-				return false
-			}
-			{
-				n := int(value.TierLength)
-				var hi, z uint64
-				p := value.Tier[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
+			if value.Tier == 0 {
+				if !w.putLebPair(0) {
+					w.putLebWide(0)
 				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Tier[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Tier[:n]) {
+			} else {
+				index, ok := w.Ids.Numbering.Index(&value.Tier)
+				if !ok {
 					return false
 				}
+				if !w.putLebPair(index) {
+					w.putLebWide(index)
+				}
 			}
-			if !w.putLebPair(uint64(value.TierLength)) {
-				w.putLebWide(uint64(value.TierLength))
-			}
-			w.Raw(value.Tier[:value.TierLength])
 		}
 	}
 	{
@@ -22786,7 +22672,7 @@ func ProviderTierLoadBody(r *TableReader, value *ProviderTier) bool {
 		}
 		switch fieldID {
 		case 0x1e6f84ef2eb65989: // tier
-			if kind != 12 {
+			if kind != 17 {
 				r.Report.KindMismatch++
 				if !r.Skip(kind) {
 					r.Report.Malformed = true
@@ -22794,25 +22680,14 @@ func ProviderTierLoadBody(r *TableReader, value *ProviderTier) bool {
 				}
 				break
 			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
-				return false
+			{
+				index, ok := r.Leb()
+				if !ok {
+					r.Report.Malformed = true
+					return false
+				}
+				r.Nodes.Resolve(&value.Tier, index, 0x704be0d8faaffc58, r.Report)
 			}
-			if !tableUtf8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Tier[:])
-				value.TierLength = 0
-				break
-			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
-			}
-			clear(value.Tier[:])
-			copy(value.Tier[:keep], sub.Buffer)
-			value.TierLength = int32(keep)
 		case 0x83f79aa1d1b8ae69: // in_routes
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
@@ -22890,7 +22765,7 @@ const ProviderTierLoadRetainBuilder = "ProviderTier: retention requires a region
 const ProviderTierSaveRetainMessages = "ProviderTier: retention requires a region round trip through the VARIABLE form"
 
 func ProviderTierLoadRetain(region, wire []byte, retain *TableRetain, report *TableReport) *ProviderTier {
-	return (*ProviderTier)(tableRegionLoadRetain(region, wire, ProviderTierTableType(), ProviderTierTableType().NodeType, 0, report, retain))
+	return (*ProviderTier)(tableRegionLoadRetain(region, wire, ProviderTierTableType(), ProviderTierTableType().NodeType, 2, report, retain))
 }
 func ProviderTierMeasureRetain(value *ProviderTier, retain *TableRetain, allocator ...TableAllocator) int64 {
 	return tableRegionSaveRetain(unsafe.Pointer(value), ProviderTierTableType(), nil, true, retain, nil, allocator...)
@@ -22918,53 +22793,23 @@ func ProviderTierSaveBodyRetain(w *TableRetainWriter, value *ProviderTier) bool 
 }
 func ProviderTierSaveBodyFieldsRetain(w *TableRetainWriter, value *ProviderTier) bool {
 	{
-		if value.TierLength < 0 || value.TierLength > 128 {
-			return false
-		}
-		if value.TierLength > 0 {
-			if ref := w.Ids.refAtHit(32, 0x1e6f84ef2eb65989); !w.headerPair(ref, 12) {
-				w.headerRest(ref, 12)
+		if value.Tier != 0 {
+			if ref := w.Ids.refAtHit(32, 0x1e6f84ef2eb65989); !w.headerPair(ref, 17) {
+				w.headerRest(ref, 17)
 			}
-			if value.TierLength < 0 || value.TierLength > 128 {
-				return false
-			}
-			{
-				n := int(value.TierLength)
-				var hi, z uint64
-				p := value.Tier[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
+			if value.Tier == 0 {
+				if !w.putLebPair(0) {
+					w.putLebWide(0)
 				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Tier[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Tier[:n]) {
+			} else {
+				index, ok := w.Ids.Numbering.Index(&value.Tier)
+				if !ok {
 					return false
 				}
+				if !w.putLebPair(index) {
+					w.putLebWide(index)
+				}
 			}
-			if !w.putLebPair(uint64(value.TierLength)) {
-				w.putLebWide(uint64(value.TierLength))
-			}
-			w.Raw(value.Tier[:value.TierLength])
 		}
 	}
 	{
@@ -23016,7 +22861,7 @@ func ProviderTierLoadBodyRetain(r *TableRetainReader, value *ProviderTier) bool 
 		}
 		switch fieldID {
 		case 0x1e6f84ef2eb65989: // tier
-			if kind != 12 {
+			if kind != 17 {
 				r.Report.KindMismatch++
 				if !r.Skip(kind) {
 					r.Report.Malformed = true
@@ -23024,25 +22869,14 @@ func ProviderTierLoadBodyRetain(r *TableRetainReader, value *ProviderTier) bool 
 				}
 				break
 			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
-				return false
+			{
+				index, ok := r.Leb()
+				if !ok {
+					r.Report.Malformed = true
+					return false
+				}
+				r.Nodes.Resolve(&value.Tier, index, 0x704be0d8faaffc58, r.Report)
 			}
-			if !tableUtf8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Tier[:])
-				value.TierLength = 0
-				break
-			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
-			}
-			clear(value.Tier[:])
-			copy(value.Tier[:keep], sub.Buffer)
-			value.TierLength = int32(keep)
 		case 0x83f79aa1d1b8ae69: // in_routes
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
@@ -23116,15 +22950,15 @@ func ProviderTierLoadBodyRetain(r *TableRetainReader, value *ProviderTier) bool 
 	}
 }
 func ProviderTierLoadMeasure(wire []byte) int64 {
-	n, _, _ := tableRegionMeasure(wire, ProviderTierTableType(), ProviderTierTableType().NodeType, 0)
+	n, _, _ := tableRegionMeasure(wire, ProviderTierTableType(), ProviderTierTableType().NodeType, 2)
 	return n
 }
 func ProviderTierLoadMeasureReason(wire []byte) (int64, error) {
-	size, _, _, reason := tableRegionMeasureReason(wire, ProviderTierTableType(), ProviderTierTableType().NodeType, 0)
+	size, _, _, reason := tableRegionMeasureReason(wire, ProviderTierTableType(), ProviderTierTableType().NodeType, 2)
 	return size, tableRefuseError(reason)
 }
 func ProviderTierLoad(region, wire []byte, report *TableReport) *ProviderTier {
-	return (*ProviderTier)(tableRegionLoad(region, wire, ProviderTierTableType(), ProviderTierTableType().NodeType, 0, report))
+	return (*ProviderTier)(tableRegionLoad(region, wire, ProviderTierTableType(), ProviderTierTableType().NodeType, 2, report))
 }
 func ProviderTierMeasure(value *ProviderTier, context ...TableWriteContext) int64 {
 	arena, allocator := tableWriteOptions(context)
@@ -23140,7 +22974,7 @@ func ProviderTierSave(value *ProviderTier, buffer []byte, context ...TableWriteC
 	return tableRegionSave(unsafe.Pointer(value), ProviderTierTableType(), buffer, false, arena, allocator)
 }
 func ProviderTierLoadBuilder(b *ProviderTierBuilder, wire []byte, report *TableReport) bool {
-	return tableBuilderLoad(unsafe.Pointer(b.GetRoot()), b.root, &b.Main, wire, ProviderTierTableType(), ProviderTierTableType().NodeType, 0, report)
+	return tableBuilderLoad(unsafe.Pointer(b.GetRoot()), b.root, &b.Main, wire, ProviderTierTableType(), ProviderTierTableType().NodeType, 2, report)
 }
 
 // ProviderTierReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, its own builder, one typed reason.
@@ -23238,8 +23072,7 @@ func (b *ProviderTierBuilder) Shutdown() {
 // ProviderViewReset restores ProviderView's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func ProviderViewReset(value *ProviderView) {
-	clear(value.Name[:])
-	value.NameLength = 0
+	value.Name = 0
 	value.Balance = 0
 	value.BalanceAt = 0
 	value.SpendHour = 0.0
@@ -23270,53 +23103,23 @@ func ProviderViewSaveBody(w *TableWriter, value *ProviderView) bool {
 }
 func ProviderViewSaveBodyFields(w *TableWriter, value *ProviderView) bool {
 	{
-		if value.NameLength < 0 || value.NameLength > 128 {
-			return false
-		}
-		if value.NameLength > 0 {
-			if ref := w.Ids.refAtHit(227, 0xc4bcadba8e631b86); !w.headerPair(ref, 12) {
-				w.headerRest(ref, 12)
+		if value.Name != 0 {
+			if ref := w.Ids.refAtHit(227, 0xc4bcadba8e631b86); !w.headerPair(ref, 17) {
+				w.headerRest(ref, 17)
 			}
-			if value.NameLength < 0 || value.NameLength > 128 {
-				return false
-			}
-			{
-				n := int(value.NameLength)
-				var hi, z uint64
-				p := value.Name[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
+			if value.Name == 0 {
+				if !w.putLebPair(0) {
+					w.putLebWide(0)
 				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Name[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Name[:n]) {
+			} else {
+				index, ok := w.Ids.Numbering.Index(&value.Name)
+				if !ok {
 					return false
 				}
+				if !w.putLebPair(index) {
+					w.putLebWide(index)
+				}
 			}
-			if !w.putLebPair(uint64(value.NameLength)) {
-				w.putLebWide(uint64(value.NameLength))
-			}
-			w.Raw(value.Name[:value.NameLength])
 		}
 	}
 	{
@@ -23593,7 +23396,7 @@ func ProviderViewLoadBody(r *TableReader, value *ProviderView) bool {
 		}
 		switch fieldID {
 		case 0xc4bcadba8e631b86: // name
-			if kind != 12 {
+			if kind != 17 {
 				r.Report.KindMismatch++
 				if !r.Skip(kind) {
 					r.Report.Malformed = true
@@ -23601,25 +23404,14 @@ func ProviderViewLoadBody(r *TableReader, value *ProviderView) bool {
 				}
 				break
 			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
-				return false
+			{
+				index, ok := r.Leb()
+				if !ok {
+					r.Report.Malformed = true
+					return false
+				}
+				r.Nodes.Resolve(&value.Name, index, 0x704be0d8faaffc58, r.Report)
 			}
-			if !tableUtf8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Name[:])
-				value.NameLength = 0
-				break
-			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
-			}
-			clear(value.Name[:])
-			copy(value.Name[:keep], sub.Buffer)
-			value.NameLength = int32(keep)
 		case 0x420234a0f998390b: // balance
 			if kind != 17 {
 				r.Report.KindMismatch++
@@ -23916,53 +23708,23 @@ func ProviderViewSaveBodyRetain(w *TableRetainWriter, value *ProviderView) bool 
 }
 func ProviderViewSaveBodyFieldsRetain(w *TableRetainWriter, value *ProviderView) bool {
 	{
-		if value.NameLength < 0 || value.NameLength > 128 {
-			return false
-		}
-		if value.NameLength > 0 {
-			if ref := w.Ids.refAtHit(227, 0xc4bcadba8e631b86); !w.headerPair(ref, 12) {
-				w.headerRest(ref, 12)
+		if value.Name != 0 {
+			if ref := w.Ids.refAtHit(227, 0xc4bcadba8e631b86); !w.headerPair(ref, 17) {
+				w.headerRest(ref, 17)
 			}
-			if value.NameLength < 0 || value.NameLength > 128 {
-				return false
-			}
-			{
-				n := int(value.NameLength)
-				var hi, z uint64
-				p := value.Name[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
+			if value.Name == 0 {
+				if !w.putLebPair(0) {
+					w.putLebWide(0)
 				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Name[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Name[:n]) {
+			} else {
+				index, ok := w.Ids.Numbering.Index(&value.Name)
+				if !ok {
 					return false
 				}
+				if !w.putLebPair(index) {
+					w.putLebWide(index)
+				}
 			}
-			if !w.putLebPair(uint64(value.NameLength)) {
-				w.putLebWide(uint64(value.NameLength))
-			}
-			w.Raw(value.Name[:value.NameLength])
 		}
 	}
 	{
@@ -24253,7 +24015,7 @@ func ProviderViewLoadBodyRetain(r *TableRetainReader, value *ProviderView) bool 
 		}
 		switch fieldID {
 		case 0xc4bcadba8e631b86: // name
-			if kind != 12 {
+			if kind != 17 {
 				r.Report.KindMismatch++
 				if !r.Skip(kind) {
 					r.Report.Malformed = true
@@ -24261,25 +24023,14 @@ func ProviderViewLoadBodyRetain(r *TableRetainReader, value *ProviderView) bool 
 				}
 				break
 			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
-				return false
+			{
+				index, ok := r.Leb()
+				if !ok {
+					r.Report.Malformed = true
+					return false
+				}
+				r.Nodes.Resolve(&value.Name, index, 0x704be0d8faaffc58, r.Report)
 			}
-			if !tableUtf8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Name[:])
-				value.NameLength = 0
-				break
-			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
-			}
-			clear(value.Name[:])
-			copy(value.Name[:keep], sub.Buffer)
-			value.NameLength = int32(keep)
 		case 0x420234a0f998390b: // balance
 			if kind != 17 {
 				r.Report.KindMismatch++
@@ -24689,8 +24440,7 @@ func ProviderViewTiersEach(holder *TableList[ProviderTierRow], visit func(*Provi
 // ProviderProblemReset restores ProviderProblem's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func ProviderProblemReset(value *ProviderProblem) {
-	clear(value.Name[:])
-	value.NameLength = 0
+	value.Name = 0
 	value.Problem = 0
 }
 
@@ -24711,53 +24461,23 @@ func ProviderProblemSaveBody(w *TableWriter, value *ProviderProblem) bool {
 }
 func ProviderProblemSaveBodyFields(w *TableWriter, value *ProviderProblem) bool {
 	{
-		if value.NameLength < 0 || value.NameLength > 128 {
-			return false
-		}
-		if value.NameLength > 0 {
-			if ref := w.Ids.refAtHit(227, 0xc4bcadba8e631b86); !w.headerPair(ref, 12) {
-				w.headerRest(ref, 12)
+		if value.Name != 0 {
+			if ref := w.Ids.refAtHit(227, 0xc4bcadba8e631b86); !w.headerPair(ref, 17) {
+				w.headerRest(ref, 17)
 			}
-			if value.NameLength < 0 || value.NameLength > 128 {
-				return false
-			}
-			{
-				n := int(value.NameLength)
-				var hi, z uint64
-				p := value.Name[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
+			if value.Name == 0 {
+				if !w.putLebPair(0) {
+					w.putLebWide(0)
 				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Name[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Name[:n]) {
+			} else {
+				index, ok := w.Ids.Numbering.Index(&value.Name)
+				if !ok {
 					return false
 				}
+				if !w.putLebPair(index) {
+					w.putLebWide(index)
+				}
 			}
-			if !w.putLebPair(uint64(value.NameLength)) {
-				w.putLebWide(uint64(value.NameLength))
-			}
-			w.Raw(value.Name[:value.NameLength])
 		}
 	}
 	{
@@ -24809,7 +24529,7 @@ func ProviderProblemLoadBody(r *TableReader, value *ProviderProblem) bool {
 		}
 		switch fieldID {
 		case 0xc4bcadba8e631b86: // name
-			if kind != 12 {
+			if kind != 17 {
 				r.Report.KindMismatch++
 				if !r.Skip(kind) {
 					r.Report.Malformed = true
@@ -24817,25 +24537,14 @@ func ProviderProblemLoadBody(r *TableReader, value *ProviderProblem) bool {
 				}
 				break
 			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
-				return false
+			{
+				index, ok := r.Leb()
+				if !ok {
+					r.Report.Malformed = true
+					return false
+				}
+				r.Nodes.Resolve(&value.Name, index, 0x704be0d8faaffc58, r.Report)
 			}
-			if !tableUtf8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Name[:])
-				value.NameLength = 0
-				break
-			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
-			}
-			clear(value.Name[:])
-			copy(value.Name[:keep], sub.Buffer)
-			value.NameLength = int32(keep)
 		case 0x353d837f64e7b85c: // problem
 			if kind != 17 {
 				r.Report.KindMismatch++
@@ -24900,53 +24609,23 @@ func ProviderProblemSaveBodyRetain(w *TableRetainWriter, value *ProviderProblem)
 }
 func ProviderProblemSaveBodyFieldsRetain(w *TableRetainWriter, value *ProviderProblem) bool {
 	{
-		if value.NameLength < 0 || value.NameLength > 128 {
-			return false
-		}
-		if value.NameLength > 0 {
-			if ref := w.Ids.refAtHit(227, 0xc4bcadba8e631b86); !w.headerPair(ref, 12) {
-				w.headerRest(ref, 12)
+		if value.Name != 0 {
+			if ref := w.Ids.refAtHit(227, 0xc4bcadba8e631b86); !w.headerPair(ref, 17) {
+				w.headerRest(ref, 17)
 			}
-			if value.NameLength < 0 || value.NameLength > 128 {
-				return false
-			}
-			{
-				n := int(value.NameLength)
-				var hi, z uint64
-				p := value.Name[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
+			if value.Name == 0 {
+				if !w.putLebPair(0) {
+					w.putLebWide(0)
 				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Name[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Name[:n]) {
+			} else {
+				index, ok := w.Ids.Numbering.Index(&value.Name)
+				if !ok {
 					return false
 				}
+				if !w.putLebPair(index) {
+					w.putLebWide(index)
+				}
 			}
-			if !w.putLebPair(uint64(value.NameLength)) {
-				w.putLebWide(uint64(value.NameLength))
-			}
-			w.Raw(value.Name[:value.NameLength])
 		}
 	}
 	{
@@ -25002,7 +24681,7 @@ func ProviderProblemLoadBodyRetain(r *TableRetainReader, value *ProviderProblem)
 		}
 		switch fieldID {
 		case 0xc4bcadba8e631b86: // name
-			if kind != 12 {
+			if kind != 17 {
 				r.Report.KindMismatch++
 				if !r.Skip(kind) {
 					r.Report.Malformed = true
@@ -25010,25 +24689,14 @@ func ProviderProblemLoadBodyRetain(r *TableRetainReader, value *ProviderProblem)
 				}
 				break
 			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
-				return false
+			{
+				index, ok := r.Leb()
+				if !ok {
+					r.Report.Malformed = true
+					return false
+				}
+				r.Nodes.Resolve(&value.Name, index, 0x704be0d8faaffc58, r.Report)
 			}
-			if !tableUtf8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Name[:])
-				value.NameLength = 0
-				break
-			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
-			}
-			clear(value.Name[:])
-			copy(value.Name[:keep], sub.Buffer)
-			value.NameLength = int32(keep)
 		case 0x353d837f64e7b85c: // problem
 			if kind != 17 {
 				r.Report.KindMismatch++
@@ -25183,12 +24851,9 @@ func (b *ProviderProblemBuilder) Shutdown() {
 // RouteGapReset restores RouteGap's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func RouteGapReset(value *RouteGap) {
-	clear(value.Route[:])
-	value.RouteLength = 0
-	clear(value.Provider[:])
-	value.ProviderLength = 0
-	clear(value.Tier[:])
-	value.TierLength = 0
+	value.Route = 0
+	value.Provider = 0
+	value.Tier = 0
 }
 
 func RouteGapMeasureBody(value *RouteGap, ids *TableIds) int64 {
@@ -25208,153 +24873,63 @@ func RouteGapSaveBody(w *TableWriter, value *RouteGap) bool {
 }
 func RouteGapSaveBodyFields(w *TableWriter, value *RouteGap) bool {
 	{
-		if value.RouteLength < 0 || value.RouteLength > 128 {
-			return false
-		}
-		if value.RouteLength > 0 {
-			if ref := w.Ids.refAtHit(55, 0x3127fb469f19ebde); !w.headerPair(ref, 12) {
-				w.headerRest(ref, 12)
+		if value.Route != 0 {
+			if ref := w.Ids.refAtHit(55, 0x3127fb469f19ebde); !w.headerPair(ref, 17) {
+				w.headerRest(ref, 17)
 			}
-			if value.RouteLength < 0 || value.RouteLength > 128 {
-				return false
-			}
-			{
-				n := int(value.RouteLength)
-				var hi, z uint64
-				p := value.Route[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
+			if value.Route == 0 {
+				if !w.putLebPair(0) {
+					w.putLebWide(0)
 				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Route[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Route[:n]) {
+			} else {
+				index, ok := w.Ids.Numbering.Index(&value.Route)
+				if !ok {
 					return false
 				}
+				if !w.putLebPair(index) {
+					w.putLebWide(index)
+				}
 			}
-			if !w.putLebPair(uint64(value.RouteLength)) {
-				w.putLebWide(uint64(value.RouteLength))
-			}
-			w.Raw(value.Route[:value.RouteLength])
 		}
 	}
 	{
-		if value.ProviderLength < 0 || value.ProviderLength > 128 {
-			return false
-		}
-		if value.ProviderLength > 0 {
-			if ref := w.Ids.refAtHit(239, 0xd02b4c8c65fb54dc); !w.headerPair(ref, 12) {
-				w.headerRest(ref, 12)
+		if value.Provider != 0 {
+			if ref := w.Ids.refAtHit(239, 0xd02b4c8c65fb54dc); !w.headerPair(ref, 17) {
+				w.headerRest(ref, 17)
 			}
-			if value.ProviderLength < 0 || value.ProviderLength > 128 {
-				return false
-			}
-			{
-				n := int(value.ProviderLength)
-				var hi, z uint64
-				p := value.Provider[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
+			if value.Provider == 0 {
+				if !w.putLebPair(0) {
+					w.putLebWide(0)
 				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Provider[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Provider[:n]) {
+			} else {
+				index, ok := w.Ids.Numbering.Index(&value.Provider)
+				if !ok {
 					return false
 				}
+				if !w.putLebPair(index) {
+					w.putLebWide(index)
+				}
 			}
-			if !w.putLebPair(uint64(value.ProviderLength)) {
-				w.putLebWide(uint64(value.ProviderLength))
-			}
-			w.Raw(value.Provider[:value.ProviderLength])
 		}
 	}
 	{
-		if value.TierLength < 0 || value.TierLength > 128 {
-			return false
-		}
-		if value.TierLength > 0 {
-			if ref := w.Ids.refAtHit(32, 0x1e6f84ef2eb65989); !w.headerPair(ref, 12) {
-				w.headerRest(ref, 12)
+		if value.Tier != 0 {
+			if ref := w.Ids.refAtHit(32, 0x1e6f84ef2eb65989); !w.headerPair(ref, 17) {
+				w.headerRest(ref, 17)
 			}
-			if value.TierLength < 0 || value.TierLength > 128 {
-				return false
-			}
-			{
-				n := int(value.TierLength)
-				var hi, z uint64
-				p := value.Tier[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
+			if value.Tier == 0 {
+				if !w.putLebPair(0) {
+					w.putLebWide(0)
 				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Tier[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Tier[:n]) {
+			} else {
+				index, ok := w.Ids.Numbering.Index(&value.Tier)
+				if !ok {
 					return false
 				}
+				if !w.putLebPair(index) {
+					w.putLebWide(index)
+				}
 			}
-			if !w.putLebPair(uint64(value.TierLength)) {
-				w.putLebWide(uint64(value.TierLength))
-			}
-			w.Raw(value.Tier[:value.TierLength])
 		}
 	}
 	return !w.Overflow && !w.Ids.Overflow
@@ -25386,7 +24961,7 @@ func RouteGapLoadBody(r *TableReader, value *RouteGap) bool {
 		}
 		switch fieldID {
 		case 0x3127fb469f19ebde: // route
-			if kind != 12 {
+			if kind != 17 {
 				r.Report.KindMismatch++
 				if !r.Skip(kind) {
 					r.Report.Malformed = true
@@ -25394,27 +24969,16 @@ func RouteGapLoadBody(r *TableReader, value *RouteGap) bool {
 				}
 				break
 			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
-				return false
+			{
+				index, ok := r.Leb()
+				if !ok {
+					r.Report.Malformed = true
+					return false
+				}
+				r.Nodes.Resolve(&value.Route, index, 0x704be0d8faaffc58, r.Report)
 			}
-			if !tableUtf8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Route[:])
-				value.RouteLength = 0
-				break
-			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
-			}
-			clear(value.Route[:])
-			copy(value.Route[:keep], sub.Buffer)
-			value.RouteLength = int32(keep)
 		case 0xd02b4c8c65fb54dc: // provider
-			if kind != 12 {
+			if kind != 17 {
 				r.Report.KindMismatch++
 				if !r.Skip(kind) {
 					r.Report.Malformed = true
@@ -25422,27 +24986,16 @@ func RouteGapLoadBody(r *TableReader, value *RouteGap) bool {
 				}
 				break
 			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
-				return false
+			{
+				index, ok := r.Leb()
+				if !ok {
+					r.Report.Malformed = true
+					return false
+				}
+				r.Nodes.Resolve(&value.Provider, index, 0x704be0d8faaffc58, r.Report)
 			}
-			if !tableUtf8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Provider[:])
-				value.ProviderLength = 0
-				break
-			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
-			}
-			clear(value.Provider[:])
-			copy(value.Provider[:keep], sub.Buffer)
-			value.ProviderLength = int32(keep)
 		case 0x1e6f84ef2eb65989: // tier
-			if kind != 12 {
+			if kind != 17 {
 				r.Report.KindMismatch++
 				if !r.Skip(kind) {
 					r.Report.Malformed = true
@@ -25450,25 +25003,14 @@ func RouteGapLoadBody(r *TableReader, value *RouteGap) bool {
 				}
 				break
 			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
-				return false
+			{
+				index, ok := r.Leb()
+				if !ok {
+					r.Report.Malformed = true
+					return false
+				}
+				r.Nodes.Resolve(&value.Tier, index, 0x704be0d8faaffc58, r.Report)
 			}
-			if !tableUtf8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Tier[:])
-				value.TierLength = 0
-				break
-			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
-			}
-			clear(value.Tier[:])
-			copy(value.Tier[:keep], sub.Buffer)
-			value.TierLength = int32(keep)
 		case 0xffffffffffffffff:
 			if !r.Skip(kind) {
 				r.Report.Malformed = true
@@ -25488,7 +25030,7 @@ const RouteGapLoadRetainBuilder = "RouteGap: retention requires a region round t
 const RouteGapSaveRetainMessages = "RouteGap: retention requires a region round trip through the VARIABLE form"
 
 func RouteGapLoadRetain(region, wire []byte, retain *TableRetain, report *TableReport) *RouteGap {
-	return (*RouteGap)(tableRegionLoadRetain(region, wire, RouteGapTableType(), RouteGapTableType().NodeType, 0, report, retain))
+	return (*RouteGap)(tableRegionLoadRetain(region, wire, RouteGapTableType(), RouteGapTableType().NodeType, 2, report, retain))
 }
 func RouteGapMeasureRetain(value *RouteGap, retain *TableRetain, allocator ...TableAllocator) int64 {
 	return tableRegionSaveRetain(unsafe.Pointer(value), RouteGapTableType(), nil, true, retain, nil, allocator...)
@@ -25516,153 +25058,63 @@ func RouteGapSaveBodyRetain(w *TableRetainWriter, value *RouteGap) bool {
 }
 func RouteGapSaveBodyFieldsRetain(w *TableRetainWriter, value *RouteGap) bool {
 	{
-		if value.RouteLength < 0 || value.RouteLength > 128 {
-			return false
-		}
-		if value.RouteLength > 0 {
-			if ref := w.Ids.refAtHit(55, 0x3127fb469f19ebde); !w.headerPair(ref, 12) {
-				w.headerRest(ref, 12)
+		if value.Route != 0 {
+			if ref := w.Ids.refAtHit(55, 0x3127fb469f19ebde); !w.headerPair(ref, 17) {
+				w.headerRest(ref, 17)
 			}
-			if value.RouteLength < 0 || value.RouteLength > 128 {
-				return false
-			}
-			{
-				n := int(value.RouteLength)
-				var hi, z uint64
-				p := value.Route[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
+			if value.Route == 0 {
+				if !w.putLebPair(0) {
+					w.putLebWide(0)
 				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Route[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Route[:n]) {
+			} else {
+				index, ok := w.Ids.Numbering.Index(&value.Route)
+				if !ok {
 					return false
 				}
+				if !w.putLebPair(index) {
+					w.putLebWide(index)
+				}
 			}
-			if !w.putLebPair(uint64(value.RouteLength)) {
-				w.putLebWide(uint64(value.RouteLength))
-			}
-			w.Raw(value.Route[:value.RouteLength])
 		}
 	}
 	{
-		if value.ProviderLength < 0 || value.ProviderLength > 128 {
-			return false
-		}
-		if value.ProviderLength > 0 {
-			if ref := w.Ids.refAtHit(239, 0xd02b4c8c65fb54dc); !w.headerPair(ref, 12) {
-				w.headerRest(ref, 12)
+		if value.Provider != 0 {
+			if ref := w.Ids.refAtHit(239, 0xd02b4c8c65fb54dc); !w.headerPair(ref, 17) {
+				w.headerRest(ref, 17)
 			}
-			if value.ProviderLength < 0 || value.ProviderLength > 128 {
-				return false
-			}
-			{
-				n := int(value.ProviderLength)
-				var hi, z uint64
-				p := value.Provider[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
+			if value.Provider == 0 {
+				if !w.putLebPair(0) {
+					w.putLebWide(0)
 				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Provider[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Provider[:n]) {
+			} else {
+				index, ok := w.Ids.Numbering.Index(&value.Provider)
+				if !ok {
 					return false
 				}
+				if !w.putLebPair(index) {
+					w.putLebWide(index)
+				}
 			}
-			if !w.putLebPair(uint64(value.ProviderLength)) {
-				w.putLebWide(uint64(value.ProviderLength))
-			}
-			w.Raw(value.Provider[:value.ProviderLength])
 		}
 	}
 	{
-		if value.TierLength < 0 || value.TierLength > 128 {
-			return false
-		}
-		if value.TierLength > 0 {
-			if ref := w.Ids.refAtHit(32, 0x1e6f84ef2eb65989); !w.headerPair(ref, 12) {
-				w.headerRest(ref, 12)
+		if value.Tier != 0 {
+			if ref := w.Ids.refAtHit(32, 0x1e6f84ef2eb65989); !w.headerPair(ref, 17) {
+				w.headerRest(ref, 17)
 			}
-			if value.TierLength < 0 || value.TierLength > 128 {
-				return false
-			}
-			{
-				n := int(value.TierLength)
-				var hi, z uint64
-				p := value.Tier[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
+			if value.Tier == 0 {
+				if !w.putLebPair(0) {
+					w.putLebWide(0)
 				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Tier[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Tier[:n]) {
+			} else {
+				index, ok := w.Ids.Numbering.Index(&value.Tier)
+				if !ok {
 					return false
 				}
+				if !w.putLebPair(index) {
+					w.putLebWide(index)
+				}
 			}
-			if !w.putLebPair(uint64(value.TierLength)) {
-				w.putLebWide(uint64(value.TierLength))
-			}
-			w.Raw(value.Tier[:value.TierLength])
 		}
 	}
 	if !tableRetainTail(w) {
@@ -25698,7 +25150,7 @@ func RouteGapLoadBodyRetain(r *TableRetainReader, value *RouteGap) bool {
 		}
 		switch fieldID {
 		case 0x3127fb469f19ebde: // route
-			if kind != 12 {
+			if kind != 17 {
 				r.Report.KindMismatch++
 				if !r.Skip(kind) {
 					r.Report.Malformed = true
@@ -25706,27 +25158,16 @@ func RouteGapLoadBodyRetain(r *TableRetainReader, value *RouteGap) bool {
 				}
 				break
 			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
-				return false
+			{
+				index, ok := r.Leb()
+				if !ok {
+					r.Report.Malformed = true
+					return false
+				}
+				r.Nodes.Resolve(&value.Route, index, 0x704be0d8faaffc58, r.Report)
 			}
-			if !tableUtf8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Route[:])
-				value.RouteLength = 0
-				break
-			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
-			}
-			clear(value.Route[:])
-			copy(value.Route[:keep], sub.Buffer)
-			value.RouteLength = int32(keep)
 		case 0xd02b4c8c65fb54dc: // provider
-			if kind != 12 {
+			if kind != 17 {
 				r.Report.KindMismatch++
 				if !r.Skip(kind) {
 					r.Report.Malformed = true
@@ -25734,27 +25175,16 @@ func RouteGapLoadBodyRetain(r *TableRetainReader, value *RouteGap) bool {
 				}
 				break
 			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
-				return false
+			{
+				index, ok := r.Leb()
+				if !ok {
+					r.Report.Malformed = true
+					return false
+				}
+				r.Nodes.Resolve(&value.Provider, index, 0x704be0d8faaffc58, r.Report)
 			}
-			if !tableUtf8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Provider[:])
-				value.ProviderLength = 0
-				break
-			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
-			}
-			clear(value.Provider[:])
-			copy(value.Provider[:keep], sub.Buffer)
-			value.ProviderLength = int32(keep)
 		case 0x1e6f84ef2eb65989: // tier
-			if kind != 12 {
+			if kind != 17 {
 				r.Report.KindMismatch++
 				if !r.Skip(kind) {
 					r.Report.Malformed = true
@@ -25762,25 +25192,14 @@ func RouteGapLoadBodyRetain(r *TableRetainReader, value *RouteGap) bool {
 				}
 				break
 			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
-				return false
+			{
+				index, ok := r.Leb()
+				if !ok {
+					r.Report.Malformed = true
+					return false
+				}
+				r.Nodes.Resolve(&value.Tier, index, 0x704be0d8faaffc58, r.Report)
 			}
-			if !tableUtf8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Tier[:])
-				value.TierLength = 0
-				break
-			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
-			}
-			clear(value.Tier[:])
-			copy(value.Tier[:keep], sub.Buffer)
-			value.TierLength = int32(keep)
 		case 0xffffffffffffffff:
 			if !r.Skip(kind) {
 				r.Report.Malformed = true
@@ -25796,15 +25215,15 @@ func RouteGapLoadBodyRetain(r *TableRetainReader, value *RouteGap) bool {
 	}
 }
 func RouteGapLoadMeasure(wire []byte) int64 {
-	n, _, _ := tableRegionMeasure(wire, RouteGapTableType(), RouteGapTableType().NodeType, 0)
+	n, _, _ := tableRegionMeasure(wire, RouteGapTableType(), RouteGapTableType().NodeType, 2)
 	return n
 }
 func RouteGapLoadMeasureReason(wire []byte) (int64, error) {
-	size, _, _, reason := tableRegionMeasureReason(wire, RouteGapTableType(), RouteGapTableType().NodeType, 0)
+	size, _, _, reason := tableRegionMeasureReason(wire, RouteGapTableType(), RouteGapTableType().NodeType, 2)
 	return size, tableRefuseError(reason)
 }
 func RouteGapLoad(region, wire []byte, report *TableReport) *RouteGap {
-	return (*RouteGap)(tableRegionLoad(region, wire, RouteGapTableType(), RouteGapTableType().NodeType, 0, report))
+	return (*RouteGap)(tableRegionLoad(region, wire, RouteGapTableType(), RouteGapTableType().NodeType, 2, report))
 }
 func RouteGapMeasure(value *RouteGap, context ...TableWriteContext) int64 {
 	arena, allocator := tableWriteOptions(context)
@@ -25820,7 +25239,7 @@ func RouteGapSave(value *RouteGap, buffer []byte, context ...TableWriteContext) 
 	return tableRegionSave(unsafe.Pointer(value), RouteGapTableType(), buffer, false, arena, allocator)
 }
 func RouteGapLoadBuilder(b *RouteGapBuilder, wire []byte, report *TableReport) bool {
-	return tableBuilderLoad(unsafe.Pointer(b.GetRoot()), b.root, &b.Main, wire, RouteGapTableType(), RouteGapTableType().NodeType, 0, report)
+	return tableBuilderLoad(unsafe.Pointer(b.GetRoot()), b.root, &b.Main, wire, RouteGapTableType(), RouteGapTableType().NodeType, 2, report)
 }
 
 // RouteGapReadStrict is the STRICT read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5): one call, its own builder, one typed reason.
@@ -26656,7 +26075,7 @@ func ProviderGapReportLoadBody(r *TableReader, value *ProviderGapReport) bool {
 					r.Report.Widened++
 				}
 				slot := (*tableContainer)(unsafe.Pointer(&value.Routes))
-				if !tableContainerFill(&sub.Nodes.Carve, slot, count, int64(unsafe.Sizeof(*new(RouteGapRow))), 4) {
+				if !tableContainerFill(&sub.Nodes.Carve, slot, count, int64(unsafe.Sizeof(*new(RouteGapRow))), 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -27303,7 +26722,7 @@ func ProviderGapReportLoadBodyRetain(r *TableRetainReader, value *ProviderGapRep
 				}
 				r.Retain.discard(r.Path, true, 1)
 				slot := (*tableContainer)(unsafe.Pointer(&value.Routes))
-				if !tableContainerFill(&sub.Nodes.Carve, slot, count, int64(unsafe.Sizeof(*new(RouteGapRow))), 4) {
+				if !tableContainerFill(&sub.Nodes.Carve, slot, count, int64(unsafe.Sizeof(*new(RouteGapRow))), 8) {
 					if sub.Nodes.Carve.Refused {
 						r.Take(sub)
 						return false
@@ -29835,8 +29254,7 @@ func DealtCardReset(value *DealtCard) {
 	value.PrimaryLength = 0
 	clear(value.Stream[:])
 	value.StreamLength = 0
-	clear(value.Member[:])
-	value.MemberLength = 0
+	value.Member = 0
 	value.State = 0
 	value.Since = 0
 	value.Deadline = 0
@@ -30046,53 +29464,23 @@ func DealtCardSaveBodyFields(w *TableWriter, value *DealtCard) bool {
 		}
 	}
 	{
-		if value.MemberLength < 0 || value.MemberLength > 135 {
-			return false
-		}
-		if value.MemberLength > 0 {
-			if ref := w.Ids.refAtHit(170, 0x8cada599d66ec543); !w.headerPair(ref, 12) {
-				w.headerRest(ref, 12)
+		if value.Member != 0 {
+			if ref := w.Ids.refAtHit(170, 0x8cada599d66ec543); !w.headerPair(ref, 17) {
+				w.headerRest(ref, 17)
 			}
-			if value.MemberLength < 0 || value.MemberLength > 135 {
-				return false
-			}
-			{
-				n := int(value.MemberLength)
-				var hi, z uint64
-				p := value.Member[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
+			if value.Member == 0 {
+				if !w.putLebPair(0) {
+					w.putLebWide(0)
 				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Member[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Member[:n]) {
+			} else {
+				index, ok := w.Ids.Numbering.Index(&value.Member)
+				if !ok {
 					return false
 				}
+				if !w.putLebPair(index) {
+					w.putLebWide(index)
+				}
 			}
-			if !w.putLebPair(uint64(value.MemberLength)) {
-				w.putLebWide(uint64(value.MemberLength))
-			}
-			w.Raw(value.Member[:value.MemberLength])
 		}
 	}
 	{
@@ -30304,7 +29692,7 @@ func DealtCardLoadBody(r *TableReader, value *DealtCard) bool {
 			copy(value.Stream[:keep], sub.Buffer)
 			value.StreamLength = int32(keep)
 		case 0x8cada599d66ec543: // member
-			if kind != 12 {
+			if kind != 17 {
 				r.Report.KindMismatch++
 				if !r.Skip(kind) {
 					r.Report.Malformed = true
@@ -30312,25 +29700,14 @@ func DealtCardLoadBody(r *TableReader, value *DealtCard) bool {
 				}
 				break
 			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
-				return false
+			{
+				index, ok := r.Leb()
+				if !ok {
+					r.Report.Malformed = true
+					return false
+				}
+				r.Nodes.Resolve(&value.Member, index, 0x704be0d8faaffc58, r.Report)
 			}
-			if !tableUtf8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Member[:])
-				value.MemberLength = 0
-				break
-			}
-			keep := int64(len(sub.Buffer))
-			if keep > 135 {
-				keep = tableUtf8Clamp(sub.Buffer, 135)
-				r.Report.Clamped++
-			}
-			clear(value.Member[:])
-			copy(value.Member[:keep], sub.Buffer)
-			value.MemberLength = int32(keep)
 		case 0xee63aaad45b1b116: // state
 			if kind != 17 {
 				r.Report.KindMismatch++
@@ -30630,53 +30007,23 @@ func DealtCardSaveBodyFieldsRetain(w *TableRetainWriter, value *DealtCard) bool 
 		}
 	}
 	{
-		if value.MemberLength < 0 || value.MemberLength > 135 {
-			return false
-		}
-		if value.MemberLength > 0 {
-			if ref := w.Ids.refAtHit(170, 0x8cada599d66ec543); !w.headerPair(ref, 12) {
-				w.headerRest(ref, 12)
+		if value.Member != 0 {
+			if ref := w.Ids.refAtHit(170, 0x8cada599d66ec543); !w.headerPair(ref, 17) {
+				w.headerRest(ref, 17)
 			}
-			if value.MemberLength < 0 || value.MemberLength > 135 {
-				return false
-			}
-			{
-				n := int(value.MemberLength)
-				var hi, z uint64
-				p := value.Member[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
+			if value.Member == 0 {
+				if !w.putLebPair(0) {
+					w.putLebWide(0)
 				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Member[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Member[:n]) {
+			} else {
+				index, ok := w.Ids.Numbering.Index(&value.Member)
+				if !ok {
 					return false
 				}
+				if !w.putLebPair(index) {
+					w.putLebWide(index)
+				}
 			}
-			if !w.putLebPair(uint64(value.MemberLength)) {
-				w.putLebWide(uint64(value.MemberLength))
-			}
-			w.Raw(value.Member[:value.MemberLength])
 		}
 	}
 	{
@@ -30892,7 +30239,7 @@ func DealtCardLoadBodyRetain(r *TableRetainReader, value *DealtCard) bool {
 			copy(value.Stream[:keep], sub.Buffer)
 			value.StreamLength = int32(keep)
 		case 0x8cada599d66ec543: // member
-			if kind != 12 {
+			if kind != 17 {
 				r.Report.KindMismatch++
 				if !r.Skip(kind) {
 					r.Report.Malformed = true
@@ -30900,25 +30247,14 @@ func DealtCardLoadBodyRetain(r *TableRetainReader, value *DealtCard) bool {
 				}
 				break
 			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
-				return false
+			{
+				index, ok := r.Leb()
+				if !ok {
+					r.Report.Malformed = true
+					return false
+				}
+				r.Nodes.Resolve(&value.Member, index, 0x704be0d8faaffc58, r.Report)
 			}
-			if !tableUtf8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Member[:])
-				value.MemberLength = 0
-				break
-			}
-			keep := int64(len(sub.Buffer))
-			if keep > 135 {
-				keep = tableUtf8Clamp(sub.Buffer, 135)
-				r.Report.Clamped++
-			}
-			clear(value.Member[:])
-			copy(value.Member[:keep], sub.Buffer)
-			value.MemberLength = int32(keep)
 		case 0xee63aaad45b1b116: // state
 			if kind != 17 {
 				r.Report.KindMismatch++
@@ -40692,8 +40028,7 @@ func FriendReportRunningAppend(worker *TableWorker, value *FriendReport, text st
 // FriendRowReset restores FriendRow's declared defaults in place, reusing the storage
 // the value already holds. The reader calls it before overlaying.
 func FriendRowReset(value *FriendRow) {
-	clear(value.Name[:])
-	value.NameLength = 0
+	value.Name = 0
 	value.Ready = 0
 	value.Working = 0
 	value.Held = 0
@@ -40788,53 +40123,23 @@ func FriendRowSaveBody(w *TableWriter, value *FriendRow) bool {
 }
 func FriendRowSaveBodyFields(w *TableWriter, value *FriendRow) bool {
 	{
-		if value.NameLength < 0 || value.NameLength > 128 {
-			return false
-		}
-		if value.NameLength > 0 {
-			if ref := w.Ids.refAtHit(227, 0xc4bcadba8e631b86); !w.headerPair(ref, 12) {
-				w.headerRest(ref, 12)
+		if value.Name != 0 {
+			if ref := w.Ids.refAtHit(227, 0xc4bcadba8e631b86); !w.headerPair(ref, 17) {
+				w.headerRest(ref, 17)
 			}
-			if value.NameLength < 0 || value.NameLength > 128 {
-				return false
-			}
-			{
-				n := int(value.NameLength)
-				var hi, z uint64
-				p := value.Name[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
+			if value.Name == 0 {
+				if !w.putLebPair(0) {
+					w.putLebWide(0)
 				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Name[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Name[:n]) {
+			} else {
+				index, ok := w.Ids.Numbering.Index(&value.Name)
+				if !ok {
 					return false
 				}
+				if !w.putLebPair(index) {
+					w.putLebWide(index)
+				}
 			}
-			if !w.putLebPair(uint64(value.NameLength)) {
-				w.putLebWide(uint64(value.NameLength))
-			}
-			w.Raw(value.Name[:value.NameLength])
 		}
 	}
 	{
@@ -41178,7 +40483,7 @@ func FriendRowLoadBody(r *TableReader, value *FriendRow) bool {
 		}
 		switch fieldID {
 		case 0xc4bcadba8e631b86: // name
-			if kind != 12 {
+			if kind != 17 {
 				r.Report.KindMismatch++
 				if !r.Skip(kind) {
 					r.Report.Malformed = true
@@ -41186,25 +40491,14 @@ func FriendRowLoadBody(r *TableReader, value *FriendRow) bool {
 				}
 				break
 			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
-				return false
+			{
+				index, ok := r.Leb()
+				if !ok {
+					r.Report.Malformed = true
+					return false
+				}
+				r.Nodes.Resolve(&value.Name, index, 0x704be0d8faaffc58, r.Report)
 			}
-			if !tableUtf8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Name[:])
-				value.NameLength = 0
-				break
-			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
-			}
-			clear(value.Name[:])
-			copy(value.Name[:keep], sub.Buffer)
-			value.NameLength = int32(keep)
 		case 0x8935baf305f374b4: // ready
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
@@ -41797,53 +41091,23 @@ func FriendRowSaveBodyRetain(w *TableRetainWriter, value *FriendRow) bool {
 }
 func FriendRowSaveBodyFieldsRetain(w *TableRetainWriter, value *FriendRow) bool {
 	{
-		if value.NameLength < 0 || value.NameLength > 128 {
-			return false
-		}
-		if value.NameLength > 0 {
-			if ref := w.Ids.refAtHit(227, 0xc4bcadba8e631b86); !w.headerPair(ref, 12) {
-				w.headerRest(ref, 12)
+		if value.Name != 0 {
+			if ref := w.Ids.refAtHit(227, 0xc4bcadba8e631b86); !w.headerPair(ref, 17) {
+				w.headerRest(ref, 17)
 			}
-			if value.NameLength < 0 || value.NameLength > 128 {
-				return false
-			}
-			{
-				n := int(value.NameLength)
-				var hi, z uint64
-				p := value.Name[:n]
-				for len(p) >= 16 {
-					x, y := tableUtf8Word(p), tableUtf8Word(p[8:])
-					hi |= x | y
-					z |= (x-0x0101010101010101)&^x | (y-0x0101010101010101)&^y
-					p = p[16:]
+			if value.Name == 0 {
+				if !w.putLebPair(0) {
+					w.putLebWide(0)
 				}
-				if len(p) >= 8 {
-					x := tableUtf8Word(p)
-					hi |= x
-					z |= (x - 0x0101010101010101) &^ x
-					p = p[8:]
-				}
-				if len(p) > 0 {
-					if n >= 8 {
-						x := tableUtf8Word(value.Name[n-8:])
-						hi |= x
-						z |= (x - 0x0101010101010101) &^ x
-					} else {
-						for _, c := range p {
-							x := uint64(c)
-							hi |= x
-							z |= (x - 1) &^ x
-						}
-					}
-				}
-				if z&0x8080808080808080 != 0 || hi&0x8080808080808080 != 0 && !tableUtf8Valid(value.Name[:n]) {
+			} else {
+				index, ok := w.Ids.Numbering.Index(&value.Name)
+				if !ok {
 					return false
 				}
+				if !w.putLebPair(index) {
+					w.putLebWide(index)
+				}
 			}
-			if !w.putLebPair(uint64(value.NameLength)) {
-				w.putLebWide(uint64(value.NameLength))
-			}
-			w.Raw(value.Name[:value.NameLength])
 		}
 	}
 	{
@@ -42191,7 +41455,7 @@ func FriendRowLoadBodyRetain(r *TableRetainReader, value *FriendRow) bool {
 		}
 		switch fieldID {
 		case 0xc4bcadba8e631b86: // name
-			if kind != 12 {
+			if kind != 17 {
 				r.Report.KindMismatch++
 				if !r.Skip(kind) {
 					r.Report.Malformed = true
@@ -42199,25 +41463,14 @@ func FriendRowLoadBodyRetain(r *TableRetainReader, value *FriendRow) bool {
 				}
 				break
 			}
-			sub, ok := r.Body()
-			if !ok {
-				r.Report.Malformed = true
-				return false
+			{
+				index, ok := r.Leb()
+				if !ok {
+					r.Report.Malformed = true
+					return false
+				}
+				r.Nodes.Resolve(&value.Name, index, 0x704be0d8faaffc58, r.Report)
 			}
-			if !tableUtf8Valid(sub.Buffer) {
-				r.Report.Malformed = true
-				clear(value.Name[:])
-				value.NameLength = 0
-				break
-			}
-			keep := int64(len(sub.Buffer))
-			if keep > 128 {
-				keep = tableUtf8Clamp(sub.Buffer, 128)
-				r.Report.Clamped++
-			}
-			clear(value.Name[:])
-			copy(value.Name[:keep], sub.Buffer)
-			value.NameLength = int32(keep)
 		case 0x8935baf305f374b4: // ready
 			if kind != 5 {
 				if tableKindWidens(kind, 5) {
@@ -65545,11 +64798,11 @@ func CostReconcileRecordDaysEntryTableType() *TableTypeInfo {
 
 // CostReconcileRecordTableFields is CostReconcileRecord's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var CostReconcileRecordTableFields = []TableFieldInfo{
-	{Name: "provider", Json: "provider", TypeName: "string", DeclaredTypeName: "string", Id: 0xd02b4c8c65fb54dc, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 128, Offset: uint32(unsafe.Offsetof(CostReconcileRecord{}.Provider)), ElemSize: uint32(unsafe.Sizeof(CostReconcileRecord{}.Provider)), CountOffset: uint32(unsafe.Offsetof(CostReconcileRecord{}.ProviderLength)), PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 1, CookCountOffset: 132, CookPresentOffset: 4294967295,
+	{Name: "provider", Json: "provider", TypeName: "string", DeclaredTypeName: "string", Id: 0xd02b4c8c65fb54dc, Kind: 17, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(CostReconcileRecord{}.Provider)), ElemSize: uint32(unsafe.Sizeof(CostReconcileRecord{}.Provider)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 0, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -65558,7 +64811,7 @@ var CostReconcileRecordTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "at", Json: "at", TypeName: "string", DeclaredTypeName: "string", Id: 0x89c4e07b545a968, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(CostReconcileRecord{}.At)), ElemSize: uint32(unsafe.Sizeof(CostReconcileRecord{}.At)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 136, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 8, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -65569,7 +64822,7 @@ var CostReconcileRecordTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "known", Json: "known", TypeName: "bool", DeclaredTypeName: "bool", Id: 0x9e7c31938395894c, Kind: 1, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(CostReconcileRecord{}.Known)), ElemSize: uint32(unsafe.Sizeof(CostReconcileRecord{}.Known)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 144, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 16, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -65580,7 +64833,7 @@ var CostReconcileRecordTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "note", Json: "note", TypeName: "string", DeclaredTypeName: "string", Id: 0x3bf8fbbad1587cdd, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(CostReconcileRecord{}.Note)), ElemSize: uint32(unsafe.Sizeof(CostReconcileRecord{}.Note)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 152, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 24, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -65591,7 +64844,7 @@ var CostReconcileRecordTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "day", Json: "day", TypeName: "string", DeclaredTypeName: "string", Id: 0xca8d3918f4578f1d, Kind: 12, IsArray: false, Counted: true, Optional: false,
 		ArrayBound: 10, Offset: uint32(unsafe.Offsetof(CostReconcileRecord{}.Day)), ElemSize: uint32(unsafe.Sizeof(CostReconcileRecord{}.Day)), CountOffset: uint32(unsafe.Offsetof(CostReconcileRecord{}.DayLength)), PresentOffset: 0xffffffff,
-		CookOffset: 160, CookElemSize: 1, CookCountOffset: 172, CookPresentOffset: 4294967295,
+		CookOffset: 32, CookElemSize: 1, CookCountOffset: 44, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -65602,7 +64855,7 @@ var CostReconcileRecordTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "used", Json: "used", TypeName: "float64", DeclaredTypeName: "float64", Id: 0x7d678ae4032b59f0, Kind: 11, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(CostReconcileRecord{}.Used)), ElemSize: uint32(unsafe.Sizeof(CostReconcileRecord{}.Used)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 176, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 48, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -65613,7 +64866,7 @@ var CostReconcileRecordTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "internal_count", Json: "internal", TypeName: "float64", DeclaredTypeName: "float64", Id: 0x95c6bc3f69a6846c, Kind: 11, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(CostReconcileRecord{}.InternalCount)), ElemSize: uint32(unsafe.Sizeof(CostReconcileRecord{}.InternalCount)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 184, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 56, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -65624,7 +64877,7 @@ var CostReconcileRecordTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "internal_reads", Json: "internal_reads", TypeName: "float64", DeclaredTypeName: "float64", Id: 0x2adcaf27b57fc61a, Kind: 11, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(CostReconcileRecord{}.InternalReads)), ElemSize: uint32(unsafe.Sizeof(CostReconcileRecord{}.InternalReads)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 192, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 64, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -65635,7 +64888,7 @@ var CostReconcileRecordTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "gap", Json: "gap", TypeName: "float64", DeclaredTypeName: "float64", Id: 0xd4f05718fab6a2ef, Kind: 11, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(CostReconcileRecord{}.Gap)), ElemSize: uint32(unsafe.Sizeof(CostReconcileRecord{}.Gap)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 200, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 72, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -65646,7 +64899,7 @@ var CostReconcileRecordTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "share", Json: "share", TypeName: "float64", DeclaredTypeName: "float64", Id: 0x6e308e493acb8858, Kind: 11, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(CostReconcileRecord{}.Share)), ElemSize: uint32(unsafe.Sizeof(CostReconcileRecord{}.Share)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 208, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 80, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -65657,7 +64910,7 @@ var CostReconcileRecordTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "days", Json: "days", TypeName: "?", DeclaredTypeName: "map[string(10)]DayGap", Id: 0x8587736730c8b7ea, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(CostReconcileRecord{}.Days)), ElemSize: uint32(unsafe.Sizeof(*new(CostReconcileRecordDaysEntryRow))), CountOffset: (uint32(unsafe.Offsetof(CostReconcileRecord{}.Days))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 216, CookElemSize: 32, CookCountOffset: 224, CookPresentOffset: 4294967295,
+		CookOffset: 88, CookElemSize: 32, CookCountOffset: 96, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		Map: true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -65681,7 +64934,7 @@ func init() {
 		return CostReconcileRecordSaveBodyRetain(w, (*CostReconcileRecord)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return CostReconcileRecordLoadBodyRetain(&r, (*CostReconcileRecord)(p))
-	}, CookSize: 232, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
+	}, CookSize: 104, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
 		switch id {
 		}
 		return nil
@@ -66096,7 +65349,7 @@ var TierCostsTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "reconciles", Json: "reconciles", TypeName: "CostReconcileRecord", DeclaredTypeName: "CostReconcileRecord", Id: 0x1b80529daa6d58ec, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(TierCosts{}.Reconciles)), ElemSize: uint32(unsafe.Sizeof(*new(CostReconcileRecordRow))), CountOffset: (uint32(unsafe.Offsetof(TierCosts{}.Reconciles))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 184, CookElemSize: 232, CookCountOffset: 192, CookPresentOffset: 4294967295,
+		CookOffset: 184, CookElemSize: 104, CookCountOffset: 192, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		List: true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -67298,11 +66551,11 @@ func ServerBeatTableType() *TableTypeInfo { return &ServerBeatTableInfo }
 
 // ProviderTierTableFields is ProviderTier's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var ProviderTierTableFields = []TableFieldInfo{
-	{Name: "tier", Json: "tier", TypeName: "string", DeclaredTypeName: "string", Id: 0x1e6f84ef2eb65989, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 128, Offset: uint32(unsafe.Offsetof(ProviderTier{}.Tier)), ElemSize: uint32(unsafe.Sizeof(ProviderTier{}.Tier)), CountOffset: uint32(unsafe.Offsetof(ProviderTier{}.TierLength)), PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 1, CookCountOffset: 132, CookPresentOffset: 4294967295,
+	{Name: "tier", Json: "tier", TypeName: "string", DeclaredTypeName: "string", Id: 0x1e6f84ef2eb65989, Kind: 17, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProviderTier{}.Tier)), ElemSize: uint32(unsafe.Sizeof(ProviderTier{}.Tier)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 0, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -67311,7 +66564,7 @@ var ProviderTierTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "in_routes", Json: "in", TypeName: "int64", DeclaredTypeName: "int64", Id: 0x83f79aa1d1b8ae69, Kind: 5, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProviderTier{}.InRoutes)), ElemSize: uint32(unsafe.Sizeof(ProviderTier{}.InRoutes)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 136, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 8, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -67322,7 +66575,7 @@ var ProviderTierTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "enabled", Json: "enabled", TypeName: "int64", DeclaredTypeName: "int64", Id: 0x70d885806b56289e, Kind: 5, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProviderTier{}.Enabled)), ElemSize: uint32(unsafe.Sizeof(ProviderTier{}.Enabled)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 144, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 16, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -67341,7 +66594,7 @@ func init() {
 		return ProviderTierSaveBodyRetain(w, (*ProviderTier)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return ProviderTierLoadBodyRetain(&r, (*ProviderTier)(p))
-	}, CookSize: 152, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
+	}, CookSize: 24, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
 		switch id {
 		}
 		return nil
@@ -67353,11 +66606,11 @@ func ProviderTierTableType() *TableTypeInfo { return &ProviderTierTableInfo }
 
 // ProviderViewTableFields is ProviderView's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var ProviderViewTableFields = []TableFieldInfo{
-	{Name: "name", Json: "name", TypeName: "string", DeclaredTypeName: "string", Id: 0xc4bcadba8e631b86, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 128, Offset: uint32(unsafe.Offsetof(ProviderView{}.Name)), ElemSize: uint32(unsafe.Sizeof(ProviderView{}.Name)), CountOffset: uint32(unsafe.Offsetof(ProviderView{}.NameLength)), PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 1, CookCountOffset: 132, CookPresentOffset: 4294967295,
+	{Name: "name", Json: "name", TypeName: "string", DeclaredTypeName: "string", Id: 0xc4bcadba8e631b86, Kind: 17, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProviderView{}.Name)), ElemSize: uint32(unsafe.Sizeof(ProviderView{}.Name)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 0, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -67366,7 +66619,7 @@ var ProviderViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "balance", Json: "balance", TypeName: "string", DeclaredTypeName: "string", Id: 0x420234a0f998390b, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProviderView{}.Balance)), ElemSize: uint32(unsafe.Sizeof(ProviderView{}.Balance)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 136, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 8, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -67377,7 +66630,7 @@ var ProviderViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "balance_at", Json: "balance_at", TypeName: "string", DeclaredTypeName: "string", Id: 0xe548666cccbba2e9, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProviderView{}.BalanceAt)), ElemSize: uint32(unsafe.Sizeof(ProviderView{}.BalanceAt)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 144, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 16, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -67388,7 +66641,7 @@ var ProviderViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "spend_hour", Json: "spend_hour", TypeName: "float64", DeclaredTypeName: "float64", Id: 0x6dbe33fdef1ff87a, Kind: 11, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProviderView{}.SpendHour)), ElemSize: uint32(unsafe.Sizeof(ProviderView{}.SpendHour)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 152, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 24, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -67399,7 +66652,7 @@ var ProviderViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "state", Json: "state", TypeName: "string", DeclaredTypeName: "string", Id: 0xee63aaad45b1b116, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProviderView{}.State)), ElemSize: uint32(unsafe.Sizeof(ProviderView{}.State)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 160, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 32, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -67410,7 +66663,7 @@ var ProviderViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "note", Json: "note", TypeName: "string", DeclaredTypeName: "string", Id: 0x3bf8fbbad1587cdd, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProviderView{}.Note)), ElemSize: uint32(unsafe.Sizeof(ProviderView{}.Note)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 168, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 40, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -67421,7 +66674,7 @@ var ProviderViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "limit", Json: "limit", TypeName: "string", DeclaredTypeName: "string", Id: 0x760d7da9ffd99754, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProviderView{}.Limit)), ElemSize: uint32(unsafe.Sizeof(ProviderView{}.Limit)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 176, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 48, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -67432,7 +66685,7 @@ var ProviderViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "billing", Json: "billing", TypeName: "string", DeclaredTypeName: "string", Id: 0x4005570295afd25c, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProviderView{}.Billing)), ElemSize: uint32(unsafe.Sizeof(ProviderView{}.Billing)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 184, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 56, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -67443,7 +66696,7 @@ var ProviderViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "funded", Json: "funded", TypeName: "bool", DeclaredTypeName: "bool", Id: 0xb7f9a093f4580f, Kind: 1, IsArray: false, Counted: false, Optional: true,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProviderView{}.Funded)), ElemSize: uint32(unsafe.Sizeof(ProviderView{}.Funded)), CountOffset: 0xffffffff, PresentOffset: uint32(unsafe.Offsetof(ProviderView{}.FundedPresent)),
-		CookOffset: 192, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 193,
+		CookOffset: 64, CookElemSize: 1, CookCountOffset: 4294967295, CookPresentOffset: 65,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -67454,7 +66707,7 @@ var ProviderViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "problem", Json: "problem", TypeName: "string", DeclaredTypeName: "string", Id: 0x353d837f64e7b85c, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProviderView{}.Problem)), ElemSize: uint32(unsafe.Sizeof(ProviderView{}.Problem)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 200, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 72, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -67465,7 +66718,7 @@ var ProviderViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "tiers", Json: "tiers", TypeName: "ProviderTier", DeclaredTypeName: "ProviderTier", Id: 0x6dd8dc6c5fdae3ce, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(ProviderView{}.Tiers)), ElemSize: uint32(unsafe.Sizeof(*new(ProviderTierRow))), CountOffset: (uint32(unsafe.Offsetof(ProviderView{}.Tiers))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 208, CookElemSize: 152, CookCountOffset: 216, CookPresentOffset: 4294967295,
+		CookOffset: 80, CookElemSize: 24, CookCountOffset: 88, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		List: true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -67485,7 +66738,7 @@ func init() {
 		return ProviderViewSaveBodyRetain(w, (*ProviderView)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return ProviderViewLoadBodyRetain(&r, (*ProviderView)(p))
-	}, CookSize: 224, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
+	}, CookSize: 96, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
 		switch id {
 		}
 		return nil
@@ -67497,11 +66750,11 @@ func ProviderViewTableType() *TableTypeInfo { return &ProviderViewTableInfo }
 
 // ProviderProblemTableFields is ProviderProblem's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var ProviderProblemTableFields = []TableFieldInfo{
-	{Name: "name", Json: "name", TypeName: "string", DeclaredTypeName: "string", Id: 0xc4bcadba8e631b86, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 128, Offset: uint32(unsafe.Offsetof(ProviderProblem{}.Name)), ElemSize: uint32(unsafe.Sizeof(ProviderProblem{}.Name)), CountOffset: uint32(unsafe.Offsetof(ProviderProblem{}.NameLength)), PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 1, CookCountOffset: 132, CookPresentOffset: 4294967295,
+	{Name: "name", Json: "name", TypeName: "string", DeclaredTypeName: "string", Id: 0xc4bcadba8e631b86, Kind: 17, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProviderProblem{}.Name)), ElemSize: uint32(unsafe.Sizeof(ProviderProblem{}.Name)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 0, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -67510,7 +66763,7 @@ var ProviderProblemTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "problem", Json: "problem", TypeName: "string", DeclaredTypeName: "string", Id: 0x353d837f64e7b85c, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(ProviderProblem{}.Problem)), ElemSize: uint32(unsafe.Sizeof(ProviderProblem{}.Problem)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 136, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 8, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -67529,7 +66782,7 @@ func init() {
 		return ProviderProblemSaveBodyRetain(w, (*ProviderProblem)(p))
 	}, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool {
 		return ProviderProblemLoadBodyRetain(&r, (*ProviderProblem)(p))
-	}, CookSize: 144, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
+	}, CookSize: 16, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
 		switch id {
 		}
 		return nil
@@ -67541,33 +66794,33 @@ func ProviderProblemTableType() *TableTypeInfo { return &ProviderProblemTableInf
 
 // RouteGapTableFields is RouteGap's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var RouteGapTableFields = []TableFieldInfo{
-	{Name: "route", Json: "route", TypeName: "string", DeclaredTypeName: "string", Id: 0x3127fb469f19ebde, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 128, Offset: uint32(unsafe.Offsetof(RouteGap{}.Route)), ElemSize: uint32(unsafe.Sizeof(RouteGap{}.Route)), CountOffset: uint32(unsafe.Offsetof(RouteGap{}.RouteLength)), PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 1, CookCountOffset: 132, CookPresentOffset: 4294967295,
+	{Name: "route", Json: "route", TypeName: "string", DeclaredTypeName: "string", Id: 0x3127fb469f19ebde, Kind: 17, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RouteGap{}.Route)), ElemSize: uint32(unsafe.Sizeof(RouteGap{}.Route)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 0, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "provider", Json: "provider", TypeName: "string", DeclaredTypeName: "string", Id: 0xd02b4c8c65fb54dc, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 128, Offset: uint32(unsafe.Offsetof(RouteGap{}.Provider)), ElemSize: uint32(unsafe.Sizeof(RouteGap{}.Provider)), CountOffset: uint32(unsafe.Offsetof(RouteGap{}.ProviderLength)), PresentOffset: 0xffffffff,
-		CookOffset: 136, CookElemSize: 1, CookCountOffset: 268, CookPresentOffset: 4294967295,
+	{Name: "provider", Json: "provider", TypeName: "string", DeclaredTypeName: "string", Id: 0xd02b4c8c65fb54dc, Kind: 17, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RouteGap{}.Provider)), ElemSize: uint32(unsafe.Sizeof(RouteGap{}.Provider)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 8, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "tier", Json: "tier", TypeName: "string", DeclaredTypeName: "string", Id: 0x1e6f84ef2eb65989, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 128, Offset: uint32(unsafe.Offsetof(RouteGap{}.Tier)), ElemSize: uint32(unsafe.Sizeof(RouteGap{}.Tier)), CountOffset: uint32(unsafe.Offsetof(RouteGap{}.TierLength)), PresentOffset: 0xffffffff,
-		CookOffset: 272, CookElemSize: 1, CookCountOffset: 404, CookPresentOffset: 4294967295,
+	{Name: "tier", Json: "tier", TypeName: "string", DeclaredTypeName: "string", Id: 0x1e6f84ef2eb65989, Kind: 17, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(RouteGap{}.Tier)), ElemSize: uint32(unsafe.Sizeof(RouteGap{}.Tier)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 16, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -67580,7 +66833,7 @@ var RouteGapTableFields = []TableFieldInfo{
 var RouteGapTableInfo TableTypeInfo
 
 func init() {
-	RouteGapTableInfo = TableTypeInfo{Name: "RouteGap", Size: uint32(unsafe.Sizeof(RouteGap{})), NumFields: 3, Fields: RouteGapTableFields, Reset: func(storage unsafe.Pointer) { RouteGapReset((*RouteGap)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0xb11beed75d9b5dda, Variable: true, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return RouteGapSaveBody(w, (*RouteGap)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return RouteGapLoadBody(&r, (*RouteGap)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return RouteGapSaveBodyRetain(w, (*RouteGap)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return RouteGapLoadBodyRetain(&r, (*RouteGap)(p)) }, CookSize: 408, CookAlign: 4, NodeType: func(id uint64) *TableTypeInfo {
+	RouteGapTableInfo = TableTypeInfo{Name: "RouteGap", Size: uint32(unsafe.Sizeof(RouteGap{})), NumFields: 3, Fields: RouteGapTableFields, Reset: func(storage unsafe.Pointer) { RouteGapReset((*RouteGap)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0xb11beed75d9b5dda, Variable: true, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return RouteGapSaveBody(w, (*RouteGap)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return RouteGapLoadBody(&r, (*RouteGap)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return RouteGapSaveBodyRetain(w, (*RouteGap)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return RouteGapLoadBodyRetain(&r, (*RouteGap)(p)) }, CookSize: 24, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
 		switch id {
 		}
 		return nil
@@ -67629,7 +66882,7 @@ func ProviderGapReportTiersTextTableType() *TableTypeInfo {
 var ProviderGapReportTableFields = []TableFieldInfo{
 	{Name: "invalid_providers", Json: "invalid_providers", TypeName: "ProviderProblem", DeclaredTypeName: "ProviderProblem", Id: 0xe4f259631b941965, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(ProviderGapReport{}.InvalidProviders)), ElemSize: uint32(unsafe.Sizeof(*new(ProviderProblemRow))), CountOffset: (uint32(unsafe.Offsetof(ProviderGapReport{}.InvalidProviders))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 144, CookCountOffset: 8, CookPresentOffset: 4294967295,
+		CookOffset: 0, CookElemSize: 16, CookCountOffset: 8, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		List: true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -67641,9 +66894,9 @@ var ProviderGapReportTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "routes", Json: "routes", TypeName: "RouteGap", DeclaredTypeName: "RouteGap", Id: 0xa0dba600590b76f7, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(ProviderGapReport{}.Routes)), ElemSize: uint32(unsafe.Sizeof(*new(RouteGapRow))), CountOffset: (uint32(unsafe.Offsetof(ProviderGapReport{}.Routes))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 16, CookElemSize: 408, CookCountOffset: 24, CookPresentOffset: 4294967295,
+		CookOffset: 16, CookElemSize: 24, CookCountOffset: 24, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		List: true, ElemAlign: 4,
+		List: true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
 		VariantId:   nil,
@@ -67873,11 +67126,11 @@ var DealtCardTableFields = []TableFieldInfo{
 		Arms:  nil,
 		Guard: "", Table: nil,
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
-	{Name: "member", Json: "member", TypeName: "string", DeclaredTypeName: "string", Id: 0x8cada599d66ec543, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 135, Offset: uint32(unsafe.Offsetof(DealtCard{}.Member)), ElemSize: uint32(unsafe.Sizeof(DealtCard{}.Member)), CountOffset: uint32(unsafe.Offsetof(DealtCard{}.MemberLength)), PresentOffset: 0xffffffff,
-		CookOffset: 1176, CookElemSize: 1, CookCountOffset: 1312, CookPresentOffset: 4294967295,
+	{Name: "member", Json: "member", TypeName: "string", DeclaredTypeName: "string", Id: 0x8cada599d66ec543, Kind: 17, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(DealtCard{}.Member)), ElemSize: uint32(unsafe.Sizeof(DealtCard{}.Member)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 1176, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -67886,7 +67139,7 @@ var DealtCardTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "state", Json: "state", TypeName: "string", DeclaredTypeName: "string", Id: 0xee63aaad45b1b116, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(DealtCard{}.State)), ElemSize: uint32(unsafe.Sizeof(DealtCard{}.State)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 1320, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 1184, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -67897,7 +67150,7 @@ var DealtCardTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "since", Json: "since", TypeName: "timestamp", DeclaredTypeName: "timestamp", Id: 0x2b827d4f5e0ada9d, Kind: 36, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(DealtCard{}.Since)), ElemSize: uint32(unsafe.Sizeof(DealtCard{}.Since)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 1328, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 1192, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -67908,7 +67161,7 @@ var DealtCardTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "deadline", Json: "deadline", TypeName: "timestamp", DeclaredTypeName: "timestamp", Id: 0x4abbaca40bb6fe75, Kind: 36, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(DealtCard{}.Deadline)), ElemSize: uint32(unsafe.Sizeof(DealtCard{}.Deadline)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 1336, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 1200, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -67919,7 +67172,7 @@ var DealtCardTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "branch", Json: "branch", TypeName: "string", DeclaredTypeName: "string", Id: 0x919ec0f651278ba5, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(DealtCard{}.Branch)), ElemSize: uint32(unsafe.Sizeof(DealtCard{}.Branch)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 1344, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 1208, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -67930,7 +67183,7 @@ var DealtCardTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "priority", Json: "priority", TypeName: "string", DeclaredTypeName: "string", Id: 0xf5b6ea8c35ac1e89, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(DealtCard{}.Priority)), ElemSize: uint32(unsafe.Sizeof(DealtCard{}.Priority)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 1352, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 1216, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -67941,7 +67194,7 @@ var DealtCardTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "tier", Json: "tier", TypeName: "string", DeclaredTypeName: "string", Id: 0x1e6f84ef2eb65989, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(DealtCard{}.Tier)), ElemSize: uint32(unsafe.Sizeof(DealtCard{}.Tier)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 1360, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 1224, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -67956,7 +67209,7 @@ var DealtCardTableFields = []TableFieldInfo{
 var DealtCardTableInfo TableTypeInfo
 
 func init() {
-	DealtCardTableInfo = TableTypeInfo{Name: "DealtCard", Size: uint32(unsafe.Sizeof(DealtCard{})), NumFields: 10, Fields: DealtCardTableFields, Reset: func(storage unsafe.Pointer) { DealtCardReset((*DealtCard)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0xf73bbaeb2b2a7a23, Variable: true, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return DealtCardSaveBody(w, (*DealtCard)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return DealtCardLoadBody(&r, (*DealtCard)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return DealtCardSaveBodyRetain(w, (*DealtCard)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return DealtCardLoadBodyRetain(&r, (*DealtCard)(p)) }, CookSize: 1368, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
+	DealtCardTableInfo = TableTypeInfo{Name: "DealtCard", Size: uint32(unsafe.Sizeof(DealtCard{})), NumFields: 10, Fields: DealtCardTableFields, Reset: func(storage unsafe.Pointer) { DealtCardReset((*DealtCard)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0xf73bbaeb2b2a7a23, Variable: true, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return DealtCardSaveBody(w, (*DealtCard)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return DealtCardLoadBody(&r, (*DealtCard)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return DealtCardSaveBodyRetain(w, (*DealtCard)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return DealtCardLoadBodyRetain(&r, (*DealtCard)(p)) }, CookSize: 1232, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
 		switch id {
 		}
 		return nil
@@ -68900,11 +68153,11 @@ func FriendReportTableType() *TableTypeInfo { return &FriendReportTableInfo }
 
 // FriendRowTableFields is FriendRow's per-field reflection data (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 var FriendRowTableFields = []TableFieldInfo{
-	{Name: "name", Json: "name", TypeName: "string", DeclaredTypeName: "string", Id: 0xc4bcadba8e631b86, Kind: 12, IsArray: false, Counted: true, Optional: false,
-		ArrayBound: 128, Offset: uint32(unsafe.Offsetof(FriendRow{}.Name)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Name)), CountOffset: uint32(unsafe.Offsetof(FriendRow{}.NameLength)), PresentOffset: 0xffffffff,
-		CookOffset: 0, CookElemSize: 1, CookCountOffset: 132, CookPresentOffset: 4294967295,
+	{Name: "name", Json: "name", TypeName: "string", DeclaredTypeName: "string", Id: 0xc4bcadba8e631b86, Kind: 17, IsArray: false, Counted: false, Optional: false,
+		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.Name)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Name)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
+		CookOffset: 0, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
-		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
+		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
 		VariantId:   nil,
 		KeyTypeName: "", KeyName: nil, KeyId: nil,
@@ -68913,7 +68166,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "ready", Json: "ready", TypeName: "int64", DeclaredTypeName: "int64", Id: 0x8935baf305f374b4, Kind: 5, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.Ready)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Ready)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 136, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 8, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -68924,7 +68177,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "working", Json: "working", TypeName: "int64", DeclaredTypeName: "int64", Id: 0x8879e024cb91288, Kind: 5, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.Working)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Working)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 144, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 16, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -68935,7 +68188,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "held", Json: "held", TypeName: "int64", DeclaredTypeName: "int64", Id: 0xa9904cc5fa248be, Kind: 5, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.Held)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Held)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 152, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 24, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -68946,7 +68199,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "stale", Json: "stale", TypeName: "int64", DeclaredTypeName: "int64", Id: 0xee7f9aad45ca109e, Kind: 5, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.Stale)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Stale)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 160, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 32, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -68957,7 +68210,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "dealt_fleet", Json: "dealt_fleet", TypeName: "int64", DeclaredTypeName: "int64", Id: 0xc622641fb86276a6, Kind: 5, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.DealtFleet)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.DealtFleet)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 168, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 40, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -68968,7 +68221,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "width", Json: "width", TypeName: "int64", DeclaredTypeName: "int64", Id: 0xdbdacd932fd1e9bf, Kind: 5, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.Width)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Width)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 176, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 48, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -68979,7 +68232,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "ok", Json: "ok", TypeName: "int64", DeclaredTypeName: "int64", Id: 0x8b05d07b5566bef, Kind: 5, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.Ok)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Ok)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 184, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 56, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -68990,7 +68243,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "failed", Json: "failed", TypeName: "int64", DeclaredTypeName: "int64", Id: 0xd7338946b42394f4, Kind: 5, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.Failed)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Failed)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 192, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 64, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -69001,7 +68254,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "redealt", Json: "redealt", TypeName: "int64", DeclaredTypeName: "int64", Id: 0x689b045e641856f6, Kind: 5, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.Redealt)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Redealt)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 200, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 72, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -69012,7 +68265,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "status", Json: "status", TypeName: "string", DeclaredTypeName: "string", Id: 0xc4d5696d6cc12c2f, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.Status)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Status)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 208, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 80, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -69023,7 +68276,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "friend_class", Json: "class", TypeName: "string", DeclaredTypeName: "string", Id: 0xdba1b249f09a7d76, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.FriendClass)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.FriendClass)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 216, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 88, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -69034,7 +68287,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "mode", Json: "mode", TypeName: "string", DeclaredTypeName: "string", Id: 0xd3deba2c41dadb2, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.Mode)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Mode)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 224, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 96, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -69045,7 +68298,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "session", Json: "session", TypeName: "string", DeclaredTypeName: "string", Id: 0x3ca2c49553a457d7, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.Session)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Session)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 232, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 104, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -69056,7 +68309,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "roles", Json: "roles", TypeName: "string", DeclaredTypeName: "string", Id: 0x584d04462430003e, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.Roles)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Roles)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 240, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 112, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -69067,7 +68320,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "load_avg", Json: "load", TypeName: "float64", DeclaredTypeName: "float64", Id: 0x63e493431a37822e, Kind: 11, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.LoadAvg)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.LoadAvg)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 248, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 120, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -69078,7 +68331,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "report", Json: "report", TypeName: "FriendReport", DeclaredTypeName: "FriendReport", Id: 0xadae49645df2840b, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.Report)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Report)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 256, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 128, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0xcccd7b8be68a49a3,
 		EnumName:    nil,
@@ -69089,7 +68342,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "active", Json: "active", TypeName: "timestamp", DeclaredTypeName: "timestamp", Id: 0x6580790b036f0c6f, Kind: 36, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.Active)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Active)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 264, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 136, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -69100,7 +68353,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "tokens", Json: "tokens", TypeName: "int64", DeclaredTypeName: "int64", Id: 0x93fab8f021712b13, Kind: 5, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.Tokens)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Tokens)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 272, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 144, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -69111,7 +68364,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "charged", Json: "charged", TypeName: "string", DeclaredTypeName: "string", Id: 0xef8897783be7abef, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.Charged)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Charged)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 280, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 152, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -69122,7 +68375,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "billing", Json: "billing", TypeName: "string", DeclaredTypeName: "string", Id: 0x4005570295afd25c, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.Billing)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Billing)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 288, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 160, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -69133,7 +68386,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "beat", Json: "beat", TypeName: "timestamp", DeclaredTypeName: "timestamp", Id: 0x75e7429b95100805, Kind: 36, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.Beat)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Beat)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 296, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 168, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -69144,7 +68397,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "evidence", Json: "evidence", TypeName: "string", DeclaredTypeName: "string", Id: 0xae70fc8f5906c564, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.Evidence)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Evidence)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 304, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 176, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -69155,7 +68408,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "reason", Json: "reason", TypeName: "string", DeclaredTypeName: "string", Id: 0x65e8d7f3474f2639, Kind: 17, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.Reason)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Reason)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 312, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 184, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: true, TargetId: 0x704be0d8faaffc58,
 		EnumName:    nil,
@@ -69166,7 +68419,7 @@ var FriendRowTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "until", Json: "until", TypeName: "timestamp", DeclaredTypeName: "timestamp", Id: 0x1fcc8b4e81fbac2f, Kind: 36, IsArray: false, Counted: false, Optional: false,
 		ArrayBound: 0, Offset: uint32(unsafe.Offsetof(FriendRow{}.Until)), ElemSize: uint32(unsafe.Sizeof(FriendRow{}.Until)), CountOffset: 0xffffffff, PresentOffset: 0xffffffff,
-		CookOffset: 320, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
+		CookOffset: 192, CookElemSize: 8, CookCountOffset: 4294967295, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
 		EnumName:    nil,
@@ -69181,7 +68434,7 @@ var FriendRowTableFields = []TableFieldInfo{
 var FriendRowTableInfo TableTypeInfo
 
 func init() {
-	FriendRowTableInfo = TableTypeInfo{Name: "FriendRow", Size: uint32(unsafe.Sizeof(FriendRow{})), NumFields: 25, Fields: FriendRowTableFields, Reset: func(storage unsafe.Pointer) { FriendRowReset((*FriendRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x89479b79ef213543, Variable: true, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return FriendRowSaveBody(w, (*FriendRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return FriendRowLoadBody(&r, (*FriendRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return FriendRowSaveBodyRetain(w, (*FriendRow)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return FriendRowLoadBodyRetain(&r, (*FriendRow)(p)) }, CookSize: 328, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
+	FriendRowTableInfo = TableTypeInfo{Name: "FriendRow", Size: uint32(unsafe.Sizeof(FriendRow{})), NumFields: 25, Fields: FriendRowTableFields, Reset: func(storage unsafe.Pointer) { FriendRowReset((*FriendRow)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, Id: 0x89479b79ef213543, Variable: true, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return FriendRowSaveBody(w, (*FriendRow)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return FriendRowLoadBody(&r, (*FriendRow)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return FriendRowSaveBodyRetain(w, (*FriendRow)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return FriendRowLoadBodyRetain(&r, (*FriendRow)(p)) }, CookSize: 200, CookAlign: 8, NodeType: func(id uint64) *TableTypeInfo {
 		switch id {
 		case 0xcccd7b8be68a49a3:
 			return FriendReportTableType()
@@ -70567,7 +69820,7 @@ var WhereViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "providers", Json: "providers", TypeName: "ProviderView", DeclaredTypeName: "ProviderView", Id: 0xb4e7c1914a10e55d, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(WhereView{}.Providers)), ElemSize: uint32(unsafe.Sizeof(*new(ProviderViewRow))), CountOffset: (uint32(unsafe.Offsetof(WhereView{}.Providers))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 528, CookElemSize: 224, CookCountOffset: 536, CookPresentOffset: 4294967295,
+		CookOffset: 528, CookElemSize: 96, CookCountOffset: 536, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		List: true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -70602,7 +69855,7 @@ var WhereViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "cards", Json: "cards", TypeName: "DealtCard", DeclaredTypeName: "DealtCard", Id: 0xaf9dac3b097689c4, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(WhereView{}.Cards)), ElemSize: uint32(unsafe.Sizeof(*new(DealtCardRow))), CountOffset: (uint32(unsafe.Offsetof(WhereView{}.Cards))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 608, CookElemSize: 1368, CookCountOffset: 616, CookPresentOffset: 4294967295,
+		CookOffset: 608, CookElemSize: 1232, CookCountOffset: 616, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		List: true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,
@@ -70806,7 +70059,7 @@ var WhereViewTableFields = []TableFieldInfo{
 		Doc: TableDocNone, NumTags: 0, Tags: nil},
 	{Name: "friends", Json: "friends", TypeName: "FriendRow", DeclaredTypeName: "FriendRow", Id: 0x82a6b14733b2685a, Kind: 13, IsArray: true, Counted: true, Optional: false,
 		ArrayBound: 2147483647, Offset: uint32(unsafe.Offsetof(WhereView{}.Friends)), ElemSize: uint32(unsafe.Sizeof(*new(FriendRowRow))), CountOffset: (uint32(unsafe.Offsetof(WhereView{}.Friends))) + 8, PresentOffset: 0xffffffff,
-		CookOffset: 928, CookElemSize: 328, CookCountOffset: 936, CookPresentOffset: 4294967295,
+		CookOffset: 928, CookElemSize: 200, CookCountOffset: 936, CookPresentOffset: 4294967295,
 		HasRange: false, RangeMin: 0.0, RangeMax: 0.0, EnumMax: -1,
 		List: true, ElemAlign: 8,
 		FracBits: 0, Pointer: false, TargetId: 0x0000000000000000,

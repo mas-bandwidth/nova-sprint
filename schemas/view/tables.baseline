@@ -111,7 +111,7 @@ table CostCheck
     field unlisted id=0x4a9d3fa1d11006d7 kind=5
 
 table CostReconcileRecord
-    field provider id=0xd02b4c8c65fb54dc kind=12 size=128
+    field provider id=0xd02b4c8c65fb54dc kind=17 type=string
     field at id=0x089c4e07b545a968 kind=17 type=string
     field known id=0x9e7c31938395894c kind=1
     field note id=0x3bf8fbbad1587cdd kind=17 type=string
@@ -136,7 +136,7 @@ table DealtCard
     field id id=0x08b72e07b55c3ac0 kind=12 size=515
     field primary id=0xbf31137ff783e939 kind=12 size=515
     field stream id=0x4f6a36d8e8907985 kind=12 size=128
-    field member id=0x8cada599d66ec543 kind=12 size=135
+    field member id=0x8cada599d66ec543 kind=17 type=string
     field state id=0xee63aaad45b1b116 kind=17 type=string
     field since id=0x2b827d4f5e0ada9d kind=36
     field deadline id=0x4abbaca40bb6fe75 kind=36
@@ -168,7 +168,7 @@ table FriendReport
     field present id=0x6f3f2303c0258eac kind=36
 
 table FriendRow
-    field name id=0xc4bcadba8e631b86 kind=12 size=128
+    field name id=0xc4bcadba8e631b86 kind=17 type=string
     field ready id=0x8935baf305f374b4 kind=5
     field working id=0x08879e024cb91288 kind=5
     field held id=0x0a9904cc5fa248be kind=5
@@ -275,16 +275,16 @@ table ProviderGapReport
     field tiers id=0x6dd8dc6c5fdae3ce kind=14 elem=12 type=ProviderGapReportTiersText array=unbounded
 
 table ProviderProblem
-    field name id=0xc4bcadba8e631b86 kind=12 size=128
+    field name id=0xc4bcadba8e631b86 kind=17 type=string
     field problem id=0x353d837f64e7b85c kind=17 type=string
 
 table ProviderTier
-    field tier id=0x1e6f84ef2eb65989 kind=12 size=128
+    field tier id=0x1e6f84ef2eb65989 kind=17 type=string
     field in_routes id=0x83f79aa1d1b8ae69 kind=5
     field enabled id=0x70d885806b56289e kind=5
 
 table ProviderView
-    field name id=0xc4bcadba8e631b86 kind=12 size=128
+    field name id=0xc4bcadba8e631b86 kind=17 type=string
     field balance id=0x420234a0f998390b kind=17 type=string
     field balance_at id=0xe548666cccbba2e9 kind=17 type=string
     field spend_hour id=0x6dbe33fdef1ff87a kind=11
@@ -320,9 +320,9 @@ table ReadsWindow
     field since id=0x2b827d4f5e0ada9d kind=36
 
 table RouteGap
-    field route id=0x3127fb469f19ebde kind=12 size=128
-    field provider id=0xd02b4c8c65fb54dc kind=12 size=128
-    field tier id=0x1e6f84ef2eb65989 kind=12 size=128
+    field route id=0x3127fb469f19ebde kind=17 type=string
+    field provider id=0xd02b4c8c65fb54dc kind=17 type=string
+    field tier id=0x1e6f84ef2eb65989 kind=17 type=string
 
 table SeatChange
     field holder id=0x630853b55c723d4f kind=17 type=string
@@ -746,3 +746,23 @@ table ddc8631e5d828d8d.e6f09b190519daa4
 - ddc8631e5d828d8d.81f528932d7f3d02.value: map key capacity 64 -> 9 (an entry whose KEY does not fit the new capacity is skipped WHOLE and counted, because a clamped key is a merged entry (docs/SPEC-TABLES.md §2.8)) [warn]
 - ddc8631e5d828d8d.81f528932d7f3d02.7ce4fd9430e80cea.key: capacity 64 -> 9 (a stored value longer than the new capacity is truncated and counts clamped) [warn]
 - ddc8631e5d828d8d.e6f09b190519daa4.key: capacity 64 -> 9 (a stored value longer than the new capacity is truncated and counts clamped) [warn]
+
+### 2026-10-17 (UTC) — no data is written yet; config-name and member text become unbounded text
+- CostReconcileRecord.provider: wire kind 12 -> 17 [refuse]
+- CostReconcileRecord.provider: nested table string added [refuse]
+- DealtCard.member: wire kind 12 -> 17 [refuse]
+- DealtCard.member: nested table string added [refuse]
+- FriendRow.name: wire kind 12 -> 17 [refuse]
+- FriendRow.name: nested table string added [refuse]
+- ProviderProblem.name: wire kind 12 -> 17 [refuse]
+- ProviderProblem.name: nested table string added [refuse]
+- ProviderTier.tier: wire kind 12 -> 17 [refuse]
+- ProviderTier.tier: nested table string added [refuse]
+- ProviderView.name: wire kind 12 -> 17 [refuse]
+- ProviderView.name: nested table string added [refuse]
+- RouteGap.route: wire kind 12 -> 17 [refuse]
+- RouteGap.route: nested table string added [refuse]
+- RouteGap.provider: wire kind 12 -> 17 [refuse]
+- RouteGap.provider: nested table string added [refuse]
+- RouteGap.tier: wire kind 12 -> 17 [refuse]
+- RouteGap.tier: nested table string added [refuse]

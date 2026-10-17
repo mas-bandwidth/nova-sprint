@@ -1425,7 +1425,30 @@ func TestWhereViewGolden(t *testing.T) {
 		assert.Len(t, stringFields(wire.GoalViewTableType()), 2, "GoalView's bounded strings: the name and the text")
 		assert.Len(t, stringFields(wire.WhereViewTableType()), 0, "WhereView declares no bounded string")
 		assert.Len(t, openStrings(wire.WhereViewTableType()), 13, "WhereView's open texts")
-		assert.Len(t, openStrings(wire.ProviderViewTableType()), 7, "ProviderView's open texts, the state among them")
+		assert.Len(t, openStrings(wire.ProviderViewTableType()), 8, "ProviderView's open texts, the state among them")
+		// the config names and the member are open texts: no length bounds a row name of nova-config
+		// (pkg/config/kind.go:1018-1025), so none is declared and the open-text check above holds each
+		// to 70000 bytes in the three forms
+		for table, field := range map[string]struct {
+			info  *wire.TableTypeInfo
+			names []string
+		}{
+			"CostReconcileRecord": {wire.CostReconcileRecordTableType(), []string{"provider"}},
+			"ProviderTier":        {wire.ProviderTierTableType(), []string{"tier"}},
+			"ProviderView":        {wire.ProviderViewTableType(), []string{"name"}},
+			"ProviderProblem":     {wire.ProviderProblemTableType(), []string{"name"}},
+			"RouteGap":            {wire.RouteGapTableType(), []string{"route", "provider", "tier"}},
+			"DealtCard":           {wire.DealtCardTableType(), []string{"member"}},
+			"FriendRow":           {wire.FriendRowTableType(), []string{"name"}},
+		} {
+			open := map[string]bool{}
+			for _, f := range openStrings(field.info) {
+				open[f.Json] = true
+			}
+			for _, n := range field.names {
+				assert.True(t, open[n], "%s.%s is an open text", table, n)
+			}
+		}
 
 		gen, err := os.ReadFile("generate.go")
 		require.NoError(t, err)

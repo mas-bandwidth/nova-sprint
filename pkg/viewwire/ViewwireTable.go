@@ -63,22 +63,20 @@ type CostCheckOrphansTextRow struct {
 // CostReconcileRecordRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type CostReconcileRecordRow struct {
-	Provider       [129]byte // string(128): buffer, used length beside it
-	_              [3]byte   // generated padding
-	ProviderLength int32
-	At             int64 // *: signed self-relative delta, zero is null (§6.3)
-	Known          bool
-	_              [7]byte  // generated padding
-	Note           int64    // *: signed self-relative delta, zero is null (§6.3)
-	Day            [11]byte // string(10): buffer, used length beside it
-	_              [1]byte  // generated padding
-	DayLength      int32
-	Used           float64
-	InternalCount  float64
-	InternalReads  float64
-	Gap            float64
-	Share          float64
-	Days           TableMap[CostReconcileRecordDaysEntryRow]
+	Provider      int64 // *: signed self-relative delta, zero is null (§6.3)
+	At            int64 // *: signed self-relative delta, zero is null (§6.3)
+	Known         bool
+	_             [7]byte  // generated padding
+	Note          int64    // *: signed self-relative delta, zero is null (§6.3)
+	Day           [11]byte // string(10): buffer, used length beside it
+	_             [1]byte  // generated padding
+	DayLength     int32
+	Used          float64
+	InternalCount float64
+	InternalReads float64
+	Gap           float64
+	Share         float64
+	Days          TableMap[CostReconcileRecordDaysEntryRow]
 }
 
 // CostReconcileRecordDaysEntryRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -116,10 +114,8 @@ type DealtCardRow struct {
 	Stream        [129]byte // string(128): buffer, used length beside it
 	_             [3]byte   // generated padding
 	StreamLength  int32
-	Member        [136]byte // string(135): buffer, used length beside it
-	MemberLength  int32
-	_             [4]byte // generated padding
-	State         int64   // *: signed self-relative delta, zero is null (§6.3)
+	Member        int64 // *: signed self-relative delta, zero is null (§6.3)
+	State         int64 // *: signed self-relative delta, zero is null (§6.3)
 	Since         int64
 	Deadline      int64
 	Branch        int64 // *: signed self-relative delta, zero is null (§6.3)
@@ -185,9 +181,7 @@ type FriendReportRunningTextRow struct {
 // FriendRowRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type FriendRowRow struct {
-	Name        [129]byte // string(128): buffer, used length beside it
-	_           [3]byte   // generated padding
-	NameLength  int32
+	Name        int64 // *: signed self-relative delta, zero is null (§6.3)
 	Ready       int64
 	Working     int64
 	Held        int64
@@ -397,28 +391,22 @@ type ProviderGapReportTiersTextRow struct {
 // ProviderProblemRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type ProviderProblemRow struct {
-	Name       [129]byte // string(128): buffer, used length beside it
-	_          [3]byte   // generated padding
-	NameLength int32
-	Problem    int64 // *: signed self-relative delta, zero is null (§6.3)
+	Name    int64 // *: signed self-relative delta, zero is null (§6.3)
+	Problem int64 // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // ProviderTierRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type ProviderTierRow struct {
-	Tier       [129]byte // string(128): buffer, used length beside it
-	_          [3]byte   // generated padding
-	TierLength int32
-	InRoutes   int64
-	Enabled    int64
+	Tier     int64 // *: signed self-relative delta, zero is null (§6.3)
+	InRoutes int64
+	Enabled  int64
 }
 
 // ProviderViewRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type ProviderViewRow struct {
-	Name          [129]byte // string(128): buffer, used length beside it
-	_             [3]byte   // generated padding
-	NameLength    int32
+	Name          int64 // *: signed self-relative delta, zero is null (§6.3)
 	Balance       int64 // *: signed self-relative delta, zero is null (§6.3)
 	BalanceAt     int64 // *: signed self-relative delta, zero is null (§6.3)
 	SpendHour     float64
@@ -471,15 +459,9 @@ type ReadsWindowRow struct {
 // RouteGapRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type RouteGapRow struct {
-	Route          [129]byte // string(128): buffer, used length beside it
-	_              [3]byte   // generated padding
-	RouteLength    int32
-	Provider       [129]byte // string(128): buffer, used length beside it
-	_              [3]byte   // generated padding
-	ProviderLength int32
-	Tier           [129]byte // string(128): buffer, used length beside it
-	_              [3]byte   // generated padding
-	TierLength     int32
+	Route    int64 // *: signed self-relative delta, zero is null (§6.3)
+	Provider int64 // *: signed self-relative delta, zero is null (§6.3)
+	Tier     int64 // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // SeatChangeRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -894,7 +876,7 @@ type WhereViewTiersEntryRow struct {
 // BuildVersion is the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20): the
 // one digest a block carries and BlockOpen compares, and the fact §3.3's
 // announcement carries before the first body so a peer's build is knowable.
-const BuildVersion uint64 = 0x9b05bf437904756e
+const BuildVersion uint64 = 0x008d8ff938beb14d
 
 // TableReport is the table-wire read report — the permissive contract's
 // ledger. Silence (all zero) means the data matched this reader's schema
