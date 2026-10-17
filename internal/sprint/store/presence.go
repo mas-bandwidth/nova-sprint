@@ -627,19 +627,19 @@ type holderSchema struct {
 }
 
 type friendReportSchema struct {
-	Running     []string  `json:"running,omitempty"`
-	Working     *int64    `json:"working"`
-	Queue       *int64    `json:"queue"`
-	Width       *int64    `json:"width"`
-	StopReturns *int64    `json:"stop_returns"`
-	Paced       *int64    `json:"paced"`
-	Active      *string   `json:"active"`
-	Window      *string   `json:"window"`
-	Until       *string   `json:"until"`
-	Reason      *string   `json:"reason"`
-	Build       *string   `json:"build"`
-	Started     *string   `json:"started"`
-	Present     *string   `json:"present"`
+	Running     []string `json:"running,omitempty"`
+	Working     *int64   `json:"working"`
+	Queue       *int64   `json:"queue"`
+	Width       *int64   `json:"width"`
+	StopReturns *int64   `json:"stop_returns"`
+	Paced       *int64   `json:"paced"`
+	Active      *string  `json:"active"`
+	Window      *string  `json:"window"`
+	Until       *string  `json:"until"`
+	Reason      *string  `json:"reason"`
+	Build       *string  `json:"build"`
+	Started     *string  `json:"started"`
+	Present     *string  `json:"present"`
 }
 
 type liveSightSchema struct {
