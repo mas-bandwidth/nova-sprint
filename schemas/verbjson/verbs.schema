@@ -14,14 +14,21 @@
 //
 // THE JSON TEXT FORM keeps today's keys: a field spells the key the Go struct
 // or the map literal spells (the json attribute where the schema name cannot
-// be the key). What cannot be kept is named here:
-//   - a Go []string is an array of word tables (IdWord, CardWord, TextWord):
-//     the compiler refuses an array of string(N), so the text form is an array
-//     of {"s": "..."} objects where the verb prints an array of strings;
+// be the key). Today's value shapes are preserved where this compiler pin can
+// express them; where it cannot, the delta and its source are named here as
+// this area's scope resolution. It is fixed by the schema-standard feature this
+// card depends on ("schema-string-arrays-and-top-level-array-roots"; fixes go
+// standard first, then Go, verified in Go: S5), not here:
+//   - a Go []string becomes an array of word tables (IdWord, CardWord,
+//     TextWord): this compiler refuses an array of string(N) ("an array of
+//     string(N) is not supported in v1 — wrap the element in a type"), so a
+//     field that prints an array of strings (handover.rules and handover.first,
+//     cmd/nova-sprint/seat.go:150-151; streams.repos and streams.bases) reads
+//     as an array of {"s": "..."} objects, not of bare strings;
+//   - goal show prints a top-level array (cmd/nova-sprint/goal.go:188-190),
+//     which a table root cannot be: it is GoalList's "goals" array instead;
 //   - a Go time.Time is the string it marshals to (RFC 3339 with nanoseconds,
 //     at most 35 bytes; 40 here), and *time.Time is an optional of it;
-//   - goal show prints a top-level array, which a table root cannot be: it is
-//     GoalList's "goals" array;
 //   - a field that is omitted when empty (omitempty) is a field that reads as
 //     empty when absent; the text form may write the empty value.
 //
