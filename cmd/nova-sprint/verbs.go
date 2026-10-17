@@ -889,6 +889,15 @@ func (a *app) runStep(verbName string, c common, st *store.Store, step store.Ste
 			c.says = res.Said
 		} // the planner's per-card no-op answers still hold
 	}
+	// a step whose work-table changes queue behind a failing tick says so beside
+	// its OK (queued_tick_note.go)
+	if err == nil && len(res.Moved) > 0 {
+		if m, hb, merr := st.Machine(ctx); merr == nil {
+			if note := queuedTickNote(m, hb, res.Tables[sprint.Work] > 0); note != "" {
+				c.says = append(c.says, note)
+			}
+		}
+	}
 	// a judgment the step raised is named by its id, even when the step refused its
 	// card (a finish refused past its bound raises one)
 	for _, j := range finishRefusedRaised(res.Raised) {

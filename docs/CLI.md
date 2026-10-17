@@ -632,7 +632,7 @@ the trunk's tip before it lands any card of the stream, one `NOTE` line `LAND BR
 landed on the trunk. No setting turns this on or off: a cleared sprint (an epoch bump) builds
 the same on its first add. The promotion stream (`stream set --promotion` / `--land-protected`)
 is the exception: its cards land on the protected branch the mark names. The contract is
-[SPEC-SPRINT.md section 7](SPEC-SPRINT.md#7-merging).
+[SPEC-SPRINT.md section 7](SPEC-SPRINT.md#7-merging). On a RUNNING machine whose last tick failed, an `add` whose work-table changes wait for the next tick's drain adds one `NOTE` line (`queued: ...`) beside its OK, naming how many ticks failed and the error.
 
 ### The fleet is idle
 
