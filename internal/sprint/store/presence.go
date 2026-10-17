@@ -9,8 +9,10 @@ import (
 	"runtime"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 	"unsafe"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -35,6 +37,142 @@ type stranger struct {
 	Told bool      `json:"told,omitempty"`
 }
 
+// strangersPageMax is the strangers record's declared per-page max
+// (schemas/friendrows/friendrows.schema Strangers).
+const strangersPageMax = 90
+
+// strangersPageKey is the KV key name of page p of the strangers record
+// (keyStrangers for page 0, "strangers:<p>" for follow-on pages p >= 1).
+func strangersPageKey(p int) string {
+	if p <= 0 {
+		return keyStrangers
+	}
+	return fmt.Sprintf("%s:%d", keyStrangers, p)
+}
+
+// strangerText puts s into a fixed text field of capacity len(dst), or says why it does not
+// fit: past the bound, or not the schema's string text (UTF-8, no NUL).
+func strangerText(dst []byte, s string) (int32, string) {
+	// string(128): the generated name field is 129 bytes, so the usable length is 128.
+	if len(s) > len(dst)-1 {
+		return 0, "text_over_bound"
+	}
+	if !utf8.ValidString(s) || strings.IndexByte(s, 0) >= 0 {
+		return 0, "text_ill_formed"
+	}
+	return int32(copy(dst, s)), ""
+}
+
+// strangerEntry is one keyed strangers entry: the machine name and its record.
+type strangerEntry struct {
+	name string
+	rec  stranger
+}
+
+// strangerFixedPageOf fills w as one fixed-table page of (name, seen, told) entries, or
+// returns the reason the fixed form cannot hold it (S1: the strangers record is server-owned,
+// so it is a fixed table, paged like the done record).
+func strangerFixedPageOf(chunk []strangerEntry, pages uint32, w *friendrowswire.Strangers) string {
+	friendrowswire.StrangersReset(w)
+	if len(chunk) > len(w.Entries) {
+		return "over_max_count"
+	}
+	w.Pages = pages
+	for i, e := range chunk {
+		dst := &w.Entries[i]
+		var why string
+		if dst.NameLength, why = strangerText(dst.Name[:], e.name); why != "" {
+			return why
+		}
+		if !e.rec.Seen.IsZero() {
+			n := e.rec.Seen.UnixNano()
+			if n == 0 || !time.Unix(0, n).Equal(e.rec.Seen) {
+				return "time_out_of_range"
+			}
+			dst.Seen = n
+		}
+		dst.Told = e.rec.Told
+	}
+	w.EntriesCount = int32(len(chunk))
+	return ""
+}
+
+// encodeStrangersPages encodes s into fixed-table pages of at most strangersPageMax (90)
+// entries each, refusing by name before any byte is written when a value the fixed form
+// cannot hold occurs.
+func encodeStrangersPages(s map[string]stranger) ([]string, error) {
+	names := slices.Sorted(maps.Keys(s))
+	pages := max(1, (len(names)+strangersPageMax-1)/strangersPageMax)
+	out := make([]string, pages)
+	size := friendrowswire.StrangersFixedMeasure(1)
+	for p := range pages {
+		lo := min(p*strangersPageMax, len(names))
+		hi := min((p+1)*strangersPageMax, len(names))
+		chunk := make([]strangerEntry, 0, hi-lo)
+		for _, n := range names[lo:hi] {
+			chunk = append(chunk, strangerEntry{name: n, rec: s[n]})
+		}
+		var w friendrowswire.Strangers
+		if why := strangerFixedPageOf(chunk, uint32(pages), &w); why != "" {
+			return nil, fmt.Errorf("strangers page %d refused: %s", p, why)
+		}
+		b := make([]byte, size)
+		if friendrowswire.StrangersFixedSave([]friendrowswire.Strangers{w}, b) != size {
+			return nil, fmt.Errorf("strangers page %d: fixed save refused", p)
+		}
+		out[p] = string(b)
+	}
+	return out, nil
+}
+
+// writeStrangers writes all fixed-table pages of s to kv and removes any surplus pages left
+// by a wider previous record.
+func (st *Store) writeStrangers(ctx context.Context, kv KV, s map[string]stranger, prevPages uint32) error {
+	pages, err := encodeStrangersPages(s)
+	if err != nil {
+		return err
+	}
+	for p, raw := range pages {
+		if err := kv.SetKey(ctx, strangersPageKey(p), raw); err != nil {
+			return err
+		}
+	}
+	if int(prevPages) > len(pages) && st.B != nil {
+		var extra []string
+		for p := len(pages); p < int(prevPages); p++ {
+			extra = append(extra, st.Names.Key(strangersPageKey(p)))
+		}
+		if _, err := st.B.DeleteKeys(ctx, extra); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// decodeStrangerPage decodes one fixed strangers page's entries into out and returns the
+// record's declared page count, or the reason the image is refused (S2).
+func decodeStrangerPage(raw string, out map[string]stranger) (uint32, string) {
+	if raw == "" || raw[0] != friendrowswire.TableFixedForm {
+		return 0, "unknown_form"
+	}
+	pages := make([]friendrowswire.Strangers, 1)
+	plan := make([]friendrowswire.TableFixedEntry, 2*len(friendrowswire.StrangersFixedPlan.Entries))
+	var rep friendrowswire.TableReport
+	n := friendrowswire.StrangersFixedLoad(pages, []byte(raw), plan, &rep)
+	if n != 1 || rep.Malformed || rep.Reason != "" {
+		return 0, "malformed"
+	}
+	p := pages[0]
+	for i := int32(0); i < p.EntriesCount; i++ {
+		e := &p.Entries[i]
+		out[string(e.Name[:e.NameLength])] = stranger{Seen: doneTimeOf(e.Seen), Told: e.Told}
+	}
+	if p.Pages == 0 {
+		return 1, ""
+	}
+	return p.Pages, ""
+}
+
 func (st *Store) strangers(ctx context.Context) (map[string]stranger, error) {
 	out := map[string]stranger{}
 	kv, err := st.rootKV()
@@ -45,10 +183,42 @@ func (st *Store) strangers(ctx context.Context) (map[string]stranger, error) {
 	if err != nil || !ok {
 		return out, err
 	}
-	// An unreadable record is read as none on purpose: the next stranger's note writes it
-	// whole again. The refusal is named and counted under STRANGERS (S2, S4).
-	if s, err := presenceRow(st.presenceRows().stranger, []byte(raw)); err == nil && s != nil {
-		out = s
+	if raw == "" {
+		return out, nil
+	}
+	// Today's legacy JSON object reads whole (S2, S4). An unreadable record is read as
+	// none on purpose: the next stranger's note writes it whole again; the refusal is named
+	// and counted under STRANGERS.
+	if raw[0] == '{' {
+		if s, err := presenceRow(st.presenceRows().stranger, []byte(raw)); err == nil && s != nil {
+			out = s
+		}
+		return out, nil
+	}
+	// The fixed paged form (S1, S2). An unreadable record reads as none on purpose, as the
+	// legacy form's does.
+	pages, why := decodeStrangerPage(raw, out)
+	if why != "" {
+		return map[string]stranger{}, nil
+	}
+	if pages <= 1 {
+		return out, nil
+	}
+	names := make([]string, pages-1)
+	for p := uint32(1); p < pages; p++ {
+		names[p-1] = strangersPageKey(int(p))
+	}
+	vals, oks, err := getKeys(ctx, kv, names)
+	if err != nil {
+		return out, err
+	}
+	for i, pok := range oks {
+		if !pok {
+			return map[string]stranger{}, nil
+		}
+		if _, why := decodeStrangerPage(vals[i], out); why != "" {
+			return map[string]stranger{}, nil
+		}
 	}
 	return out, nil
 }
@@ -58,11 +228,15 @@ func (st *Store) putStrangers(ctx context.Context, s map[string]stranger) error 
 	if err != nil {
 		return err
 	}
-	b, err := json.Marshal(s)
-	if err != nil {
-		return err
+	prevPages := uint32(1)
+	if raw, ok, err := kv.GetKey(ctx, keyStrangers); err == nil && ok && len(raw) > 0 && raw[0] == friendrowswire.TableFixedForm {
+		if pages, why := decodeStrangerPage(raw, map[string]stranger{}); why == "" {
+			prevPages = pages
+		}
 	}
-	return kv.SetKey(ctx, keyStrangers, string(b))
+	// encodeStrangersPages refuses a value the fixed form cannot hold before any byte is
+	// written; the legacy form is never a fallback (S4).
+	return st.writeStrangers(ctx, kv, s, prevPages)
 }
 
 // noteStranger records a machine that beats and is no member of the sprint,
@@ -777,9 +951,10 @@ func beatOfSchema(m *beatSchema) (sprint.Beat, bool) {
 	return b, ok
 }
 
-// strangerRowFns is the strangers record as the row reader reads it: STRANGERS, today's
-// legacy JSON alone. friendrows.schema declares no table for it, so a table form is refused
-// by name (unknown_form); the record is counted with the others (S2, S4).
+// strangerRowFns is the strangers record's legacy reader and counter: STRANGERS, today's
+// legacy JSON (S2, S4). The record itself is now a fixed table (friendrows.schema Strangers),
+// written by putStrangers and read by strangers() page by page; this codec keeps the legacy
+// form reading and counting until the retire card.
 func strangerRowFns() RowFns[map[string]stranger] {
 	return RowFns[map[string]stranger]{
 		Name:       "STRANGERS",
