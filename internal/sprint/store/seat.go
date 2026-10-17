@@ -354,9 +354,15 @@ func (st *Store) SeatServerCoordinator(ctx context.Context) (sprint.SeatChange, 
 	}
 	fresh := false
 	if oks[1] {
-		if err := json.Unmarshal([]byte(vals[1]), &r); err != nil {
-			return s, false, r, false, "", err
+		// S2, S4: the server record is read through the row codec, which accepts the
+		// fixed image, the padded standard base64 of that image, the schema JSON text
+		// and today's legacy JSON, refuses damage by name and counts each read per form.
+		// A refusal is handed to the caller by name, never read as absent.
+		rr, _, err := st.serverRows().Read([]byte(vals[1]))
+		if err != nil {
+			return s, false, ServerRecord{}, false, "", err
 		}
+		r = rr
 		if fresh = st.now().Sub(r.At) <= ServerTTL; !fresh {
 			r = ServerRecord{}
 		}
