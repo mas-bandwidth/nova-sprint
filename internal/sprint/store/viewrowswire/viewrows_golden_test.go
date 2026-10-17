@@ -340,7 +340,10 @@ func sampleField(f *wire.TableFieldInfo, o sampleOpts, depth int) any {
 		n := o.count(f, depth)
 		out := make([]any, n)
 		for i := range out {
-			if f.Table != nil {
+			if f.TextList != 0 {
+				// a text list is a plain []string in the text (SPEC-TABLES 2.13.1)
+				out[i] = scalarSample(f, i)
+			} else if f.Table != nil {
 				out[i] = sampleTable(f.Table(), o, depth+1)
 			} else {
 				out[i] = scalarSample(f, i)
@@ -367,6 +370,9 @@ func sampleValue(f *wire.TableFieldInfo, o sampleOpts, depth int) any {
 }
 
 func scalarSample(f *wire.TableFieldInfo, i int) any {
+	if f.TextList != 0 {
+		return "text"
+	}
 	switch f.TypeName {
 	case "bool":
 		return true
@@ -782,11 +788,6 @@ func allTables() []tableCase {
 				builder((*wire.BeatBuilder).Init, (*wire.BeatBuilder).GetRoot, func(b *wire.BeatBuilder) *wire.TableArena { return &b.Arena }, wire.BeatFromJson),
 				wire.BeatMeasure, wire.BeatSave, wire.BeatLoadMeasureReason, wire.BeatLoad, wire.BeatToJsonMeasure, wire.BeatToJson, wire.BeatTableType, nil})
 		}},
-		{"CardID", false, func(t *testing.T, name string, samples []namedSample) {
-			runVariable(t, name, samples, varOps[wire.CardID]{
-				builder((*wire.CardIDBuilder).Init, (*wire.CardIDBuilder).GetRoot, func(b *wire.CardIDBuilder) *wire.TableArena { return &b.Arena }, wire.CardIDFromJson),
-				wire.CardIDMeasure, wire.CardIDSave, wire.CardIDLoadMeasureReason, wire.CardIDLoad, wire.CardIDToJsonMeasure, wire.CardIDToJson, wire.CardIDTableType, nil})
-		}},
 		{"CheckRecord", false, func(t *testing.T, name string, samples []namedSample) {
 			runVariable(t, name, samples, varOps[wire.CheckRecord]{
 				builder((*wire.CheckRecordBuilder).Init, (*wire.CheckRecordBuilder).GetRoot, func(b *wire.CheckRecordBuilder) *wire.TableArena { return &b.Arena }, wire.CheckRecordFromJson),
@@ -889,11 +890,6 @@ func allTables() []tableCase {
 			runVariable(t, name, samples, varOps[wire.LaneQuiet]{
 				builder((*wire.LaneQuietBuilder).Init, (*wire.LaneQuietBuilder).GetRoot, func(b *wire.LaneQuietBuilder) *wire.TableArena { return &b.Arena }, wire.LaneQuietFromJson),
 				wire.LaneQuietMeasure, wire.LaneQuietSave, wire.LaneQuietLoadMeasureReason, wire.LaneQuietLoad, wire.LaneQuietToJsonMeasure, wire.LaneQuietToJson, wire.LaneQuietTableType, nil})
-		}},
-		{"Line", false, func(t *testing.T, name string, samples []namedSample) {
-			runVariable(t, name, samples, varOps[wire.Line]{
-				builder((*wire.LineBuilder).Init, (*wire.LineBuilder).GetRoot, func(b *wire.LineBuilder) *wire.TableArena { return &b.Arena }, wire.LineFromJson),
-				wire.LineMeasure, wire.LineSave, wire.LineLoadMeasureReason, wire.LineLoad, wire.LineToJsonMeasure, wire.LineToJson, wire.LineTableType, nil})
 		}},
 		{"LineList", false, func(t *testing.T, name string, samples []namedSample) {
 			runVariable(t, name, samples, varOps[wire.LineList]{
@@ -1049,11 +1045,6 @@ func allTables() []tableCase {
 			runVariable(t, name, samples, varOps[wire.RouteStat]{
 				builder((*wire.RouteStatBuilder).Init, (*wire.RouteStatBuilder).GetRoot, func(b *wire.RouteStatBuilder) *wire.TableArena { return &b.Arena }, wire.RouteStatFromJson),
 				wire.RouteStatMeasure, wire.RouteStatSave, wire.RouteStatLoadMeasureReason, wire.RouteStatLoad, wire.RouteStatToJsonMeasure, wire.RouteStatToJson, wire.RouteStatTableType, nil})
-		}},
-		{"RowName", false, func(t *testing.T, name string, samples []namedSample) {
-			runVariable(t, name, samples, varOps[wire.RowName]{
-				builder((*wire.RowNameBuilder).Init, (*wire.RowNameBuilder).GetRoot, func(b *wire.RowNameBuilder) *wire.TableArena { return &b.Arena }, wire.RowNameFromJson),
-				wire.RowNameMeasure, wire.RowNameSave, wire.RowNameLoadMeasureReason, wire.RowNameLoad, wire.RowNameToJsonMeasure, wire.RowNameToJson, wire.RowNameTableType, nil})
 		}},
 		{"RttSample", true, func(t *testing.T, name string, samples []namedSample) {
 			runFixed(t, name, samples, fixedOps[wire.RttSample]{wire.RttSampleReset, wire.RttSampleSave, wire.RttSampleLoad, wire.RttSampleFromJson, wire.RttSampleToJsonMeasure, wire.RttSampleToJson, wire.RttSampleTableType})
@@ -1488,6 +1479,11 @@ func (c *converter) value(path string, v reflect.Value, f *wire.TableFieldInfo) 
 		}
 		out := make([]any, v.Len())
 		for i := range out {
+			if f.TextList != 0 {
+				// a text list is a plain []string in the text (SPEC-TABLES 2.13.1)
+				out[i] = c.scalar(path, v.Index(i))
+				continue
+			}
 			out[i] = c.elem(path, v.Index(i), f)
 		}
 		return out
@@ -1745,8 +1741,6 @@ func pastCaps() []pastCase {
 		}}
 	}
 	return []pastCase{
-		text("CardID", "id", 600),
-		text("RowName", "name", 200),
 		text("FleetMachineRow", "name", 200),
 		text("Landing", "worker", 200),
 		text("Landing", "stream", 200),
@@ -1985,7 +1979,6 @@ func TestViewRowsGolden(t *testing.T) {
 		}
 
 		// the bound walk is not vacuous: it finds the declared bounds
-		assert.Empty(t, stringFields(wire.CardIDTableType()), "CardID's id is open")
 		assert.Empty(t, arrayFields(wire.NoteTableType()), "Note's primaries are open")
 		assert.Empty(t, arrayFields(wire.WhereRecordTableType()), "WhereRecord's landings, critical and blockers are open")
 		assert.Empty(t, mapFields(wire.WhereRecordTableType()), "WhereRecord has no map: its keys are unbounded text in pair lists")

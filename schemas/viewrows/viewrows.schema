@@ -42,31 +42,10 @@ package viewrowswire
 // ---------------------------------------------------------------------------
 // Words, lists and pairs.
 
-// CardID is a card's id (sprint.ValidCardID writes it). The readers of the
-// stored records are plain json.Unmarshal and keep any length, so the text is
-// unbounded.
-table CardID
-{
-    id *string
-}
-
-// RowName is one fleet row: a member name or "friend." and a friend name. The
-// readers keep any length, so the text is unbounded.
-table RowName
-{
-    name *string
-}
-
-// Line is one text the code does not bound.
-table Line
-{
-    text *string
-}
-
 // LineList is a list of texts, the value of a map of lists.
 table LineList
 {
-    items []Line
+    items []string
 }
 
 // TextPair is one entry of a string map in key order: a name and its words.
@@ -240,7 +219,7 @@ table CostCheck
     cards_usd   *string
     gap_usd     *string
     ok          bool
-    orphans     []CardID
+    orphans     []string
     unlisted    int64
 }
 
@@ -284,7 +263,7 @@ table SentinelCounts
 table PriorityCards
 {
     level *string
-    cards []CardID
+    cards []string
 }
 
 // ReadCardCounts is the epoch's read cards (sprint.ReadCardCounts).
@@ -312,7 +291,7 @@ table StreamTransition
     state   *string
     cause   *string
     waiting int64
-    owners  []RowName
+    owners  []string
 }
 
 // DecisionDelivery is a folded-message obligation (sprint.DecisionDelivery).
@@ -328,7 +307,7 @@ table DecisionDelivery
     retry_before     int64
     sent_at          int64
     fault            *string
-    reports          []Line
+    reports          []string
     unknown_receipts int64
 }
 
@@ -363,24 +342,24 @@ table Note
     kind                     *string
     note_type                *string              | json = "type"
     stream                   *string
-    primaries                []CardID
+    primaries                []string
     count                    int64
     what                     *string
     who                      *string
     attempt                  int64
     before                   int64
     at                       int64
-    decisions                []Line
+    decisions                []string
     marked                   bool
     answers                  *string
-    suspects                 []Line
+    suspects                 []string
     card                     *string
     other                    *string
     tier                     *string
     other_stream             *string
     stream_level             bool
     sprint_level             bool
-    needs                    []Line
+    needs                    []string
     review                   int64
     review_set               int64
     to                       *string
@@ -417,7 +396,7 @@ table WhereRecord
     held_streams           []IntPair
     landings               []int64
     critical               []CriticalCard
-    blockers               []Line
+    blockers               []string
     sentinels              []SentinelPair
     tiers                  []IntPair
     streams                []TierCostsPair
@@ -436,7 +415,7 @@ table WhereRecord
     stats                  *string
     series                 []Landing
     series_counted         bool
-    archived_primaries     []CardID
+    archived_primaries     []string
     archived_fleet         []ArchivedFleetCard
     live_stage_times       StageTimes
     archived_counted       bool
@@ -567,7 +546,7 @@ table MeterState
 // pointer count is an optional.
 table FriendReport
 {
-    running      []Line
+    running      []string
     working      ?int64
     queue        ?int64
     width        ?int64
@@ -601,13 +580,13 @@ table Beat
     friend_report  *FriendReport  | json = "friend"
     stop_returns   int64
     no_room        *string
-    live           []Line
+    live           []string
     live_known     bool
     live_since     int64
     live_seen      []LiveSeenPair
     draining       bool
     draining_since int64
-    facts          []Line
+    facts          []string
 }
 
 // ---------------------------------------------------------------------------
@@ -635,9 +614,9 @@ table CheckRecord
     at       int64
     by       *string
     clean    bool
-    streams  []Line
+    streams  []string
     kinds    *string
-    findings []Line
+    findings []string
     cards    []CheckedCard
     digest   *string
 }
@@ -717,7 +696,7 @@ table ResetResult
     replaced *ResetMark
     dry_run  bool
     replay   bool
-    said     []Line
+    said     []string
     refused  *string
 }
 
@@ -762,7 +741,7 @@ table StatsRecord
     by         *string
     kinds      []KindTime
     streams    []StreamBasePair
-    archives   []Line
+    archives   []string
     reset_mark *ResetMark       | json = "reset"
     tidying    *TidyInFlight
 }
@@ -844,7 +823,7 @@ table StatsArchive
     epoch   uint64
     reason  *string
     by      *string
-    kinds   []Line
+    kinds   []string
     state   *string
     error   *string
     rows    []TidyRow
@@ -858,7 +837,7 @@ table TidyResult
     archive *string
     dry_run bool
     refused *string
-    said    []Line
+    said    []string
     record  StatsArchive
     moved   int64
     kept    int64
@@ -883,7 +862,7 @@ table Stuck
 table LogIndexEntry
 {
     name *string
-    ids  []Line
+    ids  []string
 }
 
 // LogIndex is the load index: the cursor (key "logindexed", a Redis stream
@@ -968,7 +947,7 @@ table Heartbeat
     all          int64
     full         int64
     looked       int64
-    fresh        []Line
+    fresh        []string
     quiet        []LaneQuiet
     suppressed   Suppressed
 }
@@ -986,7 +965,7 @@ table FieldGuard
 {
     equals *string
     absent ?bool
-    one_of []Line
+    one_of []string
 }
 
 // FieldGuardPair is one field in MemberExpect.Fields.
@@ -1030,7 +1009,7 @@ table BatchMemberEntry
     member_move *MemberMove   | json = "move"
     remove      bool
     set         []TextPair
-    unset       []Line
+    unset       []string
 }
 
 // BatchManifest is one atomic batch (ntable.BatchManifest) on the held
@@ -1046,7 +1025,7 @@ table BatchManifest
     members                 []BatchMemberEntry
     props                   []TextPair
     prop_expect             []TextPair
-    prop_absent             []Line
+    prop_absent             []string
 }
 
 // PropWrite is a table property a step writes (sprint.PropWrite). The Go
@@ -1079,7 +1058,7 @@ table LogLine
     epoch         uint64
     op            *string
     card          *string
-    cards         []Line
+    cards         []string
     primary       *string
     stream        *string
     logical_table *string    | json = "table"
@@ -1090,7 +1069,7 @@ table LogLine
     actor         *string
     verb          *string
     cause         *string
-    answers       []Line
+    answers       []string
     text          []TextPair
     set           []TextPair
     note          *Note
@@ -1140,14 +1119,14 @@ table HeldRecord
     decided      []Note
     log          []LogLine
     updates      []Note
-    closes       []Line
-    streams      []Line
+    closes       []string
+    streams      []string
     caller_op    *string
     result       *string
     stuck        *string
     queue        []QueuedChange
     drain        int64
     seat         *SeatChange
-    close_timers []Line
+    close_timers []string
     timers       *Timers
 }

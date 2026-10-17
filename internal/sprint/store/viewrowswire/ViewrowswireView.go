@@ -67,12 +67,11 @@ func init() {
 
 var tableUnitView = UnitViewInfo{Package: "viewrowswire", ProtocolId: 0x892c1f6cffaa6b74,
 	NumTypes: 0, Types: []ViewType{},
-	NumTables: 98, Tables: []ViewType{
+	NumTables: 95, Tables: []ViewType{
 		{Name: "ArchivedFleetCard", File: "viewrows.schema", Table: true, Type: &ArchivedFleetCardTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "BatchManifest", File: "viewrows.schema", Table: true, Type: &BatchManifestTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "BatchMemberEntry", File: "viewrows.schema", Table: true, Type: &BatchMemberEntryTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "Beat", File: "viewrows.schema", Table: true, Type: &BeatTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
-		{Name: "CardID", File: "viewrows.schema", Table: true, Type: &CardIDTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "CheckRecord", File: "viewrows.schema", Table: true, Type: &CheckRecordTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "CheckedCard", File: "viewrows.schema", Table: true, Type: &CheckedCardTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "CoordinatorDelivery", File: "viewrows.schema", Table: true, Type: &CoordinatorDeliveryTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -95,7 +94,6 @@ var tableUnitView = UnitViewInfo{Package: "viewrowswire", ProtocolId: 0x892c1f6c
 		{Name: "KindTime", File: "viewrows.schema", Table: true, Type: &KindTimeTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "Landing", File: "viewrows.schema", Table: true, Type: &LandingTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "LaneQuiet", File: "viewrows.schema", Table: true, Type: &LaneQuietTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
-		{Name: "Line", File: "viewrows.schema", Table: true, Type: &LineTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "LineList", File: "viewrows.schema", Table: true, Type: &LineListTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "LineListPair", File: "viewrows.schema", Table: true, Type: &LineListPairTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "LiveSeenPair", File: "viewrows.schema", Table: true, Type: &LiveSeenPairTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -133,7 +131,6 @@ var tableUnitView = UnitViewInfo{Package: "viewrowswire", ProtocolId: 0x892c1f6c
 		{Name: "Route", File: "viewrows.schema", Table: true, Type: &RouteTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "RoutePrices", File: "viewrows.schema", Table: true, Type: &RoutePricesTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "RouteStat", File: "viewrows.schema", Table: true, Type: &RouteStatTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
-		{Name: "RowName", File: "viewrows.schema", Table: true, Type: &RowNameTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "RttSample", File: "viewrows.schema", Table: true, Type: &RttSampleTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "SeatChange", File: "viewrows.schema", Table: true, Type: &SeatChangeTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "SeatWaits", File: "viewrows.schema", Table: true, Type: &SeatWaitsTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},

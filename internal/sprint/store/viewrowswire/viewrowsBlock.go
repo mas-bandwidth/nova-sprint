@@ -550,15 +550,7 @@ func init() {
 	}
 }
 
-// table CardID has NO block form: it is VARIABLE-LENGTH: CardID.id is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
-// Its wire (§3) is unaffected — only this projection is absent, and it is
-// absent by construction rather than by refusal.
-
-// table RowName has NO block form: it is VARIABLE-LENGTH: RowName.name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
-// Its wire (§3) is unaffected — only this projection is absent, and it is
-// absent by construction rather than by refusal.
-
-// table Line has NO block form: it is VARIABLE-LENGTH: Line.text is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// table LineListItemsText has NO block form: it is the generated ENTRY of the map LineList.items, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -910,6 +902,10 @@ func (b *DayGapBlock) Type() *TableBlockInfo { return &tableBlockRecords[0] }
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
+// table CostCheckOrphansText has NO block form: it is the generated ENTRY of the map CostCheck.orphans, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
 // table CostCheck has NO block form: it is VARIABLE-LENGTH: CostCheck.streams_usd is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
@@ -927,6 +923,10 @@ func (b *DayGapBlock) Type() *TableBlockInfo { return &tableBlockRecords[0] }
 // absent by construction rather than by refusal.
 
 // table SentinelCounts has NO block form: it is VARIABLE-LENGTH: SentinelCounts.by_col is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table PriorityCardsCardsText has NO block form: it is the generated ENTRY of the map PriorityCards.cards, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -1214,7 +1214,15 @@ func ReadsWindowViewBlockBytes(b *ReadsWindowViewBlock) int64 {
 // through the graph.
 func (b *ReadsWindowViewBlock) Type() *TableBlockInfo { return &tableBlockRecords[4] }
 
+// table StreamTransitionOwnersText has NO block form: it is the generated ENTRY of the map StreamTransition.owners, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
 // table StreamTransition has NO block form: it is VARIABLE-LENGTH: StreamTransition.state is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table DecisionDeliveryReportsText has NO block form: it is the generated ENTRY of the map DecisionDelivery.reports, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -1223,6 +1231,22 @@ func (b *ReadsWindowViewBlock) Type() *TableBlockInfo { return &tableBlockRecord
 // absent by construction rather than by refusal.
 
 // table CoordinatorDelivery has NO block form: it is VARIABLE-LENGTH: CoordinatorDelivery.covered_by is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table NotePrimariesText has NO block form: it is the generated ENTRY of the map Note.primaries, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table NoteDecisionsText has NO block form: it is the generated ENTRY of the map Note.decisions, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table NoteSuspectsText has NO block form: it is the generated ENTRY of the map Note.suspects, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table NoteNeedsText has NO block form: it is the generated ENTRY of the map Note.needs, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -1235,6 +1259,14 @@ func (b *ReadsWindowViewBlock) Type() *TableBlockInfo { return &tableBlockRecord
 // absent by construction rather than by refusal.
 
 // table TierCostsPair has NO block form: it is VARIABLE-LENGTH: TierCostsPair.key is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table WhereRecordBlockersText has NO block form: it is the generated ENTRY of the map WhereRecord.blockers, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table WhereRecordArchivedPrimariesText has NO block form: it is the generated ENTRY of the map WhereRecord.archived_primaries, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -1698,6 +1730,10 @@ func (b *MeterTicksBlock) Type() *TableBlockInfo { return &tableBlockRecords[2] 
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
+// table FriendReportRunningText has NO block form: it is the generated ENTRY of the map FriendReport.running, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
 // table FriendReport has NO block form: it is VARIABLE-LENGTH: FriendReport.running is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
@@ -1706,11 +1742,27 @@ func (b *MeterTicksBlock) Type() *TableBlockInfo { return &tableBlockRecords[2] 
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
+// table BeatLiveText has NO block form: it is the generated ENTRY of the map Beat.live, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table BeatFactsText has NO block form: it is the generated ENTRY of the map Beat.facts, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
 // table Beat has NO block form: it is VARIABLE-LENGTH: Beat.how is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
 // table CheckedCard has NO block form: it is VARIABLE-LENGTH: CheckedCard.id is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table CheckRecordStreamsText has NO block form: it is the generated ENTRY of the map CheckRecord.streams, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table CheckRecordFindingsText has NO block form: it is the generated ENTRY of the map CheckRecord.findings, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -1882,6 +1934,10 @@ func (b *ResetRowBlock) Type() *TableBlockInfo { return &tableBlockRecords[5] }
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
+// table ResetResultSaidText has NO block form: it is the generated ENTRY of the map ResetResult.said, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
 // table ResetResult has NO block form: it is VARIABLE-LENGTH: ResetMark.by is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
@@ -1899,6 +1955,10 @@ func (b *ResetRowBlock) Type() *TableBlockInfo { return &tableBlockRecords[5] }
 // absent by construction rather than by refusal.
 
 // table TidyInFlight has NO block form: it is VARIABLE-LENGTH: TidyInFlight.archive is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table StatsRecordArchivesText has NO block form: it is the generated ENTRY of the map StatsRecord.archives, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -1926,7 +1986,15 @@ func (b *ResetRowBlock) Type() *TableBlockInfo { return &tableBlockRecords[5] }
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
+// table StatsArchiveKindsText has NO block form: it is the generated ENTRY of the map StatsArchive.kinds, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
 // table StatsArchive has NO block form: it is VARIABLE-LENGTH: StatsArchive.reason is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table TidyResultSaidText has NO block form: it is the generated ENTRY of the map TidyResult.said, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -1935,6 +2003,10 @@ func (b *ResetRowBlock) Type() *TableBlockInfo { return &tableBlockRecords[5] }
 // absent by construction rather than by refusal.
 
 // table Stuck has NO block form: it is VARIABLE-LENGTH: Stuck.op is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table LogIndexEntryIdsText has NO block form: it is the generated ENTRY of the map LogIndexEntry.ids, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -2238,11 +2310,19 @@ func SuppressedBlockBytes(b *SuppressedBlock) int64 {
 // through the graph.
 func (b *SuppressedBlock) Type() *TableBlockInfo { return &tableBlockRecords[9] }
 
+// table HeartbeatFreshText has NO block form: it is the generated ENTRY of the map Heartbeat.fresh, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
 // table Heartbeat has NO block form: it is VARIABLE-LENGTH: Heartbeat.error is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
 // table PlaceExpect has NO block form: it is VARIABLE-LENGTH: PlaceExpect.row is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table FieldGuardOneOfText has NO block form: it is the generated ENTRY of the map FieldGuard.one_of, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -2266,7 +2346,15 @@ func (b *SuppressedBlock) Type() *TableBlockInfo { return &tableBlockRecords[9] 
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
+// table BatchMemberEntryUnsetText has NO block form: it is the generated ENTRY of the map BatchMemberEntry.unset, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
 // table BatchMemberEntry has NO block form: it is VARIABLE-LENGTH: BatchMemberEntry.id is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table BatchManifestPropAbsentText has NO block form: it is the generated ENTRY of the map BatchManifest.prop_absent, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -2279,6 +2367,14 @@ func (b *SuppressedBlock) Type() *TableBlockInfo { return &tableBlockRecords[9] 
 // absent by construction rather than by refusal.
 
 // table QueuedChange has NO block form: it is VARIABLE-LENGTH: QueuedChange.entry is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table LogLineCardsText has NO block form: it is the generated ENTRY of the map LogLine.cards, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table LogLineAnswersText has NO block form: it is the generated ENTRY of the map LogLine.answers, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -2295,6 +2391,18 @@ func (b *SuppressedBlock) Type() *TableBlockInfo { return &tableBlockRecords[9] 
 // absent by construction rather than by refusal.
 
 // table SeatChange has NO block form: it is VARIABLE-LENGTH: SeatChange.holder is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table HeldRecordClosesText has NO block form: it is the generated ENTRY of the map HeldRecord.closes, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table HeldRecordStreamsText has NO block form: it is the generated ENTRY of the map HeldRecord.streams, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// table HeldRecordCloseTimersText has NO block form: it is the generated ENTRY of the map HeldRecord.close_timers, and a map's entries are never rows: they are an extent inside the holder's own node, reached through the holder's map slot, not an out-of-line array with a pitch of its own (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
