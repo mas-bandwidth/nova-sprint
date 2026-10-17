@@ -16,6 +16,13 @@ func TestTheBlockerJudgmentGoesToTheOwnerAtOnce(t *testing.T) {
 	t.Parallel()
 	b := &tokenBus{}
 	ta := newTestApp(t)
+	env := ta.a.getenv
+	ta.a.getenv = func(k string) string {
+		if k == busRedisEnv {
+			return "bus.test:6379"
+		}
+		return env(k)
+	}
 	ta.ok("init --readers reader-a,reader-b,reader-c --members m1 --owner amy")
 	ta.a.bus = b.send
 

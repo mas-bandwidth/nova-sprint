@@ -737,8 +737,9 @@ func coordWarningGroups(l coordLook) []sprint.Group {
 }
 
 // decisionPass is the deadline escalation lane. The owner lane goes to whoever holds
-// the coordinator seat at push time, like the coordinator lane. The frozen payload/token,
-// success receipt and fault are durable, unlike the pre-deadline reminder memory.
+// the coordinator seat at push time, like the coordinator lane (owner-pushes-route-to-coordinator).
+// The frozen payload/token, success receipt and fault are durable, unlike the pre-deadline
+// reminder memory.
 // tla/DecisionsOwed.tla NoSilentPile means an outstanding delivery obligation,
 // not human sight; transport liveness assumes eventual successful sends.
 func (a *app) decisionPass(ctx context.Context) {

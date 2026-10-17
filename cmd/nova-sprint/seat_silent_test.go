@@ -45,6 +45,13 @@ func (b *tokenBus) send(_ context.Context, m bus.Message, _ func(string)) error 
 func seatSilentRig(t *testing.T, b *tokenBus) (*testApp, *store.Store, string) {
 	t.Helper()
 	ta := newTestApp(t)
+	env := ta.a.getenv
+	ta.a.getenv = func(k string) string {
+		if k == busRedisEnv {
+			return "bus.test:6379"
+		}
+		return env(k)
+	}
 	ta.ok("init --readers reader-a,reader-b,reader-c --members m1 --owner glenn")
 	ta.a.bus = b.send
 	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: "coordinator"}
