@@ -767,14 +767,10 @@ func (c *held) overdueUnmarked() []Finding {
 		if n.Kind != Judgment || n.Type == NSprintDone || seen[n.ID] || marked[OpenKey(n.ID, o.Subject())] || c.marks[n.ID] {
 			continue
 		}
-		past := false
-		if !n.Review.IsZero() {
-			// A wait counts running time from when it was set, by the tree's
-			// one clock comparison (stopped.go DueNow; docs/SPEC-SPRINT.md, "Timers").
-			past = DueNow(s.Now, n.Review, n.ReviewSet, c.req.Stopped)
-		} else if d, ok := c.running(stamp(n.At)); ok {
-			past = d > DeadlineJudgment
-		}
+		// The check asks the same predicate the tick marks by (steps_tick.go
+		// tickOverdue), so a judgment the tick quiets is no stall
+		// (v17-check-overdue-asks-the-tick-quiet).
+		past := JudgmentOverdue(s, c.req, n)
 		if !past {
 			continue
 		}
