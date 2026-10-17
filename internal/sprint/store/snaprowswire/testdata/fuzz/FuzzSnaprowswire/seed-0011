@@ -1,0 +1,3 @@
+go test fuzz v1
+byte('\x03')
+[]byte("{\n  \"consumers\": [],\n  \"total\": {\n    \"records\": 0,\n    \"tokens\": {\n      \"input\": 0,\n      \"cache_read\": 0,\n      \"cache_write\": 0,\n      \"output\": 0,\n      \"reasoning\": 0,\n      \"requests\": 0,\n      \"max_prompt\": 0\n    },\n    \"wait_s\": 0,\n    \"run_s\": 0,\n    \"predicted_usd\": null,\n    \"predicted_records\": 0,\n    \"actual_usd\": null,\n    \"actual_records\": 0,\n    \"actual_by\": null,\n    \"charged_usd\": null,\n    \"charged_records\": 0\n  },\n  \"cut\": 0,\n  \"carried_usd\": null,\n  \"carried_from\": null,\n  \"carried_to\": null\n}\n")

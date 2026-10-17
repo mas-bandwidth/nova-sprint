@@ -1,0 +1,3 @@
+go test fuzz v1
+byte('\x04')
+[]byte("{\n  \"key\": null,\n  \"bound\": false,\n  \"count\": 0,\n  \"members\": [],\n  \"unread\": false,\n  \"unread_why\": null\n}\n")

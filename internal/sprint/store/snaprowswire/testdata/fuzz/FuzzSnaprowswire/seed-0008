@@ -1,0 +1,3 @@
+go test fuzz v1
+byte('\x02')
+[]byte("{\n  \"id\": null,\n  \"before_place\": null,\n  \"after_place\": null,\n  \"before_score_text\": null,\n  \"after_score_text\": null,\n  \"before_rev\": null,\n  \"after_rev\": null,\n  \"fields_set\": [],\n  \"fields_unset\": [],\n  \"fields\": []\n}\n")
