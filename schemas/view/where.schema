@@ -1,0 +1,639 @@
+// where.schema: the where --json object of nova-sprint (cmd/nova-sprint/reads.go
+// whereView, built by cmdWhere and whereOf; view.go and where_*.go draw the same
+// facts as text) and the types it carries, as VARIABLE tables. The dashboard reads
+// the object (internal/sprintdash: sprintCopy in pull.go, the page's record in
+// dashboard.go, the freshness in fresh.go) and a program reads it through
+// `nova-sprint where --json`: it is a message an older reader meets, so every table
+// is a variable table (the owner's rule S1: a fixed table is for a record whose
+// reader is the same version or newer). It travels as the binary wire, padded
+// standard base64 of the binary wire and the schema JSON text form (S2).
+//
+// The JSON text keeps today's keys: a field's json key is the key of the Go
+// struct's json tag (schema docs/SPEC-TABLES.md section 16.4), and a Go struct field
+// with no tag keeps its Go name as its key. A Go field tagged "-" is not a field.
+// Fields are declared in the Go struct's order. A list of text is a text list
+// (section 2.13), whose JSON is a plain array of strings, as []string is today;
+// a map is a map (section 2.8), whose JSON is an object keyed by the key, as the Go
+// map is. What the text form cannot keep is named in the comment of the field it
+// concerns, under "SHAPE":
+//   - a field the Go struct omits when empty (omitempty) is always written, empty;
+//   - a time is an RFC 3339 string with a Z offset, and the zero time is
+//     1970-01-01T00:00:00Z, where Go writes 0001-01-01T00:00:00Z for a zero
+//     time.Time (a time before 1678 has no timestamp);
+//   - a nil Go slice is `null` today and `[]` here;
+//   - a Go *int, *float64 or *bool that is nil is `null` today (no omitempty) or an
+//     absent key, and an absent key here (an optional field).
+//
+// Bounds: where the code enforces a bound, the field's bound is the code's and its
+// comment names the rule. Where it enforces none, the bound is chosen to fit the
+// record, and the comment says "chosen". A value past a bound is refused at the
+// reader, never clamped into a record. A list the code does not count is unbounded,
+// sized by content. A cell of a table is a field value of the nova-tables layer,
+// held at its used size as a blob and held by the reader to
+// ntable.LimitFieldValueBytes (64 KiB) as a constraint, never a string(65536).
+//
+// Counts, ints and sums are int64 (Go int and int64 alike), epochs uint64, money
+// and card text stay the strings the code writes.
+package viewwire
+
+// ---------------------------------------------------------------------------
+// Lists of words that sit as a map's value: a text list may not be one, so the
+// array root (section 16.10) stands for it, and its JSON is the plain array.
+
+// NameList is a list of card ids as the JSON array of them: Priorities' value, a
+// level's open primaries (sprint.PriorityCounts).
+table NameList | json = "array"
+{
+    // sprint.ValidCardID: at most 4 dot-joined ValidID words of MaxIDLen (128)
+    // bytes each, so 4*128 + 3 = 515.
+    names []string(515)
+}
+
+// ---------------------------------------------------------------------------
+// The decisions the coordinator owes (sprint.DecisionSummary, seat_answers.go).
+
+table DecisionSummary
+{
+    count          int64
+    // a time.Duration in nanoseconds.
+    oldest         int64 | json = "oldest_ns"
+    defaults_hour  int64
+    delivery_faults int64
+    receipt_unknown int64
+    // a receipt history line (the text frame prints it after "DECISION RECEIPT
+    // HISTORY: "); chosen 1024, no bound is enforced today.
+    receipt_history []string(1024)
+}
+
+// ---------------------------------------------------------------------------
+// The spend (sprint.TierCosts, cost_view.go; readers_spend.go; cost_reconcile.go).
+
+// ReadDay is sprint.ReadDay: the reads a route priced on the tick's UTC day.
+table ReadDay
+{
+    // the exact dollars, a decimal text (cardcost.Sum); chosen 128.
+    usd    string(128)
+    tokens int64
+    reads  int64
+}
+
+// ReaderSpend is sprint.ReaderSpend: one reader's spend on a stream's cards.
+table ReaderSpend
+{
+    reads       int64
+    priced      int64
+    usd         string(128)
+    hour_priced int64
+    hour_usd    string(128)
+    tokens      int64
+}
+
+// DayGap is sprint.DayGap: one day's provider and internal counts.
+table DayGap
+{
+    provider float64
+    internal_count float64 | json = "internal"
+}
+
+// CostReconcileRecord is sprint.CostReconcileRecord: a provider's latest
+// reconciliation (LatestReconciles).
+table CostReconcileRecord
+{
+    // a provider name: a ValidID word (128).
+    provider string(128)
+    // a time, as text; chosen 64.
+    at       string(64)
+    known    bool
+    // why the figure is unknown; chosen 1024.
+    note     string(1024)
+    // a UTC day, 2006-01-02; chosen 64.
+    day      string(64)
+    // the provider's count of day.
+    used     float64
+    // the sprint's records of day.
+    internal_count float64 | json = "internal"
+    // the reads among internal.
+    internal_reads float64
+    // used less internal.
+    gap   float64
+    // |gap| over used.
+    share float64
+    // day -> counts, a UTC day (64).
+    days map[string(64)]DayGap
+}
+
+// TierCosts is sprint.TierCosts: a stream's cards by tier and its spend. Money is
+// dollars and cents text, "-" or "" for none, chosen 128 (the exact sums, usd, run
+// to many digits).
+table TierCosts
+{
+    // tier word (sprint.TierWord) -> cards; chosen 64.
+    tiers          map[string(64)]int64
+    per_landed     string(128)
+    // tier -> money.
+    cost_by_tier   map[string(64)]string(128)
+    total_cost     string(128)
+    total_usd      string(128)
+    landed_usd     string(128)
+    work_cost      string(128)
+    read_cost      string(128)
+    decide_cost    string(128)
+    decide_unpriced int64
+    dropped_cards  int64
+    carried_cards  int64
+    read_tokens    int64
+    // route (WhySubscription or "-") -> the day's reads; chosen 64.
+    reads_today    map[string(64)]ReadDay
+    unpriced_runs  int64
+    reads_no_tokens int64
+    // reader name (a ValidID word, 128) -> its spend.
+    readers        map[string(128)]ReaderSpend
+    in_flight      string(128)
+    unreconciled   string(128)
+    reconciles     []CostReconcileRecord
+}
+
+// CostCheck is sprint.CostCheck: the streams' sums against every card's own.
+table CostCheck
+{
+    streams_usd string(128)
+    cards_usd   string(128)
+    gap_usd     string(128)
+    ok          bool
+    // the cards a stream's list does not name, ValidCardID.
+    orphans     []string(515)
+    unlisted    int64
+}
+
+// ---------------------------------------------------------------------------
+// The streams (sprint.StreamClock, inbox.go), the cycle times (cycletime.go), the
+// critical cards (weight.go).
+
+// StreamClock is sprint.StreamClock. Its fields without a json tag keep the Go
+// name as their key.
+table StreamClock
+{
+    // the stream's key: a ValidID word (128).
+    stream      string(128) | json = "Stream"
+    release     string(128) | json = "Release"
+    // sprint.StreamDisplay: a display name, "point-fix-" plus a release or the key.
+    display     string(256) | json = "Display"
+    state       string(32)  | json = "State"
+    since       timestamp   | json = "Since"
+    progress    timestamp   | json = "Progress"
+    empty       bool        | json = "Empty"
+    held        bool        | json = "Held"
+    // the coordinator's hold reason; chosen 512.
+    reason      string(512) | json = "Reason"
+    held_cards  int64
+    quiet       timestamp   | json = "Quiet"
+    // LandProtectedAny or the repositories (FieldLandProtected); chosen 256.
+    promotion   string(256) | json = "Promotion"
+    tier_blocked string(64) | json = "TierBlocked"
+}
+
+// StageStat is sprint.StageStat: the median and p90 seconds of a stage over the
+// cards landed in the last 24 hours.
+table StageStat
+{
+    median float64 | json = "median_s"
+    p90    float64 | json = "p90_s"
+    n      int64
+}
+
+// StageTimes is sprint.StageTimes: stage name -> stat, overall and per stream.
+table StageTimes
+{
+    // the stages: needs, deal, take, work, rework, read_wait, read, accept, merge (64).
+    all     map[string(64)]StageStat
+    // stream (128) -> stage (64) -> stat.
+    streams map[string(128)]map[string(64)]StageStat
+}
+
+// CriticalCard is sprint.CriticalCard: one of the five heaviest cards.
+table CriticalCard
+{
+    id     string(515)
+    behind int64
+    state  string(32)
+}
+
+// ---------------------------------------------------------------------------
+// The goals, the seat, the holds, the stops (goal.go goalView; sprint.SeatChange;
+// sprint.HoldView; sprint.Stop and sprint.SeatWaits, stops.go).
+
+table GoalView
+{
+    name  string(128)
+    route string(128)
+    last  timestamp
+    count int64
+    // "ok", "waiting" (not pushed yet) or "failed".
+    state string(32)
+    error string(1024)
+    text  string(1024)
+}
+
+table SeatChange
+{
+    holder      string(135)
+    generation  uint64
+    from        string(135)
+    at          timestamp
+    by          string(135)
+    taken       bool
+    approved_by string(135)
+    // chosen 512, as the operation rows hold it.
+    reason      string(512)
+}
+
+table HoldView
+{
+    kind    string(32)
+    // a stream, a member or a card.
+    name    string(515)
+    reason  string(1024)
+    by      string(135)
+    // a time as text; chosen 64.
+    at      string(64)
+    handed_back bool | json = "return"
+    cause   string(512)
+    who     string(135)
+    release string(256)
+}
+
+table Stop
+{
+    kind    string(64)
+    subject string(515)
+    since   timestamp
+    what    string(1024)
+    effect  string(1024)
+    undo    string(1024)
+    signal  string(1024)
+}
+
+// SeatWaits is the seat's waits as where carries them (seatWaitsView): the
+// sprint.SeatWaits record flattened, with the age at the view's time and when the
+// tick counted them.
+table SeatWaits
+{
+    judgments  int64
+    overdue    int64
+    oldest_id  string(128)
+    oldest_type string(128)
+    oldest_at  timestamp
+    level      int64
+    oldest_age_seconds int64
+    at         timestamp
+}
+
+// ServerBeat is serverBeatView: the server's heartbeat while it is fresh.
+table ServerBeat
+{
+    version string(128)
+    commit  string(128)
+    started timestamp
+    at      timestamp
+}
+
+// ---------------------------------------------------------------------------
+// The providers (providerView with sprint.ProviderRow; provider_gaps.go).
+
+table ProviderTier
+{
+    tier    string(64)
+    // the tier's routes in this provider.
+    in_routes int64 | json = "in"
+    enabled int64
+}
+
+table ProviderView
+{
+    name       string(128)
+    // dollars and cents rounded up, or "unknown".
+    balance    string(128)
+    balance_at string(64)
+    spend_hour float64
+    state      string(32)
+    note       string(1024)
+    limit      string(1024)
+    billing    string(64)
+    funded     ?bool
+    problem    string(1024)
+    tiers      []ProviderTier
+}
+
+table ProviderProblem
+{
+    name    string(128)
+    problem string(1024)
+}
+
+table RouteGap
+{
+    route    string(128)
+    provider string(128)
+    tier     string(64)
+}
+
+table ProviderGapReport
+{
+    invalid_providers []ProviderProblem
+    routes            []RouteGap
+    // tier words (64).
+    tiers             []string(64)
+}
+
+// ---------------------------------------------------------------------------
+// The lanes, the dealt cards, the merge queue, the judgments, the rows
+// (sprint.LaneRow; cmd/nova-sprint/reads.go dealtCard, mergingCard, judgmentRef,
+// primaryRow).
+
+table LaneRow
+{
+    kind    string(32)
+    machine string(128)
+    width   int64
+    held    []string(515)
+    waiting []string(515)
+    since   timestamp
+}
+
+table DealtCard
+{
+    id       string(515)
+    primary  string(515)
+    stream   string(128)
+    member   string(135)
+    state    string(32)
+    since    timestamp
+    deadline timestamp
+    // the branch the work is pushed to; a git ref, chosen 512.
+    branch   string(512)
+    priority string(32)
+    tier     string(64)
+}
+
+table MergingCard
+{
+    id      string(515)
+    stream  string(128)
+    // a commit id, 40 hex characters or an abbreviation; chosen 64.
+    head    string(64)
+    attempt int64
+}
+
+table JudgmentRef
+{
+    id   string(128)
+    kind string(32)
+    card string(515)
+}
+
+table PrimaryRow
+{
+    id     string(515)
+    stream string(128)
+    column string(32)
+    // a deprecated alias of column for one release (SPEC-SPRINT section 11).
+    state  string(32)
+    score  float64
+    // the row's fields but the brief: a field name (64) -> its text, a field value
+    // of the nova-tables layer (ntable.LimitFieldValueBytes), held at its used size.
+    fields map[string(64)]*string
+    tier_shown string(64)
+}
+
+// ---------------------------------------------------------------------------
+// The archive, the stats reset, the ready buffer, the merge row, the friends
+// (archivedView; statsResetView; sprint.ReadsWindowView; sprint.ReadCardCounts;
+// sprintdash.MergeRow; store.FriendRow and sprint.FriendReport).
+
+table ArchivedView
+{
+    streams []string(128)
+    cards   int64
+    landed  int64
+    cost    string(128)
+}
+
+table StatsResetView
+{
+    at      timestamp
+    by      string(135)
+    reason  string(1024)
+    landed  int64
+    // stream -> cards landed since the mark.
+    streams map[string(128)]int64
+}
+
+table ReadsWindow
+{
+    ok     int64
+    broken int64
+    since  timestamp
+}
+
+table ReadCardCounts
+{
+    ready   int64
+    working int64
+    done    int64
+}
+
+// MergeRow is sprintdash.MergeRow. A nil count is `null` today and an absent key
+// here.
+table MergeRow
+{
+    merging            int64
+    review             int64
+    landed_per_30m     int64
+    oldest_merging_min ?int64
+    base_gate          string(128)
+    // the base's failing test; chosen 1024.
+    failing_test       string(1024)
+    base_lacks         int64
+    dev_lacks          int64
+    sync_minutes       ?int64
+    promotion_minutes  ?int64
+}
+
+table FriendReport
+{
+    running      []string(515)
+    working      ?int64
+    queue        ?int64
+    width        ?int64
+    stop_returns ?int64
+    active       timestamp
+    paced        ?int64
+    // her windows' use, "5h 62% 7d 31%"; chosen 128.
+    window       string(128)
+    until        timestamp
+    reason       string(1024)
+    build        string(128)
+    started      timestamp
+    present      timestamp
+}
+
+table FriendRow
+{
+    name        string(128)
+    ready       int64
+    working     int64
+    held        int64
+    stale       int64
+    dealt_fleet int64
+    width       int64
+    ok          int64
+    failed      int64
+    redealt     int64
+    status      string(32)
+    friend_class string(64) | json = "class"
+    mode        string(64)
+    session     string(64)
+    roles       string(256)
+    load_avg    float64 | json = "load"
+    report      ?FriendReport
+    active      timestamp
+    tokens      int64
+    charged     string(128)
+    billing     string(64)
+    beat        timestamp
+    evidence    string(1024)
+    reason      string(1024)
+    until       timestamp
+}
+
+// ---------------------------------------------------------------------------
+// The landed series (sprint.LandedSeries, landed_series.go).
+
+table SeriesTotals
+{
+    friends int64
+    fleet   int64
+    unknown int64
+}
+
+table SeriesLastHour
+{
+    friends int64
+    fleet   int64
+}
+
+table LandedSeries
+{
+    generated       string(64)
+    generated_epoch int64 | json = "generatedEpoch"
+    bucket_seconds  int64 | json = "bucketSeconds"
+    start           int64
+    buckets         int64
+    friends         []int64
+    fleet           []int64
+    totals          SeriesTotals
+    last_hour       SeriesLastHour | json = "lastHour"
+    // worker name (128) -> cards landed.
+    workers         map[string(128)]int64
+}
+
+// ---------------------------------------------------------------------------
+// The where --json object (whereView).
+
+table WhereView
+{
+    decisions DecisionSummary
+    at        timestamp
+    landed    int64
+    all       int64
+    // behind a sentinel not released, or admitted held: in the ETA.
+    held      int64
+    // "<landed>/<all> <percent> -> ETA <time> ...": the summary line; chosen 1024.
+    summary   string(1024)
+    archived_cards  int64
+    archived_landed int64
+    done      bool
+    // table -> row -> column -> cell as printed (every cell of every row, the shape
+    // the dashboard's pull reads, sprintdash.sprintCopy). The table is a logical
+    // table name (64), the row its key (a member id, ntable.LimitMemberIDBytes 256),
+    // the column its name (128); a cell is the text as a blob, held to
+    // ntable.LimitFieldValueBytes.
+    tables map[string(64)]map[string(256)]map[string(128)]*string
+    // tier word -> cards.
+    tiers  map[string(64)]int64
+    // stream (128) -> its cards by tier and its spend.
+    stream_costs map[string(128)]TierCosts
+    cost_check   ?CostCheck
+    // the first-time rate and count text; chosen 256.
+    first_time              string(256)
+    first_time_target       int64
+    first_time_window       int64
+    first_time_under_target []string(128)
+    // route (128) -> first-time text (256).
+    first_time_routes       map[string(128)]string(256)
+    // the day's read spend per route, one line; chosen 1024.
+    read_spend  string(1024)
+    streams     []StreamClock
+    stage_times ?StageTimes
+    stalled     []string(128)
+    critical    []CriticalCard
+    // a blocker line (sprint.IdleBlockers); chosen 1024.
+    blockers    []string(1024)
+    idle        string(1024)
+    coordinator string(135)
+    // the pending operation's id (ntable.LimitMemberIDBytes).
+    pending     string(256)
+    epoch       uint64
+    cleared     timestamp
+    machine     string(512)
+    server_version string(128)
+    server      ?ServerBeat
+    // "on" or "off".
+    fleet_work   string(16)
+    friends_work string(16)
+    // the tiers each side may take: the list. SHAPE: today `"all"` (a string) when
+    // every tier may be taken, else the list; here the list, and "all" is the
+    // list ["all"] (sprint.TiersAll). A reader that tests for the string reads the
+    // list instead.
+    fleet_tiers   []string(64)
+    friends_tiers []string(64)
+    // the reads every card in review needs: the count as text, or "default"
+    // (sprint.ReadTierDefault). SHAPE: today a JSON number when set, here its
+    // decimal text.
+    reads_needed string(32)
+    goals        []GoalView
+    seat         ?SeatChange
+    holds        []HoldView
+    seat_waits   ?SeatWaits
+    stops        []Stop
+    providers    []ProviderView
+    provider_gaps ProviderGapReport
+    lanes        []LaneRow
+    cards        []DealtCard
+    merging      []MergingCard
+    judgments    []JudgmentRef
+    rows         []PrimaryRow
+    archived     ?ArchivedView
+    stats_reset  ?StatsResetView
+    ready        int64
+    backup       string(16)
+    reads_waiting int64
+    reads_window ReadsWindow
+    read_cards   ReadCardCounts
+    fix          int64
+    // level (32) -> the open primaries at it.
+    priorities        map[string(32)]NameList
+    // stream (128) -> its default level (32).
+    stream_priorities map[string(128)]string(32)
+    width        int64
+    // "<ready>/<2*width>".
+    buffer       string(32)
+    low          bool
+    merge_row    MergeRow
+    friends      []FriendRow
+    // release (128) -> cards left.
+    releases     map[string(128)]int64
+    store_rtt_p50_ms ?float64
+    store_rtt_p99_ms ?float64
+    landed_series    ?LandedSeries | json = "landedSeries"
+}
