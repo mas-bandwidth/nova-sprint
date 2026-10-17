@@ -1,0 +1,3 @@
+go test fuzz v1
+byte('\x0f')
+[]byte("{\n  \"id\": \"\",\n  \"is_lock\": false,\n  \"verb\": \"\",\n  \"at\": 0,\n  \"manifests\": [],\n  \"notes\": [],\n  \"decided\": [],\n  \"log\": [],\n  \"updates\": [],\n  \"closes\": [],\n  \"streams\": [],\n  \"caller_op\": \"\",\n  \"result\": null,\n  \"stuck\": \"\",\n  \"queue\": [],\n  \"drain\": 0,\n  \"close_timers\": [],\n  \"timers\": null\n}\n")
