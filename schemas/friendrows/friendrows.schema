@@ -404,3 +404,25 @@ table Login
     sops *string
     secret_name *string | json = "secret"
 }
+
+// StrangerEntry is one unknown machine that beats and is no member of the
+// sprint (store/presence.go stranger), a fixed table. The name is the map's
+// key, a member name ValidID bounds (sprint.ValidID) at 128 bytes. seen is the
+// source time.Time as Unix nanoseconds UTC; 0 is the zero time.
+fixed table StrangerEntry
+{
+    name string(128)
+    seen int64
+    told bool
+}
+
+// Strangers is one page of the strangers record (store/presence.go), the fixed
+// table at keyStrangers (page 0) and keyStrangers:<n> for follow-on pages: the
+// machines that beat and are no member. Unbounded in count, so the record is
+// paged like the done record (doneFixedPageOf, keyDoneRecord:<n>).
+fixed table Strangers
+{
+    entries [..90]StrangerEntry
+    // the total number of pages in this record (at least 1 when written).
+    pages uint32
+}

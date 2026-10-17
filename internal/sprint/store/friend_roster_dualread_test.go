@@ -269,7 +269,8 @@ func TestFriendRosterRowsDualRead(t *testing.T) {
 	for i := 0; i < len(legacyStrangers); i++ {
 		assertRefused(t, rows.stranger, "STRANGERS", legacyStrangers[:i], "strangers truncated")
 	}
-	// strangers has no table (friendrows.schema): a table form is refused by name
+	// strangers is a fixed table (friendrows.schema Strangers) but this codec is the legacy
+	// reader: a foreign form (a FriendEntry wire or its base64) is refused by name
 	assertRefused(t, rows.stranger, "STRANGERS", ef.bin, "strangers as a wire")
 	assertRefused(t, rows.stranger, "STRANGERS", ef.b64, "strangers as base64")
 
