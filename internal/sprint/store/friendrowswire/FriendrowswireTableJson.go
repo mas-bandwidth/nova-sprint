@@ -4573,3 +4573,137 @@ func LoginLoadText(text string, report *TableReport) (*Login, error) {
 	}
 	return builder.AsConst(), nil
 }
+
+// StrangerEntryFromJson fills one StrangerEntry from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16).
+// A nil report is allowed; every tolerance event still decides the same way.
+func StrangerEntryFromJson(value *StrangerEntry, text []byte, report *TableReport) bool {
+	return tableJsonRead(unsafe.Pointer(value), StrangerEntryTableType(), text, report)
+}
+
+// StrangerEntryToJsonMeasure is the exact size of StrangerEntry's JSON text, writing nothing.
+func StrangerEntryToJsonMeasure(value *StrangerEntry) int64 {
+	return tableJsonWrite(unsafe.Pointer(value), StrangerEntryTableType(), nil)
+}
+
+// StrangerEntryToJson writes StrangerEntry's JSON text into the caller's slice and returns the
+// bytes written — exactly StrangerEntryToJsonMeasure's answer — or -1 when it is short.
+func StrangerEntryToJson(value *StrangerEntry, buffer []byte) int64 {
+	return tableJsonWrite(unsafe.Pointer(value), StrangerEntryTableType(), buffer)
+}
+
+// StrangerEntrySaveText returns the base64 of StrangerEntry's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8): the whole file, form byte first, so the text keeps the form byte,
+// the framing check and every versioning guarantee and is opaque.
+func StrangerEntrySaveText(value *StrangerEntry) (string, error) {
+	n := StrangerEntryMeasure(value)
+	if n < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	buf := make([]byte, n)
+	if StrangerEntrySave(value, buf) < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	return base64.StdEncoding.EncodeToString(buf), nil
+}
+
+// StrangerEntryLoadText fills one StrangerEntry from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
+// whenever the read's report holds an error (TableReport.Err), whatever the
+// tolerant Load answered, so a recovered value never comes back. It refuses
+// by name: base64_damaged when the body does not decode, unknown_form when
+// the decoded wire's form byte is not one this build carries, wire_damaged
+// for framing damage, and the report's own reason (malformed, clamped,
+// kind_mismatch, ...) otherwise. A nil report is allowed; a supplied one
+// receives THIS read's report, so earlier counts in it never decide.
+func StrangerEntryLoadText(text string, report *TableReport) (*StrangerEntry, error) {
+	if report != nil {
+		*report = TableReport{}
+	}
+	wire, err := base64.StdEncoding.DecodeString(text)
+	if err != nil {
+		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(wire) == 0 || wire[0] != 1 {
+		return nil, tableRefuseError(TableRefuseUnknownForm)
+	}
+	var v StrangerEntry
+	var read TableReport
+	ok := StrangerEntryLoad(&v, wire, &read)
+	if report != nil {
+		*report = read
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
+	}
+	if err := read.Err(); err != nil {
+		return nil, err
+	}
+	return &v, nil
+}
+
+// StrangersFromJson fills one Strangers from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16).
+// A nil report is allowed; every tolerance event still decides the same way.
+func StrangersFromJson(value *Strangers, text []byte, report *TableReport) bool {
+	return tableJsonRead(unsafe.Pointer(value), StrangersTableType(), text, report)
+}
+
+// StrangersToJsonMeasure is the exact size of Strangers's JSON text, writing nothing.
+func StrangersToJsonMeasure(value *Strangers) int64 {
+	return tableJsonWrite(unsafe.Pointer(value), StrangersTableType(), nil)
+}
+
+// StrangersToJson writes Strangers's JSON text into the caller's slice and returns the
+// bytes written — exactly StrangersToJsonMeasure's answer — or -1 when it is short.
+func StrangersToJson(value *Strangers, buffer []byte) int64 {
+	return tableJsonWrite(unsafe.Pointer(value), StrangersTableType(), buffer)
+}
+
+// StrangersSaveText returns the base64 of Strangers's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8): the whole file, form byte first, so the text keeps the form byte,
+// the framing check and every versioning guarantee and is opaque.
+func StrangersSaveText(value *Strangers) (string, error) {
+	n := StrangersMeasure(value)
+	if n < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	buf := make([]byte, n)
+	if StrangersSave(value, buf) < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	return base64.StdEncoding.EncodeToString(buf), nil
+}
+
+// StrangersLoadText fills one Strangers from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8). It is the STRICT read (§6.5) over the decoded wire: it refuses
+// whenever the read's report holds an error (TableReport.Err), whatever the
+// tolerant Load answered, so a recovered value never comes back. It refuses
+// by name: base64_damaged when the body does not decode, unknown_form when
+// the decoded wire's form byte is not one this build carries, wire_damaged
+// for framing damage, and the report's own reason (malformed, clamped,
+// kind_mismatch, ...) otherwise. A nil report is allowed; a supplied one
+// receives THIS read's report, so earlier counts in it never decide.
+func StrangersLoadText(text string, report *TableReport) (*Strangers, error) {
+	if report != nil {
+		*report = TableReport{}
+	}
+	wire, err := base64.StdEncoding.DecodeString(text)
+	if err != nil {
+		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(wire) == 0 || wire[0] != 1 {
+		return nil, tableRefuseError(TableRefuseUnknownForm)
+	}
+	var v Strangers
+	var read TableReport
+	ok := StrangersLoad(&v, wire, &read)
+	if report != nil {
+		*report = read
+	}
+	if !ok {
+		return nil, tableRefuseError(TableRefuseWireDamaged)
+	}
+	if err := read.Err(); err != nil {
+		return nil, err
+	}
+	return &v, nil
+}

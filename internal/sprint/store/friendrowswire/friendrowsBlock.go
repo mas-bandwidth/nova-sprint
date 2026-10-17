@@ -191,11 +191,67 @@ type TicksBlockProjection struct {
 	Total        uint64
 }
 
+// StrangerEntryBlockProjection — the block PROJECTION: the table's own instance as it
+// sits at the front of a block, opening with the generated PROLOGUE and
+// carrying, per out-of-line array, the triple that says where its rows are.
+// It is a record like any other and follows the same C ABI rule (§19.3).
+//
+// It is a SEPARATE record from StrangerEntryRow: a table can be both a block root and
+// another block's row, and the two differ by the prologue.
+type StrangerEntryBlockProjection struct {
+	Magic        uint64    // generated: identifies a schema block
+	BuildVersion uint64    // generated: the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20)
+	ByteOrder    uint64    // generated: 1 little, 2 big
+	Name         [129]byte // string(128): max length, used length beside it
+	_            [3]byte   // generated padding
+	NameLength   int32
+	Seen         int64
+	Told         bool
+	_            [7]byte // generated padding
+}
+
+// StrangersBlockProjection — the block PROJECTION: the table's own instance as it
+// sits at the front of a block, opening with the generated PROLOGUE and
+// carrying, per out-of-line array, the triple that says where its rows are.
+// It is a record like any other and follows the same C ABI rule (§19.3).
+//
+// It is a SEPARATE record from StrangersRow: a table can be both a block root and
+// another block's row, and the two differ by the prologue.
+type StrangersBlockProjection struct {
+	Magic        uint64           // generated: identifies a schema block
+	BuildVersion uint64           // generated: the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20)
+	ByteOrder    uint64           // generated: 1 little, 2 big
+	Entries      TableBlockTriple // [..90]StrangerEntry, laid out of line
+	Pages        uint32
+	_            [4]byte // generated padding
+}
+
 // The LAYOUT CONTRACT's Go half (mas-bandwidth/schema docs/SPEC-TABLES.md §19.3), run ONCE at
 // package initialisation. It REFUSES rather than guesses: a runtime whose
 // model disagrees with the one the compiler derived stops the program where
 // it starts, rather than pointing at a row and reading the wrong bytes.
 func init() {
+	tableBlockLayoutSize("StrangerEntryRow", unsafe.Sizeof(StrangerEntryRow{}), 152)
+	tableBlockLayoutSize("StrangerEntryRow alignment", unsafe.Alignof(StrangerEntryRow{}), 8)
+	tableBlockLayoutOffset("StrangerEntryRow.Name", unsafe.Offsetof(StrangerEntryRow{}.Name), 0)
+	tableBlockLayoutOffset("StrangerEntryRow.Seen", unsafe.Offsetof(StrangerEntryRow{}.Seen), 136)
+	tableBlockLayoutOffset("StrangerEntryRow.Told", unsafe.Offsetof(StrangerEntryRow{}.Told), 144)
+	tableBlockLayoutSize("StrangerEntryBlockProjection", unsafe.Sizeof(StrangerEntryBlockProjection{}), 176)
+	tableBlockLayoutSize("StrangerEntryBlockProjection alignment", unsafe.Alignof(StrangerEntryBlockProjection{}), 8)
+	tableBlockLayoutOffset("StrangerEntryBlockProjection.Magic", unsafe.Offsetof(StrangerEntryBlockProjection{}.Magic), 0)
+	tableBlockLayoutOffset("StrangerEntryBlockProjection.BuildVersion", unsafe.Offsetof(StrangerEntryBlockProjection{}.BuildVersion), 8)
+	tableBlockLayoutOffset("StrangerEntryBlockProjection.ByteOrder", unsafe.Offsetof(StrangerEntryBlockProjection{}.ByteOrder), 16)
+	tableBlockLayoutOffset("StrangerEntryBlockProjection.Name", unsafe.Offsetof(StrangerEntryBlockProjection{}.Name), 24)
+	tableBlockLayoutOffset("StrangerEntryBlockProjection.Seen", unsafe.Offsetof(StrangerEntryBlockProjection{}.Seen), 160)
+	tableBlockLayoutOffset("StrangerEntryBlockProjection.Told", unsafe.Offsetof(StrangerEntryBlockProjection{}.Told), 168)
+	tableBlockLayoutSize("StrangersBlockProjection", unsafe.Sizeof(StrangersBlockProjection{}), 48)
+	tableBlockLayoutSize("StrangersBlockProjection alignment", unsafe.Alignof(StrangersBlockProjection{}), 8)
+	tableBlockLayoutOffset("StrangersBlockProjection.Magic", unsafe.Offsetof(StrangersBlockProjection{}.Magic), 0)
+	tableBlockLayoutOffset("StrangersBlockProjection.BuildVersion", unsafe.Offsetof(StrangersBlockProjection{}.BuildVersion), 8)
+	tableBlockLayoutOffset("StrangersBlockProjection.ByteOrder", unsafe.Offsetof(StrangersBlockProjection{}.ByteOrder), 16)
+	tableBlockLayoutOffset("StrangersBlockProjection.Entries", unsafe.Offsetof(StrangersBlockProjection{}.Entries), 24)
+	tableBlockLayoutOffset("StrangersBlockProjection.Pages", unsafe.Offsetof(StrangersBlockProjection{}.Pages), 40)
+	tableBlockLayoutSize("Strangers.Entries stride", unsafe.Sizeof(StrangerEntryRow{}), 152)
 	tableBlockLayoutSize("TicksBlockProjection", unsafe.Sizeof(TicksBlockProjection{}), 40)
 	tableBlockLayoutSize("TicksBlockProjection alignment", unsafe.Alignof(TicksBlockProjection{}), 8)
 	tableBlockLayoutOffset("TicksBlockProjection.Magic", unsafe.Offsetof(TicksBlockProjection{}.Magic), 0)
@@ -226,7 +282,7 @@ func tableBlockLayoutOffset(what string, got, want uintptr) {
 // data, so a reflective read costs a lookup and not a parse. Every record
 // hangs off the element column rather than taking a name of its own, so a
 // walker reaches the whole graph from any block's Type (§8, §19.2).
-var tableBlockRecords = make([]TableBlockInfo, 1)
+var tableBlockRecords = make([]TableBlockInfo, 4)
 
 // The graph is FILLED HERE rather than in the slice's own initializer, and
 // the reason is a language fact: a field's element column names another
@@ -237,12 +293,43 @@ var tableBlockRecords = make([]TableBlockInfo, 1)
 // goroutine with no synchronisation.
 func init() {
 	tableBlockRecords[0] = TableBlockInfo{
+		Name: "StrangerEntry", BuildVersion: BuildVersion, Size: 176, Align: 8, NumFields: 3,
+		Fields: []TableBlockFieldInfo{
+			{Name: "name", Offset: 24, Size: 136, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 156, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: true, Optional: false, ArrayBound: 128, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
+			{Name: "seen", Offset: 160, Size: 8, Kind: 5, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 8, PresentOffset: 0xffffffff, Element: nil},
+			{Name: "told", Offset: 168, Size: 1, Kind: 1, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
+		},
+	}
+	tableBlockRecords[1] = TableBlockInfo{
+		Name: "Strangers", BuildVersion: BuildVersion, Size: 48, Align: 8, NumFields: 2,
+		Fields: []TableBlockFieldInfo{
+			{Name: "entries", Offset: 24, Size: 16, Kind: 13, OutOfLine: true, OffsetOfOffset: 24, CountOffset: 32, StrideOffset: 36, Stride: 152,
+				IsArray: true, Counted: true, Optional: false, ArrayBound: 90, ElemSize: 0, PresentOffset: 0xffffffff, Element: func() *TableBlockInfo { return &tableBlockRecords[3] }},
+			{Name: "pages", Offset: 40, Size: 4, Kind: 8, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 4, PresentOffset: 0xffffffff, Element: nil},
+		},
+	}
+	tableBlockRecords[2] = TableBlockInfo{
 		Name: "Ticks", BuildVersion: BuildVersion, Size: 40, Align: 8, NumFields: 2,
 		Fields: []TableBlockFieldInfo{
 			{Name: "busy", Offset: 24, Size: 8, Kind: 9, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
 				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 8, PresentOffset: 0xffffffff, Element: nil},
 			{Name: "total", Offset: 32, Size: 8, Kind: 9, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
 				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 8, PresentOffset: 0xffffffff, Element: nil},
+		},
+	}
+	tableBlockRecords[3] = TableBlockInfo{
+		Name: "StrangerEntry", BuildVersion: BuildVersion, Size: 152, Align: 8, NumFields: 3,
+		Fields: []TableBlockFieldInfo{
+			{Name: "name", Offset: 0, Size: 136, Kind: 12, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 132, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: true, Optional: false, ArrayBound: 128, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
+			{Name: "seen", Offset: 136, Size: 8, Kind: 5, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 8, PresentOffset: 0xffffffff, Element: nil},
+			{Name: "told", Offset: 144, Size: 1, Kind: 1, OutOfLine: false, OffsetOfOffset: 0xffffffff, CountOffset: 0xffffffff, StrideOffset: 0xffffffff, Stride: 0,
+				IsArray: false, Counted: false, Optional: false, ArrayBound: 0, ElemSize: 1, PresentOffset: 0xffffffff, Element: nil},
 		},
 	}
 }
@@ -397,7 +484,7 @@ func TicksBlockBytes(b *TicksBlock) int64 {
 // a lookup and not a parse. The row layouts hang off the element column
 // rather than taking names of their own, so a walker reaches every record
 // through the graph.
-func (b *TicksBlock) Type() *TableBlockInfo { return &tableBlockRecords[0] }
+func (b *TicksBlock) Type() *TableBlockInfo { return &tableBlockRecords[2] }
 
 // table Holder has NO block form: it is VARIABLE-LENGTH: Holder.command is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
@@ -466,3 +553,354 @@ func (b *TicksBlock) Type() *TableBlockInfo { return &tableBlockRecords[0] }
 // table Login has NO block form: it is VARIABLE-LENGTH: Login.redis is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
+
+// StrangerEntryBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
+// from the declared maxima (mas-bandwidth/schema docs/SPEC-TABLES.md §19.1). A Go consumer does
+// not allocate a block — the bytes are handed to it — but it caps by this: a
+// playback buffer, a recording, a scratch copy all size from the generated
+// constant rather than from a number a person wrote down beside it.
+const StrangerEntryBlockMaxBytes int64 = 192
+
+// StrangerEntryBlock is StrangerEntry's block: a pointer and a length, and then rows in place.
+// Opening one is ONE check and no copy; reading a row is one add (§19.2).
+//
+// The bytes belong to the CONSUMER — a []byte it owns, an mmap, or memory a
+// producer handed across. Nothing here allocates.
+//
+// A block is valid until the next fill over the SAME storage, which
+// invalidates every block over it and every row pointer taken from one.
+type StrangerEntryBlock struct {
+	Base       unsafe.Pointer                // the extent's base, 64-byte aligned
+	Projection *StrangerEntryBlockProjection // the projection, at offset 0
+	Bytes      int64                         // the extent in use
+}
+
+// ---- block fill path: begin ----
+// ---- block fill path: end ----
+// StrangerEntryBlockOpen is the bool convenience for the handle's typed Open error.
+func StrangerEntryBlockOpen(block *StrangerEntryBlock, base unsafe.Pointer, bytes int64) bool {
+	return block.Open(base, bytes) == nil
+}
+
+// Open reads all prologue and layout words bytewise before the final base
+// alignment check. Every refusal names the first failed clause in SPEC §19.2.
+func (block *StrangerEntryBlock) Open(base unsafe.Pointer, bytes int64) error {
+	*block = StrangerEntryBlock{}
+	if base == nil {
+		return TableRefuseUnalignedBase
+	}
+	if bytes < 176 {
+		return TableRefuseTruncated
+	}
+	header := unsafe.Slice((*byte)(base), 176)
+	magic := binary.NativeEndian.Uint64(header)
+	if magic != TableBlockMagic {
+		if magic == 0x5343484d41424c4b {
+			return TableRefuseForeignOrder
+		}
+		return TableRefuseNotACook
+	}
+	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
+		return TableRefuseNotACook
+	}
+	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
+		return TableRefuseWrongBuildVersion
+	}
+	used := int64(176)
+	padding := (64 - (used % 64)) % 64
+	if padding > bytes-used {
+		return TableRefuseTruncated
+	}
+	used += padding
+	if uintptr(base)%64 != 0 {
+		return TableRefuseUnalignedBase
+	}
+	block.Base = base
+	block.Projection = (*StrangerEntryBlockProjection)(base)
+	block.Bytes = used
+	return nil
+}
+
+// StrangerEntryCounts is gathered before Begin; clamping is the caller's policy.
+type StrangerEntryCounts struct {
+}
+
+// StrangerEntryBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
+type StrangerEntryBlockStorage struct {
+	base       unsafe.Pointer
+	allocation []byte
+	allocator  TableBlockAllocator
+}
+
+func (s *StrangerEntryBlockStorage) Create(a TableBlockAllocator) bool {
+	if s == nil || s.allocation != nil || a.Alloc == nil || a.Free == nil {
+		return false
+	}
+	raw := a.Alloc(StrangerEntryBlockMaxBytes + 63)
+	if int64(len(raw)) < StrangerEntryBlockMaxBytes+63 {
+		if raw != nil {
+			a.Free(raw)
+		}
+		return false
+	}
+	s.allocation = raw
+	s.allocator = a
+	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
+	s.base = unsafe.Pointer(&raw[offset])
+	return true
+}
+func (s *StrangerEntryBlockStorage) Destroy() {
+	if s != nil && s.allocation != nil {
+		s.allocator.Free(s.allocation)
+		*s = StrangerEntryBlockStorage{}
+	}
+}
+
+// ---- block fill path: begin ----
+// StrangerEntryBlockBegin writes only the prologue and triples, never rows or padding.
+// Storage and all counts are checked before any byte of the extent changes.
+func StrangerEntryBlockBegin(b *StrangerEntryBlock, s *StrangerEntryBlockStorage, c StrangerEntryCounts, refusal *TableBlockRefusal) bool {
+	if refusal != nil {
+		*refusal = TableBlockRefusal{}
+	}
+	if b == nil {
+		return false
+	}
+	if s == nil || s.base == nil {
+		return false
+	}
+	p := (*StrangerEntryBlockProjection)(s.base)
+	p.Magic = TableBlockMagic
+	p.BuildVersion = BuildVersion
+	p.ByteOrder = TableBlockByteOrder
+	offset := int64(176)
+	*b = StrangerEntryBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
+	return true
+}
+
+func StrangerEntryBlockBytes(b *StrangerEntryBlock) int64 {
+	if b == nil || b.Projection == nil {
+		return 0
+	}
+	used := int64(176)
+	return (used + 63) &^ int64(63)
+}
+
+// ---- block fill path: end ----
+
+// Type is this block's descriptors: constant data, so a reflective read costs
+// a lookup and not a parse. The row layouts hang off the element column
+// rather than taking names of their own, so a walker reaches every record
+// through the graph.
+func (b *StrangerEntryBlock) Type() *TableBlockInfo { return &tableBlockRecords[0] }
+
+// StrangersBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
+// from the declared maxima (mas-bandwidth/schema docs/SPEC-TABLES.md §19.1). A Go consumer does
+// not allocate a block — the bytes are handed to it — but it caps by this: a
+// playback buffer, a recording, a scratch copy all size from the generated
+// constant rather than from a number a person wrote down beside it.
+const StrangersBlockMaxBytes int64 = 13760
+
+// StrangersBlock is Strangers's block: a pointer and a length, and then rows in place.
+// Opening one is ONE check and no copy; reading a row is one add (§19.2).
+//
+// The bytes belong to the CONSUMER — a []byte it owns, an mmap, or memory a
+// producer handed across. Nothing here allocates.
+//
+// A block is valid until the next fill over the SAME storage, which
+// invalidates every block over it and every row pointer taken from one.
+type StrangersBlock struct {
+	Base       unsafe.Pointer            // the extent's base, 64-byte aligned
+	Projection *StrangersBlockProjection // the projection, at offset 0
+	Bytes      int64                     // the extent in use
+}
+
+// ---- block fill path: begin ----
+// EntriesStride, EntriesMax and EntriesProjectionOffset are the constants this build
+// asserts against. A consumer INDEXES with what it read from the instance,
+// never with these (mas-bandwidth/schema docs/SPEC-TABLES.md §19.2). They are METHODS rather than
+// package constants because §11 gives a language whose accessors are members
+// exactly that latitude: a member claims nothing at file scope.
+func (b *StrangersBlock) EntriesStride() int64           { return 152 }
+func (b *StrangersBlock) EntriesMax() int64              { return 90 }
+func (b *StrangersBlock) EntriesProjectionOffset() int64 { return 24 }
+
+// Entries is ITERATED, not indexed by hand: the accessor points at each row where
+// it lies, at the pitch the INSTANCE gives, for the count the instance gives.
+func (b *StrangersBlock) Entries() TableBlockRows[StrangerEntryRow] {
+	return TableBlockRows[StrangerEntryRow]{
+		Base:   unsafe.Add(b.Base, uintptr(b.Projection.Entries.OffsetOf)),
+		Count:  int32(b.Projection.Entries.Count),
+		Stride: int32(b.Projection.Entries.Stride),
+	}
+}
+
+// EntriesSpan is the CONTIGUOUS view, available because the pitch IS the
+// element's size (§2.7), which is how the per-frame fast path is written.
+func (b *StrangersBlock) EntriesSpan() []StrangerEntryRow {
+	return unsafe.Slice((*StrangerEntryRow)(unsafe.Add(b.Base, uintptr(b.Projection.Entries.OffsetOf))), b.Projection.Entries.Count)
+}
+
+// ---- block fill path: end ----
+// StrangersBlockOpen is the bool convenience for the handle's typed Open error.
+func StrangersBlockOpen(block *StrangersBlock, base unsafe.Pointer, bytes int64) bool {
+	return block.Open(base, bytes) == nil
+}
+
+// Open reads all prologue and layout words bytewise before the final base
+// alignment check. Every refusal names the first failed clause in SPEC §19.2.
+func (block *StrangersBlock) Open(base unsafe.Pointer, bytes int64) error {
+	*block = StrangersBlock{}
+	if base == nil {
+		return TableRefuseUnalignedBase
+	}
+	if bytes < 48 {
+		return TableRefuseTruncated
+	}
+	header := unsafe.Slice((*byte)(base), 48)
+	magic := binary.NativeEndian.Uint64(header)
+	if magic != TableBlockMagic {
+		if magic == 0x5343484d41424c4b {
+			return TableRefuseForeignOrder
+		}
+		return TableRefuseNotACook
+	}
+	if binary.NativeEndian.Uint64(header[16:]) != TableBlockByteOrder {
+		return TableRefuseNotACook
+	}
+	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
+		return TableRefuseWrongBuildVersion
+	}
+	used := int64(48)
+	{
+		// EVERY NUMBER BELOW COMES FROM THE INSTANCE, so the arithmetic is
+		// unsigned and each term is BOUNDED BEFORE IT IS ADDED. A forged
+		// OffsetOf near 2^63 must refuse, and an addition that wrapped past the
+		// top of the type would be what the check after it was supposed to
+		// catch. The C++ side holds the same shape for the same reason.
+		triple := header[unsafe.Offsetof(StrangersBlockProjection{}.Entries):]
+		offsetOf := binary.NativeEndian.Uint64(triple)
+		count := uint64(binary.NativeEndian.Uint32(triple[8:]))
+		stride := uint64(binary.NativeEndian.Uint32(triple[12:]))
+		if stride != uint64(unsafe.Sizeof(StrangerEntryRow{})) {
+			return TableRefuseBadLayout
+		}
+		// past the DECLARED MAXIMUM: the producer side refuses this too, because
+		// a consumer that sizes anything by the maximum would overflow on a
+		// count the maximum does not bound
+		if count > 90 {
+			return TableRefuseBadLayout
+		}
+		if offsetOf < 48 || offsetOf%64 != 0 {
+			return TableRefuseBadLayout
+		}
+		if offsetOf > uint64(bytes) {
+			return TableRefuseBadLayout
+		}
+		rows := count * stride // both bounded above: this cannot carry
+		if rows > uint64(bytes)-offsetOf {
+			return TableRefuseBadLayout
+		}
+		if end := int64(offsetOf + rows); end > used {
+			used = end
+		}
+	}
+	padding := (64 - (used % 64)) % 64
+	if padding > bytes-used {
+		return TableRefuseTruncated
+	}
+	used += padding
+	if uintptr(base)%64 != 0 {
+		return TableRefuseUnalignedBase
+	}
+	block.Base = base
+	block.Projection = (*StrangersBlockProjection)(base)
+	block.Bytes = used
+	return nil
+}
+
+// StrangersCounts is gathered before Begin; clamping is the caller's policy.
+type StrangersCounts struct {
+	Entries int32
+}
+
+// StrangersBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
+type StrangersBlockStorage struct {
+	base       unsafe.Pointer
+	allocation []byte
+	allocator  TableBlockAllocator
+}
+
+func (s *StrangersBlockStorage) Create(a TableBlockAllocator) bool {
+	if s == nil || s.allocation != nil || a.Alloc == nil || a.Free == nil {
+		return false
+	}
+	raw := a.Alloc(StrangersBlockMaxBytes + 63)
+	if int64(len(raw)) < StrangersBlockMaxBytes+63 {
+		if raw != nil {
+			a.Free(raw)
+		}
+		return false
+	}
+	s.allocation = raw
+	s.allocator = a
+	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
+	s.base = unsafe.Pointer(&raw[offset])
+	return true
+}
+func (s *StrangersBlockStorage) Destroy() {
+	if s != nil && s.allocation != nil {
+		s.allocator.Free(s.allocation)
+		*s = StrangersBlockStorage{}
+	}
+}
+
+// ---- block fill path: begin ----
+// StrangersBlockBegin writes only the prologue and triples, never rows or padding.
+// Storage and all counts are checked before any byte of the extent changes.
+func StrangersBlockBegin(b *StrangersBlock, s *StrangersBlockStorage, c StrangersCounts, refusal *TableBlockRefusal) bool {
+	if refusal != nil {
+		*refusal = TableBlockRefusal{}
+	}
+	if b == nil {
+		return false
+	}
+	if c.Entries < 0 || c.Entries > 90 {
+		if refusal != nil {
+			*refusal = TableBlockRefusal{Array: "entries", Count: int64(c.Entries), Maximum: 90}
+		}
+		return false
+	}
+	if s == nil || s.base == nil {
+		return false
+	}
+	p := (*StrangersBlockProjection)(s.base)
+	p.Magic = TableBlockMagic
+	p.BuildVersion = BuildVersion
+	p.ByteOrder = TableBlockByteOrder
+	offset := int64(48)
+	offset = (offset + 63) &^ int64(63)
+	p.Entries = TableBlockTriple{OffsetOf: uint64(offset), Count: uint32(c.Entries), Stride: 152}
+	offset += int64(c.Entries) * 152
+	*b = StrangersBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
+	return true
+}
+
+func StrangersBlockBytes(b *StrangersBlock) int64 {
+	if b == nil || b.Projection == nil {
+		return 0
+	}
+	used := int64(48)
+	if end := int64(b.Projection.Entries.OffsetOf) + int64(b.Projection.Entries.Count)*int64(b.Projection.Entries.Stride); end > used {
+		used = end
+	}
+	return (used + 63) &^ int64(63)
+}
+
+// ---- block fill path: end ----
+
+// Type is this block's descriptors: constant data, so a reflective read costs
+// a lookup and not a parse. The row layouts hang off the element column
+// rather than taking names of their own, so a walker reaches every record
+// through the graph.
+func (b *StrangersBlock) Type() *TableBlockInfo { return &tableBlockRecords[1] }
