@@ -51,6 +51,12 @@ import (
 // the tree's own packages, or one update run (a build and two tests of one package).
 const landGoBudget = 15 * time.Minute
 
+// landGateRunBudget bounds one tree-gate run on a bench (2026-10-17: a run sat
+// 14 minutes on vision; CI's own bound is two minutes, so five is generous). A
+// run past it is the bench's fault, never the tree's (tla/GateRing.tla (read)
+// AskRefused).
+const landGateRunBudget = 5 * time.Minute
+
 const benchGateUnavailableWhy = "the configured remote bench did not run the tree gate; restore a bench and run land again"
 
 // treeTests are the packages that test the tree itself (its docs and its tests), run by
@@ -723,12 +729,18 @@ func (l *lander) ringGate(ctx context.Context, hosts []string, dir string, runs 
 func (l *lander) gateOn(ctx context.Context, host, dir string, runs [][]string, tests bool, st *bench.MirrorStage) (why string, ran bool, refused *bench.StageError) {
 	defer l.giveGateLane(host)
 	l.stage("gate", "bench "+host+" held by "+l.laneWho()+" ("+l.gateWhose()+"): "+strings.Join(runs[0], " "))
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(len(runs))*landGoBudget)
+	budget := time.Duration(len(runs)) * landGateRunBudget
+	gctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	start := l.clock()
-	out, code, err := l.runOnBench(ctx, host, dir, runs, tests, st)
+	out, code, err := l.runOnBench(gctx, host, dir, runs, tests, st)
 	wall := l.clock().Sub(start)
 	if errors.As(err, &refused) {
+		return "", false, refused
+	}
+	if ctx.Err() == nil && (errors.Is(err, context.DeadlineExceeded) || errors.Is(gctx.Err(), context.DeadlineExceeded)) {
+		refused := &bench.StageError{Host: host, Step: "the gate run", Wall: wall, Tail: "no answer within " + budget.String()}
+		l.copySaid(refused.Error())
 		return "", false, refused
 	}
 	if err != nil || code == bench.NoAnswer {
