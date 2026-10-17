@@ -1,0 +1,32 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 72 and seed -3188621118316651201 with 4 workers on 16 cores with 14085MB heap and 64MB offheap memory [pid: 563859] (Linux 6.8.0-139-generic amd64, Eclipse Adoptium 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /home/nova/reader-64a/tla/MCLandBound.tla
+Parsing file /home/nova/reader-64a/tla/Land.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Integers.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module Land
+Semantic processing of module MCLandBound
+Starting... (2026-10-10 21:02:33)
+Implied-temporal checking--satisfiability problem has 1 branches.
+Computing initial states...
+Computed 2 initial states...
+Finished computing initial states: 4 distinct states generated at 2026-10-10 21:02:33.
+Progress(25) at 2026-10-10 21:02:34: 9,734 states generated, 7,110 distinct states found, 0 states left on queue.
+Checking temporal properties for the complete state space with 7110 total distinct states at (2026-10-10 21:02:34)
+Finished checking temporal properties in 00s at 2026-10-10 21:02:34
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 1.0E-12
+9734 states generated, 7110 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 25.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 12 and the 95th percentile is 4).
+Finished in 01s at (2026-10-10 21:02:34)

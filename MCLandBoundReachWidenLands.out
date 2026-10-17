@@ -1,0 +1,271 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Running breadth-first search Model-Checking with fp 73 and seed 3283510139877757710 with 4 workers on 16 cores with 14085MB heap and 64MB offheap memory [pid: 569015] (Linux 6.8.0-139-generic amd64, Eclipse Adoptium 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /home/nova/reader-64a/tla/MCLandBound.tla
+Parsing file /home/nova/reader-64a/tla/Land.tla
+Parsing file /tmp/TLC.tla
+Parsing file /tmp/Integers.tla
+Parsing file /tmp/Sequences.tla
+Parsing file /tmp/FiniteSets.tla
+Parsing file /tmp/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module Integers
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module TLC
+Semantic processing of module Land
+Semantic processing of module MCLandBound
+Starting... (2026-10-10 21:02:36)
+Computing initial states...
+Computed 2 initial states...
+Finished computing initial states: 4 distinct states generated at 2026-10-10 21:02:36.
+Error: Invariant ReachWidenLands is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ badcaller = FALSE
+/\ epoch = 0
+/\ need = (c1 :> {"f1", "f2"})
+/\ landed = {}
+/\ lq = <<>>
+/\ bat = (c1 :> 0)
+/\ stalerec = FALSE
+/\ ready = {}
+/\ events = 0
+/\ lpushed = {}
+/\ lref = <<>>
+/\ att = (c1 :> 1)
+/\ lrep = 0
+/\ lbatch = <<>>
+/\ prevw = (c1 :> "none")
+/\ lphase = "idle"
+/\ ownstop = FALSE
+/\ stalepush = FALSE
+/\ paths = (c1 :> {})
+/\ cleared = (c1 :> FALSE)
+/\ stop = "none"
+/\ ltip = 0
+/\ lep = 0
+/\ review = {}
+/\ carried = {}
+/\ prevat = (c1 :> 0)
+/\ twice = FALSE
+/\ queue = <<>>
+/\ base = {}
+/\ tip = 0
+/\ lkind = "own"
+/\ widens = (c1 :> 0)
+/\ tries = 0
+
+State 2: <Outside line 513, col 3 to line 517, col 54 of module Land>
+/\ badcaller = FALSE
+/\ epoch = 0
+/\ need = (c1 :> {"f1", "f2"})
+/\ landed = {}
+/\ lq = <<>>
+/\ bat = (c1 :> 0)
+/\ stalerec = FALSE
+/\ ready = {}
+/\ events = 1
+/\ lpushed = {}
+/\ lref = <<>>
+/\ att = (c1 :> 1)
+/\ lrep = 0
+/\ lbatch = <<>>
+/\ prevw = (c1 :> "none")
+/\ lphase = "idle"
+/\ ownstop = FALSE
+/\ stalepush = FALSE
+/\ paths = (c1 :> {})
+/\ cleared = (c1 :> FALSE)
+/\ stop = "none"
+/\ ltip = 0
+/\ lep = 0
+/\ review = {}
+/\ carried = {}
+/\ prevat = (c1 :> 0)
+/\ twice = FALSE
+/\ queue = <<c1>>
+/\ base = {}
+/\ tip = 0
+/\ lkind = "own"
+/\ widens = (c1 :> 0)
+/\ tries = 0
+
+State 3: <Read line 284, col 5 to line 288, col 62 of module Land>
+/\ badcaller = FALSE
+/\ epoch = 0
+/\ need = (c1 :> {"f1", "f2"})
+/\ landed = {}
+/\ lq = <<<<c1, 1>>>>
+/\ bat = (c1 :> 0)
+/\ stalerec = FALSE
+/\ ready = {}
+/\ events = 1
+/\ lpushed = {}
+/\ lref = <<>>
+/\ att = (c1 :> 1)
+/\ lrep = 0
+/\ lbatch = <<>>
+/\ prevw = (c1 :> "none")
+/\ lphase = "read"
+/\ ownstop = FALSE
+/\ stalepush = FALSE
+/\ paths = (c1 :> {})
+/\ cleared = (c1 :> FALSE)
+/\ stop = "none"
+/\ ltip = 0
+/\ lep = 0
+/\ review = {}
+/\ carried = {}
+/\ prevat = (c1 :> 0)
+/\ twice = FALSE
+/\ queue = <<c1>>
+/\ base = {}
+/\ tip = 0
+/\ lkind = "own"
+/\ widens = (c1 :> 0)
+/\ tries = 0
+
+State 4: <Build line 296, col 3 to line 310, col 60 of module Land>
+/\ badcaller = FALSE
+/\ epoch = 0
+/\ need = (c1 :> {"f1", "f2"})
+/\ landed = {}
+/\ lq = <<<<c1, 1>>>>
+/\ bat = (c1 :> 0)
+/\ stalerec = FALSE
+/\ ready = {}
+/\ events = 1
+/\ lpushed = {}
+/\ lref = <<c1, 1>>
+/\ att = (c1 :> 1)
+/\ lrep = 0
+/\ lbatch = <<>>
+/\ prevw = (c1 :> "none")
+/\ lphase = "refusing"
+/\ ownstop = FALSE
+/\ stalepush = FALSE
+/\ paths = (c1 :> {})
+/\ cleared = (c1 :> FALSE)
+/\ stop = "none"
+/\ ltip = 0
+/\ lep = 0
+/\ review = {}
+/\ carried = {}
+/\ prevat = (c1 :> 0)
+/\ twice = FALSE
+/\ queue = <<c1>>
+/\ base = {}
+/\ tip = 0
+/\ lkind = "own"
+/\ widens = (c1 :> 0)
+/\ tries = 0
+
+State 5: <Refuse line 430, col 3 to line 455, col 78 of module Land>
+/\ badcaller = FALSE
+/\ epoch = 0
+/\ need = (c1 :> {"f1", "f2"})
+/\ landed = {}
+/\ lq = <<<<c1, 1>>>>
+/\ bat = (c1 :> 1)
+/\ stalerec = FALSE
+/\ ready = {c1}
+/\ events = 1
+/\ lpushed = {}
+/\ lref = <<>>
+/\ att = (c1 :> 2)
+/\ lrep = 0
+/\ lbatch = <<>>
+/\ prevw = (c1 :> "none")
+/\ lphase = "idle"
+/\ ownstop = FALSE
+/\ stalepush = FALSE
+/\ paths = (c1 :> {"f1"})
+/\ cleared = (c1 :> TRUE)
+/\ stop = "none"
+/\ ltip = 0
+/\ lep = 0
+/\ review = {}
+/\ carried = {<<c1, 1>>}
+/\ prevat = (c1 :> 0)
+/\ twice = FALSE
+/\ queue = <<>>
+/\ base = {}
+/\ tip = 0
+/\ lkind = "own"
+/\ widens = (c1 :> 1)
+/\ tries = 0
+
+State 6: <Redeal line 522, col 3 to line 527, col 60 of module Land>
+/\ badcaller = FALSE
+/\ epoch = 0
+/\ need = (c1 :> {"f1", "f2"})
+/\ landed = {}
+/\ lq = <<<<c1, 1>>>>
+/\ bat = (c1 :> 1)
+/\ stalerec = FALSE
+/\ ready = {}
+/\ events = 1
+/\ lpushed = {}
+/\ lref = <<>>
+/\ att = (c1 :> 2)
+/\ lrep = 0
+/\ lbatch = <<>>
+/\ prevw = (c1 :> "none")
+/\ lphase = "idle"
+/\ ownstop = FALSE
+/\ stalepush = FALSE
+/\ paths = (c1 :> {"f1"})
+/\ cleared = (c1 :> TRUE)
+/\ stop = "none"
+/\ ltip = 0
+/\ lep = 0
+/\ review = {}
+/\ carried = {<<c1, 1>>}
+/\ prevat = (c1 :> 0)
+/\ twice = FALSE
+/\ queue = <<c1>>
+/\ base = {}
+/\ tip = 0
+/\ lkind = "own"
+/\ widens = (c1 :> 1)
+/\ tries = 0
+
+State 7: <Outside line 513, col 3 to line 517, col 54 of module Land>
+/\ badcaller = FALSE
+/\ epoch = 0
+/\ need = (c1 :> {"f1", "f2"})
+/\ landed = {<<c1, 2>>}
+/\ lq = <<<<c1, 1>>>>
+/\ bat = (c1 :> 1)
+/\ stalerec = FALSE
+/\ ready = {}
+/\ events = 2
+/\ lpushed = {}
+/\ lref = <<>>
+/\ att = (c1 :> 2)
+/\ lrep = 0
+/\ lbatch = <<>>
+/\ prevw = (c1 :> "none")
+/\ lphase = "idle"
+/\ ownstop = FALSE
+/\ stalepush = FALSE
+/\ paths = (c1 :> {"f1"})
+/\ cleared = (c1 :> TRUE)
+/\ stop = "none"
+/\ ltip = 0
+/\ lep = 0
+/\ review = {}
+/\ carried = {<<c1, 1>>}
+/\ prevat = (c1 :> 0)
+/\ twice = FALSE
+/\ queue = <<>>
+/\ base = {<<c1, 2>>}
+/\ tip = 1
+/\ lkind = "own"
+/\ widens = (c1 :> 1)
+/\ tries = 0
+
+457 states generated, 354 distinct states found, 194 states left on queue.
+The depth of the complete state graph search is 7.
+The average outdegree of the complete state graph is 2 (minimum is 0, the maximum 10 and the 95th percentile is 7).
+Finished in 00s at (2026-10-10 21:02:36)
