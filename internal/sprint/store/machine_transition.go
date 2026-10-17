@@ -139,20 +139,7 @@ func activeStopLeases(s *sprint.Snapshot) []StopLease {
 func unsettledStopDebt(m Machine, s *sprint.Snapshot) error {
 	var open []string
 	for _, d := range m.StopDebt {
-		if d.Gen < 1 || d.Table != sprint.Fleet && d.Table != sprint.Readers {
-			open = append(open, d.Row+":"+d.ID+"@"+fmt.Sprint(d.Gen))
-			continue
-		}
-		t := s.Fleet
-		ready := sprint.Ready
-		if d.Table == sprint.Readers {
-			t, ready = s.Readers, sprint.Asked
-		}
-		var c *sprint.Card
-		if t != nil {
-			c = t.Card(d.ID)
-		}
-		if c == nil || !c.Placed() || c.Row != d.Row || c.Col != ready || c.Int("stopped_from_gen") != d.Gen || c.Int("gen") != d.Gen+1 {
+		if !stopDebtReturned(d, s) {
 			open = append(open, d.Row+":"+d.ID+"@"+fmt.Sprint(d.Gen))
 		}
 	}
@@ -172,6 +159,72 @@ func unsettledStopDebt(m Machine, s *sprint.Snapshot) error {
 		shown = shown[:8]
 	}
 	return fmt.Errorf("%d STOP-owned work/read jobs lack same-owner cancellation receipts (%s): cancel their child processes, then stop-return each on its same owner row before start", len(open), strings.Join(shown, ", "))
+}
+
+// stopDebtReturned says the owner's same-owner, next-generation return receipt
+// for d is in place on the table as read (tla/StopReturn.tla Returned).
+func stopDebtReturned(d StopLease, s *sprint.Snapshot) bool {
+	if d.Gen < 1 || d.Table != sprint.Fleet && d.Table != sprint.Readers {
+		return false
+	}
+	t := s.Fleet
+	ready := sprint.Ready
+	if d.Table == sprint.Readers {
+		t, ready = s.Readers, sprint.Asked
+	}
+	var c *sprint.Card
+	if t != nil {
+		c = t.Card(d.ID)
+	}
+	return c != nil && c.Placed() && c.Row == d.Row && c.Col == ready && c.Int("stopped_from_gen") == d.Gen && c.Int("gen") == d.Gen+1
+}
+
+// settleStopDebt takes each returned lease off a STOPPED machine's debt, under
+// the same operation fence as STOP, START and every step (tla/StopReturn.tla
+// Settle). It runs after each stop-return, a replay included: the receipt is
+// read in place before any later step can move the card (the debt still pins
+// it until this write), so the owner's acknowledgement is recorded durably and
+// a coordinator step (hold, fleet down) may move the returned card before
+// START without erasing it. A lease without its receipt stays owed.
+func (st *Store) settleStopDebt(ctx context.Context) error {
+	pinned, err := st.pin(ctx)
+	if err != nil {
+		return err
+	}
+	r := pinned.retry(ctx)
+	for r.next(pinned.attempts()) {
+		s, gen, ferr := pinned.Fenced(ctx, []string{sprint.Fleet, sprint.Readers}, nil, nil)
+		if ferr != nil {
+			return ferr
+		}
+		var nonce [16]byte
+		if _, err := rand.Read(nonce[:]); err != nil {
+			return err
+		}
+		lock := OpRecord{ID: "machine-settle-" + hex.EncodeToString(nonce[:]) + "-lock", Verb: "machine settle lock", At: pinned.now(), Lock: true}
+		ok, aerr := pinned.B.Acquire(ctx, gen, lock)
+		if aerr != nil {
+			return aerr
+		}
+		if !ok {
+			continue
+		}
+		m, _, err := pinned.Machine(ctx)
+		if err == nil && !m.Running() && m.StopIssued && len(m.StopDebt) > 0 {
+			var owed []StopLease
+			for _, d := range m.StopDebt {
+				if !stopDebtReturned(d, s) {
+					owed = append(owed, d)
+				}
+			}
+			if len(owed) < len(m.StopDebt) {
+				m.StopDebt = owed
+				err = pinned.putMachine(ctx, m)
+			}
+		}
+		return errors.Join(err, pinned.B.Release(context.WithoutCancel(ctx), lock, false))
+	}
+	return fmt.Errorf("stop-return settle: the sprint kept changing under it (%d tries); the return is recorded on its card and START still accepts it; run the stop-return again to settle it", r.tries)
 }
 
 // stopWithCause serializes the tick's DONE and funds stops with a manual STOP.

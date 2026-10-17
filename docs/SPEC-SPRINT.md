@@ -6692,14 +6692,18 @@ same fence. `start` checks the returned card's same-owner, next-generation
 receipt against that durable debt, so moving or removing a card cannot erase
 the need for cancellation acknowledgement. While debt remains, a coordinator
 step that would rewrite one of those owner cards, including fleet down or drop,
-and deletion of its fleet row, is refused until its owner returns it. A stopped
+and deletion of its fleet row, is refused until its owner returns it. Each
+stop-return (a replay too) then settles its lease off the debt under the same
+fence, reading the receipt in place on the debt's own row; a settled card may
+be held or redealt while STOPPED, and START is not refused for it
+(tla/StopReturn.tla Settle, ReturnedFreesItsRow). A stopped
 record from before durable debt was introduced still protects its live leases
 until their owners return them. DONE normally has no active jobs;
 when it does, the same debt rule applies. Inbox, queue, and coordinator control
 verbs remain available while the machine is stopped.
 `clear` records STOP but refuses to advance the epoch while it holds captured
-owner leases. Their runners must cancel and return them; an explicit `start`
-then clears the settled debt, after which `clear` can reset the epoch.
+owner leases. Their runners must cancel and return them; each return settles its lease, and
+an explicit `start` clears what remains, after which `clear` can reset the epoch.
 Native readers begin a named queued read with `<read-card>@<gen>` from its packet;
 an old Asked packet cannot begin a returned read at a newer generation. A bare
 named begin of a returned read is refused; `read --begin --max` can select a
