@@ -1,0 +1,3 @@
+go test fuzz v1
+byte('\x4b')
+[]byte("{\n  \"all\": [],\n  \"streams\": []\n}\n")

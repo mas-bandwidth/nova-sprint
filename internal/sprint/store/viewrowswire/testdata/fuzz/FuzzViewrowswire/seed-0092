@@ -1,0 +1,3 @@
+go test fuzz v1
+byte('\x1e')
+[]byte("{\n  \"key\": null,\n  \"at\": 0\n}\n")

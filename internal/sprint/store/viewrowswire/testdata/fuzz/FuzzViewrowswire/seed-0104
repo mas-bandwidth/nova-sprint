@@ -1,0 +1,3 @@
+go test fuzz v1
+byte('\x22')
+[]byte("{\n  \"kind\": null,\n  \"at\": 0,\n  \"epoch\": 0,\n  \"op\": null,\n  \"card\": null,\n  \"cards\": [],\n  \"primary\": null,\n  \"stream\": null,\n  \"table\": null,\n  \"from\": null,\n  \"to\": null,\n  \"removed\": false,\n  \"gen\": 0,\n  \"actor\": null,\n  \"verb\": null,\n  \"cause\": null,\n  \"answers\": [],\n  \"text\": [],\n  \"set\": [],\n  \"note\": null\n}\n")

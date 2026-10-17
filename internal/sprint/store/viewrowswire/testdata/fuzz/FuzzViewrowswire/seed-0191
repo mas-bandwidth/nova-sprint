@@ -1,0 +1,3 @@
+go test fuzz v1
+byte('\x3f')
+[]byte("{\n  \"name\": null,\n  \"tier\": null,\n  \"provider\": null,\n  \"model\": null,\n  \"harness\": null,\n  \"tokens\": 0,\n  \"usd\": null,\n  \"deadline\": 0,\n  \"enabled\": false,\n  \"first\": false,\n  \"prices\": {\n    \"input\": null,\n    \"cache_read\": null,\n    \"cache_write\": null,\n    \"output\": null,\n    \"reasoning_as_output\": false,\n    \"long_context\": 0,\n    \"input_long\": null,\n    \"output_long\": null,\n    \"request\": null,\n    \"billing\": null,\n    \"gateway_percent\": null,\n    \"source\": null,\n    \"as_of\": null\n  }\n}\n")
