@@ -481,7 +481,7 @@ func (b *TokensBlock) Type() *TableBlockInfo { return &tableBlockRecords[1] }
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table CardCostView has NO block form: it is VARIABLE-LENGTH: Consumer.kind is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table CardCostView has NO block form: it is VARIABLE-LENGTH: CardCostView.consumers is an unbounded array, and its elements are an extent inside the holder's own node, so there is no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
@@ -697,7 +697,7 @@ func (b *SnapshotCountsBlock) Type() *TableBlockInfo { return &tableBlockRecords
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table MemberEntry has NO block form: it is VARIABLE-LENGTH: MemberSnapshot.row is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
+// table MemberEntry has NO block form: it is VARIABLE-LENGTH: MemberEntry.id is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 

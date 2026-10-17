@@ -61,7 +61,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"unsafe"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
@@ -553,10 +552,6 @@ func runVariable[T any](t *testing.T, name, sample string, o varOps[T]) {
 	long := strings.Repeat("é-long text of the area ", 4000)
 	for _, f := range pointerFields(info, "string") {
 		long := long
-		if name == "Field" && f.Json == "value" {
-			// the reader holds a field value to ntable.LimitFieldValueBytes: the longest one
-			long = strings.Repeat("v", ntable.LimitFieldValueBytes)
-		}
 		canonLong := roundTrip(t, name+"."+f.Name+" with long text", r, codec, withField(t, sample, f.Json, long))
 		assert.Equal(t, long, decode(t, canonLong).(map[string]any)[f.Json], "%s.%s holds the long text whole", name, f.Name)
 		assert.Nil(t, decode(t, roundTrip(t, name+"."+f.Name+" null", r, codec, withField(t, sample, f.Json, nil))).(map[string]any)[f.Json], "%s.%s: null stays null", name, f.Name)
@@ -614,71 +609,6 @@ func runVariable[T any](t *testing.T, name, sample string, o varOps[T]) {
 	assert.Equal(t, schemaread.ReasonMalformed, refusalOf(t, name+": truncated JSON", err))
 	assert.Nil(t, got)
 	assert.Positive(t, c.Refused(schemaread.ReasonMalformed), "%s: refusals are counted", name)
-}
-
-// ---------------------------------------------------------------------------
-// The field value bound: ntable.LimitFieldValueBytes, a constraint of the
-// reader because a blob declares no bound (ntable/limits.go 96). It is held at
-// every depth a Field is reached from.
-
-func valueBound(field string, ref *wire.TableRef, c *schemaread.Checker) {
-	s := wire.TableStringAt(ref)
-	c.Text(field, string(s.Data[:s.Length]), ntable.LimitFieldValueBytes)
-}
-
-func fieldsBound(l *wire.TableList[wire.FieldRow], c *schemaread.Checker) {
-	for i := int32(0); i < l.Count; i++ {
-		valueBound("fields.value", &l.At(i).Value, c)
-	}
-}
-
-// deref follows a pointer slot of a region: a signed self-relative delta, zero null.
-func deref[T any](slot *int64) *T {
-	if *slot == 0 {
-		return nil
-	}
-	return (*T)(unsafe.Add(unsafe.Pointer(slot), *slot))
-}
-
-func tableBound(ts *wire.TableSnapshot, c *schemaread.Checker) {
-	for i := int32(0); i < ts.Members.Count; i++ {
-		fieldsBound(&ts.Members.At(i).Member.Fields, c)
-	}
-}
-
-func fieldConstraint(v **wire.Field, c *schemaread.Checker) { valueBound("value", &(*v).Value, c) }
-func memberConstraint(v **wire.MemberSnapshot, c *schemaread.Checker) {
-	fieldsBound(&(*v).Fields, c)
-}
-func memberEntryConstraint(v **wire.MemberEntry, c *schemaread.Checker) {
-	fieldsBound(&(*v).Member.Fields, c)
-}
-func tableSnapshotConstraint(v **wire.TableSnapshot, c *schemaread.Checker) { tableBound(*v, c) }
-func tableEntryConstraint(v **wire.TableEntry, c *schemaread.Checker) {
-	tableBound(&(*v).TableSnapshot, c)
-}
-func residueBound(r *wire.ResidueSnap, c *schemaread.Checker) {
-	if ts := deref[wire.TableSnapshot](&r.TableSnapshot); ts != nil {
-		tableBound(ts, c)
-	}
-}
-func residueConstraint(v **wire.ResidueSnap, c *schemaread.Checker) { residueBound(*v, c) }
-func residueEntryConstraint(v **wire.ResidueEntry, c *schemaread.Checker) {
-	residueBound(&(*v).Residue, c)
-}
-func memSnapshotConstraint(v **wire.MemSnapshot, c *schemaread.Checker) {
-	m := *v
-	for i := int32(0); i < m.Tables.Count; i++ {
-		tableBound(&m.Tables.At(i).TableSnapshot, c)
-	}
-	for i := int32(0); i < m.Dropped.Count; i++ {
-		residueBound(&m.Dropped.At(i).Residue, c)
-	}
-}
-func dumpMemberConstraint(v **wire.MemDumpMember, c *schemaread.Checker) {
-	if m := deref[wire.MemberSnapshot](&(*v).Member); m != nil {
-		fieldsBound(&m.Fields, c)
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -861,105 +791,6 @@ func fixedCases(s map[string]string) map[string]func(t *testing.T) {
 				wire.TokensFromJson, wire.TokensToJsonMeasure, wire.TokensToJson, wire.TokensTableType})
 		},
 	}
-}
-
-// ---------------------------------------------------------------------------
-// The field value bound, at every depth.
-
-type boundReader struct {
-	read  func(text string) error  // reads text through the reader
-	load  func(text string) []byte // loads JSON text without the constraint and saves its wire
-	reads func(data []byte) error  // reads data through the reader
-	write func(text string) error  // loads text without the constraint and writes it through the reader (the check)
-}
-
-func newBound[T any](o varOps[T], name string) boundReader {
-	codec := o.codec(name)
-	r := schemaread.NewReader(codec)
-	loadUnchecked := func(text string) *T {
-		var v *T
-		rep := codec.LoadJSON(&v, []byte(text))
-		if rep.Malformed || rep.Clamped > 0 || v == nil {
-			return nil
-		}
-		return v
-	}
-	return boundReader{
-		read: func(text string) error { _, _, err := r.Read([]byte(text)); return err },
-		load: func(text string) []byte {
-			v := loadUnchecked(text)
-			if v == nil {
-				return nil
-			}
-			return codec.SaveWire(&v)
-		},
-		reads: func(data []byte) error { _, _, err := r.Read(data); return err },
-		write: func(text string) error {
-			v := loadUnchecked(text)
-			if v == nil {
-				return errors.New("does not load")
-			}
-			_, err := r.Write(&v, schemaread.FormBinary)
-			return err
-		},
-	}
-}
-
-func TestSnapshotFieldValueBound(t *testing.T) {
-	t.Parallel()
-	s := sampleSet(t)
-	readers := boundReaders()
-	value := func(path ...any) []any { return append(append([]any(nil), path...), "value") }
-	deep := []any{"members", 0, "member", "fields", 0}
-	tableDeep := append([]any{"table_snapshot"}, deep...)
-	cases := []struct {
-		name string
-		path []any
-	}{
-		{"Field", []any{"value"}},
-		{"MemberSnapshot", value("fields", 0)},
-		{"MemberEntry", value("member", "fields", 0)},
-		{"TableSnapshot", value(deep...)},
-		{"TableEntry", value(tableDeep...)},
-		{"ResidueSnap", value(tableDeep...)},
-		{"ResidueEntry", value(append([]any{"residue"}, tableDeep...)...)},
-		{"MemSnapshot", value(append([]any{"tables", 0}, tableDeep...)...)},
-		{"MemSnapshot", value(append([]any{"dropped", 0, "residue"}, tableDeep...)...)},
-		{"MemDumpMember", value("member", "fields", 0)},
-	}
-	for _, tc := range cases {
-		t.Run(fmt.Sprint(tc.name, tc.path), func(t *testing.T) {
-			t.Parallel()
-			boundAt(t, tc.name, s[tc.name], tc.path, readers[tc.name])
-		})
-	}
-}
-
-// boundAt checks the document at the bound reads whole in all three forms and
-// the document one byte past it is refused clamped, naming the field, in all
-// three forms, and by the writer.
-func boundAt(t *testing.T, name, sample string, path []any, r boundReader) {
-	t.Helper()
-	whole := strings.Repeat("v", ntable.LimitFieldValueBytes)
-	at, over := setPath(t, sample, path, whole), setPath(t, sample, path, whole+"v")
-
-	require.NoError(t, r.read(at), "%s: a field value of ntable.LimitFieldValueBytes reads from JSON text", name)
-	w := r.load(at)
-	require.NotEmpty(t, w)
-	require.NoError(t, r.reads(w), "%s: at the bound, binary", name)
-	require.NoError(t, r.reads([]byte(b64(w))), "%s: at the bound, base64", name)
-
-	w = r.load(over)
-	require.NotEmpty(t, w, "%s: the past-bound document loads without its constraint", name)
-	for form, data := range map[string][]byte{"binary": w, "base64": []byte(b64(w)), "JSON": []byte(over)} {
-		err := r.reads(data)
-		var ref *schemaread.Refusal
-		require.True(t, errors.As(err, &ref), "%s one byte past the bound in %s is refused: %v", name, form, err)
-		assert.Equal(t, schemaread.ReasonClamped, ref.Reason, "%s in %s", name, form)
-		assert.Contains(t, ref.Field, "value", "%s in %s names the field", name, form)
-		assert.True(t, strings.HasPrefix(err.Error(), strings.ToUpper(name)+" REFUSED: "), err.Error())
-	}
-	assert.Error(t, r.write(over), "%s: the writer refuses a field value past the bound", name)
 }
 
 // ---------------------------------------------------------------------------
@@ -1480,10 +1311,38 @@ func goTable(name string, brief string) obj {
 	}
 }
 
+// pastViewState, pastMemberID, pastColumns and pastProps are values past the limits
+// the writers enforce (ntable.MaxViewState, LimitMemberIDBytes, LimitColumns and
+// LimitTableProps): the snapshot copies them as they are, so the tables hold them.
+var (
+	pastViewState = strings.Repeat("s", ntable.MaxViewState+1)
+	pastMemberID  = strings.Repeat("i", ntable.LimitMemberIDBytes+1)
+)
+
+func pastColumns() []any {
+	cols := make([]any, 0, ntable.LimitColumns+1)
+	for i := 0; i <= ntable.LimitColumns; i++ {
+		cols = append(cols, obj{"Name": "c" + strconv.Itoa(i), "Label": "C", "Projection": "count", "Fold": "sum", "Width": 8})
+	}
+	return cols
+}
+
+func pastProps() obj {
+	props := obj{}
+	for i := 0; i <= ntable.LimitTableProps; i++ {
+		props["p"+strconv.Itoa(i)] = "v"
+	}
+	return props
+}
+
 func goMemDoc(t *testing.T) string {
-	doc := obj{"version": 1, "tables": obj{"t-work": goTable("t-work", strings.Repeat("b", ntable.LimitFieldValueBytes)), "t-fleet": goTable("t-fleet", "short")},
+	work := goTable("t-work", strings.Repeat("b", 2*ntable.LimitFieldValueBytes))
+	work["def"].(obj)["Columns"] = pastColumns()
+	work["epochs"].(obj)["0"].(obj)["props"] = pastProps()
+	work["members"].(obj)[pastMemberID] = obj{"epoch": 21, "placed": false, "score": 0, "rev": 0}
+	doc := obj{"version": 1, "tables": obj{"t-work": work, "t-fleet": goTable("t-fleet", "short")},
 		"dropped":   obj{"t-old": obj{"keys": obj{"w:s1-1": true}, "table": goTable("t-old", "old")}},
-		"views":     obj{"sprint": obj{"Name": "sprint", "Tables": arr("t-work", "t-fleet"), "Title": "The sprint", "Summary": "state", "State": "STOPPED"}},
+		"views":     obj{"sprint": obj{"Name": "sprint", "Tables": arr("t-work", "t-fleet"), "Title": "The sprint", "Summary": "state", "State": pastViewState}},
 		"epoch_set": true, "epoch": 21, "cleared": "2026-10-17T01:02:03.000000004Z", "owed": true, "defaults_owed": 21,
 		"logs": obj{"21": obj{"gen": 3, "done": obj{"caller-1": "ok"}, "progress": obj{"s1": "2026-10-17T01:02:03Z", "s2": "0001-01-01T00:00:00Z"},
 			"aliases": obj{"j12": "n12"}, "answered": obj{"n12": "coordinator"}, "open": obj{"s1/s1-1": "n12"}, "cursor": "1-0"}, "3": obj{"gen": 1}},
@@ -1495,7 +1354,7 @@ func memVarOps() varOps[wire.MemSnapshot] {
 	return varOps[wire.MemSnapshot]{
 		builder((*wire.MemSnapshotBuilder).Init, (*wire.MemSnapshotBuilder).GetRoot, func(b *wire.MemSnapshotBuilder) *wire.TableArena { return &b.Arena }, wire.MemSnapshotFromJson),
 		wire.MemSnapshotMeasure, wire.MemSnapshotSave, wire.MemSnapshotLoadMeasureReason, wire.MemSnapshotLoad, wire.MemSnapshotToJsonMeasure, wire.MemSnapshotToJson, wire.MemSnapshotTableType,
-		memSnapshotConstraint}
+		nil}
 }
 
 func TestSnapshotDocumentSurvivesTheTables(t *testing.T) {
@@ -1527,8 +1386,14 @@ func TestSnapshotDocumentSurvivesTheTables(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, string(s1), string(s2), "the document is the same after the tables, read from %s", form)
 	}
-	// the 64 KiB field value of the document is held whole
-	assert.Contains(t, canon, strings.Repeat("b", ntable.LimitFieldValueBytes))
+	// a field value of twice the write bound is held whole: the snapshot copies it as it is
+	assert.Contains(t, canon, strings.Repeat("b", 2*ntable.LimitFieldValueBytes))
+	// and so is every value past a limit the writers enforce: a view state of 65
+	// bytes, 1001 columns, 65 epoch props and a member id of 257 bytes
+	assert.Contains(t, canon, pastViewState)
+	assert.Contains(t, canon, pastMemberID)
+	assert.Contains(t, canon, `"c`+strconv.Itoa(ntable.LimitColumns)+`"`)
+	assert.Contains(t, canon, `"p`+strconv.Itoa(ntable.LimitTableProps)+`"`)
 }
 
 // ---- the dump of a real twin, key by key ------------------------------------
@@ -1546,7 +1411,7 @@ func TestDumpOfARealTwinSurvivesTheTables(t *testing.T) {
 	memberOps := varOps[wire.MemDumpMember]{
 		builder((*wire.MemDumpMemberBuilder).Init, (*wire.MemDumpMemberBuilder).GetRoot, func(b *wire.MemDumpMemberBuilder) *wire.TableArena { return &b.Arena }, wire.MemDumpMemberFromJson),
 		wire.MemDumpMemberMeasure, wire.MemDumpMemberSave, wire.MemDumpMemberLoadMeasureReason, wire.MemDumpMemberLoad, wire.MemDumpMemberToJsonMeasure, wire.MemDumpMemberToJson, wire.MemDumpMemberTableType,
-		dumpMemberConstraint}
+		nil}
 	dr := schemaread.NewReader(dumpOps.codec("DumpKey"))
 	mr := schemaread.NewReader(memberOps.codec("MemDumpMember"))
 	members := 0
@@ -1672,51 +1537,41 @@ func TestCardCostFromARealCard(t *testing.T) {
 	got, _, err := r.Read([]byte(b64(bin)))
 	require.NoError(t, err)
 	assert.Equal(t, canon, string(ops.codec("CardCostView").SaveJSON(&got)))
-	assert.EqualValues(t, 2, v.ConsumersCount)
-	assert.Equal(t, 64, sprint.MaxCostRecords, "the bound of the table is the code's bound")
-	assert.EqualValues(t, sprint.MaxCostRecords, wire.CardCostViewTableType().Fields[0].ArrayBound)
+	assert.EqualValues(t, 2, v.Consumers.Count)
+
+	// a card that holds more cost records than sprint.MaxCostRecords: CardCostOf
+	// appends every one it finds, and the open list holds every one
+	many := &sprint.Card{ID: "a9", Fields: map[string]string{}}
+	for i := 0; i < sprint.MaxCostRecords+6; i++ {
+		many.Fields[fmt.Sprintf("%sa9#g%d", sprint.FieldCostRecord, i)] = line("a9", i%10)
+	}
+	bigView := sprint.CardCostOf(many)
+	require.Greater(t, len(bigView.Consumers), sprint.MaxCostRecords)
+	rawBig, err := json.Marshal(bigView)
+	require.NoError(t, err)
+	bigText := encode(t, renameKey(decode(t, string(rawBig)), "long", "long_context"))
+	bv, _, err := r.Read([]byte(bigText))
+	require.NoError(t, err, "a cost view past sprint.MaxCostRecords reads")
+	assert.EqualValues(t, len(bigView.Consumers), bv.Consumers.Count)
+	binBig, err := r.Write(&bv, schemaread.FormBinary)
+	require.NoError(t, err)
+	_, _, err = r.Read([]byte(b64(binBig)))
+	require.NoError(t, err)
 }
 
 // ---------------------------------------------------------------------------
-// The bounds are the code's.
+// A bound is declared only where every reader path enforces it (S1).
 
-func TestBoundsAreTheCodes(t *testing.T) {
+// TestNoRecordDeclaresAnUnenforcedBound pins the area's bound table: the snapshot
+// read and the restore copy every list and text as they find it, so no table
+// declares a bound, and every record the restore reads is open. The limits the
+// code enforces on a write or on a batch apply are not bounds of these records.
+func TestNoRecordDeclaresAnUnenforcedBound(t *testing.T) {
 	t.Parallel()
-	bound := func(table, field string) int32 {
-		for _, f := range tableInfos()[table].Fields {
-			if f.Name == field {
-				return f.ArrayBound
-			}
-		}
-		t.Fatalf("%s has no field %s", table, field)
-		return 0
-	}
-	assert.EqualValues(t, sprint.MaxCostRecords, bound("CardCostView", "consumers"))
-	assert.EqualValues(t, ntable.MaxViewState, bound("View", "state"))
-	assert.EqualValues(t, ntable.LimitTableProps, bound("EpochSnapshot", "props"))
-	assert.EqualValues(t, ntable.LimitColumns, bound("NTable", "columns"))
-	assert.EqualValues(t, ntable.LimitMemberIDBytes, bound("MemberEntry", "id"))
-
-	// no other field declares a bound
-	declared := map[string]bool{"CardCostView.consumers": true, "View.state": true, "EpochSnapshot.props": true, "NTable.columns": true, "MemberEntry.id": true}
 	for table, info := range tableInfos() {
-		for _, f := range info.Fields {
-			if f.ArrayBound > 0 && f.ArrayBound != 1<<31-1 {
-				assert.True(t, declared[table+"."+f.Name], "%s.%s declares a bound the code does not enforce", table, f.Name)
-			}
-		}
+		assert.Empty(t, boundLists(info), "%s declares a list bound the restore does not enforce", table)
+		assert.Empty(t, boundStrings(info), "%s declares a text bound the restore does not enforce", table)
 	}
-
-	// the code refuses what the bounds name: the view's state, the table's columns
-	ok := ntable.ValidViewState(strings.Repeat("s", ntable.MaxViewState))
-	assert.True(t, ok)
-	assert.False(t, ntable.ValidViewState(strings.Repeat("s", ntable.MaxViewState+1)))
-	cols := make([]ntable.Column, ntable.LimitColumns+1)
-	for i := range cols {
-		cols[i] = ntable.Column{Name: "c" + strconv.Itoa(i), Projection: ntable.Count, Fold: "sum"}
-	}
-	assert.NoError(t, ntable.ValidateColumns(cols[:ntable.LimitColumns]), "a table of LimitColumns columns is accepted")
-	assert.Error(t, ntable.ValidateColumns(cols), "a table of one column more is refused")
 }
 
 // ---------------------------------------------------------------------------
@@ -1981,12 +1836,20 @@ func TestSnapshotAndCostGolden(t *testing.T) {
 		sort.Strings(inBase)
 		assert.Equal(t, want, inBase, "the baseline covers every table of the area")
 
-		// the bound walk is not vacuous
-		assert.Len(t, boundLists(wire.CardCostViewTableType()), 1)
-		assert.Len(t, boundLists(wire.NTableTableType()), 1)
-		assert.Len(t, boundLists(wire.EpochSnapshotTableType()), 1)
-		assert.Len(t, boundStrings(wire.ViewTableType()), 1)
-		assert.Len(t, boundStrings(wire.MemberEntryTableType()), 1)
+		// the open walk is not vacuous: the five fields that were once declared bounded are open
+		named := func(fs []wire.TableFieldInfo, name string) bool {
+			for _, f := range fs {
+				if f.Name == name {
+					return true
+				}
+			}
+			return false
+		}
+		assert.True(t, named(openLists(wire.CardCostViewTableType()), "consumers"))
+		assert.True(t, named(openLists(wire.NTableTableType()), "columns"))
+		assert.True(t, named(openLists(wire.EpochSnapshotTableType()), "props"))
+		assert.True(t, named(pointerFields(wire.ViewTableType(), "string"), "state"))
+		assert.True(t, named(pointerFields(wire.MemberEntryTableType(), "string"), "id"))
 
 		_, err = os.Stat(filepath.Join(root, "snaprows.schema"))
 		require.NoError(t, err, "schemas/snaprows/snaprows.schema is committed")
@@ -2142,17 +2005,17 @@ func variableCases(s map[string]string) map[string]func(t *testing.T) {
 		"Field": func(t *testing.T) {
 			runVariable(t, "Field", s["Field"], varOps[wire.Field]{
 				builder((*wire.FieldBuilder).Init, (*wire.FieldBuilder).GetRoot, func(b *wire.FieldBuilder) *wire.TableArena { return &b.Arena }, wire.FieldFromJson),
-				wire.FieldMeasure, wire.FieldSave, wire.FieldLoadMeasureReason, wire.FieldLoad, wire.FieldToJsonMeasure, wire.FieldToJson, wire.FieldTableType, fieldConstraint})
+				wire.FieldMeasure, wire.FieldSave, wire.FieldLoadMeasureReason, wire.FieldLoad, wire.FieldToJsonMeasure, wire.FieldToJson, wire.FieldTableType, nil})
 		},
 		"MemberSnapshot": func(t *testing.T) {
 			runVariable(t, "MemberSnapshot", s["MemberSnapshot"], varOps[wire.MemberSnapshot]{
 				builder((*wire.MemberSnapshotBuilder).Init, (*wire.MemberSnapshotBuilder).GetRoot, func(b *wire.MemberSnapshotBuilder) *wire.TableArena { return &b.Arena }, wire.MemberSnapshotFromJson),
-				wire.MemberSnapshotMeasure, wire.MemberSnapshotSave, wire.MemberSnapshotLoadMeasureReason, wire.MemberSnapshotLoad, wire.MemberSnapshotToJsonMeasure, wire.MemberSnapshotToJson, wire.MemberSnapshotTableType, memberConstraint})
+				wire.MemberSnapshotMeasure, wire.MemberSnapshotSave, wire.MemberSnapshotLoadMeasureReason, wire.MemberSnapshotLoad, wire.MemberSnapshotToJsonMeasure, wire.MemberSnapshotToJson, wire.MemberSnapshotTableType, nil})
 		},
 		"MemberEntry": func(t *testing.T) {
 			runVariable(t, "MemberEntry", s["MemberEntry"], varOps[wire.MemberEntry]{
 				builder((*wire.MemberEntryBuilder).Init, (*wire.MemberEntryBuilder).GetRoot, func(b *wire.MemberEntryBuilder) *wire.TableArena { return &b.Arena }, wire.MemberEntryFromJson),
-				wire.MemberEntryMeasure, wire.MemberEntrySave, wire.MemberEntryLoadMeasureReason, wire.MemberEntryLoad, wire.MemberEntryToJsonMeasure, wire.MemberEntryToJson, wire.MemberEntryTableType, memberEntryConstraint})
+				wire.MemberEntryMeasure, wire.MemberEntrySave, wire.MemberEntryLoadMeasureReason, wire.MemberEntryLoad, wire.MemberEntryToJsonMeasure, wire.MemberEntryToJson, wire.MemberEntryTableType, nil})
 		},
 		"ChangeSnapshot": func(t *testing.T) {
 			runVariable(t, "ChangeSnapshot", s["ChangeSnapshot"], varOps[wire.ChangeSnapshot]{
@@ -2182,22 +2045,22 @@ func variableCases(s map[string]string) map[string]func(t *testing.T) {
 		"TableSnapshot": func(t *testing.T) {
 			runVariable(t, "TableSnapshot", s["TableSnapshot"], varOps[wire.TableSnapshot]{
 				builder((*wire.TableSnapshotBuilder).Init, (*wire.TableSnapshotBuilder).GetRoot, func(b *wire.TableSnapshotBuilder) *wire.TableArena { return &b.Arena }, wire.TableSnapshotFromJson),
-				wire.TableSnapshotMeasure, wire.TableSnapshotSave, wire.TableSnapshotLoadMeasureReason, wire.TableSnapshotLoad, wire.TableSnapshotToJsonMeasure, wire.TableSnapshotToJson, wire.TableSnapshotTableType, tableSnapshotConstraint})
+				wire.TableSnapshotMeasure, wire.TableSnapshotSave, wire.TableSnapshotLoadMeasureReason, wire.TableSnapshotLoad, wire.TableSnapshotToJsonMeasure, wire.TableSnapshotToJson, wire.TableSnapshotTableType, nil})
 		},
 		"TableEntry": func(t *testing.T) {
 			runVariable(t, "TableEntry", s["TableEntry"], varOps[wire.TableEntry]{
 				builder((*wire.TableEntryBuilder).Init, (*wire.TableEntryBuilder).GetRoot, func(b *wire.TableEntryBuilder) *wire.TableArena { return &b.Arena }, wire.TableEntryFromJson),
-				wire.TableEntryMeasure, wire.TableEntrySave, wire.TableEntryLoadMeasureReason, wire.TableEntryLoad, wire.TableEntryToJsonMeasure, wire.TableEntryToJson, wire.TableEntryTableType, tableEntryConstraint})
+				wire.TableEntryMeasure, wire.TableEntrySave, wire.TableEntryLoadMeasureReason, wire.TableEntryLoad, wire.TableEntryToJsonMeasure, wire.TableEntryToJson, wire.TableEntryTableType, nil})
 		},
 		"ResidueSnap": func(t *testing.T) {
 			runVariable(t, "ResidueSnap", s["ResidueSnap"], varOps[wire.ResidueSnap]{
 				builder((*wire.ResidueSnapBuilder).Init, (*wire.ResidueSnapBuilder).GetRoot, func(b *wire.ResidueSnapBuilder) *wire.TableArena { return &b.Arena }, wire.ResidueSnapFromJson),
-				wire.ResidueSnapMeasure, wire.ResidueSnapSave, wire.ResidueSnapLoadMeasureReason, wire.ResidueSnapLoad, wire.ResidueSnapToJsonMeasure, wire.ResidueSnapToJson, wire.ResidueSnapTableType, residueConstraint})
+				wire.ResidueSnapMeasure, wire.ResidueSnapSave, wire.ResidueSnapLoadMeasureReason, wire.ResidueSnapLoad, wire.ResidueSnapToJsonMeasure, wire.ResidueSnapToJson, wire.ResidueSnapTableType, nil})
 		},
 		"ResidueEntry": func(t *testing.T) {
 			runVariable(t, "ResidueEntry", s["ResidueEntry"], varOps[wire.ResidueEntry]{
 				builder((*wire.ResidueEntryBuilder).Init, (*wire.ResidueEntryBuilder).GetRoot, func(b *wire.ResidueEntryBuilder) *wire.TableArena { return &b.Arena }, wire.ResidueEntryFromJson),
-				wire.ResidueEntryMeasure, wire.ResidueEntrySave, wire.ResidueEntryLoadMeasureReason, wire.ResidueEntryLoad, wire.ResidueEntryToJsonMeasure, wire.ResidueEntryToJson, wire.ResidueEntryTableType, residueEntryConstraint})
+				wire.ResidueEntryMeasure, wire.ResidueEntrySave, wire.ResidueEntryLoadMeasureReason, wire.ResidueEntryLoad, wire.ResidueEntryToJsonMeasure, wire.ResidueEntryToJson, wire.ResidueEntryTableType, nil})
 		},
 		"ViewEntry": func(t *testing.T) {
 			runVariable(t, "ViewEntry", s["ViewEntry"], varOps[wire.ViewEntry]{
@@ -2237,46 +2100,13 @@ func variableCases(s map[string]string) map[string]func(t *testing.T) {
 		"MemSnapshot": func(t *testing.T) {
 			runVariable(t, "MemSnapshot", s["MemSnapshot"], varOps[wire.MemSnapshot]{
 				builder((*wire.MemSnapshotBuilder).Init, (*wire.MemSnapshotBuilder).GetRoot, func(b *wire.MemSnapshotBuilder) *wire.TableArena { return &b.Arena }, wire.MemSnapshotFromJson),
-				wire.MemSnapshotMeasure, wire.MemSnapshotSave, wire.MemSnapshotLoadMeasureReason, wire.MemSnapshotLoad, wire.MemSnapshotToJsonMeasure, wire.MemSnapshotToJson, wire.MemSnapshotTableType, memSnapshotConstraint})
+				wire.MemSnapshotMeasure, wire.MemSnapshotSave, wire.MemSnapshotLoadMeasureReason, wire.MemSnapshotLoad, wire.MemSnapshotToJsonMeasure, wire.MemSnapshotToJson, wire.MemSnapshotTableType, nil})
 		},
 		"MemDumpMember": func(t *testing.T) {
 			runVariable(t, "MemDumpMember", s["MemDumpMember"], varOps[wire.MemDumpMember]{
 				builder((*wire.MemDumpMemberBuilder).Init, (*wire.MemDumpMemberBuilder).GetRoot, func(b *wire.MemDumpMemberBuilder) *wire.TableArena { return &b.Arena }, wire.MemDumpMemberFromJson),
-				wire.MemDumpMemberMeasure, wire.MemDumpMemberSave, wire.MemDumpMemberLoadMeasureReason, wire.MemDumpMemberLoad, wire.MemDumpMemberToJsonMeasure, wire.MemDumpMemberToJson, wire.MemDumpMemberTableType, dumpMemberConstraint})
+				wire.MemDumpMemberMeasure, wire.MemDumpMemberSave, wire.MemDumpMemberLoadMeasureReason, wire.MemDumpMemberLoad, wire.MemDumpMemberToJsonMeasure, wire.MemDumpMemberToJson, wire.MemDumpMemberTableType, nil})
 		},
-	}
-}
-
-// boundReaders are the readers of the tables a Field is reached from.
-func boundReaders() map[string]boundReader {
-	return map[string]boundReader{
-		"Field": newBound(varOps[wire.Field]{
-			builder((*wire.FieldBuilder).Init, (*wire.FieldBuilder).GetRoot, func(b *wire.FieldBuilder) *wire.TableArena { return &b.Arena }, wire.FieldFromJson),
-			wire.FieldMeasure, wire.FieldSave, wire.FieldLoadMeasureReason, wire.FieldLoad, wire.FieldToJsonMeasure, wire.FieldToJson, wire.FieldTableType, fieldConstraint}, "Field"),
-		"MemberSnapshot": newBound(varOps[wire.MemberSnapshot]{
-			builder((*wire.MemberSnapshotBuilder).Init, (*wire.MemberSnapshotBuilder).GetRoot, func(b *wire.MemberSnapshotBuilder) *wire.TableArena { return &b.Arena }, wire.MemberSnapshotFromJson),
-			wire.MemberSnapshotMeasure, wire.MemberSnapshotSave, wire.MemberSnapshotLoadMeasureReason, wire.MemberSnapshotLoad, wire.MemberSnapshotToJsonMeasure, wire.MemberSnapshotToJson, wire.MemberSnapshotTableType, memberConstraint}, "MemberSnapshot"),
-		"MemberEntry": newBound(varOps[wire.MemberEntry]{
-			builder((*wire.MemberEntryBuilder).Init, (*wire.MemberEntryBuilder).GetRoot, func(b *wire.MemberEntryBuilder) *wire.TableArena { return &b.Arena }, wire.MemberEntryFromJson),
-			wire.MemberEntryMeasure, wire.MemberEntrySave, wire.MemberEntryLoadMeasureReason, wire.MemberEntryLoad, wire.MemberEntryToJsonMeasure, wire.MemberEntryToJson, wire.MemberEntryTableType, memberEntryConstraint}, "MemberEntry"),
-		"TableSnapshot": newBound(varOps[wire.TableSnapshot]{
-			builder((*wire.TableSnapshotBuilder).Init, (*wire.TableSnapshotBuilder).GetRoot, func(b *wire.TableSnapshotBuilder) *wire.TableArena { return &b.Arena }, wire.TableSnapshotFromJson),
-			wire.TableSnapshotMeasure, wire.TableSnapshotSave, wire.TableSnapshotLoadMeasureReason, wire.TableSnapshotLoad, wire.TableSnapshotToJsonMeasure, wire.TableSnapshotToJson, wire.TableSnapshotTableType, tableSnapshotConstraint}, "TableSnapshot"),
-		"TableEntry": newBound(varOps[wire.TableEntry]{
-			builder((*wire.TableEntryBuilder).Init, (*wire.TableEntryBuilder).GetRoot, func(b *wire.TableEntryBuilder) *wire.TableArena { return &b.Arena }, wire.TableEntryFromJson),
-			wire.TableEntryMeasure, wire.TableEntrySave, wire.TableEntryLoadMeasureReason, wire.TableEntryLoad, wire.TableEntryToJsonMeasure, wire.TableEntryToJson, wire.TableEntryTableType, tableEntryConstraint}, "TableEntry"),
-		"ResidueSnap": newBound(varOps[wire.ResidueSnap]{
-			builder((*wire.ResidueSnapBuilder).Init, (*wire.ResidueSnapBuilder).GetRoot, func(b *wire.ResidueSnapBuilder) *wire.TableArena { return &b.Arena }, wire.ResidueSnapFromJson),
-			wire.ResidueSnapMeasure, wire.ResidueSnapSave, wire.ResidueSnapLoadMeasureReason, wire.ResidueSnapLoad, wire.ResidueSnapToJsonMeasure, wire.ResidueSnapToJson, wire.ResidueSnapTableType, residueConstraint}, "ResidueSnap"),
-		"ResidueEntry": newBound(varOps[wire.ResidueEntry]{
-			builder((*wire.ResidueEntryBuilder).Init, (*wire.ResidueEntryBuilder).GetRoot, func(b *wire.ResidueEntryBuilder) *wire.TableArena { return &b.Arena }, wire.ResidueEntryFromJson),
-			wire.ResidueEntryMeasure, wire.ResidueEntrySave, wire.ResidueEntryLoadMeasureReason, wire.ResidueEntryLoad, wire.ResidueEntryToJsonMeasure, wire.ResidueEntryToJson, wire.ResidueEntryTableType, residueEntryConstraint}, "ResidueEntry"),
-		"MemSnapshot": newBound(varOps[wire.MemSnapshot]{
-			builder((*wire.MemSnapshotBuilder).Init, (*wire.MemSnapshotBuilder).GetRoot, func(b *wire.MemSnapshotBuilder) *wire.TableArena { return &b.Arena }, wire.MemSnapshotFromJson),
-			wire.MemSnapshotMeasure, wire.MemSnapshotSave, wire.MemSnapshotLoadMeasureReason, wire.MemSnapshotLoad, wire.MemSnapshotToJsonMeasure, wire.MemSnapshotToJson, wire.MemSnapshotTableType, memSnapshotConstraint}, "MemSnapshot"),
-		"MemDumpMember": newBound(varOps[wire.MemDumpMember]{
-			builder((*wire.MemDumpMemberBuilder).Init, (*wire.MemDumpMemberBuilder).GetRoot, func(b *wire.MemDumpMemberBuilder) *wire.TableArena { return &b.Arena }, wire.MemDumpMemberFromJson),
-			wire.MemDumpMemberMeasure, wire.MemDumpMemberSave, wire.MemDumpMemberLoadMeasureReason, wire.MemDumpMemberLoad, wire.MemDumpMemberToJsonMeasure, wire.MemDumpMemberToJson, wire.MemDumpMemberTableType, dumpMemberConstraint}, "MemDumpMember"),
 	}
 }
 

@@ -172,14 +172,12 @@ type BatchMemberDeltaRow struct {
 // CardCostViewRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type CardCostViewRow struct {
-	Consumers      [64]ConsumerRow
-	ConsumersCount int32
-	_              [4]byte // generated padding
-	Total          TotalRow
-	Cut            int64
-	CarriedUsd     int64 // *: signed self-relative delta, zero is null (§6.3)
-	CarriedFrom    int64 // *: signed self-relative delta, zero is null (§6.3)
-	CarriedTo      int64 // *: signed self-relative delta, zero is null (§6.3)
+	Consumers   TableList[ConsumerRow]
+	Total       TotalRow
+	Cut         int64
+	CarriedUsd  int64 // *: signed self-relative delta, zero is null (§6.3)
+	CarriedFrom int64 // *: signed self-relative delta, zero is null (§6.3)
+	CarriedTo   int64 // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // CellRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
@@ -268,12 +266,10 @@ type EpochFlagRow struct {
 // EpochSnapshotRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type EpochSnapshotRow struct {
-	Rows       TableList[WordRow]
-	Hidden     TableList[FlagRow]
-	Texts      TableList[TextRowRow]
-	Props      [64]PairRow
-	PropsCount int32
-	_          [4]byte // generated padding
+	Rows   TableList[WordRow]
+	Hidden TableList[FlagRow]
+	Texts  TableList[TextRowRow]
+	Props  TableList[PairRow]
 }
 
 // FieldRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
@@ -369,10 +365,8 @@ type MemSnapshotRow struct {
 // MemberEntryRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type MemberEntryRow struct {
-	Id       [257]byte // string(256): buffer, used length beside it
-	_        [3]byte   // generated padding
-	IdLength int32
-	Member   MemberSnapshotRow
+	Id     int64 // *: signed self-relative delta, zero is null (§6.3)
+	Member MemberSnapshotRow
 }
 
 // MemberSnapshotRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
@@ -397,10 +391,8 @@ type NTableRow struct {
 	Epoch        uint64
 	Revision     uint64
 	Name         int64 // *: signed self-relative delta, zero is null (§6.3)
-	Columns      [1000]ColumnRow
-	ColumnsCount int32
-	_            [4]byte // generated padding
-	FooterLabel  int64   // *: signed self-relative delta, zero is null (§6.3)
+	Columns      TableList[ColumnRow]
+	FooterLabel  int64 // *: signed self-relative delta, zero is null (§6.3)
 	Hidden       TableList[WordRow]
 	HiddenTable  bool
 	_            [7]byte // generated padding
@@ -627,13 +619,11 @@ type UsageRow struct {
 // ViewRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type ViewRow struct {
-	Name        int64 // *: signed self-relative delta, zero is null (§6.3)
-	Tables      TableList[WordRow]
-	Title       int64    // *: signed self-relative delta, zero is null (§6.3)
-	Summary     int64    // *: signed self-relative delta, zero is null (§6.3)
-	State       [65]byte // string(64): buffer, used length beside it
-	_           [3]byte  // generated padding
-	StateLength int32
+	Name    int64 // *: signed self-relative delta, zero is null (§6.3)
+	Tables  TableList[WordRow]
+	Title   int64 // *: signed self-relative delta, zero is null (§6.3)
+	Summary int64 // *: signed self-relative delta, zero is null (§6.3)
+	State   int64 // *: signed self-relative delta, zero is null (§6.3)
 }
 
 // ViewEntryRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
@@ -680,14 +670,14 @@ func init() {
 	tableCookLayoutOffset("BatchMemberDeltaRow.FieldsSet", unsafe.Offsetof(BatchMemberDeltaRow{}.FieldsSet), 56)
 	tableCookLayoutOffset("BatchMemberDeltaRow.FieldsUnset", unsafe.Offsetof(BatchMemberDeltaRow{}.FieldsUnset), 72)
 	tableCookLayoutOffset("BatchMemberDeltaRow.Fields", unsafe.Offsetof(BatchMemberDeltaRow{}.Fields), 88)
-	tableCookLayoutSize("CardCostViewRow", unsafe.Sizeof(CardCostViewRow{}), 18608)
+	tableCookLayoutSize("CardCostViewRow", unsafe.Sizeof(CardCostViewRow{}), 184)
 	tableCookLayoutSize("CardCostViewRow alignment", unsafe.Alignof(CardCostViewRow{}), 8)
 	tableCookLayoutOffset("CardCostViewRow.Consumers", unsafe.Offsetof(CardCostViewRow{}.Consumers), 0)
-	tableCookLayoutOffset("CardCostViewRow.Total", unsafe.Offsetof(CardCostViewRow{}.Total), 18440)
-	tableCookLayoutOffset("CardCostViewRow.Cut", unsafe.Offsetof(CardCostViewRow{}.Cut), 18576)
-	tableCookLayoutOffset("CardCostViewRow.CarriedUsd", unsafe.Offsetof(CardCostViewRow{}.CarriedUsd), 18584)
-	tableCookLayoutOffset("CardCostViewRow.CarriedFrom", unsafe.Offsetof(CardCostViewRow{}.CarriedFrom), 18592)
-	tableCookLayoutOffset("CardCostViewRow.CarriedTo", unsafe.Offsetof(CardCostViewRow{}.CarriedTo), 18600)
+	tableCookLayoutOffset("CardCostViewRow.Total", unsafe.Offsetof(CardCostViewRow{}.Total), 16)
+	tableCookLayoutOffset("CardCostViewRow.Cut", unsafe.Offsetof(CardCostViewRow{}.Cut), 152)
+	tableCookLayoutOffset("CardCostViewRow.CarriedUsd", unsafe.Offsetof(CardCostViewRow{}.CarriedUsd), 160)
+	tableCookLayoutOffset("CardCostViewRow.CarriedFrom", unsafe.Offsetof(CardCostViewRow{}.CarriedFrom), 168)
+	tableCookLayoutOffset("CardCostViewRow.CarriedTo", unsafe.Offsetof(CardCostViewRow{}.CarriedTo), 176)
 	tableCookLayoutSize("CellRow", unsafe.Sizeof(CellRow{}), 56)
 	tableCookLayoutSize("CellRow alignment", unsafe.Alignof(CellRow{}), 8)
 	tableCookLayoutOffset("CellRow.Key", unsafe.Offsetof(CellRow{}.Key), 0)
@@ -736,7 +726,7 @@ func init() {
 	tableCookLayoutOffset("DumpKeyRow.Key", unsafe.Offsetof(DumpKeyRow{}.Key), 0)
 	tableCookLayoutOffset("DumpKeyRow.Ttl", unsafe.Offsetof(DumpKeyRow{}.Ttl), 8)
 	tableCookLayoutOffset("DumpKeyRow.Payload", unsafe.Offsetof(DumpKeyRow{}.Payload), 16)
-	tableCookLayoutSize("EpochEntryRow", unsafe.Sizeof(EpochEntryRow{}), 1088)
+	tableCookLayoutSize("EpochEntryRow", unsafe.Sizeof(EpochEntryRow{}), 72)
 	tableCookLayoutSize("EpochEntryRow alignment", unsafe.Alignof(EpochEntryRow{}), 8)
 	tableCookLayoutOffset("EpochEntryRow.Epoch", unsafe.Offsetof(EpochEntryRow{}.Epoch), 0)
 	tableCookLayoutOffset("EpochEntryRow.Snapshot", unsafe.Offsetof(EpochEntryRow{}.Snapshot), 8)
@@ -744,7 +734,7 @@ func init() {
 	tableCookLayoutSize("EpochFlagRow alignment", unsafe.Alignof(EpochFlagRow{}), 8)
 	tableCookLayoutOffset("EpochFlagRow.Epoch", unsafe.Offsetof(EpochFlagRow{}.Epoch), 0)
 	tableCookLayoutOffset("EpochFlagRow.On", unsafe.Offsetof(EpochFlagRow{}.On), 8)
-	tableCookLayoutSize("EpochSnapshotRow", unsafe.Sizeof(EpochSnapshotRow{}), 1080)
+	tableCookLayoutSize("EpochSnapshotRow", unsafe.Sizeof(EpochSnapshotRow{}), 64)
 	tableCookLayoutSize("EpochSnapshotRow alignment", unsafe.Alignof(EpochSnapshotRow{}), 8)
 	tableCookLayoutOffset("EpochSnapshotRow.Rows", unsafe.Offsetof(EpochSnapshotRow{}.Rows), 0)
 	tableCookLayoutOffset("EpochSnapshotRow.Hidden", unsafe.Offsetof(EpochSnapshotRow{}.Hidden), 16)
@@ -810,10 +800,10 @@ func init() {
 	tableCookLayoutOffset("MemSnapshotRow.Logs", unsafe.Offsetof(MemSnapshotRow{}.Logs), 96)
 	tableCookLayoutOffset("MemSnapshotRow.Kv", unsafe.Offsetof(MemSnapshotRow{}.Kv), 112)
 	tableCookLayoutOffset("MemSnapshotRow.Seq", unsafe.Offsetof(MemSnapshotRow{}.Seq), 128)
-	tableCookLayoutSize("MemberEntryRow", unsafe.Sizeof(MemberEntryRow{}), 328)
+	tableCookLayoutSize("MemberEntryRow", unsafe.Sizeof(MemberEntryRow{}), 72)
 	tableCookLayoutSize("MemberEntryRow alignment", unsafe.Alignof(MemberEntryRow{}), 8)
 	tableCookLayoutOffset("MemberEntryRow.Id", unsafe.Offsetof(MemberEntryRow{}.Id), 0)
-	tableCookLayoutOffset("MemberEntryRow.Member", unsafe.Offsetof(MemberEntryRow{}.Member), 264)
+	tableCookLayoutOffset("MemberEntryRow.Member", unsafe.Offsetof(MemberEntryRow{}.Member), 8)
 	tableCookLayoutSize("MemberSnapshotRow", unsafe.Sizeof(MemberSnapshotRow{}), 64)
 	tableCookLayoutSize("MemberSnapshotRow alignment", unsafe.Alignof(MemberSnapshotRow{}), 8)
 	tableCookLayoutOffset("MemberSnapshotRow.Epoch", unsafe.Offsetof(MemberSnapshotRow{}.Epoch), 0)
@@ -823,7 +813,7 @@ func init() {
 	tableCookLayoutOffset("MemberSnapshotRow.Score", unsafe.Offsetof(MemberSnapshotRow{}.Score), 32)
 	tableCookLayoutOffset("MemberSnapshotRow.Rev", unsafe.Offsetof(MemberSnapshotRow{}.Rev), 40)
 	tableCookLayoutOffset("MemberSnapshotRow.Fields", unsafe.Offsetof(MemberSnapshotRow{}.Fields), 48)
-	tableCookLayoutSize("NTableRow", unsafe.Sizeof(NTableRow{}), 40128)
+	tableCookLayoutSize("NTableRow", unsafe.Sizeof(NTableRow{}), 136)
 	tableCookLayoutSize("NTableRow alignment", unsafe.Alignof(NTableRow{}), 8)
 	tableCookLayoutOffset("NTableRow.EpochKey", unsafe.Offsetof(NTableRow{}.EpochKey), 0)
 	tableCookLayoutOffset("NTableRow.EpochField", unsafe.Offsetof(NTableRow{}.EpochField), 8)
@@ -832,12 +822,12 @@ func init() {
 	tableCookLayoutOffset("NTableRow.Revision", unsafe.Offsetof(NTableRow{}.Revision), 32)
 	tableCookLayoutOffset("NTableRow.Name", unsafe.Offsetof(NTableRow{}.Name), 40)
 	tableCookLayoutOffset("NTableRow.Columns", unsafe.Offsetof(NTableRow{}.Columns), 48)
-	tableCookLayoutOffset("NTableRow.FooterLabel", unsafe.Offsetof(NTableRow{}.FooterLabel), 40056)
-	tableCookLayoutOffset("NTableRow.Hidden", unsafe.Offsetof(NTableRow{}.Hidden), 40064)
-	tableCookLayoutOffset("NTableRow.HiddenTable", unsafe.Offsetof(NTableRow{}.HiddenTable), 40080)
-	tableCookLayoutOffset("NTableRow.Sort", unsafe.Offsetof(NTableRow{}.Sort), 40088)
-	tableCookLayoutOffset("NTableRow.Rows", unsafe.Offsetof(NTableRow{}.Rows), 40096)
-	tableCookLayoutOffset("NTableRow.Props", unsafe.Offsetof(NTableRow{}.Props), 40112)
+	tableCookLayoutOffset("NTableRow.FooterLabel", unsafe.Offsetof(NTableRow{}.FooterLabel), 64)
+	tableCookLayoutOffset("NTableRow.Hidden", unsafe.Offsetof(NTableRow{}.Hidden), 72)
+	tableCookLayoutOffset("NTableRow.HiddenTable", unsafe.Offsetof(NTableRow{}.HiddenTable), 88)
+	tableCookLayoutOffset("NTableRow.Sort", unsafe.Offsetof(NTableRow{}.Sort), 96)
+	tableCookLayoutOffset("NTableRow.Rows", unsafe.Offsetof(NTableRow{}.Rows), 104)
+	tableCookLayoutOffset("NTableRow.Props", unsafe.Offsetof(NTableRow{}.Props), 120)
 	tableCookLayoutSize("NoteEntryRow", unsafe.Sizeof(NoteEntryRow{}), 16)
 	tableCookLayoutSize("NoteEntryRow alignment", unsafe.Alignof(NoteEntryRow{}), 8)
 	tableCookLayoutOffset("NoteEntryRow.Id", unsafe.Offsetof(NoteEntryRow{}.Id), 0)
@@ -916,19 +906,19 @@ func init() {
 	tableCookLayoutSize("StatePartRow alignment", unsafe.Alignof(StatePartRow{}), 8)
 	tableCookLayoutOffset("StatePartRow.Name", unsafe.Offsetof(StatePartRow{}.Name), 0)
 	tableCookLayoutOffset("StatePartRow.Value", unsafe.Offsetof(StatePartRow{}.Value), 8)
-	tableCookLayoutSize("TableEntryRow", unsafe.Sizeof(TableEntryRow{}), 40224)
+	tableCookLayoutSize("TableEntryRow", unsafe.Sizeof(TableEntryRow{}), 232)
 	tableCookLayoutSize("TableEntryRow alignment", unsafe.Alignof(TableEntryRow{}), 8)
 	tableCookLayoutOffset("TableEntryRow.Name", unsafe.Offsetof(TableEntryRow{}.Name), 0)
 	tableCookLayoutOffset("TableEntryRow.TableSnapshot", unsafe.Offsetof(TableEntryRow{}.TableSnapshot), 8)
-	tableCookLayoutSize("TableSnapshotRow", unsafe.Sizeof(TableSnapshotRow{}), 40216)
+	tableCookLayoutSize("TableSnapshotRow", unsafe.Sizeof(TableSnapshotRow{}), 224)
 	tableCookLayoutSize("TableSnapshotRow alignment", unsafe.Alignof(TableSnapshotRow{}), 8)
 	tableCookLayoutOffset("TableSnapshotRow.Def", unsafe.Offsetof(TableSnapshotRow{}.Def), 0)
-	tableCookLayoutOffset("TableSnapshotRow.Epochs", unsafe.Offsetof(TableSnapshotRow{}.Epochs), 40128)
-	tableCookLayoutOffset("TableSnapshotRow.Wrote", unsafe.Offsetof(TableSnapshotRow{}.Wrote), 40144)
-	tableCookLayoutOffset("TableSnapshotRow.Rev", unsafe.Offsetof(TableSnapshotRow{}.Rev), 40160)
-	tableCookLayoutOffset("TableSnapshotRow.Members", unsafe.Offsetof(TableSnapshotRow{}.Members), 40168)
-	tableCookLayoutOffset("TableSnapshotRow.Ops", unsafe.Offsetof(TableSnapshotRow{}.Ops), 40184)
-	tableCookLayoutOffset("TableSnapshotRow.Changes", unsafe.Offsetof(TableSnapshotRow{}.Changes), 40200)
+	tableCookLayoutOffset("TableSnapshotRow.Epochs", unsafe.Offsetof(TableSnapshotRow{}.Epochs), 136)
+	tableCookLayoutOffset("TableSnapshotRow.Wrote", unsafe.Offsetof(TableSnapshotRow{}.Wrote), 152)
+	tableCookLayoutOffset("TableSnapshotRow.Rev", unsafe.Offsetof(TableSnapshotRow{}.Rev), 168)
+	tableCookLayoutOffset("TableSnapshotRow.Members", unsafe.Offsetof(TableSnapshotRow{}.Members), 176)
+	tableCookLayoutOffset("TableSnapshotRow.Ops", unsafe.Offsetof(TableSnapshotRow{}.Ops), 192)
+	tableCookLayoutOffset("TableSnapshotRow.Changes", unsafe.Offsetof(TableSnapshotRow{}.Changes), 208)
 	tableCookLayoutSize("TextRowRow", unsafe.Sizeof(TextRowRow{}), 24)
 	tableCookLayoutSize("TextRowRow alignment", unsafe.Alignof(TextRowRow{}), 8)
 	tableCookLayoutOffset("TextRowRow.Row", unsafe.Offsetof(TextRowRow{}.Row), 0)
@@ -981,14 +971,14 @@ func init() {
 	tableCookLayoutOffset("UsageRow.PredictedUsd", unsafe.Offsetof(UsageRow{}.PredictedUsd), 152)
 	tableCookLayoutOffset("UsageRow.LongContext", unsafe.Offsetof(UsageRow{}.LongContext), 160)
 	tableCookLayoutOffset("UsageRow.Unpriced", unsafe.Offsetof(UsageRow{}.Unpriced), 168)
-	tableCookLayoutSize("ViewRow", unsafe.Sizeof(ViewRow{}), 112)
+	tableCookLayoutSize("ViewRow", unsafe.Sizeof(ViewRow{}), 48)
 	tableCookLayoutSize("ViewRow alignment", unsafe.Alignof(ViewRow{}), 8)
 	tableCookLayoutOffset("ViewRow.Name", unsafe.Offsetof(ViewRow{}.Name), 0)
 	tableCookLayoutOffset("ViewRow.Tables", unsafe.Offsetof(ViewRow{}.Tables), 8)
 	tableCookLayoutOffset("ViewRow.Title", unsafe.Offsetof(ViewRow{}.Title), 24)
 	tableCookLayoutOffset("ViewRow.Summary", unsafe.Offsetof(ViewRow{}.Summary), 32)
 	tableCookLayoutOffset("ViewRow.State", unsafe.Offsetof(ViewRow{}.State), 40)
-	tableCookLayoutSize("ViewEntryRow", unsafe.Sizeof(ViewEntryRow{}), 120)
+	tableCookLayoutSize("ViewEntryRow", unsafe.Sizeof(ViewEntryRow{}), 56)
 	tableCookLayoutSize("ViewEntryRow alignment", unsafe.Alignof(ViewEntryRow{}), 8)
 	tableCookLayoutOffset("ViewEntryRow.Name", unsafe.Offsetof(ViewEntryRow{}.Name), 0)
 	tableCookLayoutOffset("ViewEntryRow.View", unsafe.Offsetof(ViewEntryRow{}.View), 8)
@@ -1068,14 +1058,14 @@ func init() {
 		},
 	}
 	tableCookRecords[3] = TableCookInfo{
-		Name: "CardCostView", Size: 18608, Align: 8, NumFields: 6,
+		Name: "CardCostView", Size: 184, Align: 8, NumFields: 6,
 		Fields: []TableCookFieldInfo{
-			{Name: "consumers", Offset: 0, Size: 18436, ElemSize: 288, IsArray: true, ArrayBound: 64, IsPointer: false, CountOffset: 18432, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "total", Offset: 18440, Size: 136, ElemSize: 136, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "cut", Offset: 18576, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
-			{Name: "carried_usd", Offset: 18584, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "carried_from", Offset: 18592, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "carried_to", Offset: 18600, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "consumers", Offset: 0, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "total", Offset: 16, Size: 136, ElemSize: 136, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "cut", Offset: 152, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+			{Name: "carried_usd", Offset: 160, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "carried_from", Offset: 168, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "carried_to", Offset: 176, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 		},
 	}
 	tableCookRecords[4] = TableCookInfo{
@@ -1145,10 +1135,10 @@ func init() {
 		},
 	}
 	tableCookRecords[10] = TableCookInfo{
-		Name: "EpochEntry", Size: 1088, Align: 8, NumFields: 2,
+		Name: "EpochEntry", Size: 72, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
 			{Name: "epoch", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
-			{Name: "snapshot", Offset: 8, Size: 1080, ElemSize: 1080, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "snapshot", Offset: 8, Size: 64, ElemSize: 64, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
 	tableCookRecords[11] = TableCookInfo{
@@ -1159,12 +1149,12 @@ func init() {
 		},
 	}
 	tableCookRecords[12] = TableCookInfo{
-		Name: "EpochSnapshot", Size: 1080, Align: 8, NumFields: 4,
+		Name: "EpochSnapshot", Size: 64, Align: 8, NumFields: 4,
 		Fields: []TableCookFieldInfo{
 			{Name: "rows", Offset: 0, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 			{Name: "hidden", Offset: 16, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 			{Name: "texts", Offset: 32, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "props", Offset: 48, Size: 1028, ElemSize: 16, IsArray: true, ArrayBound: 64, IsPointer: false, CountOffset: 1072, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "props", Offset: 48, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
 	tableCookRecords[13] = TableCookInfo{
@@ -1255,10 +1245,10 @@ func init() {
 		},
 	}
 	tableCookRecords[22] = TableCookInfo{
-		Name: "MemberEntry", Size: 328, Align: 8, NumFields: 2,
+		Name: "MemberEntry", Size: 72, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
-			{Name: "id", Offset: 0, Size: 264, ElemSize: 264, IsArray: false, ArrayBound: 256, IsPointer: false, CountOffset: 260, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "member", Offset: 264, Size: 64, ElemSize: 64, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "id", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "member", Offset: 8, Size: 64, ElemSize: 64, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
 	tableCookRecords[23] = TableCookInfo{
@@ -1274,7 +1264,7 @@ func init() {
 		},
 	}
 	tableCookRecords[24] = TableCookInfo{
-		Name: "NTable", Size: 40128, Align: 8, NumFields: 13,
+		Name: "NTable", Size: 136, Align: 8, NumFields: 13,
 		Fields: []TableCookFieldInfo{
 			{Name: "epoch_key", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 			{Name: "epoch_field", Offset: 8, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
@@ -1282,13 +1272,13 @@ func init() {
 			{Name: "epoch", Offset: 24, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
 			{Name: "revision", Offset: 32, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
 			{Name: "name", Offset: 40, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "columns", Offset: 48, Size: 40004, ElemSize: 40, IsArray: true, ArrayBound: 1000, IsPointer: false, CountOffset: 40048, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "footer_label", Offset: 40056, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "hidden", Offset: 40064, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "hidden_table", Offset: 40080, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
-			{Name: "sort", Offset: 40088, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "rows", Offset: 40096, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "props", Offset: 40112, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "columns", Offset: 48, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "footer_label", Offset: 64, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "hidden", Offset: 72, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "hidden_table", Offset: 88, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
+			{Name: "sort", Offset: 96, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "rows", Offset: 104, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "props", Offset: 120, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
 	tableCookRecords[25] = TableCookInfo{
@@ -1415,22 +1405,22 @@ func init() {
 		},
 	}
 	tableCookRecords[40] = TableCookInfo{
-		Name: "TableEntry", Size: 40224, Align: 8, NumFields: 2,
+		Name: "TableEntry", Size: 232, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
 			{Name: "name", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "table_snapshot", Offset: 8, Size: 40216, ElemSize: 40216, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "table_snapshot", Offset: 8, Size: 224, ElemSize: 224, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
 	tableCookRecords[41] = TableCookInfo{
-		Name: "TableSnapshot", Size: 40216, Align: 8, NumFields: 7,
+		Name: "TableSnapshot", Size: 224, Align: 8, NumFields: 7,
 		Fields: []TableCookFieldInfo{
-			{Name: "def", Offset: 0, Size: 40128, ElemSize: 40128, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "epochs", Offset: 40128, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "wrote", Offset: 40144, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "rev", Offset: 40160, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
-			{Name: "members", Offset: 40168, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "ops", Offset: 40184, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "changes", Offset: 40200, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "def", Offset: 0, Size: 136, ElemSize: 136, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "epochs", Offset: 136, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "wrote", Offset: 152, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "rev", Offset: 168, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
+			{Name: "members", Offset: 176, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "ops", Offset: 192, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "changes", Offset: 208, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
 	tableCookRecords[42] = TableCookInfo{
@@ -1504,20 +1494,20 @@ func init() {
 		},
 	}
 	tableCookRecords[48] = TableCookInfo{
-		Name: "View", Size: 112, Align: 8, NumFields: 5,
+		Name: "View", Size: 48, Align: 8, NumFields: 5,
 		Fields: []TableCookFieldInfo{
 			{Name: "name", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 			{Name: "tables", Offset: 8, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 			{Name: "title", Offset: 24, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 			{Name: "summary", Offset: 32, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "state", Offset: 40, Size: 72, ElemSize: 72, IsArray: false, ArrayBound: 64, IsPointer: false, CountOffset: 108, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "state", Offset: 40, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 		},
 	}
 	tableCookRecords[49] = TableCookInfo{
-		Name: "ViewEntry", Size: 120, Align: 8, NumFields: 2,
+		Name: "ViewEntry", Size: 56, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
 			{Name: "name", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "view", Offset: 8, Size: 112, ElemSize: 112, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "view", Offset: 8, Size: 48, ElemSize: 48, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
 	tableCookRecords[50] = TableCookInfo{
@@ -2848,7 +2838,7 @@ type CardCostViewCook struct {
 // accessors are members free to spell them that way, and a package constant
 // per table per fact would claim names §11 does not.
 func (c CardCostViewCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
-func (c CardCostViewCook) RootSize() int64        { return 18608 }
+func (c CardCostViewCook) RootSize() int64        { return 184 }
 func (c CardCostViewCook) RootAlign() int64       { return 8 }
 
 // Root is the root record at the region's base. It is a POINTER and not a
@@ -2895,7 +2885,7 @@ func (cook *CardCostViewCook) Open(base unsafe.Pointer, length int64) error {
 	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 18608 {
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 184 {
 		return TableRefuseTruncated
 	}
 	if uint64(uintptr(base))%alignment != 0 {
@@ -4084,7 +4074,7 @@ type NTableCook struct {
 // accessors are members free to spell them that way, and a package constant
 // per table per fact would claim names §11 does not.
 func (c NTableCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
-func (c NTableCook) RootSize() int64        { return 40128 }
+func (c NTableCook) RootSize() int64        { return 136 }
 func (c NTableCook) RootAlign() int64       { return 8 }
 
 // Root is the root record at the region's base. It is a POINTER and not a
@@ -4131,7 +4121,7 @@ func (cook *NTableCook) Open(base unsafe.Pointer, length int64) error {
 	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 40128 {
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 136 {
 		return TableRefuseTruncated
 	}
 	if uint64(uintptr(base))%alignment != 0 {
@@ -4187,7 +4177,7 @@ type ViewCook struct {
 // accessors are members free to spell them that way, and a package constant
 // per table per fact would claim names §11 does not.
 func (c ViewCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
-func (c ViewCook) RootSize() int64        { return 112 }
+func (c ViewCook) RootSize() int64        { return 48 }
 func (c ViewCook) RootAlign() int64       { return 8 }
 
 // Root is the root record at the region's base. It is a POINTER and not a
@@ -4234,7 +4224,7 @@ func (cook *ViewCook) Open(base unsafe.Pointer, length int64) error {
 	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 112 {
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 48 {
 		return TableRefuseTruncated
 	}
 	if uint64(uintptr(base))%alignment != 0 {
@@ -4908,7 +4898,7 @@ type MemberEntryCook struct {
 // accessors are members free to spell them that way, and a package constant
 // per table per fact would claim names §11 does not.
 func (c MemberEntryCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
-func (c MemberEntryCook) RootSize() int64        { return 328 }
+func (c MemberEntryCook) RootSize() int64        { return 72 }
 func (c MemberEntryCook) RootAlign() int64       { return 8 }
 
 // Root is the root record at the region's base. It is a POINTER and not a
@@ -4955,7 +4945,7 @@ func (cook *MemberEntryCook) Open(base unsafe.Pointer, length int64) error {
 	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 328 {
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 72 {
 		return TableRefuseTruncated
 	}
 	if uint64(uintptr(base))%alignment != 0 {
@@ -5320,7 +5310,7 @@ type EpochSnapshotCook struct {
 // accessors are members free to spell them that way, and a package constant
 // per table per fact would claim names §11 does not.
 func (c EpochSnapshotCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
-func (c EpochSnapshotCook) RootSize() int64        { return 1080 }
+func (c EpochSnapshotCook) RootSize() int64        { return 64 }
 func (c EpochSnapshotCook) RootAlign() int64       { return 8 }
 
 // Root is the root record at the region's base. It is a POINTER and not a
@@ -5367,7 +5357,7 @@ func (cook *EpochSnapshotCook) Open(base unsafe.Pointer, length int64) error {
 	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 1080 {
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 64 {
 		return TableRefuseTruncated
 	}
 	if uint64(uintptr(base))%alignment != 0 {
@@ -5423,7 +5413,7 @@ type EpochEntryCook struct {
 // accessors are members free to spell them that way, and a package constant
 // per table per fact would claim names §11 does not.
 func (c EpochEntryCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
-func (c EpochEntryCook) RootSize() int64        { return 1088 }
+func (c EpochEntryCook) RootSize() int64        { return 72 }
 func (c EpochEntryCook) RootAlign() int64       { return 8 }
 
 // Root is the root record at the region's base. It is a POINTER and not a
@@ -5470,7 +5460,7 @@ func (cook *EpochEntryCook) Open(base unsafe.Pointer, length int64) error {
 	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 1088 {
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 72 {
 		return TableRefuseTruncated
 	}
 	if uint64(uintptr(base))%alignment != 0 {
@@ -5526,7 +5516,7 @@ type TableSnapshotCook struct {
 // accessors are members free to spell them that way, and a package constant
 // per table per fact would claim names §11 does not.
 func (c TableSnapshotCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
-func (c TableSnapshotCook) RootSize() int64        { return 40216 }
+func (c TableSnapshotCook) RootSize() int64        { return 224 }
 func (c TableSnapshotCook) RootAlign() int64       { return 8 }
 
 // Root is the root record at the region's base. It is a POINTER and not a
@@ -5573,7 +5563,7 @@ func (cook *TableSnapshotCook) Open(base unsafe.Pointer, length int64) error {
 	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 40216 {
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 224 {
 		return TableRefuseTruncated
 	}
 	if uint64(uintptr(base))%alignment != 0 {
@@ -5629,7 +5619,7 @@ type TableEntryCook struct {
 // accessors are members free to spell them that way, and a package constant
 // per table per fact would claim names §11 does not.
 func (c TableEntryCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
-func (c TableEntryCook) RootSize() int64        { return 40224 }
+func (c TableEntryCook) RootSize() int64        { return 232 }
 func (c TableEntryCook) RootAlign() int64       { return 8 }
 
 // Root is the root record at the region's base. It is a POINTER and not a
@@ -5676,7 +5666,7 @@ func (cook *TableEntryCook) Open(base unsafe.Pointer, length int64) error {
 	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 40224 {
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 232 {
 		return TableRefuseTruncated
 	}
 	if uint64(uintptr(base))%alignment != 0 {
@@ -5938,7 +5928,7 @@ type ViewEntryCook struct {
 // accessors are members free to spell them that way, and a package constant
 // per table per fact would claim names §11 does not.
 func (c ViewEntryCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
-func (c ViewEntryCook) RootSize() int64        { return 120 }
+func (c ViewEntryCook) RootSize() int64        { return 56 }
 func (c ViewEntryCook) RootAlign() int64       { return 8 }
 
 // Root is the root record at the region's base. It is a POINTER and not a
@@ -5985,7 +5975,7 @@ func (cook *ViewEntryCook) Open(base unsafe.Pointer, length int64) error {
 	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 120 {
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 56 {
 		return TableRefuseTruncated
 	}
 	if uint64(uintptr(base))%alignment != 0 {

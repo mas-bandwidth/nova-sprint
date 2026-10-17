@@ -21,30 +21,19 @@
 // THE FORM (schema owner rule S1, the coordinator's ruling of 2026-10-17): a
 // record is a FIXED table only where every bound it declares is a bound the code
 // enforces; otherwise it is a VARIABLE table, with open lists and unbounded text.
-// Two records are fixed: SnapshotCounts and Tokens hold integers only, so they
-// declare no bound at all and no bound is unenforced. Every other record holds a
+// A bound is declared only when every path that reads the record enforces it. The
+// records of this area are read by the snapshot read and the restore, and those
+// paths copy every list and every text as they find it: the twin's restore
+// (store/mem_snapshot.go) checks no count and no length, and CardCostOf
+// (sprint/cost.go 352-355) appends every cost record it finds. A limit the code
+// enforces only on a write or on a batch apply (sprint.MaxCostRecords,
+// ntable.MaxViewState, ntable.LimitTableProps, ntable.LimitColumns,
+// ntable.LimitMemberIDBytes, ntable.LimitFieldValueBytes) is therefore no bound of
+// a record here, and no record declares one: every list is open and every text is a
+// *string. Two records are fixed: SnapshotCounts and Tokens hold integers only, so
+// they declare no bound and no bound is unenforced. Every other record holds a
 // string or a list the Go struct leaves open (a file name, a map, a slice, a
-// free-text field), so it is a variable table. A bound is declared in only these
-// places, each one the code enforces (the bound table the pull request carries
-// gives each with its file and line):
-//
-//   - CardCostView.consumers, at most 64 entries: sprint.MaxCostRecords,
-//     enforced by addConsumer (sprint/cost.go 189 and 293);
-//   - View.state, at most 64 bytes: ntable.MaxViewState, enforced by
-//     ValidViewState and the view writer (ntable/store.go 1318, 1323 and 1341);
-//   - EpochSnapshot.props, at most 64 entries: ntable.LimitTableProps, enforced
-//     by the twin's batch apply (store/mem.go 555-558);
-//   - NTable.columns, at most 1000 entries: ntable.LimitColumns, enforced by
-//     ntable.ValidateColumns (ntable/ntable.go 384), which the twin calls when it
-//     declares a table's columns (store/mem.go 708);
-//   - MemberEntry.id, at most 256 bytes: ntable.LimitMemberIDBytes, enforced by
-//     CheckBatchBounds (ntable/limits.go 89), which ValidateBatchManifestRaw runs
-//     (ntable/manifest_validate.go 576) before the twin's batch apply creates a
-//     member (store/mem.go 658, the one place a member is made).
-//
-// A field value of a member (Field.value) is held to ntable.LimitFieldValueBytes
-// (64 KiB, ntable/limits.go 96) by the reader, as a constraint, because a blob
-// declares no bound and a string(65536) would hold 64 KiB of slack in every field.
+// free-text field), so it is a variable table.
 //
 // THE NESTED RECORDS OF ANOTHER AREA. The twin's log holds the operation record
 // the fence keeps, the notifications, the log lines and the queued changes. Those
@@ -209,12 +198,12 @@ table Consumer
 }
 
 // CardCostView is sprint.CardCostView (sprint/cost.go 333-343): a producer card's
-// cost. The consumers are at most sprint.MaxCostRecords (64): addConsumer
-// (cost.go 293) counts the records past the bound in cut and writes no 65th.
+// cost. addConsumer (cost.go 293) writes no record past sprint.MaxCostRecords
+// and counts it in cut, but CardCostOf (cost.go 352-355) reads every record it
+// finds, so the list is open.
 table CardCostView
 {
-    // sprint.MaxCostRecords, cost.go 189 and 293.
-    consumers    [..64]Consumer
+    consumers    []Consumer
     total        Total
     cut          int64
     carried_usd  *string
@@ -338,8 +327,7 @@ table NTable
     epoch         uint64
     revision      uint64
     name          *string
-    // ntable.LimitColumns, enforced by ValidateColumns (ntable/ntable.go 384).
-    columns      [..1000]Column
+    columns      []Column
     footer_label *string
     hidden       []Word
     hidden_table bool
@@ -355,8 +343,7 @@ table View
     tables  []Word
     title   *string
     summary *string
-    // ntable.MaxViewState, enforced by ValidViewState (ntable/store.go 1318-1342).
-    state string(64)
+    state   *string
 }
 
 // FieldChange is one entry of ntable.BatchMemberDelta.Fields (a
@@ -420,8 +407,8 @@ table Receipt
 // The twin's snapshot document (store/mem_snapshot.go).
 
 // Field is one field of a member (memberSnapshot.Fields, a map[string]string) in
-// the name's sorted order. The value is held to ntable.LimitFieldValueBytes by the
-// reader (ntable/limits.go 96): a field value is a blob, which declares no bound.
+// the name's sorted order. The snapshot copies a value as it is (mem_snapshot.go
+// 144), so the value declares no bound.
 table Field
 {
     name  *string
@@ -444,8 +431,7 @@ table MemberSnapshot
 // in the id's sorted order.
 table MemberEntry
 {
-    // ntable.LimitMemberIDBytes, enforced by CheckBatchBounds (ntable/limits.go 89).
-    id     string(256)
+    id     *string
     member MemberSnapshot
 }
 
@@ -483,8 +469,7 @@ table EpochSnapshot
     rows   []Word
     hidden []Flag
     texts  []TextRow
-    // ntable.LimitTableProps, enforced by the twin's batch apply (store/mem.go 555-558).
-    props [..64]Pair
+    props  []Pair
 }
 
 // EpochEntry is one entry of tableSnapshot.Epochs (a map[uint64]*epochSnapshot) in
