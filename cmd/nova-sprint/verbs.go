@@ -1848,6 +1848,36 @@ func briefNeeds(brief string) []string {
 	return out
 }
 
+// briefNeedsNotIDs is the items briefNeeds returns that are not a card id
+// (sprint.ValidID), in order. It calls briefNeeds; it does not parse a second
+// time.
+func briefNeedsNotIDs(brief string) []string {
+	var out []string
+	for _, id := range briefNeeds(brief) {
+		if !sprint.ValidID(id) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// briefNeedsLine is the 1-based line of the header briefNeeds reads: the first
+// Needs: line, else the DEPENDS-ON: line of the typed header block; 0 when it
+// reads neither (briefNeeds returns no items then).
+func briefNeedsLine(brief string) int {
+	for i, line := range strings.Split(brief, "\n") {
+		if key, _, ok := cardhdr.KeyValue(line); ok && strings.EqualFold(key, "needs") {
+			return i + 1
+		}
+	}
+	for i, line := range strings.Split(brief, "\n") {
+		if key, _, ok := cardhdr.KeyValue(line); ok && strings.EqualFold(key, "depends-on") {
+			return i + 1
+		}
+	}
+	return 0
+}
+
 func briefConsumers(brief string) []string {
 	var out []string
 	for i, line := range strings.Split(brief, "\n") {
@@ -2139,6 +2169,17 @@ func lintBriefReads(brief string, rs ruleSet) (modelWhy string, findings []swarm
 	findings = append(findings, swarm.LintHeaderStranded([]byte(brief))...)
 	// a card that changes the dashboard page quotes the owner asking for it (swarm.LintDashboardAsk)
 	findings = append(findings, swarm.LintDashboardAsk([]byte(brief))...)
+	// a needs item that is not a card id is refused by name (the owner's rule of
+	// 2026-10-17: writers strict; reads forgiving only if nearly free)
+	if line := briefNeedsLine(brief); line != 0 {
+		for _, id := range briefNeedsNotIDs(brief) {
+			findings = append(findings, swarm.CardHeaderFinding{
+				Check:   "depends-on",
+				Line:    line,
+				Excerpt: fmt.Sprintf("DEPENDS-ON names %q, which is not a card id (one word of letters, digits, _ and -); name the card by its id, or write DEPENDS-ON: none", id),
+			})
+		}
+	}
 	return "", findings
 }
 

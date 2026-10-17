@@ -276,7 +276,9 @@ for a card whose `NEW:` names a new TLA+ model, a `.tla` file (the lint's new-mo
 task (the body and `PATHS:`, `NEW:`, `SHARED:`, `TEST:`, `DONE-WHEN:`), so an
 edit that changes only `DEPENDS-ON:`, `ORDER:`, `TLC-HOSTS:`, `MERGE:`,
 `TOOLCHAIN-HOSTS:` or the tier keeps the count (`bound: same task (<n> attempts
-stand)`) and a new task resets it (`bound: new task (count reset)`).
+stand)`) and a new task resets it (`bound: new task (count reset)`). Every
+DEPENDS-ON or Needs item is a card id, and the card lint refuses any other item
+by name (finding depends-on).
 
 `continue <card> --note <text>` continues a card whose attempts pushed partial work
 and reached its brief's bound, without judging it wrong and without starting over: it

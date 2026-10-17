@@ -2564,6 +2564,7 @@ in the same change. Lawful says whether the store's check (`Lawful`,
 | open -> off | drop, defer | `steps_review.go` Drop; `defer.go` Defer | Drop | yes, never a needed card |
 | landed -> off | remove | a removing plan | Drop | yes, removing |
 | (refused) a needs rewrite that closes a cycle, judged over every open card's named needs (a working card's included) and over a brief batch as a whole | `needs set`, a brief's DEPENDS-ON (alone or in a whole brief, one card or a batch), `sentinel set`, a twin's relink, add | `steps_edit.go` NeedsSet, briefDepends, Brief (needsCycleWith); `steps_sentinel.go` SentinelSet; `twins.go` relinked; `steps_work.go` Add (all on `cycle.go`'s graph, which reads every open card's named needs) | NeedsSet's cycle guard (witness "cycle") | refused, naming the loop; nothing written |
+| (refused) a DEPENDS-ON or Needs item that is not a card id | add, brief, recut, quack, promote, brief check | cmd/nova-sprint/verbs.go lintBriefReads (briefNeedsNotIDs) | the card lint, finding depends-on | refused, naming the item; nothing written |
 | same state, another stream | stream move | `steps_edit.go` MoveCards | none (streams are not modelled) | judged as any move |
 
 A card's needs never hold one not landed past working (section 9, rule 11): a
