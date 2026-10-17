@@ -3,9 +3,11 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/friendrowswire"
 )
 
 // The coordinator's seat (docs/SPEC-SPRINT.md, "Handing over the seat"): the
@@ -178,6 +180,86 @@ type ServerRecord struct {
 	Host    string    `json:"host,omitempty"`
 }
 
+// serverSchema is the ServerRecord table's schema JSON text (friendrows.schema ServerRecord).
+type serverSchema struct {
+	Actor   *string `json:"actor"`
+	At      *string `json:"at"`
+	Version *string `json:"version"`
+	Commit  *string `json:"commit"`
+	Started *string `json:"started"`
+	Land    bool    `json:"land"`
+	PID     int64   `json:"pid"`
+	Host    *string `json:"host"`
+}
+
+// serverToSchema is a ServerRecord as the schema's open text (S2).
+func serverToSchema(r *ServerRecord) serverSchema {
+	return serverSchema{
+		Actor: rowText(r.Actor), At: rowTime(r.At), Version: rowText(r.Version),
+		Commit: rowText(r.Commit), Started: rowTime(r.Started), Land: r.Land,
+		PID: int64(r.PID), Host: rowText(r.Host),
+	}
+}
+
+// serverFromSchema is serverToSchema read back; ok is false for a text that is not a time.
+func serverFromSchema(m *serverSchema) (ServerRecord, bool) {
+	at, okAt := rowTimeOf(m.At)
+	started, okStarted := rowTimeOf(m.Started)
+	return ServerRecord{
+		Actor: rowTextOf(m.Actor), At: at, Version: rowTextOf(m.Version),
+		Commit: rowTextOf(m.Commit), Started: started, Land: m.Land,
+		PID: int(m.PID), Host: rowTextOf(m.Host),
+	}, okAt && okStarted
+}
+
+// serverTable is the generated ServerRecord table (S1, S2).
+func serverTable() friendTable[friendrowswire.ServerRecord] {
+	return friendTable[friendrowswire.ServerRecord]{
+		measure: friendrowswire.ServerRecordLoadMeasureReason,
+		load:    friendrowswire.ServerRecordLoad,
+		fromJSON: func(text []byte, rep *friendrowswire.TableReport) (*friendrowswire.ServerRecord, bool) {
+			var b friendrowswire.ServerRecordBuilder
+			if !b.Init() {
+				return nil, false
+			}
+			if !friendrowswire.ServerRecordFromJson(&b, text, rep) || !b.Lock() {
+				return nil, false
+			}
+			return b.AsConst(), true
+		},
+		toJSON: func(w *friendrowswire.ServerRecord) []byte {
+			buf := make([]byte, max(friendrowswire.ServerRecordToJsonMeasure(w), 0))
+			return buf[:max(friendrowswire.ServerRecordToJson(w, buf), 0)]
+		},
+		save: func(w *friendrowswire.ServerRecord) []byte {
+			buf := make([]byte, max(friendrowswire.ServerRecordMeasure(w), 0))
+			return buf[:max(friendrowswire.ServerRecordSave(w, buf), 0)]
+		},
+	}
+}
+
+// serverRowFns is the server record as the row reader reads it: SERVERRECORD (S1, S2, S4).
+func serverRowFns() RowFns[ServerRecord] {
+	return presenceRowFns("SERVERRECORD", serverTable(), serverToSchema, serverFromSchema)
+}
+
+// serverRowSets is each store's server-record reader, keyed by the store's done reader so a
+// pinned copy counts into the store's one reader (S4).
+var serverRowSets sync.Map
+
+// serverRows is this store's reader of the server record (keyServer), registered on it so Check
+// reports its per-form counts (S4).
+func (st *Store) serverRows() *RowCodec[ServerRecord] {
+	key := st.doneRows()
+	v, ok := serverRowSets.Load(key)
+	if !ok {
+		v, _ = serverRowSets.LoadOrStore(key, NewRowCodec(serverRowFns()))
+	}
+	c := v.(*RowCodec[ServerRecord])
+	c.Register(st)
+	return c
+}
+
 // expiringKV is a backend whose keys can expire (Redis): the server's record is
 // written for ServerTTL. A KV without it keeps the record until it is written
 // again, and the reader judges it by its time.
@@ -263,9 +345,11 @@ func (st *Store) SeatServerCoordinator(ctx context.Context) (sprint.SeatChange, 
 	}
 	fresh := false
 	if oks[1] {
-		if err := json.Unmarshal([]byte(vals[1]), &r); err != nil {
-			return s, false, r, false, "", err
+		rr, _, err := st.serverRows().Read([]byte(vals[1]))
+		if err != nil {
+			return s, false, ServerRecord{}, false, "", err
 		}
+		r = rr
 		if fresh = st.now().Sub(r.At) <= ServerTTL; !fresh {
 			r = ServerRecord{}
 		}
