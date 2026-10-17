@@ -8683,6 +8683,10 @@ func CountsLoadBody(r *TableReader, value *Counts) bool {
 	}
 }
 
+// Counts also carries the FIXED form (form 3): CountsFixedLoad reads that one and
+// names a form-1 file `previous_form`. This Load is the VARIABLE form's entry
+// point and reads form 1, whether or not the table was DECLARED fixed
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §15).
 func CountsLoad(value *Counts, data []byte, report *TableReport) bool {
 	if report == nil {
 		var ignored TableReport
@@ -14314,6 +14318,290 @@ func CarryDoneEach(holder *TableList[CarryNoteRow], visit func(*CarryNoteRow) bo
 		}
 	}
 	return true
+}
+
+// ---- THE FIXED FORM, form byte 3 (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4) ----
+//
+// A record is an eight-byte hash of the writer's layout and then the values
+// in declared order, every field at its declared storage width. The writer is
+// constant-offset stores; the reader is ONE loop over ONE plan.
+
+func CountsFixedLeaves(out []TableFixedEntry, links [][]TableFixedGuardLink, src, dst uint32) int {
+	n := 0
+	{
+		es := src + 0
+		ed := dst + uint32(unsafe.Offsetof(Counts{}.Repos))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 8
+		ed := dst + uint32(unsafe.Offsetof(Counts{}.Issues))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 16
+		ed := dst + uint32(unsafe.Offsetof(Counts{}.Comments))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 24
+		ed := dst + uint32(unsafe.Offsetof(Counts{}.References))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	{
+		es := src + 32
+		ed := dst + uint32(unsafe.Offsetof(Counts{}.LinkedPrs))
+		out[n] = TableFixedEntry{Src: es, Dst: ed, Size: 8, Guard: tableFixedNoGuard, Op: tableFixedCopy}
+		n++
+	}
+	return n
+}
+
+func CountsFixedWriteBody(b []byte, value *Counts) {
+	tableFixedPut64(b[0:], uint64(value.Repos))
+	tableFixedPut64(b[8:], uint64(value.Issues))
+	tableFixedPut64(b[16:], uint64(value.Comments))
+	tableFixedPut64(b[24:], uint64(value.References))
+	tableFixedPut64(b[32:], uint64(value.LinkedPrs))
+}
+
+// ---- Counts, the fixed form ----
+
+const CountsFixedBodyBytes = 40
+const CountsFixedRecordBytes = 8 + CountsFixedBodyBytes
+const CountsFixedHash = 0xe8f419deb3e5ce3d
+
+var CountsFixedLayout = []byte{
+	0x06, 0x00, 0x00, 0x00, 0xc5, 0xb7, 0xe9, 0x34, 0xd2, 0xd1, 0xaa, 0xab, 0x0d, 0x28, 0x00, 0x00,
+	0x00, 0x05, 0x00, 0x00, 0x00, 0x8a, 0xd6, 0xf1, 0xb1, 0xf2, 0x0b, 0x40, 0xf5, 0x05, 0x08, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x09, 0xdc, 0x75, 0x2e, 0xad, 0x38, 0x1b, 0x7c, 0x05, 0x08,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0xc6, 0xce, 0xe8, 0xab, 0xb7, 0xe5, 0x2c, 0x05,
+	0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4b, 0x1d, 0x01, 0xa3, 0x9d, 0x8e, 0xd6, 0x26,
+	0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x14, 0x37, 0xd6, 0xa6, 0x33, 0x73, 0xee,
+	0x56, 0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+}
+
+var CountsFixedDst = []TableFixedDst{
+	{0, 0, 0, 0, 0, 0}, // Counts
+	{uint32(unsafe.Offsetof(Counts{}.Repos)), 0, 0, 0, 0, 0},      // repos
+	{uint32(unsafe.Offsetof(Counts{}.Issues)), 0, 0, 0, 0, 0},     // issues
+	{uint32(unsafe.Offsetof(Counts{}.Comments)), 0, 0, 0, 0, 0},   // comments
+	{uint32(unsafe.Offsetof(Counts{}.References)), 0, 0, 0, 0, 0}, // references
+	{uint32(unsafe.Offsetof(Counts{}.LinkedPrs)), 0, 0, 0, 0, 0},  // linked_prs
+}
+
+var CountsFixedPlan = tableFixedBuildPlan(CountsFixedLeaves, 5)
+
+var CountsFixedKnown = []TableFixedKnownLayout{
+	{
+		Hash:        0xe8f419deb3e5ce3d,
+		LayoutBytes: 106,
+		Record:      48,
+		Layout: []byte{
+			0x06, 0x00, 0x00, 0x00, 0xc5, 0xb7, 0xe9, 0x34, 0xd2, 0xd1, 0xaa, 0xab, 0x0d, 0x28, 0x00, 0x00,
+			0x00, 0x05, 0x00, 0x00, 0x00, 0x8a, 0xd6, 0xf1, 0xb1, 0xf2, 0x0b, 0x40, 0xf5, 0x05, 0x08, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x09, 0xdc, 0x75, 0x2e, 0xad, 0x38, 0x1b, 0x7c, 0x05, 0x08,
+			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd7, 0xc6, 0xce, 0xe8, 0xab, 0xb7, 0xe5, 0x2c, 0x05,
+			0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4b, 0x1d, 0x01, 0xa3, 0x9d, 0x8e, 0xd6, 0x26,
+			0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x14, 0x37, 0xd6, 0xa6, 0x33, 0x73, 0xee,
+			0x56, 0x05, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		},
+	},
+}
+
+// The floor: below it a layout this build once served is retired, and
+// the answer is layout_unsupported rather than layout_unknown (§5.2).
+const CountsFixedFloor = 0
+
+// One plan per lineage entry, laid down from THE LOCK's bytes: nothing
+// compiles on the load path (§5.8 row 3).
+var CountsFixedLineagePlans = tableFixedLineagePlans(CountsFixedKnown, CountsFixedLayout, CountsFixedDst, CountsFixedHash)
+
+var CountsFixedResetImage = func() []byte {
+	var def Counts
+	CountsReset(&def)
+	return tableFixedOverlay(unsafe.Pointer(&def), unsafe.Sizeof(def))
+}()
+
+var CountsFixedHoles = tableFixedHoles(CountsFixedPlan.Entries, CountsFixedPlan.Count, uint32(len(CountsFixedResetImage)))
+
+var CountsFixedLineageHoles = func() [][]tableFixedHole {
+	out := make([][]tableFixedHole, len(CountsFixedLineagePlans))
+	for i := range CountsFixedLineagePlans {
+		lane := &CountsFixedLineagePlans[i]
+		if lane.Why == "" {
+			out[i] = tableFixedHoles(lane.Entries, lane.Count, uint32(len(CountsFixedResetImage)))
+		}
+	}
+	return out
+}()
+
+// CountsFixedPlanMax is the plan capacity every layout this build reads needs:
+// the largest entry count over the identity plan and every lineage plan
+// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.2). A plan slice of this length never
+// refuses plan_too_large for a layout the lineage holds.
+var CountsFixedPlanMax = func() int32 {
+	m := CountsFixedPlan.Count
+	for _, lane := range CountsFixedLineagePlans {
+		if lane.Count > m {
+			m = lane.Count
+		}
+	}
+	return m
+}()
+
+// A FILE: form byte, seven reserved zeros, the LAYOUT HASH at 8, body at 16,
+// then the layout behind its u32 length, then the records to the end of it.
+func CountsFixedMeasure(count int64) int64 {
+	return TableFixedHeaderBytes + 4 + int64(len(CountsFixedLayout)) + count*CountsFixedRecordBytes
+}
+
+// CountsFixedSave is the fixed form's writer: it returns the bytes written, or -1 for a
+// buffer too short or a value outside its declared contract (§3.1); see FixedSaveReason.
+func CountsFixedSave(values []Counts, buffer []byte) int64 {
+	need := CountsFixedMeasure(int64(len(values)))
+	if int64(len(buffer)) < need {
+		return -1
+	}
+	clear(buffer[:TableFixedHeaderBytes])
+	buffer[0] = TableFixedForm
+	tableFixedPut64(buffer[TableFixedHashAt:], CountsFixedHash)
+	tableFixedPut32(buffer[TableFixedHeaderBytes:], uint32(len(CountsFixedLayout)))
+	copy(buffer[TableFixedHeaderBytes+4:], CountsFixedLayout)
+	at := buffer[TableFixedHeaderBytes+4+len(CountsFixedLayout):]
+	for k := range values {
+		tableFixedPut64(at, CountsFixedHash)
+		clear(at[8 : 8+CountsFixedBodyBytes])
+		CountsFixedWriteBody(at[8:], &values[k])
+		at = at[CountsFixedRecordBytes:]
+	}
+	return need
+}
+
+func CountsFixedSaveReason(values []Counts, buffer []byte) (int64, error) {
+	if n := CountsFixedSave(values, buffer); n >= 0 {
+		return n, nil
+	}
+	if int64(len(buffer)) < CountsFixedMeasure(int64(len(values))) {
+		return -1, TableRefuseTruncated
+	}
+	return -1, TableRefuseInvalidValue
+}
+
+func CountsFixedLoad(values []Counts, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+	if report == nil {
+		var local TableReport
+		report = &local
+	}
+	*report = TableReport{}
+	if len(data) < 1 {
+		report.Malformed = true
+		report.Reason = TableFixedReasonTruncated
+		return -1
+	}
+	if data[0] != TableFixedForm {
+		switch data[0] {
+		case 1: // the VARIABLE form, and the only form this one is newer than
+			return tableFixedRefuse(report, TableFixedReasonPreviousForm)
+		case 2: // the MESSAGE form: a form this build carries, through another surface
+			return tableFixedRefuse(report, TableFixedReasonMessageFormAsFile)
+		}
+		return tableFixedRefuse(report, TableFixedReasonNewerForm)
+	}
+	if len(data) < TableFixedHeaderBytes+4 {
+		report.Malformed = true
+		report.Reason = TableFixedReasonTruncated
+		return -1
+	}
+	for _, reserved := range data[1:TableFixedHashAt] {
+		if reserved != 0 {
+			report.Malformed = true
+			report.Reason = TableFixedReasonReservedNotZero
+			return -1
+		}
+	}
+	layoutBytes := tableFixedGet32(data[TableFixedHeaderBytes:])
+	if int64(layoutBytes)+TableFixedHeaderBytes+4 > int64(len(data)) {
+		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
+	}
+	layout := data[TableFixedHeaderBytes+4 : TableFixedHeaderBytes+4+layoutBytes]
+	hash := tableFixedGet64(data[TableFixedHashAt:])
+	pick := tableFixedSelect(CountsFixedKnown, hash)
+	if pick < 0 {
+		return tableFixedRefuseHash(report, TableFixedReasonLayoutUnknown, hash)
+	}
+	if pick < CountsFixedFloor {
+		return tableFixedRefuseHash(report, TableFixedReasonLayoutUnsupported, hash)
+	}
+	known := &CountsFixedKnown[pick]
+	if int(layoutBytes) != len(known.Layout) {
+		return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
+	}
+	for i := range layout {
+		if layout[i] != known.Layout[i] {
+			return tableFixedRefuse(report, TableFixedReasonLayoutMalformed)
+		}
+	}
+	entries := CountsFixedPlan.Entries
+	entryCount := CountsFixedPlan.Count
+	// THE PREFILL'S HOLES ARE LAID ONCE (§4.3): the identity plan's list, then
+	// a lineage plan's when a peer selects one. Nothing computes them per call.
+	holes := CountsFixedHoles
+	recordBytes := known.Record
+	censusUnknown, censusKind := int32(0), int32(0)
+	if hash != CountsFixedHash {
+		lane := &CountsFixedLineagePlans[pick]
+		if lane.Why != "" {
+			return tableFixedRefuse(report, lane.Why)
+		}
+		entries, entryCount = lane.Entries, lane.Count
+		holes = CountsFixedLineageHoles[pick]
+		// THE CENSUS IS ONCE PER PEER and never per record (§5.4), and it
+		// lands only on a read that returns: REFUSE moves no counter.
+		censusUnknown, censusKind = lane.Unknown, lane.KindMismatch
+	}
+	if int64(entryCount) > int64(len(plan)) {
+		return tableFixedRefuse(report, TableFixedReasonPlanTooLarge)
+	}
+	at := data[TableFixedHeaderBytes+4+layoutBytes:]
+	rest := int64(len(data)) - TableFixedHeaderBytes - 4 - int64(layoutBytes)
+	if recordBytes <= 8 || rest%recordBytes != 0 {
+		report.Malformed = true
+		report.Reason = TableFixedReasonTruncated
+		return -1
+	}
+	n := rest / recordBytes
+	if n > int64(len(values)) {
+		return tableFixedRefuse(report, TableFixedReasonBatchTooLarge)
+	}
+	defBytes := CountsFixedResetImage
+	for k, scan := int64(0), at; k < n; k, scan = k+1, scan[recordBytes:] {
+		if tableFixedGet64(scan) != hash {
+			return tableFixedRefuse(report, TableFixedReasonNoLayout)
+		}
+		if why := tableFixedTextRefusal(entries, entryCount, scan[8:recordBytes]); why != "" {
+			return tableFixedRefuse(report, why)
+		}
+	}
+	for k := int64(0); k < n; k++ {
+		dst := tableFixedOverlay(unsafe.Pointer(&values[k]), unsafe.Sizeof(values[k]))
+		for i := range holes {
+			h := holes[i]
+			copy(dst[h.Off:h.Off+h.Size], defBytes[h.Off:h.Off+h.Size])
+		}
+		if why := tableFixedRun(entries, entryCount, at[8:recordBytes], dst, report); why != "" {
+			return tableFixedRefuse(report, why)
+		}
+		tableFixedForgedBounds(entries, entryCount, at[8:recordBytes], report)
+		at = at[recordBytes:]
+	}
+	report.Unknown += censusUnknown
+	report.KindMismatch += censusKind
+	return n
 }
 
 // ---- reflection descriptors (tables only, mas-bandwidth/schema docs/SPEC-TABLES.md §8) ----

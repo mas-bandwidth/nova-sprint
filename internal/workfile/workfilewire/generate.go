@@ -4,12 +4,12 @@
 // here is generated: never edit them; edit the schema and run
 // go generate ./internal/workfile/workfilewire.
 //
-// The compiler is pinned by exact commit (mas-bandwidth/schema 817637e511d0, the
-// landing of the hand-editable text form on sprint/schema-go, 2026-10-17); this
-// package alone names it, because its golden test reads and rewrites the
-// hand-editable text form, which the textform surface writes and the repository's
-// other pin predates. go run fetches the compiler, so generating needs the network
-// and the build does not.
+// The compiler is pinned by exact commit: the repository's one schema pin
+// (mas-bandwidth/schema 54e0eda7d20b), which every generate.go here and
+// schemas/README.md name (internal/ci TestSchemaPinCarriesTextLists holds them to
+// it); it carries the hand-editable text form the golden test reads and rewrites.
+// go run fetches the compiler, so generating needs the network and the build does
+// not.
 package workfilewire
 
-//go:generate go run github.com/mas-bandwidth/schema/v2/cmd/schema@v2.5.1-0.20261017151839-817637e511d0 generate --lang go --surface wire,fixed,json,cook,block,view,message,retain,textform --out . ../../../schemas/workfile
+//go:generate go run github.com/mas-bandwidth/schema/v2/cmd/schema@v2.5.1-0.20261017153557-54e0eda7d20b generate --lang go --surface wire,fixed,json,cook,block,view,message,retain,textform --out . ../../../schemas/workfile

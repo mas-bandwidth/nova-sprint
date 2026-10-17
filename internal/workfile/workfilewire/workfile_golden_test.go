@@ -72,9 +72,10 @@ import (
 
 const workHelp = "nova-work help"
 
-// thePin is the schema compiler commit generate.go names: the landing of the
-// hand-editable text form, which the golden text-form files need.
-const thePin = "v2.5.1-0.20261017151839-817637e511d0"
+// thePin is the schema compiler commit generate.go names: the repository's one
+// schema pin (schemas/README.md), which carries the hand-editable text form the
+// golden text-form files need.
+const thePin = "v2.5.1-0.20261017153557-54e0eda7d20b"
 
 // fixedLayouts is the layout hash of every fixed table, as schema.lock holds it.
 var fixedLayouts = map[string]string{

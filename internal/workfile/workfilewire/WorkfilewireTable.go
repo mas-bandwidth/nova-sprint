@@ -3728,6 +3728,41 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 		}
 		return -1, 0, verdict, reason
 	}
+	probe := r
+	probe.Offset = 0
+	framed := true
+	for {
+		ref, ok := probe.Leb()
+		if !ok {
+			framed = false
+			break
+		}
+		if ref == 0 {
+			break
+		}
+		id, ok := probe.Resolve(ref)
+		if !ok || !probe.Has(1) {
+			framed = false
+			break
+		}
+		kind := probe.Get8()
+		if id == 0xffffffffffffffff {
+			if kind != 12 {
+				framed = false
+				break
+			}
+			if _, ok := probe.Body(); !ok {
+				framed = false
+				break
+			}
+		} else if !probe.Skip(kind) {
+			framed = false
+			break
+		}
+	}
+	if !framed || probe.Offset != int64(len(probe.Buffer)) {
+		return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
+	}
 	data, reason := tableWireNodeBytesReason(r, root)
 	if data < 0 {
 		return -1, 0, TableOpenRefused, reason
@@ -3745,6 +3780,9 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 		if n > 0 {
 			data += n
 		}
+	}
+	if !s.whole() {
+		return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
 	}
 	attribution := int64(s.records+1) * 16
 	return data + attribution, attribution, TableOpenOk, TableRefuseOk
