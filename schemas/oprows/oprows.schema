@@ -1,0 +1,476 @@
+// oprows.schema: the sprint store's operation rows as FIXED tables, the records
+// internal/sprint/store writes beside the card tables: the operation journal
+// record the fence holds (OpRecord, redis.go and backend.go), the held lock
+// (lock.go), the notes and note lines (sprint.Note, sprint.Line), the timers
+// (sprint.Timers), the cells and moved members a table change event carries,
+// the engine's request digest and step result (engine.go) and the teardown
+// member list (teardown.go).
+//
+// A FIXED table: the sprint server is the only writer and the only reader of
+// every row here, and the server is upgraded first (schema docs/SPEC-TABLES.md
+// section 21: a newer reader reads an older image, an older reader refuses a
+// newer one as layout_newer). Every record is its declared size, every field
+// at its bound, and no record is past the fixed form's 65536-byte body ceiling.
+//
+// THE SIZE CONFLICT, REPORTED: the code bounds the journal record by one
+// number, store.MaxOpRecord (256 MiB, engine.go), and bounds a manifest by the
+// table layer's 1 MiB (ntable.LimitManifestBytes) and a card text by 64 KiB
+// (sprint.MaxCardTextBytes). The fixed form cannot hold a record that large. So
+// the journal is a HEADER (OpRecord) plus PARTS, each a fixed table of its own:
+// one OpNote per note, one OpLogLine per log line, one OpQueued per queued
+// change, and Chunk for the bytes the fixed form cannot hold whole (a
+// nova-tables batch manifest, which is nova-tables' own protocol and is carried
+// as opaque bytes, never decoded here; a card text; a queued entry). The header
+// counts its parts. This is the paging the done record already uses (donewire).
+// Where the code enforces no bound on a field, the bound here is chosen to fit
+// the record and is named "chosen" in its comment; a value past it is refused
+// at the reader, never clamped into a record.
+//
+// Times are Unix nanoseconds UTC, 0 for the zero time (as donewire). Maps are
+// lists of pairs in key order. The strings the wire holds as UTF-8 text.
+package oprowswire
+
+// ---------------------------------------------------------------------------
+// Wrappers: an array of string(N) is not supported, so each list of words
+// wraps its element.
+
+// Name128 is one identity word: sprint.MaxIDLen (128) bytes, sprint.ValidID.
+fixed table Name128
+{
+    value string(128)
+}
+
+// Name256 is one card or member identity: ntable.LimitMemberIDBytes (256)
+// bytes, the most the table layer takes for a card's member id (a
+// sprint.ValidCardID may be longer, and cannot be stored as a card).
+fixed table Name256
+{
+    value string(256)
+}
+
+// Name400 is one open-judgment key, "<note id>|<primary>" or
+// "<note id>|stream:<stream>": 128 + 1 + 256 = 385, 400 with room.
+fixed table Name400
+{
+    value string(400)
+}
+
+// Text512 is one line of words: chosen, no bound is enforced on it today.
+fixed table Text512
+{
+    value string(512)
+}
+
+// ---------------------------------------------------------------------------
+// The engine's request digest (engine.go ArgsOf).
+
+// RequestDigest is store.ArgsOf: the hex of the first 12 bytes of the SHA-256
+// of the request's JSON, 24 characters exactly, "" when the request cannot be
+// marshalled.
+fixed table RequestDigest
+{
+    digest string(24)
+}
+
+// ---------------------------------------------------------------------------
+// The held lock (lock.go takeLock): the fence's value while a part of the tick
+// holds it before its read.
+
+// HeldLock is the operation record of a lock: Lock true, no manifests, in
+// flight within its grace.
+fixed table HeldLock
+{
+    // family with "~" replaced by "-" and "-lock" appended; the family is the
+    // caller's operation id or verb + "-" + a fresh id. Chosen bound 256, the
+    // table layer's operation id bound (ntable.LimitMemberIDBytes).
+    id string(256)
+    // step.Verb + " lock": a verb word of at most 80 bytes (chosen).
+    verb string(80)
+    // when the lock was taken.
+    at int64
+}
+
+// ---------------------------------------------------------------------------
+// The timers (sprint.Timers, store/timers.go, redis.go commit).
+
+// Timer is sprint.Timer: one timer.
+fixed table Timer
+{
+    // a timer id: a ValidID word.
+    id string(128)
+    // the actor it wakes (Go field For; for is reserved in C++): a member name or "friend." + a name (135).
+    wakes string(135)
+    due   int64
+    // sprint.MaxTimerNote.
+    note string(512)
+    // who set it.
+    by string(135)
+    // when the timer was written: the base its due time counts running time from.
+    set int64
+}
+
+// Timers is sprint.Timers: the sprint's open timers, the record remind writes
+// and the tick reads, and the record an operation leaves (OpRecord.Timers).
+// Chosen count 60: no count is enforced today.
+fixed table Timers
+{
+    open_timers [..60]Timer
+}
+
+// ---------------------------------------------------------------------------
+// The cells and moved members a table change event carries (redis.go
+// changeIDs, RecordIDs; teardown.go RecordIDs).
+
+// Member is one record the event names: the "id" of an entry of its members
+// list or of its batch account (ntable.LimitMemberIDBytes).
+fixed table Member
+{
+    id string(256)
+}
+
+// MemberList is a list of member ids: the teardown member list (RecordIDs, the
+// unique ids a table's change log names) and the members one event names. The
+// count 128 is ntable.LimitChangedEntries, the most records one batch changes;
+// a longer list is several records.
+fixed table MemberList
+{
+    members [..128]Member
+}
+
+// ChangeEvent is the part of a table change event the twin reads
+// (redis.go changeEvent): the epoch, the verb, the revisions it moved the table
+// between, the members it moved and the members of its batch's account.
+fixed table ChangeEvent
+{
+    // the epoch as the stream writes it, a decimal number.
+    epoch string(20)
+    // the table write's verb: apply, row_set, rows_add, row_add, a row verb.
+    verb          string(32)
+    rev_before    uint64
+    rev_after     uint64
+    members       [..64]Member
+    batch_members [..64]Member
+}
+
+// Cell is one display cell of a row (redis.go RowsSet, ntable.RowSetMany): a
+// row, a column and its text. Chosen bounds 256, 128 and 256: the row is a
+// member id, a column name and a display text are short words.
+fixed table Cell
+{
+    row    string(256)
+    column string(128)
+    text   string(256)
+}
+
+// CellSet is the cells of one row set write. Chosen count 64.
+fixed table CellSet
+{
+    cells [..64]Cell
+}
+
+// ---------------------------------------------------------------------------
+// The notes and note lines (sprint.Note, sprint.Line).
+
+// StreamTransition is sprint.StreamTransition.
+fixed table StreamTransition
+{
+    state string(32)
+    // sprint.MaxCause.
+    cause   string(300)
+    waiting int32
+    // the owners of the stream's waiting cards, chosen count 16.
+    owners [..16]Name128
+}
+
+// DecisionDelivery is sprint.DecisionDelivery: a durable folded-message
+// obligation. Chosen bounds for the body (2048), set (256), token (128), fault
+// (300) and the reports (8 of 256).
+fixed table DecisionDelivery
+{
+    lane             string(135)
+    to               string(135)
+    from             string(135)
+    set              string(256)
+    body             string(2048)
+    token            string(128)
+    prepared_at      int64
+    retry_before     int64
+    sent_at          int64
+    fault            string(300)
+    reports          [..8]Name256
+    unknown_receipts int32
+}
+
+// CoordinatorDelivery is sprint.CoordinatorDelivery. Chosen bounds as the
+// decision delivery's.
+fixed table CoordinatorDelivery
+{
+    covered_by   string(128)
+    from         string(135)
+    to           string(135)
+    token        string(128)
+    subject      string(256)
+    body         string(2048)
+    episode      string(128)
+    sent         bool
+    retry_before int64
+}
+
+// Note is sprint.Note as Note.Bound() writes it to the notes hash and the inbox
+// stream: primaries cut to sprint.MaxListed (50), Count keeps the total. Card
+// ids are Name256. Chosen bounds, none enforced today: what 2048, hint 512,
+// suspects, needs and decisions 16 each.
+fixed table Note
+{
+    id                       string(128)
+    safe_default             string(32)
+    default_coordinator_told bool
+    default_owner_told       bool
+    // j<n>, the judgment's place among the epoch's.
+    alias string(16)
+    // happened, judgment, decided, acknowledged.
+    kind string(16)
+    // the notification type (Go field Type; type is reserved here): a name constant of at most 128 bytes.
+    note_type string(128)
+    stream    string(128)
+    // sprint.MaxListed.
+    primaries            [..50]Name256
+    count                int32
+    what                 string(2048)
+    who                  string(135)
+    attempt              int32
+    before               int32
+    at                   int64
+    decisions            [..16]Name128
+    marked               bool
+    answers              string(128)
+    suspects             [..16]Name256
+    card                 string(256)
+    other                string(256)
+    tier                 string(16)
+    other_stream         string(128)
+    stream_level         bool
+    sprint_level         bool
+    needs                [..16]Name256
+    review               int64
+    review_set           int64
+    to                   string(135)
+    hint                 string(512)
+    stream_transition    ?StreamTransition
+    decision_delivery    ?DecisionDelivery
+    coordinator_delivery ?CoordinatorDelivery
+}
+
+// TextRef names one card text a log line carries whole (sprint.Line.Text): the
+// field name and its length in bytes. The bytes ride in Chunk records of kind
+// "text" keyed "<line index>:<name>" because a card text is up to
+// sprint.MaxCardTextBytes (64 KiB), more than the fixed form holds.
+fixed table TextRef
+{
+    // fix, report, finding, reason, return_reason, did, note, ci_note, brief, why.
+    name string(16)
+    size uint32
+}
+
+// Pair is one entry of a string map in key order (sprint.Line.Set: a stamp, a
+// counter, a head). Chosen bounds 32 and 256.
+fixed table Pair
+{
+    name  string(32)
+    value string(256)
+}
+
+// LogLine is sprint.Line: one line of the log, a move or a notification.
+fixed table LogLine
+{
+    kind  string(16)
+    at    int64
+    epoch uint64
+    // the step that wrote it.
+    op   string(256)
+    card string(256)
+    // the cards of a set move, chosen count 32.
+    cards      [..32]Name256
+    primary    string(256)
+    stream     string(128)
+    table_name string(128)
+    // member:column of the card before and after (a row name, ":", a column).
+    from    string(400)
+    to      string(400)
+    removed bool
+    gen     int32
+    actor   string(135)
+    verb    string(80)
+    // sprint.MaxCause.
+    cause string(300)
+    // the judgments the step answered, chosen count 16.
+    answers [..16]Name128
+    // the card texts it carries, by name; the bytes are Chunk records.
+    text [..12]TextRef
+    set  [..16]Pair
+    // the notification as written, for a note line.
+    note ?Note
+}
+
+// ---------------------------------------------------------------------------
+// The operation journal record (backend.go OpRecord).
+
+// SeatChange is sprint.SeatChange. The reason is chosen at 512.
+fixed table SeatChange
+{
+    holder      string(135)
+    generation  uint64
+    from        string(135)
+    at          int64
+    by          string(135)
+    taken       bool
+    approved_by string(135)
+    reason      string(512)
+}
+
+// PropWrite is sprint.PropWrite: a table property a queued change sets. The
+// value and the was are chosen at 1024: no bound is enforced on them today.
+fixed table PropWrite
+{
+    table_name string(128)
+    name       string(128)
+    value      string(1024)
+    was        string(1024)
+    was_absent bool
+}
+
+// QueuedChange is sprint.QueuedChange: a work-table change the step queued for
+// the pump. The entry is a nova-tables batch member entry, nova-tables' own
+// protocol; it is carried as opaque bytes in Chunk records of kind "entry"
+// (entry_bytes long), never decoded here.
+fixed table QueuedChange
+{
+    entry_bytes uint32
+    prop        ?PropWrite
+    verb        string(80)
+    actor       string(135)
+    moved       string(256)
+}
+
+// OpRecord is the header of the operation record the fence holds: store.OpRecord
+// without its lists. Each list is its own part records (OpNote, OpLogLine,
+// OpQueued, Chunk) and the header counts them. Chosen counts 64 for the
+// streams, the closes and the timer ids.
+fixed table OpRecord
+{
+    id string(256)
+    // a part's lock (Go field Lock; lock is reserved in C#) (lock.go): no manifests.
+    is_lock bool
+    verb    string(80)
+    at      int64
+    // the nova-tables batch manifests in apply order: opaque bytes in Chunk
+    // records of kind "manifest"; this is their count.
+    manifests uint32
+    notes     uint32
+    decided   uint32
+    log       uint32
+    updates   uint32
+    // open keys the step closes.
+    closes    [..64]Name400
+    streams   [..64]Name128
+    caller_op string(256)
+    // the step's result: a StepResult record under the caller's operation id.
+    has_result bool
+    // the stuck operation this one reports.
+    stuck        string(256)
+    queue        uint32
+    drain        int32
+    seat         ?SeatChange
+    close_timers [..64]Name128
+    // the timer record the step leaves: a Timers record.
+    has_timers bool
+}
+
+// OpNote is one note of an operation: role is notes, decided or updates, index
+// its place in that list.
+fixed table OpNote
+{
+    op_id string(256)
+    role  string(16)
+    index uint32
+    note  Note
+}
+
+// OpLogLine is one log line of an operation, index its place in OpRecord.Log.
+fixed table OpLogLine
+{
+    op_id string(256)
+    index uint32
+    line  LogLine
+}
+
+// OpQueued is one queued change of an operation, index its place in
+// OpRecord.Queue.
+fixed table OpQueued
+{
+    op_id  string(256)
+    index  uint32
+    change QueuedChange
+}
+
+// Chunk is one slice of bytes the fixed form cannot hold whole: a manifest
+// (kind "manifest", key the stored table name), a queued entry (kind "entry",
+// key the queue index) or a card text (kind "text", key "<line index>:<name>").
+// The bytes are the other protocol's own, unchanged; index counts from 0 of
+// count chunks, each at most 32768 bytes.
+fixed table Chunk
+{
+    op_id string(256)
+    kind  string(16)
+    key   string(128)
+    index uint32
+    count uint32
+    data  bytes(32768)
+}
+
+// ---------------------------------------------------------------------------
+// The step result (engine.go Result).
+
+// Refusal is sprint.Refusal: a card the step did not move, and why. The why is
+// chosen at 512.
+fixed table Refusal
+{
+    id  string(256)
+    why string(512)
+}
+
+// TableCount is one entry of Result.Tables: the entries written to a logical
+// table.
+fixed table TableCount
+{
+    name  string(128)
+    count int32
+}
+
+// StepResult is store.Result: what a step did, recorded under the caller's
+// operation id and replayed by it. The lists are chosen counts: moved 64,
+// refused 16, raised 16, said 8, repaired 16, skipped 8, tables 16, none
+// enforced today. The drains of the work table's queue ride as `drained`
+// further StepResult records, since the fixed form holds no record inside
+// itself.
+fixed table StepResult
+{
+    verb    string(80)
+    op      string(256)
+    moved   [..64]Name256
+    refused [..16]Refusal
+    notes   int32
+    // "<id> <type>" of each judgment the step raised.
+    raised   [..16]Name256
+    said     [..8]Text512
+    attempts int32
+    replay   bool
+    repaired [..16]Name256
+    pending  string(256)
+    skipped  [..8]Text512
+    // store.ArgsOf of the step's arguments, 24 characters or empty.
+    args    string(24)
+    lost    bool
+    tables  [..16]TableCount
+    drained uint32
+}
