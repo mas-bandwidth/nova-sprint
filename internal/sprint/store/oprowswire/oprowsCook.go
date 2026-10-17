@@ -134,6 +134,20 @@ type TableCookInfo struct {
 // from the same model; a record the block form already emits is emitted THERE
 // and not again here.
 
+// CellRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type CellRow struct {
+	Row          [257]byte // string(256): buffer, used length beside it
+	_            [3]byte   // generated padding
+	RowLength    int32
+	Column       [129]byte // string(128): buffer, used length beside it
+	_            [3]byte   // generated padding
+	ColumnLength int32
+	Text         [257]byte // string(256): buffer, used length beside it
+	_            [3]byte   // generated padding
+	TextLength   int32
+}
+
 // CellSetRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type CellSetRow struct {
@@ -177,6 +191,64 @@ type ChunkRow struct {
 	DataLength int32
 }
 
+// CoordinatorDeliveryRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type CoordinatorDeliveryRow struct {
+	CoveredBy       [129]byte // string(128): buffer, used length beside it
+	_               [3]byte   // generated padding
+	CoveredByLength int32
+	From            [136]byte // string(135): buffer, used length beside it
+	FromLength      int32
+	To              [136]byte // string(135): buffer, used length beside it
+	ToLength        int32
+	Token           [129]byte // string(128): buffer, used length beside it
+	_               [3]byte   // generated padding
+	TokenLength     int32
+	Subject         [257]byte // string(256): buffer, used length beside it
+	_               [3]byte   // generated padding
+	SubjectLength   int32
+	Body            [2049]byte // string(2048): buffer, used length beside it
+	_               [3]byte    // generated padding
+	BodyLength      int32
+	Episode         [129]byte // string(128): buffer, used length beside it
+	_               [3]byte   // generated padding
+	EpisodeLength   int32
+	Sent            bool
+	_               [7]byte // generated padding
+	RetryBefore     int64
+}
+
+// DecisionDeliveryRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type DecisionDeliveryRow struct {
+	Lane            [136]byte // string(135): buffer, used length beside it
+	LaneLength      int32
+	To              [136]byte // string(135): buffer, used length beside it
+	ToLength        int32
+	From            [136]byte // string(135): buffer, used length beside it
+	FromLength      int32
+	Set             [257]byte // string(256): buffer, used length beside it
+	_               [3]byte   // generated padding
+	SetLength       int32
+	Body            [2049]byte // string(2048): buffer, used length beside it
+	_               [3]byte    // generated padding
+	BodyLength      int32
+	Token           [129]byte // string(128): buffer, used length beside it
+	_               [3]byte   // generated padding
+	TokenLength     int32
+	_               [4]byte // generated padding
+	PreparedAt      int64
+	RetryBefore     int64
+	SentAt          int64
+	Fault           [301]byte // string(300): buffer, used length beside it
+	_               [3]byte   // generated padding
+	FaultLength     int32
+	Reports         [8]Name256Row
+	ReportsCount    int32
+	UnknownReceipts int32
+	_               [4]byte // generated padding
+}
+
 // HeldLockRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type HeldLockRow struct {
@@ -189,11 +261,166 @@ type HeldLockRow struct {
 	At         int64
 }
 
+// LogLineRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type LogLineRow struct {
+	Kind            [17]byte // string(16): buffer, used length beside it
+	_               [3]byte  // generated padding
+	KindLength      int32
+	At              int64
+	Epoch           uint64
+	Op              [257]byte // string(256): buffer, used length beside it
+	_               [3]byte   // generated padding
+	OpLength        int32
+	Card            [257]byte // string(256): buffer, used length beside it
+	_               [3]byte   // generated padding
+	CardLength      int32
+	Cards           [32]Name256Row
+	CardsCount      int32
+	Primary         [257]byte // string(256): buffer, used length beside it
+	_               [3]byte   // generated padding
+	PrimaryLength   int32
+	Stream          [129]byte // string(128): buffer, used length beside it
+	_               [3]byte   // generated padding
+	StreamLength    int32
+	TableName       [129]byte // string(128): buffer, used length beside it
+	_               [3]byte   // generated padding
+	TableNameLength int32
+	From            [401]byte // string(400): buffer, used length beside it
+	_               [3]byte   // generated padding
+	FromLength      int32
+	To              [401]byte // string(400): buffer, used length beside it
+	_               [3]byte   // generated padding
+	ToLength        int32
+	Removed         bool
+	_               [3]byte // generated padding
+	Gen             int32
+	Actor           [136]byte // string(135): buffer, used length beside it
+	ActorLength     int32
+	Verb            [81]byte // string(80): buffer, used length beside it
+	_               [3]byte  // generated padding
+	VerbLength      int32
+	Cause           [301]byte // string(300): buffer, used length beside it
+	_               [3]byte   // generated padding
+	CauseLength     int32
+	Answers         [16]Name128Row
+	AnswersCount    int32
+	Text            [12]TextRefRow
+	TextCount       int32
+	Set             [16]PairRow
+	SetCount        int32
+	Note            NoteRow
+	NotePresent     bool    // ?Note: one byte, in Go's model as in C++
+	_               [7]byte // generated padding
+}
+
+// MemberRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type MemberRow struct {
+	Id       [257]byte // string(256): buffer, used length beside it
+	_        [3]byte   // generated padding
+	IdLength int32
+}
+
 // MemberListRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type MemberListRow struct {
 	Members      [128]MemberRow
 	MembersCount int32
+}
+
+// Name256Row — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type Name256Row struct {
+	Value       [257]byte // string(256): buffer, used length beside it
+	_           [3]byte   // generated padding
+	ValueLength int32
+}
+
+// Name400Row — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type Name400Row struct {
+	Value       [401]byte // string(400): buffer, used length beside it
+	_           [3]byte   // generated padding
+	ValueLength int32
+}
+
+// NoteRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type NoteRow struct {
+	Id                         [129]byte // string(128): buffer, used length beside it
+	_                          [3]byte   // generated padding
+	IdLength                   int32
+	SafeDefault                [33]byte // string(32): buffer, used length beside it
+	_                          [3]byte  // generated padding
+	SafeDefaultLength          int32
+	DefaultCoordinatorTold     bool
+	DefaultOwnerTold           bool
+	Alias                      [17]byte // string(16): buffer, used length beside it
+	_                          [1]byte  // generated padding
+	AliasLength                int32
+	Kind                       [17]byte // string(16): buffer, used length beside it
+	_                          [3]byte  // generated padding
+	KindLength                 int32
+	NoteType                   [129]byte // string(128): buffer, used length beside it
+	_                          [3]byte   // generated padding
+	NoteTypeLength             int32
+	Stream                     [129]byte // string(128): buffer, used length beside it
+	_                          [3]byte   // generated padding
+	StreamLength               int32
+	Primaries                  [50]Name256Row
+	PrimariesCount             int32
+	Count                      int32
+	What                       [2049]byte // string(2048): buffer, used length beside it
+	_                          [3]byte    // generated padding
+	WhatLength                 int32
+	Who                        [136]byte // string(135): buffer, used length beside it
+	WhoLength                  int32
+	Attempt                    int32
+	Before                     int32
+	_                          [4]byte // generated padding
+	At                         int64
+	Decisions                  [16]Name128Row
+	DecisionsCount             int32
+	Marked                     bool
+	Answers                    [129]byte // string(128): buffer, used length beside it
+	_                          [2]byte   // generated padding
+	AnswersLength              int32
+	Suspects                   [16]Name256Row
+	SuspectsCount              int32
+	Card                       [257]byte // string(256): buffer, used length beside it
+	_                          [3]byte   // generated padding
+	CardLength                 int32
+	Other                      [257]byte // string(256): buffer, used length beside it
+	_                          [3]byte   // generated padding
+	OtherLength                int32
+	Tier                       [17]byte // string(16): buffer, used length beside it
+	_                          [3]byte  // generated padding
+	TierLength                 int32
+	OtherStream                [129]byte // string(128): buffer, used length beside it
+	_                          [3]byte   // generated padding
+	OtherStreamLength          int32
+	StreamLevel                bool
+	SprintLevel                bool
+	_                          [2]byte // generated padding
+	Needs                      [16]Name256Row
+	NeedsCount                 int32
+	Review                     int64
+	ReviewSet                  int64
+	To                         [136]byte // string(135): buffer, used length beside it
+	ToLength                   int32
+	Hint                       [513]byte // string(512): buffer, used length beside it
+	_                          [3]byte   // generated padding
+	HintLength                 int32
+	StreamTransition           StreamTransitionRow
+	StreamTransitionPresent    bool    // ?StreamTransition: one byte, in Go's model as in C++
+	_                          [7]byte // generated padding
+	DecisionDelivery           DecisionDeliveryRow
+	DecisionDeliveryPresent    bool    // ?DecisionDelivery: one byte, in Go's model as in C++
+	_                          [7]byte // generated padding
+	CoordinatorDelivery        CoordinatorDeliveryRow
+	CoordinatorDeliveryPresent bool    // ?CoordinatorDelivery: one byte, in Go's model as in C++
+	_                          [7]byte // generated padding
 }
 
 // OpLogLineRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
@@ -270,12 +497,73 @@ type OpRecordRow struct {
 	_                [7]byte // generated padding
 }
 
+// PairRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type PairRow struct {
+	Name        [33]byte // string(32): buffer, used length beside it
+	_           [3]byte  // generated padding
+	NameLength  int32
+	Value       [257]byte // string(256): buffer, used length beside it
+	_           [3]byte   // generated padding
+	ValueLength int32
+}
+
+// QueuedChangeRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type QueuedChangeRow struct {
+	EntryBytes  uint32
+	Prop        PropWriteRow
+	PropPresent bool     // ?PropWrite: one byte, in Go's model as in C++
+	Verb        [81]byte // string(80): buffer, used length beside it
+	_           [2]byte  // generated padding
+	VerbLength  int32
+	Actor       [136]byte // string(135): buffer, used length beside it
+	ActorLength int32
+	Moved       [257]byte // string(256): buffer, used length beside it
+	_           [3]byte   // generated padding
+	MovedLength int32
+}
+
+// RefusalRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type RefusalRow struct {
+	Id        [257]byte // string(256): buffer, used length beside it
+	_         [3]byte   // generated padding
+	IdLength  int32
+	Why       [513]byte // string(512): buffer, used length beside it
+	_         [3]byte   // generated padding
+	WhyLength int32
+}
+
 // RequestDigestRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type RequestDigestRow struct {
 	Digest       [25]byte // string(24): buffer, used length beside it
 	_            [3]byte  // generated padding
 	DigestLength int32
+}
+
+// SeatChangeRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type SeatChangeRow struct {
+	Holder           [136]byte // string(135): buffer, used length beside it
+	HolderLength     int32
+	_                [4]byte // generated padding
+	Generation       uint64
+	From             [136]byte // string(135): buffer, used length beside it
+	FromLength       int32
+	_                [4]byte // generated padding
+	At               int64
+	By               [136]byte // string(135): buffer, used length beside it
+	ByLength         int32
+	Taken            bool
+	ApprovedBy       [136]byte // string(135): buffer, used length beside it
+	_                [3]byte   // generated padding
+	ApprovedByLength int32
+	Reason           [513]byte // string(512): buffer, used length beside it
+	_                [3]byte   // generated padding
+	ReasonLength     int32
+	_                [4]byte // generated padding
 }
 
 // StepResultRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
@@ -314,6 +602,65 @@ type StepResultRow struct {
 	Tables        [16]TableCountRow
 	TablesCount   int32
 	Drained       uint32
+}
+
+// StreamTransitionRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type StreamTransitionRow struct {
+	State       [33]byte // string(32): buffer, used length beside it
+	_           [3]byte  // generated padding
+	StateLength int32
+	Cause       [301]byte // string(300): buffer, used length beside it
+	_           [3]byte   // generated padding
+	CauseLength int32
+	Waiting     int32
+	Owners      [16]Name128Row
+	OwnersCount int32
+}
+
+// TableCountRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type TableCountRow struct {
+	Name       [129]byte // string(128): buffer, used length beside it
+	_          [3]byte   // generated padding
+	NameLength int32
+	Count      int32
+}
+
+// Text512Row — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type Text512Row struct {
+	Value       [513]byte // string(512): buffer, used length beside it
+	_           [3]byte   // generated padding
+	ValueLength int32
+}
+
+// TextRefRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type TextRefRow struct {
+	Name       [17]byte // string(16): buffer, used length beside it
+	_          [3]byte  // generated padding
+	NameLength int32
+	Size       uint32
+}
+
+// TimerRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type TimerRow struct {
+	Id          [129]byte // string(128): buffer, used length beside it
+	_           [3]byte   // generated padding
+	IdLength    int32
+	Wakes       [136]byte // string(135): buffer, used length beside it
+	WakesLength int32
+	_           [4]byte // generated padding
+	Due         int64
+	Note        [513]byte // string(512): buffer, used length beside it
+	_           [3]byte   // generated padding
+	NoteLength  int32
+	By          [136]byte // string(135): buffer, used length beside it
+	ByLength    int32
+	_           [4]byte // generated padding
+	Set         int64
 }
 
 // TimersRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
@@ -1071,7 +1418,10 @@ func (cook *Name128Cook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func Name128At(slot *int64) *Name128Row {
+func Name128At(slot *int64, arena ...*TableArena) *Name128Row {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*Name128Row)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -1171,7 +1521,10 @@ func (cook *Name256Cook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func Name256At(slot *int64) *Name256Row {
+func Name256At(slot *int64, arena ...*TableArena) *Name256Row {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*Name256Row)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -1271,7 +1624,10 @@ func (cook *Name400Cook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func Name400At(slot *int64) *Name400Row {
+func Name400At(slot *int64, arena ...*TableArena) *Name400Row {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*Name400Row)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -1371,7 +1727,10 @@ func (cook *Text512Cook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func Text512At(slot *int64) *Text512Row {
+func Text512At(slot *int64, arena ...*TableArena) *Text512Row {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*Text512Row)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -1471,7 +1830,10 @@ func (cook *RequestDigestCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func RequestDigestAt(slot *int64) *RequestDigestRow {
+func RequestDigestAt(slot *int64, arena ...*TableArena) *RequestDigestRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*RequestDigestRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -1571,7 +1933,10 @@ func (cook *HeldLockCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func HeldLockAt(slot *int64) *HeldLockRow {
+func HeldLockAt(slot *int64, arena ...*TableArena) *HeldLockRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*HeldLockRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -1671,7 +2036,10 @@ func (cook *TimerCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func TimerAt(slot *int64) *TimerRow {
+func TimerAt(slot *int64, arena ...*TableArena) *TimerRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*TimerRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -1771,7 +2139,10 @@ func (cook *TimersCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func TimersAt(slot *int64) *TimersRow {
+func TimersAt(slot *int64, arena ...*TableArena) *TimersRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*TimersRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -1871,7 +2242,10 @@ func (cook *MemberCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func MemberAt(slot *int64) *MemberRow {
+func MemberAt(slot *int64, arena ...*TableArena) *MemberRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*MemberRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -1971,7 +2345,10 @@ func (cook *MemberListCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func MemberListAt(slot *int64) *MemberListRow {
+func MemberListAt(slot *int64, arena ...*TableArena) *MemberListRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*MemberListRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -2071,7 +2448,10 @@ func (cook *ChangeEventCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func ChangeEventAt(slot *int64) *ChangeEventRow {
+func ChangeEventAt(slot *int64, arena ...*TableArena) *ChangeEventRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*ChangeEventRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -2171,7 +2551,10 @@ func (cook *CellCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func CellAt(slot *int64) *CellRow {
+func CellAt(slot *int64, arena ...*TableArena) *CellRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*CellRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -2271,7 +2654,10 @@ func (cook *CellSetCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func CellSetAt(slot *int64) *CellSetRow {
+func CellSetAt(slot *int64, arena ...*TableArena) *CellSetRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*CellSetRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -2371,7 +2757,10 @@ func (cook *StreamTransitionCook) Open(base unsafe.Pointer, length int64) error 
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func StreamTransitionAt(slot *int64) *StreamTransitionRow {
+func StreamTransitionAt(slot *int64, arena ...*TableArena) *StreamTransitionRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*StreamTransitionRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -2471,7 +2860,10 @@ func (cook *DecisionDeliveryCook) Open(base unsafe.Pointer, length int64) error 
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func DecisionDeliveryAt(slot *int64) *DecisionDeliveryRow {
+func DecisionDeliveryAt(slot *int64, arena ...*TableArena) *DecisionDeliveryRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*DecisionDeliveryRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -2573,7 +2965,10 @@ func (cook *CoordinatorDeliveryCook) Open(base unsafe.Pointer, length int64) err
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func CoordinatorDeliveryAt(slot *int64) *CoordinatorDeliveryRow {
+func CoordinatorDeliveryAt(slot *int64, arena ...*TableArena) *CoordinatorDeliveryRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*CoordinatorDeliveryRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -2673,7 +3068,10 @@ func (cook *NoteCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func NoteAt(slot *int64) *NoteRow {
+func NoteAt(slot *int64, arena ...*TableArena) *NoteRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*NoteRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -2773,7 +3171,10 @@ func (cook *TextRefCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func TextRefAt(slot *int64) *TextRefRow {
+func TextRefAt(slot *int64, arena ...*TableArena) *TextRefRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*TextRefRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -2873,7 +3274,10 @@ func (cook *PairCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func PairAt(slot *int64) *PairRow {
+func PairAt(slot *int64, arena ...*TableArena) *PairRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*PairRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -2973,7 +3377,10 @@ func (cook *LogLineCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func LogLineAt(slot *int64) *LogLineRow {
+func LogLineAt(slot *int64, arena ...*TableArena) *LogLineRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*LogLineRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -3073,7 +3480,10 @@ func (cook *SeatChangeCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func SeatChangeAt(slot *int64) *SeatChangeRow {
+func SeatChangeAt(slot *int64, arena ...*TableArena) *SeatChangeRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*SeatChangeRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -3173,7 +3583,10 @@ func (cook *PropWriteCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func PropWriteAt(slot *int64) *PropWriteRow {
+func PropWriteAt(slot *int64, arena ...*TableArena) *PropWriteRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*PropWriteRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -3273,7 +3686,10 @@ func (cook *QueuedChangeCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func QueuedChangeAt(slot *int64) *QueuedChangeRow {
+func QueuedChangeAt(slot *int64, arena ...*TableArena) *QueuedChangeRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*QueuedChangeRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -3373,7 +3789,10 @@ func (cook *OpRecordCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func OpRecordAt(slot *int64) *OpRecordRow {
+func OpRecordAt(slot *int64, arena ...*TableArena) *OpRecordRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*OpRecordRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -3473,7 +3892,10 @@ func (cook *OpNoteCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func OpNoteAt(slot *int64) *OpNoteRow {
+func OpNoteAt(slot *int64, arena ...*TableArena) *OpNoteRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*OpNoteRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -3573,7 +3995,10 @@ func (cook *OpLogLineCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func OpLogLineAt(slot *int64) *OpLogLineRow {
+func OpLogLineAt(slot *int64, arena ...*TableArena) *OpLogLineRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*OpLogLineRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -3673,7 +4098,10 @@ func (cook *OpQueuedCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func OpQueuedAt(slot *int64) *OpQueuedRow {
+func OpQueuedAt(slot *int64, arena ...*TableArena) *OpQueuedRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*OpQueuedRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -3773,7 +4201,10 @@ func (cook *ChunkCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func ChunkAt(slot *int64) *ChunkRow {
+func ChunkAt(slot *int64, arena ...*TableArena) *ChunkRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*ChunkRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -3873,7 +4304,10 @@ func (cook *RefusalCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func RefusalAt(slot *int64) *RefusalRow {
+func RefusalAt(slot *int64, arena ...*TableArena) *RefusalRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*RefusalRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -3973,7 +4407,10 @@ func (cook *TableCountCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func TableCountAt(slot *int64) *TableCountRow {
+func TableCountAt(slot *int64, arena ...*TableArena) *TableCountRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*TableCountRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil
@@ -4073,7 +4510,10 @@ func (cook *StepResultCook) Open(base unsafe.Pointer, length int64) error {
 //
 // It takes the SLOT and not its value, because a self-relative delta means
 // nothing without the address it is relative to.
-func StepResultAt(slot *int64) *StepResultRow {
+func StepResultAt(slot *int64, arena ...*TableArena) *StepResultRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*StepResultRow)(arena[0].At(*slot))
+	}
 	delta := *slot
 	if delta == 0 {
 		return nil

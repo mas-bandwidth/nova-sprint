@@ -1,4 +1,4 @@
-// oprows.schema: the sprint store's operation rows as FIXED tables, the records
+// oprows.schema: the sprint store's operation rows, the records
 // internal/sprint/store writes beside the card tables: the operation journal
 // record the fence holds (OpRecord, redis.go and backend.go), the held lock
 // (lock.go), the notes and note lines (sprint.Note, sprint.Line), the timers
@@ -6,25 +6,19 @@
 // the engine's request digest and step result (engine.go) and the teardown
 // member list (teardown.go).
 //
-// A FIXED table: the sprint server is the only writer and the only reader of
-// every row here, and the server is upgraded first (schema docs/SPEC-TABLES.md
-// section 21: a newer reader reads an older image, an older reader refuses a
-// newer one as layout_newer). Every record is its declared size, every field
-// at its bound, and no record is past the fixed form's 65536-byte body ceiling.
+// Small, bounded, server-owned records whose reader is always the same version
+// or newer are FIXED tables (schema docs/SPEC-TABLES.md section 21: a newer
+// reader reads an older image, an older reader refuses a newer one as
+// layout_newer). Large, sparse or text-heavy records are VARIABLE tables sized
+// by content, with their bounds the code's (the op journal, the notes and
+// note lines, the timers, the step result and the lists of members and cells):
+// every table the compiler flags past the 4096-byte fixed advisory is a
+// variable table, and the journal's parts are variable tables of their own.
+// A value past a declared bound is refused at the reader, never clamped into a
+// record.
 //
-// THE SIZE CONFLICT, REPORTED: the code bounds the journal record by one
-// number, store.MaxOpRecord (256 MiB, engine.go), and bounds a manifest by the
-// table layer's 1 MiB (ntable.LimitManifestBytes) and a card text by 64 KiB
-// (sprint.MaxCardTextBytes). The fixed form cannot hold a record that large. So
-// the journal is a HEADER (OpRecord) plus PARTS, each a fixed table of its own:
-// one OpNote per note, one OpLogLine per log line, one OpQueued per queued
-// change, and Chunk for the bytes the fixed form cannot hold whole (a
-// nova-tables batch manifest, which is nova-tables' own protocol and is carried
-// as opaque bytes, never decoded here; a card text; a queued entry). The header
-// counts its parts. This is the paging the done record already uses (donewire).
 // Where the code enforces no bound on a field, the bound here is chosen to fit
-// the record and is named "chosen" in its comment; a value past it is refused
-// at the reader, never clamped into a record.
+// the record and is named "chosen" in its comment.
 //
 // Times are Unix nanoseconds UTC, 0 for the zero time (as donewire). Maps are
 // lists of pairs in key order. The strings the wire holds as UTF-8 text.
@@ -112,7 +106,7 @@ fixed table Timer
 // Timers is sprint.Timers: the sprint's open timers, the record remind writes
 // and the tick reads, and the record an operation leaves (OpRecord.Timers).
 // Chosen count 60: no count is enforced today.
-fixed table Timers
+table Timers
 {
     open_timers [..60]Timer
 }
@@ -132,7 +126,7 @@ fixed table Member
 // unique ids a table's change log names) and the members one event names. The
 // count 128 is ntable.LimitChangedEntries, the most records one batch changes;
 // a longer list is several records.
-fixed table MemberList
+table MemberList
 {
     members [..128]Member
 }
@@ -140,7 +134,7 @@ fixed table MemberList
 // ChangeEvent is the part of a table change event the twin reads
 // (redis.go changeEvent): the epoch, the verb, the revisions it moved the table
 // between, the members it moved and the members of its batch's account.
-fixed table ChangeEvent
+table ChangeEvent
 {
     // the epoch as the stream writes it, a decimal number.
     epoch string(20)
@@ -163,7 +157,7 @@ fixed table Cell
 }
 
 // CellSet is the cells of one row set write. Chosen count 64.
-fixed table CellSet
+table CellSet
 {
     cells [..64]Cell
 }
@@ -185,7 +179,7 @@ fixed table StreamTransition
 // DecisionDelivery is sprint.DecisionDelivery: a durable folded-message
 // obligation. Chosen bounds for the body (2048), set (256), token (128), fault
 // (300) and the reports (8 of 256).
-fixed table DecisionDelivery
+table DecisionDelivery
 {
     lane             string(135)
     to               string(135)
@@ -220,7 +214,7 @@ fixed table CoordinatorDelivery
 // stream: primaries cut to sprint.MaxListed (50), Count keeps the total. Card
 // ids are Name256. Chosen bounds, none enforced today: what 2048, hint 512,
 // suspects, needs and decisions 16 each.
-fixed table Note
+table Note
 {
     id                       string(128)
     safe_default             string(32)
@@ -281,7 +275,7 @@ fixed table Pair
 }
 
 // LogLine is sprint.Line: one line of the log, a move or a notification.
-fixed table LogLine
+table LogLine
 {
     kind  string(16)
     at    int64
@@ -353,10 +347,10 @@ fixed table QueuedChange
 }
 
 // OpRecord is the header of the operation record the fence holds: store.OpRecord
-// without its lists. Each list is its own part records (OpNote, OpLogLine,
-// OpQueued, Chunk) and the header counts them. Chosen counts 64 for the
-// streams, the closes and the timer ids.
-fixed table OpRecord
+// without its lists. Each list is its own variable part table (OpNote,
+// OpLogLine, OpQueued, Chunk) and the header counts them. Chosen counts 64
+// for the streams, the closes and the timer ids.
+table OpRecord
 {
     id string(256)
     // a part's lock (Go field Lock; lock is reserved in C#) (lock.go): no manifests.
@@ -388,7 +382,7 @@ fixed table OpRecord
 
 // OpNote is one note of an operation: role is notes, decided or updates, index
 // its place in that list.
-fixed table OpNote
+table OpNote
 {
     op_id string(256)
     role  string(16)
@@ -397,7 +391,7 @@ fixed table OpNote
 }
 
 // OpLogLine is one log line of an operation, index its place in OpRecord.Log.
-fixed table OpLogLine
+table OpLogLine
 {
     op_id string(256)
     index uint32
@@ -406,19 +400,19 @@ fixed table OpLogLine
 
 // OpQueued is one queued change of an operation, index its place in
 // OpRecord.Queue.
-fixed table OpQueued
+table OpQueued
 {
     op_id  string(256)
     index  uint32
     change QueuedChange
 }
 
-// Chunk is one slice of bytes the fixed form cannot hold whole: a manifest
+// Chunk is one slice of bytes a variable table holds whole: a manifest
 // (kind "manifest", key the stored table name), a queued entry (kind "entry",
 // key the queue index) or a card text (kind "text", key "<line index>:<name>").
 // The bytes are the other protocol's own, unchanged; index counts from 0 of
 // count chunks, each at most 32768 bytes.
-fixed table Chunk
+table Chunk
 {
     op_id string(256)
     kind  string(16)
@@ -453,7 +447,7 @@ fixed table TableCount
 // enforced today. The drains of the work table's queue ride as `drained`
 // further StepResult records, since the fixed form holds no record inside
 // itself.
-fixed table StepResult
+table StepResult
 {
     verb    string(80)
     op      string(256)

@@ -246,5 +246,5 @@ table Timers
     field open_timers id=0xfe3930a031d4a5f0 kind=14 elem=13 type=Timer array=bounded bound=60
 
 ## history
-### 2026-10-17 (UTC) — first baseline
+### 2026-10-17 (UTC) — attempt 2: variable tables for the large and sparse records
 - baseline created over 31 tables — data written BEFORE this point is not covered by it
