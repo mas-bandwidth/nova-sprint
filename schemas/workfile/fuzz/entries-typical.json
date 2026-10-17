@@ -1,0 +1,8 @@
+{
+  "entries": [
+    {
+      "canon": "(fixed \"a\" :release \"v1.2.14\" :title \"a\" :origin \"o\")",
+      "key": "fixed:a"
+    }
+  ]
+}

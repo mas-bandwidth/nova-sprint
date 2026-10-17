@@ -1,0 +1,154 @@
+schema-tables-baseline 7
+package workfilewire
+
+table Carry
+    field items id=0x3e7884bf4f412c6f kind=14 elem=13 type=CarryItem array=unbounded
+    field fixes id=0xbcd5d47fb60a469c kind=14 elem=13 type=CarryFix array=unbounded
+    field done id=0xdc51fb6761fd6e91 kind=14 elem=13 type=CarryNote array=unbounded
+
+table CarryFix
+    field id id=0x08b72e07b55c3ac0 kind=17 type=string
+    field release id=0xa63d4c9b882b10fe kind=17 type=string
+    field status id=0xc4d5696d6cc12c2f kind=17 type=string
+    field title id=0xda31296c0c1b6029 kind=17 type=string
+    field text id=0xfa04f4ef1995407e kind=17 type=string
+    field origin id=0xb9eae4fe785a14cf kind=17 type=string
+    field kept id=0x583876d75cd7d1d9 kind=14 elem=13 type=KeptPair array=unbounded
+
+table CarryItem
+    field id id=0x08b72e07b55c3ac0 kind=17 type=string
+    field group id=0xdc57e42946f6e08c kind=17 type=string
+    field date id=0x855b516730a34339 kind=17 type=string
+    field title id=0xda31296c0c1b6029 kind=17 type=string
+    field text id=0xfa04f4ef1995407e kind=17 type=string
+    field why id=0x5ec5ea1948914a79 kind=17 type=string
+    field area id=0x89502e843ec2b8c4 kind=17 type=string
+    field exists id=0x732d8bd38ff9851d kind=17 type=string
+    field release id=0xa63d4c9b882b10fe kind=17 type=string
+    field origin id=0xb9eae4fe785a14cf kind=17 type=string
+    field cards id=0xaf9dac3b097689c4 kind=5 min=0 max=9223372036854775807
+    field kept id=0x583876d75cd7d1d9 kind=14 elem=13 type=KeptPair array=unbounded
+
+table CarryNote
+    field id id=0x08b72e07b55c3ac0 kind=17 type=string
+    field release id=0xa63d4c9b882b10fe kind=17 type=string
+    field title id=0xda31296c0c1b6029 kind=17 type=string
+    field text id=0xfa04f4ef1995407e kind=17 type=string
+    field date id=0x855b516730a34339 kind=17 type=string
+    field kept id=0x583876d75cd7d1d9 kind=14 elem=13 type=KeptPair array=unbounded
+
+table Comment
+    field id id=0x08b72e07b55c3ac0 kind=17 type=string
+    field url id=0x4c4e8b193dc8be7e kind=17 type=string
+    field author id=0x6c748afa4d8def96 kind=17 type=string
+    field author_association id=0x74ba3bbe7359444e kind=17 type=string
+    field created id=0xe1a0951856896cfb kind=17 type=string
+    field updated id=0x43ac3b8ac5ae1d90 kind=17 type=string
+    field body id=0xcd4de79bc6c93295 kind=17 type=string
+
+table Counts
+    field repos id=0xf5400bf2b1f1d68a kind=5
+    field issues id=0x7c1b38ad2e75dc09 kind=5
+    field comments id=0x2ce5b7abe8cec6d7 kind=5
+    field references id=0x26d68e9da3011d4b kind=5
+    field linked_prs id=0x56ee7333a6d63714 kind=5
+
+table Issue
+    field number id=0x8031a80d73f6ebe0 kind=5 min=1 max=2147483648 default=1
+    field url id=0x4c4e8b193dc8be7e kind=17 type=string
+    field node_id id=0x264b42df5bee8b4b kind=17 type=string
+    field title id=0xda31296c0c1b6029 kind=17 type=string
+    field state id=0xee63aaad45b1b116 kind=17 type=string
+    field state_reason id=0x3afee1c9235df36f kind=17 type=string
+    field origin id=0xb9eae4fe785a14cf kind=17 type=string
+    field author id=0x6c748afa4d8def96 kind=17 type=string
+    field author_association id=0x74ba3bbe7359444e kind=17 type=string
+    field created id=0xe1a0951856896cfb kind=17 type=string
+    field updated id=0x43ac3b8ac5ae1d90 kind=17 type=string
+    field closed id=0x85530f5090e836c5 kind=17 type=string
+    field locked id=0xaa616bdfe454ecb3 kind=1
+    field lock_reason id=0x975984a562173433 kind=17 type=string
+    field labels id=0x4bc513f856980a8a kind=14 elem=13 type=Word array=unbounded
+    field assignees id=0x394820d286e778bb kind=14 elem=13 type=Word array=unbounded
+    field milestone id=0x4ee710a05d2f77fd kind=17 type=Milestone
+    field body id=0xcd4de79bc6c93295 kind=17 type=string
+    field comments id=0x2ce5b7abe8cec6d7 kind=14 elem=13 type=Comment array=unbounded
+    field references id=0x26d68e9da3011d4b kind=14 elem=13 type=Reference array=unbounded
+    field linked_prs id=0x56ee7333a6d63714 kind=14 elem=13 type=LinkedPR array=unbounded
+
+table KeptPair
+    field key id=0x3dc94a19365b10ec kind=17 type=string
+    field value id=0x7ce4fd9430e80cea kind=17 type=string
+
+table LedgerDoc
+    field data id=0x855b556730a34a05 kind=17 type=bytes
+    field lists id=0xccbd06aa30f787f6 kind=14 elem=13 type=LedgerList array=unbounded
+    field scalars id=0x950f99e0c9a328aa kind=14 elem=13 type=LedgerForm array=unbounded
+
+table LedgerEntries
+    field entries id=0xc5b2a72c0845a253 kind=14 elem=13 type=LedgerEntry array=unbounded
+
+table LedgerEntry
+    field key id=0x3dc94a19365b10ec kind=17 type=string
+    field canon id=0x02637b3aa7599010 kind=17 type=string
+
+table LedgerForm
+    field key id=0x3dc94a19365b10ec kind=17 type=string
+    field canon id=0x02637b3aa7599010 kind=17 type=string
+    field off id=0x1a249b1921e2bdea kind=5 min=0 max=9223372036854775807
+    field end id=0xc2f00318f053500a kind=5 min=0 max=9223372036854775807
+
+table LedgerList
+    field name id=0xc4bcadba8e631b86 kind=17 type=string
+    field off id=0x1a249b1921e2bdea kind=5 min=0 max=9223372036854775807
+    field end id=0xc2f00318f053500a kind=5 min=0 max=9223372036854775807
+    field bare id=0x9a7a059baa52c9cd kind=1
+    field items id=0x3e7884bf4f412c6f kind=14 elem=13 type=LedgerForm array=unbounded
+
+table LinkedPR
+    field repo id=0x4cac581fbfac663d kind=17 type=string
+    field number id=0x8031a80d73f6ebe0 kind=5 min=1 max=2147483648 default=1
+    field url id=0x4c4e8b193dc8be7e kind=17 type=string
+    field state id=0xee63aaad45b1b116 kind=17 type=string
+
+table Milestone
+    field number id=0x8031a80d73f6ebe0 kind=5 min=1 max=2147483648 default=1
+    field title id=0xda31296c0c1b6029 kind=17 type=string
+
+table Reference
+    field kind id=0xef9c96d721673243 kind=17 type=string
+    field repo id=0x4cac581fbfac663d kind=17 type=string
+    field number id=0x8031a80d73f6ebe0 kind=5 min=0 max=2147483648
+    field url id=0x4c4e8b193dc8be7e kind=17 type=string
+    field actor id=0xdcccc5391c47d4da kind=17 type=string
+    field at id=0x089c4e07b545a968 kind=17 type=string
+    field will_close id=0x8c34ca27e17813f2 kind=1
+
+table Repo
+    field name id=0xc4bcadba8e631b86 kind=17 type=string
+    field url id=0x4c4e8b193dc8be7e kind=17 type=string
+    field archived id=0xe17417fb33768153 kind=1
+    field issues id=0x7c1b38ad2e75dc09 kind=14 elem=13 type=Issue array=unbounded
+
+table Tree
+    field format id=0x64db608eefff5c72 kind=17 type=string
+    field source id=0x76dbdc228f782db8 kind=17 type=string
+    field org id=0x19fb8c1921bf9f59 kind=17 type=string
+    field fetched id=0x8937f07e5de6b562 kind=17 type=string
+    field scope id=0xc1074ffbe7efe44b kind=14 elem=13 type=Word array=unbounded
+    field repos id=0xf5400bf2b1f1d68a kind=14 elem=13 type=Repo array=unbounded
+
+table Word
+    field text id=0xfa04f4ef1995407e kind=17 type=string
+
+## history
+### 2026-10-17 (UTC) — first baseline
+- baseline created over 21 tables — data written BEFORE this point is not covered by it
+
+### 2026-10-17 (UTC) — first baseline
+- Issue.labels: array element kind 12 -> 13 [refuse]
+- Issue.assignees: array element kind 12 -> 13 [refuse]
+- Tree.scope: array element kind 12 -> 13 [refuse]
+- table 85b3b9fb528f2775.c1074ffbe7efe44b: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
+- table d8adbc60f2886b80.394820d286e778bb: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
+- table d8adbc60f2886b80.4bc513f856980a8a: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]

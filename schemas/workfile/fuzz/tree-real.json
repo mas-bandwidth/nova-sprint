@@ -1,0 +1,125 @@
+{
+  "fetched": "2026-10-15T08:00:00Z",
+  "format": "v1",
+  "org": "acme",
+  "repos": [
+    {
+      "archived": false,
+      "issues": [
+        {
+          "assignees": [
+            {
+              "text": "bob"
+            }
+          ],
+          "author": "alice",
+          "author_association": "MEMBER",
+          "body": "It crashes.\nEvery time; \"always\".",
+          "closed": "",
+          "comments": [
+            {
+              "author": "bob",
+              "author_association": "COLLABORATOR",
+              "body": "Seen it.",
+              "created": "2026-10-01T10:05:00Z",
+              "id": "IC_kwDO1",
+              "updated": "2026-10-01T10:06:00Z",
+              "url": "https://github.com/acme/a/issues/7#issuecomment-1"
+            }
+          ],
+          "created": "2026-10-01T10:00:00Z",
+          "labels": [
+            {
+              "text": "bug"
+            },
+            {
+              "text": "p1"
+            }
+          ],
+          "linked_prs": [
+            {
+              "number": 12,
+              "repo": "acme/b",
+              "state": "OPEN",
+              "url": "https://github.com/acme/b/pull/12"
+            }
+          ],
+          "lock_reason": "",
+          "locked": false,
+          "milestone": {
+            "number": 3,
+            "title": "v1.5"
+          },
+          "node_id": "I_kwDO7",
+          "number": 7,
+          "origin": "internal",
+          "references": [
+            {
+              "actor": "carol",
+              "at": "2026-10-02T09:00:00Z",
+              "kind": "PullRequest",
+              "number": 12,
+              "repo": "acme/b",
+              "url": "https://github.com/acme/b/pull/12",
+              "will_close": true
+            },
+            {
+              "actor": "dave",
+              "at": "2026-10-02T09:30:00Z",
+              "kind": "",
+              "number": 0,
+              "repo": "",
+              "url": "",
+              "will_close": false
+            }
+          ],
+          "state": "OPEN",
+          "state_reason": "",
+          "title": "Crash on start",
+          "updated": "2026-10-02T11:00:00Z",
+          "url": "https://github.com/acme/a/issues/7"
+        },
+        {
+          "assignees": [],
+          "author": "erin",
+          "author_association": "NONE",
+          "body": "",
+          "closed": "2026-09-03T10:00:00Z",
+          "comments": [],
+          "created": "2026-09-01T10:00:00Z",
+          "labels": [],
+          "linked_prs": [],
+          "lock_reason": "RESOLVED",
+          "locked": true,
+          "milestone": null,
+          "node_id": "I_kwDO8",
+          "number": 2147483648,
+          "origin": "external",
+          "references": [],
+          "state": "CLOSED",
+          "state_reason": "NOT_PLANNED",
+          "title": "Old",
+          "updated": "2026-09-02T10:00:00Z",
+          "url": "https://github.com/acme/a/issues/2147483648"
+        }
+      ],
+      "name": "acme/a",
+      "url": "https://github.com/acme/a"
+    },
+    {
+      "archived": true,
+      "issues": [],
+      "name": "acme/b",
+      "url": "https://github.com/acme/b"
+    }
+  ],
+  "scope": [
+    {
+      "text": "acme/a"
+    },
+    {
+      "text": "acme/b"
+    }
+  ],
+  "source": "github"
+}

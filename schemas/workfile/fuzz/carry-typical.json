@@ -1,0 +1,54 @@
+{
+  "done": [
+    {
+      "date": "2026-10-17",
+      "id": "gpu-contact",
+      "kept": [
+        {
+          "key": "item-why",
+          "value": "the reason it matters"
+        }
+      ],
+      "release": "",
+      "text": "Contact on the GPU. Done: #12.",
+      "title": "GPU contact"
+    }
+  ],
+  "fixes": [
+    {
+      "id": "gpu-contact",
+      "kept": [
+        {
+          "key": "item-why",
+          "value": "the reason it matters"
+        }
+      ],
+      "origin": "roadmap item gpu-contact",
+      "release": "v1.7.0",
+      "status": "planned",
+      "text": "Contact on the GPU.",
+      "title": "GPU contact"
+    }
+  ],
+  "items": [
+    {
+      "area": "fast3d",
+      "cards": 3,
+      "date": "2026-10-16",
+      "exists": "the CPU path",
+      "group": "physics",
+      "id": "gpu-contact",
+      "kept": [
+        {
+          "key": "item-why",
+          "value": "the reason it matters"
+        }
+      ],
+      "origin": "issue #4",
+      "release": "v1.7",
+      "text": "Contact on the GPU.",
+      "title": "GPU contact",
+      "why": "speed"
+    }
+  ]
+}
