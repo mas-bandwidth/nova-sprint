@@ -116,6 +116,20 @@ func (a *app) landOnce(ctx context.Context, addr string, more []string, stdout i
 				lines = append(lines, line)
 			}
 		}
+		// A LAND OK behind a failing tick is a landing whose merging -> landed moves are
+		// queued for the tick's drain, and the store never holds it while the drain is
+		// refused: say so with a NOTE (v17-land-ok-names-a-failing-tick; the 2026-10-17
+		// incident, from 14:02, when every tick drain was refused and the loop's LAND OK
+		// was all anyone saw). The store is opened as mergeQueued does; a store or a
+		// heartbeat that cannot be read adds nothing.
+		a.serial.Lock()
+		st, serr := a.storeCtx(ctx, common{verb: "where", redis: addr})
+		if serr == nil {
+			if m, hb, merr := st.Machine(ctx); merr == nil {
+				lines = landOKQueuedNote(lines, m, hb)
+			}
+		}
+		a.serial.Unlock()
 	}
 	if gate != nil {
 		// The loop's own landing is machine work and is exempt from the hook gate, so
@@ -319,6 +333,31 @@ func landBatched(lines []string) bool {
 		}
 	}
 	return false
+}
+
+// landOKQueuedNote returns lines, and when one begins "LAND OK " and the landing's
+// moves are queued behind a failing tick (queuedTickNote), a copy with one more
+// line, "NOTE " + that note, appended; otherwise lines unchanged. The note is
+// this card's fix for the 2026-10-17 incident (from 14:02): the loop printed
+// LAND OK for batches whose merging -> landed moves sat queued behind a tick drain
+// the store refused every tick, and the landing result was never surfaced.
+func landOKQueuedNote(lines []string, m store.Machine, hb store.Heartbeat) []string {
+	ok := false
+	for _, line := range lines {
+		if strings.HasPrefix(line, "LAND OK ") {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return lines
+	}
+	if note := queuedTickNote(m, hb, true); note == "" {
+		return lines
+	} else {
+		out := append([]string(nil), lines...)
+		return append(out, "NOTE "+note)
+	}
 }
 
 // landRefusalOf reads a refusal's reason and remedy off what land said, never off its
