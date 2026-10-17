@@ -3098,6 +3098,11 @@ func (a *app) cmdCheck(args []string, stdout, stderr io.Writer) int {
 		if rep.Violations == nil {
 			rep.Violations = []sprint.Violation{}
 		}
+		// row_forms is the per-record per-form counter (S4). An empty object
+		// is still printed, so a retire card can see that nothing was counted.
+		if rep.RowForms == nil {
+			rep.RowForms = map[string]map[string]uint64{}
+		}
 		b, _ := json.Marshal(rep)
 		fmt.Fprintln(stdout, string(b))
 		return code
