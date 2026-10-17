@@ -2663,17 +2663,7 @@ func (st *Store) withSkips(op OpRecord, skips []Skip) OpRecord {
 	op.Notes = append(append([]sprint.Note(nil), op.Notes...), n)
 	// a skipped entry did not happen: its move line is not written, and the
 	// skip's judgment says what was skipped
-	var kept []sprint.Line
-	for _, l := range op.Log {
-		skipped := false
-		for _, k := range skips {
-			skipped = skipped || l.Card == k.Card && (k.Table == l.Table || k.Table == st.Names.Table(l.Table))
-		}
-		if !skipped {
-			kept = append(kept, l)
-		}
-	}
-	op.Log = kept
+	op.Log = st.withoutSkipped(op.Log, skips)
 	var res Result
 	if op.Result != "" && json.Unmarshal([]byte(op.Result), &res) == nil {
 		res.Skipped = lines
@@ -2683,6 +2673,50 @@ func (st *Store) withSkips(op OpRecord, skips []Skip) OpRecord {
 		}
 	}
 	return op
+}
+
+// withoutSkipped is a step's move lines with the skipped cards taken out: a
+// set line (GroupSets: one line, many Cards) loses only its skipped cards and
+// keeps the rest, its Card the first card left; a line with no card left is
+// dropped. Before v1.5.4 a set line was dropped whole when its first card was
+// skipped and kept whole when a later one was.
+func (st *Store) withoutSkipped(log []sprint.Line, skips []Skip) []sprint.Line {
+	skipped := func(l sprint.Line, card string) bool {
+		for _, k := range skips {
+			if k.Card == card && (k.Table == l.Table || k.Table == st.Names.Table(l.Table)) {
+				return true
+			}
+		}
+		return false
+	}
+	var kept []sprint.Line
+	for _, l := range log {
+		if len(l.Cards) == 0 {
+			if !skipped(l, l.Card) {
+				kept = append(kept, l)
+			}
+			continue
+		}
+		var left []string
+		for _, c := range l.Cards {
+			if !skipped(l, c) {
+				left = append(left, c)
+			}
+		}
+		switch {
+		case len(left) == 0:
+			continue
+		case len(left) == 1:
+			l.Card, l.Cards = left[0], nil
+			if l.Table == sprint.Work {
+				l.Primary = left[0]
+			}
+		default:
+			l.Card, l.Cards = left[0], left
+		}
+		kept = append(kept, l)
+	}
+	return kept
 }
 
 // Repair finishes the pending operation, if any.

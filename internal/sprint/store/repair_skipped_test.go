@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
@@ -88,7 +89,7 @@ func TestRepairSkippedRestoresTheDroppedLinesAndCloses(t *testing.T) {
 	id := op + ".skip"
 	require.True(t, h.skipOpen(id), "the skip judgment is not open")
 
-	dry, err := h.st.ReconcileSkipped(h.ctx, id, "", true)
+	dry, err := h.st.ReconcileSkipped(h.ctx, id, "", true, false)
 	require.NoError(t, err)
 	assert.True(t, dry.Dry)
 	assert.Equal(t, 2, dry.Counts[SkipRestore], "dry: %+v", dry)
@@ -98,7 +99,7 @@ func TestRepairSkippedRestoresTheDroppedLinesAndCloses(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, rep.Violations, "a dry run wrote the lines")
 
-	res, err := h.st.ReconcileSkipped(h.ctx, id, "reconcile-1", false)
+	res, err := h.st.ReconcileSkipped(h.ctx, id, "reconcile-1", false, false)
 	require.NoError(t, err)
 	assert.Equal(t, op, res.Op)
 	assert.Equal(t, 2, res.Counts[SkipRestore], "%+v", res)
@@ -126,11 +127,11 @@ func TestRepairSkippedRestoresTheDroppedLinesAndCloses(t *testing.T) {
 	}
 	assert.Equal(t, 2, restored, "restored move lines")
 
-	again, err := h.st.ReconcileSkipped(h.ctx, id, "reconcile-1", false)
+	again, err := h.st.ReconcileSkipped(h.ctx, id, "reconcile-1", false, false)
 	require.NoError(t, err)
 	assert.True(t, again.Replay, "the same --op did not replay: %+v", again)
 	assert.Equal(t, res.Counts, again.Counts)
-	_, err = h.st.ReconcileSkipped(h.ctx, id, "", false)
+	_, err = h.st.ReconcileSkipped(h.ctx, id, "", false, false)
 	require.Error(t, err, "a closed judgment was reconciled again")
 	assert.Contains(t, err.Error(), "no open judgment is "+id)
 	lines2, err := h.st.Log(h.ctx)
@@ -151,7 +152,7 @@ func TestRepairSkippedRefusesAnEntryTheStoreDoesNotHoldAsFound(t *testing.T) {
 	_, err := h.m.Apply(h.ctx, ntable.BatchManifest{Schema: 1, Table: "t-work", Epoch: "0", ExpectedTableRevision: fmt.Sprint(s.Work.Revision), OperationID: "outside",
 		Members: []ntable.BatchMemberEntry{{ID: p.ID, Expect: &ntable.MemberExpect{Place: &ntable.PlaceExpect{Row: p.Row, Col: p.Col}}, Set: map[string]string{"brief": "outside"}}}})
 	require.NoError(t, err)
-	res, err := h.st.ReconcileSkipped(h.ctx, op+".skip", "", false)
+	res, err := h.st.ReconcileSkipped(h.ctx, op+".skip", "", false, false)
 	require.NoError(t, err)
 	require.Equal(t, 1, res.Counts[SkipRefused], "%+v", res)
 	assert.Equal(t, 1, res.Counts[SkipRestore], "%+v", res)
@@ -163,6 +164,7 @@ func TestRepairSkippedRefusesAnEntryTheStoreDoesNotHoldAsFound(t *testing.T) {
 		}
 	}
 	assert.True(t, h.skipOpen(op+".skip"), "the judgment closed with an entry refused")
+	assert.NotEmpty(t, res.Rule13, "the replay with the restored lines still breaks rule 13 on s1-1")
 	rep, _, err := h.st.Check(h.ctx, 0)
 	require.NoError(t, err)
 	var named []string
@@ -184,7 +186,7 @@ func TestRepairSkippedSettlesACardTheLogMovedOn(t *testing.T) {
 	op := h.oldSkippedDrain()
 	h.stopMachine()
 	h.must(DropStep(sprint.DropReq{Sel: sprint.Sel{IDs: []string{"s1-2"}}, Reason: "moved on"}))
-	res, err := h.st.ReconcileSkipped(h.ctx, op+".skip", "", false)
+	res, err := h.st.ReconcileSkipped(h.ctx, op+".skip", "", false, false)
 	require.NoError(t, err)
 	assert.Equal(t, 1, res.Counts[SkipRestore], "%+v", res)
 	assert.Equal(t, 1, res.Counts[SkipSettled], "%+v", res)
@@ -212,9 +214,10 @@ func TestParseSkips(t *testing.T) {
 		parts = append(parts, k.String())
 	}
 	what := fmt.Sprintf("repair of %s (%s) skipped %d entries the store refused as recorded: %s", "op-1", "tick drain", len(ks), strings.Join(parts, "; "))
-	op, got, err := parseSkips(what)
+	op, verb, got, err := parseSkips(what)
 	require.NoError(t, err)
 	assert.Equal(t, "op-1", op)
+	assert.Equal(t, sprint.DrainVerb, verb)
 	require.Len(t, got, 3)
 	assert.Equal(t, parsedSkip{card: "a", table: "work", expected: "revision 3, at s:ready", found: "revision 4, at s:working"}, got[0])
 	assert.Equal(t, parsedSkip{prop: "stream_index", table: "work"}, got[1])
@@ -222,8 +225,108 @@ func TestParseSkips(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, uint64(2), r)
 	assert.Equal(t, "s:merging", p)
-	_, _, err = parseSkips(strings.Replace(what, "skipped 3 entries", "skipped 4 entries", 1))
+	_, _, _, err = parseSkips(strings.Replace(what, "skipped 3 entries", "skipped 4 entries", 1))
 	assert.Error(t, err, "a count the entries do not come to")
-	_, _, err = parseSkips("something else")
+	_, _, _, err = parseSkips("something else")
 	assert.Error(t, err)
+}
+
+// handSkip writes a skip judgment by hand, as a repair of op (verb) would,
+// listing the entries given, and returns its id.
+func (h *harness) handSkip(op, verb string, entries ...string) string {
+	h.t.Helper()
+	what := fmt.Sprintf("repair of %s (%s) skipped %d entries the store refused as recorded: %s", op, verb, len(entries), strings.Join(entries, "; "))
+	h.must(NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, Type: NRepairSkipped, Stream: "s1", Primaries: []string{"s1-1"}, Count: 1, At: h.now, What: what,
+		Decisions: append([]string(nil), RepairSkippedDecisions...)}))
+	open, err := h.m.OpenNotes(h.ctx)
+	require.NoError(h.t, err)
+	for _, o := range open {
+		if o.Note.Type == NRepairSkipped {
+			return o.Note.ID
+		}
+	}
+	h.t.Fatal("the hand skip judgment is not open")
+	return ""
+}
+
+// An entry with no queued line naming the change is refused: nothing says the
+// drain took the card where the store holds it.
+func TestRepairSkippedRefusesAnEntryWithNoQueuedLine(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.setup(2)
+	c := h.table().Work.Card("s1-1")
+	id := h.handSkip("op-x", sprint.DrainVerb, fmt.Sprintf("card s1-1 (primary s1-1) on t-work: expected revision %d, at %s:%s, found revision %d, at %s:%s; the store: x", c.Rev-1, c.Row, c.Col, c.Rev, c.Row, c.Col))
+	res, err := h.st.ReconcileSkipped(h.ctx, id, "", false, false)
+	require.NoError(t, err)
+	require.Len(t, res.Entries, 1)
+	assert.Equal(t, SkipRefused, res.Entries[0].Outcome, "%+v", res.Entries[0])
+	assert.Contains(t, res.Entries[0].Why, "no queued line")
+	assert.False(t, res.Closed)
+	assert.True(t, h.skipOpen(id))
+}
+
+// Only a tick drain's skips are reconciled: the restored lines carry the
+// drain's verb and the machine, so another verb's judgment is refused whole.
+func TestRepairSkippedRefusesAnotherVerbsSkips(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.setup(2)
+	id := h.handSkip("op-y", "deal", "card s1-1 (primary s1-1) on t-work: expected revision 1, at s1:ready, found revision 2, at s1:working; the store: x")
+	_, err := h.st.ReconcileSkipped(h.ctx, id, "", true, false)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `the repair of a "deal" operation`)
+}
+
+// A table property is unverified, its stored value shown, and holds the
+// judgment open; --accept-props settles it and the judgment closes.
+func TestRepairSkippedLeavesPropertiesUnverifiedUnlessAccepted(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.setup(2)
+	id := h.handSkip("op-z", sprint.DrainVerb, "table property stream_index on t-work; the store: no member change of its manifest applied")
+	res, err := h.st.ReconcileSkipped(h.ctx, id, "", false, false)
+	require.NoError(t, err)
+	require.Len(t, res.Entries, 1)
+	assert.Equal(t, SkipUnverified, res.Entries[0].Outcome)
+	assert.Contains(t, res.Entries[0].Why, "--accept-props")
+	assert.False(t, res.Closed)
+	assert.True(t, h.skipOpen(id))
+	res, err = h.st.ReconcileSkipped(h.ctx, id, "", false, true)
+	require.NoError(t, err)
+	assert.Equal(t, SkipSettled, res.Entries[0].Outcome)
+	assert.Empty(t, res.Rule13)
+	assert.True(t, res.Closed, "%+v", res)
+	assert.False(t, h.skipOpen(id))
+}
+
+// withoutSkipped takes only the skipped cards out of a set line, keeping the
+// rest; a line left with none is dropped.
+func TestWithoutSkippedKeepsTheRestOfASetLine(t *testing.T) {
+	t.Parallel()
+	st := &Store{Names: sprint.Names{Prefix: "t-"}}
+	set := sprint.Line{Kind: sprint.LineMove, Table: sprint.Work, Card: "a", Cards: []string{"a", "b", "c"}, From: "s:ready", To: "s:working"}
+	one := sprint.Line{Kind: sprint.LineMove, Table: sprint.Work, Card: "d", Primary: "d", To: "s:working"}
+	pair := sprint.Line{Kind: sprint.LineMove, Table: sprint.Work, Card: "e", Cards: []string{"e", "f"}, To: "s:working"}
+	skips := []Skip{{Card: "a", Table: "t-work"}, {Card: "c", Table: "t-work"}, {Card: "d", Table: "t-work"}, {Card: "e", Table: "t-work"}, {Card: "f", Table: "t-work"}}
+	got := st.withoutSkipped([]sprint.Line{set, one, pair}, skips)
+	require.Len(t, got, 1, "%+v", got)
+	assert.Equal(t, "b", got[0].Card, "the first card left")
+	assert.Nil(t, got[0].Cards, "one card left is a plain line")
+	assert.Equal(t, "b", got[0].Primary)
+	got = st.withoutSkipped([]sprint.Line{set}, []Skip{{Card: "b", Table: "t-work"}})
+	require.Len(t, got, 1)
+	assert.Equal(t, "a", got[0].Card)
+	assert.Equal(t, []string{"a", "c"}, got[0].Cards, "a skipped card that is not first leaves the line")
+}
+
+// cutCause cuts on a UTF-8 boundary.
+func TestCutCauseKeepsUTF8Whole(t *testing.T) {
+	t.Parallel()
+	c := strings.Repeat("a", sprint.MaxCause-4) + "é→" + strings.Repeat("b", 10)
+	got := cutCause(c)
+	assert.LessOrEqual(t, len(got), sprint.MaxCause)
+	assert.True(t, utf8.ValidString(got), "%q", got)
+	assert.True(t, strings.HasSuffix(got, "..."))
+	assert.Equal(t, "short", cutCause("short"))
 }

@@ -79,3 +79,15 @@ func TestRetireOnlyRetiresAnOrphanJudgment(t *testing.T) {
 	}
 	assert.Empty(t, p.Units, "a retire moves no card")
 }
+
+// A repair's skip judgment is never retired by RetireOnly, even as an orphan:
+// repair --skipped reads it and closes it.
+func TestRetireOnlyLeavesARepairSkipJudgment(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 0)
+	w.must(Add(w.s, AddReq{Stream: "s1", IDs: []string{"here"}}))
+	w.note(judgment(NRepairSkipped, "s1", w.s.Now, 0, "no-such-card"))
+	p := RetireOnly(w.s, MachineActor)
+	assert.Empty(t, p.Closes, "the skip judgment was retired: %+v", p.Closes)
+	assert.Empty(t, p.Notes)
+}

@@ -28,7 +28,8 @@ func init() {
 func (a *app) cmdRepair(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("repair")
 	fs.BoolVar(&c.dry, "dry-run", false, "print each move repair would make and write nothing")
-	skipped := fs.String("skipped", "", "reconcile a repair's skip judgment, <op>.skip: restore the move line of each entry the store holds as applied, refuse by name each it does not, and close the judgment when none is refused (the v1.5.4 hotfix)")
+	skipped := fs.String("skipped", "", "reconcile a tick drain repair's skip judgment, <op>.skip: restore the move line of each entry the store holds as applied, refuse by name each it does not, and close the judgment when nothing is refused or unverified and the log replays to every card (the v1.5.4 hotfix)")
+	acceptProps := fs.Bool("accept-props", false, "with --skipped: settle the table properties the judgment lists at the values the store holds (each is printed); without it they are unverified and the judgment stays open")
 	pos, err := parse(fs, args)
 	if err != nil || len(pos) > 0 {
 		return refuse(stderr, "repair", argErr("takes no words ", err, pos...))
@@ -39,7 +40,7 @@ func (a *app) cmdRepair(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx := context.Background()
 	if *skipped != "" {
-		return a.repairSkipped(ctx, *c, st, *skipped, stdout, stderr)
+		return a.repairSkipped(ctx, *c, st, *skipped, *acceptProps, stdout, stderr)
 	}
 	// rule 6 first: a merging card short of its reads is returned to review
 	// for its missing read, whatever else is pending.
@@ -117,8 +118,8 @@ func (a *app) refuseNothing(stderr io.Writer) int {
 // summary. Exit 0 when nothing is refused and the judgment is closed (or, dry,
 // would be), 1 when an entry is refused, 2 when the store did not answer.
 // tla/RepairLog.tla Reconcile
-func (a *app) repairSkipped(ctx context.Context, c common, st *store.Store, id string, stdout, stderr io.Writer) int {
-	res, err := st.ReconcileSkipped(ctx, id, c.op, c.dry)
+func (a *app) repairSkipped(ctx context.Context, c common, st *store.Store, id string, acceptProps bool, stdout, stderr io.Writer) int {
+	res, err := st.ReconcileSkipped(ctx, id, c.op, c.dry, acceptProps)
 	if err != nil {
 		code := 1
 		if errors.Is(err, store.ErrUnknown) {
@@ -128,7 +129,7 @@ func (a *app) repairSkipped(ctx context.Context, c common, st *store.Store, id s
 		return code
 	}
 	code := 0
-	if res.Counts[store.SkipRefused] > 0 {
+	if res.Counts[store.SkipRefused]+res.Counts[store.SkipUnverified] > 0 || len(res.Rule13) > 0 {
 		code = 1
 	}
 	if c.json {
@@ -143,13 +144,16 @@ func (a *app) repairSkipped(ctx context.Context, c common, st *store.Store, id s
 	for _, e := range res.Entries {
 		name := "card=" + oneline.Field(e.Card)
 		if e.Prop != "" {
-			name = "prop=" + oneline.Field(e.Prop)
+			name = "prop=" + oneline.Field(e.Prop) + " value=" + oneline.Field(e.Value)
 		}
 		word := strings.ToUpper(e.Outcome)
-		if e.Outcome != store.SkipRefused {
+		if e.Outcome == store.SkipRestore || e.Outcome == store.SkipSettled {
 			word = would + word
 		}
 		fmt.Fprintf(stdout, "%s %s table=%s from=%s to=%s why=%s\n", word, name, oneline.Field(e.Table), oneline.Field(e.Expected), oneline.Field(e.Found), oneline.Escape(e.Why))
+	}
+	for _, v := range res.Rule13 {
+		fmt.Fprintf(stdout, "RULE13 %s\n", oneline.Escape(v))
 	}
 	status := "OK"
 	if code != 0 {
@@ -159,8 +163,8 @@ func (a *app) repairSkipped(ctx context.Context, c common, st *store.Store, id s
 	if res.Closed {
 		closed = "yes"
 	}
-	fmt.Fprintf(stdout, "REPAIR SKIPPED %s %sjudgment=%s op=%s restored=%d settled=%d refused=%d closed=%s%s%s\n", status, would, oneline.Field(res.Judgment), oneline.Field(res.Op),
-		res.Counts[store.SkipRestore], res.Counts[store.SkipSettled], res.Counts[store.SkipRefused], closed,
+	fmt.Fprintf(stdout, "REPAIR SKIPPED %s %sjudgment=%s op=%s restored=%d settled=%d unverified=%d refused=%d rule13_after=%d closed=%s%s%s\n", status, would, oneline.Field(res.Judgment), oneline.Field(res.Op),
+		res.Counts[store.SkipRestore], res.Counts[store.SkipSettled], res.Counts[store.SkipUnverified], res.Counts[store.SkipRefused], len(res.Rule13), closed,
 		map[bool]string{true: " replay=yes", false: ""}[res.Replay], map[bool]string{true: " written=" + oneline.Field(res.Written), false: ""}[res.Written != ""])
 	return code
 }
