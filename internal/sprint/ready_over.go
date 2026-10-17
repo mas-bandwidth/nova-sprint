@@ -72,6 +72,9 @@ func (s *Snapshot) readyWhy(c *Card) (tier, why string) {
 		return cardTierOf(c), "a sentinel waits for the coordinator's release: nova-sprint release " + c.ID + " --reason <why>"
 	}
 	if IsHeld(c) {
+		if c.F("held_by") == ServerDefaultActor {
+			return cardTierOf(c), "held by server-default for judgment " + c.F("held_judgment") + ": release it: nova-sprint release " + c.ID + " --reason <why>"
+		}
 		return cardTierOf(c), "held by the coordinator: release it: nova-sprint release " + c.ID + " --reason <why>"
 	}
 	if StreamHeld(s, c.Row) {

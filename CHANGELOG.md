@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.5.2 — 2026-10-17
+
+Cards stop getting stuck on the machine's own holds and on stale gate judgments.
+
+- A bound judgment unanswered at twice its deadline holds a ready primary whose work card was withdrawn in place (it stays ready, dealt to no one, and release clears the hold where it stands), so check no longer breaks rule 2 on the machine's own step. Any other ready primary, and a review primary, is parked in waiting as before, so a sentinel insert never meets a held ready card.
+- A held ready card is no dealable work: the deal, the due-move list, the ready alarm, the starving count and the idle-friend pool list all skip it, and the ready-over reason names the server-default hold and its judgment.
+- The "no member up satisfies GATE-NEEDS" judgment is raised and closed by the tick itself, so it no longer stays open after a member that carries the need comes back. Its text names the need no member carries.
+- Models: `tla/SprintTables.tla` Rule2Withdrawn and HeldReadyIsWithdrawn (reversed witnesses `parkmoves` and `parkinplaceall`, two-primary instance `MCSprintTablesDecisionParkingTwo.cfg`); `tla/JudgmentRetire.tla` GateClosedAfterTick and GateRaisedAfterTick (reversed witness `gate_stays`).
+- Requires nova-tools v1.5.0 or later. No wire or record change.
+
+## v1.5.1 — 2026-10-17
+
+- Card tiers: only a card that adds a new TLA+ model (`.tla`) needs the heavy tier. A card that edits an existing model can run at pro. The path lint that enforces this lives in nova-sprint's own `pkg/swarm`.
+
 ## v1.5.0 — 2026-10-17
 
 Schema-table adoption, read side: the sprint store reads its rows through one row reader that accepts the legacy form and the schema-table forms, and counts each read by form.

@@ -17,6 +17,11 @@ A brief may name a `GATE-NEEDS:` line listing the gate's needs
 (e.g., `GATE-NEEDS: linux, tla`). The deal matches a card to a
 member only when the member's facts satisfy every need. A card no member
 can satisfy is a judgment at once; it is never silently waited for.
+The judgment is the tick's: raised while no member of the deal's pool
+(up, not environment-held, not quiet, in the card's bench) carries the
+need, closed in the tick one does, and the card dealt in that tick
+(`tla/JudgmentRetire.tla` GateClosedAfterTick). It names the need no member
+carries, or the needs together when each is carried and none carries all.
 A member's facts are its own measure of its machine, carried on its beat
 (`fleet beat <m> --facts linux,amd64,landlock,tla,go`: its OS, its ISA,
 landlock, the TLA jar at /opt/tla/tla2tools.jar, its toolchains); the
@@ -9467,7 +9472,7 @@ payloads and retry tokens persist through server restart and are epoch-scoped.
 
 | Judgment kind | Declared safe default at twice its deadline |
 | --- | --- |
-| Card reached its bound; brief wrong at the attempt cap | Park a Ready or Review primary in Waiting with its bound judgment, cause and saved prior state. Release restores that exact state; a Review primary keeps its head, attempt and read records. An existing hold is never overwritten. |
+| Card reached its bound; brief wrong at the attempt cap | Hold a Ready primary whose work card was withdrawn in place (it stays Ready, dealt to no one); park any other Ready primary, and a Review primary, in Waiting; each with its bound judgment, cause and saved prior state. Release restores that exact state; a Review primary keeps its head, attempt and read records. An existing hold is never overwritten. A withdrawn primary is never moved to Waiting, since rule 2 holds it ready or waiting on an unlanded need, and a sentinel insert never pulls it, so an insert never meets a held Ready card (2026-10-17; `tla/SprintTables.tla` Rule2Withdrawn and HeldReadyIsWithdrawn, reversed witnesses `parkmoves` and `parkinplaceall`). |
 | Cannot ask / no eligible reader | Wait 30 minutes, then re-evaluate the existing reader condition. The normal ask pass may proceed sooner if an eligible reader becomes available. |
 | Every other kind, including member held with no cause, acceptance, merge and drop decisions | `none`; keep open and escalate to the owner. |
 | Sprint done | Terminal exemption: no decision deadline and no server default. |
@@ -9499,7 +9504,9 @@ independent of the inbox read cursor.
 
 The central lifecycle permits two guarded moves: Review → Waiting only for a
 server-default bound hold, and Waiting → Review only for release of that saved
-Review state. Ready → Waiting also admits that same bound-hold cause. Existing
+Review state. Ready → Waiting also admits that same bound-hold cause, for a Ready
+primary with no withdrawn work card; one whose work card was withdrawn is held in
+place, and release clears the hold where it stands. Existing
 sentinel/needs transitions and ordinary release behavior are unchanged. Parking
 alone does not retire an in-flight read; its independent timeout/rest rules still
 apply. `SprintTables` checks park/release actions inside its full `Spec` on a one-primary

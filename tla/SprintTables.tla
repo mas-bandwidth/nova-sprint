@@ -205,6 +205,14 @@
 \*                  (WaitsAfterWithinNeeds, FinishAgreesWithLifecycle).
 \*   "finishloop"   a refused finish is neither counted nor judged, so it is
 \*                  sent again without end (FinishRefusalsBounded).
+\*   "parkmoves"    the server-default hold of a ready primary moves it to
+\*                  waiting, as seat_answers.go TickDecisionDefaults did
+\*                  before 2026-10-17: a primary whose work card was
+\*                  withdrawn is left waiting on no need (Rule2Withdrawn).
+\*   "parkinplaceall" the hold keeps every ready primary in place, its work
+\*                  card withdrawn or not: a held ready card a sentinel
+\*                  insert would pull, which the lifecycle's hold guard
+\*                  refuses with the whole add (HeldReadyIsWithdrawn).
 \*   "halfstep"     the fence is dropped, so a crash leaves a step half-written
 \*                  (its fleet writes committed, its work-table write pending)
 \*                  and other actions may act on the half-written table; a
@@ -940,6 +948,9 @@ AddMove ==
     /\ FenceOK
     /\ ~IsSentinel(c)
     /\ state[c] = "ready"
+    \* a ready card whose work card was withdrawn is past the stop, never pulled
+    \* behind it (steps_work.go Add, withdrawnCard): rule 2 (Rule2Withdrawn)
+    /\ wplace[c] # "withdrawn"
     /\ state' = [state EXCEPT ![c] = "waiting"]
     /\ UNCHANGED <<needs, waived, everLanded, members, wplace, wmember, rplace, mg, sstream, scause, ranked, ci>>
     /\ pendstate' = IF Free THEN state' ELSE pendstate
@@ -1356,11 +1367,20 @@ ParkFence == parkState = "held" =>
 
 \* Bounded composition: parking is enabled for the one-primary full-Spec
 \* instances; historical three-card instances retain their original action set.
+\* A ready primary whose work card was withdrawn is held in place
+\* (seat_answers.go TickDecisionDefaults, withdrawnCard): it stays ready, the
+\* hold fences it from the deal (ParkFence, dealPlan IsHeld), so it is never
+\* left waiting on no need (Rule2Withdrawn), and a sentinel insert never pulls
+\* it (AddMove). Any other ready primary, and one in review, is parked in
+\* waiting (lifecycle.go decisionPark), so an insert never meets a held ready
+\* card (HeldReadyIsWithdrawn). Enabled in the one- and two-primary instances.
+InPlace(c) == state[c] = "ready" /\ (wplace[c] = "withdrawn" \/ Broken = "parkinplaceall")
 DecisionParkStep ==
-  /\ Cardinality(Card) = 1
+  /\ Cardinality(Card) <= 2
   /\ Free /\ parkState = "none" /\ state[ParkCard] \in {"ready", "review"}
   /\ parkBound
-  /\ state' = [state EXCEPT ![ParkCard] = "waiting"]
+  /\ state' = IF InPlace(ParkCard) /\ Broken # "parkmoves"
+               THEN state ELSE [state EXCEPT ![ParkCard] = "waiting"]
   /\ pendstate' = state'
   /\ flags' = [NoFlags EXCEPT !.decisionPark = TRUE]
   /\ parkSaved' = state[ParkCard] /\ parkState' = "held"
@@ -1486,9 +1506,10 @@ MovesOnlyByTable ==
     \/ state'[c] = state[c]
     \/ Legal(state[c], state'[c])
     \/ /\ c = ParkCard /\ flags'.decisionPark /\ parkBound /\ parkCause'
-       /\ state[c] \in {"ready", "review"} /\ state'[c] = "waiting"
+       /\ (state[c] = "review" \/ (state[c] = "ready" /\ wplace[c] # "withdrawn"))
+       /\ state'[c] = "waiting"
     \/ /\ c = ParkCard /\ flags'.decisionRelease /\ parkCause
-       /\ state[c] = "waiting" /\ state'[c] = parkSaved
+       /\ state[c] \in {"waiting", "ready"} /\ state'[c] = parkSaved
     \/ /\ state'[c] = "off"
        /\ (IsOpen(state[c]) \/ flags'.removing)]_vars
 
@@ -1498,7 +1519,7 @@ MovesOnlyByTable ==
 ReadyToWaitingOnlyByInsertOrNeeds ==
   [][\A c \in Card :
     state[c] = "ready" /\ state'[c] = "waiting" => flags'.inserting \/ ~((NeedsMet(c))')
-      \/ (c = ParkCard /\ flags'.decisionPark /\ parkBound /\ parkCause')]_allTableVars
+      \/ (c = ParkCard /\ flags'.decisionPark /\ parkBound /\ parkCause' /\ wplace[c] # "withdrawn")]_allTableVars
 
 \* LandedIsFinal: a landed primary stays landed; only a remove takes it off
 \* the table, and it never moves to another state.
@@ -1564,7 +1585,30 @@ RankRefusesLanded == \A c \in Card : state[c] = "landed" => ~ranked[c]
 
 \* These invariants observe actual lifecycle transitions inside Spec, including
 \* the same-card head and live-read provenance; no disconnected projection.
-ParkingHasCause == parkState = "held" => parkBound /\ parkCause /\ state[ParkCard] = "waiting"
+ParkingHasCause == parkState = "held" => parkBound /\ parkCause
+  /\ state[ParkCard] \in {"ready", "waiting"}
+
+\* HeldReadyIsWithdrawn: a held ready primary is one whose work card was
+\* withdrawn, the one kind a sentinel insert never pulls (AddMove,
+\* steps_work.go Add withdrawnCard), so the lifecycle's hold guard never
+\* refuses an insert for it.
+HeldReadyIsWithdrawn == parkState = "held" /\ state[ParkCard] = "ready" => wplace[ParkCard] = "withdrawn"
+
+\* Rule2Withdrawn (check.go rule 2, judged when no operation is in flight): a
+\* primary whose work card was withdrawn is ready, or waiting on a named need
+\* that has not landed, or waiting with its needs met and resolvable: the
+\* tick's resolve (Resolve, steps_work.go resolveAfter) moves it to ready
+\* before the tick's check reads it (a waive or a landing that met its needs
+\* in another step). A held card is resolved by no step (ParkFence; resolve
+\* skips IsHeld), so a hold that parked it in waiting is a rule 2 break no
+\* step repairs: the server-default hold of a ready primary holds it in place
+\* (DecisionParkStep), and the reversed witness parkmoves breaks this.
+Resolvable(c) == PositionClear(c) /\ NeedsMet(c) /\ ~(c = ParkCard /\ parkState = "held")
+Rule2Withdrawn == Free =>
+  \A c \in Card \ Sentinels :
+    wplace[c] = "withdrawn" /\ IsOpen(state[c]) =>
+      \/ state[c] = "ready"
+      \/ state[c] = "waiting" /\ (~NeedsMet(c) \/ Resolvable(c))
 ParkingRestoresPrestate == [][flags'.decisionRelease => state'[ParkCard] = parkSaved]_allTableVars
 ParkingPreservesWork == parkState = "held" => headGeneration[ParkCard] = parkHead /\ rplace[ParkCard] = parkReads
 =============================================================================

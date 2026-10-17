@@ -40,4 +40,11 @@ MCOneScore == [c \in {c1} |-> 1]
 MCOneInit == [c \in {c1} |-> "ready"]
 MCOneStream == [c \in {c1} |-> "s1"]
 MCNoRewrites == {}
+\* The two-primary parking instance: c1 and c2, both ready, no needs, one stream,
+\* so a sentinel insert (AddMove) of one meets the server-default hold of the other.
+MCTwoCard == {c1, c2}
+MCTwoNeeds == [c \in {c1, c2} |-> {}]
+MCTwoScore == [c \in {c1, c2} |-> IF c = c1 THEN 1 ELSE 2]
+MCTwoInit == [c \in {c1, c2} |-> "ready"]
+MCTwoStream == [c \in {c1, c2} |-> "s1"]
 =============================================================================
