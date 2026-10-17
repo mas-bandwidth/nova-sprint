@@ -231,7 +231,7 @@ func (r *Redis) RecordIDs(ctx context.Context, table string) ([]string, error) {
 			s, _ := msg.Values["members"].(string)
 			// the change's members, read through MEMBERS in any form; a damaged
 			// list is refused by name, never read as naming none (S2, C13)
-			ms, err := opRows.memberIDs(s)
+			ms, err := r.opRowSet().memberIDs(s)
 			if err != nil {
 				return nil, fmt.Errorf("change %s of %s: its members are unreadable: %w", msg.ID, table, err)
 			}

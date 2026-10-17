@@ -284,10 +284,10 @@ func (e *OpConflictError) Error() string {
 
 // replay is the recorded result of the step's caller operation id, refused as
 // a conflict when it was recorded for another verb or other arguments.
-func replay(step Step, raw string) (Result, error) {
+func replay(c *opRowCodecs, step Step, raw string) (Result, error) {
 	// the recorded result, read through STEPRESULT in any form; a damaged
 	// result is refused by name, never replayed as an empty one (S2, C13)
-	rec, err := opRows.stepResult(raw)
+	rec, err := c.stepResult(raw)
 	if err != nil {
 		return Result{Verb: step.Verb}, fmt.Errorf("operation %s: its recorded result is unreadable: %w", step.CallerOp, err)
 	}
@@ -496,6 +496,9 @@ func callerOpWord(op string) bool {
 // Run plans and applies a step as one operation.
 func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 	ctx = withBudget(ctx)
+	// the store that runs the step counts its backend's operation rows' reads
+	// on its own check, as its pinned copy reads them (S4)
+	st.opRowSet()
 	res := Result{Verb: step.Verb, Args: step.Args}
 	if strings.Contains(step.CallerOp, "~") {
 		return res, fmt.Errorf("operation id %s holds '~', which marks the epoch in the sprint's ids; nothing was done; give the step an --op without '~'", step.CallerOp)
@@ -1143,7 +1146,7 @@ func (st *Store) callerOp(ctx context.Context, step Step, res Result) (Result, b
 		return res, true, err
 	}
 	if ok {
-		r, err := replay(step, raw)
+		r, err := replay(st.opRowSet(), step, raw)
 		return r, true, err
 	}
 	if st.epoch == 0 {
@@ -1172,7 +1175,7 @@ func (st *Store) committed(ctx context.Context, step Step, op OpRecord) (Result,
 		return Result{}, false
 	}
 	step.CallerOp = op.CallerOp
-	rec, err := replay(step, raw)
+	rec, err := replay(st.opRowSet(), step, raw)
 	return rec, err == nil && rec.Op == op.ID
 }
 
@@ -2594,7 +2597,7 @@ func (st *Store) withSkips(op OpRecord, skips []Skip) OpRecord {
 	// by name (replay); the refusal is counted under STEPRESULT (S2, S4, C13).
 	// The result is written back legacy (S4).
 	if op.Result != "" {
-		if res, err := opRows.stepResult(op.Result); err == nil {
+		if res, err := st.opRowSet().stepResult(op.Result); err == nil {
 			res.Skipped = lines
 			res.Notes++
 			if body, err := json.Marshal(res); err == nil {

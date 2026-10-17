@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -37,12 +38,16 @@ type Redis struct {
 	// delete's transaction after its read and before its EXEC: the seam a test
 	// writes another writer's change through (RowsDelIf).
 	beforeExec func()
+	// rows is this backend's operation rows' readers (opRowSet), shared with
+	// its pinned copies, so their counts are this backend's alone (S4).
+	rows *opRowCodecs
 }
 
 func (r *Redis) key(name string) string { return r.Names.KeyAt(name, r.Pinned) }
 
 // AtEpoch is the backend pinned to an epoch.
 func (r *Redis) AtEpoch(epoch uint64, old bool) Backend {
+	r.opRowSet() // the copy shares this backend's readers (S4)
 	c := *r
 	c.Pinned, c.Old = epoch, old
 	return &c
@@ -109,7 +114,7 @@ func (r *Redis) AdvanceEpoch(ctx context.Context, from uint64, at time.Time, own
 		// value is refused by name, never read as an empty fence (S2, C13)
 		held := ""
 		if body != "" {
-			if held, err = opRows.heldID(body); err != nil {
+			if held, err = r.opRowSet().heldID(body); err != nil {
 				return err
 			}
 		}
@@ -633,14 +638,35 @@ func (r *Redis) ReadFence(ctx context.Context) (Fence, error) {
 	return fenceOf(mget, llen)
 }
 
-// queueFence queues the fence's read on a pipeline: the fence, its
-// generation and the machine's state, and the queue's length.
-func (r *Redis) queueFence(ctx context.Context, p redis.Pipeliner) (*redis.SliceCmd, *redis.IntCmd) {
-	return p.MGet(ctx, r.key(keyFence), r.key(keyGen), r.Names.Key(keyMachine), r.Names.Key(keyStuck)), p.LLen(ctx, r.key(keyQueue))
+// fenceCmd is the fence's queued read and the readers of the backend that
+// queued it, so the record it holds is counted on that backend alone (S4).
+type fenceCmd struct {
+	*redis.SliceCmd
+	rows *opRowCodecs
 }
 
+// queueFence queues the fence's read on a pipeline: the fence, its
+// generation and the machine's state, and the queue's length.
+func (r *Redis) queueFence(ctx context.Context, p redis.Pipeliner) (*fenceCmd, *redis.IntCmd) {
+	mget := p.MGet(ctx, r.key(keyFence), r.key(keyGen), r.Names.Key(keyMachine), r.Names.Key(keyStuck))
+	return &fenceCmd{SliceCmd: mget, rows: r.opRowSet()}, p.LLen(ctx, r.key(keyQueue))
+}
+
+// fenceReply is the fence's MGET reply: a fenceCmd a backend queued, or a
+// bare reply.
+type fenceReply interface{ Result() ([]any, error) }
+
+// opRowsBare reads the record of a bare fence reply, one no backend queued
+// (queueFence makes every reply the store reads a fenceCmd). It is registered
+// on no check, so no store's counts include it (S4).
+var opRowsBare = newOpRowCodecs()
+
 // fenceOf is the fence a pipeline read.
-func fenceOf(mget *redis.SliceCmd, llen *redis.IntCmd) (Fence, error) {
+func fenceOf(mget fenceReply, llen *redis.IntCmd) (Fence, error) {
+	rows := opRowsBare
+	if f, ok := mget.(*fenceCmd); ok && f.rows != nil {
+		rows = f.rows
+	}
 	vals, err := mget.Result()
 	if err != nil {
 		return Fence{}, err
@@ -666,7 +692,7 @@ func fenceOf(mget *redis.SliceCmd, llen *redis.IntCmd) (Fence, error) {
 	if s, ok := vals[0].(string); ok {
 		// the whole record, read through OPRECORD in any form; a damaged
 		// record is refused by name (S2, C13)
-		op, err := opRows.fenceRecord(s)
+		op, err := rows.fenceRecord(s)
 		if err != nil {
 			return f, fmt.Errorf("the fence holds an unreadable operation record: %w", err)
 		}
@@ -791,7 +817,7 @@ func (r *Redis) heldOp(ctx context.Context) (string, error) {
 		return "", err
 	}
 	// read through HELDLOCK in any form, refused by name when damaged (S2, C13)
-	id, err := opRows.heldID(cur)
+	id, err := r.opRowSet().heldID(cur)
 	if err != nil {
 		return "", fmt.Errorf("the fence holds an unreadable operation record: %w", err)
 	}
@@ -914,7 +940,7 @@ func (r *Redis) commit(ctx context.Context, p redis.Pipeliner, op OpRecord) erro
 		if raw != "" {
 			// read through TIMERS in any form, refused by name when damaged
 			// (S2, C13); the record is written back legacy (S4)
-			ts, _, err := opRows.timers.Read([]byte(raw))
+			ts, _, err := r.opRowSet().timers.Read([]byte(raw))
 			if err != nil {
 				return err
 			}
@@ -951,7 +977,7 @@ func (r *Redis) QueueRead(ctx context.Context) ([]sprint.QueuedChange, error) {
 	if err != nil {
 		return nil, err
 	}
-	return opRows.queueEntries(raw)
+	return r.opRowSet().queueEntries(raw)
 }
 
 func (r *Redis) Done(ctx context.Context, callerOp string) (string, bool, error) {
@@ -994,7 +1020,7 @@ func (r *Redis) SetReview(ctx context.Context, noteID string, at, set time.Time)
 	}
 	// read through NOTES in any form, refused by name when damaged (S2,
 	// C13); written back legacy (S4)
-	n, _, err := opRows.notes.Read([]byte(raw))
+	n, _, err := r.opRowSet().notes.Read([]byte(raw))
 	if err != nil {
 		return err
 	}
@@ -1078,7 +1104,7 @@ func (r *Redis) openOf(ctx context.Context, open map[string]string) ([]sprint.Op
 			continue
 		}
 		// read through NOTES in any form, refused by name when damaged (S2, C13)
-		n, _, err := opRows.notes.Read([]byte(s))
+		n, _, err := r.opRowSet().notes.Read([]byte(s))
 		if err != nil {
 			return nil, fmt.Errorf("notification %s: %w", ids[i], err)
 		}
@@ -1118,7 +1144,7 @@ func rangeSince[T any](ctx context.Context, c redis.UniversalClient, key, after 
 }
 
 func (r *Redis) NotesSince(ctx context.Context, after string, max int) ([]sprint.Note, []string, error) {
-	return rangeSince(ctx, r.C, r.key(keyInbox), after, max, opRows.inboxNote)
+	return rangeSince(ctx, r.C, r.key(keyInbox), after, max, r.opRowSet().inboxNote)
 }
 
 func (r *Redis) Tails(ctx context.Context) (string, string, error) {
@@ -1138,7 +1164,7 @@ func (r *Redis) Tails(ctx context.Context) (string, string, error) {
 }
 
 func (r *Redis) LogSince(ctx context.Context, after string, max int) ([]sprint.Line, []string, error) {
-	return rangeSince(ctx, r.C, r.key(keyLog), after, max, opRows.logLine)
+	return rangeSince(ctx, r.C, r.key(keyLog), after, max, r.opRowSet().logLine)
 }
 
 func (r *Redis) Cursor(ctx context.Context) (string, error) {
@@ -1277,7 +1303,7 @@ func (r *Redis) tableChanges(ctx context.Context, table string, from, to uint64,
 				if !twinVerbs[ev.verb] {
 					return gap(fmt.Sprintf("a write %q at revision %d names no records", ev.verb, ev.after))
 				}
-				named, err := changeIDs(ev)
+				named, err := r.opRowSet().changeIDs(ev)
 				if err != nil {
 					return gap(fmt.Sprintf("the event at revision %d is unreadable: %v", ev.after, err))
 				}
@@ -1307,14 +1333,8 @@ func readChange(v map[string]any) changeEvent {
 	return ev
 }
 
-// changeIDs is the records an event names: the members it moved and every
-// entry of its batch's account.
-func changeIDs(ev changeEvent) ([]string, error) {
-	return opRows.changeIDs(ev)
-}
-
-// changeIDs is changeIDs read through these readers: the moved members and the
-// members of the batch's account through MEMBERS in any form, refused by name
+// changeIDs is the records an event names, read through these readers: the
+// moved members and the members of the batch's account through MEMBERS in any form, refused by name
 // when damaged (S2, C13). The account's envelope is nova-tables' own protocol
 // and stays its JSON.
 func (c *opRowCodecs) changeIDs(ev changeEvent) ([]string, error) {
@@ -1460,7 +1480,9 @@ func orderOnly(args string) bool {
 // refused by name, `<RECORD> REFUSED: <reason>; run: nova-sprint check`, and
 // every read is counted under its record and its form (S4). These reads run in
 // the Redis backend, which has no Store, so the readers are registered
-// process-wide and show on every store's check (rowcodec.go RegisterProcess).
+// per backend: each Redis holds its own (Redis.opRowSet), a Store registers the
+// set of the backend it holds (Store.opRowSet), and a backend that is not a
+// Redis has a set per store; so one store's counts are never another's (S4).
 // Writers stay legacy: the writer switch is a later card, which reads these
 // counts first. The fence's release and relock still find the operation they
 // hold by the legacy record's `{"id":` prefix (Release, Relock); a writer that
@@ -1812,13 +1834,65 @@ func timersTable() opTable[oprowswire.Timers] {
 		func(w *oprowswire.Timers, buf []byte) int64 { return oprowswire.TimersSave(w, buf) })
 }
 
-// timersRowFns is TIMERS (S1, S2, S4).
+// timersRowFns is TIMERS (S1, S2, S4). Its one field is the open timers, so a
+// read that skipped an unknown field and read no timer is refused (opSoleList).
 func timersRowFns() RowFns[sprint.Timers] {
-	return opRowFns("TIMERS", timersTable(), func(ts *sprint.Timers) (opTimersSchema, bool) {
+	return opSoleList(opRowFns("TIMERS", timersTable(), func(ts *sprint.Timers) (opTimersSchema, bool) {
 		return opTimersTo(ts), true
 	}, func(m *opTimersSchema) (sprint.Timers, bool) {
 		return opTimersFrom(m), true
-	}, nil, nil)
+	}, nil, loadLegacyTimers), func(ts *sprint.Timers) bool { return len(ts.Open) > 0 })
+}
+
+// loadLegacyTimers reads today's legacy timers, `{"open":[...]}`, and `{}` for
+// none (sprint.Timers omits an empty list). A legacy object that names a key
+// other than open and reads no timer is a damaged key, refused no_known_field,
+// never read as no timers (S2).
+func loadLegacyTimers(v *sprint.Timers, in []byte) RowReport {
+	if rr := DecodeLegacy(v, in); rr.refuses() {
+		return rr
+	}
+	if len(v.Open) > 0 {
+		return RowReport{}
+	}
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(in, &keys); err != nil {
+		return RowReport{Malformed: true, Reason: "legacy_json_unreadable"}
+	}
+	for k := range keys {
+		if k != "open" {
+			return RowReport{Unknown: len(keys), Reason: opNoKnownField}
+		}
+	}
+	return RowReport{}
+}
+
+// opNoKnownField is the refusal of a single-list record read with an unknown
+// field and no list: the one field's key or id was damaged, so the list would
+// read as empty (S2: damage is refused by name, never read as absent).
+const opNoKnownField = "no_known_field"
+
+// opSoleList guards a record whose only field is one list (TIMERS, MEMBERS):
+// a table wire or schema JSON text load that skipped an unknown field and read
+// no element of the list is refused no_known_field. Readers update before
+// writers (S4), so an unknown field beside an absent list is damage to the
+// list's id or key, never a newer writer's field (S2).
+func opSoleList[T any](fns RowFns[T], read func(*T) bool) RowFns[T] {
+	guard := func(load func(*T, []byte) RowReport) func(*T, []byte) RowReport {
+		if load == nil {
+			return nil
+		}
+		return func(v *T, in []byte) RowReport {
+			rr := load(v, in)
+			if !rr.refuses() && rr.Unknown > 0 && !read(v) {
+				return RowReport{Unknown: rr.Unknown, Reason: opNoKnownField}
+			}
+			return rr
+		}
+	}
+	fns.LoadWire = guard(fns.LoadWire)
+	fns.LoadJSON = guard(fns.LoadJSON)
+	return fns
 }
 
 // ---------------------------------------------------------------------------
@@ -1852,7 +1926,9 @@ func legacyMemberList(in []byte) bool {
 }
 
 // loadLegacyMemberList reads the table layer's list: each entry's id, the rest
-// of the entry being the table layer's own (S2).
+// of the entry being the table layer's own (S2). The table layer writes an id
+// in every entry, so an entry with none is a damaged key, refused
+// no_known_field, never read as a member named "" (S2).
 func loadLegacyMemberList(v *[]string, in []byte) RowReport {
 	var ms []opMemberSchema
 	if err := json.Unmarshal(in, &ms); err != nil {
@@ -1860,14 +1936,19 @@ func loadLegacyMemberList(v *[]string, in []byte) RowReport {
 	}
 	*v = nil
 	for _, m := range ms {
+		if m.ID == "" {
+			*v = nil
+			return RowReport{Reason: opNoKnownField}
+		}
 		*v = append(*v, m.ID)
 	}
 	return RowReport{}
 }
 
-// membersRowFns is MEMBERS (S1, S2, S4).
+// membersRowFns is MEMBERS (S1, S2, S4). Its one field is the members, so a
+// read that skipped an unknown field and read no member is refused (opSoleList).
 func membersRowFns() RowFns[[]string] {
-	return opRowFns("MEMBERS", memberListTable(), func(ids *[]string) (opMemberListSchema, bool) {
+	return opSoleList(opRowFns("MEMBERS", memberListTable(), func(ids *[]string) (opMemberListSchema, bool) {
 		s := opMemberListSchema{Members: make([]opMemberSchema, len(*ids))}
 		for i, id := range *ids {
 			s.Members[i] = opMemberSchema{ID: id}
@@ -1876,10 +1957,15 @@ func membersRowFns() RowFns[[]string] {
 	}, func(m *opMemberListSchema) ([]string, bool) {
 		var out []string
 		for _, e := range m.Members {
+			if e.ID == "" {
+				// every member the table layer names has an id: an entry with
+				// none is damage, never a member named "" (S2)
+				return nil, false
+			}
 			out = append(out, e.ID)
 		}
 		return out, true
-	}, legacyMemberList, loadLegacyMemberList)
+	}, legacyMemberList, loadLegacyMemberList), func(ids *[]string) bool { return len(*ids) > 0 })
 }
 
 // ---------------------------------------------------------------------------
@@ -2531,9 +2617,24 @@ func newOpRowCodecs() *opRowCodecs {
 	}
 }
 
-// opRows is the process's operation rows' readers, registered process-wide so
-// every store's check lists them, at zero before their first read (S4).
-var opRows = func() *opRowCodecs {
+// register counts every reader of the set on st's check (S4).
+func (c *opRowCodecs) register(st *Store) {
+	c.op.Register(st)
+	c.lock.Register(st)
+	c.notes.Register(st)
+	c.lines.Register(st)
+	c.timers.Register(st)
+	c.queue.Register(st)
+	c.members.Register(st)
+	c.result.Register(st)
+}
+
+// opRowsListed is a set no record is ever read through, registered process-
+// wide only so every store's check lists the eight records, at zero before
+// their first read (S4). Its counts stay zero, so it adds nothing to any
+// store's counts: the reads themselves count on the set of the store or the
+// backend that made them (opRowSet).
+var opRowsListed = func() *opRowCodecs {
 	c := newOpRowCodecs()
 	c.op.RegisterProcess()
 	c.lock.RegisterProcess()
@@ -2545,6 +2646,47 @@ var opRows = func() *opRowCodecs {
 	c.result.RegisterProcess()
 	return c
 }()
+
+// opRowsMu guards the lazy make of a backend's readers (Redis.opRowSet).
+var opRowsMu sync.Mutex
+
+// opRowSet is this backend's operation rows' readers, made on first use and
+// shared with its pinned copies (AtEpoch). Every read this backend makes
+// counts here, so two backends, and two tests, never share a count (S4).
+func (r *Redis) opRowSet() *opRowCodecs {
+	opRowsMu.Lock()
+	defer opRowsMu.Unlock()
+	if r.rows == nil {
+		r.rows = newOpRowCodecs()
+	}
+	return r.rows
+}
+
+// opRowSetter is a backend that holds its own operation rows' readers.
+type opRowSetter interface{ opRowSet() *opRowCodecs }
+
+// opRowSets holds the readers of a store whose backend holds none, keyed by
+// the store's done reader, which its pinned copies share (S4).
+var opRowSets sync.Map
+
+// opRowSet is the operation rows' readers this store reads through, registered
+// on it so its check reports their per-form counts (S4): its backend's when
+// the backend holds its own (a Redis), else this store's own.
+func (st *Store) opRowSet() *opRowCodecs {
+	var c *opRowCodecs
+	if b, ok := st.B.(opRowSetter); ok {
+		c = b.opRowSet()
+	} else {
+		key := st.doneRows()
+		v, ok := opRowSets.Load(key)
+		if !ok {
+			v, _ = opRowSets.LoadOrStore(key, newOpRowCodecs())
+		}
+		c = v.(*opRowCodecs)
+	}
+	c.register(st)
+	return c
+}
 
 // heldID is the id of the operation a fence value holds, read through HELDLOCK;
 // a value it cannot read is refused by name, never read as an empty fence (S2).

@@ -138,7 +138,7 @@ func TestOpRowsDualRead(t *testing.T) {
 		rc := newOpRowCodecs()
 		opF := opFormsOf(t, rc.op, op, true)
 		for _, in := range [][]byte{opF.legacy, opF.bin, opF.b64, opF.js} {
-			f, err := fenceOf(opFenceCmd(string(in)), opQueueLen(2))
+			f, err := fenceOf(opFenceCmd(rc, string(in)), opQueueLen(2))
 			require.NoError(t, err)
 			require.NotNil(t, f.Pending)
 			assert.Equal(t, op, *f.Pending, "fenceOf reads the whole record")
@@ -184,13 +184,13 @@ func TestOpRowsDualRead(t *testing.T) {
 		rF := opFormsOf(t, rc.result, result, true)
 		step := Step{Verb: "finish", CallerOp: "cli-77", Args: result.Args}
 		for _, in := range [][]byte{rF.legacy, rF.bin, rF.b64, rF.js} {
-			got, err := replay(step, string(in))
+			got, err := replay(rc, step, string(in))
 			require.NoError(t, err)
 			want := result
 			want.Replay = true
 			assert.Equal(t, want, got, "replay reads the recorded result")
 		}
-		_, err = replay(Step{Verb: "finish", CallerOp: "cli-77", Args: ArgsOf("other")}, string(rF.bin))
+		_, err = replay(rc, Step{Verb: "finish", CallerOp: "cli-77", Args: ArgsOf("other")}, string(rF.bin))
 		var conflict *OpConflictError
 		require.ErrorAs(t, err, &conflict, "the digest read from the wire is compared")
 		assert.True(t, conflict.OtherArgs)
@@ -257,9 +257,106 @@ func TestOpRowsDualRead(t *testing.T) {
 		check("MEMBERS", opReadAny(rc.members), membersLegacy, "legacy")
 		t.Logf("%d malformed values refused by name", total)
 
+		// Every byte of every form of every record, flipped by each mask: the
+		// read is refused by name or reads a value that is not zero, never a
+		// zero value with no error (S2). A flip inside a value's own text is
+		// another well-formed value; a flip of a key or a field id is refused
+		// or leaves the record's other fields, and a single-list record
+		// (TIMERS, MEMBERS) whose list it hides is refused no_known_field.
+		// OPRECORD is swept on a smaller record: its generated loads give each
+		// list a first chunk of 64 elements, so one read of the full record,
+		// whose notes are large, clears megabytes (the pull request's 'Schema
+		// improvements wanted'). The small record still holds a field of each
+		// kind: words, a time, a number, a list and a nested record. Each
+		// record is swept in its own parallel subtest, on its own readers.
+		small := OpRecord{ID: "op-s", Verb: "finish", At: at(9), CallerOp: "cli-1", Drain: 1,
+			Closes: []string{"n1|c"}, Notes: []sprint.Note{{ID: "n1", Kind: sprint.Happened, Type: "t", At: at(1)}}}
+		sweep := newOpRowCodecs()
+		recs[0].forms = opFormsOf(t, sweep.op, small, true)
+		t.Run("every byte flipped", func(t *testing.T) {
+			for _, r := range recs {
+				t.Run(r.name, func(t *testing.T) {
+					t.Parallel()
+					forms := map[string][]byte{"binary": r.forms.bin, "base64": r.forms.b64, "legacy": r.forms.legacy}
+					if !r.fixed {
+						forms["json"] = r.forms.js
+					}
+					if r.name == "MEMBERS" {
+						forms["table layer's list"] = membersLegacy
+					}
+					flips := 0
+					for kind, good := range forms {
+						for _, in := range opFlips(good, kind) {
+							flips++
+							v, err := r.read(in)
+							if err != nil {
+								if !opAssertRefused(t, r.name, err) {
+									t.Logf("%s %s flip read %q", r.name, kind, in)
+									return
+								}
+								continue
+							}
+							if !assert.False(t, reflect.ValueOf(v).IsZero(), "%s %s: a flipped byte read as zero with no error: %q", r.name, kind, in) {
+								return
+							}
+						}
+					}
+					t.Logf("%s: %d flipped values refused by name or read as a value", r.name, flips)
+				})
+			}
+		})
+
+		// The flips the cold read found: the 8 bytes after the timers' list in
+		// the TIMERS wire, those after the members in a one-id MEMBERS wire, and
+		// a damaged list key in the JSON text, each refused no_known_field.
+		tF := opFormsOf(t, rc.timers, timers, true)
+		require.Len(t, tF.bin, 189, "the TIMERS image of two timers")
+		for i := 125; i <= 132; i++ {
+			d := append([]byte(nil), tF.bin...)
+			d[i] ^= 0xff
+			for _, in := range [][]byte{d, []byte(base64.StdEncoding.EncodeToString(d))} {
+				v, _, err := rc.timers.Read(in)
+				if err == nil {
+					assert.NotEmpty(t, v.Open, "TIMERS offset %d reads its timers", i)
+					continue
+				}
+				opAssertRefused(t, "TIMERS", err)
+			}
+		}
+		one := []string{"card-a"}
+		oneF := opFormsOf(t, rc.members, one, true, []byte(`[{"id":"card-a"}]`))
+		for i := 18; i <= 33 && i < len(oneF.bin); i++ {
+			d := append([]byte(nil), oneF.bin...)
+			d[i] ^= 0xff
+			for _, in := range [][]byte{d, []byte(base64.StdEncoding.EncodeToString(d))} {
+				v, _, err := rc.members.Read(in)
+				if err == nil {
+					assert.NotEmpty(t, v, "MEMBERS offset %d reads its members", i)
+					continue
+				}
+				opAssertRefused(t, "MEMBERS", err)
+			}
+		}
+		for _, c := range []struct {
+			name string
+			read func([]byte) (any, error)
+			in   []byte
+			key  string
+		}{
+			{"TIMERS", opReadAny(rc.timers), tF.js, `"open_timers"`},
+			{"TIMERS", opReadAny(rc.timers), tF.legacy, `"open"`},
+			{"MEMBERS", opReadAny(rc.members), oneF.js, `"members"`},
+			{"MEMBERS", opReadAny(rc.members), []byte(`[{"id":"card-a"}]`), `"id"`},
+		} {
+			require.Contains(t, string(c.in), c.key)
+			damaged := bytes.Replace(c.in, []byte(c.key), []byte(c.key[:len(c.key)-2]+"X\""), 1)
+			_, err := c.read(damaged)
+			assert.Equal(t, opNoKnownField, opRefusalReason(t, c.name, err), "%s: a damaged key %s in %s", c.name, c.key, damaged)
+		}
+
 		// The read sites refuse them by name too, never as an empty fence, no
 		// record or an empty result.
-		_, err := fenceOf(opFenceCmd(`{"id":"x",`), opQueueLen(0))
+		_, err = fenceOf(opFenceCmd(rc, `{"id":"x",`), opQueueLen(0))
 		opAssertRefused(t, "OPRECORD", err)
 		_, err = rc.heldID(`{"id":"x",`)
 		opAssertRefused(t, "HELDLOCK", err)
@@ -269,7 +366,7 @@ func TestOpRowsDualRead(t *testing.T) {
 		opAssertRefused(t, "MEMBERS", err)
 		_, err = rc.changeIDs(changeEvent{verb: "apply", batchDelta: `{"members":[{"id":1}]}`})
 		opAssertRefused(t, "MEMBERS", err)
-		_, err = replay(Step{Verb: "finish", CallerOp: "cli-77"}, `{"verb":`)
+		_, err = replay(rc, Step{Verb: "finish", CallerOp: "cli-77"}, `{"verb":`)
 		opAssertRefused(t, "STEPRESULT", err)
 		// The inbox and the log skip an entry they cannot read on purpose
 		// (rangeSince); the entry is refused by name and counted as refused.
@@ -327,6 +424,47 @@ func TestOpRowsDualRead(t *testing.T) {
 		assert.True(t, err != nil || len(out) == 0, "a card text past its bound makes no image")
 	})
 
+	t.Run("the counts are per store, never shared", func(t *testing.T) {
+		// Two stores on two backends: a read on one counts on its check alone,
+		// and every store's check lists the eight records at zero before its
+		// first read (S4). A Redis holds its readers, shared with its pinned
+		// copies and with the store that holds it; another Redis holds others.
+		now := time.Unix(1000, 0).UTC()
+		mk := func(prefix string) *Store {
+			st := &Store{
+				B: NewMem(), Names: sprint.Names{Prefix: prefix}, Actor: "tester",
+				Now: func() time.Time { return now }, Sleep: func(time.Duration) {},
+			}
+			require.NoError(t, st.Init(context.Background()))
+			return st
+		}
+		a, b := mk("op-rows-per-store-a-"), mk("op-rows-per-store-b-")
+		rF := opFormsOf(t, newOpRowCodecs().result, result, true)
+		_, err := replay(a.opRowSet(), Step{Verb: "finish", CallerOp: "cli-77", Args: result.Args}, string(rF.bin))
+		require.NoError(t, err)
+		ra, _, err := a.Check(context.Background(), 1)
+		require.NoError(t, err)
+		rb, _, err := b.Check(context.Background(), 1)
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, ra.RowForms["STEPRESULT"]["binary"], "the read counts on its own store's check")
+		for _, name := range []string{"OPRECORD", "HELDLOCK", "NOTES", "LOGLINES", "TIMERS", "QUEUE", "MEMBERS", "STEPRESULT"} {
+			counts, ok := rb.RowForms[name]
+			require.True(t, ok, "the other store's check lists %s", name)
+			for form, n := range counts {
+				assert.Zero(t, n, "the other store's check counts no %s %s read", name, form)
+			}
+		}
+
+		r1, r2 := &Redis{}, &Redis{}
+		assert.NotSame(t, r1.opRowSet(), r2.opRowSet(), "two Redis backends count apart")
+		pinned := r1.AtEpoch(3, false).(*Redis)
+		assert.Same(t, r1.opRowSet(), pinned.opRowSet(), "a pinned copy counts with its backend")
+		st := &Store{B: r1}
+		assert.Same(t, r1.opRowSet(), st.opRowSet(), "a store reads through its Redis backend's readers")
+		fenceRead, _ := r2.queueFence(context.Background(), opPipe{})
+		assert.Same(t, r2.opRowSet(), fenceRead.rows, "the fence's read counts on the backend that queued it")
+	})
+
 	t.Run("check lists every op row record", func(t *testing.T) {
 		now := time.Unix(1000, 0).UTC()
 		st := &Store{
@@ -341,6 +479,13 @@ func TestOpRowsDualRead(t *testing.T) {
 			assert.True(t, ok, "check lists %s", name)
 		}
 	})
+}
+
+// changeIDs is the records an event names, read with no backend through
+// readers no check counts (the coverage tests call it; a backend reads them
+// through its own, Redis.tableChanges).
+func changeIDs(ev changeEvent) ([]string, error) {
+	return newOpRowCodecs().changeIDs(ev)
 }
 
 // opForms is one value of a record in each form.
@@ -469,12 +614,22 @@ func opJSONValue(in []byte) []byte {
 }
 
 // opFenceCmd is the fence's MGET reply holding body, generation 3 (Acquire wrote
-// generation 4), no machine record and no stuck record.
-func opFenceCmd(body string) *redis.SliceCmd {
+// generation 4), no machine record and no stuck record, read through rows.
+func opFenceCmd(rows *opRowCodecs, body string) *fenceCmd {
 	cmd := redis.NewSliceCmd(context.Background())
 	cmd.SetVal([]any{body, "4", nil, nil})
-	return cmd
+	return &fenceCmd{SliceCmd: cmd, rows: rows}
 }
+
+// opPipe is a pipeline that only queues the fence's two reads: nothing is
+// sent, so no client and no socket is made.
+type opPipe struct{ redis.Pipeliner }
+
+func (opPipe) MGet(ctx context.Context, keys ...string) *redis.SliceCmd {
+	return redis.NewSliceCmd(ctx)
+}
+
+func (opPipe) LLen(ctx context.Context, key string) *redis.IntCmd { return redis.NewIntCmd(ctx) }
 
 func opQueueLen(n int64) *redis.IntCmd {
 	cmd := redis.NewIntCmd(context.Background())
@@ -497,6 +652,28 @@ func opWireDamages(good []byte) [][]byte {
 		d := append([]byte(nil), good...)
 		d[i] ^= 0xff
 		out = append(out, d)
+	}
+	return out
+}
+
+// opFlips is every byte of good flipped by each of 0x01, 0x80 and 0xff; for a
+// base64 text also every byte of the wire it holds, flipped and encoded again.
+func opFlips(good []byte, kind string) [][]byte {
+	var out [][]byte
+	flip := func(img []byte, enc func([]byte) []byte) {
+		for i := range img {
+			for _, m := range []byte{0x01, 0x80, 0xff} {
+				d := append([]byte(nil), img...)
+				d[i] ^= m
+				out = append(out, enc(d))
+			}
+		}
+	}
+	same := func(b []byte) []byte { return b }
+	flip(good, same)
+	if kind == "base64" {
+		raw, _ := base64.StdEncoding.DecodeString(string(good))
+		flip(raw, func(b []byte) []byte { return []byte(base64.StdEncoding.EncodeToString(b)) })
 	}
 	return out
 }

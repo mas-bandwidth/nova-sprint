@@ -48,7 +48,7 @@ func (st *Store) takeLock(ctx context.Context, step Step, family string) (*OpRec
 // it: WATCH on the fence, its id read, then MULTI/EXEC. The id is read as the
 // legacy record's `{"id":` prefix, which holds while every writer of the fence
 // writes the legacy record (S4: readers first; the fence's readers read every
-// form, redis.go opRows). A writer that switches the fence to a table form
+// form, redis.go opRowSet). A writer that switches the fence to a table form
 // switches this check with it.
 func (r *Redis) Relock(ctx context.Context, held string, op OpRecord) (bool, error) {
 	body, err := json.Marshal(op)
