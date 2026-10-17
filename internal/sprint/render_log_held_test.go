@@ -16,7 +16,7 @@ func TestAHeldPrimaryWaitLineNamesTheHold(t *testing.T) {
 	}{
 		{
 			name: "a server-default hold names who and the judgment",
-			l: Line{Card: "s1-1", Stream: "s1", Table: Work, From: "s1:" + string(Ready), To: "s1:" + string(Waiting), Actor: MachineActor, Set: map[string]string{FieldHeld: "2030-01-02T03:04:05Z", FieldHeldBy: ServerDefaultActor, "held_judgment": "j1", "decision_held_from": "ready"}},
+			l:    Line{Card: "s1-1", Stream: "s1", Table: Work, From: "s1:" + string(Ready), To: "s1:" + string(Waiting), Actor: MachineActor, Set: map[string]string{FieldHeld: "2030-01-02T03:04:05Z", FieldHeldBy: ServerDefaultActor, "held_judgment": "j1", "decision_held_from": "ready"}},
 			want: "s1-1 waits: held by server-default for judgment j1",
 			not:  "sentinel",
 		},
