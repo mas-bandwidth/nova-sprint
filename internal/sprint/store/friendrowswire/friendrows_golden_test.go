@@ -197,13 +197,19 @@ func (g tableRow[T]) reader() *schemaread.Reader[T] {
 func deprecatedAliasesOmitted(t *testing.T, info *TableTypeInfo, text []byte) {
 	t.Helper()
 	var object map[string]json.RawMessage
-	if err := json.Unmarshal(text, &object); err != nil { t.Fatalf("%s JSON: %v", info.Name, err) }
+	if err := json.Unmarshal(text, &object); err != nil {
+		t.Fatalf("%s JSON: %v", info.Name, err)
+	}
 	for i := range info.Fields {
 		f := &info.Fields[i]
-		if !f.Optional { continue }
+		if !f.Optional {
+			continue
+		}
 		for _, tag := range f.Tags {
 			if tag == "deprecated" {
-				if _, ok := object[f.Json]; ok { t.Errorf("%s emitted deprecated field %q at its default", info.Name, f.Json) }
+				if _, ok := object[f.Json]; ok {
+					t.Errorf("%s emitted deprecated field %q at its default", info.Name, f.Json)
+				}
 			}
 		}
 	}
