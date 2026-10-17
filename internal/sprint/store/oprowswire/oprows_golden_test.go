@@ -548,9 +548,32 @@ func cardTextBound(field string, ref *wire.TableRef, c *schemaread.Checker) {
 
 // manifestBound is the constraint a blob cannot declare: a nova-tables batch
 // manifest is at most ntable.LimitManifestBytes.
-func manifestBound(ref *wire.TableRef, c *schemaread.Checker) {
+func manifestBound(field string, ref *wire.TableRef, c *schemaread.Checker) {
 	if d := wire.TableBytesAt(ref); d.Length > ntable.LimitManifestBytes {
-		c.Bound("data", d.Length, 0, ntable.LimitManifestBytes)
+		c.Bound(field, d.Length, 0, ntable.LimitManifestBytes)
+	}
+}
+
+// logLineBounds holds each card text a log line carries to
+// sprint.MaxCardTextBytes (cardTextBound).
+func logLineBounds(field string, l *wire.LogLine, c *schemaread.Checker) {
+	for i := int32(0); i < l.TextCount; i++ {
+		cardTextBound(field, &l.Text[i].Text, c)
+	}
+}
+
+// opRecordBounds is the operation record's constraint: the bounds its leaves
+// hold on their own hold inside it too. Each manifest is held to
+// ntable.LimitManifestBytes (manifestBound) and each card text of each log
+// line to sprint.MaxCardTextBytes (logLineBounds). The notes, the step result,
+// the queued changes and the timers hold no blob bound by the code.
+func opRecordBounds(v **wire.OpRecord, c *schemaread.Checker) {
+	r := *v
+	for i := int32(0); i < r.Manifests.Count; i++ {
+		manifestBound("manifests.data", &r.Manifests.At(i).Data, c)
+	}
+	for i := int32(0); i < r.Log.Count; i++ {
+		logLineBounds("log.text", r.Log.At(i), c)
 	}
 }
 
@@ -667,11 +690,7 @@ func variableCases() map[string]func(t *testing.T) {
 			runVariable(t, "LogLine", lineJSON, varOps[wire.LogLine]{
 				builder((*wire.LogLineBuilder).Init, (*wire.LogLineBuilder).GetRoot, func(b *wire.LogLineBuilder) *wire.TableArena { return &b.Arena }, wire.LogLineFromJson),
 				wire.LogLineMeasure, wire.LogLineSave, wire.LogLineLoadMeasureReason, wire.LogLineLoad, wire.LogLineToJsonMeasure, wire.LogLineToJson, wire.LogLineTableType,
-				func(v **wire.LogLine, c *schemaread.Checker) {
-					for i := int32(0); i < (*v).TextCount; i++ {
-						cardTextBound("text", &(*v).Text[i].Text, c)
-					}
-				}})
+				func(v **wire.LogLine, c *schemaread.Checker) { logLineBounds("text", *v, c) }})
 		},
 		"QueuedChange": func(t *testing.T) {
 			runVariable(t, "QueuedChange", queuedJSON, varOps[wire.QueuedChange]{
@@ -682,7 +701,7 @@ func variableCases() map[string]func(t *testing.T) {
 			ops := varOps[wire.Manifest]{
 				builder((*wire.ManifestBuilder).Init, (*wire.ManifestBuilder).GetRoot, func(b *wire.ManifestBuilder) *wire.TableArena { return &b.Arena }, wire.ManifestFromJson),
 				wire.ManifestMeasure, wire.ManifestSave, wire.ManifestLoadMeasureReason, wire.ManifestLoad, wire.ManifestToJsonMeasure, wire.ManifestToJson, wire.ManifestTableType,
-				func(v **wire.Manifest, c *schemaread.Checker) { manifestBound(&(*v).Data, c) }}
+				func(v **wire.Manifest, c *schemaread.Checker) { manifestBound("data", &(*v).Data, c) }}
 			runVariable(t, "Manifest", manifJSON, ops)
 
 			// the blob's bound is the reader's constraint: a manifest of
@@ -703,10 +722,82 @@ func variableCases() map[string]func(t *testing.T) {
 				wire.StepResultMeasure, wire.StepResultSave, wire.StepResultLoadMeasureReason, wire.StepResultLoad, wire.StepResultToJsonMeasure, wire.StepResultToJson, wire.StepResultTableType, nil})
 		},
 		"OpRecord": func(t *testing.T) {
-			runVariable(t, "OpRecord", opJSON, varOps[wire.OpRecord]{
+			ops := varOps[wire.OpRecord]{
 				builder((*wire.OpRecordBuilder).Init, (*wire.OpRecordBuilder).GetRoot, func(b *wire.OpRecordBuilder) *wire.TableArena { return &b.Arena }, wire.OpRecordFromJson),
-				wire.OpRecordMeasure, wire.OpRecordSave, wire.OpRecordLoadMeasureReason, wire.OpRecordLoad, wire.OpRecordToJsonMeasure, wire.OpRecordToJson, wire.OpRecordTableType, nil})
+				wire.OpRecordMeasure, wire.OpRecordSave, wire.OpRecordLoadMeasureReason, wire.OpRecordLoad, wire.OpRecordToJsonMeasure, wire.OpRecordToJson, wire.OpRecordTableType,
+				opRecordBounds}
+			runVariable(t, "OpRecord", opJSON, ops)
+			opRecordLeafBounds(t, ops)
 		},
+	}
+}
+
+// opRecordLeafBounds pins the leaf bounds inside the operation record: a
+// manifest of ntable.LimitManifestBytes and a card text of
+// sprint.MaxCardTextBytes inside a log line are read whole in binary, padded
+// standard base64 and JSON text; one byte past either is refused clamped, by
+// the table's name and the field's, in each form, and the writer refuses it.
+func opRecordLeafBounds(t *testing.T, ops varOps[wire.OpRecord]) {
+	codec := ops.codec("OpRecord")
+	r := schemaread.NewReader(codec)
+	withManifest := func(data []byte) string {
+		m := decode(t, opJSON).(map[string]any)
+		m["manifests"].([]any)[0].(map[string]any)["data"] = b64(data)
+		return encode(t, m)
+	}
+	withCardText := func(text string) string {
+		m := decode(t, opJSON).(map[string]any)
+		line := m["log"].([]any)[0].(map[string]any)
+		line["text"].([]any)[0].(map[string]any)["text"] = text
+		return encode(t, m)
+	}
+	manifest := bytes.Repeat([]byte{0x5a}, ntable.LimitManifestBytes)
+	cardText := strings.Repeat("w", sprint.MaxCardTextBytes)
+	cases := []struct {
+		name, field, at, over string
+		held                  func(*wire.OpRecord) int64
+	}{
+		{"a manifest at ntable.LimitManifestBytes", "manifests.data", withManifest(manifest), withManifest(append(manifest, 0x5a)),
+			func(v *wire.OpRecord) int64 { return wire.TableBytesAt(&v.Manifests.At(0).Data).Length }},
+		{"a card text at sprint.MaxCardTextBytes in a log line", "log.text", withCardText(cardText), withCardText(cardText + "w"),
+			func(v *wire.OpRecord) int64 { return int64(wire.TableStringAt(&v.Log.At(0).Text[0].Text).Length) }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// at the bound: accepted in every form, the leaf held whole
+			v, _, err := r.Read([]byte(tc.at))
+			require.NoError(t, err, "OpRecord.%s at its bound reads as JSON text", tc.field)
+			bin, err := r.Write(&v, schemaread.FormBinary)
+			require.NoError(t, err, "OpRecord.%s at its bound writes", tc.field)
+			want := tc.held(v)
+			for _, data := range [][]byte{bin, []byte(b64(bin)), []byte(tc.at)} {
+				got, res, err := r.Read(data)
+				require.NoError(t, err, "OpRecord.%s at its bound reads", tc.field)
+				require.NotNil(t, got)
+				assert.Equal(t, want, tc.held(got), "OpRecord.%s is held whole from %s", tc.field, res.Form)
+			}
+
+			// one byte past: the image a writer that ignored the bound makes
+			var w *wire.OpRecord
+			rep := codec.LoadJSON(&w, []byte(tc.over))
+			require.False(t, rep.Malformed, "the past-bound document loads without its constraint")
+			require.Zero(t, rep.Clamped)
+			require.NotNil(t, w)
+			assert.Equal(t, want+1, tc.held(w), "the past-bound leaf is one byte past")
+			_, err = r.Write(&w, schemaread.FormBinary)
+			assert.Equal(t, schemaread.ReasonClamped, refusalOf(t, "OpRecord."+tc.field, err), "the writer refuses OpRecord.%s one byte past its bound", tc.field)
+			over := codec.SaveWire(&w)
+			require.NotEmpty(t, over)
+			forms := map[string][]byte{"binary": over, "base64": []byte(b64(over)), "JSON": []byte(tc.over)}
+			for form, data := range forms {
+				got, _, err := r.Read(data)
+				assert.Equal(t, schemaread.ReasonClamped, refusalOf(t, "OpRecord."+tc.field, err), "OpRecord.%s one byte past its bound in %s is refused clamped", tc.field, form)
+				var ref *schemaread.Refusal
+				require.True(t, errors.As(err, &ref))
+				assert.Equal(t, tc.field, ref.Field, "the refusal in %s names the field", form)
+				assert.Nil(t, got, "OpRecord.%s in %s: a refused read returns nothing", tc.field, form)
+			}
+		})
 	}
 }
 
