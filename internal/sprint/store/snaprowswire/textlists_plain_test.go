@@ -77,6 +77,7 @@ func plainTextList[B any, T any](t *testing.T, table, field string, values []str
 }
 
 func TestSnaprowsTextListsArePlain(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		table string
 		field string
