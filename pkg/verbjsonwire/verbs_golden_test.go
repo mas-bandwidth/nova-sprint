@@ -4,8 +4,10 @@ package verbjsonwire
 // (schemas/verbjson/verbs.schema, a VARIABLE-table area: S1, S2). For every
 // root table (the object a verb prints with --json) it holds that
 //
-//   - a sample of today's output reads through pkg/schemaread as JSON text,
-//     and the table's text form keeps every non-empty key and value of it;
+//   - a sample of today's output reads through pkg/schemaread in its text
+//     form (JSON text, or the caller-recognised top-level array of an array
+//     root: pkg/schemaread's Detect opens JSON text with '{'), and the table's
+//     text form keeps every non-empty key and value of it;
 //   - the value round-trips in its three forms, the binary wire, padded
 //     standard base64 of the wire and the JSON text, each read strictly and
 //     counted once on the form read;
@@ -26,7 +28,6 @@ package verbjsonwire
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -387,7 +388,9 @@ func newCodec[R, B any, PB interface {
 	wireSave func(*R, []byte, ...TableWriteContext) int64,
 	jsonMeasure func(*R, ...TableAllocator) int64,
 	jsonSave func(*R, []byte, ...TableAllocator) int64,
+	arrayRoot ...bool,
 ) erased {
+	array := len(arrayRoot) > 0 && arrayRoot[0]
 	c := &codec[R, B, PB]{}
 	via := func(h *held[R], load func(PB, *TableReport) bool) schemaread.Report {
 		b := PB(new(B))
@@ -416,7 +419,7 @@ func newCodec[R, B any, PB interface {
 	c.jsonOf = func(v *R) []byte {
 		return whole(func() int64 { return jsonMeasure(v) }, func(b []byte) int64 { return jsonSave(v, b) })
 	}
-	c.rd = schemaread.NewReader(&schemaread.Codec[held[R]]{
+	cfg := &schemaread.Codec[held[R]]{
 		Name:  name,
 		Help:  help,
 		Reset: func(h *held[R]) { h.root = nil },
@@ -442,17 +445,32 @@ func newCodec[R, B any, PB interface {
 			}
 			return c.jsonOf(h.root)
 		},
-	})
+	}
+	// pkg/schemaread detects JSON text only by a leading '{' (schemaread.Detect),
+	// so an array root's text form, a top-level array, is the text the caller
+	// recognises: its load is the generated FromJson, counted under the legacy
+	// form. The gap is named in the report ("Schema improvements wanted").
+	if array {
+		cfg.Legacy = func(in []byte) bool {
+			t := bytes.TrimLeft(in, " \t\r\n")
+			return len(t) > 0 && t[0] == '['
+		}
+		cfg.LoadLegacy = func(h *held[R], text []byte) schemaread.Report {
+			return via(h, func(b PB, rep *TableReport) bool { return fromJSON(b, text, rep) })
+		}
+	}
+	c.rd = schemaread.NewReader(cfg)
 	return c
 }
 
 // root is one table a verb prints with --json.
 type root struct {
-	table   string // the schema's table
-	name    string // the refusal prefix
-	help    string // the command a refusal points at
-	newCode func() erased
-	samples []string // today's output, one per shape the verb prints
+	table     string // the schema's table
+	name      string // the refusal prefix
+	help      string // the command a refusal points at
+	newCode   func() erased
+	samples   []string // today's output, one per shape the verb prints
+	arrayRoot bool     // the table's JSON text is a top-level array
 }
 
 // ---- today's output --------------------------------------------------------------
@@ -578,6 +596,9 @@ func roots() []root {
 		{table: "GoalList", name: "GOAL-LIST", help: "nova-sprint goal list -h", samples: samples["GoalList"], newCode: func() erased {
 			return newCodec("GOAL-LIST", "nova-sprint goal list -h", GoalListLoadMeasureReason, GoalListLoadBuilder, GoalListFromJson, GoalListMeasure, GoalListSave, GoalListToJsonMeasure, GoalListToJson)
 		}},
+		{table: "GoalShow", name: "GOAL-SHOW", help: "nova-sprint goal show -h", samples: samples["GoalShow"], arrayRoot: true, newCode: func() erased {
+			return newCodec("GOAL-SHOW", "nova-sprint goal show -h", GoalShowLoadMeasureReason, GoalShowLoadBuilder, GoalShowFromJson, GoalShowMeasure, GoalShowSave, GoalShowToJsonMeasure, GoalShowToJson, true)
+		}},
 		{table: "GoalSet", name: "GOAL-SET", help: "nova-sprint goal set -h", samples: samples["GoalSet"], newCode: func() erased {
 			return newCodec("GOAL-SET", "nova-sprint goal set -h", GoalSetLoadMeasureReason, GoalSetLoadBuilder, GoalSetFromJson, GoalSetMeasure, GoalSetSave, GoalSetToJsonMeasure, GoalSetToJson)
 		}},
@@ -646,13 +667,21 @@ func refused(t *testing.T, err error, r root, what ...any) string {
 func roundTrip(t *testing.T, r root, text []byte, want any) {
 	t.Helper()
 	c := r.newCode()
+	textForm := schemaread.FormJSON
+	if r.arrayRoot {
+		textForm = schemaread.FormLegacy
+	}
 	for _, form := range allForms {
+		wantForm := form
+		if form == schemaread.FormJSON {
+			wantForm = textForm
+		}
 		img, err := c.write(text, form)
 		require.NoError(t, err, "%s: write %s", r.name, form)
 		require.NotEmpty(t, img)
 		back, res, err := c.read(img)
 		require.NoError(t, err, "%s: read %s", r.name, form)
-		assert.Equal(t, form, res.Form, "%s: the form read", r.name)
+		assert.Equal(t, wantForm, res.Form, "%s: the form read", r.name)
 		assert.Zero(t, res.Unknown, "%s: nothing unknown in what this writer wrote", r.name)
 		assert.Equal(t, want, prune(decode(t, back)), "%s: %s round trip", r.name, form)
 	}
@@ -660,7 +689,7 @@ func roundTrip(t *testing.T, r root, text []byte, want any) {
 	for _, form := range []schemaread.Form{schemaread.FormBinary, schemaread.FormBase64} {
 		assert.Equal(t, uint64(1), c.counts().Reads(form), "%s: one %s read counted", r.name, form)
 	}
-	assert.Equal(t, uint64(4), c.counts().Reads(schemaread.FormJSON), "%s: the JSON reads counted", r.name)
+	assert.Equal(t, uint64(4), c.counts().Reads(textForm), "%s: the text reads counted", r.name)
 }
 
 func TestVerbJSONGolden(t *testing.T) {
@@ -670,7 +699,6 @@ func TestVerbJSONGolden(t *testing.T) {
 
 	// the roots are tables of the schema, and together reach every table.
 	seen := map[string]bool{}
-	reaches(defs, "GoalShow", seen)
 	for _, r := range rs {
 		require.Contains(t, defs, r.table, "root %s is no table of the schema", r.table)
 		require.NotEmpty(t, r.samples, "root %s has no sample of today's output", r.table)
@@ -778,39 +806,6 @@ func TestVerbJSONGolden(t *testing.T) {
 			})
 		})
 	}
-
-	// GoalShow is the area's array root (goal.go:188-190): its JSON text is a
-	// top-level array. pkg/schemaread's Detect recognises JSON text only by a
-	// leading '{', so that one form is refused by name (unknown_form) until
-	// schemaread learns the array root; the binary and base64 forms round-trip.
-	t.Run("GoalShow", func(t *testing.T) {
-		t.Parallel()
-		text := []byte(samples["GoalShow"][0])
-		var builder GoalShowBuilder
-		require.True(t, builder.Init())
-		var rep TableReport
-		require.True(t, GoalShowFromJson(&builder, text, &rep), "%s", rep.Err())
-		require.True(t, builder.Lock())
-		root := builder.AsConst()
-		wire := whole(func() int64 { return GoalShowMeasure(root) }, func(b []byte) int64 { return GoalShowSave(root, b) })
-		require.NotEmpty(t, wire)
-		c := newCodec("GOAL-SHOW", "nova-sprint goal show -h", GoalShowLoadMeasureReason, GoalShowLoadBuilder, GoalShowFromJson, GoalShowMeasure, GoalShowSave, GoalShowToJsonMeasure, GoalShowToJson)
-		for _, form := range []schemaread.Form{schemaread.FormBinary, schemaread.FormBase64} {
-			img := wire
-			if form == schemaread.FormBase64 {
-				img = []byte(base64.StdEncoding.EncodeToString(wire))
-			}
-			back, res, err := c.read(img)
-			require.NoError(t, err, "GOAL-SHOW: read %s", form)
-			assert.Equal(t, form, res.Form)
-			assert.Equal(t, prune(decode(t, text)), prune(decode(t, back)), "GOAL-SHOW: %s round trip", form)
-		}
-		_, _, err := c.read(text)
-		require.Error(t, err)
-		var ref *schemaread.Refusal
-		require.True(t, errors.As(err, &ref))
-		assert.Equal(t, schemaread.ReasonUnknownForm, ref.Reason, "schemaread has not learned the array root's JSON text")
-	})
 }
 
 // reflectValue builds today's Go value of t (the struct encoding/json writes)
