@@ -76,6 +76,7 @@ var (
 
 func parseType(s string) *typ {
 	s = strings.TrimPrefix(s, "?")
+	s = strings.TrimPrefix(s, "*")
 	if m := strType.FindStringSubmatch(s); m != nil {
 		n, _ := strconv.Atoi(m[1])
 		return &typ{kind: "string", bound: n}
@@ -180,7 +181,9 @@ func overs(defs map[string]*tableDef, t *typ) []any {
 	var out []any
 	switch t.kind {
 	case "string":
-		out = append(out, strings.Repeat("x", t.bound+1))
+		if t.bound > 0 {
+			out = append(out, strings.Repeat("x", t.bound+1))
+		}
 	case "table":
 		if defs[t.table].array {
 			f := defs[t.table].fields[0]
@@ -783,6 +786,11 @@ func TestVerbJSONGolden(t *testing.T) {
 	// top-level array. pkg/schemaread's Detect recognises JSON text only by a
 	// leading '{', so that one form is refused by name (unknown_form) until
 	// schemaread learns the array root; the binary and base64 forms round-trip.
+	// This is reported as a schema improvement wanted (schemaread's Detect
+	// recognises an array-root JSON form), because it is a reader-side gap in
+	// pkg/schemaread, outside the files this card may touch: binary, base64
+	// and object-root text all round-trip, and this test pins the refusal so a
+	// later reader change is made deliberately.
 	t.Run("GoalShow", func(t *testing.T) {
 		t.Parallel()
 		text := []byte(samples["GoalShow"][0])
