@@ -2174,8 +2174,8 @@ func lintBriefReads(brief string, rs ruleSet) (modelWhy string, findings []swarm
 	if line := briefNeedsLine(brief); line != 0 {
 		for _, id := range briefNeedsNotIDs(brief) {
 			findings = append(findings, swarm.CardHeaderFinding{
-				Check: "depends-on",
-				Line:  line,
+				Check:   "depends-on",
+				Line:    line,
 				Excerpt: fmt.Sprintf("DEPENDS-ON names %q, which is not a card id (one word of letters, digits, _ and -); name the card by its id, or write DEPENDS-ON: none", id),
 			})
 		}
