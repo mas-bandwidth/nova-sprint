@@ -67,7 +67,7 @@ func init() {
 
 var tableUnitView = UnitViewInfo{Package: "snaprowswire", ProtocolId: 0x8b3278809086480e,
 	NumTypes: 0, Types: []ViewType{},
-	NumTables: 51, Tables: []ViewType{
+	NumTables: 50, Tables: []ViewType{
 		{Name: "BackupCounts", File: "snaprows.schema", Table: true, Type: &BackupCountsTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "BatchDelta", File: "snaprows.schema", Table: true, Type: &BatchDeltaTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "BatchMemberDelta", File: "snaprows.schema", Table: true, Type: &BatchMemberDeltaTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -118,7 +118,6 @@ var tableUnitView = UnitViewInfo{Package: "snaprowswire", ProtocolId: 0x8b327880
 		{Name: "Usage", File: "snaprows.schema", Table: true, Type: &UsageTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "View", File: "snaprows.schema", Table: true, Type: &ViewTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "ViewEntry", File: "snaprows.schema", Table: true, Type: &ViewEntryTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
-		{Name: "Word", File: "snaprows.schema", Table: true, Type: &WordTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 	},
 	NumEnums: 0, Enums: []ViewVocabulary{},
 	NumFlags: 0, Flags: []ViewVocabulary{},
