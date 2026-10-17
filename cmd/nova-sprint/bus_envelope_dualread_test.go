@@ -265,8 +265,13 @@ func TestEnvelopeDualRead(t *testing.T) {
 		noStamp.At = time.Time{}
 		ask := envTestSent(bus.KindAsk)
 		ask.Due = time.Time{}
+		// the writer refuses an interior NUL, so the damaged bytes are made from a good
+		// wire whose subject carries one marker byte, overwritten with the NUL
 		nul := envTestSent(bus.KindBlocker)
-		nul.Subject = "a\x00b"
+		nul.Subject = "aZqZb"
+		nulWire := []byte(envTestWrite(t, envTestTyped(t, nul, "", ""), schemaread.FormBinary))
+		require.Equal(t, 1, strings.Count(string(nulWire), "aZqZb"))
+		nulWire[strings.Index(string(nulWire), "aZqZb")+2] = 0
 		goodJSON := envTestWrite(t, envTestTyped(t, envTestSent(bus.KindBlocker), "", ""), schemaread.FormJSON)
 		// a wider writer's subject: the builder here holds no more than the bound, so the text is edited
 		longJSON := strings.Replace(goodJSON, `"subject": "#202 HOLD at 3f9c"`, `"subject": "`+strings.Repeat("s", 201)+`"`, 1)
@@ -287,7 +292,7 @@ func TestEnvelopeDualRead(t *testing.T) {
 			{"no stamp", envTestWrite(t, envTestTyped(t, noStamp, "", ""), schemaread.FormBinary), envTestRefusal("absent_required", "at_ms")},
 			{"an ask with no deadline", envTestWrite(t, envTestTyped(t, ask, "", ""), schemaread.FormBase64), envTestRefusal("absent_required", "due_ms")},
 			// the generated load refuses an interior NUL itself, naming no field
-			{"a NUL in the subject", envTestWrite(t, envTestTyped(t, nul, "", ""), schemaread.FormBinary), envTestRefusal("malformed", "")},
+			{"a NUL in the subject", string(nulWire), envTestRefusal("malformed", "")},
 		} {
 			assert.Equal(t, tc.reason, envTestRefused(t, r, envTestEntry(tc.in, nil)), tc.name)
 			// never a fall back to the legacy fields beside it
