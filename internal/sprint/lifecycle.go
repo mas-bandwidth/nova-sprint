@@ -247,7 +247,7 @@ func unlawful(u Unit, p *Plan) string {
 		}
 		if p.pre != nil && !e.Remove {
 			held := p.pre.Work.Card(e.ID)
-			if held != nil && IsHeld(held) && held.F("held_by") == ServerDefaultActor && held.F("decision_held_from") != "" {
+			if held != nil && IsHeld(held) && held.F("held_by") == ServerDefaultActor && held.F("decision_held_from") != "" && !reworkAnswersHold(e, from, held, p) {
 				if e.Move != nil && e.Move.Col != from && !p.releasing {
 					return "release the server-default hold before moving its primary"
 				}
@@ -369,14 +369,46 @@ func namedNeedsOpen(id string, pre *Snapshot) bool {
 	return len(NamedNeedsOpen(pre, pc)) > 0
 }
 
+// reworkAnswersHold says a work-table entry of a rework's plan is the clear a
+// rework makes of the server-default hold on a primary held in place in ready
+// (steps_review.go Rework, "the rework answers the server-default hold"): it
+// moves the primary from ready to working, or leaves it in place, and unsets
+// every one of the five hold fields the primary carries, setting none of them.
+// Such an entry passes the hold guard whole: the rework answers the hold and
+// writes the next attempt (attempt, tier, head) with it, as the release does
+// (tla/SprintTables.tla ReworkHeldInPlace beside DecisionReleaseStep; reversed
+// witness "reworkkeepshold", HeldNeverWorks). A rework entry that keeps any of
+// the hold, or rewrites a hold field to another value, and every other verb's
+// entry, is judged by the guard as before. The live rework and the store's
+// repair (Rejudge with the verb "rework") decide by this one test, so they
+// cannot disagree.
+func reworkAnswersHold(e ntable.BatchMemberEntry, from string, held *Card, p *Plan) bool {
+	if !p.reworking || from != Ready || held.Col != Ready || held.F("decision_held_from") != Ready {
+		return false
+	}
+	if e.Move != nil && e.Move.Col != Working {
+		return false
+	}
+	for _, field := range []string{FieldHeld, "held_by", "held_reason", "held_judgment", "decision_held_from"} {
+		if _, ok := e.Set[field]; ok {
+			return false
+		}
+		if held.F(field) != "" && !slices.Contains(e.Unset, field) {
+			return false
+		}
+	}
+	return true
+}
+
 // Rejudge holds entries a repair is about to apply one by one to the
 // lifecycle, together, against a fresh read (pre): each entry is its own
 // unit, and an entry left out (one that will be skipped) counts as not
 // happening, so a landing that is skipped satisfies no need. verb is the
 // operation's verb: release may land a sentinel, add may move a primary
-// ready -> waiting. It returns the entries refused, by card id, with why.
+// ready -> waiting, rework may clear a server-default hold (reworkAnswersHold).
+// It returns the entries refused, by card id, with why.
 func Rejudge(pre *Snapshot, verb string, changes []Change) []Refusal {
-	p := Plan{pre: pre, releasing: verb == "release", inserting: verb == "add", drained: verb == DrainVerb}
+	p := Plan{pre: pre, releasing: verb == "release", inserting: verb == "add", reworking: verb == "rework", drained: verb == DrainVerb}
 	for _, c := range changes {
 		p.Units = append(p.Units, Unit{Key: c.Entry.ID, Changes: []Change{c}})
 	}

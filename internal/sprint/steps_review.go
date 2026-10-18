@@ -1554,6 +1554,12 @@ var ReworkResolves = []string{NCannotAsk, NWorkFailed, NReportJudgment, NReadBro
 func Rework(s *Snapshot, r ReworkReq) Plan {
 	s, _ = s.withRests() // the resting routes, read once (rule 3, route_rest.go)
 	var p Plan
+	// the plan is judged against the pre-state it was built on, as the store's repair
+	// judges its entries (Rejudge with the verb "rework"), so the server-default hold
+	// guard runs on both and admits only the rework's own clear of the hold
+	// (reworkAnswersHold; tla/SprintTables.tla ReworkHeldInPlace, DecisionReleaseStep)
+	p.on(s)
+	p.reworking = true
 	// a primary in review, or one at its redeal bound (ready, its work card
 	// withdrawn and dealt no more): rework is its next attempt
 	pool := s.Work.Column(Review)
