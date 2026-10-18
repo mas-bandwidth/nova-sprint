@@ -1400,6 +1400,30 @@ DecisionReleaseStep ==
   /\ UNCHANGED <<briefGeneration, attemptGeneration, headGeneration, keptHead, operationalEdits,
        needs, waived, everLanded, members, wplace, wmember, rplace, mg, sstream,
        scause, ranked, pending, ci, parkBound, parkSaved, parkCause, parkHead, parkReads>>
+\* ReworkHeldInPlace: a rework of a held in-place primary answers the hold (this
+\* card v17-rework-clears-the-server-default-hold; deadlock j25715): the primary
+\* is dealt again (state -> working, its work card dealt) and the hold is removed
+\* (parkState' = "released"); like Start, the deal stamps the attempt generation
+\* (GenerationStep). Enabled in the instances DecisionParkStep is. The
+\* reversed witness "reworkkeepshold" leaves parkState "held", so HeldNeverWorks
+\* fails: the primary works while still held.
+ReworkHeldInPlace ==
+  /\ Cardinality(Card) <= 2
+  /\ Free /\ parkState = "held" /\ InPlace(ParkCard)
+  /\ NeedsMet(ParkCard)
+  /\ \E m \in Up :
+        /\ state' = [state EXCEPT ![ParkCard] = "working"]
+        /\ wplace' = [wplace EXCEPT ![ParkCard] = "ready"]
+        /\ wmember' = [wmember EXCEPT ![ParkCard] = m]
+  /\ pendstate' = state'
+  /\ flags' = NoFlags
+  /\ parkState' = IF Broken = "reworkkeepshold" THEN "held" ELSE "released"
+  /\ parkEvent' = "rework"
+  /\ GenerationStep
+  /\ UNCHANGED <<needs, waived, everLanded, members, rplace, mg, sstream,
+       scause, ranked, pending, ci, parkBound, parkSaved, parkCause, parkHead, parkReads>>
+
+HeldNeverWorks == parkState = "held" => state[ParkCard] # "working"
 \* Follow: the needs record's views follow every step that is not a refused finish.
 \* waitsAfter[c] (steps_edit.go NeedsSet, briefDepends, the brief path; the
 \* rule-11 marker) is, for a card working before and after the step, its old
@@ -1440,7 +1464,7 @@ FinishRefused ==
     /\ UNCHANGED <<waitsAfter, vars, parkingVars>>
 
 Next == \/ (((LegacyNext /\ GenerationStep) \/ Brief \/ OperationalEdit) /\ ParkFence /\ UNCHANGED parkingVars /\ Follow)
-        \/ ((DecisionParkStep \/ DecisionReleaseStep) /\ Follow)
+        \/ ((DecisionParkStep \/ DecisionReleaseStep \/ ReworkHeldInPlace) /\ Follow)
         \/ FinishRefused
 
 NoOldBriefHeadInReview ==
