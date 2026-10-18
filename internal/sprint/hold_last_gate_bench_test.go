@@ -141,6 +141,7 @@ func TestAFleetDownOfTheLastGateBenchIsRefused(t *testing.T) {
 	require.Len(t, p.Refused, 1, "fleet down of the remaining gate bench must be refused: %+v", p)
 	assert.Contains(t, p.Refused[0].Why, "holding m2 leaves no gate bench")
 	assert.Contains(t, p.Refused[0].Why, "--force-last")
+	assert.Contains(t, p.Refused[0].Why, "pass it on hold or fleet down")
 
 	p = sprint.HoldNames(s, sprint.HoldReq{Names: []string{"m2"}, Reason: "r", Return: true, ForceLast: true})
 	require.Empty(t, p.Refused, "force-last permits the fleet-down hold: %+v", p.Refused)
