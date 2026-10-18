@@ -37,9 +37,9 @@
 (* every seen down by one instead, so each age (now - seen) is exact up to *)
 (* MaxNow and saturates there; MaxNow > HoldFor, so a saturated age is an  *)
 (* expired one and the state space stays finite. The retry time of a WAIT *)
-(* (the earliest live deadline, at most LaneWaitFor away) and the name     *)
-(* tie-break of the pick (a determinism of the code, not a safety) are not *)
-(* modelled: ties are chosen freely.                                       *)
+(* (the earliest live deadline, at most LaneWaitFor away) is not modelled.  *)
+(* The D4 name tie-break is an explicit rank and is checked by              *)
+(* GrantTieBreak on an equal-slot instance, where the tie is reachable.     *)
 (*                                                                         *)
 (* lease[w] is the SET of benches w holds, not one bench or none: the code *)
 (* keeps holders per machine (Lanes is machine -> holders), so nothing in  *)
@@ -72,20 +72,23 @@
 (*   "waitwhenroom" a take may answer WAIT while a bench has room:         *)
 (*                WaitOnlyWhenFull fails, and with it WaiterGetsLease;     *)
 (*   "renewexpired" a renewal neither drops expired leases nor refuses its *)
-(*                own expired one: NoLeaseOutlivesDeadline fails.          *)
-(* The last five have no committed configuration yet (owed: the card's     *)
-(* paths named four); each was run by hand with a cfg naming it.           *)
+(*                own expired one: NoLeaseOutlivesDeadline fails;           *)
+(*   "anytie"     chooses freely among least-committed ties: GrantTieBreak  *)
+(*                fails (MCBenchLeaseBrokenAnyTie.cfg).                    *)
+(* Each reversed witness has a committed configuration and CASES.tsv row.  *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets, TLC
 
-CONSTANTS Machines, Workers, Slots, HoldFor, MaxNow, MaxBusy, Broken
+CONSTANTS Machines, Workers, Slots, NameRank, HoldFor, MaxNow, MaxBusy, Broken
 
 Faults == {"none", "noexpiry", "loadonly", "noceiling", "queue", "anybench", "anyroom", "second",
-           "waitwhenroom", "renewexpired"}
+           "waitwhenroom", "renewexpired", "anytie"}
 NoMachine == "none"
 NoWorker  == "none"
 ASSUME Broken \in Faults
 ASSUME Slots \in [Machines -> 1..2]
+ASSUME NameRank \in [Machines -> 1..Cardinality(Machines)]
+ASSUME \A m1, m2 \in Machines : m1 # m2 => NameRank[m1] # NameRank[m2]
 ASSUME MaxNow > HoldFor /\ HoldFor > 0
 ASSUME NoMachine \notin Machines /\ NoWorker \notin Workers
 
@@ -136,11 +139,13 @@ Least(L, C) == IF Broken = "anyroom" THEN C
                ELSE {m \in C : \A m2 \in C :
                        Committed(L, m) * Slots[m2] <= Committed(L, m2) * Slots[m]}
 
-\* D4: a tie goes to the most free slots (then the name, not modelled)
+\* D4: a tie goes to the most free slots, then the lower machine name
 Best(L, C) == LET Lc == Least(L, C) IN
-              IF Broken = "anyroom" THEN Lc
+              IF Broken = "anyroom" \/ Broken = "anytie" THEN Lc
               ELSE {m \in Lc : \A m2 \in Lc :
-                      Slots[m] + Committed(L, m2) >= Slots[m2] + Committed(L, m)}
+                      /\ Slots[m] + Committed(L, m2) >= Slots[m2] + Committed(L, m)
+                      /\ (Slots[m] + Committed(L, m2) > Slots[m2] + Committed(L, m)
+                          \/ NameRank[m] <= NameRank[m2])}
 
 TypeOK ==
   /\ now \in 0..MaxNow
@@ -302,6 +307,20 @@ GrantIsLeastCommitted ==
          DesignRoomIn(Dropped, m2) =>
            DesignCommitted(Dropped, last'.m) * Slots[m2]
              <= DesignCommitted(Dropped, m2) * Slots[last'.m]]_vars
+
+\* D4: among equal-ratio benches with room, grant the most free slots, then
+\* the lowest machine name
+GrantTieBreak ==
+  [][last'.kind = "granted" =>
+       \A m2 \in allowed :
+         (DesignRoomIn(Dropped, m2) /\
+          DesignCommitted(Dropped, last'.m) * Slots[m2] =
+            DesignCommitted(Dropped, m2) * Slots[last'.m]) =>
+           /\ Slots[last'.m] + DesignCommitted(Dropped, m2)
+                >= Slots[m2] + DesignCommitted(Dropped, last'.m)
+           /\ (Slots[last'.m] + DesignCommitted(Dropped, m2) =
+                  Slots[m2] + DesignCommitted(Dropped, last'.m) =>
+                  NameRank[last'.m] <= NameRank[m2])]_vars
 
 \* D6: a wait is answered only when no allowed bench has room
 WaitOnlyWhenFull ==

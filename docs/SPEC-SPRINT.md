@@ -9441,19 +9441,16 @@ The decisions:
    one at a time: two picks never both take a bench's last slot.
 
 The model checks NeverOverSlots, OneLeaseEach, GrantOnlyAllowed, GrantIsLeastCommitted,
-WaitWritesNothing, WaitOnlyWhenFull and NoLeaseOutlivesDeadline on two benches (1 and 2
-slots) and three workers, and DeadLeaseEnds (a dead client's lease ends: every slot is
-eventually free after its holder stops) and WaiterGetsLease on two workers. The fairness
-is weak fairness on the clock, the sweep and a waiter's asking again; nothing assumes a
-grant. The tie-break of D4 (most free slots, then the name) is in the pick but not a
-checked property. Its reversed witnesses: `noexpiry`, a client-held lease with no
-server expiry (the stuck lock Glenn banned), fails DeadLeaseEnds; `loadonly`, a pick by
-load alone as one `ssh <bench> uptime` is, fails NeverOverSlots (three grants onto a
-two-slot bench before any load shows); `noceiling`, a full fleet still granting the least
-committed, fails NeverOverSlots; `queue`, a wait recording a place, fails
-WaitWritesNothing; and, run by hand with no case yet, `anybench` fails GrantOnlyAllowed,
-`anyroom` fails GrantIsLeastCommitted, `second` fails OneLeaseEach, `waitwhenroom` fails
-WaitOnlyWhenFull and WaiterGetsLease, and `renewexpired` fails NoLeaseOutlivesDeadline. Two corrections to
+GrantTieBreak, WaitWritesNothing, WaitOnlyWhenFull and NoLeaseOutlivesDeadline on two benches
+(1 and 2 slots) and three workers; DeadLeaseEnds and WaiterGetsLease are checked on two
+workers. GrantTieBreak also runs on two equal two-slot benches so the name tie is reachable.
+The fairness is weak fairness on the clock, the sweep and a waiter's asking again; nothing
+assumes a grant. Each reversed witness has a committed configuration and CASES.tsv row:
+`noexpiry` fails DeadLeaseEnds; `loadonly` and `noceiling` fail NeverOverSlots; `queue` fails
+WaitWritesNothing; `anybench` fails GrantOnlyAllowed; `anyroom` fails GrantIsLeastCommitted;
+`second` fails OneLeaseEach; `waitwhenroom` fails WaitOnlyWhenFull and WaiterGetsLease;
+`renewexpired` fails NoLeaseOutlivesDeadline; and `anytie` fails GrantTieBreak on the
+equal-slot instance. Two corrections to
 the card's design came from writing it: a lease is modelled as the set of benches a
 worker holds (a single bench or none made OneLeaseEach true by its type, while the
 record allows two), and D5's "released at the next step that reads the record" is split
