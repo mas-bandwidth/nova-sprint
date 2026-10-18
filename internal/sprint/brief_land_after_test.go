@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // 2026-10-18: add records a brief's LAND-AFTER: line on the card (FieldLandAfter and
@@ -42,4 +43,35 @@ func TestABriefEditWritesItsLandAfterLikeAddDoes(t *testing.T) {
 			assert.Equal(t, c.want, SoftDepsRaw(w.s.Work.Placed("b")), "the soft dependencies the card holds after the edit")
 		})
 	}
+}
+
+// 2026-10-18: a brief edit validates its LAND-AFTER list against the card's old
+// needs, not the needs the edit writes (steps_edit.go briefLandAfterSet). Turning
+// a need into a land-after — DEPENDS-ON: none, LAND-AFTER: a-1 on a card that
+// needed a-1 — was refused as "one relation, not two" against the stale need.
+func TestABriefEditTurningANeedIntoLandAfterIsTaken(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, "reader-a", "reader-b")
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "one", Who: "coordinator"}))
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"b"}, Needs: []string{"a-1"}, Brief: "tier: flash\nDEPENDS-ON: a-1\n\nthe task", Who: "coordinator"}))
+	require.Equal(t, "a-1", w.s.Work.Placed("b").F("needs"))
+	p := Brief(w.s, BriefReq{Cards: []BriefCard{{ID: "b", Brief: "tier: flash\nLAND-AFTER: a-1\n\nthe task"}}, NeedsFromBrief: true, Who: "coordinator"})
+	w.must(p)
+	assert.Empty(t, w.s.Work.Placed("b").F("needs"), "the need is turned into a land-after, not kept")
+	assert.Equal(t, []string{"a-1"}, SoftDepsRaw(w.s.Work.Placed("b")), "the land-after the edit writes")
+}
+
+// An edit naming the same id on the DEPENDS-ON and LAND-AFTER lines is judged
+// against the needs it writes, so the one-relation rule holds: prior to the fix
+// the check ran against the card's old needs and let the broken write through.
+func TestABriefEditNamingOneIdOnBothLinesIsRefused(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, "reader-a", "reader-b")
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"a-1"}, Brief: "one", Who: "coordinator"}))
+	w.must(Add(w.s, AddReq{Stream: "a", IDs: []string{"b"}, Brief: "tier: flash\n\nthe task", Who: "coordinator"}))
+	p := Brief(w.s, briefOf("b", "tier: flash\nDEPENDS-ON: a-1\nLAND-AFTER: a-1\n\nthe task", "a-1"))
+	require.Len(t, p.Refused, 1)
+	assert.Contains(t, p.Refused[0].Why, "one relation, not two")
+	assert.Empty(t, w.s.Work.Placed("b").F("needs"), "nothing was written")
+	assert.Empty(t, SoftDepsRaw(w.s.Work.Placed("b")), "nothing was written")
 }
