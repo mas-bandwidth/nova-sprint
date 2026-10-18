@@ -1,8 +1,8 @@
 # unit_rule_allowed.txt: the unit-tier test files (no functional build tag) that still
-# use real time, a real socket or an outside service, read by internal/ci
+# use real time, a real socket, an outside service or a program, read by internal/ci
 # TestUnitTestsUseNoRealTimeSocketsOrServices. One slash path from the module root a
-# line, followed by its measured count per kind (time, socket, service); '#' lines are
-# comments.
+# line, followed by its measured count per kind (time, socket, service, program); '#'
+# lines are comments.
 #
 # allowed until moved, v1.3 (listed 2026-10-12: 41 files, 125 uses on sprint/comfort c0a08276)
 #
@@ -12,19 +12,22 @@
 # that keeps the rule fails until its line is removed; a file not listed that breaks it
 # fails; a line added here, or a count above, the merge base does not have fails (the
 # allowance only shrinks against origin/<base>, by use and not only by file).
+#
+# The program kind was measured at its introduction in v17 (2026-10-18), so its counts
+# on these lines are that kind's baseline; time, socket and service still only shrink.
 cmd/nova-sprint/fleet_back_test.go time:1
 cmd/nova-sprint/flush_stream_test.go time:4
 cmd/nova-sprint/friend_start_test.go time:1
 cmd/nova-sprint/friendcards_cover_test.go time:2
 cmd/nova-sprint/friendclean_test.go time:1
-cmd/nova-sprint/land_beat_test.go time:3
-cmd/nova-sprint/land_class_test.go time:2
-cmd/nova-sprint/landpass_lanes_test.go time:8
-cmd/nova-sprint/landpass_unblocked_test.go time:2
-cmd/nova-sprint/landring_test.go time:3
-cmd/nova-sprint/landstage_test.go time:3
+cmd/nova-sprint/land_beat_test.go time:3 program:13
+cmd/nova-sprint/land_class_test.go time:2 program:4
+cmd/nova-sprint/landpass_lanes_test.go time:8 program:20
+cmd/nova-sprint/landpass_unblocked_test.go time:2 program:16
+cmd/nova-sprint/landring_test.go time:3 program:3
+cmd/nova-sprint/landstage_test.go time:3 program:3
 cmd/nova-sprint/main_cover_test.go time:2
-cmd/nova-sprint/reexec_test.go time:1
+cmd/nova-sprint/reexec_test.go time:1 program:1
 cmd/nova-sprint/seat_check_offline_test.go time:3
 cmd/nova-sprint/tick_deadline_test.go time:3
 cmd/nova-sprint/tick_gate_test.go time:2
@@ -34,6 +37,84 @@ internal/sprint/store/tick_ask_test.go time:3
 internal/sprint/store/waitlog_test.go time:1
 pkg/ratebudget/ratebudget_test.go time:1 service:4
 pkg/ratebudget/twin_test.go service:1
-pkg/swarm/stage_test.go time:1
+pkg/swarm/stage_test.go time:1 program:3
 pkg/tlc/run_test.go time:1
 pkg/tlc/suite_test.go time:5
+cmd/nova-card/generate_test.go program:1
+cmd/nova-sprint/addlint_test.go program:6
+cmd/nova-sprint/base_gate_rule_test.go program:3
+cmd/nova-sprint/base_outside_binding_test.go program:1
+cmd/nova-sprint/bases_test.go program:6
+cmd/nova-sprint/brief_widen_test.go program:8
+cmd/nova-sprint/carddiff_test.go program:10
+cmd/nova-sprint/forge_identity_test.go program:1
+cmd/nova-sprint/head_trap_test.go program:1
+cmd/nova-sprint/land_append_test.go program:13
+cmd/nova-sprint/land_basegate_count_test.go program:5
+cmd/nova-sprint/land_catalog_test.go program:19
+cmd/nova-sprint/land_clash_test.go program:3
+cmd/nova-sprint/land_clean_clone_test.go program:17
+cmd/nova-sprint/land_dead_base_test.go program:3
+cmd/nova-sprint/land_fence_server_test.go program:3
+cmd/nova-sprint/land_fetch_review_test.go program:2
+cmd/nova-sprint/land_gate_bench_held_test.go program:5
+cmd/nova-sprint/land_go_test.go program:10
+cmd/nova-sprint/land_identity_test.go program:3
+cmd/nova-sprint/land_ledger_resolve_test.go program:24
+cmd/nova-sprint/land_ledger_test.go program:25
+cmd/nova-sprint/land_ledger_union_test.go program:9
+cmd/nova-sprint/land_ledgers_test.go program:12
+cmd/nova-sprint/land_origin_reread_probe_test.go program:7
+cmd/nova-sprint/land_prune_test.go program:21
+cmd/nova-sprint/land_pushed_reload_test.go program:2
+cmd/nova-sprint/land_repair_test.go program:6
+cmd/nova-sprint/land_repoint_after_mark_test.go program:5
+cmd/nova-sprint/land_repoint_during_gate_test.go program:8
+cmd/nova-sprint/land_review_test.go program:4
+cmd/nova-sprint/land_scope_test.go program:2
+cmd/nova-sprint/land_shared_clone_review_test.go program:1
+cmd/nova-sprint/land_test.go program:63
+cmd/nova-sprint/landbase_test.go program:10
+cmd/nova-sprint/landed_sha_test.go program:7
+cmd/nova-sprint/landpass_test.go program:20
+cmd/nova-sprint/landsexp_land_test.go program:7
+cmd/nova-sprint/landverify_test.go program:1
+cmd/nova-sprint/last_card_replacement_review_test.go program:1
+cmd/nova-sprint/merge_bare_refused_test.go program:5
+cmd/nova-sprint/moved_card_stops_functional_test.go program:1
+cmd/nova-sprint/pathcover_test.go program:4
+cmd/nova-sprint/promote_end_to_end_test.go program:33
+cmd/nova-sprint/promote_red_test.go program:1
+cmd/nova-sprint/protected_base_test.go program:4
+cmd/nova-sprint/release_accept_members_read_test.go program:1
+cmd/nova-sprint/release_accept_progress_test.go program:3
+cmd/nova-sprint/selftest_test.go program:1
+cmd/nova-sprint/server_switch_shadow_test.go program:1
+cmd/nova-sprint/server_switch_verb_test.go program:16
+cmd/nova-sprint/sprint_branch_test.go program:3
+cmd/nova-sprint/stream_branch_follow_test.go program:26
+cmd/nova-sprint/testhelpers_functional_test.go program:1
+cmd/nova-sprint/walkthrough_real_test.go program:3
+internal/ci/one_source_test.go program:4
+internal/ci/unit_rule_test.go program:4
+internal/sprint/drift_test.go program:1
+internal/sprint/land_cure_test.go program:15
+internal/sprint/land_repair_merge_test.go program:2
+internal/sprint/land_runner_test.go program:6
+internal/sprint/rebase_test.go program:2
+internal/sprint/server_base_test.go program:1
+internal/sprint/store/branch_redeal_push_test.go program:13
+internal/sprint/sync_twin_test.go program:14
+internal/sprintdash/archived_test.go program:1
+internal/sprintdash/bar_count_test.go program:1
+internal/sprintdash/pagelock_test.go program:6
+internal/sprintdash/read_cost_test.go program:1
+internal/sprintdash/scroll_test.go program:1
+internal/sprintdash/tweaks_test.go program:1
+internal/sprintdash/view_fix_test.go program:1
+pkg/swarm/lintbase_ctest_test.go program:3
+pkg/swarm/lintbase_runner_test.go program:1
+pkg/swarm/lintbase_test.go program:1
+pkg/swarm/lintpaths_registry_test.go program:1
+tools/seed/seed_test.go program:1
+tools/sprintsize/main_test.go program:1
