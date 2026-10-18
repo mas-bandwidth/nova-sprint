@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -58,4 +59,96 @@ func TestAFriendsRedealtCardGetsTheNextFriendsOwnBound(t *testing.T) {
 		assert.Equal(t, Redealt, w.s.Fleet.Card("s1-1.w2").Col, "past her own deadline: redealt on her row")
 		w.clean("redealt after her own deadline")
 	})
+}
+
+// TickFriendRedeal never moves a live lane at the deadline, at any age (beat or lane renewal);
+// the first time a live card passes unfinishedLimit it raises ONE notice to the coordinator
+// naming the card and how long it has run since first_taken, and never repeats it on later
+// ticks of the same generation.
+func TestFriendRedealNoticesALiveLaneOncePastTheDeadline(t *testing.T) {
+	t.Parallel()
+
+	t.Run("live by fresh beat past unfinishedLimit", func(t *testing.T) {
+		t.Parallel()
+		w, _ := friendDealt(t, "s1-1.w1")
+		amy := workerSeatFixture(FriendSeat{
+			Name:    "amy",
+			Width:   1,
+			Status:  Up,
+			Class:   "flash,pro",
+			Running: []string{"s1-1.w1"},
+			Beat:    Beat{At: w.s.Now.Add(-time.Minute), Friend: &FriendReport{Running: []string{"s1-1.w1"}}},
+		})
+		p, due := TickFriendRedeal(w.s, TickReq{Friends: []FriendSeat{amy}})
+		require.Zero(t, due)
+		w.must(p)
+
+		wc := w.s.Fleet.Card("s1-1.w1")
+		assert.Equal(t, Working, wc.Col, "live lane is never redealt at the deadline")
+		assert.Equal(t, 1, wc.Int("gen"), "stays on the same generation")
+		assert.Equal(t, Working, w.s.StateOf("s1-1"), "primary stays working")
+
+		var notices []Note
+		for _, n := range p.Notes {
+			if n.Kind == Happened {
+				notices = append(notices, n)
+			}
+		}
+		for _, u := range p.Units {
+			for _, n := range u.Notes {
+				if n.Kind == Happened {
+					notices = append(notices, n)
+				}
+			}
+		}
+		require.Len(t, notices, 1, "exactly one coordinator notice on the first tick past unfinishedLimit")
+		assert.Contains(t, notices[0].What, "s1-1.w1")
+		assert.Contains(t, notices[0].What, "8h0m0s")
+		assert.Contains(t, notices[0].What, "first_taken")
+
+		// Next tick on the same generation: still live, never moved, and never noticed a second time.
+		w.tick(10 * time.Minute)
+		amy.Beat.At = w.s.Now.Add(-time.Minute)
+		p2, due2 := TickFriendRedeal(w.s, TickReq{Friends: []FriendSeat{amy}})
+		require.Zero(t, due2)
+		assert.Empty(t, p2.Units, "never repeated on a later tick of the same generation")
+		assert.Empty(t, p2.Notes, "never repeated on a later tick of the same generation")
+	})
+
+	t.Run("live by lane renewal past unfinishedLimit", func(t *testing.T) {
+		t.Parallel()
+		w, _ := friendDealt(t, "s1-1.w1")
+		w.must(Progress(w.s, ProgressReq{Sel: Sel{IDs: []string{"s1-1.w1"}}, As: FriendRow("amy"), Gens: gensOf(w.s, "s1-1.w1")}))
+		p, due := TickFriendRedeal(w.s, TickReq{})
+		require.Zero(t, due)
+		w.must(p)
+
+		wc := w.s.Fleet.Card("s1-1.w1")
+		assert.Equal(t, Working, wc.Col, "lane renewed inside LaneGoneAfter is live and never redealt")
+		assert.Equal(t, 1, wc.Int("gen"))
+		var notices []Note
+		for _, u := range p.Units {
+			notices = append(notices, u.Notes...)
+		}
+		notices = append(notices, p.Notes...)
+		require.Len(t, notices, 1, "one notice on the first tick past unfinishedLimit")
+		assert.Contains(t, notices[0].What, "s1-1.w1")
+
+		w.tick(time.Minute)
+		p2, _ := TickFriendRedeal(w.s, TickReq{})
+		assert.Empty(t, p2.Units)
+		assert.Empty(t, p2.Notes)
+	})
+}
+
+// A working friend card that is not live at the deadline keeps today's redeal unchanged.
+func TestFriendRedealMovesANotLiveLaneAsToday(t *testing.T) {
+	t.Parallel()
+	w, _ := friendDealt(t, "s1-1.w1")
+	w.part(TickFriendRedeal, TickReq{})
+	wc := w.s.Fleet.Card("s1-1.w1")
+	assert.Equal(t, Redealt, wc.Col, "not live past its deadline: redealt as today")
+	assert.Equal(t, 2, wc.Int("gen"))
+	assert.Equal(t, Ready, w.s.StateOf("s1-1"), "primary returns to ready")
+	w.clean("not-live lane redealt past its deadline")
 }
