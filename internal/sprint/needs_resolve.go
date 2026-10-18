@@ -4,8 +4,12 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 )
+
+// tickCountUnresolvedNeeds counts calls of UnresolvedNeeds (tick_memo_complexity_test.go).
+var tickCountUnresolvedNeeds int64
 
 // Resolved and unresolved needs (v1.2.17, a-missing-or-blocked-need-is-found-at-check-and-while-
 // running; the owner, 2026-10-13: "we need something mechanical that catches missing dependencies
@@ -98,6 +102,7 @@ func noteName(n *Note) string {
 // tla/NeedsBlocked.tla AdmittedNeedsResolved (Admit's guard, Resolved);
 // tla/SoftDependency.tla SoftNeverBlocksDeal (DealEligible: only hard needs gate ready and the deal; soft dependencies never do).
 func UnresolvedNeeds(s *Snapshot, id string, needs []string, adding map[string]bool) []UnresolvedNeed {
+	atomic.AddInt64(&tickCountUnresolvedNeeds, 1)
 	self := s.Work.Card(id)
 	waived := Split(self.F("waived"))
 	var out []UnresolvedNeed

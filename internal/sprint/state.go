@@ -626,6 +626,21 @@ type Snapshot struct {
 	// refusals is the staging refusals a dealing step reads once (withRests sets it,
 	// stagingRefusalsOnce fills it): nil is none, and each ask derives them again.
 	refusals *refusalMemo
+	// blockersMemo is Blockers(s) settled once per snapshot (tickBlockers): a tick asks
+	// quietedByBlocker for every overdue judgment and each would walk the whole work table,
+	// so the first ask computes it and the rest read the memo. Blockers is a pure function
+	// of the snapshot, so the memo is safe. A snapshot copied with a changed Work or Fleet
+	// must reset it (newHeld): the memo would otherwise describe tables it no longer holds.
+	// tla/NeedsBlocked.tla BlockedDependentsCovered.
+	blockersSet  bool
+	blockersMemo []Blocker
+	// readIndex and readIndexPlaced are the read cards' generations indexed once per
+	// snapshot by base read identity (readCardIndex): the highest generation held for each
+	// base, and the highest among placed records, so ReadCardExtras' readNextGen reads are
+	// map lookups instead of a scan of every fleet card per primary per reader. Reset with
+	// a changed Fleet (newHeld). tla/ReadCards.tla Deal.
+	readIndex       map[string]int
+	readIndexPlaced map[string]int
 }
 
 // T is the loaded table by logical name.

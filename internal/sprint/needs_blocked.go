@@ -4,8 +4,13 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 )
+
+// tickCountBlockersWalk counts calls of the Blockers walk (tick_memo_complexity_test.go):
+// a package-level counter, a few ns each, no build tag.
+var tickCountBlockersWalk int64
 
 // NNeedBlocked is the judgment raised when an unlanded card's need is held, dropped or absent.
 const NNeedBlocked = "a need is blocked: its dependents cannot move"
@@ -52,6 +57,7 @@ func shortAge(d time.Duration) string {
 //
 // tla/NeedsBlocked.tla BlockedDependentsCovered
 func Blockers(s *Snapshot) []Blocker {
+	atomic.AddInt64(&tickCountBlockersWalk, 1)
 	if s == nil || s.Work == nil {
 		return nil
 	}
@@ -150,6 +156,23 @@ func Blockers(s *Snapshot) []Blocker {
 		}
 	}
 	return blockers
+}
+
+// tickBlockers is Blockers(s) memoized on the snapshot: a tick's quietedByBlocker calls it
+// for every judgment, and the first call walks the table once and the rest read the memo.
+// The memo is per-snapshot and is reset wherever the snapshot is copied with a changed Work
+// or Fleet (newHeld), so it never describes tables the snapshot does not hold. Blockers is a
+// pure function of the snapshot (tla/NeedsBlocked.tla BlockedDependentsCovered), so the memo
+// changes no decision.
+func (s *Snapshot) tickBlockers() []Blocker {
+	if s == nil {
+		return nil
+	}
+	if !s.blockersSet {
+		s.blockersMemo = Blockers(s)
+		s.blockersSet = true
+	}
+	return s.blockersMemo
 }
 
 // CoveredDependents returns a map of dependent ID -> blocker's judgment ID or alias (or blocker ID)

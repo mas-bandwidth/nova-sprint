@@ -6,9 +6,17 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
+)
+
+// tickCountReadGenOf and tickCountReadNextGen count calls of readGenOf and readNextGen
+// (tick_memo_complexity_test.go).
+var (
+	tickCountReadGenOf   int64
+	tickCountReadNextGen  int64
 )
 
 // A read is a consumer card (docs/SPEC-SPRINT.md section 6, "A read is a consumer card";
@@ -352,6 +360,7 @@ func readSpender(cards []*Card) *Card {
 // 0 for the plain id, n for its .g<n> generation, -1 for another card. The plain identity
 // is generation 0; each take-back the read index holds is a further generation.
 func readGenOf(id, base string) int {
+	atomic.AddInt64(&tickCountReadGenOf, 1)
 	id = CardID(id)
 	if id == base {
 		return 0
@@ -388,6 +397,7 @@ func ReadCardGenIDs(primary string, attempt int, reader string, gen ...int) []st
 // (the owner, 2026-10-06: "I don't want any serial reads again"; a read machine-taken-back
 // spends no reader, spentBy). tla/ReadCards.tla Deal.
 func readNextGen(cards []*Card, primary string, attempt int, reader string) int {
+	atomic.AddInt64(&tickCountReadNextGen, 1)
 	base := ReadCardID(primary, attempt, reader)
 	next := 0
 	for _, c := range cards {
@@ -396,6 +406,71 @@ func readNextGen(cards []*Card, primary string, attempt int, reader string) int 
 		}
 	}
 	return next
+}
+
+// readCardBase is the plain read identity an id belongs to: ReadCardID(primary, attempt,
+// reader) with any ".g<n>" generation stripped, "" when id is not a read card identity
+// (it has no primary.r<attempt>.<reader> shape).
+func readCardBase(id string) string {
+	i := strings.LastIndex(id, ".r")
+	if i < 0 {
+		return ""
+	}
+	j := i + 2
+	k := j
+	for k < len(id) && id[k] >= '0' && id[k] <= '9' {
+		k++
+	}
+	if k == j || k >= len(id) || id[k] != '.' {
+		return ""
+	}
+	if g := strings.LastIndex(id, ".g"); g > j {
+		if _, err := strconv.Atoi(id[g+2:]); err == nil {
+			return id[:g]
+		}
+	}
+	return id
+}
+
+// readCardIndex builds and memoizes the read cards' generations by base identity once per
+// snapshot: readIndex maps a read base to the highest generation any fleet card holds for
+// it, readIndexPlaced to the highest among placed records. It is the same result the scan
+// in readNextGen would find, computed in one pass over the fleet. Reset where the snapshot
+// is copied with a changed Fleet (newHeld). tla/ReadCards.tla Deal.
+func (s *Snapshot) readCardIndex() (map[string]int, map[string]int) {
+	if s.readIndex != nil {
+		return s.readIndex, s.readIndexPlaced
+	}
+	byBase := map[string]int{}
+	byBasePlaced := map[string]int{}
+	for _, c := range s.Fleet.Cards() {
+		base := readCardBase(c.ID)
+		if base == "" {
+			continue
+		}
+		g := readGenOf(c.ID, base)
+		if cur, ok := byBase[base]; !ok || g > cur {
+			byBase[base] = g
+		}
+		if c.Placed() {
+			if cur, ok := byBasePlaced[base]; !ok || g > cur {
+				byBasePlaced[base] = g
+			}
+		}
+	}
+	s.readIndex = byBase
+	s.readIndexPlaced = byBasePlaced
+	return byBase, byBasePlaced
+}
+
+// readNextGenFor is readNextGen's result for the base identity, from the snapshot's memoized
+// read-card index: the generation after the highest held, 0 when none is held.
+func (s *Snapshot) readNextGenFor(base string) int {
+	byBase, _ := s.readCardIndex()
+	if g, ok := byBase[base]; ok {
+		return g + 1
+	}
+	return 0
 }
 
 // readCardIDFor is the id of the reader's next read card of the attempt: the generation
@@ -461,7 +536,7 @@ func ReadCardExtras(s *Snapshot) []string {
 			// the identities the store must read are those the read index holds and the
 			// generation after the highest of them, the one readCardIDFor deals next: no
 			// reader is ever refused "no id", however often its read was taken back
-			next := readNextGen(s.Fleet.Cards(), c.ID, attempt, name)
+			next := s.readNextGenFor(ReadCardID(c.ID, attempt, name))
 			for _, id := range ReadCardGenIDs(c.ID, attempt, name, readGenBound(next, readGenTop(s, c.ID, attempt))+1) {
 				if s.Fleet.Placed(id) == nil {
 					out = append(out, id)
