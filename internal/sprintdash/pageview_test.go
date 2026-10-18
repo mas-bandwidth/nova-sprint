@@ -31,9 +31,13 @@ import (
 // The /events stream and the /landings.json fetch are gone from app.js (the page
 // polls /api/sprint alone; the Landings panel stays hidden, as it did while the
 // Go server answered 404 for that file), the owner's ask of 2026-10-14:
-// "remove the /events and /landings.json requests".
+// "remove the /events and /landings.json requests". The Last 24 hours panel and its script tag are
+// added below every other panel, the owner's ask of 2026-10-18: "I would like it if you could create
+// a stats page showing me all the things you can do with https://pele.run for the sprint dashboard.
+// You could put these things below the existing stuff we have at the bottom." (the page without them
+// is the page before them byte for byte: TestThePageAboveTheChartsIsUnchanged).
 const (
-	pageIndexSHA256 = "42cc23bc3aaf0804aaf7ba58cd8c15e45c73a8c730c81bf913616d121b72049b"
+	pageIndexSHA256 = "119399c422034d9a537d64327fe465c4b362475eae75c9671392d4b502117cd8"
 	pageAppSHA256   = "8abaa9055145bc574c3c4162b7e1b0e47292021ad776860b1dda3f63afec61e4"
 
 	liveTile192 = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"
@@ -76,7 +80,7 @@ func TestThePageIsItsLockedFilesByteForByte(t *testing.T) {
 	// the build in place of its version (the live page's inline data-PNG logo is in index.html itself)
 	slot := `<img id="logo" class="logo-tile" src="/logo-tile-192.png` + v + `" srcset="/logo-tile-192.png` + v + ` 1x, /logo-tile-384.png` + v + ` 2x" alt="">`
 	icon := `<link rel="icon" type="image/png" sizes="192x192" href="/logo-tile-192.png` + v + `"><link rel="apple-touch-icon" href="/logo-tile-192.png` + v + `"><link rel="preload" as="image" href="/logo-tile-192.png` + v + `" imagesrcset="/logo-tile-192.png` + v + ` 1x, /logo-tile-384.png` + v + ` 2x">`
-	want := strings.NewReplacer(`src="app.js"`, `src="app.js`+v+`"`, "<!--LOGO-->", slot, "<!--FAVICON-->", icon).Replace(string(index))
+	want := strings.NewReplacer(`src="app.js"`, `src="app.js`+v+`"`, `src="charts.js"`, `src="charts.js`+v+`"`, "<!--LOGO-->", slot, "<!--FAVICON-->", icon).Replace(string(index))
 	served := get(t, r.s, "/").Body.String()
 	assert.Contains(t, served, `src="app.js?v=`+r.s.Build()+`"`, "the script is versioned by the build")
 	assert.Equal(t, want, buildQuery.ReplaceAllString(served, v), "/ is the live index.html as the live server fills it")

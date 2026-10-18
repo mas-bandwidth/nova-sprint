@@ -537,8 +537,14 @@ footer a:hover { color: var(--text); }
   <div class="chart-body"><svg class="landchart" id="landchart" role="img" aria-label="cards landed per 10 minutes, friends and fleet"></svg></div>
 </section>
 
+<section class="panel history" id="history-panel">
+  <div class="panel-head"><h2>Last 24 hours</h2><span class="muted history-sub" id="history-sub"></span></div>
+  <div class="charts" id="history"></div>
+</section>
+
 <footer><a href="https://github.com/mas-bandwidth/nova-sprint">https://github.com/mas-bandwidth/nova-sprint</a></footer>
 <script>(function(){document.querySelectorAll(".panel").forEach(function(p){var h=p.querySelector(".panel-head");if(!h)return;var k=p.querySelector("h2");var id="sprint-fold-"+(k?k.textContent.trim().toLowerCase():p.className);var b=document.createElement("button");b.className="fold";b.type="button";b.title="Collapse";b.setAttribute("aria-label","Collapse table");try{if(localStorage.getItem(id)==="1")p.classList.add("folded")}catch(e){}b.addEventListener("click",function(){p.classList.toggle("folded");b.title=p.classList.contains("folded")?"Expand":"Collapse";try{localStorage.setItem(id,p.classList.contains("folded")?"1":"0")}catch(e){}});h.appendChild(b)})})();</script>
 <script src="app.js"></script>
+<script src="charts.js"></script>
 </body>
 </html>

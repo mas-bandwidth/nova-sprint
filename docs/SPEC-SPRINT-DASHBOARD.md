@@ -120,6 +120,7 @@ the comment-only form exists only in the lock, and the lint knows nothing of it.
 - 2026-10-14 the owner: "You will port the existing python dashboard to golang." (the page files this ask first brought over digest, with pageview.go as it then stood, to 88fc6fba1cc8af3b6aa5bcc9d7d964781dd43d0c96149506b81b322982b6429b: page/index.html and page/app.js byte-identical to the Python live page, dashboard/live/; the same PR's server.py tile-slot port of pageview.go is held by the next lock line, digest c51d1047e2bf7b2315e9c3ab92d1ec57e544f55da069f48f9982c500ef7e5830)
 - 2026-10-14 21:16Z the owner: "Remove the tiers list here: never asked for this." (digest 59b7ebcc11ceca1c8b286f736853a8d8935462723437612453ae653b3c6e7a98)
 - 2026-10-14 the owner: "remove the /events and /landings.json requests"
+- 2026-10-18 the owner: "I would like it if you could create a stats page showing me all the things you can do with https://pele.run for the sprint dashboard. You could put these things below the existing stuff we have at the bottom." (the Last 24 hours panel, below)
 
 
 The 2026-10-12 page asks above (and those of 2026-10-12 ~00:42Z, ~00:43Z, ~00:50Z, ~01:00Z, ~01:02Z,
@@ -366,6 +367,31 @@ from the owner edits one line here and nothing else moves.
 
 ## Friends (title "Friends"): same eight-column shape as the live Fleet table, including load (friend, status, ready, working track and fraction, done, ok%, load; headers lowercase); honest empty
   state until the JSON carries tables.friends.
+
+## Last 24 hours (title "Last 24 hours"; the owner's ask of 2026-10-18, its words under "The page lock"): charts of what happened over the last 24 hours, below every other panel, above the footer
+- The owner, 2026-10-18, beside the ask: "Please keep them to the dark theme we have, roughly. I'd love to see things like
+  historical graphs and stuff showing what has happened over the last 24 hours for example. esp. throughput per-hour and other
+  things." and "Just do a whole bunch of stuff, and I'll guide you to completion from the initial set you come up with." This is
+  that initial set; he prunes it.
+- Source: the cards the dashboard already reads (where --json --rows: each primary's stamps admitted, dealt_at, taken_at, landed
+  and its consumer records, consumer:<epoch>:<key>, each {kind work|read|land, who, route, model, taken, ended, outcome}). No new
+  read of the sprint: `History` (internal/sprintdash/history.go) is a pure function of those cards and a clock, served at
+  /api/history, computed at most once a minute (again only when the minute has turned and the copy changed, or the hour turned).
+  /api/sprint is unchanged. A puller holds no rows: it asks its upstream's /api/history, at most once a minute, and says so when
+  the upstream serves none.
+- The window: 24 hourly buckets on UTC hour boundaries, the current hour last; the page labels the hours in the viewer's time zone.
+- The charts, each a card with a title, one sentence saying what it counts, a legend, and the chart; with nothing to draw, the
+  line "nothing in the last 24h" in its place: Landings per hour (bars, with the 24-hour mean per hour as a line); Work started
+  and finished per hour; Work finishes by outcome (ok, failed, other); Reads per hour (ok, broken, other); Failure and rework
+  rate (percent of attempts failed, of reads broken); Time to land (median and p90 hours, admitted to landed, by landing hour);
+  Queue wait (median and p90 minutes, dealt to taken); Who did the work (the 12 most, ok and not); Routes, Models and Tiers
+  (pies of the attempts ended); Landings by stream (the 15 most); Card flow (a sankey: attempt, outcome, read, landed or
+  reworked); Who was busy when (a gantt of the work and read spans of the 8 busiest workers, 4 spans each).
+- Drawn with Pele (pele.run, MIT, by kepano): Go writes each chart as Mermaid source; page/charts.js hands it to Pele's mount and
+  inserts the SVG. Pele is vendored, pinned and unchanged: page/pele.js, its version, digests and licence in page/PELE.txt. It
+  loads only when the panel comes near the view (after the page above has drawn), and the charts refresh once a minute while
+  the tab is shown. Colours are the page's dark tokens (--pele-* set from --bg, --surface, --text, --border and the state
+  colours). The page above the panel is unchanged byte for byte (TestThePageAboveTheChartsIsUnchanged).
 
 ## Footer: one link, "https://github.com/mas-bandwidth/nova-sprint", matching the live page.
 
