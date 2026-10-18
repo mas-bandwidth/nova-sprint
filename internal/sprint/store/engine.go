@@ -100,6 +100,13 @@ type Store struct {
 	// fleet_retire.go): the names, and whether the read answered. A read that fails or
 	// holds no row retires nothing (never act on a missing read). nil retires nothing.
 	Inventory func(ctx context.Context) (machines []string, ok bool)
+	// Widths, when set (run and tick), is the read of the members' widths as nova-config's
+	// applied machine rows hold them (config.Widths, a row's own width of 1 or more; the
+	// same config read as fleet sync): the one width source. Every step this store runs
+	// holds each row's width to it (sprint.HoldWidths) and writes a member's control-card
+	// copy that differs back to it (sprint.WidthRefresh). ok false (a failed read) holds
+	// the copies as they are. nil is no config read: the copies alone.
+	Widths func(ctx context.Context) (widths map[string]int, ok bool)
 	// Stats is what the store's reads cost (stats.go); nil is made on the
 	// first tick. Its pinned copies share it.
 	Stats *Stats
@@ -785,6 +792,14 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			plan.Units, plan.Notes, plan.Closes, plan.Rows = nil, nil, nil, nil
 		}
 		plan.Units = append(plan.Units, tally...)
+		// THE WIDTH IS HARD, at the one writer, on every path: a change that would put a card
+		// into a fleet row's working column at the row's width is skipped alone, with one
+		// refusal line, and every other unit applies (sprint.HoldWidths; tla/WidthHard.tla
+		// WidthHeld). It runs after the all-or-none of a named step, so the cut never
+		// refuses a step whole. A member's width is nova-config's when this store holds the
+		// config read (Widths), and a control-card copy that differs is written back to it
+		// in the same step (sprint.WidthRefresh; OneSource).
+		plan = st.holdWidths(ctx, snap, plan)
 		actor := st.Actor
 		if step.Actor != "" {
 			actor = step.Actor
@@ -1356,6 +1371,30 @@ func curable(err error, man ntable.BatchManifest) bool {
 		return false
 	}
 	return invalid(man) == ""
+}
+
+// holdWidths is the step's plan held to every fleet row's width (sprint.HoldWidths), the
+// friends' seats read when the plan puts a card into a friend's working and the step did
+// not read them (a read that fails leaves her row to takeSeat's own refusal), and each
+// member's control-card width made nova-config's again when the store holds the config
+// read (sprint.WidthRefresh). tla/WidthHard.tla WidthHeld, OneSource.
+func (st *Store) holdWidths(ctx context.Context, snap *sprint.Snapshot, plan sprint.Plan) sprint.Plan {
+	var cfg map[string]int
+	if st.Widths != nil {
+		if ws, ok := st.Widths(ctx); ok {
+			cfg = ws
+		}
+	}
+	view := snap
+	if snap != nil && snap.Friends == nil && sprint.MovesIntoFriendWorking(snap, plan) {
+		if seats, err := st.FriendSeats(ctx, snap.Now); err == nil {
+			v := *snap
+			v.Friends = seats
+			view = &v
+		}
+	}
+	plan = sprint.HoldWidths(view, plan, cfg)
+	return sprint.WidthRefresh(view, plan, cfg)
 }
 
 // refuseWhole is a step refused whole before anything of it was written: every

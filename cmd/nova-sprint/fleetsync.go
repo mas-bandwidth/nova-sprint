@@ -8,6 +8,7 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -78,6 +79,82 @@ func (a *app) inventoryMachines(ctx context.Context) ([]string, bool) {
 		names = append(names, w.Machine)
 	}
 	return names, true
+}
+
+// inventoryWidths is the server's read of the members' widths (store.Store.Widths): every
+// machine row nova-config names with a width of its own, 1 or more, by machine, and whether
+// the read answered. It is the same config read as fleet sync and the tick's inventory
+// (a.inventory: config.Widths), kept for widthsFresh so a busy server reads nova-config at
+// most once in that window. A row with the default width (half its cores, which fleet sync
+// resolves from its beat) or width 0 (no member) is not named: fleet sync holds those. A
+// read that fails, or holds no row, is ok false and the copies stand (never act on a
+// missing read). A test app that names no inventory returns false.
+func (a *app) inventoryWidths(ctx context.Context) (map[string]int, bool) {
+	if a.inventory == nil {
+		return nil, false
+	}
+	v, _ := widthReads.LoadOrStore(a, &widthRead{})
+	r := v.(*widthRead)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	now := a.now()
+	if !r.at.IsZero() && now.Sub(r.at) >= 0 && now.Sub(r.at) < widthsFresh {
+		return r.widths, r.widths != nil
+	}
+	r.at, r.widths = now, nil
+	ws, err := a.inventory(ctx, "")
+	if err != nil || len(ws) == 0 {
+		return nil, false
+	}
+	out := make(map[string]int, len(ws))
+	for _, w := range ws {
+		if !w.Default && w.Width >= 1 && w.Width <= sprint.MaxWidth {
+			out[w.Machine] = w.Width
+		}
+	}
+	r.widths = out
+	return out, true
+}
+
+// widthRead is one app's last read of nova-config's widths (inventoryWidths), and when.
+type widthRead struct {
+	mu     sync.Mutex
+	at     time.Time
+	widths map[string]int
+}
+
+// widthReads is each app's widthRead, by app: the server process has one app.
+var widthReads sync.Map
+
+// widthsFresh is how long the server keeps its read of nova-config's widths
+// (inventoryWidths) before it reads again.
+const widthsFresh = 10 * time.Second
+
+// configWidthOf is a member's width as nova-config's machine row names it, read now
+// (a.inventory, config.Widths): ok false with why when the row is not there, names the
+// default width or 0, or the config cannot be read. fleet up --width is held to it
+// (fleetStep). A test app that names no inventory is ok true with width 0: no config read.
+func (a *app) configWidthOf(ctx context.Context, member string) (width int, ok bool, why string) {
+	if a.inventory == nil {
+		return 0, true, ""
+	}
+	ws, err := a.inventory(ctx, "")
+	if err != nil {
+		return 0, false, "nova-config cannot be read (" + oneline.Escape(err.Error()) + "): a member's width is nova-config's, and none is written that it does not name"
+	}
+	for _, w := range ws {
+		if w.Machine != member {
+			continue
+		}
+		switch {
+		case w.Default:
+			return 0, false, member + "'s nova-config machine row has the default width (half its cores, which fleet sync resolves): run nova-sprint fleet sync, or set one: nova-config machine set " + member + " --width <n>, then nova-config apply"
+		case w.Width < 1:
+			return 0, false, member + "'s nova-config machine row has width 0 (no member)"
+		}
+		return w.Width, true, ""
+	}
+	return 0, false, member + " has no nova-config machine row: nova-config machine add " + member + " ... --width <n>, then nova-config apply"
 }
 
 // withConfig runs read on nova-config's Postgres store, found by the config

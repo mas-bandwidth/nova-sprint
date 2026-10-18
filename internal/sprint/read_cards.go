@@ -20,7 +20,7 @@ import (
 // hold the read's tier, or a member up whose reader row (reader-<m>) is neither held nor
 // retired and serves the tier; never the attempt's own worker, never a reader that holds or
 // closed a read of the attempt (a read the machine took back spends nothing). A read holds
-// half a slot of its unit's one width (halfLoad). Its tier is its primary's, its level
+// a whole slot of its unit's one width, as a work card does (slotLoad; tla/WidthHard.tla). Its tier is its primary's, its level
 // inherited (ReadPriority). The review is unchanged: a read card's verdict closes the read on
 // the primary as read --ok|--broken does (friendReadCloseUnit, readCardVerb), and the primary
 // leaves review only by the existing rules. The model is tla/ReadCards.tla. With the setting
@@ -237,9 +237,9 @@ type readUnit struct {
 	row    string // the fleet row
 	friend bool
 	seat   FriendSeat
-	half   int // free room, in half slots: twice its room less twice its work and its reads
-	// idle is its free lanes, in half slots: twice its width less twice its work cards and
-	// its read cards, ready and working (rowLoad): a lane promised to a queued card is not
+	half   int // free room, in slots: its room less its work and its reads (one a card)
+	// idle is its free lanes, in slots: its width less its work cards and its read cards,
+	// ready and working (rowLoad), one a card: a lane promised to a queued card is not
 	// free (the owner, 2026-10-11: "cards only may accrue per-fleet or friend, if there are
 	// not other machines/friends ready to do that work right now!"; tla/WhoPreference.tla,
 	// DealFreeLanesFirst)
@@ -275,9 +275,11 @@ func readUnitsOf(s *Snapshot, seats []FriendSeat) []readUnit {
 		if !memberReads(s, m) {
 			continue
 		}
+		// a member's read counts against its width whole, as a friend's does
+		// (friendFreeLanes): one definition of a slot (tla/WidthHard.tla ReadTake)
 		w := s.Width(m)
 		work, reads := rowLoad(s, m)
-		out = append(out, readUnit{name: m, row: m, half: 2*(DealAhead*w-work) - reads, idle: 2*w - 2*work - reads})
+		out = append(out, readUnit{name: m, row: m, half: DealAhead*w - work - reads, idle: w - work - reads})
 	}
 	return out
 }

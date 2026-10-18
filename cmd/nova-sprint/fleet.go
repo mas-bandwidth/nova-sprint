@@ -113,8 +113,26 @@ func init() {
 // counts as a beat of the member, and brings it up at once when it is alive, and sets its
 // width when width is above zero, and drains it at a width of 0; level evens
 // the ready queues (fleet down is hold --return, hold.go).
+//
+// A member's width is nova-config's alone (the owner, 2026-10-18; tla/WidthHard.tla
+// OneSource, witness MCWidthHardBrokenSecondSource): fleet up <m> --width <n> is refused,
+// writing nothing, when n is not the member's nova-config machine row's width
+// (configWidthOf), naming the config verbs that set it; --width 0, the drain, stays.
 func (a *app) fleetStep(st *store.Store, op, member, who string, width int, drain bool, deadline int, deadlineOff bool, harnesses, probe string) store.Step {
 	r := sprint.FleetReq{Op: op, Member: member, Who: who, Width: width, Drain: drain, Deadline: deadline, DeadlineOff: deadlineOff, Harnesses: harnesses, Probe: probe, Rebalance: op == "level"}
+	if _, friend := sprint.FriendOfRow(member); op == "up" && width > 0 && !drain && !friend {
+		if cw, ok, why := a.configWidthOf(context.Background(), member); !ok || (cw > 0 && cw != width) {
+			if why == "" {
+				why = fmt.Sprintf("nova-config names %d", cw)
+			}
+			msg := fmt.Sprintf("--width %d is not %s's nova-config width (%s): a member's width is nova-config's alone; run nova-config machine set %s --width %d, then nova-config apply, and the server reads it (fleet up --width 0 drains); nothing was changed", width, member, why, member, width)
+			step := store.FleetStep(r)
+			step.Plan = func(*sprint.Snapshot) sprint.Plan {
+				return sprint.Plan{Refused: []sprint.Refusal{{Key: member, Why: msg}}}
+			}
+			return step
+		}
+	}
 	switch op {
 	case "up":
 		if _, friend := sprint.FriendOfRow(member); friend {
