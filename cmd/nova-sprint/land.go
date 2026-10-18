@@ -223,7 +223,9 @@ func (b landBatch) line() string {
 	if t := b.Times; t != nil {
 		l += fmt.Sprintf(" fetch=%.1fs merge=%.1fs check=%.1fs queue=%.1fs push=%.1fs report=%.1fs", t.Fetch, t.Merge, t.Check, t.Queue, t.Push, t.Report)
 	}
-	if b.Bench != "" {
+	if b.Bench != "" && b.DryRun {
+		l += " bench=" + oneline.Field(b.Bench) // the bench the gate would go to; nothing ran
+	} else if b.Bench != "" {
 		l += fmt.Sprintf(" bench=%s wall=%.1fs", oneline.Field(b.Bench), b.Wall)
 		if b.Ring > 0 {
 			l += fmt.Sprintf(" ring=%d slot=%d", b.Ring, b.Slot)
@@ -799,6 +801,10 @@ func (l *lander) dryBatch(b landBatch, cards []landCard) (done int, on, ok bool)
 	cut := slices.IndexFunc(cards, func(c landCard) bool { return headNotCommit(b.Stream, c) != "" })
 	if cut < 0 {
 		b.Status = "ok"
+		if !l.dryGateBatch(&b) {
+			l.keep(b)
+			return 0, false, true
+		}
 		l.tag(context.Background(), &b, cards)
 		l.keep(b)
 		return len(cards), true, true
@@ -806,12 +812,50 @@ func (l *lander) dryBatch(b landBatch, cards []landCard) (done int, on, ok bool)
 	if cut > 0 {
 		before := b
 		before.Status, before.Cards, before.IDs = "ok", cut, b.IDs[:cut]
-		l.tag(context.Background(), &before, cards[:cut])
+		if l.dryGateBatch(&before) {
+			l.tag(context.Background(), &before, cards[:cut])
+		}
 		l.keep(before)
 	}
 	c := cards[cut]
 	l.keep(landBatch{Stream: b.Stream, Status: "refused", Cards: 1, IDs: []string{c.id}, WouldRecord: "conflict", Reason: headNotCommit(b.Stream, c), DryRun: true})
 	return 0, false, true
+}
+
+// dryGateBatch puts dryGate on a batch the dry run would land: its bench, or the batch
+// refused with the loop's reason, so refused= counts it and the exit is the refusing one.
+// false when it is refused.
+func (l *lander) dryGateBatch(b *landBatch) bool {
+	host, why := l.dryGate(b.Dir)
+	if why != "" {
+		b.Status, b.Reason = "refused", why
+		return false
+	}
+	b.Bench = host
+	return true
+}
+
+// dryGate is the dry run's tree gate, which runs nothing: the bench the loop would send
+// the batch's gate to (the first slot of the batch's stream on the ring over gateHosts,
+// benchRing), or, when another member is configured and none may gate, the loop's refusal
+// (benchGateUnavailableWhy). Both are empty for a clone with no gate (no go.mod and no
+// CMakeLists.txt, treeGate) and when the gate would run here. No ssh and no git.
+func (l *lander) dryGate(dir string) (host, why string) {
+	if dir != "" {
+		_, gerr := os.Stat(filepath.Join(dir, "go.mod"))
+		_, cerr := os.Stat(filepath.Join(dir, "CMakeLists.txt"))
+		if gerr != nil && cerr != nil {
+			return "", ""
+		}
+	}
+	hosts, remote := l.gateHosts(context.Background())
+	if len(hosts) > 0 {
+		return benchRing(l.gateKey, hosts)[0], ""
+	}
+	if remote {
+		return "", benchGateUnavailableWhy
+	}
+	return "", ""
 }
 
 // headNotCommit is why a card's head cannot be merged whatever origin holds:

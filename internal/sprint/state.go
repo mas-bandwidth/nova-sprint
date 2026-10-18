@@ -625,6 +625,24 @@ func (s *Snapshot) UpMembers() []string {
 	return out
 }
 
+// GateMembers is the fleet members that may run a land gate, in row order: those whose
+// status is up, and those the coordinator holds with no --return (held, with no held_by,
+// no fault_since and no held_return; gateCapable). A member down and not held, one held
+// by a machine mark (fault, sync, probe, adopt: any held_by), and one the coordinator
+// took down with fleet down (hold --return, HeldToReturn) are left out. A hold is a deal control and a
+// gate is not a card, so this is not the deal filter: that is UpMembers
+// (tla/DirtyTick.tla NeverDealtToDraining). tla/DirtyTick.tla LandGate and
+// HeldMayGateNeverDealt (MCDirtyTickGateHeld.cfg, MCDirtyTickBrokenGateUpOnly.cfg).
+func (s *Snapshot) GateMembers() []string {
+	var out []string
+	for _, m := range s.Members() {
+		if gateCapable(s.MemberCtl(m)) {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 // Streams is the work table's streams, in row order.
 func (s *Snapshot) Streams() []string { return s.Work.Rows() }
 

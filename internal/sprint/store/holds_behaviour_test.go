@@ -71,7 +71,9 @@ func TestHoldsReturnFlagShowsWhetherTheHoldHandedBackWork(t *testing.T) {
 	h.setup(2)
 	_, err := h.st.Hold(h.ctx, sprint.HoldReq{Names: []string{"m1"}, Reason: "r", Who: "coordinator", Return: true})
 	require.NoError(t, err)
-	_, err = h.st.Hold(h.ctx, sprint.HoldReq{Names: []string{"m2"}, Reason: "r", Who: "coordinator"})
+	// m1 is out of service (fleet down), so m2 is the last gate bench: the guard wants
+	// --force-last (hold.go gateCapable)
+	_, err = h.st.Hold(h.ctx, sprint.HoldReq{Names: []string{"m2"}, Reason: "r", Who: "coordinator", ForceLast: true})
 	require.NoError(t, err)
 
 	views, err := h.st.Holds(h.ctx)

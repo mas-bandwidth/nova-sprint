@@ -245,17 +245,12 @@ func Check(s *Snapshot, pending *Pending) []Violation {
 			out = append(out, Violation{9, fmt.Sprintf("stream %s is stopped (%s) with no open judgment notification", st, ctl.F("cause"))})
 		}
 	}
-	// 11. A stream merging with cards queued while no member can run a land gate: every
-	// landing is refused until a bench is restored (the hold guard's rule, hold.go). No
-	// rule number is free (12-14 are taken), so it is reported under 11.
-	gateBench := false
-	for _, m := range s.Members() {
-		if ctl := s.MemberCtl(m); ctl != nil && ctl.F("status") == Up {
-			gateBench = true
-			break
-		}
-	}
-	if !gateBench {
+	// 11. A stream merging with cards queued while no member can run a land gate (up, or
+	// held by the coordinator with no --return: Snapshot.GateMembers, the land loop's
+	// benches): every landing is refused until a bench is restored (the hold guard's rule,
+	// hold.go gateCapable). No rule number is free (12-14 are taken), so it is reported
+	// under 11.
+	if len(s.GateMembers()) == 0 {
 		for _, st := range s.Merge.Rows() {
 			ctl := s.StreamCtl(st)
 			if ctl.F("state") != StreamMerging {

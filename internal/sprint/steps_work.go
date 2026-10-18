@@ -3125,6 +3125,10 @@ type FleetReq struct {
 	// only its ready cards, never begun, are dealt round the fleet, and the hold
 	// is marked so (FieldHeldFinish) for the sweep to leave them (hold.go).
 	Finish bool `json:",omitempty"`
+	// Return, with hold, says the hold was made with --return (fleet down): the member is
+	// out of service and runs no land gate, so the hold is marked so (FieldHeldReturn,
+	// hold.go gateCapable). A hold without it clears the mark.
+	Return bool `json:",omitempty"`
 	// Until, with quiet, is when the member's quiet ends, and End ends it now (fleet
 	// quiet, fleet_quiet.go); Reason is its reason.
 	Until time.Time `json:",omitzero"`
@@ -3330,6 +3334,7 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 			// (tla/ProviderBudget.tla, FleetUpRefusesUncleared).
 			if r.Op == "release" && ctl.F("held") != "" && !envCleared {
 				unset = append(unset, holdFields...)
+				unset = append(unset, FieldHeldReturn)
 				if !comeUp {
 					line = r.Member + " released, down until it beats"
 				}
@@ -3520,6 +3525,16 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 			line += "; its working cards finish"
 		} else {
 			unset = append(unset, FieldHeldFinish)
+		}
+		// a coordinator's hold with --return (fleet down) takes the member out of service:
+		// it runs no land gate (hold.go gateCapable). The mark carries the hold's held
+		// stamp (HeldToReturn), and a coordinator's hold without --return clears it; a
+		// machine's hold (held_by: the sync's retire re-holding a member already held)
+		// leaves the mark as it is
+		if held := cmp.Or(set["held"], ctl.F("held")); r.Return && r.HeldBy == "" && held != "" {
+			set[FieldHeldReturn] = held
+		} else if r.HeldBy == "" {
+			unset = append(unset, FieldHeldReturn)
 		}
 		// what ends the hold, and who made a coordinator's (hold_cause.go): a later hold
 		// names them again, and one that names no cause leaves none behind, so its

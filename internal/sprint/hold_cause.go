@@ -248,9 +248,11 @@ var holdFields = []string{"held", FieldHeldBy, FieldHeldReason, FieldHeldFinish,
 	FieldHeldCauseType, FieldHeldCauseSubject, FieldHeldWho, FieldIdleReapRoutes}
 
 // HeldCarried is every field of a member's hold a clear carries into the new epoch beside
-// held and held_by (RestoreShape): its cause, its reason and who made it.
+// held and held_by (RestoreShape): its cause, its reason, who made it, and a fleet
+// down's return mark (FieldHeldReturn: carried only while it marks the hold, and
+// rewritten to the new epoch's held stamp, so a fleet-downed member still runs no gate).
 var HeldCarried = []string{FieldHeldReason, FieldHeldFinish, FieldHeldCause, FieldHeldCauseNote, FieldHeldCauseType,
-	FieldHeldCauseSubject, FieldHeldWho, FieldIdleReapRoutes}
+	FieldHeldCauseSubject, FieldHeldWho, FieldIdleReapRoutes, FieldHeldReturn}
 
 // ctlWritten says a unit of the plan writes the member's control card already: the step
 // writes a control card once, so a second write waits for the next tick (tla/HoldCause.tla,
@@ -292,7 +294,8 @@ func holdCauseClear(s *Snapshot, r TickReq, p *Plan) {
 		n := happened(NHoldReleased, "", s.Now)
 		n.Who, n.To = r.who(), s.Coordinator
 		n.What = fmt.Sprintf("%s released: cause %s resolved (%s); it is %s", m, cause, how, state)
-		u := Unit{Key: CtlID(m), Changes: []Change{change(Fleet, setEntry(ctl, set, holdFields...))},
+		// the release unsets the hold and a fleet down return mark (FieldHeldReturn, hold.go)
+		u := Unit{Key: CtlID(m), Changes: []Change{change(Fleet, setEntry(ctl, set, append(holdFields[:len(holdFields):len(holdFields)], FieldHeldReturn)...))},
 			Notes: []Note{n}, Moved: fmt.Sprintf("%s released: cause %s resolved", m, cause)}
 		if cause == CauseIdleReap {
 			for _, o := range s.Open {
