@@ -250,7 +250,7 @@ func TestTheServerRunsAFriendStage(t *testing.T) {
 	rec := &benchRec{t: t, files: map[string]string{}}
 	rec.install()
 
-	jobs := filepath.Join(t.TempDir(), "jobs")
+	jobs := "~/amy-jobs"
 	res = r.one("friend", "stage", "s1-1.w1@1", "--as", "friend.amy", "--bench", "m1", "--dir", jobs)
 	require.Equal(t, 0, res.Code, res.Stderr)
 	assert.Contains(t, res.Stdout, "FRIEND-STAGE OK friend=amy")
