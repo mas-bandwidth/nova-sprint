@@ -12,7 +12,6 @@
 # lint (the allowance only shrinks against origin/<base>). The allowance is by file: a
 # listed file may gain more forbidden uses until it is moved, and the lint does not refuse
 # them. That is the documented limit of this list, not a scope to widen.
-cmd/nova-sprint/dashboard_cover_test.go
 cmd/nova-sprint/fleet_back_test.go
 cmd/nova-sprint/flush_stream_test.go
 cmd/nova-sprint/friend_start_test.go
@@ -27,8 +26,6 @@ cmd/nova-sprint/landstage_test.go
 cmd/nova-sprint/main_cover_test.go
 cmd/nova-sprint/reexec_test.go
 cmd/nova-sprint/seat_check_offline_test.go
-cmd/nova-sprint/serve_test.go
-cmd/nova-sprint/snapshot_info_test.go
 cmd/nova-sprint/tick_deadline_test.go
 cmd/nova-sprint/tick_gate_test.go
 cmd/nova-sprint/where_cost_perf_test.go
