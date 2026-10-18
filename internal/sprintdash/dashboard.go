@@ -147,6 +147,8 @@ type Server struct {
 	saveBad   bool      // the last save failed (logged once)
 	stats     readStats
 	fresh     freshness
+	rows      json.RawMessage // the last good read's rows (where --json --rows): the charts' cards; nil for a puller
+	charts    chartMemo       // the charts' answers, a minute each (charts_serve.go)
 }
 
 // snapshot is /api/sprint's body: the page reads data, throughput,
@@ -395,6 +397,9 @@ func (s *Server) record(start, end time.Time, body []byte, up *snapshot, err err
 		// ignored: sprintJSON has read body as JSON; a field of another shape is left zero
 		_ = json.Unmarshal(body, &c)
 		s.copy = &c
+		if up == nil {
+			s.rows = rowsOf(body)
+		}
 		s.gen++
 		if s.changed != nil {
 			close(s.changed)
@@ -580,7 +585,7 @@ func (s *Server) SnapshotOf(release string) []byte {
 // pageSum is the build number's part from the embedded files: it changes with the binary.
 var pageSum = func() uint32 {
 	h := crc32.NewIEEE()
-	for _, n := range []string{"index.html", "app.js", "nunito-800.woff2", "logo-robot-192.png", "logo-robot-384.png"} {
+	for _, n := range []string{"index.html", "app.js", "nunito-800.woff2", "logo-robot-192.png", "logo-robot-384.png", "charts.js", "stream.html", "stream.js"} {
 		h.Write(file(n))
 	}
 	return h.Sum32()
