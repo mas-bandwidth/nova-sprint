@@ -4,6 +4,8 @@ package main
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -368,4 +370,60 @@ func TestLandSkipPrefixTipHoldsEveryHeadBeforeTheSkip(t *testing.T) {
 func gitrunIsAncestor(r *landRig, a, b string) (string, error) {
 	res, err := gitrun.Run(context.Background(), gitrun.Options{C: r.remote, Env: r.env, OwnRepo: true}, "merge-base", "--is-ancestor", a, b)
 	return string(res.Stdout), err
+}
+
+// A later pin can repair the first pin's red tree. If LAND-AFTER cuts that
+// repair off at the mark, the exact prefix must pass its own gate before push.
+func TestLandSoftSkipDoesNotPushRedPrefix(t *testing.T) {
+	t.Parallel()
+	r := newLandRig(t)
+	r.commit("go.mod", "module example.com/redprefix\n\ngo 1.24\n", "module")
+	r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/main")
+	r.git(r.worker, "fetch", "-q", "origin")
+	dir := t.TempDir()
+	for _, c := range []struct{ id, after, file string }{{"c", "", "c.txt"}, {"b", "", "bad.txt"}, {"a", "c", "fix.txt"}} {
+		r.ok("add --stream s1 --one --brief-file " + writeSoftHeaderBrief(t, dir, c.id, "-", c.after, r.remote, "", c.file))
+	}
+	r.ok("rank b --first")
+	c := r.head("c", "main", "c.txt", "c\n")
+	b := r.head("b", "main", "bad.txt", "bad\n")
+	a := r.head("a", "main", "fix.txt", "fix\n")
+	r.git(r.worker, "push", "-q", "origin", "refs/heads/sprint/*:refs/heads/sprint/*")
+	r.deal(3)
+	r.ok("take --as m1 --limit 100")
+	for _, h := range []struct{ id, head string }{{"b", b}, {"a", a}} {
+		r.ok("finish --as m1 " + h.id + ".w1@1 --head " + h.head)
+	}
+	r.ok("ask")
+	r.ok("read --as reader-a --ok --limit 100")
+	r.ok("read --as reader-b --ok --limit 100")
+	r.ok("accept --read-ok")
+	r.markProtected()
+	before := r.mainLog()
+	r.a.landState().gateBench = func(_ context.Context, _, dir string, _ [][]string, _ bool) (string, int, error) {
+		_, bad := os.Stat(filepath.Join(dir, "bad.txt"))
+		_, fixed := os.Stat(filepath.Join(dir, "fix.txt"))
+		if bad == nil && os.IsNotExist(fixed) {
+			return "red prefix", 1, nil
+		}
+		return "", 0, nil
+	}
+	var queueC sync.Once
+	r.a.gateRan = func(dir string, _ bool) {
+		if strings.Contains(r.git(dir, "log", "-1", "--format=%s"), "land a") {
+			queueC.Do(func() {
+				r.ok("finish --as m1 c.w1@1 --head " + c)
+				r.ok("ask")
+				r.ok("read --as reader-a --ok --limit 100")
+				r.ok("read --as reader-b --ok --limit 100")
+				r.ok("accept --read-ok")
+			})
+		}
+	}
+	_, out, errs := r.do("land --repo-dir " + r.clone + " --base main")
+	assert.Contains(t, out+errs, "marked landing prefix fails the tree gate")
+	assert.Equal(t, before, r.mainLog(), "red B prefix was pushed")
+	assert.Equal(t, map[string]string{"a": "merging/queued", "b": "merging/queued", "c": "merging/queued"}, r.places("a", "b", "c"))
+	r.noPushedUnreported("a", "b", "c")
+	r.clean()
 }
