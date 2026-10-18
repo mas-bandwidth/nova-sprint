@@ -165,6 +165,42 @@ type Twin struct {
 	stopsMu   sync.Mutex
 	stopsKept string
 	stopsAt   time.Time
+	// moves counts, by logical table, every read or write that changed what the twin holds
+	// of the table's records, rows or properties: a table read whole, a catch-up that named
+	// records, a receipt applied, a shape whose rows or properties differ, a change in the
+	// kept records shown. A write of text cells alone (the fleet's load and status, SyncFleet)
+	// moves the table's revision and not this. A count is compared only with this twin's
+	// own: whereRaw and whereMoves are this twin's, and a new twin, its moves at 0, starts
+	// with no whereRaw, so it counts the record before it writes one again (keepWhere).
+	moves map[string]uint64
+	// whereMu guards whereKept, the where record this process last wrote and the read it
+	// was counted from (keepWhere): while the stored record is that one, the fleet's moves
+	// are the same, the readers and merge tables are at the revisions counted and the count
+	// is younger than WhereRestampFor on the same UTC day, a fleet revision it is behind
+	// moved text cells alone, and the record is not counted again.
+	whereMu   sync.Mutex
+	whereKept whereCount
+	// whereCounts is how many times keepWhere counted the record (whereOf) through this
+	// twin (tests).
+	whereCounts int
+}
+
+// whereCount is the where record this process last wrote (raw) and the read it was counted
+// from: the fleet's moves (Twin.moves), the readers and merge tables' revisions, and the
+// clock at the count, which a record written again keeps.
+type whereCount struct {
+	raw            string
+	moves          uint64
+	readers, merge uint64
+	at             time.Time
+}
+
+// moved counts a change of what the twin holds of the table (moves).
+func (tw *Twin) moved(table string) {
+	if tw.moves == nil {
+		tw.moves = map[string]uint64{}
+	}
+	tw.moves[table]++
 }
 
 // NewTwin is an empty twin: its first read reads the store whole.
@@ -323,6 +359,19 @@ func (st *Store) twinView(ctx context.Context, tw *Twin, load []string, v View, 
 			return nil, errCleared
 		}
 	}
+	// the rows and properties each table held before this read (Twin.moves): a table read
+	// whole below counts as its own move, not again as rows or properties that differ
+	// from an empty table's
+	type held struct {
+		rows  []string
+		props map[string]string
+	}
+	before := map[string]held{}
+	for _, name := range load {
+		if t := tw.tables[name]; t != nil {
+			before[name] = held{slices.Clone(t.Rows()), t.Props()}
+		}
+	}
 	// Each table is brought to its shape's revision, or read whole; a table
 	// is in the twin only once its records are the ones at the revision it
 	// holds, so a read cut short leaves no table half read.
@@ -373,12 +422,17 @@ func (st *Store) twinView(ctx context.Context, tw *Twin, load []string, v View, 
 			}
 			tw.tables[name] = fresh
 			tw.kept[name], tw.shown[name], tw.absent[name] = map[string]*sprint.Card{}, map[string]*sprint.Card{}, map[string]bool{}
+			tw.moved(name)
 		}
 		tw.seeded = true
 	}
 	for i, shape := range shapes {
 		t := tw.tables[load[i]]
 		t.Epoch = shape.Epoch
+		was, known := before[load[i]]
+		if known && !maps.Equal(was.props, shape.Props) {
+			tw.moved(load[i])
+		}
 		t.SetProps(shape.Props)
 		rows := make([]string, 0, len(shape.Rows))
 		texts := map[string]map[string]string{}
@@ -387,6 +441,9 @@ func (st *Store) twinView(ctx context.Context, tw *Twin, load []string, v View, 
 			if len(r.Texts) > 0 {
 				texts[r.Key] = r.Texts
 			}
+		}
+		if known && !slices.Equal(was.rows, rows) {
+			tw.moved(load[i])
 		}
 		t.SetRows(rows)
 		t.Texts = texts
@@ -443,8 +500,9 @@ func (st *Store) catchUp(ctx context.Context, tw *Twin, name string, shape ntabl
 	}
 	st.stats().stale.Add(1)
 	if len(ids) == 0 {
-		return nil
+		return nil // text cells alone: no record moved (Twin.moves)
 	}
+	tw.moved(name)
 	seen := map[string]bool{}
 	var cards []string
 	for _, id := range ids {
@@ -517,6 +575,7 @@ func (st *Store) wholeTable(ctx context.Context, tw *Twin, name string, shape nt
 	}
 	tw.tables[name] = t
 	tw.kept[name], tw.shown[name], tw.absent[name] = map[string]*sprint.Card{}, map[string]*sprint.Card{}, map[string]bool{}
+	tw.moved(name)
 	return nil
 }
 
@@ -528,8 +587,13 @@ func (st *Store) showExtras(ctx context.Context, tw *Twin, s *sprint.Snapshot, l
 	// them before it reads any): take the kept records the last step showed
 	// off the tables first, so this read's extras name the same ids a fresh
 	// read does, then show the ones this step names again.
+	// what each table showed, to count a change of it (Twin.moves); the drop and the put
+	// again of a kept record build no table's index (sprint.Table.Put: a kept record is in
+	// no cell)
+	before := map[string]map[string]*sprint.Card{}
 	for _, table := range load {
 		t := tw.tables[table]
+		before[table] = maps.Clone(tw.shown[table])
 		for id := range tw.shown[table] {
 			t.Drop(id)
 			delete(tw.shown[table], id)
@@ -578,6 +642,9 @@ func (st *Store) showExtras(ctx context.Context, tw *Twin, s *sprint.Snapshot, l
 				t.Put(c)
 				tw.shown[table][id] = c
 			}
+		}
+		if !maps.Equal(before[table], tw.shown[table]) {
+			tw.moved(table)
 		}
 	}
 	return nil
@@ -724,6 +791,7 @@ func (tw *Twin) apply(table string, man ntable.BatchManifest, rc ntable.Receipt)
 		t.SetProp(k, v)
 	}
 	t.Revision = rc.After
+	tw.moved(table)
 	return nil
 }
 

@@ -597,7 +597,7 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 	// ignored: a best-effort read cleanup on startup; tick takes care of any subsequent lapses
 	_ = a.serverStart(context.Background(), st)
 
-	fmt.Fprintf(stdout, "RUN ticking on every line of the log (at most every %s) and every %s while it is quiet; %s\n", store.TickFloor, store.QuietEvery, st.MachineLine(context.Background()))
+	fmt.Fprintf(stdout, "RUN ticking on every line of the log (at most every %s) and every %s while it is quiet; %s\n", store.TickFloor, a.quietEvery, st.MachineLine(context.Background()))
 	if a.runLoop(context.Background(), st, c.max, 0, stdout, stderr) {
 		return exitReplaced
 	}
@@ -1143,8 +1143,12 @@ func (a *app) storeRTTLoop(ctx context.Context, st *store.Store) {
 // let it lapse between ticks). It returns the cursor for the next wait and why
 // the next tick begins. A wait the store refuses falls back to the clock.
 func (a *app) pace(ctx context.Context, st *store.Store, epoch uint64, cursor string, began time.Time, stderr io.Writer) (string, string) {
+	quiet := a.quietEvery
+	if quiet <= 0 {
+		quiet = store.QuietEvery // an app built without newApp never spins
+	}
 	for {
-		left := store.QuietEvery - a.now().Sub(began)
+		left := quiet - a.now().Sub(began)
 		if left <= 0 {
 			return cursor, tickClock
 		}

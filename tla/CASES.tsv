@@ -482,6 +482,7 @@ MCStatsResetBrokenNoLock.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignore-
 MCStatsResetBrokenStale.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignore-terminal	statsreset	required	-
 MCStatsResetSlowTidy.cfg	MCStatsReset.tla	invariant	ShownIsSinceMark	ignore-terminal	statsreset	required	-
 MCStatsResetBrokenNoStamp.cfg	MCStatsReset.tla	invariant	RecordShowsShown	ignore-terminal	statsreset	required	-
+MCStatsResetBrokenRestampAny.cfg	MCStatsReset.tla	invariant	RecordShowsShown	ignore-terminal	statsreset	required	-
 MCStopReturn.cfg	MCStopReturn.tla	pass	-	ignore-terminal	stopreturn	required	-
 MCStopReturnBrokenNoSettle.cfg	MCStopReturn.tla	temporal	ReturnedFreesItsRow	ignore-terminal	stopreturn	required	-
 MCStopReturnBrokenNoReceipt.cfg	MCStopReturn.tla	invariant	NoLiveChildAcrossStart	ignore-terminal	stopreturn	required	-
@@ -545,6 +546,7 @@ MCDoneRecordBrokenNoDedup.cfg	MCDoneRecord.tla	invariant	NoDoubleCount	ignore-te
 MCDoneRecordBrokenKeepEpoch.cfg	MCDoneRecord.tla	invariant	ClearStartsAgain	ignore-terminal	donerecord	required	-
 MCDoneRecordBrokenOverwriteNewer.cfg	MCDoneRecord.tla	invariant	OlderBuildNeverWritesNewerLayout	ignore-terminal	donerecord	required	-
 MCDoneRecordBrokenNoOriginGuard.cfg	MCDoneRecord.tla	invariant	ReviewObservedOnOrigin	ignore-terminal	donerecord	required	-
+MCDoneRecordBrokenPageZeroGuard.cfg	MCDoneRecord.tla	temporal	TornRepaired	ignore-terminal	donerecord	required	-
 MCReaderTiers.cfg	MCReaderTiers.tla	pass	-	ignore-terminal	readertiers	required	-
 MCReaderTiersBrokenHeld.cfg	MCReaderTiers.tla	invariant	NoReadToAHeldReader	ignore-terminal	readertiers	required	-
 MCReaderTiersBrokenEmptyFlashOnly.cfg	MCReaderTiers.tla	invariant	EmptyCellReadsEveryServedTier	ignore-terminal	readertiers	required	-
