@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store/friendrowswire"
 	"github.com/mas-bandwidth/nova-tools/pkg/hostload"
 	"github.com/mas-bandwidth/nova-tools/pkg/schemaread"
 	"github.com/stretchr/testify/assert"
@@ -269,9 +270,21 @@ func TestFriendRosterRowsDualRead(t *testing.T) {
 	for i := 0; i < len(legacyStrangers); i++ {
 		assertRefused(t, rows.stranger, "STRANGERS", legacyStrangers[:i], "strangers truncated")
 	}
-	// strangers has no table (friendrows.schema): a table form is refused by name
-	assertRefused(t, rows.stranger, "STRANGERS", ef.bin, "strangers as a wire")
-	assertRefused(t, rows.stranger, "STRANGERS", ef.b64, "strangers as base64")
+	// The strangers codec reads the fixed table the writer now writes (S1, S2): the page
+	// reads equal and counts under the binary form.
+	require.NoError(t, st.putStrangers(ctx, strangers))
+	fixedStrangers, ok, err := kv.GetKey(ctx, keyStrangers)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, friendrowswire.TableFixedForm, fixedStrangers[0])
+	sp, form, err := rows.stranger.Read([]byte(fixedStrangers))
+	require.NoError(t, err)
+	assert.Equal(t, schemaread.FormBinary, form)
+	assert.Equal(t, strangers, sp.entries)
+	assert.EqualValues(t, 1, sp.pages)
+	// A foreign fixed wire (a FriendEntry's) is still refused by name.
+	assertRefused(t, rows.stranger, "STRANGERS", ef.bin, "strangers as a foreign wire")
+	assertRefused(t, rows.stranger, "STRANGERS", ef.b64, "strangers as foreign base64")
 
 	// A clamped value is refused: an integer past int64 in the schema JSON text is clamped
 	// by the table reader, and today's decoder refuses it in legacy text. FriendStatus holds

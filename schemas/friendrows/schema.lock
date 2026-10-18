@@ -1,6 +1,17 @@
 schema-lock 7
 package friendrowswire
 
+fixed table StrangerEntry layout=0x621e116bbb94cdb3 lineage=0x919bd5061d16fe7d
+    field name id=0xc4bcadba8e631b86 kind=12 width=136 default=bytes: cap=128
+    field seen id=0x2cfadb18d3ecd12a kind=5 width=8 default=0
+    field told id=0x2fd9f6ef389a0874 kind=1 width=1 default=false
+    lineage wire=0x058796c4a70c9995 record=141 bytes=04000000814340afa9a9dc880d8d00000003000000861b638ebaadbcc40c84000000000000002ad1ecd318dbfa2c05080000000000000074089a38eff6d92f010100000000000000
+
+fixed table Strangers layout=0xf0e42074ee969106 lineage=0xadfdabffe5e61042
+    field entries id=0xc5b2a72c0845a253 kind=14 width=13684 default=born:0 held=StrangerEntry@0x621e116bbb94cdb3 elem=13/152 bound=90 shape=counted
+    field pages id=0xab01daa76a48769f kind=8 width=4 default=0
+    lineage wire=0xab7a8b47d8075c45 record=12698 bytes=070000005c1eecb632f30b720d9a3100000200000053a245082ca7b2c50e963100000100000000000000000000000d8d00000003000000861b638ebaadbcc40c84000000000000002ad1ecd318dbfa2c05080000000000000074089a38eff6d92f0101000000000000009f76486aa7da01ab080400000000000000
+
 fixed table Ticks layout=0x1b03c0f2ab6ab9b7 lineage=0x482514a27f86b8f5
     field busy id=0xff75d19be2aea620 kind=9 width=8 default=0
     field total id=0x2dcede7d543a4ffd kind=9 width=8 default=0
