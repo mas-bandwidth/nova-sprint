@@ -867,9 +867,12 @@ func siblingsListed(brief string) map[string]bool {
 }
 
 // Lint holds one rendered brief to what nova-sprint add holds it to (cmd/nova-sprint
-// verbs.go lintBriefReads): the model lines of line 1, the child rules, the typed
-// header and a tree card's steps; and to the template's own placeholders, which the
-// add does not read but nova-swarm lint --card does. Empty means admitted.
+// verbs.go lintBriefReads, which Lint cites): the model lines of line 1, the child
+// rules, a tree card's steps, and the two pure header rules add runs after them
+// (swarm.LintHeaderStranded, swarm.LintDashboardAsk); the rules that need the store or
+// the rule set -- the by-reference rules, friendOwnRules, the needs-are-ids rule -- stay
+// add's. It also holds to the template's own placeholders, which the add does not read
+// but nova-swarm lint --card does (docs/SPEC-CARD-CONTRACT.md). Empty means admitted.
 func Lint(id, brief string) []LintFinding {
 	var out []LintFinding
 	add := func(check string, line int, excerpt string) {
@@ -881,10 +884,13 @@ func Lint(id, brief string) []LintFinding {
 	for _, f := range swarm.LintCardChildWith([]byte(brief), swarm.DefaultChildRules) {
 		add(f.Check, f.Line, f.Excerpt)
 	}
-	for _, f := range swarm.LintCardHeader([]byte(brief), nil, true) {
+	for _, f := range cardtree.Lint(brief) {
 		add(f.Check, f.Line, f.Excerpt)
 	}
-	for _, f := range cardtree.Lint(brief) {
+	for _, f := range swarm.LintHeaderStranded([]byte(brief)) {
+		add(f.Check, f.Line, f.Excerpt)
+	}
+	for _, f := range swarm.LintDashboardAsk([]byte(brief)) {
 		add(f.Check, f.Line, f.Excerpt)
 	}
 	for i, line := range strings.Split(brief, "\n") {
