@@ -104,14 +104,15 @@ func TestTheLoopWakesOnTheLogOnTheStore(t *testing.T) {
 	cursor, err := st.LogTail(ctx)
 	require.NoError(t, err)
 	before := trips.n.Load()
-	_, why := loop.pace(ctx, st, st.PinnedEpoch(), cursor, time.Now())
-	// a quiet wait is QuietEvery in blocks of at most LogWaitBlock, one round trip each
-	blocks := int64((store.QuietEvery + store.LogWaitBlock - 1) / store.LogWaitBlock)
-	require.Equal(t, tickClock, why, "a quiet wait: %s in %d round trips, want the clock in %d", why, trips.n.Load()-before, blocks)
-	require.Equal(t, blocks, trips.n.Load()-before, "a quiet wait: %s in %d round trips, want the clock in %d", why, trips.n.Load()-before, blocks)
+	_, why := loop.pace(ctx, st, st.PinnedEpoch(), cursor, time.Now(), &bytes.Buffer{})
+	// a quiet wait is QuietEvery in slices of ServerEvery, one XREAD and one write of
+	// the server's record each (pace)
+	slices := int64((store.QuietEvery + store.ServerEvery - 1) / store.ServerEvery)
+	require.Equal(t, tickClock, why, "a quiet wait: %s in %d round trips, want the clock in %d", why, trips.n.Load()-before, 2*slices)
+	require.Equal(t, 2*slices, trips.n.Load()-before, "a quiet wait: %s in %d round trips, want the clock in %d (a wait and a server record a slice)", why, trips.n.Load()-before, 2*slices)
 	do("add", "--stream", "d", "--count", "1", "--one")
 	before = trips.n.Load()
-	_, why = loop.pace(ctx, st, st.PinnedEpoch(), cursor, time.Now())
+	_, why = loop.pace(ctx, st, st.PinnedEpoch(), cursor, time.Now(), &bytes.Buffer{})
 	require.Equal(t, tickLog, why, "a woken wait: %s in %d round trips, want the log in 1", why, trips.n.Load()-before)
 	require.Equal(t, int64(1), trips.n.Load()-before, "a woken wait: %s in %d round trips, want the log in 1", why, trips.n.Load()-before)
 

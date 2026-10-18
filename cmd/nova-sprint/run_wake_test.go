@@ -188,3 +188,30 @@ func TestAQuietLogTicksOnceAQuietEvery(t *testing.T) {
 			i+1, w.ticks[i].why, w.ticks[i].began.Sub(w.ticks[i-1].began), store.QuietEvery, w.ticks)
 	}
 }
+
+// A quiet log never lets the server's record lapse: the quiet wait is taken in
+// slices of ServerEvery and the record is written between them, so its age
+// stays under ServerTTL however long the quiet tick is (2026-10-17: the first
+// QuietEvery of 10 s left a 3 s record missing most of the time).
+func TestAQuietLogKeepsTheServerRecordFresh(t *testing.T) {
+	t.Parallel()
+	w := newWakeApp(t)
+	w.ok("init --readers reader-a,reader-b --members m1")
+	w.ok("start")
+	var gaps []time.Duration
+	var last time.Time
+	w.m.LogWait = func(d time.Duration) {
+		if r, ok, _ := (&store.Store{B: w.m, Names: sprint.Names{}, Now: w.a.now}).Server(context.Background()); ok {
+			if !last.IsZero() && r.At.After(last) {
+				gaps = append(gaps, r.At.Sub(last))
+			}
+			last = r.At
+		}
+		w.a.sleep(d)
+	}
+	w.run(5)
+	require.NotEmpty(t, gaps, "the server's record was never rewritten during the quiet waits")
+	for _, g := range gaps {
+		require.LessOrEqual(t, g, store.ServerTTL, "the server's record lapsed: %s between writes, TTL %s; gaps %v", g, store.ServerTTL, gaps)
+	}
+}
