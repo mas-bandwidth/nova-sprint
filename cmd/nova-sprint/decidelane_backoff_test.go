@@ -121,6 +121,8 @@ func TestTheLaneReadsARecordOnlyWhenItsFileChanged(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(path, nil, 0o644))
 	require.NoError(t, lane.recordAnswer(d("j2")))
+	changed := fi.ModTime().Add(time.Second)
+	require.NoError(t, os.Chtimes(path, changed, changed))
 	open, err = lane.openOf(path)
 	require.NoError(t, err)
 	require.Len(t, open, 1, "the changed file is read again")
