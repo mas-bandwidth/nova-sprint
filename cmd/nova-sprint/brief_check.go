@@ -57,6 +57,7 @@ const (
 	chkSize
 	chkShared
 	chkLint
+	chkDuplicate
 	chkWho
 	chkBase
 	chkTla
@@ -270,6 +271,23 @@ func (a *app) briefStoreChecks(st *store.Store, items []briefItem, stream string
 	byID := map[string]string{}
 	for _, it := range items {
 		byID[it.id] = it.file
+	}
+	// DUPLICATE: add holds a brief that is a probable duplicate of an open card
+	// back (dupHold, add_duplicate.go); brief check names the same over the
+	// snapshot it already loaded. brief check takes no --not-a-duplicate-of, so
+	// the remedy names the one add takes.
+	var wave []dupCard
+	for _, it := range items {
+		wave = append(wave, dupCardOf(it.id, it.text))
+	}
+	held, _ := dupHeld(wave, dupOpenCards(snap), nil)
+	for _, it := range items {
+		f, ok := held[it.id]
+		if !ok {
+			continue
+		}
+		out = append(out, briefFinding{File: it.file, ID: it.id, Check: "duplicate",
+			Why: f.String() + "; add takes --not-a-duplicate-of " + f.Of + "=<reason> to admit it (brief check takes none)", order: chkDuplicate})
 	}
 	for _, it := range items {
 		out = append(out, collectHold(it.file, it.id, "who", chkWho, func(w io.Writer) int {
