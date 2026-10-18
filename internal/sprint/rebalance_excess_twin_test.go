@@ -92,10 +92,11 @@ func (r *dealRig) eHetznerFleet() {
 }
 
 // TestTheRebalanceMovesTheExcessOfAPartlyIdleUnit pins the source rule on the
-// twin: hetzner2 (width 16) holds 8 work and 8 reads working (12 of 16 lanes)
-// and 22 read cards ready; every other member is a reader of the reads' tier
-// with a free lane. One tick leaves hetzner2 no more ready reads than its 8 free
-// halves; the rest are on units that had a free lane.
+// twin: hetzner2 (width 16) holds 8 work and 8 reads working (16 of 16 slots, a read
+// one slot as a work card: tla/WidthHard.tla) and 22 read cards ready; every other
+// member is a reader of the reads' tier with free lanes. One tick moves to the other
+// units as many reads as their free lanes take, one a card: 12, and hetzner2 keeps the
+// rest, no unit with a free lane left for them.
 func TestTheRebalanceMovesTheExcessOfAPartlyIdleUnit(t *testing.T) {
 	t.Parallel()
 	r := newDealRig(t)
@@ -103,14 +104,14 @@ func TestTheRebalanceMovesTheExcessOfAPartlyIdleUnit(t *testing.T) {
 	require.Equal(t, 22, r.readyReads("hetzner2"), "hetzner2 holds %d ready reads, want 22", r.readyReads("hetzner2"))
 
 	r.tick()
-	require.LessOrEqual(t, r.readyReads("hetzner2"), 8,
-		"hetzner2 keeps %d ready reads, want at most its 8 free halves", r.readyReads("hetzner2"))
+	require.LessOrEqual(t, r.readyReads("hetzner2"), 10,
+		"hetzner2 keeps %d ready reads, want at most the 10 no other lane can take", r.readyReads("hetzner2"))
 	moved := 0
 	for _, m := range []string{"b3", "mini-m5", "space", "vision", "superman", "batman"} {
 		moved += r.readyReads(m)
 	}
-	require.GreaterOrEqual(t, moved, 14,
-		"only %d ready reads are on units with a free lane, want the excess, >= 14", moved)
+	require.GreaterOrEqual(t, moved, 12,
+		"only %d ready reads are on units with a free lane, want the excess their free lanes take, >= 12", moved)
 }
 
 // NoQueuedCardWhileACapableLaneIsFree is the rebalance's invariant (rebalance.go,

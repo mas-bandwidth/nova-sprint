@@ -226,11 +226,6 @@ func RowCardCounts(s *Snapshot) (rows map[string]map[string]int, all ReadCardCou
 	return rows, all
 }
 
-// halfLoad is a load counted in slots with a read at half a slot, rounded up: the room a
-// work card needs is whole.
-// tla/DirtyTick.tla Load, Room and ReadFits (ReadCost "half")
-func halfLoad(work, reads int) int { return work + (reads+1)/2 }
-
 // readUnit is one unit the read-card ask may deal a read to: a friend's row or a member's.
 type readUnit struct {
 	name   string // the reader: her name, or the member's

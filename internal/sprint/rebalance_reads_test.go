@@ -47,7 +47,7 @@ func readsReady(s *Snapshot, row string) int {
 
 // A member with every lane working and reads queued beside a member up with an idle
 // lane whose reader row serves the read's tier sees the reads move on the next tick, as
-// many as the idle lanes take (reads at half a slot), in one tick.
+// many as the idle lanes take (a read one slot, as a work card), in one tick.
 func TestTheRebalanceMovesQueuedReadsToAnIdleMemberInOneTick(t *testing.T) {
 	t.Parallel()
 	w := readQueueWorld(t, 6)
@@ -55,9 +55,9 @@ func TestTheRebalanceMovesQueuedReadsToAnIdleMemberInOneTick(t *testing.T) {
 	before := ReadCardID("s1-2", 1, "m1")
 	p := w.must(Rebalance(w.s, nil, "machine"))
 	assert.NotEmpty(t, rebalanced(p), "the rebalance moved no read off the full member")
-	// m2's one idle lane takes the reads at half a slot: two of them.
-	assert.Equal(t, 2, readsReady(w.s, "m2"), "the idle member's lane takes the reads at half a slot")
-	assert.Equal(t, 4, readsReady(w.s, "m1"))
+	// m2's one idle lane takes one read: a read is a whole slot (tla/WidthHard.tla)
+	assert.Equal(t, 1, readsReady(w.s, "m2"), "the idle member's lane takes one read, a whole slot")
+	assert.Equal(t, 5, readsReady(w.s, "m1"))
 	// a moved read keeps its attempt, and is a fresh card on the new reader.
 	moved := w.s.Fleet.Card(ReadCardID("s1-2", 1, "m2"))
 	require.NotNil(t, moved, "the read moved to m2 under its identity there")
@@ -81,7 +81,9 @@ func TestTheRebalanceDoesNotOverfillAReaderAfterMovingWork(t *testing.T) {
 	assert.Equal(t, 2, readsReady(w.s, "m1"), "reads stay queued when no idle lane remains")
 }
 
-func TestTheRebalanceUsesTheRemainingHalfSlotAfterAQueuedRead(t *testing.T) {
+// A read queued on the reader fills its one slot: no half slot is left beside it, and no
+// read moves onto it (one definition of a slot; tla/WidthHard.tla).
+func TestTheRebalanceMovesNoReadOntoAReaderWhoseQueuedReadFillsItsSlot(t *testing.T) {
 	t.Parallel()
 	w := readQueueWorld(t, 2)
 	prior := w.s.Fleet.Card(ReadCardID("s1-2", 1, "m1"))
@@ -90,12 +92,14 @@ func TestTheRebalanceUsesTheRemainingHalfSlotAfterAQueuedRead(t *testing.T) {
 	w.s.Fleet.Put(&Card{ID: ReadCardID("s1-2", 1, "m2"), Row: "m2", Col: Ready, Score: 2, Rev: 1,
 		Fields: map[string]string{"kind": "read", "primary": "s1-2", "stream": "s1", "reader": "m2", "attempt": "1", FieldReadCard: "1", FieldTier: cardhdr.RouteFlash}})
 	p := w.must(Rebalance(w.s, nil, "machine"))
-	assert.Len(t, rebalanced(p), 1, "one read half-slot remains beside the queued read")
-	assert.Equal(t, 2, readsReady(w.s, "m2"), "the remaining half-slot takes exactly one read")
-	assert.Equal(t, 0, readsReady(w.s, "m1"))
+	assert.Empty(t, rebalanced(p), "the queued read fills m2's one slot")
+	assert.Equal(t, 1, readsReady(w.s, "m2"))
+	assert.Equal(t, 1, readsReady(w.s, "m1"), "m1's read stays queued")
 }
 
-func TestTheRebalanceKeepsAReadQueueWhenItsDonorHasHalfALaneFree(t *testing.T) {
+// A working read fills its donor's one slot, as a work card does: no half lane is left, so
+// the read queued behind it moves to a member with an idle lane (tla/WidthHard.tla).
+func TestTheRebalanceMovesAReadQueuedBehindADonorItsWorkingReadFills(t *testing.T) {
 	t.Parallel()
 	w := rbWorld(t, "m1", "m2")
 	w.s.Readers.SetRows(append(w.s.Readers.Rows(), ReaderPrefix+"m2"))
@@ -108,9 +112,9 @@ func TestTheRebalanceKeepsAReadQueueWhenItsDonorHasHalfALaneFree(t *testing.T) {
 	}
 
 	p := w.must(Rebalance(w.s, nil, "machine"))
-	assert.Empty(t, rebalanced(p), "one working read leaves half a lane, so the queue can remain on m1")
-	assert.Equal(t, 1, readsReady(w.s, "m1"))
-	assert.Equal(t, 0, readsReady(w.s, "m2"))
+	assert.Len(t, rebalanced(p), 1, "one working read fills m1's lane, so the queued read moves")
+	assert.Equal(t, 0, readsReady(w.s, "m1"))
+	assert.Equal(t, 1, readsReady(w.s, "m2"))
 }
 
 // A read never moves to a member whose reader row does not serve its tier, nor back to a
@@ -130,7 +134,8 @@ func TestTheRebalanceReadNeverMovesToAnIneligibleOrOldRow(t *testing.T) {
 func TestTheRebalanceReadNeverMovesToAReaderThatAlreadyReadIt(t *testing.T) {
 	t.Parallel()
 	w := readQueueWorld(t, 2)
-	// m2 already holds a read of s1-2 at this attempt
+	// m2, of width 2, already holds a read of s1-2 at this attempt: one slot is left
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m2", Width: 2}))
 	w.s.Fleet.Put(&Card{ID: ReadCardID("s1-2", 1, "m2"), Row: "m2", Col: Ready, Score: 2, Rev: 1,
 		Fields: map[string]string{"kind": "read", "primary": "s1-2", "stream": "s1", "reader": "m2", "attempt": "1", FieldReadCard: "1", FieldTier: cardhdr.RouteFlash}})
 	p := w.must(Rebalance(w.s, nil, "machine"))

@@ -28,7 +28,7 @@ const FieldRebalancedFrom = "rebalanced_from"
 const NRebalanced = "a queued card rebalanced to an idle lane"
 
 // rebalanceUnit is a row the rebalance reads: a friend dealable or a member up, its lanes,
-// the lanes working (reads at half a slot) and the cards it holds, ready and working.
+// the lanes working (a read one slot, as a work card) and the cards it holds, ready and working.
 type rebalanceUnit struct {
 	name, row string
 	friend    bool
@@ -51,8 +51,8 @@ func TickRebalance(s *Snapshot, r TickReq) (Plan, int) {
 }
 
 // Rebalance moves the excess of every unit (docs/SPEC-SPRINT.md section 1, the rebalance;
-// NoQueuedCardWhileACapableLaneIsFree, tla/WhoPreference.tla): a free lane is a half-lane no
-// card on its row holds, ready or working (a work card two, a read one: halfLoad), and a
+// NoQueuedCardWhileACapableLaneIsFree, tla/WhoPreference.tla): a free lane is a slot no
+// card on its row holds, ready or working (one a card, a read as a work card: slotLoad), and a
 // unit's excess is its ready cards beyond the halves its working cards leave free, taken from
 // the end of the order it would start them in. Every unit with excess is a source, friend or
 // member, whether or not all its lanes work. A work card (a fix card is kind work: a rework
@@ -82,8 +82,8 @@ func Rebalance(s *Snapshot, seats []FriendSeat, who string) Plan {
 	var units []*rebalanceUnit
 	add := func(u *rebalanceUnit) {
 		work, reads := rowWorking(s, u.row)
-		u.working = halfLoad(work, reads)
-		u.load = halfLoad(rowLoad(s, u.row))
+		u.working = slotLoad(work, reads)
+		u.load = slotLoad(rowLoad(s, u.row))
 		units = append(units, u)
 	}
 	for _, f := range seats {
@@ -103,7 +103,7 @@ func Rebalance(s *Snapshot, seats []FriendSeat, who string) Plan {
 	}
 	idle := false
 	for _, u := range units {
-		idle = idle || rebalanceReadHalfRoom(s, u, 0) > 0
+		idle = idle || rebalanceReadRoom(s, u, 0) > 0
 	}
 	if !idle {
 		return p
@@ -157,7 +157,7 @@ func Rebalance(s *Snapshot, seats []FriendSeat, who string) Plan {
 	writeRebalanceRound(&p, cursor)
 	// Reads are rebalanced too (docs/SPEC-SPRINT.md section 1, the rebalance): the excess
 	// read cards of every unit move to units with a free lane whose reader row serves the
-	// read's tier, as many as the free lanes take (a read is half a slot), in one tick.
+	// read's tier, as many as the free lanes take (a read is one slot), in one tick.
 	p.Units = append(p.Units, rebalanceReads(s, seats, units, workMoved, &p, ri, who)...)
 	ri.write(&p)
 	return p
@@ -182,31 +182,31 @@ func writeRebalanceRound(p *Plan, r *round) {
 	p.Props = append(p.Props, PropWrite{Table: r.table, Name: r.name, Value: r.value(), Was: r.read, WasAbsent: !r.had})
 }
 
-// freeHalves is the unit's free half-slots: twice its width less the halves every card on
-// its row holds, ready or working (a work card two, a read one).
-func freeHalves(s *Snapshot, u *rebalanceUnit) int {
+// freeSlots is the unit's free slots: its width less the cards working on its row, one a
+// card, a read as a work card (tla/WidthHard.tla WidthHeld).
+func freeSlots(s *Snapshot, u *rebalanceUnit) int {
 	ww, wr := rowWorking(s, u.row)
-	return max(2*u.width-2*ww-wr, 0)
+	return max(u.width-ww-wr, 0)
 }
 
-// excessWork is the unit's ready work cards beyond the halves its working cards leave free:
-// its ready reads start first (reader priority, half a slot each), then its work. The rework
+// excessWork is the unit's ready work cards beyond the slots its working cards leave free:
+// its ready reads start first (reader priority, one slot each), then its work. The rework
 // and fix kinds are work cards and count with them.
 func excessWork(s *Snapshot, u *rebalanceUnit) int {
 	ww, wr := rowWorking(s, u.row)
 	work, reads := rowLoad(s, u.row)
-	free := freeHalves(s, u)
+	free := freeSlots(s, u)
 	readsKept := min(reads-wr, free)
-	halves := max(free-readsKept, 0)
-	return work - ww - min(work-ww, halves/2)
+	left := max(free-readsKept, 0)
+	return work - ww - min(work-ww, left)
 }
 
-// excessReads is the unit's ready read cards beyond the halves its working cards leave free:
-// the first free halves' reads it starts itself, the rest are excess.
+// excessReads is the unit's ready read cards beyond the slots its working cards leave free:
+// the first free slots' reads it starts itself, the rest are excess.
 func excessReads(s *Snapshot, u *rebalanceUnit) int {
 	_, wr := rowWorking(s, u.row)
 	_, reads := rowLoad(s, u.row)
-	return max(reads-wr-freeHalves(s, u), 0)
+	return max(reads-wr-freeSlots(s, u), 0)
 }
 
 // readyCardsOf is the unit's ready cards of the kind (isRead), in its start order (score).
@@ -337,8 +337,8 @@ func rebalanceMove(s *Snapshot, p *Plan, declared map[string]bool, ri routeIndex
 // unit (reads beyond the halves its working cards leave free) go to a unit with a free lane
 // whose reader row serves the read's tier and that has not read the card at this attempt
 // (readRefusal), the cheapest read tier first, then round the units from the read deal's
-// cursor (read_deal_index_<tier>), as many as the idle lanes take (a read is half a slot:
-// readUnit.half and idle are in half slots), in one tick. A read never goes back to a row it
+// cursor (read_deal_index_<tier>), as many as the idle lanes take (a read is one slot:
+// readUnit.half and idle are in slots, one a card), in one tick. A read never goes back to a row it
 // was rebalanced off (FieldRebalancedFrom). The moved read keeps its attempt: it is dealt
 // again under the new reader's identity, its record retired on the row it left.
 func rebalanceReads(s *Snapshot, seats []FriendSeat, units []*rebalanceUnit, workMoved map[string]int, p *Plan, ri routeIndexes, who string) []Unit {
@@ -352,10 +352,10 @@ func rebalanceReads(s *Snapshot, seats []FriendSeat, units []*rebalanceUnit, wor
 	}
 	for i := range ruses {
 		if u := unitByRow[ruses[i].row]; u != nil {
-			// Share the exact half-slot capacity after the work pass. Round-up
-			// whole-card load loses a usable half-slot when a row holds one read.
-			ruses[i].idle = min(ruses[i].idle, rebalanceReadHalfRoom(s, u, workMoved[u.row]))
-			ruses[i].half -= 2 * workMoved[u.row]
+			// share the row's room after the work pass: a work card moved there holds one
+			// slot, as a read does
+			ruses[i].idle = min(ruses[i].idle, rebalanceReadRoom(s, u, workMoved[u.row]))
+			ruses[i].half -= workMoved[u.row]
 		}
 	}
 	idx := fleetReadIndex(s)
@@ -470,10 +470,10 @@ func rebalanceReads(s *Snapshot, seats []FriendSeat, units []*rebalanceUnit, wor
 	return out
 }
 
-// rebalanceReadHalfRoom is the exact remaining read capacity of a row after the work
-// pass, in half slots. Unlike rebalanceUnit.idle, it preserves one free half-slot after
-// an odd number of ready or working reads.
-func rebalanceReadHalfRoom(s *Snapshot, u *rebalanceUnit, workMoved int) int {
+// rebalanceReadRoom is the remaining read capacity of a row after the work pass, in slots,
+// one a card (tla/WidthHard.tla: a read counts whole). It counts the row's
+// ready and working cards and the work cards the pass moved there.
+func rebalanceReadRoom(s *Snapshot, u *rebalanceUnit, workMoved int) int {
 	work, reads := rowLoad(s, u.row)
-	return max(2*u.width-2*work-reads-2*workMoved, 0)
+	return max(u.width-work-reads-workMoved, 0)
 }
