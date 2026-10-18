@@ -29,9 +29,15 @@ const (
 // FieldHeldReason is a held member's or stream's control card's reason for its hold,
 // and FieldHeldFinish marks a member's hold that lets its working cards finish (hold
 // with no --return): the rebalance's sweep leaves those cards where they are.
+// FieldHeldReturn records a coordinator's hold made with --return (fleet down): the
+// operator took the member out of service, so it runs no land gate (gateCapable). It
+// carries the hold's own held stamp, so a value left behind by a release that does not
+// unset it never marks a later hold (HeldToReturn). held_finish cannot say this: a
+// fleet down on an up member lets its working cards finish too.
 const (
 	FieldHeldReason = "held_reason"
 	FieldHeldFinish = "held_finish"
+	FieldHeldReturn = "held_return"
 )
 
 // HeldByFault is the hold mark (FieldHeldBy) of a member the machine holds for a
@@ -202,9 +208,12 @@ func holdElsewhere(n string, kinds []string, release bool) string {
 }
 
 // gateCapable says a member can run a land gate now: it is up, or held by the coordinator
-// (a held member with no machine mark and no fault: unheld, it runs a gate again). A
-// member a machine holds (held_by or fault_since) is no bench. When the sibling card that
-// lets a held member bench (Snapshot.GateMembers) lands, that should replace this.
+// with no --return (a hold is a deal control, and a gate is not a card). A member a
+// machine holds (held_by or fault_since) is no bench, and neither is one the coordinator
+// took down with fleet down (hold --return, HeldToReturn): the operator took it out of
+// service. Snapshot.GateMembers (the land gate's benches), this guard and check.go rule 11
+// all read it. tla/DirtyTick.tla LandGate (MCDirtyTickGateHeld.cfg; the reversed witness
+// MCDirtyTickBrokenGateReturned.cfg gates a returned member).
 func gateCapable(ctl *Card) bool {
 	if ctl == nil {
 		return false
@@ -212,7 +221,13 @@ func gateCapable(ctl *Card) bool {
 	if ctl.F("status") == Up {
 		return true
 	}
-	return ctl.F(FieldHeld) != "" && ctl.F(FieldHeldBy) == "" && ctl.F(FieldFaultSince) == ""
+	return ctl.F(FieldHeld) != "" && ctl.F(FieldHeldBy) == "" && ctl.F(FieldFaultSince) == "" && !HeldToReturn(ctl)
+}
+
+// HeldToReturn says a member's hold is a coordinator's hold made with --return (fleet
+// down): its held_return carries the hold's own held stamp (FieldHeldReturn).
+func HeldToReturn(ctl *Card) bool {
+	return ctl != nil && ctl.F(FieldHeld) != "" && ctl.F(FieldHeldReturn) == ctl.F(FieldHeld)
 }
 
 // lastGateRefusal is the guard's refusal when a hold would leave no gate bench: the
@@ -323,7 +338,7 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 					line = fmt.Sprintf("--return: %d taken cards stay with their worker and finish: %s", len(ids), strings.Join(ids, ","))
 				}
 			}
-			add(downPlan(s, FleetReq{Op: "hold", Member: t.Name, Who: r.Who, Why: holdWhy(r), Reason: r.Reason, HeldBy: r.HeldBy, Finish: finish, Cause: r.Cause, CauseNote: r.CauseNote, keep: keep}, up, rr, moves, q, widths))
+			add(downPlan(s, FleetReq{Op: "hold", Member: t.Name, Who: r.Who, Why: holdWhy(r), Reason: r.Reason, HeldBy: r.HeldBy, Finish: finish, Return: r.Return, Cause: r.Cause, CauseNote: r.CauseNote, keep: keep}, up, rr, moves, q, widths))
 		case t.Kind == HoldStream:
 			var sp Plan
 			sp, line = holdStream(s, t.Name, r)

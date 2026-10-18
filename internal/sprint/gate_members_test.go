@@ -1,6 +1,7 @@
 package sprint_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -40,4 +41,46 @@ func TestGateMembersAreHeldNotDealt(t *testing.T) {
 	// a coordinator hold that carries a fault stamp is the machine's, and no gate bench
 	s.Fleet.Placed(sprint.CtlID("m-held")).Fields[sprint.FieldFaultSince] = "2026-01-01T00:00:00Z"
 	assert.Equal(t, []string{"m-up"}, s.GateMembers(), "a held member with fault_since is left out")
+	delete(s.Fleet.Placed(sprint.CtlID("m-held")).Fields, sprint.FieldFaultSince)
+
+	// a coordinator's hold made with --return (fleet down) carries held_return = its held
+	// stamp: the member is out of service and no gate bench; a held_return left from an
+	// earlier hold (another stamp) marks nothing
+	held := s.Fleet.Placed(sprint.CtlID("m-held"))
+	held.Fields[sprint.FieldHeldReturn] = held.Fields[sprint.FieldHeld]
+	assert.True(t, sprint.HeldToReturn(held), "the return carries the hold's stamp")
+	assert.Equal(t, []string{"m-up"}, s.GateMembers(), "a returned member is left out")
+	held.Fields[sprint.FieldHeldReturn] = "2025-01-01T00:00:00Z"
+	assert.False(t, sprint.HeldToReturn(held), "a stale return marks nothing")
+	assert.Equal(t, []string{"m-up", "m-held"}, s.GateMembers(), "a stale return leaves the hold a gate bench")
+	assert.Equal(t, []string{"m-up"}, s.UpMembers(), "the deal filter is unchanged")
+}
+
+// TestRuleElevenCountsHeldGateBenches: check.go rule 11 names a merging stream with a
+// queued card only when no member can run a land gate (Snapshot.GateMembers): a member
+// the coordinator holds is a bench, one taken down with fleet down (held_return) is not.
+func TestRuleElevenCountsHeldGateBenches(t *testing.T) {
+	t.Parallel()
+	s := &sprint.Snapshot{Now: time.Unix(1000, 0), Work: sprint.NewTable(sprint.Work),
+		Readers: sprint.NewTable(sprint.Readers), Merge: sprint.NewTable(sprint.Merge),
+		Fleet: sprint.NewTable(sprint.Fleet), Coordinator: "coordinator"}
+	stamp := "2026-01-01T00:00:00Z"
+	s.Fleet.Put(&sprint.Card{ID: sprint.CtlID("m1"), Row: "m1", Col: sprint.Ctl,
+		Fields: map[string]string{"kind": "member", "status": sprint.Down, sprint.FieldHeld: stamp}})
+	s.Fleet.SetRows([]string{"m1"})
+	s.Merge.Put(&sprint.Card{ID: sprint.CtlID("s1"), Row: "s1", Col: sprint.Ctl,
+		Fields: map[string]string{"state": sprint.StreamMerging}})
+	s.Merge.Put(&sprint.Card{ID: "s1-1", Row: "s1", Col: sprint.Queued, Fields: map[string]string{}})
+	s.Merge.SetRows([]string{"s1"})
+	noGate := func() bool {
+		for _, v := range sprint.Check(s, nil) {
+			if v.Rule == 11 && strings.Contains(v.Detail, "no member can run a land gate") {
+				return true
+			}
+		}
+		return false
+	}
+	assert.False(t, noGate(), "a coordinator-held member is a gate bench: rule 11 is quiet")
+	s.Fleet.Placed(sprint.CtlID("m1")).Fields[sprint.FieldHeldReturn] = stamp
+	assert.True(t, noGate(), "a fleet-downed member is no gate bench: rule 11 names the stream")
 }

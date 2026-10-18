@@ -56,7 +56,9 @@ ScnLand == [Base EXCEPT !.col = [c \in Cards |-> "merging"], !.mq = {"c1"},
 \* THE LAND GATE ON HELD MEMBERS (2026-10-17): c1 merging, every machine held by
 \* the coordinator and none up; c1 lands only through LandGate (Scn.gate). No
 \* machine lapses or beats (all live).
-ScnGateHeld == [gate |-> TRUE, heldinit |-> Machines, lapse |-> FALSE] @@
+\* m2 was taken down with fleet down (hold --return, retinit): it runs no gate,
+\* and c1 lands through m1 (the witness gatereturned gates m2).
+ScnGateHeld == [gate |-> TRUE, heldinit |-> Machines, retinit |-> {"m2"}, lapse |-> FALSE] @@
                [Base EXCEPT !.col = [c \in Cards |-> "merging"], !.mq = {"c1"}, !.up = {},
                             !.q = Queues(<<>>, <<>>, <<>>, <<>>)]
 \* c1 in review, its read on r1 (host m1) reported broken.
