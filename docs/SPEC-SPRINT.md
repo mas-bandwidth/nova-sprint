@@ -7122,7 +7122,11 @@ names it, so the first of two duplicates is admitted. `add` skips and reports
 instead: a brief with a probable duplicate is held
 back and the rest of the wave admitted in one write, one `DUPLICATE <id>: <the same line>; run: nova-sprint add ... --not-a-duplicate-of <id>=<reason>`
 line each, and the add exits with the write's code (0 when it wrote the rest of the wave, and 1 only when every real card was held; 0 when none); `--not-a-duplicate-of <card>=<reason>` (repeated, a reason required) admits the card and records the
-reason on its admission note.
+reason on its admission note. `brief check` runs the same check over the briefs
+it holds, against the open cards of the one read-only snapshot it already
+loads, and names one `duplicate` finding per held brief in add's words, with a
+remedy that names `--not-a-duplicate-of`; brief check takes no such override
+(add does, to admit the brief).
 
 `TEST` names a test
 `git grep` finds at `BASE` in `--repo-dir`, and `BASE` exists there; with no
@@ -7372,6 +7376,67 @@ when the environment names one (`wins=env:NOVA_SPRINT_REDIS_USER`, `redis-wins=e
 `resolves=yes|no` (exit 1 on no); `seat logout` removes the file (`was=recorded|none`). The code is
 `cmd/nova-sprint/storelogin.go`; `TestABareVerbOpensTheStoreWithTheSeatLoginFromSecrets` measures
 it on the in-memory store with a fake secrets reader.
+
+#### No store secret in argv or a running process's environment
+
+(2026-10-18, card v17-store-secret-never-in-process-env: three coordinator helpers printed the
+live coordinator password by inspecting processes, because a long-running `nova-sprint run`
+started under `nova-secrets exec --only <NAME>` held it in its environment, which `ps -E` and
+`/proc/<pid>/environ` read.)
+
+The store password has three sources, and none is argv or a long-running process's environment:
+
+- **the seat login** (above), read in process from nova-secrets;
+- **a password file**: `NOVA_SPRINT_REDIS_PASSWORD_FILE=<absolute path>` names a file holding the
+  password (one trailing newline cut), for the user `NOVA_SPRINT_REDIS_USER` names. It is refused,
+  naming the path and the remedy (`chmod 600 <path>`) and never the content, unless it is a regular
+  file (opened with `O_NOFOLLOW`, so a symbolic link is refused), owned by this uid, with
+  `mode & 0o077 == 0`;
+- **the macOS keychain**: `NOVA_SPRINT_REDIS_PASSWORD_KEYCHAIN=<service>` reads the generic password
+  of that service for the account `NOVA_SPRINT_REDIS_USER` names, through
+  `/usr/bin/security find-generic-password -s <service> -a <user> -w`, its stdout captured in
+  process and its stderr never shown. On any other system the variable is a refusal naming it.
+
+The file and the keychain are read once per process into a `secrets.Secret` and handed to redisconn
+through the getenv storeOptions returns, as the seat login's is (`cmd/nova-sprint/secret_source.go`).
+A source wins over the environment's login and the recorded one; two sources at once, or a source
+beside `NOVA_SPRINT_REDIS_PASSWORD_ENV`, is a refusal naming the variables, never a guess.
+
+**The startup scrub** (`cmd/nova-sprint/secret_scrub.go`) is main's first act. Every
+password-bearing variable (the one `NOVA_SPRINT_REDIS_PASSWORD_ENV` names,
+`NOVA_REDIS_BENCH_PASSWORD`, `NOVA_REDIS_COORDINATOR_PASSWORD`, and any `NOVA_*_PASSWORD`) present
+in the environment is read into an in-process holder and unset, so no child the process starts (a
+land gate, git, a check, a shadow tick) inherits it, and the app's getenv answers the name from the
+holder. The pointers (`…_PASSWORD_ENV`, `…_PASSWORD_FILE`, `…_PASSWORD_KEYCHAIN`) carry no secret
+and stay.
+
+**The children that open the store.** Two verbs start a child that needs the login the scrub took.
+The shadow tick that `server switch` and `doctor --preflight` run (`<candidate> tick --shadow`,
+`runShadow` in `cmd/nova-sprint/shadow.go`) is a nova-sprint, so under an environment login it is
+handed the held password through the password file source: `childStoreEnv` writes it to a 0600
+file in a fresh 0700 temporary directory, points the child at it with
+`NOVA_SPRINT_REDIS_PASSWORD_FILE` in place of `NOVA_SPRINT_REDIS_PASSWORD_ENV` (the user stays),
+and removes the directory once the child exits; any other login is the child's to read itself. `live`
+reads the library with `nova-redis fn check`, which reads only `--password-env`: it resolves the
+login through storeOptions, as every verb does, and hands the password it holds to that short-lived
+child's environment alone, as it hands the seat login's (`TestShadowChildGetsTheEnvLoginThroughAPasswordFile`,
+`TestLiveHandsTheScrubbedEnvLoginToFnCheck`).
+
+**The re-exec.** Unsetting a variable does not clear the environment block the kernel keeps from
+exec, which `ps -E` (sysctl `kern.procargs2`) and `/proc/<pid>/environ` read. So when the scrub
+removed a value and the verb is long-running (`run`, `dashboard`, `watch`, `wait`, `play`, and any
+verb given `--watch`, `--wait` or `--every`: the loops of answer, friend sync, promote, snapshot), the process re-execs itself once: the same binary
+(`os.Executable`), the same argv, the scrubbed environment, and the held values on an inherited
+pipe whose write end is filled and closed before the exec, its descriptor named by
+`NOVA_SPRINT_SECRET_FD=<n>` (a number, never a value). The new process reads and closes that
+descriptor (refused unless it is a pipe) and unsets `NOVA_SPRINT_SECRET_FD` before anything else. A short-lived verb needs no
+re-exec. A re-exec that cannot be made is a refusal (exit 2) naming the password file as the
+remedy, never a server left holding the value. No flag of nova-sprint takes a secret value: a flag
+whose name ends in password, secret or token takes a NAME or a path
+(`TestNoFlagCarriesASecretValue`). `TestARunningServerHoldsNoSecretInArgvOrEnv` (functional)
+starts `nova-sprint run --listen` on a redis-server of the test's own whose ACL user's password is
+a fake secret, once in the launcher's shape and once with a password file, waits for its heartbeat,
+and reads the child's argv and environment as ps does: neither holds a byte of the secret.
 
 ### bases-view-r.w2
 

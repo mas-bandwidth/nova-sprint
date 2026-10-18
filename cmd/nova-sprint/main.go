@@ -56,7 +56,15 @@ const prog = "nova-sprint"
 var version string
 
 func main() {
-	a := newApp(os.Getenv)
+	// the startup scrub first: no store password stays in this process's environment,
+	// nor in a long-running verb's kernel copy of it (secret_scrub.go; docs/SPEC-SPRINT.md,
+	// "The seat's store login")
+	getenv, err := startupScrub(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "nova-sprint: %s\n", oneline.Escape(err.Error()))
+		os.Exit(2)
+	}
+	a := newApp(getenv)
 	if seatEnvironmentNeeded(os.Args[1:]) {
 		if err := a.loadSeatEnvironment(); err != nil {
 			path, pathErr := a.seatEnvironmentPath()
@@ -327,7 +335,13 @@ type app struct {
 	// getenv its password is read through, in place of a Redis dialed.
 	loginFile   func() (string, error)
 	loginSecret func(secrets.Login) (secrets.Secret, error)
-	dialStore   func(ctx context.Context, addr string, o redisconn.Options, getenv func(string) string, names sprint.Names) (store.Backend, error)
+	// The store password's file or keychain source (secret_source.go): sourceRead is its
+	// value once read, so the source is read once per process, and keychain, when set (a
+	// test), reads the keychain in place of /usr/bin/security.
+	sourceMu   sync.Mutex
+	sourceRead secrets.Secret
+	keychain   func(service, account string) (secrets.Secret, error)
+	dialStore  func(ctx context.Context, addr string, o redisconn.Options, getenv func(string) string, names sprint.Names) (store.Backend, error)
 	// shadow says this process is running `tick --shadow`, the adopt's
 	// pre-window shadow tick: its store open tolerates a library the window's
 	// fn load will replace (libraryCheck, tla/Adopt.tla PreCheck).

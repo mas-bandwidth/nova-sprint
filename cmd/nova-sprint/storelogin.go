@@ -150,7 +150,11 @@ func (a *app) secretReader() func(secrets.Login) (secrets.Secret, error) {
 }
 
 // storeOptions is how the store at addr is logged in to, and the getenv that login's
-// password is read through. The environment's login wins: NOVA_SPRINT_REDIS_USER set is
+// password is read through (docs/SPEC-SPRINT.md, "The seat's store login"). A password
+// source wins: NOVA_SPRINT_REDIS_PASSWORD_FILE (or, on macOS,
+// NOVA_SPRINT_REDIS_PASSWORD_KEYCHAIN) is the password read once in process from it,
+// for NOVA_SPRINT_REDIS_USER, never put in an environment (secret_source.go). Else the
+// environment's login: NOVA_SPRINT_REDIS_USER set is
 // that user and the variable NOVA_SPRINT_REDIS_PASSWORD_ENV names, as nova-table dials.
 // An explicit password reference without a user means the store's default user,
 // never the recorded login's ACL user.
@@ -158,6 +162,12 @@ func (a *app) secretReader() func(secrets.Login) (secrets.Secret, error) {
 // read in process from nova-secrets. Else the store's default user.
 func (a *app) storeOptions(addr string) (redisconn.Options, func(string) string, error) {
 	o := redisconn.Options{Addr: addr, Env: redisconn.Env{User: redisauth.UserEnv}}
+	if s, ok, err := a.sourceSecret(); err != nil {
+		return redisconn.Options{}, nil, err
+	} else if ok {
+		o.PasswordEnv = sourcePassword
+		return o, heldSecrets{sourcePassword: s}.getenv(a.getenv), nil
+	}
 	if a.getenv(redisauth.UserEnv) != "" || a.getenv(redisauth.PasswordEnvEnv) != "" {
 		o.Env.PasswordEnv = redisauth.PasswordEnvEnv
 		if a.getenv(redisauth.PasswordEnvEnv) == "" {
