@@ -7366,6 +7366,55 @@ when the environment names one (`wins=env:NOVA_SPRINT_REDIS_USER`, `redis-wins=e
 `cmd/nova-sprint/storelogin.go`; `TestABareVerbOpensTheStoreWithTheSeatLoginFromSecrets` measures
 it on the in-memory store with a fake secrets reader.
 
+#### No store secret in argv or a running process's environment
+
+(2026-10-18, card v17-store-secret-never-in-process-env: three coordinator helpers printed the
+live coordinator password by inspecting processes, because a long-running `nova-sprint run`
+started under `nova-secrets exec --only <NAME>` held it in its environment, which `ps -E` and
+`/proc/<pid>/environ` read.)
+
+The store password has three sources, and none is argv or a long-running process's environment:
+
+- **the seat login** (above), read in process from nova-secrets;
+- **a password file**: `NOVA_SPRINT_REDIS_PASSWORD_FILE=<absolute path>` names a file holding the
+  password (one trailing newline cut), for the user `NOVA_SPRINT_REDIS_USER` names. It is refused,
+  naming the path and the remedy (`chmod 600 <path>`) and never the content, unless it is a regular
+  file (opened with `O_NOFOLLOW`, so a symbolic link is refused), owned by this uid, with
+  `mode & 0o077 == 0`;
+- **the macOS keychain**: `NOVA_SPRINT_REDIS_PASSWORD_KEYCHAIN=<service>` reads the generic password
+  of that service for the account `NOVA_SPRINT_REDIS_USER` names, through
+  `/usr/bin/security find-generic-password -s <service> -a <user> -w`, its stdout captured in
+  process and its stderr never shown. On any other system the variable is a refusal naming it.
+
+The file and the keychain are read once per process into a `secrets.Secret` and handed to redisconn
+through the getenv storeOptions returns, as the seat login's is (`cmd/nova-sprint/secret_source.go`).
+A source wins over the environment's login and the recorded one; two sources at once, or a source
+beside `NOVA_SPRINT_REDIS_PASSWORD_ENV`, is a refusal naming the variables, never a guess.
+
+**The startup scrub** (`cmd/nova-sprint/secret_scrub.go`) is main's first act. Every
+password-bearing variable (the one `NOVA_SPRINT_REDIS_PASSWORD_ENV` names,
+`NOVA_REDIS_BENCH_PASSWORD`, `NOVA_REDIS_COORDINATOR_PASSWORD`, and any `NOVA_*_PASSWORD`) present
+in the environment is read into an in-process holder and unset, so no child the process starts (a
+land gate, git, a check, a shadow tick) inherits it, and the app's getenv answers the name from the
+holder. The pointers (`…_PASSWORD_ENV`, `…_PASSWORD_FILE`, `…_PASSWORD_KEYCHAIN`) carry no secret
+and stay.
+
+**The re-exec.** Unsetting a variable does not clear the environment block the kernel keeps from
+exec, which `ps -E` (sysctl `kern.procargs2`) and `/proc/<pid>/environ` read. So when the scrub
+removed a value and the verb is long-running (`run`, `dashboard`, `watch`, `wait`, and any verb
+given `--watch` or `--wait`), the process re-execs itself once: the same binary
+(`os.Executable`), the same argv, the scrubbed environment, and the held values on an inherited
+pipe whose write end is filled and closed before the exec, its descriptor named by
+`NOVA_SPRINT_SECRET_FD=<n>` (a number, never a value). The new process reads and closes that
+descriptor and unsets `NOVA_SPRINT_SECRET_FD` before anything else. A short-lived verb needs no
+re-exec. A re-exec that cannot be made is a refusal (exit 2) naming the password file as the
+remedy, never a server left holding the value. No flag of nova-sprint takes a secret value: a flag
+whose name ends in password, secret or token takes a NAME or a path
+(`TestNoFlagCarriesASecretValue`). `TestARunningServerHoldsNoSecretInArgvOrEnv` (functional)
+starts `nova-sprint run --listen` on a redis-server of the test's own whose ACL user's password is
+a fake secret, once in the launcher's shape and once with a password file, waits for its heartbeat,
+and reads the child's argv and environment as ps does: neither holds a byte of the secret.
+
 ### bases-view-r.w2
 
 Cards sat on a base nobody watched (2026-10-04: a stream of cards on the coordinator's own branch, its gate red from 12:04 PM), so what the coordinator looked up by hand is a verb. `nova-sprint bases [--json]` (read) prints one row per base a card not landed or dropped names (a placed primary, not a sentinel, its brief's `BASE:` line), keyed by base and `REPO:`, in base order: `BASES <base> repo=<repo> cards=<n> waiting=<n> ready=<n> working=<n> review=<n> merging=<n> ahead=<n> behind=<n> gate=<green|red|-> gated=<RFC3339|->`, then a `NOTE` line per thing not known, then `BASES OK bases=<n> cards=<n>`; `--json` is one object (`bases`, each with its card ids by state; `cards`; `notes`). Ahead and behind are counted against `origin/dev` by `git rev-list --left-right --count` in land's kept clone of the repository (section 7, the clone land keeps under its root), after one fetch of dev and every base named per clone a call; when that fetch fails, one `ls-remote` finds the bases origin does not hold (each a `NOTE`, its counts `-`) and the rest are fetched again. bases clones nothing: a repository land keeps no clone of has its counts `-` and a `NOTE`. The gate is the lander's last record at the base's tip, read from the store: green when a card on the base landed (land gates the tip before it merges), red at the stop of a stream stopped on its base gate (section 8's base-gate rule, its third failure, `cause=base`: its `since`, for the base of each card it holds merging; a refusal before the third is the lander's memory, not the store's); the latest record wins, red on a tie, and `-` when the base was never gated. `add` refuses a card whose `BASE:` is a personal branch, `<name>/*` for the sprint's coordinator, its owner (`init --owner`) or any row of the friends table, naming every such base and `--allow-personal-base`, with nothing written; with the flag it is admitted. The names are read from the store, never written in the code. The code is `cmd/nova-sprint/bases.go` (`basesInUse`, `basesAhead`, `holdBase`, `personalNames`); the test is `TestBasesListsEveryBaseInUseAndAddRefusesAPersonalOne`.
