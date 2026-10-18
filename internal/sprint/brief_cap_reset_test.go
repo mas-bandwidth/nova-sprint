@@ -41,6 +41,19 @@ func TestACosmeticBriefEditKeepsTheAttemptCapCount(t *testing.T) {
 	}
 }
 
+// A blank line added between unchanged body lines is cosmetic, even alongside a routing edit.
+func TestABriefRoutingAndBodyBlankLineKeepAttemptCapCount(t *testing.T) {
+	t.Parallel()
+	w := boundWorld(t)
+	old := "tier: pro\nPATHS: internal/x.go\n\nfirst body line\nsecond body line"
+	next := "tier: pro\nPATHS: internal/x.go\nPRIORITY: high\n\nfirst body line\n\nsecond body line"
+	w.s.Work.Placed("a-1").Fields["brief"] = old
+	w.s.Work.Placed("a-1").Fields[FieldDecidedAttempt] = "1"
+	p := w.must(Brief(w.s, briefOf("a-1", next, "")))
+	assert.Equal(t, "1", w.s.Work.Placed("a-1").F(FieldDecidedAttempt), "blank-only body spacing and routing do not reset the cap")
+	assert.Contains(t, strings.Join(p.Said, "\n"), "max attempts: unchanged (the edit decides nothing about the task)")
+}
+
 // Whitespace inside quoted task literals and test selectors is meaningful; only
 // outer formatting whitespace is cosmetic.
 func TestABriefQuotedWhitespaceChangesTheTask(t *testing.T) {
@@ -62,6 +75,11 @@ func TestABriefQuotedWhitespaceChangesTheTask(t *testing.T) {
 			name: "FencedCode",
 			old:  "tier: pro\nPATHS: internal/x.go\n\n\x60\x60\x60go\nx  := 1\n\x60\x60\x60",
 			next: "tier: pro\nPATHS: internal/x.go\n\n\x60\x60\x60go\nx := 1\n\x60\x60\x60",
+		},
+		{
+			name: "FencedCodeBlankLine",
+			old:  "tier: pro\nPATHS: internal/x.go\n\n\x60\x60\x60go\nx := 1\ny := 2\n\x60\x60\x60",
+			next: "tier: pro\nPATHS: internal/x.go\nPRIORITY: high\n\n\x60\x60\x60go\nx := 1\n\ny := 2\n\x60\x60\x60",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

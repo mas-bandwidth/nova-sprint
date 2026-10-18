@@ -1119,7 +1119,7 @@ func taskOf(brief string) string {
 		// change code or a test selector. Outside them, repeated whitespace is formatting.
 		if inFence {
 			body = append(body, l)
-		} else {
+		} else if strings.TrimSpace(l) != "" {
 			body = append(body, normalizeTaskWhitespace(l))
 		}
 	}
