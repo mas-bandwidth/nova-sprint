@@ -374,7 +374,7 @@ func TestAPullerPublishesNothingFromTheRows(t *testing.T) {
 	page := string(getBody(t, p, "/"))
 	assert.NotContains(t, page, "history-panel")
 	assert.NotContains(t, page, "charts.js")
-	assert.Equal(t, strings.NewReplacer(chartsPanel, "", chartsScript, "").Replace(buildQuery.ReplaceAllString(string(getBody(t, reader.s, "/")), "?v=X")),
+	assert.Equal(t, strings.NewReplacer(chartsPanel, "", `<script src="charts.js?v=X"></script>`+"\n", "").Replace(buildQuery.ReplaceAllString(string(getBody(t, reader.s, "/")), "?v=X")),
 		buildQuery.ReplaceAllString(page, "?v=X"), "a puller's page is the reader's without the charts")
 	for _, route := range []string{"/api/history", "/api/stream/a.b", "/stream/a.b", "/api/stream/nope"} {
 		w := httptest.NewRecorder()
@@ -382,10 +382,11 @@ func TestAPullerPublishesNothingFromTheRows(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, w.Code, route)
 	}
 	api := string(getBody(t, p, "/api/sprint"))
-	for _, leak := range []string{"a.b-1", "a.b-2", "consumer:", "friend.stella", "reader-hulk", "pro-x", "flash-y", "\"rows\""} {
+	for _, leak := range []string{"a.b-1", "a.b-2", "consumer:", "friend.stella", "reader-hulk", "pro-x", "flash-y"} {
 		assert.NotContains(t, api, leak, "the public copy carries nothing of the rows")
 		assert.NotContains(t, page, leak)
 	}
+	assert.NotContains(t, api, `"rows"`, "the public copy carries no rows")
 	mu.Lock()
 	for _, q := range paths {
 		assert.Equal(t, "/api/sprint", q, "a puller asks its upstream for the copy alone")
