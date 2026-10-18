@@ -212,3 +212,29 @@ func TestStreamIDLess(t *testing.T) {
 		}
 	}
 }
+
+// notesCaches holds at most notesCachesMax windows: a fifth key starts the map
+// again, and a key asked for twice is the same window.
+func TestNotesCachesAreBounded(t *testing.T) {
+	notesCaches.mu.Lock()
+	notesCaches.m = nil
+	notesCaches.mu.Unlock()
+	var client redis.UniversalClient
+	first := notesCacheFor(client, "k0")
+	if notesCacheFor(client, "k0") != first {
+		t.Fatal("the same key is not the same window")
+	}
+	for i := 1; i < notesCachesMax; i++ {
+		notesCacheFor(client, "k"+string(rune('0'+i)))
+	}
+	notesCacheFor(client, "k-one-more")
+	notesCaches.mu.Lock()
+	n := len(notesCaches.m)
+	notesCaches.mu.Unlock()
+	if n != 1 {
+		t.Fatalf("after %d keys the map holds %d windows, want 1 (started again)", notesCachesMax+1, n)
+	}
+	if notesCacheFor(client, "k0") == first {
+		t.Fatal("a window survived the bound")
+	}
+}
