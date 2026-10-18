@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.6.3 — 2026-10-18
+
+Cut from 69c05c67faf4699e8a760e64e40fe56d12eab206. 3 pull requests since v1.6.2.
+
+Recovery journeys incomplete, gate waived: v1.6.3: the dashboard last-24h history and stream pages (#505) the owner asked for, a test fix (#504), and the friend's row on friend cards --json for nova-hook v1.6.1's FRIEND UP push (#518); journeys: the range touches no hook or recovery path; spend: no provider readouts are available to this cut and the range changes no spend recording
+
+- TestASilentClientIsUnhookedAfterExactlyTwoAnnouncedOnce: not-run (no --journeys evidence)
+- TestNoServerOrNoAnswerIsNoEvidence: not-run (no --journeys evidence)
+- TestTheGateRefusesEveryoneWhileTheServerIsStale: not-run (no --journeys evidence)
+- TestAStaleAnswerIsDownWithAFreshServer: not-run (no --journeys evidence)
+- TestALostAnswerIsNeverToldTwice: not-run (no --journeys evidence)
+
+Spend gate waived: v1.6.3: the dashboard last-24h history and stream pages (#505) the owner asked for, a test fix (#504), and the friend's row on friend cards --json for nova-hook v1.6.1's FRIEND UP push (#518); journeys: the range touches no hook or recovery path; spend: no provider readouts are available to this cut and the range changes no spend recording (window 2026-10-18T00:00:00Z..2026-10-18T18:01:59Z)
+- unread: --spend-store <addr> names no sprint store, so the recorded spend cannot be read
+
+- #504 sprintdash: the healthz test waits for the second tick's read
+- #505 dashboard: last-24h history graphs rendered with Pele
+- #518 friend cards --json: the friend's row beside the cards (held, reason, width)
+
 ## v1.6.2 — 2026-10-18
 
 START reads each STOP debt's own record, off the table too. On 2026-10-18 `nova-sprint start` refused with "32 STOP-owned work/read jobs lack same-owner cancellation receipts": after the STOP the friend reconcile had retired those jobs off the fleet and readers tables with their STOP receipt (the stopped-from generation and the next generation), and START read only the cards still on the table, so it never saw a receipt and could not start. START and the beat settle now load each debt's record by id, including records off the table; a receipt there settles the debt through the existing check, and a card removed without a receipt still refuses START. START names what it settled. Model: `tla/StopReturn.tla` gains Retire (a job leaves the table with its receipt) and GoneNeverBlocksStart, with the reversed witness `MCStopReturnBrokenGoneBlocksStart` failing on it; all 11 stopreturn cases checked with TLC on a bench. No wire or record change. (#499)
