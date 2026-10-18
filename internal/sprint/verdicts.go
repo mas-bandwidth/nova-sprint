@@ -121,6 +121,18 @@ func TickFriendRedeal(s *Snapshot, r TickReq) (Plan, int) {
 		if !friendLate(s, r, wc) {
 			continue
 		}
+		if why := laneLiveWhy(s, r, wc); why != "" {
+			u, ok := noticeLivePastDeadline(s, r, wc, why)
+			if !ok {
+				continue
+			}
+			if len(p.Units) >= TickMaxMoves {
+				due++
+				continue
+			}
+			p.Units = append(p.Units, u)
+			continue
+		}
 		if len(p.Units) >= TickMaxMoves {
 			due++
 			continue
@@ -173,4 +185,49 @@ func FinishedAs(l Line) string {
 		return to
 	}
 	return ""
+}
+
+// noticeLivePastDeadline is the one coordinator notice raised the first time a friend's live
+// working card passes unfinishedLimit from first_taken in its current generation: the card is
+// never moved, and the notice is raised once per generation so the coordinator decides.
+// tla/LaneCheck.tla NoticePastDeadline.
+func noticeLivePastDeadline(s *Snapshot, r TickReq, wc *Card, why string) (Unit, bool) {
+	if wc.Col != Working {
+		return Unit{}, false
+	}
+	field, limit, _, _ := WorkDeadline(s, wc)
+	firstTaken := wc.F(field)
+	ran, ok := r.running(s.Now, firstTaken)
+	if !ok || ran <= limit {
+		return Unit{}, false
+	}
+	gen := wc.F("gen")
+	if gen == "" {
+		gen = "1"
+	}
+	if wc.F(FieldDeadlineNoticed) == gen {
+		return Unit{}, false
+	}
+	primary := wc.F("primary")
+	if primary == "" {
+		primary = wc.ID
+	}
+	stream := wc.F("stream")
+	if pr := s.Work.Placed(primary); pr != nil && pr.Row != "" {
+		stream = pr.Row
+	}
+	what := fmt.Sprintf("%s on %s has run %s since first_taken %s (past %s, %s): live lane kept; the coordinator decides",
+		wc.ID, wc.Row, ran, firstTaken, limit, why)
+	n := happened(NFriendLivePastDeadline, stream, s.Now, primary)
+	n.Who, n.To, n.What, n.Card = r.who(), s.Coordinator, what, wc.ID
+	if n.To == "" {
+		n.To = "coordinator"
+	}
+	return Unit{
+		Key:     wc.ID,
+		Stream:  wc.F("stream"),
+		Changes: []Change{change(Fleet, setEntry(wc, map[string]string{FieldDeadlineNoticed: gen}))},
+		Notes:   []Note{n},
+		Moved:   fmt.Sprintf("%s %s:working gen=%s noticed past %s (%s since first_taken %s, %s)", wc.ID, wc.Row, gen, limit, ran, firstTaken, why),
+	}, true
 }

@@ -329,6 +329,9 @@ HeldInit == IF "heldinit" \in DOMAIN Scn THEN Scn.heldinit ELSE {}
 \* unhold, so the mark is fixed for the run; the code's stale-mark rule (the
 \* mark carries the hold's own held stamp) is pinned by gate_members_test.go.
 RetInit == IF "retinit" \in DOMAIN Scn THEN Scn.retinit ELSE {}
+\* Scn.gateinit is the held members whose hold carries held_gate: only they are
+\* gate benches among the held (internal/sprint hold.go FieldHeldGate, HeldToGate).
+GateInit == IF "gateinit" \in DOMAIN Scn THEN Scn.gateinit ELSE {}
 \* The scenario turns a refused read on (Scn.refuse); one that names none has
 \* none, and the transition is not reached.
 EnvOn == "env" \in DOMAIN Scn /\ Scn.env
@@ -994,17 +997,20 @@ Merge(c) ==
 \* scenario that turns the gate on (Scn.gate) lands a merging card only through
 \* LandGate: the land loop runs the batch's tree gate on a bench m, then records
 \* the merge (the merged entry names m). The gate's benches are the members up or
-\* held by the coordinator (internal/sprint Snapshot.GateMembers): a hold is a
-\* deal control, and a gate is not a card. A member down and not held (a machine
-\* mark: fault, sync, probe, adopt) runs no gate, and neither does a member the
-\* coordinator took down with fleet down (RetInit, held_return). The witness
-\* "gateuponly" chooses from the up members alone (UpMembers, the deal filter), so
-\* with every member held no gate runs and the card never lands (GateLands); the
-\* witness "gatereturned" ignores the return mark and gates a fleet-downed member
-\* (ReturnedNeverGates).
-GateCapable(m) == stat[m] = "up" \/ (stat[m] = "held" /\ m \notin RetInit)
+\* held by the coordinator whose hold carries held_gate (internal/sprint
+\* Snapshot.GateMembers): a hold is a deal control, and a gate is not a card. A
+\* member down and not held (a machine mark: fault, sync, probe, adopt) runs no
+\* gate, neither does a member the coordinator took down with fleet down (RetInit,
+\* held_return), nor one whose hold carries no held_gate (a v1.6 hold, outside
+\* GateInit). The witness "gateuponly" chooses from the up members alone (UpMembers,
+\* the deal filter), so with every member held no gate runs and the card never lands
+\* (GateLands); the witness "gatereturned" ignores the return mark and gates a
+\* fleet-downed member (ReturnedNeverGates); the witness "gateunmarked" ignores
+\* GateInit and gates an unmarked held member (UnmarkedHoldNeverGates).
+GateCapable(m) == stat[m] = "up" \/ (stat[m] = "held" /\ m \in GateInit /\ m \notin RetInit)
 GateBench(m) == CASE Broken = "gateuponly" -> stat[m] = "up"
                   [] Broken = "gatereturned" -> stat[m] \in {"up", "held"}
+                  [] Broken = "gateunmarked" -> stat[m] \in {"up", "held"}
                   [] OTHER -> GateCapable(m)
 LandGate(c, m) ==
   /\ GateOn /\ c \in mq /\ Pend("merge", "merged", c) = 0 /\ GateBench(m)
@@ -1442,6 +1448,15 @@ ReturnedNeverGates ==
   [][(Len(Q'["merge"]) > Len(Q["merge"]) /\ Q'["merge"][Len(Q'["merge"])].k = "merged"
         /\ Q'["merge"][Len(Q'["merge"])].x \in Machines)
        => Q'["merge"][Len(Q'["merge"])].x \notin RetInit]_vars
+
+\* UNMARKED HOLD NEVER GATES (LandGate, 2026-10-18): a land gate is never chosen on a
+\* held member whose hold carries no held_gate (GateInit; a v1.6 hold; internal/sprint
+\* hold.go gateCapable needs held_gate to equal held). The witness "gateunmarked"
+\* gates it and violates this (MCDirtyTickBrokenGateUnmarked).
+UnmarkedHoldNeverGates ==
+  [][(Len(Q'["merge"]) > Len(Q["merge"]) /\ Q'["merge"][Len(Q'["merge"])].k = "merged"
+        /\ Q'["merge"][Len(Q'["merge"])].x \in Machines)
+       => Q'["merge"][Len(Q'["merge"])].x \in GateInit]_vars
 
 \* GATE LANDS: a merging card lands while a member is up or held by the
 \* coordinator with no --return (MCDirtyTickGateHeld, every member held, one of

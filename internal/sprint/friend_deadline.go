@@ -115,23 +115,29 @@ func (l LaneRun) Row() string {
 // minutesWord is a duration in whole minutes: "32m".
 func minutesWord(d time.Duration) string { return itoa(int(d/time.Minute)) + "m" }
 
-// LiveLane is the friend's run of the work card when her lane is live on it: it is on her
-// row, ready or working, her beat no older than FriendLaneLive names it running, or her
-// seat (her daemon's lanes as the tick read them) does, with the same freshness
-// check when it carries a stored beat, and it has run less than its cap.
-func LiveLane(s *Snapshot, r TickReq, c *Card) (LaneRun, bool) {
+// FieldDeadlineNoticed is the generation on which TickFriendRedeal raised its one
+// past-deadline coordinator notice for a live friend lane (tla/LaneCheck.tla
+// NoticePastDeadline).
+const FieldDeadlineNoticed = "deadline_noticed"
+
+// NFriendLivePastDeadline is the happened notice TickFriendRedeal raises once per
+// generation when a friend's live working card passes unfinishedLimit from first_taken.
+const NFriendLivePastDeadline = "a friend's live lane is past its deadline"
+
+// liveByBeat is the friend and why her beat or daemon seat names c running within
+// FriendLaneLive; "" when neither does.
+func liveByBeat(s *Snapshot, r TickReq, c *Card) (friend, why string) {
 	if c == nil || (c.Col != Ready && c.Col != Working) {
-		return LaneRun{}, false
+		return "", ""
 	}
 	friend, ok := FriendOfRow(c.Row)
 	if !ok {
-		return LaneRun{}, false
+		return "", ""
 	}
 	fresh := func(at time.Time) bool {
 		age := s.Now.Sub(at)
 		return age >= 0 && age <= FriendLaneLive
 	}
-	why := ""
 	for _, key := range []string{friend, c.Row} {
 		if b, ok := r.Beats[key]; ok && b.Friend != nil && why == "" && fresh(b.At) &&
 			friendStarted(s, FriendSeat{Running: b.Friend.Running}, withField(c, FieldProgress, "")) {
@@ -143,6 +149,45 @@ func LiveLane(s *Snapshot, r TickReq, c *Card) (LaneRun, bool) {
 			why = "the friend's daemon lane holds it"
 		}
 	}
+	if len(r.Friends) == 0 && len(r.Beats) == 0 {
+		for _, f := range s.Friends {
+			if why == "" && f.Name == friend && !f.Beat.At.IsZero() && fresh(f.Beat.At) && friendStarted(s, FriendSeat{Running: f.Running}, withField(c, FieldProgress, "")) {
+				why = "the friend's beat names it running"
+			}
+		}
+	}
+	return friend, why
+}
+
+// laneLiveWhy is why a friend's card's lane is live: heard through her fresh beat
+// (FriendLaneLive names the card running, as LiveLane does) or a lane renewal
+// (lane_at/progress inside LaneGoneAfter); "" when it is not live.
+// tla/LaneCheck.tla LiveLane.
+func laneLiveWhy(s *Snapshot, r TickReq, c *Card) string {
+	if _, why := liveByBeat(s, r, c); why != "" {
+		return why
+	}
+	if c == nil || (c.Col != Ready && c.Col != Working) || !IsFriendRow(c.Row) {
+		return ""
+	}
+	heard := latestStamp(c.F(FieldLaneAt), c.F(FieldProgress))
+	if !heard.IsZero() && s.Now.Sub(heard) >= 0 && s.Now.Sub(heard) < LaneGoneAfter {
+		return "lane heard from at " + stamp(heard)
+	}
+	return ""
+}
+
+// laneLive says a friend's card's lane is live (laneLiveWhy).
+func laneLive(s *Snapshot, r TickReq, c *Card) bool {
+	return laneLiveWhy(s, r, c) != ""
+}
+
+// LiveLane is the friend's run of the work card when her lane is live on it: it is on her
+// row, ready or working, her beat no older than FriendLaneLive names it running, or her
+// seat (her daemon's lanes as the tick read them) does, with the same freshness
+// check when it carries a stored beat, and it has run less than its cap.
+func LiveLane(s *Snapshot, r TickReq, c *Card) (LaneRun, bool) {
+	friend, why := liveByBeat(s, r, c)
 	if why == "" {
 		return LaneRun{}, false
 	}

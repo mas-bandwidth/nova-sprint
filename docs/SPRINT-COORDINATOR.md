@@ -295,6 +295,24 @@ applies nothing twice; one ask that takes past `--timeout` (60s) is that card's 
   and deals it to another member without spending its redeals, so the storm follows it; a member that misses
   3 beat windows of 15 seconds is down and its cards are dealt again. The cure is a lower width, the owner's
   number: put the load evidence on the bus, and hold the member with `fleet down <m>` as the stopgap, said so.
+- **Where a coordinator's child builds and tests.** A child the coordinator starts — a worker or a
+  reader — never picks a bench by one `ssh <bench> uptime` or from a list in its brief. Before its first
+  build, it asks the server to pick; it works only on the machine named by `LANE-TAKE OK`. One lease is
+  one bench slot of eight cores, so use `go test -p 8` at most. Run the same take line before each long
+  gate; run `nova-sprint lane take go --machine auto --as <worker>` again at least every 10 minutes to
+  renew it. The lease expires 20 minutes after the last take, freeing a dead
+  child's slot. On exit, done or not, always give the lease back:
+
+  ```
+  nova-sprint lane take go --machine auto --as <worker>
+  nova-sprint lane give go --machine auto --as <worker>
+  ```
+
+  Replace `<worker>` with the child's card id. If take prints `LANE-TAKE WAIT`, wait until its
+  `retry_at` and ask again; automatic take refuses `--wait`. Stop after 20 minutes total and report
+  not-done with the WAIT line rather than choosing a full bench. The server picks from allowed fleet
+  members derived from nova-config's machine rows and live fleet state; held machines such as `space`
+  and `mini-m5-1` are excluded. Do not put a bench list in the brief. See [SPEC-SPRINT.md section 18](SPEC-SPRINT.md#18-lanes).
 
 ## 5. Routes
 

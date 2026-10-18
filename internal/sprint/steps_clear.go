@@ -76,9 +76,10 @@ func ShapeOf(s *Snapshot) Shape {
 				sh.HeldBy[m] = by
 			}
 			for _, f := range HeldCarried {
-				// a return mark is carried only while it marks this hold (HeldToReturn):
-				// one left by an earlier hold is not
-				if f == FieldHeldReturn && !HeldToReturn(s.MemberCtl(m)) {
+				// a return or gate mark is carried only while it marks this hold
+				// (HeldToReturn, HeldToGate): one left by an earlier hold is not
+				if (f == FieldHeldReturn && !HeldToReturn(s.MemberCtl(m))) ||
+					(f == FieldHeldGate && !HeldToGate(s.MemberCtl(m))) {
 					continue
 				}
 				if v := s.MemberCtl(m).F(f); v != "" {
@@ -138,10 +139,13 @@ func RestoreShape(s *Snapshot, sh Shape) Plan {
 					fields[f] = v
 				}
 			}
-			// a fleet down's return mark carries the hold's own held stamp (HeldToReturn):
-			// the hold is stamped again here, and so is its mark
+			// a fleet down's return mark, and a gate mark, carry the hold's own held stamp
+			// (HeldToReturn, HeldToGate): the hold is stamped again here, and so is its mark
 			if fields[FieldHeldReturn] != "" {
 				fields[FieldHeldReturn] = now
+			}
+			if fields[FieldHeldGate] != "" {
+				fields[FieldHeldGate] = now
 			}
 		}
 		if w := sh.Width[m]; w != "" {

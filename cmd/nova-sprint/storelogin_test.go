@@ -4,8 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"go/ast"
+	"go/parser"
+	gotoken "go/token"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -204,4 +209,140 @@ func TestSeatLoginHelp(t *testing.T) {
 	assert.Equal(t, 0, code)
 	assert.Contains(t, out, "seat logout removes the recorded seat login")
 	assert.NoDirExists(t, filepath.Join(dir, "config"))
+}
+
+// The startup scrub ahead of the real store path: the launcher's shape (the user, the
+// pointer NOVA_SPRINT_REDIS_PASSWORD_ENV, the value under the name it gives) scrubbed out
+// of a fake environment, and the store is still dialed with the password, read through
+// the app's getenv from the holder; the environment the app's children would inherit
+// holds none of it.
+func TestScrubbedSecretStillDialsTheStore(t *testing.T) {
+	t.Parallel()
+	secret := unitSecret(t)
+	la := newLoginApp(t, t.TempDir())
+	for k, v := range map[string]string{"NOVA_SPRINT_REDIS": "127.0.0.1:6380", "NOVA_SPRINT_REDIS_USER": "sprinter",
+		"NOVA_SPRINT_REDIS_PASSWORD_ENV": "FAKE_STORE_PASSWORD", "FAKE_STORE_PASSWORD": secret} {
+		la.env[k] = v
+	}
+	held, err := scrubEnv(environOf(la.env), func(k string) error { delete(la.env, k); return nil })
+	require.NoError(t, err)
+	la.a.getenv = held.getenv(la.a.getenv)
+	for _, kv := range environOf(la.env) {
+		assert.False(t, strings.Contains(kv, secret), "the environment a child inherits holds no byte of it")
+	}
+
+	code, out, errs := la.do("init --readers reader-a --members m1")
+	require.Equal(t, 0, code, errs)
+	require.Len(t, la.dials, 1)
+	assert.Equal(t, dialedLogin{"127.0.0.1:6380", "sprinter", secret}, la.dials[0], "the store is dialed with the held password")
+	assert.False(t, strings.Contains(out+errs, secret), "no output holds it")
+}
+
+// declaredFlag is one flag a FlagSet call of the source declares: its name and its usage
+// ("" when the usage is not a literal, which the judge then refuses for a secret name).
+type declaredFlag struct{ at, name, usage string }
+
+// flagMethods is the FlagSet methods that declare a flag, with the index of the name.
+var flagMethods = map[string]int{
+	"String": 0, "Bool": 0, "Int": 0, "Int64": 0, "Uint": 0, "Uint64": 0, "Float64": 0, "Duration": 0, "Func": 0, "BoolFunc": 0, "TextVar": 1,
+	"StringVar": 1, "BoolVar": 1, "IntVar": 1, "Int64Var": 1, "UintVar": 1, "Uint64Var": 1, "Float64Var": 1, "DurationVar": 1, "Var": 1,
+}
+
+// declaredFlags is every flag the Go source declares through a FlagSet method with a
+// literal name: every verb's flags and every sub-verb's (seat login is cmdSeatLogin's),
+// whichever FlagSet they are declared on.
+func declaredFlags(t *testing.T, fset *gotoken.FileSet, files map[string]*ast.File) []declaredFlag {
+	t.Helper()
+	var out []declaredFlag
+	lit := func(e ast.Expr) (string, bool) {
+		b, ok := e.(*ast.BasicLit)
+		if !ok || b.Kind != gotoken.STRING {
+			return "", false
+		}
+		s, err := strconv.Unquote(b.Value)
+		return s, err == nil
+	}
+	for _, f := range files {
+		ast.Inspect(f, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			i, ok := flagMethods[sel.Sel.Name]
+			if !ok || len(call.Args) < i+2 {
+				return true
+			}
+			name, ok := lit(call.Args[i])
+			if !ok {
+				return true
+			}
+			usage, _ := lit(call.Args[len(call.Args)-1])
+			out = append(out, declaredFlag{fset.Position(call.Pos()).String(), name, usage})
+			return true
+		})
+	}
+	return out
+}
+
+// secretFlag is the refusal for a flag whose name says it carries a secret (it ends in
+// password, secret or token) and whose usage does not say it takes a NAME or a path; ""
+// for any other flag.
+func secretFlag(name, usage string) string {
+	n := strings.ToLower(name)
+	if !strings.HasSuffix(n, "password") && !strings.HasSuffix(n, "secret") && !strings.HasSuffix(n, "token") {
+		return ""
+	}
+	if strings.Contains(usage, "NAME") || strings.Contains(strings.ToLower(usage), "path") {
+		return ""
+	}
+	return "--" + name + " (" + usage + ")"
+}
+
+// No flag of nova-sprint takes a secret value, so none can put one in argv, where ps
+// reads it: every flag the package's source declares on a FlagSet, every verb's and
+// every sub-verb's, is judged. Reversed witnesses: a source with a --redis-password
+// flag is named, and the walk sees seat login's --secret (which takes a NAME).
+func TestNoFlagCarriesASecretValue(t *testing.T) {
+	t.Parallel()
+	fset := gotoken.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, ".", func(fi fs.FileInfo) bool { return !strings.HasSuffix(fi.Name(), "_test.go") }, 0)
+	require.NoError(t, err)
+	require.Contains(t, pkgs, "main")
+	flags := declaredFlags(t, fset, pkgs["main"].Files)
+	var bad []string
+	sawSecret := false
+	for _, f := range flags {
+		if f.name == "secret" && strings.HasPrefix(filepath.Base(f.at), "storelogin.go:") {
+			sawSecret = true
+		}
+		if s := secretFlag(f.name, f.usage); s != "" {
+			bad = append(bad, f.at+" "+s)
+		}
+	}
+	assert.Empty(t, bad, "a flag that carries a secret value: take the NAME of a variable or a file's path instead")
+	assert.True(t, sawSecret, "the walk reads seat login's flags")
+	assert.Greater(t, len(flags), len(verbs), "the walk reads the verbs' flags")
+
+	// the judge's witness: a source with one secret-valued flag among two that are not
+	src := `package main
+func f(fs *flag.FlagSet, s *string) {
+	fs.String("redis-password", "", "the store's password")
+	fs.StringVar(s, "api-token", "", "the NAME of the variable holding the token")
+	fs.String("key-secret", "", "the path of the file holding it")
+	fs.String("built-token", "", "built " + "usage")
+}`
+	wf := gotoken.NewFileSet()
+	file, err := parser.ParseFile(wf, "witness.go", src, 0)
+	require.NoError(t, err)
+	var named []string
+	for _, f := range declaredFlags(t, wf, map[string]*ast.File{"witness.go": file}) {
+		if s := secretFlag(f.name, f.usage); s != "" {
+			named = append(named, s)
+		}
+	}
+	assert.Equal(t, []string{"--redis-password (the store's password)", "--built-token ()"}, named)
 }
