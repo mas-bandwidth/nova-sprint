@@ -1717,24 +1717,16 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 		}
 		sel.IDs = keep
 	}
-	// THE WIDTH IS HARD: a member's working cards never pass its width, held here, at the
+	// THE WIDTH IS HARD: a row's working cards never pass its width, held here, at the
 	// sprint's one writer, whatever the member asks. A take by
-	// count is cut to the room; a take by id past it is refused. While read cards are on a
-	// read working holds half a slot (read_cards.go): the room is counted in half slots,
-	// twice the width less twice the work and the reads working, a read taking one and a
-	// work card two.
-	halves := s.ReadCardsOn()
+	// count is cut to the room; a take by id past it is refused. One definition of a slot,
+	// for a member's row and a friend's alike: every card working costs one, a read the same
+	// as a work card, so the room is the width less the cards working (tla/WidthHard.tla
+	// Take, ReadTake, WidthHeld; MCWidthHardBrokenHalfRead is the half-slot room this
+	// replaced, which let width 16 run 20). This is the first cut; the store holds the same
+	// bound on every path at once (HoldWidths, store.Store.Run).
 	room := max(width-len(s.Fleet.Cell(r.As, Working)), 0)
-	if halves {
-		ww, wr := rowWorking(s, r.As)
-		room = max(2*width-2*ww-wr, 0)
-	}
-	cost := func(c *Card) int {
-		if halves && !isRead(c) {
-			return 2
-		}
-		return 1
-	}
+	cost := func(*Card) int { return 1 }
 	if !byID {
 		if room == 0 {
 			return p
@@ -1758,7 +1750,8 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 	// the providers' concurrency budgets, held at the one writer: the cards this take
 	// moves to working, by provider (rate_budget.go, takeBudgetWhy)
 	planned := map[string]int{}
-	if halves {
+	if s.ReadCardsOn() {
+		// reads first, at reader priority (priority.go); each costs one slot as a work card does
 		slices.SortStableFunc(ready, func(a, b *Card) int {
 			if isRead(a) == isRead(b) {
 				return 0
@@ -1768,19 +1761,6 @@ func takeOne(s *Snapshot, r TakeReq) Plan {
 			}
 			return 1
 		})
-		if !byID {
-			// a take by count takes the cards that fit, in order: a work card that does not
-			// fit is passed over for the reads after it
-			var fit []*Card
-			left := room
-			for _, c := range ready {
-				if cost(c) <= left {
-					fit = append(fit, c)
-					left -= cost(c)
-				}
-			}
-			ready = fit
-		}
 	}
 	chosen := pick(&p, sel, ready, fieldStream, func(c *Card) string {
 		if byID {
@@ -2536,8 +2516,17 @@ func lateFinishWhy(c *Card, r FinishReq) string {
 // one-shot friend's lanes are independent, so the lane her finish frees takes her next at
 // once (the owner, 2026-10-10: "every friend lane refreshes independently"). A machine's
 // finish does nothing of the kind: the member takes.
+//
+// It holds her width: no card is promoted while her working column, as the units of the
+// step before it and her finish's own leave it (PlanWorking), is at her width (RowWidth);
+// a lowered width (friend sync) promotes none until her working is under it
+// (tla/WidthHard.tla FriendNext, WidthHeld; witness MCWidthHardBrokenFriendNext). The
+// store holds the same bound again (HoldWidths).
 func friendNext(s *Snapshot, c *Card, u *Unit, prior []Unit) {
 	if !IsFriendRow(c.Row) {
+		return
+	}
+	if width, ok := RowWidth(s, c.Row, nil); !ok || PlanWorking(s, c.Row, append(slices.Clone(prior), *u)) >= width {
 		return
 	}
 	name, _ := FriendOfRow(c.Row)
