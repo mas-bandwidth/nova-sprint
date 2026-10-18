@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"strconv"
 	"strings"
@@ -56,8 +57,11 @@ func seatSilentToken(prefix string, epoch uint64, id string, raise int) string {
 	return t
 }
 
-// tellSeatSilent sends each raise of NSeatSilent and NNeedBlocked not yet told to the sprint's owner on the
-// bus, and says it on the server's log; a sprint with no owner is said on the log alone.
+// tellSeatSilent sends each raise of NSeatSilent and NNeedBlocked not yet told to whoever holds the
+// coordinator seat at push time, on the bus, and says it on the server's log; a sprint whose
+// coordinator's login is unresolved or whose seat no one holds is said on the log alone, and the
+// raise is tried again at the next look (docs/SPEC-SPRINT.md section 8,
+// owner-pushes-route-to-coordinator).
 // tla/SprintRules.tla SendOK
 // tla/NeedsBlocked.tla BlockedDependentsCovered
 func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
@@ -146,19 +150,24 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 			continue
 		}
 		a.serveSay("SEAT SILENT %s raise=%d: %s", g.ID, g.Before, oneline.Quote(g.What))
-		owner, err := a.owner(ctx, st)
+		login, loginErr := a.coordinatorBusLogin()
+		holder, err := st.B.Coordinator(ctx)
 		if err != nil {
-			a.serveSay("SEAT SILENT %s: the owner could not be read, tried again at the next look: %s", g.ID, oneline.Escape(err.Error()))
+			a.serveSay("SEAT SILENT %s: the coordinator could not be read, tried again at the next look: %s", g.ID, oneline.Escape(err.Error()))
 			continue
 		}
-		if owner == "" {
-			a.serveSay("SEAT SILENT %s: the sprint names no owner: told on this line only", g.ID)
-		} else {
-			m := bus.Message{From: "nova-sprint", To: []string{owner}, Kind: bus.KindBlocker, Subject: g.Type, Body: g.What, Token: token}
-			if err := a.bus(ctx, m, func(l string) { a.serveSay("%s", l) }); err != nil {
-				a.serveSay("SEAT SILENT %s: the push to %s failed, tried again at the next look under the same token: %s", g.ID, owner, oneline.Escape(err.Error()))
-				continue
-			}
+		if holder == "" {
+			a.serveSay("SEAT SILENT %s: no coordinator seat is held, tried again at the next look", g.ID)
+			continue
+		}
+		if loginErr != nil {
+			a.serveSay("SEAT SILENT %s: the coordinator's bus login is unresolved, tried again at the next look: %s", g.ID, oneline.Escape(loginErr.Error()))
+			continue
+		}
+		m := bus.Message{From: cmp.Or(login, holder), To: []string{holder}, Kind: bus.KindBlocker, Subject: g.Type, Body: g.What, Token: token}
+		if err := a.bus(ctx, m, func(l string) { a.serveSay("%s", l) }); err != nil {
+			a.serveSay("SEAT SILENT %s: the push to %s failed, tried again at the next look under the same token: %s", g.ID, holder, oneline.Escape(err.Error()))
+			continue
 		}
 		a.seatSilent.mu.Lock()
 		if a.seatSilent.told == nil {
