@@ -246,10 +246,10 @@ func laneGoneUnits(s *Snapshot) []Unit {
 			continue
 		}
 		heard := latestStamp(c.F(FieldLaneAt), c.F(FieldProgress))
-		if heard.IsZero() || s.Now.Sub(heard) < LaneGoneAfter {
+		if heard.IsZero() || s.Now.Sub(heard) < LaneGoneAfter || laneLive(s, TickReq{}, c) {
 			continue
 		}
-		unset := []string{FieldLane, FieldLaneAt, FieldProgress, "taken", FieldFriendDeadline, FieldStarted}
+		unset := []string{FieldLane, FieldLaneAt, FieldProgress, "taken", FieldFriendDeadline, FieldStarted, FieldDeadlineNoticed}
 		// a new generation, as a stop-return gives: a report from the gone lane's run, should it
 		// come back, names the old one and is refused as stale (liveGen)
 		gen := max(c.Int("gen"), 1) + 1
