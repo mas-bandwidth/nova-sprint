@@ -10,6 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// doneReadCounts is the done reader's reads by form, as Check reports them (doneReads).
+func (st *Store) doneReadCounts() map[string]uint64 { return doneReads{st.doneRows()}.rowSnapshot() }
+
 // logCountMem is the in-memory store with its log reads and multi-key reads counted.
 type logCountMem struct {
 	*Mem

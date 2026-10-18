@@ -193,9 +193,6 @@ func (st *Store) countDoneRead(form string) {
 	h.mu.Unlock()
 }
 
-// doneReadCounts is the done reader's reads by form, as Check reports them (doneReads).
-func (st *Store) doneReadCounts() map[string]uint64 { return doneReads{st.doneRows()}.rowSnapshot() }
-
 // registerRowSource is RowCodec.Register for a source that is not a codec itself.
 func registerRowSource(st *Store, src rowSource) {
 	v, _ := rowRegs.LoadOrStore(st, &rowReg{})
