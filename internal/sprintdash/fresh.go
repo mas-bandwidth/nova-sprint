@@ -88,8 +88,20 @@ func (s *Server) Stale() string {
 	return fmt.Sprintf("stale: the served data is older than %s since %s", orDefault(s.StaleAfter, StaleAfterDefault), s.fresh.since.UTC().Format(time.RFC3339))
 }
 
-// healthz answers ok, or 503 with why while the freshness alarm stands.
+// healthz answers ok, or 503 with why while the freshness alarm stands. While Run does not
+// poll (no one is looking: nova-sprint dashboard's viewers), the check is a viewer of its own
+// for this answer alone: the sprint is read (Refresh, at most once an Every; a read running is
+// joined) and the freshness checked, so a store that went down while no one looked answers 503
+// and an alarm that stood when the poller stopped clears on a fresh read (cold read of PR 490,
+// 2026-10-18).
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	polling := s.polling
+	s.mu.Unlock()
+	if !polling {
+		s.Refresh()
+		s.checkFresh(s.Now())
+	}
 	if why := s.Stale(); why != "" {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusServiceUnavailable)
