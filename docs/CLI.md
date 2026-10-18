@@ -99,7 +99,7 @@ nova-sprint continue <card> [--note <text>] [--tier <flash|pro|heavy|frontier>] 
 nova-sprint move <id>... --stream <s> [--before <id> | --after <id> | --score <n>]
 nova-sprint merge --stream <s> [--batch <n>] [--conflict <id> [--conflict-kind file|ledger] [--conflict-path <p>...] | --cross <id>=<other> | --red [--suspect <id>...] | --rejected | --base-red <error>] [--note <text>]
 # a merge with no fact flag and no --landed is the twin's; on a real store use land, or record a pushed landing with --landed <id>@<head> --repo <dir> --base-ref <ref>
-nova-sprint land [--stream <s>...] [--repo-dir <clone>] [--base <branch>] [--check <command>] [--dry-run]   # a gate runs on a member up or held by the coordinator (a hold is a deal control); --dry-run names that bench (bench=<member>) or refuses the batch as the loop would, running nothing
+nova-sprint land [--stream <s>...] [--repo-dir <clone>] [--base <branch>] [--check <command>] [--dry-run]   # a gate runs on a member up or held by the coordinator without --return (a hold is a deal control; fleet down, hold --return, writes held_return and runs no gate); --dry-run names that bench (bench=<member>) or refuses the batch as the loop would, running nothing
 nova-sprint rebase --from <branch> --to <branch> [--repo-dir <clone>] [--dry-run]
 nova-sprint stream set <stream>... [--read-tier <flash|pro|heavy|default>] [--land-protected <owner/name,...|any|default>] [--release <name>] [--prose <glob,...|default>] [--seat-accept <on|off>] [--default-tier <flash|pro|heavy|default>] [--attempts <n|default>] [--base <branch>] [--reason <text>] [--answers <notes>]
 nova-sprint settings [--json]   # every setting with its value and default; `set` with no flags prints the same

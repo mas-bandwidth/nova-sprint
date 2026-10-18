@@ -4808,14 +4808,18 @@ the install walkthrough) runs it there as before and its line carries no
 bench. The ledgers' update runs stay in the clone.
 
 **A held member still runs gates.** The benches a gate may go to are the fleet
-members other than this machine that are up or held by the coordinator (held,
-with no `held_by` and no `fault_since`; `Snapshot.GateMembers`): a hold is a deal
-control (no card is dealt there; `UpMembers` stays the deal filter) and a gate is
-not a card, so `fleet hold` on every member no longer refuses every batch. A member
-down and not held, or held by a machine mark (fault, sync, probe, adopt), runs no
-gate (`gateHosts`, `landgo.go`; `tla/DirtyTick.tla` `LandGate`, `GateLands`,
-`HeldMayGateNeverDealt`; `MCDirtyTickGateHeld.cfg`, and the reversed witness
-`MCDirtyTickBrokenGateUpOnly.cfg`). `land --dry-run` makes the same choice and
+members other than this machine that are up or held by the coordinator with no
+`--return` (held, with no `held_by`, no `fault_since` and no `held_return`;
+`Snapshot.GateMembers`, `hold.go` `gateCapable`): a hold is a deal control (no card
+is dealt there; `UpMembers` stays the deal filter) and a gate is not a card, so
+`fleet hold` on every member no longer refuses every batch. A member down and not
+held, held by a machine mark (fault, sync, probe, adopt), or taken out of service
+with `fleet down` (`hold --return`, which writes `held_return`, the hold's own
+`held` stamp, and a later hold without `--return` clears) runs no gate. The last-gate
+guard and `check` rule 11 count the same benches (`gateHosts`, `landgo.go`;
+`tla/DirtyTick.tla` `LandGate`, `GateLands`, `HeldMayGateNeverDealt`,
+`ReturnedNeverGates`; `MCDirtyTickGateHeld.cfg`, and the reversed witnesses
+`MCDirtyTickBrokenGateUpOnly.cfg` and `MCDirtyTickBrokenGateReturned.cfg`). `land --dry-run` makes the same choice and
 runs nothing: a batch it would land carries `bench=<member>` (the ring's first
 slot for its stream, no `wall=`), or, when another member is configured and none
 may gate, is `refused` with the loop's reason, counted under `refused=`.
@@ -6704,7 +6708,8 @@ are the evidence a later card reads before that record's writer switches.
     check is caught. The run-time half (one owner judgment for a blocked need, a
     drop that never strands) is its own card. Under 11 as well (no number from
     12 to 14 is free), `check` names a stream merging with at least one queued
-    card while no member can run a land gate: `stream <s> has <n> merging card(s) and no member can run a land gate: nova-sprint fleet unhold <member>` (the hold guard's rule, section 11).
+    card while no member can run a land gate (none up or held by the coordinator
+    with no `--return`, `Snapshot.GateMembers`): `stream <s> has <n> merging card(s) and no member can run a land gate: nova-sprint fleet unhold <member>` (the hold guard's rule, section 11).
 12. Nothing stalls. Every primary on the table that has not landed is held by
     one of: (a) an outside actor before its deadline (its live work card in an
     up member's ready or working cell, a read card asked or reading, its merge
