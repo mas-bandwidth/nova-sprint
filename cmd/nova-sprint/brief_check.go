@@ -23,7 +23,10 @@ import (
 // brief check runs every check add runs, over every brief, and collects every
 // finding instead of stopping at the first (docs/CLI.md; docs/SPEC-SPRINT.md
 // section 7, the add). It reads only: nothing is written and the brief decision
-// (briefdecide.go, briefGate) is never asked.
+// (briefdecide.go, briefGate) is never asked. A brief whose id is a card on the
+// table is also read against the card's soft dependencies: a LAND-AFTER: line
+// the store would not keep is one land-after finding naming both lists and the
+// verb that writes each.
 func init() {
 	notServed = append(notServed, "brief check")
 	verbClasses["brief check"] = classRead
@@ -64,6 +67,7 @@ const (
 	chkPathsAdmit
 	chkSprintBase
 	chkPlan
+	chkLandAfter
 )
 
 func (a *app) cmdBriefCheck(args []string, stdout, stderr io.Writer) int {
@@ -296,7 +300,60 @@ func (a *app) briefStoreChecks(st *store.Store, items []briefItem, stream string
 	for _, ref := range step.Plan(snap).Refused {
 		out = append(out, briefFinding{File: byID[ref.Key], ID: ref.Key, Check: "plan", Why: ref.Why, order: chkPlan})
 	}
+	// a file whose id is a card on the table is read against the edges the
+	// store holds: the file's LAND-AFTER: line and the card's soft
+	// dependencies, which `needs set --land-after` and add's record write
+	for _, it := range items {
+		card := snap.Work.Placed(it.id)
+		if card == nil || sprint.IsSentinel(card) {
+			continue
+		}
+		fileDeps := sprint.BriefLandAfter(it.text)
+		storeDeps := sprint.SoftDepsRaw(card)
+		if sameLandAfter(fileDeps, storeDeps) {
+			continue
+		}
+		out = append(out, briefFinding{File: it.file, ID: it.id, Check: "land-after",
+			Why:   landAfterWhy(it.id, fileDeps, storeDeps),
+			order: chkLandAfter})
+	}
 	return out, nil
+}
+
+// sameLandAfter reports whether two soft dependency lists name the same set:
+// the order they are written in is no drift.
+func sameLandAfter(a, b []string) bool {
+	as, bs := map[string]bool{}, map[string]bool{}
+	for _, id := range a {
+		as[id] = true
+	}
+	for _, id := range b {
+		bs[id] = true
+	}
+	if len(as) != len(bs) {
+		return false
+	}
+	for id := range as {
+		if !bs[id] {
+			return false
+		}
+	}
+	return true
+}
+
+// landAfterWhy names both sides of a soft dependency drift and the verb that
+// writes each: brief --brief-file the file's, needs set --land-after the store's.
+func landAfterWhy(id string, fileDeps, storeDeps []string) string {
+	return fmt.Sprintf("LAND-AFTER in the file is %s; the store holds %s for %s: nova-sprint brief %s --brief-file <path> writes the file's, nova-sprint needs set %s --land-after <ids> the store's",
+		landAfterNames(fileDeps), landAfterNames(storeDeps), id, id, id)
+}
+
+// landAfterNames is a soft dependency list for a finding: its ids, or "none".
+func landAfterNames(ids []string) string {
+	if len(ids) == 0 {
+		return "none"
+	}
+	return strings.Join(ids, ", ")
 }
 
 func briefCardsOf(items []briefItem) []sprint.CardAdd {

@@ -708,6 +708,13 @@ The `brief check`'s `tla-records` rule reads the card's base tree too, and a rep
 whose base holds no `tla/CASES.tsv` holds no models and is not held to it, the same file
 the lander's run-record check reads.
 
+A `brief check` file whose id is a card on the table is also read against the card's soft
+dependencies: a `LAND-AFTER:` line that would change what the store holds is one `land-after`
+finding naming both lists and the verb that writes each side, `nova-sprint brief <id>
+--brief-file <path>` the file's and `nova-sprint needs set <id> --land-after <ids>` the
+store's. An equal list, an id that is no card, and a sentinel report nothing, and the check
+still writes nothing.
+
 `add --partial`, with `--brief-dir` or a repeated `--brief-file`, runs every check over every
 brief and admits what passes instead of refusing the whole call. Every brief the checks find a
 fault in is held back, and so is every card that needs a held card through its `Needs:` or
