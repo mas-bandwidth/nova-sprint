@@ -94,6 +94,11 @@ func TestTheLoopWakesOnTheLogOnTheStore(t *testing.T) {
 	}
 
 	loop := newApp(func(k string) string { return env[k] })
+	// seven quiet waits at store.QuietEvery (10 s) ran this test past its shard's
+	// 120 s budget (2026-10-18): the loop under test ticks a quiet log every second
+	// here, which is what the test is about; the quiet interval itself is pinned by
+	// TestAQuietLogTicksOnceAQuietEvery
+	loop.quietEvery = time.Second
 	defer loop.close()
 	st, _, code := loop.machineVerb("run", nil, &bytes.Buffer{})
 	require.NotNil(t, st, "run: %d", code)
@@ -104,12 +109,18 @@ func TestTheLoopWakesOnTheLogOnTheStore(t *testing.T) {
 	cursor, err := st.LogTail(ctx)
 	require.NoError(t, err)
 	before := trips.n.Load()
-	_, why := loop.pace(ctx, st, st.PinnedEpoch(), cursor, time.Now())
-	require.Equal(t, tickClock, why, "a quiet wait: %s in %d round trips, want the clock in 1", why, trips.n.Load()-before)
-	require.Equal(t, int64(1), trips.n.Load()-before, "a quiet wait: %s in %d round trips, want the clock in 1", why, trips.n.Load()-before)
+	_, why := loop.pace(ctx, st, st.PinnedEpoch(), cursor, time.Now(), &bytes.Buffer{})
+	// a quiet wait is QuietEvery in slices of ServerEvery: one XREAD a slice, and
+	// between slices the server's record (sayServer: a SET, and for a loop that does
+	// not land the lander check's GET first), at most once a ServerEvery (pace)
+	slices := int64((loop.quietEvery + store.ServerEvery - 1) / store.ServerEvery)
+	quietTrips := trips.n.Load() - before
+	require.Equal(t, tickClock, why, "a quiet wait: %s in %d round trips, want the clock", why, quietTrips)
+	require.GreaterOrEqual(t, quietTrips, slices, "a quiet wait: %d round trips, want at least one a slice (%d slices)", quietTrips, slices)
+	require.LessOrEqual(t, quietTrips, 3*slices, "a quiet wait: %d round trips, want at most three a slice (%d slices): a wait, the lander check and the server record", quietTrips, slices)
 	do("add", "--stream", "d", "--count", "1", "--one")
 	before = trips.n.Load()
-	_, why = loop.pace(ctx, st, st.PinnedEpoch(), cursor, time.Now())
+	_, why = loop.pace(ctx, st, st.PinnedEpoch(), cursor, time.Now(), &bytes.Buffer{})
 	require.Equal(t, tickLog, why, "a woken wait: %s in %d round trips, want the log in 1", why, trips.n.Load()-before)
 	require.Equal(t, int64(1), trips.n.Load()-before, "a woken wait: %s in %d round trips, want the log in 1", why, trips.n.Load()-before)
 

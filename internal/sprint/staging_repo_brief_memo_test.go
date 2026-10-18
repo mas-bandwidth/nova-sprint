@@ -13,9 +13,12 @@ import (
 // stagingRepoWhy -> stagingRepoRefusals -> cardRepo) splitting a primary's whole
 // brief with swarm.ReadCardBase once per fleet card per member per ready card. A
 // brief is immutable on the table, so its repository is read once; the answer is
-// unchanged. No real time: the clock is 1000 s, the snapshot is in memory.
+// unchanged. No real time: the clock is 1000 s, the snapshot is in memory. The memo is
+// readCardBaseOnce (staging_repo.go), the one brief memo; not parallel: the memo and its
+// miss counter cardBaseReads are the process's (as TestHeldWalksTheStagingRefusalsOnce).
 func TestTheStagingRepoCheckReadsEachBriefOnce(t *testing.T) {
-	t.Parallel()
+	resetCardBaseMemo()
+	t.Cleanup(resetCardBaseMemo)
 	w := newWorld(t)
 	now := time.Unix(1000, 0).UTC()
 	w.s.Now = now
@@ -44,16 +47,5 @@ func TestTheStagingRepoCheckReadsEachBriefOnce(t *testing.T) {
 			}
 		}
 	}
-	assert.Equal(t, int64(1), briefRepoReads(brief), "30 checks over three cards of one brief read that brief once")
-}
-
-// briefRepoReads counts the times briefRepo actually read brief (a memo miss), a
-// diagnostic the machine's own path never reads: TestTheStagingRepoCheckReadsEachBriefOnce
-// holds it to one per distinct brief whatever the number of checks that resolved it.
-// 0 when the brief was never read.
-func briefRepoReads(brief string) int64 {
-	if v, ok := briefRepoCache.Load(brief); ok {
-		return v.(*briefRepoRead).reads.Load()
-	}
-	return 0
+	assert.Equal(t, int64(1), cardBaseReads.Load(), "30 checks over three cards of one brief read that brief once")
 }

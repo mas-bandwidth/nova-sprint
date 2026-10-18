@@ -309,6 +309,8 @@ func TestQueueWaitReaderLeaseDoesNotWakeItsNextHTTPWait(t *testing.T) {
 		ta.a.sleep(d)
 	}
 	cursor := ""
+	begun := ta.a.now()
+	first := ""
 	for round := 0; round < 3; round++ {
 		argv := []string{"queue", "--as", "reader-a", "--json"}
 		if round > 0 {
@@ -332,12 +334,37 @@ func TestQueueWaitReaderLeaseDoesNotWakeItsNextHTTPWait(t *testing.T) {
 		records, err := st.Records(context.Background(), sprint.Readers, []string{id})
 		require.NoError(t, err)
 		require.Len(t, records, 1)
-		lease, err := time.Parse(time.RFC3339Nano, records[0].F(sprint.FieldLease))
-		require.NoError(t, err)
-		require.Equal(t, ta.a.now().Add(sprint.DefaultReadLease), lease, "the queue still renews the active read")
+		// more than three quarters of the lease is left at every round: the queue writes no
+		// renewal (sprint.ReadLeaseRenewAt), so the lease stands at begun + DefaultReadLease
+		require.Empty(t, records[0].F(sprint.FieldLease), "round %d: no renewal with more than three quarters of the lease left", round)
+		require.Equal(t, begun.Add(sprint.DefaultReadLease), sprint.ReadLeaseExpires(records[0]))
 		cursor = got.Cursor
+		if round == 0 {
+			first = cursor
+		}
 	}
 	tail, err := st.LogTail(context.Background())
 	require.NoError(t, err)
-	require.Equal(t, tail, cursor, "the returned cursor includes the queue's own renewal")
+	require.Equal(t, tail, cursor, "the returned cursor is the log's tail")
+	require.Equal(t, first, cursor, "a queue with no lease to renew writes no log line")
+
+	// a quarter of the lease gone: the next queue renews it, and its cursor includes the renewal
+	ta.a.sleep(sprint.DefaultReadLease - sprint.ReadLeaseRenewAt - ta.a.now().Sub(begun))
+	res, err := wire.Do(context.Background(), []string{"queue", "--as", "reader-a", "--json"})
+	require.NoError(t, err)
+	require.Zero(t, res[0].Code, res[0].Stderr)
+	var got struct {
+		Cursor string `json:"cursor"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(res[0].Stdout), &got))
+	records, err := st.Records(context.Background(), sprint.Readers, []string{id})
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+	lease, err := time.Parse(time.RFC3339Nano, records[0].F(sprint.FieldLease))
+	require.NoError(t, err)
+	require.Equal(t, ta.a.now().Add(sprint.DefaultReadLease), lease, "the queue renews the active read at three quarters left")
+	tail, err = st.LogTail(context.Background())
+	require.NoError(t, err)
+	require.NotEqual(t, cursor, tail, "the renewal is a log line")
+	require.Equal(t, tail, got.Cursor, "the returned cursor includes the queue's own renewal")
 }

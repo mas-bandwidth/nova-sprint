@@ -873,12 +873,15 @@ func siblingsListed(brief string) map[string]bool {
 }
 
 // Lint holds one rendered brief to what nova-sprint add holds it to (cmd/nova-sprint
-// verbs.go lintBriefReads): the model lines of line 1, the child rules, the typed
-// header and a tree card's steps; and to the template's own placeholders, which the
-// add does not read but nova-swarm lint --card does. The template's own words are no
-// leftover and are skipped: the RESULT line's sha=<sha12>, the report wording `Head:
-// <sha>` and `--head <sha>`, the commit format <id>: <what>, and anything inside a
-// backtick span. Empty means admitted.
+// verbs.go lintBriefReads): the model lines of line 1, the child rules,
+// and, after cardtree.Lint, the two pure header rules add runs in the same order
+// (swarm.LintHeaderStranded, swarm.LintDashboardAsk). The rules that need the store or
+// the rule set -- the by-reference rules, friendOwnRules, the needs-are-ids rule -- stay
+// add's. It also holds to the template's own placeholders, which the add does not read
+// but nova-swarm lint --card does (docs/SPEC-CARD-CONTRACT.md). The template's own words
+// are skipped: the RESULT line's sha=<sha12>, the report wording `Head: <sha>` and
+// `--head <sha>`, the commit format <id>: <what>, and anything inside a backtick span.
+// Empty means no nova-card lint findings.
 func Lint(id, brief string) []LintFinding {
 	var out []LintFinding
 	add := func(check string, line int, excerpt string) {
@@ -890,10 +893,13 @@ func Lint(id, brief string) []LintFinding {
 	for _, f := range swarm.LintCardChildWith([]byte(brief), swarm.DefaultChildRules) {
 		add(f.Check, f.Line, f.Excerpt)
 	}
-	for _, f := range swarm.LintCardHeader([]byte(brief), nil, true) {
+	for _, f := range cardtree.Lint(brief) {
 		add(f.Check, f.Line, f.Excerpt)
 	}
-	for _, f := range cardtree.Lint(brief) {
+	for _, f := range swarm.LintHeaderStranded([]byte(brief)) {
+		add(f.Check, f.Line, f.Excerpt)
+	}
+	for _, f := range swarm.LintDashboardAsk([]byte(brief)) {
 		add(f.Check, f.Line, f.Excerpt)
 	}
 	for i, line := range strings.Split(brief, "\n") {

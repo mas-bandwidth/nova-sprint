@@ -159,15 +159,22 @@ func whereOf(s *sprint.Snapshot, m Machine, now time.Time) WhereRecord {
 			landed = append(landed, at)
 		}
 	}
-	r := WhereRecord{DecisionHolds: sprint.DefaultHeldDecisions(s), DecisionHoldsCounted: true, Epoch: s.Epoch, Rev: s.Work.Revision, Held: sprint.HeldBack(s), HeldStreams: sprint.HeldBackByStream(s), Sentinels: sentinelCounts(s), Critical: sprint.Critical(s, 5),
-		Tiers: sprint.TierCounts(s), Streams: sprint.StreamTierCosts(s), StageTimes: sprint.CycleTimes(s, now), DealtFleet: sprint.FriendsDealtFleet(s),
+	// the held cards counted once, by stream (sprint.HeldBackByStream): their sum is
+	// sprint.HeldBack, each waiting card on one stream's row, so the memo is built once
+	held := sprint.HeldBackByStream(s)
+	n := 0
+	for _, k := range held {
+		n += k
+	}
+	streams, check := sprint.StreamTierCostsChecked(s) // StreamTierCosts and CostCheckOf over one walk
+	r := WhereRecord{DecisionHolds: sprint.DefaultHeldDecisions(s), DecisionHoldsCounted: true, Epoch: s.Epoch, Rev: s.Work.Revision, Held: n, HeldStreams: held, Sentinels: sentinelCounts(s), Critical: sprint.Critical(s, 5),
+		Tiers: sprint.TierCounts(s), Streams: streams, StageTimes: sprint.CycleTimes(s, now), DealtFleet: sprint.FriendsDealtFleet(s),
 		ReadsWaiting: sprint.ReadsWaiting(s), Priorities: sprint.PriorityCounts(s), StreamPriorities: sprint.StreamPriorities(s),
 		ReadsWindow: sprint.ReadsWindowOf(s, m.StoppedBetween)}
 	r.Blockers = sprint.IdleBlockers(s, 3)
 	if s.Fleet != nil {
 		r.FleetRev = s.Fleet.Revision
 	}
-	check := sprint.CostCheckOf(s, r.Streams)
 	r.CostCheck = &check
 	r.RowCards, r.ReadCards = sprint.RowCardCounts(s)
 	r.FixStates = sprint.FixStateCounts(s)
@@ -271,7 +278,9 @@ func (st *Store) keepWhere(ctx context.Context, m Machine) error {
 	stamp := stats.statsStamp(st.epoch)
 	// a record from before the series, or the archived streams' figures, were counted is
 	// counted again once, tables still or not
-	if r, ok := readWhere(vals[0], oks[0]); ok && r.Epoch == st.epoch && r.Rev == shapes[0].Revision && r.FleetRev == shapes[1].Revision && r.Stats == stamp && r.SeriesCounted && r.ArchivedCounted && r.DecisionHoldsCounted {
+	old, held := readWhere(vals[0], oks[0])
+	held = held && old.Epoch == st.epoch && old.Rev == shapes[0].Revision && old.Stats == stamp && old.SeriesCounted && old.ArchivedCounted && old.DecisionHoldsCounted
+	if held && old.FleetRev == shapes[1].Revision {
 		return nil
 	}
 	tw := st.twin()
@@ -279,6 +288,7 @@ func (st *Store) keepWhere(ctx context.Context, m Machine) error {
 		return nil
 	}
 	snap, _, err := st.twinRead(withBudget(ctx), tw, All, costExtras, nil)
+	moves := tw.moves[sprint.Fleet]
 	tw.mu.Unlock()
 	if errors.Is(err, errCleared) {
 		return nil
@@ -286,7 +296,36 @@ func (st *Store) keepWhere(ctx context.Context, m Machine) error {
 	if err != nil {
 		return err
 	}
+	// The fleet's revision moved and nothing else did: when no record, row or property of
+	// the fleet moved in the twin since the read this process counted the stored record
+	// from (Twin.moves; text cells alone, the load and status SyncFleet writes as members
+	// beat), the record is the count at the fleet's revision now, and it is written again
+	// at that revision, not counted (2026-10-17: every member's load cell moved the fleet's
+	// revision, and each tick counted the whole sprint again for a cell no count reads).
+	// The count also reads what no table's revision moves: the clock (the reads' 30-minute
+	// window, the day's reads, the series, the stage times, the landings), the machine's
+	// spans, and the readers and merge tables. So the record is written again only while
+	// the readers and merge tables are at the revisions it was counted at and the count is
+	// younger than WhereRestampFor, on the same UTC day; past that it is counted, a count a
+	// minute at most while only text cells move. tla/StatsReset.tla RestampRead and Display
+	// model the moves gate alone (RecordShowsShown; the reversed witness restampany writes
+	// it again whatever moved): a Display there moves no figure by assumption, and the
+	// clock's bound is not in the model.
 	now := st.now()
+	tw.whereMu.Lock()
+	kept := tw.whereKept
+	tw.whereMu.Unlock()
+	same := held && kept.raw == vals[0] && kept.moves == moves && snap.Work.Revision == old.Rev &&
+		snap.Readers.Revision == kept.readers && snap.Merge.Revision == kept.merge &&
+		!now.Before(kept.at) && now.Sub(kept.at) < WhereRestampFor && now.UTC().Format(time.DateOnly) == kept.at.UTC().Format(time.DateOnly)
+	if same {
+		old.FleetRev = snap.Fleet.Revision
+		kept.moves = moves
+		return st.putWhereRecord(ctx, kv, tw, old, kept)
+	}
+	tw.whereMu.Lock()
+	tw.whereCounts++
+	tw.whereMu.Unlock()
 	r := whereOf(snap, m, now)
 	r.Stats = stamp
 	// the archived streams, off the work table's shape (the twin carries no row hide): what
@@ -311,11 +350,34 @@ func (st *Store) keepWhere(ctx context.Context, m Machine) error {
 			r.Rev = after[0].Revision
 		}
 	}
+	// the cost views and brief tiers kept for the cards counted, and none other (cost_view.go)
+	sprint.KeepCardMemos(snap.Work.Cards())
+	return st.putWhereRecord(ctx, kv, tw, r, whereCount{moves: moves, readers: snap.Readers.Revision, merge: snap.Merge.Revision, at: now})
+}
+
+// WhereRestampFor is how long after its count the where record may be written again at a
+// fleet revision of text cells alone, uncounted (keepWhere): the count's figures of the
+// clock (the reads' window, the day's reads, the series) are at most this old.
+const WhereRestampFor = time.Minute
+
+// putWhereRecord writes the where record, counted from the read c names, and the twin keeps
+// both (keepWhere).
+func (st *Store) putWhereRecord(ctx context.Context, kv KV, tw *Twin, r WhereRecord, c whereCount) error {
 	b, err := json.Marshal(r)
 	if err != nil {
 		return err
 	}
-	return kv.SetKey(ctx, keyWhere, string(b))
+	if err := kv.SetKey(ctx, keyWhere, string(b)); err != nil {
+		tw.whereMu.Lock()
+		tw.whereKept = whereCount{} // the store's record is not known
+		tw.whereMu.Unlock()
+		return err
+	}
+	c.raw = string(b)
+	tw.whereMu.Lock()
+	tw.whereKept = c
+	tw.whereMu.Unlock()
+	return nil
 }
 
 // The store round trip (store-latency-row-r.w2, docs/SPEC-SPRINT.md section

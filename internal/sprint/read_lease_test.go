@@ -114,3 +114,53 @@ func TestAServerRestartResumesReadsInFlight(t *testing.T) {
 	assert.False(t, w2.s.Readers.Card(rc2ID).Placed())
 	assert.Equal(t, RetiredByLapsed, w2.s.Readers.Card(rc2ID).F("retired_by"))
 }
+
+// A reader's beat renews a lease only once three quarters of it or less is left: a poll with
+// more left writes nothing (every renewal is a card write and a log line that wakes the tick
+// and every long poller), and a reader that polls within each quarter keeps the lease live
+// across a restart (tla/ServerLanes.tla Renew, LiveLeaseNeverTakenBack).
+func TestAReaderBeatRenewsALeaseAtThreeQuarters(t *testing.T) {
+	t.Parallel()
+	begun := t0
+	w := newWorld(t, "reader-a", "reader-b")
+	w.s.Now = begun
+	w.s.Work.SetRows([]string{"s1"})
+	w.s.ReaderStates = map[string]string{"reader-a": ReaderUp, "reader-b": ReaderUp}
+	p := "s1-1"
+	w.s.Work.Put(&Card{ID: p, Row: "s1", Col: Review, Rev: 1, Fields: map[string]string{"kind": "primary", "attempt": "1", "stream": "s1"}})
+	id := ReadCardID(p, 1, "reader-a")
+	w.s.Readers.Put(&Card{ID: id, Row: "reader-a", Col: Reading, Rev: 1,
+		Fields: map[string]string{"kind": "read", "primary": p, "stream": "s1", "reader": "reader-a", "attempt": "1", "begun": stamp(begun)}})
+
+	for _, step := range []struct {
+		at    time.Duration // since begun
+		renew bool
+		until time.Duration // the lease's expiry after the beat, since begun
+	}{
+		{0, false, 10 * time.Minute},                                            // just begun: the whole lease is left
+		{2*time.Minute + 29*time.Second, false, 10 * time.Minute},               // more than three quarters left
+		{2*time.Minute + 30*time.Second, true, 12*time.Minute + 30*time.Second}, // 7.5 min left: renewed
+		{4 * time.Minute, false, 12*time.Minute + 30*time.Second},               // 8.5 min left of the renewal
+		{5 * time.Minute, true, 15 * time.Minute},                               // 7.5 min left of the renewal
+	} {
+		w.s.Now = begun.Add(step.at)
+		plan := RenewReaderLeases(w.s, "reader-a")
+		if step.renew {
+			require.Len(t, plan.Units, 1, "at %s the lease is renewed", step.at)
+			assert.Contains(t, plan.Units[0].Moved, "lease renewed")
+			w.must(plan)
+		} else {
+			assert.Empty(t, plan.Units, "at %s more than three quarters of the lease is left: nothing is written", step.at)
+		}
+		assert.Equal(t, begun.Add(step.until), ReadLeaseExpires(w.s.Readers.Card(id)), "at %s", step.at)
+		assert.Empty(t, RestartReads(w.s).Units, "at %s a restart keeps the live read", step.at)
+	}
+
+	// a lease that lapsed (a reader silent past it) is renewed on its next beat, as before
+	w.s.Now = begun.Add(25 * time.Minute)
+	plan := RenewReaderLeases(w.s, "reader-a")
+	require.Len(t, plan.Units, 1, "a lapsed lease is renewed")
+	w.must(plan)
+	assert.Equal(t, w.s.Now.Add(DefaultReadLease), ReadLeaseExpires(w.s.Readers.Card(id)))
+	assert.Equal(t, 7*time.Minute+30*time.Second, ReadLeaseRenewAt, "the renewal is at three quarters left")
+}

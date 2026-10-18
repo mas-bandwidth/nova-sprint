@@ -44,6 +44,9 @@ type machineOut struct {
 	Refused []sprint.Refusal   `json:"refused,omitempty"`
 	Moved   []string           `json:"moved,omitempty"`
 	Parts   []store.PartResult `json:"parts,omitempty"`
+	// Said is what the transition tells beside its change: a start names the STOP
+	// debts it settled because their jobs had left the table.
+	Said []string `json:"said,omitempty"`
 	// Reason and Until are a stop by hand's (docs/SPEC-SPRINT.md section 14).
 	Reason string `json:"reason,omitempty"`
 	Until  string `json:"until,omitempty"`
@@ -149,7 +152,7 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 	changed := before.Running() != after.Running()
 	line := sprintLine(ctx, st)
 	if c.json {
-		o := machineOut{Before: before.StateWord(), After: after.StateWord(), Changed: changed, Notes: res.Notes, Sprint: line, Reason: after.Reason}
+		o := machineOut{Before: before.StateWord(), After: after.StateWord(), Changed: changed, Notes: res.Notes, Said: res.Said, Sprint: line, Reason: after.Reason}
 		if !after.Until.IsZero() {
 			o.Until = after.Until.UTC().Format(time.RFC3339)
 		}
@@ -180,6 +183,9 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 		what = "unchanged: the machine is " + after.StateWord() + " already"
 	}
 	fmt.Fprintf(stdout, "%s OK before=%s after=%s %s\n", token(name), shownWord(before), shownWord(after), what)
+	for _, n := range res.Said {
+		fmt.Fprintf(stdout, "NOTE %s\n", oneline.Escape(n))
+	}
 	if running {
 		if _, hb, err := st.Machine(ctx); err == nil && a.now().Sub(hb.Alive()) > store.MachineSilence {
 			if a.twinOpen(c.redis) {
@@ -327,10 +333,19 @@ func (a *app) machineFlags(name string, args []string, stderr io.Writer, extra .
 }
 
 func (a *app) cmdTick(args []string, stdout, stderr io.Writer) int {
-	var rules, idle, shadow bool
-	c, code := a.machineFlags("tick", args, stderr, answerRulesFlag(&rules, false), idleAlarmFlag(&idle, false), shadowFlag(&shadow))
+	var rules, idle, shadow, retire, dry bool
+	c, code := a.machineFlags("tick", args, stderr, answerRulesFlag(&rules, false), idleAlarmFlag(&idle, false), shadowFlag(&shadow), retireOnlyFlag(&retire, &dry))
 	if c == nil {
 		return code
+	}
+	if retire {
+		if shadow || rules || idle {
+			return refuse(stderr, "tick", "--retire-only runs the retire checks alone: it takes no --shadow, --answer-rules or --idle-alarm; nothing was changed")
+		}
+		return a.retireOnly(*c, dry, stdout, stderr)
+	}
+	if dry {
+		return refuse(stderr, "tick", "--dry-run goes with --retire-only (a whole tick's plan is tick --shadow); nothing was changed")
 	}
 	if shadow {
 		return a.shadowTick(*c, rules, idle, stdout, stderr)
@@ -588,7 +603,7 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 	// ignored: a best-effort read cleanup on startup; tick takes care of any subsequent lapses
 	_ = a.serverStart(context.Background(), st)
 
-	fmt.Fprintf(stdout, "RUN ticking on every line of the log (at most every %s) and every %s while it is quiet; %s\n", store.TickFloor, store.TickEvery, st.MachineLine(context.Background()))
+	fmt.Fprintf(stdout, "RUN ticking on every line of the log (at most every %s) and every %s while it is quiet; %s\n", store.TickFloor, a.quietEvery, st.MachineLine(context.Background()))
 	if a.runLoop(context.Background(), st, c.max, 0, stdout, stderr) {
 		return exitReplaced
 	}
@@ -949,20 +964,20 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 	// the server's record, the actor this loop runs as, which seat and handover
 	// show beside the seat's holder: written before the first tick and every
 	// store.ServerEvery (seat-key-follows-record.w2)
-	var said time.Time
 	// the walls of the last ticks, which stretch the deadline (tickDeadlineOf),
 	// the least deadline an overrun lifted it to (liftAfterOverrun), and the
 	// wedged ticks in a row (awaitGivenUp)
 	var walls []time.Duration
 	var lift time.Duration
 	wedged := 0
+	var lined sprintLineMemo // the last sprint line said (sprintLineMemo.next)
 	for i := 0; (n == 0 || i < n) && ctx.Err() == nil; i++ {
 		if now := a.binaryStamp(); began0 != "" && now != began0 {
 			fmt.Fprintf(stdout, "RUN STOP the binary this loop runs was replaced on disk since it began (%s, now %s): exiting so its supervisor starts the new one; a loop that is not supervised: run nova-sprint run again\n", began0, orDashStr(now, "unreadable"))
 			return true
 		}
 		began := a.now()
-		said = a.sayServer(ctx, st, said, stderr)
+		a.serverSaid = a.sayServer(ctx, st, a.serverSaid, stderr)
 		// one tick, or one worker's batch, at a time (serve.go); the tick takes the line at
 		// its turn, after the batch in flight, not behind every batch waiting
 		// (sprint.ControlLine; docs/SPEC-SPRINT.md section 14, The server, "The tick's turn")
@@ -1047,6 +1062,10 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 			fmt.Fprintf(stdout, "%s machine %s\n", a.now().Format("15:04:05"), res.State)
 			was = res.State
 		}
+		// the tick's lines are said off the server's line: they need nothing it guards, and
+		// the sprint line reads the store (2026-10-17: up to ten ticks a second each held the
+		// line for its lines' seven round trips)
+		a.serial.Unlock()
 		if err != nil || res.State == store.Running || len(res.Parts) > 0 || len(res.Repaired) > 0 || res.Stale != "" || res.Halted != "" {
 			fmt.Fprintf(stdout, "%s tick\n", a.now().Format("15:04:05"))
 			a.printTick(res, err, max, stdout, stderr)
@@ -1055,11 +1074,12 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 				// whole-table reads and records read (store/stats.go)
 				fmt.Fprintf(stdout, "%s deadline=%s\n", res.TimesLine(), deadline)
 			}
-			if line := sprintLine(ctx, st); line != "" {
+			// made again only when the work table or the machine changed, or once a
+			// minute (sprintLineMemo)
+			if line := lined.next(ctx, st, res.State, a.now()); line != "" {
 				fmt.Fprintln(stdout, line)
 			}
 		}
-		a.serial.Unlock()
 		if err == nil {
 			// the seat not answering goes to the owner on the bus, as well as to the seat's
 			// hook, at its raise and at each raise again (seat_silent.go)
@@ -1075,7 +1095,7 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 			continue
 		}
 		failures = 0
-		cursor, why = a.pace(ctx, st, res.Epoch, cursor, began)
+		cursor, why = a.pace(ctx, st, res.Epoch, cursor, began, stderr)
 	}
 	return false
 }
@@ -1126,25 +1146,39 @@ func (a *app) storeRTTLoop(ctx context.Context, st *store.Store) {
 }
 
 // pace is the wait between two ticks of run: it blocks on the log of the
-// epoch the tick ran at from cursor, until a line comes or TickEvery after
+// epoch the tick ran at from cursor, until a line comes or QuietEvery after
 // the tick began (never less than TickFloor); a line wakes it, and the next
-// tick begins TickFloor after the last began at the soonest. It returns the
-// cursor for the next wait and why the next tick begins. A wait the store
-// refuses falls back to the clock.
-func (a *app) pace(ctx context.Context, st *store.Store, epoch uint64, cursor string, began time.Time) (string, string) {
-	d := max(store.TickEvery-a.now().Sub(began), store.TickFloor)
-	tail, woke, err := st.WaitLog(ctx, epoch, cursor, d)
-	if err != nil {
-		a.sleep(max(store.TickEvery-a.now().Sub(began), 0))
-		return cursor, tickClock
+// tick begins TickFloor after the last began at the soonest. The wait is
+// taken in slices of ServerEvery, and the server's record is written between
+// slices (sayServer), so a quiet log never lets the record lapse: its TTL is
+// three ServerEvery and a quiet tick is ten (2026-10-17, the first QuietEvery
+// let it lapse between ticks). It returns the cursor for the next wait and why
+// the next tick begins. A wait the store refuses falls back to the clock.
+func (a *app) pace(ctx context.Context, st *store.Store, epoch uint64, cursor string, began time.Time, stderr io.Writer) (string, string) {
+	quiet := a.quietEvery
+	if quiet <= 0 {
+		quiet = store.QuietEvery // an app built without newApp never spins
 	}
-	if !woke {
-		return tail, tickClock
+	for {
+		left := quiet - a.now().Sub(began)
+		if left <= 0 {
+			return cursor, tickClock
+		}
+		d := max(min(left, store.ServerEvery), store.TickFloor)
+		tail, woke, err := st.WaitLog(ctx, epoch, cursor, d)
+		if err != nil {
+			a.sleep(d)
+		} else {
+			cursor = tail
+			if woke {
+				if left := store.TickFloor - a.now().Sub(began); left > 0 {
+					a.sleep(left)
+				}
+				return tail, tickLog
+			}
+		}
+		a.serverSaid = a.sayServer(ctx, st, a.serverSaid, stderr)
 	}
-	if left := store.TickFloor - a.now().Sub(began); left > 0 {
-		a.sleep(left)
-	}
-	return tail, tickLog
 }
 
 // machineWords is the machine's part of the help.
@@ -1268,4 +1302,75 @@ func (a *app) cardDiff(ctx context.Context, c *sprint.Card) (string, error) {
 		return "", err
 	}
 	return string(res.Stdout), nil
+}
+
+// retireOnlyFlag is tick's --retire-only, with its --dry-run.
+func retireOnlyFlag(on, dry *bool) func(flagSet) {
+	return func(fs flagSet) {
+		fs.BoolVar(on, "retire-only", false, "run the tick's retire checks alone, as the machine, STOPPED or RUNNING: close each judgment whose cause is gone (its cards off the table or moved past it, an orphan, a need that no longer blocks a card) with the machine's answer, and move no card (the v1.5.4 hotfix: a stopped machine retires what check would otherwise refuse start on)")
+		fs.BoolVar(dry, "dry-run", false, "with --retire-only: print each judgment it would retire (WOULD RETIRE lines) and write nothing")
+	}
+}
+
+// retireOnly is tick --retire-only (store.RetireStep, sprint.RetireOnly): one
+// RETIRED (or, dry, WOULD RETIRE) line per judgment and subject it closes, with
+// the machine's answer, then the summary. Exit 0 done (none to retire is done),
+// 2 when the store did not answer.
+// tla/JudgmentRetire.tla RetireOnly
+func (a *app) retireOnly(c common, dry bool, stdout, stderr io.Writer) int {
+	st, err := a.store(c)
+	if err != nil {
+		return refuse(stderr, "tick", err.Error())
+	}
+	ctx := context.Background()
+	step := store.RetireStep()
+	snap, err := st.Load(ctx, step.Load, step.Extras)
+	if err == nil {
+		snap.Friends, err = st.FriendSeats(ctx, snap.Now)
+	}
+	if err != nil {
+		return a.readFailed("tick", err, stderr)
+	}
+	p := step.Plan(snap)
+	answer := map[string]string{}
+	for _, n := range p.Notes {
+		if n.Kind == sprint.Decided {
+			answer[n.Answers] = n.What
+		}
+	}
+	word := "RETIRED"
+	if dry {
+		word = "WOULD RETIRE"
+	}
+	ids := map[string]bool{}
+	for _, o := range p.Closes {
+		ids[o.Note.ID] = true
+	}
+	if !dry && len(p.Closes) > 0 {
+		step.CallerOp = c.op
+		res, err := st.Run(ctx, step)
+		if err != nil {
+			fmt.Fprintf(stderr, "%s tick: %s\n", prog, oneline.WithRemedy(err.Error(), prog+" tick -h"))
+			return 2
+		}
+		if len(res.Refused) > 0 {
+			for _, r := range res.Refused {
+				fmt.Fprintf(stderr, "REFUSED %s: %s\n", oneline.Escape(r.Key), oneline.Escape(r.Why))
+			}
+			return 1
+		}
+	}
+	for _, o := range p.Closes {
+		alias := ""
+		if o.Note.Alias != "" {
+			alias = " alias=" + oneline.Field(o.Note.Alias)
+		}
+		fmt.Fprintf(stdout, "%s judgment=%s%s type=%q subject=%q answer=%q\n", word, oneline.Field(o.Note.ID), alias, oneline.Escape(o.Note.Type), oneline.Escape(o.Subject()), oneline.Escape(answer[o.Note.ID]))
+	}
+	would := ""
+	if dry {
+		would = " DRY-RUN; nothing was written"
+	}
+	fmt.Fprintf(stdout, "TICK RETIRE OK judgments=%d subjects=%d%s\n", len(ids), len(p.Closes), would)
+	return 0
 }

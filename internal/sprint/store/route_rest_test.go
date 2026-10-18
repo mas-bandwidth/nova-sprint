@@ -224,7 +224,7 @@ func TestARestingRouteServesNoDealWhileAnotherServes(t *testing.T) {
 }
 
 // A route's own rests are one fleet property per provider (nova-tools#5210). At 100 routes
-// over two providers, every route rested, the fleet table stays under the 64-property
+// over two providers, every route rested, the fleet table stays under the 1024-property
 // cap with the count named here, and no route_rest_<route> property is written.
 func TestAHundredRoutesRestedByRule3StayUnderThePropertyCap(t *testing.T) {
 	t.Parallel()
@@ -280,7 +280,7 @@ func TestAHundredRoutesRestedByRule3StayUnderThePropertyCap(t *testing.T) {
 	assert.Equal(t, 2, rule3, "one property per provider: %v", names)
 	// Five: the deal's index, the tier's route index, one rule-3 property per provider,
 	// and the status transitions' one record (sprint.PropStatusSeen). 5 under the cap of
-	// 64 is the headroom.
+	// 1024 is the headroom.
 	assert.Equal(t, 5, len(props), "100 routes rested use %d properties, headroom under %d: %v", len(props), ntable.LimitTableProps, names)
 	assert.Less(t, len(props), ntable.LimitTableProps)
 	now := s.Now

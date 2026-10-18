@@ -76,7 +76,8 @@ func TestStreamStopAndResumePushABlockerToTheSeat(t *testing.T) {
 
 // Exercise the actual WaitLog driver, not a manual pass. The memory store's
 // fake wait commits the event while the loop is waiting; its next pass delivers
-// without advancing time. Dropped sends retry after the unchanged 5s backstop.
+// after the loop's floor (coordPushFloor: a pass at most a second) and no more.
+// A dropped send is retried within coordPushRetry, not the quiet-log backstop.
 func TestStreamPushLoopWakesOnCommitAndBackstop(t *testing.T) {
 	t.Parallel()
 	for _, drop := range []bool{false, true} {
@@ -102,8 +103,12 @@ func TestStreamPushLoopWakesOnCommitAndBackstop(t *testing.T) {
 			before := ta.a.now()
 			waits := 0
 			ta.m.LogWait = func(d time.Duration) {
-				require.Equal(t, 5*time.Second, d)
 				waits++
+				if waits == 1 {
+					require.Equal(t, coordPushLook, d, "a quiet log waits the look")
+				} else {
+					require.Equal(t, coordPushRetry, d, "a failed send is retried within coordPushRetry")
+				}
 				switch waits {
 				case 1:
 					ta.lined(func() { ta.ok("merge --stream s1 --base-red 'base refuses'") })
@@ -113,7 +118,7 @@ func TestStreamPushLoopWakesOnCommitAndBackstop(t *testing.T) {
 					}
 				case 2:
 					require.True(t, drop, "healthy event must arrive before the next quiet-log wait")
-					require.Equal(t, before, ta.a.now())
+					require.Equal(t, before.Add(coordPushFloor), ta.a.now())
 					fake.Fail = nil
 					ta.step(d)
 					fake.Advance(d)
@@ -124,10 +129,10 @@ func TestStreamPushLoopWakesOnCommitAndBackstop(t *testing.T) {
 			}
 			ta.a.coordPushLoop(ctx)
 			wantWaits := 1
-			wantTime := before
+			wantTime := before.Add(coordPushFloor)
 			if drop {
 				wantWaits = 2
-				wantTime = before.Add(5 * time.Second)
+				wantTime = before.Add(coordPushFloor + coordPushRetry)
 			}
 			require.Equal(t, wantWaits, waits)
 			require.Equal(t, wantTime, ta.a.now())

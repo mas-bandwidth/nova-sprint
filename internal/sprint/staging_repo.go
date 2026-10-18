@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -35,6 +36,7 @@ func stagingRepoRefusals(s *Snapshot, credentials bool) map[string]map[string]ti
 	if s == nil || s.Fleet == nil {
 		return out
 	}
+	refusalWalks.Add(1)
 	latest := map[string]time.Time{} // member\x00repo -> the latest take's time
 	unknown := map[string]bool{}     // that time could not be read (no stamp)
 	put := func(k string, at time.Time, known bool) {
@@ -91,6 +93,62 @@ func stagingRepoRefusals(s *Snapshot, credentials bool) map[string]map[string]ti
 	return out
 }
 
+// refusalMemo is stagingRepoRefusals of one snapshot's tables at one clock, both forms
+// (with credential refusals and mirror refusals alone), derived once and read by every
+// stagingRepoWhy ask after. Its key is the tables it read, each with its count of cards
+// put or dropped (Table.changes), and the clock: a view that swaps in a frozen table, puts
+// a card, or moves the clock reads a key that differs and derives them again, so the memo
+// never answers for cards it did not read. A card is replaced whole on its table (Put); the
+// one write in place, hidePrimaries' column (friend_read.go), bumps the count too
+// (Table.changed), so the count is every change the derivation can see.
+// The deal asks stagingRepoWhy once per member a ready card is offered to, and each
+// derivation walks every fleet card: on the studio's store, 2026-10-18, that walk was
+// the bulk of card's 8.3 s and check's 10 s, by way of the held rule (newHeld).
+type refusalMemo struct {
+	mu sync.Mutex
+	at refusalsAt
+}
+
+// refusalsAt is one derivation of the memo: the key it was read at and the two forms.
+type refusalsAt struct {
+	fleet, work, merge  *Table
+	fleetN, workN, mrgN uint64
+	now                 time.Time
+	with, mirror        map[string]map[string]time.Time
+	withOK, mirrorOK    bool
+}
+
+// refusalWalks counts stagingRepoRefusals' walks of the fleet table, a diagnostic for the
+// cost tests (TestHeldWalksTheStagingRefusalsOnce); the machine's own path never reads it.
+var refusalWalks atomic.Int64
+
+// stagingRefusalsOnce is stagingRepoRefusals(s, credentials), derived once per snapshot
+// state when the step settled a memo (refusalMemo, withRests), else derived now. The map
+// is shared by every ask: read it, never write it.
+func stagingRefusalsOnce(s *Snapshot, credentials bool) map[string]map[string]time.Time {
+	m := s.refusals
+	if m == nil {
+		return stagingRepoRefusals(s, credentials)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	fleetN, workN, mrgN := s.Fleet.changes(), s.Work.changes(), s.Merge.changes()
+	a := &m.at
+	if a.fleet != s.Fleet || a.work != s.Work || a.merge != s.Merge || a.fleetN != fleetN || a.workN != workN || a.mrgN != mrgN || !a.now.Equal(s.Now) {
+		*a = refusalsAt{fleet: s.Fleet, work: s.Work, merge: s.Merge, fleetN: fleetN, workN: workN, mrgN: mrgN, now: s.Now}
+	}
+	if credentials {
+		if !a.withOK {
+			a.with, a.withOK = stagingRepoRefusals(s, true), true
+		}
+		return a.with
+	}
+	if !a.mirrorOK {
+		a.mirror, a.mirrorOK = stagingRepoRefusals(s, false), true
+	}
+	return a.mirror
+}
+
 // stagingCredentialRefusal recognizes only the staging error markers whose
 // failure applies to every card of a repository. It never inspects credentials.
 func stagingCredentialRefusal(err string) bool {
@@ -118,44 +176,6 @@ func mirrorRepoOf(err string) string {
 	return RepoName(url)
 }
 
-// briefRepoRead is one brief's repository and how many times it was actually read
-// (a memo miss).
-type briefRepoRead struct {
-	repo  string
-	reads atomic.Int64
-}
-
-// briefRepoCache is a brief's repository memoized by the brief: each parsed brief's
-// repository, kept for the process (a brief never names a different repository once
-// written), bounded by the number of distinct briefs the sprint has ever held, never
-// by the number of checks that read them. 2026-10-17 19:16:10 EDT the sprint server
-// wedged (TICK WEDGED): 251 verbs waited on the control line while one ack held it
-// inside TickDeadlines, the deal's check of every ready card on every member
-// (readyWhy -> launchersOf -> routeServed -> stagingRepoWhy -> stagingRepoRefusals ->
-// cardRepo) splitting a primary's whole brief with swarm.ReadCardBase once per fleet
-// card per member per ready card.
-var briefRepoCache sync.Map // brief string -> *briefRepoRead
-
-// briefRepo is a brief's repository, read once per brief: every later read of the same
-// brief is the memo, so stagingRepoRefusals' walk of the fleet reads a primary's brief
-// once, not once per fleet card per member per check. owner/name, "" when none; the
-// answer is unchanged from reading the brief each time.
-func briefRepo(brief string) string {
-	if v, ok := briefRepoCache.Load(brief); ok {
-		return v.(*briefRepoRead).repo
-	}
-	repo := ""
-	cb := swarm.ReadCardBase([]byte(brief))
-	if cb.Named != "" {
-		repo = RepoName(cb.Named)
-	} else if cb.Repo != "" {
-		repo = RepoName(cb.Repo)
-	}
-	v, _ := briefRepoCache.LoadOrStore(brief, &briefRepoRead{repo: repo})
-	v.(*briefRepoRead).reads.Add(1)
-	return repo
-}
-
 // cardRepo is the repository a card is of: the card's own repo field (FieldRepo; cards
 // remember their repo), else its primary's field or brief, else its stream's.
 // owner/name, "" when none.
@@ -180,8 +200,12 @@ func (s *Snapshot) cardRepo(c *Card) string {
 		// Most eligibility checks have no repository header. Avoid allocating
 		// parser lines per ready card; the parser still validates every match.
 		if strings.Contains(brief, "REPO:") || strings.Contains(brief, "base-repo:") {
-			if repo := briefRepo(brief); repo != "" {
-				return repo
+			cb := readCardBaseOnce(brief)
+			if cb.Named != "" {
+				return RepoName(cb.Named)
+			}
+			if cb.Repo != "" {
+				return RepoName(cb.Repo)
 			}
 		}
 		if ctl := s.StreamCtl(p.Row); ctl != nil {
@@ -196,6 +220,57 @@ func (s *Snapshot) cardRepo(c *Card) string {
 		}
 	}
 	return ""
+}
+
+// cardBaseCache is swarm.ReadCardBase memoized by brief, as modelCache memoizes the model
+// lines (route.go): a pure read of the brief's header, and a brief is immutable on the
+// table (a re-cut writes a new brief), so one read a brief is every read. The held rule
+// (newHeld, for card and check) and the deal ask stagingRepoWhy once per member a ready
+// card is offered to, and each ask walks every fleet card's repository (cardRepo) and,
+// in LandedSince, every placed card's base (repoHasDevBranch): on the studio's store,
+// 2026-10-18, card took 8.3 s and check 10 s, near all of it ReadCardBase splitting the
+// same few hundred briefs again on every ask. Bounded: at most cardBaseMax briefs, and the
+// miss past that starts the whole map again (as the open-note caches do, openCachesMax in
+// store/opencache.go), so a long-lived server that reads every landed card's brief
+// (LandedSince, repoHasDevBranch) holds a store's worth of briefs, never its history.
+var cardBaseCache sync.Map // brief string -> swarm.CardBase
+
+// cardBaseMax bounds cardBaseCache: well over the briefs one store holds placed (the
+// studio's held about 400 work cards on 2026-10-18), so a tick's asks all hit.
+const cardBaseMax = 4096
+
+// cardBaseHeld is how many briefs cardBaseCache holds, counted under cardBaseMu on a miss.
+var (
+	cardBaseMu   sync.Mutex
+	cardBaseHeld int
+)
+
+// cardBaseReads counts the briefs ReadCardBase actually parsed (a memo miss), a
+// diagnostic for the cost tests (TestHeldWalksTheStagingRefusalsOnce); the machine's own
+// path never reads it.
+var cardBaseReads atomic.Int64
+
+// readCardBaseOnce is swarm.ReadCardBase of brief, read once per brief. Its Stage is a copy,
+// so no caller can write into the memo.
+func readCardBaseOnce(brief string) swarm.CardBase {
+	if v, ok := cardBaseCache.Load(brief); ok {
+		cb := v.(swarm.CardBase)
+		cb.Stage = slices.Clone(cb.Stage)
+		return cb
+	}
+	cb := swarm.ReadCardBase([]byte(brief))
+	cardBaseMu.Lock()
+	if cardBaseHeld >= cardBaseMax {
+		cardBaseCache.Clear()
+		cardBaseHeld = 0
+	}
+	if _, loaded := cardBaseCache.LoadOrStore(brief, cb); !loaded {
+		cardBaseHeld++
+	}
+	cardBaseMu.Unlock()
+	cardBaseReads.Add(1)
+	cb.Stage = slices.Clone(cb.Stage)
+	return cb
 }
 
 // firstRepo is the first repository a FieldRepo value names, as owner/name; "" when none.
@@ -221,7 +296,7 @@ func (s *Snapshot) stagingRepoWhy(member string, c *Card) string {
 	if repo == "" {
 		return ""
 	}
-	at, refused := stagingRepoRefusals(s, true)[member][repo]
+	at, refused := stagingRefusalsOnce(s, true)[member][repo]
 	if !refused {
 		return ""
 	}
@@ -230,7 +305,7 @@ func (s *Snapshot) stagingRepoWhy(member string, c *Card) string {
 		when = at.UTC().Format(time.RFC3339)
 	}
 	why := member + " refused " + repo + " at staging at " + when
-	if mirrorAt, mirror := mirrorRefusals(s)[member][repo]; mirror && mirrorAt.Equal(at) {
+	if mirrorAt, mirror := stagingRefusalsOnce(s, false)[member][repo]; mirror && mirrorAt.Equal(at) {
 		return why + ": no bench mirror; add the mirror on " + member + " with the fleet play"
 	}
 	return why + ": repository credential refused on " + member

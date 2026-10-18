@@ -59,6 +59,8 @@ nova-sprint stop --reason <text> [--until <time or duration>]
 # stop puts the machine into STOPPED until an explicit start (v1.2.17); --reason is required; --until is optional display metadata for readers (a duration from now like 90m, a clock time like 2:04 PM or 14:04, or an RFC 3339 time), showing "STOPPED, expected back by <until> (<reason>); start ends it"; without --until it shows "STOPPED until the next start (<reason>)"
 nova-sprint run [--answer-rules=false] [--idle-alarm=false] [--land | --land=false]   # since v1.2.17 the server (run --listen) lands by default and a plain run lands only on --land; --land=false is the server's opt-out, which start refuses; a land loop is refused (LAND REFUSED) while another lander's fresh record says it lands
 nova-sprint tick [--answer-rules] [--idle-alarm]
+nova-sprint tick --retire-only [--dry-run]
+# the tick's retire checks alone, as the machine, STOPPED or RUNNING (v1.5.4): each judgment whose cause is gone (its cards off the table or moved past it, an orphan, a need that no longer blocks a card) is closed with the machine's answer, one line each, RETIRED judgment=<id> alias=<j> type="<type>" subject="<s>" answer="<words>" (WOULD RETIRE with --dry-run, which writes nothing), then TICK RETIRE OK judgments=<n> subjects=<n>; it moves no card and leaves a repair's skip judgment to repair --skipped
 nova-sprint promote [--once] [--poll <duration>] [--every <duration>] [--landings <n>] [--branch <name>] [--repo-dir <clone>] [--base <branch>] [--check <command>] [--dry-run]
 nova-sprint selftest [--dir <d>] [--keep]
 nova-sprint goal set <name> [--file <path>] [--to file:<path>]
@@ -167,7 +169,8 @@ nova-sprint check cards [--stream <s>...] [--dry-run] [--from <export>] [--json]
 # the core pre-start card check (v1.2.17; coordinator): over the epoch's work table and streams (or --from an export file or directory of card --json, card --all --json with briefs/ and trees/, or backup --file / RESTORE dump), one line a finding, CHECK <kind> <card|stream> <finding> remedy=<what to do>, then CHECK CARDS OK cards=<n> (exit 0) or CHECK CARDS FAILED kinds=<kind:n,...> (exit 1); 2 is usage or a store that did not answer. The kinds: needs (every unresolved need, one line each, CHECK needs <card> <need> <reason>: <words> remedy=<verbs>; the reasons absent, dropped, unknown stream, held (an open bound, brief-wrong or harness-fault judgment names it, with its id, type and age and the verbs that decide it) and cycle), files (a file two streams write, PATHS expanded at each card's base tree; a ledger or a test is none), same-file (two cards of a stream naming one PATHS file with no need between them), bases (a stream on the trunk or on another stream's branch, or a need across two streams' branches but a producer's sentinel), names (a stream's display name unset, its id, or a hyphenated id), stale-fix (priority fix with no attempt this epoch), stale-head (a pushed head from an attempt at or below the brief's `brief_attempt`; `brief --keep-head` exempts it), lint (the card lint brief check runs; a primary with no brief), brief-size (a brief over the store's bound, or a card record over the drain's 16384 bytes). Every live run without --dry-run writes the epoch's one check record (clean or the findings, every card's id, stream, tier, priority, needs and brief sha256, and their digest), which start reads; --dry-run and --from write no check record, and a --stream check's record never opens the start. The --from input path skips local store reads and writes, but normal client forwarding and hook checks still run first.
 nova-sprint check [--max <n>] [--json]
 # the store's invariants (section 9). `--json` prints the check report, including `row_forms`: the store row reader's per-record, per-form read counts (`binary`, `base64`, `json`, `legacy`, `unknown_fields`, and `refused_<reason>`). A record is counted when it is read through that reader; until one is, `row_forms` is an empty object. The plain `CHECK` line does not print the counts.
-nova-sprint repair [--dry-run] [--json]
+nova-sprint repair [--skipped <op>.skip] [--dry-run] [--json]
+# --skipped <op>.skip [--accept-props] (v1.5.4; coordinator) reconciles a tick drain repair's skip judgment (another verb's is refused): each listed card the store holds as the skip found it, one revision past what its entry expected, whose last move line before the repair ends at the expected place and whose queued lines end where the store holds it, gets its missing move line (expected -> found, the queued lines' words and fields, its generation as stored, why in its text): RESTORE card=<id> ...; a card the log has since moved on from where the skip found it, a line already restored or kept, is SETTLED; a table property is UNVERIFIED (its value as stored is printed) unless --accept-props; anything else is REFUSED by name with why and nothing is written for it; RULE13 lines name any rule 13 violation the log with the restored lines still has. The judgment is closed only when nothing is refused or unverified and RULE13 is empty. Summary: REPAIR SKIPPED OK|REFUSED judgment=<id> op=<op> restored=<n> settled=<n> unverified=<n> refused=<n> rule13_after=<n> closed=yes|no; --dry-run prints WOULD lines and writes nothing; --op <id> returns the recorded result on a second run; exit 1 when anything is refused, unverified or left under rule 13
 nova-sprint where [--watch] [--every <duration>] [--all] [--json [--cards] [--rows] [--archived] [--stale <duration>] [--at-epoch <n>]: includes landedSeries] [--release [<name>]]
 nova-sprint view coordinator [--all] [--since <cursor>] [--needs] [--json]
 nova-sprint view cards [--col <c>] [--stream <s>] [--holder <member>] [--by tier|stream|col|holder] [--json]
@@ -925,11 +928,11 @@ chains them or the path is a lander-owned ledger the lander merges
 ### What it refuses
 
 Every brief is held to the lint `nova-sprint add` runs (the model lines, the
-child rules under the default rule set, a tree card's steps), and past the add
-to the typed header and the template's unfilled `<...>` lines, which the add
-does not read, before anything is written (a sprint initialised with `--rules`
-holds a brief to that file at the add), and to the card checks the add runs
-too: a tier on line 1, a TEST whose package PATHS names, no name `--name` gives
+child rules under the default rule set, a tree card's steps, the stranded-header-key
+and dashboard-ask rules the add runs after them), and to the template's unfilled
+`<...>` lines, which the add does not read, before anything is written (a sprint
+initialised with `--rules` holds a brief to that file at the add), and to the
+card checks the add runs too: a tier on line 1, a TEST whose package PATHS names, no name `--name` gives
 outside double-quoted words, no card `--dropped` gives; one red brief prints its
 `LINT DRIFT card=<id> check=<check> line=<n>: <excerpt>` line and nothing is
 written, exit 1. A PATHS entry that names nothing in `--repo-dir` is the same

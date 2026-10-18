@@ -235,7 +235,7 @@ button.toggle:hover { color: var(--text); border-color: var(--border-strong); }
 .panel-head .fold:hover { color: var(--text); }
 .panel-head .fold::before { content: "\2303"; font-size: 1.5rem; display: block; transition: transform 160ms ease-out; }
 .panel.folded .panel-head .fold::before { transform: rotate(180deg); }
-.panel.folded > .scroll, .panel.folded > .empty, .panel.folded > .chart-body { display: none; }
+.panel.folded > .scroll, .panel.folded > .empty, .panel.folded > .chart-body, .panel.folded > .charts { display: none; }
 .panel.folded .panel-head { padding-bottom: 2rem; }
 .empty { padding: 1rem 3rem 3rem; color: var(--text-2); font-size: 1.625rem; }
 .empty code { font: 1.5rem ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); }
@@ -537,8 +537,14 @@ footer a:hover { color: var(--text); }
   <div class="chart-body"><svg class="landchart" id="landchart" role="img" aria-label="cards landed per 10 minutes, friends and fleet"></svg></div>
 </section>
 
+<section class="panel history" id="history-panel">
+  <div class="panel-head"><h2>Last 24 hours</h2><span class="muted history-sub" id="history-sub"></span></div>
+  <div class="charts" id="history"></div>
+</section>
+
 <footer><a href="https://github.com/mas-bandwidth/nova-sprint">https://github.com/mas-bandwidth/nova-sprint</a></footer>
 <script>(function(){document.querySelectorAll(".panel").forEach(function(p){var h=p.querySelector(".panel-head");if(!h)return;var k=p.querySelector("h2");var id="sprint-fold-"+(k?k.textContent.trim().toLowerCase():p.className);var b=document.createElement("button");b.className="fold";b.type="button";b.title="Collapse";b.setAttribute("aria-label","Collapse table");try{if(localStorage.getItem(id)==="1")p.classList.add("folded")}catch(e){}b.addEventListener("click",function(){p.classList.toggle("folded");b.title=p.classList.contains("folded")?"Expand":"Collapse";try{localStorage.setItem(id,p.classList.contains("folded")?"1":"0")}catch(e){}});h.appendChild(b)})})();</script>
 <script src="app.js"></script>
+<script src="charts.js"></script>
 </body>
 </html>

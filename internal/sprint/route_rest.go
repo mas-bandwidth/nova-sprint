@@ -628,6 +628,7 @@ func (s *Snapshot) withRests() (*Snapshot, []RouteRest) {
 	}
 	n := *s
 	n.rests = map[string]RouteRest{}
+	n.refusals = &refusalMemo{} // the staging refusals, derived on the first ask (staging_repo.go)
 	for name, r := range RouteRests(s.Routes, s.Fleet) {
 		if r.Resting(s.Now) {
 			n.rests[name] = r
