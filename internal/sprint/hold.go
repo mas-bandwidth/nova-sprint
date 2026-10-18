@@ -95,10 +95,6 @@ type HoldReq struct {
 	// ForceLast holds the last member that can run a land gate anyway: the hold passes
 	// and its note says no gate bench is left (--force-last).
 	ForceLast bool `json:",omitempty"`
-	// NoLastGateGuard is the tests' seam: the last-gate guard reads it off (true) to
-	// show the guard a plant removed would be caught by its own test. It is never set
-	// by a verb.
-	NoLastGateGuard bool `json:"-"`
 	// Cause, with a member's hold, is what ends it (hold_cause.go): a judgment as the
 	// coordinator named it (j<n>, or its id), with CauseNote the id it named (a
 	// doctor:<check> cause is refused: DoctorCauseDeferred). The tick ends the hold in the
@@ -231,10 +227,26 @@ func HeldToReturn(ctl *Card) bool {
 	return ctl != nil && ctl.F(FieldHeld) != "" && ctl.F(FieldHeldReturn) == ctl.F(FieldHeld)
 }
 
+// lastGateGuardOff is the tests' seam: the last-gate guard reads it (true) to show the
+// guard a plant removed would be caught by its own test. Only export_test.go sets it,
+// and only the plant test, which resets it; no verb and no request carries it.
+var lastGateGuardOff bool
+
 // lastGateRefusal is the guard's refusal when a hold would leave no gate bench: the
 // member being held, and the consequence with the override that holds it anyway.
 func lastGateRefusal(member string) Refusal {
 	return Refusal{member, "holding " + member + " leaves no gate bench: every landing will be refused until one is unheld; --force-last holds it anyway"}
+}
+
+// refusalCode names a refusal's kind for a caller that must tell it apart by kind, not
+// by its words: RefusedLastGate for the guard's refusal, "" for every other. It is the
+// guard's own construction it compares, so changing the refusal's words never changes
+// the code the verb reads.
+func refusalCode(r Refusal) string {
+	if r.Key != "" && r == lastGateRefusal(r.Key) {
+		return RefusedLastGate
+	}
+	return ""
 }
 
 // HoldNames is hold and unhold as one step (docs/SPEC-SPRINT.md section 11): every name
@@ -274,7 +286,7 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 	// one member is never refused (its only member is its routine maintenance hold, a
 	// long-standing flow). --force-last records the override on the note instead.
 	forceLast := false
-	if len(members) > 0 && !r.Release && !r.Return && !r.NoLastGateGuard && len(s.Members()) >= 2 {
+	if len(members) > 0 && !r.Release && !r.Return && !lastGateGuardOff && len(s.Members()) >= 2 {
 		named := map[string]bool{}
 		for _, m := range members {
 			named[m] = true

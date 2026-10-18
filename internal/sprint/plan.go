@@ -44,6 +44,14 @@ type Refusal struct {
 	Why string `json:"why"`
 }
 
+// Code names a refusal a caller must tell apart by kind, not by its words: it is
+// RefusedLastGate for the last-gate guard's refusal and "" for every other (hold.go).
+func (r Refusal) Code() string { return refusalCode(r) }
+
+// RefusedLastGate is the last-gate guard's refusal code: a hold would leave no member
+// that can run a land gate. The verb reads it rather than the refusal's words.
+const RefusedLastGate = "last-gate"
+
 // RowAdd is a row the step needs before its manifests: rows are declared by
 // the table layer's row verb, not by a batch.
 type RowAdd struct{ Table, Row string }
