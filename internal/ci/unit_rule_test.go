@@ -528,13 +528,14 @@ func scanUnitRulePackage(fset *token.FileSet, files []unitRuleFile) []unitRuleFi
 					}
 					if sel, ok := v.Fun.(*ast.SelectorExpr); ok {
 						if id, ok := sel.X.(*ast.Ident); ok && imports[id.Name] == "os/exec" && (sel.Sel.Name == "Command" || sel.Sel.Name == "CommandContext") {
-							what := "os/exec." + sel.Sel.Name
-							if prog := unitRuleExecProgram(sel.Sel.Name, v.Args); prog != "" {
-								what += " " + prog
-							}
-							uses = append(uses, unitRuleUse{find(v, "program", what), bubbled, decl})
 							if socket, isSocket := unitRuleExecSocket(sel.Sel.Name, v.Args); isSocket {
 								uses = append(uses, unitRuleUse{find(v, "socket", socket), bubbled, decl})
+							} else {
+								what := "os/exec." + sel.Sel.Name
+								if prog := unitRuleExecProgram(sel.Sel.Name, v.Args); prog != "" {
+									what += " " + prog
+								}
+								uses = append(uses, unitRuleUse{find(v, "program", what), bubbled, decl})
 							}
 						}
 						if id, ok := sel.X.(*ast.Ident); ok && imports[id.Name] == "testing/synctest" && (sel.Sel.Name == "Test" || sel.Sel.Name == "Run") {
@@ -854,11 +855,11 @@ func TestTheUnitRuleScanSeesAKnownYesAndAKnownNo(t *testing.T) {
 		"a redis-server": {"package p\nimport \"github.com/mas-bandwidth/nova-tools/pkg/testredis\"\nfunc TestX(t testing.TB) { testredis.Start(t) }\n",
 			[]string{"3 service github.com/mas-bandwidth/nova-tools/pkg/testredis.Start"}},
 		"a networked exec program": {"package p\nimport \"os/exec\"\nfunc TestX() { exec.Command(\"curl\", \"http://x\") }\n",
-			[]string{"3 program os/exec.Command curl", "3 socket os/exec.Command curl"}},
+			[]string{"3 socket os/exec.Command curl"}},
 		"an exec opening /dev/tcp": {"package p\nimport \"os/exec\"\nfunc TestX() { exec.Command(\"bash\", \"-c\", \"exec 3<>/dev/tcp/127.0.0.1/1\") }\n",
-			[]string{"3 program os/exec.Command bash", "3 socket os/exec.Command bash /dev/tcp"}},
+			[]string{"3 socket os/exec.Command bash /dev/tcp"}},
 		"a CommandContext networked exec": {"package p\nimport \"os/exec\"\nfunc TestX() { exec.CommandContext(context.Background(), \"nc\", \"-l\", \"1\") }\n",
-			[]string{"3 program os/exec.CommandContext nc", "3 socket os/exec.CommandContext nc"}},
+			[]string{"3 socket os/exec.CommandContext nc"}},
 		"the hook socket helper": {"package p\nfunc TestX(t T) { a.hookSock = shortSock(t) }\n",
 			[]string{"2 socket shortSock"}},
 		"a !functional file is the unit tier": {"//go:build !functional\n\npackage p\nimport \"time\"\nfunc TestX() { time.Sleep(1) }\n",

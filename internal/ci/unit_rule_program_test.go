@@ -33,8 +33,8 @@ func TestTheUnitRuleScanCountsAProgramExec(t *testing.T) {
 			[]string{"3 program os/exec.Command git"}},
 		"an exec.CommandContext": {"package p\nimport \"os/exec\"\nfunc TestX() { exec.CommandContext(ctx, \"git\", \"status\") }\n",
 			[]string{"3 program os/exec.CommandContext git"}},
-		"a networked exec is both a program and a socket": {"package p\nimport \"os/exec\"\nfunc TestX() { exec.Command(\"curl\", \"http://x\") }\n",
-			[]string{"3 program os/exec.Command curl", "3 socket os/exec.Command curl"}},
+		"a networked exec stays the socket it already was": {"package p\nimport \"os/exec\"\nfunc TestX() { exec.Command(\"curl\", \"http://x\") }\n",
+			[]string{"3 socket os/exec.Command curl"}},
 		"a one-level rig helper call": {
 			"package p\nfunc TestX(r R) { r.git(\"status\") }\nfunc (r R) git(args ...string) string { return \"\" }\n",
 			[]string{"2 program git"}},
