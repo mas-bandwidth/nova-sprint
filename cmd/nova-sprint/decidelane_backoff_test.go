@@ -99,13 +99,15 @@ func TestAFailedShadowReadBacksOffUntilItsHeadChanges(t *testing.T) {
 func TestTheLaneReadsARecordOnlyWhenItsFileChanged(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	now := func() time.Time { return time.Unix(1000, 0).UTC() }
+	base := time.Unix(1000, 0).UTC()
+	now := func() time.Time { return base }
 	lane := newDecideLane(dir, nil, now, GradeWait)
 	path := lane.record(decide.JudgmentAnswerName)
 	d := func(id string) decide.Decision {
 		return decide.Decision{ID: id, Decision: decide.JudgmentAnswerName, At: now().Format(time.RFC3339), Inputs: map[string]string{"card": "s1-1"}}
 	}
 	require.NoError(t, lane.recordAnswer(d("j1")))
+	require.NoError(t, os.Chtimes(path, base, base))
 	open, err := lane.openOf(path)
 	require.NoError(t, err)
 	require.Len(t, open, 1)
@@ -121,6 +123,7 @@ func TestTheLaneReadsARecordOnlyWhenItsFileChanged(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(path, nil, 0o644))
 	require.NoError(t, lane.recordAnswer(d("j2")))
+	require.NoError(t, os.Chtimes(path, base, base.Add(time.Second)))
 	open, err = lane.openOf(path)
 	require.NoError(t, err)
 	require.Len(t, open, 1, "the changed file is read again")
@@ -128,6 +131,37 @@ func TestTheLaneReadsARecordOnlyWhenItsFileChanged(t *testing.T) {
 
 	_, err = lane.openOf(filepath.Join(dir, "absent.jsonl"))
 	require.NoError(t, err, "an absent record is no decisions")
+}
+
+// The record is read again when only its size changed: the mtime is put back to the one the
+// lane cached, and a longer id grows the file, so the test does not depend on the file
+// system's mtime tick.
+func TestTheLaneReadsAChangedRecordWhateverTheMtimeTick(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	base := time.Unix(1000, 0).UTC()
+	now := func() time.Time { return base }
+	lane := newDecideLane(dir, nil, now, GradeWait)
+	path := lane.record(decide.JudgmentAnswerName)
+	d := func(id string) decide.Decision {
+		return decide.Decision{ID: id, Decision: decide.JudgmentAnswerName, At: now().Format(time.RFC3339), Inputs: map[string]string{"card": "s1-1"}}
+	}
+	require.NoError(t, lane.recordAnswer(d("j1")))
+	require.NoError(t, os.Chtimes(path, base, base))
+	open, err := lane.openOf(path)
+	require.NoError(t, err)
+	require.Len(t, open, 1)
+
+	require.NoError(t, lane.recordAnswer(d("j2")))
+	require.NoError(t, os.Chtimes(path, base, base))
+	require.NoError(t, lane.recordAnswer(d("j2-longer")))
+	require.NoError(t, os.Chtimes(path, base, base))
+	open, err = lane.openOf(path)
+	require.NoError(t, err)
+	require.Len(t, open, 3, "a changed size is read again, whatever the mtime tick")
+	assert.Equal(t, "j1", open[0].ID)
+	assert.Equal(t, "j2", open[1].ID)
+	assert.Equal(t, "j2-longer", open[2].ID)
 }
 
 // A round over a store whose write generation stands still, with nothing queued and nothing
