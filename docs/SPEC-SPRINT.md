@@ -9363,6 +9363,73 @@ gives one at a time beside the store, so no two steps of the record interleave.
   copy of the sprint holds (it reads the sprint that way); the page does not draw
   them.
 
+### The bench lease
+
+The part of `the-server-schedules-bench-work-not-a-lock` that hands out a bench and a
+slot (v1.7; the model is `tla/BenchLease.tla`, group `benchlease`). It is client/server,
+the shape Glenn allowed (2026-10-18: "The ban is on implementing things in a distributed
+programming way such that the locks get stuck and things freeze up. You can implement
+bench locks, load balancing or whatever you want to do, if it is client/server."): the
+server owns every lease and its deadline on the server's clock, a client holds nothing
+that can strand a slot, and no client coordinates with another. The named-machine lanes
+above stay disabled and unchanged (`sprint.LanesDisabled`).
+
+- `nova-sprint lane take go --machine auto --as <who>` asks for a bench, and the same
+  line again renews the lease the asker holds;
+  `nova-sprint lane give go --machine auto --as <who>` gives it back.
+- A grant prints `LANE-TAKE OK go machine=<m> as=<who> slots=<committed>/<slots> until=<RFC3339>`
+  (exit 0; `until` is the lease's deadline). A full fleet prints, exit 1,
+  `LANE-TAKE WAIT go as=<who> retry_at=<RFC3339>: every allowed bench is full: <m> <committed>/<slots>, ...`.
+
+The decisions:
+
+1. **A placement, never a lock (D1).** The take asks the server for a bench. It never
+   queues and never waits behind another holder.
+2. **The allowed benches (D2)** are the fleet table's members that are up, not quiet, not
+   NoRoom, of width above 0, not the server's own machine, accepted by `bench.CheckHost`,
+   with a fresh beat carrying Cores above 0. No list of benches lives in a brief or in
+   code: they come from nova-config's machine rows through `fleet sync`, and a hold
+   (space, mini-m5-1) keeps a machine out.
+3. **Slots (D3).** A lease is one bench slot: one job at `go test -p 8`. A bench's slots
+   are max(1, Cores / 8). Its committed slots are max(held, busy), where held is its live
+   leases and busy is ceil(Load / 100 * Cores / 8), so a lease counts before its load
+   shows and outside load (the fleet's own cards, a stray process) counts too.
+4. **The pick (D4).** The allowed bench with the lowest committed / slots, a tie going to
+   the most free slots, then the name; granted only when committed + 1 <= slots. A worker
+   that already holds a lease is answered its own bench and its lease renewed (Seen = now):
+   a renewal, never a second lease. The record keeps holders per machine, so a second
+   lease is representable; the pick must refuse it (OneLeaseEach, witness `second`).
+5. **The deadline (D5)** is the server's clock: a lease not renewed within LaneHoldFor
+   (20m) is past its deadline. Every step that reads the record counts it as released, and
+   the next step that writes the record (a take, a renewal, a give) or the server's sweep
+   (`Lanes.Expire`) removes it, so a dead or lost client never holds a slot past it. A give
+   releases at once. A lease on a bench that becomes held or down stays until it is given
+   or expires, and that bench gets no new lease.
+6. **WAIT (D6).** When no allowed bench has room, the answer is WAIT with a retry time (the
+   earliest deadline of a live lease on an allowed bench, at most LaneWaitFor, one minute,
+   away) and nothing is written: no queue, no place, and not even the removal of an
+   expired lease (the wait counted it as gone; the next write removes it). A waiter that
+   keeps asking is granted once capacity frees again and again; with no queue it is not
+   promised to be first.
+7. **One step (D7).** A pick and a give are each one step on the record, run by the server
+   one at a time: two picks never both take a bench's last slot.
+
+The model checks NeverOverSlots, OneLeaseEach, GrantOnlyAllowed, GrantIsLeastCommitted
+and WaitWritesNothing on two benches (1 and 2 slots) and three workers, and DeadLeaseEnds
+(a dead client's lease ends) and WaiterGetsLease on two workers, with fairness on the
+clock and the sweep. Its reversed witnesses: `noexpiry`, a client-held lease with no
+server expiry (the stuck lock Glenn banned), fails DeadLeaseEnds; `loadonly`, a pick by
+load alone as one `ssh <bench> uptime` is, fails NeverOverSlots (three grants onto a
+two-slot bench before any load shows); `noceiling`, a full fleet still granting the least
+committed, fails NeverOverSlots; `queue`, a wait recording a place, fails
+WaitWritesNothing; and, run by hand with no case yet, `anybench` fails GrantOnlyAllowed,
+`anyroom` fails GrantIsLeastCommitted and `second` fails OneLeaseEach. Two corrections to
+the card's design came from writing it: a lease is modelled as the set of benches a
+worker holds (a single bench or none made OneLeaseEach true by its type, while the
+record allows two), and D5's "released at the next step that reads the record" is split
+from D6's "nothing is written" as decision 5 says. `Lanes.Pick` is card
+v17-bench-lease-pick and the store's pick step v17-bench-lease-take-auto.
+
 
 ## friend-stall-ladder-r.w1
 
