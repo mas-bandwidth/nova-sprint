@@ -51,11 +51,16 @@ import (
 // the tree's own packages, or one update run (a build and two tests of one package).
 const landGoBudget = 15 * time.Minute
 
-// landGateRunBudget bounds one tree-gate run on a bench (2026-10-17: a run sat
-// 14 minutes on vision; CI's own bound is two minutes, so five is generous). A
-// run past it is the bench's fault, never the tree's (tla/GateRing.tla (read)
+// landGateRunBudget bounds one tree-gate run on a bench: the v1.6.3 bound, kept
+// until gate-run walls are measured per repository from the land log (2026-10-17:
+// a run sat 14 minutes on vision; that is one sample, not a measurement). A run
+// past it is the bench's fault, never the tree's (tla/GateRing.tla (read)
 // AskRefused).
-const landGateRunBudget = 5 * time.Minute
+const landGateRunBudget = 15 * time.Minute
+
+// gateRunBudgetOverride is a test's seam for one gate run's budget; the zero value
+// means landGateRunBudget (gateOn).
+var gateRunBudgetOverride time.Duration
 
 const benchGateUnavailableWhy = "the configured remote bench did not run the tree gate; restore a bench and run land again"
 
@@ -729,7 +734,11 @@ func (l *lander) ringGate(ctx context.Context, hosts []string, dir string, runs 
 func (l *lander) gateOn(ctx context.Context, host, dir string, runs [][]string, tests bool, st *bench.MirrorStage) (why string, ran bool, refused *bench.StageError) {
 	defer l.giveGateLane(host)
 	l.stage("gate", "bench "+host+" held by "+l.laneWho()+" ("+l.gateWhose()+"): "+strings.Join(runs[0], " "))
-	budget := time.Duration(len(runs)) * landGateRunBudget
+	runBudget := gateRunBudgetOverride
+	if runBudget == 0 {
+		runBudget = landGateRunBudget
+	}
+	budget := time.Duration(len(runs)) * runBudget
 	gctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	start := l.clock()
@@ -738,12 +747,15 @@ func (l *lander) gateOn(ctx context.Context, host, dir string, runs [][]string, 
 	if errors.As(err, &refused) {
 		return "", false, refused
 	}
-	if ctx.Err() == nil && (errors.Is(err, context.DeadlineExceeded) || errors.Is(gctx.Err(), context.DeadlineExceeded)) {
-		refused := &bench.StageError{Host: host, Step: "the gate run", Wall: wall, Tail: "no answer within " + budget.String()}
-		l.copySaid(refused.Error())
-		return "", false, refused
-	}
 	if err != nil || code == bench.NoAnswer {
+		// A run that did not answer, with the budget past (or the run itself on its
+		// deadline) and the caller not cancelling, is the bench's fault: the ring steps
+		// on. A run that answered, even as the deadline fired, is the run's answer.
+		if ctx.Err() == nil && (errors.Is(err, context.DeadlineExceeded) || errors.Is(gctx.Err(), context.DeadlineExceeded)) {
+			refused := &bench.StageError{Host: host, Step: "the gate run", Wall: wall, Tail: "no answer within " + budget.String()}
+			l.copySaid(refused.Error())
+			return "", false, refused
+		}
 		return "", false, nil
 	}
 	l.ranOnBench(host, wall)
