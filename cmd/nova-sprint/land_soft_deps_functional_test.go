@@ -136,6 +136,71 @@ func TestLandReportHonorsSoftDependencyMark(t *testing.T) {
 	r.clean()
 }
 
+// Dogfood run 3 ("LAND FAILED stream=e3s cards=1 ... the batch was pushed ... and NOT
+// reported: owner-pushes-route-to-coordinator: soft dependency on <3 LAND-AFTER targets>
+// not landed"): a batch of one card with three LAND-AFTER targets, all three accepted into
+// merging after the pass opens the stream and before the mark. The cut has no earlier pin to
+// keep: nothing is pushed, the card is reported skipped naming all three targets, it stays
+// queued, and nothing is left pushed-unreported (tla/SoftDependency.tla MarkPush,
+// BaseRecorded).
+func TestLandOneCardBatchWithThreeSoftTargetsPushesNothing(t *testing.T) {
+	t.Parallel()
+	r := newLandRig(t)
+	r.stubGreenGate()
+	r.commit("go.mod", "module example.com/e3s\n\ngo 1.24\n", "module")
+	r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/main")
+	r.git(r.worker, "fetch", "-q", "origin")
+	dir := t.TempDir()
+	for _, c := range []struct{ id, after string }{{"c1", ""}, {"c2", ""}, {"c3", ""}, {"a", "c1, c2, c3"}} {
+		r.ok("add --stream s1 --one --brief-file " + writeSoftHeaderBrief(t, dir, c.id, "-", c.after, r.remote, "", c.id+".txt"))
+	}
+	heads := map[string]string{}
+	for _, id := range []string{"a", "c1", "c2", "c3"} {
+		heads[id] = r.head(id, "main", id+".txt", id+"\n")
+	}
+	r.git(r.worker, "push", "-q", "origin", "refs/heads/sprint/*:refs/heads/sprint/*")
+	r.deal(4)
+	r.ok("take --as m1 --limit 100")
+	r.ok("finish --as m1 a.w1@1 --head " + heads["a"])
+	r.ok("ask")
+	r.ok("read --as reader-a --ok --limit 100")
+	r.ok("read --as reader-b --ok --limit 100")
+	r.ok("accept --read-ok")
+	r.markProtected()
+	require.Equal(t, map[string]string{"a": "merging/queued"}, r.places("a"))
+	before := r.mainLog()
+
+	var queueTargets sync.Once
+	r.a.gateRan = func(string, bool) {
+		queueTargets.Do(func() {
+			for _, id := range []string{"c1", "c2", "c3"} {
+				r.ok("finish --as m1 " + id + ".w1@1 --head " + heads[id])
+			}
+			r.ok("ask")
+			r.ok("read --as reader-a --ok --limit 100")
+			r.ok("read --as reader-b --ok --limit 100")
+			r.ok("accept --read-ok")
+		})
+	}
+	_, out, errs := r.do("land --repo-dir " + r.clone + " --base main")
+	assert.Contains(t, errs, "a: soft dependency on c1, c2, c3 not landed; a is skipped this batch", out+errs)
+	assert.NotContains(t, out+errs, "NOT reported")
+	assert.NotContains(t, out+errs, "LAND FAILED")
+	assert.Equal(t, before, r.mainLog(), "a one-card batch whose only pin was skipped pushed something")
+	_, err := gitrunIsAncestor(r, heads["a"], r.git(r.remote, "rev-parse", "main"))
+	assert.Error(t, err, "the skipped a was pushed")
+	assert.Equal(t, map[string]string{"a": "merging/queued", "c1": "merging/queued", "c2": "merging/queued", "c3": "merging/queued"}, r.places("a", "c1", "c2", "c3"))
+	r.noPushedUnreported("a", "c1", "c2", "c3")
+
+	// the next pass, the three targets queued, lands all four with a last
+	r.a.gateRan = nil
+	out = r.ok("land --repo-dir " + r.clone + " --base main")
+	assert.Contains(t, out, "LAND OK stream=s1 cards=4")
+	assert.Equal(t, "land a (sprint stream s1)", r.mainLog()[0])
+	r.noPushedUnreported("a", "c1", "c2", "c3")
+	r.clean()
+}
+
 // noPushedUnreported says no card of ids carries a pushed-unreported mark.
 func (r *landRig) noPushedUnreported(ids ...string) {
 	r.t.Helper()
