@@ -1395,7 +1395,12 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	fs.Var(&briefOps, "brief-op", "`id=op`: a card's brief decision op id (<id>@brief-<hex>), which add sends its server itself when it asked the decision where it was typed; refused when typed on an add no server runs; repeated, one per card")
 	var briefUsages stringList
 	fs.Var(&briefUsages, "brief-usage", "`id=usage`: what a card's brief decision call spent (input=<n>,output=<n>,model=<provider/model>), which add sends its server beside --brief-op so the card carries its decide cost; refused when typed on an add no server runs; repeated, one per card")
+	args, notDupArgs := takeNotDupArgs(args)
 	ids, err := parse(fs, args)
+	if err != nil {
+		return refuse(stderr, "add", err.Error())
+	}
+	notDup, err := parseNotDup(notDupArgs)
 	if err != nil {
 		return refuse(stderr, "add", err.Error())
 	}
@@ -1475,7 +1480,7 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 		if *every != 0 || *last {
 			return refuse(stderr, "add", "--sentinel-every goes with --count, not a card per brief file")
 		}
-		return a.cmdAddMany(*stream, *needs, *briefDir, briefFiles, *sentinel, *rules, *score, *before, *after, *held, allowShared, *allowPersonal, *landProtected, *decideRecord, *partial, briefOps, sprint.Split(*replaces), c, stdout, stderr)
+		return a.cmdAddMany(*stream, *needs, *briefDir, briefFiles, *sentinel, *rules, *score, *before, *after, *held, allowShared, *allowPersonal, *landProtected, *decideRecord, *partial, briefOps, sprint.Split(*replaces), notDup, c, stdout, stderr)
 	}
 	if len(briefFiles) == 1 {
 		if *brief != "" {
@@ -1563,6 +1568,12 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 			return refuse(stderr, "add", err.Error())
 		}
 	}
+	// DUPLICATE: a brief with a probable duplicate is held back, and the rest
+	// of the wave admitted in the same write (docs/SPEC-SPRINT.md section 7).
+	dupHeldMap, dupReasons, code := dupHold(a, rs, st, notDup, stdout, stderr)
+	if code != 0 {
+		return code
+	}
 	if *brief == "" && *sentinel == "" {
 		c.says = append(c.says, "the cards have no brief, so a worker is handed no task with them; give each one before it is dealt, on a STOPPED machine: nova-sprint brief <id> --brief-file <path>")
 	}
@@ -1615,9 +1626,13 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	}
 	step = promotionGuard(step, rs, *landProtected)
 	step = mirrorNotice(step, rs)
-	code := a.runStep("add", *c, st, step, stdout, stderr)
+	step = dupNoteStep(step, dupReasons)
+	code = a.runStep("add", *c, st, step, stdout, stderr)
 	if code != 0 && sprint.HasBriefLandAfter(rs) {
 		return 2
+	}
+	if code == 0 && len(dupHeldMap) > 0 {
+		return 1
 	}
 	return code
 }
@@ -1668,7 +1683,7 @@ func promotionGuard(step store.Step, rs []sprint.AddReq, landProtected string) s
 // store write adds every card.
 // cmdAddMany admits per-file cards and supports the same atomic first-stream mark as add
 // (docs/SPEC-SPRINT.md section 7, protected-bases-pb-b.w2).
-func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, sentinel, rules, score, before, after string, held, allowShared, allowPersonal bool, landProtected, decideRecord string, partial bool, briefOps, replaces []string, c *common, stdout, stderr io.Writer) int {
+func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, sentinel, rules, score, before, after string, held, allowShared, allowPersonal bool, landProtected, decideRecord string, partial bool, briefOps, replaces []string, notDup map[string]string, c *common, stdout, stderr io.Writer) int {
 	if stream == "" {
 		return refuse(stderr, "add", "wants --stream and --brief-dir <dir> or --brief-file <file>...")
 	}
@@ -1759,6 +1774,29 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 		}
 		st = s
 	}
+	// DUPLICATE: a brief with a probable duplicate is held back, and the rest
+	// of the wave admitted in the same write (docs/SPEC-SPRINT.md section 7).
+	dupHeldMap, dupReasons, code := dupHoldMany(a, cards, st, notDup, stdout, stderr)
+	if code != 0 {
+		return code
+	}
+	if len(dupHeldMap) > 0 {
+		var kept []sprint.CardAdd
+		real := 0
+		for _, cd := range cards {
+			if _, held := dupHeldMap[cd.ID]; held && !cd.Sentinel {
+				continue
+			}
+			kept = append(kept, cd)
+			if !cd.Sentinel {
+				real++
+			}
+		}
+		if real == 0 {
+			return 1
+		}
+		cards = kept
+	}
 	texts := make([]string, len(cards))
 	streams := make([]string, len(cards))
 	for i, cd := range cards {
@@ -1802,9 +1840,13 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 	c.addStream = stream
 	c.addBefore = before
 	rsReq := []sprint.AddReq{r}
-	code = a.runStep("add", *c, st, promotionGuard(store.AddStep(r), rsReq, landProtected), stdout, stderr)
+	step := dupNoteStep(promotionGuard(store.AddStep(r), rsReq, landProtected), dupReasons)
+	code = a.runStep("add", *c, st, step, stdout, stderr)
 	if code != 0 && sprint.HasBriefLandAfter(rsReq) {
 		return 2
+	}
+	if code == 0 && len(dupHeldMap) > 0 {
+		return 1
 	}
 	return code
 }
