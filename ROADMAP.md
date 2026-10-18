@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (221)
+- [The sprint system](#the-sprint-system) (229)
 - [Setup, release and operations](#setup-release-and-operations) (72)
 - [Docs, models and the repository](#docs-models-and-the-repository) (25)
 - [Friend AIs](#friend-ais) (21)
@@ -1849,6 +1849,70 @@ When a card's head no longer merges onto its stream's tip, the lander merges the
 Target: v1.7
 
 From: the owner, 2026-10-17: these bad merges should not become fixes; they should be done in the merge step
+
+### nova-card lint skips the template's own slots
+
+nova-card lint no longer reads the template's words as leftovers: the RESULT line's sha=<sha12>, Head: <sha>, --head <sha>, the commit format <id>: <what> and anything inside a backtick span; a real leftover in prose is still caught. Target v1.7; sprint card v17-card-lint-skips-the-templates-slots (stream v17, tier pro, BASE sprint/v17).
+
+Why it waits: A filled card that nova-sprint add admitted came back from nova-card lint with a placeholder finding on every template slot.
+
+From: the coordinator, 2026-10-18: Rowan's carding pass on nova-card lint and the brief verbs
+
+### nova-card lint answers as nova-sprint add does
+
+nova-card lint stops running the typed-header lint add never runs (kind-declared, start-named, test-named, paths-declared) and calls the same pure functions lintBriefReads calls, so a card of the sprint's own form is clean in both. Target v1.7; sprint card v17-nova-card-lint-answers-as-add-does (stream v17, tier pro, BASE sprint/v17).
+
+Why it waits: KIND: fix, a card with no START line and TEST: none because ... were red in nova-card lint and admitted by add.
+
+From: the coordinator, 2026-10-18: Rowan's carding pass on nova-card lint and the brief verbs
+
+### A (read) marking may carry a note, and one marking per file is enough
+
+START and THE TASK accept (read: why) and (read; why), and a file THE TASK marks read once is read at every mention, so paths-cover-named stops asking PATHS to cover files a card only reads. Target v1.7; sprint card v17-read-marking-takes-a-note-once-per-file (stream v17, tier pro, BASE sprint/v17).
+
+Why it waits: (read) was matched as the bare token and per mention.
+
+From: the coordinator, 2026-10-18: Rowan's carding pass on nova-card lint and the brief verbs
+
+### A brief edit writes the card's LAND-AFTER like add does
+
+nova-sprint brief records the LAND-AFTER: line of the new text as land_after, validated as add validates it, and a text that drops the line clears it; a LAND-AFTER-only edit is taken in any state like a DEPENDS-ON-only one. Target v1.7; sprint card v17-brief-edit-writes-land-after-like-add (stream v17, tier pro, BASE sprint/v17).
+
+Why it waits: Only DEPENDS-ON was written on a brief edit, so the stored land_after stood and the card landed in the old order.
+
+From: the coordinator, 2026-10-18: Rowan's carding pass on nova-card lint and the brief verbs
+
+### brief check reads the store's LAND-AFTER for a card on the table
+
+Given a file whose id is a card on the table, nova-sprint brief check compares the file's LAND-AFTER with the card's stored soft dependencies and names a drift as a land-after finding. Target v1.7; sprint card v17-brief-check-reads-the-stores-land-after (stream v17, tier pro, BASE sprint/v17).
+
+Why it waits: The file-based check could not see land_after held in the store, so the two drifted apart.
+
+From: the coordinator, 2026-10-18: Rowan's carding pass on nova-card lint and the brief verbs
+
+### A held card's refusal names release
+
+accept, ask, return and rework on a card added held name nova-sprint release in their remedy instead of sending the coordinator to brief and drop. Target v1.7; sprint card v17-held-card-refusal-names-release (stream v17, tier pro, BASE sprint/v17).
+
+Why it waits: The refusal suggested editing a card that was only held.
+
+From: the coordinator, 2026-10-18: Rowan's carding pass on nova-card lint and the brief verbs
+
+### brief check names a tier the card does not hold
+
+Given a file whose id is a card on the table, brief check reports a line-1 tier that differs from the card's recorded tier, before brief keeps the recorded one. Target v1.7; sprint card v17-brief-check-names-a-tier-the-card-does-not-hold (stream v17, tier pro, BASE sprint/v17).
+
+Why it waits: brief only noted 'tier kept' after the edit.
+
+From: the coordinator, 2026-10-18: Rowan's carding pass on nova-card lint and the brief verbs
+
+### A cosmetic brief edit keeps the attempt cap's count
+
+An edit of line 1's tier, a routing line or spacing no longer opens a fresh attempt-cap window; only an edit of the task or PATHS does, as a re-tier, rework and accept still do. Target v1.7; sprint card v17-cosmetic-brief-edit-keeps-the-cap-count (stream v17, tier pro, BASE sprint/v17).
+
+Why it waits: Every text edit reset the cap, so a capped card ran on after an edit that decided nothing.
+
+From: the coordinator, 2026-10-18: Rowan's carding pass on nova-card lint and the brief verbs
 
 ## Setup, release and operations
 
