@@ -341,7 +341,8 @@ func dupNoteStep(step store.Step, reasons map[string]string) store.Step {
 // dupHold is the duplicate check of the add form that names its cards by id: it
 // holds back every brief with a probable duplicate and leaves the rest of the
 // wave in rs, one write. It prints one DUPLICATE line per held card and returns
-// exit 1 when every real card of the wave was held.
+// exit 1 when every real card of the wave was held, 0 when the rest of the wave
+// is written (the add then exits with the write's code).
 func dupHold(a *app, rs []sprint.AddReq, st *store.Store, notDup map[string]string, stdout, stderr io.Writer) (map[string]dupFinding, map[string]string, int) {
 	var wave []dupCard
 	for _, r := range rs {
@@ -389,7 +390,10 @@ func dupHold(a *app, rs []sprint.AddReq, st *store.Store, notDup map[string]stri
 
 // dupHoldMany is the duplicate check of the many-brief add form: it holds back
 // every brief with a probable duplicate, prints one DUPLICATE line per held
-// card, and leaves the filtering of the wave to its caller.
+// card, and leaves the filtering of the wave to its caller. A duplicate scan
+// that succeeds returns 0, and the caller writes the rest of the wave and exits
+// with the write's code, exiting 1 only when every real card was held; a scan
+// error returns its exit code.
 func dupHoldMany(a *app, cards []sprint.CardAdd, st *store.Store, notDup map[string]string, stdout, stderr io.Writer) (map[string]dupFinding, map[string]string, int) {
 	var wave []dupCard
 	for _, cd := range cards {
