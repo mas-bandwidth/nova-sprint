@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.6.2 — 2026-10-18
+
+START reads each STOP debt's own record, off the table too. On 2026-10-18 `nova-sprint start` refused with "32 STOP-owned work/read jobs lack same-owner cancellation receipts": after the STOP the friend reconcile had retired those jobs off the fleet and readers tables with their STOP receipt (the stopped-from generation and the next generation), and START read only the cards still on the table, so it never saw a receipt and could not start. START and the beat settle now load each debt's record by id, including records off the table; a receipt there settles the debt through the existing check, and a card removed without a receipt still refuses START. START names what it settled. Model: `tla/StopReturn.tla` gains Retire (a job leaves the table with its receipt) and GoneNeverBlocksStart, with the reversed witness `MCStopReturnBrokenGoneBlocksStart` failing on it; all 11 stopreturn cases checked with TLC on a bench. No wire or record change. (#499)
+
+- Requires nova-tools v1.6.0.
+
 ## v1.6.1 — 2026-10-18
 
 The coordinator's verbs stop paying for the held rule. `card` took 8.5 s and `check` 11.5 s of CPU on the coordinator's machine (2026-10-18 00:30 EDT, 385 cards): the held rule offered every ready card to every member that is up, and each offer walked the whole fleet table twice and re-parsed every card's brief (465 fleet walks and 19,352 brief parses per check on a 40-card store). The staging refusals are now worked out once per step, keyed on the fleet, work and merge tables and the clock, and each brief is read once; the tick's deal goes through the same rule and gains the same. `card` 8.5 s to 0.4 s, `check` 11.5 s to 3.9 s, output byte-identical. No wire or record change; reads only, so no model change. (#496)
