@@ -7122,7 +7122,11 @@ names it, so the first of two duplicates is admitted. `add` skips and reports
 instead: a brief with a probable duplicate is held
 back and the rest of the wave admitted in one write, one `DUPLICATE <id>: <the same line>; run: nova-sprint add ... --not-a-duplicate-of <id>=<reason>`
 line each, and the add exits with the write's code (0 when it wrote the rest of the wave, and 1 only when every real card was held; 0 when none); `--not-a-duplicate-of <card>=<reason>` (repeated, a reason required) admits the card and records the
-reason on its admission note.
+reason on its admission note. `brief check` runs the same check over the briefs
+it holds, against the open cards of the one read-only snapshot it already
+loads, and names one `duplicate` finding per held brief in add's words, with a
+remedy that names `--not-a-duplicate-of`; brief check takes no such override
+(add does, to admit the brief).
 
 `TEST` names a test
 `git grep` finds at `BASE` in `--repo-dir`, and `BASE` exists there; with no
