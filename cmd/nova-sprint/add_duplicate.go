@@ -390,9 +390,10 @@ func dupHold(a *app, rs []sprint.AddReq, st *store.Store, notDup map[string]stri
 
 // dupHoldMany is the duplicate check of the many-brief add form: it holds back
 // every brief with a probable duplicate, prints one DUPLICATE line per held
-// card, and leaves the filtering of the wave to its caller. It always returns
-// exit 0: the add writes the rest of the wave and exits with the write's code,
-// and exits 1 only when every real card was held.
+// card, and leaves the filtering of the wave to its caller. A duplicate scan
+// that succeeds returns 0, and the caller writes the rest of the wave and exits
+// with the write's code, exiting 1 only when every real card was held; a scan
+// error returns its exit code.
 func dupHoldMany(a *app, cards []sprint.CardAdd, st *store.Store, notDup map[string]string, stdout, stderr io.Writer) (map[string]dupFinding, map[string]string, int) {
 	var wave []dupCard
 	for _, cd := range cards {
