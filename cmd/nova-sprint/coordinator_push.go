@@ -744,11 +744,13 @@ func coordWarningGroups(l coordLook) []sprint.Group {
 // not human sight; transport liveness assumes eventual successful sends.
 func (a *app) decisionPass(ctx context.Context) {
 	type foldAttempt struct {
-		to        string
-		set       string
-		token     string
-		attempted bool
-		received  bool
+		to           string
+		set          string
+		token        string
+		attempted    bool
+		received     bool
+		foldOwner    bool
+		ownerReports []string
 	}
 	var coordinatorFold foldAttempt
 	login, loginErr := a.coordinatorBusLogin()
@@ -825,7 +827,7 @@ func (a *app) decisionPass(ctx context.Context) {
 					}
 					// Owner cadence is global to the lane, including changed/empty sets
 					// and recipient changes. Keep the receipt until the window ends.
-					ownerFold := lane == "owner" && coordinatorFold.attempted && coordinatorFold.received && coordinatorFold.to == to && coordinatorFold.set == set
+					ownerFold := lane == "owner" && coordinatorFold.attempted && coordinatorFold.received && coordinatorFold.foldOwner && coordinatorFold.to == to
 					if lane == "owner" && s.Now.Sub(d.SentAt) < 30*time.Minute && !ownerFold {
 						return p
 					}
@@ -849,7 +851,7 @@ func (a *app) decisionPass(ctx context.Context) {
 				if set == "" {
 					return p
 				}
-				if lane == "owner" && coordinatorFold.attempted && coordinatorFold.to == to && coordinatorFold.set == set {
+				if lane == "owner" && coordinatorFold.attempted && coordinatorFold.to == to && coordinatorFold.foldOwner {
 					if !coordinatorFold.received {
 						return p
 					}
@@ -868,7 +870,7 @@ func (a *app) decisionPass(ctx context.Context) {
 					}
 					folded := *coordinatorNote.DecisionDelivery
 					folded.Lane = "owner"
-					folded.Reports = reports
+					folded.Reports = coordinatorFold.ownerReports
 					folded.UnknownReceipts = 0
 					folded.Fault = ""
 					n := sprint.Note{
@@ -971,6 +973,24 @@ func (a *app) decisionPass(ctx context.Context) {
 						continue
 					}
 					next := *n.DecisionDelivery
+					var ownerReports []string
+					foldOwner := false
+					if lane == "coordinator" && d.To == receiptTo {
+						all := append(append([]sprint.Open{}, s.Open...), s.Acked...)
+						ownerSet, _, reports := sprint.DecisionBatch(s.Now, all, sprint.DefaultHeldDecisions(s), "owner", machine.StoppedBetween, s)
+						ownerReports = reports
+						ownerPending := false
+						for _, pending := range s.Acked {
+							pd := pending.Note.DecisionDelivery
+							if pending.Note.Type == sprint.NDecisionDelivery && pd != nil && pd.Lane == "owner" && pd.SentAt.IsZero() {
+								ownerPending = true
+								break
+							}
+						}
+						foldOwner = ownerSet == d.Set && !ownerPending
+						coordinatorFold.foldOwner = foldOwner
+						coordinatorFold.ownerReports = append([]string(nil), reports...)
+					}
 					next.Fault = fault
 					if fault == "" {
 						next.SentAt = s.Now
@@ -986,22 +1006,6 @@ func (a *app) decisionPass(ctx context.Context) {
 					p.Updates = append(p.Updates, n)
 					receiptApplied = true
 					if fault == "" {
-						var ownerReports []string
-						foldOwner := false
-						if lane == "coordinator" && d.To == receiptTo {
-							all := append(append([]sprint.Open{}, s.Open...), s.Acked...)
-							ownerSet, _, reports := sprint.DecisionBatch(s.Now, all, sprint.DefaultHeldDecisions(s), "owner", machine.StoppedBetween, s)
-							ownerReports = reports
-							ownerPending := false
-							for _, pending := range s.Acked {
-								pd := pending.Note.DecisionDelivery
-								if pending.Note.Type == sprint.NDecisionDelivery && pd != nil && pd.Lane == "owner" && pd.SentAt.IsZero() {
-									ownerPending = true
-									break
-								}
-							}
-							foldOwner = ownerSet == d.Set && !ownerPending
-						}
 						for _, r := range s.Acked {
 							coordinatorReport := lane == "coordinator" && slices.Contains(d.Reports, r.Note.ID)
 							ownerReport := lane == "owner" && slices.Contains(d.Reports, r.Note.ID) ||

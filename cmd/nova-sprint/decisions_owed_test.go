@@ -144,6 +144,47 @@ func TestDecisionsOwedOneRecipientGetsOneFoldedNotice(t *testing.T) {
 	require.Equal(t, attemptsBefore, attemptCount(), "the repeated look does not retry a delivered token")
 }
 
+func TestDecisionsOwedAgedDefaultReportFoldsByPreReceiptSet(t *testing.T) {
+	t.Parallel()
+	ta, _, _ := coordSprint(t, "aged-fold-seat")
+	ctx := context.Background()
+	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: "aged-fold-seat"}
+	_, _, _, err := st.SetMachine(ctx, true)
+	require.NoError(t, err)
+	_, err = st.Run(ctx, store.NoteStep("fixture", sprint.Note{
+		Kind: sprint.Judgment, SprintLevel: true, Type: "aged-fold", What: "aged-fold", At: ta.a.now(),
+	}))
+	require.NoError(t, err)
+	_, err = st.Run(ctx, store.NoteStep("fixture", sprint.Note{
+		Kind: sprint.Acknowledged, SprintLevel: true, Type: sprint.NServerDefault,
+		Who: sprint.ServerDefaultActor, At: ta.a.now(), What: "held by safe default",
+	}))
+	require.NoError(t, err)
+
+	b := &tokenBus{}
+	ta.a.bus = b.send
+	ta.step(2 * time.Hour)
+	ta.a.coordinatorPass(ctx)
+	var notices []bus.Message
+	for _, m := range b.delivered {
+		if m.Subject == "nova-sprint: decisions owed" && len(m.To) == 1 && m.To[0] == "aged-fold-seat" {
+			notices = append(notices, m)
+		}
+	}
+	require.Len(t, notices, 1, "the owner pre-receipt set matches the coordinator despite the report aging out after receipt")
+	require.Contains(t, notices[0].Body, "aged-fold")
+	notes, err := st.B.OpenNotes(ctx)
+	require.NoError(t, err)
+	for _, o := range notes {
+		if o.Note.Type == sprint.NServerDefault {
+			require.True(t, o.Note.DefaultCoordinatorTold)
+			require.True(t, o.Note.DefaultOwnerTold)
+			return
+		}
+	}
+	t.Fatal("server-default receipt report was not found")
+}
+
 // A review or merge judgment is pushed on the existing durable coordinator
 // lane immediately and then once each minute until the judgment closes. The
 // bus receipt is delivery, not an answer; a process restart keeps the receipt.
