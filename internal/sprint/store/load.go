@@ -453,11 +453,15 @@ func (st *Store) keepLogIndex(ctx context.Context) error {
 	}
 	entries := map[string][]string{}
 	last := cur
+	// the pages read, for the done record to take in this tick (keepDone, logPagesShared)
+	read := map[string]logPageRead{}
+	defer func() { st.shareLogPages(read) }()
 	for range logIndexPages {
 		lines, ids, err := st.B.LogSince(ctx, last, logPage)
 		if err != nil {
 			return err
 		}
+		read[last] = logPageRead{lines: lines, ids: ids}
 		for i := range lines {
 			for _, k := range logKeys(lines[i]) {
 				entries[k] = append(entries[k], ids[i])

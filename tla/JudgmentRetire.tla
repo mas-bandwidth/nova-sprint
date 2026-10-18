@@ -39,6 +39,21 @@
  *     a judgment whose condition is false is closed within one tick
  *   GateRaisedAfterTick == ticked => (gateNeed => gateOpen)
  *     a condition that holds is never silent after a tick
+ *
+ * The STOPPED machine's retire (2026-10-17, v1.5.4): the tick retires only
+ * while the machine runs, and start refuses on any check violation, so a
+ * judgment whose cause is gone (j24647: the need-blocked judgment of "an
+ * earlier card", a bogus need already taken off every card, past its due time:
+ * a rule 12 violation) held the machine stopped with nothing to close it. The
+ * fix: tick --retire-only (sprint.RetireOnly) runs the retire checks alone, as
+ * the machine, STOPPED or RUNNING, and moves no card. A need-blocked
+ * judgment's subject is its need, here a subject that is no longer "on" when
+ * no card needs it. running is the machine RUNNING; retired is TRUE right
+ * after a retire-only.
+ * 4. "stopped_stays": a STOPPED machine has no retire (the bug).
+ *
+ * Invariant:
+ *   NoOrphanAfterRetire == retired => \A j \in open : SubjectOn(j.subject)
  *)
 
 EXTENDS FiniteSets
@@ -57,9 +72,11 @@ VARIABLES cards,        \* [c \in Cards -> {"on", "dropped", "absent"}]
           open,         \* SUBSET [id: Judgments, subject: Subjects]
           ticked,       \* BOOLEAN (TRUE immediately after a tick)
           gateNeed,     \* BOOLEAN: no member up satisfies the card's GATE-NEEDS
-          gateOpen      \* BOOLEAN: the gate-needs judgment is open
+          gateOpen,     \* BOOLEAN: the gate-needs judgment is open
+          running,      \* BOOLEAN: the machine is RUNNING
+          retired       \* BOOLEAN (TRUE immediately after a tick --retire-only)
 
-vars == <<cards, friends, loaded, open, ticked, gateNeed, gateOpen>>
+vars == <<cards, friends, loaded, open, ticked, gateNeed, gateOpen, running, retired>>
 
 SubjectOn(s) ==
   IF s \in Cards THEN cards[s] = "on" ELSE friends[s] = "on"
@@ -72,6 +89,8 @@ TypeOK ==
   /\ ticked \in BOOLEAN
   /\ gateNeed \in BOOLEAN
   /\ gateOpen \in BOOLEAN
+  /\ running \in BOOLEAN
+  /\ retired \in BOOLEAN
 
 Init ==
   /\ cards = [c \in Cards |-> "on"]
@@ -81,6 +100,8 @@ Init ==
   /\ ticked = FALSE
   /\ gateNeed = FALSE
   /\ gateOpen = FALSE
+  /\ running = TRUE
+  /\ retired = FALSE
 
 \* Raise a judgment on a card that is currently on the work table.
 Raise(j, c) ==
@@ -88,7 +109,7 @@ Raise(j, c) ==
   /\ ~ \E x \in open : x.id = j
   /\ open' = open \cup {[id |-> j, subject |-> c]}
   /\ ticked' = FALSE
-  /\ UNCHANGED <<cards, friends, loaded, gateNeed, gateOpen>>
+  /\ UNCHANGED <<cards, friends, loaded, gateNeed, gateOpen, running>> /\ retired' = FALSE
 
 \* Raise a judgment on a friend that is currently on the friends table.
 RaiseFriend(j, f) ==
@@ -96,28 +117,28 @@ RaiseFriend(j, f) ==
   /\ ~ \E x \in open : x.id = j
   /\ open' = open \cup {[id |-> j, subject |-> f]}
   /\ ticked' = FALSE
-  /\ UNCHANGED <<cards, friends, loaded, gateNeed, gateOpen>>
+  /\ UNCHANGED <<cards, friends, loaded, gateNeed, gateOpen, running>> /\ retired' = FALSE
 
 \* Drop a card: outside event, the card leaves the work table to dropped.
 Drop(c) ==
   /\ cards[c] = "on"
   /\ cards' = [cards EXCEPT ![c] = "dropped"]
   /\ ticked' = FALSE
-  /\ UNCHANGED <<friends, loaded, open, gateNeed, gateOpen>>
+  /\ UNCHANGED <<friends, loaded, open, gateNeed, gateOpen, running>> /\ retired' = FALSE
 
 \* Forget: outside event, the record is gone from the store.
 Forget(c) ==
   /\ cards[c] = "dropped"
   /\ cards' = [cards EXCEPT ![c] = "absent"]
   /\ ticked' = FALSE
-  /\ UNCHANGED <<friends, loaded, open, gateNeed, gateOpen>>
+  /\ UNCHANGED <<friends, loaded, open, gateNeed, gateOpen, running>> /\ retired' = FALSE
 
 \* FriendOff: outside event, the friend is taken off the friends table.
 FriendOff(f) ==
   /\ friends[f] = "on"
   /\ friends' = [friends EXCEPT ![f] = "off"]
   /\ ticked' = FALSE
-  /\ UNCHANGED <<cards, loaded, open, gateNeed, gateOpen>>
+  /\ UNCHANGED <<cards, loaded, open, gateNeed, gateOpen, running>> /\ retired' = FALSE
 
 \* The tick runs:
 \* Under Broken = "sparse": loads placed cards only; judgments whose card was
@@ -127,6 +148,7 @@ FriendOff(f) ==
 \* Under Broken = "none" (the fix): retires every judgment whose card or friend
 \* is no longer "on" its table.
 Tick ==
+  /\ running
   /\ IF Broken = "sparse"
        THEN /\ loaded' = {c \in Cards : cards[c] = "on"}
             /\ open' = {j \in open :
@@ -141,14 +163,37 @@ Tick ==
   \* holds, closed in the same tick when it does not; "gate_stays" never closes
   /\ gateOpen' = IF Broken = "gate_stays" THEN gateOpen \/ gateNeed ELSE gateNeed
   /\ ticked' = TRUE
-  /\ UNCHANGED <<cards, friends, gateNeed>>
+  /\ retired' = FALSE
+  /\ UNCHANGED <<cards, friends, gateNeed, running>>
+
+\* Stop and Start: the coordinator's stop and start of the machine.
+Stop ==
+  /\ running /\ running' = FALSE
+  /\ ticked' = FALSE /\ retired' = FALSE
+  /\ UNCHANGED <<cards, friends, loaded, open, gateNeed, gateOpen>>
+
+Start ==
+  /\ ~running /\ running' = TRUE
+  /\ ticked' = FALSE /\ retired' = FALSE
+  /\ UNCHANGED <<cards, friends, loaded, open, gateNeed, gateOpen>>
+
+\* RetireOnly (tick --retire-only, sprint.RetireOnly): on a STOPPED machine the
+\* retire checks alone, loading as the tick loads (placed cards and the cards
+\* open judgments name), close every judgment whose subject is gone; no card
+\* moves, and the machine stays STOPPED. "stopped_stays" retires nothing.
+RetireOnly ==
+  /\ ~running
+  /\ loaded' = {c \in Cards : cards[c] = "on"} \cup ({j.subject : j \in open} \cap {c \in Cards : cards[c] # "absent"})
+  /\ open' = IF Broken = "stopped_stays" THEN open ELSE {j \in open : SubjectOn(j.subject)}
+  /\ retired' = TRUE /\ ticked' = FALSE
+  /\ UNCHANGED <<cards, friends, gateNeed, gateOpen, running>>
 
 \* FleetChange: outside event, the gate-needs condition flips (a member whose
 \* facts carry the need comes up or goes down, or the card is briefed again).
 FleetChange ==
   /\ gateNeed' = ~gateNeed
   /\ ticked' = FALSE
-  /\ UNCHANGED <<cards, friends, loaded, open, gateOpen>>
+  /\ UNCHANGED <<cards, friends, loaded, open, gateOpen, running>> /\ retired' = FALSE
 
 Next ==
   \/ \E j \in Judgments, c \in Cards : Raise(j, c)
@@ -158,6 +203,7 @@ Next ==
   \/ \E f \in Friends : FriendOff(f)
   \/ FleetChange
   \/ Tick
+  \/ Stop \/ Start \/ RetireOnly
 
 Spec == Init /\ [][Next]_vars
 
@@ -170,5 +216,11 @@ GateClosedAfterTick == ticked => (gateOpen => gateNeed)
 
 \* A condition that holds is judged within one tick, never a silent wait.
 GateRaisedAfterTick == ticked => (gateNeed => gateOpen)
+
+\* After a retire-only, no orphan judgment remains open, STOPPED as it is.
+NoOrphanAfterRetire == retired => \A j \in open : SubjectOn(j.subject)
+
+\* A retire-only moves no card and leaves the machine STOPPED.
+RetireMovesNothing == [][retired' => UNCHANGED <<cards, friends, running>>]_vars
 
 =============================================================================

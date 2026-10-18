@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>stream · nova-sprint</title>
+<link rel="icon" type="image/png" sizes="192x192" href="/logo-tile-192.png">
+<style>
+/* A stream's own page (the owner, 2026-10-18: "Maybe we can click on a work stream by name, and this
+   takes you to a page showing all details for that work stream, including all its cards, sankey for
+   all cards if applicable, dependencies between cards etc etc etc."), in the dashboard's dark tokens. */
+:root, :root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0d0f12;
+  --surface: #14171b;
+  --border: #23272e;
+  --border-strong: #30353d;
+  --text: #eef0f3;
+  --text-2: #a4aab4;
+  --text-3: #6b727d;
+  --text-4: #30353d;
+  --track: #262a31;
+  /* the seven card states */
+  --s-waiting: #4a4f58;
+  --s-ready: #7d8490;
+  --s-working: #3d9bff;  /* brighter, to sit with the reader orange (the owner 2026-10-06) */
+  --s-fix: #8b5cf6;
+  --s-review: #fb8321;   /* review is the reader orange, the colour of a read card (the owner 2026-10-06) */
+  --s-merging: #d55181;  /* merging takes the pink review had */
+  --s-landed: #199e70;
+  /* a row's working cells by level (SPEC.md): a read card orange, blocker and critical red */
+  --p-fix: var(--s-fix);
+  --s-read: #fb8321;
+  --s-blocker: #ff1a1a;
+  --s-critical: #ff1a1a;
+  /* status, reserved: never a series */
+  --good: #22b35e;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #e05252;
+  --good-tint: rgba(34,179,94,.14);
+  --warning-tint: rgba(250,178,25,.14);
+  --critical-tint: rgba(224,82,82,.14);
+  --neutral-tint: rgba(164,170,180,.12);
+  --cell-h: 1rem;
+  --flash: #7cb4ff;
+  --flash-tint: rgba(57,135,229,.24);
+  /* the Landings chart's two series (live/SPEC.md): fleet blue, friends violet; never a state */
+  --series-fleet: #3987e5;
+  --series-friends: #b48cff;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--text); font: 1.75rem/2.5rem -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; padding: 2rem 2rem 4rem; }
+a { color: var(--text-2); text-decoration: none; }
+a:hover { color: var(--text); }
+.top { display: flex; align-items: baseline; flex-wrap: wrap; gap: .5rem 2rem; margin-bottom: 2rem; }
+.top h1 { margin: 0; font-size: 3rem; line-height: 3.5rem; font-weight: 650; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.muted { color: var(--text-2); }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 1.5rem; min-width: 0; overflow: hidden; }
+.panel + .panel { margin-top: 3rem; }
+.panel-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: .5rem 2rem; padding: 2rem 3rem 1rem; }
+.panel-head h2 { margin: 0; font-size: 2rem; line-height: 3rem; font-weight: 600; }
+.panel-head .muted { font-size: 1.625rem; }
+.tiles { display: flex; flex-wrap: wrap; gap: 1.5rem; padding: 1rem 3rem 2rem; }
+.tile { background: var(--bg); border: 1px solid var(--border); border-radius: 1rem; padding: 1rem 1.5rem; min-width: 9rem; }
+.tile .v { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 2.5rem; line-height: 3rem; }
+.tile .k { font-size: 1.25rem; color: var(--text-2); border-left: .4rem solid transparent; padding-left: .5rem; }
+dl { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 30rem), 1fr)); gap: .25rem 2rem; padding: 0 3rem 2rem; margin: 0; font-size: 1.375rem; line-height: 2rem; }
+dl > div { display: flex; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--border); padding: .25rem 0; min-width: 0; }
+dt { color: var(--text-2); }
+dd { margin: 0; font-family: ui-monospace, "SF Mono", Menlo, monospace; text-align: right; overflow-wrap: anywhere; }
+.scroll { overflow-x: auto; padding: 0 3rem 2rem; }
+table { border-collapse: collapse; width: 100%; font-size: 1.375rem; line-height: 2rem; }
+th { text-align: left; font-weight: 500; color: var(--text-2); padding: .5rem 1rem .5rem 0; border-bottom: 1px solid var(--border-strong); white-space: nowrap; }
+td { padding: .375rem 1rem .375rem 0; border-bottom: 1px solid var(--border); white-space: nowrap; }
+td:first-child { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+td.num { text-align: right; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+th.num { text-align: right; }
+td.col i { display: inline-block; width: .875rem; height: .875rem; border-radius: 50%; margin-right: .625rem; }
+@media (max-width: 600px) {
+  html { font-size: 10.5px; }
+  body { padding: 16px 16px 32px; }
+  .panel-head, .tiles, .scroll { padding-left: 16px; padding-right: 16px; }
+  dl { padding: 0 16px 16px; }
+}
+</style>
+</head>
+<body data-view="stream">
+<header class="top"><a href="/">&larr; sprint</a><h1 id="stream-name"></h1><span class="muted" id="stream-sub"></span></header>
+<section class="panel"><div class="panel-head"><h2>Cards by column</h2></div><div class="tiles" id="stream-counts"></div><dl id="stream-facts"></dl></section>
+<section class="panel"><div class="panel-head"><h2>Charts</h2><span class="muted">the last 24 hours, and every card the stream holds</span></div><div class="charts" id="stream-charts"></div></section>
+<section class="panel"><div class="panel-head"><h2>Cards</h2><span class="muted" id="stream-cards-sub"></span></div>
+<div class="scroll"><table><thead><tr><th>card</th><th>column</th><th>tier</th><th class="num">attempts</th><th class="num">reworks</th><th class="num">reads</th><th>who</th><th>last</th><th>needs</th><th class="num">age</th><th>landed</th></tr></thead><tbody id="stream-cards"></tbody></table></div></section>
+<script src="/charts.js"></script>
+<script src="/stream.js"></script>
+</body>
+</html>

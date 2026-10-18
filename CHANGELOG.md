@@ -1,5 +1,63 @@
 # Changelog
 
+## v1.6.3 — 2026-10-18
+
+Cut from 69c05c67faf4699e8a760e64e40fe56d12eab206. 3 pull requests since v1.6.2.
+
+Recovery journeys incomplete, gate waived: v1.6.3: the dashboard last-24h history and stream pages (#505) the owner asked for, a test fix (#504), and the friend's row on friend cards --json for nova-hook v1.6.1's FRIEND UP push (#518); journeys: the range touches no hook or recovery path; spend: no provider readouts are available to this cut and the range changes no spend recording
+
+- TestASilentClientIsUnhookedAfterExactlyTwoAnnouncedOnce: not-run (no --journeys evidence)
+- TestNoServerOrNoAnswerIsNoEvidence: not-run (no --journeys evidence)
+- TestTheGateRefusesEveryoneWhileTheServerIsStale: not-run (no --journeys evidence)
+- TestAStaleAnswerIsDownWithAFreshServer: not-run (no --journeys evidence)
+- TestALostAnswerIsNeverToldTwice: not-run (no --journeys evidence)
+
+Spend gate waived: v1.6.3: the dashboard last-24h history and stream pages (#505) the owner asked for, a test fix (#504), and the friend's row on friend cards --json for nova-hook v1.6.1's FRIEND UP push (#518); journeys: the range touches no hook or recovery path; spend: no provider readouts are available to this cut and the range changes no spend recording (window 2026-10-18T00:00:00Z..2026-10-18T18:01:59Z)
+- unread: --spend-store <addr> names no sprint store, so the recorded spend cannot be read
+
+- #504 sprintdash: the healthz test waits for the second tick's read
+- #505 dashboard: last-24h history graphs rendered with Pele
+- #518 friend cards --json: the friend's row beside the cards (held, reason, width)
+
+## v1.6.2 — 2026-10-18
+
+START reads each STOP debt's own record, off the table too. On 2026-10-18 `nova-sprint start` refused with "32 STOP-owned work/read jobs lack same-owner cancellation receipts": after the STOP the friend reconcile had retired those jobs off the fleet and readers tables with their STOP receipt (the stopped-from generation and the next generation), and START read only the cards still on the table, so it never saw a receipt and could not start. START and the beat settle now load each debt's record by id, including records off the table; a receipt there settles the debt through the existing check, and a card removed without a receipt still refuses START. START names what it settled. Model: `tla/StopReturn.tla` gains Retire (a job leaves the table with its receipt) and GoneNeverBlocksStart, with the reversed witness `MCStopReturnBrokenGoneBlocksStart` failing on it; all 11 stopreturn cases checked with TLC on a bench. No wire or record change. (#499)
+
+- Requires nova-tools v1.6.0.
+
+## v1.6.1 — 2026-10-18
+
+The coordinator's verbs stop paying for the held rule. `card` took 8.5 s and `check` 11.5 s of CPU on the coordinator's machine (2026-10-18 00:30 EDT, 385 cards): the held rule offered every ready card to every member that is up, and each offer walked the whole fleet table twice and re-parsed every card's brief (465 fleet walks and 19,352 brief parses per check on a 40-card store). The staging refusals are now worked out once per step, keyed on the fleet, work and merge tables and the clock, and each brief is read once; the tick's deal goes through the same rule and gains the same. `card` 8.5 s to 0.4 s, `check` 11.5 s to 3.9 s, output byte-identical. No wire or record change; reads only, so no model change. (#496)
+
+- Requires nova-tools v1.6.0.
+
+## v1.6.0 — 2026-10-18
+
+The stable release of the v1.5 line: v1.5.4 plus the night's audit of what the sprint server does for nothing. The server now does its work once per change instead of once per read, tick or poll, and the sprint is the same sprint: no wire or record change, every table as it was.
+
+- The inbox is decoded once. Every read of the coordinator's inbox (the tick, the push loop, the views, the tick-end wait every tenth of a second) decoded up to 10,000 notes again from a cursor 20 hours back: ~400 MB/s of garbage, three cores and every verb waiting 20 to 26 s for the line of control on 2026-10-17. `NotesSince` keeps the decoded window per client and stream key and serves every cursor from it; open notes and the done record's pages are kept decoded beside the text they came from and decoded again only when the text changes; the caches are bounded. (#484, #486, #491)
+- A quiet log ticks every 10 s, not every second, and a line still wakes the tick within 100 ms. The server's own record is written every second inside the quiet wait, so it never lapses between ticks; the Redis log wait blocks in runs of at most 4 s, under the client's read timeout. (#484, #488)
+- A fleet beat that changes nothing but its clock and load runs on the beat lane, off the line of control; the model `tla/ServerLanes.tla` carries the narrowed witness. (#485)
+- The where record is counted once per change, not once per load cell: members' beats rewrite a fleet row's load text, which bumped the fleet revision and recounted the whole sprint (fifteen passes over ~3,400 cards and ~2,400 cost parses) on most ticks; the twin now counts record, row and property changes apart from display cells, the record is restamped without a recount when only cells moved, and recounted at least every minute and at every UTC day so the time-relative figures stay true; `CardCostOf` parses each card once per recount; `tla/StatsReset.tla` carries RestampRead and the reversed witness `restampany`. (#487)
+- The coordinator push pass runs once per change, at least a second apart, with a 30 s quiet look, both lanes under one hold of the line; a pass over an unchanged sprint is skipped; the push lease is renewed first, off the line, before the lease can lapse; an overdue group keeps its delivery keys when it comes back; a failed shadow read waits a minute doubling to thirty instead of spawning git every five seconds; the decide lane re-decodes its JSONL records only when they grew; a bus refusal ("glenn is no known name") backs off a minute doubling to thirty and is said once; the seat-silent look reads the open notes once at the pinned epoch; `tla/DecisionsOwed.tla` carries the refused-send wait with witnesses `busyretry` and `noretry`. (#489)
+- An idle land loop waits on the log instead of polling the merge table every 2 s on the line (43,200 serial-held loads a day with nothing queued); the queue is counted from the table's shape first; `LAND IDLE` is said once a minute. The dashboard reads the sprint only while someone is looking (any request but `/healthz` in the last 30 s, or an open `/events` stream), one read a second then, and a returning viewer's first page is a fresh read. The RUNNING tick prints its lines after giving up the line, and the sprint line is rebuilt on change or once a minute. A reader's lease is renewed when a quarter of it has passed, not on every poll; `tla/ServerLanes.tla` carries the renewal mark and the reversed witness `MCServerLanesBrokenRenewLast`. (#490)
+- The open cards of stream v15-schema-tables leave the sprint for the v1.7 roadmap (`docs/roadmap.sexp`, group `export-v15-schema-tables`, one item per card with its needs and pushed heads), on the owner's word of 2026-10-17: v1.5.x becomes v1.6.0 and the rest of v1.5 is v1.7 work.
+- Requires nova-tools v1.6.0 (idle members, the fleet beat's lane, the hook server's pushes). A machine on v1.5.4 reads everything v1.6.0 writes.
+
+## v1.5.4 — 2026-10-17
+
+A hotfix that gets a stopped sprint back to a clean check: a repair no longer drops the log lines of changes that applied, the dropped lines can be put back, and a stopped machine can retire a judgment whose cause is gone.
+
+- Repair of a cut operation: an entry the table layer refuses whose member the store holds as the entry's result (one revision past what it expected, at its target, its fields set) counts as applied and keeps its move line; the manifest's table properties already at their new values count as applied too. A later manifest refused when sent again is probed first, as the first one is: when its writer applied it whole, none of its entries is sent again. On 2026-10-17 a tick drain's repair skipped 159 applied cards and dropped their lines, and check reported 106 rule 13 violations.
+- `nova-sprint repair --skipped <op>.skip [--dry-run] [--op <id>]` (coordinator) reconciles a repair's skip judgment: each listed card the store holds as the skip found it gets its missing move line (expected -> found, with its queued lines' words and fields, its generation as stored, and why); a card the log has since moved on, an already restored line and a table property are settled; anything else is refused by name; the judgment is closed when nothing is refused.
+- `nova-sprint tick --retire-only [--dry-run]` runs the tick's retire checks alone, as the machine, STOPPED or RUNNING: each judgment whose cards left the table or moved past it, each orphan, and each need-blocked judgment of a need no card has any more is closed with the machine's answer. It moves no card. Start's check gate is unchanged.
+- Models: new `tla/RepairLog.tla` (AppliedHasLine, LineOnlyIfApplied, ProbeSparesEntries, ReconciledHasLine; reversed witnesses `skipapplied`, the 2026-10-17 bug, `noprobe` and `reconcileblind`); `tla/JudgmentRetire.tla` RetireOnly with NoOrphanAfterRetire and RetireMovesNothing (reversed witness `stopped_stays`).
+- Requires nova-tools v1.5.2. No wire or record change.
+
+## v1.5.3 — 2026-10-17
+
+- Requires nova-tools v1.5.2: a nova table holds 1024 properties at an epoch, not 64, so the work table's tick drain is no longer refused at 65.
+
 ## v1.5.2 — 2026-10-17
 
 Cards stop getting stuck on the machine's own holds and on stale gate judgments.

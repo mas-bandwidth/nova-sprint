@@ -344,7 +344,30 @@ type CardCostView struct {
 
 // CardCostOf is the producer's cost as the primary carries it: its records, in the
 // order they ended, and its total.
+//
+// It is kept per card (costMemo): a card is replaced whole by every write, never changed
+// in place (state.go Put, the twin's apply), so the tick's recount and every verb that
+// walks the cards parse each card's records once, not once a pass (2026-10-17: the
+// where record's recount parsed every work card's records four times a tick). A kept
+// view is given only while the card still carries the fields it was parsed from, so a
+// card changed in place is parsed again. The list is the caller's own copy; each record's
+// Usage.Extra and Usage.Raw are the kept view's, shared and read only (no caller writes
+// them).
 func CardCostOf(pr *Card) CardCostView {
+	if pr == nil {
+		return cardCostOf(pr)
+	}
+	if v, ok := costMemo.get(pr); ok {
+		return v
+	}
+	v := cardCostOf(pr)
+	costMemo.put(pr, v)
+	v.Consumers = slices.Clone(v.Consumers) // the kept view's list is never the caller's
+	return v
+}
+
+// cardCostOf is CardCostOf parsed from the card's fields.
+func cardCostOf(pr *Card) CardCostView {
 	v := CardCostView{Consumers: []Consumer{}, Total: cardcost.NoTotal()}
 	if pr == nil {
 		return v

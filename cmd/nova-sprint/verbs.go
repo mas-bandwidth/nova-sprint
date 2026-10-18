@@ -67,7 +67,7 @@ func init() {
 		{"stop", "--reason <text> --until <time or duration>", "stop --reason 'the bench is rebooting' --until 30m", (*app).cmdMachineStop},
 		{"stop-return", "--as <owner-row> <card>@<gen>... --epoch <n> --reason <cancel acknowledgement> [--dry-run]", "stop-return --as friend-a s1-1.w1@1 --epoch 15 --reason 'owned process stopped'", (*app).cmdStopReturn},
 		{"run", "[--answer-rules=false] [--idle-alarm=false] [--listen <address:port>] [--land] [--decide <dir>]", "run", (*app).cmdRunGC},
-		{"tick", "[--answer-rules] [--idle-alarm] [--shadow]", "tick", (*app).cmdTick},
+		{"tick", "[--answer-rules] [--idle-alarm] [--shadow] | --retire-only [--dry-run]", "tick", (*app).cmdTick},
 		{"selftest land", "[--binary <path>] [--scratch-dir <dir>]", "selftest land", (*app).cmdSelftestLand},
 		{"selftest", "[--dir <d>] [--keep]", "selftest", (*app).cmdSelftest},
 		{"goal set", "<name> [--file <path>] [--to file:<path>]", "goal set friend-a --file goal-a.txt --to file:/tmp/reminder-a.txt", (*app).cmdGoalSet},
@@ -176,7 +176,7 @@ func init() {
 		// before check, so its two words are matched first (check_cards.go)
 		{"check cards", "[--stream <s>...] [--dry-run] [--from <export>] [--json]", "check cards", (*app).cmdCheckCards},
 		{"check", "[--max <n>] [--json]", "check", (*app).cmdCheck},
-		{"repair", "[--dry-run] [--json]", "repair", (*app).cmdRepair},
+		{"repair", "[--skipped <op>.skip] [--dry-run] [--json]", "repair", (*app).cmdRepair},
 		{"watch", "--wake [--every <duration>] [--state <file>] [--check <duration>] [--judgment-every <duration>] [--merge-every <duration>] [--backlog-every <duration>] [--land-after <duration>] [--merge-over <n>] [--merging-over <n>] [--review-over <n>]", "watch --wake --state wake.json", (*app).cmdWatch},
 		{"seat check", "", "seat check", (*app).cmdSeatCheck},
 		{"machinery", "", "machinery", (*app).cmdMachinery},
@@ -1166,11 +1166,25 @@ func sprintLine(ctx context.Context, st *store.Store) string {
 	if err != nil || len(shapes) == 0 {
 		return ""
 	}
-	machine := st.MachineLine(ctx)
+	return sprintLineOf(ctx, st, shapes[0])
+}
+
+// sprintLineOf is sprintLine of the work table's shape as read. The machine's line is
+// read off the where facts' own read of the machine and its heartbeat (one exchange
+// with the rest), never read again; only a store that keeps no such records reads it
+// by itself.
+func sprintLineOf(ctx context.Context, st *store.Store, work ntable.Table) string {
+	shapes := []ntable.Table{work}
 	// a sentinel is a stop the coordinator releases, not work, so the line counts
 	// work cards only, as where does (the record's sentinel counts; docs/SPEC-SPRINT.md
 	// sections 1 and 16)
-	facts, _ := st.WhereFacts(ctx, shapes[0].Revision)
+	facts, ferr := st.WhereFacts(ctx, shapes[0].Revision)
+	var machine string
+	if ferr == nil && facts.Records {
+		machine = st.MachineLineOf(facts.Machine, facts.Heartbeat)
+	} else {
+		machine = st.MachineLine(ctx)
+	}
 	sent := facts.Sentinels
 	landed, all := counts(shapes[0], sent)
 	full := sprintDone(shapes[0])
@@ -1195,6 +1209,45 @@ func sprintLine(ctx context.Context, st *store.Store) string {
 	// lands nothing), from the record's stamps: the same rate where shows
 	gone, _ := archivedCounts(shapes[0], sent)
 	return strings.TrimSpace(summary(shapes[0], sent, 0, etaMinutes(shapes[0], sent, st.LandingRate(ctx, facts.Landed, landed+gone))) + "  " + machine)
+}
+
+// sprintLineEvery is how often the run loop says the sprint line when nothing it is made
+// of has changed: the ETA moves with the clock alone.
+const sprintLineEvery = time.Minute
+
+// sprintLineMemo is the run loop's last sprint line: what it was made of (the work table's
+// revision and the machine's state the tick saw) and when it was said.
+type sprintLineMemo struct {
+	rev   uint64
+	state string
+	at    time.Time
+	said  bool
+}
+
+// next is the sprint line the run loop says after a RUNNING tick, "" when it says none: the
+// line is made (WhereFacts, the machine, the landing rate: about seven round trips) only when
+// the work table's revision or the machine's state changed since the last one said, or
+// sprintLineEvery has passed; else the work table's shape, one read, is all it costs. The
+// tick printed it every tick, up to ten a second on a busy log, holding the server's line
+// (2026-10-17).
+func (m *sprintLineMemo) next(ctx context.Context, st *store.Store, state string, now time.Time) string {
+	if st == nil {
+		return ""
+	}
+	shapes, err := st.B.Shapes(ctx, []string{st.Names.Table(sprint.Work)})
+	if err != nil || len(shapes) == 0 {
+		return ""
+	}
+	rev := shapes[0].Revision
+	if m.said && rev == m.rev && state == m.state && now.Sub(m.at) < sprintLineEvery && !now.Before(m.at) {
+		return ""
+	}
+	line := sprintLineOf(ctx, st, shapes[0])
+	if line == "" {
+		return ""
+	}
+	m.rev, m.state, m.at, m.said = rev, state, now, true
+	return line
 }
 
 // tookSince is " in <duration>": the wall time from the machine's first start

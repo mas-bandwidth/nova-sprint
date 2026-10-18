@@ -353,6 +353,8 @@ func (a *app) cmdQueue(args []string, stdout, stderr io.Writer) int {
 		// best-effort renewal after the wait, before its returned cursor.
 		// Renewing after the snapshot makes every next wait wake on this lease;
 		// moving the cursor after the snapshot would instead skip a deal.
+		// A lease is renewed only once a quarter of it is gone (sprint.ReadLeaseRenewAt):
+		// a poll with more than three quarters left writes nothing and wakes no one.
 		// ignored: the next queue beat retries a failed lease renewal.
 		_, _ = st.Run(ctx, store.Step{
 			Verb: "lease",

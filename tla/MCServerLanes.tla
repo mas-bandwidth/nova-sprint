@@ -16,4 +16,25 @@ MCKindOf == [r \in MCCallers |->
                ELSE IF r = "d1" THEN "dash"
                ELSE "write"]
 MCKindOfLive == [r \in MCCallersLive |-> MCKindOf[r]]
+\* no fleet beat among the callers above: Changes is FALSE for each
+MCChanges == [r \in MCCallers |-> FALSE]
+MCChangesLive == [r \in MCCallersLive |-> FALSE]
+\* the fleet beat: a member's beat that changes nothing (f1), one that changes the
+\* member's word (f2), a write and a friend's beat, one reader card
+MCCallersFleet == {"f1", "f2", "w1", "b1"}
+MCKindOfFleet == [r \in MCCallersFleet |->
+                    IF r \in {"f1", "f2"} THEN "fbeat"
+                    ELSE IF r = "b1" THEN "beat"
+                    ELSE "write"]
+MCChangesFleet == [r \in MCCallersFleet |-> r = "f2"]
+\* the fleet beat alone, no friend's beat: the "beatonline" witness over these callers
+\* fails for the changeless fleet beat f1, not for a friend's
+MCCallersFBeat == {"f1", "f2", "w1"}
+MCKindOfFBeat == [r \in MCCallersFBeat |-> MCKindOfFleet[r]]
+MCChangesFBeat == [r \in MCCallersFBeat |-> MCChangesFleet[r]]
+\* the lease's renewal at three quarters left (Bound 4: Mark 3, and the last unit 1, differ): a begin
+\* and a reader's queue, one reader card
+MCCallersLease == {"b2", "q1"}
+MCKindOfLease == [r \in MCCallersLease |-> MCKindOf[r]]
+MCChangesLease == [r \in MCCallersLease |-> FALSE]
 =============================================================================
