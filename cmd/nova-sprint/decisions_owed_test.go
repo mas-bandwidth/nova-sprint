@@ -400,10 +400,20 @@ func TestDecisionsOwnerChangedSetWaitsFullWindow(t *testing.T) {
 	ta.step(29*time.Minute - time.Second)
 	ta.a.decisionPass(ctx)
 	require.Equal(t, 2, count())
+	countSecond := func() int {
+		n := 0
+		for _, m := range b.delivered {
+			if m.Subject == "nova-sprint: decisions owed" && len(m.To) == 1 && m.To[0] == "cadence-seat" && strings.Contains(m.Body, "second") {
+				n++
+			}
+		}
+		return n
+	}
+	require.Equal(t, 1, countSecond(), "the changed set is delivered once by the coordinator")
 	ta.step(time.Second)
 	ta.a.decisionPass(ctx)
-	require.Equal(t, 3, count())
-	require.Contains(t, b.delivered[len(b.delivered)-1].Body, "second")
+	require.Equal(t, 2, count(), "the owner cadence boundary folds the already-delivered matching recipient and set")
+	require.Equal(t, 1, countSecond(), "the one-second owner boundary must not redeliver the coordinator's changed set")
 }
 func TestDecisionsParkedCardRemainsOwedUntilRelease(t *testing.T) {
 	ta, rig, _ := coordSprint(t, "parked-seat")

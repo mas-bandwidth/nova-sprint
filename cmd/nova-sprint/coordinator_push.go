@@ -825,7 +825,8 @@ func (a *app) decisionPass(ctx context.Context) {
 					}
 					// Owner cadence is global to the lane, including changed/empty sets
 					// and recipient changes. Keep the receipt until the window ends.
-					if lane == "owner" && s.Now.Sub(d.SentAt) < 30*time.Minute {
+					ownerFold := lane == "owner" && coordinatorFold.attempted && coordinatorFold.received && coordinatorFold.to == to && coordinatorFold.set == set
+					if lane == "owner" && s.Now.Sub(d.SentAt) < 30*time.Minute && !ownerFold {
 						return p
 					}
 					if set == "" {
