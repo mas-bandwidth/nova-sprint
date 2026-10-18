@@ -9,7 +9,7 @@ tool (
 
 require (
 	github.com/jackc/pgx/v5 v5.11.0
-	github.com/mas-bandwidth/nova-tools v1.5.2
+	github.com/mas-bandwidth/nova-tools v1.5.3-0.20261018045302-2697f1d27ad9
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/stretchr/testify v1.12.1
 	go.uber.org/goleak v1.3.0

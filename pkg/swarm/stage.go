@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardcontract"
+	"github.com/mas-bandwidth/nova-tools/pkg/config"
 )
 
 // DefaultStageTimeout is the hard timeout for card staging (120 s).
