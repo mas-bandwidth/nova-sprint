@@ -98,7 +98,7 @@ type HoldReq struct {
 	// Self is the machine the land loop runs on (a fleet member): the last-gate
 	// guard counts the benches the land loop can use (LandBenches), which leave
 	// this machine out, so holding the last one left is refused. "" is none.
-	Self string `json:",-"`
+	Self string `json:"-"`
 	// Cause, with a member's hold, is what ends it (hold_cause.go): a judgment as the
 	// coordinator named it (j<n>, or its id), with CauseNote the id it named (a
 	// doctor:<check> cause is refused: DoctorCauseDeferred). The tick ends the hold in the

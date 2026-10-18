@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +21,15 @@ func seedJudgment(w *world) string {
 	n.SprintLevel, n.What = true, "failure \"no-tokens\": the same failure on 3 cards"
 	w.note(n)
 	return w.notes[len(w.notes)-1].ID
+}
+
+func TestHoldReqSelfIsOmittedFromJSON(t *testing.T) {
+	t.Parallel()
+	b, err := json.Marshal(HoldReq{Names: []string{"m1"}, Self: "host-only"})
+	require.NoError(t, err)
+	var fields map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(b, &fields))
+	assert.NotContains(t, fields, "Self", "the local fleet member name must not cross the JSON boundary")
 }
 
 func TestAHoldOnAJudgmentEndsInTheTickThatSeesItAnswered(t *testing.T) {
