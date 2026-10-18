@@ -372,8 +372,10 @@ func namedNeedsOpen(id string, pre *Snapshot) bool {
 // reworkAnswersHold says a work-table entry of a rework's plan is the clear a
 // rework makes of the server-default hold on a primary held in place in ready
 // (steps_review.go Rework, "the rework answers the server-default hold"): it
-// moves the primary from ready to working, or leaves it in place, and unsets
-// every one of the five hold fields the primary carries, setting none of them.
+// moves the primary from ready to working, or leaves it in place (the rework
+// with no fleet member up, which waits ready for the tick's deal), unsets every
+// one of the five hold fields the primary carries, setting none of them, and
+// records the release (released and release_reason).
 // Such an entry passes the hold guard whole: the rework answers the hold and
 // writes the next attempt (attempt, tier, head) with it, as the release does
 // (tla/SprintTables.tla ReworkHeldInPlace beside DecisionReleaseStep; reversed
@@ -386,7 +388,7 @@ func reworkAnswersHold(e ntable.BatchMemberEntry, from string, held *Card, p *Pl
 	if !p.reworking || from != Ready || held.Col != Ready || held.F("decision_held_from") != Ready {
 		return false
 	}
-	if e.Move != nil && e.Move.Col != Working {
+	if e.Move != nil && e.Move.Col != Working || e.Set["released"] == "" || e.Set["release_reason"] == "" {
 		return false
 	}
 	for _, field := range []string{FieldHeld, "held_by", "held_reason", "held_judgment", "decision_held_from"} {

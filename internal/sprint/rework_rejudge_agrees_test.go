@@ -112,5 +112,66 @@ func TestAReworkAndItsRepairAgreeOnAServerDefaultHold(t *testing.T) {
 		refused = Rejudge(w.s, "rework", []Change{c})
 		require.Len(t, refused, 1, "a rework entry that changes a hold field to another value is refused")
 		assert.Equal(t, "only release may change server-default hold provenance", refused[0].Why)
+		// and one that clears the hold with no record of the release
+		e = changes[0].Entry
+		e.Set = maps.Clone(e.Set)
+		delete(e.Set, "released")
+		c.Entry = e
+		refused = Rejudge(w.s, "rework", []Change{c})
+		require.Len(t, refused, 1, "a rework entry that clears the hold and records no release is refused")
+		assert.Equal(t, "release the server-default hold before moving its primary", refused[0].Why)
+	})
+	t.Run("the live rework's plan runs the guard", func(t *testing.T) {
+		t.Parallel()
+		// the live plan carries its pre-state and the rework's flag: Lawful, as the store
+		// applies it, judges the plan's own entry by the hold guard. The rework's clear
+		// passes; the same plan with held_by kept is refused, as the repair refuses it.
+		_, p, _ := reworkWorkEntries(t)
+		require.NotNil(t, p.pre, "Rework records its pre-state")
+		require.True(t, p.reworking, "Rework marks its plan reworking")
+		assert.Empty(t, Lawful(p).Refused, "the live rework's clear passes the guard")
+		kept := p
+		kept.Refused = nil
+		kept.Units = slices.Clone(p.Units)
+		for i, u := range kept.Units {
+			u.Changes = slices.Clone(u.Changes)
+			for j, c := range u.Changes {
+				if c.Table == Work && c.Entry.ID == "s1-1" {
+					c.Entry.Unset = slices.DeleteFunc(slices.Clone(c.Entry.Unset), func(f string) bool { return f == "held_by" })
+					u.Changes[j] = c
+				}
+			}
+			kept.Units[i] = u
+		}
+		refused := Lawful(kept).Refused
+		require.Len(t, refused, 1, "the live plan that keeps held_by is refused by its own guard")
+		assert.Equal(t, "release the server-default hold before moving its primary", refused[0].Why)
+	})
+	t.Run("a rework with no member up clears the hold in place, live and in repair", func(t *testing.T) {
+		t.Parallel()
+		w := heldAtTheEnvCap(t)
+		w.must(FleetStep(w.s, FleetReq{Op: "down", Member: "m1", Who: "coordinator"}))
+		w.must(FleetStep(w.s, FleetReq{Op: "down", Member: "m2", Who: "coordinator"}))
+		require.True(t, IsHeld(w.s.Work.Placed("s1-1")), "the fixture: still held")
+		p := Rework(w.s, ReworkReq{Sel: Sel{IDs: []string{"s1-1"}}, Fix: "run only the named tests", Who: w.s.Coordinator})
+		require.Empty(t, p.Refused, "the live rework with no member up is applied")
+		var changes []Change
+		for _, u := range p.Units {
+			for _, c := range u.Changes {
+				if c.Table == Work && c.Entry.ID == "s1-1" {
+					changes = append(changes, c)
+				}
+			}
+		}
+		require.Len(t, changes, 1)
+		require.Nil(t, changes[0].Entry.Move, "the fixture: the primary waits ready in place")
+		assert.Empty(t, Rejudge(w.s, "rework", changes), "the repair admits the in-place clear")
+		refused := Rejudge(w.s, "finish", changes)
+		require.Len(t, refused, 1, "another verb's in-place clear is refused")
+		assert.Equal(t, "only release may change server-default hold provenance", refused[0].Why)
+		w.must(p)
+		pr := w.s.Work.Placed("s1-1")
+		assert.Equal(t, Ready, pr.Col)
+		assert.False(t, IsHeld(pr), "the rework cleared the hold in place")
 	})
 }
