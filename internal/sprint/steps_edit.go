@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
@@ -192,11 +193,15 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			if c.Int("attempt") > 0 {
 				p.Said = append(p.Said, fmt.Sprintf("bound: same task (%d attempts stand)", c.Int("attempt")-c.Int(FieldBriefAttempt)))
 			}
+			// Scope widening is its own in-place path and preserves the attempt-cap decision.
+			set := map[string]string{}
 			said := fmt.Sprintf("scope widened in place by %s at attempt %d: %s", orDash(r.Who), c.Int("attempt"), briefChange(c.F("brief"), b.Brief))
 			if r.Reason != "" {
 				said += "; reason: " + r.Reason
 			}
-			p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, map[string]string{"brief": b.Brief, "why": cutText(said, MaxCardTextBytes)}))}, Moved: c.ID + " " + said})
+			set["brief"] = b.Brief
+			set["why"] = cutText(said, MaxCardTextBytes)
+			p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set))}, Moved: c.ID + " " + said})
 			continue
 		}
 		if c != nil && !IsSentinel(c) && c.Col == Working {
@@ -296,12 +301,18 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			}
 		}
 		// the attempt cap counts attempts since the coordinator last decided (brief_bound.go,
-		// FieldDecidedAttempt): a person's or the seat's edit is a decision, whatever it
-		// changed, and opens a fresh window; a rule's widen (ByRule) is a machine's act and
-		// leaves the count standing, so no widen loop can run a card past the cap unseen
+		// FieldDecidedAttempt): a person's or the seat's edit is a decision only when it
+		// changes the task or its PATHS (not the same task), and opens a fresh window then; the
+		// tier on line 1, a routing line or spacing decide nothing, and leave the count
+		// standing; a rule's widen (ByRule) is a machine's act and leaves the count standing
+		// too, so no widen loop can run a card past the cap unseen
 		if !r.ByRule && c.Int("attempt") > 0 {
-			set[FieldDecidedAttempt] = c.F("attempt")
-			p.Said = append(p.Said, fmt.Sprintf("max attempts: decided at attempt %d (the cap's count starts again)", c.Int("attempt")))
+			if !sameTask(c.F("brief"), b.Brief) {
+				set[FieldDecidedAttempt] = c.F("attempt")
+				p.Said = append(p.Said, fmt.Sprintf("max attempts: decided at attempt %d (the cap's count starts again)", c.Int("attempt")))
+			} else {
+				p.Said = append(p.Said, "max attempts: unchanged (the edit decides nothing about the task)")
+			}
 		}
 		if b.Rules != "" {
 			set[FieldRules] = b.Rules
@@ -1075,17 +1086,21 @@ var tierLineRE = regexp.MustCompile(`\btier:\s*[A-Za-z0-9_-]+`)
 // the task, so an edit of them alone does not reset the count (docs/SPEC-SPRINT.md,
 // the bound).
 func taskOf(brief string) string {
-	var keep []string
-	inHeader := true
+	var keep, body []string
+	inHeader, inFence := true, false
 	for i, l := range strings.Split(brief, "\n") {
 		if i == 0 {
 			// line 1's tier is not the task; the rest of the line (the title) is
-			l = strings.TrimSpace(tierLineRE.ReplaceAllString(l, ""))
-		} else if inHeader {
+			keep = append(keep, normalizeTaskWhitespace(strings.TrimSpace(tierLineRE.ReplaceAllString(l, ""))))
+			continue
+		}
+		if inHeader {
 			if key, v, ok := cardhdr.KeyValue(l); ok {
 				switch key {
-				case "PATHS", "NEW", "SHARED", "TEST", "DONE-WHEN":
+				case "PATHS", "NEW", "SHARED":
 					keep = append(keep, key+": "+v)
+				case "TEST", "DONE-WHEN":
+					keep = append(keep, key+": "+normalizeTaskWhitespace(v))
 				}
 				continue
 			}
@@ -1094,12 +1109,65 @@ func taskOf(brief string) string {
 			}
 			inHeader = false
 		}
-		if strings.TrimSpace(l) == "" {
+		trimmed := strings.TrimSpace(l)
+		if strings.HasPrefix(trimmed, "\x60\x60\x60") || strings.HasPrefix(trimmed, "~~~") {
+			body = append(body, trimmed)
+			inFence = !inFence
 			continue
 		}
-		keep = append(keep, strings.TrimSpace(l))
+		// Keep code blocks and quoted values exact: their internal whitespace can
+		// change code or a test selector. Outside them, repeated whitespace is formatting.
+		if inFence {
+			body = append(body, l)
+		} else if strings.TrimSpace(l) != "" {
+			body = append(body, normalizeTaskWhitespace(l))
+		}
+	}
+	bodyText := strings.TrimSpace(strings.Join(body, "\n"))
+	if bodyText != "" {
+		keep = append(keep, bodyText)
 	}
 	return strings.Join(keep, "\n")
+}
+
+// normalizeTaskWhitespace collapses whitespace outside quoted literals while retaining
+// quoted contents, including shell regex selectors and inline code.
+func normalizeTaskWhitespace(s string) string {
+	var b strings.Builder
+	var quote rune
+	escaped, pendingSpace := false, false
+	for _, r := range s {
+		if quote != 0 {
+			b.WriteRune(r)
+			if escaped {
+				escaped = false
+			} else if r == '\\' {
+				escaped = true
+			} else if r == quote {
+				quote = 0
+			}
+			continue
+		}
+		if r == '\'' || r == '"' || r == '\x60' {
+			if pendingSpace && b.Len() > 0 {
+				b.WriteByte(' ')
+			}
+			pendingSpace = false
+			quote = r
+			b.WriteRune(r)
+			continue
+		}
+		if unicode.IsSpace(r) {
+			pendingSpace = true
+			continue
+		}
+		if pendingSpace && b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		pendingSpace = false
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // relinkMap reads a card's relink record (FieldRelinked): the ids it re-pointed,
