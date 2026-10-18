@@ -261,6 +261,10 @@ type app struct {
 	serverLands bool
 	// serverSaid is when the run loop last wrote the server's record (sayServer)
 	serverSaid time.Time
+	// quietEvery is how long a quiet log lets the run loop wait before a tick on
+	// the clock (store.QuietEvery; a functional test shortens it to keep its
+	// quiet waits inside its shard's budget)
+	quietEvery time.Duration
 	// serverStarted is when this process began to be the server: the
 	// heartbeat's started (store.ServerRecord.Started, serverRecord), set at
 	// the first tick of run so every later heartbeat names the same start.
@@ -394,7 +398,7 @@ func (l *controlLine) LockCtx(ctx context.Context) error {
 }
 
 func newApp(getenv func(string) string) *app {
-	a := &app{getenv: getenv, now: time.Now, sleep: time.Sleep, after: time.After, exit: os.Exit, conns: map[string]*redisconn.Conn{}, cached: map[string]store.Backend{}, meter: hostload.Local(), notify: interruptContext, screen: screenSize}
+	a := &app{getenv: getenv, now: time.Now, sleep: time.Sleep, after: time.After, exit: os.Exit, quietEvery: store.QuietEvery, conns: map[string]*redisconn.Conn{}, cached: map[string]store.Backend{}, meter: hostload.Local(), notify: interruptContext, screen: screenSize}
 	a.backend = a.redisBackend
 	a.inventory = a.readInventory
 	a.friends = a.readFriends

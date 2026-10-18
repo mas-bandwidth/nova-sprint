@@ -122,12 +122,18 @@ func (t *Table) Put(c *Card) {
 	mu := t.mutex()
 	mu.Lock()
 	defer mu.Unlock()
-	if _, ok := t.cards[c.ID]; !ok && t.ids != nil {
+	old, ok := t.cards[c.ID]
+	if !ok && t.ids != nil {
 		i, _ := slices.BinarySearch(t.ids, c.ID)
 		t.ids = slices.Insert(t.ids, i, c.ID)
 	}
 	t.cards[c.ID] = c
-	t.cells, t.byPrimary = nil, nil
+	// the cells, the primary index and the lines hold the placed cards alone (index): a
+	// kept record put in place of a kept one, or of none, leaves them as they are, so the
+	// twin's showing of the extras it keeps (store/twin.go showExtras) builds no index again
+	if c.Placed() || old.Placed() {
+		t.cells, t.byPrimary = nil, nil
+	}
 }
 
 // Frozen is a copy of the table as it is now that later changes to the
@@ -170,14 +176,17 @@ func (t *Table) Drop(id string) {
 	mu := t.mutex()
 	mu.Lock()
 	defer mu.Unlock()
-	if _, ok := t.cards[id]; !ok {
+	old, ok := t.cards[id]
+	if !ok {
 		return
 	}
 	delete(t.cards, id)
 	if i, ok := slices.BinarySearch(t.ids, id); ok {
 		t.ids = slices.Delete(t.ids, i, i+1)
 	}
-	t.cells, t.byPrimary = nil, nil
+	if old.Placed() { // a kept record was in no cell (Put)
+		t.cells, t.byPrimary = nil, nil
+	}
 }
 
 // SetProp sets one of the table's properties as a write left it (a batch's
