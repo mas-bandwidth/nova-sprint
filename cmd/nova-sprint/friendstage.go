@@ -193,7 +193,7 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	if host != "" {
 		snap, err := st.Load(ctx, []string{sprint.Fleet}, nil)
 		if err != nil {
-			return a.readFailed(name, err, stderr)
+			return friendStageReadFailed(ctx, a, name, host, err, stderr)
 		}
 		if !slices.Contains(snap.Members(), host) {
 			return refuseState(stderr, name, fmt.Sprintf("%s is no fleet member; stage on a member of the sprint, or with no --bench to stage on this machine", oneline.Field(host)))
@@ -203,7 +203,7 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	// (1) the card must be on friend.<name>'s row at that generation, ready or working
 	cards, err := st.ReadCells(ctx, sprint.Fleet, sprint.FriendRow(friendName), sprint.Ready, sprint.Working)
 	if err != nil {
-		return a.readFailed(name, err, stderr)
+		return friendStageReadFailed(ctx, a, name, host, err, stderr)
 	}
 	var work *sprint.Card
 	for _, cc := range cards {
@@ -217,7 +217,7 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	}
 	pk, err := st.Packets(ctx, []*sprint.Card{work})
 	if err != nil {
-		return a.readFailed(name, err, stderr)
+		return friendStageReadFailed(ctx, a, name, host, err, stderr)
 	}
 	p := pk[0]
 
@@ -226,7 +226,11 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	// row could never name one and every friend delivery was refused); never the machine's
 	// global git config
 	git := ""
-	if rows, ferr := a.friends(ctx, *pg); ferr == nil {
+	rows, ferr := a.friends(ctx, *pg)
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return friendStageTimedOut(stderr, name, host)
+	}
+	if ferr == nil {
 		for _, r := range rows {
 			if r.Name == friendName {
 				git = r.Fields["git_identity"]
@@ -242,7 +246,7 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	if !ok {
 		sprintID, err := st.GitIdentity(ctx)
 		if err != nil {
-			return a.readFailed(name, err, stderr)
+			return friendStageReadFailed(ctx, a, name, host, err, stderr)
 		}
 		if id, ok = config.ParseGitIdentity(sprintID); !ok {
 			return refuseState(stderr, name, fmt.Sprintf("the nova-config row of friend %s names no git_identity and the sprint row's git_identity %s is not 'Name <email>', so staging would fall back to the machine's global git config; %s", friendName, strconv.Quote(sprintID), identityRemedy))
@@ -384,6 +388,15 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "FRIEND-STAGE OK friend=%s card=%s gen=%d branch=%s job=%s jobmd=%s bench=%s identity=%s\n", friendName, card, gen, p.Branch, oneline.Field(job), filepath.Join(jobDir, friend.JobFile), benchLine, identityFrom)
 	a.outcome, a.changed = "accepted", "yes"
 	return 0
+}
+
+// friendStageReadFailed refuses an early store-read error as a timeout when the
+// stage's context expired; other read failures retain the usual diagnostic.
+func friendStageReadFailed(ctx context.Context, a *app, verb, host string, err error, stderr io.Writer) int {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return friendStageTimedOut(stderr, verb, host)
+	}
+	return a.readFailed(verb, err, stderr)
 }
 
 // friendStageTimedOut refuses a stage that ran past friendStageBound: it names

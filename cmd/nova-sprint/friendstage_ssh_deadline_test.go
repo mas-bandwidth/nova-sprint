@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	sprintstore "github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -70,9 +72,38 @@ func TestFriendStageSSHNeverPromptsAndHasADeadline(t *testing.T) {
 type friendStageDeadlineContext struct {
 	parent   context.Context
 	deadline time.Time
+	done     <-chan struct{}
+	err      error
 }
 
 func (c friendStageDeadlineContext) Deadline() (time.Time, bool) { return c.deadline, true }
-func (c friendStageDeadlineContext) Done() <-chan struct{}       { return nil }
-func (c friendStageDeadlineContext) Err() error                  { return nil }
+func (c friendStageDeadlineContext) Done() <-chan struct{}       { return c.done }
+func (c friendStageDeadlineContext) Err() error                  { return c.err }
 func (c friendStageDeadlineContext) Value(key any) any           { return c.parent.Value(key) }
+
+// An expired context during the first store read is a timeout refusal, not a
+// generic store-read failure. The store and clock are fake; no SSH runs.
+func TestFriendStageExpiredContextDuringStoreReadIsRefused(t *testing.T) {
+	ta, _ := amyWithIdentity(t)
+	dealToAmy(t, ta)
+
+	start := time.Unix(1000, 0)
+	done := make(chan struct{})
+	close(done)
+	prevTimeout := friendStageWithTimeout
+	friendStageWithTimeout = func(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+		assert.Equal(t, friendStageBound, timeout)
+		return friendStageDeadlineContext{parent: parent, deadline: start.Add(-time.Second), done: done, err: context.DeadlineExceeded}, func() {}
+	}
+	defer func() { friendStageWithTimeout = prevTimeout }()
+
+	prevBackend := ta.a.backend
+	ta.a.backend = func(context.Context, string, sprint.Names) (sprintstore.Backend, error) {
+		return sprintstore.NewMem(), nil // an uninitialized fake makes the first read fail
+	}
+	defer func() { ta.a.backend = prevBackend }()
+
+	code, _, stderr := ta.do("friend stage s1-1.w1@1 --as friend.amy")
+	assert.Equal(t, 1, code, "an expired stage is refused")
+	assert.Contains(t, stderr, "gave up after "+friendStageBound.String()+" on local")
+}
