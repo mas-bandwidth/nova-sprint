@@ -514,7 +514,7 @@ func UnitRemovedSaveMessageBody(w *TableMessageWriter, value *UnitRemoved) bool 
 	}
 	{
 		if value.Path != 0 {
-			w.Put(263, TableMessageRefBitsHere)
+			w.Put(262, TableMessageRefBitsHere)
 			if value.Path == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -529,7 +529,7 @@ func UnitRemovedSaveMessageBody(w *TableMessageWriter, value *UnitRemoved) bool 
 	{
 		if value.PresentPresent {
 			if true {
-				w.Put(266, TableMessageRefBitsHere)
+				w.Put(265, TableMessageRefBitsHere)
 				if value.Present {
 					w.Put(1, 1)
 				} else {
@@ -932,7 +932,7 @@ func UnitStateSaveMessageBody(w *TableMessageWriter, value *UnitState) bool {
 			return false
 		}
 		if value.KindLength > 0 {
-			w.Put(267, TableMessageRefBitsHere)
+			w.Put(266, TableMessageRefBitsHere)
 			if value.KindLength < 0 || value.KindLength > 64 {
 				return false
 			}
@@ -942,7 +942,7 @@ func UnitStateSaveMessageBody(w *TableMessageWriter, value *UnitState) bool {
 	}
 	{
 		if value.Owed != 0 {
-			w.Put(268, TableMessageRefBitsHere)
+			w.Put(267, TableMessageRefBitsHere)
 			if value.Owed == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -956,7 +956,7 @@ func UnitStateSaveMessageBody(w *TableMessageWriter, value *UnitState) bool {
 	}
 	{
 		if value.Path != 0 {
-			w.Put(263, TableMessageRefBitsHere)
+			w.Put(262, TableMessageRefBitsHere)
 			if value.Path == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -997,7 +997,7 @@ func UnitStateSaveMessageBody(w *TableMessageWriter, value *UnitState) bool {
 	}
 	{
 		if value.Install != 0 {
-			w.Put(269, TableMessageRefBitsHere)
+			w.Put(268, TableMessageRefBitsHere)
 			if value.Install == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -1376,7 +1376,7 @@ func UnitsCheckLoadMessageBodyRetain(r *TableRetainMessageReader, value *UnitsCh
 func UnitsCheckSaveMessageBody(w *TableMessageWriter, value *UnitsCheck) bool {
 	{
 		if value.Dir != 0 {
-			w.Put(270, TableMessageRefBitsHere)
+			w.Put(269, TableMessageRefBitsHere)
 			if value.Dir == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -1390,7 +1390,7 @@ func UnitsCheckSaveMessageBody(w *TableMessageWriter, value *UnitsCheck) bool {
 	}
 	{
 		if value.Ok != false {
-			w.Put(271, TableMessageRefBitsHere)
+			w.Put(270, TableMessageRefBitsHere)
 			if value.Ok {
 				w.Put(1, 1)
 			} else {
@@ -1403,7 +1403,7 @@ func UnitsCheckSaveMessageBody(w *TableMessageWriter, value *UnitsCheck) bool {
 			return false
 		}
 		if value.Units.Count > 0 {
-			w.Put(272, TableMessageRefBitsHere)
+			w.Put(271, TableMessageRefBitsHere)
 			if value.Units.Count < 0 {
 				return false
 			}
@@ -2546,7 +2546,7 @@ func SeatViewSaveMessageBody(w *TableMessageWriter, value *SeatView) bool {
 	}
 	{
 		if value.Last != 0 {
-			w.Put(192, TableMessageRefBitsHere)
+			w.Put(191, TableMessageRefBitsHere)
 			if value.Last == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -2848,7 +2848,7 @@ func ServerViewSaveMessageBody(w *TableMessageWriter, value *ServerView) bool {
 	}
 	{
 		if value.Change != 0 {
-			w.Put(195, TableMessageRefBitsHere)
+			w.Put(194, TableMessageRefBitsHere)
 			if value.Change == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -3374,7 +3374,7 @@ func StreamCountsSaveMessageBody(w *TableMessageWriter, value *StreamCounts) boo
 			return false
 		}
 		if value.Counts.Count > 0 {
-			w.Put(227, TableMessageRefBitsHere)
+			w.Put(226, TableMessageRefBitsHere)
 			if value.Counts.Count < 0 {
 				return false
 			}
@@ -3945,7 +3945,7 @@ func SentinelViewSaveMessageBody(w *TableMessageWriter, value *SentinelView) boo
 	}
 	{
 		if value.Reached != false {
-			w.Put(193, TableMessageRefBitsHere)
+			w.Put(192, TableMessageRefBitsHere)
 			if value.Reached {
 				w.Put(1, 1)
 			} else {
@@ -3958,7 +3958,7 @@ func SentinelViewSaveMessageBody(w *TableMessageWriter, value *SentinelView) boo
 			return false
 		}
 		if value.Behind.Count > 0 {
-			w.Put(194, TableMessageRefBitsHere)
+			w.Put(193, TableMessageRefBitsHere)
 			if value.Behind.Count < 0 {
 				return false
 			}
@@ -5835,7 +5835,7 @@ func SeatCheckLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatChec
 		case 0x7294d77db181ded2:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -5848,28 +5848,12 @@ func SeatCheckLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatChec
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(256)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Server[:])
-					copy(value.Server[:], text[:kept])
-					value.ServerLength = int32(kept)
+					r.Nodes.Resolve(&value.Server, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -6030,16 +6014,17 @@ func SeatCheckSaveMessageBody(w *TableMessageWriter, value *SeatCheck) bool {
 		}
 	}
 	{
-		if value.ServerLength < 0 || value.ServerLength > 256 {
-			return false
-		}
-		if value.ServerLength > 0 {
-			w.Put(187, TableMessageRefBitsHere)
-			if value.ServerLength < 0 || value.ServerLength > 256 {
-				return false
+		if value.Server != 0 {
+			w.Put(60, TableMessageRefBitsHere)
+			if value.Server == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Server)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ServerLength), 9)
-			w.Raw(value.Server[:value.ServerLength])
 		}
 	}
 	{
@@ -6309,7 +6294,7 @@ func SeatCheckLoadMessageBody(r *TableMessageReader, value *SeatCheck) bool {
 		case 0x7294d77db181ded2:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -6322,28 +6307,12 @@ func SeatCheckLoadMessageBody(r *TableMessageReader, value *SeatCheck) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(256)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Server[:])
-					copy(value.Server[:], text[:kept])
-					value.ServerLength = int32(kept)
+					r.Nodes.Resolve(&value.Server, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -6882,7 +6851,7 @@ func SeatRepairedSaveMessageBody(w *TableMessageWriter, value *SeatRepaired) boo
 			return false
 		}
 		if value.WasLength > 0 {
-			w.Put(191, TableMessageRefBitsHere)
+			w.Put(190, TableMessageRefBitsHere)
 			if value.WasLength < 0 || value.WasLength > 135 {
 				return false
 			}
@@ -7260,7 +7229,7 @@ func SeatRecordLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatRec
 		case 0x7294d77db181ded2:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -7273,28 +7242,12 @@ func SeatRecordLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatRec
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(256)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Server[:])
-					copy(value.Server[:], text[:kept])
-					value.ServerLength = int32(kept)
+					r.Nodes.Resolve(&value.Server, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -7354,16 +7307,17 @@ func SeatRecordLoadMessageBodyRetain(r *TableRetainMessageReader, value *SeatRec
 }
 func SeatRecordSaveMessageBody(w *TableMessageWriter, value *SeatRecord) bool {
 	{
-		if value.ServerLength < 0 || value.ServerLength > 256 {
-			return false
-		}
-		if value.ServerLength > 0 {
-			w.Put(187, TableMessageRefBitsHere)
-			if value.ServerLength < 0 || value.ServerLength > 256 {
-				return false
+		if value.Server != 0 {
+			w.Put(60, TableMessageRefBitsHere)
+			if value.Server == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Server)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.ServerLength), 9)
-			w.Raw(value.Server[:value.ServerLength])
 		}
 	}
 	{
@@ -7371,7 +7325,7 @@ func SeatRecordSaveMessageBody(w *TableMessageWriter, value *SeatRecord) bool {
 			return false
 		}
 		if value.ConfigSeatLength > 0 {
-			w.Put(190, TableMessageRefBitsHere)
+			w.Put(189, TableMessageRefBitsHere)
 			if value.ConfigSeatLength < 0 || value.ConfigSeatLength > 128 {
 				return false
 			}
@@ -7402,7 +7356,7 @@ func SeatRecordLoadMessageBody(r *TableMessageReader, value *SeatRecord) bool {
 		case 0x7294d77db181ded2:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -7415,28 +7369,12 @@ func SeatRecordLoadMessageBody(r *TableMessageReader, value *SeatRecord) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(256)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Server[:])
-					copy(value.Server[:], text[:kept])
-					value.ServerLength = int32(kept)
+					r.Nodes.Resolve(&value.Server, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -7515,7 +7453,7 @@ func StoreLoginLoadMessageBodyRetain(r *TableRetainMessageReader, value *StoreLo
 		case 0xa30c3ff3148ac374:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -7528,28 +7466,12 @@ func StoreLoginLoadMessageBodyRetain(r *TableRetainMessageReader, value *StoreLo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(256)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Redis[:])
-					copy(value.Redis[:], text[:kept])
-					value.RedisLength = int32(kept)
+					r.Nodes.Resolve(&value.Redis, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -7558,7 +7480,7 @@ func StoreLoginLoadMessageBodyRetain(r *TableRetainMessageReader, value *StoreLo
 		case 0x7d6780e4032b48f2:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -7571,28 +7493,12 @@ func StoreLoginLoadMessageBodyRetain(r *TableRetainMessageReader, value *StoreLo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.User[:])
-					copy(value.User[:], text[:kept])
-					value.UserLength = int32(kept)
+					r.Nodes.Resolve(&value.User, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -7725,7 +7631,7 @@ func StoreLoginLoadMessageBodyRetain(r *TableRetainMessageReader, value *StoreLo
 		case 0xab23f0eec020c951:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -7738,28 +7644,12 @@ func StoreLoginLoadMessageBodyRetain(r *TableRetainMessageReader, value *StoreLo
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Secret[:])
-					copy(value.Secret[:], text[:kept])
-					value.SecretLength = int32(kept)
+					r.Nodes.Resolve(&value.Secret, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -7776,34 +7666,36 @@ func StoreLoginLoadMessageBodyRetain(r *TableRetainMessageReader, value *StoreLo
 }
 func StoreLoginSaveMessageBody(w *TableMessageWriter, value *StoreLogin) bool {
 	{
-		if value.RedisLength < 0 || value.RedisLength > 256 {
-			return false
-		}
-		if value.RedisLength > 0 {
-			w.Put(219, TableMessageRefBitsHere)
-			if value.RedisLength < 0 || value.RedisLength > 256 {
-				return false
+		if value.Redis != 0 {
+			w.Put(218, TableMessageRefBitsHere)
+			if value.Redis == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Redis)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.RedisLength), 9)
-			w.Raw(value.Redis[:value.RedisLength])
 		}
 	}
 	{
-		if value.UserLength < 0 || value.UserLength > 128 {
-			return false
-		}
-		if value.UserLength > 0 {
-			w.Put(220, TableMessageRefBitsHere)
-			if value.UserLength < 0 || value.UserLength > 128 {
-				return false
+		if value.User != 0 {
+			w.Put(219, TableMessageRefBitsHere)
+			if value.User == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.User)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.UserLength), 8)
-			w.Raw(value.User[:value.UserLength])
 		}
 	}
 	{
 		if value.Store != 0 {
-			w.Put(221, TableMessageRefBitsHere)
+			w.Put(220, TableMessageRefBitsHere)
 			if value.Store == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -7820,7 +7712,7 @@ func StoreLoginSaveMessageBody(w *TableMessageWriter, value *StoreLogin) bool {
 			return false
 		}
 		if value.AsLength > 0 {
-			w.Put(222, TableMessageRefBitsHere)
+			w.Put(221, TableMessageRefBitsHere)
 			if value.AsLength < 0 || value.AsLength > 128 {
 				return false
 			}
@@ -7830,7 +7722,7 @@ func StoreLoginSaveMessageBody(w *TableMessageWriter, value *StoreLogin) bool {
 	}
 	{
 		if value.Key != 0 {
-			w.Put(223, TableMessageRefBitsHere)
+			w.Put(222, TableMessageRefBitsHere)
 			if value.Key == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -7844,7 +7736,7 @@ func StoreLoginSaveMessageBody(w *TableMessageWriter, value *StoreLogin) bool {
 	}
 	{
 		if value.Sops != 0 {
-			w.Put(224, TableMessageRefBitsHere)
+			w.Put(223, TableMessageRefBitsHere)
 			if value.Sops == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -7857,16 +7749,17 @@ func StoreLoginSaveMessageBody(w *TableMessageWriter, value *StoreLogin) bool {
 		}
 	}
 	{
-		if value.SecretLength < 0 || value.SecretLength > 128 {
-			return false
-		}
-		if value.SecretLength > 0 {
-			w.Put(225, TableMessageRefBitsHere)
-			if value.SecretLength < 0 || value.SecretLength > 128 {
-				return false
+		if value.Secret != 0 {
+			w.Put(224, TableMessageRefBitsHere)
+			if value.Secret == 0 {
+				w.Put(0, w.IndexBits)
+			} else {
+				index, ok := w.Numbering.Index(&value.Secret)
+				if !ok {
+					return false
+				}
+				w.Put(index, w.IndexBits)
 			}
-			w.Put(uint64(value.SecretLength), 8)
-			w.Raw(value.Secret[:value.SecretLength])
 		}
 	}
 	w.Put(0, TableMessageRefBitsHere)
@@ -7892,7 +7785,7 @@ func StoreLoginLoadMessageBody(r *TableMessageReader, value *StoreLogin) bool {
 		case 0xa30c3ff3148ac374:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -7905,28 +7798,12 @@ func StoreLoginLoadMessageBody(r *TableMessageReader, value *StoreLogin) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(256)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Redis[:])
-					copy(value.Redis[:], text[:kept])
-					value.RedisLength = int32(kept)
+					r.Nodes.Resolve(&value.Redis, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -7935,7 +7812,7 @@ func StoreLoginLoadMessageBody(r *TableMessageReader, value *StoreLogin) bool {
 		case 0x7d6780e4032b48f2:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -7948,28 +7825,12 @@ func StoreLoginLoadMessageBody(r *TableMessageReader, value *StoreLogin) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.User[:])
-					copy(value.User[:], text[:kept])
-					value.UserLength = int32(kept)
+					r.Nodes.Resolve(&value.User, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -8102,7 +7963,7 @@ func StoreLoginLoadMessageBody(r *TableMessageReader, value *StoreLogin) bool {
 		case 0xab23f0eec020c951:
 			{
 				widened := false
-				if entry.Shape.Kind != 12 || entry.Element.Kind != 0 {
+				if entry.Shape.Kind != 17 || entry.Element.Kind != 0 {
 					if false {
 						widened = true
 					} else {
@@ -8115,28 +7976,12 @@ func StoreLoginLoadMessageBody(r *TableMessageReader, value *StoreLogin) bool {
 					}
 				}
 				{
-					n, ok := tableMessageCount(&r.Bits, entry.Shape)
-					if !ok || !r.Bits.Align() {
+					index, ok := r.Bits.Get(r.IndexBits)
+					if !ok || r.IndexBits <= 0 {
 						r.Report.Malformed = true
 						return false
 					}
-					start := r.Bits.Offset / 8
-					if !r.Bits.Skip(int64(n) * 8) {
-						r.Report.Malformed = true
-						return false
-					}
-					text := r.Bits.Buffer[start : start+int64(n)]
-					if !tableUtf8Valid(text) {
-						r.Report.Malformed = true
-						return false
-					}
-					kept := tableUtf8Clamp(text, min(int64(n), int64(128)))
-					if kept < int64(n) {
-						r.Report.Clamped++
-					}
-					clear(value.Secret[:])
-					copy(value.Secret[:], text[:kept])
-					value.SecretLength = int32(kept)
+					r.Nodes.Resolve(&value.Secret, index, 0x704be0d8faaffc58, &r.Report)
 				}
 				if widened {
 					r.Report.Widened++
@@ -8366,7 +8211,7 @@ func SyncDriftSaveMessageBody(w *TableMessageWriter, value *SyncDrift) bool {
 	{
 		if value.FromPresent {
 			if true {
-				w.Put(239, TableMessageRefBitsHere)
+				w.Put(238, TableMessageRefBitsHere)
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.From), uint64(0))
 			}
 		}
@@ -8374,7 +8219,7 @@ func SyncDriftSaveMessageBody(w *TableMessageWriter, value *SyncDrift) bool {
 	{
 		if value.ToPresent {
 			if true {
-				w.Put(240, TableMessageRefBitsHere)
+				w.Put(239, TableMessageRefBitsHere)
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.To), uint64(0))
 			}
 		}
@@ -9465,7 +9310,7 @@ func WakeAnswerSaveMessageBody(w *TableMessageWriter, value *WakeAnswer) bool {
 			return false
 		}
 		if value.CursorLength > 0 {
-			w.Put(273, TableMessageRefBitsHere)
+			w.Put(272, TableMessageRefBitsHere)
 			if value.CursorLength < 0 || value.CursorLength > 41 {
 				return false
 			}
@@ -9475,7 +9320,7 @@ func WakeAnswerSaveMessageBody(w *TableMessageWriter, value *WakeAnswer) bool {
 	}
 	{
 		if value.Woke != false {
-			w.Put(274, TableMessageRefBitsHere)
+			w.Put(273, TableMessageRefBitsHere)
 			if value.Woke {
 				w.Put(1, 1)
 			} else {
@@ -11571,7 +11416,7 @@ func SnapshotCountsLoadMessageBodyRetain(r *TableRetainMessageReader, value *Sna
 func SnapshotCountsSaveMessageBody(w *TableMessageWriter, value *SnapshotCounts) bool {
 	{
 		if value.Keys != 0 {
-			w.Put(208, TableMessageRefBitsHere)
+			w.Put(207, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Keys), uint64(0))
 		}
 	}
@@ -11856,7 +11701,7 @@ func SnapshotDrillSaveMessageBody(w *TableMessageWriter, value *SnapshotDrill) b
 			return false
 		}
 		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(209, TableMessageRefBitsHere)
+			w.Put(208, TableMessageRefBitsHere)
 			if !SnapshotCountsSaveMessageBody(w, &value.Counts) {
 				return false
 			}
@@ -11864,7 +11709,7 @@ func SnapshotDrillSaveMessageBody(w *TableMessageWriter, value *SnapshotDrill) b
 	}
 	{
 		if value.File != 0 {
-			w.Put(210, TableMessageRefBitsHere)
+			w.Put(209, TableMessageRefBitsHere)
 			if value.File == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -11881,7 +11726,7 @@ func SnapshotDrillSaveMessageBody(w *TableMessageWriter, value *SnapshotDrill) b
 			return false
 		}
 		if value.RestoreLength > 0 {
-			w.Put(211, TableMessageRefBitsHere)
+			w.Put(210, TableMessageRefBitsHere)
 			if value.RestoreLength < 0 || value.RestoreLength > 16 {
 				return false
 			}
@@ -11894,7 +11739,7 @@ func SnapshotDrillSaveMessageBody(w *TableMessageWriter, value *SnapshotDrill) b
 			return false
 		}
 		if value.Sha256Length > 0 {
-			w.Put(212, TableMessageRefBitsHere)
+			w.Put(211, TableMessageRefBitsHere)
 			if value.Sha256Length < 0 || value.Sha256Length > 64 {
 				return false
 			}
@@ -12286,7 +12131,7 @@ func ShadowPartSaveMessageBody(w *TableMessageWriter, value *ShadowPart) bool {
 	{
 		if value.DuePresent {
 			if true {
-				w.Put(203, TableMessageRefBitsHere)
+				w.Put(202, TableMessageRefBitsHere)
 				tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Due), uint64(0))
 			}
 		}
@@ -12725,7 +12570,7 @@ func SettingValueSaveMessageBody(w *TableMessageWriter, value *SettingValue) boo
 			return false
 		}
 		if value.FlagLength > 0 {
-			w.Put(196, TableMessageRefBitsHere)
+			w.Put(195, TableMessageRefBitsHere)
 			if value.FlagLength < 0 || value.FlagLength > 64 {
 				return false
 			}
@@ -12738,7 +12583,7 @@ func SettingValueSaveMessageBody(w *TableMessageWriter, value *SettingValue) boo
 			return false
 		}
 		if value.PropLength > 0 {
-			w.Put(197, TableMessageRefBitsHere)
+			w.Put(196, TableMessageRefBitsHere)
 			if value.PropLength < 0 || value.PropLength > 64 {
 				return false
 			}
@@ -12762,7 +12607,7 @@ func SettingValueSaveMessageBody(w *TableMessageWriter, value *SettingValue) boo
 	}
 	{
 		if value.Dflt != 0 {
-			w.Put(198, TableMessageRefBitsHere)
+			w.Put(197, TableMessageRefBitsHere)
 			if value.Dflt == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -12776,7 +12621,7 @@ func SettingValueSaveMessageBody(w *TableMessageWriter, value *SettingValue) boo
 	}
 	{
 		if value.Set != false {
-			w.Put(199, TableMessageRefBitsHere)
+			w.Put(198, TableMessageRefBitsHere)
 			if value.Set {
 				w.Put(1, 1)
 			} else {
@@ -12789,7 +12634,7 @@ func SettingValueSaveMessageBody(w *TableMessageWriter, value *SettingValue) boo
 			return false
 		}
 		if value.AccessorLength > 0 {
-			w.Put(200, TableMessageRefBitsHere)
+			w.Put(199, TableMessageRefBitsHere)
 			if value.AccessorLength < 0 || value.AccessorLength > 256 {
 				return false
 			}
@@ -13188,7 +13033,7 @@ func SettingsOkSaveMessageBody(w *TableMessageWriter, value *SettingsOk) bool {
 	}
 	{
 		if value.Set != 0 {
-			w.Put(201, TableMessageRefBitsHere)
+			w.Put(200, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Set), uint64(0))
 		}
 	}
@@ -18122,7 +17967,7 @@ func StreamTransitionSaveMessageBody(w *TableMessageWriter, value *StreamTransit
 	}
 	{
 		if value.Cause != 0 {
-			w.Put(235, TableMessageRefBitsHere)
+			w.Put(234, TableMessageRefBitsHere)
 			if value.Cause == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -18136,7 +17981,7 @@ func StreamTransitionSaveMessageBody(w *TableMessageWriter, value *StreamTransit
 	}
 	{
 		if value.Waiting != 0 {
-			w.Put(236, TableMessageRefBitsHere)
+			w.Put(235, TableMessageRefBitsHere)
 			tableMessageWriteScalar(&w.TableBitWriter, &w.Clamped, TableMessageShape{Kind: 5, Packing: 0, Bits: 64, Base: [2]uint64{0x0, 0x0}, Min: 0, Max: 0, QMin: math.Float32frombits(0x0), QDelta: math.Float32frombits(0x0), QCount: 0}, uint64(value.Waiting), uint64(0))
 		}
 	}
@@ -18145,7 +17990,7 @@ func StreamTransitionSaveMessageBody(w *TableMessageWriter, value *StreamTransit
 			return false
 		}
 		if value.Owners.Count > 0 {
-			w.Put(237, TableMessageRefBitsHere)
+			w.Put(236, TableMessageRefBitsHere)
 			if value.Owners.Count < 0 {
 				return false
 			}
@@ -20773,7 +20618,7 @@ func StreamCardSaveMessageBody(w *TableMessageWriter, value *StreamCard) bool {
 	}
 	{
 		if value.Title != 0 {
-			w.Put(226, TableMessageRefBitsHere)
+			w.Put(225, TableMessageRefBitsHere)
 			if value.Title == 0 {
 				w.Put(0, w.IndexBits)
 			} else {
@@ -21495,7 +21340,7 @@ func StagesSaveMessageBody(w *TableMessageWriter, value *Stages) bool {
 			return false
 		}
 		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(215, TableMessageRefBitsHere)
+			w.Put(214, TableMessageRefBitsHere)
 			if !MeasureSaveMessageBody(w, &value.DealWait) {
 				return false
 			}
@@ -21509,7 +21354,7 @@ func StagesSaveMessageBody(w *TableMessageWriter, value *Stages) bool {
 			return false
 		}
 		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(216, TableMessageRefBitsHere)
+			w.Put(215, TableMessageRefBitsHere)
 			if !MeasureSaveMessageBody(w, &value.FinishTo2reads) {
 				return false
 			}
@@ -21523,7 +21368,7 @@ func StagesSaveMessageBody(w *TableMessageWriter, value *Stages) bool {
 			return false
 		}
 		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(217, TableMessageRefBitsHere)
+			w.Put(216, TableMessageRefBitsHere)
 			if !MeasureSaveMessageBody(w, &value.AcceptToLand) {
 				return false
 			}
@@ -21537,7 +21382,7 @@ func StagesSaveMessageBody(w *TableMessageWriter, value *Stages) bool {
 			return false
 		}
 		if probe.Bits > TableMessageRefBitsHere {
-			w.Put(218, TableMessageRefBitsHere)
+			w.Put(217, TableMessageRefBitsHere)
 			if !MeasureSaveMessageBody(w, &value.Total) {
 				return false
 			}

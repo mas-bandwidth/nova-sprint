@@ -270,23 +270,23 @@ func init() {
 	tableCookLayoutSize("InboxAnswerCommandsTextRow", unsafe.Sizeof(InboxAnswerCommandsTextRow{}), 8)
 	tableCookLayoutSize("InboxAnswerCommandsTextRow alignment", unsafe.Alignof(InboxAnswerCommandsTextRow{}), 8)
 	tableCookLayoutOffset("InboxAnswerCommandsTextRow.Value", unsafe.Offsetof(InboxAnswerCommandsTextRow{}.Value), 0)
-	tableCookLayoutSize("InboxJudgmentRow", unsafe.Sizeof(InboxJudgmentRow{}), 1504)
+	tableCookLayoutSize("InboxJudgmentRow", unsafe.Sizeof(InboxJudgmentRow{}), 480)
 	tableCookLayoutSize("InboxJudgmentRow alignment", unsafe.Alignof(InboxJudgmentRow{}), 8)
 	tableCookLayoutOffset("InboxJudgmentRow.Id", unsafe.Offsetof(InboxJudgmentRow{}.Id), 0)
-	tableCookLayoutOffset("InboxJudgmentRow.Alias", unsafe.Offsetof(InboxJudgmentRow{}.Alias), 1032)
-	tableCookLayoutOffset("InboxJudgmentRow.Kind", unsafe.Offsetof(InboxJudgmentRow{}.Kind), 1056)
-	tableCookLayoutOffset("InboxJudgmentRow.Type", unsafe.Offsetof(InboxJudgmentRow{}.Type), 1096)
-	tableCookLayoutOffset("InboxJudgmentRow.What", unsafe.Offsetof(InboxJudgmentRow{}.What), 1168)
-	tableCookLayoutOffset("InboxJudgmentRow.Stream", unsafe.Offsetof(InboxJudgmentRow{}.Stream), 1176)
-	tableCookLayoutOffset("InboxJudgmentRow.Size", unsafe.Offsetof(InboxJudgmentRow{}.Size), 1312)
-	tableCookLayoutOffset("InboxJudgmentRow.Cards", unsafe.Offsetof(InboxJudgmentRow{}.Cards), 1320)
-	tableCookLayoutOffset("InboxJudgmentRow.Notes", unsafe.Offsetof(InboxJudgmentRow{}.Notes), 1336)
-	tableCookLayoutOffset("InboxJudgmentRow.Marked", unsafe.Offsetof(InboxJudgmentRow{}.Marked), 1352)
-	tableCookLayoutOffset("InboxJudgmentRow.Overdue", unsafe.Offsetof(InboxJudgmentRow{}.Overdue), 1353)
-	tableCookLayoutOffset("InboxJudgmentRow.Waited", unsafe.Offsetof(InboxJudgmentRow{}.Waited), 1354)
-	tableCookLayoutOffset("InboxJudgmentRow.Due", unsafe.Offsetof(InboxJudgmentRow{}.Due), 1424)
-	tableCookLayoutOffset("InboxJudgmentRow.Answers", unsafe.Offsetof(InboxJudgmentRow{}.Answers), 1472)
-	tableCookLayoutOffset("InboxJudgmentRow.Decisions", unsafe.Offsetof(InboxJudgmentRow{}.Decisions), 1488)
+	tableCookLayoutOffset("InboxJudgmentRow.Alias", unsafe.Offsetof(InboxJudgmentRow{}.Alias), 8)
+	tableCookLayoutOffset("InboxJudgmentRow.Kind", unsafe.Offsetof(InboxJudgmentRow{}.Kind), 32)
+	tableCookLayoutOffset("InboxJudgmentRow.Type", unsafe.Offsetof(InboxJudgmentRow{}.Type), 72)
+	tableCookLayoutOffset("InboxJudgmentRow.What", unsafe.Offsetof(InboxJudgmentRow{}.What), 144)
+	tableCookLayoutOffset("InboxJudgmentRow.Stream", unsafe.Offsetof(InboxJudgmentRow{}.Stream), 152)
+	tableCookLayoutOffset("InboxJudgmentRow.Size", unsafe.Offsetof(InboxJudgmentRow{}.Size), 288)
+	tableCookLayoutOffset("InboxJudgmentRow.Cards", unsafe.Offsetof(InboxJudgmentRow{}.Cards), 296)
+	tableCookLayoutOffset("InboxJudgmentRow.Notes", unsafe.Offsetof(InboxJudgmentRow{}.Notes), 312)
+	tableCookLayoutOffset("InboxJudgmentRow.Marked", unsafe.Offsetof(InboxJudgmentRow{}.Marked), 328)
+	tableCookLayoutOffset("InboxJudgmentRow.Overdue", unsafe.Offsetof(InboxJudgmentRow{}.Overdue), 329)
+	tableCookLayoutOffset("InboxJudgmentRow.Waited", unsafe.Offsetof(InboxJudgmentRow{}.Waited), 330)
+	tableCookLayoutOffset("InboxJudgmentRow.Due", unsafe.Offsetof(InboxJudgmentRow{}.Due), 400)
+	tableCookLayoutOffset("InboxJudgmentRow.Answers", unsafe.Offsetof(InboxJudgmentRow{}.Answers), 448)
+	tableCookLayoutOffset("InboxJudgmentRow.Decisions", unsafe.Offsetof(InboxJudgmentRow{}.Decisions), 464)
 	tableCookLayoutSize("InboxJudgmentCardsTextRow", unsafe.Sizeof(InboxJudgmentCardsTextRow{}), 520)
 	tableCookLayoutSize("InboxJudgmentCardsTextRow alignment", unsafe.Alignof(InboxJudgmentCardsTextRow{}), 4)
 	tableCookLayoutOffset("InboxJudgmentCardsTextRow.Value", unsafe.Offsetof(InboxJudgmentCardsTextRow{}.Value), 0)
@@ -303,7 +303,7 @@ func init() {
 	tableCookLayoutOffset("LaneQuietRow.Why", unsafe.Offsetof(LaneQuietRow{}.Why), 80)
 	tableCookLayoutOffset("LaneQuietRow.FriendName", unsafe.Offsetof(LaneQuietRow{}.FriendName), 88)
 	tableCookLayoutOffset("LaneQuietRow.Run", unsafe.Offsetof(LaneQuietRow{}.Run), 232)
-	tableCookLayoutSize("LogLineRow", unsafe.Sizeof(LogLineRow{}), 2560)
+	tableCookLayoutSize("LogLineRow", unsafe.Sizeof(LogLineRow{}), 2048)
 	tableCookLayoutSize("LogLineRow alignment", unsafe.Alignof(LogLineRow{}), 8)
 	tableCookLayoutOffset("LogLineRow.Kind", unsafe.Offsetof(LogLineRow{}.Kind), 0)
 	tableCookLayoutOffset("LogLineRow.At", unsafe.Offsetof(LogLineRow{}.At), 40)
@@ -315,16 +315,16 @@ func init() {
 	tableCookLayoutOffset("LogLineRow.Stream", unsafe.Offsetof(LogLineRow{}.Stream), 1288)
 	tableCookLayoutOffset("LogLineRow.Table", unsafe.Offsetof(LogLineRow{}.Table), 1424)
 	tableCookLayoutOffset("LogLineRow.From", unsafe.Offsetof(LogLineRow{}.From), 1464)
-	tableCookLayoutOffset("LogLineRow.To", unsafe.Offsetof(LogLineRow{}.To), 1728)
-	tableCookLayoutOffset("LogLineRow.Removed", unsafe.Offsetof(LogLineRow{}.Removed), 1992)
-	tableCookLayoutOffset("LogLineRow.Gen", unsafe.Offsetof(LogLineRow{}.Gen), 2000)
-	tableCookLayoutOffset("LogLineRow.Actor", unsafe.Offsetof(LogLineRow{}.Actor), 2009)
-	tableCookLayoutOffset("LogLineRow.Verb", unsafe.Offsetof(LogLineRow{}.Verb), 2152)
-	tableCookLayoutOffset("LogLineRow.Cause", unsafe.Offsetof(LogLineRow{}.Cause), 2192)
-	tableCookLayoutOffset("LogLineRow.Answers", unsafe.Offsetof(LogLineRow{}.Answers), 2504)
-	tableCookLayoutOffset("LogLineRow.Text", unsafe.Offsetof(LogLineRow{}.Text), 2520)
-	tableCookLayoutOffset("LogLineRow.Set", unsafe.Offsetof(LogLineRow{}.Set), 2536)
-	tableCookLayoutOffset("LogLineRow.Note", unsafe.Offsetof(LogLineRow{}.Note), 2552)
+	tableCookLayoutOffset("LogLineRow.To", unsafe.Offsetof(LogLineRow{}.To), 1472)
+	tableCookLayoutOffset("LogLineRow.Removed", unsafe.Offsetof(LogLineRow{}.Removed), 1480)
+	tableCookLayoutOffset("LogLineRow.Gen", unsafe.Offsetof(LogLineRow{}.Gen), 1488)
+	tableCookLayoutOffset("LogLineRow.Actor", unsafe.Offsetof(LogLineRow{}.Actor), 1497)
+	tableCookLayoutOffset("LogLineRow.Verb", unsafe.Offsetof(LogLineRow{}.Verb), 1640)
+	tableCookLayoutOffset("LogLineRow.Cause", unsafe.Offsetof(LogLineRow{}.Cause), 1680)
+	tableCookLayoutOffset("LogLineRow.Answers", unsafe.Offsetof(LogLineRow{}.Answers), 1992)
+	tableCookLayoutOffset("LogLineRow.Text", unsafe.Offsetof(LogLineRow{}.Text), 2008)
+	tableCookLayoutOffset("LogLineRow.Set", unsafe.Offsetof(LogLineRow{}.Set), 2024)
+	tableCookLayoutOffset("LogLineRow.Note", unsafe.Offsetof(LogLineRow{}.Note), 2040)
 	tableCookLayoutSize("LogLineAnswersTextRow", unsafe.Sizeof(LogLineAnswersTextRow{}), 8)
 	tableCookLayoutSize("LogLineAnswersTextRow alignment", unsafe.Alignof(LogLineAnswersTextRow{}), 8)
 	tableCookLayoutOffset("LogLineAnswersTextRow.Value", unsafe.Offsetof(LogLineAnswersTextRow{}.Value), 0)
@@ -556,7 +556,7 @@ func init() {
 	tableCookLayoutOffset("SeatChangeRow.Taken", unsafe.Offsetof(SeatChangeRow{}.Taken), 480)
 	tableCookLayoutOffset("SeatChangeRow.ApprovedBy", unsafe.Offsetof(SeatChangeRow{}.ApprovedBy), 482)
 	tableCookLayoutOffset("SeatChangeRow.Reason", unsafe.Offsetof(SeatChangeRow{}.Reason), 624)
-	tableCookLayoutSize("SeatCheckRow", unsafe.Sizeof(SeatCheckRow{}), 640)
+	tableCookLayoutSize("SeatCheckRow", unsafe.Sizeof(SeatCheckRow{}), 384)
 	tableCookLayoutSize("SeatCheckRow alignment", unsafe.Alignof(SeatCheckRow{}), 8)
 	tableCookLayoutOffset("SeatCheckRow.Drift", unsafe.Offsetof(SeatCheckRow{}.Drift), 0)
 	tableCookLayoutOffset("SeatCheckRow.Epoch", unsafe.Offsetof(SeatCheckRow{}.Epoch), 8)
@@ -565,8 +565,8 @@ func init() {
 	tableCookLayoutOffset("SeatCheckRow.Holder", unsafe.Offsetof(SeatCheckRow{}.Holder), 32)
 	tableCookLayoutOffset("SeatCheckRow.Record", unsafe.Offsetof(SeatCheckRow{}.Record), 172)
 	tableCookLayoutOffset("SeatCheckRow.Server", unsafe.Offsetof(SeatCheckRow{}.Server), 312)
-	tableCookLayoutOffset("SeatCheckRow.Status", unsafe.Offsetof(SeatCheckRow{}.Status), 576)
-	tableCookLayoutOffset("SeatCheckRow.Verb", unsafe.Offsetof(SeatCheckRow{}.Verb), 600)
+	tableCookLayoutOffset("SeatCheckRow.Status", unsafe.Offsetof(SeatCheckRow{}.Status), 320)
+	tableCookLayoutOffset("SeatCheckRow.Verb", unsafe.Offsetof(SeatCheckRow{}.Verb), 344)
 	tableCookLayoutSize("SeatCoordinatorRow", unsafe.Sizeof(SeatCoordinatorRow{}), 3736)
 	tableCookLayoutSize("SeatCoordinatorRow alignment", unsafe.Alignof(SeatCoordinatorRow{}), 8)
 	tableCookLayoutOffset("SeatCoordinatorRow.ApprovedBy", unsafe.Offsetof(SeatCoordinatorRow{}.ApprovedBy), 0)
@@ -576,7 +576,7 @@ func init() {
 	tableCookLayoutOffset("SeatCoordinatorRow.Holder", unsafe.Offsetof(SeatCoordinatorRow{}.Holder), 3456)
 	tableCookLayoutOffset("SeatCoordinatorRow.Op", unsafe.Offsetof(SeatCoordinatorRow{}.Op), 3596)
 	tableCookLayoutOffset("SeatCoordinatorRow.Taken", unsafe.Offsetof(SeatCoordinatorRow{}.Taken), 3732)
-	tableCookLayoutSize("SeatInstallRow", unsafe.Sizeof(SeatInstallRow{}), 288)
+	tableCookLayoutSize("SeatInstallRow", unsafe.Sizeof(SeatInstallRow{}), 32)
 	tableCookLayoutSize("SeatInstallRow alignment", unsafe.Alignof(SeatInstallRow{}), 8)
 	tableCookLayoutOffset("SeatInstallRow.DryRun", unsafe.Offsetof(SeatInstallRow{}.DryRun), 0)
 	tableCookLayoutOffset("SeatInstallRow.Seat", unsafe.Offsetof(SeatInstallRow{}.Seat), 8)
@@ -584,10 +584,10 @@ func init() {
 	tableCookLayoutSize("SeatInstallSeatTextRow", unsafe.Sizeof(SeatInstallSeatTextRow{}), 8)
 	tableCookLayoutSize("SeatInstallSeatTextRow alignment", unsafe.Alignof(SeatInstallSeatTextRow{}), 8)
 	tableCookLayoutOffset("SeatInstallSeatTextRow.Value", unsafe.Offsetof(SeatInstallSeatTextRow{}.Value), 0)
-	tableCookLayoutSize("SeatRecordRow", unsafe.Sizeof(SeatRecordRow{}), 400)
-	tableCookLayoutSize("SeatRecordRow alignment", unsafe.Alignof(SeatRecordRow{}), 4)
+	tableCookLayoutSize("SeatRecordRow", unsafe.Sizeof(SeatRecordRow{}), 144)
+	tableCookLayoutSize("SeatRecordRow alignment", unsafe.Alignof(SeatRecordRow{}), 8)
 	tableCookLayoutOffset("SeatRecordRow.Server", unsafe.Offsetof(SeatRecordRow{}.Server), 0)
-	tableCookLayoutOffset("SeatRecordRow.ConfigSeat", unsafe.Offsetof(SeatRecordRow{}.ConfigSeat), 264)
+	tableCookLayoutOffset("SeatRecordRow.ConfigSeat", unsafe.Offsetof(SeatRecordRow{}.ConfigSeat), 8)
 	tableCookLayoutSize("SeatRepairedRow", unsafe.Sizeof(SeatRepairedRow{}), 640)
 	tableCookLayoutSize("SeatRepairedRow alignment", unsafe.Alignof(SeatRepairedRow{}), 8)
 	tableCookLayoutOffset("SeatRepairedRow.By", unsafe.Offsetof(SeatRepairedRow{}.By), 0)
@@ -684,15 +684,15 @@ func init() {
 	tableCookLayoutOffset("StagesRow.FinishTo2reads", unsafe.Offsetof(StagesRow{}.FinishTo2reads), 24)
 	tableCookLayoutOffset("StagesRow.AcceptToLand", unsafe.Offsetof(StagesRow{}.AcceptToLand), 48)
 	tableCookLayoutOffset("StagesRow.Total", unsafe.Offsetof(StagesRow{}.Total), 72)
-	tableCookLayoutSize("StoreLoginRow", unsafe.Sizeof(StoreLoginRow{}), 696)
+	tableCookLayoutSize("StoreLoginRow", unsafe.Sizeof(StoreLoginRow{}), 184)
 	tableCookLayoutSize("StoreLoginRow alignment", unsafe.Alignof(StoreLoginRow{}), 8)
 	tableCookLayoutOffset("StoreLoginRow.Redis", unsafe.Offsetof(StoreLoginRow{}.Redis), 0)
-	tableCookLayoutOffset("StoreLoginRow.User", unsafe.Offsetof(StoreLoginRow{}.User), 264)
-	tableCookLayoutOffset("StoreLoginRow.Store", unsafe.Offsetof(StoreLoginRow{}.Store), 400)
-	tableCookLayoutOffset("StoreLoginRow.As", unsafe.Offsetof(StoreLoginRow{}.As), 408)
-	tableCookLayoutOffset("StoreLoginRow.Key", unsafe.Offsetof(StoreLoginRow{}.Key), 544)
-	tableCookLayoutOffset("StoreLoginRow.Sops", unsafe.Offsetof(StoreLoginRow{}.Sops), 552)
-	tableCookLayoutOffset("StoreLoginRow.Secret", unsafe.Offsetof(StoreLoginRow{}.Secret), 560)
+	tableCookLayoutOffset("StoreLoginRow.User", unsafe.Offsetof(StoreLoginRow{}.User), 8)
+	tableCookLayoutOffset("StoreLoginRow.Store", unsafe.Offsetof(StoreLoginRow{}.Store), 16)
+	tableCookLayoutOffset("StoreLoginRow.As", unsafe.Offsetof(StoreLoginRow{}.As), 24)
+	tableCookLayoutOffset("StoreLoginRow.Key", unsafe.Offsetof(StoreLoginRow{}.Key), 160)
+	tableCookLayoutOffset("StoreLoginRow.Sops", unsafe.Offsetof(StoreLoginRow{}.Sops), 168)
+	tableCookLayoutOffset("StoreLoginRow.Secret", unsafe.Offsetof(StoreLoginRow{}.Secret), 176)
 	tableCookLayoutSize("StreamCardRow", unsafe.Sizeof(StreamCardRow{}), 592)
 	tableCookLayoutSize("StreamCardRow alignment", unsafe.Alignof(StreamCardRow{}), 8)
 	tableCookLayoutOffset("StreamCardRow.Id", unsafe.Offsetof(StreamCardRow{}.Id), 0)
@@ -1111,23 +1111,23 @@ func init() {
 		},
 	}
 	tableCookRecords[23] = TableCookInfo{
-		Name: "InboxJudgment", Size: 1504, Align: 8, NumFields: 15,
+		Name: "InboxJudgment", Size: 480, Align: 8, NumFields: 15,
 		Fields: []TableCookFieldInfo{
-			{Name: "id", Offset: 0, Size: 1032, ElemSize: 1032, IsArray: false, ArrayBound: 1024, IsPointer: false, CountOffset: 1028, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "alias", Offset: 1032, Size: 24, ElemSize: 24, IsArray: false, ArrayBound: 16, IsPointer: false, CountOffset: 1052, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "kind", Offset: 1056, Size: 40, ElemSize: 40, IsArray: false, ArrayBound: 32, IsPointer: false, CountOffset: 1092, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "type_", Offset: 1096, Size: 72, ElemSize: 72, IsArray: false, ArrayBound: 64, IsPointer: false, CountOffset: 1164, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "what", Offset: 1168, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "stream", Offset: 1176, Size: 136, ElemSize: 136, IsArray: false, ArrayBound: 128, IsPointer: false, CountOffset: 1308, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "size", Offset: 1312, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
-			{Name: "cards", Offset: 1320, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "notes", Offset: 1336, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "marked", Offset: 1352, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
-			{Name: "overdue", Offset: 1353, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
-			{Name: "waited", Offset: 1354, Size: 70, ElemSize: 70, IsArray: false, ArrayBound: 64, IsPointer: false, CountOffset: 1420, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "due", Offset: 1424, Size: 48, ElemSize: 48, IsArray: false, ArrayBound: 40, IsPointer: false, CountOffset: 1468, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "answers", Offset: 1472, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "decisions", Offset: 1488, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "id", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "alias", Offset: 8, Size: 24, ElemSize: 24, IsArray: false, ArrayBound: 16, IsPointer: false, CountOffset: 28, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "kind", Offset: 32, Size: 40, ElemSize: 40, IsArray: false, ArrayBound: 32, IsPointer: false, CountOffset: 68, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "type_", Offset: 72, Size: 72, ElemSize: 72, IsArray: false, ArrayBound: 64, IsPointer: false, CountOffset: 140, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "what", Offset: 144, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "stream", Offset: 152, Size: 136, ElemSize: 136, IsArray: false, ArrayBound: 128, IsPointer: false, CountOffset: 284, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "size", Offset: 288, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+			{Name: "cards", Offset: 296, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "notes", Offset: 312, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "marked", Offset: 328, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
+			{Name: "overdue", Offset: 329, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
+			{Name: "waited", Offset: 330, Size: 70, ElemSize: 70, IsArray: false, ArrayBound: 64, IsPointer: false, CountOffset: 396, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "due", Offset: 400, Size: 48, ElemSize: 48, IsArray: false, ArrayBound: 40, IsPointer: false, CountOffset: 444, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "answers", Offset: 448, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "decisions", Offset: 464, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
 	tableCookRecords[24] = TableCookInfo{
@@ -1159,7 +1159,7 @@ func init() {
 		},
 	}
 	tableCookRecords[28] = TableCookInfo{
-		Name: "LogLine", Size: 2560, Align: 8, NumFields: 20,
+		Name: "LogLine", Size: 2048, Align: 8, NumFields: 20,
 		Fields: []TableCookFieldInfo{
 			{Name: "kind", Offset: 0, Size: 40, ElemSize: 40, IsArray: false, ArrayBound: 32, IsPointer: false, CountOffset: 36, PresentOffset: -1, Storage: TableCookStorageString},
 			{Name: "at", Offset: 40, Size: 48, ElemSize: 48, IsArray: false, ArrayBound: 40, IsPointer: false, CountOffset: 84, PresentOffset: -1, Storage: TableCookStorageString},
@@ -1170,17 +1170,17 @@ func init() {
 			{Name: "primary", Offset: 768, Size: 520, ElemSize: 520, IsArray: false, ArrayBound: 515, IsPointer: false, CountOffset: 1284, PresentOffset: -1, Storage: TableCookStorageString},
 			{Name: "stream", Offset: 1288, Size: 136, ElemSize: 136, IsArray: false, ArrayBound: 128, IsPointer: false, CountOffset: 1420, PresentOffset: -1, Storage: TableCookStorageString},
 			{Name: "table_", Offset: 1424, Size: 40, ElemSize: 40, IsArray: false, ArrayBound: 32, IsPointer: false, CountOffset: 1460, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "from", Offset: 1464, Size: 264, ElemSize: 264, IsArray: false, ArrayBound: 256, IsPointer: false, CountOffset: 1724, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "to", Offset: 1728, Size: 264, ElemSize: 264, IsArray: false, ArrayBound: 256, IsPointer: false, CountOffset: 1988, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "removed", Offset: 1992, Size: 2, ElemSize: 2, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: 1993, Storage: TableCookStorageBool},
-			{Name: "gen", Offset: 2000, Size: 9, ElemSize: 9, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: 2008, Storage: TableCookStorageSigned},
-			{Name: "actor", Offset: 2009, Size: 143, ElemSize: 143, IsArray: false, ArrayBound: 135, IsPointer: false, CountOffset: 2148, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "verb", Offset: 2152, Size: 40, ElemSize: 40, IsArray: false, ArrayBound: 32, IsPointer: false, CountOffset: 2188, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "cause", Offset: 2192, Size: 308, ElemSize: 308, IsArray: false, ArrayBound: 300, IsPointer: false, CountOffset: 2496, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "answers", Offset: 2504, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "text", Offset: 2520, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "set", Offset: 2536, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "note", Offset: 2552, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "from", Offset: 1464, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "to", Offset: 1472, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "removed", Offset: 1480, Size: 2, ElemSize: 2, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: 1481, Storage: TableCookStorageBool},
+			{Name: "gen", Offset: 1488, Size: 9, ElemSize: 9, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: 1496, Storage: TableCookStorageSigned},
+			{Name: "actor", Offset: 1497, Size: 143, ElemSize: 143, IsArray: false, ArrayBound: 135, IsPointer: false, CountOffset: 1636, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "verb", Offset: 1640, Size: 40, ElemSize: 40, IsArray: false, ArrayBound: 32, IsPointer: false, CountOffset: 1676, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "cause", Offset: 1680, Size: 308, ElemSize: 308, IsArray: false, ArrayBound: 300, IsPointer: false, CountOffset: 1984, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "answers", Offset: 1992, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "text", Offset: 2008, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "set", Offset: 2024, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "note", Offset: 2040, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 		},
 	}
 	tableCookRecords[29] = TableCookInfo{
@@ -1523,7 +1523,7 @@ func init() {
 		},
 	}
 	tableCookRecords[65] = TableCookInfo{
-		Name: "SeatCheck", Size: 640, Align: 8, NumFields: 9,
+		Name: "SeatCheck", Size: 384, Align: 8, NumFields: 9,
 		Fields: []TableCookFieldInfo{
 			{Name: "drift", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 			{Name: "epoch", Offset: 8, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
@@ -1531,9 +1531,9 @@ func init() {
 			{Name: "generation", Offset: 24, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
 			{Name: "holder", Offset: 32, Size: 140, ElemSize: 140, IsArray: false, ArrayBound: 135, IsPointer: false, CountOffset: 168, PresentOffset: -1, Storage: TableCookStorageString},
 			{Name: "record", Offset: 172, Size: 140, ElemSize: 140, IsArray: false, ArrayBound: 135, IsPointer: false, CountOffset: 308, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "server", Offset: 312, Size: 264, ElemSize: 264, IsArray: false, ArrayBound: 256, IsPointer: false, CountOffset: 572, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "status", Offset: 576, Size: 24, ElemSize: 24, IsArray: false, ArrayBound: 16, IsPointer: false, CountOffset: 596, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "verb", Offset: 600, Size: 40, ElemSize: 40, IsArray: false, ArrayBound: 32, IsPointer: false, CountOffset: 636, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "server", Offset: 312, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "status", Offset: 320, Size: 24, ElemSize: 24, IsArray: false, ArrayBound: 16, IsPointer: false, CountOffset: 340, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "verb", Offset: 344, Size: 40, ElemSize: 40, IsArray: false, ArrayBound: 32, IsPointer: false, CountOffset: 380, PresentOffset: -1, Storage: TableCookStorageString},
 		},
 	}
 	tableCookRecords[66] = TableCookInfo{
@@ -1549,11 +1549,11 @@ func init() {
 		},
 	}
 	tableCookRecords[67] = TableCookInfo{
-		Name: "SeatInstall", Size: 288, Align: 8, NumFields: 3,
+		Name: "SeatInstall", Size: 32, Align: 8, NumFields: 3,
 		Fields: []TableCookFieldInfo{
 			{Name: "dry_run", Offset: 0, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
 			{Name: "seat", Offset: 8, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "server", Offset: 24, Size: 264, ElemSize: 264, IsArray: false, ArrayBound: 256, IsPointer: false, CountOffset: 284, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "server", Offset: 24, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 		},
 	}
 	tableCookRecords[68] = TableCookInfo{
@@ -1563,10 +1563,10 @@ func init() {
 		},
 	}
 	tableCookRecords[69] = TableCookInfo{
-		Name: "SeatRecord", Size: 400, Align: 4, NumFields: 2,
+		Name: "SeatRecord", Size: 144, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
-			{Name: "server", Offset: 0, Size: 264, ElemSize: 264, IsArray: false, ArrayBound: 256, IsPointer: false, CountOffset: 260, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "config_seat", Offset: 264, Size: 136, ElemSize: 136, IsArray: false, ArrayBound: 128, IsPointer: false, CountOffset: 396, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "server", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "config_seat", Offset: 8, Size: 136, ElemSize: 136, IsArray: false, ArrayBound: 128, IsPointer: false, CountOffset: 140, PresentOffset: -1, Storage: TableCookStorageString},
 		},
 	}
 	tableCookRecords[70] = TableCookInfo{
@@ -1717,15 +1717,15 @@ func init() {
 		},
 	}
 	tableCookRecords[87] = TableCookInfo{
-		Name: "StoreLogin", Size: 696, Align: 8, NumFields: 7,
+		Name: "StoreLogin", Size: 184, Align: 8, NumFields: 7,
 		Fields: []TableCookFieldInfo{
-			{Name: "redis", Offset: 0, Size: 264, ElemSize: 264, IsArray: false, ArrayBound: 256, IsPointer: false, CountOffset: 260, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "user", Offset: 264, Size: 136, ElemSize: 136, IsArray: false, ArrayBound: 128, IsPointer: false, CountOffset: 396, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "store", Offset: 400, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "as_", Offset: 408, Size: 136, ElemSize: 136, IsArray: false, ArrayBound: 128, IsPointer: false, CountOffset: 540, PresentOffset: -1, Storage: TableCookStorageString},
-			{Name: "key", Offset: 544, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "sops", Offset: 552, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "secret", Offset: 560, Size: 136, ElemSize: 136, IsArray: false, ArrayBound: 128, IsPointer: false, CountOffset: 692, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "redis", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "user", Offset: 8, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "store", Offset: 16, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "as_", Offset: 24, Size: 136, ElemSize: 136, IsArray: false, ArrayBound: 128, IsPointer: false, CountOffset: 156, PresentOffset: -1, Storage: TableCookStorageString},
+			{Name: "key", Offset: 160, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "sops", Offset: 168, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "secret", Offset: 176, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 		},
 	}
 	tableCookRecords[88] = TableCookInfo{
@@ -2646,7 +2646,7 @@ type SeatInstallCook struct {
 // accessors are members free to spell them that way, and a package constant
 // per table per fact would claim names §11 does not.
 func (c SeatInstallCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
-func (c SeatInstallCook) RootSize() int64        { return 288 }
+func (c SeatInstallCook) RootSize() int64        { return 32 }
 func (c SeatInstallCook) RootAlign() int64       { return 8 }
 
 // Root is the root record at the region's base. It is a POINTER and not a
@@ -2693,7 +2693,7 @@ func (cook *SeatInstallCook) Open(base unsafe.Pointer, length int64) error {
 	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 288 {
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 32 {
 		return TableRefuseTruncated
 	}
 	if uint64(uintptr(base))%alignment != 0 {
@@ -3367,7 +3367,7 @@ type InboxJudgmentCook struct {
 // accessors are members free to spell them that way, and a package constant
 // per table per fact would claim names §11 does not.
 func (c InboxJudgmentCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
-func (c InboxJudgmentCook) RootSize() int64        { return 1504 }
+func (c InboxJudgmentCook) RootSize() int64        { return 480 }
 func (c InboxJudgmentCook) RootAlign() int64       { return 8 }
 
 // Root is the root record at the region's base. It is a POINTER and not a
@@ -3414,7 +3414,7 @@ func (cook *InboxJudgmentCook) Open(base unsafe.Pointer, length int64) error {
 	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 1504 {
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 480 {
 		return TableRefuseTruncated
 	}
 	if uint64(uintptr(base))%alignment != 0 {
@@ -3985,7 +3985,7 @@ type SeatCheckCook struct {
 // accessors are members free to spell them that way, and a package constant
 // per table per fact would claim names §11 does not.
 func (c SeatCheckCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
-func (c SeatCheckCook) RootSize() int64        { return 640 }
+func (c SeatCheckCook) RootSize() int64        { return 384 }
 func (c SeatCheckCook) RootAlign() int64       { return 8 }
 
 // Root is the root record at the region's base. It is a POINTER and not a
@@ -4032,7 +4032,7 @@ func (cook *SeatCheckCook) Open(base unsafe.Pointer, length int64) error {
 	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 640 {
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 384 {
 		return TableRefuseTruncated
 	}
 	if uint64(uintptr(base))%alignment != 0 {
@@ -4191,8 +4191,8 @@ type SeatRecordCook struct {
 // accessors are members free to spell them that way, and a package constant
 // per table per fact would claim names §11 does not.
 func (c SeatRecordCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
-func (c SeatRecordCook) RootSize() int64        { return 400 }
-func (c SeatRecordCook) RootAlign() int64       { return 4 }
+func (c SeatRecordCook) RootSize() int64        { return 144 }
+func (c SeatRecordCook) RootAlign() int64       { return 8 }
 
 // Root is the root record at the region's base. It is a POINTER and not a
 // copy: a cooked graph is walked by adding deltas to slot addresses.
@@ -4231,14 +4231,14 @@ func (cook *SeatRecordCook) Open(base unsafe.Pointer, length int64) error {
 		return TableRefuseReservedNotZero
 	}
 	alignment := binary.NativeEndian.Uint64(header[40:])
-	if alignment < 8 || alignment > 64 || alignment&(alignment-1) != 0 || alignment%4 != 0 {
+	if alignment < 8 || alignment > 64 || alignment&(alignment-1) != 0 || alignment%8 != 0 {
 		return TableRefuseBadAlignment
 	}
 	bytes := uint64(length)
 	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 400 {
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 144 {
 		return TableRefuseTruncated
 	}
 	if uint64(uintptr(base))%alignment != 0 {
@@ -4294,7 +4294,7 @@ type StoreLoginCook struct {
 // accessors are members free to spell them that way, and a package constant
 // per table per fact would claim names §11 does not.
 func (c StoreLoginCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
-func (c StoreLoginCook) RootSize() int64        { return 696 }
+func (c StoreLoginCook) RootSize() int64        { return 184 }
 func (c StoreLoginCook) RootAlign() int64       { return 8 }
 
 // Root is the root record at the region's base. It is a POINTER and not a
@@ -4341,7 +4341,7 @@ func (cook *StoreLoginCook) Open(base unsafe.Pointer, length int64) error {
 	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 696 {
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 184 {
 		return TableRefuseTruncated
 	}
 	if uint64(uintptr(base))%alignment != 0 {
@@ -7901,7 +7901,7 @@ type LogLineCook struct {
 // accessors are members free to spell them that way, and a package constant
 // per table per fact would claim names §11 does not.
 func (c LogLineCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
-func (c LogLineCook) RootSize() int64        { return 2560 }
+func (c LogLineCook) RootSize() int64        { return 2048 }
 func (c LogLineCook) RootAlign() int64       { return 8 }
 
 // Root is the root record at the region's base. It is a POINTER and not a
@@ -7948,7 +7948,7 @@ func (cook *LogLineCook) Open(base unsafe.Pointer, length int64) error {
 	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 2560 {
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 2048 {
 		return TableRefuseTruncated
 	}
 	if uint64(uintptr(base))%alignment != 0 {
@@ -9013,7 +9013,7 @@ func PassStatsAt(slot *int64, arena ...*TableArena) *PassStatsRow {
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
 func (c PassStatsCook) Type() *TableCookInfo { return &tableCookRecords[53] }
 
-const tableCookBuildVersion uint64 = 0x7aabe6f81aac86e9
+const tableCookBuildVersion uint64 = 0x403defe029f753a5
 
 // TableByteOrder selects the target order, independently of the writing host.
 type TableByteOrder uint8

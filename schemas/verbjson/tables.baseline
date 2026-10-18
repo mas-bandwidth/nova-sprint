@@ -218,7 +218,7 @@ table InboxAnswer
     field commands id=0x3cc8bf892e4522d3 kind=14 elem=12 type=InboxAnswerCommandsText array=unbounded
 
 table InboxJudgment
-    field id id=0x08b72e07b55c3ac0 kind=12 size=1024
+    field id id=0x08b72e07b55c3ac0 kind=17 type=string
     field alias id=0x509220bb65a646b7 kind=12 size=16
     field kind id=0xef9c96d721673243 kind=12 size=32
     field type_ id=0xbb7ae3efaad7d5b6 kind=12 size=64
@@ -251,8 +251,8 @@ table LogLine
     field primary id=0xbf31137ff783e939 kind=12 size=515
     field stream id=0x4f6a36d8e8907985 kind=12 size=128
     field table_ id=0xe2661bdbf2a01b20 kind=12 size=32
-    field from id=0x7f845078d7a5c0b5 kind=12 size=256
-    field to id=0x08c83907b56ac0a4 kind=12 size=256
+    field from id=0x7f845078d7a5c0b5 kind=17 type=string
+    field to id=0x08c83907b56ac0a4 kind=17 type=string
     field removed id=0x10154dbd4fbc697b kind=1 optional=true
     field gen id=0xd4e26d18faaa8af5 kind=5 optional=true
     field actor id=0xdcccc5391c47d4da kind=12 size=135
@@ -447,7 +447,7 @@ table SeatCheck
     field generation id=0xe700a2848d46a857 kind=9
     field holder id=0x630853b55c723d4f kind=12 size=135
     field record id=0x9c9327fff79474ac kind=12 size=135
-    field server id=0x7294d77db181ded2 kind=12 size=256
+    field server id=0x7294d77db181ded2 kind=17 type=string
     field status id=0xc4d5696d6cc12c2f kind=12 size=16
     field verb id=0x673ebb0102773a20 kind=12 size=32
 
@@ -463,10 +463,10 @@ table SeatCoordinator
 table SeatInstall
     field dry_run id=0x2493e27bcb234f74 kind=1
     field seat id=0x2d08f118d3f933e8 kind=14 elem=12 type=SeatInstallSeatText array=unbounded
-    field server id=0x7294d77db181ded2 kind=12 size=256
+    field server id=0x7294d77db181ded2 kind=17 type=string
 
 table SeatRecord
-    field server id=0x7294d77db181ded2 kind=12 size=256
+    field server id=0x7294d77db181ded2 kind=17 type=string
     field config_seat id=0x354d2090b7514a99 kind=12 size=128
 
 table SeatRepaired
@@ -557,13 +557,13 @@ table Stages
     field total id=0x2dcede7d543a4ffd kind=13 type=Measure
 
 table StoreLogin
-    field redis id=0xa30c3ff3148ac374 kind=12 size=256
-    field user id=0x7d6780e4032b48f2 kind=12 size=128
+    field redis id=0xa30c3ff3148ac374 kind=17 type=string
+    field user id=0x7d6780e4032b48f2 kind=17 type=string
     field store id=0x44ee54ad76b0bd8e kind=17 type=string
     field as_ id=0xe7598e190572ad96 kind=12 size=128
     field key id=0x3dc94a19365b10ec kind=17 type=string
     field sops id=0x5ff4de18f0844142 kind=17 type=string
-    field secret id=0xab23f0eec020c951 kind=12 size=128
+    field secret id=0xab23f0eec020c951 kind=17 type=string
 
 table StreamCard
     field id id=0x08b72e07b55c3ac0 kind=12 size=515
@@ -961,3 +961,23 @@ table f533a3b5edde754d.eee13c69133b70b7
 - WakeState.stop: wire kind 12 -> 17 [refuse]
 - WakeState.stop: nested table string added [refuse]
 - table GoalList: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
+
+### 2026-10-18 (UTC) — a12-defs-verb-json-outputs.w9 read: server, Redis address, user, secret, inbox group id and log from/to carried bounds no code enforces; unbounded text (*string, SPEC-TABLES 2.13.1). The area has not landed
+- InboxJudgment.id: wire kind 12 -> 17 [refuse]
+- InboxJudgment.id: nested table string added [refuse]
+- LogLine.from: wire kind 12 -> 17 [refuse]
+- LogLine.from: nested table string added [refuse]
+- LogLine.to: wire kind 12 -> 17 [refuse]
+- LogLine.to: nested table string added [refuse]
+- SeatCheck.server: wire kind 12 -> 17 [refuse]
+- SeatCheck.server: nested table string added [refuse]
+- SeatInstall.server: wire kind 12 -> 17 [refuse]
+- SeatInstall.server: nested table string added [refuse]
+- SeatRecord.server: wire kind 12 -> 17 [refuse]
+- SeatRecord.server: nested table string added [refuse]
+- StoreLogin.redis: wire kind 12 -> 17 [refuse]
+- StoreLogin.redis: nested table string added [refuse]
+- StoreLogin.user: wire kind 12 -> 17 [refuse]
+- StoreLogin.user: nested table string added [refuse]
+- StoreLogin.secret: wire kind 12 -> 17 [refuse]
+- StoreLogin.secret: nested table string added [refuse]

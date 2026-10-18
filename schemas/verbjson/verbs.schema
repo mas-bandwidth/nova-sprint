@@ -50,8 +50,11 @@
 // The bounds are the code's where it holds one: sprint.MaxIDLen (128) for an
 // id, a card id of at most four dot-joined ids (515), a friend row of
 // "friend." plus an id (135), store.MaxCardTextBytes (64 KiB) for the words a
-// change carries, sprint.MaxCause (300) for a cause. A text the code bounds
-// nowhere (a path, a unit file, an error, a reason, a summary) is unbounded
+// change carries, sprint.MaxCause (300) for a cause; a word of a closed set the
+// code writes (a state, a status, a verb, a kind, a table name), a SHA-256 in
+// hex (64) and a Redis stream id (41) are bounded by their set or format. A
+// text the code bounds nowhere (a path, a unit file, a server or Redis address,
+// a user, an error, a reason, a summary, an inbox group id) is unbounded
 // text, *string (docs/SPEC-TABLES.md sections 2.5 and 2.13.1: no cap is
 // invented), and a count the code bounds nowhere is unbounded ([]T): a list is
 // never clamped, and the reader refuses what a declared bound would cut.
@@ -122,7 +125,7 @@ table SeatInstall
 {
     dry_run bool
     seat    []string
-    server  string(256)
+    server  *string
 }
 
 // ---- seat.go: the seat ------------------------------------------------------------
@@ -189,7 +192,7 @@ table InboxAnswer
 // empty when the judgment has no due time.
 table InboxJudgment
 {
-    id        string(1024)
+    id        *string
     alias     string(16)
     kind      string(32)
     type_     string(64) | json = "type"
@@ -275,7 +278,7 @@ table SeatCheck
     generation uint64
     holder     string(135)
     record     string(135)
-    server     string(256)
+    server     *string
     status     string(16)
     verb       string(32)
 }
@@ -297,7 +300,7 @@ table SeatRepaired
 // seat the seat install learned.
 table SeatRecord
 {
-    server      string(256)
+    server      *string
     config_seat string(128)
 }
 
@@ -305,13 +308,13 @@ table SeatRecord
 // where its password is kept; it holds no secret.
 table StoreLogin
 {
-    redis  string(256)
-    user   string(128)
+    redis  *string
+    user   *string
     store  *string
     as_    string(128) | json = "as"
     key    *string
     sops   *string
-    secret string(128)
+    secret *string
 }
 
 // ---- fleetsync.go -------------------------------------------------------------------
@@ -775,8 +778,8 @@ table LogLine
     primary string(515)
     stream  string(128)
     table_  string(32) | json = "table"
-    from    string(256)
-    to      string(256)
+    from    *string
+    to      *string
     removed ?bool
     gen     ?int64
     actor   string(135)
