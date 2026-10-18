@@ -6,6 +6,13 @@ EXTENDS BenchLease
 MCMachines == {"m1", "m2"}
 MCWorkers == {"w1", "w2", "w3"}
 MCSlots == [m \in MCMachines |-> IF m = "m1" THEN 1 ELSE 2]
+MCRank == [m \in MCMachines |-> IF m = "m1" THEN 1 ELSE 2]
+
+\* Equal-sized benches make a same-ratio, same-free-slot name tie reachable.
+MCTieMachines == {"m1", "m2"}
+MCTieWorkers == {"w1", "w2"}
+MCTieSlots == [m \in MCTieMachines |-> 2]
+MCTieRank == [m \in MCTieMachines |-> IF m = "m1" THEN 1 ELSE 2]
 \* liveness: two workers keep the run inside its budget
 MCWorkersLive == {"w1", "w2"}
 =============================================================================
