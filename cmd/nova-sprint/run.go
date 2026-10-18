@@ -597,7 +597,7 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 	// ignored: a best-effort read cleanup on startup; tick takes care of any subsequent lapses
 	_ = a.serverStart(context.Background(), st)
 
-	fmt.Fprintf(stdout, "RUN ticking on every line of the log (at most every %s) and every %s while it is quiet; %s\n", store.TickFloor, store.TickEvery, st.MachineLine(context.Background()))
+	fmt.Fprintf(stdout, "RUN ticking on every line of the log (at most every %s) and every %s while it is quiet; %s\n", store.TickFloor, store.QuietEvery, st.MachineLine(context.Background()))
 	if a.runLoop(context.Background(), st, c.max, 0, stdout, stderr) {
 		return exitReplaced
 	}
@@ -1135,16 +1135,16 @@ func (a *app) storeRTTLoop(ctx context.Context, st *store.Store) {
 }
 
 // pace is the wait between two ticks of run: it blocks on the log of the
-// epoch the tick ran at from cursor, until a line comes or TickEvery after
+// epoch the tick ran at from cursor, until a line comes or QuietEvery after
 // the tick began (never less than TickFloor); a line wakes it, and the next
 // tick begins TickFloor after the last began at the soonest. It returns the
 // cursor for the next wait and why the next tick begins. A wait the store
 // refuses falls back to the clock.
 func (a *app) pace(ctx context.Context, st *store.Store, epoch uint64, cursor string, began time.Time) (string, string) {
-	d := max(store.TickEvery-a.now().Sub(began), store.TickFloor)
+	d := max(store.QuietEvery-a.now().Sub(began), store.TickFloor)
 	tail, woke, err := st.WaitLog(ctx, epoch, cursor, d)
 	if err != nil {
-		a.sleep(max(store.TickEvery-a.now().Sub(began), 0))
+		a.sleep(max(store.QuietEvery-a.now().Sub(began), 0))
 		return cursor, tickClock
 	}
 	if !woke {

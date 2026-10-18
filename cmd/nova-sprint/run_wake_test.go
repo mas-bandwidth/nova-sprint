@@ -169,10 +169,10 @@ func TestALineWakesTheLoopWithinTheFloor(t *testing.T) {
 	require.True(t, k.began.Equal(late), "a line 500ms after a tick began: want a tick woken by the log at once: %v (line at %s)", w.ticks, late.Format("15:04:05.000"))
 }
 
-// A quiet log ticks the loop once a second, by the clock. The first tick
+// A quiet log ticks the loop once a QuietEvery, by the clock. The first tick
 // brings the member up, and its own lines wake one tick more (the tick after
 // a change reads the state whole, as it always has); then the log is quiet.
-func TestAQuietLogTicksOnceASecond(t *testing.T) {
+func TestAQuietLogTicksOnceAQuietEvery(t *testing.T) {
 	t.Parallel()
 	w := newWakeApp(t)
 	w.ok("init --readers reader-a,reader-b --members m1")
@@ -183,8 +183,8 @@ func TestAQuietLogTicksOnceASecond(t *testing.T) {
 	require.Equal(t, tickLog, w.ticks[1].why, "ticks: %v", w.ticks)
 	for i := 2; i < len(w.ticks); i++ {
 		require.Equal(t, tickClock, w.ticks[i].why, "tick #%d on a quiet log: %s %s after the one before, want the clock at %s: %v",
-			i+1, w.ticks[i].why, w.ticks[i].began.Sub(w.ticks[i-1].began), store.TickEvery, w.ticks)
-		require.Equal(t, store.TickEvery, w.ticks[i].began.Sub(w.ticks[i-1].began), "tick #%d on a quiet log: %s %s after the one before, want the clock at %s: %v",
-			i+1, w.ticks[i].why, w.ticks[i].began.Sub(w.ticks[i-1].began), store.TickEvery, w.ticks)
+			i+1, w.ticks[i].why, w.ticks[i].began.Sub(w.ticks[i-1].began), store.QuietEvery, w.ticks)
+		require.Equal(t, store.QuietEvery, w.ticks[i].began.Sub(w.ticks[i-1].began), "tick #%d on a quiet log: %s %s after the one before, want the clock at %s: %v",
+			i+1, w.ticks[i].why, w.ticks[i].began.Sub(w.ticks[i-1].began), store.QuietEvery, w.ticks)
 	}
 }

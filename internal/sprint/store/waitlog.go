@@ -22,6 +22,15 @@ import (
 // log ticks at most ten times a second.
 const TickFloor = 100 * time.Millisecond
 
+// QuietEvery is how long a quiet log lets run wait before it ticks on the clock
+// alone: the sweep, the presence and the lateness. A line wakes the tick within
+// TickFloor, so work never waits for it. It was TickEvery (1 s) until
+// 2026-10-17, when an idle server with no client spent a third of a core
+// reloading the whole sprint every second for nothing; every clock duty it
+// serves is measured in minutes, and the late-tick push fires at 30 s
+// (TickLatePush).
+const QuietEvery = 10 * time.Second
+
 // LogWaiter is a backend that can block on its log.
 type LogWaiter interface {
 	// WaitLog blocks until the log holds a line after the stream id after
