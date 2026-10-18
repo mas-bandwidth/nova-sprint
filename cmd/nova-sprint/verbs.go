@@ -74,7 +74,7 @@ func init() {
 		{"goal show", "[<name>]", "goal show friend-a", (*app).cmdGoalShow},
 		{"goal drop", "<name>", "goal drop friend-a", (*app).cmdGoalDrop},
 		{"take", "--as <member> [<card>@<gen>...] [--epoch <n>] [--max <n>] [--lane <n>]", "take --as m1 s1-1.w1@1 --epoch 0", (*app).cmdTake},
-		{"finish", "--as <member> <card>@<gen>... --epoch <n> (--head <commit> | --failed) [--report <text>] [--usage <text>] [--lane <n>]", "finish --as m1 s1-1.w1@1 --epoch 0 --head 9f3c2e1 --report 'tests green'", (*app).cmdFinish},
+		{"finish", "--as <member> <card>@<gen>... --epoch <n> (--head <commit> | --failed [--head <commit>]) [--report <text>] [--usage <text>] [--lane <n>]", "finish --as m1 s1-1.w1@1 --epoch 0 --failed --head 9f3c2e1 --report 'HOLD: gate owed'", (*app).cmdFinish},
 		{"progress", "--as <worker> <card>[@<gen>]... --epoch <n> [--lane <n>]", "progress --as m1 s1-1.w1@1 --epoch 0", (*app).cmdProgress},
 		{"ask", "[<id>... | --group <id> [--expect <n>]] [--stream <s>] [--max <n>] [--another] [--answers <note>]", "ask", (*app).cmdAsk},
 		{"queue", "--as <reader|member> | --stream <s>", "queue --as reader-a", (*app).cmdQueue},
@@ -2900,7 +2900,7 @@ func (a *app) cmdFinish(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("finish")
 	as := fs.String("as", "", "the fleet member finishing its cards; several, comma separated, each finishing its own named cards in one step")
 	failed := fs.Bool("failed", false, "the work failed (default: ok); a card named by id whose attempt a deadline failed already, with no later attempt started, is finished by this report, LAND or HOLD, rather than refused")
-	head := fs.String("head", "", "the commit the work finished at, the head land merges (default: the card's id, for a run with no git: land refuses a head that is not a commit id)")
+	head := fs.String("head", "", "the full commit SHA the work pushed; with --failed, records a HOLD's pushed head too (default: the card's id when no commit was pushed)")
 	report := fs.String("report", "", "the worker's report")
 	exit := fs.Int("exit", 0, "the child's exit code, as the member read it (0: a clean end or unknown); a failed finish whose exit is 134 or 137, or whose report is a no-result at any exit, is an environment exit: recorded ended=environment exit=<n>, the card back in ready at the same attempt; at 134 or 137 no attempt or redeal is spent, and a no-result at another exit is still an ended take (redeal counted) (docs/SPEC-SPRINT.md, \"An environment exit\")")
 	harness := fs.String("harness", "", "the child's harness output, so an environment exit keeps the last 40 lines of it on the card and its primary (the cause a reader reads)")

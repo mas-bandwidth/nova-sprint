@@ -604,8 +604,9 @@ FinishTarget(c) ==
 \* cell and its primary goes where its needs say (FinishTarget): a finish of a
 \* card whose named needs have not landed is a coordination failure
 \* (needs_stop.go), taken whatever the worker reports, so it goes to waiting, not
-\* review, and Rule11 holds. Every finish is one the lifecycle accepts
-\* (FinishAgreesWithLifecycle).
+\* review, and Rule11 holds. A LAND or HOLD that enters review records the head
+\* of this attempt; failed finishes with a pushed head use the same head record.
+\* Every finish is one the lifecycle accepts (FinishAgreesWithLifecycle).
 Finish ==
   \E c \in Card :
     /\ FenceOK
@@ -1476,8 +1477,13 @@ Next == \/ (((LegacyNext /\ GenerationStep) \/ Brief \/ OperationalEdit) /\ Park
         \/ ((DecisionParkStep \/ DecisionReleaseStep \/ ReworkHeldInPlace) /\ Follow)
         \/ FinishRefused
 
+LastFinishPushedHasHead ==
+  \A c \in Card :
+    state[c] = "review" /\ wplace[c] = "finished" => headGeneration[c] = attemptGeneration[c]
+
 NoOldBriefHeadInReview ==
-  \A c \in Card : state[c] = "review" => (headGeneration[c] = briefGeneration[c] \/ keptHead[c])
+  /\ \A c \in Card : state[c] = "review" => (headGeneration[c] = briefGeneration[c] \/ keptHead[c])
+  /\ LastFinishPushedHasHead
 
 CrashNext ==
   \/ Next
