@@ -11,9 +11,8 @@ helps.
 |---|---|
 | `cmd/nova-sprint` | The sprint commands, server, and dashboard entry point. |
 | `internal/card`, `internal/cardgen` | Card generation and linting behind `nova-sprint card`. |
-| `cmd/nova-work` | GitHub issue import and verification. |
 | `internal/sprint`, `internal/sprintdash` | Coordination and the browser view. |
-| `internal/cardgen`, `internal/workfile`, `internal/workgh`, `internal/worklang` | Card and work-tree implementation. |
+| `internal/cardgen`, `internal/worklang` | Card implementation and the bounded s-expression reader. |
 | `internal/work` | The proposed durable sprint-program store; see its [status note](internal/work/NOTE.md). |
 | `docs` | Guides, specifications, command examples, and recorded reviews. |
 | `tla` | State-machine models and their recorded runs. |

@@ -27,9 +27,8 @@ import (
 
 // sprintSecretRoots are nova-sprint's paths the walk reads, from the repository's root.
 var sprintSecretRoots = []string{
-	"cmd/nova-sprint", "cmd/nova-card", "cmd/nova-work",
+	"cmd/nova-sprint", "cmd/nova-card",
 	"internal/sprint", "internal/sprintdash", "internal/card", "internal/cardgen",
-	"internal/workfile", "internal/workgh",
 }
 
 // sprintSecretOpeners is the reviewed table of every function the rule drives here, keyed

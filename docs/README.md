@@ -39,7 +39,7 @@ example.
 | [Sprint contract](SPEC-SPRINT.md) | Cards, dependencies, scheduling, review, landing, and the rules each state change follows. |
 | [Coordinator credentials](SPRINT-COORDINATOR-SEAT.md) | How locally executed configuration commands get the credentials they need. |
 | [Environment variables](ENVIRONMENT.md) | How commands select a twin, direct store, server, and actor. |
-| [Work tree format](SPEC-WORK-V1.md) | The GitHub issue mirror, the fields it preserves, and import/verify behaviour. |
+| [Work tree format](https://github.com/mas-bandwidth/nova-tools/blob/main/docs/SPEC-WORK-V1.md) (nova-tools) | The GitHub issue mirror, the fields it preserves, and import/verify behaviour. |
 | [Work language](SPEC-WORKLANG.md) | The small data grammar used to read tree files without evaluating them. |
 | [Executable examples](TESTS.md) | Exact command transcripts checked by tests. |
 | [Test harness](https://github.com/mas-bandwidth/nova-tools/blob/main/pkg/testkit/HARNESS.md) | Shared helpers for contributors writing command tests. |
