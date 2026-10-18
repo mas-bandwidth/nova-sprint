@@ -249,7 +249,7 @@ func (a *app) cmdPromote(args []string, stdout, stderr io.Writer) int {
 	}
 	p := &promoter{
 		dir: *repo, live: *branch, base: *base, check: *check,
-		now: now, dry: *dry, env: withMachineGitIdentity(env, identity),
+		now: now, dry: *dry, env: withMachineGitIdentity(gateChildEnv(env), identity),
 		every: *every, landings: *landings, started: now,
 	}
 	p.forgeEnv = a.forgeCommandEnv(p.env)
@@ -997,9 +997,11 @@ func (p *promoter) runGate(ctx context.Context, sha string) (string, error) {
 	b := subproc.Prepare(ctx, landCheckBudget, "sh", "-c", p.check)
 	defer b.Cancel()
 	b.Cmd.Dir = p.dir
-	if p.env != nil {
-		b.Cmd.Env = p.env
+	env := p.env
+	if env == nil {
+		env = os.Environ()
 	}
+	b.Cmd.Env = gateChildEnv(env)
 	raw, err := b.Cmd.CombinedOutput()
 	if err = b.Wrap("check "+p.check, err); err != nil {
 		return string(raw), errors.New("the tree gate failed: " + oneline.Err(err) + checkTail(string(raw)))
