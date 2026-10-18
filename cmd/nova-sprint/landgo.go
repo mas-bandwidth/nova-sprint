@@ -58,6 +58,10 @@ const landGoBudget = 15 * time.Minute
 // AskRefused).
 const landGateRunBudget = 15 * time.Minute
 
+// gateRunBudgetOverride is a test's seam for one gate run's budget; the zero value
+// means landGateRunBudget (gateOn).
+var gateRunBudgetOverride time.Duration
+
 const benchGateUnavailableWhy = "the configured remote bench did not run the tree gate; restore a bench and run land again"
 
 // treeTests are the packages that test the tree itself (its docs and its tests), run by
@@ -730,7 +734,7 @@ func (l *lander) ringGate(ctx context.Context, hosts []string, dir string, runs 
 func (l *lander) gateOn(ctx context.Context, host, dir string, runs [][]string, tests bool, st *bench.MirrorStage) (why string, ran bool, refused *bench.StageError) {
 	defer l.giveGateLane(host)
 	l.stage("gate", "bench "+host+" held by "+l.laneWho()+" ("+l.gateWhose()+"): "+strings.Join(runs[0], " "))
-	runBudget := l.gateRunBudget
+	runBudget := gateRunBudgetOverride
 	if runBudget == 0 {
 		runBudget = landGateRunBudget
 	}

@@ -43,16 +43,19 @@ func TestTheGateRunBudgetIsFifteenMinutesUntilMeasured(t *testing.T) {
 }
 
 // A run that returned green as the budget's deadline fired is the run's answer: the
-// gate is green on that bench and the ring does not step on. The lander's gateRunBudget
-// field is the test's seam: one nanosecond, so the run's context is past its deadline
-// before the answer returns; no sleep, no real time.
+// gate is green on that bench and the ring does not step on. gateRunBudgetOverride is the
+// test's seam: one nanosecond, so the run's context is past its deadline before the
+// answer returns; no sleep, no real time. It sets a package variable, so it does not
+// run parallel.
 func TestAGateRunGreenAtItsDeadlineIsKept(t *testing.T) {
-	t.Parallel()
+	old := gateRunBudgetOverride
+	gateRunBudgetOverride = time.Nanosecond
+	defer func() { gateRunBudgetOverride = old }()
 	f := newBenchFullRig(t)
 	first := benchRing("s1", f.hosts)[0]
 	f.answer = func(string) (string, int, error) { return "", 0, nil }
 	runs := gateCmds(gateRuns(false, nil, nil))
-	l := &lander{a: f.r.a, st: f.l.st, gateKey: "s1", gateRunBudget: time.Nanosecond}
+	l := &lander{a: f.r.a, st: f.l.st, gateKey: "s1"}
 	why, ran := l.benchGate(t.Context(), f.hosts, f.r.clone, runs, false)
 	assert.Empty(t, why)
 	assert.True(t, ran, "the gate is green on the first bench")
