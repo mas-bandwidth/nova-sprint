@@ -1891,7 +1891,8 @@ the seat, `--tier` and `--carry` included (`ReworkCard.Rule` empty), `continue`,
 brief edit that changes only the tier on line 1, a routing line (PRIORITY, DEPENDS-ON,
 LAND-AFTER, ORDER and the like) or spacing decides nothing about the task: it leaves
 `decided_attempt` as it was and says "max attempts: unchanged (the edit decides nothing about
-the task)", so it opens no fresh cap window. An accepted card in merging is never judged by the attempt cap alone (`tla/Land.tla AcceptedNeverCapJudged`): the accept admits it to merge, and only a repeated refusal (the same finding twice) or exhausted widenings bound it. A rule's widen or rework, a
+the task)", so it opens no fresh cap window. An edit to REPO or BASE alone likewise keeps
+the count. An accepted card in merging is never judged by the attempt cap alone (`tla/Land.tla AcceptedNeverCapJudged`): the accept admits it to merge, and only a repeated refusal (the same finding twice) or exhausted widenings bound it. A rule's widen or rework, a
 stream's `set --base` and the machine's tier escalation never do: each replaces the
 brief or opens an attempt as before, but `brief_attempt` no longer bounds the cap. *At
 the bound*, whatever the attempt found, the card is the coordinator's as exactly one
