@@ -730,6 +730,8 @@ MCSprintTablesBrokenParkMoves.cfg	MCSprintTables.tla	invariant	Rule2Withdrawn	ig
 MCSprintTablesBrokenParkInPlaceAll.cfg	MCSprintTables.tla	invariant	HeldReadyIsWithdrawn	ignore-terminal	sprinttables	required	-
 MCSprintTablesDecisionParkingTwo.cfg	MCSprintTables.tla	pass	-	ignore-terminal	sprinttables-full	bench	-
 MCDecisionsOwedBrokenOwnerCadence.cfg	MCDecisionsOwed.tla	action	OwnerCadence	ignore-terminal	decisionsowed	required	-
+MCDecisionsOwedBrokenBusyRetry.cfg	MCDecisionsOwed.tla	action	NoRetryWithinWait	ignore-terminal	decisionsowed	required	-
+MCDecisionsOwedBrokenNoRetry.cfg	MCDecisionsOwed.tla	temporal	EventuallyResolvedOrEscalated	ignore-terminal	decisionsowed	required	-
 MCQueueWait.cfg	MCQueueWait.tla	pass	-	check	queuewait	required	-
 MCQueueWaitBrokenCursorSkips.cfg	MCQueueWait.tla	invariant	CursorNeverSkips	check	queuewait	required	-
 MCSprintTablesBrokenOperationalBounce.cfg	MCSprintTables.tla	action	OperationalEditPreservesHead	ignore-terminal	sprinttables	required	-
