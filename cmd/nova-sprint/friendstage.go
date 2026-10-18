@@ -129,6 +129,10 @@ func quoteArgs(args []string) []string {
 // small steps, then the stage gives up rather than hang on a bench.
 const friendStageBound = 10 * time.Minute
 
+// friendStageWithTimeout is the context constructor used by the stage; tests
+// replace it with a clock-backed context so deadline assertions use no wall time.
+var friendStageWithTimeout = context.WithTimeout
+
 // friendStageWords is what friend stage says on -h.
 var friendStageWords = "friend stage <card>@<gen> --as friend.<name> [--bench <host>] [--dir <jobs dir>] stages a friend's dealt card in one step: it clones the card's REPO into <jobs dir>/<card>.w<N> at the card's NEXT head when one is carried, else at BASE, creates the delivered branch (the branch the bus message FRIEND-CARD DELIVERED carries), sets the friend's git identity in the clone's local config (the friend's nova-config row git_identity= field when it names one, else the sprint row's git_identity; when nova-config cannot be read, the sprint row's is used instead of refusing; the OK line says which, identity=friend or identity=sprint), and writes JOB.md naming the exact finish command. With --bench <host> every git step and the JOB.md write run on that host over ssh (the jobs directory default on a bench is ~/<friend>-jobs; --dir overrides; the host must be a fleet member, and JOB.md names it BENCH). Without --bench it runs on this machine and JOB.md says BENCH: local. It gives up after " + friendStageBound.String() + " on a bench that does not answer, refusing an expiry naming the bound and the host. It refuses a card not dealt to the named friend, and refuses when neither identity parses as Name <email> (it never falls back to the machine's global git config). A second run on an already staged directory refuses unless it is the same card@gen, branch, head and bench, and then prints the JOB.md path and exits 0.\n"
 
@@ -182,7 +186,7 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, name, err.Error())
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), friendStageBound)
+	ctx, cancel := friendStageWithTimeout(context.Background(), friendStageBound)
 	defer cancel()
 
 	host := strings.TrimSpace(*bench)

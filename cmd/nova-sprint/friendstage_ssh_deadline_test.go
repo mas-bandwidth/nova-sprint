@@ -33,6 +33,14 @@ func TestFriendStageSSHNeverPromptsAndHasADeadline(t *testing.T) {
 	ta, _ := amyWithIdentity(t)
 	dealToAmy(t, ta)
 
+	start := time.Unix(1000, 0)
+	prevTimeout := friendStageWithTimeout
+	friendStageWithTimeout = func(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+		assert.Equal(t, friendStageBound, timeout)
+		return friendStageDeadlineContext{parent: parent, deadline: start.Add(timeout)}, func() {}
+	}
+	defer func() { friendStageWithTimeout = prevTimeout }()
+
 	var ctxs []context.Context
 	prev := friendStageRun
 	friendStageRun = func(ctx context.Context, op friendOp) (string, error) {
@@ -49,10 +57,22 @@ func TestFriendStageSSHNeverPromptsAndHasADeadline(t *testing.T) {
 	for _, ctx := range ctxs {
 		dl, ok := ctx.Deadline()
 		require.True(t, ok, "the runner receives a context with a deadline")
-		left := time.Until(dl)
+		left := dl.Sub(start)
 		assert.LessOrEqual(t, left, friendStageBound,
 			"the stage's deadline is no later than %s from its start", friendStageBound)
 		assert.Greater(t, left, friendStageBound-time.Minute,
 			"the stage's deadline is the bound, not an earlier one")
 	}
 }
+
+// friendStageDeadlineContext exposes a test-clock deadline without starting a
+// timer or consulting wall time.
+type friendStageDeadlineContext struct {
+	parent   context.Context
+	deadline time.Time
+}
+
+func (c friendStageDeadlineContext) Deadline() (time.Time, bool) { return c.deadline, true }
+func (c friendStageDeadlineContext) Done() <-chan struct{}       { return nil }
+func (c friendStageDeadlineContext) Err() error                  { return nil }
+func (c friendStageDeadlineContext) Value(key any) any           { return c.parent.Value(key) }
