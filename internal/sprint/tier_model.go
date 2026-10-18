@@ -3,8 +3,8 @@ package sprint
 import (
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/swarm"
 )
 
 // A card that writes a new TLA+ model is tiered heavy (the owner, 2026-10-17: "I think

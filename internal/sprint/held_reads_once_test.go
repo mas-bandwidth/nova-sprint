@@ -10,7 +10,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/swarm"
 )
 
 // heldRepoStore is the studio store's shape on 2026-10-18 at a small scale: four members

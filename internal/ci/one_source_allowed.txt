@@ -15,4 +15,3 @@
 # the lint (TestTheOneSourceAllowanceOnlyShrinks: the allowance only shrinks).
 tlc	SPRINT-AHEAD: parallel TLC suite cases not in tools
 safepath	DIVERGED: twin-function fold conflicts with tools' own edit
-swarm	DIVERGED: 459 unported lines and dashboardask.go; last to merge
