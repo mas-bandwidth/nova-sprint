@@ -2466,7 +2466,11 @@ func (l *lander) runCheck(ctx context.Context, dir string) (why, out string) {
 	}
 	b := subproc.Prepare(ctx, landCheckBudget, "sh", "-c", l.check)
 	defer b.Cancel()
-	b.Cmd.Dir, b.Cmd.Env = dir, l.a.gitEnv
+	env := l.a.gitEnv
+	if env == nil {
+		env = os.Environ()
+	}
+	b.Cmd.Dir, b.Cmd.Env = dir, gateChildEnv(env)
 	raw, err := b.Cmd.CombinedOutput()
 	if err = b.Wrap("check "+l.check, err); err != nil {
 		return "the check " + l.check + " failed: " + oneline.Err(err) + checkTail(string(raw)), string(raw)
@@ -2765,7 +2769,7 @@ func (l *lander) gitEnv() []string {
 	if env == nil {
 		env = os.Environ()
 	}
-	return withMachineGitIdentity(env, l.identity)
+	return withMachineGitIdentity(gateChildEnv(env), l.identity)
 }
 
 // firstLine is a failure's words on one line: the error's, else out's.

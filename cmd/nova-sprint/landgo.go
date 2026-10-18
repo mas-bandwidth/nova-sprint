@@ -82,11 +82,19 @@ func (l *lander) goRun(ctx context.Context, dir string, run []string, set ...str
 	if env == nil {
 		env = os.Environ()
 	}
+	env = gateChildEnv(env)
 	with := []string{readonlyGoFlags(env)}
 	if cache := l.goCache(ctx, env); cache != "" {
 		with = append(with, "GOCACHE="+cache)
 	}
 	b.Cmd.Dir, b.Cmd.Env = dir, withEnv(env, append(with, set...)...)
+	if len(run) > 0 && run[0] == "gofmt" {
+		var stdout, stderr bytes.Buffer
+		b.Cmd.Stdout, b.Cmd.Stderr = &stdout, &stderr
+		err := b.Cmd.Run()
+		out := gofmtOutput(stdout.String(), stderr.String(), err)
+		return out, b.Wrap(strings.Join(run, " "), err)
+	}
 	out, err := b.Cmd.CombinedOutput()
 	return string(out), b.Wrap(strings.Join(run, " "), err)
 }
@@ -97,6 +105,7 @@ func (l *lander) goRun(ctx context.Context, dir string, run []string, set ...str
 // cache where its go env names one, asked once a process), else a cache under the land
 // root (<root>/cache/go-build, the swarm's own name for it). "" when none can be named.
 func (l *lander) goCache(ctx context.Context, env []string) string {
+	env = gateChildEnv(env)
 	for _, e := range env {
 		if v, ok := strings.CutPrefix(e, "GOCACHE="); ok && v != "" {
 			return v
