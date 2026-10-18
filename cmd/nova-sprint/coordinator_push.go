@@ -851,7 +851,8 @@ func (a *app) decisionPass(ctx context.Context) {
 				if set == "" {
 					return p
 				}
-				if lane == "owner" && coordinatorFold.attempted && coordinatorFold.to == to && coordinatorFold.foldOwner {
+				ownerFoldCandidate := coordinatorFold.foldOwner || !coordinatorFold.received && coordinatorFold.set == set
+				if lane == "owner" && coordinatorFold.attempted && coordinatorFold.to == to && ownerFoldCandidate {
 					if !coordinatorFold.received {
 						return p
 					}
