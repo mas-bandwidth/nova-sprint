@@ -1883,9 +1883,15 @@ a push or lane refused, a landing refused, in the shared ledgers too): the count
 card's `attempt` less `decided_attempt` (`sprint.AttemptsSince`; absent is 0), a redeal
 of one attempt being that one attempt (MaxRedeals bounds those on its own). *What
 resets it*: a coordinator decision on the card or an accept writes `decided_attempt` (the
-card's attempt at the decision): `brief` and `brief --tier` run by a person or the seat
-(`BriefReq.ByRule` false), `rework` answered by the seat, `--tier` and `--carry` included
-(`ReworkCard.Rule` empty), `continue`, and `accept` (`steps_review.go:Accept`, whoever accepts: coordinator or machine); a drop ends the card. An accepted card in merging is never judged by the attempt cap alone (`tla/Land.tla AcceptedNeverCapJudged`): the accept admits it to merge, and only a repeated refusal (the same finding twice) or exhausted widenings bound it. A rule's widen or rework, a
+card's attempt at the decision): a `brief` edit run by a person or the seat that changes the
+task or its PATHS (the old and new briefs' `taskOf` differ: the hash of the body and the
+PATHS, NEW, SHARED, TEST and DONE-WHEN lines), `brief --tier` (a re-tier), `rework` answered by
+the seat, `--tier` and `--carry` included (`ReworkCard.Rule` empty), `continue`, and `accept`
+(`steps_review.go:Accept`, whoever accepts: coordinator or machine); a drop ends the card. A
+brief edit that changes only the tier on line 1, a routing line (PRIORITY, DEPENDS-ON,
+LAND-AFTER, ORDER and the like) or spacing decides nothing about the task: it leaves
+`decided_attempt` as it was and says "max attempts: unchanged (the edit decides nothing about
+the task)", so it opens no fresh cap window. An accepted card in merging is never judged by the attempt cap alone (`tla/Land.tla AcceptedNeverCapJudged`): the accept admits it to merge, and only a repeated refusal (the same finding twice) or exhausted widenings bound it. A rule's widen or rework, a
 stream's `set --base` and the machine's tier escalation never do: each replaces the
 brief or opens an attempt as before, but `brief_attempt` no longer bounds the cap. *At
 the bound*, whatever the attempt found, the card is the coordinator's as exactly one
