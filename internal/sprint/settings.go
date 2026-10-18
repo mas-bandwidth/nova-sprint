@@ -730,3 +730,11 @@ func (r SetReq) alarms() map[string]string {
 	}
 	return out
 }
+
+// init registers the standby seat's working default and its by-set declaration here so
+// the card's PATHS (settings.go) hold them; defaults.go and defaults_working.go are
+// left unchanged.
+func init() {
+	Defaults = append(Defaults, Default{Name: PropSeatSilentTo, Home: HomeProp, Value: ReadTierDefault, Why: "no standby seat hears seat-silent alarms until the coordinator sets one"})
+	workingChecks[PropSeatSilentTo] = workingCheck{BySet: true}
+}
