@@ -4813,8 +4813,10 @@ with no `held_by` and no `fault_since`; `Snapshot.GateMembers`): a hold is a dea
 control (no card is dealt there; `UpMembers` stays the deal filter) and a gate is
 not a card, so `fleet hold` on every member no longer refuses every batch. A member
 down and not held, held by a machine mark (fault, sync, probe, adopt), or taken
-down by `fleet down` (a hold made with `--return`: one with no reason or no finish
-marker; `heldPlain`) runs no gate (`gateHosts`, `landgo.go`; `tla/DirtyTick.tla` `LandGate`, `GateLands`,
+down by `fleet down` (a hold made with `--return`, read as one with no reason or
+no finish marker, `heldPlain`; the row keeps no `--return` mark, so a
+`hold --reason <text> --return` of a member up when held still reads as a plain
+hold) runs no gate (`gateHosts`, `landgo.go`; `tla/DirtyTick.tla` `LandGate`, `GateLands`,
 `HeldMayGateNeverDealt`; `MCDirtyTickGateHeld.cfg`, and the reversed witness
 `MCDirtyTickBrokenGateUpOnly.cfg`). `land --dry-run` makes the same choice and
 runs nothing: a batch it would land carries `bench=<member>` (the ring's first
