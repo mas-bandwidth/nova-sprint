@@ -10,6 +10,9 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 )
 
 // queuedToMergeRig is a sprint with one card queued to merge on s1 (no git: the head is a
@@ -167,4 +170,63 @@ func TestAStandingRefusalKeepsTheLandBeat(t *testing.T) {
 	require.GreaterOrEqual(t, len(looks), int(time.Minute/LandEvery)-1, "a refusal keeps the %s beat: %d looks:\n%s", LandEvery, len(looks), out)
 	require.Contains(t, out, "LAND REFUSED")
 	require.NotContains(t, out, "LAND IDLE queued=0")
+}
+
+// quietOld is the test's store with epoch 0's log deaf: a wait on it hears no line and takes
+// its whole time, and on its second slice the world moves the epoch (a clear, then a card
+// added on the new epoch's log), as when the lines of a clear and after it are all on the
+// new epoch's log.
+type quietOld struct {
+	store.Backend
+	mu     sync.Mutex
+	slices int
+	world  func()
+	sleep  func(time.Duration)
+}
+
+// WaitLog is the store's wait on epoch 0's log (the store waits on the root for epoch 0):
+// deaf.
+func (q *quietOld) WaitLog(_ context.Context, after string, d time.Duration) (string, bool, error) {
+	q.mu.Lock()
+	q.slices++
+	act := q.slices == 2
+	q.mu.Unlock()
+	if act {
+		q.world()
+	}
+	q.sleep(d)
+	return after, false, nil
+}
+
+// The idle wait is on the log of the epoch it began in; a clear moves the epoch. The wait
+// reads the epoch again after each slice, so with the old epoch's log quiet a line on the
+// new epoch's log (a card queued to merge there) is looked at within a slice and LandEvery,
+// never the LandIdleEvery backstop.
+func TestAnEpochChangeEndsTheIdleLandWait(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	q := &quietOld{Backend: ta.m, sleep: func(d time.Duration) { ta.a.sleep(d) }}
+	plain := ta.a.backend
+	wrapped := func(context.Context, string, sprint.Names) (store.Backend, error) { return q, nil }
+	var cleared time.Time
+	q.world = func() {
+		ta.a.backend = plain // the verbs' own store (the loop waits inside this call)
+		ta.ok("clear --confirm sprint")
+		ta.ok("add --stream s1 --count 2")
+		ta.a.backend = wrapped
+		cleared = ta.a.now()
+	}
+	ta.a.backend = wrapped // the land loop's store
+	out, looks := idleLoop(t, ta, 2*time.Minute, nil)
+	require.False(t, cleared.IsZero(), "the world cleared and added:\n%s\nlooks %v", out, looks)
+	var next time.Time
+	for _, l := range looks {
+		if l.After(cleared) {
+			next = l
+			break
+		}
+	}
+	require.False(t, next.IsZero(), "a look after the clear: %v", looks)
+	require.LessOrEqual(t, next.Sub(cleared), landIdleLook+LandEvery, "the new epoch was looked at within a slice, not the %s backstop: clear %s, looks %v", LandIdleEvery, cleared, looks)
 }

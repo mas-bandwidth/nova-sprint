@@ -67,8 +67,8 @@ const landLaneWho = "lander"
 const landLaneBase = landLaneWho + "/base"
 
 // landLoop runs one land cycle every LandEvery until ctx ends, and, while nothing is
-// queued, in flight or refused, one each time a line comes on the sprint's log, at most
-// every LandEvery and at least every LandIdleEvery (landWait). Each cycle writes one line:
+// queued, in flight or refused, one each time a line comes on the sprint's log (or the
+// epoch moves), at most every LandEvery and at least every LandIdleEvery (landWait). Each cycle writes one line:
 // LAND OK, LAND REFUSED, or LAND IDLE (queued=0 only as the loop goes idle and once a
 // minute). A landing runs beside the loop,
 // so a long gate still leaves a line. A refusal is a state, not an event: while one
@@ -76,9 +76,10 @@ const landLaneBase = landLaneWho + "/base"
 // first cycle raises one judgment at once (landRefusal; tla/ServerSwitch.tla
 // LandRefused, LandOk).
 func (a *app) landLoop(ctx context.Context, addr string, stdout io.Writer) {
-	fmt.Fprintf(stdout, "LANDING every %s: land runs here for every stream with cards queued to merge, one landing at a time\n", LandEvery)
+	fmt.Fprintf(stdout, "LANDING every %s while cards are queued, landing or refused, else on each line of the sprint's log and at least every %s: land runs here for every stream with cards queued to merge, one landing at a time\n", LandEvery, LandIdleEvery)
 	var flight *landFlight
-	cursor := "" // the idle wait's place on the log (landWait)
+	cursor := ""        // the idle wait's place on the log (landWait)
+	var logEpoch uint64 // the epoch whose log cursor is a place on
 	for ctx.Err() == nil {
 		began := a.now()
 		flight = a.landCycle(ctx, addr, stdout, flight)
@@ -86,7 +87,7 @@ func (a *app) landLoop(ctx context.Context, addr string, stdout io.Writer) {
 			break
 		}
 		if flight == nil && a.landQuiet() {
-			cursor = a.landWait(ctx, addr, cursor, began)
+			cursor, logEpoch = a.landWait(ctx, addr, cursor, logEpoch, began)
 			continue
 		}
 		a.landPause(ctx)
@@ -108,42 +109,57 @@ func (a *app) landQuiet() bool {
 // of landIdleLook, until a line after it comes or LandIdleEvery has passed (by its slices),
 // then waits out what is left of LandEvery since the cycle began, so a busy log is looked
 // at no more often than before. It holds nothing while it waits, never the server's line.
-// It returns the cursor for the next wait: every line up to it was committed before the
-// wait returned, so before the next look reads the queue, and a line after it wakes the
-// next wait at once. The first wait ("" is before every line) wakes at once. A store that
-// cannot be opened or waited on falls back to the LandEvery pause.
-func (a *app) landWait(ctx context.Context, addr, cursor string, began time.Time) string {
+// It returns the cursor for the next wait and the epoch whose log it is a place on: every
+// line up to it was committed before the wait returned, so before the next look reads the
+// queue, and a line after it wakes the next wait at once. The first wait ("" is before
+// every line) wakes at once. The wait is on the log of the epoch it began in, from cursor
+// only when cursor is of that epoch (a cursor of another epoch's log says nothing of this
+// one: the wait starts from ""); after each slice the epoch is read again, and a new one
+// (a clear) ends the wait, so a line on the new epoch's log is looked at within a slice,
+// never the backstop (cold read of PR 490). A store that cannot
+// be opened or waited on falls back to the LandEvery pause. The wait ends within one
+// store.LogWaitBlock of ctx's end, inside LandStopBound: the store's blocked read in
+// flight is not cut short by a cancel (go-redis keeps to a context's deadline, not its
+// cancellation), and the wait asks for no further one after ctx ends.
+func (a *app) landWait(ctx context.Context, addr, cursor string, logEpoch uint64, began time.Time) (string, uint64) {
 	st, err := a.storeCtx(ctx, common{verb: "where", redis: addr})
 	if err != nil {
 		a.landPause(ctx)
-		return cursor
+		return cursor, logEpoch
 	}
 	epoch := st.PinnedEpoch()
+	if epoch != logEpoch {
+		cursor = "" // a place on another epoch's log
+	}
 	for range int(LandIdleEvery / landIdleLook) {
 		if ctx.Err() != nil {
-			return cursor
+			return cursor, epoch
 		}
 		tail, woke, err := st.WaitLog(ctx, epoch, cursor, landIdleLook)
 		if err != nil {
 			if ctx.Err() == nil {
 				a.landPause(ctx)
 			}
-			return cursor
+			return cursor, epoch
 		}
 		cursor = tail
 		if woke {
 			break
 		}
+		if es, err := st.EpochNow(ctx); err == nil && es.N != epoch {
+			break // a clear: the next wait is on the new epoch's log
+		}
 	}
 	if left := LandEvery - a.now().Sub(began); left > 0 && ctx.Err() == nil {
 		a.landSleep(ctx, left)
 	}
-	return cursor
+	return cursor, epoch
 }
 
 // landPause waits LandEvery between land cycles on the app's own sleep, and returns at
-// once when ctx ends: a returning run stops an idle land loop immediately instead of
-// waiting out its LandStopBound (start-refuses-a-non-working-setting, cold read 1).
+// once when ctx ends: a returning run stops a land loop between cycles immediately instead
+// of waiting out its LandStopBound (start-refuses-a-non-working-setting, cold read 1); a
+// loop in its idle wait on the log stops within one store.LogWaitBlock (landWait).
 func (a *app) landPause(ctx context.Context) { a.landSleep(ctx, LandEvery) }
 
 // landSleep waits d on the app's own sleep, and returns at once when ctx ends. The sleep
