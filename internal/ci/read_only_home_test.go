@@ -56,4 +56,6 @@ func TestTheUnitSuiteRunsWithAReadOnlyHome(t *testing.T) {
 	homeEnv := `env -u XDG_CONFIG_HOME -u XDG_CACHE_HOME HOME="$$readonly_home"`
 	require.Equal(t, 2, strings.Count(recipe, homeEnv), "both go test commands must clear XDG paths and use the read-only HOME")
 	require.Contains(t, recipe, "a test wrote outside its working directory:", "test does not name files found in HOME")
+	require.Contains(t, recipe, "read-only HOME: %s", "test does not print its temporary HOME path")
+	require.Contains(t, recipe, "read-only HOME is empty", "test does not report an empty HOME")
 }
