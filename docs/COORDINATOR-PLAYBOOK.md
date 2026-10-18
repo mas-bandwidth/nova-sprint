@@ -98,43 +98,65 @@ names the verb). Do not start a server to look at the store (SPRINT-COORDINATOR.
 ## 2. Running a friend row, the coordinator's own included
 
 **Situation.** A friend should work cards, and the coordinator's own row is a friend row like any
-other. The row lives in nova-config, nova-friend's daemon runs its lanes, and the sprint deals to
-it.
+other. The row lives in nova-config, the friend hooks in with nova-hook, and the sprint deals to
+it. There is no friend daemon: the nova-friend daemons were retired on 2026-10-17, and a friend
+is reached by nova-hook alone.
 
 **The verbs, in order.**
 
 1. Set the row. usage: `nova-config <kind> set <name> --<field> <value> ... --actor <name> [--dry-run] [--json]`.
-   For a claude friend in one-shot mode, run
-   `nova-config friend set <friend> --config_dir <absolute dir> --actor <you>`. `--config_dir` is
-   the directory a claude one-shot lane runs with as `CLAUDE_CONFIG_DIR`, and nova-friend run
-   refuses a claude friend in one-shot mode without it. `--width`, `--tiers` and `--pronouns` go
-   on the same row (`nova-config friend set -h`). Spec: nova-tools SPEC-CONFIG.md, "The kinds of
-   this cut".
+   Run `nova-config friend set <friend> --width <n> --tiers <t> --pronouns <p> --actor <you>`.
+   `--width` is the jobs she works at once and her one capacity number, and nova-config is its
+   one source (`nova-config friend set -h`). Spec: nova-tools SPEC-CONFIG.md, "The kinds of this
+   cut".
 2. Copy the rows into the store. usage: `nova-sprint friend sync [--pg <dsn>] [--root <dir>]`.
    The friend sync loop, installed with `nova-sprint install friend-sync`, does this on its own;
    it writes each friend's width, mode and pronouns from the row. Spec: SPEC-SPRINT.md section 1,
    "The tables"; [FRIENDS.md](FRIENDS.md).
-3. Install the daemon. usage: `nova-friend install --as <me> --harness <h> --dir <d> [--session <id>] [--adapter folder --delivery-dir <watched-dir>] [--server <addr>] [--silent-stop <d>] [--broken-after <n>] [--coordinator <seat>] [--state-dir <d>] [--redis <addr>] [--config-dir <d>] [--deny-self <d,...>] [--wall-reads <d,...>] --model <provider/model> [--secrets NAME[,NAME] --seat <seat>] [--launchd-log <file>] [--dry-run]`.
-   Run it with `--dry-run` first, then without. It writes the launchd agent
-   `com.nova.friend-<me>.plist` (RunAtLoad, KeepAlive), and running it again replaces the agent.
-   A daemon whose arguments differ from the installed plist says "plist drift", and the fix is to
-   run install again. Spec: nova-tools SPEC-FRIEND.md, "The loop" and "One-shot lanes".
-4. Let launchd run the daemon. usage: `nova-friend run --as <me> --harness <h> --dir <d> [--session <id>] [--adapter folder --delivery-dir <watched-dir>] [--server <addr>] [--silent-stop <d>] [--broken-after <n>] [--coordinator <seat>] [--state-dir <d>] [--redis <addr>] [--profile <p>] [--config-dir <d>] [--deny-self <d,...>] [--wall-jobs <d,...>] [--wall-reads <d,...>] [--model <provider/model>] [--db <opencode.db>] [--lane-tiers <t,...>] [--lane-streams <p,...>] [--token-cap <n>] [--load-max <n>] [--load-width <n>] [--pause-on funds|any] [--refuse-go] [--dry-run]`.
-   This is the loop launchd runs (install writes it), so you do not start it in a shell. Its
-   lanes take work only while the friend is hooked in (`nova-friend help run`).
-5. Confirm the daemon. usage: `nova-friend status --as <me> --dir <d> [--state-dir <d>]`. It prints
-   `STATUS OK daemon=<up|down> ...` and then the friend's nova-hook record; exit 1 means no daemon.
-6. Confirm the row in the sprint. usage: `nova-sprint friend cards <friend> [--json]`, and
+3. The friend hooks in. usage: `nova-hook hook --as <me> --role <role> [--once] [--harness <name>] [--redis <addr>] [--dry-run]`.
+   Her own session runs `nova-hook hook --as <friend> --role friend` under its Monitor; the
+   friend role carries the bus push and the work push. She proves it by the challenge: each
+   `HOOK CHALLENGE` is answered from inside her turn with
+   `nova-hook prove --as <friend> --nonce <n>`. Her liveness is the nova-hook record and nothing
+   else: each tick writes her status from it (`nova-sprint help`, "The friends"). Confirm it with
+   `nova-hook status --as <friend>`, or every friend at once with usage
+   `nova-hook friends [--json] [--as <me>] [--redis <addr>]`. Spec: SPEC-SPRINT.md section 11,
+   "The hook"; nova-tools SPEC-HOOK.md, "Roles and pushes".
+4. The deal reaches her as a push. The tick deals to her row while she is up, and the deal of a
+   card to her row reaches her session as a hook push naming the card, its generation, its kind,
+   its tier and its column. Until the tick pushes each deal (card sprint-spec-fix-push-on-deal),
+   the coordinator, when a note or judgment its own push brings names her row, sends her one bus
+   message naming the cards newly dealt to her (`nova-bus send --to <friend> --subject <s> --body <text>`),
+   and no timed look at her row stands in for the push. Spec: SPEC-SPRINT.md section 8, "Push,
+   not poll".
+5. Taking is the machine's. The tick takes each card dealt to her ready queue into working, up to
+   her width, for a row that is up and hooked; no session takes for her, and the coordinator never
+   does. Until the tick takes (card sprint-spec-fix-friend-auto-take), her own session takes each
+   card the push names, by id, with `nova-sprint take --as friend.<name> <card>@<gen>`
+   (`nova-sprint help`, "take --as friend.<name>"). Spec: SPEC-SPRINT.md section 1, "A friend
+   takes her own ready cards".
+6. Reads arrive the same way. A read dealt to her row is a read card on that row: it is pushed and
+   taken as a work card is. See every read in review and who holds it with usage
+   `nova-sprint reads --review [--stream <s>] [--json]`. Spec: SPEC-SPRINT.md section 6, "A read
+   is a consumer card".
+7. Confirm the row in the sprint. usage: `nova-sprint friend cards <friend> [--json]`, and
    `nova-sprint where` draws the friends table. Spec: SPEC-SPRINT.md section 1.
+8. A friend that goes down is marked down at once. When her hook record goes down (a FRIEND DOWN
+   judgment), or she is out of credits or away, hold her row at once with usage
+   `nova-sprint hold <member|reader|friend|stream>... --reason <text> [--return] [--dry-run]`;
+   every card on her row goes back to ready and the deal places it again. Section 6 below is the
+   whole of it.
 
-**Success looks like.** `nova-friend status` says `daemon=up` with the hook proven and
-`status=up`. `where` shows the row up with cards working, and finishes arrive without you.
+**Success looks like.** `nova-hook status --as <friend>` says proven, `where` shows the row up
+with cards working, and finishes arrive without you.
 
-**Not by hand.** Never run a hand take loop: `take --as friend.<name>` is the friend's lane's take
-(`nova-sprint help`), and the daemon makes it. Do not finish a friend's card from her REPORT.md by
-hand, because `nova-sprint collect` does that (section 6 below). Do not hand-edit the plist; run
-install again. Do not use `friend give` to fill a row: the seat hands a named ready card to a
-friend with friend give, and the deal fills the rest (`nova-sprint help`).
+**Not by hand.** Do not install or start a friend daemon: there is none. Never run a hand take
+loop and never take for her: taking is the machine's, and until it is, the take is her own
+session's (step 5). Do not watch her row on a timer: a deal reaches her as a push. Do not answer
+her challenge for her: only the model answers a challenge (`nova-hook help`). Do not finish a
+friend's card from her REPORT.md by hand, because `nova-sprint collect` does that (section 6
+below). Do not use `friend give` to fill a row: the seat hands a named ready card to a friend with
+friend give, and the deal fills the rest (`nova-sprint help`).
 
 ## 3. Reads and review
 
