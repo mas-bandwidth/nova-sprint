@@ -121,6 +121,7 @@ func TestMarkLandingOneCardBatchWithThreeSoftTargets(t *testing.T) {
 		assert.Equal(t, "soft dependency on c1, c2, c3 not landed; a is skipped this batch", p.Refused[0].Why)
 		assert.True(t, LandOrderSkipped(p.Refused[0]))
 		assert.Empty(t, p.Units, "a skipped one-card batch wrote a mark")
+		w.do(p)
 		assert.False(t, LandingMarked(w.s, "a"))
 	})
 	t.Run("one of three not ahead", func(t *testing.T) {
