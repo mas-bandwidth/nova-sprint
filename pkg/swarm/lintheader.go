@@ -8,10 +8,8 @@ import (
 	"os"
 	"regexp"
 	"slices"
-	"sort"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-tools/pkg/hygiene"
 	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
@@ -345,26 +343,10 @@ func validGlobs(globs []string) (string, bool) {
 	return "", true
 }
 
-// instructionFinding is the refusal of a declared KIND whose row of the one
-// kinds list names no instruction kind (docs/SPEC-ISA.md: the instruction kind
-// is a column of pkg/hygiene/kinds.txt). It is nil when the row names one.
-func instructionFinding(work, instruction string, line int) *CardHeaderFinding {
-	if instruction != "" {
-		return nil
-	}
-	return &CardHeaderFinding{
-		Check:   "kind-declared",
-		Line:    line,
-		Excerpt: fmt.Sprintf("KIND: %q is declared but its row of the one kinds list names no instruction kind; add the instruction kind to that row of pkg/hygiene/kinds.txt", work),
-	}
-}
-
-// ResolveInstructionKind is the instruction kind the card lint resolves for one
-// card's bytes: its `KIND:` line read through the instruction-kind column of the
-// one kinds list, pkg/hygiene/kinds.txt (docs/SPEC-ISA.md). It returns the
-// work kind too, so a caller can print both. ok is false when the card carries no
-// KIND: line, the kind is not declared, or its row names no instruction kind;
-// LintCardHeader refuses each of those as kind-declared.
+// ResolveInstructionKind reads a card's `KIND:` line through the instruction-kind
+// column of pkg/hygiene/kinds.txt (docs/SPEC-ISA.md). It returns the work kind too,
+// so a caller can print both. ok is false when the card carries no KIND: line, the
+// kind is not declared, or its row names no instruction kind.
 func ResolveInstructionKind(raw []byte) (work, instruction string, ok bool) {
 	h, _ := cardHeaderBlock(raw)
 	kind := h["KIND"]
@@ -373,199 +355,6 @@ func ResolveInstructionKind(raw []byte) (work, instruction string, ok bool) {
 	}
 	inst, ok := hygiene.InstructionKind(kind.value)
 	return kind.value, inst, ok
-}
-
-// LintCardHeader returns the typed-header findings for one card's bytes.
-//
-// trust may be nil: with no trust state there is no paused kind, and the lint says
-// nothing rather than guessing. required makes the three missing-line tokens apply to a
-// card that carries no typed header at all; without it a card with no header line is
-// left to the twelve older rules, which is what every card written before §5 is.
-func LintCardHeader(raw []byte, trust TrustState, required bool) []CardHeaderFinding {
-	return lintCardHeader(raw, trust, required, hygiene.InstructionKind)
-}
-
-// lintCardHeader is LintCardHeader with the instruction-kind column as a seam:
-// instructionOf is hygiene.InstructionKind in the tool, and a test drives a
-// declared kind whose row names none (docs/SPEC-ISA.md).
-func lintCardHeader(raw []byte, trust TrustState, required bool, instructionOf func(string) (string, bool)) []CardHeaderFinding {
-	h, stranded := cardHeaderBlock(raw)
-	typed := required
-	for k := range cardTypedKeys {
-		if h[k].found {
-			typed = true
-		}
-	}
-	// A CARD WITH A TYPED LINE THE GATE CANNOT REACH IS A TYPED CARD. Without
-	// this the card is neither: no header line sits inside the block, so no typed check
-	// runs, and the card reads clean all the way to `accept`.
-	if len(stranded) > 0 {
-		typed = true
-	}
-	if !typed {
-		return nil
-	}
-	var out []CardHeaderFinding
-	add := func(check string, line int, excerpt string) {
-		line = max(line, 1)
-		out = append(out, CardHeaderFinding{Check: check, Line: line, Excerpt: excerpt})
-	}
-	// The stranded lines first, in line order, because they are why the rest of this
-	// card's header reads the way it does. Only a typed key answers here: a key with no
-	// token of its own is LintHeaderStranded's finding.
-	for _, k := range slices.Sorted(maps.Keys(stranded)) {
-		if cardKeyCheck[k] == "" {
-			continue
-		}
-		add(cardKeyCheck[k], stranded[k], fmt.Sprintf("%s: on line %d is below the header block and the gate will never read it: the typed header is the unbroken run of `KEY: value` lines directly under the contract line", k, stranded[k]))
-	}
-	// A repeated key next: a card with two of one line has no one value for it.
-	for _, k := range sortedHeaderKeys(h) {
-		if f := h[k]; f.again > 0 {
-			add(cardKeyCheck[k], f.again, fmt.Sprintf("%s: is declared twice, on lines %d and %d; a card with two of this line has no one value for it", k, f.line, f.again))
-		}
-	}
-
-	// 1. KIND: is declared, not empty, and is a name the toolchain holds.
-	kind := h["KIND"]
-	switch {
-	case !kind.found && stranded["KIND"] > 0:
-		// Named already, where it sits: saying "no KIND: line" of a card whose KIND:
-		// line is three lines down is the confusing half of a true finding.
-	case !kind.found:
-		add("kind-declared", 1, "no KIND: line under the contract line")
-	case kind.value == "":
-		add("kind-declared", kind.line, "KIND: with no kind after it")
-	case !hygiene.KindDeclared(kind.value):
-		// AN UNKNOWN KIND IS NOT A KIND. A KIND: line that names a kind the
-		// toolchain does not declare is a finding, so `KIND: completely-unknown-kind`
-		// is refused here instead of dying at accept. The names are hygiene.Kinds(),
-		// the same set `nova-check hygiene --kind` prints when it refuses.
-		add("kind-declared", kind.line, fmt.Sprintf("KIND: %q is not a kind this toolchain declares; one of: %s", kind.value, strings.Join(hygiene.Kinds(), ", ")))
-	case hygiene.KindDeclared(kind.value):
-		// THE INSTRUCTION KIND IS A COLUMN OF THE ONE LIST (docs/SPEC-ISA.md).
-		// A declared KIND whose row names none is refused here, the same token
-		// the unknown kind uses, so lint --card prints one remedy.
-		inst, _ := instructionOf(kind.value)
-		if finding := instructionFinding(kind.value, inst, kind.line); finding != nil {
-			add(finding.Check, finding.Line, finding.Excerpt)
-		}
-	}
-
-	// 2. PATHS: is declared, and every glob is one the gate could use.
-	paths := h["PATHS"]
-	readWhy := PathsReadRefusal(paths.value)
-	switch {
-	case !paths.found && stranded["PATHS"] > 0:
-	case !paths.found:
-		add("paths-declared", 1, "no PATHS: line under the contract line")
-	case paths.value == "":
-		add("paths-declared", paths.line, "PATHS: with no globs after it; a card that changes nothing says `PATHS: none`")
-	case readWhy != "":
-		add("paths-declared", paths.line, readWhy)
-	case paths.value != "none":
-		// AN EMPTY ENTRY IS NOT A SKIPPABLE ONE. In `PATHS: , , ` each empty
-		// entry is a finding, not a value skipped past: the line declares no glob and
-		// it is not `none`, so skipping it would answer a reader with neither a glob
-		// nor a refusal.
-		var globs []string
-		empty := false
-		for _, g := range strings.Split(paths.value, ",") {
-			g = strings.TrimSpace(g)
-			if g == "" {
-				empty = true
-				continue
-			}
-			globs = append(globs, g)
-		}
-		switch {
-		case len(globs) == 0:
-			add("paths-declared", paths.line, fmt.Sprintf("PATHS: %q names no glob and is not `none`", paths.value))
-		case empty:
-			add("paths-declared", paths.line, fmt.Sprintf("PATHS: %q has an empty entry between its commas", paths.value))
-		}
-		if len(globs) > 0 {
-			if why, ok := validGlobs(globs); !ok {
-				add("paths-declared", paths.line, why)
-			}
-		}
-	}
-
-	// 3. TEST: is declared, and is what cardhdr.ParseTest reads: `[-tags <tags>]
-	// <package> <TestName>`, `ctest <TestName>` or `none <why>`; or the runner form
-	// `<runner> <file or target> <case>` for make, ctest, cargo, dotnet and pytest.
-	test := h["TEST"]
-	tl, testWhy := cardhdr.ParseTest(test.value)
-	runnerWhy, runnerForm := runnerTestLine(test.value)
-	switch {
-	case !test.found && stranded["TEST"] > 0:
-	case !test.found:
-		add("test-named", 1, "no TEST: line under the contract line")
-	case test.value == "":
-		add("test-named", test.line, "TEST: with no package and no test name after it")
-	case runnerForm && runnerWhy != "":
-		add("test-named", test.line, runnerWhy)
-	case runnerForm:
-		// `<runner> <file or target> <case>`: the target held to the PATHS path rule
-		// and the case to a test name, in runnerTestLine.
-	case testWhy != "":
-		add("test-named", test.line, testWhy)
-	case tl.None:
-		// TEST: none is only a declaration for ungated kinds; gated kinds strictly
-		// require a reproducing test, per the toolwork spec's typed-header rule.
-		if kind.value != "" && hygiene.KindGated(kind.value) {
-			add("test-named", test.line, fmt.Sprintf("TEST: none is not allowed for kind %q; gated kinds require `TEST: <package> <TestName>`", kind.value))
-		}
-	case tl.Runner == "ctest":
-		// ParseTest already held the name to a ctest test name; there is no
-		// package to hold to the PATHS path rule.
-	default:
-		pkg := strings.Trim(tl.Package, "/")
-		if pkg == "" {
-			pkg = "."
-		}
-		// The package runs the same path rule as PATHS:, from the same validator, so a
-		// `TEST: C:/x TestA` cannot walk through a door PATHS: closed.
-		if why, ok := validGlobs([]string{pkg}); !ok {
-			add("test-named", test.line, "TEST: package: "+why)
-		}
-		if !goTestNameRE.MatchString(tl.Name) {
-			add("test-named", test.line, fmt.Sprintf("TEST: %q is not a Go test name", tl.Name))
-		}
-	}
-
-	// 4. the kind is not one the coordinator paused.
-	if kind.value != "" && trust != nil {
-		if trust[kind.value] == "paused" {
-			add("paused", kind.line, fmt.Sprintf("kind=%s is paused: the coordinator stopped cutting it", kind.value))
-		}
-	}
-
-	// 5. START: and STOP: name where the child reads first and where it ends
-	// (docs/SPEC-CARD-CONTRACT.md §2, the header grammar). A brief is a card that names
-	// a tier, or one the caller declares typed (`required`), so its missing reading line
-	// is a finding. The RESULT line carries the tier as the sprint writes it, read by
-	// cardhdr.ReadModel, the one parser of it; `cmd/nova-swarm/lint.go` refuses the
-	// finding for a tier flash brief, whose child with no stopping condition reads past
-	// its budget, and prints it as a note for tier pro, or no tier.
-	m, _ := cardhdr.ReadModel(string(raw))
-	if required || m.Tier != "" {
-		if f := h["START"]; !f.found {
-			add(StartNamedCheck, 1, "no START: line under the contract line; the brief names the files or packages to read first")
-		}
-		if f := h["STOP"]; !f.found {
-			add(StopNamedCheck, 1, "no STOP: line under the contract line; the brief names the condition that ends the task")
-		}
-	}
-	if kind.value == "sentinel" {
-		f := h["CONSUMERS"]
-		if !f.found {
-			add(ConsumersNamedCheck, 1, "no CONSUMERS: line under the contract line; the brief carries CONSUMERS: <cards that need this sentinel>")
-		} else if strings.TrimSpace(f.value) == "" {
-			add(ConsumersNamedCheck, f.line, "CONSUMERS: with no cards after it; a sentinel brief names every card that needs it")
-		}
-	}
-	return out
 }
 
 // ReadTrustFixture reads the coordinator's per-kind state from a file in the shape
@@ -615,17 +404,4 @@ func ReadTrustFixture(path string) (TrustState, error) {
 		return nil, fmt.Errorf("trust fixture %s: %v", path, err)
 	}
 	return out, nil
-}
-
-// sortedHeaderKeys is the typed keys of the block, in one byte-stable order so two runs of
-// the lint over the same card print the same lines in the same order.
-func sortedHeaderKeys(m map[string]headerField) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		if cardTypedKeys[k] {
-			out = append(out, k)
-		}
-	}
-	sort.Strings(out)
-	return out
 }

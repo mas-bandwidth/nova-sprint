@@ -23,17 +23,14 @@ func TestPathsReadMarkerLintEntrances(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			raw := []byte("RESULT: c sha=0123456789ab tier: pro\nKIND: read\nPATHS: " + tc.paths + "\nTEST: none fixture\nSTART: " + tc.start + "\nSTOP: report\n\nTHE TASK. Read the fixture.\n")
-			typed := findingsFor(LintCardHeader(raw, nil, false), "paths-declared")
 			brief, fix := LintBrief(raw, BriefBase{})
 			marked := findingsFor(brief, "paths-read-marker")
 			if tc.entry == "" {
-				assert.Empty(t, typed)
 				assert.Empty(t, marked)
 				return
 			}
-			require.Len(t, typed, 1)
 			require.Len(t, marked, 1)
-			for _, f := range []CardHeaderFinding{typed[0], marked[0]} {
+			for _, f := range marked {
 				assert.Equal(t, 3, f.Line)
 				assert.Contains(t, f.Excerpt, fmt.Sprintf("PATHS entry %q", tc.entry))
 				assert.Contains(t, f.Excerpt, "START")
