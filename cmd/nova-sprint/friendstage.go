@@ -377,11 +377,7 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	// started from, the bench it staged on, and the exact finish command (and
 	// its --failed form)
 	finish := fmt.Sprintf("nova-sprint finish --as friend.%s %s@%d --epoch %d --head %s --branch %s --base %s", friendName, card, gen, p.Epoch, startRef, p.Branch, baseField)
-	failedFinish := fmt.Sprintf("nova-sprint finish --as friend.%s %s@%d --epoch %d", friendName, card, gen, p.Epoch)
-	if (len(startRef) == 40 || len(startRef) == 64) && shaRE.MatchString(startRef) {
-		failedFinish += " --head " + startRef
-	}
-	failedFinish += fmt.Sprintf(" --branch %s --base %s --failed", p.Branch, baseField)
+	failedFinish := fmt.Sprintf("nova-sprint finish --as friend.%s %s@%d --epoch %d --head <pushed-commit-sha> --branch %s --base %s --failed", friendName, card, gen, p.Epoch, p.Branch, baseField)
 	jobmd := "CARD: " + card + "\n" +
 		"GEN: " + strconv.Itoa(gen) + "\n" +
 		"BRANCH: " + p.Branch + "\n" +
@@ -389,7 +385,8 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 		"HEAD: " + startRef + "\n" +
 		"BENCH: " + benchLine + "\n" +
 		"FINISH: " + finish + "\n" +
-		"FINISH-FAILED: " + failedFinish + "\n"
+		"FINISH-FAILED: " + failedFinish + "\n" +
+		"FINISH-FAILED-HEAD: Replace <pushed-commit-sha> with the full SHA of the commit pushed after staging; if no commit was pushed, omit --head and <pushed-commit-sha>.\n"
 	if _, err := friendStageRun(ctx, friendOp{Host: host, Dir: jobDir, Job: jobmd}); err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return friendStageTimedOut(stderr, name, host)
