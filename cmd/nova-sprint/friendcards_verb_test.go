@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/friend"
 	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 )
@@ -122,5 +123,34 @@ func TestFriendCardsServesEveryHeldCardWithItsPacket(t *testing.T) {
 	code, _, errs := ta.do("friend cards nobody")
 	assert.Equal(t, 1, code)
 	assert.Contains(t, errs, "no friend nobody on the friends table")
+	ta.clean()
+}
+
+// friend cards --json carries her row beside her cards (Glenn, 2026-10-18:
+// Stella came up held and nothing said so): held and its reason while the
+// sprint holds her, by friend down or friend hold, unheld once released, and
+// her width; nova-hook's FRIEND UP push reads it the pass she comes up.
+func TestFriendCardsJSONCarriesHerRow(t *testing.T) {
+	t.Parallel()
+	ta, _ := takeApp(t, 2, nil, "friend-a", "friend-b")
+	row := func(who string) store.FriendHold {
+		t.Helper()
+		var a struct {
+			Friend string           `json:"friend"`
+			Row    store.FriendHold `json:"row"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(ta.ok("friend cards "+who+" --json"))), &a))
+		require.Equal(t, who, a.Friend)
+		return a.Row
+	}
+	ta.ok("friend down friend-b --reason 'allowance out'")
+	assert.Equal(t, store.FriendHold{Held: true, Reason: "allowance out", Width: row("friend-b").Width}, row("friend-b"))
+	assert.Positive(t, row("friend-b").Width)
+	assert.False(t, row("friend-a").Held)
+	ta.ok("friend up friend-b --width 3")
+	assert.Equal(t, store.FriendHold{Width: 3}, row("friend-b"))
+	ta.ok("friend hold friend-a --reason 'rate limited'")
+	assert.Equal(t, "rate limited", row("friend-a").Reason)
+	assert.True(t, row("friend-a").Held)
 	ta.clean()
 }
