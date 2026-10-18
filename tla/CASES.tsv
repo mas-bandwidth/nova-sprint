@@ -741,6 +741,7 @@ MCSprintTablesDecisionParkingTwo.cfg	MCSprintTables.tla	pass	-	ignore-terminal	s
 MCDecisionsOwedBrokenOwnerCadence.cfg	MCDecisionsOwed.tla	action	OwnerCadence	ignore-terminal	decisionsowed	required	-
 MCDecisionsOwedBrokenBusyRetry.cfg	MCDecisionsOwed.tla	action	NoRetryWithinWait	ignore-terminal	decisionsowed	required	-
 MCDecisionsOwedBrokenNoRetry.cfg	MCDecisionsOwed.tla	temporal	EventuallyResolvedOrEscalated	ignore-terminal	decisionsowed	required	-
+MCDecisionsOwedBrokenFoldTellsUnsent.cfg	MCDecisionsOwed.tla	action	FoldTellsOnlyWhatWasSent	ignore-terminal	decisionsowed	required	-
 MCQueueWait.cfg	MCQueueWait.tla	pass	-	check	queuewait	required	-
 MCQueueWaitBrokenCursorSkips.cfg	MCQueueWait.tla	invariant	CursorNeverSkips	check	queuewait	required	-
 MCSprintTablesBrokenOperationalBounce.cfg	MCSprintTables.tla	action	OperationalEditPreservesHead	ignore-terminal	sprinttables	required	-
@@ -776,6 +777,7 @@ MCReadBranchMissingBrokenReworkKeepsIt.cfg	MCReadBranchMissing.tla	invariant	Off
 MCGateFacts.cfg	MCGateFacts.tla	pass	-	ignore-terminal	gatefacts	required	-
 MCGateFactsBrokenNoWriter.cfg	MCGateFacts.tla	temporal	CardDealt	ignore-terminal	gatefacts	required	-
 MCGateFactsBrokenOnChange.cfg	MCGateFacts.tla	temporal	CardDealt	ignore-terminal	gatefacts	required	-
+MCGateFactsBrokenMoveIgnoresNeed.cfg	MCGateFacts.tla	invariant	DealtOnlyWhereTheNeedIs	ignore-terminal	gatefacts	required	-
 MCBenchLease.cfg	MCBenchLease.tla	pass	-	ignore-terminal	benchlease	required	-
 MCBenchLeaseLive.cfg	MCBenchLease.tla	pass	-	ignore-terminal	benchlease	required	-
 MCBenchLeaseBrokenNoExpiry.cfg	MCBenchLease.tla	temporal	DeadLeaseEnds	ignore-terminal	benchlease	required	-

@@ -1131,12 +1131,14 @@ func taskOf(brief string) string {
 }
 
 // normalizeTaskWhitespace collapses whitespace outside quoted literals while retaining
-// quoted contents, including shell regex selectors and inline code.
+// quoted contents, including shell regex selectors and inline code. A ' between a
+// letter or digit and a letter (don't, it's, Glenn's) is prose, not an opening quote.
 func normalizeTaskWhitespace(s string) string {
 	var b strings.Builder
 	var quote rune
 	escaped, pendingSpace := false, false
-	for _, r := range s {
+	rs := []rune(s)
+	for i, r := range rs {
 		if quote != 0 {
 			b.WriteRune(r)
 			if escaped {
@@ -1148,7 +1150,9 @@ func normalizeTaskWhitespace(s string) string {
 			}
 			continue
 		}
-		if r == '\'' || r == '"' || r == '\x60' {
+		proseApostrophe := r == '\'' && i > 0 && i+1 < len(rs) &&
+			(unicode.IsLetter(rs[i-1]) || unicode.IsDigit(rs[i-1])) && unicode.IsLetter(rs[i+1])
+		if !proseApostrophe && (r == '\'' || r == '"' || r == '\x60') {
 			if pendingSpace && b.Len() > 0 {
 				b.WriteByte(' ')
 			}
@@ -1459,6 +1463,8 @@ func reworkWhy(c *Card) string {
 	switch {
 	case c.Col == Working:
 		return why + "; its attempt is still running: once it finishes (review), run: nova-sprint rework " + c.ID + " --fix '<what changes>', or now: " + drop
+	case (c.Col == Waiting || c.Col == Ready) && c.Int("attempt") == 0 && IsHeld(c):
+		return why + "; it is held (add --held), so no attempt has run: nova-sprint release " + c.ID + " --reason '<why>'"
 	case (c.Col == Waiting || c.Col == Ready) && c.Int("attempt") == 0:
 		return why + "; no attempt has run, so there is nothing to rework: change its task instead: nova-sprint brief " + c.ID + " --brief-file <path>"
 	case c.Col == Landed:
