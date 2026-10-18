@@ -1,39 +1,39 @@
 # unit_rule_allowed.txt: the unit-tier test files (no functional build tag) that still
 # use real time, a real socket or an outside service, read by internal/ci
 # TestUnitTestsUseNoRealTimeSocketsOrServices. One slash path from the module root a
-# line; a line beginning with # is a comment.
+# line, followed by its measured count per kind (time, socket, service); '#' lines are
+# comments.
 #
 # allowed until moved, v1.3 (listed 2026-10-12: 41 files, 125 uses on sprint/comfort c0a08276)
 #
 # A file leaves this list the turn it is moved behind //go:build functional or put onto
 # a fake (a fake clock, net.Pipe, httptest.NewRecorder, a synctest bubble). A listed file
-# that keeps the rule fails the lint until its line is removed; a file not listed that
-# breaks it fails the lint; a line added here that the merge base does not have fails the
-# lint (the allowance only shrinks against origin/<base>). The allowance is by file: a
-# listed file may gain more forbidden uses until it is moved, and the lint does not refuse
-# them. That is the documented limit of this list, not a scope to widen.
-cmd/nova-sprint/fleet_back_test.go
-cmd/nova-sprint/flush_stream_test.go
-cmd/nova-sprint/friend_start_test.go
-cmd/nova-sprint/friendcards_cover_test.go
-cmd/nova-sprint/friendclean_test.go
-cmd/nova-sprint/land_beat_test.go
-cmd/nova-sprint/land_class_test.go
-cmd/nova-sprint/landpass_lanes_test.go
-cmd/nova-sprint/landpass_unblocked_test.go
-cmd/nova-sprint/landring_test.go
-cmd/nova-sprint/landstage_test.go
-cmd/nova-sprint/main_cover_test.go
-cmd/nova-sprint/reexec_test.go
-cmd/nova-sprint/seat_check_offline_test.go
-cmd/nova-sprint/tick_deadline_test.go
-cmd/nova-sprint/tick_gate_test.go
-cmd/nova-sprint/where_cost_perf_test.go
-internal/sprint/store/machine_twoloops_test.go
-internal/sprint/store/tick_ask_test.go
-internal/sprint/store/waitlog_test.go
-pkg/ratebudget/ratebudget_test.go
-pkg/ratebudget/twin_test.go
-pkg/swarm/stage_test.go
-pkg/tlc/run_test.go
-pkg/tlc/suite_test.go
+# whose measured count fell below its line fails until the line is lowered; a listed file
+# that keeps the rule fails until its line is removed; a file not listed that breaks it
+# fails; a line added here, or a count above, the merge base does not have fails (the
+# allowance only shrinks against origin/<base>, by use and not only by file).
+cmd/nova-sprint/fleet_back_test.go time:1
+cmd/nova-sprint/flush_stream_test.go time:4
+cmd/nova-sprint/friend_start_test.go time:1
+cmd/nova-sprint/friendcards_cover_test.go time:2
+cmd/nova-sprint/friendclean_test.go time:1
+cmd/nova-sprint/land_beat_test.go time:3
+cmd/nova-sprint/land_class_test.go time:2
+cmd/nova-sprint/landpass_lanes_test.go time:8
+cmd/nova-sprint/landpass_unblocked_test.go time:2
+cmd/nova-sprint/landring_test.go time:3
+cmd/nova-sprint/landstage_test.go time:3
+cmd/nova-sprint/main_cover_test.go time:2
+cmd/nova-sprint/reexec_test.go time:1
+cmd/nova-sprint/seat_check_offline_test.go time:3
+cmd/nova-sprint/tick_deadline_test.go time:3
+cmd/nova-sprint/tick_gate_test.go time:2
+cmd/nova-sprint/where_cost_perf_test.go time:2
+internal/sprint/store/machine_twoloops_test.go time:1
+internal/sprint/store/tick_ask_test.go time:3
+internal/sprint/store/waitlog_test.go time:1
+pkg/ratebudget/ratebudget_test.go time:1 service:4
+pkg/ratebudget/twin_test.go service:1
+pkg/swarm/stage_test.go time:1
+pkg/tlc/run_test.go time:1
+pkg/tlc/suite_test.go time:5
