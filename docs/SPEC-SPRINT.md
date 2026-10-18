@@ -4725,7 +4725,7 @@ answer to (internal/sprint/land_runner.go): a tree that holds the runner (`pkg/t
 those files; else a tree whose CI workflow pins tlacheck to a nova-tools commit is held to
 that commit's `pkg/tlc`, read from nova-tools into a cache beside land's clones (the tree
 names only the revision, never the repository); only a tree that pins nothing is held to the
-runner built into nova-sprint. The workflows are read as YAML and their run scripts as shell
+runner built into nova-sprint, nova-tools' `pkg/tlc` at the version nova-sprint's go.mod names (nova-sprint's own tree is such a tree since 2026-10-18: it holds no `pkg/tlc` and runs `tlacheck` at that version). The workflows are read as YAML and their run scripts as shell
 words, comments dropped (internal/sprint/land_runner_pin.go), and a pin is one of: an
 `actions/checkout` step with `repository: mas-bandwidth/nova-tools` and a `ref:`; a run script
 that clones nova-tools and checks that clone out (`git -C <dir> checkout ...`, or `cd <dir>`

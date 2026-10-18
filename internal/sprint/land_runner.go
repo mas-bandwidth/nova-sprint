@@ -2,16 +2,14 @@ package sprint
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/tlc"
 	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/tlc"
 )
 
 // Which runner the lander fingerprints a tree's run records with (docs/SPEC-SPRINT.md
@@ -25,7 +23,9 @@ import (
 //     .github/workflows/tlc.yml clones nova-tools and checks it out at a full commit; the
 //     shapes of a pin, and its refusals, are in land_runner_pin.go) is fingerprinted with
 //     that revision's pkg/tlc, read from nova-tools;
-//  3. else the runner this binary was built with.
+//  3. else the runner this binary was built with: nova-tools' pkg/tlc at the version
+//     nova-sprint's go.mod names, which is nova-sprint's own tree's runner (it holds no
+//     pkg/tlc since 2026-10-18, and runs go tool tlacheck at that version).
 //
 // The embedded copy is only the fallback: two copies of the runner that disagree must not
 // make the lander refuse records the tree's own pinned runner wrote (Stella, on
@@ -39,7 +39,7 @@ type RunnerSource func(rev string) (map[string][]byte, error)
 // only; the repository is never taken from the tree.
 const runnerRepo = "https://github.com/mas-bandwidth/nova-tools.git"
 
-// runnerPin is a tree's pin of tlacheck: the full nova-tools commit and where it is.
+// runnerPin is a tree's pin of its TLC runner: the full nova-tools commit and where it is.
 type runnerPin struct {
 	File string // path under the tree root, slash-separated
 	Line int    // 1-based
@@ -53,17 +53,10 @@ type landRunner struct {
 	name  string
 }
 
-// runnerDigest is the first 12 hex digits of the SHA-256 of the runner's result files, so
-// two runners a refusal names can be told apart even when a revision is unknown.
-func runnerDigest(files map[string][]byte) string {
-	h := sha256.New()
-	for _, name := range tlc.ResultFiles {
-		p := tlc.RunnerDir + "/" + name
-		fmt.Fprintf(h, "%s\x00%d\x00", p, len(files[p]))
-		h.Write(files[p])
-	}
-	return hex.EncodeToString(h.Sum(nil))[:12]
-}
+// runnerDigest names a runner by its result files: tlc.RunnerDigest, the one
+// tlacheck version prints as runner=, so two runners a refusal names can be told apart even
+// when a revision is unknown.
+func runnerDigest(files map[string][]byte) string { return tlc.RunnerDigest(files) }
 
 // builtRunner is the runner this binary was built with, named by the nova-sprint revision
 // it was built from ("devel" when the build records none) and its digest.

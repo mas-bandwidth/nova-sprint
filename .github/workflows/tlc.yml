@@ -15,8 +15,7 @@ on:
   pull_request:
     paths:
       - "tla/**"
-      - "pkg/tlc/**"
-      - "tools/tlacheck/**"
+      - "go.mod"
 
 permissions:
   contents: read
@@ -44,12 +43,12 @@ jobs:
           set -euo pipefail
           if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
             # a pull request runs only the groups a model edit made stale
-            groups=$(go run ./tools/tlacheck groups --root . --stale)
+            groups=$(go tool tlacheck groups --root . --stale)
           else
             # schedule and workflow_dispatch run every required group
             # (the Makefile's tlc-groups target is the --stale set, so ask
             # tlacheck directly for every required group)
-            groups=$(go run ./tools/tlacheck groups --root .)
+            groups=$(go tool tlacheck groups --root .)
           fi
           echo "groups=${groups}" >> "${GITHUB_OUTPUT}"
           echo "groups to run: ${groups}"

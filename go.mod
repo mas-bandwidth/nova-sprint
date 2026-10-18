@@ -4,12 +4,13 @@ go 1.26.6
 
 tool (
 	github.com/mas-bandwidth/nova-tools/tools/roadmap
+	github.com/mas-bandwidth/nova-tools/tools/tlacheck
 	golang.org/x/tools/cmd/deadcode
 )
 
 require (
 	github.com/jackc/pgx/v5 v5.11.0
-	github.com/mas-bandwidth/nova-tools v1.5.2
+	github.com/mas-bandwidth/nova-tools v1.5.3-0.20261018131756-7aa6b7d5acfe
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/stretchr/testify v1.12.1
 	go.uber.org/goleak v1.3.0

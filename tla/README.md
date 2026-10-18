@@ -62,24 +62,26 @@ counterexamples and measured results intact when improving their explanation.
 
 ## Run checks on a Linux bench
 
-TLC runs only on a bench. The runner is `tools/tlacheck` in this tree: build it
-with `go build -o /tmp/tlacheck ./tools/tlacheck`, or run it with
-`go run ./tools/tlacheck`. The Makefile wraps it:
+TLC runs only on a bench. The runner is nova-tools' `tlacheck`, at the version
+this tree's go.mod names (its `tool` line): run it with `go tool tlacheck`. A
+record's fingerprint holds the runner's result files, so a `tlacheck` of another
+version is refused here (`go tool tlacheck help runner`); moving the go.mod's
+nova-tools pin to one whose runner differs (`go tool tlacheck version` prints
+`runner=`) stales every record. The Makefile wraps it (`TLACHECK` names it):
 
 - `make tlc TLC_JAR=<jar> TLC_OUT=<dir> TLC_GROUP=<group>` runs one group,
   writing its log and `RUNS.tsv` under `TLC_OUT`;
 - `make tlc-full TLC_BUDGET=<seconds> ...` runs a manual group, with `--manual`;
 - `make tlc-groups` prints the groups that hold a case with no current record;
-- `make tlc-test` runs the runner's own tests.
+- `make tlc-test` runs the records' own tests (the runner's are nova-tools').
 
-`go run ./tools/tlacheck groups --root . --stale` names the groups a model edit
-made stale, and `go run ./tools/tlacheck merge --root . --keep tla/RUNS.tsv --out tla/RUNS.tsv <runs>...` joins their records. Check the runner's help for
+`go tool tlacheck groups --root . --stale` names the groups a model edit
+made stale, and `go tool tlacheck merge --root . --keep tla/RUNS.tsv --out tla/RUNS.tsv <runs>...` joins their records. Check the runner's help for
 your version, and record new results against the actual model inputs you ran.
 
 The same groups run on GitHub-hosted `ubuntu-latest` runners in
 [`.github/workflows/tlc.yml`](../.github/workflows/tlc.yml) (nightly, on
-`workflow_dispatch`, and on a pull request touching `tla/`, `pkg/tlc/` or
-`tools/tlacheck/`), which downloads the pinned tlaplus v1.7.4 release and
+`workflow_dispatch`, and on a pull request touching `tla/` or `go.mod`), which downloads the pinned tlaplus v1.7.4 release and
 checks it against [`tla2tools.sha256`](tla2tools.sha256) before
 `make tlc TLC_GROUP=<group> TLC_BUDGET=110`.
 
@@ -230,7 +232,7 @@ and the necessity of each weak-fairness conjunct. This records model review, not
 product implementation or landing.
 
 Run `make tlc TLC_GROUP=landpass TLC_JAR=<pinned-jar> TLC_OUT=<new-directory>` on
-Linux, then use `tools/tlacheck merge --keep` as described above. The group contains
+Linux, then use `tlacheck merge --keep` as described above. The group contains
 13 unchanged historical cases, the revised control, and eight negatives (22 total).
 A witness's runner PASS means TLC reported its declared violation. This bounded
 model omits crash recovery, dynamic stream membership, arbitrary batch sizes and
