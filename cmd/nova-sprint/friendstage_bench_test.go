@@ -10,6 +10,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/friend"
+	"github.com/mas-bandwidth/nova-tools/pkg/testbin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -128,7 +129,9 @@ func TestFriendStageClonesOnTheBenchItNames(t *testing.T) {
 
 // JOB.md names the bench it staged on: BENCH: <host> with --bench, BENCH:
 // local without, and the idempotent re-run compares the bench too, so staging
-// the same card@gen on another bench is refused as a different stage.
+// the same card@gen on another bench is refused as a different stage. With no
+// --dir on a bench the jobs directory is ~/<friend>-jobs on that host, left
+// for the remote shell to expand, never this machine's HOME.
 func TestFriendStageWritesTheBenchIntoJobMd(t *testing.T) {
 	ta, _ := amyWithIdentity(t)
 	dealToAmy(t, ta)
@@ -136,12 +139,24 @@ func TestFriendStageWritesTheBenchIntoJobMd(t *testing.T) {
 	rec := &benchRec{t: t, files: map[string]string{}}
 	rec.install()
 
-	jobs := filepath.Join(t.TempDir(), "jobs")
+	jobs := filepath.Join("$HOME", "amy-jobs")
+	jobDir := filepath.Join(jobs, "s1-1.w1")
 
-	ta.ok(fmt.Sprintf("friend stage s1-1.w1@1 --as friend.amy --bench m1 --dir %s", jobs))
-	md := rec.files[filepath.Join(jobs, "s1-1.w1", "JOB.md")]
+	ta.ok("friend stage s1-1.w1@1 --as friend.amy --bench m1")
+	md := rec.files[filepath.Join(jobDir, friend.JobFile)]
 	assert.Contains(t, md, "BENCH: m1\n")
 	assert.Contains(t, string(md), "CARD: s1-1.w1\n")
+
+	var sawDefaultClone bool
+	for _, c := range rec.calls {
+		if len(c.op.Git) > 0 && c.op.Git[0] == "clone" {
+			sawDefaultClone = true
+			assert.Equal(t, jobs, c.op.Dir, "the default jobs dir on a bench is ~/amy-jobs")
+			assert.Equal(t, jobDir, c.op.Git[len(c.op.Git)-1])
+		}
+	}
+	assert.True(t, sawDefaultClone, "the default-dir clone ran on the bench")
+	assert.Equal(t, `"$HOME/"'amy-jobs/s1-1.w1'`, friendPath(jobDir), "the remote shell expands $HOME, not this machine")
 
 	// the same stage on the same bench is idempotent: no new git steps (only
 	// the staged JOB.md read)
@@ -155,14 +170,29 @@ func TestFriendStageWritesTheBenchIntoJobMd(t *testing.T) {
 		return n
 	}
 	before := gitSteps()
-	code, _, errs := ta.do(fmt.Sprintf("friend stage s1-1.w1@1 --as friend.amy --bench m1 --dir %s", jobs))
+	code, _, errs := ta.do("friend stage s1-1.w1@1 --as friend.amy --bench m1")
 	assert.Equal(t, 0, code, "%s", errs)
 	assert.Equal(t, before, gitSteps(), "an idempotent bench stage runs no git steps")
 
 	// the same card@gen on another bench is a different stage: refused
-	code, _, errs = ta.do(fmt.Sprintf("friend stage s1-1.w1@1 --as friend.amy --bench m2 --dir %s", jobs))
+	code, _, errs = ta.do("friend stage s1-1.w1@1 --as friend.amy --bench m2")
 	assert.Equal(t, 1, code)
 	assert.Contains(t, errs, "already staged as another card, branch, head or bench")
+}
+
+// TestFriendRunSSHReportsAMissingJobFileAsNotExist pins the first-time bench
+// stage: cat of a JOB.md that it has not written yet exits non-zero, which must
+// read as os.ErrNotExist so stage goes on to mkdir and clone instead of
+// refusing "the staged JOB.md cannot be read". The fake ssh is a local script:
+// no socket, no network.
+func TestFriendRunSSHReportsAMissingJobFileAsNotExist(t *testing.T) {
+	bin := t.TempDir()
+	require.NoError(t, testbin.WriteExecutable(filepath.Join(bin, "ssh"), []byte("#!/bin/sh\nexit 44\n"), 0o755))
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	_, err := friendRunSSH(context.Background(), friendOp{Host: "m1", Dir: "$HOME/amy-jobs/s1-1.w1", Read: true})
+	require.Error(t, err)
+	assert.True(t, os.IsNotExist(err), "a missing JOB.md on the bench reads as not exist, not an ssh exit: %v", err)
 }
 
 // A host that is no fleet member is refused before anything is staged: nothing

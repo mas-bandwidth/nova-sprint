@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -69,36 +70,56 @@ func friendRunSSH(ctx context.Context, op friendOp) (string, error) {
 	var cmd *exec.Cmd
 	switch {
 	case len(op.Git) > 0:
-		d := shQuote(op.Dir)
+		d := friendPath(op.Dir)
 		cmd = exec.CommandContext(ctx, "ssh", op.Host, fmt.Sprintf("cd %s && git %s", d, strings.Join(quoteArgs(op.Git), " ")))
 	case op.Read:
-		cmd = exec.CommandContext(ctx, "ssh", op.Host, "cat "+shQuote(filepath.Join(op.Dir, friend.JobFile)))
+		p := friendPath(filepath.Join(op.Dir, friend.JobFile))
+		cmd = exec.CommandContext(ctx, "ssh", op.Host, fmt.Sprintf("test ! -e %s && exit 44 || cat %s", p, p))
 	case op.Job != "":
-		d := shQuote(op.Dir)
+		d := friendPath(op.Dir)
 		cmd = exec.CommandContext(ctx, "ssh", op.Host, fmt.Sprintf("mkdir -p %s && cat > %s/%s", d, d, friend.JobFile))
 		cmd.Stdin = strings.NewReader(op.Job)
 	default:
-		cmd = exec.CommandContext(ctx, "ssh", op.Host, "mkdir -p "+shQuote(op.Mkdir))
+		cmd = exec.CommandContext(ctx, "ssh", op.Host, "mkdir -p "+friendPath(op.Mkdir))
 	}
 	out, err := cmd.CombinedOutput()
+	if err != nil && op.Read {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) && ee.ExitCode() == 44 {
+			return string(out), &os.PathError{Path: filepath.Join(op.Dir, friend.JobFile), Op: "open", Err: os.ErrNotExist}
+		}
+	}
 	return string(out), err
 }
 
-// shQuote quotes a word for the remote shell. quoteArgs is its list form.
+// shQuote quotes a word for the remote shell. quoteArgs quotes each Git argv.
 func shQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// friendPath quotes a path for the remote shell, letting a leading $HOME stand
+// for the bench's own home: a default jobs directory is ~/<friend>-jobs on the
+// host, which this machine cannot name.
+func friendPath(p string) string {
+	if p == "$HOME" {
+		return `"$HOME"`
+	}
+	if rest, ok := strings.CutPrefix(p, "$HOME/"); ok {
+		return `"$HOME/"` + shQuote(rest)
+	}
+	return shQuote(p)
 }
 
 func quoteArgs(args []string) []string {
 	out := make([]string, len(args))
 	for i, a := range args {
-		out[i] = shQuote(a)
+		out[i] = friendPath(a)
 	}
 	return out
 }
 
 // friendStageWords is what friend stage says on -h.
-const friendStageWords = "friend stage <card>@<gen> --as friend.<name> [--bench <host>] [--dir <jobs dir>] stages a friend's dealt card in one step: it clones the card's REPO into <jobs dir>/<card>.w<N> at the card's NEXT head when one is carried, else at BASE, creates the delivered branch (the branch the bus message FRIEND-CARD DELIVERED carries), sets the friend's git identity in the clone's local config (the friend's nova-config row git_identity= field when it names one, else the sprint row's git_identity; the OK line says which, identity=friend or identity=sprint), and writes JOB.md naming the exact finish command. With --bench <host> every git step and the JOB.md write run on that host over ssh (the jobs directory default on a bench is ~/<friend>-jobs; --dir overrides; the host must be a fleet member, and JOB.md names it BENCH). Without --bench it runs on this machine and JOB.md says BENCH: local. It refuses a card not dealt to the named friend, and refuses when neither identity parses as Name <email> (it never falls back to the machine's global git config). A second run on an already staged directory refuses unless it is the same card@gen, branch, head and bench, and then prints the JOB.md path and exits 0.\n"
+const friendStageWords = "friend stage <card>@<gen> --as friend.<name> [--bench <host>] [--dir <jobs dir>] stages a friend's dealt card in one step: it clones the card's REPO into <jobs dir>/<card>.w<N> at the card's NEXT head when one is carried, else at BASE, creates the delivered branch (the branch the bus message FRIEND-CARD DELIVERED carries), sets the friend's git identity in the clone's local config (the friend's nova-config row git_identity= field when it names one, else the sprint row's git_identity; when nova-config cannot be read, the sprint row's is used instead of refusing; the OK line says which, identity=friend or identity=sprint), and writes JOB.md naming the exact finish command. With --bench <host> every git step and the JOB.md write run on that host over ssh (the jobs directory default on a bench is ~/<friend>-jobs; --dir overrides; the host must be a fleet member, and JOB.md names it BENCH). Without --bench it runs on this machine and JOB.md says BENCH: local. It refuses a card not dealt to the named friend, and refuses when neither identity parses as Name <email> (it never falls back to the machine's global git config). A second run on an already staged directory refuses unless it is the same card@gen, branch, head and bench, and then prints the JOB.md path and exits 0.\n"
 
 // splitFriendCardGen parses --as friend.<name> and a <card>@<gen> operand.
 // splitFriendCardGen returns the friend name, the card id, the generation, and
@@ -243,11 +264,17 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	job := friendJobOf(p)
 	root := *dir
 	if root == "" {
-		home := a.getenv("HOME")
-		if home == "" {
-			return refuse(stderr, name, "wants --dir <jobs dir>, the jobs directory (HOME is not set)")
+		if host != "" {
+			// the default on a bench is ~/<friend>-jobs on that host; $HOME is
+			// expanded by the remote shell, never by this machine
+			root = filepath.Join("$HOME", friendName+"-jobs")
+		} else {
+			home := a.getenv("HOME")
+			if home == "" {
+				return refuse(stderr, name, "wants --dir <jobs dir>, the jobs directory (HOME is not set)")
+			}
+			root = filepath.Join(home, friendName+"-working", friend.JobsDir)
 		}
-		root = filepath.Join(home, friendName+"-working", friend.JobsDir)
 	}
 	jobDir := filepath.Join(root, job)
 
