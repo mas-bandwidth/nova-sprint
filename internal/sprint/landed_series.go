@@ -3,7 +3,6 @@ package sprint
 import (
 	"cmp"
 	"context"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -50,7 +49,24 @@ func LandedSeriesFrom(ctx context.Context, r LogReader, now time.Time) (LandedSe
 	return LandedSeriesOf(lines, now), nil
 }
 
-var reWorkCard = regexp.MustCompile(`\.w[0-9]+$`)
+// workCardBase is a work card id's primary, the id less its ending .w<n> (n one or more
+// ASCII digits), and n: false when the id ends in no such suffix. It is what the pattern
+// \.w[0-9]+$ matched and took off (2026-10-17: the pattern was matched and replaced on
+// every fleet card in ok at every count of the where record): only the last ".w" can
+// begin the suffix, for no digit is a "." or a "w".
+func workCardBase(id string) (string, int, bool) {
+	i := strings.LastIndex(id, ".w")
+	if i < 0 || i+2 == len(id) {
+		return "", 0, false
+	}
+	for _, r := range id[i+2:] {
+		if r < '0' || r > '9' {
+			return "", 0, false
+		}
+	}
+	n, _ := strconv.Atoi(id[i+2:]) // past int's range: 0, as before
+	return id[:i], n, true
+}
 
 // LandedSeriesOf computes the landed series from log lines at reference time now.
 func LandedSeriesOf(lines []Line, now time.Time) LandedSeries {
@@ -65,10 +81,10 @@ func LandedSeriesOf(lines []Line, now time.Time) LandedSeries {
 			continue
 		}
 		for _, card := range l.Names() {
-			if !reWorkCard.MatchString(card) {
+			base, _, ok := workCardBase(card)
+			if !ok {
 				continue
 			}
-			base := reWorkCard.ReplaceAllString(card, "")
 			worker := strings.TrimSuffix(l.To, ":ok")
 			if at, ok := workerAt[base]; !ok || !l.At.Before(at) {
 				latestWorker[base] = worker
@@ -143,11 +159,10 @@ func SeriesLandings(s *Snapshot, since time.Time) []Landing {
 	latest := map[string]ok{}
 	if s.Fleet != nil {
 		for _, c := range s.Fleet.Column(DoneOK) {
-			if !reWorkCard.MatchString(c.ID) {
+			base, n, isWork := workCardBase(c.ID)
+			if !isWork {
 				continue
 			}
-			base := reWorkCard.ReplaceAllString(c.ID, "")
-			n, _ := strconv.Atoi(c.ID[strings.LastIndex(c.ID, ".w")+2:]) // ignored: the pattern matched digits
 			at, _ := time.Parse(time.RFC3339, c.F(FieldFinishedAt))      // unreadable or absent: zero, n decides
 			cur, seen := latest[base]
 			if !seen || at.After(cur.finished) || at.Equal(cur.finished) && n >= cur.n {

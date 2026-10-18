@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
 )
@@ -344,7 +345,28 @@ type CardCostView struct {
 
 // CardCostOf is the producer's cost as the primary carries it: its records, in the
 // order they ended, and its total.
+//
+// It is kept per card (costMemo): a card is replaced whole by every write, never changed
+// in place (state.go Put, the twin's apply), so the tick's recount and every verb that
+// walks the cards parse each card's records once, not once a pass (2026-10-17: the
+// where record's recount parsed every work card's records four times a tick). A kept
+// view is given only while the card still carries the fields it was parsed from, so a
+// card changed in place is parsed again.
 func CardCostOf(pr *Card) CardCostView {
+	if pr == nil {
+		return cardCostOf(pr)
+	}
+	if v, ok := costMemo.get(pr); ok {
+		return v
+	}
+	v := cardCostOf(pr)
+	costMemo.put(pr, v)
+	v.Consumers = slices.Clone(v.Consumers) // the kept view's list is never the caller's
+	return v
+}
+
+// cardCostOf is CardCostOf parsed from the card's fields.
+func cardCostOf(pr *Card) CardCostView {
 	v := CardCostView{Consumers: []Consumer{}, Total: cardcost.NoTotal()}
 	if pr == nil {
 		return v
@@ -368,6 +390,105 @@ func CardCostOf(pr *Card) CardCostView {
 	}
 	v.CarriedTo = pr.F(FieldCostCarriedTo)
 	return v
+}
+
+// costMemoCap bounds each generation of the kept views: twice the sprint's cards (about
+// 3,400, 2026-10-17) fit in one, and a card not asked for over a generation is let go.
+const costMemoCap = 8192
+
+// costMemo is CardCostOf's kept views, by card.
+var costMemo = &cardCostMemo{}
+
+// cardCostMemo keeps each card's parsed cost in two generations: a lookup in the old one
+// moves it to the new, and the new one, full, becomes the old, so what is kept is bounded
+// and every card asked for at least once a generation stays.
+type cardCostMemo struct {
+	mu       sync.Mutex
+	cur, old map[*Card]costKept
+	parses   int // cardCostOf calls made for the memo (tests)
+}
+
+// costKept is one card's view and the fields it was parsed from.
+type costKept struct {
+	view   CardCostView
+	fields map[string]string // every field CardCostOf reads, as parsed
+}
+
+// costFields is every field of the card CardCostOf reads: its records and the five
+// single fields.
+func costFields(pr *Card) map[string]string {
+	out := map[string]string{}
+	for k, v := range pr.Fields {
+		if strings.HasPrefix(k, FieldCostRecord) {
+			out[k] = v
+		}
+	}
+	for _, k := range []string{FieldCostTotal, FieldCostCut, FieldCostCarried, FieldReplaces, FieldCostCarriedTo} {
+		if v, ok := pr.Fields[k]; ok {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+// sameCostFields says the card still carries exactly the fields kept.
+func sameCostFields(pr *Card, kept map[string]string) bool {
+	n := 0
+	for k, v := range pr.Fields {
+		if strings.HasPrefix(k, FieldCostRecord) {
+			if w, ok := kept[k]; !ok || w != v {
+				return false
+			}
+			n++
+		}
+	}
+	for _, k := range []string{FieldCostTotal, FieldCostCut, FieldCostCarried, FieldReplaces, FieldCostCarriedTo} {
+		v, ok := pr.Fields[k]
+		w, kok := kept[k]
+		if ok != kok || v != w {
+			return false
+		}
+		if ok {
+			n++
+		}
+	}
+	return n == len(kept)
+}
+
+func (m *cardCostMemo) get(pr *Card) (CardCostView, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	k, ok := m.cur[pr]
+	if !ok {
+		if k, ok = m.old[pr]; ok {
+			m.keep(pr, k)
+		}
+	}
+	if !ok || !sameCostFields(pr, k.fields) {
+		return CardCostView{}, false
+	}
+	v := k.view
+	v.Consumers = slices.Clone(v.Consumers)
+	return v, true
+}
+
+func (m *cardCostMemo) put(pr *Card, v CardCostView) {
+	f := costFields(pr)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.parses++
+	m.keep(pr, costKept{view: v, fields: f})
+}
+
+// keep puts one card's view in the new generation, the lock held.
+func (m *cardCostMemo) keep(pr *Card, k costKept) {
+	if len(m.cur) >= costMemoCap {
+		m.old, m.cur = m.cur, nil
+	}
+	if m.cur == nil {
+		m.cur = make(map[*Card]costKept, costMemoCap)
+	}
+	m.cur[pr] = k
 }
 
 // takeStamps are the stamps a work card's current take was dealt and taken at: what
