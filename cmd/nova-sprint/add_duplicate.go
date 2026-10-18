@@ -22,11 +22,12 @@ const duplicateThreshold = 0.20
 
 // dupCard is what the duplicate check reads from one brief.
 type dupCard struct {
-	ID     string
-	Repo   string
-	Paths  []string
-	Shared []string
-	Tokens map[string]bool
+	ID      string
+	Repo    string
+	Paths   []string
+	Shared  []string
+	Tokens  map[string]bool
+	Follows map[string]bool
 }
 
 // dupWordRE is a word of a card's id or task paragraph: a letter, then at
@@ -52,7 +53,7 @@ var dupStop = map[string]bool{
 func dupCardOf(id, brief string) dupCard {
 	raw := []byte(brief)
 	base := swarm.ReadCardBase(raw)
-	c := dupCard{ID: id, Repo: base.Named, Paths: swarm.CardPaths(raw), Shared: dupHeaderGlobs(brief, "SHARED"), Tokens: map[string]bool{}}
+	c := dupCard{ID: id, Repo: base.Named, Paths: swarm.CardPaths(raw), Shared: dupHeaderGlobs(brief, "SHARED"), Tokens: map[string]bool{}, Follows: dupFollows(brief)}
 	if c.Repo == "" {
 		c.Repo = base.Repo
 	}
@@ -63,6 +64,19 @@ func dupCardOf(id, brief string) dupCard {
 		}
 	}
 	return c
+}
+
+// dupFollows is the earlier cards a brief names as a follow-up: its DEPENDS-ON:
+// (or Needs:) line and its LAND-AFTER: line.
+func dupFollows(brief string) map[string]bool {
+	out := map[string]bool{}
+	for _, id := range briefNeeds(brief) {
+		out[id] = true
+	}
+	for _, id := range sprint.BriefLandAfter(brief) {
+		out[id] = true
+	}
+	return out
 }
 
 // dupHeaderGlobs is the files one header line of a brief names (SHARED:), split
@@ -271,16 +285,30 @@ func parseNotDup(vals []string) (map[string]string, error) {
 
 // dupHeld is the cards of a wave a probable duplicate holds back, with the
 // finding that held each; the reason map is the overrides used by the cards
-// that were admitted.
+// that were admitted. In wave order, a card is compared with the open cards and
+// with every earlier card of the wave not already held: a probable duplicate of
+// an earlier one is held with the same DUPLICATE words, unless its brief names
+// that earlier card in DEPENDS-ON or LAND-AFTER (a follow-up) or
+// --not-a-duplicate-of names it. The first of two duplicates is admitted.
 func dupHeld(cards []dupCard, open []dupCard, notDup map[string]string) (held map[string]dupFinding, reasons map[string]string) {
 	held, reasons = map[string]dupFinding{}, map[string]string{}
+	var admitted []dupCard
 	for _, c := range cards {
 		all := duplicatesRefused(c, open, nil)
 		left := duplicatesRefused(c, open, notDup)
+		for _, earlier := range admitted {
+			if c.Follows[earlier.ID] || notDup[earlier.ID] != "" {
+				continue
+			}
+			if f, ok := probableDuplicate(c, earlier); ok {
+				left = append(left, f)
+			}
+		}
 		if len(left) > 0 {
 			held[c.ID] = left[0]
 			continue
 		}
+		admitted = append(admitted, c)
 		var used []string
 		for _, f := range all {
 			if notDup[f.Of] != "" {
