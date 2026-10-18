@@ -4352,6 +4352,14 @@
    :why "the page is the owner's; its idle behaviour is his to state"
    :origin "the cold read of #490, 2026-10-18")
   ; Moved out of the sprint on 2026-10-18: v19, target v1.9
+  (item "v19-route-reads-only" :group "routes" :area "nova-config"
+   :title "A route can be marked reads-only"
+   :text "A route can be marked reads-only, so it takes read cards and never work cards. Today a route belongs to one tier and is shared by work and reads (tier set --routes adds it to work dealing too), so a model good for reading but weak at code, such as Ultramarine 1 Flash, cannot be tried on reads alone. Proposal: a reads_only flag on the route row that the work deal skips and the read ask honours, with a route per tier where the tier has none (frontier has no tier row today)."
+   :why "Glenn 2026-10-18: run Ultramarine 1 Flash on reads at every tier; blocker 3 of the trial, no reads-only route placement."
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "the owner, Glenn, 2026-10-18")
+
   (item "v19-friend-row-hands-out-one-worker-brief-per-card" :group "friends" :area "nova-sprint"
    :title "A friend row hands out one ready-to-run worker brief per taken card"
    :text "Independent cards and merges always run in parallel, one worker per card, yet the coordinator kept batching several taken cards into one serial worker, at least 10 times in a month. The sprint already deals one card at a time; the serial queue comes from the coordinator's brief-writing step. Proposal: when a friend row takes cards, the machine itself writes one ready-to-run worker brief per taken card, carrying the card id, the gen, the epoch, the take and finish commands, the carried head, and the bench choice by load. A verb, `nova-sprint friend jobs <friend>`, lists them one per line for the coordinator's monitor to launch one worker per line, so no batching step is left for the coordinator to get wrong. Plus a check that flags a coordinator child holding more than one working card on the row, unless the cards are dependent or HOLD-only. Tests run on the in-memory twin with time as an argument."
