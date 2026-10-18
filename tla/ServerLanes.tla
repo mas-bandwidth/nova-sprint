@@ -24,6 +24,17 @@
 (* read whose lease is live and only takes back reads whose lease lapsed.  *)
 (* Read-lane verbs (where, card, log, ...) hold no lease.                  *)
 (*                                                                         *)
+(* A member's beat (fleet beat <member> --load ..., the fleet's beat, not a  *)
+(* friend's) writes one record outside every table too, but its words are  *)
+(* the member's word the tick reconciles the row against: its live set     *)
+(* (LiveReturns), its no-room and draining (the deal), its facts and its   *)
+(* stop-returns. A beat that changes that word, or is the member's first,  *)
+(* takes the line, so the tick sees the word whole and in order with the   *)
+(* takes and finishes before it; a beat that changes nothing but its clock *)
+(* and its load (nine idle benches, every 3 s: ~180 a minute on the line   *)
+(* on 2026-10-17) runs on the beat lane as a friend's does (servelanes.go  *)
+(* fleetBeatChanges). Changes[r] says a fleet beat carries a change.       *)
+(*                                                                         *)
 (* The dashboard's read (`where --json --dashboard`, the public page's once  *)
 (* a second) runs on a lane of its own, the dashboard lane (servelanes.go    *)
 (* dashWhere): one compute at a time, beside the line and the read lane,     *)
@@ -48,16 +59,22 @@
 (*                 fails;                                                  *)
 (*   "norenew"     the served queue never renews a lease: a lease begun    *)
 (*                 and not renewed expires and is taken back, so           *)
-(*                 LiveLeaseNeverTakenBack fails.                          *)
+(*                 LiveLeaseNeverTakenBack fails;                          *)
+(*   "fbeatlane"   every fleet beat runs on the beat lane, a change of the *)
+(*                 member's word too, beside the tick that reconciles the  *)
+(*                 row against it: ChangeHoldsTheLine fails. "beatonline"  *)
+(*                 covers the fleet beat too: a changeless one on the line *)
+(*                 fails BeatNeverWaitsForTheLine.                         *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets
 
-CONSTANTS Callers, KindOf, MaxTicks, Broken, Cards, Bound
+CONSTANTS Callers, KindOf, Changes, MaxTicks, Broken, Cards, Bound
 
-Kinds  == {"beat", "read", "dash", "write", "begin", "queue"}
-Faults == {"beatonline", "readonline", "rungone", "tickqueues", "norenew", "dashonreadlane"}
+Kinds  == {"beat", "fbeat", "read", "dash", "write", "begin", "queue"}
+Faults == {"beatonline", "readonline", "rungone", "tickqueues", "norenew", "dashonreadlane", "fbeatlane"}
 ASSUME Broken \subseteq Faults /\ "tick" \notin Callers /\ "none" \notin Callers
 ASSUME \A r \in Callers : KindOf[r] \in Kinds
+ASSUME \A r \in Callers : Changes[r] \in BOOLEAN
 ASSUME Bound > 0
 
 VARIABLES line,      \* the line's holder: "none", "tick" or a caller
@@ -84,12 +101,17 @@ VARIABLES line,      \* the line's holder: "none", "tick" or a caller
 vars == <<line, rline, dline, pc, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
           next, serving, tkt, turnDue, dueFinishes, tickQueued, tickTkt>>
 
-\* a line verb: it runs holding the line (a write, read --begin, or a reader's
-\* queue, which is its beat)
+\* a line verb: it runs holding the line (a write, read --begin, a reader's
+\* queue, which is its beat, or a member's beat that changes the member's word
+\* or is its first; broken "fbeatlane": no fleet beat is one)
 LineVerb(r) == KindOf[r] \in {"write", "begin", "queue"}
+                \/ (KindOf[r] = "fbeat" /\ Changes[r] /\ "fbeatlane" \notin Broken)
+
+\* a beat-lane verb: a friend's beat, or a member's beat that is no line verb
+BeatLane(r) == KindOf[r] \in {"beat", "fbeat"} /\ ~LineVerb(r)
 
 OnLine(r) == LineVerb(r)
-             \/ (KindOf[r] = "beat" /\ "beatonline" \in Broken)
+             \/ (BeatLane(r) /\ "beatonline" \in Broken)
              \/ (KindOf[r] = "read" /\ "readonline" \in Broken)
 
 \* the tick wants the line: it is not holding it and has ticks left to run
@@ -203,12 +225,12 @@ ServeGone(r) == /\ pc[r] = "waiting" /\ LineVerb(r) /\ gone[r] /\ "rungone" \not
                                next, tkt, turnDue, dueFinishes, tickQueued, tickTkt>>
 
 \* a beat starts on the beat lane: no line, no other beat waited for
-BeatStart(r) == /\ pc[r] = "waiting" /\ KindOf[r] = "beat" /\ ~OnLine(r) /\ ~gone[r]
+BeatStart(r) == /\ pc[r] = "waiting" /\ BeatLane(r) /\ ~OnLine(r) /\ ~gone[r]
                 /\ pc' = [pc EXCEPT ![r] = "running"]
                 /\ UNCHANGED <<line, rline, dline, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
                                next, serving, tkt, turnDue, dueFinishes, tickQueued, tickTkt>>
 
-BeatDrop(r) == /\ pc[r] = "waiting" /\ KindOf[r] = "beat" /\ ~OnLine(r) /\ gone[r]
+BeatDrop(r) == /\ pc[r] = "waiting" /\ BeatLane(r) /\ ~OnLine(r) /\ gone[r]
                 /\ pc' = [pc EXCEPT ![r] = "dropped"]
                 /\ UNCHANGED <<line, rline, dline, gone, goneWait, ran, ticks, lease, begun, restarts, takenBack, wasLapsed,
                                next, serving, tkt, turnDue, dueFinishes, tickQueued, tickTkt>>
@@ -322,9 +344,16 @@ WriteHoldsTheLine == \A r \in Callers :
   (pc[r] = "running" /\ LineVerb(r)) => line = r
 
 \* A beat waits for nothing: whoever holds the line, a waiting beat whose caller is
-\* there can start.
+\* there can start (a friend's, and a member's that changes nothing but its clock
+\* and its load).
 BeatNeverWaitsForTheLine == \A r \in Callers :
-  (pc[r] = "waiting" /\ KindOf[r] = "beat" /\ ~gone[r]) => ENABLED BeatStart(r)
+  (pc[r] = "waiting" /\ BeatLane(r) /\ ~gone[r]) => ENABLED BeatStart(r)
+
+\* A member's beat that changes the member's word (its live set, no-room, draining,
+\* facts or stop-returns) runs holding the line, never beside the tick that
+\* reconciles the row against it.
+ChangeHoldsTheLine == \A r \in Callers :
+  (pc[r] = "running" /\ KindOf[r] = "fbeat" /\ Changes[r]) => line = r
 
 \* A read waits for another read alone: with the read lane free, a waiting read
 \* whose caller is there can start whoever holds the line.
@@ -335,7 +364,7 @@ ReadWaitsOnlyForReads == \A r \in Callers :
 GoneNeverRuns == \A r \in Callers : goneWait[r] => ~ran[r]
 
 \* The lanes never hold the line.
-LanesHoldNoLine == \A r \in Callers : KindOf[r] \in {"beat", "read", "dash"} => line # r
+LanesHoldNoLine == \A r \in Callers : (BeatLane(r) \/ KindOf[r] \in {"read", "dash"}) => line # r
 
 \* The dashboard's read waits for another dashboard read alone: with the dashboard lane
 \* free, a waiting dash caller whose caller is there can start, whoever holds the line
