@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
@@ -54,6 +55,51 @@ func TestGateMembersAreHeldNotDealt(t *testing.T) {
 	assert.False(t, sprint.HeldToReturn(held), "a stale return marks nothing")
 	assert.Equal(t, []string{"m-up", "m-held"}, s.GateMembers(), "a stale return leaves the hold a gate bench")
 	assert.Equal(t, []string{"m-up"}, s.UpMembers(), "the deal filter is unchanged")
+}
+
+// TestAFleetDownCrossesAClearAndStillRunsNoGate: an epoch clear carries a fleet down's
+// return mark (HeldCarried) and rewrites it to the new held stamp (RestoreShape), so the
+// member is still no gate bench in the new epoch; a coordinator hold without --return
+// stays a bench, and a stale mark (another hold's stamp) is not carried.
+func TestAFleetDownCrossesAClearAndStillRunsNoGate(t *testing.T) {
+	t.Parallel()
+	tables := func(now int64) *sprint.Snapshot {
+		return &sprint.Snapshot{Now: time.Unix(now, 0), Work: sprint.NewTable(sprint.Work),
+			Readers: sprint.NewTable(sprint.Readers), Merge: sprint.NewTable(sprint.Merge),
+			Fleet: sprint.NewTable(sprint.Fleet), Coordinator: "coordinator"}
+	}
+	old := tables(1000)
+	heldAt := "2026-01-01T00:00:00Z"
+	for _, m := range []struct {
+		name string
+		ret  string
+	}{{"m-down", heldAt}, {"m-hold", ""}, {"m-stale", "2025-01-01T00:00:00Z"}} {
+		f := map[string]string{"kind": "member", "status": sprint.Down, sprint.FieldHeld: heldAt}
+		if m.ret != "" {
+			f[sprint.FieldHeldReturn] = m.ret
+		}
+		old.Fleet.Put(&sprint.Card{ID: sprint.CtlID(m.name), Row: m.name, Col: sprint.Ctl, Fields: f})
+	}
+	old.Fleet.SetRows([]string{"m-down", "m-hold", "m-stale"})
+	require.Equal(t, []string{"m-hold", "m-stale"}, old.GateMembers(), "before the clear the fleet-downed member is no bench")
+
+	fresh := tables(2000)
+	p := sprint.RestoreShape(fresh, sprint.ShapeOf(old))
+	require.Empty(t, p.Refused)
+	for _, u := range p.Units {
+		for _, c := range u.Changes {
+			if c.Table == sprint.Fleet {
+				fresh.Fleet.Put(&sprint.Card{ID: c.Entry.ID, Row: c.Entry.Create.Row, Col: sprint.Ctl, Fields: c.Entry.Set})
+			}
+		}
+	}
+	fresh.Fleet.SetRows([]string{"m-down", "m-hold", "m-stale"})
+	down := fresh.MemberCtl("m-down")
+	require.NotNil(t, down)
+	assert.NotEqual(t, heldAt, down.F(sprint.FieldHeld), "the clear stamps the hold again")
+	assert.True(t, sprint.HeldToReturn(down), "the return mark follows the new held stamp")
+	assert.Empty(t, fresh.MemberCtl("m-stale").F(sprint.FieldHeldReturn), "a stale mark is not carried")
+	assert.Equal(t, []string{"m-hold", "m-stale"}, fresh.GateMembers(), "after the clear the fleet-downed member still runs no gate")
 }
 
 // TestRuleElevenCountsHeldGateBenches: check.go rule 11 names a merging stream with a
