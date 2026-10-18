@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
@@ -64,6 +65,12 @@ func friendRunLocal(ctx context.Context, op friendOp) (string, error) {
 	}
 }
 
+// friendSSHArgs is the ssh argv for one step: never a prompt (BatchMode=yes) and
+// never an unanswered connect (ConnectTimeout=10), both before the host.
+func friendSSHArgs(host, script string) []string {
+	return []string{"-o", "BatchMode=yes", "-o", "ConnectTimeout=10", host, script}
+}
+
 // friendRunSSH runs one step on a bench over ssh: the step's shell command on
 // the host, the JOB.md write's content on stdin.
 func friendRunSSH(ctx context.Context, op friendOp) (string, error) {
@@ -71,16 +78,16 @@ func friendRunSSH(ctx context.Context, op friendOp) (string, error) {
 	switch {
 	case len(op.Git) > 0:
 		d := friendPath(op.Dir)
-		cmd = exec.CommandContext(ctx, "ssh", op.Host, fmt.Sprintf("cd %s && git %s", d, strings.Join(quoteArgs(op.Git), " ")))
+		cmd = exec.CommandContext(ctx, "ssh", friendSSHArgs(op.Host, fmt.Sprintf("cd %s && git %s", d, strings.Join(quoteArgs(op.Git), " ")))...)
 	case op.Read:
 		p := friendPath(filepath.Join(op.Dir, friend.JobFile))
-		cmd = exec.CommandContext(ctx, "ssh", op.Host, fmt.Sprintf("test ! -e %s && exit 44 || cat %s", p, p))
+		cmd = exec.CommandContext(ctx, "ssh", friendSSHArgs(op.Host, fmt.Sprintf("test ! -e %s && exit 44 || cat %s", p, p))...)
 	case op.Job != "":
 		d := friendPath(op.Dir)
-		cmd = exec.CommandContext(ctx, "ssh", op.Host, fmt.Sprintf("mkdir -p %s && cat > %s/%s", d, d, friend.JobFile))
+		cmd = exec.CommandContext(ctx, "ssh", friendSSHArgs(op.Host, fmt.Sprintf("mkdir -p %s && cat > %s/%s", d, d, friend.JobFile))...)
 		cmd.Stdin = strings.NewReader(op.Job)
 	default:
-		cmd = exec.CommandContext(ctx, "ssh", op.Host, "mkdir -p "+friendPath(op.Mkdir))
+		cmd = exec.CommandContext(ctx, "ssh", friendSSHArgs(op.Host, "mkdir -p "+friendPath(op.Mkdir))...)
 	}
 	out, err := cmd.CombinedOutput()
 	if err != nil && op.Read {
@@ -118,8 +125,12 @@ func quoteArgs(args []string) []string {
 	return out
 }
 
+// friendStageBound is how long one friend stage may run: one clone and a few
+// small steps, then the stage gives up rather than hang on a bench.
+const friendStageBound = 10 * time.Minute
+
 // friendStageWords is what friend stage says on -h.
-const friendStageWords = "friend stage <card>@<gen> --as friend.<name> [--bench <host>] [--dir <jobs dir>] stages a friend's dealt card in one step: it clones the card's REPO into <jobs dir>/<card>.w<N> at the card's NEXT head when one is carried, else at BASE, creates the delivered branch (the branch the bus message FRIEND-CARD DELIVERED carries), sets the friend's git identity in the clone's local config (the friend's nova-config row git_identity= field when it names one, else the sprint row's git_identity; when nova-config cannot be read, the sprint row's is used instead of refusing; the OK line says which, identity=friend or identity=sprint), and writes JOB.md naming the exact finish command. With --bench <host> every git step and the JOB.md write run on that host over ssh (the jobs directory default on a bench is ~/<friend>-jobs; --dir overrides; the host must be a fleet member, and JOB.md names it BENCH). Without --bench it runs on this machine and JOB.md says BENCH: local. It refuses a card not dealt to the named friend, and refuses when neither identity parses as Name <email> (it never falls back to the machine's global git config). A second run on an already staged directory refuses unless it is the same card@gen, branch, head and bench, and then prints the JOB.md path and exits 0.\n"
+var friendStageWords = "friend stage <card>@<gen> --as friend.<name> [--bench <host>] [--dir <jobs dir>] stages a friend's dealt card in one step: it clones the card's REPO into <jobs dir>/<card>.w<N> at the card's NEXT head when one is carried, else at BASE, creates the delivered branch (the branch the bus message FRIEND-CARD DELIVERED carries), sets the friend's git identity in the clone's local config (the friend's nova-config row git_identity= field when it names one, else the sprint row's git_identity; when nova-config cannot be read, the sprint row's is used instead of refusing; the OK line says which, identity=friend or identity=sprint), and writes JOB.md naming the exact finish command. With --bench <host> every git step and the JOB.md write run on that host over ssh (the jobs directory default on a bench is ~/<friend>-jobs; --dir overrides; the host must be a fleet member, and JOB.md names it BENCH). Without --bench it runs on this machine and JOB.md says BENCH: local. It gives up after " + friendStageBound.String() + " on a bench that does not answer, refusing an expiry naming the bound and the host. It refuses a card not dealt to the named friend, and refuses when neither identity parses as Name <email> (it never falls back to the machine's global git config). A second run on an already staged directory refuses unless it is the same card@gen, branch, head and bench, and then prints the JOB.md path and exits 0.\n"
 
 // splitFriendCardGen parses --as friend.<name> and a <card>@<gen> operand.
 // splitFriendCardGen returns the friend name, the card id, the generation, and
@@ -171,7 +182,8 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, name, err.Error())
 	}
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), friendStageBound)
+	defer cancel()
 
 	host := strings.TrimSpace(*bench)
 	if host != "" {
@@ -300,29 +312,50 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 		}
 		return refuseState(stderr, name, fmt.Sprintf("the job %s is already staged as another card, branch, head or bench; nothing was written", oneline.Field(job)))
 	} else if !os.IsNotExist(err) {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return friendStageTimedOut(stderr, name, host)
+		}
 		return refuse(stderr, name, "the staged JOB.md cannot be read: "+oneline.Err(err))
 	}
 
 	// the clone, then the identity in the clone's local config before any other
 	// git invocation can see a global identity
 	if _, err := friendStageRun(ctx, friendOp{Host: host, Mkdir: filepath.Dir(jobDir)}); err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return friendStageTimedOut(stderr, name, host)
+		}
 		return refuse(stderr, name, err.Error())
 	}
 	if _, err := friendStageRun(ctx, friendOp{Host: host, Dir: filepath.Dir(jobDir), Git: []string{"clone", "-q", repoURL, jobDir}}); err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return friendStageTimedOut(stderr, name, host)
+		}
 		return refuse(stderr, name, "clone of "+repoURL+" into "+oneline.Field(job)+": "+oneline.Err(err))
 	}
 	if _, err := friendStageRun(ctx, friendOp{Host: host, Dir: jobDir, Git: []string{"config", "user.name", id.Name}}); err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return friendStageTimedOut(stderr, name, host)
+		}
 		return refuse(stderr, name, "setting the clone's local user.name: "+oneline.Err(err))
 	}
 	if _, err := friendStageRun(ctx, friendOp{Host: host, Dir: jobDir, Git: []string{"config", "user.email", id.Email}}); err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return friendStageTimedOut(stderr, name, host)
+		}
 		return refuse(stderr, name, "setting the clone's local user.email: "+oneline.Err(err))
 	}
 	if next != "" {
 		if _, err := friendStageRun(ctx, friendOp{Host: host, Dir: jobDir, Git: []string{"fetch", "-q", "origin", next}}); err != nil {
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return friendStageTimedOut(stderr, name, host)
+			}
 			return refuse(stderr, name, "fetch of the NEXT head "+oneline.Escape(next)+": "+oneline.Err(err))
 		}
 	}
 	if _, err := friendStageRun(ctx, friendOp{Host: host, Dir: jobDir, Git: []string{"checkout", "-q", "-B", p.Branch, startRef}}); err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return friendStageTimedOut(stderr, name, host)
+		}
 		return refuse(stderr, name, "checkout of "+oneline.Field(p.Branch)+" at "+oneline.Escape(startRef)+": "+oneline.Err(err))
 	}
 
@@ -339,11 +372,23 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 		"FINISH: " + finish + "\n" +
 		"FINISH-FAILED: " + finish + " --failed\n"
 	if _, err := friendStageRun(ctx, friendOp{Host: host, Dir: jobDir, Job: jobmd}); err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return friendStageTimedOut(stderr, name, host)
+		}
 		return refuse(stderr, name, "writing JOB.md: "+oneline.Err(err))
 	}
 	fmt.Fprintf(stdout, "FRIEND-STAGE OK friend=%s card=%s gen=%d branch=%s job=%s jobmd=%s bench=%s identity=%s\n", friendName, card, gen, p.Branch, oneline.Field(job), filepath.Join(jobDir, friend.JobFile), benchLine, identityFrom)
 	a.outcome, a.changed = "accepted", "yes"
 	return 0
+}
+
+// friendStageTimedOut refuses a stage that ran past friendStageBound: it names
+// the bound and the host it gave up on (local without --bench).
+func friendStageTimedOut(stderr io.Writer, verb, host string) int {
+	if host == "" {
+		host = "local"
+	}
+	return refuseState(stderr, verb, fmt.Sprintf("friend stage gave up after %s on %s: the stage did not finish", friendStageBound, oneline.Field(host)))
 }
 
 // refuseState is refuse for a refusal of the world's state, not of the words
