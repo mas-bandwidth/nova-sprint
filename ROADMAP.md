@@ -17,6 +17,8 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 - [Moved out of the sprint on 2026-10-15: target v1.5](#moved-out-of-the-sprint-on-2026-10-15-target-v15) (6)
 - [Resume after the rocketnet milestone](#resume-after-the-rocketnet-milestone) (7)
 - [Moved out of the sprint on 2026-10-18: v15-schema-tables, target v1.7](#moved-out-of-the-sprint-on-2026-10-18-v15-schema-tables-target-v17) (199)
+- [Moved out of the sprint on 2026-10-18: v19, target v1.9](#moved-out-of-the-sprint-on-2026-10-18-v19-target-v19) (24)
+- [Moved out of the sprint on 2026-10-18: v111, target v1.11](#moved-out-of-the-sprint-on-2026-10-18-v111-target-v111) (3)
 
 ## Lessons from Prime Agent's rewrite
 
@@ -5183,3 +5185,281 @@ Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
 Target: v1.7
 
 From: sprint card l1-pong-retire-legacy (stream v15-schema-tables, column working, tier flash, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+## Moved out of the sprint on 2026-10-18: v19, target v1.9
+
+The open cards of sprint stream v19, moved out of the sprint when Glenn said v19 and v111 live in roadmaps only (2026-10-18), one item per card. Each item keeps the card's whole brief under :kept :brief, with its column, tier, base and needs; none had a pushed head.
+
+### v17-take-batches-model
+
+Model in TLA+ (tla/TakeBatch.tla) a take by id of several cards as one batch in deal order. Column ready, tier heavy, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v17-take-batches-model (stream v19, column ready, tier heavy, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-17 (for v1.7): `nova-sprint take` with several ids refuses a card under the strict deal (reads, then fixes, then new work) whenever a read or a fix ahead of it is named in the same call, so the coordinator takes cards one at a time in a loop; a take of several ids is to app
+
+### v17-take-batches-code
+
+A take by id of several cards takes them as one batch in deal order instead of refusing a card under the strict deal. Column ready, tier pro, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v17-take-batches-code (stream v19, column ready, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-17 (for v1.7): `nova-sprint take` with several ids refuses a card under the strict deal (reads, then fixes, then new work) whenever a read or a fix ahead of it is named in the same call, so the coordinator takes cards one at a time in a loop; a take of several ids is to app
+
+### v19-brief-transform-refuses-an-ambiguous-header
+
+BriefEdit gains a Refusal: a brief header naming BASE or WHO ambiguously is refused rather than rewritten wrongly. Column waiting, tier pro, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v19-brief-transform-refuses-an-ambiguous-header (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 1: an edit verb refuses instead of corrupting: a verb that rewrites a brief or a file changes exactly the region it names, or refuses. Read on nova-sprint sprint
+
+### v19-stream-set-base-edits-only-the-header-base
+
+stream set --base rewrites only the header's BASE line of each brief, and refuses an ambiguous header, all or none. Column waiting, tier pro, base sprint/v19, needs v19-brief-transform-refuses-an-ambiguous-header. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v19-stream-set-base-edits-only-the-header-base (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 1: an edit verb refuses instead of corrupting: a verb that rewrites a brief or a file changes exactly the region it names, or refuses. Read on nova-sprint sprint
+
+### v19-widen-edits-only-the-header-paths
+
+widen edits only the brief header's PATHS line, never a prose line. Column waiting, tier pro, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v19-widen-edits-only-the-header-paths (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 1: an edit verb refuses instead of corrupting: a verb that rewrites a brief or a file changes exactly the region it names, or refuses. Read on nova-sprint sprint
+
+### v19-land-keyed-table-keeps-the-changed-header
+
+A keyed-table merge at landing resolves the table header as it resolves a row, keeping the side that changed it, refusing when both changed it differently. Column waiting, tier pro, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v19-land-keyed-table-keeps-the-changed-header (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 1: an edit verb refuses instead of corrupting: a verb that rewrites a brief or a file changes exactly the region it names, or refuses. Read on nova-sprint sprint
+
+### v19-finish-scope-design
+
+Model and spec: an ok finish whose head touches files outside the brief's PATHS is refused, naming them. Column waiting, tier heavy, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v19-finish-scope-design (stream v19, column waiting, tier heavy, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 2: finish computes the files a head touches (git diff BASE...head) and checks them against PATHS, NEW and SHARED, refusing at once and naming the files, instead
+
+### v19-finish-scope-diff-seam
+
+A finishDiff seam on the app that yields a head's diff against its base, so finish can check scope without real git in unit tests. Column waiting, tier pro, base sprint/v19, needs v19-finish-scope-design. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v19-finish-scope-diff-seam (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 2: finish computes the files a head touches (git diff BASE...head) and checks them against PATHS, NEW and SHARED, refusing at once and naming the files, instead
+
+### v19-finish-scope-refuses-outside-files
+
+finish refuses an ok finish whose head changes files outside the brief's PATHS, naming each file. Column waiting, tier pro, base sprint/v19, needs v19-finish-scope-design,v19-finish-scope-diff-seam. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v19-finish-scope-refuses-outside-files (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 2: finish computes the files a head touches (git diff BASE...head) and checks them against PATHS, NEW and SHARED, refusing at once and naming the files, instead
+
+### v19-finish-scope-docs
+
+Help and spec words for finish's PATHS scope refusal, and how to ask for more paths with PATHS-PROPOSED. Column waiting, tier pro, base sprint/v19, needs v19-finish-scope-refuses-outside-files. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v19-finish-scope-docs (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 2: finish computes the files a head touches (git diff BASE...head) and checks them against PATHS, NEW and SHARED, refusing at once and naming the files, instead
+
+### v19-card-review-block
+
+card <id> prints one review block per card: head, branch, PR link, gate lines and the latest read's verdict. Column waiting, tier pro, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v19-card-review-block (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 3: one review view per card: diff stat, touched files against PATHS, the gate lines of the report, the read verdict and the pull request link. Read on nova-sprin
+
+### v19-card-review-diff-against-paths
+
+The review block adds the diff stat and each touched file scored inside, by rule, amended or outside PATHS. Column waiting, tier pro, base sprint/v19, needs v19-card-review-block,v19-finish-scope-diff-seam. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v19-card-review-diff-against-paths (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 3: one review view per card: diff stat, touched files against PATHS, the gate lines of the report, the read verdict and the pull request link. Cards v19-card-rev
+
+### v19-card-review-json-and-docs
+
+card <id> --json carries the review block, with its docs. Column waiting, tier pro, base sprint/v19, needs v19-card-review-diff-against-paths. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v19-card-review-json-and-docs (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 3: one review view per card: diff stat, touched files against PATHS, the gate lines of the report, the read verdict and the pull request link. Cards v19-card-rev
+
+### v19-route-eval-design
+
+Model and spec: landed cards replayed as an evaluation set for model routes. Column waiting, tier heavy, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v19-route-eval-design (stream v19, column waiting, tier heavy, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 4: landed cards are an evaluation set for model routes: replay a landed card's brief at its BASE on a chosen route, score it against its own DONE-WHEN and a cold
+
+### v19-route-eval-replay-runner
+
+Build eval cards that replay a landed card's brief on a chosen route and model from its first parent. Column waiting, tier pro, base sprint/v19, needs v19-route-eval-design. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v19-route-eval-replay-runner (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 4: landed cards are an evaluation set for model routes: replay a landed card's brief at its BASE on a chosen route, score it against its own DONE-WHEN and a cold
+
+### v19-route-eval-scorer
+
+Score each eval run from its read report: DONE-WHEN pass or fail and a five-mark rubric, unscored never a pass. Column waiting, tier pro, base sprint/v19, needs v19-route-eval-design. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v19-route-eval-scorer (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 4: landed cards are an evaluation set for model routes: replay a landed card's brief at its BASE on a chosen route, score it against its own DONE-WHEN and a cold
+
+### v19-route-eval-report
+
+Report eval scores per route and model and advise the highest tier each model passes. Column waiting, tier pro, base sprint/v19, needs v19-route-eval-scorer. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v19-route-eval-report (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 4: landed cards are an evaluation set for model routes: replay a landed card's brief at its BASE on a chosen route, score it against its own DONE-WHEN and a cold
+
+### v19-friend-card-status-design
+
+Model and spec: one live status record per friend card (working, testing, blocked, waiting, with a note). Column waiting, tier heavy, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v19-friend-card-status-design (stream v19, column waiting, tier heavy, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator
+
+### v19-friend-card-status-record
+
+The store keeps a friend's live status and note on the card through progress. Column waiting, tier pro, base sprint/v19, needs v19-friend-card-status-design. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v19-friend-card-status-record (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator
+
+### v19-friend-card-status-from-the-outbox
+
+The friend's STATUS.md in its outbox is read and written to the card's status record. Column waiting, tier pro, base sprint/v19, needs v19-friend-card-status-record. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v19-friend-card-status-from-the-outbox (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator
+
+### v19-friend-card-status-shown-to-the-coordinator
+
+The coordinator's views show each friend card's live status, its age and note. Column waiting, tier pro, base sprint/v19, needs v19-friend-card-status-record. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v19-friend-card-status-shown-to-the-coordinator (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator
+
+### v19-friend-card-status-act-raises-one-judgment
+
+A friend status Act raises exactly one coordinator judgment per distinct ask. Column waiting, tier pro, base sprint/v19, needs v19-friend-card-status-record. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v19-friend-card-status-act-raises-one-judgment (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator
+
+### v19-friend-card-status-instructions
+
+Friend briefs tell the friend to keep STATUS.md current and to use Act only when the coordinator must do something. Column waiting, tier pro, base sprint/v19, needs v19-friend-card-status-from-the-outbox,v19-friend-card-status-act-raises-one-judgment. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v19-friend-card-status-instructions (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator
+
+### v19-friend-level-every-minute
+
+The sprint server levels friend cards across lanes itself, once every minute, as the level verb does. Column waiting, tier pro, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.9
+
+From: sprint card v19-friend-level-every-minute (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): "friend levelling should be built into the machine! once every minute!" Friend levelling is the sprint server's own work, once every minute, with the moves nova-sprint friend level makes, and each move says why.
+
+## Moved out of the sprint on 2026-10-18: v111, target v1.11
+
+The open cards of sprint stream v111, moved out of the sprint when Glenn said v19 and v111 live in roadmaps only (2026-10-18), one item per card. Each item keeps the card's whole brief under :kept :brief, with its column, tier, base and needs; none had a pushed head.
+
+### v111-pre-gate-design
+
+Model and spec: a pre-gate that runs build and vet on a card in review before its landing, reworking it early when red. Column waiting, tier heavy, base sprint/v111. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.11
+
+From: sprint card v111-pre-gate-design (stream v111, column waiting, tier heavy, base sprint/v111), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.11: "it is your choice what you think is worth trying vs. not ... Only if things add value"), from the coordinator's measurement of epoch 21 (2026-10-17 17:00Z to 2026-10-18 17:10Z): 25 heads a reader had passed were refused at landing by the tree gate (each rewo
+
+### v111-pre-gate-lander-pass
+
+The lander runs at most one pre-gate per base beside its landings, behind a --pre-gate flag (default off). Column waiting, tier pro, base sprint/v111, needs v111-pre-gate-store-step. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.11
+
+From: sprint card v111-pre-gate-lander-pass (stream v111, column waiting, tier pro, base sprint/v111), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.11: "it is your choice what you think is worth trying vs. not ... Only if things add value"), from the coordinator's measurement of epoch 21 (2026-10-17 17:00Z to 2026-10-18 17:10Z): 25 heads a reader had passed were refused at landing by the tree gate (each rewo
+
+### v111-pre-gate-store-step
+
+The pre-gate store step: record green or skipped, and turn a red result into a rework carrying the finding. Column waiting, tier pro, base sprint/v111, needs v111-pre-gate-design. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
+
+Target: v1.11
+
+From: sprint card v111-pre-gate-store-step (stream v111, column waiting, tier pro, base sprint/v111), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.11: "it is your choice what you think is worth trying vs. not ... Only if things add value"), from the coordinator's measurement of epoch 21 (2026-10-17 17:00Z to 2026-10-18 17:10Z): 25 heads a reader had passed were refused at landing by the tree gate (each rewo

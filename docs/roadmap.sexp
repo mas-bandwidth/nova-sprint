@@ -51,7 +51,11 @@
   (group "after-rocketnet" :title "Resume after the rocketnet milestone"
    :text "Cards moved out of the sprint on 2026-10-15 when Glenn said: \"move the schema cards out to the roadmap. We will continue them only after we have rocketnet in the bag.\" One item per card with its pushed heads and any head not on origin.")
   (group "export-v15-schema-tables" :title "Moved out of the sprint on 2026-10-18: v15-schema-tables, target v1.7"
-   :text "The open cards of sprint stream v15-schema-tables, moved out of the sprint when Glenn promoted v1.5.x to v1.6.0 and sent the rest of v1.5 to v1.7 (2026-10-17 late evening EDT), one item per card. Landed cards of the stream are in git and are not listed. Each item names its card, its tier, its base branch, its column, its needs, every pushed head and branch, and any head or working branch not on origin."))
+   :text "The open cards of sprint stream v15-schema-tables, moved out of the sprint when Glenn promoted v1.5.x to v1.6.0 and sent the rest of v1.5 to v1.7 (2026-10-17 late evening EDT), one item per card. Landed cards of the stream are in git and are not listed. Each item names its card, its tier, its base branch, its column, its needs, every pushed head and branch, and any head or working branch not on origin.")
+  (group "export-v19" :title "Moved out of the sprint on 2026-10-18: v19, target v1.9"
+   :text "The open cards of sprint stream v19, moved out of the sprint when Glenn said v19 and v111 live in roadmaps only (2026-10-18), one item per card. Each item keeps the card's whole brief under :kept :brief, with its column, tier, base and needs; none had a pushed head.")
+  (group "export-v111" :title "Moved out of the sprint on 2026-10-18: v111, target v1.11"
+   :text "The open cards of sprint stream v111, moved out of the sprint when Glenn said v19 and v111 live in roadmaps only (2026-10-18), one item per card. Each item keeps the card's whole brief under :kept :brief, with its column, tier, base and needs; none had a pushed head."))
 
  :items
  (
@@ -4346,4 +4350,1755 @@
    :title "The live page's throughput tile is blank for ten minutes after an idle hour"
    :text "Since #490 the dashboard reads the sprint only while someone is looking. On return after more than an hour idle, sampleLanded has no samples inside its one-hour window and the page's own tile (internal/sprintdash/pageview.go, under the page lock) stays blank until ten minutes of new samples span MinSpan; /api/sprint and the pull routes carry the gap (trimWindow keeps the newest sample before the hour as the base). Changing the page's tile needs the owner's exact words (the page lock); the SPEC-SPRINT-DASHBOARD.md section Freshness, once per second, end to end is the owner's locked text and says nothing about the idle case. Target v1.7, with the owner's word."
    :why "the page is the owner's; its idle behaviour is his to state"
-   :origin "the cold read of #490, 2026-10-18")))
+   :origin "the cold read of #490, 2026-10-18")
+  ; Moved out of the sprint on 2026-10-18: v19, target v1.9
+  (item "v17-take-batches-model" :group "export-v19" :area "nova-sprint"
+   :title "v17-take-batches-model"
+   :text "Model in TLA+ (tla/TakeBatch.tla) a take by id of several cards as one batch in deal order. Column ready, tier heavy, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v17-take-batches-model (stream v19, column ready, tier heavy, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-17 (for v1.7): `nova-sprint take` with several ids refuses a card under the strict deal (reads, then fixes, then new work) whenever a read or a fix ahead of it is named in the same call, so the coordinator takes cards one at a time in a loop; a take of several ids is to app"
+   :kept (:sprint-card "v17-take-batches-model" :sprint-stream "v19" :sprint-column "ready" :tier "heavy" :sprint-base "sprint/v19" :needs "" :pushed-head "" :pushed-branch "" :brief "RESULT: v17-take-batches-model sha=<sha12> tier: heavy
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: fix
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: -
+SOURCE: the owner, Glenn, 2026-10-17 (for v1.7): `nova-sprint take` with several ids refuses a card under the strict deal (reads, then fixes, then new work) whenever a read or a fix ahead of it is named in the same call, so the coordinator takes cards one at a time in a loop; a take of several ids is to apply them in deal order in one call. Split (2026-10-18) of the one card for this ask into this model card (heavy: a new TLA+ model is heavy work by the card lint) and the pro code card v17-take-batches-code (Glenn 10-17: heavy only for the judgment piece). This card writes the TLA+ model first (standing practice: the model before the code); the code card cites it.
+PATHS: tla/TakeBatch.tla,tla/MCTakeBatch.tla,tla/MCTakeBatch.cfg,tla/MCTakeBatchBrokenPerID.cfg,tla/MCTakeBatchBrokenGivenOrder.cfg,tla/MCTakeBatchBrokenNoAhead.cfg,tla/CASES.tsv,tla/COVERAGE.tsv,tla/RUNS.tsv
+SHARED: tla/CASES.tsv,tla/COVERAGE.tsv,tla/RUNS.tsv
+NEW: tla/TakeBatch.tla,tla/MCTakeBatch.tla,tla/MCTakeBatch.cfg,tla/MCTakeBatchBrokenPerID.cfg,tla/MCTakeBatchBrokenGivenOrder.cfg,tla/MCTakeBatchBrokenNoAhead.cfg
+TEST: none because the output is a TLA+ model checked by TLC through tlacheck, not a Go test
+DONE-WHEN: `ls tla/TakeBatch.tla` fails at BASE; at head `make tlc TLC_GROUP=takebatch` (as tla/README.md says) records MCTakeBatch.cfg PASS and each of the three Broken configs failing on exactly its named property, the four rows in tla/CASES.tsv (group takebatch) and their records merged into tla/RUNS.tsv with `tlacheck merge --keep tla/RUNS.tsv`; `tlacheck groups --root . --stale` prints []; tla/COVERAGE.tsv has the take-batch row; go test -count=1 -timeout 900s ./internal/ci/ is green or its only reds are named as present at BASE.
+TOOLCHAIN: TLC (the jar tla/README.md names), java and tlacheck on the Linux bench JOB.md names; go (the version go.mod names) for the internal/ci gate
+GATE-NEEDS: linux,tla
+STOP: the model and its records are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 150 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 150 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: none; TLA+ standard modules Naturals and FiniteSets only.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md (read), 'Run checks on a Linux bench'). Read tla/MCAskReadIDs.tla and its rows in tla/CASES.tsv (read) as the worked example of a model with reversed witnesses.
+
+WHAT IS THERE. internal/sprint/steps_work.go takeOne, by id on a friend's row: THE STRICT DEAL AT THE TAKE loops over sel.IDs in the order given and refuses each work card whose takeAheadOf is not empty. takeAheadOf probes a take by count of one (takeOne with Limit 1) on the snapshot, so its answer is the first card the row would take now, whether or not that card is named in the same call: a take of `<new> <fix>` refuses the new card behind the fix it names. Then pick (select.go) walks sel.IDs in the order given, and the width (room) is spent in that order, so a lower-ranked card named first can spend the room a higher one needed. A take by count already takes in deal order (friendDealtOrder for a friend's row, takeTurns for a member's) and is unchanged by this card.
+
+THE CHANGE THE MODEL SPECIFIES (built by v17-take-batches-code, not here; read it so the model matches it). Make a take by id of several cards a batch, in internal/sprint/steps_work.go only:
+(1) Order. When byID, sort the kept sel.IDs by each card's place in the row's deal order, the same order a take by count walks (the `ready` slice takeOne builds: takeTurns, then friendDealtOrder on a friend's row, then the reads-first stable sort when halves); an id that is not ready on the row keeps its given relative order after the ready ones (pick refuses it as today). Do it with one helper, `takeIDsInDealOrder(ids []string, ready []*Card) []string`, and apply it before the strict filter, so the filter and pick both walk the deal order and the room goes to the cards in deal order.
+(2) Ahead within the batch. Give takeAheadOf the set of ids this call has already kept, `batch map[string]bool`: its probe asks a take by count of len(batch)+1 and its answer is the first card of that probe's units not in batch (the card the row would take next once the batch's earlier cards are taken). A card ranked above c that is in batch no longer refuses c; one that is ready, not named, and may be taken now still does, and the refusal text is unchanged. Walk the sorted ids, adding each kept id to batch.
+(3) Nothing else: a take of one id, a take by count, a lane's take, and a member's take keep their behaviour (a member's ids are only reordered, which changes no single-id take).
+Cite tla/TakeBatch.tla from the two helpers and from the strict-deal comment, and add one sentence to the take row of docs/SPEC-SPRINT.md's verb table: a take of several ids is taken in deal order in one call, each refused only when a read or a fix not taken in the call waits ahead of it or the room is spent.
+
+
+THE TASK. Write the model below, exactly as specified, and its records. Do not edit any Go file.
+THE MODEL. tla/TakeBatch.tla (EXTENDS Naturals, FiniteSets): CONSTANTS Cards, Rank (a function Cards -> 1..3: 1 read, 2 fix, 3 work), Pos (deal order within a rank, injective), Room, Broken; VARIABLES ready, taken, named. Init: ready = Cards, taken = {}, named \\in SUBSET Cards. One action Take: taken' = the cards the batch takes (with Broken = \"none\": walk named in deal order (Rank, then Pos), keep a card when no card a of ready \\ named with Rank[a] < Rank[c] and Rank[c] = 3 exists (an ahead card not in the call), and while fewer than Room are kept); ready' = ready \\ taken'. Invariants: NoSkip (\\A w \\in taken, a \\in ready: Rank[w] = 3 /\\ Rank[a] < 3 => FALSE, i.e. a read or fix left ready is never passed by a taken work card), WidthRespected (Cardinality(taken) <= Room), RoomInDealOrder (no named card refused for room while a card after it in deal order is taken), Maximal (a named card not taken has an ahead card not named, or the room is spent). Reversed witnesses, each a cfg with Broken set and the property it must fail: MCTakeBatchBrokenPerID.cfg Broken = \"perid\" (ahead judged against the snapshot alone, today's code) fails Maximal; MCTakeBatchBrokenGivenOrder.cfg Broken = \"givenorder\" (room spent in a fixed given order) fails RoomInDealOrder; MCTakeBatchBrokenNoAhead.cfg Broken = \"noahead\" (no strict check) fails NoSkip. MCTakeBatch.tla instantiates three cards (one of each rank) and Room \\in 1..3; MCTakeBatch.cfg passes all four invariants. Add the four rows to tla/CASES.tsv (group takebatch, gate required, the expected verdict and property per row, as the MCAskReadIDs rows read) and one row to tla/COVERAGE.tsv (machine take-batch, code internal/sprint/steps_work.go, module TakeBatch, status current), run the group with `make tlc TLC_GROUP=takebatch ...` on the bench and merge its records into tla/RUNS.tsv as tla/README.md says. Verify each counterexample against the code by hand before writing it down; the model abstracts provider budgets, routes and needs (refused per card in pick, unchanged), and says so in its header.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names. Run `ls tla/TakeBatch.tla` and keep its failing line.
+STEP 2. Write tla/TakeBatch.tla, tla/MCTakeBatch.tla and the four cfgs as THE MODEL says. The header comment says what the model abstracts (provider budgets, routes and needs, refused per card in pick, unchanged) and cites internal/sprint/steps_work.go takeOne and takeAheadOf.
+STEP 3. Run the takebatch group on the Linux bench (tlacheck run, one shard per case), then tlacheck merge --keep tla/RUNS.tsv, as tla/README.md says (\"Refreshing the records after a model edit\"); groups --stale must print []. For each Broken config, check its counterexample against the code by hand (the perid witness is today's takeOne, read in internal/sprint/steps_work.go) and write that check into the pull request body. Then run go test -count=1 -timeout 900s ./internal/ci/ (it checks the tla records). When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 4. Commit as `v17-take-batches-model: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the TLC results with each witness's counterexample and the hand check, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+TLC runs on a Linux bench, never on the coordinator's machine.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v17-take-batches-code" :group "export-v19" :area "nova-sprint"
+   :title "v17-take-batches-code"
+   :text "A take by id of several cards takes them as one batch in deal order instead of refusing a card under the strict deal. Column ready, tier pro, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v17-take-batches-code (stream v19, column ready, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-17 (for v1.7): `nova-sprint take` with several ids refuses a card under the strict deal (reads, then fixes, then new work) whenever a read or a fix ahead of it is named in the same call, so the coordinator takes cards one at a time in a loop; a take of several ids is to app"
+   :kept (:sprint-card "v17-take-batches-code" :sprint-stream "v19" :sprint-column "ready" :tier "pro" :sprint-base "sprint/v19" :needs "" :pushed-head "" :pushed-branch "" :brief "RESULT: v17-take-batches-code sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: fix
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: -
+LAND-AFTER: v17-take-batches-model
+SOURCE: the owner, Glenn, 2026-10-17 (for v1.7): `nova-sprint take` with several ids refuses a card under the strict deal (reads, then fixes, then new work) whenever a read or a fix ahead of it is named in the same call, so the coordinator takes cards one at a time in a loop; a take of several ids is to apply them in deal order in one call, taking every one the strict deal allows and refusing only those it truly cannot. Split (2026-10-18) of the one card for this ask into the heavy model card v17-take-batches-model (tla/TakeBatch.tla, written in parallel and landed before this card by LAND-AFTER) and this pro code card (Glenn 10-17: heavy only for the judgment piece; the change is fixed in this brief, no judgment is owed here: a gap is a HOLD naming it).
+PATHS: internal/sprint/steps_work.go,internal/sprint/take_batch_test.go,docs/SPEC-SPRINT.md,internal/ci/testdata/dead_code_allowlist.txt
+SHARED: internal/ci/testdata/dead_code_allowlist.txt
+NEW: internal/sprint/take_batch_test.go
+TEST: internal/sprint TestATakeOfSeveralIDsTakesThemInDealOrder
+START: internal/sprint/steps_work.go takeOne and takeAheadOf, internal/sprint/select.go pick (read)
+DONE-WHEN: `go test -count=1 -timeout 600s ./internal/sprint/ -run '^TestATakeOfSeveralIDsTakesThemInDealOrder$' -v` shows the test RUN and PASS at head (red at BASE with the test of STEP 2 added, on captain at nova-sprint sprint/v17 f23c426f: `Error: Should be empty, but was [{s1-2.w1 a read or a fix dealt to friend.amy waits ahead of this card and may be taken now: take s1-1.w1 first (the strict deal: reads, then fixes, then new work)}]`); TestATakeByIDOfNewWorkWaitsBehindHerFixAndReads still passes unchanged; go vet ./... is clean; and no test is newly red against BASE.
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 150 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 150 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: slices.SortStableFunc for the order; no new helper beyond the two named below.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the suite. tla/TakeBatch.tla is the model of this change, written in parallel by v17-take-batches-model and landed before this card; it may not be on your BASE. The code follows THE TASK below, which the model specifies the same way; never write or edit a file under tla/ here.
+
+WHAT IS THERE. internal/sprint/steps_work.go takeOne, by id on a friend's row: THE STRICT DEAL AT THE TAKE loops over sel.IDs in the order given and refuses each work card whose takeAheadOf is not empty. takeAheadOf probes a take by count of one (takeOne with Limit 1) on the snapshot, so its answer is the first card the row would take now, whether or not that card is named in the same call: a take of `<new> <fix>` refuses the new card behind the fix it names. Then pick (select.go) walks sel.IDs in the order given, and the width (room) is spent in that order, so a lower-ranked card named first can spend the room a higher one needed. A take by count already takes in deal order (friendDealtOrder for a friend's row, takeTurns for a member's) and is unchanged by this card.
+
+THE TASK. Make a take by id of several cards a batch, in internal/sprint/steps_work.go only:
+(1) Order. When byID, sort the kept sel.IDs by each card's place in the row's deal order, the same order a take by count walks (the `ready` slice takeOne builds: takeTurns, then friendDealtOrder on a friend's row, then the reads-first stable sort when halves); an id that is not ready on the row keeps its given relative order after the ready ones (pick refuses it as today). Do it with one helper, `takeIDsInDealOrder(ids []string, ready []*Card) []string`, and apply it before the strict filter, so the filter and pick both walk the deal order and the room goes to the cards in deal order.
+(2) Ahead within the batch. Give takeAheadOf the set of ids this call has already kept, `batch map[string]bool`: its probe asks a take by count of len(batch)+1 and its answer is the first card of that probe's units not in batch (the card the row would take next once the batch's earlier cards are taken). A card ranked above c that is in batch no longer refuses c; one that is ready, not named, and may be taken now still does, and the refusal text is unchanged. Walk the sorted ids, adding each kept id to batch.
+(3) Nothing else: a take of one id, a take by count, a lane's take, and a member's take keep their behaviour (a member's ids are only reordered, which changes no single-id take).
+Cite tla/TakeBatch.tla from the two helpers and from the strict-deal comment, and add one sentence to the take row of docs/SPEC-SPRINT.md's verb table: a take of several ids is taken in deal order in one call, each refused only when a read or a fix not taken in the call waits ahead of it or the room is spent.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names. 
+STEP 2. Red first: write internal/sprint/take_batch_test.go, package sprint, opening each test with t.Parallel(): TestATakeOfSeveralIDsTakesThemInDealOrder builds laneWorld(t), takes cs := w.s.Fleet.Cell(FriendRow(\"amy\"), Ready), marks the primary of cs[0] PriorityFix (w.s.Work.Card(cs[0].F(\"primary\")).Fields[FieldPriority] = PriorityFix), then Take with Sel IDs {cs[1].ID, cs[0].ID} (the new card first), Gens gensOf(w.s, both), As and Who FriendRow(\"amy\"); require.Empty(p.Refused), w.do(p), and both cards Working. Add two cases beside it: a read ready on her row and not named still refuses the new card (the refusal names the read), and with room for one only, naming the new card and the fix takes the fix and refuses the new card at its width. Run go test -count=1 -timeout 600s ./internal/sprint/ -run '^TestATakeOf' -v and keep the failing line.
+STEP 3. Change takeOne as THE TASK says, citing tla/TakeBatch.tla (by path, whether or not it is on your BASE) from the two helpers and from the strict-deal comment.
+STEP 4. Run the gate: go vet ./... ; go test -count=1 -timeout 900s ./internal/sprint/ ./internal/ci/ ; then go test -count=1 -timeout 900s ./... at the head and, for each red, at the unchanged BASE. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v17-take-batches-code: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the tests and what each pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+TLC runs on a Linux bench, never on the coordinator's machine.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-brief-transform-refuses-an-ambiguous-header" :group "export-v19" :area "nova-sprint"
+   :title "v19-brief-transform-refuses-an-ambiguous-header"
+   :text "BriefEdit gains a Refusal: a brief header naming BASE or WHO ambiguously is refused rather than rewritten wrongly. Column waiting, tier pro, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v19-brief-transform-refuses-an-ambiguous-header (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 1: an edit verb refuses instead of corrupting: a verb that rewrites a brief or a file changes exactly the region it names, or refuses. Read on nova-sprint sprint"
+   :kept (:sprint-card "v19-brief-transform-refuses-an-ambiguous-header" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-brief-transform-refuses-an-ambiguous-header sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: fix
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: none
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 1: an edit verb refuses instead of corrupting: a verb that rewrites a brief or a file changes exactly the region it names, or refuses. Read on nova-sprint sprint/v19 7dbd87cb: `brief <selector> --set-base` and `--drop-who` (and `recut <selector>` with them) edit a brief by rule through BriefEdit.Apply, which matches BASE case-sensitively and WHO case-insensitively and rewrites every matching line of the header: a header naming BASE twice has both rewritten, and a header whose base line reads `base: x` gets a second BASE line put under line 1. This card makes the transform change exactly the one line it names, or refuse.
+PATHS: internal/sprint/select_batch.go,internal/sprint/brief_transform_exact_test.go,internal/ci/testdata/dead_code_allowlist.txt
+SHARED: internal/ci/testdata/dead_code_allowlist.txt
+NEW: internal/sprint/brief_transform_exact_test.go
+TEST: internal/sprint TestABriefTransformChangesOneHeaderLineOrRefuses
+DONE-WHEN: `go test -count=1 -timeout 600s ./internal/sprint/ -run '^(TestABriefTransformChangesOneHeaderLineOrRefuses|TestABriefTransformEditsTheHeaderAlone)$' -v` shows TestABriefTransformChangesOneHeaderLineOrRefuses RUN and PASS at head and TestABriefTransformEditsTheHeaderAlone still passing unchanged (red at BASE: with the test of STEP 2 added the package does not compile, BriefEdit has no method Refusal; the worker records the actual line); go vet ./... is clean; `go test -count=1 -timeout 900s ./internal/sprint/` passes; and no test is newly red against BASE.
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 90 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 90 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: strings.EqualFold and the existing cardhdr.KeyValue; no new helper beyond the method named below.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). internal/sprint/select_batch.go: BriefEdit{SetBase, DropWho}, Given, Apply (the header is the key: value lines under line 1, as cardhdr.KeyValue reads them; WHO matched with strings.EqualFold, BASE with ==; with SetBase every header BASE line is replaced, or one is put under line 1 when none is). Its callers in the same file: RecutSel (`brief := r.Edit.Apply(c.F(\"brief\"))`, then Recut) and BriefSel (then Brief with ReplaceInFlight). internal/sprint/select_batch_test.go TestABriefTransformEditsTheHeaderAlone pins that prose lines below the header are never touched. A working card's edit is already refused by Brief unless --replace-in-flight is given (steps_edit.go); that stays.
+
+THE TASK. In internal/sprint/select_batch.go only: (1) add `func (e BriefEdit) Refusal(brief string) string`, \"\" when the transform is exact, else why: with SetBase, the header names BASE (case-folded) more than once, or names it in another case than `BASE`; with DropWho, the header names WHO more than once (one WHO line is the rule; two is a brief the transform cannot read). The words name the card's lines found, say `nothing was changed`, and name the one next command: `nova-sprint brief <id> --brief-file <file>` with the header corrected. (2) Make Apply match BASE case-folded (as WHO is), so a `base:` line is replaced and never doubled. (3) In RecutSel and BriefSel, refuse a card whose Refusal is not empty, with that text, before Apply; the batch stays all or none as Batch makes it. Nothing else changes: a header with one BASE and one WHO edits exactly as today.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first: write internal/sprint/brief_transform_exact_test.go, package sprint, opening each test with t.Parallel(). TestABriefTransformChangesOneHeaderLineOrRefuses, table-driven: (a) a header with one BASE line: Refusal is \"\" and Apply(SetBase v2) differs from the brief in that line alone (compare line by line); (b) a header naming BASE twice: Refusal names both and says nothing was changed; (c) `base: main` in the header: Apply(SetBase v2) gives one `BASE: v2` line and no second base line; (d) two WHO lines with DropWho: refused; (e) prose below the header naming BASE or WHO: never counted and never touched. Add a case through BriefSel on a Snapshot holding one waiting card whose header names BASE twice (build it as internal/sprint/stream_set_base_test.go builds its cards): the plan's Refused names the card and Units is empty. Run go test -count=1 -timeout 600s ./internal/sprint/ -run '^TestABriefTransform' -v and keep the failing line.
+STEP 3. Make the change THE TASK says, in the PATHS files only.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN command; then go test -count=1 -timeout 900s ./internal/sprint/ at the head. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-brief-transform-refuses-an-ambiguous-header: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-stream-set-base-edits-only-the-header-base" :group "export-v19" :area "nova-sprint"
+   :title "v19-stream-set-base-edits-only-the-header-base"
+   :text "stream set --base rewrites only the header's BASE line of each brief, and refuses an ambiguous header, all or none. Column waiting, tier pro, base sprint/v19, needs v19-brief-transform-refuses-an-ambiguous-header. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v19-stream-set-base-edits-only-the-header-base (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 1: an edit verb refuses instead of corrupting: a verb that rewrites a brief or a file changes exactly the region it names, or refuses. Read on nova-sprint sprint"
+   :kept (:sprint-card "v19-stream-set-base-edits-only-the-header-base" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-brief-transform-refuses-an-ambiguous-header" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-stream-set-base-edits-only-the-header-base sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: fix
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: v19-brief-transform-refuses-an-ambiguous-header
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 1: an edit verb refuses instead of corrupting: a verb that rewrites a brief or a file changes exactly the region it names, or refuses. Read on nova-sprint sprint/v19 7dbd87cb: `stream set --base` re-points every unlanded card of a stream through briefOnBase (internal/sprint/streams.go), which rewrites the first line anywhere in the brief that cardhdr.KeyValue reads as BASE, header or prose, so a brief whose header names no BASE has a prose line rewritten; and settings.go writes the new brief with FieldBriefAttempt set to the card's attempt on every card whatever its column, so a WORKING card's attempt predates its brief (AttemptPredatesBrief) and its next finish bounces as `brief replaced`, an attempt reopened by an edit that named only the base. Card v19-brief-transform-refuses-an-ambiguous-header (landed before this one is dealt) gives BriefEdit.Refusal and a case-folded Apply; this card uses them here.
+PATHS: internal/sprint/streams.go,internal/sprint/settings.go,internal/sprint/stream_set_base_exact_test.go,docs/SPEC-SPRINT.md,internal/ci/testdata/dead_code_allowlist.txt
+SHARED: internal/ci/testdata/dead_code_allowlist.txt
+NEW: internal/sprint/stream_set_base_exact_test.go
+TEST: internal/sprint TestStreamSetBaseEditsOnlyTheHeaderBaseAndRefusesAWorkingCard
+DONE-WHEN: `go test -count=1 -timeout 600s ./internal/sprint/ -run '^(TestStreamSetBaseEditsOnlyTheHeaderBaseAndRefusesAWorkingCard|TestStreamSetBaseRepointsEveryUnlandedCard|TestStreamSetBaseChecksTheRewrittenBriefs|TestStreamSetBaseRefusesWhenTheCheckedCardsMoved)$' -v` shows the new test RUN and PASS at head and the three existing tests still passing (red at BASE with the test of STEP 2 added: the prose BASE line is rewritten and the working card is re-pointed with its brief_attempt moved; the worker records the actual failing lines); go vet ./... is clean; `go test -count=1 -timeout 900s ./internal/sprint/` passes; and no test is newly red against BASE.
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 120 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 120 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: the BriefEdit methods of internal/sprint/select_batch.go; no new helper.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). internal/sprint/streams.go briefOnBase (first BASE line anywhere, else one put after the header), baseOfBrief, streamSetBaseCards (every card of the stream not yet landed, whatever its column), StreamSetBaseChecks and baseChecksHeld (add's check of the rewritten briefs at the new base). internal/sprint/settings.go Set: THE FENCE (a card whose landing is marked refuses the whole base change, inside the step), then for r.Base each card gets `brief: briefOnBase(...)` and `FieldBriefAttempt: c.F(\"attempt\")`. internal/sprint/steps_edit.go AttemptPredatesBrief (a replaced generation never enters review) and Brief's working-card rule (more than an operational edit needs --replace-in-flight). internal/sprint/select_batch.go BriefEdit{SetBase}.Refusal and Apply (from the card this one needs). Tests: internal/sprint/stream_set_base_test.go.
+
+THE TASK. (1) briefOnBase becomes `BriefEdit{SetBase: base}.Apply(brief)`: the header's BASE line only, never a prose line; a brief whose BriefEdit{SetBase: base}.Refusal is not empty is refused by Set, naming the card and the Refusal's words, and nothing is written (all or none, as THE FENCE refuses). (2) A card of the stream that is Working is refused in the same way as THE FENCE refuses a landing card: the whole base change is refused naming every working card and attempt, and the one next command (wait for its finish, or `nova-sprint stop-return` it); a base change never reopens a working attempt by itself. A card waiting, ready or in review is re-pointed as today. (3) StreamSetBaseChecks computes the same text Set writes (it calls the same function), so the check and the write never differ. (4) One sentence in docs/SPEC-SPRINT.md section 11, stream set --base: it edits the header BASE line alone and refuses while a card of the stream is working. Cite this card's test from the comment of each changed function.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first: write internal/sprint/stream_set_base_exact_test.go, package sprint, opening each test with t.Parallel(); build the Snapshot as TestStreamSetBaseRepointsEveryUnlandedCard does. TestStreamSetBaseEditsOnlyTheHeaderBaseAndRefusesAWorkingCard: (a) a ready card whose header names no BASE and whose prose holds the line `BASE: example`: Set re-points it by one header line and the prose line is byte-identical; (b) a ready card whose header names BASE twice: the step is refused naming it and Units is empty; (c) a stream with one working card at attempt 2 and one ready card: the step is refused naming the working card and its attempt, nothing is written, and the ready card keeps its brief. Run go test -count=1 -timeout 600s ./internal/sprint/ -run '^TestStreamSetBase' -v and keep the failing lines.
+STEP 3. Make the change THE TASK says, in the PATHS files only.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN command; then go test -count=1 -timeout 900s ./internal/sprint/ ./cmd/nova-sprint/ at the head. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-stream-set-base-edits-only-the-header-base: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-widen-edits-only-the-header-paths" :group "export-v19" :area "nova-sprint"
+   :title "v19-widen-edits-only-the-header-paths"
+   :text "widen edits only the brief header's PATHS line, never a prose line. Column waiting, tier pro, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v19-widen-edits-only-the-header-paths (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 1: an edit verb refuses instead of corrupting: a verb that rewrites a brief or a file changes exactly the region it names, or refuses. Read on nova-sprint sprint"
+   :kept (:sprint-card "v19-widen-edits-only-the-header-paths" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-widen-edits-only-the-header-paths sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: fix
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: none
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 1: an edit verb refuses instead of corrupting: a verb that rewrites a brief or a file changes exactly the region it names, or refuses. Read on nova-sprint sprint/v19 7dbd87cb: the three writers that widen a brief in place rewrite every line, header or prose, that reads as PATHS: or SHARED: once trimmed, and the first CARRY: line anywhere: sprint.PathsWidened (internal/sprint/rules_read.go, the read-broken rule's and sprint.WidenBrief's), sprint.SharedWidened (internal/sprint/widen.go, the widen rule's) and widenBrief (cmd/nova-sprint/recut_widen.go, `brief --widen`), which also unions only the first PATHS line's globs and then writes that union over every PATHS line. A brief that quotes a PATHS: line in its prose is corrupted by every widen.
+PATHS: internal/sprint/rules_read.go,internal/sprint/widen.go,internal/sprint/paths_proposed.go,cmd/nova-sprint/recut_widen.go,internal/sprint/widen_header_test.go,cmd/nova-sprint/brief_widen_header_test.go,internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+SHARED: internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+NEW: internal/sprint/widen_header_test.go,cmd/nova-sprint/brief_widen_header_test.go
+TEST: internal/sprint TestAWidenChangesOnlyTheHeaderScopeLines
+DONE-WHEN: `go test -count=1 -timeout 600s ./internal/sprint/ -run '^(TestAWidenChangesOnlyTheHeaderScopeLines|TestACardHeldOnlyForAdjacentPathsIsWidenedInPlace|TestAHoldWithPathsProposedCutsTheWidenedTwinByRule)$' -v` and `go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^(TestBriefWidenChangesOnlyTheHeaderPaths|TestBriefWidenKeepsTheId|TestWidenTakesEveryProposedPathOfALongLine)$' -v` show the two new tests RUN and PASS at head and the others still passing (red at BASE with the tests of STEP 2 added: the prose `PATHS:` and `CARRY:` lines are rewritten; the worker records the actual lines); go vet ./... is clean; `go test -count=1 -timeout 900s ./internal/sprint/ ./cmd/nova-sprint/` passes; and no test is newly red against BASE.
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 120 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 120 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: cardhdr.KeyValue as the three writers use it today; one unexported helper for the header's end, no other.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). internal/sprint/rules_read.go PathsWidened(brief, files, carry) (every trimmed PATHS line widened, the first CARRY: line anywhere replaced, else one put under line 1) and TickRuleWidenRead; internal/sprint/paths_proposed.go WidenBrief (PathsWidened, or a PATHS line put under line 1); internal/sprint/widen.go SharedWidened (every trimmed SHARED line) and widenInPlace; cmd/nova-sprint/recut_widen.go widenBrief (the union of the first PATHS line written over every PATHS line; the first CARRY line anywhere replaced) and (*app).widen, `brief --widen`. internal/sprint/select_batch.go BriefEdit.Apply reads the header as the key: value lines under line 1 (cardhdr.KeyValue), which is the rule this card takes. Tests: internal/sprint/widen_test.go, internal/sprint/paths_proposed_test.go, cmd/nova-sprint/brief_widen_test.go.
+
+THE TASK. (1) Add one unexported helper in internal/sprint/widen.go, `headerEnd(lines []string) int`, the index after the last key: value line under line 1 (as BriefEdit.Apply reads the header), and an exported `HeaderEnd(brief string) int` over it for the command. (2) PathsWidened, SharedWidened and widenBrief read and write only the header lines (index 1 up to HeaderEnd): a PATHS:, SHARED: or CARRY: line below the header is never read and never written; widenBrief unions the globs of every header PATHS line, as PathsWidened does. (3) A brief whose header names PATHS more than once, or SHARED more than once, is not widened: PathsWidened and SharedWidened return the brief unchanged and their callers in the rules (TickRuleWidenRead, widenInPlace) treat an unchanged brief as a refused edit, leaving the judgment open with the words `the header names PATHS twice; widen by hand`; `brief --widen` refuses with those words through widenRefused, exit 1, nothing written. Cite this card's tests from each changed function. Nothing else changes.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first, each test opening with t.Parallel(): internal/sprint/widen_header_test.go (package sprint) TestAWidenChangesOnlyTheHeaderScopeLines over a brief whose header holds `PATHS: a.go` and `SHARED: none` and whose prose holds the lines `  PATHS: quoted.go`, `SHARED: quoted.txt` and `CARRY: quoted`: PathsWidened(brief, [b.go], `CARRY: c1 attempt 2 head=<40 hex>`) changes the header PATHS line to `PATHS: a.go,b.go`, puts the CARRY line under line 1 and leaves every prose line byte-identical; SharedWidened the same for SHARED; a header naming PATHS twice comes back unchanged. cmd/nova-sprint/brief_widen_header_test.go (package main) TestBriefWidenChangesOnlyTheHeaderPaths: widenBrief over the same brief changes the header alone. Run both packages' -run '^Test(AWidenChangesOnly|BriefWidenChangesOnly)' -v and keep the failing lines.
+STEP 3. Make the change THE TASK says, in the PATHS files only.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN commands; then go test -count=1 -timeout 900s ./internal/sprint/ ./cmd/nova-sprint/ at the head. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-widen-edits-only-the-header-paths: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-land-keyed-table-keeps-the-changed-header" :group "export-v19" :area "nova-sprint"
+   :title "v19-land-keyed-table-keeps-the-changed-header"
+   :text "A keyed-table merge at landing resolves the table header as it resolves a row, keeping the side that changed it, refusing when both changed it differently. Column waiting, tier pro, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v19-land-keyed-table-keeps-the-changed-header (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 1: an edit verb refuses instead of corrupting: a verb that rewrites a brief or a file changes exactly the region it names, or refuses. Read on nova-sprint sprint"
+   :kept (:sprint-card "v19-land-keyed-table-keeps-the-changed-header" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-land-keyed-table-keeps-the-changed-header sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: fix
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: none
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 1: an edit verb refuses instead of corrupting: a verb that rewrites a brief or a file changes exactly the region it names, or refuses. Read on nova-sprint sprint/v19 7dbd87cb: the lander resolves a conflict in the keyed TLA+ tables (tla/CASES.tsv, tla/RUNS.tsv, tla/COVERAGE.tsv) by config in resolveTableByConfig (cmd/nova-sprint/landappend.go), which takes the header from the base first, then the tip, then the card: a card that adds a column to the header and its rows lands with the old header over rows one column wider, and nothing refuses. A generated table is rewritten outside the rows the merge resolved.
+PATHS: cmd/nova-sprint/landappend.go,cmd/nova-sprint/land_keyed_header_test.go,docs/SPEC-SPRINT.md,internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md
+SHARED: internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+NEW: cmd/nova-sprint/land_keyed_header_test.go
+TEST: cmd/nova-sprint TestAKeyedTableMergeKeepsTheChangedHeaderOrRefuses
+DONE-WHEN: `go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^(TestAKeyedTableMergeKeepsTheChangedHeaderOrRefuses|TestResolveTableByConfig|TestAnAppendOnlyRecordConflictMergesByUnion)$' -v` shows the new test RUN and PASS at head and the two existing tests still passing (red at BASE with the test of STEP 2 added: the merged table carries the base's header over the card's wider rows; the worker records the actual line); go vet ./... is clean; `go test -count=1 -timeout 900s ./cmd/nova-sprint/ -run 'Land|Table|Append'` passes; and no test is newly red against BASE.
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 90 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 90 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: strings.Count for the column count; no new helper beyond what THE TASK names.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). cmd/nova-sprint/landappend.go: keyedHeaders (each table's header prefix), resolveTableByConfig (checkHeader per side, the header taken base-first, rows resolved by key against the base: one side changed takes that side, both alike is one row, RUNS.tsv both changed takes the later started_utc, CASES.tsv both changed differently refuses naming the config), resolveCasesByConfig, resolveRunsByConfig, resolveCoverageByMachine, and (*lander).resolveRecords, which reports a refusal as the card's conflict. Tests: cmd/nova-sprint/land_append_test.go (runHead, caseHead fixtures).
+
+THE TASK. In resolveTableByConfig only: the header is resolved as a row is, against the base: neither side changed it, keep the base's; one side changed it, take that side's; both changed it alike, take it; both changed it differently, refuse with `both sides changed the header of <path>`. After the rows are resolved, every output row must have the header's column count (tabs + 1); a row that does not refuses the merge with `<path>: the row for <key> has <n> columns and the header <m>; regenerate the table on the card's branch`, so the lander never writes a table whose header and rows disagree. One sentence in docs/SPEC-SPRINT.md section 7, the keyed run records: the header resolves as a row does, and a row of another width refuses. Cite this card's test from the function's comment.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first: write cmd/nova-sprint/land_keyed_header_test.go, package main, opening each test with t.Parallel(), using caseHead from land_append_test.go for the base. TestAKeyedTableMergeKeepsTheChangedHeaderOrRefuses: (a) base and tip hold the old header, the tip adds row B; the card's side adds a column `extra` to the header and to its row A: the merge holds the card's header, the card's row A and the tip's row B only if B has the new width, else it is refused naming B and the widths; (b) both sides add different columns: refused naming the header; (c) neither side changes the header: the output is what TestResolveTableByConfig expects today. Run go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^TestAKeyedTableMerge' -v and keep the failing line.
+STEP 3. Make the change THE TASK says, in the PATHS files only.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN command; then go test -count=1 -timeout 900s ./cmd/nova-sprint/ at the head. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-land-keyed-table-keeps-the-changed-header: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-finish-scope-design" :group "export-v19" :area "nova-sprint"
+   :title "v19-finish-scope-design"
+   :text "Model and spec: an ok finish whose head touches files outside the brief's PATHS is refused, naming them. Column waiting, tier heavy, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v19-finish-scope-design (stream v19, column waiting, tier heavy, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 2: finish computes the files a head touches (git diff BASE...head) and checks them against PATHS, NEW and SHARED, refusing at once and naming the files, instead "
+   :kept (:sprint-card "v19-finish-scope-design" :sprint-stream "v19" :sprint-column "waiting" :tier "heavy" :sprint-base "sprint/v19" :needs "" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-finish-scope-design sha=<sha12> tier: heavy
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: feature
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: none
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 2: finish computes the files a head touches (git diff BASE...head) and checks them against PATHS, NEW and SHARED, refusing at once and naming the files, instead of a reader or the lander catching it late. Today a head that changes files outside its PATHS is caught by a reader (the read-broken rule's finding outside PATHS) or by the lander (E12, sprint.LandScope), hours after the finish. Prior work to start from: the docs/roadmap.sexp entry whose :pushed-head is d55e61020ad35b890408243f281fc6e99d79486d (scoped out of v1.3 by the owner 2026-10-15), a pushed head on origin which judged machine members only, from evidence the member computed (pkg/member), and left friends' finishes to the lander; that head is the raw material: read its tla/FinishScope.tla, internal/sprint/finish_scope_test.go and pkg/member changes with `git fetch origin d55e61020ad35b890408243f281fc6e99d79486d` and `git show`, never merge it. Seen on nova-sprint sprint/v19 7dbd87cb. This card is the judgment piece: the model and the spec. Cards v19-finish-scope-diff-seam, v19-finish-scope-refuses-outside-files and v19-finish-scope-docs implement it and copy its decisions.
+PATHS: tla/FinishScope.tla,tla/MCFinishScope.tla,tla/MCFinishScope.cfg,tla/MCFinishScopeBrokenReadsFirst.cfg,tla/MCFinishScopeBrokenFailClosed.cfg,tla/MCFinishScopeBrokenHoldJudged.cfg,tla/CASES.tsv,tla/COVERAGE.tsv,tla/RUNS.tsv,docs/SPEC-SPRINT.md
+SHARED: tla/CASES.tsv,tla/COVERAGE.tsv,tla/RUNS.tsv
+NEW: tla/FinishScope.tla,tla/MCFinishScope.tla,tla/MCFinishScope.cfg,tla/MCFinishScopeBrokenReadsFirst.cfg,tla/MCFinishScopeBrokenFailClosed.cfg,tla/MCFinishScopeBrokenHoldJudged.cfg
+DONE-WHEN: on a Linux bench at head, `make tlc TLC_JAR=/opt/tla/tla2tools.jar TLC_OUT=<dir> TLC_GROUP=finishscope` passes MCFinishScope.cfg and each of the three Broken configs fails on exactly the property its tla/CASES.tsv row names; after `go run ./tools/tlacheck merge --root . --keep tla/RUNS.tsv --out tla/RUNS.tsv <dir>/RUNS.tsv`, `go run ./tools/tlacheck groups --root . --stale` prints `[]`; `grep -c finishscope tla/CASES.tsv` prints 4 (0 at BASE, where none of the NEW files exist); docs/SPEC-SPRINT.md holds the subsection \"The scope at the finish\" with every decision below; and no test is newly red against BASE (`go test -count=1 -timeout 900s ./tools/tlacheck/ ./internal/ci/`).
+TOOLCHAIN: go (the version go.mod names) and TLC (the jar tla/README.md names, /opt/tla/tla2tools.jar, java on the bench's PATH as tla/README.md says) on the Linux bench JOB.md names
+GATE-NEEDS: linux,tla
+STOP: the model, its four configs, the TLC records and the spec subsection are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 240 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 240 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: none; TLA+ standard modules Naturals, FiniteSets and TLC only, as the other models in tla/ use them.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). cmd/nova-sprint/read_missing.go finishStep (the server's check after the planner accepts a fresh ok finish into review: finishOrigin refuses a head origin does not hold, all or none across the cards named; tests give a.readHeads and open no socket); cmd/nova-sprint/collect.go friendFinishStep and cmd/nova-sprint/friendcards.go friendCollect (a friend's REPORT.md finished through the same finishStep); internal/sprint/steps_work.go Finish and FinishReq; internal/sprint/land_scope.go LandScope (E12: diffcheck.Outside less OutsideByRule, split by ScopeAmended) and cmd/nova-sprint/land.go checkCard (`git diff -M --no-color before after`, `ls-tree -r --name-only before`, diffcheck.ExpectedEntry in the words); the widen rule (internal/sprint/widen.go) and the paths rule (internal/sprint/paths_proposed.go), which act on a HOLD naming files outside PATHS; land's clones under a.landRoot named by repoDirName (cmd/nova-sprint/land.go). docs/SPEC-SPRINT.md section 7 (the lander's checks, E12) and section 8 (the rules table: widen, read-broken, conflict).
+
+THE DECISIONS (the design; the model checks it, and you correct a decision only when TLC or the code shows it wrong, saying why in the spec and the report).
+D1. One judge, the server: E12 is applied at the finish, inside finishStep, after finishOrigin, to every ok finish entering review at a full-sha head, from a member, a lane or a friend's collection alike. The member and the friend send nothing new; the member-computed evidence of the prior branch is not adopted (one true source).
+D2. The rule is the lander's: sprint.LandScope(paths, diff, tracked) over `git diff -M --no-color <merge-base>...<head>` and the files tracked at the merge base, in land's clone of the card's REPO (fetching BASE and the head from origin first). The finish and the lander can never disagree on the same diff; files inside every PATHS by rule (tests, testdata, the TLA+ ledgers, the docs catalog, AGENTS.md) and scope amendments pass as they do at land.
+D3. Files outside: the finish is refused, nothing written, the attempt still working under its deadline, the words naming every file with the PATHS entry it was expected to match (diffcheck.ExpectedEntry) and the two next moves: take the files out of the head and finish again, or finish HOLD with a `PATHS-PROPOSED:` line (the paths and widen rules act on it as today).
+D4. Fail open on the machine's own faults: a diff that cannot be read (origin unreachable, a fetch or diff error, past a budget of 30 s) never refuses a finish; the finish is taken as today with one NOTE line `finish scope not judged: <why>`, and the lander's E12 still judges. Infrastructure never gates a worker on another daemon.
+D5. A HOLD or failed finish, a head that is not a full sha, and a brief with no PATHS are never judged.
+D6. The diff is computed once per finish call and read again on each snapshot retry of the step only from its cached result; a multi-card finish stays all or none, as finishOrigin's refusal is.
+
+THE TASK. Write the model and the spec subsection; no Go code changes in this card. The subsection \"The scope at the finish\" goes in docs/SPEC-SPRINT.md section 7 beside the lander's checks, with D1 to D6 as written (corrected only where TLC or the code shows one wrong, saying why), the words of the refusal and of the NOTE, the seam the build cards write (`finishDiff func(ctx, repo, base, head string) (diff string, tracked []string, err error)` on the app, nil checking nothing, as readHeads is) and the three build cards by name.
+
+THE MODEL. tla/FinishScope.tla (EXTENDS Naturals, FiniteSets, TLC): CONSTANTS Cards, Broken; VARIABLES phase (Cards -> {working, review, landed}), verdict (Cards -> {ok, hold}), outside (Cards -> BOOLEAN), readable (Cards -> BOOLEAN), judged, read, refusedAtLand (each Cards -> BOOLEAN). Actions: Finish(c) (D1, D3, D4, D5: an ok finish with readable diff and outside files stays working; unreadable passes, judged FALSE; a hold passes, judged FALSE), Fix(c) (the worker takes the files out: outside' FALSE), Ask(c) (a read of a card in review), Land(c) (refusedAtLand' = outside[c]). Invariants: NoReadOfJudgedOutside (a read is never asked of a card whose finish was judged with files outside), NeverRefusedOnFault (an unreadable diff never leaves an ok finish working), HoldNeverJudged, LanderAgrees (a card judged clean is never refused at land for outside files while its head is unchanged). Reversed witnesses, each a cfg with Broken set and the one property it must fail: MCFinishScopeBrokenReadsFirst.cfg (Broken = \"readsfirst\": the read is asked before the judge, as today) fails NoReadOfJudgedOutside; MCFinishScopeBrokenFailClosed.cfg (Broken = \"failclosed\": an unreadable diff refuses) fails NeverRefusedOnFault; MCFinishScopeBrokenHoldJudged.cfg (Broken = \"holdjudged\") fails HoldNeverJudged. MCFinishScope.tla instantiates two cards; MCFinishScope.cfg passes all four. The header names the code each action maps to (cmd/nova-sprint/read_missing.go finishStep, cmd/nova-sprint/land.go checkCard) and what it abstracts (the diff, PATHS and the always-in-PATHS rule folded into outside). Add the four rows to tla/CASES.tsv (group finishscope, gate required, the expected verdict and property per row, as the MCAskReadIDs rows read) and one row to tla/COVERAGE.tsv (machine finish-scope, code cmd/nova-sprint/read_missing.go, module FinishScope, status partial, owed_by v19-finish-scope-refuses-outside-files).
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Read the prior head (SOURCE) and the code WHAT IS THERE names; write the model and its four cfgs and the spec subsection.
+STEP 3. Run TLC on the Linux bench JOB.md names: `make tlc TLC_JAR=/opt/tla/tla2tools.jar TLC_OUT=<dir> TLC_GROUP=finishscope` (java on PATH as tla/README.md says). Verify each counterexample against the code and the decisions by hand before writing it down.
+STEP 4. Refresh the records as tla/README.md says (\"Refreshing the records after a model edit\"): `go run ./tools/tlacheck merge --root . --keep tla/RUNS.tsv --out tla/RUNS.tsv <dir>/RUNS.tsv`, then `go run ./tools/tlacheck groups --root . --stale` must print `[]`. Then run the gate: go vet ./... ; go test -count=1 -timeout 900s ./tools/tlacheck/ ./internal/ci/ . When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-finish-scope-design: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, the TLC results with each witness's counterexample, each decision as written in the spec, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+TLC runs on a Linux bench, never on the coordinator's machine.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-finish-scope-diff-seam" :group "export-v19" :area "nova-sprint"
+   :title "v19-finish-scope-diff-seam"
+   :text "A finishDiff seam on the app that yields a head's diff against its base, so finish can check scope without real git in unit tests. Column waiting, tier pro, base sprint/v19, needs v19-finish-scope-design. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v19-finish-scope-diff-seam (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 2: finish computes the files a head touches (git diff BASE...head) and checks them against PATHS, NEW and SHARED, refusing at once and naming the files, instead "
+   :kept (:sprint-card "v19-finish-scope-diff-seam" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-finish-scope-design" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-finish-scope-diff-seam sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: feature
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: v19-finish-scope-design
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 2: finish computes the files a head touches (git diff BASE...head) and checks them against PATHS, NEW and SHARED, refusing at once and naming the files, instead of a reader or the lander catching it late. Card v19-finish-scope-design (landed before this one is dealt) wrote docs/SPEC-SPRINT.md section 7, \"The scope at the finish\" (D1 to D6), and tla/FinishScope.tla; this card writes the diff computation behind a fake git seam, with no step and no refusal (v19-finish-scope-refuses-outside-files wires it). Seen on nova-sprint sprint/v19 7dbd87cb.
+PATHS: cmd/nova-sprint/finish_scope.go,cmd/nova-sprint/finish_scope_diff_test.go,cmd/nova-sprint/main.go,internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+SHARED: internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+NEW: cmd/nova-sprint/finish_scope.go,cmd/nova-sprint/finish_scope_diff_test.go
+TEST: cmd/nova-sprint TestTheFinishDiffIsTheMergeBaseDiffInLandsClone
+DONE-WHEN: `go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^(TestTheFinishDiffIsTheMergeBaseDiffInLandsClone|TestTheFinishDiffSaysWhyItCouldNotBeRead)$' -v` shows both RUN and PASS at head (red at BASE with the test file of STEP 2 added: the package does not compile, app has no field finishDiff; the worker records the actual line); go vet ./... is clean; `go test -tags functional -count=1 -timeout 900s ./internal/ci/ -run '^TestDeadCode$'` passes; and no test is newly red against BASE.
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 120 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 120 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: nova-tools pkg/gitrun (Output with Options{Env, Timeout}) as branchHeads uses it, and the clone directory land uses (a.landRoot, repoDirName); no new git wrapper.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). Read first: docs/SPEC-SPRINT.md section 7, \"The scope at the finish\". cmd/nova-sprint/read_missing.go headsFn and (*app).branchHeads (the shape of a seam: a func field on app, the real one in newApp, nil checking nothing); cmd/nova-sprint/main.go app (readTip, readHeads, landRoot) and newApp; cmd/nova-sprint/land.go repoDirName, normRepo, the land clone root, and checkCard's three git calls (diff -M --no-color, ls-tree -r --name-only); friendTipBudget for the bound.
+
+THE TASK. In cmd/nova-sprint/finish_scope.go: (1) `type finishDiffFn func(ctx context.Context, repo, base, head string) (diff string, tracked []string, err error)` and the field `finishDiff finishDiffFn` on app (main.go), set in newApp to a.landFinishDiff; nil checks nothing. (2) `type gitFn func(ctx context.Context, dir string, args ...string) (string, error)` and `func finishDiffIn(ctx context.Context, git gitFn, dir, base, head string) (string, []string, error)`: `fetch --no-tags origin <base> <head>` (one call), `merge-base FETCH_HEAD-of-base <head>` (resolve the base as origin/<base> after the fetch, as the clone's remote names it), `diff -M --no-color <mb> <head>`, `ls-tree -r --name-only <mb>`; each error wrapped with the step that failed (`fetch`, `merge-base`, `diff`, `ls-tree`) so the NOTE of D4 names it. (3) (*app).landFinishDiff: the clone dir is filepath.Join(a.landRoot result, repoDirName(repo)); a missing clone is an error (`no land clone of <repo>`), never a clone made here; git runs through gitrun.Output with a.gitEnv and a 30 s budget (D4). (4) Until v19-finish-scope-refuses-outside-files calls it, landFinishDiff and finishDiffIn are reachable from no step: add their rows to internal/ci/testdata/dead_code_allowlist.txt as its header says, reason \"wired by v19-finish-scope-refuses-outside-files\". Cite the spec subsection from each function.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first: write cmd/nova-sprint/finish_scope_diff_test.go, package main, opening each test with t.Parallel(); a fake gitFn records each call's args and answers from a table (no git, no clone, no clock). TestTheFinishDiffIsTheMergeBaseDiffInLandsClone: the calls are fetch, merge-base, diff, ls-tree in that order with the base and head named; the diff text and the tracked list come back as the fake answered them; an empty ls-tree is an empty list. TestTheFinishDiffSaysWhyItCouldNotBeRead: each of the four calls failing in turn returns an error naming its step and no diff. Run go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^TestTheFinishDiff' -v and keep the failing line.
+STEP 3. Make the change THE TASK says, in the PATHS files only.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN commands; then go test -count=1 -timeout 900s ./cmd/nova-sprint/ at the head. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-finish-scope-diff-seam: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-finish-scope-refuses-outside-files" :group "export-v19" :area "nova-sprint"
+   :title "v19-finish-scope-refuses-outside-files"
+   :text "finish refuses an ok finish whose head changes files outside the brief's PATHS, naming each file. Column waiting, tier pro, base sprint/v19, needs v19-finish-scope-design,v19-finish-scope-diff-seam. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v19-finish-scope-refuses-outside-files (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 2: finish computes the files a head touches (git diff BASE...head) and checks them against PATHS, NEW and SHARED, refusing at once and naming the files, instead "
+   :kept (:sprint-card "v19-finish-scope-refuses-outside-files" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-finish-scope-design,v19-finish-scope-diff-seam" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-finish-scope-refuses-outside-files sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: feature
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: v19-finish-scope-design,v19-finish-scope-diff-seam
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 2: finish computes the files a head touches (git diff BASE...head) and checks them against PATHS, NEW and SHARED, refusing at once and naming the files, instead of a reader or the lander catching it late. Cards v19-finish-scope-design (the decisions, docs/SPEC-SPRINT.md section 7 \"The scope at the finish\", tla/FinishScope.tla) and v19-finish-scope-diff-seam (a.finishDiff) land before this one is dealt; this card makes finishStep refuse an ok finish whose head changes files outside its PATHS, with the words the design names. Seen on nova-sprint sprint/v19 7dbd87cb.
+PATHS: cmd/nova-sprint/read_missing.go,cmd/nova-sprint/finish_scope.go,cmd/nova-sprint/finish_scope_refusal_test.go,internal/ci/testdata/dead_code_allowlist.txt,tla/COVERAGE.tsv,docs/CLI.md,docs/SPEC-SPRINT.md
+SHARED: internal/ci/testdata/dead_code_allowlist.txt,tla/COVERAGE.tsv,docs/CLI.md,docs/SPEC-SPRINT.md
+NEW: cmd/nova-sprint/finish_scope_refusal_test.go,cmd/nova-sprint/finish_scope.go
+TEST: cmd/nova-sprint TestAFinishOutsideItsPathsIsRefusedNamingTheFiles
+DONE-WHEN: `go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^(TestAFinishOutsideItsPathsIsRefusedNamingTheFiles|TestAFinishWhoseDiffCannotBeReadIsTakenWithANote|TestFinishRefusesHeadNotOnOrigin|TestFinishOriginRefusalIsAtomicAcrossCards|TestFriendCollectionRefusesHeadLookupFailure)$' -v` shows the two new tests RUN and PASS at head and the three finish-origin tests still passing (red at BASE with the test file of STEP 2 added: the finish outside PATHS is taken into review; the worker records the actual line); go vet ./... is clean; `go test -tags functional -count=1 -timeout 900s ./internal/ci/ -run '^TestDeadCode$'` passes; `go test -count=1 -timeout 900s ./cmd/nova-sprint/` passes; and no test is newly red against BASE.
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 150 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 150 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: sprint.LandScope and diffcheck.ExpectedEntry, the lander's own rule and words (D2); no second scope rule.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). Read first: docs/SPEC-SPRINT.md section 7, \"The scope at the finish\" (D1 to D6). cmd/nova-sprint/read_missing.go finishStep (after the planner accepts, for each unit whose primary enters review with result ok: the REPO from swarm.ReadCardBase, the branch, finishOrigin; refusals all or none); cmd/nova-sprint/finish_scope.go a.finishDiff (v19-finish-scope-diff-seam); internal/sprint/land_scope.go LandScope; cmd/nova-sprint/land.go checkCard (how land reads the card's PATHS for E12 and words a refusal with diffcheck.ExpectedEntry; read where landCard.paths is filled and read the brief the same way); cmd/nova-sprint/finish_origin_test.go (newServerRig, dealOriginFixture, r.a.readHeads faked: the pattern for these tests). The friend's collection (collect.go friendFinishStep, friendcards.go friendCollect) runs the same finishStep and needs no change.
+
+THE TASK. In finishStep, after finishOrigin passes for a card and only when a.finishDiff is not nil (D1, D5: an ok finish entering review at a full-sha head whose brief names PATHS): call a.finishDiff(ctx, repo, base, head) once per card per call (cache the result by card and head across snapshot retries of the step, D6), then sprint.LandScope(paths, diff, tracked). Files refused: refuse the card with the words of D3, `the head <sha12> changes files outside its PATHS (E12 at the finish): <file> (expected to match PATHS entry <e>), ...; take them out of the head and finish again, or finish HOLD with a PATHS-PROPOSED: line naming them; nothing was changed`, and the plan is refused for every card named (all or none). A diff error: the finish is taken, and one NOTE line `finish scope not judged for <card>: <why>` is said (D4: through the plan's Said). Remove the two dead-code allowlist rows the seam card added. Move the tla/COVERAGE.tsv finish-scope row to status current. Cite tla/FinishScope.tla (Finish) from the check.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first: write cmd/nova-sprint/finish_scope_refusal_test.go, package main, opening each test with t.Parallel(), on newServerRig as cmd/nova-sprint/finish_origin_test.go builds it, with r.a.readHeads holding the head and r.a.finishDiff faked (a unified diff text written in the test; no git). TestAFinishOutsideItsPathsIsRefusedNamingTheFiles: a card whose brief names `PATHS: internal/a.go`; a diff changing internal/a.go and internal/b.go: the finish exits 1, the stderr names internal/b.go, PATHS-PROPOSED and `nothing was changed`, the card stays working; a diff changing internal/a.go and internal/a_test.go is taken (a test is inside every PATHS); a HOLD (--failed) finish with the outside file is taken and finishDiff is never called. TestAFinishWhoseDiffCannotBeReadIsTakenWithANote: finishDiff errors: the finish exits 0, the card leaves working and the stdout holds the NOTE naming the error. Run go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^TestAFinish(Outside|WhoseDiff)' -v and keep the failing line.
+STEP 3. Make the change THE TASK says, in the PATHS files only.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN commands; then go test -count=1 -timeout 900s ./cmd/nova-sprint/ ./internal/sprint/ at the head. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-finish-scope-refuses-outside-files: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-finish-scope-docs" :group "export-v19" :area "nova-sprint"
+   :title "v19-finish-scope-docs"
+   :text "Help and spec words for finish's PATHS scope refusal, and how to ask for more paths with PATHS-PROPOSED. Column waiting, tier pro, base sprint/v19, needs v19-finish-scope-refuses-outside-files. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v19-finish-scope-docs (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 2: finish computes the files a head touches (git diff BASE...head) and checks them against PATHS, NEW and SHARED, refusing at once and naming the files, instead "
+   :kept (:sprint-card "v19-finish-scope-docs" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-finish-scope-refuses-outside-files" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-finish-scope-docs sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: docs
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: v19-finish-scope-refuses-outside-files
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 2: finish computes the files a head touches (git diff BASE...head) and checks them against PATHS, NEW and SHARED, refusing at once and naming the files, instead of a reader or the lander catching it late. Card v19-finish-scope-refuses-outside-files lands before this one is dealt; the finish verb's help, the CLI reference and the friends' guide do not yet say that an ok finish is refused for files outside PATHS, nor what to do. Seen on nova-sprint sprint/v19 7dbd87cb.
+PATHS: cmd/nova-sprint/verbs.go,docs/CLI.md,docs/FRIENDS.md,docs/SPEC-SPRINT.md,cmd/nova-sprint/finish_scope_help_test.go,internal/ci/testdata/dead_code_allowlist.txt
+SHARED: internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md,docs/FRIENDS.md
+NEW: cmd/nova-sprint/finish_scope_help_test.go
+TEST: cmd/nova-sprint TestTheFinishHelpSaysTheScopeRefusal
+DONE-WHEN: `go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^TestTheFinishHelpSaysTheScopeRefusal$' -v` shows it RUN and PASS at head (red at BASE with the test of STEP 2 added: `nova-sprint help finish` names no outside-PATHS refusal; the worker records the actual line); go vet ./... is clean; `go test -count=1 -timeout 900s ./cmd/nova-sprint/ -run 'Help|Verb|CLI'` passes; and no test is newly red against BASE.
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 60 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 60 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: none; text only, and the help test reads the verb's usage as the other help tests in the package read it.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). cmd/nova-sprint/verbs.go the finish row of the verb table (usage and example) and cmdFinish's --head and --failed flag words; docs/CLI.md (if its header says it is generated from the help, regenerate it as it says, else edit the finish entry); docs/FRIENDS.md, the paragraph on REPORT.md and Verdict: LAND|HOLD; docs/SPEC-SPRINT.md section 7, \"The scope at the finish\" (the design, already written: link it, do not restate it). Help tests: cmd/nova-sprint/help_brief_example_test.go and verbhelp.go show how a test reads a verb's help.
+
+THE TASK. (1) cmdFinish's --head flag words gain one sentence: an ok finish whose head changes files outside the brief's PATHS (after the always-in-PATHS rule) is refused naming them; finish HOLD with a PATHS-PROPOSED: line to ask for them. (2) docs/CLI.md's finish entry says the same. (3) docs/FRIENDS.md's REPORT.md paragraph says what a friend sees when her LAND names a head outside PATHS (the sync's note naming the files, the card still hers) and the two moves. (4) docs/SPEC-SPRINT.md section 8, the rules table rows widen and read-broken, each gain a pointer to \"The scope at the finish\". No behaviour changes.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first: write cmd/nova-sprint/finish_scope_help_test.go, package main, opening with t.Parallel(): TestTheFinishHelpSaysTheScopeRefusal runs `help finish` through the app as the package's help tests do and asserts it contains `outside the brief's PATHS` and `PATHS-PROPOSED`. Run go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^TestTheFinishHelp' -v and keep the failing line.
+STEP 3. Make the change THE TASK says, in the PATHS files only.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN commands; then go test -count=1 -timeout 900s ./cmd/nova-sprint/ at the head. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-finish-scope-docs: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-card-review-block" :group "export-v19" :area "nova-sprint"
+   :title "v19-card-review-block"
+   :text "card <id> prints one review block per card: head, branch, PR link, gate lines and the latest read's verdict. Column waiting, tier pro, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v19-card-review-block (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 3: one review view per card: diff stat, touched files against PATHS, the gate lines of the report, the read verdict and the pull request link. Read on nova-sprin"
+   :kept (:sprint-card "v19-card-review-block" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-card-review-block sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: feature
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: none
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 3: one review view per card: diff stat, touched files against PATHS, the gate lines of the report, the read verdict and the pull request link. Read on nova-sprint sprint/v19 7dbd87cb: the sprint dashboard (internal/sprintdash) is one page of rows and cells with no per-card view, and `nova-sprint card <id>` (cmd/nova-sprint/card_story.go printStory) is the one per-card view: its head line, now:, brief:, timeline: and reports and findings:, with each report and read as a paragraph, so a reviewer reads the whole story to find the head, the gate lines, the verdict and the pull request. This card adds one review: block to it from the store alone (no git); v19-card-review-diff-against-paths adds the diff.
+PATHS: cmd/nova-sprint/card_story.go,cmd/nova-sprint/card_review.go,cmd/nova-sprint/card_review_test.go,internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+SHARED: internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+NEW: cmd/nova-sprint/card_review.go,cmd/nova-sprint/card_review_test.go
+TEST: cmd/nova-sprint TestTheCardReviewBlockShowsHeadGateVerdictAndPullRequest
+DONE-WHEN: `go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^(TestTheCardReviewBlockShowsHeadGateVerdictAndPullRequest|TestCardBriefPrintsTheBriefAlone|TestCardStateIsTheTableColumnInEveryReader)$' -v` shows the new test RUN and PASS at head and the two existing card tests still passing (red at BASE with the test file of STEP 2 added: the package does not compile, no reviewOf; the worker records the actual line); go vet ./... is clean; `go test -count=1 -timeout 900s ./cmd/nova-sprint/ -run 'Card'` passes; and no test is newly red against BASE.
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 150 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 150 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: regexp for the pull request URL and strings for the gate lines; no new dependency.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). cmd/nova-sprint/card_story.go: storyText{At, Attempt, By, What (report, finding, fix, reason), Verdict, Text}, texts (the reports and findings from the log, a fleet line's verdict its column or FinishedAs, a reader's its column), printStory (the head line with head and branch, now:, brief:, the given blocks, timeline:, reports and findings:), and swarm.ReadCardBase for REPO and BASE; cmd/nova-sprint/reads.go calls printStory. Tests: cmd/nova-sprint/card_brief_test.go, card_state_test.go (how a card is built on a twin and `card` run).
+
+THE TASK. In cmd/nova-sprint/card_review.go: `type cardReview struct { Head, Branch, Repo, Base, PR, Verdict string; Gate []string }` and `func reviewOf(v store.CardInfo, texts []storyText) cardReview`: Head and Branch as printStory reads them; Repo and Base from the brief (swarm.ReadCardBase); Gate the lines of the latest report (What report, the highest attempt) whose first word is `ok`, `FAIL`, `PASS`, `---`, `TLC`, or that begin `go test`, `go vet` or `make tlc`, at most 20, each cut to 200 bytes, in order; Verdict the latest read's verdict (a text whose By is a reader, the latest At) with its attempt, `-` when none; PR the first `https://github.com/<owner>/<name>/pull/<n>` in the latest report, else `https://github.com/<Repo>/compare/<Base>...<Branch>` when all three are known, else `-`. printStory prints `review:` after the head line and before now:, one line each (`head`, `branch`, `pr`, `verdict`, then `gate:` and its lines indented), only for a card with an attempt; a card with none prints no block. Nothing else in the story changes.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first: write cmd/nova-sprint/card_review_test.go, package main, opening each test with t.Parallel(). TestTheCardReviewBlockShowsHeadGateVerdictAndPullRequest: reviewOf over a CardInfo and texts built in the test (two reports, attempts 1 and 2, the second holding `ok  github.com/x/y 0.4s`, `--- FAIL: TestZ`, prose lines and `https://github.com/mas-bandwidth/nova-sprint/pull/123`; a read text with verdict broken): Gate is the two gate lines of attempt 2 alone, PR the pull URL, Verdict broken at its attempt; with no URL in the report, PR is the compare URL of the brief's REPO and BASE and the branch; a card with no attempt has no block when printStory runs over it (render into a bytes.Buffer). Run go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^TestTheCardReviewBlock' -v and keep the failing line.
+STEP 3. Make the change THE TASK says, in the PATHS files only.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN commands; then go test -count=1 -timeout 900s ./cmd/nova-sprint/ at the head. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-card-review-block: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-card-review-diff-against-paths" :group "export-v19" :area "nova-sprint"
+   :title "v19-card-review-diff-against-paths"
+   :text "The review block adds the diff stat and each touched file scored inside, by rule, amended or outside PATHS. Column waiting, tier pro, base sprint/v19, needs v19-card-review-block,v19-finish-scope-diff-seam. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v19-card-review-diff-against-paths (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 3: one review view per card: diff stat, touched files against PATHS, the gate lines of the report, the read verdict and the pull request link. Cards v19-card-rev"
+   :kept (:sprint-card "v19-card-review-diff-against-paths" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-card-review-block,v19-finish-scope-diff-seam" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-card-review-diff-against-paths sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: feature
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: v19-card-review-block,v19-finish-scope-diff-seam
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 3: one review view per card: diff stat, touched files against PATHS, the gate lines of the report, the read verdict and the pull request link. Cards v19-card-review-block (the review: block of `card <id>`, cmd/nova-sprint/card_review.go) and v19-finish-scope-diff-seam (a.finishDiff, the merge-base diff of a head in land's clone) land before this one is dealt; this card adds the diff stat and the touched files against PATHS to the block, so one view shows what the head changed and what it was allowed to. Seen on nova-sprint sprint/v19 7dbd87cb.
+PATHS: cmd/nova-sprint/card_review.go,cmd/nova-sprint/card_story.go,cmd/nova-sprint/card_review_diff_test.go,internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+SHARED: internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+NEW: cmd/nova-sprint/card_review_diff_test.go,cmd/nova-sprint/card_review.go
+TEST: cmd/nova-sprint TestTheCardReviewShowsTheDiffStatAndEachFileAgainstPaths
+DONE-WHEN: `go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^(TestTheCardReviewShowsTheDiffStatAndEachFileAgainstPaths|TestTheCardReviewBlockShowsHeadGateVerdictAndPullRequest)$' -v` shows the new test RUN and PASS at head and the block's test still passing (red at BASE with the test of STEP 2 added: cardReview has no field Files; the worker records the actual line); go vet ./... is clean; `go test -count=1 -timeout 900s ./cmd/nova-sprint/ -run 'Card'` passes; and no test is newly red against BASE.
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 150 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 150 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: nova-tools pkg/diffcheck Parse (files and hunks of a unified diff) and sprint.LandScope for inside, amended or outside; no second scope rule and no new git call (a.finishDiff is the one).
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). cmd/nova-sprint/card_review.go cardReview and reviewOf (v19-card-review-block); cmd/nova-sprint/finish_scope.go a.finishDiff (v19-finish-scope-diff-seam), nil checking nothing; internal/sprint/land_scope.go LandScope; nova-tools pkg/diffcheck Parse, File{Old, New, Hunks}, ExpectedEntry; cmd/nova-sprint/card_story.go printStory.
+
+THE TASK. (1) cardReview gains `Files []reviewFile` (reviewFile{Path string; Added, Removed int; Scope string: `inside`, `by rule`, `amended` or `outside`}) and `Stat string` (`<n> files, +<a> -<r>`), filled by `func (a *app) reviewDiff(ctx context.Context, r *cardReview, paths []string)` when a.finishDiff is not nil and Head is a full sha: the diff of Base...Head, added and removed lines counted per file from diffcheck.Parse's hunks, each file's Scope from LandScope (outside: refused; amended: ScopeAmended; by rule: OutsideByRule's; inside: the rest), paths read from the brief as v19-finish-scope-refuses-outside-files reads them. A diff error leaves Files empty and Stat `diff not read: <why>`. (2) printStory prints `diff: <Stat>` and one line per file under it, `  <scope>  <path>  +a -r`, outside files first. `card <id>` reads the diff only for a card with a full-sha head; `card --all` and `--json` read none (v19-card-review-json-and-docs adds the JSON).
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first: write cmd/nova-sprint/card_review_diff_test.go, package main, opening each test with t.Parallel(), with a.finishDiff faked by a func returning a unified diff text written in the test (no git, no clock). TestTheCardReviewShowsTheDiffStatAndEachFileAgainstPaths: PATHS `internal/a.go`, a diff changing internal/a.go (+3 -1), internal/a_test.go (+10) and internal/b.go (+1): Stat is `3 files, +14 -1`, the scopes are inside, by rule and outside, and the printed block lists internal/b.go first; a finishDiff error prints `diff not read:` and its words. Run go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^TestTheCardReviewShowsTheDiff' -v and keep the failing line.
+STEP 3. Make the change THE TASK says, in the PATHS files only.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN commands; then go test -count=1 -timeout 900s ./cmd/nova-sprint/ at the head. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-card-review-diff-against-paths: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-card-review-json-and-docs" :group "export-v19" :area "nova-sprint"
+   :title "v19-card-review-json-and-docs"
+   :text "card <id> --json carries the review block, with its docs. Column waiting, tier pro, base sprint/v19, needs v19-card-review-diff-against-paths. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v19-card-review-json-and-docs (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 3: one review view per card: diff stat, touched files against PATHS, the gate lines of the report, the read verdict and the pull request link. Cards v19-card-rev"
+   :kept (:sprint-card "v19-card-review-json-and-docs" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-card-review-diff-against-paths" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-card-review-json-and-docs sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: feature
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: v19-card-review-diff-against-paths
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 3: one review view per card: diff stat, touched files against PATHS, the gate lines of the report, the read verdict and the pull request link. Cards v19-card-review-block and v19-card-review-diff-against-paths land before this one is dealt: `card <id>` prints a review: block, but `card <id> --json` carries none and no document names the block. This card adds the JSON object and the docs. Seen on nova-sprint sprint/v19 7dbd87cb.
+PATHS: cmd/nova-sprint/card_review.go,cmd/nova-sprint/reads.go,cmd/nova-sprint/card_review_json_test.go,docs/SPEC-SPRINT.md,docs/CLI.md,internal/ci/testdata/dead_code_allowlist.txt
+SHARED: internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+NEW: cmd/nova-sprint/card_review_json_test.go,cmd/nova-sprint/card_review.go
+TEST: cmd/nova-sprint TestCardJSONCarriesTheReview
+DONE-WHEN: `go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^(TestCardJSONCarriesTheReview|TestCardJSONNeedsCarryTheirColumn)$' -v` shows the new test RUN and PASS at head and TestCardJSONNeedsCarryTheirColumn still passing (red at BASE with the test of STEP 2 added: the JSON has no review key; the worker records the actual line); go vet ./... is clean; `go test -count=1 -timeout 900s ./cmd/nova-sprint/ -run 'Card|Help'` passes; and no test is newly red against BASE.
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 90 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 90 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: encoding/json struct tags on cardReview; no new helper.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). cmd/nova-sprint/card_review.go cardReview, reviewFile, reviewOf, reviewDiff; cmd/nova-sprint/reads.go, where `card` builds its story and its --json object (find the struct it marshals); cmd/nova-sprint/card_state_test.go TestCardJSONNeedsCarryTheirColumn (how a test reads card --json); docs/SPEC-SPRINT.md, the card verb's row of the verb table; docs/CLI.md the card entry (regenerated as its header says if it is generated).
+
+THE TASK. (1) `card <id> --json` carries `review`: cardReview as JSON (head, branch, repo, base, pr, verdict, gate, stat, files[{path, added, removed, scope}]), omitted for a card with no attempt; the diff part read as the printed block reads it (a full-sha head, a.finishDiff not nil). `card --all --json` and `--stream --json` carry no review (one line a card stays cheap). (2) docs/SPEC-SPRINT.md's card row and docs/CLI.md's card entry say what the review: block shows, where each part comes from (the latest report's gate lines, the latest read's verdict, the pull URL in the report or the compare URL, the merge-base diff against PATHS by the lander's rule) and that the dashboard has no per-card view. Nothing else changes.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first: write cmd/nova-sprint/card_review_json_test.go, package main, opening with t.Parallel(), on a twin store as card_state_test.go builds one, with a.finishDiff faked: TestCardJSONCarriesTheReview: `card <id> --json` of a card finished at a full-sha head holds review.pr, review.gate and review.files with each file's scope; a card never dealt has no review key. Run go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^TestCardJSONCarriesTheReview$' -v and keep the failing line.
+STEP 3. Make the change THE TASK says, in the PATHS files only.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN commands; then go test -count=1 -timeout 900s ./cmd/nova-sprint/ at the head. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-card-review-json-and-docs: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-route-eval-design" :group "export-v19" :area "nova-sprint"
+   :title "v19-route-eval-design"
+   :text "Model and spec: landed cards replayed as an evaluation set for model routes. Column waiting, tier heavy, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v19-route-eval-design (stream v19, column waiting, tier heavy, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 4: landed cards are an evaluation set for model routes: replay a landed card's brief at its BASE on a chosen route, score it against its own DONE-WHEN and a cold"
+   :kept (:sprint-card "v19-route-eval-design" :sprint-stream "v19" :sprint-column "waiting" :tier "heavy" :sprint-base "sprint/v19" :needs "" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-route-eval-design sha=<sha12> tier: heavy
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: feature
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: none
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 4: landed cards are an evaluation set for model routes: replay a landed card's brief at its BASE on a chosen route, score it against its own DONE-WHEN and a cold-read rubric, and end in a measured tier recommendation per model. Today a route's tier is set by judgment (the routes table, internal/sprint/route.go, tier_model.go), never by a measurement on our own work. Every landed card is a task with a known BASE, a DONE-WHEN and a reader's verdict, so the landed cards are an evaluation set. Nothing replays one today: internal/sprintreplay replays an epoch's log through the rule code and runs no model, and the roadmap item decision-evaluation scores nova-decide, not routes. Seen on nova-sprint sprint/v19 7dbd87cb. This card is the judgment piece: the model and the spec. Cards v19-route-eval-replay-runner, v19-route-eval-scorer and v19-route-eval-report implement it and copy its decisions.
+PATHS: tla/RouteEval.tla,tla/MCRouteEval.tla,tla/MCRouteEval.cfg,tla/MCRouteEvalBrokenLands.cfg,tla/MCRouteEvalBrokenScoredTwice.cfg,tla/MCRouteEvalBrokenTooFew.cfg,tla/CASES.tsv,tla/COVERAGE.tsv,tla/RUNS.tsv,docs/SPEC-SPRINT.md
+SHARED: tla/CASES.tsv,tla/COVERAGE.tsv,tla/RUNS.tsv
+NEW: tla/RouteEval.tla,tla/MCRouteEval.tla,tla/MCRouteEval.cfg,tla/MCRouteEvalBrokenLands.cfg,tla/MCRouteEvalBrokenScoredTwice.cfg,tla/MCRouteEvalBrokenTooFew.cfg
+DONE-WHEN: on a Linux bench at head, `make tlc TLC_JAR=/opt/tla/tla2tools.jar TLC_OUT=<dir> TLC_GROUP=routeeval` passes MCRouteEval.cfg and each of the three Broken configs fails on exactly the property its tla/CASES.tsv row names; after `go run ./tools/tlacheck merge --root . --keep tla/RUNS.tsv --out tla/RUNS.tsv <dir>/RUNS.tsv`, `go run ./tools/tlacheck groups --root . --stale` prints `[]`; `grep -c routeeval tla/CASES.tsv` prints 4 (0 at BASE, where none of the NEW files exist); docs/SPEC-SPRINT.md holds the section \"Route evaluation\" with every decision below; and no test is newly red against BASE (`go test -count=1 -timeout 900s ./tools/tlacheck/ ./internal/ci/`).
+TOOLCHAIN: go (the version go.mod names) and TLC (the jar tla/README.md names, /opt/tla/tla2tools.jar, java on the bench's PATH as tla/README.md says) on the Linux bench JOB.md names
+GATE-NEEDS: linux,tla
+STOP: the model, its four configs, the TLC records and the spec section are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 240 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 240 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: none; TLA+ standard modules Naturals, FiniteSets and TLC only, as the other models in tla/ use them.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). cmd/nova-sprint/land.go (a landing merges each head --no-ff with the message `land <id> (sprint stream <s>)` onto the base's tip, so the commit before a card's landing is that merge's first parent and its head the second); the CARRY: line (internal/sprint/rules_read.go, CarryKey in pkg/member): an attempt staged from a named head; cardhdr.ReadModel and route.go routeOf (a brief's line 1 can pin a model: FieldRoute pin, FieldModel), the routes table and tiers (route.go, tier_model.go); the quack verb (cmd/nova-sprint/quack.go, docs/SPEC-SPRINT.md: test cards cut into a running store, each brief whole); `hold <stream>`, `drop`, stream set --land-protected; read briefs (internal/sprint/read_brief.go) and how a reader reads the primary's brief; the cost and attempts records (internal/sprint/cost.go, attempts.go: route, model, tokens, usd and wall per attempt); the decide record root ~/nova-sprint/decide (cmd/nova-sprint/briefdecide.go), on the internal disk.
+
+THE DECISIONS (the design; the model checks it, and you correct a decision only when TLC or the code shows it wrong, saying why in the spec and the report).
+D1. The set: a landed primary is eligible when its brief names REPO, BASE, DONE-WHEN and TEST, its land merge commit is found on BASE by its message, and it is not itself an eval card. The replay starts from the land merge's first parent, the base exactly as the card met it.
+D2. An eval card is an ordinary card in one stream, `route-eval`, cut by `nova-sprint eval cut --from <landed-id>... --route <route-or-model> [--runs <n>]`: its id `eval-<landed-id>-<route>-<n>`, its brief the landed card's brief with line 1 replaced (the eval id, and the model pin of the route), its BASE line kept, a `CARRY: <eval-id> attempt 0 head=<first parent sha>` line so its first attempt is staged at the base the card met, its DEPENDS-ON emptied, and a paragraph FOR THE READER appended (D4). It is dealt, worked and read by the machinery as any card; nothing new deals it.
+D3. An eval card never lands: the `route-eval` stream is land-protected to nothing (no repository is a landing target for it) and the scorer drops each eval card once scored. Model this: no eval card ever reaches landed, whatever the order of read, score and land.
+D4. The score is the reader's: the eval read runs the card's own DONE-WHEN at the head and reports `DONE-WHEN: pass|fail` and `RUBRIC: correct=<0|1> scope=<0|1> tests=<0|1> notime=<0|1> honest=<0|1>` as two lines of its report (correct: the change does what THE TASK asks; scope: no file outside PATHS; tests: the tests pin the behaviour; notime: no real time, socket or network in unit tests; honest: the report claims only what ran). A report without both lines scores `unscored`, never a pass.
+D5. `nova-sprint eval score` writes one JSON line per scored eval card to ~/nova-sprint/eval/scores.jsonl (the internal disk; the record is append-only and keyed by eval id, so a card is scored once): eval id, landed id, landed tier, route, model, attempts, DONE-WHEN, the five rubric marks, usd, wall, the read verdict; then drops the card with --reason `route eval scored`.
+D6. `nova-sprint eval report [--bar 0.8] [--min 10]` reads only the scores file: per route and model, n, DONE-WHEN pass rate, read-ok rate, rubric mean, median usd and wall; and one `TIER <model> <tier>|unmeasured` line per model: the highest landed tier (frontier, heavy, pro, flash) at which the model's pass rate (DONE-WHEN pass and read ok) is at least --bar over at least --min scored cards; unmeasured when no tier has --min. The recommendation is a line for the coordinator; it changes no route.
+
+THE TASK. Write the model and the spec section; no Go code changes in this card. The section \"Route evaluation\" goes in docs/SPEC-SPRINT.md after the routes section, with D1 to D6 as written (corrected only where TLC or the code shows one wrong, saying why: in particular check that land-protected to nothing keeps the lander off the stream, and if it does not, choose and name the existing mechanism that does), the three verbs' usage lines, the score record's fields, and the three build cards by name.
+
+THE MODEL. tla/RouteEval.tla (EXTENDS Naturals, FiniteSets, TLC): CONSTANTS Evals, Tiers, Min, Broken; VARIABLES state (Evals -> {cut, working, review, read, scored, dropped, landed}), scores (a set of eval ids), passes (Evals -> BOOLEAN). Actions: Work(e), Read(e) (passes' arbitrary), Score(e) (read -> scored, scores' = scores \\cup {e}), Drop(e) (scored -> dropped), Land(e) (only from read, and only when Broken = \"lands\"), Recommend (reads scores only). Invariants: EvalNeverLands (no state is landed), ScoredOnce (a scored eval is in scores once and is never scored again: Score requires e \\notin scores), RecommendOnlyMeasured (a TIER line is a tier only when at least Min scores back it). Reversed witnesses: MCRouteEvalBrokenLands.cfg (Broken = \"lands\") fails EvalNeverLands; MCRouteEvalBrokenScoredTwice.cfg (Broken = \"twice\": Score without the guard) fails ScoredOnce; MCRouteEvalBrokenTooFew.cfg (Broken = \"toofew\": recommend at any n) fails RecommendOnlyMeasured. MCRouteEval.tla instantiates three evals, two tiers, Min 2; MCRouteEval.cfg passes all three. The header names the code each action maps to (the eval verbs to be written by the three build cards) and what it abstracts (the reader's DONE-WHEN run folded into passes). Add the four rows to tla/CASES.tsv (group routeeval, gate required, as the MCAskReadIDs rows read) and one row to tla/COVERAGE.tsv (machine route-eval, module RouteEval, status partial, owed_by v19-route-eval-report).
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Read the code WHAT IS THERE names; write the model and its four cfgs and the spec section.
+STEP 3. Run TLC on the Linux bench JOB.md names: `make tlc TLC_JAR=/opt/tla/tla2tools.jar TLC_OUT=<dir> TLC_GROUP=routeeval` (java on PATH as tla/README.md says). Verify each counterexample against the code and the decisions by hand before writing it down.
+STEP 4. Refresh the records as tla/README.md says (\"Refreshing the records after a model edit\"): `go run ./tools/tlacheck merge --root . --keep tla/RUNS.tsv --out tla/RUNS.tsv <dir>/RUNS.tsv`, then `go run ./tools/tlacheck groups --root . --stale` must print `[]`. Then run the gate: go vet ./... ; go test -count=1 -timeout 900s ./tools/tlacheck/ ./internal/ci/ . When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-route-eval-design: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, the TLC results with each witness's counterexample, each decision as written in the spec, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+TLC runs on a Linux bench, never on the coordinator's machine.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-route-eval-replay-runner" :group "export-v19" :area "nova-sprint"
+   :title "v19-route-eval-replay-runner"
+   :text "Build eval cards that replay a landed card's brief on a chosen route and model from its first parent. Column waiting, tier pro, base sprint/v19, needs v19-route-eval-design. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v19-route-eval-replay-runner (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 4: landed cards are an evaluation set for model routes: replay a landed card's brief at its BASE on a chosen route, score it against its own DONE-WHEN and a cold"
+   :kept (:sprint-card "v19-route-eval-replay-runner" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-route-eval-design" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-route-eval-replay-runner sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: feature
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: v19-route-eval-design
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 4: landed cards are an evaluation set for model routes: replay a landed card's brief at its BASE on a chosen route, score it against its own DONE-WHEN and a cold-read rubric, and end in a measured tier recommendation per model. Card v19-route-eval-design (landed before this one is dealt) wrote docs/SPEC-SPRINT.md \"Route evaluation\" (D1 to D6) and tla/RouteEval.tla; this card writes `nova-sprint eval cut`, which replays landed cards' briefs at their BASE on a chosen route as eval cards (D1, D2, D3). Seen on nova-sprint sprint/v19 7dbd87cb.
+PATHS: internal/sprint/route_eval.go,internal/sprint/route_eval_brief_test.go,cmd/nova-sprint/eval.go,cmd/nova-sprint/eval_cut_test.go,cmd/nova-sprint/verbs.go,internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+SHARED: internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+NEW: internal/sprint/route_eval.go,internal/sprint/route_eval_brief_test.go,cmd/nova-sprint/eval.go,cmd/nova-sprint/eval_cut_test.go
+TEST: internal/sprint TestAnEvalBriefIsTheLandedBriefAtItsBaseOnTheRoute
+DONE-WHEN: `go test -count=1 -timeout 600s ./internal/sprint/ -run '^TestAnEvalBriefIsTheLandedBriefAtItsBaseOnTheRoute$' -v` and `go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^TestEvalCutAdmitsOneHeldBackCardPerRun$' -v` show both RUN and PASS at head (red at BASE with the tests of STEP 2 added: neither package compiles, no EvalBrief and no eval verb; the worker records the actual lines); go vet ./... is clean; `go test -count=1 -timeout 900s ./internal/sprint/ ./cmd/nova-sprint/ -run 'Eval|Verb|Help'` passes; and no test is newly red against BASE.
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 180 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 180 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: cardhdr (ReadModel, KeyValue) for line 1 and the header, the add path's own admission (the same code `add --brief-file` runs) and a gitFn seam as cmd/nova-sprint/finish_scope.go has; no second admission path.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). Read first: docs/SPEC-SPRINT.md \"Route evaluation\" (D1 to D6). cmd/nova-sprint/add.go and add_lint.go (how add admits cards from briefs: the lint, the PATHS check at the BASE tip, a CARRY: head= brief skipping the existence check), cmd/nova-sprint/quack.go (a verb that cuts whole briefs into a stream), cardhdr.ReadModel (line 1's tier or model), the CARRY line (pkg/member CarryKey), the routes table (internal/sprint/route.go: a route's model), land's commit message `land <id> (sprint stream <s>)` (cmd/nova-sprint/land.go) and land's clone (a.landRoot, repoDirName).
+
+THE TASK. (1) internal/sprint/route_eval.go: `func EvalID(landed, route string, run int) string` (`eval-<landed>-<route>-<run>`, the route's characters outside [a-z0-9-] dashed) and `func EvalBrief(landed *Card, route, model, firstParent string, run int) (string, error)`: D2 exactly: line 1 `RESULT: <eval id> sha=<sha12> model: <model>` (as cardhdr.ReadModel reads a pin), the header kept with DEPENDS-ON emptied and `CARRY: <eval id> attempt 0 head=<firstParent>` put under line 1, the body kept, and the paragraph FOR THE READER of D4 appended word for word from the spec; refused (an error naming what is missing) for a brief missing REPO, BASE, DONE-WHEN or TEST, a landed card not in column landed, a firstParent that is not a full sha, or a landed card that is an eval card (its id starts `eval-`). (2) cmd/nova-sprint/eval.go: `nova-sprint eval cut --from <id>[,<id>...] --route <name> [--runs <n>] [--dry-run]`: the route's model from the routes table (an unknown route refused); for each landed card, the land merge on BASE found in land's clone through a gitFn seam (`log --first-parent --format=%H %P --grep '^land <id> (sprint stream ' origin/<BASE>`: the merge whose second parent is the card's head; its first parent is firstParent); the briefs admitted into stream route-eval through the add path, all or none; --dry-run prints each brief's first three lines and admits nothing. One line per card `EVAL CUT <eval id> from=<landed> route=<r> base=<sha12>`, then `EVAL CUT OK cards=<n>`. The stream's never-land mechanism is the one the spec names (D3); set it on the first cut as the spec says. (3) The verb's row in verbs.go's table with usage and example.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first, each test opening with t.Parallel(): internal/sprint/route_eval_brief_test.go (package sprint) TestAnEvalBriefIsTheLandedBriefAtItsBaseOnTheRoute: EvalBrief over a landed card whose brief has a tier line 1, REPO, BASE, DEPENDS-ON: a,b, PATHS, TEST and DONE-WHEN: line 1 is the eval id with the model pin, DEPENDS-ON is none, the CARRY line names the first parent, every other header and body line is unchanged, FOR THE READER ends the brief; each refusal case of THE TASK errors naming what is missing. cmd/nova-sprint/eval_cut_test.go (package main) TestEvalCutAdmitsOneHeldBackCardPerRun: on a twin store with one landed card and a route, a fake gitFn answering the log line: `eval cut --from <id> --route <r> --runs 2` admits two cards in stream route-eval whose briefs are EvalBrief's, and --dry-run admits none. Run both and keep the failing lines.
+STEP 3. Make the change THE TASK says, in the PATHS files only.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN commands; then go test -count=1 -timeout 900s ./internal/sprint/ ./cmd/nova-sprint/ at the head. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-route-eval-replay-runner: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-route-eval-scorer" :group "export-v19" :area "nova-sprint"
+   :title "v19-route-eval-scorer"
+   :text "Score each eval run from its read report: DONE-WHEN pass or fail and a five-mark rubric, unscored never a pass. Column waiting, tier pro, base sprint/v19, needs v19-route-eval-design. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v19-route-eval-scorer (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 4: landed cards are an evaluation set for model routes: replay a landed card's brief at its BASE on a chosen route, score it against its own DONE-WHEN and a cold"
+   :kept (:sprint-card "v19-route-eval-scorer" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-route-eval-design" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-route-eval-scorer sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: feature
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: v19-route-eval-design
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 4: landed cards are an evaluation set for model routes: replay a landed card's brief at its BASE on a chosen route, score it against its own DONE-WHEN and a cold-read rubric, and end in a measured tier recommendation per model. Card v19-route-eval-design (landed before this one is dealt) wrote docs/SPEC-SPRINT.md \"Route evaluation\" (D1 to D6); this card writes the score (D4) as a pure function and `nova-sprint eval score`, which records it (D5) and drops the scored eval card. Seen on nova-sprint sprint/v19 7dbd87cb.
+PATHS: internal/sprint/route_eval_score.go,internal/sprint/route_eval_score_test.go,cmd/nova-sprint/eval_score.go,cmd/nova-sprint/eval_score_test.go,cmd/nova-sprint/verbs.go,internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+SHARED: internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+NEW: internal/sprint/route_eval_score.go,internal/sprint/route_eval_score_test.go,cmd/nova-sprint/eval_score.go,cmd/nova-sprint/eval_score_test.go
+TEST: internal/sprint TestAnEvalScoreIsTheReadersDoneWhenAndRubric
+DONE-WHEN: `go test -count=1 -timeout 600s ./internal/sprint/ -run '^TestAnEvalScoreIsTheReadersDoneWhenAndRubric$' -v` and `go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^TestEvalScoreRecordsEachCardOnceAndDropsIt$' -v` show both RUN and PASS at head (red at BASE with the tests of STEP 2 added: neither package compiles, no EvalScoreOf and no eval score verb; the worker records the actual lines); go vet ./... is clean; `go test -count=1 -timeout 900s ./internal/sprint/ ./cmd/nova-sprint/ -run 'Eval|Verb|Help'` passes; and no test is newly red against BASE.
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 150 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 150 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: encoding/json for the record line, nova-tools pkg/atomicfile is not used (the file is appended, O_APPEND, one write a line), and the drop step the drop verb runs; no new store table.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). Read first: docs/SPEC-SPRINT.md \"Route evaluation\" (D4, D5). The read verdict and report on a read card (internal/sprint/verdicts.go, read_cards.go; cmd/nova-sprint/card_story.go texts reads them from the log), the attempt's cost and wall (internal/sprint/cost.go, attempts.go: FieldRoute, FieldModel, usd, wall), the drop step (cmd/nova-sprint drop verb in verbs.go and its sprint step), the decide record path pattern (cmd/nova-sprint/briefdecide.go: ~/nova-sprint/decide/brief.jsonl).
+
+THE TASK. (1) internal/sprint/route_eval_score.go: `type EvalScore struct { Eval, Landed, LandedTier, Route, Model, DoneWhen, Verdict string; Rubric map[string]int; Attempts int; USD float64; WallSeconds int }` with JSON tags as the spec's record names them, and `func EvalScoreOf(eval *Card, landedTier, readReport, verdict string) EvalScore`: DONE-WHEN from the report line `DONE-WHEN: pass|fail` (the last such line), the rubric from the line `RUBRIC: correct=<0|1> scope=<0|1> tests=<0|1> notime=<0|1> honest=<0|1>` (all five, each 0 or 1); a report missing either line, or with a mark outside 0 and 1, scores DoneWhen `unscored` and an empty Rubric (D4: never a pass). (2) cmd/nova-sprint/eval_score.go: `nova-sprint eval score [--file <path>] [--dry-run]` (default ~/nova-sprint/eval/scores.jsonl): for each card of stream route-eval whose latest read has a verdict and whose eval id is not already in the file, one JSON line appended, then the card dropped with --reason `route eval scored` through the drop step (D5: the line first, then the drop; a card whose id is in the file is only dropped). One line per card `EVAL SCORED <eval> done-when=<..> verdict=<..>`, then `EVAL SCORE OK scored=<n> dropped=<n>`. (3) The verb's row in verbs.go.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first, each test opening with t.Parallel(): internal/sprint/route_eval_score_test.go (package sprint) TestAnEvalScoreIsTheReadersDoneWhenAndRubric: a report with both lines scores them; missing RUBRIC, a mark of 2, and two DONE-WHEN lines (the last wins) are each pinned. cmd/nova-sprint/eval_score_test.go (package main) TestEvalScoreRecordsEachCardOnceAndDropsIt: on a twin store with two read eval cards and a scores file in t.TempDir() already holding one of them: one line is appended for the other, both cards are dropped, and running the verb again appends nothing. Run both and keep the failing lines.
+STEP 3. Make the change THE TASK says, in the PATHS files only.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN commands; then go test -count=1 -timeout 900s ./internal/sprint/ ./cmd/nova-sprint/ at the head. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-route-eval-scorer: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-route-eval-report" :group "export-v19" :area "nova-sprint"
+   :title "v19-route-eval-report"
+   :text "Report eval scores per route and model and advise the highest tier each model passes. Column waiting, tier pro, base sprint/v19, needs v19-route-eval-scorer. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v19-route-eval-report (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 4: landed cards are an evaluation set for model routes: replay a landed card's brief at its BASE on a chosen route, score it against its own DONE-WHEN and a cold"
+   :kept (:sprint-card "v19-route-eval-report" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-route-eval-scorer" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-route-eval-report sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: feature
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: v19-route-eval-scorer
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 4: landed cards are an evaluation set for model routes: replay a landed card's brief at its BASE on a chosen route, score it against its own DONE-WHEN and a cold-read rubric, and end in a measured tier recommendation per model. Cards v19-route-eval-design (D6) and v19-route-eval-scorer (EvalScore and the scores file) land before this one is dealt; this card writes `nova-sprint eval report`, the per-route table and the measured tier recommendation per model. Seen on nova-sprint sprint/v19 7dbd87cb.
+PATHS: internal/sprint/route_eval_report.go,internal/sprint/route_eval_report_test.go,cmd/nova-sprint/eval_report.go,cmd/nova-sprint/verbs.go,tla/COVERAGE.tsv,internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+SHARED: tla/COVERAGE.tsv,internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+NEW: internal/sprint/route_eval_report.go,internal/sprint/route_eval_report_test.go,cmd/nova-sprint/eval_report.go
+TEST: internal/sprint TestTheEvalReportRecommendsOnlyMeasuredTiers
+DONE-WHEN: `go test -count=1 -timeout 600s ./internal/sprint/ -run '^TestTheEvalReportRecommendsOnlyMeasuredTiers$' -v` shows it RUN and PASS at head (red at BASE with the test of STEP 2 added: the package does not compile, no EvalReport; the worker records the actual line); go vet ./... is clean; `go test -count=1 -timeout 900s ./internal/sprint/ ./cmd/nova-sprint/ -run 'Eval|Verb|Help'` passes; and no test is newly red against BASE.
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 120 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 120 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: slices.Sort for the medians and cardhdr's tier order (frontier, heavy, pro, flash); no statistics package.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). Read first: docs/SPEC-SPRINT.md \"Route evaluation\" (D6). internal/sprint/route_eval_score.go EvalScore (v19-route-eval-scorer); cmd/nova-sprint/eval_score.go (the scores file path and how it is read); the tier names in nova-tools pkg/cardhdr (RouteList).
+
+THE TASK. (1) internal/sprint/route_eval_report.go: `type EvalRow struct { Route, Model string; N int; DoneWhenPass, ReadOK, Rubric float64; MedianUSD float64; MedianWall int }`, `type TierAdvice struct { Model, Tier string }` (Tier `unmeasured` when none) and `func EvalReport(scores []EvalScore, bar float64, min int) ([]EvalRow, []TierAdvice)`: rows per route and model in name order, unscored records counted in N and never as passes; per model, the highest landed tier whose pass rate (DoneWhen pass and Verdict ok) is at least bar over at least min records of that tier (D6). (2) cmd/nova-sprint/eval_report.go: `nova-sprint eval report [--file <path>] [--bar 0.8] [--min 10] [--json]` prints one `EVAL ROUTE route=<r> model=<m> n=<n> done-when=<p%> read-ok=<p%> rubric=<x.xx> usd=<median> wall=<median>s` line per row and one `TIER <model> <tier>` line per model; a missing or empty file prints `EVAL REPORT nothing scored` and exits 0. It changes no route. (3) The verb's row in verbs.go; move the route-eval row of tla/COVERAGE.tsv to status current.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first: write internal/sprint/route_eval_report_test.go, package sprint, opening with t.Parallel(): TestTheEvalReportRecommendsOnlyMeasuredTiers over records built in the test: model A passing 9 of 10 heavy and 10 of 10 pro cards is TIER heavy at bar 0.8 min 10; model B with 9 heavy records is unmeasured at min 10 and heavy at min 5 when 5 of them pass; unscored records lower the rate and never count as passes; medians are pinned for an odd and an even count. Run it and keep the failing line.
+STEP 3. Make the change THE TASK says, in the PATHS files only.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN commands; then go test -count=1 -timeout 900s ./internal/sprint/ ./cmd/nova-sprint/ at the head. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-route-eval-report: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-friend-card-status-design" :group "export-v19" :area "nova-sprint"
+   :title "v19-friend-card-status-design"
+   :text "Model and spec: one live status record per friend card (working, testing, blocked, waiting, with a note). Column waiting, tier heavy, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v19-friend-card-status-design (stream v19, column waiting, tier heavy, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator "
+   :kept (:sprint-card "v19-friend-card-status-design" :sprint-stream "v19" :sprint-column "waiting" :tier "heavy" :sprint-base "sprint/v19" :needs "" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-friend-card-status-design sha=<sha12> tier: heavy
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: feature
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: none
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator must act (nova-hook stays the one channel). Today a friend tells the coordinator how her card is going in bus messages, each one interrupting the coordinator's turn whether or not it must act, while the sprint already holds the one record of the card (its work card: the holder, the attempt, FieldProgress stamped by `progress`). The rules this must keep: the coordinator messages a friend only to act, batched (the owner, 2026-10-14), and nova-hook push is the one channel to a friend (the owner, 2026-10-16); presence is nova-hook's proof alone. Seen on nova-sprint sprint/v19 7dbd87cb. This card is the judgment piece: the model and the spec. Cards v19-friend-card-status-record, v19-friend-card-status-from-the-outbox, v19-friend-card-status-shown-to-the-coordinator, v19-friend-card-status-act-raises-one-judgment and v19-friend-card-status-instructions implement it and copy its decisions.
+PATHS: tla/FriendCardStatus.tla,tla/MCFriendCardStatus.tla,tla/MCFriendCardStatus.cfg,tla/MCFriendCardStatusBrokenStatusSends.cfg,tla/MCFriendCardStatusBrokenNoDedupe.cfg,tla/MCFriendCardStatusBrokenAnyRow.cfg,tla/CASES.tsv,tla/COVERAGE.tsv,tla/RUNS.tsv,docs/SPEC-SPRINT.md
+SHARED: tla/CASES.tsv,tla/COVERAGE.tsv,tla/RUNS.tsv
+NEW: tla/FriendCardStatus.tla,tla/MCFriendCardStatus.tla,tla/MCFriendCardStatus.cfg,tla/MCFriendCardStatusBrokenStatusSends.cfg,tla/MCFriendCardStatusBrokenNoDedupe.cfg,tla/MCFriendCardStatusBrokenAnyRow.cfg
+DONE-WHEN: on a Linux bench at head, `make tlc TLC_JAR=/opt/tla/tla2tools.jar TLC_OUT=<dir> TLC_GROUP=friendcardstatus` passes MCFriendCardStatus.cfg and each of the three Broken configs fails on exactly the property its tla/CASES.tsv row names; after `go run ./tools/tlacheck merge --root . --keep tla/RUNS.tsv --out tla/RUNS.tsv <dir>/RUNS.tsv`, `go run ./tools/tlacheck groups --root . --stale` prints `[]`; `grep -c friendcardstatus tla/CASES.tsv` prints 4 (0 at BASE, where none of the NEW files exist); docs/SPEC-SPRINT.md holds the subsection \"A friend card's status\" with every decision below; and no test is newly red against BASE (`go test -count=1 -timeout 900s ./tools/tlacheck/ ./internal/ci/`).
+TOOLCHAIN: go (the version go.mod names) and TLC (the jar tla/README.md names, /opt/tla/tla2tools.jar, java on the bench's PATH as tla/README.md says) on the Linux bench JOB.md names
+GATE-NEEDS: linux,tla
+STOP: the model, its four configs, the TLC records and the spec subsection are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 240 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 240 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: none; TLA+ standard modules Naturals, FiniteSets and TLC only, as the other models in tla/ use them.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). internal/sprint/rules.go ProgressReq and Progress (holder-only, generation-checked, stamps FieldProgress at the server's time; tla/SprintRules.tla Stamp, tla/AttemptsEpochs.tla Report) and cmd/nova-sprint/verbs.go cmdProgress (served by the sprint server: serve.go); cmd/nova-sprint/friendcards.go friendBrief (the STATUS: line of a friend's inbox/<job>/BRIEF.md), friendReadReport (outbox/<job>/REPORT.md, read by friend sync) and friendCardsOf; the coordinator's inbox and push (internal/sprint/judgments.go, cmd/nova-sprint/coordinator_push.go: judgments reach the coordinator through nova-hook); cmd/nova-sprint/card_story.go nowLines; cmd/nova-sprint/friendcards_verb.go (friend cards); docs/FRIENDS.md (the inbox and outbox).
+
+THE DECISIONS (the design; the model checks it, and you correct a decision only when TLC or the code shows it wrong, saying why in the spec and the report).
+D1. One record per friend work card, on the fleet work card itself: `friend_status` (one word: working, testing, blocked, waiting), `friend_note` (one line, at most 280 bytes, oneline-escaped) and `friend_status_at` (the server's time of the last change). It is written only through the progress step (Progress, extended): holder-only and generation-checked as the stamp is, the stamp moving with it. A write that changes nothing writes nothing.
+D2. The friend writes it by a file, as she writes her report: outbox/<job>/STATUS.md, line 1 `State: <word>`, line 2 `Note: <text>`, an optional line 3 `Act: <what the coordinator must do>`. Friend sync reads it each pass beside REPORT.md and sends the progress step only when it differs from the record. `nova-sprint progress --status <word> --note <text> [--act <text>]` is the same write for a member or by hand.
+D3. A status write sends nothing: no bus message, no push, no judgment. The coordinator reads the record when it looks: `card <id>` (its now: block) and `friend cards`.
+D4. An `Act:` text raises one judgment to the coordinator on that card, through the inbox and its push (nova-hook, the one channel), at most once per card, attempt and act text; the same Act again raises nothing; a new Act text raises a new one. Clearing the Act line closes nothing: the coordinator answers the judgment.
+D5. The friend is told to keep bus messages for conversation and for answers to judgments; card state goes in STATUS.md. Presence and liveness are unchanged: a stale friend_status_at is never a down signal (nova-hook's proof alone is).
+
+THE TASK. Write the model and the spec subsection; no Go code changes in this card. The subsection \"A friend card's status\" goes in docs/SPEC-SPRINT.md beside the progress verb and the friend's inbox and outbox, with D1 to D5 as written (corrected only where TLC or the code shows one wrong, saying why), the STATUS.md form, the progress flags, the judgment's words, and the five build cards by name.
+
+THE MODEL. tla/FriendCardStatus.tla (EXTENDS Naturals, FiniteSets, TLC): CONSTANTS Rows, Cards, Texts, Broken; VARIABLES holder (Cards -> Rows), gen (Cards -> 1..2), record (Cards -> [status, act]), msgs (a set of sent messages), judgments (a set of <<card, gen, text>>). Actions: Write(r, c, g, s, a) (D1: refused unless r = holder[c] and g = gen[c]; record' updated; with a non-empty act not already in judgments for <<c, gen[c], a>>, judgments' adds it, D4), Redeal(c) (gen' and holder' change), Answer(j). Invariants: StatusSendsNothing (msgs never grows: the record path sends no bus message, D3), OneJudgmentPerAct (judgments holds at most one entry per card, gen and text), OnlyHolderWrites (an action property: record changes only by the holder at the live gen). Reversed witnesses: MCFriendCardStatusBrokenStatusSends.cfg (Broken = \"sends\": each write adds a message) fails StatusSendsNothing; MCFriendCardStatusBrokenNoDedupe.cfg (Broken = \"nodedupe\") fails OneJudgmentPerAct; MCFriendCardStatusBrokenAnyRow.cfg (Broken = \"anyrow\") fails OnlyHolderWrites. MCFriendCardStatus.tla instantiates two rows, one card, two texts; MCFriendCardStatus.cfg passes all three. The header names the code each action maps to (internal/sprint/rules.go Progress, cmd/nova-sprint/friendcards.go) and what it abstracts. Add the four rows to tla/CASES.tsv (group friendcardstatus, gate required, as the MCAskReadIDs rows read) and one row to tla/COVERAGE.tsv (machine friend-card-status, code internal/sprint/rules.go, module FriendCardStatus, status partial, owed_by v19-friend-card-status-act-raises-one-judgment).
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Read the code WHAT IS THERE names; write the model and its four cfgs and the spec subsection.
+STEP 3. Run TLC on the Linux bench JOB.md names: `make tlc TLC_JAR=/opt/tla/tla2tools.jar TLC_OUT=<dir> TLC_GROUP=friendcardstatus` (java on PATH as tla/README.md says). Verify each counterexample against the code and the decisions by hand before writing it down.
+STEP 4. Refresh the records as tla/README.md says (\"Refreshing the records after a model edit\"): `go run ./tools/tlacheck merge --root . --keep tla/RUNS.tsv --out tla/RUNS.tsv <dir>/RUNS.tsv`, then `go run ./tools/tlacheck groups --root . --stale` must print `[]`. Then run the gate: go vet ./... ; go test -count=1 -timeout 900s ./tools/tlacheck/ ./internal/ci/ . When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-friend-card-status-design: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, the TLC results with each witness's counterexample, each decision as written in the spec, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+TLC runs on a Linux bench, never on the coordinator's machine.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-friend-card-status-record" :group "export-v19" :area "nova-sprint"
+   :title "v19-friend-card-status-record"
+   :text "The store keeps a friend's live status and note on the card through progress. Column waiting, tier pro, base sprint/v19, needs v19-friend-card-status-design. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v19-friend-card-status-record (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator "
+   :kept (:sprint-card "v19-friend-card-status-record" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-friend-card-status-design" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-friend-card-status-record sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: feature
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: v19-friend-card-status-design
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator must act (nova-hook stays the one channel). Card v19-friend-card-status-design (landed before this one is dealt) wrote docs/SPEC-SPRINT.md \"A friend card's status\" (D1 to D5) and tla/FriendCardStatus.tla; this card writes the record through the progress step and `progress --status --note` (D1, D3), with no act (v19-friend-card-status-act-raises-one-judgment) and no reader of the file (v19-friend-card-status-from-the-outbox). Seen on nova-sprint sprint/v19 7dbd87cb.
+PATHS: internal/sprint/rules.go,internal/sprint/friend_card_status_test.go,cmd/nova-sprint/verbs.go,cmd/nova-sprint/progress_status_test.go,internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+SHARED: internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+NEW: internal/sprint/friend_card_status_test.go,cmd/nova-sprint/progress_status_test.go
+TEST: internal/sprint TestAProgressStatusIsOneRecordTheHolderReplaces
+DONE-WHEN: `go test -count=1 -timeout 600s ./internal/sprint/ -run '^TestAProgressStatusIsOneRecordTheHolderReplaces$' -v` and `go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^TestProgressStatusWritesTheRecordAndSendsNothing$' -v` show both RUN and PASS at head (red at BASE with the tests of STEP 2 added: ProgressReq has no field Status, and progress has no --status flag; the worker records the actual lines); go vet ./... is clean; `go test -count=1 -timeout 900s ./internal/sprint/ -run 'Progress|Late|Stamp'` passes; and no test is newly red against BASE.
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 120 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 120 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: nova-tools pkg/oneline (Escape) for the note, and MaxCardTextBytes's pattern for the bound; no new table.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). Read first: docs/SPEC-SPRINT.md \"A friend card's status\" (D1, D3). internal/sprint/rules.go ProgressReq{Sel, As, Gens, Who, Lane} and Progress (refusals: not working, held by another row, a generation not live; then FieldProgress at the server's time and nothing else); cmd/nova-sprint/verbs.go cmdProgress (--as, --lane; the step through runStep); the tests of the progress stamp (grep the package for TestAProgress or FieldProgress) for how a working card is built.
+
+THE TASK. (1) internal/sprint/rules.go: constants FieldFriendStatus = \"friend_status\", FieldFriendNote = \"friend_note\", FieldFriendStatusAt = \"friend_status_at\"; ProgressReq gains `Status, Note string`; Progress, after its refusals, also sets the three fields when Status or Note is given: Status one of working, testing, blocked, waiting (else refused, naming the four), Note one line cut to 280 bytes after oneline.Escape, the time the server's as the stamp's is; a Status and Note equal to the record's write only the stamp (D1: a write that changes nothing changes nothing else). Cite tla/FriendCardStatus.tla Write. (2) cmd/nova-sprint/verbs.go cmdProgress: flags --status and --note with the words of D1 and D3; the progress row's usage names them. Nothing is sent on the bus and nothing raised (D3).
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first, each test opening with t.Parallel(), time as an argument starting at 1000 s: internal/sprint/friend_card_status_test.go (package sprint) TestAProgressStatusIsOneRecordTheHolderReplaces: on a Snapshot with one working card on friend.amy's row, Progress with Status testing and a Note writes the three fields; a second write replaces them; the same Status and Note writes only the stamp; another row and a stale generation are refused and write nothing; Status `done` is refused naming the four; a 400-byte note is cut to 280. cmd/nova-sprint/progress_status_test.go (package main) TestProgressStatusWritesTheRecordAndSendsNothing: on a twin store with a.bus recording, `progress --as <row> <card>@<gen> --status blocked --note ...` exits 0, the card holds the fields and the recorder holds no message. Run both and keep the failing lines.
+STEP 3. Make the change THE TASK says, in the PATHS files only.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN commands; then go test -count=1 -timeout 900s ./internal/sprint/ ./cmd/nova-sprint/ at the head. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-friend-card-status-record: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-friend-card-status-from-the-outbox" :group "export-v19" :area "nova-sprint"
+   :title "v19-friend-card-status-from-the-outbox"
+   :text "The friend's STATUS.md in its outbox is read and written to the card's status record. Column waiting, tier pro, base sprint/v19, needs v19-friend-card-status-record. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v19-friend-card-status-from-the-outbox (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator "
+   :kept (:sprint-card "v19-friend-card-status-from-the-outbox" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-friend-card-status-record" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-friend-card-status-from-the-outbox sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: feature
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: v19-friend-card-status-record
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator must act (nova-hook stays the one channel). Cards v19-friend-card-status-design (D2) and v19-friend-card-status-record (the record through Progress) land before this one is dealt; this card makes friend sync read outbox/<job>/STATUS.md beside REPORT.md and write the record only when it changed. Seen on nova-sprint sprint/v19 7dbd87cb.
+PATHS: cmd/nova-sprint/friendcards.go,cmd/nova-sprint/friend_status_file.go,cmd/nova-sprint/friend_status_file_test.go,internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+SHARED: internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+NEW: cmd/nova-sprint/friend_status_file.go,cmd/nova-sprint/friend_status_file_test.go
+TEST: cmd/nova-sprint TestFriendSyncWritesTheStatusFileOnlyWhenItChanged
+DONE-WHEN: `go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^(TestFriendSyncWritesTheStatusFileOnlyWhenItChanged|TestAStatusFileIsReadAsThreeLines)$' -v` shows both RUN and PASS at head (red at BASE with the test file of STEP 2 added: the package does not compile, no friendReadStatus; the worker records the actual line); go vet ./... is clean; `go test -count=1 -timeout 900s ./cmd/nova-sprint/ -run 'Friend'` passes; and no test is newly red against BASE.
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 150 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 150 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: os.ReadFile and bufio-free line splitting as friendReadReport reads REPORT.md; no new file watcher.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). Read first: docs/SPEC-SPRINT.md \"A friend card's status\" (D2). cmd/nova-sprint/friendcards.go friendJobOf (the job directory name), friendReadReport(dir, job) (outbox/<job>/REPORT.md, its size bound and its time), friendCardsOf (the sync pass over a friend's dealt cards); internal/sprint/rules.go ProgressReq{Status, Note} and the fields FieldFriendStatus, FieldFriendNote (v19-friend-card-status-record); store.ProgressStep. Tests: cmd/nova-sprint/friendcards_test.go and friendcards_report_test.go (a friend's directory in t.TempDir() and a twin store).
+
+THE TASK. (1) cmd/nova-sprint/friend_status_file.go: `type friendStatus struct { State, Note, Act string }` and `func friendReadStatus(dir, job string) (friendStatus, bool, error)`: outbox/<job>/STATUS.md, at most 4 KiB (a larger file is an error naming the bound), line 1 `State: <word>`, line 2 `Note: <text>`, line 3 optional `Act: <text>`, keys case-folded, blank lines skipped; no file is (zero, false, nil); a malformed file is an error naming the line. (2) In friendCardsOf, for each working card of the friend whose report is not yet there: read the status; when it differs from the card's record, send store.ProgressStep with Status and Note as the friend's row at the card's generation (Act is passed on only once v19-friend-card-status-act-raises-one-judgment adds it; leave a one-line comment naming that card); a refused step or a malformed file is said once per pass on the sync's own line (`STATUS <card>: <why>`), never sent on the bus. A card's REPORT.md is read first, as today; the status never finishes a card.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first: write cmd/nova-sprint/friend_status_file_test.go, package main, opening each test with t.Parallel(), the friend's directory in t.TempDir(), a twin store, no bus (a.bus recording), no clock. TestAStatusFileIsReadAsThreeLines: the three-line form, a two-line form, keys in lower case, a 5 KiB file and a line `Mood: fine` are each pinned. TestFriendSyncWritesTheStatusFileOnlyWhenItChanged: one working card on friend.amy's row with STATUS.md `State: testing` / `Note: go test green`: one sync pass writes the record; a second pass with the file unchanged sends no step (count the store's writes or the card's revision); a changed note writes again; the bus recorder holds no message. Run go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^Test(AStatusFile|FriendSyncWritesTheStatus)' -v and keep the failing line.
+STEP 3. Make the change THE TASK says, in the PATHS files only.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN commands; then go test -count=1 -timeout 900s ./cmd/nova-sprint/ at the head. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-friend-card-status-from-the-outbox: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-friend-card-status-shown-to-the-coordinator" :group "export-v19" :area "nova-sprint"
+   :title "v19-friend-card-status-shown-to-the-coordinator"
+   :text "The coordinator's views show each friend card's live status, its age and note. Column waiting, tier pro, base sprint/v19, needs v19-friend-card-status-record. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v19-friend-card-status-shown-to-the-coordinator (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator "
+   :kept (:sprint-card "v19-friend-card-status-shown-to-the-coordinator" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-friend-card-status-record" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-friend-card-status-shown-to-the-coordinator sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: feature
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: v19-friend-card-status-record
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator must act (nova-hook stays the one channel). Cards v19-friend-card-status-design (D3) and v19-friend-card-status-record land before this one is dealt; this card shows the record where the coordinator looks (`card <id>` and `friend cards`), so it reads the state instead of being messaged it. Seen on nova-sprint sprint/v19 7dbd87cb.
+PATHS: cmd/nova-sprint/card_story.go,cmd/nova-sprint/friendcards_verb.go,cmd/nova-sprint/friend_status_view_test.go,internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+SHARED: internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+NEW: cmd/nova-sprint/friend_status_view_test.go
+TEST: cmd/nova-sprint TestTheCoordinatorReadsAFriendCardsStatus
+DONE-WHEN: `go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^(TestTheCoordinatorReadsAFriendCardsStatus|TestCardStateIsTheTableColumnInEveryReader)$' -v` shows the new test RUN and PASS at head and the existing card test still passing (red at BASE with the test of STEP 2 added: the card's now: block holds no status line; the worker records the actual line); go vet ./... is clean; `go test -count=1 -timeout 900s ./cmd/nova-sprint/ -run 'Card|Friend'` passes; and no test is newly red against BASE.
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 120 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 120 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: the package's existing age words (the Ago form the friend verbs print) and oneline.Escape; no new helper.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). Read first: docs/SPEC-SPRINT.md \"A friend card's status\" (D3). cmd/nova-sprint/card_story.go nowLines (the now: block of `card <id>`); cmd/nova-sprint/friendcards_verb.go (`friend cards`, one line a card, and its --json); internal/sprint/rules.go FieldFriendStatus, FieldFriendNote, FieldFriendStatusAt (v19-friend-card-status-record). Tests: cmd/nova-sprint/friendcards_verb_test.go, card_state_test.go.
+
+THE TASK. (1) nowLines adds, for a card whose live work card holds FieldFriendStatus, one line `status <word> <age> ago: <note>` (the age from FieldFriendStatusAt to the app's clock). (2) `friend cards` adds `status=<word> age=<age>` to each card's line and `status`, `note`, `status_at` to its --json; a card with no record prints `status=-`. Nothing else in either view changes.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first: write cmd/nova-sprint/friend_status_view_test.go, package main, opening with t.Parallel(), on a twin store with the app's clock set (a.now) to 1000 s plus an offset, never the wall clock: TestTheCoordinatorReadsAFriendCardsStatus: a working friend card with a record written 90 s earlier prints `status testing 1m30s ago: go test green` (or the age form the package prints) in `card <id>` and `status=testing` in `friend cards`; a card with no record prints no status line and `status=-`. Run it and keep the failing line.
+STEP 3. Make the change THE TASK says, in the PATHS files only.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN commands; then go test -count=1 -timeout 900s ./cmd/nova-sprint/ at the head. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-friend-card-status-shown-to-the-coordinator: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-friend-card-status-act-raises-one-judgment" :group "export-v19" :area "nova-sprint"
+   :title "v19-friend-card-status-act-raises-one-judgment"
+   :text "A friend status Act raises exactly one coordinator judgment per distinct ask. Column waiting, tier pro, base sprint/v19, needs v19-friend-card-status-record. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v19-friend-card-status-act-raises-one-judgment (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator "
+   :kept (:sprint-card "v19-friend-card-status-act-raises-one-judgment" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-friend-card-status-record" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-friend-card-status-act-raises-one-judgment sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: feature
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: v19-friend-card-status-record
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator must act (nova-hook stays the one channel). Cards v19-friend-card-status-design (D4) and v19-friend-card-status-record land before this one is dealt; this card makes an Act text on the record raise exactly one judgment to the coordinator per card, attempt and text, through the inbox and its push (nova-hook, the one channel), and nothing else. Seen on nova-sprint sprint/v19 7dbd87cb.
+PATHS: internal/sprint/rules.go,internal/sprint/friend_card_act_test.go,cmd/nova-sprint/verbs.go,tla/COVERAGE.tsv,internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+SHARED: tla/COVERAGE.tsv,internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+NEW: internal/sprint/friend_card_act_test.go
+TEST: internal/sprint TestAFriendCardActRaisesOneJudgmentPerText
+DONE-WHEN: `go test -count=1 -timeout 600s ./internal/sprint/ -run '^(TestAFriendCardActRaisesOneJudgmentPerText|TestAProgressStatusIsOneRecordTheHolderReplaces)$' -v` shows the new test RUN and PASS at head and the record's test still passing (red at BASE with the test of STEP 2 added: ProgressReq has no field Act; the worker records the actual line); go vet ./... is clean; `go test -count=1 -timeout 900s ./internal/sprint/` passes; and no test is newly red against BASE.
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 150 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 150 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: the inbox's own note (Plan.Notes) and its dedupe by key as other rules raise one; a hash/fnv of the text for the key; no new channel.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). Read first: docs/SPEC-SPRINT.md \"A friend card's status\" (D4). internal/sprint/rules.go Progress with Status and Note (v19-friend-card-status-record); how a step raises a judgment to the coordinator: Plan.Notes and Note (read internal/sprint/judgments.go, inbox.go and one rule that raises a deduped note, such as the hold-need or widen rule's); the coordinator push (cmd/nova-sprint/coordinator_push.go) already carries every new judgment through nova-hook and needs no change.
+
+THE TASK. (1) ProgressReq gains `Act string`; Progress, when Act is not empty and no open or answered judgment of this card exists with the key `friend-act:<card>:<attempt>:<fnv32 of the act text>`, raises one judgment to the coordinator: `<friend> asks on <card> (attempt <n>): <act>` with the record's status and note in its body, keyed so a second write of the same act raises nothing; a new act text raises a new one; an empty Act closes nothing. Store the key on the work card (`friend_act_key`) so the dedupe needs no scan of the inbox. Cite tla/FriendCardStatus.tla (Write, OneJudgmentPerAct). (2) cmd/nova-sprint/verbs.go cmdProgress: flag --act with D4's words. (3) Move the friend-card-status row of tla/COVERAGE.tsv to status current. Friend sync's pass of the file's Act line is v19-friend-card-status-instructions's, not this card's.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first: write internal/sprint/friend_card_act_test.go, package sprint, opening with t.Parallel(), time an argument from 1000 s: TestAFriendCardActRaisesOneJudgmentPerText: on a Snapshot with one working friend card, Progress with Act `need the bench token` raises one judgment naming the friend, card and attempt; the same Act again raises none; another Act text raises a second; a status write with no Act raises none; after a redeal (a new attempt) the first text raises again. Run it and keep the failing line.
+STEP 3. Make the change THE TASK says, in the PATHS files only.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN commands; then go test -count=1 -timeout 900s ./internal/sprint/ ./cmd/nova-sprint/ at the head. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-friend-card-status-act-raises-one-judgment: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-friend-card-status-instructions" :group "export-v19" :area "nova-sprint"
+   :title "v19-friend-card-status-instructions"
+   :text "Friend briefs tell the friend to keep STATUS.md current and to use Act only when the coordinator must do something. Column waiting, tier pro, base sprint/v19, needs v19-friend-card-status-from-the-outbox,v19-friend-card-status-act-raises-one-judgment. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v19-friend-card-status-instructions (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator "
+   :kept (:sprint-card "v19-friend-card-status-instructions" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-friend-card-status-from-the-outbox,v19-friend-card-status-act-raises-one-judgment" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-friend-card-status-instructions sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: docs
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: v19-friend-card-status-from-the-outbox,v19-friend-card-status-act-raises-one-judgment
+LAND-AFTER: v19-finish-scope-docs
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator must act (nova-hook stays the one channel). Cards v19-friend-card-status-from-the-outbox and v19-friend-card-status-act-raises-one-judgment land before this one is dealt: the record works, but the friend is not told of it; her BRIEF.md STATUS: line names only REPORT.md. This card tells her (D2, D5) and passes the file's Act line through friend sync. Seen on nova-sprint sprint/v19 7dbd87cb.
+PATHS: cmd/nova-sprint/friendcards.go,docs/FRIENDS.md,docs/SPEC-SPRINT.md,cmd/nova-sprint/friend_status_brief_test.go,internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md
+SHARED: internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md,docs/FRIENDS.md
+NEW: cmd/nova-sprint/friend_status_brief_test.go
+TEST: cmd/nova-sprint TestAFriendsBriefNamesTheStatusFile
+DONE-WHEN: `go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^(TestAFriendsBriefNamesTheStatusFile|TestFriendSyncWritesTheStatusFileOnlyWhenItChanged)$' -v` shows the new test RUN and PASS at head and the outbox card's test still passing (red at BASE with the test of STEP 2 added: the STATUS: line names no STATUS.md; the worker records the actual line); go vet ./... is clean; `go test -count=1 -timeout 900s ./cmd/nova-sprint/ -run 'Friend'` passes; and no test is newly red against BASE.
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 90 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 90 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: none; text, and one field passed through.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). cmd/nova-sprint/friendcards.go friendBrief and friendServerBrief (the STATUS: line: push to the branch, write outbox/<job>/REPORT.md with Verdict and Head), friendCardsOf's status read (v19-friend-card-status-from-the-outbox, its comment naming this card); internal/sprint/rules.go ProgressReq.Act (v19-friend-card-status-act-raises-one-judgment); pkg/friend/rework.go reads the STATUS: line's prefix `STATUS: nova-sprint card ` (keep that prefix byte for byte); docs/FRIENDS.md, the inbox and outbox paragraphs; docs/SPEC-SPRINT.md \"A friend card's status\".
+
+THE TASK. (1) friendBrief's STATUS: line, after the REPORT.md words, adds: `; keep outbox/<job>/STATUS.md current (State: working|testing|blocked|waiting, Note: one line, Act: only when the coordinator must do something): the coordinator reads it, and only an Act reaches it as a message`; the line's prefix is unchanged, so pkg/friend/rework.go (read) still reads it. (2) friendCardsOf passes the file's Act into ProgressReq.Act (the comment the outbox card left is replaced by the call). (3) docs/FRIENDS.md: a paragraph on STATUS.md beside REPORT.md, saying card state goes in the file and bus messages stay for conversation and answers to judgments (D5). (4) docs/SPEC-SPRINT.md \"A friend card's status\": the build is complete; name the five cards' tests. Nothing else changes.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first: write cmd/nova-sprint/friend_status_brief_test.go, package main, opening with t.Parallel(): TestAFriendsBriefNamesTheStatusFile: friendBrief for a packet names outbox/<job>/STATUS.md and Act, still starts its STATUS line with `STATUS: nova-sprint card `, and a sync pass over a STATUS.md holding an Act line raises one judgment on a twin store (and none on a second pass). Run it and keep the failing line.
+STEP 3. Make the change THE TASK says, in the PATHS files only.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN commands; then go test -count=1 -timeout 900s ./cmd/nova-sprint/ ./pkg/friend/ at the head. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-friend-card-status-instructions: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-friend-level-every-minute" :group "export-v19" :area "nova-sprint"
+   :title "v19-friend-level-every-minute"
+   :text "The sprint server levels friend cards across lanes itself, once every minute, as the level verb does. Column waiting, tier pro, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "sprint card v19-friend-level-every-minute (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): \"friend levelling should be built into the machine! once every minute!\" Friend levelling is the sprint server's own work, once every minute, with the moves nova-sprint friend level makes, and each move says why."
+   :kept (:sprint-card "v19-friend-level-every-minute" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-friend-level-every-minute sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: feature
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: none
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.9): \"friend levelling should be built into the machine! once every minute!\" Friend levelling is the sprint server's own work, once every minute, with the moves nova-sprint friend level makes, and each move says why.
+PATHS: internal/sprint/steps_tick.go,internal/sprint/friend_level.go,internal/sprint/friend_level_every.go,internal/sprint/friend_level_every_test.go,internal/sprint/settings.go,internal/sprint/settings_view.go,internal/sprint/defaults.go,cmd/nova-sprint/verbs.go,cmd/nova-sprint/friendtake.go,tla/FriendEmptyRun.tla,tla/MCFriendEmptyRun.tla,tla/MCFriendEmptyRunBrokenLevelWorking.cfg,tla/CASES.tsv,tla/COVERAGE.tsv,tla/RUNS.tsv,internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+SHARED: internal/sprint/steps_tick.go,internal/sprint/settings.go,internal/sprint/settings_view.go,internal/sprint/defaults.go,cmd/nova-sprint/verbs.go,tla/CASES.tsv,tla/COVERAGE.tsv,tla/RUNS.tsv,internal/ci/testdata/dead_code_allowlist.txt,docs/CLI.md,docs/SPEC-SPRINT.md
+NEW: internal/sprint/friend_level_every.go,internal/sprint/friend_level_every_test.go,tla/MCFriendEmptyRunBrokenLevelWorking.cfg
+TEST: internal/sprint TestTickLevelsFriendsOncePerPeriod
+DONE-WHEN: `go test -count=1 -timeout 600s ./internal/sprint/ -run '^(TestTickLevelsFriendsOncePerPeriod|TestFriendLevelEveryDefaultsToOneMinute|TestFriendLevelNeverMovesAWorkingCard|TestFriendLevelMoveSaysWhy)$' -v` shows the four tests RUN and PASS at head (red at BASE with the tests of STEP 2 added: they do not compile or fail there, the setting and the period gate not existing; the worker records the actual lines); `make tlc` for the FriendEmptyRun cases, the pass cases passing and MCFriendEmptyRunBrokenLevelWorking failing on LevelNeverMovesWorking; go vet ./... is clean; `go test -count=1 -timeout 900s ./internal/sprint/ ./cmd/nova-sprint/` passes; and no test is newly red against BASE.
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names; TLC on the bench (tla/README.md)
+GATE-NEEDS: linux, tla
+STOP: the change, its tests and the model are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 120 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 120 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: the tick's existing Snapshot clock (s.Now) and the settings table (internal/sprint/settings.go, the friend-idle setting as the model); no new package.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). friendLevel / FriendLevel in internal/sprint/friend_level.go (the cards moved, newest first, off a friend with no idle lane or a larger backlog onto a friend below her room whose tiers hold the card's tier; only ready cards the friend has not started; a working card and a hard pin (WHO: only friend) stay), already called by the tick in internal/sprint/steps_tick.go (the block beginning `if len(r.Friends) > 0`, after friendDealtReturn and friendUnstartedLevel) with Max: FriendLevelPerTick (4) and no Started map; cmdFriendLevel in cmd/nova-sprint/friendtake.go, the verb, which reads each up friend's started cards (a.friendStarted: a push on the branch, a beat naming the job running) and calls store.FriendLevelStep with no Max bound. tla/FriendEmptyRun.tla holds the friend moves (FriendMove(f): a card `queued` on a friend moves to another; NeverBackToTheEmptyLane) with reversed witnesses MCFriendEmptyRunBroken*.cfg gated in tla/CASES.tsv (group friendemptyrun) and covered in tla/COVERAGE.tsv (friend-empty-run). Settings: internal/sprint/settings.go, settings_view.go and defaults.go (friend-idle, friend-finish as models) and the `nova-sprint set` flags in cmd/nova-sprint/verbs.go. Tests: internal/sprint/friend_level_test.go, internal/sprint/level_progress_test.go.
+
+THE TASK. Glenn saw ready cards sit on friends with no free lane while other friends had lanes: the verb levelled them, the tick did not, so the machine does not yet do what the verb does. STEP 1 first: write down, from the code, every way the tick's call differs from cmdFriendLevel's (the Started map, the Max bound of FriendLevelPerTick against none, the Taken and Moved sets, the seats considered) and which of them leaves a ready card behind a friend with no free lane that the verb would move; put that list in the report. Then (1) a new setting `friend-level-every` (a duration above zero, default 1m, like friend-idle: set by `nova-sprint set --friend-level-every <d>`, shown by `nova-sprint settings`, `default` restores it, refused when not above zero, sprint-wide and not a stream's); (2) in internal/sprint/friend_level_every.go, one pure function `FriendLevelDue(now, last float64, every time.Duration) bool` (true when last is unset or now-last >= every) and the tick's use of it: once per period the server's tick runs the verb's level, the same FriendLevelReq the verb builds, Max 0 (no bound), over all friends up, and writes the stamp of its time into the store as the tick's own plan does (one store write in the tick's plan, never a second loop, a clock or a thread); a tick inside the period runs the level it runs today and no more; (3) a ready card moves only if it is unstarted: the tick's level reads Started the way the verb does, from the same store reads, so a card the friend started (a push, a beat naming the job) never moves; a working card never moves, ever; (4) each move records its reason on the card's history line and in the tick's MOVED line, as one line `friend-level <card> <from> -> <to>: <reason>` where the reason is `no free lane (backlog n) to free lane (backlog m)` or `backlog n to backlog m`, with the tier named; (5) tla/FriendEmptyRun.tla gains the action's guard stated and a reversed witness: a bad switch BadLevelWorking that lets FriendMove fire on a `working` card, the invariant LevelNeverMovesWorking == the card's attempt in `working` never changes its place while working, MCFriendEmptyRunBrokenLevelWorking.cfg failing on it, the pass cases still passing, the three gated tables (CASES, COVERAGE, RUNS) refreshed as tla/README.md (read) says; friend_level.go and the new file cite the model and this card's tests. Nothing else changes; no change to the deal, the start bound, the dealt-return bound or the fleet's level.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names. Read the differences above and record them.
+STEP 2. Red first, each test opening with t.Parallel() and taking time as an argument, the clock starting at 1000.0 (never 0), no real time, no sleep, no socket: internal/sprint/friend_level_every_test.go (package sprint): TestFriendLevelEveryDefaultsToOneMinute (the setting reads 1m with none set; a value of zero or below is refused); TestTickLevelsFriendsOncePerPeriod over a snapshot of two friends, one with width 1 holding a working card and two ready cards, one with width 1 and no card, both serving the cards' tier: the tick at now 1000.0 moves one ready card to the free friend and stamps 1000.0; a tick at 1030.0 moves nothing the once-a-minute level would; a tick at 1060.0 levels again; TestFriendLevelNeverMovesAWorkingCard (the working card is on the same row after every tick of the run above, and a ready card whose Started names it stays); TestFriendLevelMoveSaysWhy (the MOVED line and the history line carry the words of (4)). Run -run '^TestF' -v on the package and keep the failing lines.
+STEP 3. Make the change THE TASK says, in the PATHS files only.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN commands (the TLC cases on the bench, never on the studio: for each group g that `go run ./tools/tlacheck groups --root . --stale` lists, `make tlc TLC_JAR=/opt/tla/tla2tools.jar TLC_OUT=$JOB/scratch/tlc-$g TLC_GROUP=$g`, then `go run ./tools/tlacheck merge --root . --keep tla/RUNS.tsv --out tla/RUNS.tsv $JOB/scratch/tlc-*/RUNS.tsv` until the groups command prints [], and commit tla/RUNS.tsv); then go test -count=1 -timeout 900s ./internal/sprint/ ./cmd/nova-sprint/ at the head. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-friend-level-every-minute: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, the STEP 1 list, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+
+"))
+  ; Moved out of the sprint on 2026-10-18: v111, target v1.11
+  (item "v111-pre-gate-design" :group "export-v111" :area "nova-sprint"
+   :title "v111-pre-gate-design"
+   :text "Model and spec: a pre-gate that runs build and vet on a card in review before its landing, reworking it early when red. Column waiting, tier heavy, base sprint/v111. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.11"
+   :origin "sprint card v111-pre-gate-design (stream v111, column waiting, tier heavy, base sprint/v111), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.11: \"it is your choice what you think is worth trying vs. not ... Only if things add value\"), from the coordinator's measurement of epoch 21 (2026-10-17 17:00Z to 2026-10-18 17:10Z): 25 heads a reader had passed were refused at landing by the tree gate (each rewo"
+   :kept (:sprint-card "v111-pre-gate-design" :sprint-stream "v111" :sprint-column "waiting" :tier "heavy" :sprint-base "sprint/v111" :needs "" :pushed-head "" :pushed-branch "" :brief "RESULT: v111-pre-gate-design sha=<sha12> tier: heavy
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v111
+KIND: feature
+PRIORITY: normal
+STREAM: v111
+DEPENDS-ON: none
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.11: \"it is your choice what you think is worth trying vs. not ... Only if things add value\"), from the coordinator's measurement of epoch 21 (2026-10-17 17:00Z to 2026-10-18 17:10Z): 25 heads a reader had passed were refused at landing by the tree gate (each reworked at the tip: a finish-to-refusal median of 23 minutes, then 37 minutes to land, one more attempt and one more read each); 18 of the 25 failed a read-only class of the base's class suite (gofmt -l . 7, the ci analyzers TestStaticcheckFindings, TestUncheckedErrors and TestDeadCode 9, go vet 1, go build 1), which needs no test run and no socket, and 16 of the 18 came from fleet members. None of them was flaky: no refused head finished again unchanged. The pre-gate runs those read-only classes on a head in review, so a red one is reworked within minutes instead of after its read and its turn in the merge queue. It never checks PATHS (stream v19's finish scope does that at the finish) and runs no package tests (the landing still runs the whole gate). This card is the judgment piece: the model and the spec. Cards v111-pre-gate-store-step and v111-pre-gate-lander-pass implement it and copy its decisions.
+PATHS: tla/PreGate.tla,tla/MCPreGate.tla,tla/MCPreGate.cfg,tla/MCPreGateBrokenStale.cfg,tla/MCPreGateBrokenRedAccepted.cfg,tla/MCPreGateBrokenSkipBlocks.cfg,tla/CASES.tsv,tla/COVERAGE.tsv,tla/RUNS.tsv,docs/SPEC-SPRINT.md
+SHARED: tla/CASES.tsv,tla/COVERAGE.tsv,tla/RUNS.tsv
+NEW: tla/PreGate.tla,tla/MCPreGate.tla,tla/MCPreGate.cfg,tla/MCPreGateBrokenStale.cfg,tla/MCPreGateBrokenRedAccepted.cfg,tla/MCPreGateBrokenSkipBlocks.cfg
+DONE-WHEN: on a Linux bench at head, `make tlc TLC_JAR=/opt/tla/tla2tools.jar TLC_OUT=<dir> TLC_GROUP=pregate` passes MCPreGate.cfg and each of the three Broken configs fails on exactly the property its tla/CASES.tsv row names; after `go run ./tools/tlacheck merge --root . --keep tla/RUNS.tsv --out tla/RUNS.tsv <dir>/RUNS.tsv`, `go run ./tools/tlacheck groups --root . --stale` prints `[]`; `grep -c pregate tla/CASES.tsv` prints 4 (0 at BASE, where none of the NEW files exist); docs/SPEC-SPRINT.md holds the subsection \"The pre-gate\" with every decision below; and no test is newly red against BASE (`go test -count=1 -timeout 900s ./tools/tlacheck/ ./internal/ci/`).
+TOOLCHAIN: go (the version go.mod names) and TLC (the jar tla/README.md names, /opt/tla/tla2tools.jar, java on the bench's PATH as tla/README.md says) on the Linux bench JOB.md names
+GATE-NEEDS: linux,tla
+STOP: the model, its four configs, the TLC records and the spec subsection are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 240 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 240 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: none; TLA+ standard modules Naturals, FiniteSets and TLC only, as the other models in tla/ use them.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). internal/sprint/land_class.go BaseClasses (the base's class suite: Stage 0 build, Stage 1 the read-only whole-tree checks, Stage 2 class-tests) and ClassForBatch; cmd/nova-sprint/landgo.go gateRuns (BaseClasses as gate stages, the analyzers batched by analyzerRun, Needs checked against the clone's packages) and treeGate/runTreeGate/benchGate (a stage's runs go to a bench of the ring that grants its Go lane, never Go on the coordinator's machine when a remote bench is configured; benchGateUnavailableWhy when none can run it); cmd/nova-sprint/landpass.go (l *lander) pass, prepare, worktree and merge (the landing's merge of each queued head onto the base tip in a stream worktree); internal/sprint/redo.go landRefused and FieldLandRefusedHead (a refused head is never offered to accept again: steps_review.go reviewJudgment); internal/sprint/rules_read.go ruleReadBroken (a broken read's finding inside PATHS answered as ActRework with the finding as the fix, left to the coordinator at AtAttemptCap or with FieldBriefDefect); internal/sprint/steps_review.go ReworkReq (PerCard: each card's Fix, Set fields and Rule) and Rework; internal/sprint/store/steps.go ReworkStep (how a plan becomes a store step). Seen on nova-sprint main 69c05c67, the commit sprint/v111 was cut from. tla/Land.tla (the landing's refusal and rework at the tip) and tla/SprintRules.tla (the rules, NoAttemptPastCapWithoutDecision) are the models beside this one; read how MCAskReadIDs rows read in tla/CASES.tsv.
+
+THE DECISIONS (the design; the model checks it, and you correct a decision only when TLC or the code shows it wrong, saying why in the spec and the report).
+D1 WHAT RUNS. The read-only classes of the base's class suite, sprint.BaseClasses (internal/sprint/land_class.go) with Stage 0 or 1: build, gofmt, vet, vet-functional, and the ci-analyzers batch (staticcheck, errcheck, dead-code) when the clone holds internal/ci. Never class-tests and never unit packages: those stay the landing's. The list is read from sprint.BaseClasses, never copied. A tree with no go.mod (a CMake tree, or none) has no pre-gate: the result is skipped, \"no Go module\".
+D2 ON WHAT. The card's head merged with --no-ff onto its BASE's origin tip, in the lander's kept clone, in a worktree of its own (never the stream's landing worktree), and nothing is pushed. A head that does not merge is skipped, \"the landing judges a conflict\"; it is never reworked by the pre-gate.
+D3 WHICH CARDS. A primary in review whose latest finish was ok (its \"result\" field is not failed), with a head, whose FieldPreGate does not name that head; the oldest finished_at first. At most one pre-gate runs at a time per (clone, base), and none starts while that (clone, base) has a batch queued to land: landing first.
+D4 THE RECORD. One field on the primary, FieldPreGate = \"pre_gate\", its value `<head> <green|red|skipped>[: <why>]`, the why cut to MaxCardTextBytes. The store step acts only while the card is in review and its head is the head gated; otherwise it changes nothing and says so on a NOTE line (a stale result).
+D5 RED. A red pre-gate is answered as the read-broken rule answers a broken read whose finding is inside PATHS (internal/sprint/rules_read.go ruleReadBroken): one Rework of the card with the gate's finding as the fix, on its own tier, its read cards retired, FieldLandRefusedHead set to the head so it is never offered to accept again (reviewJudgment), its note naming the rule pre-gate. At the attempt cap (AtAttemptCap) or with a brief defect mark (FieldBriefDefect) nothing is reworked: the card stays in review with FieldPreGate recorded red, and the existing review judgment for it stands for the coordinator. A pre-gate never widens PATHS.
+D6 NEVER BLOCKING. No read waits on the pre-gate, and no accept or landing depends on it: green and skipped change nothing but FieldPreGate. A bench that cannot run it, a cancelled gate or a failed fetch is skipped with its reason. A result that arrives after the card left review, or after a new attempt, is stale (D4).
+D7 THE SWITCH. `nova-sprint run --pre-gate` (default false) turns the pass on beside --land; off, nothing runs and nothing is written.
+
+THE TASK. Write the model of the pre-gate and the spec subsection. docs/SPEC-SPRINT.md gets one subsection, \"The pre-gate\", beside \"The landing stall\": why (the SOURCE's measurement, in one paragraph), the decisions D1 to D7 as written above or as TLC corrected them, the field FieldPreGate and its value, the rule name pre-gate, and the two build cards by name. No Go code changes in this card.
+
+THE MODEL. tla/PreGate.tla (EXTENDS Naturals, FiniteSets, TLC): CONSTANTS Cards, MaxHead, Broken; VARIABLES col (Cards -> {\"review\", \"ready\", \"merging\"}), head (Cards -> 1..MaxHead), gated (Cards -> 0..MaxHead, the head FieldPreGate names, 0 for none), refused (Cards -> SUBSET 1..MaxHead, the heads FieldLandRefusedHead has held), inflight (a set of <<card, head, verdict>> with verdict in {\"green\", \"red\", \"skipped\"}). Actions: Finish(c) (a card ready finishes its next attempt: col' review, head' head+1, bounded by MaxHead); Start(c) (D3: c in review, gated[c] # head[c], no result of c in flight: one result <<c, head[c], v>> for some v joins inflight); Deliver(r) (D4, D5, D6: r leaves inflight; when col[r[1]] = \"review\" and head[r[1]] = r[2], green and skipped set gated, red sets gated, adds r[2] to refused and moves the card to ready; otherwise nothing); Accept(c) (a read passed: c in review with head[c] \\notin refused[c] moves to merging, whether or not it was pre-gated: D6); Return(c) (the landing refused it: merging to ready). Invariants: StaleIsNoOp (a result for a head that is not the card's current head in review changes neither col, gated nor refused), RedNeverAccepted (\\A c: col[c] = \"merging\" => head[c] \\notin refused[c]), NeverBlocks (a green or skipped delivery never changes col), and the liveness property EveryReviewHeadIsSettled (under weak fairness of Start, Deliver and Accept, a card in review is eventually not in review or gated at its head). Reversed witnesses, each a cfg with Broken set and the one property it must fail: MCPreGateBrokenStale.cfg (Broken = \"stale\": Deliver applies without the head check) fails StaleIsNoOp; MCPreGateBrokenRedAccepted.cfg (Broken = \"redaccepted\": a red only records gated) fails RedNeverAccepted; MCPreGateBrokenSkipBlocks.cfg (Broken = \"skipblocks\": a skipped result moves the card to ready) fails NeverBlocks. MCPreGate.tla instantiates two cards and MaxHead = 3; MCPreGate.cfg passes all four. The header names the code each action maps to (cmd/nova-sprint/landpass.go for Start, internal/sprint/pregate.go PreGate for Deliver, steps_review.go Read/Accept, redo.go landRefused for Return) and what it abstracts (the gate's runs, the bench, the merge onto the tip, reads folded into Accept). Add the four rows to tla/CASES.tsv (group pregate, gate required, the expected verdict and property per row, as the MCAskReadIDs rows read) and one row to tla/COVERAGE.tsv (machine pre-gate, code internal/sprint/pregate.go, module PreGate, status partial, owed_by v111-pre-gate-store-step).
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Read the code WHAT IS THERE names; write the model and its four cfgs and the spec subsection.
+STEP 3. Run TLC on the Linux bench JOB.md names: `make tlc TLC_JAR=/opt/tla/tla2tools.jar TLC_OUT=<dir> TLC_GROUP=pregate` (java on PATH as tla/README.md says). Verify each counterexample against the code and the decisions by hand before writing it down.
+STEP 4. Refresh the records as tla/README.md says (\"Refreshing the records after a model edit\"): `go run ./tools/tlacheck merge --root . --keep tla/RUNS.tsv --out tla/RUNS.tsv <dir>/RUNS.tsv`, then `go run ./tools/tlacheck groups --root . --stale` must print `[]`. Then run the gate: go vet ./... ; go test -count=1 -timeout 900s ./tools/tlacheck/ ./internal/ci/ . When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v111-pre-gate-design: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, the TLC results with each witness's counterexample, each decision as written in the spec, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+TLC runs on a Linux bench, never on the coordinator's machine.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v111-pre-gate-lander-pass" :group "export-v111" :area "nova-sprint"
+   :title "v111-pre-gate-lander-pass"
+   :text "The lander runs at most one pre-gate per base beside its landings, behind a --pre-gate flag (default off). Column waiting, tier pro, base sprint/v111, needs v111-pre-gate-store-step. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.11"
+   :origin "sprint card v111-pre-gate-lander-pass (stream v111, column waiting, tier pro, base sprint/v111), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.11: \"it is your choice what you think is worth trying vs. not ... Only if things add value\"), from the coordinator's measurement of epoch 21 (2026-10-17 17:00Z to 2026-10-18 17:10Z): 25 heads a reader had passed were refused at landing by the tree gate (each rewo"
+   :kept (:sprint-card "v111-pre-gate-lander-pass" :sprint-stream "v111" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v111" :needs "v111-pre-gate-store-step" :pushed-head "" :pushed-branch "" :brief "RESULT: v111-pre-gate-lander-pass sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v111
+KIND: feature
+PRIORITY: normal
+STREAM: v111
+DEPENDS-ON: v111-pre-gate-store-step
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.11: \"it is your choice what you think is worth trying vs. not ... Only if things add value\"), from the coordinator's measurement of epoch 21 (2026-10-17 17:00Z to 2026-10-18 17:10Z): 25 heads a reader had passed were refused at landing by the tree gate (each reworked at the tip: a finish-to-refusal median of 23 minutes, then 37 minutes to land, one more attempt and one more read each); 18 of the 25 failed a read-only class of the base's class suite (gofmt -l . 7, the ci analyzers TestStaticcheckFindings, TestUncheckedErrors and TestDeadCode 9, go vet 1, go build 1), which needs no test run and no socket, and 16 of the 18 came from fleet members. None of them was flaky: no refused head finished again unchanged. The pre-gate runs those read-only classes on a head in review, so a red one is reworked within minutes instead of after its read and its turn in the merge queue. It never checks PATHS (stream v19's finish scope does that at the finish) and runs no package tests (the landing still runs the whole gate). This card is the lander's pass of the design v111-pre-gate-design wrote (docs/SPEC-SPRINT.md \"The pre-gate\", tla/PreGate.tla Start); it copies the decisions below and calls the step v111-pre-gate-store-step added.
+PATHS: cmd/nova-sprint/landpregate.go,cmd/nova-sprint/landpregate_test.go,cmd/nova-sprint/landpregate_functional_test.go,cmd/nova-sprint/landloop.go,cmd/nova-sprint/run.go,docs/SPEC-SPRINT.md,docs/CLI.md,internal/ci/testdata/dead_code_allowlist.txt
+SHARED: docs/SPEC-SPRINT.md,docs/CLI.md,internal/ci/testdata/dead_code_allowlist.txt
+NEW: cmd/nova-sprint/landpregate.go,cmd/nova-sprint/landpregate_test.go,cmd/nova-sprint/landpregate_functional_test.go
+TEST: cmd/nova-sprint TestPreGatePicksTheOldestUngatedReviewHead
+DONE-WHEN: `go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^(TestPreGatePicksTheOldestUngatedReviewHead|TestPreGateRunsOnlyTheReadOnlyClasses|TestPreGateWaitsForALandingOnItsBase)$' -v` shows the three tests RUN and PASS at head (red at BASE: cmd/nova-sprint/landpregate_test.go does not exist there, and with it added the package does not build: undefined: preGatePick); `go test -tags functional -count=1 -timeout 900s ./cmd/nova-sprint/ -run '^TestPreGateReworksAHeadThatFailsGofmt$' -v` passes on the bench (a temp clone with a head whose file is not gofmt-clean is reworked with the gofmt finding, and a clean one is recorded green); `nova-sprint help run` names --pre-gate; go vet ./... is clean; PreGate and PreGateStep are off internal/ci/testdata/dead_code_allowlist.txt; and no test is newly red against BASE.
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 240 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 240 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: none beyond the lander's own: gateRuns, runTreeGate and the kept clone's worktrees already do the running; the pass adds a selection and a call.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). internal/sprint/land_class.go BaseClasses (the base's class suite: Stage 0 build, Stage 1 the read-only whole-tree checks, Stage 2 class-tests) and ClassForBatch; cmd/nova-sprint/landgo.go gateRuns (BaseClasses as gate stages, the analyzers batched by analyzerRun, Needs checked against the clone's packages) and treeGate/runTreeGate/benchGate (a stage's runs go to a bench of the ring that grants its Go lane, never Go on the coordinator's machine when a remote bench is configured; benchGateUnavailableWhy when none can run it); cmd/nova-sprint/landpass.go (l *lander) pass, prepare, worktree and merge (the landing's merge of each queued head onto the base tip in a stream worktree); internal/sprint/redo.go landRefused and FieldLandRefusedHead (a refused head is never offered to accept again: steps_review.go reviewJudgment); internal/sprint/rules_read.go ruleReadBroken (a broken read's finding inside PATHS answered as ActRework with the finding as the fix, left to the coordinator at AtAttemptCap or with FieldBriefDefect); internal/sprint/steps_review.go ReworkReq (PerCard: each card's Fix, Set fields and Rule) and Rework; internal/sprint/store/steps.go ReworkStep (how a plan becomes a store step). Seen on nova-sprint main 69c05c67, the commit sprint/v111 was cut from. v111-pre-gate-store-step added internal/sprint/pregate.go PreGate, PreGateReq, FieldPreGate, RulePreGate and store/steps.go PreGateStep; cmd/nova-sprint/landloop.go (a *app) landLoop and landCycle (one land cycle, a landing in flight beside the loop); cmd/nova-sprint/run.go the run flags (--land, --answer-rules).
+
+THE DECISIONS (the design; copied from v111-pre-gate-design; where its spec subsection says otherwise, the spec wins and the report says where).
+D1 WHAT RUNS. The read-only classes of the base's class suite, sprint.BaseClasses (internal/sprint/land_class.go) with Stage 0 or 1: build, gofmt, vet, vet-functional, and the ci-analyzers batch (staticcheck, errcheck, dead-code) when the clone holds internal/ci. Never class-tests and never unit packages: those stay the landing's. The list is read from sprint.BaseClasses, never copied. A tree with no go.mod (a CMake tree, or none) has no pre-gate: the result is skipped, \"no Go module\".
+D2 ON WHAT. The card's head merged with --no-ff onto its BASE's origin tip, in the lander's kept clone, in a worktree of its own (never the stream's landing worktree), and nothing is pushed. A head that does not merge is skipped, \"the landing judges a conflict\"; it is never reworked by the pre-gate.
+D3 WHICH CARDS. A primary in review whose latest finish was ok (its \"result\" field is not failed), with a head, whose FieldPreGate does not name that head; the oldest finished_at first. At most one pre-gate runs at a time per (clone, base), and none starts while that (clone, base) has a batch queued to land: landing first.
+D4 THE RECORD. One field on the primary, FieldPreGate = \"pre_gate\", its value `<head> <green|red|skipped>[: <why>]`, the why cut to MaxCardTextBytes. The store step acts only while the card is in review and its head is the head gated; otherwise it changes nothing and says so on a NOTE line (a stale result).
+D5 RED. A red pre-gate is answered as the read-broken rule answers a broken read whose finding is inside PATHS (internal/sprint/rules_read.go ruleReadBroken): one Rework of the card with the gate's finding as the fix, on its own tier, its read cards retired, FieldLandRefusedHead set to the head so it is never offered to accept again (reviewJudgment), its note naming the rule pre-gate. At the attempt cap (AtAttemptCap) or with a brief defect mark (FieldBriefDefect) nothing is reworked: the card stays in review with FieldPreGate recorded red, and the existing review judgment for it stands for the coordinator. A pre-gate never widens PATHS.
+D6 NEVER BLOCKING. No read waits on the pre-gate, and no accept or landing depends on it: green and skipped change nothing but FieldPreGate. A bench that cannot run it, a cancelled gate or a failed fetch is skipped with its reason. A result that arrives after the card left review, or after a new attempt, is stale (D4).
+D7 THE SWITCH. `nova-sprint run --pre-gate` (default false) turns the pass on beside --land; off, nothing runs and nothing is written.
+
+THE TASK. Add the pass of D1, D2, D3, D6 and D7 to the land loop, in cmd/nova-sprint/landpregate.go, with one call from landCycle and the flag in run.go: (1) `func preGatePick(s *sprint.Snapshot, busy map[string]bool, max int) []*sprint.Card`: the primaries D3 names, oldest FieldFinishedAt first, at most max, leaving out a (repo, base) busy names (a pre-gate in flight, or a batch queued to land on it); (2) `func preGateStages(have []string) []gateStage`: gateRuns' stages 0 and 1 only, built from sprint.BaseClasses by the same Needs rule gateRuns uses, never class-tests and never unit packages; (3) `func (l *lander) preGate(ctx context.Context, c *sprint.Card) sprint.PreGateReq`: fetch the base, a worktree of its own under the land root (never the stream's), merge the head --no-ff (no merge: skipped, \"the landing judges a conflict\"), no go.mod: skipped, \"no Go module\", else runTreeGate with preGateStages (benchGateUnavailableWhy or a gate wait: skipped with it; red: red with the finding gateWhy made), the worktree removed after, nothing pushed; (4) landCycle, when --pre-gate is on and no landing is in flight on that (clone, base), starts at most one pre-gate per (clone, base) beside the landing and applies its PreGateReq through PreGateStep; (5) run.go: `--pre-gate` (default false), its help in the words of D7. Add one sentence to docs/SPEC-SPRINT.md \"The pre-gate\" naming the flag and the cycle that runs it, and the flag to run's row in docs/CLI.md. Remove PreGate and PreGateStep from internal/ci/testdata/dead_code_allowlist.txt.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first: write cmd/nova-sprint/landpregate_test.go (unit tier: snapshots built in memory, no git, no process, no clock but a time argument starting at 1000.0 s, each test opening with t.Parallel()): TestPreGatePicksTheOldestUngatedReviewHead (three review cards, one gated at its head, one failed: the oldest ok ungated one first; a busy base left out), TestPreGateRunsOnlyTheReadOnlyClasses (preGateStages with and without internal/ci: build, gofmt, vet, vet-functional and the analyzers run only with internal/ci; never class-tests, never a unit package), TestPreGateWaitsForALandingOnItsBase (a base with a batch queued is busy). Run go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^TestPreGate' -v and keep the failing line.
+STEP 3. Make them pass, then write cmd/nova-sprint/landpregate_functional_test.go (//go:build functional) TestPreGateReworksAHeadThatFailsGofmt on a temp origin and clone as the land functional tests build theirs, with the gate run here (no remote bench configured), and make it pass. Cite tla/PreGate.tla Start and docs/SPEC-SPRINT.md \"The pre-gate\" from preGatePick and preGate.
+STEP 4. Run the gate: go vet ./... ; gofmt -l . ; go test -count=1 -timeout 900s ./cmd/nova-sprint/ ./internal/sprint/ ./internal/ci/ ; go test -tags functional -count=1 -timeout 900s -run '^(TestPreGateReworksAHeadThatFailsGofmt|TestStaticcheckFindings|TestUncheckedErrors|TestDeadCode)$' ./cmd/nova-sprint/ ./internal/ci/ . When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v111-pre-gate-lander-pass: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v111-pre-gate-store-step" :group "export-v111" :area "nova-sprint"
+   :title "v111-pre-gate-store-step"
+   :text "The pre-gate store step: record green or skipped, and turn a red result into a rework carrying the finding. Column waiting, tier pro, base sprint/v111, needs v111-pre-gate-design. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
+   :date "2026-10-18"
+   :release "v1.11"
+   :origin "sprint card v111-pre-gate-store-step (stream v111, column waiting, tier pro, base sprint/v111), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.11: \"it is your choice what you think is worth trying vs. not ... Only if things add value\"), from the coordinator's measurement of epoch 21 (2026-10-17 17:00Z to 2026-10-18 17:10Z): 25 heads a reader had passed were refused at landing by the tree gate (each rewo"
+   :kept (:sprint-card "v111-pre-gate-store-step" :sprint-stream "v111" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v111" :needs "v111-pre-gate-design" :pushed-head "" :pushed-branch "" :brief "RESULT: v111-pre-gate-store-step sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v111
+KIND: feature
+PRIORITY: normal
+STREAM: v111
+DEPENDS-ON: v111-pre-gate-design
+SOURCE: the owner, Glenn, 2026-10-18 (for v1.11: \"it is your choice what you think is worth trying vs. not ... Only if things add value\"), from the coordinator's measurement of epoch 21 (2026-10-17 17:00Z to 2026-10-18 17:10Z): 25 heads a reader had passed were refused at landing by the tree gate (each reworked at the tip: a finish-to-refusal median of 23 minutes, then 37 minutes to land, one more attempt and one more read each); 18 of the 25 failed a read-only class of the base's class suite (gofmt -l . 7, the ci analyzers TestStaticcheckFindings, TestUncheckedErrors and TestDeadCode 9, go vet 1, go build 1), which needs no test run and no socket, and 16 of the 18 came from fleet members. None of them was flaky: no refused head finished again unchanged. The pre-gate runs those read-only classes on a head in review, so a red one is reworked within minutes instead of after its read and its turn in the merge queue. It never checks PATHS (stream v19's finish scope does that at the finish) and runs no package tests (the landing still runs the whole gate). This card is the store step of the design v111-pre-gate-design wrote (docs/SPEC-SPRINT.md \"The pre-gate\", tla/PreGate.tla Deliver); it copies the decisions below and changes no lander code.
+PATHS: internal/sprint/pregate.go,internal/sprint/pregate_test.go,internal/sprint/store/steps.go,tla/COVERAGE.tsv,internal/ci/testdata/dead_code_allowlist.txt
+SHARED: tla/COVERAGE.tsv,internal/ci/testdata/dead_code_allowlist.txt
+NEW: internal/sprint/pregate.go,internal/sprint/pregate_test.go
+TEST: internal/sprint TestAPreGateRedReworksTheHeadItGated
+DONE-WHEN: `go test -count=1 -timeout 600s ./internal/sprint/ -run '^TestAPreGate' -v` shows TestAPreGateRedReworksTheHeadItGated, TestAPreGateGreenOrSkippedOnlyRecords, TestAPreGateOfAStaleHeadChangesNothing and TestAPreGateAtTheAttemptCapLeavesTheCardToTheCoordinator RUN and PASS at head (red at BASE: internal/sprint/pregate_test.go does not exist there, and with it added the package does not build: undefined: PreGate); `go test -count=1 -timeout 600s ./internal/sprint/ ./internal/sprint/store/ ./internal/ci/` is ok; go vet ./... is clean; tla/COVERAGE.tsv's pre-gate row says status current with no owed_by; and no test is newly red against BASE.
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 180 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 180 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: none beyond the package's own: Rework, ReworkReq and its PerCard, AtAttemptCap and cutText already do every part of this.
+
+THIS REPOSITORY. mas-bandwidth/nova-sprint, the sprint machine; `go test ./...` is the unit suite, `go test -tags functional ./...` the functional tier; tla/ holds the models, tla/CASES.tsv the gated cases, tla/COVERAGE.tsv the code each model covers and tla/RUNS.tsv the TLC records (tla/README.md, \"Run checks on a Linux bench\" and \"Refreshing the records after a model edit\").
+
+WHAT IS THERE (read it before writing; extend it, never build a second path). internal/sprint/land_class.go BaseClasses (the base's class suite: Stage 0 build, Stage 1 the read-only whole-tree checks, Stage 2 class-tests) and ClassForBatch; cmd/nova-sprint/landgo.go gateRuns (BaseClasses as gate stages, the analyzers batched by analyzerRun, Needs checked against the clone's packages) and treeGate/runTreeGate/benchGate (a stage's runs go to a bench of the ring that grants its Go lane, never Go on the coordinator's machine when a remote bench is configured; benchGateUnavailableWhy when none can run it); cmd/nova-sprint/landpass.go (l *lander) pass, prepare, worktree and merge (the landing's merge of each queued head onto the base tip in a stream worktree); internal/sprint/redo.go landRefused and FieldLandRefusedHead (a refused head is never offered to accept again: steps_review.go reviewJudgment); internal/sprint/rules_read.go ruleReadBroken (a broken read's finding inside PATHS answered as ActRework with the finding as the fix, left to the coordinator at AtAttemptCap or with FieldBriefDefect); internal/sprint/steps_review.go ReworkReq (PerCard: each card's Fix, Set fields and Rule) and Rework; internal/sprint/store/steps.go ReworkStep (how a plan becomes a store step). Seen on nova-sprint main 69c05c67, the commit sprint/v111 was cut from. The design card wrote docs/SPEC-SPRINT.md \"The pre-gate\" and tla/PreGate.tla: read both first, and cite tla/PreGate.tla Deliver from PreGate.
+
+THE DECISIONS (the design; copied from v111-pre-gate-design; where its spec subsection says otherwise, the spec wins and the report says where).
+D1 WHAT RUNS. The read-only classes of the base's class suite, sprint.BaseClasses (internal/sprint/land_class.go) with Stage 0 or 1: build, gofmt, vet, vet-functional, and the ci-analyzers batch (staticcheck, errcheck, dead-code) when the clone holds internal/ci. Never class-tests and never unit packages: those stay the landing's. The list is read from sprint.BaseClasses, never copied. A tree with no go.mod (a CMake tree, or none) has no pre-gate: the result is skipped, \"no Go module\".
+D2 ON WHAT. The card's head merged with --no-ff onto its BASE's origin tip, in the lander's kept clone, in a worktree of its own (never the stream's landing worktree), and nothing is pushed. A head that does not merge is skipped, \"the landing judges a conflict\"; it is never reworked by the pre-gate.
+D3 WHICH CARDS. A primary in review whose latest finish was ok (its \"result\" field is not failed), with a head, whose FieldPreGate does not name that head; the oldest finished_at first. At most one pre-gate runs at a time per (clone, base), and none starts while that (clone, base) has a batch queued to land: landing first.
+D4 THE RECORD. One field on the primary, FieldPreGate = \"pre_gate\", its value `<head> <green|red|skipped>[: <why>]`, the why cut to MaxCardTextBytes. The store step acts only while the card is in review and its head is the head gated; otherwise it changes nothing and says so on a NOTE line (a stale result).
+D5 RED. A red pre-gate is answered as the read-broken rule answers a broken read whose finding is inside PATHS (internal/sprint/rules_read.go ruleReadBroken): one Rework of the card with the gate's finding as the fix, on its own tier, its read cards retired, FieldLandRefusedHead set to the head so it is never offered to accept again (reviewJudgment), its note naming the rule pre-gate. At the attempt cap (AtAttemptCap) or with a brief defect mark (FieldBriefDefect) nothing is reworked: the card stays in review with FieldPreGate recorded red, and the existing review judgment for it stands for the coordinator. A pre-gate never widens PATHS.
+D6 NEVER BLOCKING. No read waits on the pre-gate, and no accept or landing depends on it: green and skipped change nothing but FieldPreGate. A bench that cannot run it, a cancelled gate or a failed fetch is skipped with its reason. A result that arrives after the card left review, or after a new attempt, is stale (D4).
+D7 THE SWITCH. `nova-sprint run --pre-gate` (default false) turns the pass on beside --land; off, nothing runs and nothing is written.
+
+THE TASK. Add the store step of D4, D5 and D6, in internal/sprint/pregate.go and one Step in internal/sprint/store/steps.go, and nothing else: (1) `const FieldPreGate = \"pre_gate\"` and `const RulePreGate = \"pre-gate\"`; (2) `type PreGateReq struct { ID, Head, Verdict, Why, Who string }` (Verdict one of \"green\", \"red\", \"skipped\"; any other refused by name) and `func PreGate(s *Snapshot, r PreGateReq) Plan`: the primary not in review, or its head not r.Head, is no change and one NOTE line (`pre-gate result for <head12> of <id> is stale: <why>`); green and skipped write FieldPreGate only (`<head> <verdict>[: <why>]`, the why cut to MaxCardTextBytes); red at AtAttemptCap or with FieldBriefDefect writes FieldPreGate only and says why on a NOTE line; any other red is the plan of Rework(s, ReworkReq{Sel: {IDs: [id]}, PerCard: {id: {Fix: <the why>, Set: {FieldPreGate: ..., FieldLandRefusedHead: r.Head, FieldNote: RuleSaid(RulePreGate, ...)}, Rule: RulePreGate, Said: ...}}, Who: r.Who}), so its read cards are retired and its next attempt carries the fix as a reader's finding does; (3) `func PreGateStep(r sprint.PreGateReq) Step` in store/steps.go, loading the tables ReworkStep loads, its Verb \"pre-gate\". Move tla/COVERAGE.tsv's pre-gate row to status current and clear its owed_by. If the dead-code gate names PreGate or PreGateStep as unused (the lander pass that calls them is the next card), add each to internal/ci/testdata/dead_code_allowlist.txt with the comment `called by v111-pre-gate-lander-pass`.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first: write internal/sprint/pregate_test.go, package sprint, each test opening with t.Parallel() and building its world as the rules_read tests do (a primary in review with a head, attempt 1, a clock starting at 1000.0 s): TestAPreGateRedReworksTheHeadItGated (red for its head: the card leaves review for its next attempt, its fix is the why, FieldLandRefusedHead is the head, FieldPreGate names the head red), TestAPreGateGreenOrSkippedOnlyRecords (green and skipped: the column, the reads and every other field unchanged, FieldPreGate set), TestAPreGateOfAStaleHeadChangesNothing (a result for an older head, and for a card merging: no change, one NOTE line), TestAPreGateAtTheAttemptCapLeavesTheCardToTheCoordinator (at the cap: still in review, FieldPreGate red, no rework). Run go test -count=1 -timeout 600s ./internal/sprint/ -run '^TestAPreGate' -v and keep the failing line.
+STEP 3. Make them pass in the files PATHS names, citing tla/PreGate.tla Deliver and docs/SPEC-SPRINT.md \"The pre-gate\" from PreGate.
+STEP 4. Run the gate: go vet ./... ; gofmt -l . ; go test -count=1 -timeout 600s ./internal/sprint/ ./internal/sprint/store/ ./internal/ci/ ; go test -tags functional -count=1 -timeout 600s -run '^(TestStaticcheckFindings|TestUncheckedErrors|TestDeadCode)$' ./internal/ci/ . When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v111-pre-gate-store-step: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red line, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor.
+Never touch the space game's baseline or delta code.
+Never run `nova-sprint friend stage`. Clone on the bench from GitHub, never on the studio Mac.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Never read outside the job's working directory.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
+\"Not done\" is a welcome report; a green claim you did not run is not.
+"))))
