@@ -70,6 +70,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/", "/index.html":
 		s.send(w, r, "text/html; charset=utf-8", s.index())
+	case "/public.html":
+		// the public copy's page, for the copier that publishes it (fleet's nova-dashboard-pull
+		// saves it as the public site's index.html): the page a puller serves, without the charts
+		s.send(w, r, "text/html; charset=utf-8", s.indexPage(true))
 	case "/app.js":
 		s.send(w, r, "text/javascript; charset=utf-8", file("app.js"))
 	case "/nunito-800.woff2":
@@ -395,10 +399,13 @@ var tileFile = map[string]string{"/logo-tile-192.png": "logo-robot-192.png", "/l
 // branch (the tile img in the slot, the tile favicon links), the build in
 // place of its version; with --logo, an svg logo is drawn inline in the page's
 // text colour and is the favicon at /favicon.svg, and any other image is /logo.
-func (s *Server) index() []byte {
+func (s *Server) index() []byte { return s.indexPage(s.From != nil) }
+
+// indexPage is the page (index); public is the public copy's, without the charts.
+func (s *Server) indexPage(public bool) []byte {
 	build := s.Build()
 	page := string(file("index.html"))
-	if s.From != nil {
+	if public {
 		// a puller's page has no charts (charts_serve.go): the page as it was before them
 		page = strings.Replace(strings.Replace(page, chartsPanel, "", 1), chartsScript, "", 1)
 	}

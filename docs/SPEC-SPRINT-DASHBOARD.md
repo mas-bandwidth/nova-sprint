@@ -384,7 +384,9 @@ from the owner edits one line here and nothing else moves.
   between cards, worker and friend names, routes, models, each attempt's times) is not the public copy's to show until the
   owner decides what it may. On a puller /api/history, /api/stream/<name> and /stream/<name> answer 404, and its page is
   index.html without the panel and without charts.js (so without the stream links): the page as it was before them
-  (TestAPullerPublishesNothingFromTheRows).
+  (TestAPullerPublishesNothingFromTheRows). The public site itself is a file copier on hetzner2 (fleet's
+  nova-dashboard-pull, a STOPGAP), which copies the reader's page: the reader serves the public copy's page at /public.html,
+  byte for byte the page a puller serves, and the copier saves that as the site's index.html, never the reader's /.
 - The window: 24 hourly buckets on UTC hour boundaries, the current hour last; the page labels the hours in the viewer's time zone.
 - The charts, each a card with a title, one sentence saying what it counts, a legend, and the chart; with nothing to draw, the
   line "nothing in the last 24h" in its place: Landings per hour (bars, with the 24-hour mean per hour as a line); Work started

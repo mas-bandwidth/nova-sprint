@@ -376,6 +376,8 @@ func TestAPullerPublishesNothingFromTheRows(t *testing.T) {
 	assert.NotContains(t, page, "charts.js")
 	assert.Equal(t, strings.NewReplacer(chartsPanel, "", `<script src="charts.js?v=X"></script>`+"\n", "").Replace(buildQuery.ReplaceAllString(string(getBody(t, reader.s, "/")), "?v=X")),
 		buildQuery.ReplaceAllString(page, "?v=X"), "a puller's page is the reader's without the charts")
+	assert.Equal(t, page, string(getBody(t, reader.s, "/public.html")), "the reader's /public.html is the puller's page byte for byte")
+	assert.Equal(t, page, string(getBody(t, p, "/public.html")))
 	for _, route := range []string{"/api/history", "/api/stream/a.b", "/stream/a.b", "/api/stream/nope"} {
 		w := httptest.NewRecorder()
 		p.ServeHTTP(w, httptest.NewRequest(http.MethodGet, route, nil))
