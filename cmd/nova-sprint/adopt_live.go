@@ -337,11 +337,12 @@ func (p liveProbe) library(ctx context.Context) liveLibrary {
 	if p.pwEnv != "" {
 		args = append(args, "--password-env", p.pwEnv)
 	}
-	// The recorded login's password is read in process and never in
-	// os.Environ, so the child is handed it by name here: nova-redis reads
+	// The login's password is read in process and never in os.Environ (the
+	// seat login, a password file, or an environment login the startup scrub
+	// took), so the child is handed it by name here: nova-redis reads
 	// --password-env with os.Getenv and refuses when it is empty
 	// (pkg/nsprint/redisauth, "A user whose password variable is empty is
-	// refused"). An environment login already carries it, so pw is "".
+	// refused").
 	run := ctx
 	if p.pwEnv != "" && p.pw != "" {
 		run = withAdoptEnv(ctx, []string{p.pwEnv + "=" + p.pw})
