@@ -13,8 +13,6 @@
 # deleted. A listed name with no copy left (or no nova-tools twin) fails the lint until its
 # line is removed; a copy not listed fails the lint; a name not in the base's list fails
 # the lint (TestTheOneSourceAllowanceOnlyShrinks: the allowance only shrinks).
-tlc	SPRINT-AHEAD: parallel TLC suite cases not in tools
 config	DIVERGED: 14 sprint commits, 4 conflicting files (kind, redis, lines, apply)
 friend	DIVERGED: imports nova-sprint/internal/sprint; needs the coupling inverted first
-safepath	DIVERGED: twin-function fold conflicts with tools' own edit
 swarm	DIVERGED: 459 unported lines and dashboardask.go; last to merge
