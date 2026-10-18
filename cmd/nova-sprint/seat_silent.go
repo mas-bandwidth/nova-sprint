@@ -68,6 +68,9 @@ type busRetry struct {
 func busRefused(err error) bool {
 	var r *bus.Refusal
 	var p permanentFault
+	if err != nil && strings.Contains(err.Error(), busRedisEnv+" is not set") {
+		return true // the server's own environment names no bus (sendBus): it stands until set
+	}
 	return errors.As(err, &p) || errors.As(err, &r) && !busMessageWent(err) && !busNeedsNewToken(err)
 }
 
@@ -91,10 +94,10 @@ func busNeedsNewToken(err error) bool {
 	return false
 }
 
-// seatSilentRetoken is the token of a raise whose own token went with other arguments: the
-// raise's token and what the message says, so the same message is the same send again.
-func seatSilentRetoken(token, owner, subject, body string) string {
-	t := token + ":" + fmt.Sprintf("%x", sha256.Sum256([]byte(owner+"\x00"+subject+"\x00"+body)))[:16]
+// busRetoken is the token of a send whose own token went with other arguments: the token and
+// a digest of what the message says, so the same message is the same send again.
+func busRetoken(token string, parts ...string) string {
+	t := token + ":" + fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(parts, "\x00"))))[:16]
 	if len(t) > bus.MaxToken {
 		t = t[len(t)-bus.MaxToken:]
 	}
@@ -266,7 +269,7 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 			if busNeedsNewToken(err) {
 				// the raise's token went with other arguments (its text or its owner changed
 				// under it): this is another message, sent under a token of its own
-				m.Token = seatSilentRetoken(token, owner, g.Type, g.What)
+				m.Token = busRetoken(token, owner, g.Type, g.What)
 				err = a.bus(ctx, m, func(l string) { a.serveSay("%s", l) })
 			}
 			if err != nil && !busMessageWent(err) {

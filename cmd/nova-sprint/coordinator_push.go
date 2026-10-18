@@ -62,6 +62,15 @@ import (
 // first, off the line, before anything that waits on the line (renewEarly).
 const coordPushLook = 30 * time.Second
 
+// coordPushRetry is the longest the loop waits while something failed: a send to the holder
+// (the sprint push is unproven until one goes), a read of the look, a wait on the log. It is
+// main's 5 s look, kept for failures: a blip that clears within it is re-proven within it.
+const coordPushRetry = 5 * time.Second
+
+// holdRetryCap is the longest wait between two tries of a sprint push renewal that failed:
+// the first waits coordPushRetry, each after doubles it, up to this.
+const holdRetryCap = 30 * time.Second
+
 // coordPushFloor is the least time between the starts of two passes: a busy log (a line a
 // tick) wakes at most one pass a second. Before (2026-10-17), every log line woke a pass.
 const coordPushFloor = time.Second
@@ -91,7 +100,11 @@ type coordPush struct {
 	heldAt         time.Time // the sprint push's last renewal
 	heldWhy        string    // what the last renewal said, said again only when it changes
 	heldOK         bool      // the last renewal proved the sprint push (else it unproved it)
-	holdFailed     bool      // the last renewal could not be made: tried again at the next look
+	holdFailed     bool      // the last renewal could not be made: tried again at holdNext
+	holdNext       time.Time // when a failed renewal is tried again
+	holdWait       time.Duration
+	holdSaid       string // the renewal's failure said, said once until it succeeds or changes
+	readOK         bool   // the last pass read its look: only then is the renewal made early
 
 	passPrint string                   // what the last full pass read as it began (coordPassPrint)
 	passAt    time.Time                // when the last full pass began
@@ -126,12 +139,14 @@ func (a *app) coordPushOnce(ctx context.Context, last time.Time) time.Time {
 		}
 	}
 	began := a.now()
+	// the renewal first, before anything that waits on the line (renewEarly)
+	a.renewEarly(ctx)
 	if !a.coordPassSkip(ctx) && !a.coordinatorPass(ctx) {
 		a.coord.mu.Lock()
 		a.coord.passPrint = "" // a pass that could not read is never skipped
 		a.coord.mu.Unlock()
 		if ctx.Err() == nil {
-			a.sleep(coordPushLook)
+			a.sleep(max(a.coordPushWait(began), coordPushFloor))
 		}
 		return began
 	}
@@ -148,16 +163,18 @@ func (a *app) coordPushOnce(ctx context.Context, last time.Time) time.Time {
 		}
 	}
 	if err != nil && ctx.Err() == nil {
-		// A failed wait must not busy-spin or remove the existing retry backstop.
-		a.sleep(coordPushLook)
+		// A failed wait must not busy-spin, nor wait past the renewal or a retry.
+		a.sleep(max(a.coordPushWait(began), coordPushFloor))
 	}
 	return began
 }
 
-// coordPushWait is how long the loop waits for the next log event after a pass began at
-// began: coordPushLook, cut short to when the sprint push's renewal is due, the backstop's
-// full pass is due, or a decision lane's retry is due. Before, a skipped pass right before the
-// renewal was due waited a whole coordPushLook, and the lease went near two looks unrenewed.
+// coordPushWait is how long the loop waits, for the next log event or after a failure:
+// coordPushLook, cut short to when the backstop's full pass is due, the sprint push's renewal
+// is due (or a failed renewal's retry), a decision lane's retry is due, and to coordPushRetry
+// while a send to the holder has failed or the last look could not be read. Before, a skipped
+// pass right before the renewal was due waited a whole coordPushLook, and the lease went near
+// two looks unrenewed.
 func (a *app) coordPushWait(began time.Time) time.Duration {
 	now := a.now()
 	p := &a.coord
@@ -167,8 +184,11 @@ func (a *app) coordPushWait(began time.Time) time.Duration {
 	if !p.passAt.IsZero() {
 		wait = min(wait, p.passAt.Add(coordPushLook).Sub(now))
 	}
-	if !p.heldAt.IsZero() {
-		wait = min(wait, p.heldAt.Add(hook.RenewEvery).Sub(now))
+	if p.failed || !p.readOK {
+		wait = min(wait, coordPushRetry)
+	}
+	if at := p.renewAt(); !at.IsZero() && p.readOK {
+		wait = min(wait, at.Sub(now)) // (a pass that cannot read renews nothing: coordPushRetry)
 	}
 	for _, r := range p.decisions {
 		if !r.next.IsZero() {
@@ -241,7 +261,7 @@ func (a *app) coordPassSkip(ctx context.Context) bool {
 	// a renewal is due once its interval is over, or after one that failed; with none made
 	// (no holder, an unresolved identity's unproving, a new epoch) none is due: a full pass
 	// makes it when what it reads changes, and the backstop's pass when it does not
-	renew := p.holdFailed || !p.heldAt.IsZero() && !now.Before(p.heldAt.Add(hook.RenewEvery))
+	renew := p.renewDue(now)
 	skip := p.passPrint == print && !p.passAt.IsZero() && !now.Before(p.passAt) && now.Sub(p.passAt) < coordPushLook &&
 		!p.failed && len(p.streamPending) == 0 && !renew
 	for _, r := range p.decisions {
@@ -343,6 +363,9 @@ func (a *app) coordinatorPass(ctx context.Context) (read bool) {
 	a.renewEarly(ctx)
 	a.decisionPass(ctx)
 	l, err := a.readCoordLook(ctx)
+	a.coord.mu.Lock()
+	a.coord.readOK = err == nil
+	a.coord.mu.Unlock()
 	if err != nil {
 		a.serveSay("COORDINATOR PUSH: the inbox could not be read, tried again at the next look: %s", oneline.Escape(err.Error()))
 		return
@@ -368,6 +391,7 @@ func (a *app) coordinatorPass(ctx context.Context) (read bool) {
 		// Ordinary delivery keys reset for a new holder or epoch; state receipts remain.
 		p.holder, p.epoch, p.told = l.holder, l.epoch, map[string]bool{}
 		p.failed, p.heldAt, p.recoveryToken, p.recoveryBefore, p.recoveryFrom = false, time.Time{}, "", time.Time{}, ""
+		p.holdFailed, p.holdNext, p.holdWait = false, time.Time{}, 0
 		p.firstSeen, p.warned, p.warnedAt = map[string]time.Time{}, nil, time.Time{}
 	}
 	p.streamCursor, p.streamPending = l.streamCursor, l.streamEvents
@@ -593,7 +617,8 @@ func (a *app) coordinatorPass(ctx context.Context) (read bool) {
 	ok := !p.failed
 	// due at its interval, after a failed renewal, and at once when this pass's sends changed
 	// whether the way to the seat is proven
-	due := p.heldAt.IsZero() || p.holdFailed || !now.Before(p.heldAt.Add(hook.RenewEvery)) || ok != p.heldOK
+	// (a failed renewal waits for its retry, whatever changed)
+	due := p.renewDue(now) || !p.holdFailed && (p.heldAt.IsZero() || ok != p.heldOK)
 	p.mu.Unlock()
 	if due {
 		a.renewSprintPush(ctx, l.holder, ok, now)
@@ -608,14 +633,26 @@ func (a *app) renewSprintPush(ctx context.Context, holder string, ok bool, now t
 	why, err := a.holdSprintPush(ctx, holder, ok)
 	p := &a.coord
 	if err != nil {
+		// a failed renewal is tried again in coordPushRetry, doubling to holdRetryCap, and
+		// said once until it succeeds or its text changes; before, it was tried and said on
+		// every pass, a second apart
 		p.mu.Lock()
 		p.holdFailed = true
+		p.holdWait = min(max(2*p.holdWait, coordPushRetry), holdRetryCap)
+		p.holdNext = now.Add(p.holdWait)
+		why := oneline.Escape(err.Error())
+		say := why != p.holdSaid
+		p.holdSaid = why
+		wait := p.holdWait
 		p.mu.Unlock()
-		a.serveSay("COORDINATOR PUSH: the sprint push of %s could not be held, tried again at the next look: %s", holder, oneline.Escape(err.Error()))
+		if say {
+			a.serveSay("COORDINATOR PUSH: the sprint push of %s could not be held, tried again in %s, the wait doubling to %s (said once until it changes): %s", holder, wait, holdRetryCap, why)
+		}
 		return
 	}
 	p.mu.Lock()
 	p.heldAt, p.heldOK, p.holdFailed = now, ok, false
+	p.holdNext, p.holdWait, p.holdSaid = time.Time{}, 0, ""
 	say := why != p.heldWhy
 	p.heldWhy = why
 	p.mu.Unlock()
@@ -624,16 +661,36 @@ func (a *app) renewSprintPush(ctx context.Context, holder string, ok bool, now t
 	}
 }
 
-// renewEarly renews the sprint push when its renewal is due, before the pass's lanes, which
-// wait on the server's line: a tick holding the line must not let the lease lapse. It reads
-// the seat's holder off the line and renews only for the holder the last pass held it for;
-// the pass itself renews for a new one.
+// renewAt is when the sprint push's renewal is next due: its interval's end, or a failed
+// renewal's retry; zero with none made. The caller holds p.mu.
+func (p *coordPush) renewAt() time.Time {
+	if p.holdFailed {
+		return p.holdNext
+	}
+	if p.heldAt.IsZero() {
+		return time.Time{}
+	}
+	return p.heldAt.Add(hook.RenewEvery)
+}
+
+// renewDue says the renewal is due at now. The caller holds p.mu.
+func (p *coordPush) renewDue(now time.Time) bool {
+	at := p.renewAt()
+	return !at.IsZero() && !now.Before(at)
+}
+
+// renewEarly renews the sprint push when its renewal is due, first in a turn of the loop and
+// in a pass, before anything that waits on the server's line: a tick holding the line must
+// not let the lease lapse. It reads the seat's holder off the line and renews only for the
+// holder the last pass held it for (the pass itself renews for a new one), and only when the
+// last pass read its look: a pass that cannot read delivers nothing, and its renewal waits for
+// a good read, so the lease lapses and the gate refuses, as before the early renewal.
 func (a *app) renewEarly(ctx context.Context) {
 	now := a.now()
 	p := &a.coord
 	p.mu.Lock()
 	holder, ok := p.holder, !p.failed
-	due := holder != "" && (p.holdFailed || !p.heldAt.IsZero() && !now.Before(p.heldAt.Add(hook.RenewEvery)))
+	due := holder != "" && p.readOK && p.renewDue(now)
 	p.mu.Unlock()
 	if !due {
 		return
@@ -1144,8 +1201,16 @@ func (a *app) decisionSend(ctx context.Context, lane string, job sprint.Note, lo
 		if d.From == "" {
 			d.From = login
 		}
-		// a send that went under its token before is a delivery (busMessageWent)
-		if err := a.bus(ctx, bus.Message{From: d.From, To: []string{d.To}, Kind: bus.KindBlocker, Subject: "nova-sprint: decisions owed", Body: d.Body, Token: d.Token}, func(s string) { a.serveSay("%s", s) }); err != nil && !busMessageWent(err) {
+		// a send that went under its token before is a delivery (busMessageWent); one whose
+		// token went with other arguments is another message, sent under a token of its own
+		// (busRetoken), as the seat-silent raise is
+		m := bus.Message{From: d.From, To: []string{d.To}, Kind: bus.KindBlocker, Subject: "nova-sprint: decisions owed", Body: d.Body, Token: d.Token}
+		err := a.bus(ctx, m, func(s string) { a.serveSay("%s", s) })
+		if busNeedsNewToken(err) {
+			m.Token = busRetoken(d.Token, d.To, d.From, d.Body)
+			err = a.bus(ctx, m, func(s string) { a.serveSay("%s", s) })
+		}
+		if err != nil && !busMessageWent(err) {
 			fault, sendErr = err.Error(), err
 		}
 	}

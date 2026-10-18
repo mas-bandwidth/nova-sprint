@@ -307,3 +307,202 @@ func TestALaneThatCannotBeReadLeavesTheOtherLaneGoing(t *testing.T) {
 	assert.Equal(t, []string{name}, b.delivered[0].To)
 	assert.Contains(t, log.String(), "DECISIONS OWED: prepare owner failed: the owner could not be read")
 }
+
+// failingInbox is the memory store whose inbox stream cannot be read.
+type failingInbox struct{ *store.Mem }
+
+func (failingInbox) NotesSince(context.Context, string, int) ([]sprint.Note, []string, error) {
+	return nil, nil, errors.New("the inbox could not be read")
+}
+
+// failingWait is the memory store whose log wait fails.
+type failingWait struct{ *store.Mem }
+
+func (failingWait) WaitLog(context.Context, string, time.Duration) (string, bool, error) {
+	return "", false, errors.New("the log wait failed")
+}
+
+// hookedPush is a hooked coordinator whose first full pass held its sprint push at t0, and
+// whose loop waits on the test's clock.
+func hookedPush(t *testing.T, name string) (*testApp, time.Time) {
+	t.Helper()
+	ta, rig, _ := coordSprint(t, name)
+	rig.Hook(t, name, hook.Coordinator)
+	ta.m.LogWait = func(d time.Duration) { ta.a.sleep(d) }
+	t0 := ta.a.now()
+	ctx := context.Background()
+	require.False(t, ta.a.coordPassSkip(ctx))
+	require.True(t, ta.a.coordinatorPass(ctx))
+	require.Equal(t, t0, ta.a.coord.heldAt)
+	require.True(t, ta.a.coord.heldOK)
+	return ta, t0
+}
+
+// A pass that cannot read its look delivers nothing, so it renews nothing, early or late:
+// the lease lapses within hook.LeaseTTL and the gate refuses, as before the early renewal.
+// The read is tried again every coordPushRetry, not every second.
+func TestAPassThatCannotReadRenewsNothing(t *testing.T) {
+	t.Parallel()
+	ta, t0 := hookedPush(t, "push-noread")
+	ctx := context.Background()
+	notes := 0
+	ta.a.backend = func(context.Context, string, sprint.Names) (store.Backend, error) {
+		return countingInbox{failingInbox{ta.m}, &notes}, nil
+	}
+	ta.step(hook.RenewEvery - time.Second)
+	var last time.Time
+	for ta.a.now().Before(t0.Add(hook.LeaseTTL + coordPushLook)) {
+		last = ta.a.coordPushOnce(ctx, last)
+	}
+	// the one renewal the last good read earned (at t0+RenewEvery, as the first failing pass
+	// began) and none after: the lease ends within hook.LeaseTTL of the first failed read
+	held := ta.a.coord.heldAt
+	assert.False(t, held.After(t0.Add(hook.RenewEvery)), "nothing renewed after the look failed: %s", held.Sub(t0))
+	assert.False(t, ta.a.coord.readOK)
+	assert.LessOrEqual(t, notes, int((hook.LeaseTTL+coordPushLook)/coordPushRetry)+2, "read again every coordPushRetry, not every second: %d reads", notes)
+}
+
+// countingInbox counts the reads of a failing inbox.
+type countingInbox struct {
+	failingInbox
+	n *int
+}
+
+func (c countingInbox) NotesSince(ctx context.Context, after string, max int) ([]sprint.Note, []string, error) {
+	*c.n++
+	return c.failingInbox.NotesSince(ctx, after, max)
+}
+
+// A turn of the loop renews the push on time while another goroutine holds the server's line
+// for 20 s: the renewal is the turn's first act, off the line.
+func TestTheLoopRenewsWhileTheLineIsHeld(t *testing.T) {
+	t.Parallel()
+	ta, t0 := hookedPush(t, "push-lineheld")
+	ctx := context.Background()
+	ta.step(hook.RenewEvery)
+	hs := ta.a.hookStoreFn
+	renewed := make(chan struct{}, 1)
+	ta.a.hookStoreFn = func(ctx context.Context) (hook.Store, error) {
+		select {
+		case renewed <- struct{}{}:
+		default:
+		}
+		return hs(ctx)
+	}
+	ta.a.serial.Lock()
+	done := make(chan struct{})
+	go func() { defer close(done); ta.a.coordPushOnce(ctx, t0) }()
+	<-renewed // the renewal reached the hook store while the line is held
+	ta.step(20 * time.Second)
+	ta.a.serial.Unlock()
+	<-done
+	assert.Equal(t, t0.Add(hook.RenewEvery), ta.a.coord.heldAt, "renewed when due, not when the line came free")
+}
+
+// A failed log wait a tenth of a second before the renewal is due sleeps only to the renewal:
+// the push is renewed by a second after it was due. Before, it slept a whole look.
+func TestAFailedWaitBeforeTheRenewalStillRenewsOnTime(t *testing.T) {
+	t.Parallel()
+	ta, t0 := hookedPush(t, "push-waitfail")
+	ctx := context.Background()
+	ta.a.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return failingWait{ta.m}, nil }
+	ta.step(hook.RenewEvery - 100*time.Millisecond)
+	last := ta.a.coordPushOnce(ctx, t0)
+	ta.a.coordPushOnce(ctx, last)
+	held := ta.a.coord.heldAt
+	assert.True(t, held.After(t0), "renewed")
+	assert.False(t, held.After(t0.Add(hook.RenewEvery+coordPushFloor)), "by a second after it was due: %s", held.Sub(t0))
+}
+
+// A renewal that fails is tried again in coordPushRetry, doubling to holdRetryCap, and said
+// once: not every pass, a second apart, with two tries and two lines each.
+func TestAFailedRenewalBacksOffAndIsSaidOnce(t *testing.T) {
+	t.Parallel()
+	ta, t0 := hookedPush(t, "push-holdfail")
+	ctx := context.Background()
+	var log bytes.Buffer
+	ta.a.serveLog = &log
+	tries := 0
+	ta.a.hookStoreFn = func(context.Context) (hook.Store, error) {
+		tries++
+		return hook.Store{}, errors.New("the hook store is down")
+	}
+	ta.step(hook.RenewEvery)
+	var last time.Time
+	var at []time.Duration
+	for ta.a.now().Before(t0.Add(hook.RenewEvery + 2*time.Minute)) {
+		before := tries
+		began := ta.a.coordPushOnce(ctx, last)
+		if tries > before {
+			at = append(at, began.Sub(t0)-hook.RenewEvery)
+		}
+		last = began
+	}
+	require.GreaterOrEqual(t, len(at), 4, "%v", at)
+	for i := 1; i < len(at); i++ {
+		gap := at[i] - at[i-1]
+		assert.GreaterOrEqual(t, gap, min(coordPushRetry<<(i-1), holdRetryCap), "try %d after %s: %v", i, gap, at)
+	}
+	assert.LessOrEqual(t, len(at), 8, "tries in two minutes: %v", at)
+	assert.Equal(t, 1, strings.Count(log.String(), "could not be held"), log.String())
+}
+
+// A bus blip of two seconds unproves the push at once (the header's promise) and re-proves
+// it within coordPushRetry: the failed send is retried within it, not a look later.
+func TestABusBlipIsReprovedWithinTheRetry(t *testing.T) {
+	t.Parallel()
+	const name = "push-blip"
+	ta, _ := hookedPush(t, name)
+	ctx := context.Background()
+	send := ta.a.bus
+	t1 := ta.a.now()
+	ta.a.bus = func(context.Context, bus.Message, func(string)) error { return errors.New("bus unavailable") }
+	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: name}
+	_, err := st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, SprintLevel: true, Type: "blip-judgment", What: "new", At: ta.a.now()}))
+	require.NoError(t, err)
+	last := ta.a.coordPushOnce(ctx, time.Time{})
+	require.True(t, ta.a.coord.failed)
+	assert.False(t, ta.a.coord.heldOK, "unproved at once")
+	ta.a.bus = send // the blip clears within two seconds; the loop waited coordPushRetry
+	for !ta.a.coord.heldOK && ta.a.now().Before(t1.Add(coordPushLook)) {
+		last = ta.a.coordPushOnce(ctx, last)
+	}
+	assert.True(t, ta.a.coord.heldOK, "proven again")
+	assert.False(t, ta.a.coord.heldAt.After(t1.Add(coordPushRetry+coordPushFloor)), "within the retry: %s", ta.a.coord.heldAt.Sub(t1))
+}
+
+// A decisions-owed send whose token went with other arguments is sent at once under a token
+// of its own, and its receipt is recorded: not refused under the same token every pass.
+func TestADecisionDeliveryWhoseTokenWentWithOtherArgumentsGetsANewToken(t *testing.T) {
+	t.Parallel()
+	const name = "owed-retoken"
+	ta, _ := overdueRig(t, name)
+	ctx := context.Background()
+	b := &tokenBus{}
+	var tokens []string
+	ta.a.bus = func(ctx context.Context, m bus.Message, say func(string)) error {
+		if m.To[0] != "glenn" {
+			return b.send(ctx, m, say)
+		}
+		tokens = append(tokens, m.Token)
+		if len(tokens) == 1 {
+			return &bus.Refusal{Problems: []string{"the token \"" + m.Token + "\" already sent 01M at 2026-10-17T00:00:00Z with other arguments; a retry repeats them exactly, and a new message wants a new token"}}
+		}
+		return b.send(ctx, m, say)
+	}
+	ta.a.decisionPass(ctx)
+	require.Len(t, tokens, 2, "sent again at once")
+	assert.True(t, strings.HasPrefix(tokens[1], tokens[0]+":"), tokens[1])
+	ta.step(5 * time.Second)
+	ta.a.decisionPass(ctx)
+	assert.Len(t, tokens, 2, "delivered: not sent again")
+	assert.Empty(t, ta.a.coord.decisions)
+}
+
+// A server whose environment names no bus has a standing fault: it waits as a refusal does.
+func TestAnUnsetBusIsAStandingFault(t *testing.T) {
+	t.Parallel()
+	r := busRetry{}
+	r.failed(time.Unix(1000, 0), errors.New(busRedisEnv+" is not set: no bus to send on"))
+	assert.Equal(t, busRetryFirst, r.wait)
+}
