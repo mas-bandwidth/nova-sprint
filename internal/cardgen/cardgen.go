@@ -834,6 +834,12 @@ func (f LintFinding) String() string {
 	return fmt.Sprintf("LINT DRIFT card=%s check=%s line=%d: %s", f.ID, f.Check, f.Line, f.Excerpt)
 }
 
+// placeholderRE matches what reads as a leftover template slot: <word>, with a
+// hyphen or digit inside. A rendered brief carries the template's own words in this
+// shape — the RESULT line's sha=<sha12>, the report wording `Head: <sha>` and
+// `--head <sha>`, the commit format <id>: <what>, and anything inside a backtick
+// span (a command, a type, a format being described) — and Lint skips those as no
+// leftover; every other match stays a finding.
 var placeholderRE = regexp.MustCompile(`<[a-z][a-z0-9 -]*>`)
 
 // siblingPathRE matches a reference to a sibling repository's path (../<name>, a
@@ -869,7 +875,10 @@ func siblingsListed(brief string) map[string]bool {
 // Lint holds one rendered brief to what nova-sprint add holds it to (cmd/nova-sprint
 // verbs.go lintBriefReads): the model lines of line 1, the child rules, the typed
 // header and a tree card's steps; and to the template's own placeholders, which the
-// add does not read but nova-swarm lint --card does. Empty means admitted.
+// add does not read but nova-swarm lint --card does. The template's own words are no
+// leftover and are skipped: the RESULT line's sha=<sha12>, the report wording `Head:
+// <sha>` and `--head <sha>`, the commit format <id>: <what>, and anything inside a
+// backtick span. Empty means admitted.
 func Lint(id, brief string) []LintFinding {
 	var out []LintFinding
 	add := func(check string, line int, excerpt string) {
@@ -888,11 +897,64 @@ func Lint(id, brief string) []LintFinding {
 		add(f.Check, f.Line, f.Excerpt)
 	}
 	for i, line := range strings.Split(brief, "\n") {
-		if m := placeholderRE.FindString(line); m != "" {
-			add("placeholder", i+1, m)
+		if !strings.Contains(line, "<") {
+			continue
+		}
+		protected := lintProtectedRanges(line, i)
+		for _, m := range placeholderRE.FindAllStringIndex(line, -1) {
+			if lintInsideRange(m[0], m[1], protected) {
+				continue
+			}
+			add("placeholder", i+1, line[m[0]:m[1]])
 		}
 	}
 	return append(out, LintSiblingPath(id, brief)...)
+}
+
+// lintProtectedRanges returns the byte ranges of line that are no leftover: a
+// backtick span, the RESULT line's sha=<sha12> (lineNo 0), the report wording `Head:
+// <sha>` and `--head <sha>`, and the commit format <id>: <what> — the template's own
+// words (docs/SPEC-CARD-CONTRACT.md).
+func lintProtectedRanges(line string, lineNo int) [][2]int {
+	var out [][2]int
+	open := -1
+	for j, c := range line {
+		if c == '`' {
+			if open < 0 {
+				open = j
+			} else {
+				out = append(out, [2]int{open, j + 1})
+				open = -1
+			}
+		}
+	}
+	phrases := []string{"Head: <sha>", "--head <sha>", "<id>: <what>"}
+	if lineNo == 0 {
+		phrases = append(phrases, "sha=<sha12>")
+	}
+	for _, p := range phrases {
+		for off := 0; ; {
+			idx := strings.Index(line[off:], p)
+			if idx < 0 {
+				break
+			}
+			s := off + idx
+			out = append(out, [2]int{s, s + len(p)})
+			off = s + len(p)
+		}
+	}
+	return out
+}
+
+// lintInsideRange reports whether the byte range [s, e) lies wholly inside one of
+// the protected ranges.
+func lintInsideRange(s, e int, ranges [][2]int) bool {
+	for _, r := range ranges {
+		if s >= r[0] && e <= r[1] {
+			return true
+		}
+	}
+	return false
 }
 
 // LintSiblingPath returns the sibling-path findings of a brief: a text reference to a
