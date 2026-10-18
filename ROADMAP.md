@@ -16,6 +16,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 - [Moved out of the sprint on 2026-10-15: v15-features](#moved-out-of-the-sprint-on-2026-10-15-v15-features) (1)
 - [Moved out of the sprint on 2026-10-15: target v1.5](#moved-out-of-the-sprint-on-2026-10-15-target-v15) (6)
 - [Resume after the rocketnet milestone](#resume-after-the-rocketnet-milestone) (7)
+- [Moved out of the sprint on 2026-10-18: v15-schema-tables, target v1.7](#moved-out-of-the-sprint-on-2026-10-18-v15-schema-tables-target-v17) (199)
 
 ## Lessons from Prime Agent's rewrite
 
@@ -3148,3 +3149,1997 @@ Target: v1.5
 Resume after the rocketnet milestone. THE TASK. The sprint has `set --fleet-tiers` (the tiers the fleet as a whole may be dealt) but no matching setting for the friends as a whole. Add Source: Glenn, 2026-10-15 ~21:58Z: "we should be able to configure tiers allowed for friends (as a whole) and fleet (as a whole). Default Heads: none.
 
 Target: after the rocketnet milestone
+
+## Moved out of the sprint on 2026-10-18: v15-schema-tables, target v1.7
+
+The open cards of sprint stream v15-schema-tables, moved out of the sprint when Glenn promoted v1.5.x to v1.6.0 and sent the rest of v1.5 to v1.7 (2026-10-17 late evening EDT), one item per card. Landed cards of the stream are in git and are not listed. Each item names its card, its tier, its base branch, its column, its needs, every pushed head and branch, and any head or working branch not on origin.
+
+### a11-hook-judgments-dual-read
+
+RESULT: a11-hook-judgments-dual-read sha=<sha12> tier: pro DEPENDS-ON: a11-defs-worker-answers REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 11: the judgment record as Store.Judgments reads it, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 2, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a11-hook-judgments-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a11-sprint-answers-writers
+
+RESULT: a11-sprint-answers-writers sha=<sha12> tier: heavy DEPENDS-ON: a11-sprintwire-dual-read,a11-member-queue-answer-dual-read,a11-member-take-answer-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 11: the answers nova-sprint gives workers written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier heavy. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a11-sprint-answers-writers (stream v15-schema-tables, column waiting, tier heavy, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a11-sprintwire-dual-read
+
+RESULT: a11-sprintwire-dual-read sha=<sha12> tier: pro DEPENDS-ON: a11-defs-worker-answers REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 11: the sprintwire answer read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 5, tier pro. Work audited 2026-10-18. Pushed heads: 3dd5b418db09795b0f9de0e7ed736694e1c4c325 (vision; on origin: sprint/a11-sprintwire-dual-read.w1.g1.e21); 7f260fb011ebd26a54471cd7be58d0a1c967e6bc (hetzner2; on origin: sprint/a11-sprintwire-dual-read.w2.g3.e21); 8f2278daf1af8574b431570ed757f19ebb74f805 (friend.rowan; on origin: sprint/a11-sprintwire-dual-read.w4.g1.e21). Other branches of the card on origin, no head recorded for them: sprint/a11-sprintwire-dual-read.w3.g1.e21 at 37b4f0dcda45; sprint/a11-sprintwire-dual-read.w5.g1.e21 at 11d0d89c7d24; sprint/a11-sprintwire-dual-read.w5.g3.e21 at 626c09db1fe7.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a11-sprintwire-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a11-tools-answers-writers
+
+RESULT: a11-tools-answers-writers sha=<sha12> tier: pro DEPENDS-ON: a11-sprintwire-dual-read,a11-send-token-record-dual-read,a11-hook-judgments-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 11: the sprintwire request, the send-token record and the hook records written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a11-tools-answers-writers (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a11-friend-card-holders-dual-read
+
+RESULT: a11-friend-card-holders-dual-read sha=<sha12> tier: pro DEPENDS-ON: a11-defs-worker-answers REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 11: the cards view as nova-friend parseHolders reads it, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 4, tier pro. Work audited 2026-10-18. Pushed heads: f2d5b5ce70d9f030fbf67a827d4067c5671a246b (hulk; on origin: sprint/a11-friend-card-holders-dual-read.w2.g4.e21); 24e8e33abdbc71316d754e067a18d2ed942132ef (amd-2; on origin: sprint/a11-friend-card-holders-dual-read.w4.g10.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a11-friend-card-holders-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a11-friend-codex-routes-dual-read
+
+RESULT: a11-friend-codex-routes-dual-read sha=<sha12> tier: pro DEPENDS-ON: a11-defs-worker-answers REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 11: the routes view as codexRouteModels reads it, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 4, tier pro. Work audited 2026-10-18. Pushed heads: 3de3bf342f8cae0ba2dbaa46ec04d02f0ff32caf (vision; on origin: sprint/a11-friend-codex-routes-dual-read.w3.g1.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a11-friend-codex-routes-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a11-friend-held-answer-dual-read
+
+RESULT: a11-friend-held-answer-dual-read sha=<sha12> tier: pro DEPENDS-ON: a11-defs-worker-answers REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 11: the friend cards answer as ParseHeld reads it, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 5, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a11-friend-held-answer-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a11-friend-route-price-dual-read
+
+RESULT: a11-friend-route-price-dual-read sha=<sha12> tier: pro DEPENDS-ON: a11-defs-worker-answers,a11-friend-codex-routes-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 11: the routes view as RoutePriceOf reads it, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a11-friend-route-price-dual-read (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a11-friend-view-epoch-dual-read
+
+RESULT: a11-friend-view-epoch-dual-read sha=<sha12> tier: pro DEPENDS-ON: a11-defs-worker-answers,a11-friend-worker-view-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 11: the worker view as viewEpoch reads it, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a11-friend-view-epoch-dual-read (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a11-friend-worker-view-dual-read
+
+RESULT: a11-friend-worker-view-dual-read sha=<sha12> tier: pro DEPENDS-ON: a11-defs-worker-answers REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 11: the worker view as ParseView reads it, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 6, tier pro. Work audited 2026-10-18. Pushed heads: 22cc2a0d7fdcd378d5ce78a687458d40db01bb9b (amd-1; on origin: sprint/a11-friend-worker-view-dual-read.w2.g7.e21); 1787bc6ce9489675084431ebb1e34736e2664fe4 (vision; on origin: sprint/a11-friend-worker-view-dual-read.w3.g3.e21); 0158467f995bb738ded26d8501a197174a4200bf (hulk; on origin: sprint/a11-friend-worker-view-dual-read.w4.g5.e21). Other branches of the card on origin, no head recorded for them: sprint/a11-friend-worker-view-dual-read.w6.g1.e21 at c700abe3e430.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a11-friend-worker-view-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a11-member-queue-answer-dual-read
+
+RESULT: a11-member-queue-answer-dual-read sha=<sha12> tier: pro DEPENDS-ON: a11-defs-worker-answers REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 11: the queue answer as Member.Tick reads it, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 3, tier pro. Work audited 2026-10-18. Pushed heads: bc7a47bb34cb608b34016aa86ac0f813c1fc4ea5 (amd-1; on origin: sprint/a11-member-queue-answer-dual-read.w1.g6.e21). Other branches of the card on origin, no head recorded for them: sprint/a11-member-queue-answer-dual-read.w3.g2.e21 at 93c77d84638d.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a11-member-queue-answer-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a11-member-take-answer-dual-read
+
+RESULT: a11-member-take-answer-dual-read sha=<sha12> tier: pro DEPENDS-ON: a11-defs-worker-answers REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 11: the take answer as Member.take reads it, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 3, tier pro. Work audited 2026-10-18. No pushed head recorded. Branches on origin the sprint records no head for: sprint/a11-member-take-answer-dual-read.w3.g2.e21 at 4a08abc3f230; sprint/a11-member-take-answer-dual-read.w3.g7.e21 at 98a8ce78ef15; sprint/a11-member-take-answer-dual-read.w3.g8.e21 at 298e265869bf.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a11-member-take-answer-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a12-dashboard-dual-read
+
+RESULT: a12-dashboard-dual-read sha=<sha12> tier: heavy DEPENDS-ON: a12-defs-where-view REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 12: the dashboard's read of where --json read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a12-dashboard-dual-read (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a12-defs-verb-json-outputs
+
+RESULT: a12-defs-verb-json-outputs sha=<sha12> tier: pro DEPENDS-ON: schema-string-arrays-and-top-level-array-roots,v15-sprint-wires-bump-to-the-text-list-pin CARRY: a12-defs-verb-json-outputs attempt 5 head=e63458940eac4fd762b32f75ba5eaa01a1c63989 REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the definitions and their generated Go are committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 12: the verbjson area's definitions (variable tables). Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 9, tier pro. Work audited 2026-10-18. Pushed heads: 2c12b031ad1a61f308453fad99ce7977c86dd2c6 (captain; on origin: sprint/a12-defs-verb-json-outputs.w3.g3.e21); aa91a343e3d47d1135d326b0a91008298e882e0e (amd-3; on origin: sprint/a12-defs-verb-json-outputs.w8.g2.e21); cbeece97917a80ce58023832a79aa906c951246a (friend.rowan; on origin: sprint/a12-defs-verb-json-outputs.w1.g1.e21); 4a34fb62487af4ee650e4af97fbff42c8a4cf7c1 (amd-2; on origin: sprint/a12-defs-verb-json-outputs.w4.g1.e21); e63458940eac4fd762b32f75ba5eaa01a1c63989 (captain; on origin: sprint/a12-defs-verb-json-outputs.w5.g1.e21); 074e73b6a404121b87d0abfc4145357f7f66bbd4 (hetzner2; on origin: sprint/a12-defs-verb-json-outputs.w6.g1.e21); 4f945454ac1063efc2eb16da0593b239ac7f0739 (hetzner1; on origin: sprint/a12-defs-verb-json-outputs.w7.g1.e21). Other branches of the card on origin, no head recorded for them: sprint/a12-defs-verb-json-outputs.w9.g1.e21 at 0ace5d3f9ae5.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a12-defs-verb-json-outputs (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a12-defs-where-view
+
+RESULT: a12-defs-where-view sha=<sha12> tier: pro DEPENDS-ON: schema-string-arrays-and-top-level-array-roots,schema-go-unbounded-text-list-elements-and-map-keys,v15-sprint-wires-bump-to-the-text-list-pin CARRY: a12-defs-where-view attempt 4 head=99312f05fa23a8bedf6a8f6d10d1513aeb1069e8 REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the definitions and their generated Go are committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 12: the view area's definitions (variable tables). Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 9, tier pro. Work audited 2026-10-18. Pushed heads: e32b057a81f5185a06ae3c2b2dc3ddde4fdb8d62 (friend.rowan; on origin: sprint/a12-defs-where-view.w2.g1.e21); db43f1f7f32ba063be769404a05d83e72a19bd55 (friend.rowan; on origin: sprint/a12-defs-where-view.w3.g1.e21); 99312f05fa23a8bedf6a8f6d10d1513aeb1069e8 (friend.rowan; on origin: sprint/a12-defs-where-view.w4.g1.e21); 5403847dace1cccc57a0a0e9527429f166cd2d7d (amd-1; on origin: sprint/a12-defs-where-view.w6.g3.e21); 662290ba2f5005a9b177054af52baddd2004d05a (hetzner1; on origin: sprint/a12-defs-where-view.w7.g1.e21). Other branches of the card on origin, no head recorded for them: sprint/a12-defs-where-view.w9.g1.e21 at b27268f81d88.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a12-defs-where-view (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a12-dashboard-page-copy-dual-read
+
+RESULT: a12-dashboard-page-copy-dual-read sha=<sha12> tier: pro DEPENDS-ON: a12-defs-where-view REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 12: where --json as the dashboard's pageCopyOf reads it, read in both forms, refused by name when malformed, counted per form. Source: the v1.5 gap audit (the owner, Glenn, 2026-10-17: "v1.5 is complete adoption of schema end-to-end in tools and sprint"); nova-sprint docs/research/schema-tables/UNION.md (read) section 6 (C13, the per-form counter); nova-sprint schemas/README.md (read), the home rule and the pin.. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a12-dashboard-page-copy-dual-read (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a12-dashboard-release-view-dual-read
+
+RESULT: a12-dashboard-release-view-dual-read sha=<sha12> tier: pro DEPENDS-ON: a12-defs-where-view REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 12: where --json as the dashboard's release view reads it, read in both forms, refused by name when malformed, counted per form. Source: the v1.5 gap audit (the owner, Glenn, 2026-10-17: "v1.5 is complete adoption of schema end-to-end in tools and sprint"); nova-sprint docs/research/schema-tables/UNION.md (read) section 6 (C13, the per-form counter); nova-sprint schemas/README.md (read), the home rule and the pin.. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a12-dashboard-release-view-dual-read (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a12-verb-json-from-schema
+
+RESULT: a12-verb-json-from-schema sha=<sha12> tier: heavy DEPENDS-ON: a12-defs-verb-json-outputs REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 12: every other nova-sprint verb's --json written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier heavy. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a12-verb-json-from-schema (stream v15-schema-tables, column waiting, tier heavy, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a12-where-json-from-schema
+
+RESULT: a12-where-json-from-schema sha=<sha12> tier: heavy DEPENDS-ON: a12-dashboard-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 12: where --json written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier heavy. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a12-where-json-from-schema (stream v15-schema-tables, column waiting, tier heavy, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-card-frame-dual-read
+
+RESULT: a13-card-frame-dual-read sha=<sha12> tier: pro DEPENDS-ON: a13-decide-records-dual-read CARRY: a13-card-frame-dual-read attempt 2 head=80fcb18a5031fed626460ae7b0c0483ecdd6f949 REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the card contract frame as ReadFrame reads it, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column working, attempt 5, tier pro. Work audited 2026-10-18. Pushed heads: 29ee6b758669d36a10468843b9bd528c36a79042 (hulk; on origin: sprint/a13-card-frame-dual-read.w1.g1.e21); 80fcb18a5031fed626460ae7b0c0483ecdd6f949 (hetzner1; on origin: sprint/a13-card-frame-dual-read.w2.g5.e21); b8e533118068d282ac19f7187e5fa15ae4d789a1 (amd-2; on origin: sprint/a13-card-frame-dual-read.w3.g1.e21); 1e8d82faf66df2e45993a0f6f5710e98dcd479d6 (vision; on origin: sprint/a13-card-frame-dual-read.w4.g8.e21). Working branch, not on origin: sprint/a13-card-frame-dual-read.w5.g2.e21 (hetzner1, working when moved).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-card-frame-dual-read (stream v15-schema-tables, column working, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-raw-usage-dual-read
+
+RESULT: a13-raw-usage-dual-read sha=<sha12> tier: pro DEPENDS-ON: a13-decide-records-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the raw card cost as DecodeRaw reads it, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 3, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-raw-usage-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-card-frame-writer
+
+RESULT: a13-card-frame-writer sha=<sha12> tier: pro DEPENDS-ON: a13-card-frame-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the card contract frame as WriteFrame writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-card-frame-writer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-decide-ledger-writer
+
+RESULT: a13-decide-ledger-writer sha=<sha12> tier: pro DEPENDS-ON: a13-decide-records-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the decide record lines as locked writes them, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 6, tier pro. Work audited 2026-10-18. Pushed heads: 456dac2bbb8ca2851093181b96b0a9b48c44c7fd (amd-1; on origin: sprint/a13-decide-ledger-writer.w1.g1.e21); d669376e37e2da0f9f273510094ed70bbda26916 (hetzner2; on origin: sprint/a13-decide-ledger-writer.w4.g1.e21, sprint/a13-decide-ledger-writer.w5.g1.e21). Other branches of the card on origin, no head recorded for them: sprint/a13-decide-ledger-writer.w3.g1.e21 at dbb4ccf0840b; sprint/a13-decide-ledger-writer.w6.g1.e21 at 2d58323be9e4.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-decide-ledger-writer (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-raw-usage-writer
+
+RESULT: a13-raw-usage-writer sha=<sha12> tier: pro DEPENDS-ON: a13-raw-usage-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the raw card cost as EncodeRaw writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-raw-usage-writer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-dogfood-receipts-dual-read
+
+RESULT: a13-dogfood-receipts-dual-read sha=<sha12> tier: pro DEPENDS-ON: a13-ledgers-record-and-cairn-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the dogfood receipts as ReadReceipts reads them, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column working, attempt 6, tier pro. Work audited 2026-10-18. Pushed heads: e0a5278bd99637018cb25c43cb09f883d485d119 (hulk; on origin: sprint/a13-dogfood-receipts-dual-read.w4.g3.e21). Working branch, not on origin: sprint/a13-dogfood-receipts-dual-read.w6.g1.e21 (hetzner2, working when moved).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-dogfood-receipts-dual-read (stream v15-schema-tables, column working, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-fuse-box-dual-read
+
+RESULT: a13-fuse-box-dual-read sha=<sha12> tier: pro DEPENDS-ON: a13-ledgers-record-and-cairn-dual-read CARRY: a13-fuse-box-dual-read attempt 2 head=b5b0e71c7ae58db69b4194eedc62b1d5b0006749 REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the fuse box as ReadBox reads it, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column working, attempt 6, tier pro. Work audited 2026-10-18. Pushed heads: 4c9a27b1d09a042ee5a2b5deccded798e3878f10 (hetzner1; on origin: sprint/a13-fuse-box-dual-read.w1.g5.e21); b5b0e71c7ae58db69b4194eedc62b1d5b0006749 (vision; on origin: sprint/a13-fuse-box-dual-read.w2.g3.e21); fdcb7ec7748d8d1a1b27b41df058145c0c13273d (hulk; on origin: sprint/a13-fuse-box-dual-read.w4.g7.e21); c8f3a6e1e9266fdfcac36c01150ec0c99860a4af (captain; on origin: sprint/a13-fuse-box-dual-read.w5.g1.e21). Working branch, not on origin: sprint/a13-fuse-box-dual-read.w6.g2.e21 (hetzner2, working when moved).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-fuse-box-dual-read (stream v15-schema-tables, column working, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-cairn-entry-writer
+
+RESULT: a13-cairn-entry-writer sha=<sha12> tier: pro DEPENDS-ON: a13-ledgers-record-and-cairn-dual-read, a13-cairn-entry-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the cairn entry file as appendEntry writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-tools schemas/README.md (read), the home rule and the pin.. Column waiting, attempt 4, tier pro. Work audited 2026-10-18. Pushed heads: 582c6c333f4e660a8b546c85172c563ceeb99cf7 (vision; on origin: sprint/a13-cairn-entry-writer.w1.g5.e21); 5434fc1ea60f525cd8889703178380d60e66cbc3 (amd-2, friend.rowan; on origin: sprint/a13-cairn-entry-writer.w2.g1.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-cairn-entry-writer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-cairn-log-writer
+
+RESULT: a13-cairn-log-writer sha=<sha12> tier: pro DEPENDS-ON: a13-ledgers-record-and-cairn-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the cairn log record as appendLog writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column review, attempt 2, tier pro. Work audited 2026-10-18. Pushed heads: 447c820f5ca71b7492fb047adc589e95b87486cb (hulk; on origin: sprint/a13-cairn-log-writer.w1.g1.e21); e46f8178c81b9231fda10f5c5932a5f34caa2e94 (amd-2; on origin: sprint/a13-cairn-log-writer.w2.g4.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-cairn-log-writer (stream v15-schema-tables, column review, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-dogfood-receipt-writer
+
+RESULT: a13-dogfood-receipt-writer sha=<sha12> tier: pro DEPENDS-ON: a13-dogfood-receipts-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the dogfood receipt as record writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-dogfood-receipt-writer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-fuse-box-writer
+
+RESULT: a13-fuse-box-writer sha=<sha12> tier: pro DEPENDS-ON: a13-fuse-box-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the fuse box as writeBox writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-fuse-box-writer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-ledger-days-writer
+
+RESULT: a13-ledger-days-writer sha=<sha12> tier: pro DEPENDS-ON: a13-ledgers-record-and-cairn-dual-read,a13-ledgers-reader-wired-into-the-binaries REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the record ledger as ReplaceLedgerDays writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, attempt 1, tier pro. Work audited 2026-10-18. Pushed heads: 9ce217cb184d12e184d3d2196314da562fbb1cbc (hetzner1; on origin: sprint/a13-ledger-days-writer.w1.g5.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-ledger-days-writer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-models-converge-state-dual-read
+
+RESULT: a13-models-converge-state-dual-read sha=<sha12> tier: pro DEPENDS-ON: a13-models-tablemodel-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the converge state read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column working, attempt 2, tier pro. Work audited 2026-10-18. Pushed heads: a0b58b3bc8653bae6f582c35dbc0d882646ae1de (vision; on origin: sprint/a13-models-converge-state-dual-read.w1.g2.e21). Working branch, not on origin: sprint/a13-models-converge-state-dual-read.w2.g1.e21 (hulk, working when moved).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-models-converge-state-dual-read (stream v15-schema-tables, column working, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-models-writers
+
+RESULT: a13-models-writers sha=<sha12> tier: pro DEPENDS-ON: a13-models-converge-state-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the table model captures and the converge state written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-models-writers (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-update-snapshot-dual-read
+
+RESULT: a13-update-snapshot-dual-read sha=<sha12> tier: pro DEPENDS-ON: a13-release-cycle-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the update snapshot read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column review, attempt 1, tier pro. Work audited 2026-10-18. Pushed heads: 40b95031abe4fc8781ae3ed790c7509a1efa776b (amd-1; on origin: sprint/a13-update-snapshot-dual-read.w1.g3.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-update-snapshot-dual-read (stream v15-schema-tables, column review, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-release-writers
+
+RESULT: a13-release-writers sha=<sha12> tier: pro DEPENDS-ON: a13-update-snapshot-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the release and update manifests and the release and adopt records written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-release-writers (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-placed-receipts-dual-read
+
+RESULT: a13-placed-receipts-dual-read sha=<sha12> tier: pro DEPENDS-ON: a13-tokens-dayfile-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the secrets place receipts as readReceipts reads them, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column review, attempt 5, tier pro. Work audited 2026-10-18. Pushed heads: 66685b46d413b2260f5421f2135f40ca87f822a8 (hetzner1; on origin: sprint/a13-placed-receipts-dual-read.w2.g5.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-placed-receipts-dual-read (stream v15-schema-tables, column review, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-seat-and-tokens-writers
+
+RESULT: a13-seat-and-tokens-writers sha=<sha12> tier: pro DEPENDS-ON: a13-seat-environment-dual-read,a13-placed-receipts-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the seat credential place, tokens dayfile and secrets place records written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-seat-and-tokens-writers (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-swarm-writers
+
+RESULT: a13-swarm-writers sha=<sha12> tier: pro DEPENDS-ON: a13-member-own-records-dual-read,v15-dedup-sprint-swarm-from-nova-tools REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the swarm config, slot and member records written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-swarm-writers (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a14-defs-roadmap-tables
+
+RESULT: a14-defs-roadmap-tables sha=<sha12> tier: heavy DEPENDS-ON: a14-schema-go-commented-text-form REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the definitions and their generated Go are committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 14: the roadmap area's definitions (fixed and variable tables). Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column review, attempt 2, tier heavy. Work audited 2026-10-18. Pushed heads: 752c8c45df0bad6a5dd9dc700b0d538bf9ffa1ce (friend.rowan; on origin: sprint/a14-defs-roadmap-tables.w1.g1.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a14-defs-roadmap-tables (stream v15-schema-tables, column review, tier heavy, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a14-defs-workfile-and-land-ledger-tables
+
+RESULT: a14-defs-workfile-and-land-ledger-tables sha=<sha12> tier: heavy DEPENDS-ON: a14-schema-go-commented-text-form REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the definitions and their generated Go are committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 14: the workfile area's definitions (fixed and variable tables). Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 3, tier heavy. Work audited 2026-10-18. Pushed heads: a656df0832872422d8ba15f9d27121c357cc0bda (friend.rowan; on origin: sprint/a14-defs-workfile-and-land-ledger-tables.w1.g1.e21); 0b49f0dc2214812de170e360119f87e2ff8c35e3 (friend.rowan; on origin: sprint/a14-defs-workfile-and-land-ledger-tables.w2.g1.e21, sprint/a14-defs-workfile-and-land-ledger-tables.w3.g3.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a14-defs-workfile-and-land-ledger-tables (stream v15-schema-tables, column ready, tier heavy, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a14-roadmap-dual-read
+
+RESULT: a14-roadmap-dual-read sha=<sha12> tier: heavy DEPENDS-ON: a14-defs-roadmap-tables REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 14: the roadmap sexp in nova-tools read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier heavy. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a14-roadmap-dual-read (stream v15-schema-tables, column waiting, tier heavy, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a14-roadmap-writers
+
+RESULT: a14-roadmap-writers sha=<sha12> tier: heavy DEPENDS-ON: a14-roadmap-dual-read,a14-sprint-sexp-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 14: the roadmap sexp in nova-tools written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier heavy. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a14-roadmap-writers (stream v15-schema-tables, column waiting, tier heavy, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a14-sprint-sexp-dual-read
+
+RESULT: a14-sprint-sexp-dual-read sha=<sha12> tier: heavy DEPENDS-ON: a14-defs-workfile-and-land-ledger-tables REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 14: nova-sprint's sexp data read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier heavy. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a14-sprint-sexp-dual-read (stream v15-schema-tables, column waiting, tier heavy, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a14-sprint-sexp-writers
+
+RESULT: a14-sprint-sexp-writers sha=<sha12> tier: heavy DEPENDS-ON: a14-sprint-sexp-dual-read,a14-roadmap-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 14: nova-sprint's sexp data written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier heavy. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a14-sprint-sexp-writers (stream v15-schema-tables, column waiting, tier heavy, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-beat-facts-writer
+
+RESULT: a8-beat-facts-writer sha=<sha12> tier: pro DEPENDS-ON: a8-store-friend-roster-rows-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the member beat as BeatFacts writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 4, tier pro. Work audited 2026-10-18. Pushed heads: 71ebebf28588cb206f3886b8104ef9a175de220e (amd-3; on origin: sprint/a8-beat-facts-writer.w1.g4.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-beat-facts-writer (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-beat-readers-writer
+
+RESULT: a8-beat-readers-writer sha=<sha12> tier: pro DEPENDS-ON: a8-beat-facts-writer,a8-reader-beat-draining-dual-read,a8-reader-states-beat-dual-read,a8-doctor-reader-beats-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the reader beat as beatReaders writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-beat-readers-writer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-friend-beat-live-writer
+
+RESULT: a8-friend-beat-live-writer sha=<sha12> tier: pro DEPENDS-ON: a8-store-friend-roster-rows-dual-read,a8-beat-facts-writer REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the friend beat as FriendBeatLive writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-friend-beat-live-writer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-friend-status-writer
+
+RESULT: a8-friend-status-writer sha=<sha12> tier: pro DEPENDS-ON: a8-store-friend-roster-rows-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the friend status as PublishFriendStatus writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column review, attempt 1, tier pro. Work audited 2026-10-18. Pushed heads: 9a0476b1e58b2482e409856c95116239a13d49c0 (hetzner2; on origin: sprint/a8-friend-status-writer.w1.g5.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-friend-status-writer (stream v15-schema-tables, column review, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-lane-step-writer
+
+RESULT: a8-lane-step-writer sha=<sha12> tier: pro DEPENDS-ON: a8-lanes-record-dual-readb REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the lanes record as LaneStep writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column review, attempt 1, tier pro. Work audited 2026-10-18. Pushed heads: 733daf214aa5c071376242c19df2315c8153484b (hulk; on origin: sprint/a8-lane-step-writer.w1.g1.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-lane-step-writer (stream v15-schema-tables, column review, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-reader-beat-draining-writer
+
+RESULT: a8-reader-beat-draining-writer sha=<sha12> tier: pro DEPENDS-ON: a8-beat-facts-writer,a8-reader-beat-draining-dual-read,a8-reader-states-beat-dual-read,a8-doctor-reader-beats-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the reader beat as ReaderBeatDraining writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-reader-beat-draining-writer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-roster-writer
+
+RESULT: a8-roster-writer sha=<sha12> tier: pro DEPENDS-ON: a8-store-friend-roster-rows-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the friend roster as putRoster writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column review, attempt 1, tier pro. Work audited 2026-10-18. Pushed heads: e39f0d5b6f14626d0a6486ae7b09f0a6fe2dc723 (hetzner1; on origin: sprint/a8-roster-writer.w1.g1.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-roster-writer (stream v15-schema-tables, column review, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-seat-record-writer
+
+RESULT: a8-seat-record-writer sha=<sha12> tier: pro DEPENDS-ON: a8-seat-change-coordinator-dual-read,a8-seat-generation-dual-read,a8-tick-get-json-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the seat change as seatRecord writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-seat-record-writer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-set-server-writer
+
+RESULT: a8-set-server-writer sha=<sha12> tier: pro DEPENDS-ON: a8-server-record-dual-read,a8-seat-server-coordinator-server-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the server record as SetServer writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column review, attempt 1, tier pro. Work audited 2026-10-18. Pushed heads: 80693fbafca7de1bb5f17adc764ac7c92f58c80e (amd-1; on origin: sprint/a8-set-server-writer.w1.g1.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-set-server-writer (stream v15-schema-tables, column review, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-strangers-writer
+
+RESULT: a8-strangers-writer sha=<sha12> tier: pro DEPENDS-ON: a8-store-friend-roster-rows-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the strangers record as putStrangers writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column review, attempt 9, tier pro. Work audited 2026-10-18. Pushed heads: 4f85c734908540045643367b727d8e3cca4e29ec (hulk; on origin: sprint/a8-strangers-writer.w3.g1.e21); 92cca35dd9fcc53f85532a22be6e673ba27c9847 (studio; on origin: sprint/a8-strangers-writer.w4.g1.e21); 55d5bb9f121a17fc124bf130d37622ba5b82db4b (hulk; on origin: sprint/a8-strangers-writer.w6.g1.e21); b45ed378ff76b979b1f1e4c9d20f78349a4b8ea2 (hetzner2; on origin: sprint/a8-strangers-writer.w7.g1.e21); 9fe189aa00f8c656147b2d04a9ebe8742947bb3a (amd-2; on origin: sprint/a8-strangers-writer.w8.g1.e21); 38c98689d06ba2e60bd9be3e51374d264e68a982 (hulk; on origin: sprint/a8-strangers-writer.w9.g1.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-strangers-writer (stream v15-schema-tables, column review, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-touch-beat-writer
+
+RESULT: a8-touch-beat-writer sha=<sha12> tier: pro DEPENDS-ON: a8-store-friend-roster-rows-dual-read,a8-beat-facts-writer REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the member beat as TouchBeat writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-touch-beat-writer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-store-op-rows-writers
+
+RESULT: a8-store-op-rows-writers sha=<sha12> tier: heavy DEPENDS-ON: a8-store-op-rows-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the op journal, notes, timers and engine records written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 2, tier heavy. Work audited 2026-10-18. No pushed head recorded. Branches on origin the sprint records no head for: sprint/a8-store-op-rows-writers.w2.g3.e21 at e5010fb6afef.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-store-op-rows-writers (stream v15-schema-tables, column ready, tier heavy, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-store-snapshot-and-cost-dual-read
+
+RESULT: a8-store-snapshot-and-cost-dual-read sha=<sha12> tier: heavy DEPENDS-ON: a8-store-row-counts-list-every-record-at-zero,a8-store-op-rows-dual-read CARRY: a8-store-snapshot-and-cost-dual-read attempt 1 head=2c782ad687cdad59b1b8dab7dfa8830ae0162dc8 REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the snapshot, restore and cost records read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 3, tier heavy. Work audited 2026-10-18. Pushed heads: 2c782ad687cdad59b1b8dab7dfa8830ae0162dc8 (friend.rowan; on origin: sprint/a8-store-snapshot-and-cost-dual-read.w1.g3.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-store-snapshot-and-cost-dual-read (stream v15-schema-tables, column ready, tier heavy, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-store-snapshot-and-cost-writers
+
+RESULT: a8-store-snapshot-and-cost-writers sha=<sha12> tier: pro DEPENDS-ON: a8-store-snapshot-and-cost-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the snapshot, restore and cost records written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-store-snapshot-and-cost-writers (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-doctor-reader-beats-dual-read
+
+RESULT: a8-doctor-reader-beats-dual-read sha=<sha12> tier: pro DEPENDS-ON: a8-store-view-rows-where-dual-read,a8-store-friend-roster-rows-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the reader beats as readerBeats reads them, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 2, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-doctor-reader-beats-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-drop-debt-dual-read
+
+RESULT: a8-drop-debt-dual-read sha=<sha12> tier: pro DEPENDS-ON: a8-store-view-rows-where-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the drop-debt record as dropDebt reads it, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 3, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-drop-debt-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-drop-members-machine-dual-read
+
+RESULT: a8-drop-members-machine-dual-read sha=<sha12> tier: pro DEPENDS-ON: a8-store-view-rows-where-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the machine record as DropMembers reads it, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 3, tier pro. Work audited 2026-10-18. No pushed head recorded. Branches on origin the sprint records no head for: sprint/a8-drop-members-machine-dual-read.w3.g13.e21 at e6b2fad46f4f.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-drop-members-machine-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-refused-record-dual-read
+
+RESULT: a8-refused-record-dual-read sha=<sha12> tier: pro DEPENDS-ON: a8-store-view-rows-where-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the refused-verb record as RecordRefused reads it, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 3, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-refused-record-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-refused-verbs-dual-read
+
+RESULT: a8-refused-verbs-dual-read sha=<sha12> tier: pro DEPENDS-ON: a8-store-view-rows-where-dual-read,a8-refused-record-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the refused-verb record as refusedVerbs reads it, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-refused-verbs-dual-read (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-stats-record-dual-read
+
+RESULT: a8-stats-record-dual-read sha=<sha12> tier: pro DEPENDS-ON: a8-store-view-rows-where-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the stats record as statsRecordOf reads it, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 3, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-stats-record-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-card-log-ids-dual-read
+
+RESULT: a8-card-log-ids-dual-read sha=<sha12> tier: pro DEPENDS-ON: a8-store-view-rows-where-dual-read,a8-load-index-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the load index as the Mem cardLogIDs reads it, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-card-log-ids-dual-read (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-guarded-machine-held-op-dual-read
+
+RESULT: a8-guarded-machine-held-op-dual-read sha=<sha12> tier: pro DEPENDS-ON: a8-store-view-rows-where-dual-read,a8-store-op-rows-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the held op record as the Redis GuardedMachine reads it, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 2, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-guarded-machine-held-op-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-load-index-dual-read
+
+RESULT: a8-load-index-dual-read sha=<sha12> tier: pro DEPENDS-ON: a8-store-view-rows-where-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the load index as the Mem indexLog reads it, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 3, tier pro. Work audited 2026-10-18. No pushed head recorded. Branches on origin the sprint records no head for: sprint/a8-load-index-dual-read.w3.g9.e21 at 8bb796847607.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-load-index-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-log-line-dual-read
+
+RESULT: a8-log-line-dual-read sha=<sha12> tier: pro DEPENDS-ON: a8-store-view-rows-where-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the log line as the Redis logAt reads it, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 3, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-log-line-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-tick-get-json-dual-read
+
+RESULT: a8-tick-get-json-dual-read sha=<sha12> tier: pro DEPENDS-ON: a8-store-view-rows-where-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the records the tick reads through getJSON, read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 3, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-tick-get-json-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-keep-stops-writer
+
+RESULT: a8-keep-stops-writer sha=<sha12> tier: pro DEPENDS-ON: a8-store-view-rows-where-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the stops record as keepStops writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 2, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-keep-stops-writer (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-keep-store-rtt-writer
+
+RESULT: a8-keep-store-rtt-writer sha=<sha12> tier: pro DEPENDS-ON: a8-store-view-rows-where-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the store RTT record as keepStoreRTT writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 3, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-keep-store-rtt-writer (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-keep-where-writer
+
+RESULT: a8-keep-where-writer sha=<sha12> tier: pro DEPENDS-ON: a8-store-view-rows-where-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the where record as keepWhere writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column ready, attempt 4, tier pro. Work audited 2026-10-18. Pushed heads: e906c971d383d813a72e63773a7ca660b49a9ca1 (amd-2; on origin: sprint/a8-keep-where-writer.w1.g1.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-keep-where-writer (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-put-drop-debt-writer
+
+RESULT: a8-put-drop-debt-writer sha=<sha12> tier: pro DEPENDS-ON: a8-drop-debt-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the drop-debt record as putDropDebt writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-put-drop-debt-writer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-record-refused-writer
+
+RESULT: a8-record-refused-writer sha=<sha12> tier: pro DEPENDS-ON: a8-refused-record-dual-read,a8-refused-verbs-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the refused-verb record as RecordRefused writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-record-refused-writer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-reset-stats-writer
+
+RESULT: a8-reset-stats-writer sha=<sha12> tier: pro DEPENDS-ON: a8-stats-record-dual-read,a8-store-view-rows-where-dual-read,a8-tick-get-json-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the stats record as ResetStats writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-reset-stats-writer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-update-stats-writer
+
+RESULT: a8-update-stats-writer sha=<sha12> tier: pro DEPENDS-ON: a8-reset-stats-writer,a8-stats-record-dual-read,a8-store-view-rows-where-dual-read,a8-tick-get-json-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the stats record as updateStats writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-update-stats-writer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-index-log-writer
+
+RESULT: a8-index-log-writer sha=<sha12> tier: pro DEPENDS-ON: a8-load-index-dual-read,a8-card-log-ids-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the load index as the Mem indexLog writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-index-log-writer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-mem-guarded-machine-writer
+
+RESULT: a8-mem-guarded-machine-writer sha=<sha12> tier: pro DEPENDS-ON: a8-put-machine-writer,a8-tick-get-json-dual-read,a8-mem-read-fence-machine-dual-read,a8-store-op-rows-dual-read,a8-store-view-rows-where-dual-read,a8-drop-members-machine-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the machine record as the Mem GuardedMachine writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-mem-guarded-machine-writer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-put-json-writer
+
+RESULT: a8-put-json-writer sha=<sha12> tier: pro DEPENDS-ON: a8-store-friend-roster-rows-dual-read,a8-store-view-rows-where-dual-read,a8-reader-beat-draining-dual-read,a8-reader-states-beat-dual-read,a8-reader-states-hold-dual-read,a8-holds-reader-hold-dual-read,a8-lanes-record-dual-readb,a8-server-record-dual-read,a8-seat-server-coordinator-server-dual-read,a8-seat-change-coordinator-dual-read,a8-seat-generation-dual-read,a8-refused-record-dual-read,a8-refused-verbs-dual-read,a8-doctor-reader-beats-dual-read,a8-drop-debt-dual-read,a8-drop-members-machine-dual-read,a8-stats-record-dual-read,a8-log-line-dual-read,a8-load-index-dual-read,a8-card-log-ids-dual-read,a8-tick-get-json-dual-read,a8-guarded-machine-held-op-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the records the tick writes through putJSON, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-put-json-writer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-put-machine-writer
+
+RESULT: a8-put-machine-writer sha=<sha12> tier: pro DEPENDS-ON: a8-tick-get-json-dual-read,a8-mem-read-fence-machine-dual-read,a8-store-op-rows-dual-read,a8-store-view-rows-where-dual-read,a8-drop-members-machine-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the machine record as putMachine writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-put-machine-writer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-redis-guarded-machine-writer
+
+RESULT: a8-redis-guarded-machine-writer sha=<sha12> tier: pro DEPENDS-ON: a8-put-machine-writer,a8-tick-get-json-dual-read,a8-mem-read-fence-machine-dual-read,a8-store-op-rows-dual-read,a8-store-view-rows-where-dual-read,a8-drop-members-machine-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the machine record as the Redis GuardedMachine writes it, written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-redis-guarded-machine-writer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-ledgers-reader-wired-into-the-binaries
+
+RESULT: a13-ledgers-reader-wired-into-the-binaries sha=<sha12> tier: pro DEPENDS-ON: a13-ledgers-record-and-cairn-dual-read,a13-tokens-ledger-reader-wired REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: fix PRIORITY: normal STREAM: v15-schema-tables STOP: the two imports and the two tests are committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the ledger and cairn log table readers wired into the binaries that read them. Source: the coordinator's read of card a13-ledgers-record-and-cairn-dual-read (head 5fc28e5a2, 2026-10-17): internal/record/ledgerread installs the ledger and cairn log tables by a blank import (its package comment: a program that reads the table forms imports this package for its init), and no binary impor. Column waiting, attempt 1, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-ledgers-reader-wired-into-the-binaries (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### fuzz-configwire
+
+RESULT: fuzz-configwire sha=<sha12> tier: pro CARRY: fuzz-configwire attempt 2 head=06284310a94a7f8522530975703921f39bb5f3ba REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: test PRIORITY: normal STREAM: v15-schema-tables STOP: fuzz_test.go and its seed corpus are committed with DONE-WHEN holding, or the deadline is reached Source: pkg/friend/machine_test.go FuzzPongDualRead (read), the one fuzz test this repository holds (it fuzzes a facade reader, a different shape).. Column ready, attempt 6, tier pro. Work audited 2026-10-18. Pushed heads: 2fd5e265d9b6cbaf6fd5612f0bbae471b8af5b3c (hetzner2; on origin: sprint/fuzz-configwire.w3.g3.e21); 4b9fc3e20fe2e806ec0009c1c9ef18ed94b35609 (hetzner2; on origin: sprint/fuzz-configwire.w5.g1.e21); 62fc8b6b4b9447c51eecac432aad02013306b0d3 (amd-2; on origin: sprint/fuzz-configwire.w1.g3.e21); 06284310a94a7f8522530975703921f39bb5f3ba (amd-1; on origin: sprint/fuzz-configwire.w2.g3.e21); 19e553994d2abdd0b0b16642577588bcad1d5072 (hulk; on origin: sprint/fuzz-configwire.w4.g1.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card fuzz-configwire (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-adopt-checks-dual-read
+
+RESULT: a13-adopt-checks-dual-read sha=<sha12> tier: pro CARRY: a13-adopt-checks-dual-read attempt 3 head=3fb8c448687020f8e983d9470dfefb3610bdf600 REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the adopt checks as LoadAdopt reads it, read in both forms, refused by name when malformed, counted per form. Source: the v1.5 gap audit (the owner, Glenn, 2026-10-17: "v1.5 is complete adoption of schema end-to-end in tools and sprint"); nova-sprint docs/research/schema-tables/UNION.md (read) section 6 (C13, the per-form counter); nova-tools schemas/README.md (read), the home rule and the pin.. Column ready, attempt 6, tier pro. Work audited 2026-10-18. Pushed heads: 3fb8c448687020f8e983d9470dfefb3610bdf600 (hulk; on origin: sprint/a13-adopt-checks-dual-read.w3.g1.e21). Other branches of the card on origin, no head recorded for them: sprint/a13-adopt-checks-dual-read.w6.g1.e21 at bbf8d0204b48.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-adopt-checks-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-adoption-ledger-dual-read
+
+RESULT: a13-adoption-ledger-dual-read sha=<sha12> tier: pro REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the adoption ledger as loadAdoption reads it, read in both forms, refused by name when malformed, counted per form. Source: the v1.5 gap audit (the owner, Glenn, 2026-10-17: "v1.5 is complete adoption of schema end-to-end in tools and sprint"); nova-sprint docs/research/schema-tables/UNION.md (read) section 6 (C13, the per-form counter); nova-tools schemas/README.md (read), the home rule and the pin.. Column ready, attempt 3, tier pro. Work audited 2026-10-18. Pushed heads: a92d6d7ade3b75e56d4a1b96e83ae293ae725146 (amd-3; on origin: sprint/a13-adoption-ledger-dual-read.w1.g3.e21); a6497f91ce9ea26041970c0567b216414b42b9c9 (amd-1; on origin: sprint/a13-adoption-ledger-dual-read.w3.g1.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-adoption-ledger-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-member-attempt-decision-writer
+
+RESULT: a13-member-attempt-decision-writer sha=<sha12> tier: pro DEPENDS-ON: a13-decide-records-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the attempt decision as the swarm member's attempt decider writes it, written in the table form. Source: the v1.5 gap audit (the owner, Glenn, 2026-10-17: "v1.5 is complete adoption of schema end-to-end in tools and sprint"); nova-sprint docs/research/schema-tables/UNION.md (read) section 6 (C13, the per-form counter); nova-tools schemas/README.md (read), the home rule and the pin.. Column working, attempt 7, tier pro. Work audited 2026-10-18. Pushed heads: b5004e1918f914917f5be465bea457e56c9bb733 (amd-3; on origin: sprint/a13-member-attempt-decision-writer.w1.g1.e21); 8221807ae4f1edb7672350cdddab3fd61a8d2d30 (hulk; on origin: sprint/a13-member-attempt-decision-writer.w4.g1.e21); 5abb68e0de7ab27cd2afd52dc6d0d111417501ce (vision; on origin: sprint/a13-member-attempt-decision-writer.w5.g3.e21); df160d41d29ae3198bc91cfa1b204b1110f79364 (amd-3; on origin: sprint/a13-member-attempt-decision-writer.w6.g6.e21). Working branch, not on origin: sprint/a13-member-attempt-decision-writer.w7.g2.e21 (hulk, working when moved).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-member-attempt-decision-writer (stream v15-schema-tables, column working, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-nova-local-description-writer
+
+RESULT: a13-nova-local-description-writer sha=<sha12> tier: pro DEPENDS-ON: a13-swarm-config-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the worker description as nova-local writes it, written in the table form. Source: the v1.5 gap audit (the owner, Glenn, 2026-10-17: "v1.5 is complete adoption of schema end-to-end in tools and sprint"); nova-sprint docs/research/schema-tables/UNION.md (read) section 6 (C13, the per-form counter); nova-tools schemas/README.md (read), the home rule and the pin.. Column ready, attempt 3, tier pro. Work audited 2026-10-18. Pushed heads: a13635c2960e8d58c3c8e1651712fbd779498bc5 (friend.rowan; on origin: sprint/a13-nova-local-description-writer.w3.g1.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-nova-local-description-writer (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-update-manifest-dual-read
+
+RESULT: a13-update-manifest-dual-read sha=<sha12> tier: pro REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the update manifest as Load reads it, read in both forms, refused by name when malformed, counted per form. Source: the v1.5 gap audit (the owner, Glenn, 2026-10-17: "v1.5 is complete adoption of schema end-to-end in tools and sprint"); nova-sprint docs/research/schema-tables/UNION.md (read) section 6 (C13, the per-form counter); nova-tools schemas/README.md (read), the home rule and the pin.. Column review, attempt 6, tier pro. Work audited 2026-10-18. Pushed heads: 64f972d39e6a599b5782bb05a2fb98dec33e45f3 (amd-1; on origin: sprint/a13-update-manifest-dual-read.w5.g1.e21); b0f6c3ddfd896560f999f73e7318874222bdbddd (hetzner1; on origin: sprint/a13-update-manifest-dual-read.w1.g5.e21); ba6549241c50632e0be7dae66072bb8c3d4fecd6 (hetzner1; on origin: sprint/a13-update-manifest-dual-read.w3.g3.e21); bc6a7a04aadc77ed2f4fdcd136b4af251cedad84 (friend.rowan; on origin: sprint/a13-update-manifest-dual-read.w6.g3.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-update-manifest-dual-read (stream v15-schema-tables, column review, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-version-snapshot-diff-dual-read
+
+RESULT: a13-version-snapshot-diff-dual-read sha=<sha12> tier: pro REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the version snapshot as readSnapshotFile reads it, read in both forms, refused by name when malformed, counted per form. Source: the v1.5 gap audit (the owner, Glenn, 2026-10-17: "v1.5 is complete adoption of schema end-to-end in tools and sprint"); nova-sprint docs/research/schema-tables/UNION.md (read) section 6 (C13, the per-form counter); nova-tools schemas/README.md (read), the home rule and the pin.. Column working, attempt 6, tier pro. Work audited 2026-10-18. Pushed heads: bfae36f595a1c72dbfe69b72814917e93f4d648d (captain; on origin: sprint/a13-version-snapshot-diff-dual-read.w3.g7.e21); 03e48793b334a6b124d688605a2a5552d00a8190 (vision; on origin: sprint/a13-version-snapshot-diff-dual-read.w5.g5.e21). Working branch, not on origin: sprint/a13-version-snapshot-diff-dual-read.w6.g9.e21 (captain, working when moved).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-version-snapshot-diff-dual-read (stream v15-schema-tables, column working, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-version-snapshot-writer
+
+RESULT: a13-version-snapshot-writer sha=<sha12> tier: pro DEPENDS-ON: a13-version-snapshot-diff-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the version snapshot as the snapshot verb writes it, written in the table form. Source: the v1.5 gap audit (the owner, Glenn, 2026-10-17: "v1.5 is complete adoption of schema end-to-end in tools and sprint"); nova-sprint docs/research/schema-tables/UNION.md (read) section 6 (C13, the per-form counter); nova-tools schemas/README.md (read), the home rule and the pin.. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-version-snapshot-writer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-mem-read-fence-machine-dual-read
+
+RESULT: a8-mem-read-fence-machine-dual-read sha=<sha12> tier: pro DEPENDS-ON: a8-drop-members-machine-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the machine record as the in-memory twin's ReadFence reads it, read in both forms, refused by name when malformed, counted per form. Source: the v1.5 gap audit (the owner, Glenn, 2026-10-17: "v1.5 is complete adoption of schema end-to-end in tools and sprint"); nova-sprint docs/research/schema-tables/UNION.md (read) section 6 (C13, the per-form counter); nova-sprint schemas/README.md (read), the home rule and the pin.. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-mem-read-fence-machine-dual-read (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-mem-release-timers-dual-read
+
+RESULT: a8-mem-release-timers-dual-read sha=<sha12> tier: pro DEPENDS-ON: a8-store-op-rows-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the timers record as the in-memory twin's Release reads it, read in both forms, refused by name when malformed, counted per form. Source: the v1.5 gap audit (the owner, Glenn, 2026-10-17: "v1.5 is complete adoption of schema end-to-end in tools and sprint"); nova-sprint docs/research/schema-tables/UNION.md (read) section 6 (C13, the per-form counter); nova-sprint schemas/README.md (read), the home rule and the pin.. Column ready, attempt 2, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-mem-release-timers-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-mem-release-timers-writer
+
+RESULT: a8-mem-release-timers-writer sha=<sha12> tier: pro DEPENDS-ON: a8-mem-release-timers-dual-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8: the timers record as the in-memory twin's Release writes it, written in the table form. Source: the v1.5 gap audit (the owner, Glenn, 2026-10-17: "v1.5 is complete adoption of schema end-to-end in tools and sprint"); nova-sprint docs/research/schema-tables/UNION.md (read) section 6 (C13, the per-form counter); nova-sprint schemas/README.md (read), the home rule and the pin.. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-mem-release-timers-writer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-decide-examples-dual-read
+
+RESULT: a13-decide-examples-dual-read sha=<sha12> tier: pro REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the grade examples file as ParseExamples reads it, read in both forms, refused by name when malformed, counted per form. Source: the v1.5 gap audit (the owner, Glenn, 2026-10-17: "v1.5 is complete adoption of schema end-to-end in tools and sprint"); nova-sprint docs/research/schema-tables/UNION.md (read) section 6 (C13, the per-form counter); nova-tools schemas/README.md (read), the home rule and the pin.. Column working, attempt 5, tier pro. Work audited 2026-10-18. Pushed heads: 529fc44342943928dc85e6d04541fbd39744faa5 (vision; on origin: sprint/a13-decide-examples-dual-read.w2.g3.e21); d27530ae60e65561eb6ab23cd11a7bb96832c858 (amd-2; on origin: sprint/a13-decide-examples-dual-read.w3.g5.e21); d5b50ac587170d4c8cde445712f5a2cd234f1344 (hetzner1; on origin: sprint/a13-decide-examples-dual-read.w4.g4.e21). Working branch, not on origin: sprint/a13-decide-examples-dual-read.w5.g2.e21 (captain, working when moved).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-decide-examples-dual-read (stream v15-schema-tables, column working, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-decide-fixed-answers-dual-read
+
+RESULT: a13-decide-fixed-answers-dual-read sha=<sha12> tier: pro REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the fixed answers file as ParseFixed reads it, read in both forms, refused by name when malformed, counted per form. Source: the v1.5 gap audit (the owner, Glenn, 2026-10-17: "v1.5 is complete adoption of schema end-to-end in tools and sprint"); nova-sprint docs/research/schema-tables/UNION.md (read) section 6 (C13, the per-form counter); nova-tools schemas/README.md (read), the home rule and the pin.. Column ready, attempt 4, tier pro. Work audited 2026-10-18. Pushed heads: c7d5b00bfe8e7717de2f1549e9bff619a602284a (friend.rowan; on origin: sprint/a13-decide-fixed-answers-dual-read.w3.g1.e21, sprint/a13-decide-fixed-answers-dual-read.w4.g3.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-decide-fixed-answers-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-release-adopt-machines-dual-read
+
+RESULT: a13-release-adopt-machines-dual-read sha=<sha12> tier: pro REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the machines file as Machines reads it, read in both forms, refused by name when malformed, counted per form. Source: the v1.5 gap audit (the owner, Glenn, 2026-10-17: "v1.5 is complete adoption of schema end-to-end in tools and sprint"); nova-sprint docs/research/schema-tables/UNION.md (read) section 6 (C13, the per-form counter); nova-tools schemas/README.md (read), the home rule and the pin.. Column review, attempt 1, tier pro. Work audited 2026-10-18. Pushed heads: 992a1256ac4d6c5ca50bd11bcc64800855172022 (hulk; on origin: sprint/a13-release-adopt-machines-dual-read.w1.g5.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-release-adopt-machines-dual-read (stream v15-schema-tables, column review, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-release-build-record-dual-read
+
+RESULT: a13-release-build-record-dual-read sha=<sha12> tier: pro REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the build record as readRecord reads it, read in both forms, refused by name when malformed, counted per form. Source: the v1.5 gap audit (the owner, Glenn, 2026-10-17: "v1.5 is complete adoption of schema end-to-end in tools and sprint"); nova-sprint docs/research/schema-tables/UNION.md (read) section 6 (C13, the per-form counter); nova-tools schemas/README.md (read), the home rule and the pin.. Column ready, attempt 4, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-release-build-record-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-tokens-ledger-reader-wired
+
+RESULT: a13-tokens-ledger-reader-wired sha=<sha12> tier: pro REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: fix PRIORITY: normal STREAM: v15-schema-tables STOP: the audit change and its test are committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the one-line audit holds a blank import to its list instead of refusing it as aliased. Source: the v1.5 gap audit (the owner, Glenn, 2026-10-17: "v1.5 is complete adoption of schema end-to-end in tools and sprint"); nova-sprint docs/research/schema-tables/UNION.md (read) section 6 (C13, readers first); the worked example is nova-tools commit e7eda9792 (a13-tokens-dayfile-dual-read: carve pkg/. Column ready, attempt 3, tier pro. Work audited 2026-10-18. No pushed head recorded. Branches on origin the sprint records no head for: sprint/a13-tokens-ledger-reader-wired.w3.g5.e21 at 13657040d18f.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-tokens-ledger-reader-wired (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a14-carry-imports-roadmapwire
+
+RESULT: a14-carry-imports-roadmapwire sha=<sha12> tier: pro DEPENDS-ON: a14-defs-roadmap-tables,a14-defs-workfile-and-land-ledger-tables REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: refactor PRIORITY: normal STREAM: v15-schema-tables STOP: the five mirrored tables are gone, the carry reads through nova-tools pkg/roadmapwire, and DONE-WHEN holds, or the deadline is reached Source: nova-sprint PR #476 (a14-defs-workfile-and-land-ledger-tables, head a656df08) defines KeptPair, CarryItem, CarryFix, CarryNote and Carry in schemas/workfile/workfile.schema as mirrors of nova-tools pkg/roadmap Pair, Item, Fix and Note, whose tables nova-tools card a14-defs-roadmap-tables (nova-tools. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a14-carry-imports-roadmapwire (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-dedup-sprint-friend-from-nova-tools
+
+RESULT: v15-dedup-sprint-friend-from-nova-tools sha=<sha12> tier: pro DEPENDS-ON: - REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: fix PRIORITY: high STREAM: v15-schema-tables STOP: the switch is committed with DONE-WHEN holding, or the deadline is reached; HOLD if a test THE TASK does not name goes red at head and green at BASE (a behaviour this card must not change), naming it. Source: the owner, Glenn, 2026-10-17: nova-sprint's copies of nova-tools packages are "not allowed. So we must fix this"; one true source per fact. Worked example: nova-sprint c0909df1 (dedupe: swap pkg/cardcost to nova-tools), the same change for one package.. Column review, attempt 2, tier pro. Work audited 2026-10-18. Pushed heads: 9cb767a9268ab7cfb88c04c99e7fe7df5b1d47d5 (friend.rowan; on origin: sprint/v15-dedup-sprint-friend-from-nova-tools.w2.g1.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-dedup-sprint-friend-from-nova-tools (stream v15-schema-tables, column review, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-dedup-sprint-swarm-from-nova-tools
+
+RESULT: v15-dedup-sprint-swarm-from-nova-tools sha=<sha12> tier: pro DEPENDS-ON: v15-dedup-tools-swarm-reads-land-after,v15-dedup-sprint-friend-from-nova-tools REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: fix PRIORITY: high STREAM: v15-schema-tables STOP: the switch is committed with DONE-WHEN holding, or the deadline is reached; HOLD if a test THE TASK does not name goes red at head and green at BASE (a behaviour this card must not change), naming it. Source: the owner, Glenn, 2026-10-17: nova-sprint's copies of nova-tools packages are "not allowed. So we must fix this"; one true source per fact. Worked example: nova-sprint c0909df1 (dedupe: swap pkg/cardcost to nova-tools), the same change for one package.. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-dedup-sprint-swarm-from-nova-tools (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-dedup-sprint-config-from-nova-tools
+
+RESULT: v15-dedup-sprint-config-from-nova-tools sha=<sha12> tier: pro DEPENDS-ON: v15-dedup-sprint-swarm-from-nova-tools REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: fix PRIORITY: high STREAM: v15-schema-tables STOP: the switch is committed with DONE-WHEN holding, or the deadline is reached; HOLD if a test THE TASK does not name goes red at head and green at BASE (a behaviour this card must not change), naming it. Source: the owner, Glenn, 2026-10-17: nova-sprint's copies of nova-tools packages are "not allowed. So we must fix this"; one true source per fact. Worked example: nova-sprint c0909df1 (dedupe: swap pkg/cardcost to nova-tools), the same change for one package.. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-dedup-sprint-config-from-nova-tools (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-friendrows-text-lists-drop-word-tables
+
+RESULT: v15-friendrows-text-lists-drop-word-tables sha=<sha12> tier: pro DEPENDS-ON: v15-sprint-wires-bump-to-the-text-list-pin REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: when DONE-WHEN holds and the commit is on your branch, or a baseline refusal other than the element-kind change is met (HOLD), or the deadline is reached. Title: friendrows: running, live and facts are plain []string; RunWord, LiveWord and FactWord go. Source: nova-sprint PR #476 "Schema improvements wanted" item 1. schemas/friendrows/friendrows.schema wraps a text list's elements in three one-field tables: RunWord (lines 170-178), LiveWord (211-219) and FactWord (221-227). internal/sprint/store/presence.go mirrors them with `rowWord`, `rowWords` and `row. Column review, attempt 4, tier pro. Work audited 2026-10-18. Pushed heads: 9e2e33c8293141baa4aa52f02fa07ce997b999ad (hulk; on origin: sprint/v15-friendrows-text-lists-drop-word-tables.w1.g3.e21); 35505c10e0c28bc6b125f46b8a9c682ac6278163 (studio; on origin: sprint/v15-friendrows-text-lists-drop-word-tables.w2.g1.e21); d1dcb0c3cc0395e326799f2f94ba6e80ee1162d1 (hetzner1; on origin: sprint/v15-friendrows-text-lists-drop-word-tables.w3.g1.e21); 681290774dbea6cc2e2b386ff556f705b52bd0c4 (hetzner2; on origin: sprint/v15-friendrows-text-lists-drop-word-tables.w4.g1.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-friendrows-text-lists-drop-word-tables (stream v15-schema-tables, column review, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-snaprows-text-lists-drop-word
+
+RESULT: v15-snaprows-text-lists-drop-word sha=<sha12> tier: pro DEPENDS-ON: v15-sprint-wires-bump-to-the-text-list-pin REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: when DONE-WHEN holds and the commit is on your branch, or a baseline refusal other than the element-kind change is met (HOLD), or the deadline is reached. Title: snaprows: text lists are plain []string, the Word wrapper goes. Source: nova-sprint PR #476 "Schema improvements wanted" item 1, and schemas/snaprows/snaprows.schema lines 62-67 ("the schema compiler takes no list of text, so the text is wrapped in a table"). The pin that v15-sprint-wires-bump-to-the-text-list-pin sets (schema 54e0eda7d20b) takes `[]string` with unbound. Column review, attempt 4, tier pro. Work audited 2026-10-18. Pushed heads: 0b87f1746c6976d889cf1d5d7dc4361c10f75a4c (hetzner2; on origin: sprint/v15-snaprows-text-lists-drop-word.w1.g1.e21); d1ec678917822c1a18b88d2e1e0c7a405ebafea1 (hulk; on origin: sprint/v15-snaprows-text-lists-drop-word.w2.g1.e21); 23a63902b283d9c4af6b70ac2c7e2eeedb4af6b1 (captain; on origin: sprint/v15-snaprows-text-lists-drop-word.w3.g1.e21); 64bfaf81c9bae0239fae8edcf6adcab42f43d7cb (hetzner2; on origin: sprint/v15-snaprows-text-lists-drop-word.w4.g1.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-snaprows-text-lists-drop-word (stream v15-schema-tables, column review, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-workfile-text-lists-drop-word-and-textform-pin
+
+RESULT: v15-workfile-text-lists-drop-word-and-textform-pin sha=<sha12> tier: pro DEPENDS-ON: schema-go-textform-unbounded-text-lists-and-map-keys,a14-defs-workfile-and-land-ledger-tables,v15-sprint-wires-bump-to-the-text-list-pin REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: when DONE-WHEN holds and the commit is on your branch, or a baseline refusal other than the element-kind change is met (HOLD), or the deadline is reached. Title: workfile: text lists are plain []string in every form, the text form included; the pin moves to the text-form fix. Source: nova-sprint PR #476 (a14-defs-workfile-and-land-ledger-tables) "Schema improvements wanted" item 1. There, `TreeLoadTextForm` on `(:assignees ("bob"))` with `assignees []string` refused `text_bound`; schemas/workfile/workfile.schema wraps Tree.scope, Issue.labels and Issue.assignees in `table Word {. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-workfile-text-lists-drop-word-and-textform-pin (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-cairn-entry-dual-read
+
+RESULT: a13-cairn-entry-dual-read sha=<sha12> tier: pro DEPENDS-ON: none REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the entry table and its dual read are committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13: the cairn entry file read in both forms, refused by name when malformed, counted per form. Source: the coordinator, 2026-10-17: a13-cairn-entry-writer failed three times on one blocker: the cairn entry file appendEntry writes (entries/<session>/<id>.json, struct entryFile, internal/cairn/cairn.go ~176) has no table in schemas/ledger and no dual reader; readEntry (~891) and existingAppend (~861) a. Column ready, attempt 1, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-cairn-entry-dual-read (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### fuzz-seatrecwire-prefix-oracle
+
+RESULT: fuzz-seatrecwire-prefix-oracle sha=<sha12> tier: pro DEPENDS-ON: fuzz-oracle-prefix-refusal,fuzz-seatrecwire REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: test PRIORITY: normal STREAM: v15-schema-tables STOP: fuzz_test.go carries the neighbour oracle and its proof test, committed with DONE-WHEN holding, or the deadline is reached Source: the neighbour oracle the design card fuzz-oracle-prefix-refusal decides (nova-tools docs/SPEC-SCHEMA-FUZZ.md once it lands); the block below is that oracle, verified on a bench in all 16 generated wire packages.. Column review, attempt 1, tier pro. Work audited 2026-10-18. Pushed heads: d9cfcb65fe804f27e58f01475591f6ec575fafe3 (vision; on origin: sprint/fuzz-seatrecwire-prefix-oracle.w1.g9.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card fuzz-seatrecwire-prefix-oracle (stream v15-schema-tables, column review, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-answer-text-lists-drop-line
+
+RESULT: v15-answer-text-lists-drop-line sha=<sha12> tier: pro DEPENDS-ON: v15-onepin-tools,a11-sprintwire-dual-read,a11-send-token-record-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: DONE-WHEN holds and the commit is on your branch, or a baseline refusal other than the element-kind change is met (HOLD), or the deadline is reached Source: schemas/answer/answer.schema, `table Line` (read, line 31), the element wrapper written because the compiler then took no list of unbounded text; the pin v15-onepin-tools sets takes `[]string` with unbounded elements (schema SPEC-TABLES 2.13.1). The nova-sprint twins of this card are v15-snaprows-te. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-answer-text-lists-drop-line (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-conformance-all-units
+
+RESULT: v15-conformance-all-units sha=<sha12> tier: pro DEPENDS-ON: v15-onepin-tools,v15-sprint-wires-bump-to-the-text-list-pin,v15-conformance-answer,v15-conformance-config,v15-conformance-decide,v15-conformance-friendfile,v15-conformance-ledger,v15-conformance-release,v15-conformance-seatrec,v15-conformance-swarm,v15-conformance-tablemodel REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: test PRIORITY: high STREAM: v15-schema-tables STOP: the whole gate is green and the README says so, or the deadline is reached Source: Makefile schemawire-conformance (read), the one conformance gate over every unit in schemas/; `make check` (read, Makefile ~487) names it, so CI runs it; schemas/README.md (read), whose opening still says "No area is here yet".. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-conformance-all-units (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-conformance-answer
+
+RESULT: v15-conformance-answer sha=<sha12> tier: pro DEPENDS-ON: v15-onepin-tools,v15-conformance-unit-filter REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: test PRIORITY: high STREAM: v15-schema-tables STOP: the corpus and the driver are committed with DONE-WHEN holding, or the deadline is reached Source: pkg/hookwire/cmd/hook-driver/main.go (read), the landed wire-fuzz driver for a unit of VARIABLE tables; schemas/hook/fuzz/MANIFEST.txt (read), the landed corpus manifest; pkg/hookwire/ackbeathook_test.go (read) lines 14-21, the `schema pack` recipe; for a FIXED table, the schema repository's own Go. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-conformance-answer (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-conformance-config
+
+RESULT: v15-conformance-config sha=<sha12> tier: pro DEPENDS-ON: v15-onepin-tools,v15-conformance-unit-filter REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: test PRIORITY: high STREAM: v15-schema-tables STOP: the corpus and the driver are committed with DONE-WHEN holding, or the deadline is reached Source: pkg/hookwire/cmd/hook-driver/main.go (read), the landed wire-fuzz driver for a unit of VARIABLE tables; schemas/hook/fuzz/MANIFEST.txt (read), the landed corpus manifest; pkg/hookwire/ackbeathook_test.go (read) lines 14-21, the `schema pack` recipe; for a FIXED table, the schema repository's own Go. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-conformance-config (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-conformance-decide
+
+RESULT: v15-conformance-decide sha=<sha12> tier: pro DEPENDS-ON: v15-onepin-tools,v15-conformance-unit-filter REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: test PRIORITY: high STREAM: v15-schema-tables STOP: the corpus and the driver are committed with DONE-WHEN holding, or the deadline is reached Source: pkg/hookwire/cmd/hook-driver/main.go (read), the landed wire-fuzz driver for a unit of VARIABLE tables; schemas/hook/fuzz/MANIFEST.txt (read), the landed corpus manifest; pkg/hookwire/ackbeathook_test.go (read) lines 14-21, the `schema pack` recipe; for a FIXED table, the schema repository's own Go. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-conformance-decide (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-conformance-friendfile
+
+RESULT: v15-conformance-friendfile sha=<sha12> tier: pro DEPENDS-ON: v15-onepin-tools,v15-conformance-unit-filter REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: test PRIORITY: high STREAM: v15-schema-tables STOP: the corpus and the driver are committed with DONE-WHEN holding, or the deadline is reached Source: pkg/hookwire/cmd/hook-driver/main.go (read), the landed wire-fuzz driver for a unit of VARIABLE tables; schemas/hook/fuzz/MANIFEST.txt (read), the landed corpus manifest; pkg/hookwire/ackbeathook_test.go (read) lines 14-21, the `schema pack` recipe; for a FIXED table, the schema repository's own Go. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-conformance-friendfile (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-conformance-ledger
+
+RESULT: v15-conformance-ledger sha=<sha12> tier: pro DEPENDS-ON: v15-onepin-tools,v15-conformance-unit-filter REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: test PRIORITY: high STREAM: v15-schema-tables STOP: the corpus and the driver are committed with DONE-WHEN holding, or the deadline is reached Source: pkg/hookwire/cmd/hook-driver/main.go (read), the landed wire-fuzz driver for a unit of VARIABLE tables; schemas/hook/fuzz/MANIFEST.txt (read), the landed corpus manifest; pkg/hookwire/ackbeathook_test.go (read) lines 14-21, the `schema pack` recipe; for a FIXED table, the schema repository's own Go. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-conformance-ledger (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-conformance-release
+
+RESULT: v15-conformance-release sha=<sha12> tier: pro DEPENDS-ON: v15-onepin-tools,v15-conformance-unit-filter REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: test PRIORITY: high STREAM: v15-schema-tables STOP: the corpus and the driver are committed with DONE-WHEN holding, or the deadline is reached Source: pkg/hookwire/cmd/hook-driver/main.go (read), the landed wire-fuzz driver for a unit of VARIABLE tables; schemas/hook/fuzz/MANIFEST.txt (read), the landed corpus manifest; pkg/hookwire/ackbeathook_test.go (read) lines 14-21, the `schema pack` recipe; for a FIXED table, the schema repository's own Go. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-conformance-release (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-conformance-seatrec
+
+RESULT: v15-conformance-seatrec sha=<sha12> tier: pro DEPENDS-ON: v15-onepin-tools,v15-conformance-unit-filter REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: test PRIORITY: high STREAM: v15-schema-tables STOP: the corpus and the driver are committed with DONE-WHEN holding, or the deadline is reached Source: pkg/hookwire/cmd/hook-driver/main.go (read), the landed wire-fuzz driver for a unit of VARIABLE tables; schemas/hook/fuzz/MANIFEST.txt (read), the landed corpus manifest; pkg/hookwire/ackbeathook_test.go (read) lines 14-21, the `schema pack` recipe; for a FIXED table, the schema repository's own Go. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-conformance-seatrec (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-conformance-swarm
+
+RESULT: v15-conformance-swarm sha=<sha12> tier: pro DEPENDS-ON: v15-onepin-tools,v15-conformance-unit-filter REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: test PRIORITY: high STREAM: v15-schema-tables STOP: the corpus and the driver are committed with DONE-WHEN holding, or the deadline is reached Source: pkg/hookwire/cmd/hook-driver/main.go (read), the landed wire-fuzz driver for a unit of VARIABLE tables; schemas/hook/fuzz/MANIFEST.txt (read), the landed corpus manifest; pkg/hookwire/ackbeathook_test.go (read) lines 14-21, the `schema pack` recipe; for a FIXED table, the schema repository's own Go. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-conformance-swarm (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-conformance-tablemodel
+
+RESULT: v15-conformance-tablemodel sha=<sha12> tier: pro DEPENDS-ON: v15-onepin-tools,v15-conformance-unit-filter REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: test PRIORITY: high STREAM: v15-schema-tables STOP: the corpus and the driver are committed with DONE-WHEN holding, or the deadline is reached Source: pkg/hookwire/cmd/hook-driver/main.go (read), the landed wire-fuzz driver for a unit of VARIABLE tables; schemas/hook/fuzz/MANIFEST.txt (read), the landed corpus manifest; pkg/hookwire/ackbeathook_test.go (read) lines 14-21, the `schema pack` recipe; for a FIXED table, the schema repository's own Go. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-conformance-tablemodel (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-conformance-unit-filter
+
+RESULT: v15-conformance-unit-filter sha=<sha12> tier: pro DEPENDS-ON: v15-onepin-tools REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: high STREAM: v15-schema-tables STOP: the UNIT filter and its test are committed with DONE-WHEN holding, or the deadline is reached Source: Makefile schemawire-conformance (read, ~152-192): it walks every schemas/*/ unit in turn and stops at the first with no corpus, so one unit cannot be checked alone; it also refuses `pins disagree` until v15-onepin-tools moves every generate.go (pkg/roadmapwire included) to one pin, so this card star. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-conformance-unit-filter (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-onepin-tools
+
+RESULT: v15-onepin-tools sha=<sha12> tier: heavy DEPENDS-ON: a14-defs-roadmap-tables,v15-workfile-text-lists-drop-word-and-textform-pin,v15-sprint-wires-bump-to-the-text-list-pin,a13-cairn-entry-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: high STREAM: v15-schema-tables STOP: every generate.go names the one pin, the tree is regenerated and the gate is green, or the deadline is reached Source: schemas/README.md (read), "Every generate.go in this repository names the same pseudo-version"; Makefile schemawire-conformance (read), which stops at "pins disagree"; pkg/*wire/generate.go (read): twelve pin v2.5.1-0.20261017012433-9b397a277ad3 at BASE, and pkg/roadmapwire (a14-defs-roadmap-tables). Column waiting, tier heavy. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-onepin-tools (stream v15-schema-tables, column waiting, tier heavy, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-release-text-lists-drop-word
+
+RESULT: v15-release-text-lists-drop-word sha=<sha12> tier: pro DEPENDS-ON: v15-onepin-tools,fuzz-releasewire,a13-update-manifest-dual-read,a13-release-adopt-machines-dual-read,a13-release-build-record-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: DONE-WHEN holds and the commit is on your branch, or a baseline refusal other than the element-kind change is met (HOLD), or the deadline is reached Source: schemas/release/release.schema, `table Word` (read, line 51), the element wrapper written because the compiler then took no list of unbounded text; the pin v15-onepin-tools sets takes `[]string` with unbounded elements (schema SPEC-TABLES 2.13.1). The nova-sprint twins of this card are v15-snaprows-. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-release-text-lists-drop-word (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### fuzz-donewire-prefix-oracle
+
+RESULT: fuzz-donewire-prefix-oracle sha=<sha12> tier: pro DEPENDS-ON: fuzz-oracle-prefix-refusal REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: test PRIORITY: normal STREAM: v15-schema-tables STOP: fuzz_test.go carries the neighbour oracle and its proof test, committed with DONE-WHEN holding, or the deadline is reached Source: the neighbour oracle the design card fuzz-oracle-prefix-refusal decides (nova-tools docs/SPEC-SCHEMA-FUZZ.md once it lands); the block below is that oracle, verified on a bench in all 16 generated wire packages.. Column ready, attempt 1, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card fuzz-donewire-prefix-oracle (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### fuzz-friendrowswire-prefix-oracle
+
+RESULT: fuzz-friendrowswire-prefix-oracle sha=<sha12> tier: pro DEPENDS-ON: fuzz-oracle-prefix-refusal REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: test PRIORITY: normal STREAM: v15-schema-tables STOP: fuzz_test.go carries the neighbour oracle and its proof test, committed with DONE-WHEN holding, or the deadline is reached Source: the neighbour oracle the design card fuzz-oracle-prefix-refusal decides (nova-tools docs/SPEC-SCHEMA-FUZZ.md once it lands); the block below is that oracle, verified on a bench in all 16 generated wire packages.. Column ready, attempt 1, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card fuzz-friendrowswire-prefix-oracle (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### fuzz-oprowswire-prefix-oracle
+
+RESULT: fuzz-oprowswire-prefix-oracle sha=<sha12> tier: pro DEPENDS-ON: fuzz-oracle-prefix-refusal REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: test PRIORITY: normal STREAM: v15-schema-tables STOP: fuzz_test.go carries the neighbour oracle and its proof test, committed with DONE-WHEN holding, or the deadline is reached Source: the neighbour oracle the design card fuzz-oracle-prefix-refusal decides (nova-tools docs/SPEC-SCHEMA-FUZZ.md once it lands); the block below is that oracle, verified on a bench in all 16 generated wire packages.. Column review, attempt 3, tier pro. Work audited 2026-10-18. Pushed heads: 6d6e0709feb8718950d48cf02ca4800e1396b40c (friend.rowan; on origin: sprint/fuzz-oprowswire-prefix-oracle.w3.g3.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card fuzz-oprowswire-prefix-oracle (stream v15-schema-tables, column review, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### fuzz-snaprowswire-prefix-oracle
+
+RESULT: fuzz-snaprowswire-prefix-oracle sha=<sha12> tier: pro DEPENDS-ON: fuzz-oracle-prefix-refusal REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: test PRIORITY: normal STREAM: v15-schema-tables STOP: fuzz_test.go carries the neighbour oracle and its proof test, committed with DONE-WHEN holding, or the deadline is reached Source: the neighbour oracle the design card fuzz-oracle-prefix-refusal decides (nova-tools docs/SPEC-SCHEMA-FUZZ.md once it lands); the block below is that oracle, verified on a bench in all 16 generated wire packages.. Column ready, attempt 2, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card fuzz-snaprowswire-prefix-oracle (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### fuzz-viewrowswire-prefix-oracle
+
+RESULT: fuzz-viewrowswire-prefix-oracle sha=<sha12> tier: pro DEPENDS-ON: fuzz-oracle-prefix-refusal REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: test PRIORITY: normal STREAM: v15-schema-tables STOP: fuzz_test.go carries the neighbour oracle and its proof test, committed with DONE-WHEN holding, or the deadline is reached Source: the neighbour oracle the design card fuzz-oracle-prefix-refusal decides (nova-tools docs/SPEC-SCHEMA-FUZZ.md once it lands); the block below is that oracle, verified on a bench in all 16 generated wire packages.. Column ready, attempt 2, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card fuzz-viewrowswire-prefix-oracle (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a11-member-queue-answer-legacy-bounds
+
+RESULT: a11-member-queue-answer-legacy-bounds sha=<sha12> tier: pro DEPENDS-ON: a11-member-queue-answer-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: fix PRIORITY: normal STREAM: v15-schema-tables STOP: the four fixes are committed with DONE-WHEN holding, or the deadline is reached Title: Fixes to the queue answer reader (Aspect 11, pkg/member). Source: the strict read of a11-member-queue-answer-dual-read at bc7a47bb (the cold read ~/.local/state/nova-reads/a11-member-queue-answer-dual-read-bc7a47bb.md, items 1 to 4); the owner, Glenn, 2026-10-17: forgiving reads never loosen a bound, security first; schemas/answer/answer.schema (read) (QueueCard,. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a11-member-queue-answer-legacy-bounds (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### fuzz-configwire-prefix-oracle
+
+RESULT: fuzz-configwire-prefix-oracle sha=<sha12> tier: pro DEPENDS-ON: fuzz-oracle-prefix-refusal,fuzz-configwire REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: test PRIORITY: normal STREAM: v15-schema-tables STOP: fuzz_test.go carries the neighbour oracle and its proof test, committed with DONE-WHEN holding, or the deadline is reached Source: the neighbour oracle the design card fuzz-oracle-prefix-refusal decides (nova-tools docs/SPEC-SCHEMA-FUZZ.md once it lands); the block below is that oracle, verified on a bench in all 16 generated wire packages.. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card fuzz-configwire-prefix-oracle (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### fuzz-friendfilewire-prefix-oracle
+
+RESULT: fuzz-friendfilewire-prefix-oracle sha=<sha12> tier: pro DEPENDS-ON: fuzz-oracle-prefix-refusal,fuzz-friendfilewire REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: test PRIORITY: normal STREAM: v15-schema-tables STOP: fuzz_test.go carries the neighbour oracle and its proof test, committed with DONE-WHEN holding, or the deadline is reached Source: the neighbour oracle the design card fuzz-oracle-prefix-refusal decides (nova-tools docs/SPEC-SCHEMA-FUZZ.md once it lands); the block below is that oracle, verified on a bench in all 16 generated wire packages.. Column review, attempt 1, tier pro. Work audited 2026-10-18. Pushed heads: 47766e0891a1c0f54862bc917a1f5c689c0618b7 (hulk; on origin: sprint/fuzz-friendfilewire-prefix-oracle.w1.g5.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card fuzz-friendfilewire-prefix-oracle (stream v15-schema-tables, column review, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### fuzz-hookwire-prefix-oracle
+
+RESULT: fuzz-hookwire-prefix-oracle sha=<sha12> tier: pro DEPENDS-ON: fuzz-oracle-prefix-refusal,fuzz-hookwire REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: test PRIORITY: normal STREAM: v15-schema-tables STOP: fuzz_test.go carries the neighbour oracle and its proof test, committed with DONE-WHEN holding, or the deadline is reached Source: the neighbour oracle the design card fuzz-oracle-prefix-refusal decides (nova-tools docs/SPEC-SCHEMA-FUZZ.md once it lands); the block below is that oracle, verified on a bench in all 16 generated wire packages.. Column review, attempt 1, tier pro. Work audited 2026-10-18. Pushed heads: d2e5150a5d4a9c5c4ea814f4769cbd736f14532b (vision; on origin: sprint/fuzz-hookwire-prefix-oracle.w1.g4.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card fuzz-hookwire-prefix-oracle (stream v15-schema-tables, column review, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### fuzz-ledgerwire-prefix-oracle
+
+RESULT: fuzz-ledgerwire-prefix-oracle sha=<sha12> tier: pro DEPENDS-ON: fuzz-oracle-prefix-refusal,fuzz-ledgerwire REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: test PRIORITY: normal STREAM: v15-schema-tables STOP: fuzz_test.go carries the neighbour oracle and its proof test, committed with DONE-WHEN holding, or the deadline is reached Source: the neighbour oracle the design card fuzz-oracle-prefix-refusal decides (nova-tools docs/SPEC-SCHEMA-FUZZ.md once it lands); the block below is that oracle, verified on a bench in all 16 generated wire packages.. Column ready, attempt 1, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card fuzz-ledgerwire-prefix-oracle (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### fuzz-pongwire-prefix-oracle
+
+RESULT: fuzz-pongwire-prefix-oracle sha=<sha12> tier: pro DEPENDS-ON: fuzz-oracle-prefix-refusal,fuzz-pongwire REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: test PRIORITY: normal STREAM: v15-schema-tables STOP: fuzz_test.go carries the neighbour oracle and its proof test, committed with DONE-WHEN holding, or the deadline is reached Source: the neighbour oracle the design card fuzz-oracle-prefix-refusal decides (nova-tools docs/SPEC-SCHEMA-FUZZ.md once it lands); the block below is that oracle, verified on a bench in all 16 generated wire packages.. Column review, attempt 1, tier pro. Work audited 2026-10-18. Pushed heads: 710f4a9e01e6b318d5aa053084930f62fcfe4b44 (vision; on origin: sprint/fuzz-pongwire-prefix-oracle.w1.g3.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card fuzz-pongwire-prefix-oracle (stream v15-schema-tables, column review, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### fuzz-releasewire-prefix-oracle
+
+RESULT: fuzz-releasewire-prefix-oracle sha=<sha12> tier: pro DEPENDS-ON: fuzz-oracle-prefix-refusal,fuzz-releasewire REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: test PRIORITY: normal STREAM: v15-schema-tables STOP: fuzz_test.go carries the neighbour oracle and its proof test, committed with DONE-WHEN holding, or the deadline is reached Source: the neighbour oracle the design card fuzz-oracle-prefix-refusal decides (nova-tools docs/SPEC-SCHEMA-FUZZ.md once it lands); the block below is that oracle, verified on a bench in all 16 generated wire packages.. Column ready, attempt 1, tier pro. Work audited 2026-10-18. No pushed head recorded. Branches on origin the sprint records no head for: sprint/fuzz-releasewire-prefix-oracle.w1.g7.e21 at c69cdb5faee6.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card fuzz-releasewire-prefix-oracle (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### fuzz-swarmwire-prefix-oracle
+
+RESULT: fuzz-swarmwire-prefix-oracle sha=<sha12> tier: pro DEPENDS-ON: fuzz-oracle-prefix-refusal,fuzz-swarmwire REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: test PRIORITY: normal STREAM: v15-schema-tables STOP: fuzz_test.go carries the neighbour oracle and its proof test, committed with DONE-WHEN holding, or the deadline is reached Source: the neighbour oracle the design card fuzz-oracle-prefix-refusal decides (nova-tools docs/SPEC-SCHEMA-FUZZ.md once it lands); the block below is that oracle, verified on a bench in all 16 generated wire packages.. Column review, attempt 1, tier pro. Work audited 2026-10-18. Pushed heads: d623e776331afb85d12582c57e6892cbd161246a (hulk; on origin: sprint/fuzz-swarmwire-prefix-oracle.w1.g1.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card fuzz-swarmwire-prefix-oracle (stream v15-schema-tables, column review, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### fuzz-tablemodelwire-prefix-oracle
+
+RESULT: fuzz-tablemodelwire-prefix-oracle sha=<sha12> tier: pro DEPENDS-ON: fuzz-oracle-prefix-refusal,fuzz-tablemodelwire REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: test PRIORITY: normal STREAM: v15-schema-tables STOP: fuzz_test.go carries the neighbour oracle and its proof test, committed with DONE-WHEN holding, or the deadline is reached Source: the neighbour oracle the design card fuzz-oracle-prefix-refusal decides (nova-tools docs/SPEC-SCHEMA-FUZZ.md once it lands); the block below is that oracle, verified on a bench in all 16 generated wire packages.. Column ready, attempt 1, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card fuzz-tablemodelwire-prefix-oracle (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-sprint-deadcode-wall
+
+RESULT: v15-sprint-deadcode-wall sha=<sha12> tier: pro DEPENDS-ON: v15-sprint-deadcode-fast REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: fix PRIORITY: high STREAM: v15-schema-tables STOP: TestDeadCode meets DONE-WHEN with the same measured map, or the deadline is reached Source: the CI "functional (deadcode)" leg has a 2-minute limit and base and branch runs now take 76 to 113 s; a8-store-op-rows (jobs 117450309292 and 117451386143) and a8-store-view-rows-where w5 timed out at 2m0s, which stops landings as the stream grows (coordinator, 2026-10-17, priority high). The cold. Column ready, attempt 2, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-sprint-deadcode-wall (stream v15-schema-tables, column ready, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-tools-tolerant-twins-before-pin
+
+RESULT: v15-tools-tolerant-twins-before-pin sha=<sha12> tier: pro DEPENDS-ON: schema-go-strict-read-by-default REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: fix PRIORITY: high STREAM: v15-schema-tables STOP: the test and the pin move are committed with DONE-WHEN holding, or the deadline is reached Source: the coordinator, 2026-10-17. schema-go-strict-read-by-default (in review on the schema repository, branch sprint/schema-go-strict-read-by-default) makes every plain generated read entry point (<T>Load, <T>LoadBuilder, <T>FromJson, <T>LoadText, <T>FixedLoad, the message reads) measure first and refus. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-tools-tolerant-twins-before-pin (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-update-manifest-form-parity
+
+RESULT: a13-update-manifest-form-parity sha=<sha12> tier: pro DEPENDS-ON: a13-update-manifest-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: fix PRIORITY: normal STREAM: v15-schema-tables STOP: the three fixes are committed with DONE-WHEN holding, or the deadline is reached Source: the heavy read of a13-update-manifest-dual-read at ba6549241 (findings 1, 2 and 3, quoted in THE TASK below) and the owner's rule (Glenn, 2026-10-17): security trumps forgiving reads; every form must enforce the same validation.. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-update-manifest-form-parity (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a9-config-rows-writers-pg-file-inventory-file
+
+RESULT: a9-config-rows-writers-pg-file-inventory-file sha=<sha12> tier: pro DEPENDS-ON: a9-config-rows-writers-pg-file-inventory,v15-dedup-sprint-config-from-nova-tools REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 9: the file twin written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-tools schemas/README.md (read), the home rule and the pin.. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a9-config-rows-writers-pg-file-inventory-file (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a9-config-rows-writers-pg-file-inventory
+
+RESULT: a9-config-rows-writers-pg-file-inventory sha=<sha12> tier: heavy DEPENDS-ON: a9-config-rows-dual-read,v15-dedup-sprint-config-from-nova-tools REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 9: the pg history writer, the write half of the record wire, and the inventory ruling. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-tools schemas/README.md (read), the home rule and the pin.. Column waiting, attempt 4, tier heavy. Work audited 2026-10-18. Pushed heads: d603ffcbbf2e063c3eedf1e275f7d86963ee9bd2 (studio, friend.rowan; on origin: sprint/a9-config-rows-writers-pg-file-inventory.w2.g1.e21, sprint/a9-config-rows-writers-pg-file-inventory.w3.g1.e21).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a9-config-rows-writers-pg-file-inventory (stream v15-schema-tables, column waiting, tier heavy, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-aspect-1-acceptance
+
+RESULT: v15-aspect-1-acceptance sha=<sha12> tier: pro DEPENDS-ON: l1-defs-bus-envelope-2,l1-nova-bus-native-binary-form-2,l1-bus-envelope-dual-read-2,l1-nova-bus-reader-builder-and-show-2 REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: acceptance PRIORITY: normal STREAM: v15-schema-tables STOP: the report is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 1 (the bus envelope): the whole-aspect acceptance gate. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section 6; the aspect's piece cards l1-defs-bus-envelope-2, l1-nova-bus-native-binary-form-2, l1-bus-envelope-dual-read-2, l1-nova-bus-reader-builder-and-show-2 (read: nova-sprin. Column working, attempt 5, tier pro. Work audited 2026-10-18. Pushed heads: 334f6da2c2b8215e8faad10b57ce69a89b2f71ed (friend.rowan; on origin: sprint/v15-aspect-1-acceptance.w1.g1.e21); fb229d63d7b399a839d447be15a40f73759a5ee6 (friend.rowan; on origin: sprint/v15-aspect-1-acceptance.w2.g3.e21). Working branch, not on origin: sprint/v15-aspect-1-acceptance.w5.g10.e21 (hulk, working when moved).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-aspect-1-acceptance (stream v15-schema-tables, column working, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a9-config-rows-writers-redis-and-apply
+
+RESULT: a9-config-rows-writers-redis-and-apply sha=<sha12> tier: pro DEPENDS-ON: a9-config-rows-writers-pg-file-inventory,v15-dedup-sprint-config-from-nova-tools REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 9: the Redis view and the nova-config apply rows written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a9-config-rows-writers-redis-and-apply (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-aspect-2-acceptance
+
+RESULT: v15-aspect-2-acceptance sha=<sha12> tier: pro DEPENDS-ON: l1-defs-pong-2,l1-pong-dual-read-2 REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: acceptance PRIORITY: normal STREAM: v15-schema-tables STOP: the report is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 2 (pong): the whole-aspect acceptance gate. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section 6; the aspect's piece cards l1-defs-pong-2, l1-pong-dual-read-2 (read: nova-sprint card <id>).. Column working, attempt 1, tier pro. Work audited 2026-10-18. No pushed head recorded. Working branch, not on origin: sprint/v15-aspect-2-acceptance.w1.g8.e21 (amd-2, working when moved).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-aspect-2-acceptance (stream v15-schema-tables, column working, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-aspect-3-acceptance
+
+RESULT: v15-aspect-3-acceptance sha=<sha12> tier: pro DEPENDS-ON: l1-defs-ack-beat-hook-stamp-2,l1-hook-stamp-typed-2,l1-seat-hook-typed-reader-2,v15-wires-bump-to-the-text-transport-pin REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: acceptance PRIORITY: normal STREAM: v15-schema-tables STOP: the report is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 3 (the ack, beat and hook stamp): the whole-aspect acceptance gate. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section 6; the aspect's piece cards l1-defs-ack-beat-hook-stamp-2, l1-hook-stamp-typed-2, l1-seat-hook-typed-reader-2 (read: nova-sprint card <id>).. Column working, attempt 2, tier pro. Work audited 2026-10-18. No pushed head recorded. Working branch, not on origin: sprint/v15-aspect-3-acceptance.w2.g2.e21 (hulk, working when moved).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-aspect-3-acceptance (stream v15-schema-tables, column working, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-aspect-4-acceptance
+
+RESULT: v15-aspect-4-acceptance sha=<sha12> tier: pro DEPENDS-ON: l1-writers-switch-2,l1-acceptance-soak-2 REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: acceptance PRIORITY: normal STREAM: v15-schema-tables STOP: the report is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 4 (the layer-one writers switch and acceptance soak): the whole-aspect acceptance gate. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-aspect-4-acceptance (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-aspect-5-acceptance
+
+RESULT: v15-aspect-5-acceptance sha=<sha12> tier: pro DEPENDS-ON: l2-defs-card-area-and-card-table,l2-defs-jobpacket-table,l2-defs-result-table,l2-tla-card-contract-result-typed-3,l2-brief-parse-parity-2,l2-result-table-reader-2,l2-friend-report-gateway-2,l2-nova-work-result-builder-2,l2-signoff-fence-2 REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: acceptance PRIORITY: normal STREAM: v15-schema-tables STOP: the report is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 5 (the card, job packet and result tables): the whole-aspect acceptance gate. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-aspect-5-acceptance (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-aspect-6-acceptance
+
+RESULT: v15-aspect-6-acceptance sha=<sha12> tier: pro DEPENDS-ON: l3-defs-refusal-and-finding-tables,l3-typedrec-reads-refusals-and-findings-typed,l3-every-verb-json-refusal-is-whole,l3-judgment-verdict-field-2,l3-subject-census-and-rewrite-fuzz-2 REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: acceptance PRIORITY: normal STREAM: v15-schema-tables STOP: the report is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 6 (the judgment verdict field and the subject census): the whole-aspect acceptance gate. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section 6; the aspect's piece cards l3-defs-refusal-and-finding-tables, l3-typedrec-reads-refusals-and-findings-typed, l3-every-verb-json-refusal-is-whole, l3-judgment-verdict-fi. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-aspect-6-acceptance (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-aspect-7-acceptance
+
+RESULT: v15-aspect-7-acceptance sha=<sha12> tier: pro DEPENDS-ON: l5-retire-legacy-result-parser-2 REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: acceptance PRIORITY: normal STREAM: v15-schema-tables STOP: the report is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 7 (retiring the legacy result parser): the whole-aspect acceptance gate. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section 6; the aspect's piece cards l5-retire-legacy-result-parser-2 (read: nova-sprint card <id>).. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-aspect-7-acceptance (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-aspect-8-acceptance
+
+RESULT: v15-aspect-8-acceptance sha=<sha12> tier: pro DEPENDS-ON: a8-defs-store-friend-rows,a8-defs-store-op-rows,a8-defs-store-snapshot-and-cost,a8-defs-store-view-rows,a8-lua-row-values-opaque,a8-ntable-row-value-seam,a8-store-friend-roster-rows-dual-read,a8-holds-reader-hold-dual-read,a8-lanes-record-dual-readb,a8-reader-beat-draining-dual-read,a8-reader-states-beat-dual-read,a8-reader-states-hold-dual-read,a8-seat-change-coordinator-dual-read,a8-seat-generation-dual-read,a8-seat-server-coordinator-server-dual-read,a8-server-record-dual-read,a8-beat-facts-writer,a8-beat-readers-writer,a8-friend-beat-live-writer,a8-friend-status-writer,a8-lane-step-writer,a8-reader-beat-draining-writer,a8-reader-hold-writer,a8-roster-writer,a8-seat-record-writer,a8-set-server-writer,a8-strangers-writer,a8-touch-beat-writer,a8-store-op-rows-dual-read,a8-store-op-rows-writers,a8-store-row-codec,a8-store-snapshot-and-cost-dual-read,a8-store-snapshot-and-cost-writers,a8-store-view-rows-where-dual-read,a8-doctor-reader-beats-dual-read,a8-drop-debt-dual-read,a8-drop-members-machine-dual-read,a8-refused-record-dual-read,a8-refused-verbs-dual-read,a8-stats-record-dual-read,a8-card-log-ids-dual-read,a8-guarded-machine-held-op-dual-read,a8-load-index-dual-read,a8-log-line-dual-read,a8-tick-get-json-dual-read,a8-keep-stops-writer,a8-keep-store-rtt-writer,a8-keep-where-writer,a8-put-drop-debt-writer,a8-record-refused-writer,a8-reset-stats-writer,a8-update-stats-writer,a8-index-log-writer,a8-mem-guarded-machine-writer,a8-put-json-writer,a8-put-machine-writer,a8-redis-guarded-machine-writer,a8-store-row-counts-list-every-record-at-zero,a8-mem-read-fence-machine-dual-read,a8-mem-release-timers-dual-read,a8-mem-release-timers-writer,a8-store-done-read-through-row-codec,a8-store-done-retire-legacy-json,a8-store-friend-rows-retire-legacy,a8-store-op-rows-retire-legacy,a8-store-snapshot-and-cost-retire-legacy,a8-store-view-rows-retire-legacy REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: acceptance PRIORITY: normal STREAM: v15-schema-tables STOP: the report is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 8 (the sprint store row records): the whole-aspect acceptance gate. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-aspect-8-acceptance (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-aspect-9-acceptance
+
+RESULT: v15-aspect-9-acceptance sha=<sha12> tier: pro DEPENDS-ON: a9-config-rows-dual-read,a9-defs-config-rows,a9-config-rows-writers-pg-file-inventory-file,a9-config-rows-writers-pg-file-inventory,a9-config-rows-writers-redis-and-apply,a9-config-rows-retire-legacy REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: acceptance PRIORITY: normal STREAM: v15-schema-tables STOP: the report is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 9 (the nova-config rows and the Redis view): the whole-aspect acceptance gate. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-aspect-9-acceptance (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-aspect-10-acceptance
+
+RESULT: v15-aspect-10-acceptance sha=<sha12> tier: pro DEPENDS-ON: a10-defs-friend-files,a10-friend-files-retire-legacy,a10-friend-files-writers-state,a10-friend-files-writers,a10-friend-lane-inbox-state-dual-read REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: acceptance PRIORITY: normal STREAM: v15-schema-tables STOP: the report is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 10 (the friend files): the whole-aspect acceptance gate. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-aspect-10-acceptance (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-aspect-11-acceptance
+
+RESULT: v15-aspect-11-acceptance sha=<sha12> tier: pro DEPENDS-ON: a11-defs-worker-answers,a11-hook-judgments-dual-read,a11-send-token-record-dual-read,a11-sprint-answers-writers,a11-sprintwire-dual-read,a11-tools-answers-writers,a11-friend-card-holders-dual-read,a11-friend-codex-routes-dual-read,a11-friend-held-answer-dual-read,a11-friend-route-price-dual-read,a11-friend-view-epoch-dual-read,a11-friend-worker-view-dual-read,a11-member-queue-answer-dual-read,a11-member-take-answer-dual-read,a11-member-queue-answer-legacy-bounds,a11-retire-legacy-answer-readers REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: acceptance PRIORITY: normal STREAM: v15-schema-tables STOP: the report is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 11 (the worker and server answers parsed as text): the whole-aspect acceptance gate. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-aspect-11-acceptance (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-aspect-12-acceptance
+
+RESULT: v15-aspect-12-acceptance sha=<sha12> tier: pro DEPENDS-ON: a12-dashboard-dual-read,a12-defs-verb-json-outputs,a12-defs-where-view,a12-dashboard-page-copy-dual-read,a12-dashboard-release-view-dual-read,a12-verb-json-from-schema,a12-where-json-from-schema,a12-retire-legacy-dashboard-read REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: acceptance PRIORITY: normal STREAM: v15-schema-tables STOP: the report is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 12 (the --json outputs and the dashboard): the whole-aspect acceptance gate. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-aspect-12-acceptance (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-aspect-13-acceptance
+
+RESULT: v15-aspect-13-acceptance sha=<sha12> tier: pro DEPENDS-ON: a13-models-tablemodel-dual-read,a13-decide-records-dual-read,a13-card-frame-dual-read,a13-raw-usage-dual-read,a13-card-frame-writer,a13-decide-ledger-writer,a13-raw-usage-writer,a13-defs-decide,a13-defs-ledgers,a13-defs-models,a13-defs-release,a13-defs-seat-and-tokens,a13-defs-swarm,a13-ledgers-record-and-cairn-dual-read,a13-dogfood-receipts-dual-read,a13-fuse-box-dual-read,a13-cairn-entry-writer,a13-cairn-log-writer,a13-dogfood-receipt-writer,a13-fuse-box-writer,a13-ledger-days-writer,a13-models-converge-state-dual-read,a13-models-writers,a13-release-cycle-dual-read,a13-update-snapshot-dual-read,a13-release-writers,a13-tokens-dayfile-dual-read,a13-placed-receipts-dual-read,a13-seat-environment-dual-read,a13-seat-and-tokens-writers,a13-swarm-config-dual-read,a13-member-own-records-dual-read,a13-swarm-writers,a13-ledgers-reader-wired-into-the-binaries,a13-adopt-checks-dual-read,a13-adoption-ledger-dual-read,a13-member-attempt-decision-writer,a13-nova-local-description-writer,a13-up-seat-environment-writer,a13-update-manifest-dual-read,a13-version-snapshot-diff-dual-read,a13-version-snapshot-writer,a13-decide-examples-dual-read,a13-decide-fixed-answers-dual-read,a13-decide-log-export-dual-read,a13-release-adopt-machines-dual-read,a13-release-build-record-dual-read,a13-tokens-ledger-reader-wired,a13-cairn-entry-dual-read,a13-update-manifest-form-parity,a13-decide-retire-legacy,a13-ledgers-retire-legacy,a13-models-retire-legacy,a13-release-retire-legacy,a13-seat-and-tokens-retire-legacy,a13-swarm-retire-legacy REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: acceptance PRIORITY: normal STREAM: v15-schema-tables STOP: the report is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 13 (the tool-owned records and ledgers): the whole-aspect acceptance gate. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-aspect-13-acceptance (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-aspect-14-acceptance
+
+RESULT: v15-aspect-14-acceptance sha=<sha12> tier: pro DEPENDS-ON: a14-defs-roadmap-tables,a14-defs-workfile-and-land-ledger-tables,a14-roadmap-dual-read,a14-roadmap-writers,a14-schema-go-commented-text-form-b,a14-schema-standard-commented-text-form,a14-sprint-sexp-dual-read,a14-sprint-sexp-writers,a14-carry-imports-roadmapwire,a14-retire-legacy-sexp-sprint,a14-retire-legacy-sexp-tools REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: acceptance PRIORITY: normal STREAM: v15-schema-tables STOP: the report is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 14 (the sexp data and its hand-editable text form): the whole-aspect acceptance gate. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-aspect-14-acceptance (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### v15-aspect-15-acceptance
+
+RESULT: v15-aspect-15-acceptance sha=<sha12> tier: pro DEPENDS-ON: a15-defs-brief-text-form,a15-jobmd-dual-read,a15-brief-and-jobmd-writers-sprint,a15-brief-and-jobmd-writers-tools,a15-retire-legacy-brief-parser REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: acceptance PRIORITY: normal STREAM: v15-schema-tables STOP: the report is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 15 (the briefs and JOB.md writer half and the legacy brief parser): the whole-aspect acceptance gate. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card v15-aspect-15-acceptance (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a10-friend-files-retire-legacy
+
+RESULT: a10-friend-files-retire-legacy sha=<sha12> tier: pro DEPENDS-ON: a10-friend-lane-inbox-state-dual-read,a10-friend-files-writers,a10-friend-files-writers-state,v15-dedup-sprint-friend-from-nova-tools REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the legacy reader is gone with DONE-WHEN holding, or the counter is not yet zero (then not-done), or the deadline is reached Title: Aspect 10: retire the legacy reader of the friend files. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a10-friend-files-retire-legacy (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a11-retire-legacy-answer-readers
+
+RESULT: a11-retire-legacy-answer-readers sha=<sha12> tier: pro DEPENDS-ON: a11-hook-judgments-dual-read,a11-send-token-record-dual-read,a11-sprint-answers-writers,a11-sprintwire-dual-read,a11-tools-answers-writers,a11-friend-card-holders-dual-read,a11-friend-codex-routes-dual-read,a11-friend-held-answer-dual-read,a11-friend-route-price-dual-read,a11-friend-view-epoch-dual-read,a11-friend-worker-view-dual-read,a11-member-queue-answer-dual-read,a11-member-take-answer-dual-read,a11-member-queue-answer-legacy-bounds REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the legacy reader is gone with DONE-WHEN holding, or the counter is not yet zero (then not-done), or the deadline is reached Title: Aspect 11: retire the legacy reader of the worker answers, the send-token record and the hook records. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a11-retire-legacy-answer-readers (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a12-retire-legacy-dashboard-read
+
+RESULT: a12-retire-legacy-dashboard-read sha=<sha12> tier: pro DEPENDS-ON: a12-dashboard-dual-read,a12-dashboard-page-copy-dual-read,a12-dashboard-release-view-dual-read,a12-where-json-from-schema,a12-verb-json-from-schema REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the legacy reader is gone with DONE-WHEN holding, or the counter is not yet zero (then not-done), or the deadline is reached Title: Aspect 12: retire the legacy reader of where --json in the dashboard. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a12-retire-legacy-dashboard-read (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-decide-retire-legacy
+
+RESULT: a13-decide-retire-legacy sha=<sha12> tier: pro DEPENDS-ON: a13-decide-records-dual-read,a13-card-frame-dual-read,a13-raw-usage-dual-read,a13-decide-examples-dual-read,a13-decide-fixed-answers-dual-read,a13-decide-log-export-dual-read,a13-card-frame-writer,a13-decide-ledger-writer,a13-raw-usage-writer,a13-member-attempt-decision-writer REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the legacy reader is gone with DONE-WHEN holding, or the counter is not yet zero (then not-done), or the deadline is reached Title: Aspect 13: retire the legacy reader of the decide, card cost and card contract records. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-decide-retire-legacy (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-ledgers-retire-legacy
+
+RESULT: a13-ledgers-retire-legacy sha=<sha12> tier: pro DEPENDS-ON: a13-ledgers-record-and-cairn-dual-read,a13-dogfood-receipts-dual-read,a13-fuse-box-dual-read,a13-cairn-entry-dual-read,a13-ledgers-reader-wired-into-the-binaries,a13-cairn-entry-writer,a13-cairn-log-writer,a13-dogfood-receipt-writer,a13-fuse-box-writer,a13-ledger-days-writer REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the legacy reader is gone with DONE-WHEN holding, or the counter is not yet zero (then not-done), or the deadline is reached Title: Aspect 13: retire the legacy reader of the record ledger, cairn, fuse and dogfood receipts. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-ledgers-retire-legacy (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-models-retire-legacy
+
+RESULT: a13-models-retire-legacy sha=<sha12> tier: pro DEPENDS-ON: a13-models-tablemodel-dual-read,a13-models-converge-state-dual-read,a13-models-writers REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the legacy reader is gone with DONE-WHEN holding, or the counter is not yet zero (then not-done), or the deadline is reached Title: Aspect 13: retire the legacy reader of the table model captures and the converge state. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-models-retire-legacy (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-release-retire-legacy
+
+RESULT: a13-release-retire-legacy sha=<sha12> tier: pro DEPENDS-ON: a13-release-cycle-dual-read,a13-update-snapshot-dual-read,a13-adopt-checks-dual-read,a13-adoption-ledger-dual-read,a13-update-manifest-dual-read,a13-update-manifest-form-parity,a13-version-snapshot-diff-dual-read,a13-release-adopt-machines-dual-read,a13-release-build-record-dual-read,a13-release-writers,a13-version-snapshot-writer REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the legacy reader is gone with DONE-WHEN holding, or the counter is not yet zero (then not-done), or the deadline is reached Title: Aspect 13: retire the legacy reader of the release and update manifests and the release and adopt records. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-release-retire-legacy (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-seat-and-tokens-retire-legacy
+
+RESULT: a13-seat-and-tokens-retire-legacy sha=<sha12> tier: pro DEPENDS-ON: a13-tokens-dayfile-dual-read,a13-placed-receipts-dual-read,a13-seat-environment-dual-read,a13-tokens-ledger-reader-wired,a13-seat-and-tokens-writers,a13-up-seat-environment-writer REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the legacy reader is gone with DONE-WHEN holding, or the counter is not yet zero (then not-done), or the deadline is reached Title: Aspect 13: retire the legacy reader of the seat credential place, tokens dayfile and secrets place records. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-seat-and-tokens-retire-legacy (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a13-swarm-retire-legacy
+
+RESULT: a13-swarm-retire-legacy sha=<sha12> tier: pro DEPENDS-ON: a13-swarm-config-dual-read,a13-member-own-records-dual-read,a13-swarm-writers,a13-nova-local-description-writer,v15-dedup-sprint-swarm-from-nova-tools REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the legacy reader is gone with DONE-WHEN holding, or the counter is not yet zero (then not-done), or the deadline is reached Title: Aspect 13: retire the legacy reader of the swarm config, slot and member records. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a13-swarm-retire-legacy (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a14-retire-legacy-sexp-sprint
+
+RESULT: a14-retire-legacy-sexp-sprint sha=<sha12> tier: pro DEPENDS-ON: a14-sprint-sexp-dual-read,a14-sprint-sexp-writers REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the legacy reader is gone with DONE-WHEN holding, or the counter is not yet zero (then not-done), or the deadline is reached Title: Aspect 14: retire the legacy reader of nova-sprint's sexp data. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a14-retire-legacy-sexp-sprint (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a14-retire-legacy-sexp-tools
+
+RESULT: a14-retire-legacy-sexp-tools sha=<sha12> tier: pro DEPENDS-ON: a14-roadmap-dual-read,a14-carry-imports-roadmapwire,a14-roadmap-writers REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the legacy reader is gone with DONE-WHEN holding, or the counter is not yet zero (then not-done), or the deadline is reached Title: Aspect 14: retire the legacy reader of the roadmap sexp in nova-tools. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a14-retire-legacy-sexp-tools (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a15-retire-legacy-brief-parser
+
+RESULT: a15-retire-legacy-brief-parser sha=<sha12> tier: pro DEPENDS-ON: a15-jobmd-dual-read,l2-brief-parse-parity-2,a15-brief-and-jobmd-writers-sprint,a15-brief-and-jobmd-writers-tools,v15-dedup-sprint-swarm-from-nova-tools REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the legacy reader is gone with DONE-WHEN holding, or the counter is not yet zero (then not-done), or the deadline is reached Title: Aspect 15: retire the legacy reader of briefs and JOB.md (the legacy brief header parser). Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a15-retire-legacy-brief-parser (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-store-done-retire-legacy-json
+
+RESULT: a8-store-done-retire-legacy-json sha=<sha12> tier: pro DEPENDS-ON: a8-store-done-read-through-row-codec REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the legacy branch is gone with DONE-WHEN holding, or the counter is not yet zero (then not-done), or the deadline is reached Title: Aspect 8: retire the done record's legacy JSON read. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column review, attempt 5, tier pro. Work audited 2026-10-18. Pushed heads: 1b9759011dbdec87979890c55abfec15c8d2a897 (amd-1; on origin: sprint/a8-store-done-retire-legacy-json.w2.g1.e21); 56df3d9b4a477f9464c98afa00c8293d337f36ef (amd-2; on origin: sprint/a8-store-done-retire-legacy-json.w5.g3.e21). Other branches of the card on origin, no head recorded for them: sprint/a8-store-done-retire-legacy-json.w5.g1.e21 at 2347d5a04537.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-store-done-retire-legacy-json (stream v15-schema-tables, column review, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-store-friend-rows-retire-legacy
+
+RESULT: a8-store-friend-rows-retire-legacy sha=<sha12> tier: pro DEPENDS-ON: a8-store-friend-roster-rows-dual-read,a8-holds-reader-hold-dual-read,a8-lanes-record-dual-readb,a8-reader-beat-draining-dual-read,a8-reader-states-beat-dual-read,a8-reader-states-hold-dual-read,a8-seat-change-coordinator-dual-read,a8-seat-generation-dual-read,a8-seat-server-coordinator-server-dual-read,a8-server-record-dual-read,a8-beat-facts-writer,a8-beat-readers-writer,a8-friend-beat-live-writer,a8-friend-status-writer,a8-lane-step-writer,a8-reader-beat-draining-writer,a8-reader-hold-writer,a8-roster-writer,a8-seat-record-writer,a8-set-server-writer,a8-strangers-writer,a8-touch-beat-writer REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the legacy reader is gone with DONE-WHEN holding, or the counter is not yet zero (then not-done), or the deadline is reached Title: Aspect 8: retire the legacy reader of the friend and presence rows. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-store-friend-rows-retire-legacy (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-store-op-rows-retire-legacy
+
+RESULT: a8-store-op-rows-retire-legacy sha=<sha12> tier: pro DEPENDS-ON: a8-store-op-rows-dual-read,a8-store-op-rows-writers,a8-mem-release-timers-dual-read,a8-mem-release-timers-writer,a8-guarded-machine-held-op-dual-read,a8-mem-read-fence-machine-dual-read,a8-put-machine-writer,a8-mem-guarded-machine-writer,a8-redis-guarded-machine-writer REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the legacy reader is gone with DONE-WHEN holding, or the counter is not yet zero (then not-done), or the deadline is reached Title: Aspect 8: retire the legacy reader of the op journal, notes, timers and engine records. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-store-op-rows-retire-legacy (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-store-snapshot-and-cost-retire-legacy
+
+RESULT: a8-store-snapshot-and-cost-retire-legacy sha=<sha12> tier: pro DEPENDS-ON: a8-store-snapshot-and-cost-dual-read,a8-store-snapshot-and-cost-writers REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the legacy reader is gone with DONE-WHEN holding, or the counter is not yet zero (then not-done), or the deadline is reached Title: Aspect 8: retire the legacy reader of the snapshot, restore and cost records. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-store-snapshot-and-cost-retire-legacy (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a8-store-view-rows-retire-legacy
+
+RESULT: a8-store-view-rows-retire-legacy sha=<sha12> tier: pro DEPENDS-ON: a8-store-view-rows-where-dual-read,a8-doctor-reader-beats-dual-read,a8-drop-debt-dual-read,a8-drop-members-machine-dual-read,a8-refused-record-dual-read,a8-refused-verbs-dual-read,a8-stats-record-dual-read,a8-card-log-ids-dual-read,a8-guarded-machine-held-op-dual-read,a8-load-index-dual-read,a8-log-line-dual-read,a8-tick-get-json-dual-read,a8-keep-stops-writer,a8-keep-store-rtt-writer,a8-keep-where-writer,a8-put-drop-debt-writer,a8-record-refused-writer,a8-reset-stats-writer,a8-update-stats-writer,a8-index-log-writer,a8-mem-guarded-machine-writer,a8-put-json-writer REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the legacy reader is gone with DONE-WHEN holding, or the counter is not yet zero (then not-done), or the deadline is reached Title: Aspect 8: retire the legacy reader of the sprint view and bookkeeping rows. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a8-store-view-rows-retire-legacy (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a9-config-rows-retire-legacy
+
+RESULT: a9-config-rows-retire-legacy sha=<sha12> tier: pro DEPENDS-ON: a9-config-rows-dual-read,a9-config-rows-writers-pg-file-inventory,a9-config-rows-writers-pg-file-inventory-file,a9-config-rows-writers-redis-and-apply,v15-dedup-sprint-config-from-nova-tools REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the legacy reader is gone with DONE-WHEN holding, or the counter is not yet zero (then not-done), or the deadline is reached Title: Aspect 9: retire the legacy reader of the nova-config rows and the Redis view. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a9-config-rows-retire-legacy (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### l5-retire-legacy-result-parser-2
+
+RESULT: l5-retire-legacy-result-parser-2 sha=<sha12> tier: pro DEPENDS-ON: l2-result-table-reader-2,l2-friend-report-gateway-2,l2-nova-work-result-builder-2 REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the legacy parser is gone with DONE-WHEN holding, or the counter is not yet zero (then not-done), or the deadline is reached Title: C26: delete the legacy result parser once the per-form counter shows zero legacy reads. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section 6, C26 and the Layer 5 row.. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card l5-retire-legacy-result-parser-2 (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### l1-acceptance-soak-2
+
+RESULT: l1-acceptance-soak-2 sha=<sha12> tier: pro DEPENDS-ON: l1-bus-envelope-dual-read-2,l1-nova-bus-reader-builder-and-show-2,l1-pong-dual-read-2,l1-hook-stamp-typed-2,l1-seat-hook-typed-reader-2,l1-writers-switch-2,l1-nova-bus-native-binary-form-2,v15-aspect-1-acceptance,v15-aspect-2-acceptance,v15-aspect-3-acceptance REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: acceptance PRIORITY: normal STREAM: v15-schema-tables STOP: the report is committed with DONE-WHEN holding, or the deadline is reached Title: C16: one full night on Layer 1, measured, for Glenn's sign-off. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section 6, C16 and the Layer 1 acceptance cell.. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card l1-acceptance-soak-2 (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### l2-tla-card-contract-result-typed-3
+
+RESULT: l2-tla-card-contract-result-typed-3 sha=<sha12> tier: frontier DEPENDS-ON: l1-acceptance-soak-2 REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the model change is committed with DONE-WHEN holding, or the deadline is reached Title: C17: CardContract gains 'result typed before review'. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section 6, C17.. Column waiting, attempt 1, tier frontier. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card l2-tla-card-contract-result-typed-3 (stream v15-schema-tables, column waiting, tier frontier, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### l2-defs-card-area-and-card-table
+
+RESULT: l2-defs-card-area-and-card-table sha=<sha12> tier: pro DEPENDS-ON: l1-acceptance-soak-2 REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the work is committed with DONE-WHEN holding, or the deadline is reached Title: C18a: the Layer 2 card area and the Card table. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section 6, C18 and section 4.3; nova-tools schemas/README.md (read), the home rule and the pin; pkg/pongwire/generate.go (read), the pin every pkg/*wire shares.. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card l2-defs-card-area-and-card-table (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### l2-signoff-fence-2
+
+RESULT: l2-signoff-fence-2 sha=<sha12> tier: pro DEPENDS-ON: l2-tla-card-contract-result-typed-3,l2-defs-card-area-and-card-table,l2-defs-jobpacket-table,l2-defs-result-table,l2-brief-parse-parity-2,l2-result-table-reader-2,l2-friend-report-gateway-2,l2-nova-work-result-builder-2 REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: acceptance PRIORITY: normal STREAM: v15-schema-tables STOP: the report is committed, or the deadline is reached Title: C27: the Layer 2 sign-off fence: measured across one stream, for Glenn. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section 6, C27: Layer 3 and the delete step do not start before this card lands and Glenn signs Layer 2 off.. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card l2-signoff-fence-2 (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### l2-brief-parse-parity-2
+
+RESULT: l2-brief-parse-parity-2 sha=<sha12> tier: pro DEPENDS-ON: l2-defs-card-area-and-card-table REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: parity is committed with DONE-WHEN holding, or the deadline is reached Title: C19: the table parse of a brief matches today's parser on every admitted brief. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section 6, C19.. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card l2-brief-parse-parity-2 (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### l2-defs-jobpacket-table
+
+RESULT: l2-defs-jobpacket-table sha=<sha12> tier: pro DEPENDS-ON: l2-defs-card-area-and-card-table REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the work is committed with DONE-WHEN holding, or the deadline is reached Title: C18b: the Layer 2 JobPacket table. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section 6, C18 and section 4.3; nova-tools schemas/README.md (read), the home rule and the pin; pkg/pongwire/generate.go (read), the pin every pkg/*wire shares. UNION.md M2 (the. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card l2-defs-jobpacket-table (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### l2-defs-result-table
+
+RESULT: l2-defs-result-table sha=<sha12> tier: pro DEPENDS-ON: l2-defs-card-area-and-card-table REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the work is committed with DONE-WHEN holding, or the deadline is reached Title: C18c: the Layer 2 Result table. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section 6, C18 and section 4.3; nova-tools schemas/README.md (read), the home rule and the pin; pkg/pongwire/generate.go (read), the pin every pkg/*wire shares. UNION.md M3 (the. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card l2-defs-result-table (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a15-defs-brief-text-form
+
+RESULT: a15-defs-brief-text-form sha=<sha12> tier: heavy DEPENDS-ON: a14-schema-go-commented-text-form-b,l2-defs-card-area-and-card-table,l2-defs-jobpacket-table REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the definitions and their generated Go are committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 15: the card area's definitions (variable tables). Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier heavy. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a15-defs-brief-text-form (stream v15-schema-tables, column waiting, tier heavy, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### l3-judgment-verdict-field-2
+
+RESULT: l3-judgment-verdict-field-2 sha=<sha12> tier: frontier DEPENDS-ON: l2-signoff-fence-2 REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the model and the field are committed with DONE-WHEN holding, or the deadline is reached Title: C24: a judgment's verdict is a field; JudgmentRetire gains the typed-verdict invariant. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section 6, C24.. Column waiting, attempt 1, tier frontier. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card l3-judgment-verdict-field-2 (stream v15-schema-tables, column waiting, tier frontier, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### l3-defs-refusal-and-finding-tables
+
+RESULT: l3-defs-refusal-and-finding-tables sha=<sha12> tier: pro DEPENDS-ON: l2-signoff-fence-2 REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the work is committed with DONE-WHEN holding, or the deadline is reached Title: C23a: the Refusal and Finding tables. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section 6, C23; nova-tools schemas/README.md (read), the home rule and the pin; pkg/pongwire/generate.go (read), the pin every pkg/*wire shares.. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card l3-defs-refusal-and-finding-tables (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a10-friend-files-writers-state
+
+RESULT: a10-friend-files-writers-state sha=<sha12> tier: pro DEPENDS-ON: a10-friend-lane-inbox-state-dual-read,v15-dedup-sprint-friend-from-nova-tools REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables Title: Aspect 10: the friend status file written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-tools schemas/README.md (read), the home rule and the pin.. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a10-friend-files-writers-state (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a10-friend-files-writers
+
+RESULT: a10-friend-files-writers sha=<sha12> tier: heavy DEPENDS-ON: a10-friend-lane-inbox-state-dual-read,l2-brief-parse-parity-2,v15-dedup-sprint-friend-from-nova-tools REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables Title: Aspect 10: the friend files written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-tools schemas/README.md (read), the home rule and the pin.. Column waiting, tier heavy. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a10-friend-files-writers (stream v15-schema-tables, column waiting, tier heavy, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a15-brief-and-jobmd-writers-sprint
+
+RESULT: a15-brief-and-jobmd-writers-sprint sha=<sha12> tier: heavy DEPENDS-ON: a15-jobmd-dual-read,l2-brief-parse-parity-2,v15-dedup-sprint-swarm-from-nova-tools REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 15: briefs and JOB.md in nova-sprint written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier heavy. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a15-brief-and-jobmd-writers-sprint (stream v15-schema-tables, column waiting, tier heavy, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a15-brief-and-jobmd-writers-tools
+
+RESULT: a15-brief-and-jobmd-writers-tools sha=<sha12> tier: heavy DEPENDS-ON: a15-jobmd-dual-read,l2-brief-parse-parity-2 REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the writer switch is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 15: briefs and JOB.md in nova-tools written in the table form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier heavy. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a15-brief-and-jobmd-writers-tools (stream v15-schema-tables, column waiting, tier heavy, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### l2-result-table-reader-2
+
+RESULT: l2-result-table-reader-2 sha=<sha12> tier: pro DEPENDS-ON: l2-defs-result-table REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the reader is committed with DONE-WHEN holding, or the deadline is reached Title: C20: the result is read as a table; no shape fault is ever blamed on a worker. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section 6, C20.. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card l2-result-table-reader-2 (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a15-jobmd-dual-read
+
+RESULT: a15-jobmd-dual-read sha=<sha12> tier: heavy DEPENDS-ON: a15-defs-brief-text-form REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 15: JOB.md read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier heavy. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a15-jobmd-dual-read (stream v15-schema-tables, column waiting, tier heavy, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### l3-subject-census-and-rewrite-fuzz-2
+
+RESULT: l3-subject-census-and-rewrite-fuzz-2 sha=<sha12> tier: pro DEPENDS-ON: l3-judgment-verdict-field-2 REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the census and fuzz are committed with DONE-WHEN holding, or the deadline is reached Title: C25: no verdict, card or kind is read from a subject: a rewrite fuzz proves it. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section 6, C25.. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card l3-subject-census-and-rewrite-fuzz-2 (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### l3-typedrec-reads-refusals-and-findings-typed
+
+RESULT: l3-typedrec-reads-refusals-and-findings-typed sha=<sha12> tier: pro DEPENDS-ON: l3-defs-refusal-and-finding-tables REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the work is committed with DONE-WHEN holding, or the deadline is reached Title: C23b: pkg/typedrec reads refusals and findings typed. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section 6, C23; nova-tools schemas/README.md (read), the home rule and the pin; pkg/pongwire/generate.go (read), the pin every pkg/*wire shares. UNION.md M14 (the refusal token s. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card l3-typedrec-reads-refusals-and-findings-typed (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### l3-every-verb-json-refusal-is-whole
+
+RESULT: l3-every-verb-json-refusal-is-whole sha=<sha12> tier: pro DEPENDS-ON: l3-defs-refusal-and-finding-tables REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the work is committed with DONE-WHEN holding, or the deadline is reached Title: C23c: every verb's --json refusal is one whole typed object. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section 6, C23 (verbflag is where nova-sprint's verbs import their flags from); nova-tools schemas/README.md (read), the home rule and the pin; pkg/pongwire/generate.go (read), t. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card l3-every-verb-json-refusal-is-whole (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### l2-friend-report-gateway-2
+
+RESULT: l2-friend-report-gateway-2 sha=<sha12> tier: pro DEPENDS-ON: l2-result-table-reader-2 REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the gateway is committed with DONE-WHEN holding, or the deadline is reached Title: C21: the friend outbox gateway refuses an untyped report by name and leaves nothing unread. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section 6, C21 (2026-10-05: 8 cards unread 2 h for a missing Verdict).. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card l2-friend-report-gateway-2 (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### l2-nova-work-result-builder-2
+
+RESULT: l2-nova-work-result-builder-2 sha=<sha12> tier: pro DEPENDS-ON: l2-friend-report-gateway-2 REPO: mas-bandwidth/nova-sprint BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the builder is committed with DONE-WHEN holding, or the deadline is reached Title: C22: nova-work builds the typed result and refuses before writing. Source: nova-sprint docs/research/schema-tables/UNION.md (read) at 98f8a280 (branch sprint/schema-adoption-union-fixes.w2.g1.e21) section 6, C22.. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card l2-nova-work-result-builder-2 (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### a10-friend-lane-inbox-state-dual-read
+
+RESULT: a10-friend-lane-inbox-state-dual-read sha=<sha12> tier: pro DEPENDS-ON: l2-friend-report-gateway-2 REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the dual read is committed with DONE-WHEN holding, or the deadline is reached Title: Aspect 10: the friend lane, inbox and state files read in both forms, refused by name when malformed, counted per form. Source: the coordinator's v1.5 comprehensive-adoption audit of 2026-10-17 (a scan of every json, sexp, key-value and tab-split codec in both repositories; the owner, Glenn, 2026-10-17: "everywhere that we have a message or struct that needs to be serialized, we use schema fixed or variable tables"); nova-sp. Column waiting, tier pro. Work audited 2026-10-18. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card a10-friend-lane-inbox-state-dual-read (stream v15-schema-tables, column waiting, tier pro, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### l1-bus-envelope-retire-legacy
+
+RESULT: l1-bus-envelope-retire-legacy sha=<sha12> tier: pro DEPENDS-ON: l1-bus-envelope-dual-read-2,l1-nova-bus-reader-builder-and-show-2,l1-nova-bus-native-binary-form-2,l1-writers-switch-2 REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the legacy reader is gone with DONE-WHEN holding, or the counter is not yet zero (then not-done), or the deadline is reached Title: Aspect 1: retire the legacy reader of the bus envelope. Source: the v1.5 gap audit (the owner, Glenn, 2026-10-17: "v1.5 is complete adoption of schema end-to-end in tools and sprint"); nova-sprint docs/research/schema-tables/UNION.md (read) section 6 (C13, the per-form counter); nova-tools schemas/README.md (read), the home rule and the pin.. Column working, attempt 3, tier flash. Work audited 2026-10-18. Pushed heads: 332dc4710c5ce9ded615f6e9479e8f8a32058175 (hetzner1; on origin: sprint/l1-bus-envelope-retire-legacy.w1.g2.e21); ad499de81b679323d9dcca4804bf0d95a316fc78 (amd-2; on origin: sprint/l1-bus-envelope-retire-legacy.w2.g2.e21). Working branch, not on origin: sprint/l1-bus-envelope-retire-legacy.w3.g2.e21 (hulk, working when moved).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card l1-bus-envelope-retire-legacy (stream v15-schema-tables, column working, tier flash, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
+
+### l1-pong-retire-legacy
+
+RESULT: l1-pong-retire-legacy sha=<sha12> tier: pro DEPENDS-ON: l1-pong-dual-read-2,l1-writers-switch-2 REPO: mas-bandwidth/nova-tools BASE: sprint/v15-schema-tables KIND: feature PRIORITY: normal STREAM: v15-schema-tables STOP: the legacy reader is gone with DONE-WHEN holding, or the counter is not yet zero (then not-done), or the deadline is reached Title: Aspect 2: retire the legacy reader of the friend pong. Source: the v1.5 gap audit (the owner, Glenn, 2026-10-17: "v1.5 is complete adoption of schema end-to-end in tools and sprint"); nova-sprint docs/research/schema-tables/UNION.md (read) section 6 (C13, the per-form counter); nova-tools schemas/README.md (read), the home rule and the pin.. Column working, attempt 3, tier flash. Work audited 2026-10-18. Pushed heads: 993c5cf173bdd77f9c6402ff0389bb95131a963c (amd-2; on origin: sprint/l1-pong-retire-legacy.w1.g4.e21). Working branch, not on origin: sprint/l1-pong-retire-legacy.w3.g2.e21 (studio, working when moved).
+
+Why it waits: Glenn 2026-10-17: "Move the remaining v1.5 work to v1.7 roadmap."
+
+Target: v1.7
+
+From: sprint card l1-pong-retire-legacy (stream v15-schema-tables, column working, tier flash, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
