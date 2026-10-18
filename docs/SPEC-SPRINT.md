@@ -4815,8 +4815,9 @@ is dealt there; `UpMembers` stays the deal filter) and a gate is not a card, so
 `fleet hold` on every member no longer refuses every batch. A member down and not
 held, held by a machine mark (fault, sync, probe, adopt), or taken out of service
 with `fleet down` (`hold --return`, which writes `held_return`, the hold's own
-`held` stamp, and a later hold without `--return` clears) runs no gate. The last-gate
-guard and `check` rule 11 count the same benches (`gateHosts`, `landgo.go`;
+`held` stamp, and a later hold without `--return` clears) runs no gate. `check` rule 11
+counts the same benches, and the last-gate guard counts the members a hold does not
+name by the same rule (`gateHosts`, `landgo.go`;
 `tla/DirtyTick.tla` `LandGate`, `GateLands`, `HeldMayGateNeverDealt`,
 `ReturnedNeverGates`; `MCDirtyTickGateHeld.cfg`, and the reversed witnesses
 `MCDirtyTickBrokenGateUpOnly.cfg` and `MCDirtyTickBrokenGateReturned.cfg`). `land --dry-run` makes the same choice and

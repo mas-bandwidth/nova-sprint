@@ -211,8 +211,9 @@ func holdElsewhere(n string, kinds []string, release bool) string {
 // with no --return (a hold is a deal control, and a gate is not a card). A member a
 // machine holds (held_by or fault_since) is no bench, and neither is one the coordinator
 // took down with fleet down (hold --return, HeldToReturn): the operator took it out of
-// service. Snapshot.GateMembers (the land gate's benches), this guard and check.go rule 11
-// all read it. tla/DirtyTick.tla LandGate (MCDirtyTickGateHeld.cfg; the reversed witness
+// service. Snapshot.GateMembers (the land gate's benches) and check.go rule 11 count
+// the benches by it, and this guard counts the members a hold does not name by it (it
+// still counts a named member as gone, and never refuses a --return). tla/DirtyTick.tla LandGate (MCDirtyTickGateHeld.cfg; the reversed witness
 // MCDirtyTickBrokenGateReturned.cfg gates a returned member).
 func gateCapable(ctl *Card) bool {
 	if ctl == nil {

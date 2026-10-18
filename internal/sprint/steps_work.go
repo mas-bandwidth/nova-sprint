@@ -3528,10 +3528,12 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 		}
 		// a coordinator's hold with --return (fleet down) takes the member out of service:
 		// it runs no land gate (hold.go gateCapable). The mark carries the hold's held
-		// stamp (HeldToReturn), and a hold without --return clears it
+		// stamp (HeldToReturn), and a coordinator's hold without --return clears it; a
+		// machine's hold (held_by: the sync's retire re-holding a member already held)
+		// leaves the mark as it is
 		if held := cmp.Or(set["held"], ctl.F("held")); r.Return && r.HeldBy == "" && held != "" {
 			set[FieldHeldReturn] = held
-		} else {
+		} else if r.HeldBy == "" {
 			unset = append(unset, FieldHeldReturn)
 		}
 		// what ends the hold, and who made a coordinator's (hold_cause.go): a later hold
