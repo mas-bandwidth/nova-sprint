@@ -990,7 +990,9 @@ Merge(c) ==
 \* the merge (the merged entry names m). The gate's benches are the members up or
 \* held by the coordinator (internal/sprint Snapshot.GateMembers): a hold is a
 \* deal control, and a gate is not a card. A member down and not held (a machine
-\* mark: fault, sync, probe, adopt) runs no gate. The witness "gateuponly" chooses
+\* mark: fault, sync, probe, adopt) runs no gate, and nor does a member taken down
+\* by fleet down (a hold made with --return): in this model that is "down", not
+\* "held" (Rowan, 2026-10-17). The witness "gateuponly" chooses
 \* from the up members alone (UpMembers, the deal filter), so with every member
 \* held no gate runs and the card never lands (GateLands).
 GateBench(m) == IF Broken = "gateuponly" THEN stat[m] = "up" ELSE stat[m] \in {"up", "held"}

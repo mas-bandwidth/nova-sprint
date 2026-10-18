@@ -56,7 +56,7 @@ func (r *landRig) benchBack(unhold ...string) {
 	r.ok("fleet up vision --probe passed")
 }
 
-// downOthers takes every up member other than keep down (not held).
+// downOthers takes every up member other than keep down with fleet down (hold --return).
 func (r *landRig) downOthers(keep ...string) {
 	r.t.Helper()
 	var w whereView
@@ -86,14 +86,18 @@ func (r *landRig) loopGate() (asked []string, text string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var out beatBuf
-	deadline := time.Now().Add(2 * time.Minute)
+	// step bounds, not a wall clock: the loop's sleeps are counted, and the wait for a
+	// gate in flight yields a bounded number of times
+	const maxSleeps, maxYields = 10000, 200_000_000
+	sleeps := 0
 	r.a.sleep = func(time.Duration) {
+		sleeps++
 		text := out.String()
-		if strings.Contains(text, "LAND REFUSED") || strings.Contains(text, "LAND OK") || strings.Contains(text, "LAND FAILED") || time.Now().After(deadline) {
+		if strings.Contains(text, "LAND REFUSED") || strings.Contains(text, "LAND OK") || strings.Contains(text, "LAND FAILED") || sleeps > maxSleeps {
 			cancel()
 			return
 		}
-		for time.Now().Before(deadline) {
+		for yields := 0; yields < maxYields; yields++ {
 			b.mu.Lock()
 			f := b.flight
 			b.mu.Unlock()
@@ -139,8 +143,10 @@ func TestAHeldMemberRunsLandGates(t *testing.T) {
 	r.clean()
 }
 
-// A member down and not held is no gate bench: with space down (not held) and vision held,
-// the choice is vision alone, and the gate is never asked on space.
+// A member taken down by fleet down (a hold made with --return) is no gate bench, while
+// a plainly held one is: with space fleet-downed and vision held by the coordinator
+// (hold --reason), the choice is vision alone, and the gate is never asked on space
+// (Rowan, 2026-10-17; Snapshot.GateMembers, heldPlain).
 func TestADownMemberRunsNoLandGate(t *testing.T) {
 	t.Parallel()
 	r := heldGateRig(t)
@@ -162,6 +168,10 @@ func TestADownMemberRunsNoLandGate(t *testing.T) {
 func TestLandDryRunNamesTheGateBench(t *testing.T) {
 	t.Parallel()
 	r := heldGateRig(t)
+	// the dry run runs no git: it reads the clone's checkout for the tree's gate (go.mod),
+	// so the clone is brought to the module's commit first
+	r.git(r.clone, "fetch", "-q", "origin")
+	r.git(r.clone, "switch", "-q", "--detach", "origin/main")
 	r.ok("fleet hold vision space --reason red --force-last")
 	out := r.ok("land --repo-dir " + r.clone + " --base main --dry-run")
 	assert.Regexp(t, `LAND OK stream=s1 .* bench=(vision|space)( |$|\n)`, out, "the dry run names a held bench")

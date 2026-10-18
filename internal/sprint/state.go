@@ -627,19 +627,33 @@ func (s *Snapshot) UpMembers() []string {
 
 // GateMembers is the fleet members that may run a land gate, in row order: those whose
 // status is up, and those the coordinator holds (held, with no held_by and no
-// fault_since; gateCapable). A member down and not held, or held by a machine mark
-// (fault, sync, probe, adopt: any held_by), is left out. A hold is a deal control and a
-// gate is not a card, so this is not the deal filter: that is UpMembers
+// fault_since; gateCapable) with a plain hold (heldPlain). A member down and not held,
+// one held by a machine mark (fault, sync, probe, adopt: any held_by), and one taken
+// down by fleet down (a hold made with --return) are left out. A hold is a deal control
+// and a gate is not a card, so this is not the deal filter: that is UpMembers
 // (tla/DirtyTick.tla NeverDealtToDraining). tla/DirtyTick.tla LandGate and
 // HeldMayGateNeverDealt (MCDirtyTickGateHeld.cfg, MCDirtyTickBrokenGateUpOnly.cfg).
 func (s *Snapshot) GateMembers() []string {
 	var out []string
 	for _, m := range s.Members() {
-		if gateCapable(s.MemberCtl(m)) {
+		ctl := s.MemberCtl(m)
+		if ctl.F("status") == Up || gateCapable(ctl) && heldPlain(ctl) {
 			out = append(out, m)
 		}
 	}
 	return out
+}
+
+// heldPlain says a coordinator's hold is a plain hold (hold <member> --reason <text>),
+// not a member taken down (fleet down, hold --return): a plain hold always writes its
+// reason and its finish marker (downPlan writes held_finish whenever the hold lets its
+// working cards finish, which a hold with no --return always does). fleet down writes no
+// reason, and a --return hold of a member already down writes no finish marker, which is
+// how the store reads a --return hold (store HoldView.Return). The row records no
+// --return mark of its own, so a --return hold with a reason of a member up when held
+// still reads as plain here (Rowan, 2026-10-17: a fleet-downed member is no gate bench).
+func heldPlain(ctl *Card) bool {
+	return ctl.F(FieldHeldReason) != "" && ctl.F(FieldHeldFinish) != ""
 }
 
 // Streams is the work table's streams, in row order.
