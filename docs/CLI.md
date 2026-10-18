@@ -721,7 +721,10 @@ fault in is held back, and so is every card that needs a held card through its `
 `DEPENDS-ON:` line or `--needs`, transitively. The add step's own plan is then run over the
 rest, and a card its refusal list names is held back the same way, with the cards that need it,
 the write planned again without them; the rounds are bounded by the number of cards, and
-nothing is written for a held card. It prints one `HELD <id>: <its first finding or refusal>`
+nothing is written for a held card. A brief that is a probable duplicate of an open card is
+held back with the same finding add gives it, and so is every card that needs it;
+`--not-a-duplicate-of <card>=<reason>` admits it and records the reason on its admission
+note, as it does for add. It prints one `HELD <id>: <its first finding or refusal>`
 or `HELD <id>: needs <other>, held back` line per held card, then the add's own closing line for
 what it admitted, and exits 0 when every card was admitted, 1 when some were held and the rest
 written, and 2 when none could be admitted, or for a usage refusal: `--partial` is refused with

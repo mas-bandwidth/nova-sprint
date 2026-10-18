@@ -1780,7 +1780,7 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 	}
 	if partial {
 		// add --partial holds what fails and admits the rest (add_partial.go)
-		return a.cmdAddPartial(addPartialReq{stream: stream, cards: cards, rules: rs, allowShared: allowShared, allowPersonal: allowPersonal, score: score, before: before, after: after, held: held, decideRecord: decideRecord, briefOps: briefOps, replaces: replaces, c: c}, stdout, stderr)
+		return a.cmdAddPartial(addPartialReq{stream: stream, cards: cards, rules: rs, allowShared: allowShared, allowPersonal: allowPersonal, score: score, before: before, after: after, held: held, notDup: notDup, decideRecord: decideRecord, briefOps: briefOps, replaces: replaces, c: c}, stdout, stderr)
 	}
 	if !allowShared {
 		if why := sharedPaths(cards); why != "" {

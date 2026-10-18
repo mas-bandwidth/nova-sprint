@@ -7115,7 +7115,8 @@ card (any column but landed, and none dropped) and another brief of the batch.
 `add` skips and reports instead: a brief with a probable duplicate is held
 back and the rest of the wave admitted in one write, one `DUPLICATE <id>: <the same line>; run: nova-sprint add ... --not-a-duplicate-of <id>=<reason>`
 line each and exit 1 (exit 0 when none); `--not-a-duplicate-of <card>=<reason>` (repeated, a reason required) admits the card and records the
-reason on its admission note.
+reason on its admission note. The same check holds a brief back in an `add --partial` wave,
+and the same flag admits it there with its reason recorded on the card.
 
 `TEST` names a test
 `git grep` finds at `BASE` in `--repo-dir`, and `BASE` exists there; with no
