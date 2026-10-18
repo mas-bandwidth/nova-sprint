@@ -53,10 +53,12 @@ import (
 // The charts (the owner, 2026-10-18: "I would like it if you could create a stats page showing me
 // all the things you can do with https://pele.run for the sprint dashboard. You could put these
 // things below the existing stuff we have at the bottom."): charts.js draws them, with Pele
-// (pele.js, MIT, its licence and pin in PELE.txt), loaded only when the charts are in view.
+// (pele.js, MIT, its licence and pin in PELE.txt), loaded only when the charts are in view; and a
+// stream's own page (the owner, 2026-10-18: "Maybe we can click on a work stream by name, and this
+// takes you to a page showing all details for that work stream"), stream.html and stream.js.
 //
 //go:embed page/index.html page/app.js page/nunito-800.woff2 page/OFL.txt page/logo-robot-192.png page/logo-robot-384.png
-//go:embed page/charts.js page/pele.js page/PELE.txt
+//go:embed page/charts.js page/pele.js page/PELE.txt page/stream.html page/stream.js
 var page embed.FS
 
 // ServeHTTP answers every path the page uses; every answer is no-store.
@@ -117,6 +119,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.send(w, r, "text/javascript; charset=utf-8", file("pele.js"))
 	case "/PELE.txt":
 		s.send(w, r, "text/plain; charset=utf-8", file("PELE.txt"))
+	case "/stream.js":
+		s.send(w, r, "text/javascript; charset=utf-8", file("stream.js"))
 	default:
 		if !s.serveCharts(w, r) {
 			http.Error(w, "not found", http.StatusNotFound)

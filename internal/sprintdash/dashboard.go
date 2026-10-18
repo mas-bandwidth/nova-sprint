@@ -585,7 +585,7 @@ func (s *Server) SnapshotOf(release string) []byte {
 // pageSum is the build number's part from the embedded files: it changes with the binary.
 var pageSum = func() uint32 {
 	h := crc32.NewIEEE()
-	for _, n := range []string{"index.html", "app.js", "nunito-800.woff2", "logo-robot-192.png", "logo-robot-384.png", "charts.js"} {
+	for _, n := range []string{"index.html", "app.js", "nunito-800.woff2", "logo-robot-192.png", "logo-robot-384.png", "charts.js", "stream.html", "stream.js"} {
 		h.Write(file(n))
 	}
 	return h.Sum32()

@@ -121,6 +121,7 @@ the comment-only form exists only in the lock, and the lint knows nothing of it.
 - 2026-10-14 21:16Z the owner: "Remove the tiers list here: never asked for this." (digest 59b7ebcc11ceca1c8b286f736853a8d8935462723437612453ae653b3c6e7a98)
 - 2026-10-14 the owner: "remove the /events and /landings.json requests"
 - 2026-10-18 the owner: "I would like it if you could create a stats page showing me all the things you can do with https://pele.run for the sprint dashboard. You could put these things below the existing stuff we have at the bottom." (the Last 24 hours panel, below)
+- 2026-10-18 the owner: "Maybe we can click on a work stream by name, and this takes you to a page showing all details for that work stream, including all its cards, sankey for all cards if applicable, dependencies between cards etc etc etc." (the stream pages, below)
 
 
 The 2026-10-12 page asks above (and those of 2026-10-12 ~00:42Z, ~00:43Z, ~00:50Z, ~01:00Z, ~01:02Z,
@@ -392,6 +393,18 @@ from the owner edits one line here and nothing else moves.
   loads only when the panel comes near the view (after the page above has drawn), and the charts refresh once a minute while
   the tab is shown. Colours are the page's dark tokens (--pele-* set from --bg, --surface, --text, --border and the state
   colours). The page above the panel is unchanged byte for byte (TestThePageAboveTheChartsIsUnchanged).
+
+## Stream pages (the owner's ask of 2026-10-18, its words under "The page lock"): every stream name in the Work table opens /stream/<name>
+- The Work table is drawn as before; a click on a stream's name (charts.js, one listener on the table) opens /stream/<name>
+  (ctrl or cmd: a new tab). The stream page (page/stream.html, the same dark tokens) shows the stream's display name and state,
+  its cards by column, every scalar cell of its Work row, merge row and stream_costs record, the charts (Dependencies: a
+  flowchart of its cards, each classed by its column, an arrow from each card it needs, a need on another stream's card dashed,
+  cards with no need either way counted and not drawn, at most 150 drawn; Card flow: the sankey of every attempt of its cards;
+  Landings per hour over the last 24; Work and read spans: a gantt of the last 24 hours), and a table of every card (card,
+  column, tier, attempts, reworks, reads, who ran the latest attempt, how its latest consumer ended, needs, age since admitted,
+  landed).
+- Source: /api/stream/<name>, `StreamViewOf` (internal/sprintdash/streamview.go), a pure function of the same cards and the page's
+  copy, computed for the one stream asked for and memoized a minute (never every stream at each read); a puller asks its upstream.
 
 ## Footer: one link, "https://github.com/mas-bandwidth/nova-sprint", matching the live page.
 

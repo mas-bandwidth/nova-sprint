@@ -217,8 +217,44 @@ func TestMermaidEscaping(t *testing.T) {
 	assert.Equal(t, `"a""b"`, sankeyField(`a"b`))
 	assert.Equal(t, "plain", sankeyField("plain"))
 	assert.Equal(t, "x y z w", ganttText("x:y#z;w"))
+	assert.Equal(t, `["#lt;a#quot;b#gt;"]`, flowLabel(`<a"b>`))
+	assert.Equal(t, `["schema.go-1.w2"]`, flowLabel("schema.go-1.w2"))
 }
 
+func TestStreamViewOfAStream(t *testing.T) {
+	t.Parallel()
+	page := []byte(`{"tables":{"work":{"a.b":{"cost":"$1.20","landed":"2","readers":{"x":1}}},"merge":{"a.b":{"ci":"green"}}},
+		"stream_costs":{"a.b":{"total_cost":"$1.20","cost":"$1.20"}},"streams":[{"Stream":"a.b","Display":"A dot B","State":"working","Since":"2026-10-18T00:00:00Z"}]}`)
+	v := StreamViewOf(HistCardsOf(fixtureRows(t)), page, "a.b", histNow)
+	assert.True(t, v.Found)
+	assert.Equal(t, "A dot B", v.Display)
+	assert.Equal(t, []Fact{{"waiting", "1"}, {"working", "1"}, {"landed", "3"}, {"cards", "5"}}, v.Counts)
+	assert.Equal(t, []Fact{{"cost", "$1.20"}, {"landed", "2"}, {"merge ci", "green"}, {"cost total_cost", "$1.20"}}, v.Facts, "scalar cells only")
+	require.Len(t, v.Cards, 5)
+	assert.Equal(t, "a.b-3", v.Cards[0].ID, "cards in flow order")
+	var one StreamCard
+	for _, c := range v.Cards {
+		if c.ID == "a.b-1" {
+			one = c
+		}
+	}
+	assert.Equal(t, StreamCard{ID: "a.b-1", Column: "landed", Tier: "pro", Attempts: 2, Reworks: 1, Reads: 1, Who: "friend.stella", Last: "land ok", Admitted: at(40).Unix(), Landed: at(45.25).Unix()}, one)
+	deps := chartByID(t, v.Charts, "deps")
+	assert.Contains(t, deps.Mermaid, `n0["a.b-1"]:::landed`)
+	assert.Contains(t, deps.Mermaid, `n3["other-9 (z)"]:::ext`)
+	assert.Contains(t, deps.Mermaid, "  n3 -.-> n1\n", "a need on another stream's card is dashed")
+	assert.Contains(t, deps.Mermaid, "  n0 --> n1\n")
+	assert.Contains(t, deps.Says, "2 cards with no need either way are not drawn", "a.b-old and the sentinel")
+	assert.NotContains(t, deps.Mermaid, "a.b-old")
+
+	none := StreamViewOf(HistCardsOf(fixtureRows(t)), page, "nope", histNow)
+	assert.False(t, none.Found)
+	for _, c := range none.Charts {
+		assert.Equal(t, "no cards in this stream", c.Empty)
+	}
+}
+
+// historyRig is a rig whose reads carry rows, landed counting up with each read.
 func historyRig(t *testing.T) (*rig, *int) {
 	r := newRig(t)
 	r.now = histNow
@@ -268,12 +304,34 @@ func TestHistoryBeforeAnyReadIsUnavailable(t *testing.T) {
 	assert.JSONEq(t, `{"unavailable":"no good read of the sprint yet"}`, string(s.History()))
 }
 
+func TestStreamRoutes(t *testing.T) {
+	t.Parallel()
+	r, _ := historyRig(t)
+	var v StreamView
+	require.NoError(t, json.Unmarshal(getBody(t, r.s, "/api/stream/a.b"), &v))
+	assert.True(t, v.Found)
+	assert.Len(t, v.Cards, 5)
+	page := string(getBody(t, r.s, "/stream/a.b"))
+	assert.Contains(t, page, `<body data-view="stream">`)
+	assert.Contains(t, page, `src="/charts.js?v=`+r.s.Build()+`"`)
+	assert.Contains(t, page, `src="/stream.js?v=`+r.s.Build()+`"`)
+	assert.Equal(t, file("stream.js"), getBody(t, r.s, "/stream.js"))
+	for _, bad := range []string{"/api/stream/", "/stream/"} {
+		w := httptest.NewRecorder()
+		r.s.ServeHTTP(w, httptest.NewRequest(http.MethodGet, bad, nil))
+		assert.Equal(t, http.StatusNotFound, w.Code, bad)
+	}
+	js := getBody(t, r.s, "/pele.js")
+	assert.Equal(t, file("pele.js"), js)
+	assert.Contains(t, string(getBody(t, r.s, "/PELE.txt")), "MIT License")
+}
+
 // roundTrip is a fake transport: no socket.
 type roundTrip func(*http.Request) (*http.Response, error)
 
 func (f roundTrip) RoundTrip(q *http.Request) (*http.Response, error) { return f(q) }
 
-// A puller asks its upstream for the chart route, at most once a minute, and says so when
+// A puller asks its upstream for the chart routes, at most once a minute each, and says so when
 // the upstream serves none.
 func TestPullerAsksItsUpstreamForCharts(t *testing.T) {
 	t.Parallel()
@@ -291,10 +349,12 @@ func TestPullerAsksItsUpstreamForCharts(t *testing.T) {
 	assert.JSONEq(t, `{"start":1}`, string(s.History()))
 	assert.Equal(t, int32(1), calls.Load(), "once a minute")
 	assert.Equal(t, "http://up.example:7390/api/history", paths[0])
+	s.Stream("a b")
+	assert.Equal(t, "http://up.example:7390/api/stream/a%20b", paths[1])
 	now = now.Add(time.Minute)
 	status = http.StatusNotFound
 	assert.Contains(t, string(s.History()), "serves no charts yet")
-	assert.Equal(t, int32(2), calls.Load())
+	assert.Equal(t, int32(3), calls.Load())
 }
 
 // The page above the charts is the locked page byte for byte: index.html without the charts'

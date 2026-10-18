@@ -5,26 +5,29 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
 
-// Serving the charts (history.go): /api/history is computed from the copy the server already
-// holds (the last good read's rows), never by a read of its own, and at most once a minute: it is
-// computed again only when the minute has turned and the copy changed (or the hour turned). A
-// puller holds no rows (its upstream's page copy carries none), so it asks its upstream for the same
-// route, at most once a minute per route, and serves what the upstream answered.
+// Serving the charts (history.go, streamview.go): /api/history and /api/stream/<name> are
+// computed from the copy the server already holds (the last good read's rows and the page's
+// copy), never by a read of their own, and at most once a minute: each answer is memoized for
+// the minute, and the history is computed again only when the minute has turned and the copy
+// changed (or the hour turned). A puller holds no rows (its upstream's page copy carries none), so
+// it asks its upstream for the same route, at most once a minute per route, and serves what the
+// upstream answered.
 
-// maxStreamMemo bounds the answers memoized in one minute.
+// maxStreamMemo bounds the stream views memoized in one minute.
 const maxStreamMemo = 256
 
-// chartMemo is the charts' memo, each answer of a minute.
+// chartMemo is the charts' memo: the history's and the stream views', each of a minute.
 type chartMemo struct {
 	histMinute, histHour time.Time
 	histGen              uint64
 	hist                 []byte
 	minute               time.Time
-	answers              map[string][]byte // a puller's upstream answer, by path
+	answers              map[string][]byte // a stream view, or a puller's upstream answer, by path
 }
 
 // rowsOf is the rows of a where --json --rows body; nil without them.
@@ -63,6 +66,30 @@ func (s *Server) History() []byte {
 	b := mustJSON(History(HistCardsOf(rows), now))
 	s.mu.Lock()
 	memo.hist, memo.histMinute, memo.histHour, memo.histGen = b, m, h, gen
+	s.mu.Unlock()
+	return b
+}
+
+// Stream is /api/stream/<name>'s body now (above).
+func (s *Server) Stream(name string) []byte {
+	path := "/api/stream/" + url.PathEscape(name)
+	if s.From != nil {
+		return s.upstream(path)
+	}
+	s.mu.Lock()
+	now := s.Now()
+	if b, ok := s.memoGet(path, now); ok {
+		s.mu.Unlock()
+		return b
+	}
+	rows, page, have := s.rows, s.page.data, s.copy != nil
+	s.mu.Unlock()
+	if !have {
+		return unavailable("no good read of the sprint yet")
+	}
+	b := mustJSON(StreamViewOf(HistCardsOf(rows), page, name, now))
+	s.mu.Lock()
+	s.memoPut(path, b)
 	s.mu.Unlock()
 	return b
 }
@@ -123,15 +150,44 @@ func (u *Upstream) get(path string) []byte {
 	return body
 }
 
-// serveCharts answers the chart routes; false for any other path.
+// serveCharts answers the chart routes and their files; false for any other path.
 func (s *Server) serveCharts(w http.ResponseWriter, r *http.Request) bool {
 	p := r.URL.Path
 	switch {
 	case p == "/api/history":
 		s.Refresh()
 		s.send(w, r, "application/json", s.History())
+	case strings.HasPrefix(p, "/api/stream/"):
+		name := strings.TrimPrefix(p, "/api/stream/")
+		if !streamName(name) {
+			http.Error(w, "no such stream name", http.StatusNotFound)
+			return true
+		}
+		s.Refresh()
+		s.send(w, r, "application/json", s.Stream(name))
+	case strings.HasPrefix(p, "/stream/"):
+		if !streamName(strings.TrimPrefix(p, "/stream/")) {
+			http.Error(w, "no such stream name", http.StatusNotFound)
+			return true
+		}
+		v := s.Build()
+		html := strings.NewReplacer(`src="/charts.js"`, `src="/charts.js?v=`+v+`"`, `src="/stream.js"`, `src="/stream.js?v=`+v+`"`).Replace(string(file("stream.html")))
+		s.send(w, r, "text/html; charset=utf-8", []byte(html))
 	default:
 		return false
+	}
+	return true
+}
+
+// streamName is whether name can be a stream's: one path segment, printable, bounded.
+func streamName(name string) bool {
+	if name == "" || len(name) > 200 || strings.ContainsAny(name, "/\\") {
+		return false
+	}
+	for _, r := range name {
+		if r < 0x20 || r == 0x7f {
+			return false
+		}
 	}
 	return true
 }

@@ -28,7 +28,10 @@
     ".chart .svg { overflow-x: auto; }",
     ".chart .svg svg { display: block; width: 100%; max-width: 100%; height: auto; }",
     ".chart.routes .svg svg, .chart.models .svg svg, .chart.tiers .svg svg { max-width: 36rem; margin: 0 auto; }",
+    ".chart.deps .svg svg { width: auto; max-width: none; }",
     ".chart, .chart .svg { --pele-bg: var(--bg); --pele-fg: var(--text); --pele-muted: var(--text-2); --pele-line: var(--text-3); --pele-surface: var(--surface); --pele-surface-alt: #181b20; --pele-border: var(--border-strong); --pele-accent: var(--s-working); --pele-critical: var(--critical); --pele-error: var(--critical); }",
+    "#streams .row:not(.head):not(.total) .name > span:first-child { cursor: pointer; }",
+    "#streams .row:not(.head):not(.total) .name > span:first-child:hover { text-decoration: underline; text-underline-offset: .25em; text-decoration-color: var(--text-3); }",
     ".history-sub b { color: var(--text); font-weight: 550; }",
     "@media (max-width: 600px) { .charts { padding: 1rem 16px 16px; gap: 12px; } .chart { padding: 12px; } }"
   ].join("\n");
@@ -74,7 +77,7 @@
         card._body.textContent = ""; card._body.appendChild(el("div", "empty", c.empty || "nothing to draw"));
         return;
       }
-      var opts = { zoom: false, fontSize: 15, onError: function (e) { console.warn("chart " + c.id + ": " + (e && e.message || e)); } };
+      var opts = { zoom: c.id === "deps" ? "auto" : false, fontSize: 15, onError: function (e) { console.warn("chart " + c.id + ": " + (e && e.message || e)); } };
       if (card._mount) card._mount.update(src, opts);
       else { card._body.textContent = ""; card._mount = pele.mount(card._body, src, opts); }
     });
@@ -113,6 +116,27 @@
     }, 3000);
   }
 
+  // the stream names in the Work table open the stream's page (the owner, 2026-10-18: "Maybe we can
+  // click on a work stream by name, and this takes you to a page showing all details for that work
+  // stream"): one listener on the table; the table itself is drawn as before
+  function streamLinks(table) {
+    table.addEventListener("click", function (e) {
+      var span = e.target.closest && e.target.closest(".row .name > span:first-child");
+      if (!span) return;
+      var row = span.closest(".row");
+      if (!row || row.classList.contains("head") || row.classList.contains("total")) return;
+      var name = span.textContent.trim();
+      if (!name) return;
+      var url = "/stream/" + encodeURIComponent(name);
+      if (e.metaKey || e.ctrlKey) window.open(url, "_blank"); else location.href = url;
+    });
+  }
+
+  // the pieces a stream's page (stream.js) draws with
+  window.novaCharts = { el: el, loadPele: loadPele, drawCharts: drawCharts, getJSON: getJSON, every: every, plural: plural };
+
   var panel = document.getElementById("history-panel");
   if (panel) history(panel);
+  var table = document.getElementById("streams");
+  if (table) streamLinks(table);
 })();
