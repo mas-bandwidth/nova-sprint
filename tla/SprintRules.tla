@@ -29,7 +29,9 @@
 \*   the rule reworks it with the finding as the fix, on the same tier; a finding that names
 \*   a file outside PATHS widens the card's PATHS in place by that file (the same card, never
 \*   a twin), at most MaxWidens times a card, past which the brief is wrong and the card a
-\*   mind's. Every attempt counts toward the cap, a widened brief's too (the owner,
+\*   mind's; a finding that reports the work already at the base (a duplicate of landed
+\*   work, BriefDefectOf) is left for the coordinator's drop, never reworked (2026-10-17).
+\*   Every attempt counts toward the cap, a widened brief's too (the owner,
 \*   2026-10-12: "max attempts before you do judgement and decide what to do"): a card at
 \*   its bound (the same finding twice, or Cap attempts since the coordinator's last
 \*   decision) is a mind's whatever the finding, never the rule's, and the mind's decision
@@ -130,6 +132,9 @@
 \*                NoAttemptPastCapWithoutDecision
 \*   "boundoutside" the read stops a finding naming a file outside PATHS at the brief's
 \*                bound instead of letting the rule widen it: OutsideNeverBound
+\*   "duplicaterework" the read-broken rule reworks a finding that reports the work
+\*                already at the base, instead of leaving it for a drop:
+\*                DuplicateNeverReworked
 \*   "nowidencap" the rule widens on every finding outside PATHS, past MaxWidens:
 \*                WidensBounded
 \*   "nofinding"  the read-broken rule reworks a broken read that carries no finding:
@@ -194,6 +199,11 @@ RdFiles == {"f1", "f2", "f3", "f4"}
 \* MaxWidens; 3 here, so a fourth file outside PATHS reaches the cap)
 MaxWidens == 3
 RdFindings == RdFiles \cup {"in1", "in2"}
+
+\* -- reads: the findings whose words report the card's work already at the base (the code's
+\* BriefDefectOf names it a duplicate of landed work); such a finding is left for the
+\* coordinator's drop, never reworked
+RdDuplicates == {"in2"}
 
 \* -- every part's variables
 VARIABLES col, need, blocked, twin,               \* twins
@@ -690,11 +700,13 @@ RdReadBroken(f) ==
   /\ rdst = "working"
   /\ f \notin rdfixed
   /\ rdfind' = f
-  /\ rdst' = IF Broken # "nobound"
-                  /\ \/ RdAtBound(f)
-                     \/ RdOutside(f) /\ ~RdWidenable(f)
-                     \/ RdOutside(f) /\ Broken = "boundoutside"
-                THEN "bound" ELSE "broken"
+  /\ rdst' = IF f \in RdDuplicates /\ Broken # "duplicaterework"
+                THEN "bound"
+                ELSE IF Broken # "nobound"
+                        /\ \/ RdAtBound(f)
+                           \/ RdOutside(f) /\ ~RdWidenable(f)
+                           \/ RdOutside(f) /\ Broken = "boundoutside"
+                      THEN "bound" ELSE "broken"
   /\ UNCHANGED <<rdatt, rdlast, rdpaths, rdwidens, rdtotal, rdfixed, rdsince, rdminds>>
 RdLands ==
   /\ rdst = "working"
@@ -721,11 +733,13 @@ RuleReadBroken ==
 \* a card at its bound is the coordinator's: the decision (brief, rework --tier, rework
 \* --carry, by a mind, steps_edit.go and steps_review.go) opens a fresh window of Cap
 \* attempts (decided_attempt = attempt: rdatt' = 1 for the attempt it starts, rdsince' = 1),
-\* the finding marked fixed so it is not read again; or the drop ends the card. At most
-\* MaxGen decisions, so the model is finite.
+\* the finding marked fixed so it is not read again; or the drop ends the card. A duplicate
+\* finding is never a rework: the drop is its only decision. At most MaxGen decisions, so
+\* the model is finite.
 RdMind ==
   /\ rdst = "bound"
-  /\ \/ /\ rdminds < MaxGen
+  /\ \/ /\ rdfind \notin RdDuplicates
+        /\ rdminds < MaxGen
         /\ rdst' = "working" /\ rdfixed' = rdfixed \cup {rdfind}
         /\ rdatt' = 1 /\ rdsince' = 1 /\ rdminds' = rdminds + 1
      \/ /\ rdst' = "judged"
@@ -756,6 +770,10 @@ WidensBounded == rdwidens <= MaxWidens
 
 \* Every broken read is answered: by rule below the bound, by a mind at it.
 ReadAnswered == (rdst \in {"broken", "bound"}) ~> (rdst \notin {"broken", "bound"})
+
+\* A finding that reports the work already at the base is left for the coordinator's drop,
+\* never answered by a rework (BriefDefectOf's duplicate of landed work; ruleReadBroken).
+DuplicateNeverReworked == rdfind \in RdDuplicates => rdst \in {"bound", "judged"}
 
 -----------------------------------------------------------------------------
 \* Part "answers": one card's attempts under the broken-read, harness-fault and late-report
