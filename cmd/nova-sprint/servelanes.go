@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -43,8 +44,17 @@ import (
 //     of its start share, so it never waits behind the reads ahead of the read lane
 //     (dashWhere; on 2026-10-15 it took 2.5 to 11.4 s behind them against 0.3 s on the
 //     store);
-//   - every other verb (take, finish, read, queue, which records a reader's beat, fleet
-//     beat, which can write the fleet table, and every coordinator's write) waits for the
+//   - a member's beat (`fleet beat <member> --load ...`) writes one record outside every
+//     table too, the member's beat, but its words are the member's word the tick reconciles
+//     the row against (its live set, LiveReturns; its no-room and draining, the deal; its
+//     facts; its stop-returns). A beat that changes nothing but its clock and its load runs
+//     on the beat lane as a friend's does (fleetBeatChanges, fleetBeat); one that changes
+//     the word, or is the member's first, takes the line, so the tick sees the word whole
+//     and in order with the takes and finishes before it. On 2026-10-17 nine idle benches
+//     beating every 3 s put ~180 such beats a minute on the line, none changing a word
+//     (tla/ServerLanes.tla, ChangeHoldsTheLine);
+//   - every other verb (take, finish, read, queue, which records a reader's beat, a
+//     member's beat that changes its word, and every coordinator's write) waits for the
 //     line as before, and the line waits for its caller: a batch whose caller has gone is
 //     not run (serialLock.LockCtx).
 //
@@ -195,6 +205,98 @@ func (l *serveLanes) friendBeat(ctx context.Context, a *app, argv, args []string
 	return sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String(), Outcome: a.outcome, Changed: a.changed}
 }
 
+// isFleetBeat says the worker's verb is a member's beat (workerVerb has held it to
+// `fleet beat <member>` and the beat's words).
+func isFleetBeat(argv []string) bool {
+	return len(argv) >= 3 && argv[0] == "fleet" && argv[1] == "beat"
+}
+
+// fleetBeatChanges says the member's beat, as its words read (fleetBeatWords; rest is what
+// follows `fleet beat`), would change the member's word on its record, or is its first:
+// its live set (compared as a set; a beat carrying none against a record that knew one is
+// a change), its no-room, its draining, its facts and its stop-returns (each kept from the
+// record when the beat omits it). Such a beat takes the line: the tick reconciles the row
+// against the word (sprint.LiveReturns, the deal's no-room and draining), and the first
+// beat notes a stranger. A beat whose words cannot be read is the line's, where
+// cmdFleetBeat refuses it with the reason; so is one whose record cannot be read. A beat
+// that changes nothing but its clock and its load runs on the beat lane (fleetBeat).
+// tla/ServerLanes.tla, Changes and ChangeHoldsTheLine.
+func (l *serveLanes) fleetBeatChanges(ctx context.Context, rest []string) bool {
+	as, _, stop, live, noRoom, facts, draining, why := fleetBeatWords(rest)
+	if why != "" {
+		return true
+	}
+	st := &store.Store{B: l.b, Names: sprint.Names{}, Actor: as, Now: l.now}
+	beats, err := st.Beats(ctx, []string{as})
+	prev, ok := beats[as]
+	if err != nil || !ok || !prev.Beaten() {
+		return true
+	}
+	if live == "" {
+		if prev.LiveKnown {
+			return true
+		}
+	} else {
+		set, err := sprint.ParseLive(live)
+		if err != nil || !prev.LiveKnown || !sameWords(set, prev.Live) {
+			return true
+		}
+	}
+	if oneline.Field(noRoom) != prev.NoRoom || draining != prev.Draining {
+		return true
+	}
+	if facts != "" {
+		set, err := sprint.FactWords(facts)
+		if err != nil || !sameWords(set, prev.Facts) {
+			return true
+		}
+	}
+	if stop != "" {
+		n, err := strconv.Atoi(stop)
+		if err != nil || n != prev.StopReturns {
+			return true
+		}
+	}
+	return false
+}
+
+// sameWords says two lists name the same set of words.
+func sameWords(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	a, b = slices.Sorted(slices.Values(a)), slices.Sorted(slices.Values(b))
+	return slices.Equal(a, b)
+}
+
+// fleetBeat is a member's beat on the beat lane, one that fleetBeatChanges said changes
+// nothing but its clock and its load: no line taken, run by an app of its own on the
+// lanes' backend as a served verb (a.serving: the member's machine is not this one), and
+// not run for a caller that has gone.
+func (l *serveLanes) fleetBeat(ctx context.Context, argv, args []string) sprintwire.Result {
+	if ctx.Err() != nil {
+		return goneResult(argv)
+	}
+	r := l.laneApp()
+	r.serving = true
+	var stdout, stderr bytes.Buffer
+	code := r.run(args, &stdout, &stderr)
+	return sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String(), Outcome: r.outcome, Changed: r.changed}
+}
+
+// laneApp is an app of its own on the lanes' backend, for a beat-lane verb: many run at
+// once, none on another's state, and none opens a store of its own.
+func (l *serveLanes) laneApp() *app {
+	r := newApp(l.read.getenv)
+	b := l.b
+	r.now, r.serveAddr = l.now, l.read.serveAddr
+	r.meter = l.read.meter
+	r.readFriendHooks = l.read.readFriendHooks
+	r.hk, r.hookStoreFn, r.busOpen = l.read.hk, l.read.hookStoreFn, l.read.busOpen // the server's hook record connection, never a store per verb
+	r.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return b, nil }
+	return r
+}
+
 // isBudget says the worker's verb is a budget take, renew or release (workerVerb has held it to
 // its words): it writes only its own keys, outside every table, and runs on the beat lane,
 // so a model request never waits for a tick (rate_budget.go).
@@ -209,12 +311,7 @@ func (l *serveLanes) budget(ctx context.Context, argv, args []string) sprintwire
 		return goneResult(argv)
 	}
 	// its own app on the lanes' backend: many takes run at once, none on another's state
-	r := newApp(l.read.getenv)
-	b := l.b
-	r.now, r.serveAddr = l.now, l.read.serveAddr
-	r.readFriendHooks = l.read.readFriendHooks
-	r.hk, r.hookStoreFn, r.busOpen = l.read.hk, l.read.hookStoreFn, l.read.busOpen // the server's hook record connection, never a store per take
-	r.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return b, nil }
+	r := l.laneApp()
 	var stdout, stderr bytes.Buffer
 	code := r.run(args, &stdout, &stderr)
 	return sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String(), Outcome: r.outcome, Changed: r.changed}

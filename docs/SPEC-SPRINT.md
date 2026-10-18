@@ -8449,7 +8449,13 @@ a time, neither during the other, each waiting its turn in the order it came. A 
 a read do not take the line (the owner, 2026-10-04: "a verb is answered within 1 s whatever the
 tick or the lander is doing"; "a beat is a small write"). A friend's beat (`friend beat <friend>` and its report)
 writes one record outside every table, the friend's beat, and runs on the beat lane, beside the
-line and beside every other beat. A read (`where`, `card`, `log`, `check`, `routes`, `stats`,
+line and beside every other beat. A member's beat (`fleet beat <member> --load ...`) writes one
+record outside every table too, but its words are the member's word the tick reconciles the row
+against (its live set, its no-room, its draining, its facts, its stop-returns): a beat that
+changes nothing but its clock and its load runs on the beat lane as a friend's does; one that
+changes the word, or is the member's first, takes the line, so the tick sees the word whole and in
+order with the takes and finishes before it (`tla/ServerLanes.tla`, `ChangeHoldsTheLine`; on
+2026-10-17 nine idle benches put ~180 changeless beats a minute on the line). A read (`where`, `card`, `log`, `check`, `routes`, `stats`,
 `needs`, `goal show`, `handover`, and `inbox` without `--read`) writes nothing and runs on the
 read lane: one read at a time on the lane's own process state, beside the line, as a client
 reading the store directly always has. The dashboard's read (`where --json --dashboard`, once a
