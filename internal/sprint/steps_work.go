@@ -4061,11 +4061,43 @@ func tailFirstLine(s string) string {
 	return strings.TrimSpace(line)
 }
 
+// exitCause is the cause of an environment-exit card's last exit, from the harness tail it
+// keeps: the sandbox wall's runaway line (v17-env-exit-bound-names-the-wall-cap, 2026-10-17),
+// else the tail's first line. Walking from the last line, the first that, trimmed, starts
+// `SANDBOX RUNAWAY runaway: ` gives the cause: the text after that prefix up to the first
+// `;`, said as "the sandbox wall's memory cap killed the tree: <text>" when the text
+// contains "bytes of memory", else "the sandbox wall's process cap killed the tree: <text>".
+func exitCause(tail string) string {
+	orig := tail
+	for {
+		line, rest, found := strings.Cut(tail, "\n")
+		if !found {
+			line = tail
+		}
+		trimmed := strings.TrimSpace(line)
+		if text, ok := strings.CutPrefix(trimmed, "SANDBOX RUNAWAY runaway: "); ok {
+			if cause, _, ok := strings.Cut(text, ";"); ok {
+				text = cause
+			}
+			if strings.Contains(text, "bytes of memory") {
+				return "the sandbox wall's memory cap killed the tree: " + strings.TrimSpace(text)
+			}
+			return "the sandbox wall's process cap killed the tree: " + strings.TrimSpace(text)
+		}
+		if !found {
+			break
+		}
+		tail = rest
+	}
+	return tailFirstLine(orig)
+}
+
 // EnvExitCounts is one member's children in the window, as the doctor names them
 // (EnvExitCheck) and `nova-sprint stats --children` prints them: how many of the member's
 // children ended 134 or 137 (Env, HardEnvExit: the doctor's "ended 134/137") out of all its
-// children that ended in the window (N), the first line of the last such exit's harness tail
-// (Last) and the primary it ended on (Card), and the histogram of every environment exit by
+// children that ended in the window (N), the last such exit's harness tail's cause (Last,
+// exitCause: the sandbox wall's runaway line, else the tail's first line) and the primary it
+// ended on (Card), and the histogram of every environment exit by
 // child exit code (Exits, "134" -> count, a no-result at exit 0 in "0"); the N-Env other
 // children include those no-results.
 type EnvExitCounts struct {
@@ -4085,8 +4117,8 @@ type EnvExitCounts struct {
 // exit (IsEnvironmentExit) counts in Env and in its code's bucket; every record that ended
 // in the window counts in N; an environment exit counts in its code's bucket, and in Env
 // only at 134 or 137. A friend's runs are not a member's environment and are left out. Last
-// and Card are the latest 134/137's: the first line of the harness tail on the card it ended
-// on, else on its primary.
+// and Card are the latest 134/137's: the cause of the harness tail on the card it ended on
+// (exitCause), else on its primary.
 func EnvExitChildren(s *Snapshot, now time.Time, window time.Duration) []EnvExitCounts {
 	if s == nil || s.Work == nil {
 		return nil
@@ -4127,7 +4159,7 @@ func EnvExitChildren(s *Snapshot, now time.Time, window time.Duration) []EnvExit
 						tail = run.F(FieldHarnessTail)
 					}
 				}
-				c.Last, c.Card = tailFirstLine(tail), pr.ID
+				c.Last, c.Card = exitCause(tail), pr.ID
 			}
 		}
 	}
@@ -4296,7 +4328,7 @@ func AtEnvExitBound(s *Snapshot, c *Card) *Card {
 }
 
 // envExitBoundWhat is the bound judgment's text for a work card at the environment-exit cap:
-// the card, how many times, the members, the exit codes, the first line of the last tail,
+// the card, how many times, the members, the exit codes, the last tail's cause (exitCause),
 // and what answers it.
 func envExitBoundWhat(wc *Card, primary string) string {
 	h := envExitHistory(wc)
@@ -4309,5 +4341,5 @@ func envExitBoundWhat(wc *Card, primary string) string {
 		codes = append(codes, code)
 	}
 	return fmt.Sprintf("%s: attempt %s's child ended on the member's environment %d times (the cap is %d) and is not dealt again: members %s; exits %s; last: %s; rework it with a fix or drop it; its history: nova-sprint card %s",
-		wc.ID, orDash(wc.F("attempt")), len(h), EnvExitCardCap, strings.Join(members, ", "), strings.Join(codes, ", "), orDash(tailFirstLine(wc.F(FieldHarnessTail))), primary)
+		wc.ID, orDash(wc.F("attempt")), len(h), EnvExitCardCap, strings.Join(members, ", "), strings.Join(codes, ", "), orDash(exitCause(wc.F(FieldHarnessTail))), primary)
 }
