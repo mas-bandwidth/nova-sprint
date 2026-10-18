@@ -115,10 +115,49 @@ func TestNotesCacheCursorMovesForwardInsideTheWindow(t *testing.T) {
 	if len(got) != 0 || in.read != before {
 		t.Fatalf("cursor at tail: %v read=%d", got, in.read)
 	}
-	// a cursor moving backward (a restore): the window is rebuilt from the stream
+	// a cursor moving backward inside the window: served from the window
 	_, got, _ = c.since("1-0", 100, in.fetch)
-	if !sameIDs(got, []string{"2-0", "3-0", "4-0", "5-0", "6-0"}) || in.read != before+5 {
-		t.Fatalf("cursor backward: %v read=%d want %d", got, in.read, before+5)
+	if !sameIDs(got, []string{"2-0", "3-0", "4-0", "5-0", "6-0"}) || in.read != before {
+		t.Fatalf("cursor backward: %v read=%d want %d", got, in.read, before)
+	}
+}
+
+// The fault behind the second swap of 2026-10-17: the Inbox view, the tick-end
+// mark and WaitTickEnd (every tenth of a second) read the inbox from three
+// cursors in turn; a window for one cursor was rebuilt at every change.
+func TestNotesCacheServesAlternatingCursors(t *testing.T) {
+	in := &fakeInbox{}
+	for i := 1; i <= 8; i++ {
+		in.add(string(rune('0'+i))+"-0", "n"+string(rune('0'+i)))
+	}
+	c := &notesCache{}
+	c.since("", 100, in.fetch) // the view, 20 hours back
+	before := in.read
+	for round := 0; round < 10; round++ {
+		if _, got, _ := c.since("5-0", 100, in.fetch); !sameIDs(got, []string{"6-0", "7-0", "8-0"}) {
+			t.Fatalf("tick-end mark: %v", got)
+		}
+		if _, got, _ := c.since("7-0", 100, in.fetch); !sameIDs(got, []string{"8-0"}) {
+			t.Fatalf("wait cursor: %v", got)
+		}
+		if _, got, _ := c.since("", 100, in.fetch); len(got) != 8 {
+			t.Fatalf("view: %v", got)
+		}
+	}
+	if in.read != before {
+		t.Fatalf("alternating cursors re-read the stream: read=%d want %d", in.read, before)
+	}
+	// a cursor past the tail reads only past the tail
+	in.add("9-0", "n9")
+	if _, got, _ := c.since("8-0", 100, in.fetch); !sameIDs(got, []string{"9-0"}) || in.read != before+1 {
+		t.Fatalf("past tail: %v read=%d", got, in.read)
+	}
+	// a cursor before the window's start rebuilds from it, once
+	c2 := &notesCache{}
+	c2.since("4-0", 100, in.fetch)
+	r := in.read
+	if _, got, _ := c2.since("2-0", 100, in.fetch); !sameIDs(got, []string{"3-0", "4-0", "5-0", "6-0", "7-0", "8-0", "9-0"}) || in.read != r+7 {
+		t.Fatalf("before window: %v read=%d want %d", got, in.read, r+7)
 	}
 }
 

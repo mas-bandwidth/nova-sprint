@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/redis/go-redis/v9"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -1126,14 +1127,18 @@ func decodeNote(v map[string]any) (sprint.Note, error) {
 	return n, errors.New("no note")
 }
 
-// notesCache is the decoded inbox since the coordinator's cursor, kept between
-// NotesSince calls (one per stream key, notesCaches). The inbox stream is
-// appended to and never trimmed or rewritten, so an entry decodes the same for
-// ever: a call reads only the entries past the last one it has (one XRANGE from
-// there) instead of every note since the cursor. The fault of 2026-10-17: the
-// cursor sat 20 hours back and every Inbox read (the tick, the push loop, the
-// views, nine callers) decoded 10000 notes again, ~450 MB/s of garbage and
-// three cores on the server.
+// notesCache is the decoded inbox from the earliest cursor asked for, kept
+// between NotesSince calls (one per client and stream key, notesCaches). The
+// inbox stream is appended to and never trimmed or rewritten, so an entry
+// decodes the same for ever: a call reads only the entries past the last one
+// the window holds (one XRANGE from there) and answers its cursor by a search
+// of the window. The fault of 2026-10-17: the coordinator's cursor sat 20
+// hours back and every Inbox read (the tick, the push loop, the views, nine
+// callers) decoded 10000 notes again, ~450 MB/s of garbage and three cores
+// on the server. The window serves every cursor at once because the readers
+// alternate (the Inbox view's cursor, the tick-end mark, WaitTickEnd's
+// cursor every tenth of a second): a window for one cursor would be rebuilt
+// at each change of reader.
 type notesCache struct {
 	mu    sync.Mutex
 	after string        // the cursor the window begins after ("" is the stream's start)
@@ -1154,32 +1159,28 @@ var notesCaches sync.Map // notesCacheKey -> *notesCache
 
 // since is NotesSince over the cache: the notes after the cursor, at most max,
 // and their ids. fetch reads the stream from start (exclusive when it begins
-// with "(", "-" for the whole stream) up to n entries, as XRANGE does.
+// with "(", "-" for the whole stream) up to n entries, as XRANGE does. A
+// cursor before the window's start rebuilds the window from that cursor; any
+// other cursor is served from the window, extended past its tail as needed.
 func (c *notesCache) since(after string, max int, fetch func(start string, n int) ([]redis.XMessage, error)) ([]sprint.Note, []string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if after != c.after {
-		switch {
-		case c.tail != "" && streamIDLess(c.after, after) && !streamIDLess(c.tail, after):
-			// the cursor moved forward inside the window: keep what is past it
-			i := 0
-			for i < len(c.ids) && !streamIDLess(after, c.ids[i]) {
-				i++
-			}
-			c.ids, c.notes = slices.Clone(c.ids[i:]), slices.Clone(c.notes[i:])
-		default:
-			c.ids, c.notes, c.tail = nil, nil, ""
-		}
+	if c.tail == "" || streamIDLess(after, c.after) {
+		c.ids, c.notes, c.tail = nil, nil, ""
 		c.after = after
 	}
-	for len(c.ids) < max {
+	// first is the window's first entry past the cursor
+	first := func() int {
+		return sort.Search(len(c.ids), func(k int) bool { return streamIDLess(after, c.ids[k]) })
+	}
+	for len(c.ids)-first() < max {
 		start := "-"
 		if c.tail != "" {
 			start = "(" + c.tail
 		} else if c.after != "" {
 			start = "(" + c.after
 		}
-		want := max - len(c.ids)
+		want := max - (len(c.ids) - first())
 		msgs, err := fetch(start, want)
 		if err != nil {
 			return nil, nil, err
@@ -1196,8 +1197,9 @@ func (c *notesCache) since(after string, max int, fetch func(start string, n int
 			break
 		}
 	}
-	n := min(len(c.ids), max)
-	return slices.Clone(c.notes[:n]), slices.Clone(c.ids[:n]), nil
+	i := first()
+	n := min(len(c.ids)-i, max)
+	return slices.Clone(c.notes[i : i+n]), slices.Clone(c.ids[i : i+n]), nil
 }
 
 // streamIDLess orders two stream ids ("<ms>-<seq>"; "" is before every id).
