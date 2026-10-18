@@ -4832,7 +4832,10 @@ is dealt there; `UpMembers` stays the deal filter) and a gate is not a card, so
 `fleet hold` on every member no longer refuses every batch. A member down and not
 held, held by a machine mark (fault, sync, probe, adopt), or taken out of service
 with `fleet down` (`hold --return`, which writes `held_return`, the hold's own
-`held` stamp, and a later hold without `--return` clears) runs no gate. `check` rule 11
+`held` stamp, and a later hold without `--return` clears) runs no gate.
+`held_gate` marks a coordinator's hold that may run land gates (it carries the
+hold's own `held` stamp; a hold with neither mark, one a v1.6 build wrote, runs
+none). `check` rule 11
 counts the same benches, and the last-gate guard counts the members a hold does not
 name by the same rule (`gateHosts`, `landgo.go`;
 `tla/DirtyTick.tla` `LandGate`, `GateLands`, `HeldMayGateNeverDealt`,
@@ -6195,7 +6198,7 @@ while it holds; the server sends it, and each raise again, to the sprint's owner
 raise is marked told only once its send succeeded: a failed send is tried again at the
 server's next look under the same bus token (the sprint, its epoch, the judgment and the
 raise), so a lost response or a restarted server never sends the owner a second message;
-the server forgets the raises no longer open.
+the server forgets the raises no longer open. Each `NSeatSilent` raise also reaches the configured standby seat (`set --seat-silent-to <bus name>`) when it differs from the coordinator holding the seat. This gives someone who can take the silent seat with the owner's approval, or reach another friend on the bus, a way to respond; `default` takes the standby off.
 
 ### A blocked need is one owner judgment that quiets its dependents
 
@@ -6941,7 +6944,7 @@ land's place; a head that is not a commit id stops the dry run where land stops,
 | routes rest | `routes rest <provider-or-route> --reason <text> [--for <duration> or --until <RFC3339>]`: the coordinator rests every route of the provider (the fleet property `provider_rest_<provider>`, cause `coordinator`) or one route (its line in `rule3_rest_<provider>`), until the time or until woken; a happened note; the coordinator's; refused whole, nothing written, with no reason, a name that is neither a route nor a provider of one, or a time not after now |
 | routes wake | `routes wake <provider-or-route> --reason <text>`: ends now the rest holding the provider (any cause, a refused take's included) and its routes' own, or one route's own while its provider serves, the reason on the rest's words; never a payment (that is `funded`); refused whole with no reason, an unknown name, nothing resting, or a route under its provider's rest |
 | friend sync | the friends table's rows made nova-config's friend rows (section 1); `--every <d>` loops as the seat each pass, and `friend sync install --every <d>` / `friend sync uninstall` put that loop in place as this machine's service ("Handing over the seat") |
-| friend stage | stages a friend's dealt card in one step, `friend stage <card>@<gen> --as friend.<name> [--bench <host>] [--dir <jobs dir>]`: clones the card's REPO into `jobs/<job>/` at the card's NEXT head when one is carried, else at BASE, creates the delivered branch (the branch the bus message FRIEND-CARD DELIVERED carries), sets the friend's git identity in the clone's local config, the friend's nova-config row `git_identity=` when it names one else the sprint row's git_identity (the OK line says which, `identity=friend` or `identity=sprint`; a nova-config read that fails refuses the stage, so a friend's commits are never attributed to the sprint's identity), and writes JOB.md naming the exact finish command (and its `--failed` form), and a line `BENCH: <host>` (the host it staged on; `BENCH: local` without `--bench`). With `--bench <host>` every git step and the JOB.md write run on that fleet member over ssh, through the one runner seam, the jobs directory default on a bench `~/<friend>-jobs` (`--dir` overrides), and a host that is no fleet member is refused with nothing written; without `--bench` it runs on the machine the verb runs on. The server runs it as a worker's verb, `friend stage <card>@<gen> --as friend.<name> --bench <host> [--dir <d>]`, so a friend needs only the server address; the server's `--dir` must name the friend's job root on the bench (`~/<friend>-jobs` or `$HOME/<friend>-jobs`) or a directory beneath it, else the server refuses, so a busy caller cannot choose where the server writes on a fleet machine. It refuses a card not dealt to the named friend (ready or working), and refuses when neither identity parses as `Name <email>` (it never falls back to the machine's global git config). A second run on an already staged directory refuses unless it is the same card@gen, branch, head and bench, and then prints the JOB.md path and exits 0; a JOB.md with no `BENCH:` line (a v1.6 stage, which only staged on the friend's own machine) matches as a local stage, so a local re-run accepts it and a `--bench` re-run refuses |
+| friend stage | stages a friend's dealt card in one step, friend stage <card>@<gen> --as friend.<name> [--bench <host>] [--dir <jobs dir>]: clones the card's REPO into jobs/<job>/ at the card's NEXT head when one is carried, else at BASE, creates the delivered branch (the branch the bus message FRIEND-CARD DELIVERED carries), sets the friend's git identity in the clone's local config from the friend's nova-config row git_identity= when it names one, else the sprint row's git_identity (the OK line says which, identity=friend or identity=sprint; a nova-config read that fails refuses the stage, so a friend's commits are never attributed to the sprint's identity), and writes JOB.md naming the exact finish command (and its --failed form) and BENCH: <host> (BENCH: local without --bench). With --bench <host> every git step and the JOB.md write run on that fleet member over ssh through the one runner seam; the jobs directory defaults to ~/<friend>-jobs (--dir overrides), and a non-member host is refused with nothing written. The server runs it as a worker's verb, friend stage <card>@<gen> --as friend.<name> --bench <host> [--dir <d>]; server --dir must name the friend's bench job root (~/<friend>-jobs or $HOME/<friend>-jobs) or a directory beneath it, else the server refuses. Without --bench it runs on the machine the verb runs on. The stage runs under a 10-minute bound including store acquisition and refuses an expiry naming the bound and host; every ssh uses -o BatchMode=yes -o ConnectTimeout=10, so an unreachable or prompting bench does not hang it. It refuses a card not dealt to the named friend (ready or working), and refuses when neither identity parses as Name <email> (it never falls back to the machine's global git config). A second run on an already staged directory refuses unless it is the same card@gen, branch, head and bench, and then prints the JOB.md path and exits 0; a JOB.md with no BENCH: line (a v1.6 stage, which only staged on the friend's own machine) matches as a local stage, so a local re-run accepts it and a --bench re-run refuses |
 | collect | every friend's outbox report of a card working on a friend's row finished as her row, a LAND only at origin's tip, and with `--dead-lanes` a lane her runner ENDed with no report finished failed (section 1, collect): `collect [<friend>...] [--dead-lanes] [--root <dir>] [--dry-run]`; never run by the server |
 | gc | the system's scratch reclaimed on the machine it runs on, or on `--machine`'s through the fleet runner (section 1, gc): `gc [--machine <m>] [--dry-run] [--max-age <d>] [--ai-root <dir>]`; job directories of finished or absent lanes, reader checkouts of recorded findings, lander worktrees and bench directories past `--max-age`, the go caches trimmed to their cap, never a path under no known scratch root or a clone with work that is nowhere else; one line per class and `GC OK freed=<bytes> volume=<use%>`; run by `run` on every machine hourly and on a volume at 80%; never run by the server |
 | friend give | the coordinator's undo of `friend take` (section 1, a friend's card taken back): `friend give <friend> <id>... [--reason <text>]`; on each card named (a primary or its work card), ready or waiting, its current attempt's work card loses `taken_from` her row, so the next deal may deal it to her again, a hard pin taken back from her included; the marks of other friends stay. A card taken back from her is given back as above; a ready card whose current work card is Done (a brief-replaced bounce) or absent is handed to her at its next attempt (`<id>: handed to <friend>`), eligibility as the deal holds it (tier, restriction, needs, a hard pin to another friend refused naming `nova-sprint unpin`). A card not ready or waiting, one whose work card is live on a row, one taken back from another friend, and a friend not on the friends table are refused, one `REFUSED` line each, the rest given; each given says `MOVED <card> may be dealt to <friend> again (<reason>)` (default reason: given back by the coordinator) with a happened note, then `FRIEND-GIVE OK moved=<n> refused=<m>` (`FAILED`, exit 1, when any is refused) |
@@ -6951,8 +6954,8 @@ land's place; a head that is not a commit id stops the dry run where land stops,
 | friend take | take back cards dealt to a friend and not taken (`<id>...`, or `--all-unstarted`, which never takes a working card; a named working card wants `--working`), each back to ready for the friends' deal |
 | friend level | even the ready queues of the friends up, idle lanes first and by the card's tier, as fleet level evens the members'; the tick runs it too (friend-deal-idle-lanes-first.w1) |
 | seat | the seat as the daemons read it every second: `SEAT holder= epoch= generation=`, `--json`; three keys, no table (section 1, a friend's health) |
-| lane take | `lane take go --machine <m> --as <worker> [--wait <duration>]`: a worker's take of one of the machine's Go lanes (section 18); exit 0 granted, exit 1 queued with its place and the next command; --wait asks again every 5 s until granted or the wait is over; through the sprint's server it is `lane take <kind> --machine <m> --as <worker>` and nothing more |
-| lane give | `lane give go --machine <m> --as <worker>`: the worker's lane, or its place in the queue, given back; the head of the queue is granted |
+| lane take | `lane take go --machine <m|auto> --as <worker> [--wait <duration>] [--dry-run]`: a worker's named-machine lane or server-picked bench lease (section 18); named-machine exit 0 grants and exit 1 queues; `auto` exit 0 grants or renews and prints `until`, exit 1 prints `retry_at` and the full allowed benches; `--wait` and `--dry-run` are refused with `auto` |
+| lane give | `lane give go --machine <m|auto> --as <worker> [--dry-run]`: the named-machine lane or the worker's lease on any bench is given back |
 | lane list | every machine's holders and queue of each lane kind, the timeouts applied; where --json --cards carries the same rows as `lanes` |
 | reader add | declares readers |
 | reader away | `hold <reader>... --return` in the old words, for one release: holds readers whatever they beat (state `held`): no read is asked of them, a read asked and not begun is asked of another at the next tick, and a read begun is taken back where a reader up is free to read it |
@@ -6960,7 +6963,7 @@ land's place; a head that is not a commit id stops the dry run where land stops,
 | reader remove | takes readers off the readers table; refused (exit 1, nothing written) when a named reader is no row or holds a read card, asked, reading, ok or broken, naming the reader and its read cards |
 | reader retire | retires readers and keeps their history (the comfort list of 2026-10-03, item 6: `reader remove` refuses a reader that holds read cards, so the second readers could not be retired without losing the record): each named reader, a row of the readers table, is held away for good, its state `retired`: no read is asked of it and a read asked and not begun is asked of another at the next tick (as `reader away`); a read it is reading is taken back at the next tick and asked of a reader up with no card at that attempt, and it stays when none can take it, the few-readers judgment names it no more, its own `queue --as` writes no beat and answers `reader: false` (its loop stops as for a name with no row), while its row and its read cards stay on the table, counted on their cards and in `where`; `reader up` brings it back; a named reader with no row refuses the whole call, nothing written; `--dry-run` prints `READER-RETIRE DRY-RUN readers=<names>; nothing was changed` and writes nothing; `reader remove` is as it was |
 | stream set | `stream set <s>... [--read-tier <flash|pro|heavy|default>] [--land-protected <owner/name,...|any|default>] [--release <name>] [--display <name>] [--prose <glob,...|default>] [--attempts <n|default>] [--reason <why>] [--answers <note>]`: `--prose` sets the streams' prose globs, their control cards' `prose`, the files the lander does not read for a code span (section 7, the document repairs), `default` takes them off; `--attempts` sets the streams' attempt cap, their control cards' `attempts`, over the sprint's (nova-config's sprint row `max_attempts`, default 4; section 2); `--reason` records why the read tier is set as `read_tier_reason`, and `--answers` answers the judgment `raise the read tier of the stream?`; the read tier of the streams named, their control cards' `read_tier`, over the sprint's (`set`), and their protected-branch mark, `land_protected` (section 7, the protected branches); `default` takes a stream's off; `--release <name>` records the release on each stream's control card, `default` or `none` takes it off; `--display <name>` records each stream's display name, its control card's `display`, the label the dashboard's Work table shows in place of the key (one line of printable text, at most 60 bytes; `default` or `none` takes it off; the stream's key is unchanged); the coordinator's; refused whole, nothing written, for a stream that is no row, a tier that is not flash, pro or heavy, a mark that names no repository, or another actor |
-| set | `set [--read-tier <flash|pro|heavy|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--alarm-review <n|off>] [--alarm-merging <n|off>] [--alarm-fleet <percent|off>] [--alarm-ready <on|off>] [--friend-idle <duration|default>] [--attempts <n|default>] [--fleet <on|off>] [--friends <on|off>] [--fleet-tiers <tiers|all>] [--friends-tiers <tiers|all>] [--reads <0|1|2|default>]`: also `reads_needed` (the ok reads every card in review needs whatever its tier, 0 to 2, default each card's tier's rule; section 6), `fleet` and `friends` (the work switches, default on: off deals that side no work card, reads still flow; section 6, the interim rules), `fleet_tiers` and `friends_tiers` (the tiers each side may take, flash, pro, heavy, frontier comma separated, default all, which `all` sets again; an unknown tier is refused naming the four; section 5, the deal), `friend_idle` (how long a friend holding cards may show no file write before it is an alarm, default 20 minutes) and `--attempts` (retired 2026-10-12: the sprint's attempt cap is nova-config's sprint row `max_attempts`, default 4, and the flag refuses naming `nova-config sprint set --max_attempts <n>`; section 2); the sprint's settings, the work table's properties `read_tier` (every card's reads raised to it, never lowered), `dealt_max` (how long a work card may wait dealt and never taken before it is a judgment; default 3 times the take deadline, 6 hours), `go_lanes` (the Go lanes of every machine, section 18; default 1) and the backlog alarms' thresholds `alarm_review`, `alarm_merging`, `alarm_fleet` and `alarm_ready` (section 8, off by default); the coordinator's; refused whole, nothing written, for a tier that is not flash, pro or heavy, a bound that is not a duration above zero, a lane count under 1, a threshold its alarm does not take, nothing to set, or another actor; a clear starts the next epoch with none of them; `set` with no flags prints the settings (as `settings` does) and exits 0 |
+| set | `set [--read-tier <flash|pro|heavy|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--alarm-review <n|off>] [--alarm-merging <n|off>] [--alarm-fleet <percent|off>] [--alarm-ready <on|off>] [--friend-idle <duration|default>] [--seat-silent-to <bus name|default>] [--attempts <n|default>] [--fleet <on|off>] [--friends <on|off>] [--fleet-tiers <tiers|all>] [--friends-tiers <tiers|all>] [--reads <0|1|2|default>]`: also `reads_needed` (the ok reads every card in review needs whatever its tier, 0 to 2, default each card's tier's rule; section 6), `fleet` and `friends` (the work switches, default on: off deals that side no work card, reads still flow; section 6, the interim rules), `fleet_tiers` and `friends_tiers` (the tiers each side may take, flash, pro, heavy, frontier comma separated, default all, which `all` sets again; an unknown tier is refused naming the four; section 5, the deal), `friend_idle` (how long a friend holding cards may show no file write before it is an alarm, default 20 minutes), and seat_silent_to (the bus name of one standby seat for seat-silent alerts; default none); and `--attempts` (retired 2026-10-12: the sprint's attempt cap is nova-config's sprint row `max_attempts`, default 4, and the flag refuses naming `nova-config sprint set --max_attempts <n>`; section 2); the sprint's settings, the work table's properties `read_tier` (every card's reads raised to it, never lowered), `dealt_max` (how long a work card may wait dealt and never taken before it is a judgment; default 3 times the take deadline, 6 hours), `go_lanes` (the Go lanes of every machine, section 18; default 1) and the backlog alarms' thresholds `alarm_review`, `alarm_merging`, `alarm_fleet` and `alarm_ready` (section 8, off by default); the coordinator's; refused whole, nothing written, for a tier that is not flash, pro or heavy, a bound that is not a duration above zero, a lane count under 1, a threshold its alarm does not take, nothing to set, or another actor; a clear starts the next epoch with none of them; `set` with no flags prints the settings (as `settings` does) and exits 0 |
 | settings | `settings [--json]`: one line per setting `set` takes, `SETTING <flag> value=<v> default=<d> set=<yes|no>`, then `SETTINGS OK count=<n> set=<k> epoch=<e>`; a read; the table is `sprint.SettingsOf` over `sprint.SettingsRows` (internal/sprint/settings_view.go), one row per flag of `set` (TestEverySetFlagHasASettingsRow, TestSettingsPrintsEverySettingWithItsValueAndDefault) |
 | stream remove | takes streams off the work and merge tables (the owner, 2026-10-01: "remove work streams a/b/c" / "you should have a verb to remove work streams" / "they should only succeed on a STOPPED sprint machine"): each stream's row of both tables, with the stream's control card, the one card `add` made for it, which the merge row's delete takes off the table (its record kept); refused (exit 1, nothing written) on a RUNNING system (`nova-sprint stop` first), for a stream that is no row of either table, named, and for a stream that holds a card (a primary or a sentinel placed in any column of its work row, landed included, or a merge card in its merge row), naming how many of each and the remedy (`nova-sprint clear --confirm sprint`, or `drop`); all or none for the streams named. A clear keeps the streams and does not bring a removed one back. A removal is not a tombstone: `add --stream <s>` of a stream removed in this epoch adds its rows again and places its control card again, the record the removal kept, by the table layer's cell add before the step's manifests (a batch never places a removed member; `sprint.Plan.Places`, as a fleet member's control card rejoins), and prints `NOTE stream <s> was removed in this epoch and comes back: its control card is placed again`; after a clear the name is added fresh (`sprint.StreamRemove`, `sprint.RemovedStream`, `sprint.ComeBack`; the roadmap re-add of 2026-10-06 was refused for 384 of 844 cards under removed streams' names before this rule). `stream archive` stays the verb that takes landed streams off the table. Every open judgment and held condition (an alarm held, an overdue hold, a stale stream's) that names a removed stream is retired with it, closed with a decided note `retired: stream <s> was removed (stream remove), ...`, and the verb prints a `NOTE judgment <alias> <id> (<type>) retired: ...` line for each (the coordinator view of 2026-10-06 00:11 held six `stream stopped` judgments of removed streams, each next step refused "no such stream"). The tick, every RUNNING tick before its start part, retires with the same note any open judgment or held condition naming a stream that is a row of neither table (one open before this rule, or left by a remove whose retirement did not finish), and no tick part raises or rewrites a judgment or held condition for such a stream (`sprint.RetireStreams`, `sprint.TickRetireGone`, `sprint.ForTables`) |
 | stream archive | takes streams whose every card has landed off the work and merge tables and keeps their record (the owner, 2026-10-05 ~11:45 PM ET: "I would like you to remove all the already landed work streams"; 107 streams of landed cards crowded the table, and `stream remove` refuses them): each stream's rows of both tables are hidden (the table layer's row hide) and no card moves, so every landed card stays placed in its landed cell with its cost and its landing, and `where --json --rows --archived`, `stream_costs` and every record that reads the cards count them as before; the headline (the summary line, the frame's footers, the dashboard's hero, total row and cost) counts only the streams on the table, so the stream's cards leave it when it is archived, and `where --json` keeps its figures in `archived` and in `archived_cards` and `archived_landed` beside the headline (section 1, the summary line); runs on a RUNNING system (no stop); refused (exit 1, nothing written) for a stream that is no row of either table and for one holding a card not landed (a primary or sentinel in any column of its work row but landed, a merge card queued or stuck), naming the cards; all or none for the streams named; archiving an archived stream changes nothing. An archived stream that holds a card not landed again (an `add`) is drawn again by the next tick, RUNNING or STOPPED. A clear keeps an archived stream archived. where draws no archived row and prints one line under the work table, `N archived streams, M cards landed, $X (where --json --archived)`; `where --json` carries `archived` (`streams`, `cards`, `landed`, `cost`, the cost cells summed to the cent) and leaves the archived rows out of `tables` and `rows` but with `--archived` (`sprint.StreamArchive`, `store.ArchiveStreams`, `store.keepArchive`). The verb retires every open judgment and held condition that names a stream it archived, as `stream remove` does, a NOTE line each (`sprint.RetireStreams`) |
@@ -7122,11 +7125,13 @@ names it, so the first of two duplicates is admitted. `add` skips and reports
 instead: a brief with a probable duplicate is held
 back and the rest of the wave admitted in one write, one `DUPLICATE <id>: <the same line>; run: nova-sprint add ... --not-a-duplicate-of <id>=<reason>`
 line each, and the add exits with the write's code (0 when it wrote the rest of the wave, and 1 only when every real card was held; 0 when none); `--not-a-duplicate-of <card>=<reason>` (repeated, a reason required) admits the card and records the
-reason on its admission note. `brief check` runs the same check over the briefs
-it holds, against the open cards of the one read-only snapshot it already
-loads, and names one `duplicate` finding per held brief in add's words, with a
-remedy that names `--not-a-duplicate-of`; brief check takes no such override
-(add does, to admit the brief).
+reason on its admission note. The same check holds a brief back in an `add --partial` wave,
+and the same flag admits it there with its reason recorded on the card.
+`brief check` runs the same check over the briefs it holds, against the open
+cards of the one read-only snapshot it already loads, and names one `duplicate`
+finding per held brief in add's words, with a remedy that names
+`--not-a-duplicate-of`; brief check takes no such override (add does, to admit
+the brief).
 
 `TEST` names a test
 `git grep` finds at `BASE` in `--repo-dir`, and `BASE` exists there; with no
@@ -7376,6 +7381,67 @@ when the environment names one (`wins=env:NOVA_SPRINT_REDIS_USER`, `redis-wins=e
 `resolves=yes|no` (exit 1 on no); `seat logout` removes the file (`was=recorded|none`). The code is
 `cmd/nova-sprint/storelogin.go`; `TestABareVerbOpensTheStoreWithTheSeatLoginFromSecrets` measures
 it on the in-memory store with a fake secrets reader.
+
+#### No store secret in argv or a running process's environment
+
+(2026-10-18, card v17-store-secret-never-in-process-env: three coordinator helpers printed the
+live coordinator password by inspecting processes, because a long-running `nova-sprint run`
+started under `nova-secrets exec --only <NAME>` held it in its environment, which `ps -E` and
+`/proc/<pid>/environ` read.)
+
+The store password has three sources, and none is argv or a long-running process's environment:
+
+- **the seat login** (above), read in process from nova-secrets;
+- **a password file**: `NOVA_SPRINT_REDIS_PASSWORD_FILE=<absolute path>` names a file holding the
+  password (one trailing newline cut), for the user `NOVA_SPRINT_REDIS_USER` names. It is refused,
+  naming the path and the remedy (`chmod 600 <path>`) and never the content, unless it is a regular
+  file (opened with `O_NOFOLLOW`, so a symbolic link is refused), owned by this uid, with
+  `mode & 0o077 == 0`;
+- **the macOS keychain**: `NOVA_SPRINT_REDIS_PASSWORD_KEYCHAIN=<service>` reads the generic password
+  of that service for the account `NOVA_SPRINT_REDIS_USER` names, through
+  `/usr/bin/security find-generic-password -s <service> -a <user> -w`, its stdout captured in
+  process and its stderr never shown. On any other system the variable is a refusal naming it.
+
+The file and the keychain are read once per process into a `secrets.Secret` and handed to redisconn
+through the getenv storeOptions returns, as the seat login's is (`cmd/nova-sprint/secret_source.go`).
+A source wins over the environment's login and the recorded one; two sources at once, or a source
+beside `NOVA_SPRINT_REDIS_PASSWORD_ENV`, is a refusal naming the variables, never a guess.
+
+**The startup scrub** (`cmd/nova-sprint/secret_scrub.go`) is main's first act. Every
+password-bearing variable (the one `NOVA_SPRINT_REDIS_PASSWORD_ENV` names,
+`NOVA_REDIS_BENCH_PASSWORD`, `NOVA_REDIS_COORDINATOR_PASSWORD`, and any `NOVA_*_PASSWORD`) present
+in the environment is read into an in-process holder and unset, so no child the process starts (a
+land gate, git, a check, a shadow tick) inherits it, and the app's getenv answers the name from the
+holder. The pointers (`…_PASSWORD_ENV`, `…_PASSWORD_FILE`, `…_PASSWORD_KEYCHAIN`) carry no secret
+and stay.
+
+**The children that open the store.** Two verbs start a child that needs the login the scrub took.
+The shadow tick that `server switch` and `doctor --preflight` run (`<candidate> tick --shadow`,
+`runShadow` in `cmd/nova-sprint/shadow.go`) is a nova-sprint, so under an environment login it is
+handed the held password through the password file source: `childStoreEnv` writes it to a 0600
+file in a fresh 0700 temporary directory, points the child at it with
+`NOVA_SPRINT_REDIS_PASSWORD_FILE` in place of `NOVA_SPRINT_REDIS_PASSWORD_ENV` (the user stays),
+and removes the directory once the child exits; any other login is the child's to read itself. `live`
+reads the library with `nova-redis fn check`, which reads only `--password-env`: it resolves the
+login through storeOptions, as every verb does, and hands the password it holds to that short-lived
+child's environment alone, as it hands the seat login's (`TestShadowChildGetsTheEnvLoginThroughAPasswordFile`,
+`TestLiveHandsTheScrubbedEnvLoginToFnCheck`).
+
+**The re-exec.** Unsetting a variable does not clear the environment block the kernel keeps from
+exec, which `ps -E` (sysctl `kern.procargs2`) and `/proc/<pid>/environ` read. So when the scrub
+removed a value and the verb is long-running (`run`, `dashboard`, `watch`, `wait`, `play`, and any
+verb given `--watch`, `--wait` or `--every`: the loops of answer, friend sync, promote, snapshot), the process re-execs itself once: the same binary
+(`os.Executable`), the same argv, the scrubbed environment, and the held values on an inherited
+pipe whose write end is filled and closed before the exec, its descriptor named by
+`NOVA_SPRINT_SECRET_FD=<n>` (a number, never a value). The new process reads and closes that
+descriptor (refused unless it is a pipe) and unsets `NOVA_SPRINT_SECRET_FD` before anything else. A short-lived verb needs no
+re-exec. A re-exec that cannot be made is a refusal (exit 2) naming the password file as the
+remedy, never a server left holding the value. No flag of nova-sprint takes a secret value: a flag
+whose name ends in password, secret or token takes a NAME or a path
+(`TestNoFlagCarriesASecretValue`). `TestARunningServerHoldsNoSecretInArgvOrEnv` (functional)
+starts `nova-sprint run --listen` on a redis-server of the test's own whose ACL user's password is
+a fake secret, once in the launcher's shape and once with a password file, waits for its heartbeat,
+and reads the child's argv and environment as ps does: neither holds a byte of the secret.
 
 ### bases-view-r.w2
 
@@ -9444,12 +9510,14 @@ that can strand a slot, and no client coordinates with another. The named-machin
 above stay disabled and unchanged (`sprint.LanesDisabled`).
 
 - `nova-sprint lane take go --machine auto --as <who>` asks for a bench, and the same
-  line again renews the lease the asker holds;
-  `nova-sprint lane give go --machine auto --as <who>` gives it back.
-- A grant prints `LANE-TAKE OK go machine=<m> as=<who> slots=<committed>/<slots> until=<RFC3339>`
-  (exit 0; `until` is the lease's deadline, and `committed` counts the lease just
-  granted). A full fleet prints, exit 1,
-  `LANE-TAKE WAIT go as=<who> retry_at=<RFC3339>: every allowed bench is full: <m> <committed>/<slots>, ...`.
+  line again renews the lease the asker holds; `nova-sprint lane give go --machine auto --as <who>` gives it back on any bench. `--wait` and `--dry-run` are refused with
+  `auto`: the caller waits by `retry_at`, and a dry pick cannot reserve capacity.
+- A grant prints `LANE-TAKE OK go machine=<m> as=<who> slots=<committed>/<slots> until=<RFC3339> renewed=<yes|no>`
+  (exit 0; `until` is the lease's deadline and `committed` includes the lease just
+  granted), followed by the run-on-`<m>` instruction and `nova-sprint lane give go --machine auto --as <who>`. A full fleet prints, exit 1,
+  `LANE-TAKE WAIT go as=<who> retry_at=<RFC3339>: every allowed bench is full: <m> <committed>/<slots>, ...`
+  and `nova-sprint lane take go --machine auto --as <who>` as the retry command.
+  Give prints `LANE-GIVE OK go machine=auto as=<who> gave=<yes|no>`.
 
 The decisions:
 

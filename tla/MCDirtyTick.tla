@@ -56,9 +56,16 @@ ScnLand == [Base EXCEPT !.col = [c \in Cards |-> "merging"], !.mq = {"c1"},
 \* THE LAND GATE ON HELD MEMBERS (2026-10-17): c1 merging, every machine held by
 \* the coordinator and none up; c1 lands only through LandGate (Scn.gate). No
 \* machine lapses or beats (all live).
-\* m2 was taken down with fleet down (hold --return, retinit): it runs no gate,
-\* and c1 lands through m1 (the witness gatereturned gates m2).
-ScnGateHeld == [gate |-> TRUE, heldinit |-> Machines, retinit |-> {"m2"}, lapse |-> FALSE] @@
+\* m2's hold carries no held_gate (gateinit is m1 alone, as a coordinator hold with
+\* --return would leave it, or a v1.6 hold): it runs no gate, and c1 lands through
+\* m1 (the witness gatereturned gates m2; the witness gateunmarked gates m2 too).
+ScnGateHeld == [gate |-> TRUE, heldinit |-> Machines, retinit |-> {"m2"}, gateinit |-> {"m1"}, lapse |-> FALSE] @@
+               [Base EXCEPT !.col = [c \in Cards |-> "merging"], !.mq = {"c1"}, !.up = {},
+                            !.q = Queues(<<>>, <<>>, <<>>, <<>>)]
+\* THE UPGRADE (2026-10-18): the v1.6 store wrote m1's hold with no held_gate and no
+\* held_return (an unmarked hold); m2's hold is a v1.7 plain hold (gateinit). Only m2
+\* is a gate bench, so c1 lands through m2 and m1 never gates (UnmarkedHoldNeverGates).
+ScnGateUpgrade == [gate |-> TRUE, heldinit |-> Machines, gateinit |-> {"m2"}, lapse |-> FALSE] @@
                [Base EXCEPT !.col = [c \in Cards |-> "merging"], !.mq = {"c1"}, !.up = {},
                             !.q = Queues(<<>>, <<>>, <<>>, <<>>)]
 \* c1 in review, its read on r1 (host m1) reported broken.

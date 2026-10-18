@@ -292,6 +292,7 @@ type SetReq struct {
 	Attempts          string   `json:",omitempty"`
 	FriendIdle        string   `json:",omitempty" prop:"friend_idle"`
 	LandingStallBound string   `json:",omitempty" prop:"landing_stall_bound"`
+	SeatSilentTo      string   `json:",omitempty" prop:"seat_silent_to"`
 	// Reason, with Streams and ReadTier, is why the read tier is set, recorded on the
 	// stream's control card (FieldReadTierReason); Answers the judgments this answers.
 	Reason  string   `json:",omitempty"`
@@ -474,6 +475,9 @@ func Set(s *Snapshot, r SetReq) Plan {
 			why = append(why, "--landing-stall-bound wants a duration above zero (1m, 5m), or "+ReadTierDefault+" for "+LandingStallBound.String()+"; found "+r.LandingStallBound)
 		}
 	}
+	if r.SeatSilentTo != "" && r.SeatSilentTo != ReadTierDefault && !ValidID(r.SeatSilentTo) {
+		why = append(why, "--seat-silent-to wants one bus name (a sprint ID), or "+ReadTierDefault+"; found "+r.SeatSilentTo)
+	}
 	if r.ReadCards != "" {
 		if r.ReadCards != ReadCardsOnWord && r.ReadCards != "off" && r.ReadCards != ReadTierDefault {
 			why = append(why, "--read-cards wants on, off or "+ReadTierDefault+" (on); found "+r.ReadCards)
@@ -501,8 +505,8 @@ func Set(s *Snapshot, r SetReq) Plan {
 	if r.Base != "" && len(r.Streams) == 0 {
 		why = append(why, "--base is a stream's, not the sprint's: nova-sprint stream set <s> --base <branch>")
 	}
-	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Display == "" && r.Prose == "" && r.SeatAccept == "" && r.DefaultTier == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.LandingStallBound == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.ReworkPriority == "" {
-		why = append(why, "nothing to set: --rework-priority, --read-tier, --read-cards, --reads, --prose, --base, --dealt-max, --go-lanes, --attempts, --friend-idle, --landing-stall-bound, --drift-commits, --drift-hours, --fleet, --friends, --fleet-tiers, --friends-tiers or an --alarm-... threshold")
+	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Display == "" && r.Prose == "" && r.SeatAccept == "" && r.DefaultTier == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.LandingStallBound == "" && r.SeatSilentTo == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.ReworkPriority == "" {
+		why = append(why, "nothing to set: --rework-priority, --read-tier, --read-cards, --reads, --prose, --base, --dealt-max, --go-lanes, --attempts, --friend-idle, --landing-stall-bound, --seat-silent-to, --drift-commits, --drift-hours, --fleet, --friends, --fleet-tiers, --friends-tiers or an --alarm-... threshold")
 	}
 	if len(r.Streams) > 0 && r.GoLanes != "" {
 		why = append(why, "--go-lanes is the sprint's, not a stream's: nova-sprint set --go-lanes "+r.GoLanes)
@@ -521,6 +525,9 @@ func Set(s *Snapshot, r SetReq) Plan {
 	}
 	if len(r.Streams) > 0 && r.LandingStallBound != "" {
 		why = append(why, "--landing-stall-bound is the sprint's, not a stream's: nova-sprint set --landing-stall-bound "+r.LandingStallBound)
+	}
+	if len(r.Streams) > 0 && r.SeatSilentTo != "" {
+		why = append(why, "--seat-silent-to is the sprint's, not a stream's: nova-sprint set --seat-silent-to "+r.SeatSilentTo)
 	}
 	for _, st := range r.Streams {
 		if s.StreamCtl(st) == nil {
@@ -657,6 +664,7 @@ func Set(s *Snapshot, r SetReq) Plan {
 		{PropGoLanes, r.GoLanes},
 		{PropFriendIdle, r.FriendIdle},
 		{PropLandingStallBound, r.LandingStallBound},
+		{PropSeatSilentTo, r.SeatSilentTo},
 		{PropDriftCommits, r.DriftCommits},
 		{PropDriftHours, r.DriftHours},
 		{PropFleet, r.Fleet},
@@ -698,6 +706,8 @@ func orDefault(v, name string) string {
 		return fmt.Sprintf("default (%s)", FriendIdleDefault)
 	case name == PropLandingStallBound:
 		return fmt.Sprintf("default (%s)", LandingStallBound)
+	case name == PropSeatSilentTo:
+		return "default (no standby seat)"
 	case name == PropDriftCommits:
 		return fmt.Sprintf("default (%d commits)", DriftCommitsDefault)
 	case name == PropDriftHours:
@@ -719,4 +729,12 @@ func (r SetReq) alarms() map[string]string {
 		}
 	}
 	return out
+}
+
+// init registers the standby seat's working default and its by-set declaration here so
+// the card's PATHS (settings.go) hold them; defaults.go and defaults_working.go are
+// left unchanged.
+func init() {
+	Defaults = append(Defaults, Default{Name: PropSeatSilentTo, Home: HomeProp, Value: ReadTierDefault, Why: "no standby seat hears seat-silent alarms until the coordinator sets one"})
+	workingChecks[PropSeatSilentTo] = workingCheck{BySet: true}
 }
