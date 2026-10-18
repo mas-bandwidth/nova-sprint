@@ -1265,7 +1265,24 @@ func (l *lander) land(ctx context.Context, j *landJob, pushed []*landJob) {
 		since(&b.Times.Queue, start)
 		if why == "" {
 			// the reads checked and the landing marked, in one step, just before the push
-			why = f.markLanding(stream, j.cards[:len(j.merged)])
+			var marked int
+			marked, why = f.markLanding(stream, j.cards[:len(j.merged)])
+			if marked > 0 && marked < len(j.merged) {
+				f.keep(landBatch{Stream: stream, Status: "refused", IDs: []string{}, Reason: why})
+				why = ""
+				if len(f.cardTips) <= marked {
+					j.refuse("the tip of the marked landing prefix was not recorded; nothing pushed")
+					return
+				}
+				j.tip = f.cardTips[marked]
+				if _, err := f.git(ctx, j.dir, "reset", "-q", "--hard", j.tip); err != nil {
+					j.refuse("the batch branch could not be moved to the marked landing prefix: " + firstLine("", err) + "; nothing pushed")
+					return
+				}
+				j.merged = j.merged[:marked]
+				j.cards, j.ids = j.cards[:marked], j.ids[:marked]
+				b.Cards, b.IDs, b.Scope = marked, j.ids, f.scopeOf(j.merged)
+			}
 		}
 		if why != "" {
 			j.refuse(why)

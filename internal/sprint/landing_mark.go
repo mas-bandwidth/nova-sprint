@@ -32,6 +32,7 @@ func MarkLanding(s *Snapshot, stream string, pins []PushedPin) Plan {
 	p.on(s)
 	var changes []Change
 	var ids []string
+	landing := map[string]bool{}
 	for _, pin := range pins {
 		pr, m := s.Work.Placed(pin.ID), s.Merge.Placed(pin.ID)
 		switch {
@@ -48,7 +49,12 @@ func MarkLanding(s *Snapshot, stream string, pins []PushedPin) Plan {
 			p.refuse(pin.ID, "re-pointed to BASE "+baseOfBrief(pr.F("brief"))+" during the gate, not "+pin.Base+" as it was built: it lands on the next pass; nothing pushed")
 			return p
 		case m.F(FieldLandingHead) == pin.Head:
+			landing[pin.ID] = true
 			continue // committed to already: its reads were judged at that mark
+		}
+		if blocked := LandOrderBlocked(s, pr, landing); len(blocked) > 0 {
+			p.refuse(pin.ID, "soft dependency on "+strings.Join(blocked, ", ")+" not landed; "+pin.ID+" is skipped this batch")
+			break
 		}
 		if why := ReadsShortWhy(s, pr); why != "" && !PushedUnreportedMatches(s, pin.ID) {
 			p.refuse(pin.ID, why+" now (the reads setting or its tier raised since land read it); nothing pushed, and the tick sends it back to review for the read it lacks")
@@ -56,6 +62,7 @@ func MarkLanding(s *Snapshot, stream string, pins []PushedPin) Plan {
 		}
 		changes = append(changes, change(Merge, setEntry(m, map[string]string{FieldLandingHead: pin.Head})))
 		ids = append(ids, pin.ID)
+		landing[pin.ID] = true
 	}
 	if len(changes) == 0 {
 		return p

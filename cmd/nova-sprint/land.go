@@ -1468,9 +1468,9 @@ func (l *lander) hidePushed(s *sprint.Snapshot, order []string) {
 // (sprint.MarkLanding), or is refused naming the card and its count, nothing pushed. From
 // the mark on, through the push, the report and a crash between them, the tick never sends
 // the card back to review (tla/Land.tla Check, PushedNeverSentBack, NoLandWithoutReads).
-func (l *lander) markLanding(stream string, pins []landCard) string {
+func (l *lander) markLanding(stream string, pins []landCard) (int, string) {
 	if l == nil || l.dry || l.st == nil || l.a == nil || len(pins) == 0 {
-		return ""
+		return len(pins), ""
 	}
 	marked := make([]sprint.PushedPin, len(pins))
 	for i, c := range pins {
@@ -1491,12 +1491,17 @@ func (l *lander) markLanding(stream string, pins []landCard) string {
 	defer l.a.serial.Unlock()
 	res, err := l.st.Run(context.Background(), step)
 	if err != nil {
-		return "the landing could not be marked before the push: " + oneline.Err(err) + "; nothing pushed"
+		return 0, "the landing could not be marked before the push: " + oneline.Err(err) + "; nothing pushed"
 	}
 	if len(res.Refused) > 0 {
-		return stepWhy(res, nil)
+		for i, pin := range pins {
+			if res.Refused[0].Key == pin.id && i > 0 {
+				return i, stepWhy(res, nil)
+			}
+		}
+		return 0, stepWhy(res, nil)
 	}
-	return ""
+	return len(pins), ""
 }
 
 func (l *lander) markPushed(stream, sha string, pins []landCard) error {
