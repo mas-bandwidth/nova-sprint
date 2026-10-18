@@ -283,11 +283,17 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 		benchLine = host
 	}
 
-	// (5) an already staged directory
+	// (5) an already staged directory. A v1.6 JOB.md has no BENCH line: it
+	// staged only on the friend's own machine, so it matches as a local stage
+	// and a local re-run accepts it; a bench re-run refuses it.
 	if s, err := friendStageRun(ctx, friendOp{Host: host, Dir: jobDir, Read: true}); err == nil {
+		benchesMatch := strings.Contains(s, "BENCH: "+benchLine+"\n")
+		if !strings.Contains(s, "BENCH: ") && benchLine == "local" {
+			benchesMatch = true
+		}
 		if strings.Contains(s, "CARD: "+card+"\n") && strings.Contains(s, "GEN: "+strconv.Itoa(gen)+"\n") &&
 			strings.Contains(s, "BRANCH: "+p.Branch+"\n") && strings.Contains(s, "HEAD: "+startRef+"\n") &&
-			strings.Contains(s, "BENCH: "+benchLine+"\n") {
+			benchesMatch {
 			fmt.Fprintln(stdout, filepath.Join(jobDir, friend.JobFile))
 			a.outcome, a.changed = "accepted", "no"
 			return 0
