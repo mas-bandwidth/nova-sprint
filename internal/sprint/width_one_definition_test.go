@@ -136,6 +136,17 @@ func TestFriendNextHoldsTheWidth(t *testing.T) {
 	wc = w.s.Fleet.Cell(row, Working)[0]
 	w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{wc.ID}}, As: row, Gens: gensOf(w.s, wc.ID), Head: "abd"}))
 	assert.Equal(t, 1, w.s.Fleet.Count(row, Working), "her finish frees a lane of width 2 and her next takes it")
+
+	// her start receipt is her fact, never cut: her beat names a card running, so it is
+	// counted working even at her width (friendStartUnits; a cut would leave a card she
+	// runs ready for the level to move)
+	w.s.Friends = []FriendSeat{lowered}
+	rc := w.s.Fleet.Cell(row, Ready)[0]
+	set, unset := friendStartSet(w.s, rc, "amy")
+	start := Plan{Units: []Unit{{Key: rc.ID, Changes: []Change{change(Fleet, moveEntry(rc, row, Working, set, unset...))}, Moved: rc.ID + " started"}}}
+	held := HoldWidths(w.s, start, nil)
+	assert.Empty(t, held.Refused, "a start receipt is not cut")
+	assert.Len(t, held.Units, 1)
 }
 
 func TestOverWidthDealSkipsToTheNextMember(t *testing.T) {
@@ -201,17 +212,19 @@ func TestMemberWidthIsNovaConfigs(t *testing.T) {
 	require.Len(t, fails, 1, "the width drift is a FAIL: %v", checks)
 	assert.Contains(t, fails[0], "sprint width 16, nova-config width 8")
 	// the refresh writes the copy back to nova-config's, and the drift is gone
-	p := WidthRefresh(w.s, Plan{}, cfg)
-	require.Len(t, p.Units, 1)
-	assert.Contains(t, p.Units[0].Moved, "hetzner1 width=8 (was 16): read from nova-config")
+	assert.Empty(t, WidthRefresh(w.s, Plan{}, cfg).Units, "a step that writes nothing writes no refresh")
+	writes := Plan{Units: []Unit{{Key: "some-step"}}}
+	p := WidthRefresh(w.s, writes, cfg)
+	require.Len(t, p.Units, 2)
+	assert.Contains(t, p.Units[1].Moved, "hetzner1 width=8 (was 16): read from nova-config")
 	w.must(p)
 	assert.Equal(t, 8, w.s.Width("hetzner1"))
 	assert.Empty(t, WidthDrift(w.s, cfg))
-	assert.Empty(t, WidthRefresh(w.s, Plan{}, cfg).Units, "a refresh after a refresh writes nothing")
+	assert.Len(t, WidthRefresh(w.s, writes, cfg).Units, 1, "a refresh after a refresh writes nothing")
 	// a member that drains keeps its drain: the refresh never lifts it
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "hetzner1", Drain: true}))
 	require.Equal(t, 0, w.s.Width("hetzner1"))
-	assert.Empty(t, WidthRefresh(w.s, Plan{}, cfg).Units)
+	assert.Len(t, WidthRefresh(w.s, writes, cfg).Units, 1, "the drain is never lifted by a refresh")
 	got, _ = RowWidth(w.s, "hetzner1", cfg)
 	assert.Equal(t, 0, got, "a draining member takes nothing whatever the config says")
 	// a create in working past the width is made ready instead, with its refusal

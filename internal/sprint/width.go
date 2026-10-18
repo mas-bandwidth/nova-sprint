@@ -336,6 +336,15 @@ func HoldWidths(s *Snapshot, p Plan, cfg map[string]int) Plan {
 				continue
 			}
 			seen(row)
+			if startReceipt(ch) {
+				// a friend's start receipt is her fact, not a take: her beat says she runs
+				// the card, so it is counted working and never cut (cutting it would leave
+				// a card she runs ready, for the level or the rebalance to move); her takes,
+				// her next and the deal's are held (friend_start.go friendStartUnits)
+				working[row]++
+				keep = append(keep, ch)
+				continue
+			}
 			if working[row] < width {
 				working[row]++
 				keep = append(keep, ch)
@@ -352,6 +361,9 @@ func HoldWidths(s *Snapshot, p Plan, cfg map[string]int) Plan {
 				keep = append(keep, Change{Table: ch.Table, Entry: e})
 				readied = append(readied, fmt.Sprintf("%s made ready, not working: %s is at its width (%d of %d)", ch.Entry.ID, row, working[row], width))
 				continue
+			}
+			if from, out := outOfWorking(s, ch); out {
+				working[from]++ // a move off another row's working that is cut leaves it there
 			}
 			dropped = append(dropped, ch.Entry.ID)
 		}
@@ -371,6 +383,18 @@ func HoldWidths(s *Snapshot, p Plan, cfg map[string]int) Plan {
 	}
 	p.Units = units
 	return p
+}
+
+// startReceipt says a change is a friend's start receipt: a move that writes her start
+// (FieldStarted, friendStartSet) of a card not taken by her own take in this step. Her own
+// take by count or by id writes it too, and takeOne's room has cut that take already; the
+// store does not cut a start (HoldWidths).
+func startReceipt(ch Change) bool {
+	if ch.Entry.Move == nil || !IsFriendRow(ch.Entry.Move.Row) {
+		return false
+	}
+	_, started := ch.Entry.Set[FieldStarted]
+	return started
 }
 
 // movedWithout is a unit's moved line less the later parts ("; " separated) that begin
@@ -405,7 +429,8 @@ func movedWithout(moved string, ids []string) string {
 // width or width 0 is fleet sync's (it resolves the cores and the holds). It never widens
 // nova-config: the read of nova-config is the fix.
 func WidthRefresh(s *Snapshot, p Plan, cfg map[string]int) Plan {
-	if s == nil || s.Fleet == nil || len(cfg) == 0 {
+	if s == nil || s.Fleet == nil || len(cfg) == 0 || len(p.Units) == 0 {
+		// a step that writes nothing writes no refresh either: the next step that writes does
 		return p
 	}
 	touched := map[string]bool{}
