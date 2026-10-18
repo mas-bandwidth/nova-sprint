@@ -1106,8 +1106,7 @@ func rangeSince[T any](ctx context.Context, c redis.UniversalClient, key, after 
 
 func (r *Redis) NotesSince(ctx context.Context, after string, max int) ([]sprint.Note, []string, error) {
 	key := r.key(keyInbox)
-	v, _ := notesCaches.LoadOrStore(notesCacheKey{r.C, key}, &notesCache{})
-	return v.(*notesCache).since(after, max, func(start string, n int) ([]redis.XMessage, error) {
+	return notesCacheFor(r.C, key).since(after, max, func(start string, n int) ([]redis.XMessage, error) {
 		return r.C.XRangeN(ctx, key, start, "+", int64(n)).Result()
 	})
 }
@@ -1149,7 +1148,32 @@ type notesCacheKey struct {
 	key    string
 }
 
-var notesCaches sync.Map // notesCacheKey -> *notesCache
+// notesCaches is the windows by client and stream key: at most notesCachesMax,
+// so a process that pins many epochs (a test, a restore) never keeps a window
+// for ever; past the bound the map starts empty, as openCaches does. A process
+// reads the epoch it is pinned to and a handful beside it.
+var notesCaches struct {
+	mu sync.Mutex
+	m  map[notesCacheKey]*notesCache
+}
+
+const notesCachesMax = 4
+
+// notesCacheFor is the window of one client and stream key, made on first use.
+func notesCacheFor(client redis.UniversalClient, key string) *notesCache {
+	k := notesCacheKey{client, key}
+	notesCaches.mu.Lock()
+	defer notesCaches.mu.Unlock()
+	if c := notesCaches.m[k]; c != nil {
+		return c
+	}
+	if notesCaches.m == nil || len(notesCaches.m) >= notesCachesMax {
+		notesCaches.m = map[notesCacheKey]*notesCache{}
+	}
+	c := &notesCache{}
+	notesCaches.m[k] = c
+	return c
+}
 
 // since is NotesSince over the cache: the notes after the cursor, at most max,
 // and their ids. fetch reads the stream from start (exclusive when it begins
