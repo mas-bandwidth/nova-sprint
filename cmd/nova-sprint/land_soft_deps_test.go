@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"strings"
 	"sync"
 	"testing"
 
@@ -101,7 +103,13 @@ func TestLandRechecksSoftDependencyAtMark(t *testing.T) {
 	require.Equal(t, map[string]string{"a": "merging/queued", "b": "merging/queued"}, r.places("a", "b"))
 
 	var queueC sync.Once
-	r.a.gateRan = func(string, bool) {
+	var gatedMu sync.Mutex
+	gated := map[string]bool{} // the trees the gate ran on
+	r.a.gateRan = func(dir string, _ bool) {
+		head := r.git(dir, "rev-parse", "HEAD")
+		gatedMu.Lock()
+		gated[head] = true
+		gatedMu.Unlock()
 		queueC.Do(func() {
 			r.ok("finish --as m1 c.w1@1 --head " + heads["c"])
 			r.ok("ask")
@@ -112,10 +120,21 @@ func TestLandRechecksSoftDependencyAtMark(t *testing.T) {
 	}
 	code, out, errs := r.do("land --repo-dir " + r.clone + " --base main")
 	require.Equal(t, 1, code, out+errs)
-	assert.Contains(t, errs, "a: soft dependency on c not landed; a is skipped this batch")
+	assert.Contains(t, errs, "a: soft dependency on c not landed; a is skipped this batch; the batch ends there: b go on to the push, a stay queued")
 	assert.Contains(t, out, "LAND OK stream=s1 cards=1")
 	assert.Equal(t, map[string]string{"a": "merging/queued", "b": "landed/merged", "c": "merging/queued"}, r.places("a", "b", "c"))
 	assert.Equal(t, []string{"land b (sprint stream s1)", "module", "base"}, r.mainLog())
+	// every pushed commit was recorded by the report in the same pass: nothing is left
+	// pushed-unreported (tla/SoftDependency.tla BaseRecorded)
+	r.noPushedUnreported("a", "b", "c")
+	// the prefix tip was never gated as a tree when it was pushed: it is cached as gated
+	// only once a gate has run on it (tla/LandPass.tla CachedIsGreen)
+	tip := r.git(r.remote, "rev-parse", "main")
+	if _, cached := r.a.baseGateCache[tip]; cached {
+		gatedMu.Lock()
+		assert.True(t, gated[tip], "the cut prefix's tip %s was cached as gated with no gate run on it", tip)
+		gatedMu.Unlock()
+	}
 
 	r.a.gateRan = nil
 	out = r.ok("land --repo-dir " + r.clone + " --base main")
@@ -163,5 +182,110 @@ func TestLandReportHonorsSoftDependencyMark(t *testing.T) {
 	assert.Contains(t, out, "LAND OK stream=s1 cards=1")
 	assert.Equal(t, map[string]string{"a": "landed/merged", "c": "merging/queued"}, r.places("a", "c"))
 	assert.Equal(t, []string{"land a (sprint stream s1)", "base"}, r.mainLog())
+	r.noPushedUnreported("a", "c")
 	r.clean()
+}
+
+// noPushedUnreported says no card of ids carries a pushed-unreported mark.
+func (r *landRig) noPushedUnreported(ids ...string) {
+	r.t.Helper()
+	st, err := r.a.store(common{redis: "mem:0", actor: "tester"})
+	require.NoError(r.t, err)
+	s, err := st.Load(context.Background(), []string{sprint.Work, sprint.Merge}, nil)
+	require.NoError(r.t, err)
+	for _, id := range ids {
+		assert.Empty(r.t, sprint.PushedUnreportedSHA(s, id), "%s is left pushed-unreported", id)
+	}
+}
+
+// markLanding ends the batch early only for the LAND-AFTER skip (sprint.LandOrderSkipped):
+// the pins before it are marked and go on to the push. Every other refusal of the mark
+// (not queued, head moved, re-pointed, reads short) keeps the all-or-nothing rule: 0 pins
+// pushable, nothing marked, and the reason says nothing pushed (tla/Land.tla
+// PushedNeverSentBack, NoLandWithoutReads; tla/SoftDependency.tla MarkPush). No clock, no
+// network: the store is mem:0 and the heads are a local repository's.
+func TestMarkLandingEndsTheBatchEarlyOnlyForTheSkip(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		kind, why string
+		skip      bool
+		// firstBase is the base the first pin was built on ("" = main); premark marks the
+		// first pin landing before, so only the second pin meets the refusal
+		firstBase string
+		premark   bool
+		pin       func(r *landRig, a landCard) landCard
+		before    func(r *landRig)
+	}{
+		{kind: "not queued", why: "zz: not merging and queued in stream s1", pin: func(_ *landRig, a landCard) landCard {
+			a.id = "zz"
+			return a
+		}},
+		{kind: "head moved", why: "a: at head ", pin: func(_ *landRig, a landCard) landCard {
+			a.head = strings.Repeat("d", 40)
+			return a
+		}},
+		{kind: "re-pointed", why: "a: re-pointed to BASE other during the gate, not main", firstBase: "other", before: func(r *landRig) {
+			// another base that holds every PATHS entry, the stream re-pointed to it
+			r.git(r.worker, "switch", "-q", "--detach", "refs/remotes/origin/main")
+			for _, id := range []string{"a", "b", "c"} {
+				r.commit(id+".txt", "other\n", "other "+id)
+			}
+			r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/other")
+			r.ok("stream set s1 --base other")
+		}},
+		{kind: "reads short", why: "a: a has ok reads at head ", premark: true, before: func(r *landRig) { r.directProp(sprint.PropReadsNeeded, "3") }},
+		{kind: "skip", why: "a: soft dependency on c not landed; a is skipped this batch", skip: true},
+	} {
+		t.Run(tc.kind, func(t *testing.T) {
+			t.Parallel()
+			r := newLandRig(t)
+			dir := t.TempDir()
+			for _, c := range []struct{ id, after string }{{"c", ""}, {"b", ""}, {"a", "c"}} {
+				r.ok("add --stream s1 --one --brief-file " + writeSoftHeaderBrief(t, dir, c.id, "-", c.after, r.remote, "", c.id+".txt"))
+			}
+			heads := map[string]string{}
+			for _, id := range []string{"a", "b", "c"} {
+				heads[id] = r.head(id, "main", id+".txt", id+"\n")
+			}
+			r.queued(heads, "a", "b", "c")
+			require.Equal(t, map[string]string{"a": "merging/queued", "b": "merging/queued", "c": "merging/queued"}, r.places("a", "b", "c"))
+			if tc.before != nil {
+				tc.before(r)
+			}
+			a := landCard{id: "a", head: heads["a"], attempt: "1", base: "main"}
+			if tc.pin != nil {
+				a = tc.pin(r, a)
+			}
+			st, err := r.a.store(common{redis: "mem:0", actor: "coordinator"})
+			require.NoError(t, err)
+			epoch, err := st.EpochNow(context.Background())
+			require.NoError(t, err)
+			l := &lander{a: r.a, st: st, epoch: epoch.N, c: common{actor: "coordinator"}}
+			// the hard refusals are met with a's LAND-AFTER target c ahead of it in the pins,
+			// so its order is met; the skip with b ahead, c queued and not pinned
+			first, firstBase := "c", "main"
+			if tc.skip {
+				first = "b"
+			}
+			if tc.firstBase != "" {
+				firstBase = tc.firstBase
+			}
+			if tc.premark {
+				r.markLanding(first)
+			}
+			n, why := l.markLanding("s1", []landCard{{id: first, head: heads[first], attempt: "1", base: firstBase}, a})
+			assert.Contains(t, why, tc.why)
+			s, err := st.Load(context.Background(), []string{sprint.Work, sprint.Merge}, nil)
+			require.NoError(t, err)
+			assert.False(t, sprint.LandingMarked(s, "a"), "the refused pin was marked")
+			if tc.skip {
+				assert.Equal(t, 1, n, "the skip ends the batch after b")
+				assert.True(t, sprint.LandingMarked(s, first), "the prefix before the skip was not marked")
+				return
+			}
+			assert.Equal(t, 0, n, "a %s refusal pushed a prefix", tc.kind)
+			assert.Contains(t, why, "nothing pushed")
+			assert.Equal(t, tc.premark, sprint.LandingMarked(s, first), "a %s refusal marked the prefix", tc.kind)
+		})
+	}
 }

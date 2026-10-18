@@ -1468,6 +1468,9 @@ func (l *lander) hidePushed(s *sprint.Snapshot, order []string) {
 // (sprint.MarkLanding), or is refused naming the card and its count, nothing pushed. From
 // the mark on, through the push, the report and a crash between them, the tick never sends
 // the card back to review (tla/Land.tla Check, PushedNeverSentBack, NoLandWithoutReads).
+// It returns how many pins, from the first, are marked and may be pushed: all of them, or,
+// when the one refusal is the LAND-AFTER skip at pin k (sprint.LandOrderSkipped), k, with
+// that refusal; 0 with the refusal for every other (tla/SoftDependency.tla MarkPush).
 func (l *lander) markLanding(stream string, pins []landCard) (int, string) {
 	if l == nil || l.dry || l.st == nil || l.a == nil || len(pins) == 0 {
 		return len(pins), ""
@@ -1494,9 +1497,14 @@ func (l *lander) markLanding(stream string, pins []landCard) (int, string) {
 		return 0, "the landing could not be marked before the push: " + oneline.Err(err) + "; nothing pushed"
 	}
 	if len(res.Refused) > 0 {
-		for i, pin := range pins {
-			if res.Refused[0].Key == pin.id && i > 0 {
-				return i, stepWhy(res, nil)
+		// only the LAND-AFTER skip ends the batch at its pin, the pins before it marked in
+		// this step (sprint.LandOrderSkipped); every other refusal (not queued, head moved,
+		// re-pointed, reads short) wrote nothing and refuses the whole batch, nothing pushed
+		if r := res.Refused[0]; len(res.Refused) == 1 && sprint.LandOrderSkipped(r) {
+			for i, pin := range pins {
+				if r.Key == pin.id {
+					return i, stepWhy(res, nil)
+				}
 			}
 		}
 		return 0, stepWhy(res, nil)

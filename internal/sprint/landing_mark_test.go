@@ -47,6 +47,7 @@ func TestMarkLandingStopsAtSoftBlockedPinAndMarksPrefix(t *testing.T) {
 	require.Len(t, p.Refused, 1)
 	assert.Equal(t, "a", p.Refused[0].Key)
 	assert.Equal(t, "soft dependency on c not landed; a is skipped this batch", p.Refused[0].Why)
+	assert.True(t, LandOrderSkipped(p.Refused[0]))
 	w.do(p)
 	assert.True(t, LandingMarked(w.s, "b"))
 	assert.False(t, LandingMarked(w.s, "a"))
@@ -61,4 +62,33 @@ func TestMarkLandingAcceptsSoftTargetAheadInPins(t *testing.T) {
 	w.must(p)
 	assert.True(t, LandingMarked(w.s, "c"))
 	assert.True(t, LandingMarked(w.s, "a"))
+}
+
+// Every MarkLanding refusal but the LAND-AFTER skip writes nothing and is not the skip: the
+// lander refuses the whole batch for it (cmd/nova-sprint markLanding).
+func TestMarkLandingHardRefusalsWriteNothingAndAreNotTheSkip(t *testing.T) {
+	t.Parallel()
+	for _, kind := range []string{"not queued", "head moved", "re-pointed", "reads short"} {
+		t.Run(kind, func(t *testing.T) {
+			t.Parallel()
+			w := landingMarkSoftWorld(t)
+			head := func(id string) string { return w.s.Work.Card(id).F("head") }
+			bad := PushedPin{ID: "c", Head: head("c")}
+			switch kind {
+			case "not queued":
+				bad.ID = "zz"
+			case "head moved":
+				bad.Head = "dddddddddddd"
+			case "re-pointed":
+				bad.Base = "other"
+			case "reads short":
+				w.s.Work.SetProp(PropReadsNeeded, "3")
+			}
+			p := MarkLanding(w.s, "s1", []PushedPin{{ID: "b", Head: head("b")}, bad})
+			require.Len(t, p.Refused, 1)
+			assert.False(t, LandOrderSkipped(p.Refused[0]), p.Refused[0].Why)
+			assert.Contains(t, p.Refused[0].Why, "nothing pushed")
+			assert.Empty(t, p.Units, "a %s refusal wrote a mark", kind)
+		})
+	}
 }

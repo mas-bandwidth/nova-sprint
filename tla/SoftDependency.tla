@@ -64,11 +64,12 @@ VARIABLES
     baseCommits,            \* Seq(Cards): pushed base history
     recordedLandings,       \* SUBSET Cards: cards recorded by Report
     inFlightBatch,          \* SUBSET Cards: pushed batch awaiting Report
-    reportRefused           \* BOOLEAN: Report refused a pushed batch
+    reportRefused,          \* BOOLEAN: Report refused a pushed batch
+    hardRefused             \* BOOLEAN: MarkRefuse ran (bounds it to once)
 
-phaseVars == <<cutOrder, markedOrder, queuedAtMark, baseCommits, recordedLandings, inFlightBatch, reportRefused>>
-vars == <<col, soft, needs, landedOrder, reworked, droppedEver, dealtWhileSoftUnlanded, held, heldEver, outOfOrder, cutOrder, markedOrder, queuedAtMark, baseCommits, recordedLandings, inFlightBatch, reportRefused>>
-rest == <<held, heldEver, outOfOrder, cutOrder, markedOrder, queuedAtMark, baseCommits, recordedLandings, inFlightBatch, reportRefused>>
+phaseVars == <<cutOrder, markedOrder, queuedAtMark, baseCommits, recordedLandings, inFlightBatch, reportRefused, hardRefused>>
+vars == <<col, soft, needs, landedOrder, reworked, droppedEver, dealtWhileSoftUnlanded, held, heldEver, outOfOrder, cutOrder, markedOrder, queuedAtMark, baseCommits, recordedLandings, inFlightBatch, reportRefused, hardRefused>>
+rest == <<held, heldEver, outOfOrder, cutOrder, markedOrder, queuedAtMark, baseCommits, recordedLandings, inFlightBatch, reportRefused, hardRefused>>
 
 Placed(x) == col[x] # "dropped"
 
@@ -142,6 +143,7 @@ TypeOK ==
     /\ recordedLandings \subseteq Cards
     /\ inFlightBatch \subseteq Cards
     /\ reportRefused \in BOOLEAN
+    /\ hardRefused \in BOOLEAN
 
 Init ==
     /\ col = [x \in Cards |-> IF x = "c" THEN "waiting" ELSE "ready"]
@@ -161,6 +163,7 @@ Init ==
     /\ recordedLandings = {}
     /\ inFlightBatch = {}
     /\ reportRefused = FALSE
+    /\ hardRefused = FALSE
 
 \* Waiting card whose hard needs have landed moves to ready.
 Resolve(x) ==
@@ -198,7 +201,7 @@ Cut ==
     /\ UNCHANGED <<col, soft, needs, landedOrder, reworked, droppedEver,
                    dealtWhileSoftUnlanded, held, heldEver, outOfOrder,
                    markedOrder, queuedAtMark, baseCommits, recordedLandings,
-                   inFlightBatch, reportRefused>>
+                   inFlightBatch, reportRefused, hardRefused>>
 
 LandOrderBlockedAtMark(x, ahead) ==
     \E t \in soft[x] : col[t] = "queued" /\ t \notin ahead
@@ -233,7 +236,24 @@ MarkPush ==
               ~(\E j \in 1..(i-1) : MarkOrder[j] = t))
     /\ UNCHANGED <<col, soft, needs, landedOrder, reworked, droppedEver,
                    dealtWhileSoftUnlanded, held, heldEver, cutOrder,
-                   recordedLandings, reportRefused>>
+                   recordedLandings, reportRefused, hardRefused>>
+
+\* MarkLanding's other refusals (a pin not queued, its head moved, re-pointed, its reads
+\* short; landing_mark.go) are all or nothing: nothing is marked and nothing is pushed,
+\* whatever pin meets one, and the cards stay queued for the next cut. Only the
+\* LAND-AFTER skip (MarkPush, GuardedPrefix) pushes a prefix (cmd/nova-sprint
+\* markLanding, sprint.LandOrderSkipped). An outside fact, at most once here, so the
+\* liveness check is not a cut/refuse loop.
+MarkRefuse ==
+    /\ cutOrder # <<>>
+    /\ inFlightBatch = {}
+    /\ ~hardRefused
+    /\ hardRefused' = TRUE
+    /\ cutOrder' = <<>>
+    /\ UNCHANGED <<col, soft, needs, landedOrder, reworked, droppedEver,
+                   dealtWhileSoftUnlanded, held, heldEver, outOfOrder,
+                   markedOrder, queuedAtMark, baseCommits, recordedLandings,
+                   inFlightBatch, reportRefused>>
 
 SkipCut ==
     /\ cutOrder # <<>>
@@ -243,7 +263,7 @@ SkipCut ==
     /\ UNCHANGED <<col, soft, needs, landedOrder, reworked, droppedEver,
                    dealtWhileSoftUnlanded, held, heldEver, outOfOrder,
                    markedOrder, queuedAtMark, baseCommits, recordedLandings,
-                   inFlightBatch, reportRefused>>
+                   inFlightBatch, reportRefused, hardRefused>>
 
 ReportBlocked ==
     \E i \in 1..Len(markedOrder) : \E t \in soft[markedOrder[i]] :
@@ -266,7 +286,7 @@ Report ==
     /\ markedOrder' = <<>>
     /\ inFlightBatch' = {}
     /\ UNCHANGED <<soft, needs, reworked, droppedEver, dealtWhileSoftUnlanded,
-                   held, heldEver, outOfOrder, queuedAtMark, baseCommits>>
+                   held, heldEver, outOfOrder, queuedAtMark, baseCommits, hardRefused>>
 
 Land(x) == InSeq(markedOrder, x) /\ Report
 
@@ -318,6 +338,7 @@ NextProgress ==
 
 Next ==
     \/ NextProgress
+    \/ MarkRefuse
     \/ \E x \in Cards : Conflict(x) \/ Drop(x) \/ Hold(x)
 
 Spec == Init /\ [][Next]_vars /\ WF_vars(NextProgress)
