@@ -246,5 +246,14 @@ func (a *app) partialFindings(st *store.Store, items []briefItem, stream string,
 	if err != nil {
 		return nil, err
 	}
-	return append(findings, storeFindings...), nil
+	// cmdAddPartial applies the duplicate check with its per-card overrides
+	// after collecting findings. Do not let brief check's override-free finding
+	// hold a card before that partial-specific check can admit it.
+	for _, finding := range storeFindings {
+		if finding.Check == "duplicate" {
+			continue
+		}
+		findings = append(findings, finding)
+	}
+	return findings, nil
 }
