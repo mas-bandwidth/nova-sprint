@@ -95,7 +95,8 @@ func TestPasswordNamesAndLongRunningVerbs(t *testing.T) {
 	assert.False(t, passwordName("", ""), "no name is named when the pointer is unset")
 	for line, want := range map[string]bool{
 		"run": true, "run --listen 10.0.0.1:6390": true, "dashboard --listen 127.0.0.1:0": true, "watch": true, "wait": true,
-		"where --watch": true, "inbox --wait=5m --as m1": true, "inbox -wait 5m": true,
+		"where --watch": true, "inbox --wait=5m --as m1": true, "inbox -wait 5m": true, "play": true,
+		"answer --every 1m": true, "friend sync --every=30s": true, "snapshot --every 10m": true,
 		"where": false, "tick": false, "add --stream s1 watch": false, "card x -- --watch": false, "": false,
 	} {
 		assert.Equal(t, want, longRunning(strings.Fields(line)), line)

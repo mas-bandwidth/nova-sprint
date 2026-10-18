@@ -126,13 +126,14 @@ func decodeHeld(b []byte) (heldSecrets, error) {
 	return h, nil
 }
 
-// longRunning says the verb words run for long: run, dashboard, watch and wait, and any
-// verb given --watch or --wait. A short-lived verb needs no re-exec: it ends before the
-// kernel's copy matters.
+// longRunning says the verb words run for long: run, dashboard, watch, wait and play, and
+// any verb given --watch, --wait or --every (the loops: answer, friend sync, promote,
+// snapshot, where). A short-lived verb needs no re-exec: it ends before the kernel's copy
+// matters.
 func longRunning(args []string) bool {
 	if len(args) > 0 {
 		switch args[0] {
-		case "run", "dashboard", "watch", "wait":
+		case "run", "dashboard", "watch", "wait", "play":
 			return true
 		}
 	}
@@ -142,7 +143,7 @@ func longRunning(args []string) bool {
 		}
 		n := strings.TrimLeft(w, "-")
 		n, _, _ = strings.Cut(n, "=")
-		if w != n && (n == "watch" || n == "wait") {
+		if w != n && (n == "watch" || n == "wait" || n == "every") {
 			return true
 		}
 	}
@@ -184,6 +185,10 @@ func readHanded(fd string) (heldSecrets, error) {
 	n, err := strconv.Atoi(fd)
 	if err != nil || n < 3 {
 		return nil, fmt.Errorf("%s=%s is not a descriptor a re-exec hands over; unset it", secretFDEnv, fd)
+	}
+	var st syscall.Stat_t
+	if err := syscall.Fstat(n, &st); err != nil || st.Mode&syscall.S_IFMT != syscall.S_IFIFO {
+		return nil, fmt.Errorf("%s=%s is not the pipe a re-exec hands over; unset it", secretFDEnv, fd)
 	}
 	f := os.NewFile(uintptr(n), "handed-secrets")
 	defer func() { _ = f.Close() }() // ignored: read whole below

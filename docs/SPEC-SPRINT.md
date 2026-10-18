@@ -7401,12 +7401,12 @@ and stay.
 
 **The re-exec.** Unsetting a variable does not clear the environment block the kernel keeps from
 exec, which `ps -E` (sysctl `kern.procargs2`) and `/proc/<pid>/environ` read. So when the scrub
-removed a value and the verb is long-running (`run`, `dashboard`, `watch`, `wait`, and any verb
-given `--watch` or `--wait`), the process re-execs itself once: the same binary
+removed a value and the verb is long-running (`run`, `dashboard`, `watch`, `wait`, `play`, and any
+verb given `--watch`, `--wait` or `--every`: the loops of answer, friend sync, promote, snapshot), the process re-execs itself once: the same binary
 (`os.Executable`), the same argv, the scrubbed environment, and the held values on an inherited
 pipe whose write end is filled and closed before the exec, its descriptor named by
 `NOVA_SPRINT_SECRET_FD=<n>` (a number, never a value). The new process reads and closes that
-descriptor and unsets `NOVA_SPRINT_SECRET_FD` before anything else. A short-lived verb needs no
+descriptor (refused unless it is a pipe) and unsets `NOVA_SPRINT_SECRET_FD` before anything else. A short-lived verb needs no
 re-exec. A re-exec that cannot be made is a refusal (exit 2) naming the password file as the
 remedy, never a server left holding the value. No flag of nova-sprint takes a secret value: a flag
 whose name ends in password, secret or token takes a NAME or a path

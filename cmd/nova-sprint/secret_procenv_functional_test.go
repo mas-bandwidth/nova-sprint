@@ -68,15 +68,12 @@ func TestARunningServerHoldsNoSecretInArgvOrEnv(t *testing.T) {
 	require.NoError(t, os.Chmod(file, 0o600))
 	fileLogin := append(append([]string{}, base...), "NOVA_SPRINT_REDIS_PASSWORD_FILE="+file)
 
-	verb := func(env []string, args ...string) {
-		t.Helper()
-		cmd := exec.Command(bin, args...)
-		cmd.Env, cmd.Dir = env, home
-		out, err := cmd.CombinedOutput()
-		require.NoError(t, err, "nova-sprint %v: %s", args, out)
-		assert.False(t, strings.Contains(string(out), secret), "a verb's output holds no byte of the secret")
-	}
-	verb(envLogin, "init", "--readers", "reader-a", "--members", "m1")
+	// the sprint, made in the launcher's shape: a short-lived verb, scrubbed and not re-exec'd
+	initCmd := exec.Command(bin, "init", "--readers", "reader-a", "--members", "m1", "--redis", addr)
+	initCmd.Env, initCmd.Dir = envLogin, home
+	out, err = initCmd.CombinedOutput()
+	require.NoError(t, err, "nova-sprint init: %s", out)
+	assert.False(t, strings.Contains(string(out), secret), "a verb's output holds no byte of the secret")
 
 	for _, c := range []struct {
 		name string
@@ -87,7 +84,7 @@ func TestARunningServerHoldsNoSecretInArgvOrEnv(t *testing.T) {
 				require.NoError(t, store.Del(ctx, keys...).Err(), "the last case's heartbeat cleared")
 			}
 			listen := "127.0.0.1:" + strings.TrimPrefix(testutil.FreePort(t), "127.0.0.1:")
-			cmd := exec.Command(bin, "run", "--listen", listen, "--land=false")
+			cmd := exec.Command(bin, "run", "--listen", listen, "--land=false", "--redis", addr)
 			cmd.Env, cmd.Dir = c.env, home
 			var logs bytes.Buffer
 			cmd.Stdout, cmd.Stderr = &logs, &logs
