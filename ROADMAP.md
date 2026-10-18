@@ -2370,7 +2370,7 @@ From: Survey of the nova tools by rowan-opus and rowan-fable, 2026-10-16, triage
 
 ### decide the pre-alpha banner of nova-work and nova-card
 
-Repository mas-bandwidth/nova-sprint. cmd/nova-work/main.go:49 and cmd/nova-card/main.go:33 print `... is pre-alpha: not ready for production use.` Both playbooks make `nova-work roadmap add` the standard way to record missing behaviour. Whether to drop the banner is Glenn's call, a stage decision rather than a text fix. Tools: nova-work, nova-card. Tests are unit tests: no real time, no sockets, no network.
+mas-bandwidth/nova-tools cmd/nova-work/main.go:49 and mas-bandwidth/nova-sprint cmd/nova-card/main.go:33 print `... is pre-alpha: not ready for production use.` Both playbooks make `nova-work roadmap add` the standard way to record missing behaviour. Whether to drop the banner is Glenn's call, a stage decision rather than a text fix. Tools: nova-work, nova-card. Tests are unit tests: no real time, no sockets, no network.
 
 Why it waits: A stage decision is Glenn's, and the banner contradicts the playbooks until he makes it.
 
