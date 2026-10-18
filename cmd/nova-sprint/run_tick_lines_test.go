@@ -65,26 +65,38 @@ func TestTheRunTickSaysItsLinesOffTheLineAndTheSprintLineOnChange(t *testing.T) 
 	require.NotNil(t, st, "run: %d", code)
 	out := &lineFreeWriter{a: w.a}
 	var errb bytes.Buffer
-	quiet := func(d time.Duration) { w.a.sleep(d) }
-	// tick 2 is woken by tick 1's own lines on the log and tick 5 by tick 4's (its deal);
-	// the world's steps are the other waits
-	w.world = []func(time.Duration){
-		quiet, // tick 3: nothing changed
-		func(time.Duration) { w.ok("add --stream b --count 2") }, // tick 4: the work table changed
-		quiet, // tick 6: nothing changed since tick 4's line (its deal included)
-		quiet, // tick 7
-		func(time.Duration) { w.a.sleep(sprintLineEvery) }, // tick 8: a minute on
-	}
+	// the world acts in the wait after a given tick, once, however many slices that
+	// wait is cut in (pace): after tick 3 an add (a line on the log: tick 4 is woken by
+	// it), after tick 6 a minute of the clock
 	var before []int // the sprint lines said before each tick began
+	acted := map[int]bool{}
+	w.m.LogWait = func(d time.Duration) {
+		k := len(before)
+		if acted[k] {
+			w.a.sleep(d)
+			return
+		}
+		switch k {
+		case 3:
+			acted[k] = true
+			w.ok("add --stream b --count 2")
+			return
+		case 6:
+			acted[k] = true
+			w.a.sleep(sprintLineEvery)
+			return
+		}
+		w.a.sleep(d)
+	}
 	w.a.ticked = func(int, time.Time, string) { before = append(before, len(out.sprintLines())) }
-	w.a.runLoop(context.Background(), st, 20, 8, out, &errb)
+	w.a.runLoop(context.Background(), st, 20, 7, out, &errb)
 	require.Empty(t, errb.String())
 	require.Empty(t, out.held, "every tick line was said off the line:\n%s", out.buf.String())
-	require.Len(t, before, 8, "eight ticks:\n%s", out.buf.String())
-	require.Empty(t, w.world, "every step of the world was taken")
-	// before tick k (1-based) began: the line is said on tick 1, on tick 4 (the add) and
-	// on tick 8 (a minute on), never on a quiet tick
-	require.Equal(t, []int{0, 1, 1, 1, 2, 2, 2, 2}, before, "lines said before each tick:\n%s", out.buf.String())
+	require.Len(t, before, 7, "seven ticks:\n%s", out.buf.String())
+	require.True(t, acted[3] && acted[6], "the world acted after ticks 3 and 6")
+	// before tick k (1-based) began: the line is said on tick 1, on tick 4 (the add's) and
+	// on tick 7 (a minute on), never on a quiet tick
+	require.Equal(t, []int{0, 1, 1, 1, 2, 2, 2}, before, "lines said before each tick:\n%s", out.buf.String())
 	require.Len(t, out.sprintLines(), 3, "and the last tick, a minute on, said it:\n%s", out.buf.String())
 	require.Contains(t, out.sprintLines()[0], "0/3")
 	require.Contains(t, out.sprintLines()[1], "0/5", "the line after the add says the new count")
