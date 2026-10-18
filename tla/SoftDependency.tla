@@ -213,12 +213,17 @@ GuardedPrefix(order, ahead) ==
 
 MarkOrder == IF Broken \in {"cutunguarded", "anyorder"} THEN cutOrder ELSE GuardedPrefix(cutOrder, {})
 
+CutBlockedAtMark ==
+    \E i \in 1..Len(cutOrder) : \E t \in soft[cutOrder[i]] :
+        col[t] = "queued" /\ ~(\E j \in 1..(i-1) : cutOrder[j] = t)
+
 \* MarkLanding is the final store step before push. It reuses LandOrderBlocked and
 \* pushes only the safe prefix. internal/sprint/landing_mark.go MarkLanding.
 MarkPush ==
     /\ cutOrder # <<>>
     /\ inFlightBatch = {}
     /\ MarkOrder # <<>>
+    /\ (Broken # "cutunguarded" \/ CutBlockedAtMark)
     /\ markedOrder' = MarkOrder
     /\ baseCommits' = baseCommits \o MarkOrder
     /\ inFlightBatch' = {MarkOrder[i] : i \in 1..Len(MarkOrder)}
