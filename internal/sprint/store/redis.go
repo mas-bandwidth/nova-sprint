@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"github.com/redis/go-redis/v9"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -1108,13 +1110,111 @@ func rangeSince[T any](ctx context.Context, c redis.UniversalClient, key, after 
 }
 
 func (r *Redis) NotesSince(ctx context.Context, after string, max int) ([]sprint.Note, []string, error) {
-	return rangeSince(ctx, r.C, r.key(keyInbox), after, max, func(v map[string]any) (sprint.Note, error) {
-		var n sprint.Note
-		if s, ok := v["note"].(string); ok && json.Unmarshal([]byte(s), &n) == nil {
-			return n, nil
-		}
-		return n, errors.New("no note")
+	key := r.key(keyInbox)
+	v, _ := notesCaches.LoadOrStore(notesCacheKey{r.C, key}, &notesCache{})
+	return v.(*notesCache).since(after, max, func(start string, n int) ([]redis.XMessage, error) {
+		return r.C.XRangeN(ctx, key, start, "+", int64(n)).Result()
 	})
+}
+
+// decodeNote is the inbox stream's entry as its note; an entry with no note is skipped.
+func decodeNote(v map[string]any) (sprint.Note, error) {
+	var n sprint.Note
+	if s, ok := v["note"].(string); ok && json.Unmarshal([]byte(s), &n) == nil {
+		return n, nil
+	}
+	return n, errors.New("no note")
+}
+
+// notesCache is the decoded inbox since the coordinator's cursor, kept between
+// NotesSince calls (one per stream key, notesCaches). The inbox stream is
+// appended to and never trimmed or rewritten, so an entry decodes the same for
+// ever: a call reads only the entries past the last one it has (one XRANGE from
+// there) instead of every note since the cursor. The fault of 2026-10-17: the
+// cursor sat 20 hours back and every Inbox read (the tick, the push loop, the
+// views, nine callers) decoded 10000 notes again, ~450 MB/s of garbage and
+// three cores on the server.
+type notesCache struct {
+	mu    sync.Mutex
+	after string        // the cursor the window begins after ("" is the stream's start)
+	tail  string        // the last stream id read into the window, decoded or not
+	ids   []string      // the window's entries that decoded, oldest first
+	notes []sprint.Note // their notes
+}
+
+// notesCacheKey names a cache: the client and the stream key, so two stores
+// with the same prefix on different servers (the tests' miniredis instances)
+// never read each other's window.
+type notesCacheKey struct {
+	client redis.UniversalClient
+	key    string
+}
+
+var notesCaches sync.Map // notesCacheKey -> *notesCache
+
+// since is NotesSince over the cache: the notes after the cursor, at most max,
+// and their ids. fetch reads the stream from start (exclusive when it begins
+// with "(", "-" for the whole stream) up to n entries, as XRANGE does.
+func (c *notesCache) since(after string, max int, fetch func(start string, n int) ([]redis.XMessage, error)) ([]sprint.Note, []string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if after != c.after {
+		switch {
+		case c.tail != "" && streamIDLess(c.after, after) && !streamIDLess(c.tail, after):
+			// the cursor moved forward inside the window: keep what is past it
+			i := 0
+			for i < len(c.ids) && !streamIDLess(after, c.ids[i]) {
+				i++
+			}
+			c.ids, c.notes = slices.Clone(c.ids[i:]), slices.Clone(c.notes[i:])
+		default:
+			c.ids, c.notes, c.tail = nil, nil, ""
+		}
+		c.after = after
+	}
+	for len(c.ids) < max {
+		start := "-"
+		if c.tail != "" {
+			start = "(" + c.tail
+		} else if c.after != "" {
+			start = "(" + c.after
+		}
+		want := max - len(c.ids)
+		msgs, err := fetch(start, want)
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, m := range msgs {
+			if n, err := decodeNote(m.Values); err == nil {
+				c.ids = append(c.ids, m.ID)
+				c.notes = append(c.notes, n)
+			}
+			c.tail = m.ID
+		}
+		if len(msgs) < want {
+			// a short answer is the stream's end
+			break
+		}
+	}
+	n := min(len(c.ids), max)
+	return slices.Clone(c.notes[:n]), slices.Clone(c.ids[:n]), nil
+}
+
+// streamIDLess orders two stream ids ("<ms>-<seq>"; "" is before every id).
+func streamIDLess(a, b string) bool {
+	if a == "" || b == "" {
+		return a == "" && b != ""
+	}
+	am, as, _ := strings.Cut(a, "-")
+	bm, bs, _ := strings.Cut(b, "-")
+	x, _ := strconv.ParseUint(am, 10, 64)
+	y, _ := strconv.ParseUint(bm, 10, 64)
+	if x != y {
+		return x < y
+	}
+	xs, _ := strconv.ParseUint(as, 10, 64)
+	ys, _ := strconv.ParseUint(bs, 10, 64)
+	return xs < ys
 }
 
 func (r *Redis) Tails(ctx context.Context) (string, string, error) {
