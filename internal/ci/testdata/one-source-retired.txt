@@ -6,4 +6,4 @@
 # (sprint-roadmap-and-sexp-from-nova-tools).
 internal/roadmapdoc	github.com/mas-bandwidth/nova-tools/pkg/roadmap
 internal/worklang	github.com/mas-bandwidth/nova-tools/pkg/sexp
-tools/roadmap	github.com/mas-bandwidth/nova-tools/tools/roadmap (go.mod tool directive; make roadmap runs it)
+tools/roadmap	github.com/mas-bandwidth/nova-tools/cmd/nova-roadmap (go.mod tool directive; make roadmap runs go tool nova-roadmap)

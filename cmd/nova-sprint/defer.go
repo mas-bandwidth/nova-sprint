@@ -143,11 +143,29 @@ func cardIDs(cards []*sprint.Card) []string {
 // writeRoadmap appends one item per card to the roadmap data, its text the
 // card's whole brief, refusing a card whose id the roadmap already holds. It
 // decodes the file before and after the append, so a write never corrupts the
-// data.
+// data. A feature-table roadmap (nova-roadmap help form) takes each card as an
+// open row of its Unsorted area instead (roadmap.AddDeferred), the brief kept on
+// the row's task.
 func writeRoadmap(path string, cards []*sprint.Card, date string) error {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", path, err)
+	}
+	if roadmap.IsFeatureForm(path, raw) {
+		items := make([]roadmap.Deferred, 0, len(cards))
+		for _, c := range cards {
+			brief := c.F("brief")
+			items = append(items, roadmap.Deferred{ID: c.ID, Title: sprint.StreamTitle(brief), Brief: brief, Date: date,
+				Origin: "card moved out of the sprint (work record, " + date + ")"})
+		}
+		next, err := roadmap.AddDeferred(path, raw, items)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(path, next, 0o644); err != nil {
+			return fmt.Errorf("writing %s: %w", path, err)
+		}
+		return nil
 	}
 	decoded, err := roadmap.Decode(path, raw)
 	if err != nil {
