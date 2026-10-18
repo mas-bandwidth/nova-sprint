@@ -192,8 +192,9 @@ each, sharing one cached copy of the sprint. It reads the sprint in-process the 
 `where --json --cards` does (through the sprint's server when `NOVA_SPRINT_SERVER` names
 one, else on the store `--redis` names; given none of them and no `--pull <url>`, it is
 refused on stderr at exit 2 before any listener opens), in one place, once per `--every`
-whether or not a page is open, so the copy is never older than a tick (the owner, 2026-10-04: "I need to
-be able to always trust the dashboard"; "Golang nova-tools and nova-sprint verbs only"):
+while someone is looking, so the copy a viewer sees is never older than a tick (the owner, 2026-10-04: "I need to
+be able to always trust the dashboard"; "Golang nova-tools and nova-sprint verbs only"; and
+2026-10-17, the dashboard updates every second while someone is looking):
 `/api/sprint` is that copy, with the build number and the throughput, and `/events`
 pushes each new copy as it is read (server-sent events); a request between two ticks is
 answered from the copy and reads nothing. The page is served by this verb from the
@@ -212,10 +213,22 @@ the reads' count, failures and read times. `--logo` names an image file
 served as the logo and the favicon; with none, the live page's robot tile (The page is the live page).
 `/healthz` answers `ok`.
 
-The reads have one poller: the verb makes the first read before any listener opens, then
-one each `--every` (back to back when a read takes longer than `--every`, never two at
-once), and while it polls a page, a pull route or a stream reads the copy and never the
-sprint, however many are open. A failed read sets `ok` false and `error` to a short
+The reads have one poller: the verb makes the first read before any listener opens, then,
+while someone is looking, one each `--every` (back to back when a read takes longer than
+`--every`, never two at once), and while it polls a page, a pull route or a stream reads the
+copy and never the sprint, however many are open. Someone is looking while a request on the
+page's or the pull routes' listeners (any but `/healthz`) was seen in the last 30 s, as it
+began or as it ended, or an `/events` stream is open; at the first tick with no one looking
+the poller stops and nothing is read (`nova-sprint dashboard`, dashViewers). The first
+request after reads the sprint, or waits for the read the returning viewer's arrival began,
+and is answered from that read, never from the copy left from before; the poller then runs
+again. While it is stopped, `/healthz` reads the sprint (at most once a `--every`) and checks
+the freshness itself, so it answers the truth whether or not anyone is looking. The
+throughput `/api/sprint` carries keeps, after a gap in the reads longer than its hour, the
+newest sample before the gap as its base until the hour's own samples span ten minutes: the
+rate is then over the gap, and `throughputMinutes` says how long. The live page's own
+throughput tile is under the page lock and unchanged: after a gap longer than an hour it is
+empty for its first ten minutes of looking. A failed read sets `ok` false and `error` to a short
 reason (`where exited <n>`, `the upstream dashboard did not answer`, `where JSON has no tables`); what the read itself printed goes to the dashboard's output only, never to the
 page. A read still running after a minute is marked failed (`the read timed out after 1m0s`) and the next read waits for it to end. `/api/sprint` also carries `attemptAt` and
 `readSeconds`, the last read's end and length, good or not, and `minInterval`, the
@@ -235,7 +248,8 @@ the pull routes' `/api/sprint` carries `"stale": true` (the page's carries the l
 
 The public copy is the same verb as a puller: `nova-sprint dashboard --pull <url>`, the
 `http://` or `https://` URL of another dashboard (its `/api/sprint`, or the base it is
-under), reads that dashboard's copy once per `--every` in place of the sprint and serves
+under), reads that dashboard's copy once per `--every` while someone looks at it (an idle
+public copy reads nothing upstream) in place of the sprint and serves
 the page alone (no pull routes). It serves the copy as the upstream serves it (its data,
 its read time and its throughput), so the two pages agree; an upstream holding a failed
 read is a failed read here too, and the puller's freshness check is on the upstream's

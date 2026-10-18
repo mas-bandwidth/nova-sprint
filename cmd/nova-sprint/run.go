@@ -964,6 +964,7 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 	var walls []time.Duration
 	var lift time.Duration
 	wedged := 0
+	var lined sprintLineMemo // the last sprint line said (sprintLineMemo.next)
 	for i := 0; (n == 0 || i < n) && ctx.Err() == nil; i++ {
 		if now := a.binaryStamp(); began0 != "" && now != began0 {
 			fmt.Fprintf(stdout, "RUN STOP the binary this loop runs was replaced on disk since it began (%s, now %s): exiting so its supervisor starts the new one; a loop that is not supervised: run nova-sprint run again\n", began0, orDashStr(now, "unreadable"))
@@ -1055,6 +1056,10 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 			fmt.Fprintf(stdout, "%s machine %s\n", a.now().Format("15:04:05"), res.State)
 			was = res.State
 		}
+		// the tick's lines are said off the server's line: they need nothing it guards, and
+		// the sprint line reads the store (2026-10-17: up to ten ticks a second each held the
+		// line for its lines' seven round trips)
+		a.serial.Unlock()
 		if err != nil || res.State == store.Running || len(res.Parts) > 0 || len(res.Repaired) > 0 || res.Stale != "" || res.Halted != "" {
 			fmt.Fprintf(stdout, "%s tick\n", a.now().Format("15:04:05"))
 			a.printTick(res, err, max, stdout, stderr)
@@ -1063,11 +1068,12 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 				// whole-table reads and records read (store/stats.go)
 				fmt.Fprintf(stdout, "%s deadline=%s\n", res.TimesLine(), deadline)
 			}
-			if line := sprintLine(ctx, st); line != "" {
+			// made again only when the work table or the machine changed, or once a
+			// minute (sprintLineMemo)
+			if line := lined.next(ctx, st, res.State, a.now()); line != "" {
 				fmt.Fprintln(stdout, line)
 			}
 		}
-		a.serial.Unlock()
 		if err == nil {
 			// the seat not answering goes to the owner on the bus, as well as to the seat's
 			// hook, at its raise and at each raise again (seat_silent.go)

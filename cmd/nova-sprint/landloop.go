@@ -25,8 +25,25 @@ import (
 // line of control (cmdLand, a.serial), its git runs outside it, and nothing else writes
 // the merge queue between them but the server itself.
 
-// LandEvery is how often the loop looks for cards queued to merge.
+// LandEvery is how often the loop looks for cards queued to merge while a landing is in
+// flight or a refusal stands, and the least time between two looks.
 const LandEvery = 2 * time.Second
+
+// LandIdleEvery is the idle loop's backstop: with nothing queued, in flight or refused, the
+// loop waits on the sprint's log (a card queued to merge is a table move, and every move is
+// a line on it) and looks again when a line comes, or at the latest this long after its last
+// look. On 2026-10-17 the loop looked every LandEvery whatever was queued: each look took the
+// server's line for the merge queue's read, ~43,200 a day with nothing queued, and wrote
+// LAND IDLE queued=0 (422 of 1,647 log lines in 15 minutes).
+const LandIdleEvery = 30 * time.Second
+
+// landIdleLook bounds one wait on the log: the idle loop's wait is cut in slices this long,
+// never one long block on the store.
+const landIdleLook = 5 * time.Second
+
+// landIdleSaid is how often LAND IDLE queued=0 is said while nothing changes: once when
+// the loop goes idle, then once a minute.
+const landIdleSaid = time.Minute
 
 // LandDeadline is how long a landing may run before the loop raises one judgment
 // naming the stage it is in. In a pass each batch's gate is also abandoned at
@@ -49,33 +66,109 @@ const landLaneWho = "lander"
 // landLaneBase is the holder the base re-check's gate records on a bench's Go lane.
 const landLaneBase = landLaneWho + "/base"
 
-// landLoop runs one land cycle every LandEvery until ctx ends. Each cycle writes
-// one line: LAND OK, LAND REFUSED, or LAND IDLE. A landing runs beside the loop,
+// landLoop runs one land cycle every LandEvery until ctx ends, and, while nothing is
+// queued, in flight or refused, one each time a line comes on the sprint's log (or the
+// epoch moves), at most every LandEvery and at least every LandIdleEvery (landWait). Each cycle writes one line:
+// LAND OK, LAND REFUSED, or LAND IDLE (queued=0 only as the loop goes idle and once a
+// minute). A landing runs beside the loop,
 // so a long gate still leaves a line. A refusal is a state, not an event: while one
 // stands every cycle writes LAND REFUSED naming its reason and its remedy, and its
 // first cycle raises one judgment at once (landRefusal; tla/ServerSwitch.tla
 // LandRefused, LandOk).
 func (a *app) landLoop(ctx context.Context, addr string, stdout io.Writer) {
-	fmt.Fprintf(stdout, "LANDING every %s: land runs here for every stream with cards queued to merge, one landing at a time\n", LandEvery)
+	fmt.Fprintf(stdout, "LANDING every %s while cards are queued, landing or refused, else on each line of the sprint's log and at least every %s: land runs here for every stream with cards queued to merge, one landing at a time\n", LandEvery, LandIdleEvery)
 	var flight *landFlight
+	cursor := ""        // the idle wait's place on the log (landWait)
+	var logEpoch uint64 // the epoch whose log cursor is a place on
 	for ctx.Err() == nil {
+		began := a.now()
 		flight = a.landCycle(ctx, addr, stdout, flight)
 		if ctx.Err() != nil {
 			break
+		}
+		if flight == nil && a.landQuiet() {
+			cursor, logEpoch = a.landWait(ctx, addr, cursor, logEpoch, began)
+			continue
 		}
 		a.landPause(ctx)
 	}
 }
 
+// landQuiet says the last cycle read the merge queue and found nothing queued, and no
+// refusal stands and no close of one is owed: the loop then waits on the log (landWait).
+// A landing in flight, a standing refusal, an owed close and an unreadable queue keep the
+// LandEvery beat: each is said, retried or watched every beat.
+func (a *app) landQuiet() bool {
+	b := a.landState()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.quiet && b.refusal == nil && !b.closing
+}
+
+// landWait is the idle loop's wait: it blocks on the sprint's log from cursor, in slices
+// of landIdleLook, until a line after it comes or LandIdleEvery has passed (by its slices),
+// then waits out what is left of LandEvery since the cycle began, so a busy log is looked
+// at no more often than before. It holds nothing while it waits, never the server's line.
+// It returns the cursor for the next wait and the epoch whose log it is a place on: every
+// line up to it was committed before the wait returned, so before the next look reads the
+// queue, and a line after it wakes the next wait at once. The first wait ("" is before
+// every line) wakes at once. The wait is on the log of the epoch it began in, from cursor
+// only when cursor is of that epoch (a cursor of another epoch's log says nothing of this
+// one: the wait starts from ""); after each slice the epoch is read again, and a new one
+// (a clear) ends the wait, so a line on the new epoch's log is looked at within a slice,
+// never the backstop (cold read of PR 490). A store that cannot
+// be opened or waited on falls back to the LandEvery pause. The wait ends within one
+// store.LogWaitBlock of ctx's end, inside LandStopBound: the store's blocked read in
+// flight is not cut short by a cancel (go-redis keeps to a context's deadline, not its
+// cancellation), and the wait asks for no further one after ctx ends.
+func (a *app) landWait(ctx context.Context, addr, cursor string, logEpoch uint64, began time.Time) (string, uint64) {
+	st, err := a.storeCtx(ctx, common{verb: "where", redis: addr})
+	if err != nil {
+		a.landPause(ctx)
+		return cursor, logEpoch
+	}
+	epoch := st.PinnedEpoch()
+	if epoch != logEpoch {
+		cursor = "" // a place on another epoch's log
+	}
+	for range int(LandIdleEvery / landIdleLook) {
+		if ctx.Err() != nil {
+			return cursor, epoch
+		}
+		tail, woke, err := st.WaitLog(ctx, epoch, cursor, landIdleLook)
+		if err != nil {
+			if ctx.Err() == nil {
+				a.landPause(ctx)
+			}
+			return cursor, epoch
+		}
+		cursor = tail
+		if woke {
+			break
+		}
+		if es, err := st.EpochNow(ctx); err == nil && es.N != epoch {
+			break // a clear: the next wait is on the new epoch's log
+		}
+	}
+	if left := LandEvery - a.now().Sub(began); left > 0 && ctx.Err() == nil {
+		a.landSleep(ctx, left)
+	}
+	return cursor, epoch
+}
+
 // landPause waits LandEvery between land cycles on the app's own sleep, and returns at
-// once when ctx ends: a returning run stops an idle land loop immediately instead of
-// waiting out its LandStopBound (start-refuses-a-non-working-setting, cold read 1).
-// The sleep runs in its own goroutine, which ends when the sleep does.
-func (a *app) landPause(ctx context.Context) {
+// once when ctx ends: a returning run stops a land loop between cycles immediately instead
+// of waiting out its LandStopBound (start-refuses-a-non-working-setting, cold read 1); a
+// loop in its idle wait on the log stops within one store.LogWaitBlock (landWait).
+func (a *app) landPause(ctx context.Context) { a.landSleep(ctx, LandEvery) }
+
+// landSleep waits d on the app's own sleep, and returns at once when ctx ends. The sleep
+// runs in its own goroutine, which ends when the sleep does.
+func (a *app) landSleep(ctx context.Context, d time.Duration) {
 	slept := make(chan struct{})
 	go func() {
 		defer close(slept)
-		a.sleep(LandEvery)
+		a.sleep(d)
 	}()
 	select {
 	case <-ctx.Done():
@@ -196,11 +289,17 @@ func (a *app) queuedToMerge(ctx context.Context, addr string) (queued bool, coor
 }
 
 // mergeQueued counts the cards queued to merge, and names the coordinator and the
-// first stream that has one. err when the sprint could not be read.
+// first stream that has one. err when the sprint could not be read. The merge table's
+// row counts are read first (one exchange): when every queued cell is read and empty,
+// nothing is queued and neither the coordinator nor the table's cards are read (the
+// coordinator is "": nothing is landed); else the table is loaded and counted as before.
 func (a *app) mergeQueued(ctx context.Context, addr string) (n int, coordinator, stream string, err error) {
 	st, err := a.storeCtx(ctx, common{verb: "where", redis: addr})
 	if err != nil {
 		return 0, "", "", err
+	}
+	if mergeNoneQueued(ctx, st) {
+		return 0, "", "", nil
 	}
 	if coordinator, err = st.B.Coordinator(ctx); err != nil {
 		return 0, "", "", err
@@ -220,6 +319,27 @@ func (a *app) mergeQueued(ctx context.Context, addr string) (n int, coordinator,
 		}
 	}
 	return n, coordinator, stream, nil
+}
+
+// mergeNoneQueued says the merge table's shape, read in one exchange, has every row's
+// queued cell read and empty. Any doubt (a read that fails, a cell not read, no queued
+// column) is false, and the caller loads the table.
+func mergeNoneQueued(ctx context.Context, st *store.Store) bool {
+	shapes, err := st.B.Shapes(ctx, []string{st.Names.Table(sprint.Merge)})
+	if err != nil || len(shapes) != 1 {
+		return false
+	}
+	t := shapes[0]
+	j := t.Column(sprint.Queued)
+	if j < 0 {
+		return false
+	}
+	for _, r := range t.Rows {
+		if j >= len(r.Cells) || r.Cells[j].Unread || r.Cells[j].Count != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // landRefusal is the lander's standing refusal (tla/ServerSwitch.tla refusal and
@@ -660,6 +780,10 @@ type landBeat struct {
 	// for a Go lane again receives it. The loop's own clock is the wait; the
 	// ask adds none.
 	pulse chan struct{}
+	// quiet says the last cycle read an empty merge queue (landQuiet); idleAt is when it
+	// last said LAND IDLE queued=0, zero once a cycle has said anything else.
+	quiet  bool
+	idleAt time.Time
 }
 
 // landState is the loop's memory, made once.
@@ -735,9 +859,17 @@ func (a *app) machineName() string {
 
 // landCycle is one beat of the loop. A landing still running writes LAND IDLE.
 // A landing that finished writes the lines land kept (LAND OK or LAND REFUSED),
-// not also an IDLE line. Nothing queued writes LAND IDLE queued=0.
+// not also an IDLE line. Nothing queued writes LAND IDLE queued=0 on the first such
+// cycle and once a landIdleSaid after, while nothing else is said between.
 func (a *app) landCycle(ctx context.Context, addr string, stdout io.Writer, flight *landFlight) *landFlight {
 	a.landPulse()
+	// the cycle's own memory: quiet until it reads an empty queue, and when it last said
+	// LAND IDLE queued=0, kept only by a cycle that says it or passes it over
+	b := a.landState()
+	b.mu.Lock()
+	idleAt := b.idleAt
+	b.quiet, b.idleAt = false, time.Time{}
+	b.mu.Unlock()
 	if flight != nil {
 		flight.mu.Lock()
 		done, idle := flight.done, flight.idle
@@ -771,15 +903,24 @@ func (a *app) landCycle(ctx context.Context, addr string, stdout io.Writer, flig
 		// with cards queued or none (tla/ServerSwitch.tla NoRun, BeatNamesTheRefusal)
 		if r := a.standingRefusal(); r != nil {
 			a.writeRefused(stdout, strconv.Itoa(n), r)
-		} else {
+		} else if n > 0 {
 			a.writeIdle(stdout, n, "-", 0, "no-coordinator")
+		} else {
+			// nothing queued is said when the loop goes idle and once a minute while it
+			// stays so, never every look
+			if now := a.now(); idleAt.IsZero() || now.Sub(idleAt) >= landIdleSaid || now.Before(idleAt) {
+				a.writeIdle(stdout, 0, "-", 0, "")
+				idleAt = now
+			}
+			b.mu.Lock()
+			b.quiet, b.idleAt = true, idleAt
+			b.mu.Unlock()
 		}
 		a.judgeRefusal(ctx, addr, stdout) // a cleared queue cause's judgment is closed
 		a.landAfter(ctx, n == 0, stdout)
 		return nil
 	}
 	f := &landFlight{queued: n, step: "land", proc: "nova-sprint land", stream: stream, coord: coord, began: a.now()}
-	b := a.landState()
 	b.mu.Lock()
 	b.flight = f
 	more := append([]string(nil), b.landMore...)

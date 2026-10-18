@@ -478,11 +478,15 @@ func TestAnUnreadableQueueIsOneFailureByTheMachine(t *testing.T) {
 		assert.Empty(t, r.judgments(), "no refusal judgment")
 	}
 	assert.Len(t, r.allJudgmentsOf(sprint.NLanderFails), 1)
-	for range 4 {
-		_, _ = r.beat(nil)
-	}
+	// the first read of the queue (the next beat: each failed beat read it twice) says it
+	// idle; LAND IDLE queued=0 is said as the loop goes idle, then once a minute
+	// (landIdleSaid), and no beat after it names the failure
 	out, _ := r.beat(nil)
 	assert.Contains(t, out, "LAND IDLE queued=0", "the queue is read: the failure is gone:\n%s", out)
+	for range 4 {
+		out, _ := r.beat(nil)
+		assert.NotContains(t, out, "LAND FAILED", "the failure is gone:\n%s", out)
+	}
 	assert.Empty(t, r.judgmentsOf(sprint.NLanderFails), "its judgment is closed")
 }
 
