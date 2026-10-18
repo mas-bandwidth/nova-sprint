@@ -294,7 +294,8 @@ func holdCauseClear(s *Snapshot, r TickReq, p *Plan) {
 		n := happened(NHoldReleased, "", s.Now)
 		n.Who, n.To = r.who(), s.Coordinator
 		n.What = fmt.Sprintf("%s released: cause %s resolved (%s); it is %s", m, cause, how, state)
-		u := Unit{Key: CtlID(m), Changes: []Change{change(Fleet, setEntry(ctl, set, holdFields...))},
+		// the release unsets the hold and a fleet down return mark (FieldHeldReturn, hold.go)
+		u := Unit{Key: CtlID(m), Changes: []Change{change(Fleet, setEntry(ctl, set, append(holdFields[:len(holdFields):len(holdFields)], FieldHeldReturn)...))},
 			Notes: []Note{n}, Moved: fmt.Sprintf("%s released: cause %s resolved", m, cause)}
 		if cause == CauseIdleReap {
 			for _, o := range s.Open {
