@@ -91,6 +91,7 @@ var Defaults = []Default{
 	{Name: PropFriendStartMax, Home: HomeProp, Value: FriendStartMaxDefault.String(), Why: "a friend's card unstarted this long is levelled"},
 	{Name: PropPeggedBound, Home: HomeProp, Value: PeggedBoundDefault.String(), Why: "a member pegged with no card this long is a judgment"},
 	{Name: PropLandingStallBound, Home: HomeProp, Value: LandingStallBound.String(), Why: "the owner's stall watch: one minute"},
+	{Name: PropSeatSilentTo, Home: HomeProp, Value: ReadTierDefault, Why: "no standby seat hears seat-silent alarms until the coordinator sets one"},
 	{Name: PropDriftCommits, Home: HomeProp, Value: strconv.Itoa(DriftCommitsDefault), Why: "the base may be this many commits ahead of dev"},
 	{Name: PropDriftHours, Home: HomeProp, Value: strconv.Itoa(DriftHoursDefault), Why: "the base's oldest commit not on dev may be this old"},
 	{Name: PropLowBalanceUsd, Home: HomeProp, Value: strconv.FormatFloat(LowBalanceUsdDefault, 'f', -1, 64), Why: "a provider below five dollars is low"},
