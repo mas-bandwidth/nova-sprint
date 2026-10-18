@@ -6,9 +6,11 @@
 //
 // The server is a function of its requests and its clock: Read is how it reads the
 // sprint and Now is its clock, so a test drives it with no socket and no real time.
-// The server reads the sprint once per Every whoever is looking (Run, on a ticker the
-// caller hands it: one poller, its reads back to back with Every as their floor), and
-// while Run polls a request only ever answers from the copy. A read that fails holds the
+// The server reads the sprint once per Every while Run polls (Run, on a ticker the
+// caller hands it: one poller, its reads back to back with Every as their floor; nova-sprint
+// dashboard runs it only while someone is looking), and while Run polls a request only ever
+// answers from the copy; while it does not, a request reads (Refresh, joining a read in
+// flight) and /healthz checks the freshness itself. A read that fails holds the
 // last good copy, marked ok false with a short reason (never the reader's own error
 // text, which goes to Log only), and a read that runs past ReadTimeout is marked so.
 // One freshness check (fresh.go) raises an alarm when the served data stays old; a

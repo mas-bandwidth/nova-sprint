@@ -1261,7 +1261,7 @@ and a `: keepalive` comment goes every 15 s. The page and any client prefer `/ev
 a second on a fixed timer, never after an answer. A friend pulls her view as
 docs/FRIENDS.md says.
 
-The dashboard decouples the 1 s page tick from slow background reads (the owner, 2026-10-13 ~13:50 ET: "Once again the dashboard does not seem to be keeping up. It is supposed to regularly update at 1s ... it appears to be hitching. please investigate and get a friend to fix for the next point release." and "maybe gzip it on upload?"): the server ticks the page at 1 s from its cache every second regardless of how long the current background read takes; at most one read runs at a time in the background, and a read exceeding 1 s is logged (`slow read: took %.3fs: %s`). The served page's `dataAgeSeconds` increases with elapsed time since the read was fetched (the page clock turns amber at 2 s, red at 5 s). Responses on both `--listen` and `--pull` listeners gzip-compress responses when requested with `Accept-Encoding: gzip` (`/`, `/app.js`, `/api/sprint`, and pull routes), setting `Content-Encoding: gzip` and `Vary: Accept-Encoding`. To eliminate multi-process jq folds, `where --json --dashboard` folds `stream_costs` into `tables.work`, reader rows into `tables.fleet` (`reads_working` and `working`), sentinel-free x/y and ETA in `summary`, and drops archived streams without loading card rows; `--dashboard` requires `--json`.
+The dashboard decouples the 1 s page tick from slow background reads (the owner, 2026-10-13 ~13:50 ET: "Once again the dashboard does not seem to be keeping up. It is supposed to regularly update at 1s ... it appears to be hitching. please investigate and get a friend to fix for the next point release." and "maybe gzip it on upload?"): the server ticks the page at 1 s from its cache every second while someone is looking (a request on its listeners in the last 30 s, or an open stream; none while no one is: the owner, 2026-10-17) regardless of how long the current background read takes; at most one read runs at a time in the background, and a read exceeding 1 s is logged (`slow read: took %.3fs: %s`). The served page's `dataAgeSeconds` increases with elapsed time since the read was fetched (the page clock turns amber at 2 s, red at 5 s). Responses on both `--listen` and `--pull` listeners gzip-compress responses when requested with `Accept-Encoding: gzip` (`/`, `/app.js`, `/api/sprint`, and pull routes), setting `Content-Encoding: gzip` and `Vary: Accept-Encoding`. To eliminate multi-process jq folds, `where --json --dashboard` folds `stream_costs` into `tables.work`, reader rows into `tables.fleet` (`reads_working` and `working`), sentinel-free x/y and ETA in `summary`, and drops archived streams without loading card rows; `--dashboard` requires `--json`.
 
 Each table keeps its member records under a prefix of its own, so a primary's
 record in work and its record in merge are separate. The tables are named
@@ -4243,7 +4243,9 @@ reads close as `read --ok|--broken` closes them, and it leaves review only by th
   `store.ServerRestartStep`, `tla/ServerLanes.tla` Restart, `LiveLeaseNeverTakenBack`,
   `EveryLapsedReadTakenBack`). A read asked of a reader is held by a lease: started by
   `read --begin` (`begun` + `DefaultReadLease`, 10 minutes), and renewed by the reader's beat
-  (`queue --as <reader>`, setting `lease` to the current time + `DefaultReadLease`).
+  (`queue --as <reader>`, setting `lease` to the current time + `DefaultReadLease` once 7.5
+  minutes or less of it is left, `sprint.ReadLeaseRenewAt`: a poll with more left writes
+  nothing, so a reading card is written at most once every 2.5 minutes, not once a poll).
   On server start, `store.ServerRestartStep()` is run once before the first tick in `run` and
   in `listen` (`run --listen`), both through `serverStart`, so in-flight reads with live
   leases survive a server restart while lapsed reads are retired and re-asked.
@@ -5615,12 +5617,12 @@ The mechanisms: a **blocking read** waits in the store until the thing arrives (
 | lane take wait | sprint to the AI asking for a lane | timer poll | the take asked every LaneAskEvery (5 s) | card lane-grant-is-a-bus-message |
 | friend sync | the friends table to this machine's friend daemons | timer poll | --every (the unit's) | card friend-sync-on-row-change |
 | sprint server tick | the store's log to the sprint server | blocking read | WaitLog on the log until a line comes, at most one tick per TickEvery (1 s); a failed tick backs off | - |
-| land loop | the merge queue to the lander | timer poll | LandEvery (2 s) | card land-loop-wakes-on-the-queue-note |
+| land loop | the merge queue to the lander | blocking read when idle | LandEvery (2 s) while cards are queued, landing or refused; else WaitLog on the log, in 5 s slices re-reading the epoch, at least every LandIdleEvery (30 s), no sooner than LandEvery | - |
 | decide loop | sprint to nova-decide's lane | timer poll | DecideEvery (5 s) | card decide-loop-wakes-on-the-tick-end |
 | provider balance | each provider's balance API to the sprint | timer poll | BalancePollEvery (10 min) | measured: the providers' balance endpoints offer no push, and one read per ten minutes is what the rests are judged on |
 | system gc | the sprint server to every machine's scratch (nova-sprint gc, here and through the fleet runner) | timer poll | what is due read every gcLoopEvery (1 min): each machine once an hour (GCEvery), its volume read every GCProbeEvery (5 min), a volume at 80% at most once every GCVolumeRetry (10 min) | measured: a volume's use and a scratch directory's age have no event to push; the hourly pass and the 80% alarm are the rule (section 1, gc) |
 | promote | the sprint's landed count to a promotion | timer poll | --every (1 h) | a promotion is a schedule, not an event a party waits on |
-| dashboard pull | sprint to the Television and the dashboard page | timer poll | one read per --every (1 s) whoever is looking, pushed on to each page as server-sent events; a keepalive every 15 s | a display pull: one read serves every viewer, and the page itself is pushed to |
+| dashboard pull | sprint to the Television and the dashboard page | timer poll | one read per --every (1 s) while someone is looking (a request in the last 30 s, or an open stream), none while no one is, pushed on to each page as server-sent events; a keepalive every 15 s | a display pull: one read serves every viewer, and the page itself is pushed to |
 | table and where displays | sprint to a terminal (nova-table watch, where --watch) | timer poll | --every (1 s) | a display pull: a person's terminal, no party waits on it |
 | samplers and watchdogs | one machine to itself (host load, a card's live sample, the slot cleaner, the wall's process count, a job lease's heartbeat, the idle watch, the store round trip) | not a channel | 1 s to 30 s each | a measurement or a lease of one machine; no message or card moves |
 | waits and retries | one machine to itself (a process gone, a lock, a file steady, a server up, a push or open retried, a tick given up stopping) | not a channel | bounded by its caller | a wait on the machine's own state, or a backoff; no message or card moves |
@@ -8674,9 +8676,13 @@ wrong shape is a 400 and nothing is run; a name that is no fleet member and no f
 a store that did not answer is a 503; any other method is a 405; each with the verb's line. The
 access control is the fleet's private network, as for the workers' queue.
 
-With `run --land` the server lands what the readers passed, itself: every two seconds, when a
-stream has cards queued to merge, it runs `land` for them as the sprint's coordinator, one
-landing at a time, in its own process. Land's reads and its report take the server's line of
+With `run --land` the server lands what the readers passed, itself: every two seconds while a
+stream has cards queued to merge, a landing runs or a refusal stands, and otherwise on each
+line of the sprint's log (a card queued to merge is a table move, a line there; the epoch is
+read again every 5 s) and at least every 30 s, it looks at the merge queue (its row counts
+first, the cards only when one is queued) and runs `land` for them as the sprint's
+coordinator, one landing at a time, in its own process. The idle wait holds nothing and
+stops within one store.LogWaitBlock (4 s) of the server's stop. Land's reads and its report take the server's line of
 control like any other step; its git (the fetch, the merges, the check, the push) runs outside
 it, so a tick or a worker's batch never waits on a push. A `land` run by itself beside a
 server is a second writer of the merge queue, and is what `--land` replaces. A round prints
@@ -8768,7 +8774,8 @@ in flight (the step names what it waits on), `why=no-coordinator` when cards are
 the sprint has no coordinator (nothing ran, so a standing cause is not cleared by it), and
 `why=nothing-landable` when a landing finished saying
 nothing (every queued stream stopped, say). `LAND IDLE queued=0 step=- since=0s` (no `why`)
-is a queue with nothing in it. A landing that finishes before its first cycle is reported
+is a queue with nothing in it, said when the loop goes idle and then once a minute, not every
+cycle. A landing that finishes before its first cycle is reported
 on that cycle. A cycle with
 cards queued whose landing has not finished within 10 minutes (`LandDeadline`)
 raises one judgment, `an operation was stuck`, naming the stage and the process

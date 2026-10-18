@@ -14,8 +14,9 @@ import (
 
 // The live read and its freshness (the owner, 2026-10-04: "I need to be able to always
 // trust the dashboard"; "Golang nova-tools and nova-sprint verbs only"): the dashboard
-// reads the sprint once a tick whether or not anyone is looking, in one place, and one
-// check says when what it serves has gone old. A puller (Upstream) is the same server
+// reads the sprint once a tick while its poller runs (nova-sprint dashboard runs it while
+// someone is looking: the owner, 2026-10-17), in one place, and one check says when what it
+// serves has gone old (each tick, and each /healthz while no poller runs). A puller (Upstream) is the same server
 // reading another dashboard's copy in place of the sprint, so the public page is the
 // private page, a copy behind it.
 

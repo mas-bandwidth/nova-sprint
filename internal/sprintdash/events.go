@@ -20,8 +20,8 @@ const KeepaliveDefault = 15 * time.Second
 // the last read began reads, so the stream's cadence is the ticker's, never two of them.
 const tickSlack = 10
 
-// Run reads the sprint on each tick, whoever is looking, so the copy is never older than
-// a tick and each new one is pushed to the /events clients as it is read, then checks the
+// Run reads the sprint on each tick, whoever of the viewers is looking (nova-sprint
+// dashboard runs it only while one is), so the copy is never older than a tick and each new one is pushed to the /events clients as it is read, then checks the
 // copy's freshness (Tick); it returns when ctx is done. While it runs it is the one
 // reader: a request (Refresh) answers from the copy and never reads. tick is the clock's ticker
 // (time.Ticker's channel, every Every); a test hands it a channel of its own.
