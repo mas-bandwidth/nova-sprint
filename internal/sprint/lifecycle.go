@@ -375,7 +375,7 @@ func namedNeedsOpen(id string, pre *Snapshot) bool {
 // moves the primary from ready to working, or leaves it in place (the rework
 // with no fleet member up, which waits ready for the tick's deal), unsets every
 // one of the five hold fields the primary carries, setting none of them, and
-// records the release (released and release_reason).
+// records the release (released, released_by and release_reason).
 // Such an entry passes the hold guard whole: the rework answers the hold and
 // writes the next attempt (attempt, tier, head) with it, as the release does
 // (tla/SprintTables.tla ReworkHeldInPlace beside DecisionReleaseStep; reversed
@@ -389,6 +389,11 @@ func reworkAnswersHold(e ntable.BatchMemberEntry, from string, held *Card, p *Pl
 		return false
 	}
 	if e.Move != nil && e.Move.Col != Working || e.Set["released"] == "" || e.Set["release_reason"] == "" {
+		return false
+	}
+	// the release record names who released, as the live rework always writes it:
+	// the key must be there, its value may be empty (a rework with no Who)
+	if _, ok := e.Set["released_by"]; !ok {
 		return false
 	}
 	for _, field := range []string{FieldHeld, "held_by", "held_reason", "held_judgment", "decision_held_from"} {

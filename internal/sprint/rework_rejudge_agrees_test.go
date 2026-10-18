@@ -120,6 +120,21 @@ func TestAReworkAndItsRepairAgreeOnAServerDefaultHold(t *testing.T) {
 		refused = Rejudge(w.s, "rework", []Change{c})
 		require.Len(t, refused, 1, "a rework entry that clears the hold and records no release is refused")
 		assert.Equal(t, "release the server-default hold before moving its primary", refused[0].Why)
+		// and one that clears the hold with no released_by key: the live rework always
+		// writes the key (its value may be empty), so a repair that omits it is wider
+		e = changes[0].Entry
+		e.Set = maps.Clone(e.Set)
+		require.Contains(t, e.Set, "released_by", "the fixture: the live rework writes released_by")
+		delete(e.Set, "released_by")
+		c.Entry = e
+		refused = Rejudge(w.s, "rework", []Change{c})
+		require.Len(t, refused, 1, "a rework entry that clears the hold and omits released_by is refused")
+		assert.Equal(t, "release the server-default hold before moving its primary", refused[0].Why)
+		// the key with an empty value (a rework with no Who) is the live entry's shape, admitted
+		e.Set = maps.Clone(changes[0].Entry.Set)
+		e.Set["released_by"] = ""
+		c.Entry = e
+		assert.Empty(t, Rejudge(w.s, "rework", []Change{c}), "a released_by key with an empty value is admitted")
 	})
 	t.Run("the live rework's plan runs the guard", func(t *testing.T) {
 		t.Parallel()
