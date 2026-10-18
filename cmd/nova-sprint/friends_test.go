@@ -451,8 +451,8 @@ func TestAFriendBeatsThroughTheServer(t *testing.T) {
 
 // A friend's beat answers her row as friend sync last wrote it, her delivery
 // mode and her width, so her daemon reads her nova-config row from its beat
-// without reaching the config store; a row with no mode is batch, and a sync
-// after the row changes is what the next beat says.
+// without reaching the config store; a row with no mode is one-shot (nova-tools
+// retired batch, a16e5825b), and a sync after the row changes is what the next beat says.
 func TestAFriendsBeatAnswersHerRowsModeAndWidth(t *testing.T) {
 	t.Parallel()
 	r := newServerRig(t, "nova-sprint init --readers reader-a,reader-b --members m1:2")
@@ -468,7 +468,7 @@ func TestAFriendsBeatAnswersHerRowsModeAndWidth(t *testing.T) {
 	r.boss("nova-sprint friend sync --root " + root)
 	res := r.one("friend", "beat", "amy")
 	require.Equal(t, 0, res.Code, res.Stderr)
-	assert.Contains(t, res.Stdout, " row_mode=batch row_width=8")
+	assert.Contains(t, res.Stdout, " row_mode=one-shot row_width=8")
 	assert.Contains(t, res.Stdout, " row_token_cap=6000000")
 	mode, width = "one-shot", "1"
 	r.boss("nova-sprint friend sync --root " + root)

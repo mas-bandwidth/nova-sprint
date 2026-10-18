@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-tools/pkg/bus"
 	"github.com/mas-bandwidth/nova-tools/pkg/bus/bustest"
 	"github.com/mas-bandwidth/nova-tools/pkg/config"
@@ -52,10 +53,10 @@ func TestSeatReadsHolderEpochAndGeneration(t *testing.T) {
 	assert.Equal(t, seatJSON{Holder: "rowan", Epoch: 1, Generation: 2}, ta.seatState(), "a clear moves the epoch, never the seat's generation")
 }
 
-// friend health by the holder at the seat's generation writes the observation; the
-// table shows her up at once and down ten seconds later; another actor and a stale
-// generation are refused with nothing written; the same observation again replays.
-func TestFriendSyncWakesOneShotFriendWithOneBusMessagePerDelivery(t *testing.T) {
+// A one-shot friend is woken as every friend is: one status message for the pass's
+// deliveries, never one per card (the owner, 2026-10-14: message a friend only to act,
+// batched). A down bus fails no delivery: sync says so and the pass note records it.
+func TestFriendSyncWakesAOneShotFriendOncePerPass(t *testing.T) {
 	t.Parallel()
 	oneShot := func(ta *testApp) {
 		read := ta.a.friends
@@ -77,12 +78,12 @@ func TestFriendSyncWakesOneShotFriendWithOneBusMessagePerDelivery(t *testing.T) 
 	ta.mu.Lock()
 	sent := append([]bus.Message(nil), ta.sent...)
 	ta.mu.Unlock()
-	require.Len(t, sent, 1, "one message per delivery")
+	require.Len(t, sent, 1, "one message for the pass")
 	m := sent[0]
 	assert.Equal(t, "coordinator", m.From)
 	assert.Equal(t, []string{"amy"}, m.To)
-	assert.Equal(t, "card s1-1.w1 dealt: FRIEND-CARD DELIVERED friend=amy card=s1-1.w1 job=s1-1.w1 branch=sprint/s1-1.w1.g1.e0", m.Subject)
-	assert.Contains(t, m.Body, filepath.Join(root, "amy-working", "inbox", "s1-1.w1", "BRIEF.md"))
+	assert.Equal(t, "cards dealt: 1 (s1-1.w1)", m.Subject)
+	assert.Contains(t, m.Body, filepath.Join(root, "amy-working", "inbox"))
 	assert.Empty(t, m.Re)
 	ta.ok("friend sync --root " + root)
 	ta.mu.Lock()
@@ -90,7 +91,7 @@ func TestFriendSyncWakesOneShotFriendWithOneBusMessagePerDelivery(t *testing.T) 
 	ta.mu.Unlock()
 	assert.Equal(t, 1, n, "a sync that delivers nothing sends nothing")
 
-	// the bus is down: the delivery stands, sync says so, and the card's story has it
+	// the bus is down: the delivery stands, sync says so, and the pass note has it
 	ta2, root2 := friendCardApp(t, "friend amy", "amy")
 	oneShot(ta2)
 	ta2.a.bus = func(_ context.Context, _ bus.Message, _ func(string)) error {
@@ -99,12 +100,20 @@ func TestFriendSyncWakesOneShotFriendWithOneBusMessagePerDelivery(t *testing.T) 
 	ta2.ok("tick")
 	out := ta2.ok("friend sync --root " + root2)
 	assert.Contains(t, out, "FRIEND-CARD DELIVERED friend=amy card=s1-1.w1")
-	assert.Contains(t, out, "FRIEND-CARD NOTE friend=amy card=s1-1.w1: the bus message to them was not sent (dial tcp: connection refused); the inbox file stands, tell them by hand")
+	assert.Contains(t, out, "FRIEND-CARD NOTE friend=amy pass=cards\\x20dealt:\\x201\\x20(s1-1.w1): the bus message to them was not sent (dial tcp: connection refused); the inbox files stand, tell them by hand")
 	_, err := os.Stat(filepath.Join(root2, "amy-working", "inbox", "s1-1.w1", "BRIEF.md"))
 	require.NoError(t, err, "the inbox file is the record")
-	story := ta2.ok("card s1-1")
-	assert.Contains(t, story, "a friend was not told of a card", story)
-	assert.True(t, strings.Contains(story, "nova-bus send --as coordinator --to amy"), story)
+	notes, _, err := ta2.m.NotesSince(context.Background(), "", 100)
+	require.NoError(t, err)
+	var failed []sprint.Note
+	for _, n := range notes {
+		if n.Type == sprint.NFriendNotWoken {
+			failed = append(failed, n)
+		}
+	}
+	require.Len(t, failed, 1)
+	assert.Equal(t, 1, failed[0].Count)
+	assert.Contains(t, failed[0].What, "nova-bus send --as coordinator --to amy")
 	ta.clean()
 	ta2.clean()
 }

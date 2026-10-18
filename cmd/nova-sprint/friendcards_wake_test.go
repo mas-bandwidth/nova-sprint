@@ -17,21 +17,22 @@ import (
 	"github.com/mas-bandwidth/nova-tools/pkg/config"
 )
 
-// The inbox files are the record. A batch friend (the default) gets one status
-// message for the cards a pass delivers, not one per card; one-shot keeps a
-// message per card. A failed batch send is one line and one note, and the files stay.
-func TestFriendSyncWakesOncePerPassInBatchMode(t *testing.T) {
+// The inbox files are the record. Every friend gets one status message for the cards a
+// pass delivers, never one per card, whatever the row's mode: each bus message
+// interrupts the friend's turn (the owner, 2026-10-14: message a friend only to act,
+// batched). A one-shot friend dealt several cards in one pass is woken once. A failed
+// send is one line and one note, and the files stay.
+func TestFriendSyncWakesOncePerPass(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name, mode      string
 		cards, messages int
 		fail            bool
 	}{
-		{name: "default batch", cards: 3, messages: 1},
-		{name: "explicit batch", mode: config.FriendModeBatch, cards: 3, messages: 1},
-		{name: "one-shot", mode: config.FriendModeOneShot, cards: 3, messages: 3},
+		{name: "no mode", cards: 3, messages: 1},
+		{name: "one-shot", mode: config.FriendModeOneShot, cards: 3, messages: 1},
 		{name: "no delivery"},
-		{name: "failed batch wake", cards: 3, messages: 1, fail: true},
+		{name: "failed wake", cards: 3, messages: 1, fail: true},
 		{name: "bounded ids", cards: 13, messages: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -73,21 +74,7 @@ func TestFriendSyncWakesOncePerPassInBatchMode(t *testing.T) {
 				_, err := os.Stat(filepath.Join(root, "amy-working", "inbox", fmt.Sprintf("s1-%02d.w1", i+1), "BRIEF.md"))
 				assert.NoError(t, err, "the delivered file stands")
 			}
-			if tc.mode == config.FriendModeOneShot && len(sent) == tc.cards {
-				seen := map[string]int{}
-				for _, m := range sent {
-					assert.Contains(t, m.Subject, " dealt: FRIEND-CARD DELIVERED")
-					assert.Contains(t, m.Body, "BRIEF.md")
-					for i := 1; i <= tc.cards; i++ {
-						id := fmt.Sprintf("s1-%02d.w1", i)
-						if strings.Contains(m.Subject, "card "+id+" dealt:") {
-							seen[id]++
-						}
-					}
-				}
-				assert.Len(t, seen, tc.cards, "one message names each card")
-			}
-			if tc.mode != config.FriendModeOneShot && tc.cards > 0 && len(sent) == 1 {
+			if tc.cards > 0 && len(sent) == 1 {
 				m := sent[0]
 				assert.Equal(t, bus.KindStatus, m.Kind)
 				assert.Equal(t, "coordinator", m.From)
