@@ -13,8 +13,8 @@
 # fails; a line added here, or a count above, the merge base does not have fails (the
 # allowance only shrinks against origin/<base>, by use and not only by file).
 #
-# The program kind was measured at its introduction in v17 (2026-10-18), so its counts
-# on these lines are that kind's baseline; time, socket and service still only shrink.
+# The program kind was measured at its introduction in v17 (2026-10-18). A base with no
+# program counts is the one-time migration baseline; after that, every kind only shrinks.
 cmd/nova-sprint/fleet_back_test.go time:1
 cmd/nova-sprint/flush_stream_test.go time:4
 cmd/nova-sprint/friend_start_test.go time:1

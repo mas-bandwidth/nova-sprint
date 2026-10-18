@@ -111,6 +111,51 @@ func parseAllowedCounts(text string) map[string]map[string]int {
 	return out
 }
 
+// unitRuleAllowanceDelta compares the current ledger to its merge base. The program
+// kind may be measured once while migrating an old ledger that has no program counts;
+// after that migration, missing program counts are zero and new paths are refused.
+func unitRuleAllowanceDelta(was, now map[string]map[string]int, baseHasProgramKind bool) (added, over []string) {
+	programMeasured := baseHasProgramKind
+	for _, kinds := range was {
+		if _, ok := kinds["program"]; ok {
+			programMeasured = true
+			break
+		}
+	}
+	onlyProgram := func(kinds map[string]int) bool {
+		for kind, n := range kinds {
+			if kind != "program" || n == 0 {
+				return false
+			}
+		}
+		return len(kinds) > 0
+	}
+	for file, kinds := range now {
+		if _, ok := was[file]; !ok && (programMeasured || !onlyProgram(kinds)) {
+			added = append(added, file)
+		}
+	}
+	sort.Strings(added)
+
+	for file, kinds := range now {
+		bkinds, ok := was[file]
+		if !ok || len(bkinds) == 0 {
+			continue
+		}
+		for kind, n := range kinds {
+			baseN, counted := bkinds[kind]
+			if kind == "program" && programMeasured && !counted {
+				counted = true // a missing program count after migration is a measured zero
+			}
+			if counted && n > baseN {
+				over = append(over, fmt.Sprintf("%s: %s uses %d > base %d", file, kind, n, baseN))
+			}
+		}
+	}
+	sort.Strings(over)
+	return added, over
+}
+
 // unitRuleOverAllowance is the findings of a listed file above its counted allowance:
 // one sorted "<file>: <kind> uses <n> > allowed <m>" line per file and kind above its
 // count. A kind not on the file's line counts as 0.
@@ -483,14 +528,13 @@ func scanUnitRulePackage(fset *token.FileSet, files []unitRuleFile) []unitRuleFi
 					}
 					if sel, ok := v.Fun.(*ast.SelectorExpr); ok {
 						if id, ok := sel.X.(*ast.Ident); ok && imports[id.Name] == "os/exec" && (sel.Sel.Name == "Command" || sel.Sel.Name == "CommandContext") {
-							if what, isSocket := unitRuleExecSocket(sel.Sel.Name, v.Args); isSocket {
-								uses = append(uses, unitRuleUse{find(v, "socket", what), bubbled, decl})
-							} else {
-								what := "os/exec." + sel.Sel.Name
-								if prog := unitRuleExecProgram(sel.Sel.Name, v.Args); prog != "" {
-									what += " " + prog
-								}
-								uses = append(uses, unitRuleUse{find(v, "program", what), bubbled, decl})
+							what := "os/exec." + sel.Sel.Name
+							if prog := unitRuleExecProgram(sel.Sel.Name, v.Args); prog != "" {
+								what += " " + prog
+							}
+							uses = append(uses, unitRuleUse{find(v, "program", what), bubbled, decl})
+							if socket, isSocket := unitRuleExecSocket(sel.Sel.Name, v.Args); isSocket {
+								uses = append(uses, unitRuleUse{find(v, "socket", socket), bubbled, decl})
 							}
 						}
 						if id, ok := sel.X.(*ast.Ident); ok && imports[id.Name] == "testing/synctest" && (sel.Sel.Name == "Test" || sel.Sel.Name == "Run") {
@@ -719,10 +763,10 @@ func TestUnitTestsUseNoRealTimeSocketsOrServices(t *testing.T) {
 // (UNIT_RULE_BASE, a git revision: CI names the pull request's base, as it does for
 // PAGELOCK_BASE; unset, the local origin/sprint/comfort, origin/dev or origin/main if
 // git has one here, else not checked), every path in unit_rule_allowed.txt is in the
-// base's copy or enters with program uses alone: a new allowance is red, a removed
-// one is the move it records, and the program kind's first measurement is its
-// baseline. A base with no allowlist yet passes (the allowance's first change). No
-// fetch runs here.
+// base's copy or enters with program uses alone during the one-time migration from a
+// base with no program counts. After that baseline exists, a new allowance or count is
+// red; a removed one or lower count is the move it records. A base with no allowlist
+// yet passes (the allowance's first change). No fetch runs here.
 func TestTheUnitRuleAllowanceOnlyShrinks(t *testing.T) {
 	t.Parallel()
 	base := os.Getenv("UNIT_RULE_BASE")
@@ -743,53 +787,23 @@ func TestTheUnitRuleAllowanceOnlyShrinks(t *testing.T) {
 		t.Fatalf("UNIT_RULE_BASE %s is no commit git can read here (%v: %s): the allowance's shrinking is unchecked", base, err, strings.TrimSpace(string(out)))
 	}
 	const path = "internal/ci/" + unitRuleAllowedFile
-	if exec.Command("git", "cat-file", "-e", base+":"+path).Run() != nil {
+	out, err := exec.Command("git", "show", base+":"+path).Output()
+	if err != nil {
 		t.Logf("%s holds no %s: this change is the allowance's first", base, unitRuleAllowedFile)
 		return
 	}
-	out, err := exec.Command("git", "show", base+":"+path).Output()
-	require.NoError(t, err, "git show %s:%s", base, path)
 	was := parseAllowedCounts(string(out))
+	scanSource, err := exec.Command("git", "show", base+":internal/ci/unit_rule_test.go").Output()
+	require.NoError(t, err, "git show %s:internal/ci/unit_rule_test.go", base)
+	// The declaration is the migration marker: a ledger with no program counts is a
+	// bootstrap base only when its scanner predates this fourth kind.
+	baseHasProgramKind := strings.Contains(string(scanSource), "unitRuleProgramHelpers")
 	now := unitRuleAllowedCounts(t)
-	// The program kind is new: a file that enters the list with program uses alone,
-	// and a program count on a line the base did not count, is that kind's measured
-	// baseline, not a rise. Time, a socket and a service still only shrink.
-	onlyProgram := func(kinds map[string]int) bool {
-		for kind, n := range kinds {
-			if kind != "program" || n == 0 {
-				return false
-			}
-		}
-		return len(kinds) > 0
-	}
-	var added []string
-	for f, kinds := range now {
-		if _, ok := was[f]; !ok && !onlyProgram(kinds) {
-			added = append(added, f)
-		}
-	}
-	sort.Strings(added)
+	added, over := unitRuleAllowanceDelta(was, now, baseHasProgramKind)
 	if len(added) > 0 {
 		t.Errorf("%s allows %d files that %s does not: the list only shrinks; move the file behind //go:build functional or give it a fake instead:\n%s",
 			unitRuleAllowedFile, len(added), base, strings.Join(added, "\n"))
 	}
-	// a count above the base's for that path and kind; a base line with no counts
-	// (the old shape) reads as no bound and passes, and a kind the base does not
-	// count at all is the new kind's baseline
-	var over []string
-	for file, kinds := range now {
-		bkinds, ok := was[file]
-		if !ok || len(bkinds) == 0 {
-			continue
-		}
-		for kind, n := range kinds {
-			baseN, counted := bkinds[kind]
-			if counted && n > baseN {
-				over = append(over, fmt.Sprintf("%s: %s uses %d > base %d", file, kind, n, baseN))
-			}
-		}
-	}
-	sort.Strings(over)
 	if len(over) > 0 {
 		t.Errorf("%s raises a count above %s: the list only shrinks by use too:\n%s",
 			unitRuleAllowedFile, base, strings.Join(over, "\n"))
@@ -840,11 +854,11 @@ func TestTheUnitRuleScanSeesAKnownYesAndAKnownNo(t *testing.T) {
 		"a redis-server": {"package p\nimport \"github.com/mas-bandwidth/nova-tools/pkg/testredis\"\nfunc TestX(t testing.TB) { testredis.Start(t) }\n",
 			[]string{"3 service github.com/mas-bandwidth/nova-tools/pkg/testredis.Start"}},
 		"a networked exec program": {"package p\nimport \"os/exec\"\nfunc TestX() { exec.Command(\"curl\", \"http://x\") }\n",
-			[]string{"3 socket os/exec.Command curl"}},
+			[]string{"3 program os/exec.Command curl", "3 socket os/exec.Command curl"}},
 		"an exec opening /dev/tcp": {"package p\nimport \"os/exec\"\nfunc TestX() { exec.Command(\"bash\", \"-c\", \"exec 3<>/dev/tcp/127.0.0.1/1\") }\n",
-			[]string{"3 socket os/exec.Command bash /dev/tcp"}},
+			[]string{"3 program os/exec.Command bash", "3 socket os/exec.Command bash /dev/tcp"}},
 		"a CommandContext networked exec": {"package p\nimport \"os/exec\"\nfunc TestX() { exec.CommandContext(context.Background(), \"nc\", \"-l\", \"1\") }\n",
-			[]string{"3 socket os/exec.CommandContext nc"}},
+			[]string{"3 program os/exec.CommandContext nc", "3 socket os/exec.CommandContext nc"}},
 		"the hook socket helper": {"package p\nfunc TestX(t T) { a.hookSock = shortSock(t) }\n",
 			[]string{"2 socket shortSock"}},
 		"a !functional file is the unit tier": {"//go:build !functional\n\npackage p\nimport \"time\"\nfunc TestX() { time.Sleep(1) }\n",
