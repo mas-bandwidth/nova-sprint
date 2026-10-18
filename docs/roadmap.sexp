@@ -1682,12 +1682,13 @@
    :release "v1.5"
    :origin "card from the sprint store (2026-10-10)")
   (item "bench-chosen-by-load" :group "sprint"
-   :title "A lane picks the least loaded bench"
+   :title "The server hands out the least committed bench as a lease"
    :text "The bench a lane gates on is chosen at lane start from the fleet rows by cores and current load,
-    and the choice and reason are written into the brief."
+    and the choice and reason are written into the brief. Glenn 2026-10-18: card the load balancer for v1.7. Coordinator children pick a bench by one ssh uptime and pile on (vision 752/64, amd-3 370/16) while others idle; heavy gates time out as false HOLDs. The design (docs/SPEC-SPRINT.md section 18, the bench lease): lane take go --machine auto hands out the allowed fleet bench with the lowest committed slots per core (live leases or measured load, whichever is more), renewed by taking again and released on give or 20m after the last take by the server clock; a full fleet answers WAIT with a retry time and queues nothing; the named-machine bench locks stay disabled. Cards (stream v17): v17-bench-lease-model (heavy: tla/BenchLease.tla, four reversed witnesses, the spec), v17-bench-lease-pick (pro: Lanes.Pick, BenchRooms), v17-bench-lease-take-auto (pro: store step and the --machine auto verb), v17-bench-lease-coordinator-recipe (pro: the runbook recipe the worker and reader templates copy)."
    :date "2026-10-10"
-   :release "v1.5"
-   :origin "card from the sprint store (2026-10-10)")
+   :release "v1.7"
+   :origin "card from the sprint store (2026-10-10)"
+   :kept (:earlier-title "A lane picks the least loaded bench"))
   (item "card-lint-defects" :group "sprint"
    :title "The card lint refuses known defects and reads place names right"
    :text "The card lint refuses the listed brief defects, and a repository or branch name is not mistaken
