@@ -42,6 +42,18 @@ non-ledger overlap without an edge, writing nothing. `nova-sprint add --plan <di
 the table and exits 0 without admitting, for a seat that wants to read the overlaps first
 (see [SPRINT-COORDINATOR.md](SPRINT-COORDINATOR.md), the plan review).
 
+## Single-brief lint
+
+`nova-card lint` uses the same pure brief rules that `nova-sprint add` runs in
+`lintBriefReads` (`cmd/nova-sprint/verbs.go`): model lines, child rules, then
+`cardtree.Lint`, `swarm.LintHeaderStranded` and `swarm.LintDashboardAsk` in that
+order. The child rules that need the staged rule set or store -- by-reference
+rules, `friendOwnRules`, and the needs-are-card-ids rule -- stay in `add`. The
+brief writer also checks its template's unfilled `<...>` placeholders and sibling
+paths, which are not add rules, and `card.Lint` adds the card checks such as the
+line-1 tier and TEST package PATHS. These boundaries keep the shared lint aligned
+without treating `nova-swarm lint --card`'s typed-header checks as admission rules.
+
 ## The RESULT-line tier
 
 A brief's RESULT line (`RESULT: <id> sha=<sha12> tier: <t>`) names the tier the card is

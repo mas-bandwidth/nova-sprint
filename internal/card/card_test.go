@@ -126,6 +126,12 @@ func TestTestPackage(t *testing.T) {
 	}
 }
 
+// whoPin is the friend pin of a brief: "WHO: friend ada" in the header block (after
+// the STOP line), where the gate reads it, so the pin adds no stranded-key finding.
+func whoPin(brief string) string {
+	return strings.Replace(brief, "\nSTOP:", "\nWHO: friend ada\nSTOP:", 1)
+}
+
 // No generated brief names a friend as the author: it carries the ATTRIBUTION line
 // (By: your own name, the worker who does this attempt) and an AS A READ section that judges
 // a By: trailer only for being present and true, and passes the checks with friends
@@ -141,7 +147,7 @@ func TestABriefNamesNoFriendAsAuthor(t *testing.T) {
 	assert.Contains(t, brief, "\nATTRIBUTION: By: your own name, the worker who does this attempt")
 	assert.Contains(t, brief, "\nAS A READ\nA By: trailer is judged only for being present and true: it names the worker who pushed")
 	assert.Empty(t, Lint(c.ID, brief, opts))
-	assert.Empty(t, Lint(c.ID, brief+"WHO: friend ada\n", opts), "WHO stays a preference line")
+	assert.Empty(t, Lint(c.ID, whoPin(brief), opts), "WHO stays a preference line")
 
 	authors := func(b string) []string {
 		var out []string
@@ -191,7 +197,7 @@ func TestAStagedBriefSignsTheWorkersOwnName(t *testing.T) {
 	c.Paths = Paths(h, c)
 	rules, err := swarm.HeldRules(swarm.OwnRulesName(cardgen.Render(h, c), ""))
 	require.NoError(t, err)
-	staged := swarm.StagedBrief(cardgen.Render(h, c)+"WHO: friend ada\n", rules)
+	staged := swarm.StagedBrief(whoPin(cardgen.Render(h, c)), rules)
 
 	assert.Contains(t, staged, "\nWHO: friend ada\n", "the pin is the deal's and stays")
 	assert.Empty(t, Lint(c.ID, staged, opts), "no line names the pinned friend as the author")
