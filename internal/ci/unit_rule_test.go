@@ -25,17 +25,19 @@ import (
 // A unit test is any _test.go that builds without the functional tag. It never
 // uses real time (a sleep, a timer, a wall-clock deadline, time.Now driving the
 // outcome, require.Eventually's real polling), never a real socket (net.Listen,
-// net.Dial, an httptest server, a unix socket, a connection deadline) and never an
-// external service (a redis-server, an HTTP call). Those belong behind
-// `//go:build functional`, or behind a fake: a fake clock, an in-memory transport
-// (net.Pipe, httptest.NewRecorder, a handler RoundTripper), or a testing/synctest
-// bubble, whose clock is fake.
+// net.Dial, an httptest server, a unix socket, a connection deadline), never an
+// external service (a redis-server, an HTTP call) and never runs a program
+// (os/exec.Command, os/exec.CommandContext, or a listed helper that runs one).
+// Those belong behind `//go:build functional`, or behind a fake: a fake clock, an
+// in-memory transport (net.Pipe, httptest.NewRecorder, a handler RoundTripper), or
+// a testing/synctest bubble, whose clock is fake.
 //
 // TestUnitTestsUseNoRealTimeSocketsOrServices reads every test file of the module
 // and fails, naming file, line and call, on any unit-tier use of the forbidden
 // calls. The one allowance is unit_rule_allowed.txt beside this file: the files that
 // broke the rule when it was written, allowed until moved (v1.3), each line counting
-// the uses per kind (time, socket, service) measured when the list was written. A
+// the uses per kind (time, socket, service, program) measured when the list was
+// written. A
 // listed file whose count fell below its line fails until the line is lowered, a
 // listed file that keeps the rule fails until its line is removed, and an offender
 // not listed fails it; TestTheUnitRuleAllowanceOnlyShrinks fails a line the merge
@@ -109,6 +111,51 @@ func parseAllowedCounts(text string) map[string]map[string]int {
 	return out
 }
 
+// unitRuleAllowanceDelta compares the current ledger to its merge base. The program
+// kind may be measured once while migrating an old ledger that has no program counts;
+// after that migration, missing program counts are zero and new paths are refused.
+func unitRuleAllowanceDelta(was, now map[string]map[string]int, baseHasProgramKind bool) (added, over []string) {
+	programMeasured := baseHasProgramKind
+	for _, kinds := range was {
+		if _, ok := kinds["program"]; ok {
+			programMeasured = true
+			break
+		}
+	}
+	onlyProgram := func(kinds map[string]int) bool {
+		for kind, n := range kinds {
+			if kind != "program" || n == 0 {
+				return false
+			}
+		}
+		return len(kinds) > 0
+	}
+	for file, kinds := range now {
+		if _, ok := was[file]; !ok && (programMeasured || !onlyProgram(kinds)) {
+			added = append(added, file)
+		}
+	}
+	sort.Strings(added)
+
+	for file, kinds := range now {
+		bkinds, ok := was[file]
+		if !ok || len(bkinds) == 0 {
+			continue
+		}
+		for kind, n := range kinds {
+			baseN, counted := bkinds[kind]
+			if kind == "program" && programMeasured && !counted {
+				counted = true // a missing program count after migration is a measured zero
+			}
+			if counted && n > baseN {
+				over = append(over, fmt.Sprintf("%s: %s uses %d > base %d", file, kind, n, baseN))
+			}
+		}
+	}
+	sort.Strings(over)
+	return added, over
+}
+
 // unitRuleOverAllowance is the findings of a listed file above its counted allowance:
 // one sorted "<file>: <kind> uses <n> > allowed <m>" line per file and kind above its
 // count. A kind not on the file's line counts as 0.
@@ -161,7 +208,7 @@ func unitRuleUnderAllowance(findings []unitRuleFinding, allowed map[string]map[s
 }
 
 // unitRuleFinding is one forbidden use: the file (slash path from the module
-// root), its line, the kind (time, socket or service) and what was used.
+// root), its line, the kind (time, socket, service or program) and what was used.
 type unitRuleFinding struct {
 	File string
 	Line int
@@ -228,6 +275,14 @@ var unitRuleHelpers = map[string]string{
 	"shortSock": "socket",
 }
 
+// unitRuleProgramHelpers is this module's own test helpers that run a program: a
+// call to one in a unit test is a program however it is spelled at the call site.
+// The scan follows them one level (a call to the helper, not a helper it calls);
+// landRig.git runs git through gitrun, which the syntactic scan cannot see.
+var unitRuleProgramHelpers = map[string]bool{
+	"git": true,
+}
+
 // unitRuleExecBinaries are the programs a test may run by os/exec that open a real
 // socket or talk to a network.
 var unitRuleExecBinaries = map[string]bool{
@@ -235,23 +290,43 @@ var unitRuleExecBinaries = map[string]bool{
 	"socat": true, "telnet": true, "ssh": true, "scp": true, "redis-cli": true,
 }
 
-// unitRuleExecSocket is an os/exec.Command or CommandContext call that opens a real
-// socket: its program is a known networked binary, or a string-literal argument opens
-// /dev/tcp or /dev/udp (bash). It returns the finding's What and whether it is one.
-func unitRuleExecSocket(method string, args []ast.Expr) (string, bool) {
+// unitRuleExecProgram is the program named by an os/exec.Command or CommandContext
+// call's first argument after the context, "" when it is no string literal.
+func unitRuleExecProgram(method string, args []ast.Expr) string {
 	progIdx := 0
 	if method == "CommandContext" {
 		progIdx = 1
 	}
 	if progIdx >= len(args) {
-		return "", false
+		return ""
 	}
-	prog := ""
-	if lit, ok := args[progIdx].(*ast.BasicLit); ok && lit.Kind == token.STRING {
-		if s, err := strconv.Unquote(lit.Value); err == nil {
-			prog = s
-		}
+	lit, ok := args[progIdx].(*ast.BasicLit)
+	if !ok || lit.Kind != token.STRING {
+		return ""
 	}
+	s, err := strconv.Unquote(lit.Value)
+	if err != nil {
+		return ""
+	}
+	return s
+}
+
+// unitRuleCalleeName is a call's bare name: `git` or `r.git` both name git.
+func unitRuleCalleeName(fun ast.Expr) string {
+	switch f := fun.(type) {
+	case *ast.Ident:
+		return f.Name
+	case *ast.SelectorExpr:
+		return f.Sel.Name
+	}
+	return ""
+}
+
+// unitRuleExecSocket is an os/exec.Command or CommandContext call that opens a real
+// socket: its program is a known networked binary, or a string-literal argument opens
+// /dev/tcp or /dev/udp (bash). It returns the finding's What and whether it is one.
+func unitRuleExecSocket(method string, args []ast.Expr) (string, bool) {
+	prog := unitRuleExecProgram(method, args)
 	if prog != "" && unitRuleExecBinaries[prog] {
 		return "os/exec." + method + " " + prog, true
 	}
@@ -448,10 +523,18 @@ func scanUnitRulePackage(fset *token.FileSet, files []unitRuleFile) []unitRuleFi
 			ast.Inspect(n, func(n ast.Node) bool {
 				switch v := n.(type) {
 				case *ast.CallExpr:
+					if name := unitRuleCalleeName(v.Fun); unitRuleProgramHelpers[name] && declared[name] {
+						uses = append(uses, unitRuleUse{find(v, "program", name), bubbled, decl})
+					}
 					if sel, ok := v.Fun.(*ast.SelectorExpr); ok {
 						if id, ok := sel.X.(*ast.Ident); ok && imports[id.Name] == "os/exec" && (sel.Sel.Name == "Command" || sel.Sel.Name == "CommandContext") {
-							if what, isSocket := unitRuleExecSocket(sel.Sel.Name, v.Args); isSocket {
-								uses = append(uses, unitRuleUse{find(v, "socket", what), bubbled, decl})
+							what := "os/exec." + sel.Sel.Name
+							if prog := unitRuleExecProgram(sel.Sel.Name, v.Args); prog != "" {
+								what += " " + prog
+							}
+							uses = append(uses, unitRuleUse{find(v, "program", what), bubbled, decl})
+							if socket, isSocket := unitRuleExecSocket(sel.Sel.Name, v.Args); isSocket {
+								uses = append(uses, unitRuleUse{find(v, "socket", socket), bubbled, decl})
 							}
 						}
 						if id, ok := sel.X.(*ast.Ident); ok && imports[id.Name] == "testing/synctest" && (sel.Sel.Name == "Test" || sel.Sel.Name == "Run") {
@@ -657,8 +740,9 @@ func TestUnitTestsUseNoRealTimeSocketsOrServices(t *testing.T) {
 	over := unitRuleOverAllowance(findings, allowedCounts)
 	under := unitRuleUnderAllowance(findings, allowedCounts)
 	if len(unlisted) > 0 {
-		t.Errorf("%d uses: a unit test (no functional build tag) uses real time, a real socket or an external service; "+
-			"move it behind //go:build functional or give it a fake (a fake clock, net.Pipe, httptest.NewRecorder, a synctest bubble):\n%s",
+		t.Errorf("%d uses: a unit test (no functional build tag) uses real time, a real socket, an external service or a program; "+
+			"move it behind //go:build functional or give it a fake (a fake clock, net.Pipe, httptest.NewRecorder, a synctest bubble); "+
+			"a new file that runs a program is a functional test:\n%s",
 			len(unlisted), strings.Join(unlisted, "\n"))
 	}
 	if len(over) > 0 {
@@ -679,8 +763,10 @@ func TestUnitTestsUseNoRealTimeSocketsOrServices(t *testing.T) {
 // (UNIT_RULE_BASE, a git revision: CI names the pull request's base, as it does for
 // PAGELOCK_BASE; unset, the local origin/sprint/comfort, origin/dev or origin/main if
 // git has one here, else not checked), every path in unit_rule_allowed.txt is in the
-// base's copy: a new allowance is red, a removed one is the move it records. A base
-// with no allowlist yet passes (the allowance's first change). No fetch runs here.
+// base's copy or enters with program uses alone during the one-time migration from a
+// base with no program counts. After that baseline exists, a new allowance or count is
+// red; a removed one or lower count is the move it records. A base with no allowlist
+// yet passes (the allowance's first change). No fetch runs here.
 func TestTheUnitRuleAllowanceOnlyShrinks(t *testing.T) {
 	t.Parallel()
 	base := os.Getenv("UNIT_RULE_BASE")
@@ -701,40 +787,23 @@ func TestTheUnitRuleAllowanceOnlyShrinks(t *testing.T) {
 		t.Fatalf("UNIT_RULE_BASE %s is no commit git can read here (%v: %s): the allowance's shrinking is unchecked", base, err, strings.TrimSpace(string(out)))
 	}
 	const path = "internal/ci/" + unitRuleAllowedFile
-	if exec.Command("git", "cat-file", "-e", base+":"+path).Run() != nil {
+	out, err := exec.Command("git", "show", base+":"+path).Output()
+	if err != nil {
 		t.Logf("%s holds no %s: this change is the allowance's first", base, unitRuleAllowedFile)
 		return
 	}
-	out, err := exec.Command("git", "show", base+":"+path).Output()
-	require.NoError(t, err, "git show %s:%s", base, path)
 	was := parseAllowedCounts(string(out))
+	scanSource, err := exec.Command("git", "show", base+":internal/ci/unit_rule_test.go").Output()
+	require.NoError(t, err, "git show %s:internal/ci/unit_rule_test.go", base)
+	// The declaration is the migration marker: a ledger with no program counts is a
+	// bootstrap base only when its scanner predates this fourth kind.
+	baseHasProgramKind := strings.Contains(string(scanSource), "unitRuleProgramHelpers")
 	now := unitRuleAllowedCounts(t)
-	var added []string
-	for f := range now {
-		if _, ok := was[f]; !ok {
-			added = append(added, f)
-		}
-	}
-	sort.Strings(added)
+	added, over := unitRuleAllowanceDelta(was, now, baseHasProgramKind)
 	if len(added) > 0 {
 		t.Errorf("%s allows %d files that %s does not: the list only shrinks; move the file behind //go:build functional or give it a fake instead:\n%s",
 			unitRuleAllowedFile, len(added), base, strings.Join(added, "\n"))
 	}
-	// a count above the base's for that path and kind; a base line with no counts
-	// (the old shape) reads as no bound and passes
-	var over []string
-	for file, kinds := range now {
-		bkinds, ok := was[file]
-		if !ok || len(bkinds) == 0 {
-			continue
-		}
-		for kind, n := range kinds {
-			if n > bkinds[kind] {
-				over = append(over, fmt.Sprintf("%s: %s uses %d > base %d", file, kind, n, bkinds[kind]))
-			}
-		}
-	}
-	sort.Strings(over)
 	if len(over) > 0 {
 		t.Errorf("%s raises a count above %s: the list only shrinks by use too:\n%s",
 			unitRuleAllowedFile, base, strings.Join(over, "\n"))
@@ -785,11 +854,11 @@ func TestTheUnitRuleScanSeesAKnownYesAndAKnownNo(t *testing.T) {
 		"a redis-server": {"package p\nimport \"github.com/mas-bandwidth/nova-tools/pkg/testredis\"\nfunc TestX(t testing.TB) { testredis.Start(t) }\n",
 			[]string{"3 service github.com/mas-bandwidth/nova-tools/pkg/testredis.Start"}},
 		"a networked exec program": {"package p\nimport \"os/exec\"\nfunc TestX() { exec.Command(\"curl\", \"http://x\") }\n",
-			[]string{"3 socket os/exec.Command curl"}},
+			[]string{"3 program os/exec.Command curl", "3 socket os/exec.Command curl"}},
 		"an exec opening /dev/tcp": {"package p\nimport \"os/exec\"\nfunc TestX() { exec.Command(\"bash\", \"-c\", \"exec 3<>/dev/tcp/127.0.0.1/1\") }\n",
-			[]string{"3 socket os/exec.Command bash /dev/tcp"}},
+			[]string{"3 program os/exec.Command bash", "3 socket os/exec.Command bash /dev/tcp"}},
 		"a CommandContext networked exec": {"package p\nimport \"os/exec\"\nfunc TestX() { exec.CommandContext(context.Background(), \"nc\", \"-l\", \"1\") }\n",
-			[]string{"3 socket os/exec.CommandContext nc"}},
+			[]string{"3 program os/exec.CommandContext nc", "3 socket os/exec.CommandContext nc"}},
 		"the hook socket helper": {"package p\nfunc TestX(t T) { a.hookSock = shortSock(t) }\n",
 			[]string{"2 socket shortSock"}},
 		"a !functional file is the unit tier": {"//go:build !functional\n\npackage p\nimport \"time\"\nfunc TestX() { time.Sleep(1) }\n",
