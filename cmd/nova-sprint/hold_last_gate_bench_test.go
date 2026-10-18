@@ -29,7 +29,7 @@ func TestHoldRefusesTheLastGateBench(t *testing.T) {
 	code, _, errs := ta.do("hold m2 --reason r")
 	assert.Equal(t, 2, code, errs)
 	assert.Contains(t, errs, "m2", "it names the last member that could run a gate")
-	assert.Contains(t, errs, "every landing will be refused until one is unheld")
+	assert.Contains(t, errs, "leaves no gate bench")
 	assert.NotContains(t, ta.ok("log"), "member m2 held", "a refused hold writes nothing")
 
 	// holding m1 (m2 remains a bench) passes, and a coordinator-held m1 is still a
