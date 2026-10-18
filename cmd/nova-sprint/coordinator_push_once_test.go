@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"maps"
 	"strings"
 	"testing"
@@ -158,7 +159,7 @@ func TestARefusedDecisionDeliveryBacksOffAndIsSaidOnce(t *testing.T) {
 	ta.a.decisionPass(ctx)
 	assert.Equal(t, 3, owner)
 	assert.Equal(t, 1, strings.Count(log.String(), "DECISIONS OWED: owner delivery pending"), "said once: %s", log.String())
-	assert.Contains(t, log.String(), "the bus refused it: sent again in 1m0s")
+	assert.Contains(t, log.String(), "refused: tried again in 1m0s")
 
 	// a bus that takes it again delivers it at its next due look, and the wait is gone
 	ta.a.bus = b.send
@@ -188,9 +189,11 @@ func TestADecisionDeliveryThatWentBeforeIsDelivered(t *testing.T) {
 	assert.NotContains(t, log.String(), "delivery pending")
 }
 
-// With no holder of the seat the coordinator's lane prepares nothing and says nothing; the
-// owner's lane goes on.
-func TestNoHolderPreparesNoCoordinatorDelivery(t *testing.T) {
+// With no holder of the seat the coordinator's lane still makes its delivery (it is made,
+// transferred and closed as before), and its "no coordinator channel" fault waits as a
+// refusal does and is said once; the owner's lane goes on. A pass over that sprint, unchanged,
+// is skipped: no renewal is owed with no holder.
+func TestNoHolderIsAWaitingFaultAndTheOwnerLaneGoesOn(t *testing.T) {
 	t.Parallel()
 	const name = "no-holder"
 	ta, log := overdueRig(t, name)
@@ -198,16 +201,109 @@ func TestNoHolderPreparesNoCoordinatorDelivery(t *testing.T) {
 	require.NoError(t, ta.m.SetCoordinator(ctx, ""))
 	b := &tokenBus{}
 	ta.a.bus = b.send
-	ta.a.decisionPass(ctx)
+	require.False(t, ta.a.coordPassSkip(ctx))
+	require.True(t, ta.a.coordinatorPass(ctx))
 	require.Len(t, b.delivered, 1)
 	assert.Equal(t, []string{"glenn"}, b.delivered[0].To)
-	open, err := ta.m.OpenNotes(ctx)
-	require.NoError(t, err)
-	for _, o := range open {
-		if d := o.Note.DecisionDelivery; d != nil {
-			assert.NotEqual(t, "coordinator", d.Lane, "no coordinator delivery is prepared")
+	for range 10 {
+		ta.step(5 * time.Second)
+		if !ta.a.coordPassSkip(ctx) {
+			ta.a.coordinatorPass(ctx)
 		}
 	}
-	assert.NotContains(t, log.String(), "no coordinator channel")
+	assert.Equal(t, 1, strings.Count(log.String(), "no coordinator channel is configured"), "said once: %s", log.String())
+	ta.step(2 * time.Second)
+	assert.True(t, ta.a.coordPassSkip(ctx), "nothing changed and no renewal is owed: skipped")
+	ta.step(coordPushLook)
+	assert.False(t, ta.a.coordPassSkip(ctx), "the backstop still runs")
+}
 
+// A sprint that names no owner is the owner lane's "no owner channel" fault: it waits, is said
+// once, and lets the pass be skipped while it waits. Before, it was due at every look, and the
+// pass ran in full on every log line.
+func TestNoOwnerChannelWaitsAndIsSaidOnce(t *testing.T) {
+	t.Parallel()
+	const name = "no-owner"
+	ta, log := overdueRig(t, name)
+	ctx := context.Background()
+	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: name}
+	require.NoError(t, st.SetOwner(ctx, "")) // the sprint names no owner
+	b := &tokenBus{}
+	ta.a.bus = b.send
+	require.False(t, ta.a.coordPassSkip(ctx))
+	ta.a.coordinatorPass(ctx)
+	for range 10 {
+		ta.step(5 * time.Second)
+		if !ta.a.coordPassSkip(ctx) {
+			ta.a.coordinatorPass(ctx)
+		}
+	}
+	assert.Equal(t, 1, strings.Count(log.String(), "no owner channel is configured"), "said once: %s", log.String())
+	ta.a.coord.mu.Lock()
+	r := ta.a.coord.decisions["owner"]
+	ta.a.coord.mu.Unlock()
+	assert.Equal(t, busRetryFirst, r.wait, "the fault waits as a refusal does")
+}
+
+// The sprint push's renewal is never more than a floor late: a log event a second before it
+// is due is skipped, and the loop's wait then ends when it is due (coordPushWait), not a whole
+// coordPushLook later; the pass renews it first, off the line, so a tick holding the line
+// cannot hold it back. Before, an event at heldAt+29 s left the lease near 60 s unrenewed,
+// plus however long the line was held, of a 90 s life.
+func TestTheSprintPushIsRenewedOnTimeAfterASkippedPass(t *testing.T) {
+	t.Parallel()
+	const name = "push-renew"
+	ta, rig, _ := coordSprint(t, name)
+	rig.Hook(t, name, hook.Coordinator)
+	ctx := context.Background()
+	var waits []time.Duration
+	ta.m.LogWait = func(d time.Duration) { waits = append(waits, d); ta.a.sleep(d) }
+	t0 := ta.a.now()
+	require.False(t, ta.a.coordPassSkip(ctx))
+	require.True(t, ta.a.coordinatorPass(ctx))
+	require.Equal(t, t0, ta.a.coord.heldAt)
+
+	ta.step(hook.RenewEvery - time.Second) // an event a second before the renewal is due
+	began := ta.a.coordPushOnce(ctx, t0)
+	require.Len(t, waits, 1)
+	assert.Equal(t, time.Second, waits[0], "the wait ends when the renewal is due")
+	assert.Equal(t, t0, ta.a.coord.heldAt, "the skipped pass renewed nothing")
+	ta.a.coordPushOnce(ctx, began)
+	held := ta.a.coord.heldAt
+	assert.False(t, held.Before(t0.Add(hook.RenewEvery)))
+	assert.False(t, held.After(t0.Add(hook.RenewEvery+coordPushFloor)), "renewed within a floor of its due time: %s", held.Sub(t0))
+
+	// the early renewal takes no line: it renews while a tick holds it
+	ta.step(hook.RenewEvery)
+	ta.a.serial.Lock()
+	ta.a.renewEarly(ctx)
+	ta.a.serial.Unlock()
+	assert.Equal(t, ta.a.now(), ta.a.coord.heldAt, "renewed with the line held elsewhere")
+}
+
+// failingOwner is the memory store whose owner cannot be read.
+type failingOwner struct{ *store.Mem }
+
+func (f failingOwner) GetKey(ctx context.Context, name string) (string, bool, error) {
+	if name == "owner" {
+		return "", false, errors.New("the owner could not be read")
+	}
+	return f.Mem.GetKey(ctx, name)
+}
+
+// A lane whose recipient cannot be read is said, and the other lane goes on, as each lane did
+// on a hold of its own before the two shared one. (A seat that cannot be read fails both, then
+// as now: every step reads the seat.)
+func TestALaneThatCannotBeReadLeavesTheOtherLaneGoing(t *testing.T) {
+	t.Parallel()
+	const name = "lane-apart"
+	ta, log := overdueRig(t, name)
+	ctx := context.Background()
+	ta.a.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return failingOwner{ta.m}, nil }
+	b := &tokenBus{}
+	ta.a.bus = b.send
+	ta.a.decisionPass(ctx)
+	require.Len(t, b.delivered, 1, "the coordinator is told: %s", log.String())
+	assert.Equal(t, []string{name}, b.delivered[0].To)
+	assert.Contains(t, log.String(), "DECISIONS OWED: prepare owner failed: the owner could not be read")
 }

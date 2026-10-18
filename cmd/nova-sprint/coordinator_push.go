@@ -55,10 +55,11 @@ import (
 //     not fail (unproven while it did). Only the session's answer to nova-hook's challenge
 //     proves the coordinator is there; the sprint push proves the way to the session.
 
-// coordPushLook bounds WaitLog and remains the quiet-log retry backstop: a pass runs at least
-// this often, whatever the skip (coordPassSkip) says. It was 5 s until 2026-10-17; the sprint
-// push's lease is renewed every hook.RenewEvery (30 s) of a 90 s life, so a pass this often
-// keeps it.
+// coordPushLook bounds WaitLog and remains the quiet-log retry backstop: a full pass runs at
+// least this often, whatever the skip (coordPassSkip) says. It was 5 s until 2026-10-17. The
+// sprint push's lease (hook.LeaseTTL, 90 s) is renewed every hook.RenewEvery (30 s) on its own
+// clock: the loop's wait ends when the renewal is due (coordPushWait), and the pass renews it
+// first, off the line, before anything that waits on the line (renewEarly).
 const coordPushLook = 30 * time.Second
 
 // coordPushFloor is the least time between the starts of two passes: a busy log (a line a
@@ -89,6 +90,8 @@ type coordPush struct {
 	failed         bool      // the last send to the holder failed: the sprint push is unproven
 	heldAt         time.Time // the sprint push's last renewal
 	heldWhy        string    // what the last renewal said, said again only when it changes
+	heldOK         bool      // the last renewal proved the sprint push (else it unproved it)
+	holdFailed     bool      // the last renewal could not be made: tried again at the next look
 
 	passPrint string                   // what the last full pass read as it began (coordPassPrint)
 	passAt    time.Time                // when the last full pass began
@@ -140,13 +143,39 @@ func (a *app) coordPushOnce(ctx context.Context, last time.Time) time.Time {
 		a.coord.mu.Lock()
 		epoch, cursor := a.coord.logEpoch, a.coord.logCursor
 		a.coord.mu.Unlock()
-		_, _, err = st.WaitLog(ctx, epoch, cursor, coordPushLook)
+		if wait := a.coordPushWait(began); wait > 0 {
+			_, _, err = st.WaitLog(ctx, epoch, cursor, wait)
+		}
 	}
 	if err != nil && ctx.Err() == nil {
 		// A failed wait must not busy-spin or remove the existing retry backstop.
 		a.sleep(coordPushLook)
 	}
 	return began
+}
+
+// coordPushWait is how long the loop waits for the next log event after a pass began at
+// began: coordPushLook, cut short to when the sprint push's renewal is due, the backstop's
+// full pass is due, or a decision lane's retry is due. Before, a skipped pass right before the
+// renewal was due waited a whole coordPushLook, and the lease went near two looks unrenewed.
+func (a *app) coordPushWait(began time.Time) time.Duration {
+	now := a.now()
+	p := &a.coord
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	wait := coordPushLook
+	if !p.passAt.IsZero() {
+		wait = min(wait, p.passAt.Add(coordPushLook).Sub(now))
+	}
+	if !p.heldAt.IsZero() {
+		wait = min(wait, p.heldAt.Add(hook.RenewEvery).Sub(now))
+	}
+	for _, r := range p.decisions {
+		if !r.next.IsZero() {
+			wait = min(wait, r.next.Sub(now))
+		}
+	}
+	return wait
 }
 
 // coordPassPrint is what a pass depends on that a log event can change, read on the line in
@@ -209,8 +238,12 @@ func (a *app) coordPassSkip(ctx context.Context) bool {
 	p := &a.coord
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	// a renewal is due once its interval is over, or after one that failed; with none made
+	// (no holder, an unresolved identity's unproving, a new epoch) none is due: a full pass
+	// makes it when what it reads changes, and the backstop's pass when it does not
+	renew := p.holdFailed || !p.heldAt.IsZero() && !now.Before(p.heldAt.Add(hook.RenewEvery))
 	skip := p.passPrint == print && !p.passAt.IsZero() && !now.Before(p.passAt) && now.Sub(p.passAt) < coordPushLook &&
-		!p.failed && len(p.streamPending) == 0 && !p.heldAt.IsZero() && now.Before(p.heldAt.Add(hook.RenewEvery))
+		!p.failed && len(p.streamPending) == 0 && !renew
 	for _, r := range p.decisions {
 		skip = skip && !r.due(now)
 	}
@@ -307,6 +340,7 @@ func (a *app) readCoordLook(ctx context.Context) (coordLook, error) {
 // coordinatorPass is one look: read, then deliver, warn, tell a late tick and hold the
 // sprint push.
 func (a *app) coordinatorPass(ctx context.Context) (read bool) {
+	a.renewEarly(ctx)
 	a.decisionPass(ctx)
 	l, err := a.readCoordLook(ctx)
 	if err != nil {
@@ -324,9 +358,7 @@ func (a *app) coordinatorPass(ctx context.Context) (read bool) {
 	login, identityErr := a.coordinatorBusLogin()
 	if identityErr != nil {
 		a.serveSay("COORDINATOR PUSH: sender identity unresolved: %s", identityErr)
-		if _, err := a.holdSprintPush(ctx, l.holder, false); err != nil {
-			a.serveSay("COORDINATOR PUSH: unproving sprint push: %s", err)
-		}
+		a.renewSprintPush(ctx, l.holder, false, now)
 		return
 	}
 	sender := cmp.Or(login, l.holder)
@@ -558,25 +590,62 @@ func (a *app) coordinatorPass(ctx context.Context) (read bool) {
 			p.recoveryToken, p.recoveryBefore, p.recoveryFrom = "", time.Time{}, ""
 		}
 	}
-	due := p.heldAt.IsZero() || !now.Before(p.heldAt.Add(hook.RenewEvery))
 	ok := !p.failed
+	// due at its interval, after a failed renewal, and at once when this pass's sends changed
+	// whether the way to the seat is proven
+	due := p.heldAt.IsZero() || p.holdFailed || !now.Before(p.heldAt.Add(hook.RenewEvery)) || ok != p.heldOK
 	p.mu.Unlock()
 	if due {
-		if why, err := a.holdSprintPush(ctx, l.holder, ok); err != nil {
-			a.serveSay("COORDINATOR PUSH: the sprint push of %s could not be held, tried again at the next look: %s", l.holder, oneline.Escape(err.Error()))
-		} else {
-			p.mu.Lock()
-			p.heldAt = now
-			say := why != p.heldWhy
-			p.heldWhy = why
-			p.mu.Unlock()
-			if say {
-				a.serveSay("COORDINATOR PUSH: %s", cmp.Or(why, "the sprint push of "+l.holder+" is held and proven"))
-			}
-		}
+		a.renewSprintPush(ctx, l.holder, ok, now)
 	}
 	return
 
+}
+
+// renewSprintPush holds the sprint push of holder, proven when ok (holdSprintPush), and keeps
+// when, and what it said, said again only when it changes.
+func (a *app) renewSprintPush(ctx context.Context, holder string, ok bool, now time.Time) {
+	why, err := a.holdSprintPush(ctx, holder, ok)
+	p := &a.coord
+	if err != nil {
+		p.mu.Lock()
+		p.holdFailed = true
+		p.mu.Unlock()
+		a.serveSay("COORDINATOR PUSH: the sprint push of %s could not be held, tried again at the next look: %s", holder, oneline.Escape(err.Error()))
+		return
+	}
+	p.mu.Lock()
+	p.heldAt, p.heldOK, p.holdFailed = now, ok, false
+	say := why != p.heldWhy
+	p.heldWhy = why
+	p.mu.Unlock()
+	if say {
+		a.serveSay("COORDINATOR PUSH: %s", cmp.Or(why, "the sprint push of "+holder+" is held and proven"))
+	}
+}
+
+// renewEarly renews the sprint push when its renewal is due, before the pass's lanes, which
+// wait on the server's line: a tick holding the line must not let the lease lapse. It reads
+// the seat's holder off the line and renews only for the holder the last pass held it for;
+// the pass itself renews for a new one.
+func (a *app) renewEarly(ctx context.Context) {
+	now := a.now()
+	p := &a.coord
+	p.mu.Lock()
+	holder, ok := p.holder, !p.failed
+	due := holder != "" && (p.holdFailed || !p.heldAt.IsZero() && !now.Before(p.heldAt.Add(hook.RenewEvery)))
+	p.mu.Unlock()
+	if !due {
+		return
+	}
+	st, err := a.store(common{redis: a.serveAddr})
+	if err != nil {
+		return // the pass renews it, or says why it could not
+	}
+	if current, err := st.B.Coordinator(ctx); err != nil || current != holder {
+		return
+	}
+	a.renewSprintPush(ctx, holder, ok, now)
 }
 
 // coordSend is one message the look sends: to whom, its kind, its text, and the groups
@@ -861,15 +930,17 @@ func coordWarningGroups(l coordLook) []sprint.Group {
 //
 // Both lanes are prepared on one hold of the line, from one read of the epoch, the seat, the
 // owner and the machine, and the open notes are read once after (before, 2026-10-17, each
-// lane read all of it on a hold of its own, every pass). The coordinator lane is not prepared while the
-// seat has no holder: there is no one to send it to, and a frozen obligation waits for the
-// next holder. A send the bus refuses waits before it is sent again (busRetry: a minute,
-// doubling, up to thirty; tla/DecisionsOwed.tla RefuseOwner), and every lane's failure is said
-// once until its text changes.
+// lane read all of it on a hold of its own, every pass); a lane whose seat or owner cannot be
+// read, or whose prepare fails, is said and the other lane goes on. A send the bus refuses,
+// and a fault of the sender's own (no channel: a seat with no holder; an unresolved
+// identity), waits before it is tried again (busRetry: a minute, doubling, up to thirty;
+// tla/DecisionsOwed.tla RefuseOwner models the owner lane's), and every lane's failure is
+// said once until its text changes.
 func (a *app) decisionPass(ctx context.Context) {
 	login, loginErr := a.coordinatorBusLogin()
+	lanes := []string{"coordinator", "owner"}
 	jobs := map[string]sprint.Note{}
-	var lanes []string
+	failed := map[string]error{} // a lane whose prepare failed: the other goes on, as before
 	var epoch uint64
 	err := a.onLine(ctx, func(st *store.Store) error {
 		es, err := st.EpochNow(ctx)
@@ -877,23 +948,14 @@ func (a *app) decisionPass(ctx context.Context) {
 			return err
 		}
 		epoch = es.N
-		coordinator, err := st.B.Coordinator(ctx)
-		if err != nil {
-			return err
-		}
+		// a seat with no holder is the coordinator lane's "no channel" fault, which waits as
+		// a refusal does (decisionSend): its delivery is still made, transferred and closed
+		coordinator, coordinatorErr := st.B.Coordinator(ctx)
 		sender := cmp.Or(login, coordinator, "nova-sprint")
 		if loginErr != nil {
 			sender = ""
 		}
-		owner, err := a.owner(ctx, st)
-		if err != nil {
-			return err
-		}
-		recipient := map[string]string{"coordinator": coordinator, "owner": owner}
-		lanes = []string{"owner"}
-		if coordinator != "" {
-			lanes = []string{"coordinator", "owner"}
-		}
+		owner, ownerErr := a.owner(ctx, st)
 		machine, _, err := st.Machine(ctx)
 		if err != nil {
 			return err
@@ -902,12 +964,19 @@ func (a *app) decisionPass(ctx context.Context) {
 		// each lane keeps a delivery note of its own; the second step's load reads only what
 		// changed since the first (the store's read twin)
 		for _, lane := range lanes {
-			_, err = st.Run(ctx, store.Step{Verb: "decision escalation prepare", Load: []string{sprint.Work, sprint.Readers, sprint.Fleet}, Routes: true, Readers: true, Friends: true, Actor: sprint.MachineActor, Epoch: &epoch, Plan: func(s *sprint.Snapshot) sprint.Plan {
-				delete(jobs, lane) // a plan made again (a retried step) starts over
-				return decisionPlan(s, lane, recipient[lane], sender, login, loginErr, st.Names.Prefix, epoch, machine.StoppedBetween, jobs)
-			}})
+			to, err := coordinator, coordinatorErr
+			if lane == "owner" {
+				to, err = owner, ownerErr
+			}
+			if err == nil {
+				_, err = st.Run(ctx, store.Step{Verb: "decision escalation prepare", Load: []string{sprint.Work, sprint.Readers, sprint.Fleet}, Routes: true, Readers: true, Friends: true, Actor: sprint.MachineActor, Epoch: &epoch, Plan: func(s *sprint.Snapshot) sprint.Plan {
+					delete(jobs, lane) // a plan made again (a retried step) starts over
+					return decisionPlan(s, lane, to, sender, login, loginErr, st.Names.Prefix, epoch, machine.StoppedBetween, jobs)
+				}})
+			}
 			if err != nil {
-				return err
+				failed[lane] = err
+				delete(jobs, lane)
 			}
 		}
 		all, err := st.B.OpenNotes(ctx)
@@ -915,6 +984,9 @@ func (a *app) decisionPass(ctx context.Context) {
 			return err
 		}
 		for _, lane := range lanes {
+			if failed[lane] != nil {
+				continue
+			}
 			for _, o := range all {
 				if d := o.Note.DecisionDelivery; o.Note.Type == sprint.NDecisionDelivery && d != nil && d.Lane == lane && d.SentAt.IsZero() {
 					jobs[lane] = o.Note
@@ -924,11 +996,15 @@ func (a *app) decisionPass(ctx context.Context) {
 		}
 		return nil
 	})
-	if err != nil {
-		a.serveSay("DECISIONS OWED: prepare failed: %s", err)
-		return
-	}
 	for _, lane := range lanes {
+		why := err
+		if why == nil {
+			why = failed[lane]
+		}
+		if why != nil {
+			a.serveSay("DECISIONS OWED: prepare %s failed: %s", lane, why)
+			continue
+		}
 		if job := jobs[lane]; job.DecisionDelivery != nil {
 			a.decisionSend(ctx, lane, job, login, loginErr, epoch)
 			continue
@@ -1052,13 +1128,16 @@ func (a *app) decisionSend(ctx context.Context, lane string, job sprint.Note, lo
 	}
 	fault := ""
 	var sendErr error
+	// the sender's own faults stand until someone changes the configuration: they wait as a
+	// refusal does (permanentFault); an expired token is renewed by the next look's prepare
+	permanent := func(why string) { fault, sendErr = why, permanentFault{errors.New(why)} }
 	switch {
 	case d.To == "":
-		fault = "no " + lane + " channel is configured"
+		permanent("no " + lane + " channel is configured")
 	case loginErr != nil:
-		fault = "sender identity unresolved: " + loginErr.Error()
+		permanent("sender identity unresolved: " + loginErr.Error())
 	case coordinatorSenderRefusal(d.From, login) != "":
-		fault = coordinatorSenderRefusal(d.From, login)
+		permanent(coordinatorSenderRefusal(d.From, login))
 	case !now.Before(d.RetryBefore):
 		fault = "delivery receipt unknown: retry token expired; renewal due next look"
 	default:
@@ -1133,7 +1212,7 @@ func (a *app) decisionSend(ctx context.Context, lane string, job sprint.Note, lo
 	if say {
 		when := "tried again at the next look"
 		if !retry.next.IsZero() {
-			when = "the bus refused it: sent again in " + retry.wait.String() + ", the wait doubling while it refuses"
+			when = "refused: tried again in " + retry.wait.String() + ", the wait doubling while it stands"
 		}
 		a.serveSay("DECISIONS OWED: %s delivery pending (%s; said once until it changes): %s", lane, when, fault)
 	}

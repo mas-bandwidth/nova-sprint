@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -56,12 +58,47 @@ type busRetry struct {
 	said string
 }
 
-// busRefused says the bus refused the send for what it is (bus.Refusal), so that the same send
-// is refused again: not a store or a network down, and not a send that went under its token
-// before (busMessageWent), which is a delivery.
+// busRefused says the send is refused for what it is, so that the same send is refused again:
+// a bus.Refusal (a recipient the bus does not know, ...), or a fault of the sender's own that
+// no retry changes (permanentFault: no channel configured, a sender identity unresolved).
+// Not a store or a network down, and not a send that went under its token before
+// (busMessageWent), which is a delivery. The wait is not cut short when the cause is fixed
+// (a name added to the roster): the next send goes when the wait ends, at most busRetryCap
+// later, or at once on a server restart.
 func busRefused(err error) bool {
 	var r *bus.Refusal
-	return errors.As(err, &r) && !busMessageWent(err)
+	var p permanentFault
+	return errors.As(err, &p) || errors.As(err, &r) && !busMessageWent(err) && !busNeedsNewToken(err)
+}
+
+// permanentFault is a failed send whose cause is the sender's own and stands until someone
+// changes the configuration: it waits as a refusal does.
+type permanentFault struct{ error }
+
+// busNeedsNewToken says the bus refused a send because its token went before with other
+// arguments, or names a record that is none (pkg/bus replay): the send is another message,
+// and wants a token of its own.
+func busNeedsNewToken(err error) bool {
+	var r *bus.Refusal
+	if err == nil || !errors.As(err, &r) {
+		return false
+	}
+	for _, p := range r.Problems {
+		if strings.Contains(p, "with other arguments") || strings.Contains(p, "has a record that is not one") {
+			return true
+		}
+	}
+	return false
+}
+
+// seatSilentRetoken is the token of a raise whose own token went with other arguments: the
+// raise's token and what the message says, so the same message is the same send again.
+func seatSilentRetoken(token, owner, subject, body string) string {
+	t := token + ":" + fmt.Sprintf("%x", sha256.Sum256([]byte(owner+"\x00"+subject+"\x00"+body)))[:16]
+	if len(t) > bus.MaxToken {
+		t = t[len(t)-bus.MaxToken:]
+	}
+	return t
 }
 
 // failed records a failed send at now: a refusal waits, the wait doubling from busRetryFirst to
@@ -116,10 +153,22 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 	}
 	a.seatSilent.lookAt = now
 	a.seatSilent.mu.Unlock()
-	// The open notes are read once, for the groups and the owner's receipts both; a look
-	// with no judgment of the kinds it tells reads nothing more (before, 2026-10-17, every
-	// look read the open notes twice, the work table, the machine and the epoch).
-	all, readErr := st.B.OpenNotes(ctx)
+	// The open notes are read once, at the sprint's epoch as it is now, for the groups and
+	// the owner's receipts both; a look with no judgment of the kinds it tells reads nothing
+	// more (before, 2026-10-17, every look read the open notes twice, the work table, the
+	// machine and the epoch). The epoch is read first: the run loop's store may be pinned to
+	// an epoch a clear has left, or not pinned at all, and its backend then names another
+	// epoch's keys (store.OpenGroups pins for the same reason).
+	es, err := st.EpochNow(ctx)
+	if err != nil {
+		a.serveSay("SEAT SILENT: the epoch could not be read: %s", oneline.Escape(err.Error()))
+		return
+	}
+	backend := st.B
+	if es.N != 0 {
+		backend = backend.AtEpoch(es.N, false)
+	}
+	all, readErr := backend.OpenNotes(ctx)
 	if readErr != nil {
 		a.serveSay("SEAT SILENT: the open judgments could not be read: %s", oneline.Escape(readErr.Error()))
 		return
@@ -133,11 +182,6 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 		a.seatSilent.mu.Lock()
 		a.seatSilent.told, a.seatSilent.retry = nil, nil // every raise is closed: forgotten
 		a.seatSilent.mu.Unlock()
-		return
-	}
-	es, err := st.EpochNow(ctx)
-	if err != nil {
-		a.serveSay("SEAT SILENT: the epoch could not be read: %s", oneline.Escape(err.Error()))
 		return
 	}
 	// the groups as store.OpenGroups makes them, from the notes read above (the printed
@@ -218,7 +262,14 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 			a.serveSay("SEAT SILENT %s: the sprint names no owner: told on this line only", g.ID)
 		} else {
 			m := bus.Message{From: "nova-sprint", To: []string{owner}, Kind: bus.KindBlocker, Subject: g.Type, Body: g.What, Token: token}
-			if err := a.bus(ctx, m, func(l string) { a.serveSay("%s", l) }); err != nil && !busMessageWent(err) {
+			err := a.bus(ctx, m, func(l string) { a.serveSay("%s", l) })
+			if busNeedsNewToken(err) {
+				// the raise's token went with other arguments (its text or its owner changed
+				// under it): this is another message, sent under a token of its own
+				m.Token = seatSilentRetoken(token, owner, g.Type, g.What)
+				err = a.bus(ctx, m, func(l string) { a.serveSay("%s", l) })
+			}
+			if err != nil && !busMessageWent(err) {
 				say := retry.failed(now, err)
 				a.seatSilent.mu.Lock()
 				if a.seatSilent.retry == nil {

@@ -112,8 +112,10 @@ type openDecisions struct {
 }
 
 // openOf is the decisions of the record at path without an outcome. The record is read and
-// decoded again only when its file's size or modification time changed since the last read
-// (the lane is the record's one writer); before (2026-10-17), every round decoded the whole of
+// decoded again only when its file's size or modification time changed since the last read.
+// That is sound because every write to a record, the lane's or a verb's (answer.go writes
+// these records too), appends a line under the record's file lock (pkg/decide record.go), so
+// every write grows the file; before (2026-10-17), every round decoded the whole of
 // judgment-answer.jsonl and read-shadow.jsonl, megabytes every DecideEvery.
 func (l *decideLane) openOf(path string) ([]decide.Decision, error) {
 	fi, statErr := os.Stat(path)

@@ -123,3 +123,53 @@ func TestASeatSilentLookReadsTheOpenNotesOnce(t *testing.T) {
 	assert.Equal(t, 1, got["open"], "the open notes read once: %v", got)
 	assert.Len(t, b.delivered, 1, "and the raise told")
 }
+
+// At an epoch above 0 (a sprint cleared since it began) the look reads the epoch's open
+// notes, not epoch 0's: the raise reaches the owner. The reader of #489 found the look silent
+// at every epoch above 0 when it read the store's backend as it was handed.
+func TestASeatSilentRaiseAfterAClearReachesTheOwner(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1 --owner glenn")
+	ta.ok("clear --confirm sprint")
+	b := &tokenBus{}
+	ta.a.bus = b.send
+	ctx := context.Background()
+	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: "coordinator"}
+	es, err := st.EpochNow(ctx)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), es.N)
+	_, err = st.Run(ctx, store.NoteStep("test", sprint.Note{Kind: sprint.Judgment, Type: sprint.NSeatSilent, StreamLevel: true,
+		Primaries: []string{"s1-1"}, What: "the seat is not answering", Decisions: []string{sprint.SeatSilentDecision}}))
+	require.NoError(t, err)
+	ta.a.tellSeatSilent(ctx, st)
+	require.Len(t, b.delivered, 1, "the owner is told at epoch 1")
+	assert.Equal(t, []string{"glenn"}, b.delivered[0].To)
+}
+
+// A raise whose token went before with other arguments (its text or owner changed under the
+// same token) is another message: it goes under a token of its own at once, not into a
+// thirty-minute wait.
+func TestASeatSilentRaiseWhoseTokenWentWithOtherArgumentsGetsANewToken(t *testing.T) {
+	t.Parallel()
+	b := &tokenBus{}
+	ta, st, _ := seatSilentRig(t, b)
+	ctx := context.Background()
+	var sent []string
+	ta.a.bus = func(ctx context.Context, m bus.Message, say func(string)) error {
+		sent = append(sent, m.Token)
+		if len(sent) == 1 {
+			return &bus.Refusal{Problems: []string{"the token \"" + m.Token + "\" already sent 01M at 2026-10-17T00:00:00Z with other arguments; a retry repeats them exactly, and a new message wants a new token"}}
+		}
+		return b.send(ctx, m, say)
+	}
+	ta.a.tellSeatSilent(ctx, st)
+	require.Len(t, sent, 2, "sent again at once")
+	assert.NotEqual(t, sent[0], sent[1])
+	assert.True(t, strings.HasPrefix(sent[1], sent[0]+":"), sent[1])
+	require.Len(t, b.delivered, 1)
+	assert.Empty(t, ta.a.seatSilent.retry, "no wait")
+	ta.pastTheLook()
+	ta.a.tellSeatSilent(ctx, st)
+	assert.Len(t, sent, 2, "told")
+}
