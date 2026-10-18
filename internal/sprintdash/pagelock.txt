@@ -19,4 +19,4 @@
 2026-10-14 59b7ebcc11ceca1c8b286f736853a8d8935462723437612453ae653b3c6e7a98 "Remove the tiers list here: never asked for this."
 2026-10-14 8406540edb5a77369941935117fc581f6564654b9fde9575e776539d4a61f636 "remove the /events and /landings.json requests"
 2026-10-18 05679c6653fa15f0cd7eb75a7e68676b4a4b4bf411a03516be9c05531995e68f "I would like it if you could create a stats page showing me all the things you can do with https://pele.run for the sprint dashboard. You could put these things below the existing stuff we have at the bottom."
-2026-10-18 d5a09f8db242b3ea45c23ebaa4bc9b81dc4476d00bcfdc87ca0ccb33a8528dd3 "Maybe we can click on a work stream by name, and this takes you to a page showing all details for that work stream, including all its cards, sankey for all cards if applicable, dependencies between cards etc etc etc."
+2026-10-18 158c4e2ede1a8e18753ba4c2fbf4e51e221c67445e5c4115f503436c99b122d4 "Maybe we can click on a work stream by name, and this takes you to a page showing all details for that work stream, including all its cards, sankey for all cards if applicable, dependencies between cards etc etc etc."

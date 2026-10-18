@@ -397,7 +397,12 @@ var tileFile = map[string]string{"/logo-tile-192.png": "logo-robot-192.png", "/l
 // text colour and is the favicon at /favicon.svg, and any other image is /logo.
 func (s *Server) index() []byte {
 	build := s.Build()
-	html := strings.ReplaceAll(string(file("index.html")), `src="app.js"`, `src="app.js?v=`+build+`"`)
+	page := string(file("index.html"))
+	if s.From != nil {
+		// a puller's page has no charts (charts_serve.go): the page as it was before them
+		page = strings.Replace(strings.Replace(page, chartsPanel, "", 1), chartsScript, "", 1)
+	}
+	html := strings.ReplaceAll(page, `src="app.js"`, `src="app.js?v=`+build+`"`)
 	html = strings.ReplaceAll(html, `src="charts.js"`, `src="charts.js?v=`+build+`"`)
 	slot, icon := "", ""
 	if s.Logo == "" {

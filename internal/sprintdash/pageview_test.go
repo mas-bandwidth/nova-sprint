@@ -34,10 +34,11 @@ import (
 // "remove the /events and /landings.json requests". The Last 24 hours panel and its script tag are
 // added below every other panel, the owner's ask of 2026-10-18: "I would like it if you could create
 // a stats page showing me all the things you can do with https://pele.run for the sprint dashboard.
-// You could put these things below the existing stuff we have at the bottom." (the page without them
-// is the page before them byte for byte: TestThePageAboveTheChartsIsUnchanged).
+// You could put these things below the existing stuff we have at the bottom.", and the fold rule
+// hides that panel's .charts (the page without them is the page before them byte for byte:
+// TestThePageAboveTheChartsIsUnchanged).
 const (
-	pageIndexSHA256 = "119399c422034d9a537d64327fe465c4b362475eae75c9671392d4b502117cd8"
+	pageIndexSHA256 = "19310c144b3278d4efbb2079c60c37e065e952ccc938d7dd4739106ba10ac0a2"
 	pageAppSHA256   = "8abaa9055145bc574c3c4162b7e1b0e47292021ad776860b1dda3f63afec61e4"
 
 	liveTile192 = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"

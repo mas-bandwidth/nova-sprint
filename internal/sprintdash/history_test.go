@@ -1,6 +1,7 @@
 package sprintdash
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -9,7 +10,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -316,7 +319,7 @@ func TestStreamRoutes(t *testing.T) {
 	assert.Contains(t, page, `src="/charts.js?v=`+r.s.Build()+`"`)
 	assert.Contains(t, page, `src="/stream.js?v=`+r.s.Build()+`"`)
 	assert.Equal(t, file("stream.js"), getBody(t, r.s, "/stream.js"))
-	for _, bad := range []string{"/api/stream/", "/stream/"} {
+	for _, bad := range []string{"/api/stream/", "/stream/", "/stream/nope", "/api/stream/nope"} {
 		w := httptest.NewRecorder()
 		r.s.ServeHTTP(w, httptest.NewRequest(http.MethodGet, bad, nil))
 		assert.Equal(t, http.StatusNotFound, w.Code, bad)
@@ -326,56 +329,251 @@ func TestStreamRoutes(t *testing.T) {
 	assert.Contains(t, string(getBody(t, r.s, "/PELE.txt")), "MIT License")
 }
 
-// roundTrip is a fake transport: no socket.
-type roundTrip func(*http.Request) (*http.Response, error)
-
-func (f roundTrip) RoundTrip(q *http.Request) (*http.Response, error) { return f(q) }
-
-// A puller asks its upstream for the chart routes, at most once a minute each, and says so when
-// the upstream serves none.
-func TestPullerAsksItsUpstreamForCharts(t *testing.T) {
-	t.Parallel()
-	var calls atomic.Int32
-	status := http.StatusOK
-	var paths []string
-	now := histNow
-	s := &Server{Now: func() time.Time { return now }, Every: time.Second,
-		From: &Upstream{URL: "http://up.example:7390/api/sprint", Client: &http.Client{Transport: roundTrip(func(q *http.Request) (*http.Response, error) {
-			calls.Add(1)
-			paths = append(paths, q.URL.String())
-			return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(`{"start":1}`)), Header: http.Header{}}, nil
-		})}}}
-	assert.JSONEq(t, `{"start":1}`, string(s.History()))
-	assert.JSONEq(t, `{"start":1}`, string(s.History()))
-	assert.Equal(t, int32(1), calls.Load(), "once a minute")
-	assert.Equal(t, "http://up.example:7390/api/history", paths[0])
-	s.Stream("a b")
-	assert.Equal(t, "http://up.example:7390/api/stream/a%20b", paths[1])
-	now = now.Add(time.Minute)
-	status = http.StatusNotFound
-	assert.Contains(t, string(s.History()), "serves no charts yet")
-	assert.Equal(t, int32(3), calls.Load())
-}
-
-// The page above the charts is the locked page byte for byte: index.html without the charts'
-// panel and script tag is the page as it was before them.
+// The page above the charts is the locked page but for exactly what the spec names: index.html
+// without the charts' panel, without their script tag, and with the fold rule as it was, is the page
+// as it was before them, byte for byte; app.js is untouched.
 func TestThePageAboveTheChartsIsUnchanged(t *testing.T) {
 	t.Parallel()
 	index := string(file("index.html"))
-	panel := `<section class="panel history" id="history-panel">
-  <div class="panel-head"><h2>Last 24 hours</h2><span class="muted history-sub" id="history-sub"></span></div>
-  <div class="charts" id="history"></div>
-</section>
-
-`
-	require.Contains(t, index, panel)
-	require.Contains(t, index, "<script src=\"charts.js\"></script>\n")
-	before := strings.Replace(strings.Replace(index, panel, "", 1), "<script src=\"charts.js\"></script>\n", "", 1)
+	fold := ".panel.folded > .chart-body, .panel.folded > .charts { display: none; }"
+	for _, part := range []string{chartsPanel, chartsScript, fold} {
+		require.Equal(t, 1, strings.Count(index, part), part)
+	}
+	before := strings.NewReplacer(chartsPanel, "", chartsScript, "", fold, ".panel.folded > .chart-body { display: none; }").Replace(index)
 	sum := sha256.Sum256([]byte(before))
 	assert.Equal(t, "42cc23bc3aaf0804aaf7ba58cd8c15e45c73a8c730c81bf913616d121b72049b", hex.EncodeToString(sum[:]), "the page before the charts, byte for byte")
 	app, err := os.ReadFile("page/app.js")
 	require.NoError(t, err)
 	assert.Equal(t, pageAppSHA256, sha(app), "app.js is untouched")
+}
+
+// roundTrip is a fake transport: no socket.
+type roundTrip func(*http.Request) (*http.Response, error)
+
+func (f roundTrip) RoundTrip(q *http.Request) (*http.Response, error) { return f(q) }
+
+// The public copy is a puller: its page carries no charts and no stream links, its chart routes
+// answer 404 without asking its upstream, and nothing it serves is derived from the rows (no card
+// id, no worker, route or model the rows alone carry).
+func TestAPullerPublishesNothingFromTheRows(t *testing.T) {
+	t.Parallel()
+	reader, _ := historyRig(t)
+	getBody(t, reader.s, "/api/sprint")
+	upstream := reader.s.PageSnapshot()
+	var asked atomic.Int32
+	var paths []string
+	var mu sync.Mutex
+	p := &Server{Now: func() time.Time { return histNow }, Every: time.Second,
+		From: &Upstream{URL: "http://up.example:7390/api/sprint", Client: &http.Client{Transport: roundTrip(func(q *http.Request) (*http.Response, error) {
+			asked.Add(1)
+			mu.Lock()
+			paths = append(paths, q.URL.Path)
+			mu.Unlock()
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(upstream)), Header: http.Header{}}, nil
+		})}}}
+	page := string(getBody(t, p, "/"))
+	assert.NotContains(t, page, "history-panel")
+	assert.NotContains(t, page, "charts.js")
+	assert.Equal(t, strings.NewReplacer(chartsPanel, "", chartsScript, "").Replace(buildQuery.ReplaceAllString(string(getBody(t, reader.s, "/")), "?v=X")),
+		buildQuery.ReplaceAllString(page, "?v=X"), "a puller's page is the reader's without the charts")
+	for _, route := range []string{"/api/history", "/api/stream/a.b", "/stream/a.b", "/api/stream/nope"} {
+		w := httptest.NewRecorder()
+		p.ServeHTTP(w, httptest.NewRequest(http.MethodGet, route, nil))
+		assert.Equal(t, http.StatusNotFound, w.Code, route)
+	}
+	api := string(getBody(t, p, "/api/sprint"))
+	for _, leak := range []string{"a.b-1", "a.b-2", "consumer:", "friend.stella", "reader-hulk", "pro-x", "flash-y", "\"rows\""} {
+		assert.NotContains(t, api, leak, "the public copy carries nothing of the rows")
+		assert.NotContains(t, page, leak)
+	}
+	mu.Lock()
+	for _, q := range paths {
+		assert.Equal(t, "/api/sprint", q, "a puller asks its upstream for the copy alone")
+	}
+	mu.Unlock()
+	assert.Positive(t, asked.Load())
+}
+
+// A flood of made-up stream names costs a lookup each: 404, nothing parsed again, nothing
+// computed, nothing memoized.
+func TestUnknownStreamNamesComputeNothing(t *testing.T) {
+	t.Parallel()
+	r, _ := historyRig(t)
+	getBody(t, r.s, "/api/stream/a.b")
+	r.s.mu.Lock()
+	parses, computes := r.s.charts.parses, r.s.charts.computes
+	r.s.mu.Unlock()
+	require.Equal(t, 1, parses)
+	require.Equal(t, 1, computes)
+	for i := range 1000 {
+		for _, route := range []string{"/api/stream/", "/stream/"} {
+			w := httptest.NewRecorder()
+			r.s.ServeHTTP(w, httptest.NewRequest(http.MethodGet, route+fmt.Sprintf("made-up-%d", i), nil))
+			require.Equal(t, http.StatusNotFound, w.Code)
+		}
+	}
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	assert.Equal(t, parses, r.s.charts.parses, "the rows are parsed once per copy, and the copy did not change")
+	assert.Equal(t, computes, r.s.charts.computes, "no view computed")
+	assert.Len(t, r.s.charts.answers, 1, "nothing memoized but the one real stream")
+}
+
+// N requests that miss at once compute once.
+func TestChartsAreSingleFlight(t *testing.T) {
+	t.Parallel()
+	s := &Server{Now: func() time.Time { return histNow }, Every: time.Second}
+	const n = 16
+	release := make(chan struct{})
+	var runs atomic.Int32
+	compute := func() []byte { runs.Add(1); <-release; return []byte("x") }
+	var wg sync.WaitGroup
+	got := make([][]byte, n)
+	wg.Add(1)
+	go func() { defer wg.Done(); got[0] = s.once("k", compute) }()
+	waiters := func() (int, bool) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		f, ok := s.charts.flight["k"]
+		if !ok {
+			return 0, false
+		}
+		return f.waiters, true
+	}
+	for {
+		if _, ok := waiters(); ok {
+			break
+		}
+		runtime.Gosched()
+	}
+	for i := 1; i < n; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); got[i] = s.once("k", compute) }()
+	}
+	for {
+		if w, _ := waiters(); w == n-1 {
+			break
+		}
+		runtime.Gosched()
+	}
+	close(release)
+	wg.Wait()
+	assert.Equal(t, int32(1), runs.Load(), "one computation for every request")
+	for i := range got {
+		assert.Equal(t, "x", string(got[i]))
+	}
+	s.mu.Lock()
+	assert.Empty(t, s.charts.flight, "the flight is over")
+	s.mu.Unlock()
+}
+
+// The history and the stream view go through it: each is computed once while the copy and the
+// minute stand, however many ask.
+func TestHistoryAndStreamComputeOncePerMinute(t *testing.T) {
+	t.Parallel()
+	r, _ := historyRig(t)
+	getBody(t, r.s, "/api/history")
+	var wg sync.WaitGroup
+	for range 32 {
+		wg.Add(2)
+		go func() { defer wg.Done(); r.s.History() }()
+		go func() { defer wg.Done(); r.s.Stream("a.b") }()
+	}
+	wg.Wait()
+	r.s.mu.Lock()
+	defer r.s.mu.Unlock()
+	assert.Equal(t, 2, r.s.charts.computes, "the history once, the stream once")
+	assert.Equal(t, 1, r.s.charts.parses)
+}
+
+// The dependency chart is bounded in all: boxes, the other streams' cards included, and arrows.
+func TestDependencyChartIsCapped(t *testing.T) {
+	t.Parallel()
+	count := func(src, part string) int { return strings.Count(src, part) }
+	// a chain of 200 open cards: 150 boxes
+	var chain []HistCard
+	for i := range 200 {
+		c := HistCard{ID: fmt.Sprintf("s-%03d", i), Stream: "s", Column: "waiting"}
+		if i > 0 {
+			c.Needs = []string{fmt.Sprintf("s-%03d", i-1)}
+		}
+		chain = append(chain, c)
+	}
+	c := depsChart(chain, nil)
+	assert.Equal(t, maxDepNodes, count(c.Mermaid, ":::waiting\n"))
+	// one card needing 300 other streams' cards: 150 boxes in all, the rest counted
+	one := []HistCard{{ID: "s-1", Stream: "s", Column: "ready"}}
+	for i := range 300 {
+		one[0].Needs = append(one[0].Needs, fmt.Sprintf("x-%d", i))
+	}
+	c = depsChart(one, nil)
+	assert.Equal(t, maxDepNodes, count(c.Mermaid, ":::ext\n")+count(c.Mermaid, ":::ready\n"))
+	assert.Contains(t, c.Says, "151 needs past the chart's bounds")
+	// 150 cards each needing 5 of the others: 400 arrows
+	var dense []HistCard
+	for i := range 150 {
+		c := HistCard{ID: fmt.Sprintf("d-%03d", i), Stream: "d", Column: "ready"}
+		for k := 1; k <= 5; k++ {
+			c.Needs = append(c.Needs, fmt.Sprintf("d-%03d", (i+k)%150))
+		}
+		dense = append(dense, c)
+	}
+	c = depsChart(dense, nil)
+	assert.Equal(t, maxDepEdges, count(c.Mermaid, " --> ")+count(c.Mermaid, " -.-> "))
+	assert.Contains(t, c.Says, "350 needs past the chart's bounds")
+}
+
+func TestStreamCardTableIsCapped(t *testing.T) {
+	t.Parallel()
+	var cards []HistCard
+	for i := range 600 {
+		cards = append(cards, HistCard{ID: fmt.Sprintf("s-%03d", i), Stream: "s", Column: "waiting"})
+	}
+	v := StreamViewOf(cards, nil, "s", histNow)
+	assert.Len(t, v.Cards, maxCardRows)
+	assert.Equal(t, 600, v.CardsTotal)
+}
+
+// The top-N charts keep 12 workers and 15 streams, the largest first.
+func TestTopNCharts(t *testing.T) {
+	t.Parallel()
+	byWho := map[string]*[2]int{}
+	streams := map[string]int{}
+	for i := range 20 {
+		byWho[fmt.Sprintf("w%02d", i)] = &[2]int{i, 1}
+		streams[fmt.Sprintf("s%02d", i)] = i + 1
+	}
+	who := whoChart(byWho)
+	assert.Contains(t, who.Mermaid, `x-axis ["w19", "w18", "w17", "w16", "w15", "w14", "w13", "w12", "w11", "w10", "w09", "w08"]`)
+	top := topBarChart("streams", "T", "S", "cards", streams, 15)
+	assert.Contains(t, top.Mermaid, `x-axis ["s19", "s18", "s17", "s16", "s15", "s14", "s13", "s12", "s11", "s10", "s09", "s08", "s07", "s06", "s05"]`)
+	assert.Contains(t, top.Mermaid, "  bar [20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6]\n")
+}
+
+// The landings line is the mean per hour over the 24 hours ending at each hour's end: 24 cards
+// landed half an hour before the window are in every hour's 24 but the last's.
+func TestRollingMeanOfLandings(t *testing.T) {
+	t.Parallel()
+	w := windowAt(histNow)
+	var cards []HistCard
+	for i := range 24 {
+		cards = append(cards, HistCard{ID: fmt.Sprintf("c%d", i), Kind: "work", Landed: w.start.Add(-30 * time.Minute)})
+	}
+	cards = append(cards, HistCard{ID: "in", Kind: "work", Landed: w.start.Add(90 * time.Minute)})
+	h := History(cards, histNow)
+	line := make([]string, 24)
+	for i := range line {
+		switch {
+		case i == 0:
+			line[i] = "1"
+		case i < 23:
+			line[i] = "1" // 25/24 = 1.04, one decimal
+		default:
+			line[i] = "0" // 1/24 = 0.04
+		}
+	}
+	line[0] = "1"
+	assert.Contains(t, chartByID(t, h.Charts, "landings").Mermaid, "  line ["+strings.Join(line, ", ")+"]\n")
 }
 
 func TestPeleIsPinned(t *testing.T) {

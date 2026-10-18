@@ -31,7 +31,9 @@ type StreamView struct {
 	Counts  []Fact       `json:"counts"`
 	Facts   []Fact       `json:"facts"`
 	Cards   []StreamCard `json:"cards"`
-	Charts  []Chart      `json:"charts"`
+	// CardsTotal is the stream's cards; Cards holds at most maxCardRows of them, in flow order.
+	CardsTotal int     `json:"cardsTotal"`
+	Charts     []Chart `json:"charts"`
 }
 
 // Fact is one labelled value of the stream view.
@@ -63,8 +65,13 @@ var flowColumns = []string{"waiting", "ready", "working", "review", "fix", "merg
 // columnColor is each column's colour on the page (index.html, --s-*).
 var columnColor = map[string]string{"waiting": colSlate, "ready": colGrey, "working": colBlue, "review": colOrange, "fix": "#8b5cf6", "merging": colPink, "landed": colGreen}
 
-// maxDepNodes caps the dependency chart's cards.
-const maxDepNodes = 150
+// maxDepNodes caps the dependency chart's boxes (the stream's cards and the cards they need),
+// maxDepEdges its arrows, and maxCardRows the stream page's card table.
+const (
+	maxDepNodes = 150
+	maxDepEdges = 400
+	maxCardRows = 500
+)
 
 // streamPage is what the stream view reads of the page's copy.
 type streamPage struct {
@@ -145,6 +152,8 @@ func StreamViewOf(cards []HistCard, page json.RawMessage, stream string, now tim
 	slices.SortStableFunc(v.Cards, func(a, b StreamCard) int {
 		return cmp.Or(cmp.Compare(rankOf(order, a.Column), rankOf(order, b.Column)), cmp.Compare(a.ID, b.ID))
 	})
+	v.CardsTotal = len(v.Cards)
+	v.Cards = v.Cards[:min(len(v.Cards), maxCardRows)]
 	cols := slices.Collect(maps.Keys(counts))
 	slices.SortFunc(cols, func(a, b string) int {
 		return cmp.Or(cmp.Compare(rankOf(order, a), rankOf(order, b)), cmp.Compare(a, b))
@@ -291,13 +300,26 @@ func depsChart(mine []HistCard, byID map[string]HistCard) Chart {
 		used[col] = true
 		fmt.Fprintf(&b, "  %s%s:::%s\n", node(x.ID), flowLabel(x.ID), col)
 	}
+	// every node (the stream's cards and the other streams' cards they need) and every edge is
+	// capped: a need whose node would pass maxDepNodes, or an edge past maxDepEdges, is left out
+	// and counted
+	edgesDrawn, left := 0, 0
 	for _, x := range keep {
 		for _, n := range x.Needs {
+			if edgesDrawn >= maxDepEdges {
+				left++
+				continue
+			}
 			if in[n] {
 				fmt.Fprintf(&b, "  %s --> %s\n", node(n), node(x.ID))
+				edgesDrawn++
 				continue
 			}
 			if _, drawn := ids[n]; !drawn {
+				if len(ids) >= maxDepNodes {
+					left++
+					continue
+				}
 				label := n
 				if o, ok := byID[n]; ok && o.Stream != "" {
 					label = n + " (" + o.Stream + ")"
@@ -305,7 +327,11 @@ func depsChart(mine []HistCard, byID map[string]HistCard) Chart {
 				fmt.Fprintf(&b, "  %s%s:::ext\n", node(n), flowLabel(label))
 			}
 			fmt.Fprintf(&b, "  %s -.-> %s\n", node(n), node(x.ID))
+			edgesDrawn++
 		}
+	}
+	if left > 0 {
+		c.Says += fmt.Sprintf(" %d %s past the chart's bounds (%d boxes, %d arrows) %s not drawn.", left, cond(left == 1, "need", "needs"), maxDepNodes, maxDepEdges, cond(left == 1, "is", "are"))
 	}
 	for _, col := range flowColumns {
 		if used[col] {

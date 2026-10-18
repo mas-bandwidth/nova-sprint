@@ -39,7 +39,8 @@
           });
           body.appendChild(tr);
         });
-        $("stream-cards-sub").textContent = plural((v.cards || []).length, "card", "cards");
+        var shown = (v.cards || []).length, total = v.cardsTotal || shown;
+        $("stream-cards-sub").textContent = plural(total, "card", "cards") + (total > shown ? ", the first " + shown + " in flow order shown" : "");
       }).catch(function (e) { $("stream-sub").textContent = "the stream view did not load: " + e.message; });
     }
     C.every(load);

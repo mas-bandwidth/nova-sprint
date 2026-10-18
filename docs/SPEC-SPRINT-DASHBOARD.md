@@ -378,8 +378,13 @@ from the owner edits one line here and nothing else moves.
   and its consumer records, consumer:<epoch>:<key>, each {kind work|read|land, who, route, model, taken, ended, outcome}). No new
   read of the sprint: `History` (internal/sprintdash/history.go) is a pure function of those cards and a clock, served at
   /api/history, computed at most once a minute (again only when the minute has turned and the copy changed, or the hour turned).
-  /api/sprint is unchanged. A puller holds no rows: it asks its upstream's /api/history, at most once a minute, and says so when
-  the upstream serves none.
+  /api/sprint is unchanged. The rows are parsed once per copy; every computation is single-flight.
+- Only the dashboard that reads the sprint (the reader, on loopback or the tailnet) serves the charts. A puller (the public
+  copy) holds no rows and shows none of this: what the charts carry (card ids of every stream, archived ones too, the needs
+  between cards, worker and friend names, routes, models, each attempt's times) is not the public copy's to show until the
+  owner decides what it may. On a puller /api/history, /api/stream/<name> and /stream/<name> answer 404, and its page is
+  index.html without the panel and without charts.js (so without the stream links): the page as it was before them
+  (TestAPullerPublishesNothingFromTheRows).
 - The window: 24 hourly buckets on UTC hour boundaries, the current hour last; the page labels the hours in the viewer's time zone.
 - The charts, each a card with a title, one sentence saying what it counts, a legend, and the chart; with nothing to draw, the
   line "nothing in the last 24h" in its place: Landings per hour (bars, with the 24-hour mean per hour as a line); Work started
@@ -392,19 +397,25 @@ from the owner edits one line here and nothing else moves.
   inserts the SVG. Pele is vendored, pinned and unchanged: page/pele.js, its version, digests and licence in page/PELE.txt. It
   loads only when the panel comes near the view (after the page above has drawn), and the charts refresh once a minute while
   the tab is shown. Colours are the page's dark tokens (--pele-* set from --bg, --surface, --text, --border and the state
-  colours). The page above the panel is unchanged byte for byte (TestThePageAboveTheChartsIsUnchanged).
+  colours). The page above the panel changes in exactly three ways, and is otherwise the page before them byte for byte
+  (TestThePageAboveTheChartsIsUnchanged): the fold rule (.panel.folded) also hides the panel's .charts, so its fold button
+  folds it; charts.js adds a pointer cursor and an underline on hover to the Work table's stream names; and one click
+  listener on the Work table opens a stream's page (Stream pages, below). The table's markup and app.js are unchanged.
 
 ## Stream pages (the owner's ask of 2026-10-18, its words under "The page lock"): every stream name in the Work table opens /stream/<name>
 - The Work table is drawn as before; a click on a stream's name (charts.js, one listener on the table) opens /stream/<name>
   (ctrl or cmd: a new tab). The stream page (page/stream.html, the same dark tokens) shows the stream's display name and state,
   its cards by column, every scalar cell of its Work row, merge row and stream_costs record, the charts (Dependencies: a
   flowchart of its cards, each classed by its column, an arrow from each card it needs, a need on another stream's card dashed,
-  cards with no need either way counted and not drawn, at most 150 drawn; Card flow: the sankey of every attempt of its cards;
-  Landings per hour over the last 24; Work and read spans: a gantt of the last 24 hours), and a table of every card (card,
+  cards with no need either way counted and not drawn, at most 150 boxes in all, the other streams' cards it needs included,
+  and at most 400 arrows, what is left out counted; Card flow: the sankey of every attempt of its cards;
+  Landings per hour over the last 24; Work and read spans: a gantt of the last 24 hours), and a table of its cards, at
+  most 500 rows in flow order with the stream's count beside it (card,
   column, tier, attempts, reworks, reads, who ran the latest attempt, how its latest consumer ended, needs, age since admitted,
   landed).
 - Source: /api/stream/<name>, `StreamViewOf` (internal/sprintdash/streamview.go), a pure function of the same cards and the page's
-  copy, computed for the one stream asked for and memoized a minute (never every stream at each read); a puller asks its upstream.
+  copy, computed for the one stream asked for, single-flight, and memoized a minute (never every stream at each read). A name that
+  is no stream of the copy answers 404 before anything is computed or memoized. A puller answers 404 (Last 24 hours, above).
 
 ## Footer: one link, "https://github.com/mas-bandwidth/nova-sprint", matching the live page.
 

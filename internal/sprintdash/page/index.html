@@ -235,7 +235,7 @@ button.toggle:hover { color: var(--text); border-color: var(--border-strong); }
 .panel-head .fold:hover { color: var(--text); }
 .panel-head .fold::before { content: "\2303"; font-size: 1.5rem; display: block; transition: transform 160ms ease-out; }
 .panel.folded .panel-head .fold::before { transform: rotate(180deg); }
-.panel.folded > .scroll, .panel.folded > .empty, .panel.folded > .chart-body { display: none; }
+.panel.folded > .scroll, .panel.folded > .empty, .panel.folded > .chart-body, .panel.folded > .charts { display: none; }
 .panel.folded .panel-head { padding-bottom: 2rem; }
 .empty { padding: 1rem 3rem 3rem; color: var(--text-2); font-size: 1.625rem; }
 .empty code { font: 1.5rem ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); }
