@@ -706,7 +706,11 @@ naming no `REPO:` or no `BASE:` is held only to the checks that need no tree
 
 The `brief check`'s `tla-records` rule reads the card's base tree too, and a repository
 whose base holds no `tla/CASES.tsv` holds no models and is not held to it, the same file
-the lander's run-record check reads.
+the lander's run-record check reads. A brief on a placed card with a recorded tier
+(`FieldTier`) that its line 1 contradicts gets a `tier` finding naming both tiers, and
+the remedy that pins the line 1 tier (`nova-sprint brief c --tier <t> --reason <why>`);
+a file naming the recorded tier, a card with no recorded tier, an id that is no card and
+a sentinel report nothing.
 
 `add --partial`, with `--brief-dir` or a repeated `--brief-file`, runs every check over every
 brief and admits what passes instead of refusing the whole call. Every brief the checks find a
