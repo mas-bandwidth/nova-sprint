@@ -809,6 +809,28 @@ func FriendStartStep(r sprint.FriendStartReq) Step {
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.FriendStart(s, r) }}
 }
 
+// FriendHold is a friend's row as nova-hook's FRIEND UP push says it: whether the
+// sprint holds her (friend down, friend hold), why, and her width.
+type FriendHold struct {
+	Held   bool   `json:"held"`
+	Reason string `json:"reason,omitempty"`
+	Width  int    `json:"width"`
+}
+
+// FriendHoldOf is the friend's hold and width as the roster has them (one read);
+// a friend the roster lacks is refused.
+func (st *Store) FriendHoldOf(ctx context.Context, friend string) (FriendHold, error) {
+	r, _, err := st.roster(ctx)
+	if err != nil {
+		return FriendHold{}, err
+	}
+	e, ok := r[friend]
+	if !ok {
+		return FriendHold{}, noFriend(r, friend)
+	}
+	return FriendHold{Held: e.Held, Reason: e.Reason, Width: e.Width}, nil
+}
+
 // FriendSpecOf is what friend sync last wrote of the friend: her width and
 // her delivery mode as her nova-config row has them, which her beat answers
 // so her daemon reads her row without reaching the config store; a friend the

@@ -339,7 +339,7 @@ func TestTheDirtyTickDriveOnAStore(t *testing.T) {
 			if res.Done != "" {
 				return
 			}
-			cursor, why = loop.pace(lctx, st, res.Epoch, cursor, began)
+			cursor, why = loop.pace(lctx, st, res.Epoch, cursor, began, io.Discard)
 		}
 	}()
 	<-first

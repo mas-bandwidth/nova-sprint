@@ -9,6 +9,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
@@ -89,12 +90,180 @@ type TierCosts struct {
 	Reconciles []CostReconcileRecord `json:"reconciles,omitempty"`
 }
 
+// costMemoCap bounds each generation of the kept views between the where record's counts,
+// which keep the work table's cards alone (KeepCardMemos): several times the work table's
+// cards (about 600, 2026-10-17) fit in one, and a card not asked for over a generation is
+// let go.
+const costMemoCap = 4096
+
+// KeepCardMemos keeps the cost views and brief tiers of the cards named (the work table's,
+// at the where record's count, store/where.go) and lets every other go: the copies a step
+// planned on (a frozen table, a snapshot with its queue) and the cards replaced since.
+func KeepCardMemos(cards []*Card) {
+	live := make(map[*Card]bool, len(cards))
+	for _, c := range cards {
+		live[c] = true
+	}
+	costMemo.mu.Lock()
+	costMemo.cur, costMemo.old = keepLive(costMemo.cur, costMemo.old, live), nil
+	costMemo.mu.Unlock()
+	tierMemo.mu.Lock()
+	tierMemo.cur, tierMemo.old = keepLive(tierMemo.cur, tierMemo.old, live), nil
+	tierMemo.mu.Unlock()
+}
+
+// keepLive is the entries of both generations whose card is live, in one.
+func keepLive[V any](cur, old map[*Card]V, live map[*Card]bool) map[*Card]V {
+	out := make(map[*Card]V, len(live))
+	for _, gen := range []map[*Card]V{old, cur} {
+		for c, v := range gen {
+			if live[c] {
+				out[c] = v
+			}
+		}
+	}
+	return out
+}
+
+// costMemo is CardCostOf's kept views, by card.
+var costMemo = &cardCostMemo{}
+
+// cardCostMemo keeps each card's parsed cost in two generations: a lookup in the old one
+// moves it to the new, and the new one, full, becomes the old, so what is kept is bounded
+// and every card asked for at least once a generation stays.
+type cardCostMemo struct {
+	mu       sync.Mutex
+	cur, old map[*Card]costKept
+	parses   int // cardCostOf calls made for the memo (tests)
+}
+
+// costKept is one card's view and the fields it was parsed from.
+type costKept struct {
+	view   CardCostView
+	fields map[string]string // every field CardCostOf reads, as parsed
+}
+
+// costFields is every field of the card CardCostOf reads: its records and the five
+// single fields.
+func costFields(pr *Card) map[string]string {
+	out := map[string]string{}
+	for k, v := range pr.Fields {
+		if strings.HasPrefix(k, FieldCostRecord) {
+			out[k] = v
+		}
+	}
+	for _, k := range []string{FieldCostTotal, FieldCostCut, FieldCostCarried, FieldReplaces, FieldCostCarriedTo} {
+		if v, ok := pr.Fields[k]; ok {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+// sameCostFields says the card still carries exactly the fields kept.
+func sameCostFields(pr *Card, kept map[string]string) bool {
+	n := 0
+	for k, v := range pr.Fields {
+		if strings.HasPrefix(k, FieldCostRecord) {
+			if w, ok := kept[k]; !ok || w != v {
+				return false
+			}
+			n++
+		}
+	}
+	for _, k := range []string{FieldCostTotal, FieldCostCut, FieldCostCarried, FieldReplaces, FieldCostCarriedTo} {
+		v, ok := pr.Fields[k]
+		w, kok := kept[k]
+		if ok != kok || v != w {
+			return false
+		}
+		if ok {
+			n++
+		}
+	}
+	return n == len(kept)
+}
+
+func (m *cardCostMemo) get(pr *Card) (CardCostView, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	k, ok := m.cur[pr]
+	if !ok {
+		if k, ok = m.old[pr]; ok {
+			m.keep(pr, k)
+		}
+	}
+	if !ok || !sameCostFields(pr, k.fields) {
+		return CardCostView{}, false
+	}
+	v := k.view
+	v.Consumers = slices.Clone(v.Consumers)
+	return v, true
+}
+
+func (m *cardCostMemo) put(pr *Card, v CardCostView) {
+	f := costFields(pr)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.parses++
+	m.keep(pr, costKept{view: v, fields: f})
+}
+
+// keep puts one card's view in the new generation, the lock held.
+func (m *cardCostMemo) keep(pr *Card, k costKept) {
+	if len(m.cur) >= costMemoCap {
+		m.old, m.cur = m.cur, nil
+	}
+	if m.cur == nil {
+		m.cur = map[*Card]costKept{}
+	}
+	m.cur[pr] = k
+}
+
 // TierWord is the tier a card's brief names on its line 1 (any word the brief carries),
 // flash when it names none.
 func TierWord(c *Card) string {
-	m, _ := cardhdr.ReadModel(c.F("brief"))
-	return cmp.Or(m.Tier, cardhdr.RouteFlash)
+	return cmp.Or(briefTierOf(c), cardhdr.RouteFlash)
 }
+
+// briefTierOf is the tier the card's brief names on its line 1 (cardhdr.ReadModel), ""
+// for none: kept per card while its brief is the one read (tierMemo), so each pass over
+// the cards reads no brief's header again (2026-10-17: TierWord and attemptTier read
+// every card's header lines once a card a pass).
+func briefTierOf(c *Card) string {
+	brief := c.F("brief")
+	tierMemo.mu.Lock()
+	k, ok := tierMemo.cur[c]
+	if !ok {
+		k, ok = tierMemo.old[c]
+	}
+	tierMemo.mu.Unlock()
+	if ok && k.brief == brief {
+		return k.tier
+	}
+	m, _ := cardhdr.ReadModel(brief)
+	tierMemo.mu.Lock()
+	if len(tierMemo.cur) >= costMemoCap {
+		tierMemo.old, tierMemo.cur = tierMemo.cur, nil
+	}
+	if tierMemo.cur == nil {
+		tierMemo.cur = map[*Card]tierKept{}
+	}
+	tierMemo.cur[c] = tierKept{brief: brief, tier: m.Tier}
+	tierMemo.reads++
+	tierMemo.mu.Unlock()
+	return m.Tier
+}
+
+// tierMemo is briefTierOf's kept tiers, by card, in two generations (cardCostMemo).
+var tierMemo struct {
+	mu       sync.Mutex
+	cur, old map[*Card]tierKept
+	reads    int // the briefs read (tests)
+}
+
+// tierKept is one card's brief tier and the brief it was read from.
+type tierKept struct{ brief, tier string }
 
 // TierCounts counts every primary on the work table (sentinels left out) by tier
 // (TierWord).
@@ -112,12 +281,47 @@ func TierCounts(s *Snapshot) map[string]int {
 // card of the stream counted, on the table or kept off it (a dropped card keeps its cost),
 // a card whose spend was carried to its twin counted on the twin (StreamSpend).
 func StreamTierCosts(s *Snapshot) map[string]TierCosts {
+	out, _ := streamTierCostsBy(s)
+	return out
+}
+
+// StreamTierCostsChecked is StreamTierCosts and its check (CostCheckOf), counted over one
+// walk of the cards by stream (streamCards).
+func StreamTierCostsChecked(s *Snapshot) (map[string]TierCosts, CostCheck) {
+	out, by := streamTierCostsBy(s)
+	return out, costCheckOf(s, out, by)
+}
+
+// streamTierCostsBy is StreamTierCosts and the cards by stream it was counted over. The
+// sprint's figures, the same on every stream's record (the routes, the unattributed spend
+// and the reconciliations), are counted once, not once a stream.
+func streamTierCostsBy(s *Snapshot) (map[string]TierCosts, map[string][]*Card) {
 	by := streamCards(s)
+	sw := sprintCostsOf(s)
 	out := map[string]TierCosts{}
 	for _, st := range s.Work.Rows() {
-		out[st] = streamTierCosts(s, st, by[st])
+		out[st] = streamTierCosts(s, st, by[st], sw)
 	}
-	return out
+	return out, by
+}
+
+// sprintCosts is the sprint's figures every stream's TierCosts carries alike.
+type sprintCosts struct {
+	routes       map[string]Route
+	unreconciled string
+	reconciles   []CostReconcileRecord
+}
+
+func sprintCostsOf(s *Snapshot) sprintCosts {
+	sw := sprintCosts{routes: map[string]Route{}}
+	for _, r := range s.Routes {
+		sw.routes[r.Name] = r
+	}
+	if unrec := UnreconciledSpend(s); unrec > 0 {
+		sw.unreconciled = cardcost.Cents(new(big.Rat).SetFloat64(unrec))
+	}
+	sw.reconciles = LatestReconciles(s)
+	return sw
 }
 
 // streamCards is every primary of the work table, placed or kept off it (Table.Cards),
@@ -164,7 +368,7 @@ func StreamSpend(cards []*Card) (string, bool) {
 		if c.F(FieldCostCarriedTo) != "" {
 			continue
 		}
-		if v := CardCostOf(c).Total.Charged; v != "" {
+		if v := chargedOf(c.F(FieldCostTotal)); v != "" { // CardCostOf(c).Total.Charged
 			sum = append(sum, v)
 		}
 		if v := c.F(FieldCostCarried); v != "" {
@@ -186,7 +390,7 @@ func CardsSpend(s *Snapshot) string {
 		if IsSentinel(c) {
 			continue
 		}
-		if v := CardCostOf(c).Total.Charged; v != "" {
+		if v := chargedOf(c.F(FieldCostTotal)); v != "" { // CardCostOf(c).Total.Charged
 			sum = append(sum, v)
 		}
 	}
@@ -216,16 +420,13 @@ func landedSpend(s *Snapshot, stream string) (string, int) {
 	return "", n
 }
 
-func streamTierCosts(s *Snapshot, stream string, cards []*Card) TierCosts {
+func streamTierCosts(s *Snapshot, stream string, cards []*Card, sw sprintCosts) TierCosts {
 	t := TierCosts{Tiers: map[string]int{}, PerLanded: "-", InFlight: "-", CostByTier: map[string]string{}, ReadsToday: map[string]ReadDay{}, Readers: map[string]ReaderSpend{}}
 	byTier := map[string]*big.Rat{}
 	workCost, readCost, decideCost := new(big.Rat), new(big.Rat), new(big.Rat)
 	pricedWork, pricedRead, pricedDecide := false, false, false
 	day := s.Now.UTC().Format(time.DateOnly)
-	routes := map[string]Route{}
-	for _, r := range s.Routes {
-		routes[r.Name] = r
-	}
+	routes := sw.routes
 	var inFlightCost []string
 	for _, c := range cards {
 		if c.Placed() {
@@ -240,7 +441,7 @@ func streamTierCosts(s *Snapshot, stream string, cards []*Card) TierCosts {
 		if c.Placed() && c.Col != Landed && c.F(FieldCostCarriedTo) == "" {
 			// in flight: the spend on the stream's cards on the table and not landed yet,
 			// what each carries from the cards it replaced included
-			if v := CardCostOf(c).Total.Charged; v != "" {
+			if v := chargedOf(c.F(FieldCostTotal)); v != "" { // CardCostOf(c).Total.Charged
 				inFlightCost = append(inFlightCost, v)
 			}
 			if v := c.F(FieldCostCarried); v != "" {
@@ -338,10 +539,8 @@ func streamTierCosts(s *Snapshot, stream string, cards []*Card) TierCosts {
 		t.Readers = nil
 	}
 	t.CostByTier = tierCostCents(byTier)
-	if unrec := UnreconciledSpend(s); unrec > 0 {
-		t.Unreconciled = cardcost.Cents(new(big.Rat).SetFloat64(unrec))
-	}
-	t.Reconciles = LatestReconciles(s)
+	t.Unreconciled = sw.unreconciled
+	t.Reconciles = slices.Clone(sw.reconciles)
 	return t
 }
 
@@ -366,6 +565,11 @@ type CostCheck struct {
 // CostCheckOf checks the streams' sums (StreamTierCosts, before any stats reset's mark is
 // taken off) against the cards' (CardsSpend).
 func CostCheckOf(s *Snapshot, streams map[string]TierCosts) CostCheck {
+	return costCheckOf(s, streams, streamCards(s))
+}
+
+// costCheckOf is CostCheckOf over the cards by stream (streamCards).
+func costCheckOf(s *Snapshot, streams map[string]TierCosts, by map[string][]*Card) CostCheck {
 	var sum []string
 	for _, st := range slices.Sorted(maps.Keys(streams)) {
 		if v := streams[st].TotalUSD; v != "" {
@@ -380,7 +584,7 @@ func CostCheckOf(s *Snapshot, streams map[string]TierCosts) CostCheck {
 	for _, r := range s.Work.Rows() {
 		rows[r] = true
 	}
-	for st, cs := range streamCards(s) {
+	for st, cs := range by {
 		if rows[st] {
 			continue
 		}
@@ -519,8 +723,10 @@ func runTier(routes map[string]Route, c *Card, con Consumer) string {
 // brief names; "no tier" when none does (never cardTier's default ceiling, which would
 // name a tier nothing recorded).
 func attemptTier(c *Card) string {
-	m, _ := cardhdr.ReadModel(c.F("brief"))
-	return cmp.Or(c.F(FieldTierNow), c.F(FieldTier), m.Tier, "no tier")
+	if t := cmp.Or(c.F(FieldTierNow), c.F(FieldTier)); t != "" {
+		return t // the brief is not read when the card records its tier
+	}
+	return cmp.Or(briefTierOf(c), "no tier")
 }
 
 // addTier adds usd to the tier's sum.

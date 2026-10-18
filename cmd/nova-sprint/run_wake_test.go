@@ -169,10 +169,10 @@ func TestALineWakesTheLoopWithinTheFloor(t *testing.T) {
 	require.True(t, k.began.Equal(late), "a line 500ms after a tick began: want a tick woken by the log at once: %v (line at %s)", w.ticks, late.Format("15:04:05.000"))
 }
 
-// A quiet log ticks the loop once a second, by the clock. The first tick
+// A quiet log ticks the loop once a QuietEvery, by the clock. The first tick
 // brings the member up, and its own lines wake one tick more (the tick after
 // a change reads the state whole, as it always has); then the log is quiet.
-func TestAQuietLogTicksOnceASecond(t *testing.T) {
+func TestAQuietLogTicksOnceAQuietEvery(t *testing.T) {
 	t.Parallel()
 	w := newWakeApp(t)
 	w.ok("init --readers reader-a,reader-b --members m1")
@@ -183,8 +183,35 @@ func TestAQuietLogTicksOnceASecond(t *testing.T) {
 	require.Equal(t, tickLog, w.ticks[1].why, "ticks: %v", w.ticks)
 	for i := 2; i < len(w.ticks); i++ {
 		require.Equal(t, tickClock, w.ticks[i].why, "tick #%d on a quiet log: %s %s after the one before, want the clock at %s: %v",
-			i+1, w.ticks[i].why, w.ticks[i].began.Sub(w.ticks[i-1].began), store.TickEvery, w.ticks)
-		require.Equal(t, store.TickEvery, w.ticks[i].began.Sub(w.ticks[i-1].began), "tick #%d on a quiet log: %s %s after the one before, want the clock at %s: %v",
-			i+1, w.ticks[i].why, w.ticks[i].began.Sub(w.ticks[i-1].began), store.TickEvery, w.ticks)
+			i+1, w.ticks[i].why, w.ticks[i].began.Sub(w.ticks[i-1].began), store.QuietEvery, w.ticks)
+		require.Equal(t, store.QuietEvery, w.ticks[i].began.Sub(w.ticks[i-1].began), "tick #%d on a quiet log: %s %s after the one before, want the clock at %s: %v",
+			i+1, w.ticks[i].why, w.ticks[i].began.Sub(w.ticks[i-1].began), store.QuietEvery, w.ticks)
+	}
+}
+
+// A quiet log never lets the server's record lapse: the quiet wait is taken in
+// slices of ServerEvery and the record is written between them, so its age
+// stays under ServerTTL however long the quiet tick is (2026-10-17: the first
+// QuietEvery of 10 s left a 3 s record missing most of the time).
+func TestAQuietLogKeepsTheServerRecordFresh(t *testing.T) {
+	t.Parallel()
+	w := newWakeApp(t)
+	w.ok("init --readers reader-a,reader-b --members m1")
+	w.ok("start")
+	var gaps []time.Duration
+	var last time.Time
+	w.m.LogWait = func(d time.Duration) {
+		if r, ok, _ := (&store.Store{B: w.m, Names: sprint.Names{}, Now: w.a.now}).Server(context.Background()); ok {
+			if !last.IsZero() && r.At.After(last) {
+				gaps = append(gaps, r.At.Sub(last))
+			}
+			last = r.At
+		}
+		w.a.sleep(d)
+	}
+	w.run(5)
+	require.NotEmpty(t, gaps, "the server's record was never rewritten during the quiet waits")
+	for _, g := range gaps {
+		require.LessOrEqual(t, g, store.ServerTTL, "the server's record lapsed: %s between writes, TTL %s; gaps %v", g, store.ServerTTL, gaps)
 	}
 }

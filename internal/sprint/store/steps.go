@@ -408,6 +408,15 @@ func ReleaseStep(r sprint.ReleaseReq) Step {
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Release(s, r) }}
 }
 
+// RetireStep is the tick's retire checks alone, as the machine (tick
+// --retire-only; sprint.RetireOnly): it reads what a check reads (every
+// table, the cards open judgments name, the friends) and closes the
+// judgments whose cause is gone, STOPPED or RUNNING, moving no card.
+func RetireStep() Step {
+	return Step{Verb: "tick retire", Actor: sprint.MachineActor, Load: All, Extras: tickExtras, Friends: true,
+		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.RetireOnly(s, sprint.MachineActor) }}
+}
+
 // AckStep is the coordinator closing judgments it looked at.
 func AckStep(r sprint.AckReq) Step {
 	// every table: ack is judged by the no-stall rule on the state after it

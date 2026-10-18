@@ -44,6 +44,23 @@
 (* a pre-upgrade record (no stop-issued flag), no live lease at all; then  *)
 (* it clears the debt.                                                     *)
 (*                                                                         *)
+(* The STOPPED reconcile's return (LiveReturnStep, which the debt guard    *)
+(* exempts as the owner's receipt) takes a job whose run is gone off the   *)
+(* table (Retire): a friend's work card retired by FriendReturn, a read    *)
+(* card retired lost by readLostUnit. It writes the STOP's receipt (sfg =  *)
+(* gen, gen + 1) on the record it retires, kept off the table (col         *)
+(* "gone"). settleStopDebt reads only a placed card, so the debt stays on  *)
+(* the machine record until START. Before 2026-10-18 START read only the   *)
+(* placed cells, found no card and held the debt owned (stopOwned: out of  *)
+(* the table is owned), and nothing could return a card off the table     *)
+(* (stop-return: not a live card): 32 such debts held the studio's sprint  *)
+(* stopped for good. START now reads each debt's own record                *)
+(* (stopDebtExtras), so the receipt is seen. A card removed with no        *)
+(* receipt is not modelled: the debt guard refuses every other step that   *)
+(* would remove an owned card (a drop, a friend down's withdraw), and out- *)
+(* of-band removal stays owned (the safe side). GoneNeverBlocksStart       *)
+(* checks it; Broken "goneblocks" is START reading placed cells only.      *)
+(*                                                                         *)
 (* A pre-upgrade record (Broken "preupgrade": a machine STOPPED before     *)
 (* v1.2.6 has no durable stop-issued flag and no debt list) writes neither *)
 (* at STOP, so its live leases are the only authority: START refuses while *)
@@ -71,7 +88,12 @@
 (*  "byid"            - a lease owns its card by id, ignoring the          *)
 (*                 generation: a card returned (or redealt) at gen+1 is    *)
 (*                 still owned by the lease captured at gen                *)
-(*                 (NoStaleGenOwned fails).                                *)
+(*                 (NoStaleGenOwned fails);                                *)
+(*  "goneblocks"      - the code before 2026-10-18: START reads only the   *)
+(*                 placed cells, so a card the reconcile returned off the  *)
+(*                 table, its receipt on the kept record, is owned and     *)
+(*                 holds START refused with nothing able to settle it      *)
+(*                 (GoneNeverBlocksStart fails).                           *)
 (*                                                                         *)
 (* Clear (docs/SPEC-SPRINT.md section 13, the blank-slate clear): clear   *)
 (* first stops the machine (the same STOP), then refuses while a work/read *)
@@ -109,10 +131,14 @@ Idle(c) == IF c \in Readers THEN "asked" ELSE "ready"
 \* a live lease: the card the STOP captures (working or reading)
 LiveLease(c) == col[c] = Active(c)
 
+\* the card has left its table (Retire): no cell of the Fleet (or Readers)
+\* table carries it; its record is kept, with its fields
+GoneCard(c) == col[c] = "gone"
+
 TypeOK ==
     /\ mach \in {"run", "stop"}
     /\ row \in [Cards -> Owners]
-    /\ \A c \in Cards : col[c] \in (IF c \in Readers THEN {"asked", "reading"} ELSE {"ready", "working"})
+    /\ \A c \in Cards : col[c] \in (IF c \in Readers THEN {"asked", "reading", "gone"} ELSE {"ready", "working", "gone"})
     /\ gen \in [Cards -> 1..MaxGen]
     /\ sfg \in [Cards -> 0..MaxGen]
     /\ child \in [Cards -> 0..MaxGen]
@@ -152,9 +178,14 @@ Receipt(d) ==
 \* receipt (sfg = d.gen, gen > d.gen). Keyed by generation, not id: a return
 \* steps the generation and the receipt survives a later move, so the entry
 \* stops owning the card. Broken "byid"/"nosettle" owns by id (the v1.2.5 debt).
+\* Broken "goneblocks" reads only the placed cells: a card off the table is
+\* owned, its kept record unread (the code before 2026-10-18).
+ReceiptOn(d) == sfg[d.id] = d.gen /\ gen[d.id] > d.gen
+
 Owned(d) ==
     IF Broken \in {"byid", "nosettle"} THEN TRUE
-    ELSE ~(sfg[d.id] = d.gen /\ gen[d.id] > d.gen)
+    ELSE IF Broken = "goneblocks" /\ GoneCard(d.id) THEN TRUE
+    ELSE ~ReceiptOn(d)
 
 \* a debt entry owns its card (Pinned is what stopDebtMutation refuses)
 Pinned(c) == \E d \in debt : d.id = c /\ Owned(d)
@@ -193,6 +224,9 @@ HeldReportNamed(d) ==
     /\ live[d.row]
     /\ d.id \in held
     /\ gen[d.id] = d.gen
+
+\* a debt entry whose card the reconcile returned off the table
+Gone(d) == GoneCard(d.id)
 
 \* a take while RUNNING starts the owner's child at the card's generation
 Take(c) ==
@@ -278,6 +312,26 @@ Beat(o) ==
     /\ beaten' = IF mach = "stop" THEN beaten \cup {o} ELSE beaten
     /\ UNCHANGED <<mach, row, col, gen, sfg, child, debt, old, held, live, settling, stopissued, clearLive>>
 
+\* the STOPPED reconcile's return of a job whose run is gone (LiveReturnStep:
+\* FriendReturn retires a friend's work card, readLostUnit a read card), exempt
+\* from the debt guard as the owner's receipt: once the child is gone and no
+\* report is held (the row's live set does not name the job) it takes the job
+\* off the table with the STOP's receipt on the kept record (sfg = gen, gen + 1).
+\* The debt stays on the machine record (settleStopDebt reads only a placed
+\* card). A gone card keeps its generation and receipt; its row is forgotten
+\* (one state a generation). The 2026-10-18 incident.
+Retire(c) ==
+    /\ mach = "stop"
+    /\ col[c] = Active(c)
+    /\ child[c] = 0
+    /\ c \notin held
+    /\ gen[c] < MaxGen
+    /\ col' = [col EXCEPT ![c] = "gone"]
+    /\ sfg' = [sfg EXCEPT ![c] = gen[c]]
+    /\ gen' = [gen EXCEPT ![c] = gen[c] + 1]
+    /\ row' = [row EXCEPT ![c] = CHOOSE o \in Owners : TRUE]
+    /\ UNCHANGED <<mach, child, debt, old, beaten, held, live, settling, stopissued, clearLive>>
+
 \* stop-return --as <row> <c>@<gen>, after the observed cancellation: an idle
 \* return (ready or asked) at the next generation with the receipt
 Return(c) ==
@@ -302,8 +356,8 @@ Settle ==
     /\ IF Broken = "noreceipt"
          THEN /\ debt # {}
               /\ \E d \in debt : debt' = debt \ {d}
-         ELSE /\ \E d \in debt : ~Owned(d)
-              /\ debt' = {d \in debt : Owned(d)}
+         ELSE /\ \E d \in debt : ~Owned(d) /\ ~Gone(d)
+              /\ debt' = {d \in debt : Owned(d) \/ Gone(d)}
     /\ settling' = settling \cap debt'
     /\ UNCHANGED <<mach, row, col, gen, sfg, child, old, beaten, held, live, stopissued, clearLive>>
 
@@ -345,12 +399,16 @@ Hold(c, o) ==
     /\ UNCHANGED <<mach, col, sfg, child, debt, old, beaten, held, live, settling, stopissued, clearLive>>
 
 \* START (unsettledStopDebt): every remaining debt no longer owns its card (a
-\* receipt) or has its held report named by the fresh live set; a pre-upgrade
-\* record (no stop-issued flag) refuses while any live lease remains.
-Start ==
+\* receipt, on the table or on a record off it: stopDebtExtras reads it) or has
+\* its held report named by the fresh live set; a pre-upgrade record (no
+\* stop-issued flag) refuses while any live lease remains.
+StartOK ==
     /\ mach = "stop"
     /\ stopissued \/ ~(\E c \in Cards : LiveLease(c))
     /\ \A d \in debt : ~Owned(d) \/ HeldReportNamed(d)
+
+Start ==
+    /\ StartOK
     /\ mach' = "run"
     /\ debt' = {}
     /\ beaten' = {}
@@ -365,7 +423,7 @@ Start ==
 \* drops the live-lease guard and advances while one remains.
 ClearAdvance ==
     /\ mach = "stop"
-    /\ (Broken = "clearblocked" \/ \A c \in Cards : col[c] = Idle(c))
+    /\ (Broken = "clearblocked" \/ \A c \in Cards : ~LiveLease(c))
     /\ clearLive' = (\E c \in Cards : LiveLease(c))
     /\ col' = [c \in Cards |-> Idle(c)]
     /\ gen' = [c \in Cards |-> 1]
@@ -386,7 +444,7 @@ ClearNeverWithALiveLease == ~clearLive
 
 Next ==
     \/ Stop \/ Start \/ Settle \/ ReadSettle \/ SettleByBeat \/ Clear
-    \/ \E c \in Cards : Return(c)
+    \/ \E c \in Cards : Return(c) \/ Retire(c)
     \/ \E c \in Cards :
          IF c \in Readers THEN Read(c) \/ ReadDone(c)
          ELSE Take(c) \/ ChildFinishes(c) \/ ReportTaken(c) \/ Cancel(c)
@@ -420,14 +478,26 @@ ReturnedFreesItsRow ==
 (* antecedent carries the settle's generation bound (d.gen < MaxGen),     *)
 (* so the property only promises what the settle can deliver: a debt at   *)
 (* the top generation is settled by its own receipt (Return/Settle), not  *)
-(* by the beat.                                                           *)
+(* by the beat. A job the reconcile returns off the table first (Retire)  *)
+(* is the other end: its debt stays on the record with the receipt off   *)
+(* the table, and START passes it (GoneNeverBlocksStart).                 *)
 AbsentJobSettles ==
     \A d \in Debt :
-        JobGone(d) ~> (d \notin debt)
+        JobGone(d) ~> (d \notin debt \/ Gone(d))
+
+(* Safety: a STOPPED machine whose every debt carries its receipt, on    *)
+(* the table or on a record the reconcile retired off it, or has its held *)
+(* report named, can START (the 2026-10-18 incident: 32 returned debts    *)
+(* held START refused with nothing able to settle them). Broken           *)
+(* "goneblocks" is START reading placed cells only. StartOK is Start's    *)
+(* guard as a state predicate (ENABLED Start costs the harness budget).   *)
+GoneNeverBlocksStart ==
+    (mach = "stop" /\ stopissued /\ \A d \in debt : ReceiptOn(d) \/ HeldReportNamed(d))
+        => StartOK
 
 (* With no live lease, clear is enabled from RUNNING or STOPPED: STOP     *)
 (* comes first when running, and the advance ignores a returned lease's    *)
 (* unsettled debt. A stop-returned lease never blocks clear.               *)
 ClearEnabled ==
-    (\A c \in Cards : col[c] = Idle(c)) => ENABLED Clear
+    (\A c \in Cards : ~LiveLease(c)) => ENABLED Clear
 =============================================================================

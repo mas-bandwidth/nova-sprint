@@ -6,8 +6,6 @@ import (
 	"slices"
 	"strings"
 	"time"
-
-	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
 // Promotion into dev (docs/SPEC-SPRINT.md section 7, "dev is behind"; the owner, 2026-10-04:
@@ -67,7 +65,7 @@ func Promotion(s *Snapshot) (at time.Time, sha string, ok bool) {
 // card records none anywhere.
 func cardLandedBase(c *Card) (base, repo string) {
 	base = c.F("base")
-	cb := swarm.ReadCardBase([]byte(c.F("brief")))
+	cb := readCardBaseOnce(c.F("brief"))
 	if base == "" {
 		base = cb.Ref
 	}
@@ -92,7 +90,7 @@ func repoHasDevBranch(s *Snapshot, repo string) bool {
 		if !c.Placed() {
 			continue
 		}
-		if cb := swarm.ReadCardBase([]byte(c.F("brief"))); cb.Repo == repo && cb.Ref == DevBranch {
+		if cb := readCardBaseOnce(c.F("brief")); cb.Repo == repo && cb.Ref == DevBranch {
 			return true
 		}
 	}

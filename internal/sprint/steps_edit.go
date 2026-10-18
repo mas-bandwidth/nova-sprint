@@ -1459,6 +1459,8 @@ func reworkWhy(c *Card) string {
 	switch {
 	case c.Col == Working:
 		return why + "; its attempt is still running: once it finishes (review), run: nova-sprint rework " + c.ID + " --fix '<what changes>', or now: " + drop
+	case (c.Col == Waiting || c.Col == Ready) && c.Int("attempt") == 0 && IsHeld(c):
+		return why + "; it is held (add --held), so no attempt has run: nova-sprint release " + c.ID + " --reason '<why>'"
 	case (c.Col == Waiting || c.Col == Ready) && c.Int("attempt") == 0:
 		return why + "; no attempt has run, so there is nothing to rework: change its task instead: nova-sprint brief " + c.ID + " --brief-file <path>"
 	case c.Col == Landed:

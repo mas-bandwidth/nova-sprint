@@ -189,7 +189,7 @@ func counted(cols []string, fractions map[string]bool) func(string) bool {
 // ruleSections are the spec's sections that are rules over the page or notes on serving
 // it; every other section is a part of the page, in order from the top. A new section is
 // one of the two, or the test below is red until it is classified here.
-var ruleSections = []string{"The page is the live page", "The page lock", "Serving and publishing", "The specification", "Page", "Responsive", "LOCKED", "Column alignment across the three tables", "LOCK 2", "Live deployment contract", "Freshness"}
+var ruleSections = []string{"The page is the live page", "The page lock", "Serving and publishing", "The specification", "Page", "Responsive", "LOCKED", "Column alignment across the three tables", "LOCK 2", "Live deployment contract", "Freshness", "Stream pages"}
 
 // TestDashboardPageIsTheSpec is the drift check (docs/SPEC-SPRINT-DASHBOARD.md): the
 // page's markup says what the specification says, string for string. A change to the

@@ -457,7 +457,8 @@ func (st *Store) setMachine(ctx context.Context, running bool, who, reason strin
 	}
 	res = Result{Verb: verb}
 	var changed bool
-	before, after, changed, err = st.machineTransition(ctx, running, who, reason, until)
+	var retired []string
+	before, after, changed, retired, err = st.machineTransition(ctx, running, who, reason, until)
 	if err != nil {
 		return before, before, res, err
 	}
@@ -468,11 +469,19 @@ func (st *Store) setMachine(ctx context.Context, running bool, who, reason strin
 	if reason != "" {
 		what = fmt.Sprintf("%s -> %s", before.StateWord(), sprint.StoppedText(who, reason, until, after.Since))
 	}
+	var said []string
+	if len(retired) > 0 {
+		// the START passed debts by receipts on cards the reconcile returned off the table
+		// (stopRetired; tla/StopReturn.tla Retire): said, so the operator sees what it settled
+		said = []string{fmt.Sprintf("%d debt(s) settled: job returned off the table with its STOP receipt (live-returned after the STOP): %s", len(retired), strings.Join(retired, " "))}
+		what += "; " + said[0]
+	}
 	res, err = st.Run(ctx, Step{Verb: verb, Plan: func(s *sprint.Snapshot) sprint.Plan {
 		n := sprint.Note{Kind: sprint.Happened, Type: typ, Who: who, At: s.Now, What: what}
 		return sprint.Plan{Notes: []sprint.Note{n}}
 	}})
 	res.Moved = []string{fmt.Sprintf("machine %s -> %s", before.StateWord(), after.StateWord())}
+	res.Said = append(res.Said, said...)
 	return before, after, res, err
 }
 

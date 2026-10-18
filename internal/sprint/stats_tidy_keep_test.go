@@ -170,7 +170,7 @@ func TestATidyKeepsTheDeadlineItsMedianGave(t *testing.T) {
 
 // A fleet wider than a table's property bound still tidies: the tidy carries every row's
 // median run wall in one property, not one property a row, so a fleet of more than
-// ntable.LimitTableProps (64) rows does not meet the bound. On 2026-10-10 a tidy of 66 rows
+// ntable.LimitTableProps (1024) rows does not meet the bound. On 2026-10-10 a tidy of 66 rows
 // wrote 66 properties and the store refused at 64 (stats_reset.go, StatsRecord.Reset, took
 // the same lesson; docs/SPEC-SPRINT.md section 11, Statistics).
 func TestATidyOfAFleetWiderThanThePropertyBoundCarriesEveryRow(t *testing.T) {

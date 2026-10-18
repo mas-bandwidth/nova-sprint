@@ -1027,6 +1027,14 @@ func movedReadFields(c *Card, to string, now time.Time) map[string]string {
 // DefaultReadLease is how long an in-flight read's lease stands without renewal (10m).
 const DefaultReadLease = 10 * time.Minute
 
+// ReadLeaseRenewAt is how much of a lease is left when the reader's beat renews it: three
+// quarters of DefaultReadLease, 7.5 minutes (RenewReaderLeases). A served queue then leaves
+// every live lease more than 7.5 minutes, so a server down that long (ServerRestartStep takes
+// back only lapsed reads) or a reader that skips its queue for that long (the friend daemon
+// skips it with no read slot, a lane fault or a failed proof) keeps its reads; at most one
+// renewal a reading card every 2.5 minutes, against one a poll before (cold read of PR 490).
+const ReadLeaseRenewAt = DefaultReadLease * 3 / 4
+
 // FieldLease is a read card's lease expiration timestamp.
 const FieldLease = "lease"
 
@@ -1098,8 +1106,14 @@ func ServerRestart(s *Snapshot) Plan {
 	return RestartReads(s)
 }
 
-// RenewReaderLeases renews the lease of every in-flight read on reader to now + DefaultReadLease.
-// tla/ServerLanes.tla Renew.
+// RenewReaderLeases renews the lease of every in-flight read on reader to now + DefaultReadLease
+// once ReadLeaseRenewAt (three quarters) of it or less is left; a lease with more left is
+// left as it is. Every renewal is a card write and a log line, which wakes the tick, the
+// coordinator's push and every long poller: on 2026-10-17 each reader's queue poll (one
+// every few seconds) rewrote the lease of every read it held, though the lease is ten
+// minutes. A reader that polls at least once each quarter of its lease keeps every lease
+// live with three quarters of slack.
+// tla/ServerLanes.tla Renew, LiveLeaseNeverTakenBack.
 func RenewReaderLeases(s *Snapshot, reader string) Plan {
 	var p Plan
 	if s.Readers == nil {
@@ -1108,6 +1122,9 @@ func RenewReaderLeases(s *Snapshot, reader string) Plan {
 	cards := s.Readers.Cell(reader, Reading)
 	SortCards(cards)
 	for _, c := range cards {
+		if left := ReadLeaseExpires(c).Sub(s.Now); left > ReadLeaseRenewAt {
+			continue // more than three quarters of the lease is left: renewed on a later beat
+		}
 		exp := s.Now.Add(DefaultReadLease)
 		p.Units = append(p.Units, Unit{
 			Key:    c.ID,

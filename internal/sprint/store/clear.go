@@ -610,7 +610,7 @@ func (st *Store) advanceClear(ctx context.Context, at time.Time) (bool, error) {
 		}
 		before, _, err := st.Machine(ctx)
 		if err == nil {
-			_, _, err = st.machineRecord(ctx, before, s, false, st.Actor, "", time.Time{}, lock.ID)
+			_, _, _, err = st.machineRecord(ctx, before, s, false, st.Actor, "", time.Time{}, lock.ID)
 		}
 		if err == nil && len(activeStopLeases(s)) > 0 {
 			err = errors.New("clear stopped new live work/read leases before its advance; cancel and stop-return them, then run clear again")
