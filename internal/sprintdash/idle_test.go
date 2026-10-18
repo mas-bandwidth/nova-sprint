@@ -127,6 +127,7 @@ func TestHealthzChecksFreshnessWhileNoPollerRuns(t *testing.T) {
 	t.Parallel()
 	var mu sync.Mutex
 	now, reads, down := time.Unix(1000, 0), 0, false
+	counted := make(chan struct{}, 16) // one signal per read, sent once the read is counted
 	s := &Server{
 		Now:       func() time.Time { mu.Lock(); defer mu.Unlock(); return now },
 		Every:     time.Second,
@@ -135,6 +136,7 @@ func TestHealthzChecksFreshnessWhileNoPollerRuns(t *testing.T) {
 			mu.Lock()
 			defer mu.Unlock()
 			reads++
+			counted <- struct{}{}
 			if down {
 				return nil, errors.New("the sprint's server does not answer")
 			}
@@ -168,7 +170,12 @@ func TestHealthzChecksFreshnessWhileNoPollerRuns(t *testing.T) {
 	go func() { defer close(done); s.Run(ctx, tick) }()
 	advance(time.Second)
 	tick <- s.Now()
-	tick <- s.Now() // taken once the first tick, and its read, are done
+	for range 4 { // the three reads above and the first tick's: it took its time before the clock moves on
+		<-counted
+	}
+	advance(time.Second)
+	tick <- s.Now()
+	<-counted // the second tick's read, counted: no read of the poller's is still to come
 	before := count()
 	advance(time.Second)
 	assert.Equal(t, http.StatusOK, health())

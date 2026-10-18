@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (219)
+- [The sprint system](#the-sprint-system) (221)
 - [Setup, release and operations](#setup-release-and-operations) (72)
 - [Docs, models and the repository](#docs-models-and-the-repository) (25)
 - [Friend AIs](#friend-ais) (21)
@@ -1639,6 +1639,22 @@ Every escalation carries the root brief, with a test that holds it. Every card c
 Target: after v1.4
 
 From: a Gemini dialog the owner shared, 2026-10-10
+
+### An unhooked friend's jobs are returned only on evidence their child ended
+
+Since PR #499 START honours the STOP receipt the STOPPED friend reconcile writes when it retires a friend's working and read cards (internal/sprint/live.go LiveReturns, friend_return.go). The reconcile fires on seat.Unhooked, which nova-hook unhook sets by command: it is not evidence the friend's session stopped. A friend unhooked after a STOP while her session still works a card lets START pass and the primary be dealt again beside her; her stale finish is refused (the card is off the table, its generation stepped), so two processes can work one primary but neither corrupts it. tla/StopReturn.tla Retire assumes child = 0, which the code does not check on this path. Decide the evidence (a live set that no longer names the job, or an explicit cancel acknowledgement) and write the receipt only on it; extend the model so Retire is enabled only on that evidence, with a reversed witness.
+
+Target: v1.7
+
+From: cold read of PR #499, 2026-10-18
+
+### The StopReturn model cases fit the TLC budget with room
+
+After PR #499 MCStopReturn and MCStopReturnClear take about 100 s of the 110 s case budget on captain (64 CPUs, JDK 25), up from 72 s; the stopreturn group's 11 cases total about 289 s. The nightly TLC workflow runs them serially on a 4-vCPU hosted runner under a 5-minute job timeout, so it is likely to fail on time. Shrink the instances (fewer cards or generations where the invariants still bite, each reversed witness still failing) or split the group, and confirm with a workflow_dispatch run of tlc.yml.
+
+Target: v1.7
+
+From: cold read of PR #499, 2026-10-18
 
 ### Evaluating the decision model's decisions
 

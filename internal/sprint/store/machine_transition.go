@@ -19,38 +19,52 @@ import (
 // cannot commit afterward using its old read. A repeated STOP and a START also
 // re-read the machine under this lock, never overwriting a newer stop reason.
 // tla/DirtyTickRead.tla Stop, Start
-func (st *Store) machineTransition(ctx context.Context, running bool, who, reason string, until time.Time) (before, after Machine, changed bool, err error) {
+//
+// retired is the debt entries a START passed by a receipt on a card the reconcile returned off
+// the table (stopRetired; tla/StopReturn.tla Retire), "<row>:<id>@<gen>" each, for its words.
+func (st *Store) machineTransition(ctx context.Context, running bool, who, reason string, until time.Time) (before, after Machine, changed bool, retired []string, err error) {
 	if running {
 		// Settle owed leases whose owner's beat after the STOP no longer names
 		// the job (a friend) or whose owner owes no stop-returns (a machine),
 		// before the START fence re-reads the debt (tla/StopReturn.tla
 		// SettleByBeat), so START never waits on a member's own receipt.
 		if err := st.settleStopDebtByBeat(ctx); err != nil {
-			return before, after, false, err
+			return before, after, false, nil, err
 		}
 	}
 	pinned, err := st.pin(ctx)
 	if err != nil {
-		return before, after, false, err
+		return before, after, false, nil, err
 	}
 	if running && pinned.beforeGuardedWrite != nil {
 		pinned.beforeGuardedWrite() // a test's pause between the pin and the lock
 	}
 	r := pinned.retry(ctx)
 	for r.next(pinned.attempts()) {
+		// a START reads each debt entry's own record, placed or not, so a receipt on a card
+		// the reconcile returned off the table is seen (stopDebtExtras); a debt that changes
+		// before the lock moves the fence, and Acquire refuses the stale read
+		var extras func(*sprint.Snapshot) map[string][]string
+		if running {
+			m, _, merr := pinned.Machine(ctx)
+			if merr != nil {
+				return before, after, false, nil, merr
+			}
+			extras = stopDebtExtras(m.StopDebt)
+		}
 		// STOP records the same live owner leases that START later checks.
-		s, gen, ferr := pinned.Fenced(ctx, []string{sprint.Fleet, sprint.Readers}, nil, nil)
+		s, gen, ferr := pinned.Fenced(ctx, []string{sprint.Fleet, sprint.Readers}, extras, nil)
 		if ferr != nil {
-			return before, after, false, ferr
+			return before, after, false, nil, ferr
 		}
 		var nonce [16]byte
 		if _, err := rand.Read(nonce[:]); err != nil {
-			return before, after, false, err
+			return before, after, false, nil, err
 		}
 		lock := OpRecord{ID: "machine-" + hex.EncodeToString(nonce[:]) + "-lock", Verb: "machine transition lock", At: pinned.now(), Lock: true}
 		ok, aerr := pinned.B.Acquire(ctx, gen, lock)
 		if aerr != nil {
-			return before, after, false, aerr
+			return before, after, false, nil, aerr
 		}
 		if !ok {
 			continue
@@ -68,15 +82,15 @@ func (st *Store) machineTransition(ctx context.Context, running bool, who, reaso
 			before, _, err = pinned.Machine(ctx)
 		}
 		if err == nil {
-			after, changed, err = pinned.machineRecord(ctx, before, s, running, who, reason, until, lock.ID)
+			after, changed, retired, err = pinned.machineRecord(ctx, before, s, running, who, reason, until, lock.ID)
 		}
 		err = errors.Join(err, pinned.B.Release(context.WithoutCancel(ctx), lock, false))
 		if err != nil {
-			return before, before, false, err
+			return before, before, false, nil, err
 		}
-		return before, after, changed, nil
+		return before, after, changed, retired, nil
 	}
-	return before, after, false, fmt.Errorf("machine transition: the sprint kept changing under it (%d tries); nothing was changed; run it again", r.tries)
+	return before, after, false, nil, fmt.Errorf("machine transition: the sprint kept changing under it (%d tries); nothing was changed; run it again", r.tries)
 }
 
 // startRestoreGuard refuses a start at the pinned epoch while its restore is pending (the
@@ -92,7 +106,7 @@ func (st *Store) startRestoreGuard(ctx context.Context, s *sprint.Snapshot) erro
 	return st.guardRefusal(o, "start")
 }
 
-func (st *Store) machineRecord(ctx context.Context, before Machine, s *sprint.Snapshot, running bool, who, reason string, until time.Time, owner string) (after Machine, changed bool, err error) {
+func (st *Store) machineRecord(ctx context.Context, before Machine, s *sprint.Snapshot, running bool, who, reason string, until time.Time, owner string) (after Machine, changed bool, retired []string, err error) {
 	if !running && reason != "" && before.Ready() && len(before.StopDebt) == 0 && len(activeStopLeases(s)) == 0 {
 		// a stop (by hand: it carries its reason) of a READY machine is refused: it has not
 		// started since the clear, so there is nothing to stop; a clear's own stop has no
@@ -102,7 +116,7 @@ func (st *Store) machineRecord(ctx context.Context, before Machine, s *sprint.Sn
 		// refuses until it is returned) has something to stop: the stop captures it as the
 		// STOP's debt, so its owner's stop-return settles it, and the machine stays READY
 		// (the record STOPPED, no start in the epoch: Machine.Ready).
-		return before, false, ErrNothingToStop
+		return before, false, nil, ErrNothingToStop
 	}
 	if before.Running() == running && (before.Cause != "" || !running && (reason != "" || before.Reason != "")) {
 		after = before
@@ -114,7 +128,7 @@ func (st *Store) machineRecord(ctx context.Context, before Machine, s *sprint.Sn
 		if reason != "" {
 			after.Who = who
 		}
-		return after, false, st.B.GuardedMachine(ctx, st.restoreGuard(false), owner, after, st.Names.View())
+		return after, false, nil, st.B.GuardedMachine(ctx, st.restoreGuard(false), owner, after, st.Names.View())
 	}
 	if before.Running() == running {
 		if !running {
@@ -123,20 +137,20 @@ func (st *Store) machineRecord(ctx context.Context, before Machine, s *sprint.Sn
 			if len(before.StopDebt) == 0 {
 				after.StopDebt = activeStopLeases(s)
 			}
-			return after, !before.StopIssued || len(after.StopDebt) > 0 && len(before.StopDebt) == 0, st.B.GuardedMachine(ctx, st.restoreGuard(false), owner, after, st.Names.View())
+			return after, !before.StopIssued || len(after.StopDebt) > 0 && len(before.StopDebt) == 0, nil, st.B.GuardedMachine(ctx, st.restoreGuard(false), owner, after, st.Names.View())
 		}
 		err = st.B.GuardedMachine(ctx, st.restoreGuard(false), owner, before, st.Names.View())
-		return before, false, err
+		return before, false, nil, err
 	}
 	if running {
 		// a debt card whose child finished, its report held (its row's live set says so),
 		// does not hold the start back: the report is taken once the machine runs
 		_, beats, err := st.fleetBeats(ctx, nil)
 		if err != nil {
-			return before, false, err
+			return before, false, nil, err
 		}
-		if err := unsettledStopDebt(before, s, beats, st.now()); err != nil {
-			return before, false, err
+		if retired, err = unsettledStopDebt(before, s, beats, st.now()); err != nil {
+			return before, false, nil, err
 		}
 	}
 	now := st.now()
@@ -144,7 +158,7 @@ func (st *Store) machineRecord(ctx context.Context, before Machine, s *sprint.Sn
 	after.Spans = append([]Span(nil), before.Spans...)
 	if running {
 		if after.RunSeq == ^uint64(0) {
-			return before, false, errors.New("machine start generation is exhausted; nothing was changed")
+			return before, false, nil, errors.New("machine start generation is exhausted; nothing was changed")
 		}
 		// tla/DirtyTickRead.tla Start (START bumps the run sequence)
 		after.RunSeq++
@@ -163,7 +177,7 @@ func (st *Store) machineRecord(ctx context.Context, before Machine, s *sprint.Sn
 		// recorded the epoch before (tla/MachineReady.tla Stop, RanIsNotReady)
 		es, err := st.EpochNow(ctx)
 		if err != nil {
-			return before, false, err
+			return before, false, nil, err
 		}
 		after.StartedIn = strconv.FormatUint(es.N, 10)
 		after.StopIssued = true
@@ -175,7 +189,7 @@ func (st *Store) machineRecord(ctx context.Context, before Machine, s *sprint.Sn
 		after.State = Stopped
 	}
 	after.Since, after.Who, after.Cause, after.Reason, after.Until = now, who, "", reason, until
-	return after, true, st.B.GuardedMachine(ctx, st.restoreGuard(false), owner, after, st.Names.View())
+	return after, true, retired, st.B.GuardedMachine(ctx, st.restoreGuard(false), owner, after, st.Names.View())
 }
 
 // activeStopLeases captures StopReturn.tla's cancellation debt at the STOP
@@ -205,16 +219,26 @@ func activeStopLeases(s *sprint.Snapshot) []StopLease {
 // its row at the captured generation), unless its row's fresh live set names the card held
 // at that generation (its child finished and its report waits: it is taken once the
 // machine runs, at the same generation, so nothing is lost). A card returned and moved
-// since (a hold, a give) is settled: only a return moves an owned card.
-func unsettledStopDebt(m Machine, s *sprint.Snapshot, beats map[string]sprint.Beat, now time.Time) error {
+// since (a hold, a give) is settled: only a return moves an owned card. s carries each
+// entry's own record, placed or not (stopDebtExtras), so a card the STOPPED reconcile
+// returned off the table with the STOP's receipt is settled too, and named in retired,
+// "<row>:<id>@<gen>" each; a card removed without its receipt stays owned. Before
+// 2026-10-18 the retired record was never read, and such a debt held START refused for good.
+// tla/StopReturn.tla Retire, GoneNeverBlocksStart
+func unsettledStopDebt(m Machine, s *sprint.Snapshot, beats map[string]sprint.Beat, now time.Time) (retired []string, err error) {
 	var open []string
 	for _, d := range m.StopDebt {
+		key := d.Row + ":" + d.ID + "@" + fmt.Sprint(d.Gen)
 		if d.Gen < 1 || d.Table != sprint.Fleet && d.Table != sprint.Readers {
-			open = append(open, d.Row+":"+d.ID+"@"+fmt.Sprint(d.Gen))
+			open = append(open, key)
+			continue
+		}
+		if stopRetired(s, d) {
+			retired = append(retired, key)
 			continue
 		}
 		if stopOwned(s, d) && !sprint.LiveHeldAt(sprint.RowBeat(beats, d.Row), d.ID, d.Gen, now) {
-			open = append(open, d.Row+":"+d.ID+"@"+fmt.Sprint(d.Gen))
+			open = append(open, key)
 		}
 	}
 	// Only pre-upgrade records lack a persisted STOP-issued flag and debt.
@@ -226,13 +250,13 @@ func unsettledStopDebt(m Machine, s *sprint.Snapshot, beats map[string]sprint.Be
 		}
 	}
 	if len(open) == 0 {
-		return nil
+		return retired, nil
 	}
 	shown := open
 	if len(shown) > 8 {
 		shown = shown[:8]
 	}
-	return fmt.Errorf("%d STOP-owned work/read jobs lack same-owner cancellation receipts (%s): cancel their child processes, then stop-return each on its same owner row before start", len(open), strings.Join(shown, ", "))
+	return nil, fmt.Errorf("%d STOP-owned work/read jobs lack same-owner cancellation receipts (%s): cancel their child processes, then stop-return each on its same owner row before start", len(open), strings.Join(shown, ", "))
 }
 
 // stopDebtReturned says the owner's same-owner, next-generation return receipt
@@ -317,7 +341,9 @@ func stopLeaseOwner(d StopLease) (owner string, friend bool) {
 
 // settleStopDebtByBeat returns every owed lease whose owner has beaten since
 // the STOP and whose beat shows the job gone, without waiting for the owner's
-// own stop-return receipt (tla/StopReturn.tla SettleByBeat). A friend's beat
+// own stop-return receipt (tla/StopReturn.tla SettleByBeat), and skips a lease that no
+// longer owns its card (stopOwned, its own record read: a card the reconcile returned
+// off the table carries its receipt there, and START passes it). A friend's beat
 // names the jobs she runs (sprint.FriendBeatNamesJob): a lease whose job the
 // beat still names stays owed, and one the beat no longer names is settled. A
 // machine's stop-returns count is its word how many its lanes still owe
@@ -340,13 +366,20 @@ func (st *Store) settleStopDebtByBeat(ctx context.Context) error {
 	if m.Running() || !m.StopIssued || len(m.StopDebt) == 0 {
 		return nil
 	}
-	s, err := st.Load(ctx, tables(sprint.Fleet, sprint.Readers), nil)
+	s, err := st.Load(ctx, tables(sprint.Fleet, sprint.Readers), stopDebtExtras(m.StopDebt))
 	if err != nil {
 		return err
 	}
 	var settle []StopLease
 	var reported []string
 	for _, d := range m.StopDebt {
+		if !stopOwned(s, d) {
+			// returned already: its receipt is on its record, on the table or off it (the
+			// reconcile's return retires a card off the table with the receipt); no owner
+			// can return it again and no beat is owed for it, and START passes it
+			// tla/StopReturn.tla Retire, GoneNeverBlocksStart
+			continue
+		}
 		owner, friend := stopLeaseOwner(d)
 		var b sprint.Beat
 		if friend {

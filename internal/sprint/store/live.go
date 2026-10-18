@@ -76,6 +76,50 @@ func stopOwned(s *sprint.Snapshot, d StopLease) bool {
 	return !(c.Int("stopped_from_gen") == d.Gen && c.Int("gen") > d.Gen)
 }
 
+// stopDebtExtras reads each STOP debt entry's own record by id, placed or not (a load's
+// extras), beside the whole tables: a card the STOPPED reconcile returned off the table
+// (LiveReturnStep: a friend's work card retired by FriendReturn, a read card retired lost by
+// readLostUnit) keeps its return receipt (stopped_from_gen, gen+1) on that kept record, which
+// a read of the placed cells never sees. Without it stopOwned found no card and held the
+// entry owned, and START refused for good: nothing could return a card off the table
+// (2026-10-18: 32 such debts held `nova-sprint start` refused). A card removed without its
+// receipt stays owned (the safe side), so out-of-band removal still cannot erase a debt.
+// tla/StopReturn.tla Retire, GoneNeverBlocksStart
+func stopDebtExtras(debt []StopLease) func(*sprint.Snapshot) map[string][]string {
+	if len(debt) == 0 {
+		return nil
+	}
+	return func(s *sprint.Snapshot) map[string][]string {
+		out := map[string][]string{}
+		for _, d := range debt {
+			if d.Table != sprint.Fleet && d.Table != sprint.Readers {
+				continue
+			}
+			if s.T(d.Table).Placed(d.ID) == nil {
+				out[d.Table] = append(out[d.Table], d.ID)
+			}
+		}
+		if len(out) == 0 {
+			return nil
+		}
+		return out
+	}
+}
+
+// stopRetired says a STOP debt entry is settled by a receipt on a card that has left its
+// table: the reconcile's return retired it with the STOP's receipt (stopDebtExtras read it).
+func stopRetired(s *sprint.Snapshot, d StopLease) bool {
+	if stopOwned(s, d) || s == nil {
+		return false
+	}
+	t := s.Fleet
+	if d.Table == sprint.Readers {
+		t = s.Readers
+	}
+	c := t.Card(d.ID)
+	return c != nil && !c.Placed()
+}
+
 // owedDebt is the debt entries that still own their cards.
 func owedDebt(s *sprint.Snapshot, debt []StopLease) []StopLease {
 	var owed []StopLease

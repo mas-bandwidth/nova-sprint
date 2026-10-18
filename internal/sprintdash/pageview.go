@@ -50,7 +50,15 @@ import (
 // the wordmark's face and its licence, and the robot tile logo at 192 and 384 px. The page
 // lock (pagelock.go) holds them: a change to any of them is red without the owner's ask.
 //
+// The charts (the owner, 2026-10-18: "I would like it if you could create a stats page showing me
+// all the things you can do with https://pele.run for the sprint dashboard. You could put these
+// things below the existing stuff we have at the bottom."): charts.js draws them, with Pele
+// (pele.js, MIT, its licence and pin in PELE.txt), loaded only when the charts are in view; and a
+// stream's own page (the owner, 2026-10-18: "Maybe we can click on a work stream by name, and this
+// takes you to a page showing all details for that work stream"), stream.html and stream.js.
+//
 //go:embed page/index.html page/app.js page/nunito-800.woff2 page/OFL.txt page/logo-robot-192.png page/logo-robot-384.png
+//go:embed page/charts.js page/pele.js page/PELE.txt page/stream.html page/stream.js
 var page embed.FS
 
 // ServeHTTP answers every path the page uses; every answer is no-store.
@@ -62,6 +70,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/", "/index.html":
 		s.send(w, r, "text/html; charset=utf-8", s.index())
+	case "/public.html":
+		// the public copy's page, for the copier that publishes it (fleet's nova-dashboard-pull
+		// saves it as the public site's index.html): the page a puller serves, without the charts
+		s.send(w, r, "text/html; charset=utf-8", s.indexPage(true))
 	case "/app.js":
 		s.send(w, r, "text/javascript; charset=utf-8", file("app.js"))
 	case "/nunito-800.woff2":
@@ -105,8 +117,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.events(w, r, func(*sprintCopy) ([]byte, bool) { return s.PageSnapshot(), true })
 	case "/healthz":
 		s.healthz(w, r)
+	case "/charts.js":
+		s.send(w, r, "text/javascript; charset=utf-8", file("charts.js"))
+	case "/pele.js":
+		s.send(w, r, "text/javascript; charset=utf-8", file("pele.js"))
+	case "/PELE.txt":
+		s.send(w, r, "text/plain; charset=utf-8", file("PELE.txt"))
+	case "/stream.js":
+		s.send(w, r, "text/javascript; charset=utf-8", file("stream.js"))
 	default:
-		http.Error(w, "not found", http.StatusNotFound)
+		if !s.serveCharts(w, r) {
+			http.Error(w, "not found", http.StatusNotFound)
+		}
 	}
 }
 
@@ -377,9 +399,18 @@ var tileFile = map[string]string{"/logo-tile-192.png": "logo-robot-192.png", "/l
 // branch (the tile img in the slot, the tile favicon links), the build in
 // place of its version; with --logo, an svg logo is drawn inline in the page's
 // text colour and is the favicon at /favicon.svg, and any other image is /logo.
-func (s *Server) index() []byte {
+func (s *Server) index() []byte { return s.indexPage(s.From != nil) }
+
+// indexPage is the page (index); public is the public copy's, without the charts.
+func (s *Server) indexPage(public bool) []byte {
 	build := s.Build()
-	html := strings.ReplaceAll(string(file("index.html")), `src="app.js"`, `src="app.js?v=`+build+`"`)
+	page := string(file("index.html"))
+	if public {
+		// a puller's page has no charts (charts_serve.go): the page as it was before them
+		page = strings.Replace(strings.Replace(page, chartsPanel, "", 1), chartsScript, "", 1)
+	}
+	html := strings.ReplaceAll(page, `src="app.js"`, `src="app.js?v=`+build+`"`)
+	html = strings.ReplaceAll(html, `src="charts.js"`, `src="charts.js?v=`+build+`"`)
 	slot, icon := "", ""
 	if s.Logo == "" {
 		v := build
