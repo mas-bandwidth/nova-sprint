@@ -234,7 +234,7 @@ func HeldToReturn(ctl *Card) bool {
 // lastGateRefusal is the guard's refusal when a hold would leave no gate bench: the
 // member being held, and the consequence with the override that holds it anyway.
 func lastGateRefusal(member string) Refusal {
-	return Refusal{member, "holding " + member + " leaves no gate bench: every landing will be refused until one is unheld; --force-last holds it anyway"}
+	return Refusal{member, "holding " + member + " leaves no gate bench: every landing will be refused until one is unheld; --force-last holds it anyway; pass it to hold or fleet down"}
 }
 
 // HoldNames is hold and unhold as one step (docs/SPEC-SPRINT.md section 11): every name
@@ -269,12 +269,12 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 	// plan is built: every landing would be refused until one is unheld. It fires only
 	// when at least one member is outside the hold (a hold naming every member is a
 	// deliberate full-fleet action) and every such member is already no bench. The
-	// members named here count as gone; release, a member already unable to run a gate,
-	// and the old --return maintenance path (fleet down) are never refused. A fleet of
+	// members named here count as gone; release and a member already unable to run a
+	// gate are never refused. A --return hold (fleet down) is subject to the same guard. A fleet of
 	// one member is never refused (its only member is its routine maintenance hold, a
 	// long-standing flow). --force-last records the override on the note instead.
 	forceLast := false
-	if len(members) > 0 && !r.Release && !r.Return && !r.NoLastGateGuard && len(s.Members()) >= 2 {
+	if len(members) > 0 && !r.Release && !r.NoLastGateGuard && len(s.Members()) >= 2 {
 		named := map[string]bool{}
 		for _, m := range members {
 			named[m] = true

@@ -130,3 +130,25 @@ func TestAPlantThatRemovesTheLastGateBenchGuardGoesRed(t *testing.T) {
 	p = sprint.HoldNames(s, sprint.HoldReq{Names: []string{"m2"}, Reason: "r", NoLastGateGuard: true})
 	assert.Empty(t, p.Refused, "with the guard removed the hold succeeds, which TestHoldRefusesTheLastGateBench forbids")
 }
+
+// TestAFleetDownOfTheLastGateBenchIsRefused applies the same last-gate guard to
+// --return holds (fleet down); the explicit override remains available and is noted.
+func TestAFleetDownOfTheLastGateBenchIsRefused(t *testing.T) {
+	t.Parallel()
+	s := holdGateSnapshot(map[string]string{"m1": "ret", "m2": "up"})
+	p := sprint.HoldNames(s, sprint.HoldReq{Names: []string{"m2"}, Reason: "r", Return: true})
+	require.Len(t, p.Refused, 1, "fleet down of the remaining gate bench must be refused: %+v", p)
+	assert.Contains(t, p.Refused[0].Why, "holding m2 leaves no gate bench")
+	assert.Contains(t, p.Refused[0].Why, "--force-last")
+
+	p = sprint.HoldNames(s, sprint.HoldReq{Names: []string{"m2"}, Reason: "r", Return: true, ForceLast: true})
+	require.Empty(t, p.Refused, "force-last permits the fleet-down hold: %+v", p.Refused)
+	var line string
+	for _, n := range p.Notes {
+		if strings.Contains(n.What, "member m2 held") {
+			line = n.What
+		}
+	}
+	require.NotEmpty(t, line, "the fleet-down hold's note names m2: %+v", p.Notes)
+	assert.True(t, strings.HasSuffix(line, "--force-last: no gate bench left"), line)
+}
