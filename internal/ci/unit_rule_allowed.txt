@@ -57,7 +57,6 @@ cmd/nova-sprint/land_clean_clone_test.go program:17
 cmd/nova-sprint/land_dead_base_test.go program:3
 cmd/nova-sprint/land_fence_server_test.go program:3
 cmd/nova-sprint/land_fetch_review_test.go program:2
-cmd/nova-sprint/land_gate_bench_held_test.go program:5
 cmd/nova-sprint/land_go_test.go program:10
 cmd/nova-sprint/land_identity_test.go program:3
 cmd/nova-sprint/land_ledger_resolve_test.go program:24
