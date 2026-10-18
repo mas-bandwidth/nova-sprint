@@ -237,12 +237,6 @@ var cardBaseCache sync.Map // brief string -> swarm.CardBase
 // path never reads it.
 var cardBaseReads atomic.Int64
 
-// resetCardBaseMemo empties the memo and its counter, for a test that counts parses.
-func resetCardBaseMemo() {
-	cardBaseCache.Clear()
-	cardBaseReads.Store(0)
-}
-
 // readCardBaseOnce is swarm.ReadCardBase of brief, read once per brief. Its Stage is a copy,
 // so no caller can write into the memo.
 func readCardBaseOnce(brief string) swarm.CardBase {

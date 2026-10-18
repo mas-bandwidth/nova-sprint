@@ -136,3 +136,10 @@ func TestReadCardBaseOnceIsReadCardBase(t *testing.T) {
 }
 
 func swarmReadCardBase(brief string) swarm.CardBase { return swarm.ReadCardBase([]byte(brief)) }
+
+// resetCardBaseMemo empties the brief memo and its counter, for a test that counts parses
+// (it lives with the tests: no production path resets the memo).
+func resetCardBaseMemo() {
+	cardBaseCache.Clear()
+	cardBaseReads.Store(0)
+}
