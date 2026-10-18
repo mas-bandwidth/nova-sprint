@@ -4832,7 +4832,10 @@ is dealt there; `UpMembers` stays the deal filter) and a gate is not a card, so
 `fleet hold` on every member no longer refuses every batch. A member down and not
 held, held by a machine mark (fault, sync, probe, adopt), or taken out of service
 with `fleet down` (`hold --return`, which writes `held_return`, the hold's own
-`held` stamp, and a later hold without `--return` clears) runs no gate. `check` rule 11
+`held` stamp, and a later hold without `--return` clears) runs no gate.
+`held_gate` marks a coordinator's hold that may run land gates (it carries the
+hold's own `held` stamp; a hold with neither mark, one a v1.6 build wrote, runs
+none). `check` rule 11
 counts the same benches, and the last-gate guard counts the members a hold does not
 name by the same rule (`gateHosts`, `landgo.go`;
 `tla/DirtyTick.tla` `LandGate`, `GateLands`, `HeldMayGateNeverDealt`,
@@ -6951,8 +6954,8 @@ land's place; a head that is not a commit id stops the dry run where land stops,
 | friend take | take back cards dealt to a friend and not taken (`<id>...`, or `--all-unstarted`, which never takes a working card; a named working card wants `--working`), each back to ready for the friends' deal |
 | friend level | even the ready queues of the friends up, idle lanes first and by the card's tier, as fleet level evens the members'; the tick runs it too (friend-deal-idle-lanes-first.w1) |
 | seat | the seat as the daemons read it every second: `SEAT holder= epoch= generation=`, `--json`; three keys, no table (section 1, a friend's health) |
-| lane take | `lane take go --machine <m> --as <worker> [--wait <duration>]`: a worker's take of one of the machine's Go lanes (section 18); exit 0 granted, exit 1 queued with its place and the next command; --wait asks again every 5 s until granted or the wait is over; through the sprint's server it is `lane take <kind> --machine <m> --as <worker>` and nothing more |
-| lane give | `lane give go --machine <m> --as <worker>`: the worker's lane, or its place in the queue, given back; the head of the queue is granted |
+| lane take | `lane take go --machine <m|auto> --as <worker> [--wait <duration>] [--dry-run]`: a worker's named-machine lane or server-picked bench lease (section 18); named-machine exit 0 grants and exit 1 queues; `auto` exit 0 grants or renews and prints `until`, exit 1 prints `retry_at` and the full allowed benches; `--wait` and `--dry-run` are refused with `auto` |
+| lane give | `lane give go --machine <m|auto> --as <worker> [--dry-run]`: the named-machine lane or the worker's lease on any bench is given back |
 | lane list | every machine's holders and queue of each lane kind, the timeouts applied; where --json --cards carries the same rows as `lanes` |
 | reader add | declares readers |
 | reader away | `hold <reader>... --return` in the old words, for one release: holds readers whatever they beat (state `held`): no read is asked of them, a read asked and not begun is asked of another at the next tick, and a read begun is taken back where a reader up is free to read it |
@@ -7122,11 +7125,13 @@ names it, so the first of two duplicates is admitted. `add` skips and reports
 instead: a brief with a probable duplicate is held
 back and the rest of the wave admitted in one write, one `DUPLICATE <id>: <the same line>; run: nova-sprint add ... --not-a-duplicate-of <id>=<reason>`
 line each, and the add exits with the write's code (0 when it wrote the rest of the wave, and 1 only when every real card was held; 0 when none); `--not-a-duplicate-of <card>=<reason>` (repeated, a reason required) admits the card and records the
-reason on its admission note. `brief check` runs the same check over the briefs
-it holds, against the open cards of the one read-only snapshot it already
-loads, and names one `duplicate` finding per held brief in add's words, with a
-remedy that names `--not-a-duplicate-of`; brief check takes no such override
-(add does, to admit the brief).
+reason on its admission note. The same check holds a brief back in an `add --partial` wave,
+and the same flag admits it there with its reason recorded on the card.
+`brief check` runs the same check over the briefs it holds, against the open
+cards of the one read-only snapshot it already loads, and names one `duplicate`
+finding per held brief in add's words, with a remedy that names
+`--not-a-duplicate-of`; brief check takes no such override (add does, to admit
+the brief).
 
 `TEST` names a test
 `git grep` finds at `BASE` in `--repo-dir`, and `BASE` exists there; with no
@@ -9505,12 +9510,14 @@ that can strand a slot, and no client coordinates with another. The named-machin
 above stay disabled and unchanged (`sprint.LanesDisabled`).
 
 - `nova-sprint lane take go --machine auto --as <who>` asks for a bench, and the same
-  line again renews the lease the asker holds;
-  `nova-sprint lane give go --machine auto --as <who>` gives it back.
-- A grant prints `LANE-TAKE OK go machine=<m> as=<who> slots=<committed>/<slots> until=<RFC3339>`
-  (exit 0; `until` is the lease's deadline, and `committed` counts the lease just
-  granted). A full fleet prints, exit 1,
-  `LANE-TAKE WAIT go as=<who> retry_at=<RFC3339>: every allowed bench is full: <m> <committed>/<slots>, ...`.
+  line again renews the lease the asker holds; `nova-sprint lane give go --machine auto --as <who>` gives it back on any bench. `--wait` and `--dry-run` are refused with
+  `auto`: the caller waits by `retry_at`, and a dry pick cannot reserve capacity.
+- A grant prints `LANE-TAKE OK go machine=<m> as=<who> slots=<committed>/<slots> until=<RFC3339> renewed=<yes|no>`
+  (exit 0; `until` is the lease's deadline and `committed` includes the lease just
+  granted), followed by the run-on-`<m>` instruction and `nova-sprint lane give go --machine auto --as <who>`. A full fleet prints, exit 1,
+  `LANE-TAKE WAIT go as=<who> retry_at=<RFC3339>: every allowed bench is full: <m> <committed>/<slots>, ...`
+  and `nova-sprint lane take go --machine auto --as <who>` as the retry command.
+  Give prints `LANE-GIVE OK go machine=auto as=<who> gave=<yes|no>`.
 
 The decisions:
 

@@ -115,6 +115,8 @@ nova-sprint demo stop [--dir <dir>]
 nova-sprint fleet beat <member> [--stop-returns <n>] [--no-room <why>] [--draining] [--live <set>] [--facts <list>] --load <percent> [--dry-run]
 nova-sprint fleet up <member> [--width <n>]
 nova-sprint fleet down <member>
+nova-sprint lane take go --machine <m|auto> --as <worker> [--wait <duration>] [--dry-run]
+nova-sprint lane give go --machine <m|auto> --as <worker> [--dry-run]
 nova-sprint hold <name>... --reason <text> [--return] [--force-last]
 
 A member that is up keeps taken cards and finishes them, including with `--return`; that
@@ -124,6 +126,11 @@ bench the land loop can use (the members up or held by the coordinator without `
 minus this machine and any host the check refuses) is refused, exit 2, naming the member:
 every landing would be refused until one is unheld. `--force-last` holds it anyway and the
 log line ends `--force-last: no gate bench left`.
+
+`--machine auto` asks the server to pick an allowed bench by committed load / slots;
+a successful take prints its lease deadline and the give command. Take again within
+20m to renew it. A full fleet prints its retry time and full benches, exits 1, and
+asks the caller to retry then. `--wait` and `--dry-run` are refused with `auto`.
 
 nova-sprint fleet sync [--check] [--pg <dsn>]
 nova-sprint fleet level
@@ -730,7 +737,10 @@ fault in is held back, and so is every card that needs a held card through its `
 `DEPENDS-ON:` line or `--needs`, transitively. The add step's own plan is then run over the
 rest, and a card its refusal list names is held back the same way, with the cards that need it,
 the write planned again without them; the rounds are bounded by the number of cards, and
-nothing is written for a held card. It prints one `HELD <id>: <its first finding or refusal>`
+nothing is written for a held card. A brief that is a probable duplicate of an open card is
+held back with the same finding add gives it, and so is every card that needs it;
+`--not-a-duplicate-of <card>=<reason>` admits it and records the reason on its admission
+note, as it does for add. It prints one `HELD <id>: <its first finding or refusal>`
 or `HELD <id>: needs <other>, held back` line per held card, then the add's own closing line for
 what it admitted, and exits 0 when every card was admitted, 1 when some were held and the rest
 written, and 2 when none could be admitted, or for a usage refusal: `--partial` is refused with

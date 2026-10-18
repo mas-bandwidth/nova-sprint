@@ -139,8 +139,8 @@ func init() {
 		{"friend clean", "[--pg <dsn> | --file <path>] [--root <dir>] [--days <n>] [--dry-run]", "friend clean --dry-run", (*app).cmdFriendClean},
 		{"friend stage", "<card>@<gen> --as friend.<name> [--dir <jobs dir>]", "friend stage s1-1.w1@1 --as friend.amy", (*app).cmdFriendStage},
 		{"gc", "[--machine <m>] [--dry-run] [--max-age <d>]", "gc --dry-run", (*app).cmdGC},
-		{"lane take", "<kind> --machine <m> --as <worker> [--wait <duration>] [--dry-run]", "lane take go --machine m1 --as m1", (*app).cmdLaneTake},
-		{"lane give", "<kind> --machine <m> --as <worker> [--dry-run]", "lane give go --machine m1 --as m1", (*app).cmdLaneGive},
+		{"lane take", "<kind> --machine <m|auto> --as <worker> [--wait <duration>] [--dry-run]", "lane take go --machine auto --as m1", (*app).cmdLaneTake},
+		{"lane give", "<kind> --machine <m|auto> --as <worker> [--dry-run]", "lane give go --machine auto --as m1", (*app).cmdLaneGive},
 		{"lane list", "", "lane list", (*app).cmdLaneList},
 		{"reader add", "<reader>... [--tiers <flash[,pro,heavy,frontier]|all|default>]", "reader add reader-d", (*app).cmdReaderAdd},
 		{"reader set", "<reader>... --tiers <flash[,pro,heavy,frontier]|all|default>", "reader set reader-a --tiers flash", (*app).cmdReaderSet},
@@ -1779,7 +1779,7 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 	}
 	if partial {
 		// add --partial holds what fails and admits the rest (add_partial.go)
-		return a.cmdAddPartial(addPartialReq{stream: stream, cards: cards, rules: rs, allowShared: allowShared, allowPersonal: allowPersonal, score: score, before: before, after: after, held: held, decideRecord: decideRecord, briefOps: briefOps, replaces: replaces, c: c}, stdout, stderr)
+		return a.cmdAddPartial(addPartialReq{stream: stream, cards: cards, rules: rs, allowShared: allowShared, allowPersonal: allowPersonal, score: score, before: before, after: after, held: held, notDup: notDup, decideRecord: decideRecord, briefOps: briefOps, replaces: replaces, c: c}, stdout, stderr)
 	}
 	if !allowShared {
 		if why := sharedPaths(cards); why != "" {
