@@ -26,7 +26,7 @@ func takeApp(t *testing.T, n int, pushed map[string]string, friends ...string) (
 	ta, root := friendCardApp(t, "friend", friends...)
 	// Keep this transport test on friends; preference overflow is tested separately.
 	ta.ok("fleet down m1")
-	ta.ok("fleet down m2")
+	ta.ok("fleet down m2 --force-last")
 	ta.a.tip = func(_ context.Context, _, branch string) (string, error) { return pushed[branch], nil }
 	for i := 2; i <= n; i++ {
 		id := "s1-" + strconv.Itoa(i)

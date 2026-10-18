@@ -218,9 +218,10 @@ func holdElsewhere(n string, kinds []string, release bool) string {
 // service. Snapshot.GateMembers (the land gate's benches) and its LandBenches (those
 // gates the land loop uses, minus the server's own machine and any host check refuses)
 // and check.go rule 11 count the benches by it, and this guard counts the members a hold
-// does not name by LandBenches (it still counts a named member as gone, and never refuses
-// a --return). tla/DirtyTick.tla LandGate (MCDirtyTickGateHeld.cfg; the reversed witness
-// MCDirtyTickBrokenGateReturned.cfg gates a returned member).
+// does not name by LandBenches (it still counts a named member as gone; a --return hold,
+// fleet down, is held to the guard like any other). tla/DirtyTick.tla LandGate
+// (MCDirtyTickGateHeld.cfg; the reversed witness MCDirtyTickBrokenGateReturned.cfg gates
+// a returned member).
 func gateCapable(ctl *Card) bool {
 	if ctl == nil {
 		return false
@@ -240,7 +241,7 @@ func HeldToReturn(ctl *Card) bool {
 // lastGateRefusal is the guard's refusal when a hold would leave no gate bench: the
 // member being held, and the consequence with the override that holds it anyway.
 func lastGateRefusal(member string) Refusal {
-	return Refusal{member, "holding " + member + " leaves no gate bench: every landing will be refused until one is unheld; --force-last holds it anyway"}
+	return Refusal{member, "holding " + member + " leaves no gate bench: every landing will be refused until one is unheld; --force-last holds it anyway; pass it on hold or fleet down"}
 }
 
 // HoldNames is hold and unhold as one step (docs/SPEC-SPRINT.md section 11): every name
@@ -278,13 +279,14 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 	// a fleet whose only gate-capable member is the server's own machine still has no
 	// usable bench. It fires only when at least one member is outside the hold (a hold
 	// naming every member is a deliberate full-fleet action) and every such member is
-	// already no bench to the land loop. The members named here count as gone; release, a
-	// member already unable to run a gate, and the old --return maintenance path (fleet
-	// down) are never refused. A fleet of one member is never refused (its only member is
+	// already no bench to the land loop. The members named here count as gone; release and
+	// a member already unable to run a gate are never refused. A --return hold (fleet
+	// down) is held to the guard like any other, since it is the usual way a machine is
+	// taken out of service. A fleet of one member is never refused (its only member is
 	// its routine maintenance hold, a long-standing flow). --force-last records the
 	// override on the note instead.
 	forceLast := false
-	if len(members) > 0 && !r.Release && !r.Return && !r.NoLastGateGuard && len(s.Members()) >= 2 {
+	if len(members) > 0 && !r.Release && !r.NoLastGateGuard && len(s.Members()) >= 2 {
 		named := map[string]bool{}
 		for _, m := range members {
 			named[m] = true

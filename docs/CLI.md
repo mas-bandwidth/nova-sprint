@@ -114,16 +114,16 @@ nova-sprint demo load <backup.xz part>... [--sha256 <hex>] [--dir <dir>] [--xz <
 nova-sprint demo stop [--dir <dir>]
 nova-sprint fleet beat <member> [--stop-returns <n>] [--no-room <why>] [--draining] [--live <set>] [--facts <list>] --load <percent> [--dry-run]
 nova-sprint fleet up <member> [--width <n>]
-nova-sprint fleet down <member>
+nova-sprint fleet down <member> [--force-last]
 nova-sprint hold <name>... --reason <text> [--return] [--force-last]
 
 A member that is up keeps taken cards and finishes them, including with `--return`; that
 flag hands back only its dealt, untaken cards. A member that is down also returns its dead
-working cards. `fleet down <member>` follows the same rule. A hold that would leave no
-bench the land loop can use (the members up or held by the coordinator without `--return`,
-minus this machine and any host the check refuses) is refused, exit 2, naming the member:
-every landing would be refused until one is unheld. `--force-last` holds it anyway and the
-log line ends `--force-last: no gate bench left`.
+working cards. `fleet down <member>` follows the same rule. A hold or fleet down that would
+leave no bench the land loop can use (the members up or held by the coordinator without
+`--return`, minus this machine and any host the check refuses) is refused, exit 2, naming
+the member: every landing would be refused until one is unheld. `--force-last` on either
+verb holds it anyway and the log line ends `--force-last: no gate bench left`.
 
 nova-sprint fleet sync [--check] [--pg <dsn>]
 nova-sprint fleet level
