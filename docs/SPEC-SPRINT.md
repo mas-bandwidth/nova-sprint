@@ -7852,14 +7852,20 @@ socket. Tests: `TestReleaseCheckFailsWhenTheMergeQueueAgeP90IsOverTheBar`,
 
 `nova-sprint play` plays the outside world on a tick (`--every`), seeded
 (`--seed`) so a run repeats: workers taking and finishing work cards (`--fail`),
-readers reporting read cards (`--broken`), each stream's merge step with its
-facts (`--batch`, `--stuck`, `--cross`, `--red`), members going down and up
+readers reporting read cards (`--broken`), the members themselves answering the
+read cards their take moved there when reads are dealt as cards, each stream's
+merge step with its facts (`--batch`, `--stuck`, `--cross`, `--red`), members going down and up
 (`--down`: a member's machine that is up falls silent and stops beating;
 `--up`: one that is down beats again; `--flap` is `--down` and `--up` with the
 one chance; `--hold` plays the downs as the coordinator's hold instead;
 `--silent <member>@<from>+<for>` silences one member for a while). A machine
 that is down takes no work; when it comes back it takes work again. The driver
-beats every member it plays. The mechanical moves are the system's (section 14): the driver
+beats every member it plays. With `--read-cards` on it reports the reads on the
+members' own rows (a read card has no begin: the take moves it to working) and
+with the setting off it begins and reports the readers table's asks, so a played
+sprint lands under either. Play is for a twin store: its merge steps are bare
+merges, which stand in for land there, and a real store refuses them (there is no
+push to record), so play lands nothing on a real store. The mechanical moves are the system's (section 14): the driver
 plays only the outside actors, and refuses to play (exit 2) while no system is
 running. Everything it does is a nova-sprint verb run
 through the command's own entry point, printed as the line to type with its
