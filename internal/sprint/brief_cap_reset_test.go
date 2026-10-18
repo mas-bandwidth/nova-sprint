@@ -23,8 +23,9 @@ func TestACosmeticBriefEditKeepsTheAttemptCapCount(t *testing.T) {
 	}{
 		{"TheTierOnLineOneAlone", "tier: heavy\nPATHS: internal/x.go\n\nthe task", "1", false},
 		{"ARoutingLineAlone", "tier: pro\nPATHS: internal/x.go\nPRIORITY: high\n\nthe task", "1", false},
+		{"SpacingOnly", "tier: pro\nPATHS: internal/x.go\n\nthe  task", "1", false},
 		{"ANewTask", "tier: pro\nPATHS: internal/x.go\n\na different task", "2", true},
-		{"ANewPaths", "tier: pro\nPATHS: internal/x.go,internal/y.go\n\nthe task", "2", true},
+		{"AChangedPaths", "tier: pro\nPATHS: internal/y.go\n\nthe task", "2", true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
@@ -33,6 +34,20 @@ func TestACosmeticBriefEditKeepsTheAttemptCapCount(t *testing.T) {
 			p := w.must(Brief(w.s, briefOf("a-1", c.brief, "")))
 			assert.Equal(t, c.decided, w.s.Work.Placed("a-1").F(FieldDecidedAttempt), "the cap window after the edit")
 			assert.Equal(t, c.said, strings.Contains(strings.Join(p.Said, "\n"), "the cap's count starts again"), "%v", p.Said)
+			if !c.said {
+				assert.Contains(t, strings.Join(p.Said, "\n"), "max attempts: unchanged (the edit decides nothing about the task)", "%v", p.Said)
+			}
 		})
 	}
+}
+
+// A scope-only widening stays on its dedicated in-place path; that path does not make a
+// coordinator decision for the attempt cap even though it adds PATHS.
+func TestABriefScopeWidenKeepsAttemptCapCount(t *testing.T) {
+	t.Parallel()
+	w := boundWorld(t)
+	w.s.Work.Placed("a-1").Fields[FieldDecidedAttempt] = "1"
+	p := w.must(Brief(w.s, briefOf("a-1", "tier: pro\nPATHS: internal/x.go,internal/y.go\n\nthe task", "")))
+	assert.Equal(t, "1", w.s.Work.Placed("a-1").F(FieldDecidedAttempt), "scope widening does not reset the cap window")
+	assert.NotContains(t, strings.Join(p.Said, "\n"), "max attempts: decided at attempt", "%v", p.Said)
 }

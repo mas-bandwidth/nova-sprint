@@ -1903,8 +1903,10 @@ findings: attempt 1: <first sentence>; attempt 2: ...` (`501x>` the card's charg
 to the cent, rounded up, or `nothing priced`; the findings the primary's `findings`, one
 line an attempt, appended by `rework` with the attempt's readers' finding, else its
 failed report, else its bound's class, the latest kept under the text bound), its
-decisions `rework --carry`, brief, re-tier (`rework --fix <text> --tier <a higher tier>`,
-`sprint.DecisionReTier`: the way to a friend tier) and drop; and it is dealt to no
+decisions `brief --brief-file` with a task or PATHS change (a tier, routing or spacing-only
+edit opens no fresh cap window), re-tier (`brief --tier` or `rework --fix <text> --tier
+<a higher tier>`, `sprint.DecisionReTier`: the way to a friend tier), `rework --carry` and drop;
+and it is dealt to no
 machine and no friend until a decision, on every path (the deal's refusal,
 `sprint.AtAttemptCap`; the tick's friend offer; every rule leaves it: `ruleFailed`,
 `ruleBound`, `ruleHarness`, `ruleReadBroken`; the landing refusal's return; `Rework` by a

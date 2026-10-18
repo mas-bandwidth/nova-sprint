@@ -192,15 +192,8 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			if c.Int("attempt") > 0 {
 				p.Said = append(p.Said, fmt.Sprintf("bound: same task (%d attempts stand)", c.Int("attempt")-c.Int(FieldBriefAttempt)))
 			}
+			// Scope widening is its own in-place path and preserves the attempt-cap decision.
 			set := map[string]string{}
-			if c.Int("attempt") > 0 && !sameTask(c.F("brief"), b.Brief) {
-				// a widening that changes the task (its PATHS, NEW or SHARED) is a coordinator
-				// decision: the attempt cap's count starts again from here; a widening that
-				// leaves the task as it was (START read entries alone) decides nothing and keeps
-				// the count standing (brief_bound.go, FieldDecidedAttempt)
-				set[FieldDecidedAttempt] = c.F("attempt")
-				p.Said = append(p.Said, fmt.Sprintf("max attempts: decided at attempt %d (the cap's count starts again)", c.Int("attempt")))
-			}
 			said := fmt.Sprintf("scope widened in place by %s at attempt %d: %s", orDash(r.Who), c.Int("attempt"), briefChange(c.F("brief"), b.Brief))
 			if r.Reason != "" {
 				said += "; reason: " + r.Reason
@@ -1102,7 +1095,7 @@ func taskOf(brief string) string {
 			if key, v, ok := cardhdr.KeyValue(l); ok {
 				switch key {
 				case "PATHS", "NEW", "SHARED", "TEST", "DONE-WHEN":
-					keep = append(keep, key+": "+v)
+					keep = append(keep, key+": "+strings.Join(strings.Fields(v), " "))
 				}
 				continue
 			}
@@ -1114,7 +1107,7 @@ func taskOf(brief string) string {
 		if strings.TrimSpace(l) == "" {
 			continue
 		}
-		keep = append(keep, strings.TrimSpace(l))
+		keep = append(keep, strings.Join(strings.Fields(l), " "))
 	}
 	return strings.Join(keep, "\n")
 }
