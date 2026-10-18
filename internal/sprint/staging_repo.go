@@ -156,17 +156,6 @@ func briefRepo(brief string) string {
 	return repo
 }
 
-// briefRepoReads counts the times briefRepo actually read brief (a memo miss), a
-// diagnostic the machine's own path never reads: TestTheStagingRepoCheckReadsEachBriefOnce
-// holds it to one per distinct brief whatever the number of checks that resolved it.
-// 0 when the brief was never read.
-func briefRepoReads(brief string) int64 {
-	if v, ok := briefRepoCache.Load(brief); ok {
-		return v.(*briefRepoRead).reads.Load()
-	}
-	return 0
-}
-
 // cardRepo is the repository a card is of: the card's own repo field (FieldRepo; cards
 // remember their repo), else its primary's field or brief, else its stream's.
 // owner/name, "" when none.

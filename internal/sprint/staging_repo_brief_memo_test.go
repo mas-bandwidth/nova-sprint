@@ -46,3 +46,14 @@ func TestTheStagingRepoCheckReadsEachBriefOnce(t *testing.T) {
 	}
 	assert.Equal(t, int64(1), briefRepoReads(brief), "30 checks over three cards of one brief read that brief once")
 }
+
+// briefRepoReads counts the times briefRepo actually read brief (a memo miss), a
+// diagnostic the machine's own path never reads: TestTheStagingRepoCheckReadsEachBriefOnce
+// holds it to one per distinct brief whatever the number of checks that resolved it.
+// 0 when the brief was never read.
+func briefRepoReads(brief string) int64 {
+	if v, ok := briefRepoCache.Load(brief); ok {
+		return v.(*briefRepoRead).reads.Load()
+	}
+	return 0
+}
