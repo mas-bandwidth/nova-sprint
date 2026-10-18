@@ -148,11 +148,11 @@ func Selected(s *Snapshot, q Selector) (ids []string, refused []Refusal) {
 	for _, id := range q.IDs {
 		switch c := s.Work.Card(id); {
 		case seen[id]:
-			refused = append(refused, Refusal{id, "named twice in --ids-file"})
+			refused = append(refused, Refusal{Key: id, Why: "named twice in --ids-file"})
 		case !c.Placed():
-			refused = append(refused, Refusal{id, noSuchCard})
+			refused = append(refused, Refusal{Key: id, Why: noSuchCard})
 		case !slices.Contains(ids, id):
-			refused = append(refused, Refusal{id, "the rest of the selector (" + q.Words() + ") does not hold of it"})
+			refused = append(refused, Refusal{Key: id, Why: "the rest of the selector (" + q.Words() + ") does not hold of it"})
 		}
 		seen[id] = true
 	}
@@ -256,7 +256,7 @@ func Batch(pre *Snapshot, steps []func(*Snapshot) Plan) Plan {
 	}
 	units, bad := foldUnits(p.Units)
 	if bad != "" {
-		return Plan{Refused: []Refusal{{"batch", bad}}}
+		return Plan{Refused: []Refusal{{Key: "batch", Why: bad}}}
 	}
 	p.Units = units
 	p.on(pre)
@@ -441,7 +441,7 @@ func RecutSel(s *Snapshot, r RecutSelReq) Plan {
 		return Plan{Refused: refused}
 	}
 	if len(ids) == 0 {
-		return Plan{Refused: []Refusal{{"selector", NoneSelected(r.Sel)}}}
+		return Plan{Refused: []Refusal{{Key: "selector", Why: NoneSelected(r.Sel)}}}
 	}
 	steps := make([]func(*Snapshot) Plan, 0, len(ids))
 	for _, id := range ids {
@@ -483,7 +483,7 @@ func BriefSel(s *Snapshot, r BriefSelReq) Plan {
 		return Plan{Refused: refused}
 	}
 	if len(ids) == 0 {
-		return Plan{Refused: []Refusal{{"selector", NoneSelected(r.Sel)}}}
+		return Plan{Refused: []Refusal{{Key: "selector", Why: NoneSelected(r.Sel)}}}
 	}
 	var steps []func(*Snapshot) Plan
 	for _, id := range ids {
@@ -532,7 +532,7 @@ func SelectIDs(s *Snapshot, verb string, q Selector, plan func(ids []string) Pla
 		return Plan{Refused: refused}
 	}
 	if len(ids) == 0 {
-		return Plan{Refused: []Refusal{{"selector", NoneSelected(q)}}}
+		return Plan{Refused: []Refusal{{Key: "selector", Why: NoneSelected(q)}}}
 	}
 	return selected(plan(ids), verb, ids, q)
 }

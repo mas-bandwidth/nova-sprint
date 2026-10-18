@@ -95,10 +95,6 @@ type HoldReq struct {
 	// ForceLast holds the last member that can run a land gate anyway: the hold passes
 	// and its note says no gate bench is left (--force-last).
 	ForceLast bool `json:",omitempty"`
-	// NoLastGateGuard is the tests' seam: the last-gate guard reads it off (true) to
-	// show the guard a plant removed would be caught by its own test. It is never set
-	// by a verb.
-	NoLastGateGuard bool `json:"-"`
 	// Cause, with a member's hold, is what ends it (hold_cause.go): a judgment as the
 	// coordinator named it (j<n>, or its id), with CauseNote the id it named (a
 	// doctor:<check> cause is refused: DoctorCauseDeferred). The tick ends the hold in the
@@ -171,15 +167,15 @@ func HoldTargets(s *Snapshot, r HoldReq) ([]HoldTarget, []Refusal) {
 		}
 		switch {
 		case r.Kind != "" && !slices.Contains(kinds, r.Kind):
-			refused = append(refused, Refusal{n, "no " + holdKindWords[r.Kind] + " " + n + holdElsewhere(n, kinds, r.Release)})
+			refused = append(refused, Refusal{Key: n, Why: "no " + holdKindWords[r.Kind] + " " + n + holdElsewhere(n, kinds, r.Release)})
 		case r.Kind != "":
 			out = append(out, HoldTarget{Name: n, Kind: r.Kind})
 		case len(kinds) == 0:
-			refused = append(refused, Refusal{n, "names no fleet member, reader, friend or stream of this sprint: nova-sprint where --all shows them"})
+			refused = append(refused, Refusal{Key: n, Why: "names no fleet member, reader, friend or stream of this sprint: nova-sprint where --all shows them"})
 		case len(kinds) == 1:
 			out = append(out, HoldTarget{Name: n, Kind: kinds[0]})
 		default:
-			refused = append(refused, Refusal{n, "names a " + strings.Join(kinds, " and a ") + ": a hold names one; rename one of them"})
+			refused = append(refused, Refusal{Key: n, Why: "names a " + strings.Join(kinds, " and a ") + ": a hold names one; rename one of them"})
 		}
 	}
 	return out, refused
@@ -231,10 +227,15 @@ func HeldToReturn(ctl *Card) bool {
 	return ctl != nil && ctl.F(FieldHeld) != "" && ctl.F(FieldHeldReturn) == ctl.F(FieldHeld)
 }
 
+// lastGateGuardOff is the tests' seam: the last-gate guard reads it (true) to show the
+// guard a plant removed would be caught by its own test. Only export_test.go sets it,
+// and only the plant test, which resets it; no verb and no request carries it.
+var lastGateGuardOff bool
+
 // lastGateRefusal is the guard's refusal when a hold would leave no gate bench: the
 // member being held, and the consequence with the override that holds it anyway.
 func lastGateRefusal(member string) Refusal {
-	return Refusal{member, "holding " + member + " leaves no gate bench: every landing will be refused until one is unheld; --force-last holds it anyway"}
+	return Refusal{Key: member, Code: RefusedLastGate, Why: "holding " + member + " leaves no gate bench: every landing will be refused until one is unheld; --force-last holds it anyway"}
 }
 
 // HoldNames is hold and unhold as one step (docs/SPEC-SPRINT.md section 11): every name
@@ -247,10 +248,10 @@ func lastGateRefusal(member string) Refusal {
 func HoldNames(s *Snapshot, r HoldReq) Plan {
 	targets, refused := HoldTargets(s, r)
 	if len(r.Names) == 0 {
-		refused = append(refused, Refusal{"hold", "names nothing: name a fleet member, a reader, a friend or a stream"})
+		refused = append(refused, Refusal{Key: "hold", Why: "names nothing: name a fleet member, a reader, a friend or a stream"})
 	}
 	if why := holdCauseWhy(s, r, targets); len(refused) == 0 && why != "" {
-		refused = append(refused, Refusal{"hold", why})
+		refused = append(refused, Refusal{Key: "hold", Why: why})
 	}
 	if len(refused) > 0 {
 		return Plan{Refused: refused}
@@ -274,7 +275,7 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 	// one member is never refused (its only member is its routine maintenance hold, a
 	// long-standing flow). --force-last records the override on the note instead.
 	forceLast := false
-	if len(members) > 0 && !r.Release && !r.Return && !r.NoLastGateGuard && len(s.Members()) >= 2 {
+	if len(members) > 0 && !r.Release && !r.Return && !lastGateGuardOff && len(s.Members()) >= 2 {
 		named := map[string]bool{}
 		for _, m := range members {
 			named[m] = true

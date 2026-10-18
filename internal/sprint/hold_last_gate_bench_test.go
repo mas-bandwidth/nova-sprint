@@ -127,6 +127,7 @@ func TestAPlantThatRemovesTheLastGateBenchGuardGoesRed(t *testing.T) {
 	assert.Contains(t, p.Refused[0].Why, "holding m2 leaves no gate bench")
 	assert.Equal(t, "m2", p.Refused[0].Key, "it names the last member that could run a gate")
 
-	p = sprint.HoldNames(s, sprint.HoldReq{Names: []string{"m2"}, Reason: "r", NoLastGateGuard: true})
+	sprint.DisableLastGateGuard(t)
+	p = sprint.HoldNames(s, sprint.HoldReq{Names: []string{"m2"}, Reason: "r"})
 	assert.Empty(t, p.Refused, "with the guard removed the hold succeeds, which TestHoldRefusesTheLastGateBench forbids")
 }

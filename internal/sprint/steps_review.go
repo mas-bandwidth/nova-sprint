@@ -1588,7 +1588,7 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		refused := append([]Refusal(nil), p.Refused...)
 		for _, c := range chosen {
 			if _, head := carriedHead(s, c); head == "" {
-				refused = append(refused, Refusal{c.ID, c.ID + " has no pushed head for rework --carry: its next attempt would start from the card's base, not from work; nothing was changed"})
+				refused = append(refused, Refusal{Key: c.ID, Why: c.ID + " has no pushed head for rework --carry: its next attempt would start from the card's base, not from work; nothing was changed"})
 			}
 		}
 		if len(refused) > 0 {
