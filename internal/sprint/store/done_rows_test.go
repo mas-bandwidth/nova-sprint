@@ -89,14 +89,16 @@ func TestDoneRewriteCounted(t *testing.T) {
 	first, err := pinned.readDoneRecord(ctx, kv)
 	require.NoError(t, err)
 	assert.Equal(t, "legacy-cursor", first.Cursor)
-	counts := codec.Counts().Snapshot()
+	// the reads as Check reports them: a page the process decoded before (another run of this
+	// test) is a read too (doneReads)
+	counts := pinned.doneReadCounts()
 	assert.EqualValues(t, 1, counts["legacy"])
 	assert.Zero(t, counts["binary"])
 
 	second, err := pinned.readDoneRecord(ctx, kv)
 	require.NoError(t, err)
 	assert.Equal(t, first, second)
-	counts = codec.Counts().Snapshot()
+	counts = pinned.doneReadCounts()
 	assert.EqualValues(t, 1, counts["legacy"])
 	assert.EqualValues(t, 1, counts["binary"])
 }

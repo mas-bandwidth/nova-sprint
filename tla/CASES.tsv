@@ -545,6 +545,7 @@ MCDoneRecordBrokenNoDedup.cfg	MCDoneRecord.tla	invariant	NoDoubleCount	ignore-te
 MCDoneRecordBrokenKeepEpoch.cfg	MCDoneRecord.tla	invariant	ClearStartsAgain	ignore-terminal	donerecord	required	-
 MCDoneRecordBrokenOverwriteNewer.cfg	MCDoneRecord.tla	invariant	OlderBuildNeverWritesNewerLayout	ignore-terminal	donerecord	required	-
 MCDoneRecordBrokenNoOriginGuard.cfg	MCDoneRecord.tla	invariant	ReviewObservedOnOrigin	ignore-terminal	donerecord	required	-
+MCDoneRecordBrokenPageZeroGuard.cfg	MCDoneRecord.tla	temporal	TornRepaired	ignore-terminal	donerecord	required	-
 MCReaderTiers.cfg	MCReaderTiers.tla	pass	-	ignore-terminal	readertiers	required	-
 MCReaderTiersBrokenHeld.cfg	MCReaderTiers.tla	invariant	NoReadToAHeldReader	ignore-terminal	readertiers	required	-
 MCReaderTiersBrokenEmptyFlashOnly.cfg	MCReaderTiers.tla	invariant	EmptyCellReadsEveryServedTier	ignore-terminal	readertiers	required	-

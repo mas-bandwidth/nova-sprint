@@ -1061,21 +1061,15 @@ func (r *Redis) openOf(ctx context.Context, open map[string]string) ([]sprint.Op
 			ids = append(ids, nid)
 		}
 	}
-	vals, err := r.C.HMGet(ctx, r.key(keyNotes), ids...).Result()
+	key := r.key(keyNotes)
+	vals, err := r.C.HMGet(ctx, key, ids...).Result()
 	if err != nil {
 		return nil, err
 	}
-	notes := map[string]sprint.Note{}
-	for i, v := range vals {
-		s, ok := v.(string)
-		if !ok {
-			continue
-		}
-		var n sprint.Note
-		if err := json.Unmarshal([]byte(s), &n); err != nil {
-			return nil, fmt.Errorf("notification %s: %w", ids[i], err)
-		}
-		notes[ids[i]] = n
+	// each note decoded only when its text changed since the last read (opencache.go)
+	notes, err := openCacheFor(r.C, key).notesOf(ids, vals, decodeOpenNote)
+	if err != nil {
+		return nil, err
 	}
 	var out []sprint.Open
 	for k, nid := range open {
