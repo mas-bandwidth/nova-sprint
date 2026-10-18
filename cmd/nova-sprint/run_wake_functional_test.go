@@ -105,11 +105,14 @@ func TestTheLoopWakesOnTheLogOnTheStore(t *testing.T) {
 	require.NoError(t, err)
 	before := trips.n.Load()
 	_, why := loop.pace(ctx, st, st.PinnedEpoch(), cursor, time.Now(), &bytes.Buffer{})
-	// a quiet wait is QuietEvery in slices of ServerEvery, one XREAD and one write of
-	// the server's record each (pace)
+	// a quiet wait is QuietEvery in slices of ServerEvery: one XREAD a slice, and
+	// between slices the server's record (sayServer: a SET, and for a loop that does
+	// not land the lander check's GET first), at most once a ServerEvery (pace)
 	slices := int64((store.QuietEvery + store.ServerEvery - 1) / store.ServerEvery)
-	require.Equal(t, tickClock, why, "a quiet wait: %s in %d round trips, want the clock in %d", why, trips.n.Load()-before, 2*slices)
-	require.Equal(t, 2*slices, trips.n.Load()-before, "a quiet wait: %s in %d round trips, want the clock in %d (a wait and a server record a slice)", why, trips.n.Load()-before, 2*slices)
+	quietTrips := trips.n.Load() - before
+	require.Equal(t, tickClock, why, "a quiet wait: %s in %d round trips, want the clock", why, quietTrips)
+	require.GreaterOrEqual(t, quietTrips, slices, "a quiet wait: %d round trips, want at least one a slice (%d slices)", quietTrips, slices)
+	require.LessOrEqual(t, quietTrips, 3*slices, "a quiet wait: %d round trips, want at most three a slice (%d slices): a wait, the lander check and the server record", quietTrips, slices)
 	do("add", "--stream", "d", "--count", "1", "--one")
 	before = trips.n.Load()
 	_, why = loop.pace(ctx, st, st.PinnedEpoch(), cursor, time.Now(), &bytes.Buffer{})
