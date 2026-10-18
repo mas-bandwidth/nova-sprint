@@ -799,3 +799,8 @@ MCRepairLogBrokenSkipApplied.cfg	MCRepairLog.tla	invariant	AppliedHasLine	ignore
 MCRepairLogReconcileSkipApplied.cfg	MCRepairLog.tla	pass	-	ignore-terminal	repair-log	required	-
 MCRepairLogBrokenNoProbe.cfg	MCRepairLog.tla	invariant	ProbeSparesEntries	ignore-terminal	repair-log	required	-
 MCRepairLogBrokenReconcileBlind.cfg	MCRepairLog.tla	invariant	ReconciledHasLine	ignore-terminal	repair-log	required	-
+MCLaneCheck.cfg	MCLaneCheck.tla	pass	-	ignore-terminal	lanecheck	required	-
+MCLaneCheckBrokenBounceLive.cfg	MCLaneCheck.tla	invariant	LiveLaneNeverBouncedOrRedealt	ignore-terminal	lanecheck	required	-
+MCLaneCheckBrokenRedealLive.cfg	MCLaneCheck.tla	invariant	LiveLaneNeverBouncedOrRedealt	ignore-terminal	lanecheck	required	-
+MCLaneCheckBrokenNoNotice.cfg	MCLaneCheck.tla	invariant	LivePastDeadlineHasOneNotice	ignore-terminal	lanecheck	required	-
+MCLaneCheckBrokenRepeatNotice.cfg	MCLaneCheck.tla	invariant	LivePastDeadlineHasOneNotice	ignore-terminal	lanecheck	required	-
