@@ -4346,4 +4346,44 @@
    :title "The live page's throughput tile is blank for ten minutes after an idle hour"
    :text "Since #490 the dashboard reads the sprint only while someone is looking. On return after more than an hour idle, sampleLanded has no samples inside its one-hour window and the page's own tile (internal/sprintdash/pageview.go, under the page lock) stays blank until ten minutes of new samples span MinSpan; /api/sprint and the pull routes carry the gap (trimWindow keeps the newest sample before the hour as the base). Changing the page's tile needs the owner's exact words (the page lock); the SPEC-SPRINT-DASHBOARD.md section Freshness, once per second, end to end is the owner's locked text and says nothing about the idle case. Target v1.7, with the owner's word."
    :why "the page is the owner's; its idle behaviour is his to state"
-   :origin "the cold read of #490, 2026-10-18")))
+   :origin "the cold read of #490, 2026-10-18")
+  (item "v17-card-lint-skips-the-templates-slots" :group "sprint" :date "2026-10-18"
+   :title "nova-card lint skips the template's own slots"
+   :text "nova-card lint no longer reads the template's words as leftovers: the RESULT line's sha=<sha12>, Head: <sha>, --head <sha>, the commit format <id>: <what> and anything inside a backtick span; a real leftover in prose is still caught. Target v1.7; sprint card v17-card-lint-skips-the-templates-slots (stream v17, tier pro, BASE sprint/v17)."
+   :why "A filled card that nova-sprint add admitted came back from nova-card lint with a placeholder finding on every template slot."
+   :origin "the coordinator, 2026-10-18: Rowan's carding pass on nova-card lint and the brief verbs")
+  (item "v17-nova-card-lint-answers-as-add-does" :group "sprint" :date "2026-10-18"
+   :title "nova-card lint answers as nova-sprint add does"
+   :text "nova-card lint stops running the typed-header lint add never runs (kind-declared, start-named, test-named, paths-declared) and calls the same pure functions lintBriefReads calls, so a card of the sprint's own form is clean in both. Target v1.7; sprint card v17-nova-card-lint-answers-as-add-does (stream v17, tier pro, BASE sprint/v17)."
+   :why "KIND: fix, a card with no START line and TEST: none because ... were red in nova-card lint and admitted by add."
+   :origin "the coordinator, 2026-10-18: Rowan's carding pass on nova-card lint and the brief verbs")
+  (item "v17-read-marking-takes-a-note-once-per-file" :group "sprint" :date "2026-10-18"
+   :title "A (read) marking may carry a note, and one marking per file is enough"
+   :text "START and THE TASK accept (read: why) and (read; why), and a file THE TASK marks read once is read at every mention, so paths-cover-named stops asking PATHS to cover files a card only reads. Target v1.7; sprint card v17-read-marking-takes-a-note-once-per-file (stream v17, tier pro, BASE sprint/v17)."
+   :why "(read) was matched as the bare token and per mention."
+   :origin "the coordinator, 2026-10-18: Rowan's carding pass on nova-card lint and the brief verbs")
+  (item "v17-brief-edit-writes-land-after-like-add" :group "sprint" :date "2026-10-18"
+   :title "A brief edit writes the card's LAND-AFTER like add does"
+   :text "nova-sprint brief records the LAND-AFTER: line of the new text as land_after, validated as add validates it, and a text that drops the line clears it; a LAND-AFTER-only edit is taken in any state like a DEPENDS-ON-only one. Target v1.7; sprint card v17-brief-edit-writes-land-after-like-add (stream v17, tier pro, BASE sprint/v17)."
+   :why "Only DEPENDS-ON was written on a brief edit, so the stored land_after stood and the card landed in the old order."
+   :origin "the coordinator, 2026-10-18: Rowan's carding pass on nova-card lint and the brief verbs")
+  (item "v17-brief-check-reads-the-stores-land-after" :group "sprint" :date "2026-10-18"
+   :title "brief check reads the store's LAND-AFTER for a card on the table"
+   :text "Given a file whose id is a card on the table, nova-sprint brief check compares the file's LAND-AFTER with the card's stored soft dependencies and names a drift as a land-after finding. Target v1.7; sprint card v17-brief-check-reads-the-stores-land-after (stream v17, tier pro, BASE sprint/v17)."
+   :why "The file-based check could not see land_after held in the store, so the two drifted apart."
+   :origin "the coordinator, 2026-10-18: Rowan's carding pass on nova-card lint and the brief verbs")
+  (item "v17-held-card-refusal-names-release" :group "sprint" :date "2026-10-18"
+   :title "A held card's refusal names release"
+   :text "accept, ask, return and rework on a card added held name nova-sprint release in their remedy instead of sending the coordinator to brief and drop. Target v1.7; sprint card v17-held-card-refusal-names-release (stream v17, tier pro, BASE sprint/v17)."
+   :why "The refusal suggested editing a card that was only held."
+   :origin "the coordinator, 2026-10-18: Rowan's carding pass on nova-card lint and the brief verbs")
+  (item "v17-brief-check-names-a-tier-the-card-does-not-hold" :group "sprint" :date "2026-10-18"
+   :title "brief check names a tier the card does not hold"
+   :text "Given a file whose id is a card on the table, brief check reports a line-1 tier that differs from the card's recorded tier, before brief keeps the recorded one. Target v1.7; sprint card v17-brief-check-names-a-tier-the-card-does-not-hold (stream v17, tier pro, BASE sprint/v17)."
+   :why "brief only noted 'tier kept' after the edit."
+   :origin "the coordinator, 2026-10-18: Rowan's carding pass on nova-card lint and the brief verbs")
+  (item "v17-cosmetic-brief-edit-keeps-the-cap-count" :group "sprint" :date "2026-10-18"
+   :title "A cosmetic brief edit keeps the attempt cap's count"
+   :text "An edit of line 1's tier, a routing line or spacing no longer opens a fresh attempt-cap window; only an edit of the task or PATHS does, as a re-tier, rework and accept still do. Target v1.7; sprint card v17-cosmetic-brief-edit-keeps-the-cap-count (stream v17, tier pro, BASE sprint/v17)."
+   :why "Every text edit reset the cap, so a capped card ran on after an edit that decided nothing."
+   :origin "the coordinator, 2026-10-18: Rowan's carding pass on nova-card lint and the brief verbs")))
