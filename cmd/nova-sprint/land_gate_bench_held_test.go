@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -12,10 +13,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 )
 
 // heldGateRig is a rig with a Go module on main, one merging card on s1, and vision and
-// space the only up benches (twoBenchesRing), this machine studio.local.
+// space the only up benches, every other member down by the machine (machineDown, not
+// held), this machine studio.local. twoBenchesRing is not used: it takes the others down
+// with fleet down, which is a coordinator's hold (hold --return), and a held member may gate.
 func heldGateRig(t *testing.T) *landRig {
 	t.Helper()
 	r := newLandRig(t)
@@ -26,7 +30,11 @@ func heldGateRig(t *testing.T) *landRig {
 	r.ok("add --stream s1 --count 1 --one")
 	heads := map[string]string{"s1-1": r.card("s1-1", map[string]string{"ok.go": "package main\n\nfunc ok() {}\n"})}
 	r.queued(heads, "s1-1")
-	r.twoBenchesRing()
+	for _, m := range []string{"vision", "space"} {
+		r.ok("fleet beat " + m + " --load 1 --cores 8")
+		r.ok("fleet up " + m + " --probe passed")
+	}
+	r.downOthers("vision", "space")
 	b := r.a.landState()
 	b.mu.Lock()
 	b.hostName = func() (string, error) { return "studio.local", nil }
@@ -56,17 +64,35 @@ func (r *landRig) benchBack(unhold ...string) {
 	r.ok("fleet up vision --probe passed")
 }
 
-// downOthers takes every up member other than keep down (not held).
+// machineDown takes a member down as the machine does when it stops beating (a fleet
+// step down with no hold and no mark): status down, held unset, so it is no gate bench
+// (Snapshot.GateMembers). fleet down is not that: it is hold --return, a coordinator's hold.
+func (r *landRig) machineDown(member string) {
+	r.t.Helper()
+	st, err := r.a.store(common{redis: "mem:0", actor: "tester"})
+	require.NoError(r.t, err)
+	_, err = st.Run(context.Background(), store.FleetStep(sprint.FleetReq{Op: "down", Member: member, Who: "tester"}))
+	require.NoError(r.t, err)
+}
+
+// downOthers takes every up member other than keep down by the machine (not held).
 func (r *landRig) downOthers(keep ...string) {
 	r.t.Helper()
 	var w whereView
 	r.json("where", &w)
 	for name, row := range w.Tables["fleet"] {
-		if row["status"] == sprint.Up && !strings.Contains(" "+strings.Join(keep, " ")+" ", " "+name+" ") {
-			r.ok("fleet down " + name)
+		if row["status"] == sprint.Up && !slices.Contains(keep, name) {
+			r.machineDown(name)
 		}
 	}
 }
+
+// loopGateCycles and loopGateSpins bound loopGate by steps: the loop's pauses, and the
+// yields one pause waits for the landing in flight.
+const (
+	loopGateCycles = 1000
+	loopGateSpins  = 1 << 26
+)
 
 // loopGate runs the land loop once through the bench seam (no ssh, no socket): every host
 // the gate was asked on, and the loop's output.
@@ -86,14 +112,18 @@ func (r *landRig) loopGate() (asked []string, text string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var out beatBuf
-	deadline := time.Now().Add(2 * time.Minute)
+	// bounded by steps, never by the wall clock: the loop's pause returns once the landing
+	// in flight is done (or none is), and the loop is stopped at its first LAND line or
+	// after loopGateCycles pauses
+	cycles := 0
 	r.a.sleep = func(time.Duration) {
+		cycles++
 		text := out.String()
-		if strings.Contains(text, "LAND REFUSED") || strings.Contains(text, "LAND OK") || strings.Contains(text, "LAND FAILED") || time.Now().After(deadline) {
+		if strings.Contains(text, "LAND REFUSED") || strings.Contains(text, "LAND OK") || strings.Contains(text, "LAND FAILED") || cycles > loopGateCycles {
 			cancel()
 			return
 		}
-		for time.Now().Before(deadline) {
+		for spin := 0; spin < loopGateSpins; spin++ {
 			b.mu.Lock()
 			f := b.flight
 			b.mu.Unlock()
@@ -139,12 +169,12 @@ func TestAHeldMemberRunsLandGates(t *testing.T) {
 	r.clean()
 }
 
-// A member down and not held is no gate bench: with space down (not held) and vision held,
-// the choice is vision alone, and the gate is never asked on space.
+// A member down and not held is no gate bench: with space down by the machine (not held)
+// and vision held, the choice is vision alone, and the gate is never asked on space.
 func TestADownMemberRunsNoLandGate(t *testing.T) {
 	t.Parallel()
 	r := heldGateRig(t)
-	r.ok("fleet down space")
+	r.machineDown("space")
 	r.ok("fleet hold vision --reason red --force-last")
 	hosts, _ := r.heldGateHosts()
 	assert.Equal(t, []string{"vision"}, hosts, "the down member is left out")
