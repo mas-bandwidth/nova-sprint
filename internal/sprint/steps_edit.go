@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
@@ -1085,17 +1086,21 @@ var tierLineRE = regexp.MustCompile(`\btier:\s*[A-Za-z0-9_-]+`)
 // the task, so an edit of them alone does not reset the count (docs/SPEC-SPRINT.md,
 // the bound).
 func taskOf(brief string) string {
-	var keep []string
-	inHeader := true
+	var keep, body []string
+	inHeader, inFence := true, false
 	for i, l := range strings.Split(brief, "\n") {
 		if i == 0 {
 			// line 1's tier is not the task; the rest of the line (the title) is
-			l = strings.TrimSpace(tierLineRE.ReplaceAllString(l, ""))
-		} else if inHeader {
+			keep = append(keep, normalizeTaskWhitespace(strings.TrimSpace(tierLineRE.ReplaceAllString(l, ""))))
+			continue
+		}
+		if inHeader {
 			if key, v, ok := cardhdr.KeyValue(l); ok {
 				switch key {
-				case "PATHS", "NEW", "SHARED", "TEST", "DONE-WHEN":
-					keep = append(keep, key+": "+strings.Join(strings.Fields(v), " "))
+				case "PATHS", "NEW", "SHARED":
+					keep = append(keep, key+": "+v)
+				case "TEST", "DONE-WHEN":
+					keep = append(keep, key+": "+normalizeTaskWhitespace(v))
 				}
 				continue
 			}
@@ -1104,12 +1109,65 @@ func taskOf(brief string) string {
 			}
 			inHeader = false
 		}
-		if strings.TrimSpace(l) == "" {
+		trimmed := strings.TrimSpace(l)
+		if strings.HasPrefix(trimmed, "\x60\x60\x60") || strings.HasPrefix(trimmed, "~~~") {
+			body = append(body, trimmed)
+			inFence = !inFence
 			continue
 		}
-		keep = append(keep, strings.Join(strings.Fields(l), " "))
+		// Keep code blocks and quoted values exact: their internal whitespace can
+		// change code or a test selector. Outside them, repeated whitespace is formatting.
+		if inFence {
+			body = append(body, l)
+		} else {
+			body = append(body, normalizeTaskWhitespace(l))
+		}
+	}
+	bodyText := strings.TrimSpace(strings.Join(body, "\n"))
+	if bodyText != "" {
+		keep = append(keep, bodyText)
 	}
 	return strings.Join(keep, "\n")
+}
+
+// normalizeTaskWhitespace collapses whitespace outside quoted literals while retaining
+// quoted contents, including shell regex selectors and inline code.
+func normalizeTaskWhitespace(s string) string {
+	var b strings.Builder
+	var quote rune
+	escaped, pendingSpace := false, false
+	for _, r := range s {
+		if quote != 0 {
+			b.WriteRune(r)
+			if escaped {
+				escaped = false
+			} else if r == '\\' {
+				escaped = true
+			} else if r == quote {
+				quote = 0
+			}
+			continue
+		}
+		if r == '\'' || r == '"' || r == '\x60' {
+			if pendingSpace && b.Len() > 0 {
+				b.WriteByte(' ')
+			}
+			pendingSpace = false
+			quote = r
+			b.WriteRune(r)
+			continue
+		}
+		if unicode.IsSpace(r) {
+			pendingSpace = true
+			continue
+		}
+		if pendingSpace && b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		pendingSpace = false
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // relinkMap reads a card's relink record (FieldRelinked): the ids it re-pointed,

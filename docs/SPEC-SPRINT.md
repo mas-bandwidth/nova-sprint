@@ -1904,8 +1904,9 @@ to the cent, rounded up, or `nothing priced`; the findings the primary's `findin
 line an attempt, appended by `rework` with the attempt's readers' finding, else its
 failed report, else its bound's class, the latest kept under the text bound), its
 decisions `brief --brief-file` with a task or PATHS change (a tier, routing or spacing-only
-edit opens no fresh cap window), re-tier (`brief --tier` or `rework --fix <text> --tier
-<a higher tier>`, `sprint.DecisionReTier`: the way to a friend tier), `rework --carry` and drop;
+edit outside quoted literals and code opens no fresh cap window; internal whitespace in
+quoted values, test selectors and code remains task text), re-tier (`brief --tier` or
+`rework --fix <text> --tier <a higher tier>`, `sprint.DecisionReTier`: the way to a friend tier), `rework --carry` and drop;
 and it is dealt to no
 machine and no friend until a decision, on every path (the deal's refusal,
 `sprint.AtAttemptCap`; the tick's friend offer; every rule leaves it: `ruleFailed`,

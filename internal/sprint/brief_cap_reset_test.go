@@ -41,6 +41,41 @@ func TestACosmeticBriefEditKeepsTheAttemptCapCount(t *testing.T) {
 	}
 }
 
+// Whitespace inside quoted task literals and test selectors is meaningful; only
+// outer formatting whitespace is cosmetic.
+func TestABriefQuotedWhitespaceChangesTheTask(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, old, next string
+	}{
+		{
+			name: "QuotedTestSelector",
+			old:  "tier: pro\nPATHS: internal/x.go\nDONE-WHEN: go test -run '^TestA B$'\n\nthe task",
+			next: "tier: pro\nPATHS: internal/x.go\nDONE-WHEN: go test -run '^TestA  B$'\n\nthe task",
+		},
+		{
+			name: "QuotedBodyLiteral",
+			old:  "tier: pro\nPATHS: internal/x.go\n\nthe task handles literal \"foo bar\"",
+			next: "tier: pro\nPATHS: internal/x.go\n\nthe task handles literal \"foo  bar\"",
+		},
+		{
+			name: "FencedCode",
+			old:  "tier: pro\nPATHS: internal/x.go\n\n\x60\x60\x60go\nx  := 1\n\x60\x60\x60",
+			next: "tier: pro\nPATHS: internal/x.go\n\n\x60\x60\x60go\nx := 1\n\x60\x60\x60",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			w := boundWorld(t)
+			w.s.Work.Placed("a-1").Fields["brief"] = tc.old
+			w.s.Work.Placed("a-1").Fields[FieldDecidedAttempt] = "1"
+			p := w.must(Brief(w.s, briefOf("a-1", tc.next, "")))
+			assert.Equal(t, "2", w.s.Work.Placed("a-1").F(FieldDecidedAttempt), "meaningful quoted whitespace changes the task")
+			assert.Contains(t, strings.Join(p.Said, "\n"), "max attempts: decided at attempt 2")
+		})
+	}
+}
+
 // A scope-only widening stays on its dedicated in-place path; that path does not make a
 // coordinator decision for the attempt cap even though it adds PATHS.
 func TestABriefScopeWidenKeepsAttemptCapCount(t *testing.T) {
