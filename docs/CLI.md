@@ -925,11 +925,11 @@ chains them or the path is a lander-owned ledger the lander merges
 ### What it refuses
 
 Every brief is held to the lint `nova-sprint add` runs (the model lines, the
-child rules under the default rule set, a tree card's steps), and past the add
-to the typed header and the template's unfilled `<...>` lines, which the add
-does not read, before anything is written (a sprint initialised with `--rules`
-holds a brief to that file at the add), and to the card checks the add runs
-too: a tier on line 1, a TEST whose package PATHS names, no name `--name` gives
+child rules under the default rule set, a tree card's steps, the stranded-header-key
+and dashboard-ask rules the add runs after them), and to the template's unfilled
+`<...>` lines, which the add does not read, before anything is written (a sprint
+initialised with `--rules` holds a brief to that file at the add), and to the
+card checks the add runs too: a tier on line 1, a TEST whose package PATHS names, no name `--name` gives
 outside double-quoted words, no card `--dropped` gives; one red brief prints its
 `LINT DRIFT card=<id> check=<check> line=<n>: <excerpt>` line and nothing is
 written, exit 1. A PATHS entry that names nothing in `--repo-dir` is the same

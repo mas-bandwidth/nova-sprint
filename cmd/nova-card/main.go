@@ -70,8 +70,9 @@ lander resolves a ledger conflict as the union of removals, so adjacent deletion
 file no longer conflict at land (docs/SPEC-SPRINT.md section 7). Every card is wave 1, and
 cards that share the ledger's path are chained, so no two independent cards share a file; the
 lint holds a brief to the lint nova-sprint add runs (the model lines, the child rules under the
-default rule set, a tree card's steps), and past the add to the typed header and the template's
-unfilled <...> lines, which the add does not read, one LINT DRIFT line each; and to the card
+default rule set, a tree card's steps, the stranded-header-key and dashboard-ask rules add runs
+after them), and to the template's unfilled <...> lines, which the add does not read, one LINT
+DRIFT line each; and to the card
 checks: a tier on line 1, a TEST whose package PATHS names, no name --name gives outside
 double-quoted words, no card --dropped gives. generate holds every brief the same before it
 writes. A sprint initialised with --rules holds a brief to that file at
