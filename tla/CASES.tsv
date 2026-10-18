@@ -426,10 +426,12 @@ MCDirtyTickRefused.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	re
 MCDirtyTickHold.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickDrain.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickGateHeld.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
+MCDirtyTickGateUpgrade.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickStopped.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickBrokenDealDraining.cfg	MCDirtyTick.tla	action	NeverDealtToDraining	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickBrokenGateUpOnly.cfg	MCDirtyTick.tla	temporal	GateLands	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickBrokenGateReturned.cfg	MCDirtyTick.tla	action	ReturnedNeverGates	ignore-terminal	dirtytick-witnesses	required	-
+MCDirtyTickBrokenGateUnmarked.cfg	MCDirtyTick.tla	action	UnmarkedHoldNeverGates	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickBrokenStoppedPump.cfg	MCDirtyTick.tla	action	StoppedMovesNothing	ignore-terminal	dirtytick-witnesses	required	-
 MCLandPassStreamFlow.cfg	MCLandPass.tla	pass	-	check	landpass	required	-
 MCLandPassBrokenCardOntoDev.cfg	MCLandPass.tla	invariant	DevMovesOnlyByStreamMerge	check	landpass	required	-
