@@ -302,6 +302,8 @@ func (st *Store) keepWhere(ctx context.Context, m Machine) error {
 	// beat), the record is the count at the fleet's revision now, and it is written again
 	// at that revision, not counted (2026-10-17: every member's load cell moved the fleet's
 	// revision, and each tick counted the whole sprint again for a cell no count reads).
+	// The model is tla/StatsReset.tla RestampRead and Display (RecordShowsShown; the
+	// reversed witness restampany writes it again whatever moved).
 	tw.whereMu.Lock()
 	same := held && tw.whereRaw == vals[0] && tw.whereMoves == moves && snap.Work.Revision == old.Rev
 	tw.whereMu.Unlock()

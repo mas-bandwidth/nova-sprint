@@ -163,7 +163,7 @@ func SeriesLandings(s *Snapshot, since time.Time) []Landing {
 			if !isWork {
 				continue
 			}
-			at, _ := time.Parse(time.RFC3339, c.F(FieldFinishedAt))      // unreadable or absent: zero, n decides
+			at, _ := time.Parse(time.RFC3339, c.F(FieldFinishedAt)) // unreadable or absent: zero, n decides
 			cur, seen := latest[base]
 			if !seen || at.After(cur.finished) || at.Equal(cur.finished) && n >= cur.n {
 				latest[base] = ok{row: c.Row, finished: at, n: n}
