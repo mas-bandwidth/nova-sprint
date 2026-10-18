@@ -337,11 +337,12 @@ func (p liveProbe) library(ctx context.Context) liveLibrary {
 	if p.pwEnv != "" {
 		args = append(args, "--password-env", p.pwEnv)
 	}
-	// The recorded login's password is read in process and never in
-	// os.Environ, so the child is handed it by name here: nova-redis reads
+	// The login's password is read in process and never in os.Environ (the
+	// seat login, a password file, or an environment login the startup scrub
+	// took), so the child is handed it by name here: nova-redis reads
 	// --password-env with os.Getenv and refuses when it is empty
 	// (pkg/nsprint/redisauth, "A user whose password variable is empty is
-	// refused"). An environment login already carries it, so pw is "".
+	// refused").
 	run := ctx
 	if p.pwEnv != "" && p.pw != "" {
 		run = withAdoptEnv(ctx, []string{p.pwEnv + "=" + p.pw})
@@ -839,25 +840,33 @@ func (a *app) cmdLive(args []string, stdout, stderr io.Writer) int {
 	if *userUnitsDir == "" {
 		*userUnitsDir = filepath.Join(home, ".config", "systemd", "user")
 	}
-	// liveProbe runs fn check against the store: credentials come from the
-	// environment (NOVA_SPRINT_REDIS_USER/PASSWORD_ENV), then the recorded
-	// seat login, falling back to the default user. When an env login is set,
-	// its variables are used directly so the command-line arguments match
-	// what the verb line names; when no env login is set, storeOptions
-	// resolves the address's recorded user and password-env for fn check and
-	// reads the password in process, which library hands to the child.
+	// liveProbe runs fn check against the store with the login every verb
+	// uses (storeOptions): a password file or keychain, the environment's
+	// login (NOVA_SPRINT_REDIS_USER/PASSWORD_ENV), then the recorded seat
+	// login, falling back to the default user. An env login's variables name
+	// the user and the password variable, so the command-line arguments match
+	// what the verb line names. The password is read in process in every case
+	// (the startup scrub took an env login's out of os.Environ), and library
+	// hands it to the nova-redis child alone, which reads only --password-env
+	// (docs/SPEC-SPRINT.md, "The seat's store login").
 	user, pwEnv := a.getenv("NOVA_SPRINT_REDIS_USER"), a.getenv("NOVA_SPRINT_REDIS_PASSWORD_ENV")
 	pw := ""
-	if user == "" && c.redis != "" {
-		a.seatLoginOn() // turn on login resolution before storeOptions calls recordedLogin
+	if c.redis != "" {
+		if user == "" {
+			a.seatLoginOn() // turn on login resolution before storeOptions calls recordedLogin
+		}
 		if o, getenv, err := a.storeOptions(c.redis); err != nil {
 			return refuse(stderr, name, "the store at "+c.redis+": "+err.Error())
 		} else {
-			user, pwEnv = o.User, o.PasswordEnv
-			// storeOptions answers seatLoginPassword from the value read in
-			// process; getenv is a.getenv for an environment login, whose
-			// variable is already in os.Environ and so needs no delivery.
-			pw = getenv(pwEnv)
+			if o.User != "" {
+				user = o.User
+			}
+			if o.PasswordEnv != "" {
+				pwEnv = o.PasswordEnv
+			}
+			if pwEnv != "" {
+				pw = getenv(pwEnv)
+			}
 		}
 	}
 	p := liveProbe{agentsDir: *agentsDir, daemonsDir: *daemonsDir, launchctl: *launchctl,
