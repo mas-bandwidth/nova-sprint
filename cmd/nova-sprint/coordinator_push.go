@@ -743,6 +743,14 @@ func coordWarningGroups(l coordLook) []sprint.Group {
 // tla/DecisionsOwed.tla NoSilentPile means an outstanding delivery obligation,
 // not human sight; transport liveness assumes eventual successful sends.
 func (a *app) decisionPass(ctx context.Context) {
+	type foldAttempt struct {
+		to        string
+		set       string
+		token     string
+		attempted bool
+		received  bool
+	}
+	var coordinatorFold foldAttempt
 	login, loginErr := a.coordinatorBusLogin()
 	for _, lane := range []string{"coordinator", "owner"} {
 		var job sprint.Note
@@ -840,6 +848,48 @@ func (a *app) decisionPass(ctx context.Context) {
 				if set == "" {
 					return p
 				}
+				if lane == "owner" && coordinatorFold.attempted && coordinatorFold.to == to && coordinatorFold.set == set {
+					if !coordinatorFold.received {
+						return p
+					}
+					var coordinatorNote *sprint.Note
+					for _, o := range s.Acked {
+						d := o.Note.DecisionDelivery
+						if o.Note.Type == sprint.NDecisionDelivery && d != nil && d.Lane == "coordinator" &&
+							d.To == to && d.Set == set && d.Token == coordinatorFold.token && !d.SentAt.IsZero() {
+							n := o.Note
+							coordinatorNote = &n
+							break
+						}
+					}
+					if coordinatorNote == nil {
+						return p
+					}
+					folded := *coordinatorNote.DecisionDelivery
+					folded.Lane = "owner"
+					folded.Reports = reports
+					folded.UnknownReceipts = 0
+					folded.Fault = ""
+					n := sprint.Note{
+						Kind: sprint.Acknowledged, Type: sprint.NDecisionDelivery, SprintLevel: true,
+						Who: sprint.MachineActor, At: s.Now, DecisionDelivery: &folded,
+						What: "folded coordinator receipt; judgment IDs=" + strings.ReplaceAll(folded.Set, "\x00", ","),
+					}
+					if old != nil {
+						if old.DecisionDelivery.UnknownReceipts > 0 {
+							history := *old
+							history.ID = ""
+							history.Alias = ""
+							history.Type = "decision escalation receipt history"
+							p.Notes = append(p.Notes, history)
+						}
+						n.ID, n.Alias = old.ID, old.Alias
+						p.Updates = append(p.Updates, n)
+					} else {
+						p.Notes = append(p.Notes, n)
+					}
+					return p
+				}
 				token := fmt.Sprintf("decisions:%x", sha256.Sum256([]byte(st.Names.Prefix+strconv.FormatUint(epoch, 10)+lane+to+set+s.Now.UTC().Format(time.RFC3339Nano))))
 				d := &sprint.DecisionDelivery{Lane: lane, To: to, From: sender, Set: set, Body: body, Reports: reports, Token: token, PreparedAt: s.Now, RetryBefore: s.Now.Add(bus.DefaultTokenLife)}
 				n := sprint.Note{Kind: sprint.Acknowledged, Type: sprint.NDecisionDelivery, SprintLevel: true, Who: sprint.MachineActor, At: s.Now, DecisionDelivery: d}
@@ -881,6 +931,9 @@ func (a *app) decisionPass(ctx context.Context) {
 			continue
 		}
 		d := *job.DecisionDelivery
+		if lane == "coordinator" {
+			coordinatorFold = foldAttempt{to: d.To, set: d.Set, token: d.Token, attempted: true}
+		}
 		fault := ""
 		switch {
 		case d.To == "":
@@ -899,8 +952,17 @@ func (a *app) decisionPass(ctx context.Context) {
 				fault = err.Error()
 			}
 		}
+		receiptApplied := false
 		err = a.onLine(ctx, func(st *store.Store) error {
-			_, err := st.Run(ctx, store.Step{Verb: "decision escalation receipt", Actor: sprint.MachineActor, Epoch: &epoch, Plan: func(s *sprint.Snapshot) sprint.Plan {
+			receiptTo, err := st.B.Coordinator(ctx)
+			if err != nil {
+				return err
+			}
+			machine, _, err := st.Machine(ctx)
+			if err != nil {
+				return err
+			}
+			_, err = st.Run(ctx, store.Step{Verb: "decision escalation receipt", Actor: sprint.MachineActor, Epoch: &epoch, Plan: func(s *sprint.Snapshot) sprint.Plan {
 				var p sprint.Plan
 				for _, o := range s.Acked {
 					n := o.Note
@@ -921,17 +983,39 @@ func (a *app) decisionPass(ctx context.Context) {
 					n.DecisionDelivery = &next
 					n.What = next.Fault + "; judgment IDs=" + strings.ReplaceAll(next.Set, "\x00", ",")
 					p.Updates = append(p.Updates, n)
+					receiptApplied = true
 					if fault == "" {
-						for _, r := range s.Acked {
-							if slices.Contains(d.Reports, r.Note.ID) {
-								report := r.Note
-								if lane == "owner" {
-									report.DefaultOwnerTold = true
-								} else {
-									report.DefaultCoordinatorTold = true
+						var ownerReports []string
+						foldOwner := false
+						if lane == "coordinator" && d.To == receiptTo {
+							all := append(append([]sprint.Open{}, s.Open...), s.Acked...)
+							ownerSet, _, reports := sprint.DecisionBatch(s.Now, all, sprint.DefaultHeldDecisions(s), "owner", machine.StoppedBetween, s)
+							ownerReports = reports
+							ownerPending := false
+							for _, pending := range s.Acked {
+								pd := pending.Note.DecisionDelivery
+								if pending.Note.Type == sprint.NDecisionDelivery && pd != nil && pd.Lane == "owner" && pd.SentAt.IsZero() {
+									ownerPending = true
+									break
 								}
-								p.Updates = append(p.Updates, report)
 							}
+							foldOwner = ownerSet == d.Set && !ownerPending
+						}
+						for _, r := range s.Acked {
+							coordinatorReport := lane == "coordinator" && slices.Contains(d.Reports, r.Note.ID)
+							ownerReport := lane == "owner" && slices.Contains(d.Reports, r.Note.ID) ||
+								lane == "coordinator" && foldOwner && slices.Contains(ownerReports, r.Note.ID)
+							if !coordinatorReport && !ownerReport {
+								continue
+							}
+							report := r.Note
+							if coordinatorReport {
+								report.DefaultCoordinatorTold = true
+							}
+							if ownerReport {
+								report.DefaultOwnerTold = true
+							}
+							p.Updates = append(p.Updates, report)
 						}
 					}
 					break
@@ -942,6 +1026,8 @@ func (a *app) decisionPass(ctx context.Context) {
 		})
 		if err != nil {
 			a.serveSay("DECISIONS OWED: receipt %s failed: %s", lane, err)
+		} else if lane == "coordinator" && fault == "" && receiptApplied {
+			coordinatorFold.received = true
 		}
 		if fault != "" {
 			a.serveSay("DECISIONS OWED: %s delivery pending: %s", lane, fault)
