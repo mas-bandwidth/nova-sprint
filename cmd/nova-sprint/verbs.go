@@ -139,8 +139,8 @@ func init() {
 		{"friend clean", "[--pg <dsn> | --file <path>] [--root <dir>] [--days <n>] [--dry-run]", "friend clean --dry-run", (*app).cmdFriendClean},
 		{"friend stage", "<card>@<gen> --as friend.<name> [--dir <jobs dir>]", "friend stage s1-1.w1@1 --as friend.amy", (*app).cmdFriendStage},
 		{"gc", "[--machine <m>] [--dry-run] [--max-age <d>]", "gc --dry-run", (*app).cmdGC},
-		{"lane take", "<kind> --machine <m> --as <worker> [--wait <duration>] [--dry-run]", "lane take go --machine m1 --as m1", (*app).cmdLaneTake},
-		{"lane give", "<kind> --machine <m> --as <worker> [--dry-run]", "lane give go --machine m1 --as m1", (*app).cmdLaneGive},
+		{"lane take", "<kind> --machine <m|auto> --as <worker> [--wait <duration>] [--dry-run]", "lane take go --machine auto --as m1", (*app).cmdLaneTake},
+		{"lane give", "<kind> --machine <m|auto> --as <worker> [--dry-run]", "lane give go --machine auto --as m1", (*app).cmdLaneGive},
 		{"lane list", "", "lane list", (*app).cmdLaneList},
 		{"reader add", "<reader>... [--tiers <flash[,pro,heavy,frontier]|all|default>]", "reader add reader-d", (*app).cmdReaderAdd},
 		{"reader set", "<reader>... --tiers <flash[,pro,heavy,frontier]|all|default>", "reader set reader-a --tiers flash", (*app).cmdReaderSet},
@@ -152,7 +152,7 @@ func init() {
 		{"stream archive", "<stream>...", "stream archive a b c", func(a *app, args []string, o, e io.Writer) int { return a.cmdStreamArchive(true, args, o, e) }},
 		{"stream unarchive", "<stream>...", "stream unarchive a", func(a *app, args []string, o, e io.Writer) int { return a.cmdStreamArchive(false, args, o, e) }},
 		{"stream set", "<stream>... [--read-tier <flash|pro|heavy|default>] [--land-protected <owner/name,...|any|default>] [--promotion[=false]] [--release <name>] [--display <name>] [--prose <glob,...|default>] [--attempts <n|default>] [--base <branch>] [--reason <text>] [--answers <notes>]", "stream set skips --read-tier pro", (*app).cmdStreamSet},
-		{"set", "[--rework-priority <fix|high|keep>] [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--alarm-review <n|off>] [--alarm-merging <n|off>] [--alarm-fleet <percent|off>] [--alarm-ready <on|off>] [--attempts <n|default>] [--friend-idle <duration|default>] [--landing-stall-bound <duration|default>] [--friend-finish <duration|default>] [--fleet-tiers <tiers|all>] [--friends-tiers <tiers|all>] [--reads <0|1|2|default>]", "set --read-tier pro", (*app).cmdSet},
+		{"set", "[--rework-priority <fix|high|keep>] [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--alarm-review <n|off>] [--alarm-merging <n|off>] [--alarm-fleet <percent|off>] [--alarm-ready <on|off>] [--attempts <n|default>] [--friend-idle <duration|default>] [--seat-silent-to <bus name|default>] [--landing-stall-bound <duration|default>] [--friend-finish <duration|default>] [--fleet-tiers <tiers|all>] [--friends-tiers <tiers|all>] [--reads <0|1|2|default>]", "set --read-tier pro", (*app).cmdSet},
 		{"promoted", "--sha <merge sha> [--answers <note>]", "promoted --sha 0123abc", (*app).cmdPromoted},
 		{"merge-window open", "--for <duration> --reason <text>", "merge-window open --for 10m --reason 'the release merges by hand'", (*app).cmdMergeWindowOpen},
 		{"funded", "<provider> --reason <text>", "funded opencode --reason 'paid $100 in the console'", (*app).cmdFunded},
@@ -1779,7 +1779,7 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 	}
 	if partial {
 		// add --partial holds what fails and admits the rest (add_partial.go)
-		return a.cmdAddPartial(addPartialReq{stream: stream, cards: cards, rules: rs, allowShared: allowShared, allowPersonal: allowPersonal, score: score, before: before, after: after, held: held, decideRecord: decideRecord, briefOps: briefOps, replaces: replaces, c: c}, stdout, stderr)
+		return a.cmdAddPartial(addPartialReq{stream: stream, cards: cards, rules: rs, allowShared: allowShared, allowPersonal: allowPersonal, score: score, before: before, after: after, held: held, notDup: notDup, decideRecord: decideRecord, briefOps: briefOps, replaces: replaces, c: c}, stdout, stderr)
 	}
 	if !allowShared {
 		if why := sharedPaths(cards); why != "" {
@@ -4303,6 +4303,7 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	attempts := fs.String("attempts", "", fmt.Sprintf("retired (2026-10-12): the sprint's attempt cap is nova-config's sprint row max_attempts (default %d: the attempts one card runs between two coordinator decisions before it is the coordinator's as one judgment); run: %s; a stream's own: nova-sprint stream set <s> --attempts <n>", sprint.AttemptsDefault, sprint.MaxAttemptsSetting))
 	idle := fs.String("friend-idle", "", fmt.Sprintf("how long a friend holding cards may show no file write under the friend's working directory and outbox before it is an alarm: a duration, or default (%s)", sprint.FriendIdleDefault))
 	landingStallBound := fs.String("landing-stall-bound", "", fmt.Sprintf("how long cards may wait in review or merging without a landing before the coordinator is judged stalled: a duration, or default (%s)", sprint.LandingStallBound))
+	seatSilentTo := fs.String("seat-silent-to", "", "a friend's bus name to hear each seat-silent raise besides the silent seat; default takes it off")
 	fleetWork := fs.String("fleet", "", "the fleet's work: off and the deal hands no work card to a machine (its readers still read; no fleet idle alarm), on deals again (the default)")
 	friendsWork := fs.String("friends", "", "the friends' work: off and the deal hands no work card to a friend (the friend's reads still flow; no empty-row alarm), on deals again (the default)")
 	fleetTiers := fs.String("fleet-tiers", "", "the tiers the fleet may take: flash, pro, heavy, frontier, comma separated, or all (the default); the deal hands a machine only a work card, and a member's reader only a read card, whose tier is one of them, on top of each row's own tiers")
@@ -4327,7 +4328,7 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "set", err.Error())
 	}
-	if *tier == "" && *dealt == "" && *lanes == "" && *review == "" && *merging == "" && *fleet == "" && *readyAlarm == "" && *attempts == "" && *idle == "" && *landingStallBound == "" && *fleetWork == "" && *friendsWork == "" && *fleetTiers == "" && *friendsTiers == "" && *finish == "" && *base == "" && *readCards == "" && *reworkPriority == "" && *reads == "" && *pegged == "" {
+	if *tier == "" && *dealt == "" && *lanes == "" && *review == "" && *merging == "" && *fleet == "" && *readyAlarm == "" && *attempts == "" && *idle == "" && *landingStallBound == "" && *seatSilentTo == "" && *fleetWork == "" && *friendsWork == "" && *fleetTiers == "" && *friendsTiers == "" && *finish == "" && *base == "" && *readCards == "" && *reworkPriority == "" && *reads == "" && *pegged == "" {
 		s, err := st.Load(context.Background(), []string{sprint.Work}, nil)
 		if err != nil {
 			return a.readFailed("set", err, stderr)
@@ -4335,7 +4336,7 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 		printSettings(stdout, s, c.json)
 		return 0
 	}
-	step := store.SetStep(sprint.SetReq{ReadTier: *tier, DealtMax: *dealt, GoLanes: *lanes, Attempts: *attempts, FriendIdle: *idle, LandingStallBound: *landingStallBound,
+	step := store.SetStep(sprint.SetReq{ReadTier: *tier, DealtMax: *dealt, GoLanes: *lanes, Attempts: *attempts, FriendIdle: *idle, LandingStallBound: *landingStallBound, SeatSilentTo: *seatSilentTo,
 		AlarmReview: *review, AlarmMerging: *merging, AlarmFleet: *fleet, AlarmReady: *readyAlarm,
 		Fleet: *fleetWork, Friends: *friendsWork, FleetTiers: *fleetTiers, FriendsTiers: *friendsTiers, ReadCards: *readCards, Reads: *reads, ReworkPriority: *reworkPriority, Who: c.actor})
 	if *finish != "" {

@@ -105,7 +105,7 @@ nova-sprint land [--stream <s>...] [--repo-dir <clone>] [--base <branch>] [--che
 nova-sprint rebase --from <branch> --to <branch> [--repo-dir <clone>] [--dry-run]
 nova-sprint stream set <stream>... [--read-tier <flash|pro|heavy|default>] [--land-protected <owner/name,...|any|default>] [--release <name>] [--prose <glob,...|default>] [--seat-accept <on|off>] [--default-tier <flash|pro|heavy|default>] [--attempts <n|default>] [--base <branch>] [--reason <text>] [--answers <notes>]
 nova-sprint settings [--json]   # every setting with its value and default; `set` with no flags prints the same
-nova-sprint set [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--friend-idle <duration|default>] [--friend-finish <duration|default>] [--fleet <on|off>] [--friends <on|off>] [--fleet-tiers <flash,pro,heavy,frontier|all>] [--friends-tiers <flash,pro,heavy,frontier|all>] [--reads <0|1|2|3|default>]
+nova-sprint set [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--friend-idle <duration|default>] [--seat-silent-to <bus name|default>] [--friend-finish <duration|default>] [--fleet <on|off>] [--friends <on|off>] [--fleet-tiers <flash,pro,heavy,frontier|all>] [--friends-tiers <flash,pro,heavy,frontier|all>] [--reads <0|1|2|3|default>]
 nova-sprint resume --stream <s> [--did <text>] [--answers <note>]
 
 A card waits for its own tier: no cross-tier dealing. The `set --unserved-tier-falls-to` fallback is retired.
@@ -115,6 +115,8 @@ nova-sprint demo stop [--dir <dir>]
 nova-sprint fleet beat <member> [--stop-returns <n>] [--no-room <why>] [--draining] [--live <set>] [--facts <list>] --load <percent> [--dry-run]
 nova-sprint fleet up <member> [--width <n>]
 nova-sprint fleet down <member>
+nova-sprint lane take go --machine <m|auto> --as <worker> [--wait <duration>] [--dry-run]
+nova-sprint lane give go --machine <m|auto> --as <worker> [--dry-run]
 nova-sprint hold <name>... --reason <text> [--return] [--force-last]
 
 A member that is up keeps taken cards and finishes them, including with `--return`; that
@@ -124,6 +126,11 @@ bench the land loop can use (the members up or held by the coordinator without `
 minus this machine and any host the check refuses) is refused, exit 2, naming the member:
 every landing would be refused until one is unheld. `--force-last` holds it anyway and the
 log line ends `--force-last: no gate bench left`.
+
+`--machine auto` asks the server to pick an allowed bench by committed load / slots;
+a successful take prints its lease deadline and the give command. Take again within
+20m to renew it. A full fleet prints its retry time and full benches, exits 1, and
+asks the caller to retry then. `--wait` and `--dry-run` are refused with `auto`.
 
 nova-sprint fleet sync [--check] [--pg <dsn>]
 nova-sprint fleet level
@@ -145,7 +152,7 @@ nova-sprint friend cards <friend> [--json]
 nova-sprint friend take <friend> (<id>... [--working] | --all-unstarted) [--dry-run] [--reason <text>]
 nova-sprint friend give <friend> <id>... [--reason <text>]   # hands a ready card to her at its next attempt, from no friend too: its current work card Done (a brief-replaced bounce) or absent; refused when that work card is live (Ready or Working on a row), a hard pin names another friend (nova-sprint unpin), or her tiers, restriction or the card's needs refuse it; a friend not up is no refusal, the card waits on her row
  nova-sprint friend level
-  nova-sprint friend stage <card>@<gen> --as friend.<name> [--bench <host>] [--dir <jobs dir>]   # clones the friend's dealt card into jobs/<job>/ at its NEXT head or BASE, creates the delivered branch, sets her own git identity in the clone's local config (the friend's nova-config row git_identity= when it names one, else the sprint row's git_identity; identity=friend or identity=sprint; when nova-config cannot be read the stage is refused), writes JOB.md (naming the finish command, and BENCH: <host>, or BENCH: local without --bench) naming the finish command; with --bench every git step and the JOB.md write run on that fleet member over ssh (jobs default ~/<friend>-jobs; the host must be a fleet member), and a friend can run it through the sprint server as `friend stage <card>@<gen> --as friend.<name> --bench <host> [--dir <d>]`, where the server's --dir must name the friend's job root on the bench (`~/<friend>-jobs` or `$HOME/<friend>-jobs`) or a directory beneath it, else the server refuses; refuses a card not on her row or a friend with no git_identity
+  nova-sprint friend stage <card>@<gen> --as friend.<name> [--bench <host>] [--dir <jobs dir>]   # clones the friend's dealt card into jobs/<job>/ at its NEXT head or BASE, creates the delivered branch, sets her own git identity in the clone's local config (the friend's nova-config row git_identity= when it names one, else the sprint row's git_identity; identity=friend or identity=sprint; when nova-config cannot be read the stage is refused), writes JOB.md naming the finish command and BENCH, and runs every git step and JOB.md write on --bench over ssh. A bench host must be a fleet member. A friend can run it through the sprint server as friend stage <card>@<gen> --as friend.<name> --bench <host> [--dir <d>]; server --dir must name the friend's bench job root (~/<friend>-jobs or $HOME/<friend>-jobs) or a directory beneath it. The stage gives up after 10m, including store acquisition, and names the bound and host on expiry; every ssh uses -o BatchMode=yes -o ConnectTimeout=10. Without --bench it runs locally and JOB.md says BENCH: local; refuses a card not on her row or a friend with no git_identity
  nova-sprint reader add <reader>... [--tiers <flash[,pro,heavy,frontier]|all|default>]   # a bare fleet member name (m1) names its member reader reader-m1; READER-ADD prints member-reader=<yes|no> per row and writes the row up
 nova-sprint reader set <reader>... --tiers <flash[,pro,heavy,frontier]|all|default>   # a bare member name is prefixed too; an empty tiers cell (default) reads every tier a route serves
 nova-sprint reader away <reader>...
@@ -730,7 +737,10 @@ fault in is held back, and so is every card that needs a held card through its `
 `DEPENDS-ON:` line or `--needs`, transitively. The add step's own plan is then run over the
 rest, and a card its refusal list names is held back the same way, with the cards that need it,
 the write planned again without them; the rounds are bounded by the number of cards, and
-nothing is written for a held card. It prints one `HELD <id>: <its first finding or refusal>`
+nothing is written for a held card. A brief that is a probable duplicate of an open card is
+held back with the same finding add gives it, and so is every card that needs it;
+`--not-a-duplicate-of <card>=<reason>` admits it and records the reason on its admission
+note, as it does for add. It prints one `HELD <id>: <its first finding or refusal>`
 or `HELD <id>: needs <other>, held back` line per held card, then the add's own closing line for
 what it admitted, and exits 0 when every card was admitted, 1 when some were held and the rest
 written, and 2 when none could be admitted, or for a usage refusal: `--partial` is refused with

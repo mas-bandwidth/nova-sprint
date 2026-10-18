@@ -26,7 +26,7 @@ func TestGateMembersAreHeldNotDealt(t *testing.T) {
 		fields map[string]string
 	}{
 		{"m-up", map[string]string{"kind": "member", "status": sprint.Up}},
-		{"m-held", map[string]string{"kind": "member", "status": sprint.Down, sprint.FieldHeld: "2026-01-01T00:00:00Z"}},
+		{"m-held", map[string]string{"kind": "member", "status": sprint.Down, sprint.FieldHeld: "2026-01-01T00:00:00Z", sprint.FieldHeldGate: "2026-01-01T00:00:00Z"}},
 		{"m-fault", map[string]string{"kind": "member", "status": sprint.Down, sprint.FieldHeld: "2026-01-01T00:00:00Z", sprint.FieldHeldBy: sprint.HeldByFault}},
 		{"m-down", map[string]string{"kind": "member", "status": sprint.Down}},
 	}
@@ -44,16 +44,21 @@ func TestGateMembersAreHeldNotDealt(t *testing.T) {
 	assert.Equal(t, []string{"m-up"}, s.GateMembers(), "a held member with fault_since is left out")
 	delete(s.Fleet.Placed(sprint.CtlID("m-held")).Fields, sprint.FieldFaultSince)
 
-	// a coordinator's hold made with --return (fleet down) carries held_return = its held
-	// stamp: the member is out of service and no gate bench; a held_return left from an
-	// earlier hold (another stamp) marks nothing
+	// a coordinator's hold made with --return (fleet down) carries held_return and clears
+	// held_gate: the member is out of service and no gate bench. A plain coordinator hold
+	// (held_gate carries the hold's stamp, HeldToGate) is a bench, and a stale gate mark
+	// (another stamp) marks nothing
 	held := s.Fleet.Placed(sprint.CtlID("m-held"))
+	assert.True(t, sprint.HeldToGate(held), "the gate mark carries the hold's stamp")
+	assert.Equal(t, []string{"m-up", "m-held"}, s.GateMembers(), "a coordinator-held member is a gate bench")
 	held.Fields[sprint.FieldHeldReturn] = held.Fields[sprint.FieldHeld]
+	delete(held.Fields, sprint.FieldHeldGate)
 	assert.True(t, sprint.HeldToReturn(held), "the return carries the hold's stamp")
 	assert.Equal(t, []string{"m-up"}, s.GateMembers(), "a returned member is left out")
 	held.Fields[sprint.FieldHeldReturn] = "2025-01-01T00:00:00Z"
 	assert.False(t, sprint.HeldToReturn(held), "a stale return marks nothing")
-	assert.Equal(t, []string{"m-up", "m-held"}, s.GateMembers(), "a stale return leaves the hold a gate bench")
+	held.Fields[sprint.FieldHeldGate] = held.Fields[sprint.FieldHeld]
+	assert.Equal(t, []string{"m-up", "m-held"}, s.GateMembers(), "the gate mark leaves the hold a gate bench")
 	assert.Equal(t, []string{"m-up"}, s.UpMembers(), "the deal filter is unchanged")
 }
 
@@ -77,6 +82,9 @@ func TestAFleetDownCrossesAClearAndStillRunsNoGate(t *testing.T) {
 		f := map[string]string{"kind": "member", "status": sprint.Down, sprint.FieldHeld: heldAt}
 		if m.ret != "" {
 			f[sprint.FieldHeldReturn] = m.ret
+		}
+		if m.name != "m-down" {
+			f[sprint.FieldHeldGate] = heldAt
 		}
 		old.Fleet.Put(&sprint.Card{ID: sprint.CtlID(m.name), Row: m.name, Col: sprint.Ctl, Fields: f})
 	}
@@ -113,7 +121,7 @@ func TestRuleElevenCountsHeldGateBenches(t *testing.T) {
 		Fleet: sprint.NewTable(sprint.Fleet), Coordinator: "coordinator"}
 	stamp := "2026-01-01T00:00:00Z"
 	s.Fleet.Put(&sprint.Card{ID: sprint.CtlID("m1"), Row: "m1", Col: sprint.Ctl,
-		Fields: map[string]string{"kind": "member", "status": sprint.Down, sprint.FieldHeld: stamp}})
+		Fields: map[string]string{"kind": "member", "status": sprint.Down, sprint.FieldHeld: stamp, sprint.FieldHeldGate: stamp}})
 	s.Fleet.SetRows([]string{"m1"})
 	s.Merge.Put(&sprint.Card{ID: sprint.CtlID("s1"), Row: "s1", Col: sprint.Ctl,
 		Fields: map[string]string{"state": sprint.StreamMerging}})
@@ -129,5 +137,6 @@ func TestRuleElevenCountsHeldGateBenches(t *testing.T) {
 	}
 	assert.False(t, noGate(), "a coordinator-held member is a gate bench: rule 11 is quiet")
 	s.Fleet.Placed(sprint.CtlID("m1")).Fields[sprint.FieldHeldReturn] = stamp
+	delete(s.Fleet.Placed(sprint.CtlID("m1")).Fields, sprint.FieldHeldGate)
 	assert.True(t, noGate(), "a fleet-downed member is no gate bench: rule 11 names the stream")
 }

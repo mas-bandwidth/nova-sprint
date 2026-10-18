@@ -293,3 +293,36 @@ func TestATakeByIDOfNewWorkWaitsBehindHerFixAndReads(t *testing.T) {
 		assert.Equal(t, Working, w.s.Fleet.Card(fresh.ID).Col)
 	})
 }
+
+// A lane heard through the friend's fresh beat (FriendLaneLive names the card running) is
+// live even when its lane_at is older than LaneGoneAfter: laneGoneUnits keeps it working and
+// bounces only the lane that is neither renewed nor named by her fresh beat.
+func TestLaneGoneKeepsALiveByBeatLane(t *testing.T) {
+	t.Parallel()
+	w := laneWorld(t)
+	w.must(laneTake(w, 1))
+	w.must(laneTake(w, 2))
+	live := LaneHolds(w.s, FriendRow("amy"), 1)
+	gone := LaneHolds(w.s, FriendRow("amy"), 2)
+	require.NotNil(t, live)
+	require.NotNil(t, gone)
+
+	w.s.Now = w.s.Now.Add(LaneGoneAfter + time.Minute)
+	amy := amyLanes
+	amy.Running = []string{live.ID}
+	amy.Beat = Beat{At: w.s.Now.Add(-time.Minute), Friend: &FriendReport{Running: []string{live.ID}}}
+	p := dealWith(w, amy)
+
+	kept := w.s.Fleet.Card(live.ID)
+	assert.Equal(t, Working, kept.Col, "heard through her fresh beat: live lane is never bounced")
+	assert.Equal(t, "1", kept.F(FieldLane))
+	assert.Equal(t, 1, kept.Int("gen"))
+
+	bounced := w.s.Fleet.Card(gone.ID)
+	assert.NotEqual(t, Working, bounced.Col, "not live: bounced back ready")
+	assert.Empty(t, bounced.F(FieldLane))
+	assert.Equal(t, 2, bounced.Int("gen"))
+	for _, u := range p.Units {
+		assert.NotEqual(t, live.ID, u.Key, "laneGoneUnits plans no move for the live-by-beat lane")
+	}
+}
