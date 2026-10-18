@@ -67,6 +67,38 @@ func TestFriendStageSSHNeverPromptsAndHasADeadline(t *testing.T) {
 	}
 }
 
+// The bounded context must cover store acquisition too. The fake backend
+// records the deadline it receives and fails as an expired acquisition; no
+// socket or external store is used.
+func TestFriendStageStoreAcquisitionUsesBoundedContext(t *testing.T) {
+	ta, _ := amyWithIdentity(t)
+	dealToAmy(t, ta)
+
+	start := time.Unix(1000, 0)
+	done := make(chan struct{})
+	close(done)
+	prevTimeout := friendStageWithTimeout
+	friendStageWithTimeout = func(parent context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+		assert.Equal(t, friendStageBound, timeout)
+		return friendStageDeadlineContext{parent: parent, deadline: start.Add(timeout), done: done, err: context.DeadlineExceeded}, func() {}
+	}
+	defer func() { friendStageWithTimeout = prevTimeout }()
+
+	var sawDeadline bool
+	prevBackend := ta.a.backend
+	ta.a.backend = func(ctx context.Context, _ string, _ sprint.Names) (sprintstore.Backend, error) {
+		deadline, ok := ctx.Deadline()
+		sawDeadline = ok && deadline.Equal(start.Add(friendStageBound))
+		return nil, context.DeadlineExceeded
+	}
+	defer func() { ta.a.backend = prevBackend }()
+
+	code, _, stderr := ta.do("friend stage s1-1.w1@1 --as friend.amy --bench m1")
+	assert.Equal(t, 1, code, "an expired acquisition is refused")
+	assert.True(t, sawDeadline, "store acquisition receives the single bounded context")
+	assert.Contains(t, stderr, "gave up after "+friendStageBound.String()+" on m1")
+}
+
 // friendStageDeadlineContext exposes a test-clock deadline without starting a
 // timer or consulting wall time.
 type friendStageDeadlineContext struct {

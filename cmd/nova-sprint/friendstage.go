@@ -181,15 +181,19 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, name, err.Error())
 	}
-	c.orActor(friendName) // a worker's verb is its worker's: no --actor is needed
-	st, err := a.store(*c)
-	if err != nil {
-		return refuse(stderr, name, err.Error())
-	}
+	c.orActor(friendName) // a worker command uses its worker identity; --actor is not needed
+	host := strings.TrimSpace(*bench)
 	ctx, cancel := friendStageWithTimeout(context.Background(), friendStageBound)
 	defer cancel()
 
-	host := strings.TrimSpace(*bench)
+	st, err := a.storeCtx(ctx, *c)
+	if err != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return friendStageTimedOut(stderr, name, host)
+		}
+		return refuse(stderr, name, err.Error())
+	}
+
 	if host != "" {
 		snap, err := st.Load(ctx, []string{sprint.Fleet}, nil)
 		if err != nil {
