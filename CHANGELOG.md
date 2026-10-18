@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.6.3 — 2026-10-18
+
+The dashboard shows the last 24 hours, and a page per stream. The owner asked for "historical graphs and stuff showing what has happened over the last 24 hours" below the existing page, and for a stream's page reached by clicking its name. The reader dashboard draws fourteen charts with the vendored Pele library (1.0.4, MIT): landings, attempts, outcomes and reads per hour, failure and rework rates, time to land, queue wait, the busiest workers, routes, models and tiers, landings by stream, a card-flow sankey and a busy-time gantt. Each stream page shows its cards by column, a dependency chart, its sankey, its landings and a table of its cards. The history reads nothing new from the sprint and recomputes at most once a minute; a stream page is computed when it is opened, an unknown name answers 404 before anything is computed, and every chart is capped. The public copy shows none of it: pullers answer 404 for the new routes, and the reader serves the public page at `/public.html`. The page above the new panel is unchanged apart from the fold rule, the stream-name link style and its click handler. (#505)
+
+- The healthz test waits for the second tick's read (#504).
+- Requires nova-tools v1.6.0.
+
 ## v1.6.2 — 2026-10-18
 
 START reads each STOP debt's own record, off the table too. On 2026-10-18 `nova-sprint start` refused with "32 STOP-owned work/read jobs lack same-owner cancellation receipts": after the STOP the friend reconcile had retired those jobs off the fleet and readers tables with their STOP receipt (the stopped-from generation and the next generation), and START read only the cards still on the table, so it never saw a receipt and could not start. START and the beat settle now load each debt's record by id, including records off the table; a receipt there settles the debt through the existing check, and a card removed without a receipt still refuses START. START names what it settled. Model: `tla/StopReturn.tla` gains Retire (a job leaves the table with its receipt) and GoneNeverBlocksStart, with the reversed witness `MCStopReturnBrokenGoneBlocksStart` failing on it; all 11 stopreturn cases checked with TLC on a bench. No wire or record change. (#499)
