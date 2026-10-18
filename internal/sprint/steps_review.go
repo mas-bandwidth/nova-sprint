@@ -1748,6 +1748,15 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		// the reader who found it broken checks the fix: the next attempt's first read is
 		// asked of them (Ask, finderFirst); a rework of failed work names none
 		unset := []string{"readers"}
+		if IsHeld(c) && c.F("held_by") == ServerDefaultActor {
+			// the rework answers the server-default hold (this card, and the j25715
+			// deadlock: a rework dealt the next attempt and left the hold on, so every
+			// finish was refused, and release refused the working primary): clear it
+			unset = append(unset, FieldHeld, "held_by", "held_reason", "held_judgment", "decision_held_from")
+			set["released"] = stamp(s.Now)
+			set["released_by"] = r.Who
+			set["release_reason"] = "rework answers " + c.F("held_judgment")
+		}
 		if finder := finderOf(s, c); finder != "" {
 			set[FieldFindingReader] = finder
 		} else {

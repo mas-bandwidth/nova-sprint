@@ -255,7 +255,7 @@ func unlawful(u Unit, p *Plan) string {
 				// for a ready primary held in place, no move (releaseHeld; tla/SprintTables.tla
 				// DecisionReleaseStep)
 				exactRelease := p.releasing && (e.Move != nil && e.Move.Col == held.F("decision_held_from") ||
-					e.Move == nil && held.Col == held.F("decision_held_from"))
+					e.Move == nil && (held.Col == held.F("decision_held_from") || held.Col == Working))
 				if !exactRelease {
 					for _, field := range []string{FieldHeld, "held_by", "held_reason", "held_judgment", "decision_held_from"} {
 						if value, ok := e.Set[field]; ok && value != held.F(field) {

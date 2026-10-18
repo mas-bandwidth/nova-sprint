@@ -724,6 +724,7 @@ MCSprintTablesDecisionParking.cfg	MCSprintTables.tla	pass	-	ignore-terminal	spri
 MCSprintTablesBrokenParkWithoutCause.cfg	MCSprintTables.tla	invariant	ParkingHasCause	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenReleasePrestate.cfg	MCSprintTables.tla	action	ParkingRestoresPrestate	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenParkMoves.cfg	MCSprintTables.tla	invariant	Rule2Withdrawn	ignore-terminal	sprinttables	required	-
+MCSprintTablesBrokenReworkKeepsHold.cfg	MCSprintTables.tla	invariant	HeldNeverWorks	ignore-terminal	sprinttables	required	-
 MCSprintTablesBrokenParkInPlaceAll.cfg	MCSprintTables.tla	invariant	HeldReadyIsWithdrawn	ignore-terminal	sprinttables	required	-
 MCSprintTablesDecisionParkingTwo.cfg	MCSprintTables.tla	pass	-	ignore-terminal	sprinttables-full	bench	-
 MCDecisionsOwedBrokenOwnerCadence.cfg	MCDecisionsOwed.tla	action	OwnerCadence	ignore-terminal	decisionsowed	required	-
