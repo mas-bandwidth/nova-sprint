@@ -204,6 +204,15 @@ func TestADownMemberRunsNoLandGate(t *testing.T) {
 func TestLandDryRunNamesTheGateBench(t *testing.T) {
 	t.Parallel()
 	r := heldGateRig(t)
+	// only the land loop sends the gate to a bench (gateBenches): put its flight and bench
+	// seam in place, as the loop has them while it lands, so the dry run takes its route
+	b := r.a.landState()
+	b.mu.Lock()
+	b.flight = &landFlight{}
+	b.gateBench = func(context.Context, string, string, [][]string, bool) (string, int, error) {
+		return "", 0, nil
+	}
+	b.mu.Unlock()
 	// the clone holds the module, as a landing clone holds its last landed tree: the dry
 	// run reads the gates kind from the clones files (go.mod), running no git
 	r.git(r.clone, "fetch", "-q", "origin", "+refs/heads/main:refs/remotes/origin/main")
@@ -221,6 +230,9 @@ func TestLandDryRunNamesTheGateBench(t *testing.T) {
 	assert.Contains(t, text, "LAND REFUSED stream=s1", "the batch is refused:\n%s", text)
 	assert.Contains(t, text, "reason=the configured remote bench did not run the tree gate", "in the loop's words:\n%s", text)
 	assert.Contains(t, text, "refused=1", "counted under refused=:\n%s", text)
+	b.mu.Lock()
+	b.flight = nil
+	b.mu.Unlock()
 	r.benchBack()
 	r.clean()
 }
