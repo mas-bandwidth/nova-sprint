@@ -108,6 +108,68 @@ func (st *Store) LaneStep(ctx context.Context, kind, machine, who string, give b
 	return ans, kv.SetKey(ctx, laneKey(kind), string(b))
 }
 
+// LanePick takes or renews the caller's bench lease, or reports the allowed full
+// benches. Like LaneStep, its read and write run as one server-line turn: serve.go
+// holds app.serial while it runs a worker verb; no other line verb interleaves.
+// This lease is independent of sprint.LanesDisabled (tla/BenchLease.tla, Pick).
+func (st *Store) LanePick(ctx context.Context, kind, who, self string, allow func(string) bool) (sprint.BenchPick, error) {
+	if why := laneWhy(kind, "auto", who); why != "" {
+		return sprint.BenchPick{}, fmt.Errorf("%s", why)
+	}
+	now := st.now().UTC()
+	s, err := st.Load(ctx, []string{sprint.Fleet}, nil)
+	if err != nil {
+		return sprint.BenchPick{}, err
+	}
+	beats, err := st.FleetBeats(ctx)
+	if err != nil {
+		return sprint.BenchPick{}, err
+	}
+	rooms := sprint.BenchRooms(s, beats, self, now)
+	if allow != nil {
+		rooms = slices.DeleteFunc(rooms, func(room sprint.BenchRoom) bool { return !allow(room.Machine) })
+	}
+	ls, kv, err := st.lanes(ctx, kind)
+	if err != nil {
+		return sprint.BenchPick{}, err
+	}
+	next, answer := ls.Pick(who, rooms, now)
+	// Full is the displayed committed load: existing lease holders or observed
+	// host load, whichever is greater, as tla/BenchLease.tla defines it.
+	for i := range answer.Full {
+		if held := len(next[answer.Full[i].Machine].Holders); held > answer.Full[i].Busy {
+			answer.Full[i].Busy = held
+		}
+	}
+	if !answer.Granted && len(answer.Released) == 0 {
+		return answer, nil // D6: a WAIT with no expiry leaves the record byte for byte alone.
+	}
+	b, err := json.Marshal(next)
+	if err != nil {
+		return answer, err
+	}
+	return answer, kv.SetKey(ctx, laneKey(kind), string(b))
+}
+
+// LaneGiveAll releases the caller's lease on any bench (tla/BenchLease.tla, Give).
+// Its read and write share LaneStep's serialized server-line turn (app.serial in serve.go);
+// the lease does not consult sprint.LanesDisabled.
+func (st *Store) LaneGiveAll(ctx context.Context, kind, who string) (bool, error) {
+	if why := laneWhy(kind, "auto", who); why != "" {
+		return false, fmt.Errorf("%s", why)
+	}
+	ls, kv, err := st.lanes(ctx, kind)
+	if err != nil {
+		return false, err
+	}
+	next, gave := ls.GiveAll(who, st.now().UTC())
+	b, err := json.Marshal(next)
+	if err != nil {
+		return false, err
+	}
+	return gave, kv.SetKey(ctx, laneKey(kind), string(b))
+}
+
 // LaneRows is every machine's lanes of every kind at the store's clock, the timeouts
 // applied as a reader sees them (nothing is written): lane list, where --json --cards. A
 // store that keeps no records has no lanes.

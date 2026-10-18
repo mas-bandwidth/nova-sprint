@@ -29,14 +29,19 @@ const (
 // FieldHeldReason is a held member's or stream's control card's reason for its hold,
 // and FieldHeldFinish marks a member's hold that lets its working cards finish (hold
 // with no --return): the rebalance's sweep leaves those cards where they are.
+// FieldHeldGate marks a coordinator's hold made without --return (held_by empty): the
+// member may run a land gate (gateCapable). It carries the hold's own held stamp, so a
+// value left behind by a release that does not unset it never marks a later hold
+// (HeldToGate); a hold with no held_gate (one a v1.6 build wrote) runs none.
 // FieldHeldReturn records a coordinator's hold made with --return (fleet down): the
-// operator took the member out of service, so it runs no land gate (gateCapable). It
-// carries the hold's own held stamp, so a value left behind by a release that does not
-// unset it never marks a later hold (HeldToReturn). held_finish cannot say this: a
-// fleet down on an up member lets its working cards finish too.
+// operator took the member out of service. It carries the hold's own held stamp
+// (HeldToReturn); it still marks fleet down and is written exactly as it was, but it no
+// longer decides the gate (held_gate does). held_finish cannot say this: a fleet down
+// on an up member lets its working cards finish too.
 const (
 	FieldHeldReason = "held_reason"
 	FieldHeldFinish = "held_finish"
+	FieldHeldGate   = "held_gate"
 	FieldHeldReturn = "held_return"
 )
 
@@ -212,15 +217,17 @@ func holdElsewhere(n string, kinds []string, release bool) string {
 }
 
 // gateCapable says a member can run a land gate now: it is up, or held by the coordinator
-// with no --return (a hold is a deal control, and a gate is not a card). A member a
-// machine holds (held_by or fault_since) is no bench, and neither is one the coordinator
-// took down with fleet down (hold --return, HeldToReturn): the operator took it out of
-// service. Snapshot.GateMembers (the land gate's benches) and its LandBenches (those
-// gates the land loop uses, minus the server's own machine and any host check refuses)
-// and check.go rule 11 count the benches by it, and this guard counts the members a hold
-// does not name by LandBenches (it still counts a named member as gone, and never refuses
-// a --return). tla/DirtyTick.tla LandGate (MCDirtyTickGateHeld.cfg; the reversed witness
-// MCDirtyTickBrokenGateReturned.cfg gates a returned member).
+// (a hold is a deal control, and a gate is not a card). A member a machine holds (held_by
+// or fault_since) is no bench, and neither is one the coordinator took down with fleet
+// down (hold --return, which clears held_gate), nor one whose hold carries no held_gate
+// (a v1.6 hold): a held member is a bench only when its hold says so. Snapshot.GateMembers
+// (the land gate's benches) and its LandBenches (those gates the land loop uses, minus the
+// server's own machine and any host check refuses) and check.go rule 11 count the benches
+// by it, and this guard counts the members a hold does not name by LandBenches (it still
+// counts a named member as gone, and never refuses a --return).
+// tla/DirtyTick.tla UnmarkedHoldNeverGates, LandGate (MCDirtyTickGateHeld.cfg,
+// MCDirtyTickGateUpgrade.cfg; the reversed witness MCDirtyTickBrokenGateUnmarked.cfg
+// gates an unmarked held member).
 func gateCapable(ctl *Card) bool {
 	if ctl == nil {
 		return false
@@ -228,7 +235,14 @@ func gateCapable(ctl *Card) bool {
 	if ctl.F("status") == Up {
 		return true
 	}
-	return ctl.F(FieldHeld) != "" && ctl.F(FieldHeldBy) == "" && ctl.F(FieldFaultSince) == "" && !HeldToReturn(ctl)
+	return ctl.F(FieldHeld) != "" && ctl.F(FieldHeldBy) == "" && ctl.F(FieldFaultSince) == "" && HeldToGate(ctl)
+}
+
+// HeldToGate says a member's hold is a coordinator's hold that may run a land gate: its
+// held_gate carries the hold's own held stamp (FieldHeldGate). A hold with no held_gate
+// (one a v1.6 build wrote) runs none.
+func HeldToGate(ctl *Card) bool {
+	return ctl != nil && ctl.F(FieldHeld) != "" && ctl.F(FieldHeldGate) == ctl.F(FieldHeld)
 }
 
 // HeldToReturn says a member's hold is a coordinator's hold made with --return (fleet

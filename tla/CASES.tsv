@@ -426,10 +426,12 @@ MCDirtyTickRefused.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	re
 MCDirtyTickHold.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickDrain.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickGateHeld.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
+MCDirtyTickGateUpgrade.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickStopped.cfg	MCDirtyTick.tla	pass	-	ignore-terminal	dirtytick-small	required	-
 MCDirtyTickBrokenDealDraining.cfg	MCDirtyTick.tla	action	NeverDealtToDraining	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickBrokenGateUpOnly.cfg	MCDirtyTick.tla	temporal	GateLands	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickBrokenGateReturned.cfg	MCDirtyTick.tla	action	ReturnedNeverGates	ignore-terminal	dirtytick-witnesses	required	-
+MCDirtyTickBrokenGateUnmarked.cfg	MCDirtyTick.tla	action	UnmarkedHoldNeverGates	ignore-terminal	dirtytick-witnesses	required	-
 MCDirtyTickBrokenStoppedPump.cfg	MCDirtyTick.tla	action	StoppedMovesNothing	ignore-terminal	dirtytick-witnesses	required	-
 MCLandPassStreamFlow.cfg	MCLandPass.tla	pass	-	check	landpass	required	-
 MCLandPassBrokenCardOntoDev.cfg	MCLandPass.tla	invariant	DevMovesOnlyByStreamMerge	check	landpass	required	-
@@ -803,3 +805,8 @@ MCWidthHard.cfg	MCWidthHard.tla	pass	-	ignore-terminal	widthhard	required	-
 MCWidthHardBrokenHalfRead.cfg	MCWidthHard.tla	invariant	WidthHeld	ignore-terminal	widthhard	required	-
 MCWidthHardBrokenFriendNext.cfg	MCWidthHard.tla	invariant	WidthHeld	ignore-terminal	widthhard	required	-
 MCWidthHardBrokenSecondSource.cfg	MCWidthHard.tla	invariant	WidthHeld	ignore-terminal	widthhard	required	-
+MCLaneCheck.cfg	MCLaneCheck.tla	pass	-	ignore-terminal	lanecheck	required	-
+MCLaneCheckBrokenBounceLive.cfg	MCLaneCheck.tla	invariant	LiveLaneNeverBouncedOrRedealt	ignore-terminal	lanecheck	required	-
+MCLaneCheckBrokenRedealLive.cfg	MCLaneCheck.tla	invariant	LiveLaneNeverBouncedOrRedealt	ignore-terminal	lanecheck	required	-
+MCLaneCheckBrokenNoNotice.cfg	MCLaneCheck.tla	invariant	LivePastDeadlineHasOneNotice	ignore-terminal	lanecheck	required	-
+MCLaneCheckBrokenRepeatNotice.cfg	MCLaneCheck.tla	invariant	LivePastDeadlineHasOneNotice	ignore-terminal	lanecheck	required	-

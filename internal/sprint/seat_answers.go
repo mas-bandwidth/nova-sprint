@@ -35,6 +35,10 @@ import (
 // past their deadline.
 const NSeatSilent = "the seat is not answering"
 
+// PropSeatSilentTo is the optional bus name that hears each NSeatSilent raise alongside
+// the coordinator seat (the owner can name a standby who may take the seat or reach them).
+const PropSeatSilentTo = "seat_silent_to"
+
 // NHeldRaised is the record of a card-holding judgment raised again past its deadline: an
 // acknowledged-kind note (shown in no inbox) whose What is the judgment's id and whose
 // Before is the deadlines it has been raised at, so each deadline raises it once.

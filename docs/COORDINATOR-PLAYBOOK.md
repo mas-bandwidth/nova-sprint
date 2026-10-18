@@ -142,7 +142,7 @@ friend with friend give, and the deal fills the rest (`nova-sprint help`).
 
 **The verbs, in order.**
 
-1. Set how reads are asked. usage: `nova-sprint set [--rework-priority <fix|high|keep>] [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--alarm-review <n|off>] [--alarm-merging <n|off>] [--alarm-fleet <percent|off>] [--alarm-ready <on|off>] [--attempts <n|default>] [--friend-idle <duration|default>] [--landing-stall-bound <duration|default>] [--friend-finish <duration|default>] [--fleet-tiers <tiers|all>] [--friends-tiers <tiers|all>] [--reads <0|1|2|default>]`.
+1. Set how reads are asked. usage: `nova-sprint set [--rework-priority <fix|high|keep>] [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--alarm-review <n|off>] [--alarm-merging <n|off>] [--alarm-fleet <percent|off>] [--alarm-ready <on|off>] [--attempts <n|default>] [--friend-idle <duration|default>] [--seat-silent-to <bus name|default>] [--landing-stall-bound <duration|default>] [--friend-finish <duration|default>] [--fleet-tiers <tiers|all>] [--friends-tiers <tiers|all>] [--reads <0|1|2|default>]`.
    `nova-sprint set --read-cards on` (the default) makes the tick ask every read a card in review
    needs at once, as read cards on the fleet table, dealt to friends and to members with a reader
    row. `nova-sprint set --reads <0|1|2|default>` sets how many ok reads at its head each card

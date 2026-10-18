@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-tools/pkg/bench"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
@@ -24,22 +25,29 @@ import (
 // laneWords is nova-sprint help lane, and the banner's paragraph on the lanes.
 func laneWords() string {
 	return strings.TrimSpace(fmt.Sprintf(`
-The lanes are DISABLED (Glenn 2026-10-13: not a sanctioned or stable
-feature; not to be used): lane take is granted at once and lane give gives nothing
-back, each printing one BENCH LOCK DISABLED line; take no bench lock.
-The lanes: one Go build or test stream per machine, a lock the machine grants:
+Named-machine lanes are DISABLED (Glenn 2026-10-13: not a sanctioned or stable
+feature; not to be used): named lane take is granted at once and named lane give gives
+nothing back, each printing one BENCH LOCK DISABLED line. Automatic bench leases are
+server-owned and expire unless renewed:
+  nova-sprint lane take go --machine auto --as <worker>
+    picks an allowed bench by committed load / slots (exit 0), and renews the
+    same worker's lease in place. Run on the named bench and take again within
+    %s; the line prints its deadline and the give command. If every allowed
+    bench is full, exit 1 prints retry_at and the full benches; ask again then.
+    --wait and --dry-run are refused with auto.
+  nova-sprint lane give go --machine auto --as <worker>
+    releases that worker's lease on any bench.
   nova-sprint lane take go --machine <m> --as <worker> --wait 30m
-    a store write: granted (exit 0) while the machine's holders are under its
-    width (set --go-lanes, %d by default) and nobody waits ahead; otherwise
-    queued behind the waiters in the order they asked (exit 1, the place in
-    the queue). --wait asks again every %s until granted or the wait is over.
+    a named-machine store write: granted (exit 0) while the machine's holders
+    are under its width (set --go-lanes, %d by default) and nobody waits ahead;
+    otherwise queued behind the waiters in their order. --wait asks again every
+    %s until granted or the wait is over.
   nova-sprint lane give go --machine <m> --as <worker>
-    gives the lane (or the place in the queue) back when the run exits; the
-    head of the queue is granted. A holder that does not take again within %s
-    is released, and a grant or a place not claimed within %s.
+    gives the named machine's lane (or queue place) back. A holder that does not
+    take again within %s is released, and a grant or a place not claimed within %s.
   nova-sprint lane list
     every machine's holders and queue; where --json --cards carries them as lanes.`,
-		sprint.LaneWidthDefault, sprint.LaneAskEvery, sprint.LaneHoldFor, sprint.LaneWaitFor)) + "\n"
+		sprint.LaneHoldFor, sprint.LaneWidthDefault, sprint.LaneAskEvery, sprint.LaneHoldFor, sprint.LaneWaitFor)) + "\n"
 }
 
 // laneArgs is a take's or a give's kind, machine and worker, or the refusal's code.
@@ -67,7 +75,7 @@ func laneArgs(name string, fs flagSet, args []string, stderr io.Writer, machine,
 func (a *app) cmdLaneTake(args []string, stdout, stderr io.Writer) int {
 	const name = "lane take"
 	fs, c := a.verbSetup(name)
-	machine := fs.String("machine", "", "the machine the run is on: its lanes are its own")
+	machine := fs.String("machine", "", "the machine the run is on, or auto to ask the server to pick")
 	as := fs.String("as", "", "the worker asking, the holder or waiter the lane records")
 	wait := fs.Duration("wait", 0, fmt.Sprintf("how long to wait for the grant, asking again every %s (30m); 0, the default, asks once", sprint.LaneAskEvery))
 	dry := fs.Bool("dry-run", false, "check the machine's lanes and say whether the take would be granted or queued; write nothing")
@@ -77,6 +85,9 @@ func (a *app) cmdLaneTake(args []string, stdout, stderr io.Writer) int {
 	}
 	if *wait < 0 {
 		return refuse(stderr, name, "--wait wants a duration from 0, found "+wait.String())
+	}
+	if *machine == "auto" {
+		return a.laneTakeAuto(name, kind, *as, *wait, *dry, *c, stdout, stderr)
 	}
 	if sprint.LanesDisabled {
 		return a.laneDisabled(name, kind, *machine, *as, true, c.json, stdout, stderr)
@@ -147,6 +158,65 @@ func (a *app) cmdLaneTake(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// laneTakeAuto asks the store to pick one allowed bench in one server-line turn.
+func (a *app) laneTakeAuto(name, kind, who string, wait time.Duration, dry bool, c common, stdout, stderr io.Writer) int {
+	if wait > 0 {
+		return refuse(stderr, name, "--wait is not supported with --machine auto: the caller waits until retry_at and asks again")
+	}
+	if dry {
+		return refuse(stderr, name, "--dry-run is not supported with --machine auto: there is no dry pick")
+	}
+	c.orActor(who)
+	st, err := a.store(c)
+	if err != nil {
+		return refuse(stderr, name, err.Error())
+	}
+	now := a.now().UTC()
+	st.Now = func() time.Time { return now }
+	answer, err := st.LanePick(context.Background(), kind, who, a.machineName(), func(m string) bool { return bench.CheckHost(m) == nil })
+	if err != nil {
+		a.outcome, a.changed = "unknown", "unknown"
+		fmt.Fprintf(stderr, "%s %s: %s; run: nova-sprint help lane\n", prog, name, oneline.Escape(err.Error()))
+		return 1
+	}
+	released := nonNil(answer.Released)
+	full := answer.Full
+	if full == nil {
+		full = []sprint.BenchRoom{}
+	}
+	remedy := "nova-sprint lane take go --machine auto --as " + who
+	facts := map[string]any{
+		"kind": kind, "machine": answer.Machine, "as": who,
+		"slots": answer.Slots, "committed": answer.Committed,
+		"until": "", "renewed": answer.Renewed, "retry_at": "",
+		"full": full, "released": released,
+	}
+	if !answer.Granted {
+		facts["retry_at"] = answer.RetryAt.UTC().Format(time.RFC3339)
+		var rooms []string
+		for _, room := range full {
+			rooms = append(rooms, fmt.Sprintf("%s %d/%d", room.Machine, room.Busy, room.Slots))
+		}
+		line := fmt.Sprintf("LANE-TAKE WAIT go as=%s retry_at=%s: every allowed bench is full: %s", who, answer.RetryAt.UTC().Format(time.RFC3339), strings.Join(rooms, ", "))
+		a.outcome, a.changed = "refused", "no"
+		facts["outcome"], facts["changed"] = a.outcome, a.changed
+		if c.json {
+			return sayLaneRefused(stdout, stderr, true, name, line, remedy, facts)
+		}
+		fmt.Fprintln(stderr, line)
+		fmt.Fprintln(stderr, remedy)
+		return 1
+	}
+	until := now.Add(sprint.LaneHoldFor).Format(time.RFC3339)
+	facts["until"] = until
+	a.outcome, a.changed = "accepted", "yes"
+	facts["outcome"], facts["changed"] = a.outcome, a.changed
+	line := fmt.Sprintf("LANE-TAKE OK go machine=%s as=%s slots=%d/%d until=%s renewed=%s: run on %s, take again within 20m to keep it, then nova-sprint lane give go --machine auto --as %s",
+		answer.Machine, who, answer.Committed, answer.Slots, until, yesNo(answer.Renewed), answer.Machine, who)
+	sayOK(stdout, c.json, name, line, facts)
+	return 0
+}
+
 // laneDisabled is a lane take or give while the lanes are disabled until v1.3
 // (sprint.LanesDisabled): the one DISABLED line on stderr, then the take granted (or the
 // give accepted) at once, with no store opened, nothing queued and nothing written, so
@@ -205,12 +275,35 @@ func withoutFlag(words []string, name string) []string {
 func (a *app) cmdLaneGive(args []string, stdout, stderr io.Writer) int {
 	const name = "lane give"
 	fs, c := a.verbSetup(name)
-	machine := fs.String("machine", "", "the machine the run was on")
+	machine := fs.String("machine", "", "the machine the run was on, or auto for the worker lease on any bench")
 	as := fs.String("as", "", "the worker giving its lane, or its place in the queue, back")
 	dry := fs.Bool("dry-run", false, "check whether the worker holds a lane or waits in the queue, and write nothing")
 	kind, code := laneArgs(name, fs, args, stderr, machine, as)
 	if code != 0 {
 		return code
+	}
+	if *machine == "auto" {
+		if *dry {
+			return refuse(stderr, name, "--dry-run is not supported with --machine auto: there is no dry pick")
+		}
+		c.orActor(*as)
+		st, err := a.store(*c)
+		if err != nil {
+			return refuse(stderr, name, err.Error())
+		}
+		gave, err := st.LaneGiveAll(context.Background(), kind, *as)
+		if err != nil {
+			a.outcome, a.changed = "unknown", "unknown"
+			fmt.Fprintf(stderr, "%s %s: %s; run: nova-sprint help lane\n", prog, name, oneline.Escape(err.Error()))
+			return 1
+		}
+		a.outcome, a.changed = "accepted", "no"
+		if gave {
+			a.changed = "yes"
+		}
+		facts := map[string]any{"kind": kind, "machine": "auto", "as": *as, "gave": gave, "outcome": a.outcome, "changed": a.changed}
+		sayOK(stdout, c.json, name, fmt.Sprintf("LANE-GIVE OK go machine=auto as=%s gave=%s", *as, yesNo(gave)), facts)
+		return 0
 	}
 	if sprint.LanesDisabled {
 		return a.laneDisabled(name, kind, *machine, *as, false, c.json, stdout, stderr)
