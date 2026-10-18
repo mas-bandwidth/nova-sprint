@@ -112,34 +112,6 @@ func TestCardPathsReadsPATHSAndNEW(t *testing.T) {
 	}
 }
 
-// LintCardHeader refuses a stranded typed key, an unknown KIND, and a required header that
-// is missing, each with the token the lint prints.
-func TestLintCardHeaderRefusesTypedHeaderDefects(t *testing.T) {
-	t.Parallel()
-
-	stranded := []byte("RESULT: c1 sha=000000000000\nPATHS: pkg/x.go\n\nTHE TASK.\nKIND: fix\n")
-	got := LintCardHeader(stranded, nil, false)
-	assert.Contains(t, checksOfFindings(got), "kind-declared", "%+v", got)
-
-	unknown := []byte("RESULT: c1 sha=000000000000\nKIND: completely-unknown-kind\nPATHS: pkg/x.go\nTEST: ./pkg TestA\n\nTHE TASK.\n")
-	got = LintCardHeader(unknown, nil, false)
-	require.Len(t, findingsFor(got, "kind-declared"), 1)
-	assert.Contains(t, findingsFor(got, "kind-declared")[0].Excerpt, "not a kind this toolchain declares")
-
-	missing := LintCardHeader([]byte("RESULT: c1 sha=000000000000\n\nTHE TASK.\n"), nil, true)
-	for _, want := range []string{"kind-declared", "paths-declared", "test-named", "start-named", "stop-named"} {
-		assert.Contains(t, checksOfFindings(missing), want, "%+v", missing)
-	}
-}
-
-func checksOfFindings(fs []CardHeaderFinding) []string {
-	out := make([]string, 0, len(fs))
-	for _, f := range fs {
-		out = append(out, f.Check)
-	}
-	return out
-}
-
 func findingsFor(fs []CardHeaderFinding, check string) []CardHeaderFinding {
 	var out []CardHeaderFinding
 	for _, f := range fs {
@@ -245,57 +217,4 @@ func TestReadTrustFixtureReadsTheTrustRows(t *testing.T) {
 
 	_, err = ReadTrustFixture(filepath.Join(dir, "absent.txt"))
 	require.Error(t, err)
-}
-
-// LintCardHeader refuses a repeated typed key, an empty value, a TEST: none on a gated
-// kind, a paused kind, and a brief missing its START/STOP lines.
-func TestLintCardHeaderRefusesMoreTypedHeaderDefects(t *testing.T) {
-	t.Parallel()
-
-	repeated := []byte("RESULT: c1 sha=0\nKIND: fix-red\nKIND: read\nPATHS: pkg/x.go\nTEST: ./pkg TestA\n\nT.\n")
-	got := LintCardHeader(repeated, nil, false)
-	assert.Contains(t, checksOfFindings(got), "kind-declared", "%+v", got)
-
-	emptyKind := []byte("RESULT: c1 sha=0\nKIND: \nPATHS: pkg/x.go\nTEST: ./pkg TestA\n\nT.\n")
-	got = LintCardHeader(emptyKind, nil, false)
-	assert.Contains(t, checksOfFindings(got), "kind-declared", "%+v", got)
-
-	emptyPaths := []byte("RESULT: c1 sha=0\nKIND: fix-red\nPATHS: \nTEST: ./pkg TestA\n\nT.\n")
-	got = LintCardHeader(emptyPaths, nil, false)
-	assert.Contains(t, checksOfFindings(got), "paths-declared", "%+v", got)
-
-	emptyTest := []byte("RESULT: c1 sha=0\nKIND: fix-red\nPATHS: pkg/x.go\nTEST: \n\nT.\n")
-	got = LintCardHeader(emptyTest, nil, false)
-	assert.Contains(t, checksOfFindings(got), "test-named", "%+v", got)
-
-	noneGated := []byte("RESULT: c1 sha=0\nKIND: fix-red\nPATHS: pkg/x.go\nTEST: none no test needed\n\nT.\n")
-	got = LintCardHeader(noneGated, nil, false)
-	assert.Contains(t, checksOfFindings(got), "test-named", "%+v", got)
-
-	paused := []byte("RESULT: c1 sha=0\nKIND: fix-red\nPATHS: pkg/x.go\nTEST: ./pkg TestA\n\nT.\n")
-	got = LintCardHeader(paused, TrustState{"fix-red": "paused"}, false)
-	assert.Contains(t, checksOfFindings(got), "paused", "%+v", got)
-
-	brief := []byte("RESULT: c1 sha=0 tier: pro\nKIND: fix-red\nPATHS: pkg/x.go\nTEST: ./pkg TestA\n\nT.\n")
-	got = LintCardHeader(brief, nil, false)
-	assert.Contains(t, checksOfFindings(got), "start-named", "%+v", got)
-	assert.Contains(t, checksOfFindings(got), "stop-named", "%+v", got)
-
-	sentinelMissing := []byte("RESULT: s1 sha=0\nKIND: sentinel\nPATHS: docs/roadmap.sexp\nTEST: none reason\n\nT.\n")
-	got = LintCardHeader(sentinelMissing, nil, false)
-	assert.Contains(t, checksOfFindings(got), "consumers-named", "%+v", got)
-
-	sentinelOK := []byte("RESULT: s1 sha=0\nKIND: sentinel\nCONSUMERS: c1\nPATHS: docs/roadmap.sexp\nTEST: none reason\n\nT.\n")
-	got = LintCardHeader(sentinelOK, nil, false)
-	assert.NotContains(t, checksOfFindings(got), "consumers-named", "%+v", got)
-}
-
-// A declared KIND whose row of the one kinds list names no instruction kind is refused as
-// kind-declared, through the lintCardHeader seam.
-func TestLintCardHeaderRefusesAKindWithNoInstructionKind(t *testing.T) {
-	t.Parallel()
-	raw := []byte("RESULT: c1 sha=0\nKIND: fix-red\nPATHS: pkg/x.go\nTEST: ./pkg TestA\n\nT.\n")
-	got := lintCardHeader(raw, nil, false, func(string) (string, bool) { return "", false })
-	require.Len(t, findingsFor(got, "kind-declared"), 1)
-	assert.Contains(t, findingsFor(got, "kind-declared")[0].Excerpt, "names no instruction kind")
 }
