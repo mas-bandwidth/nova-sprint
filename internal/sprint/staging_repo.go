@@ -2,6 +2,8 @@ package sprint
 
 import (
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
@@ -116,6 +118,55 @@ func mirrorRepoOf(err string) string {
 	return RepoName(url)
 }
 
+// briefRepoRead is one brief's repository and how many times it was actually read
+// (a memo miss).
+type briefRepoRead struct {
+	repo  string
+	reads atomic.Int64
+}
+
+// briefRepoCache is a brief's repository memoized by the brief: each parsed brief's
+// repository, kept for the process (a brief never names a different repository once
+// written), bounded by the number of distinct briefs the sprint has ever held, never
+// by the number of checks that read them. 2026-10-17 19:16:10 EDT the sprint server
+// wedged (TICK WEDGED): 251 verbs waited on the control line while one ack held it
+// inside TickDeadlines, the deal's check of every ready card on every member
+// (readyWhy -> launchersOf -> routeServed -> stagingRepoWhy -> stagingRepoRefusals ->
+// cardRepo) splitting a primary's whole brief with swarm.ReadCardBase once per fleet
+// card per member per ready card.
+var briefRepoCache sync.Map // brief string -> *briefRepoRead
+
+// briefRepo is a brief's repository, read once per brief: every later read of the same
+// brief is the memo, so stagingRepoRefusals' walk of the fleet reads a primary's brief
+// once, not once per fleet card per member per check. owner/name, "" when none; the
+// answer is unchanged from reading the brief each time.
+func briefRepo(brief string) string {
+	if v, ok := briefRepoCache.Load(brief); ok {
+		return v.(*briefRepoRead).repo
+	}
+	repo := ""
+	cb := swarm.ReadCardBase([]byte(brief))
+	if cb.Named != "" {
+		repo = RepoName(cb.Named)
+	} else if cb.Repo != "" {
+		repo = RepoName(cb.Repo)
+	}
+	v, _ := briefRepoCache.LoadOrStore(brief, &briefRepoRead{repo: repo})
+	v.(*briefRepoRead).reads.Add(1)
+	return repo
+}
+
+// briefRepoReads counts the times briefRepo actually read brief (a memo miss), a
+// diagnostic the machine's own path never reads: TestTheStagingRepoCheckReadsEachBriefOnce
+// holds it to one per distinct brief whatever the number of checks that resolved it.
+// 0 when the brief was never read.
+func briefRepoReads(brief string) int64 {
+	if v, ok := briefRepoCache.Load(brief); ok {
+		return v.(*briefRepoRead).reads.Load()
+	}
+	return 0
+}
+
 // cardRepo is the repository a card is of: the card's own repo field (FieldRepo; cards
 // remember their repo), else its primary's field or brief, else its stream's.
 // owner/name, "" when none.
@@ -140,12 +191,8 @@ func (s *Snapshot) cardRepo(c *Card) string {
 		// Most eligibility checks have no repository header. Avoid allocating
 		// parser lines per ready card; the parser still validates every match.
 		if strings.Contains(brief, "REPO:") || strings.Contains(brief, "base-repo:") {
-			cb := swarm.ReadCardBase([]byte(brief))
-			if cb.Named != "" {
-				return RepoName(cb.Named)
-			}
-			if cb.Repo != "" {
-				return RepoName(cb.Repo)
+			if repo := briefRepo(brief); repo != "" {
+				return repo
 			}
 		}
 		if ctl := s.StreamCtl(p.Row); ctl != nil {
