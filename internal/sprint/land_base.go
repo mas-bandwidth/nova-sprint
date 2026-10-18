@@ -326,3 +326,86 @@ func OutsideBaseRed(s *Snapshot, r BaseGreenReq, why string) Plan {
 	return LandBaseRefused(s, MergeReq{Stream: r.Stream, Base: r.Base, Who: r.Who,
 		BaseRed: fmt.Sprintf("outside commit %s on %s: %s", r.Sha, r.Base, why)})
 }
+
+// FieldForwardMerge marks a waiting, ready or review card whose base took a
+// forward-merge of another branch against a newer tip than the one it was
+// checked at: its behind count and its brief-at-base checks re-run before it is
+// dealt, never silently dealt against a stale tip (v17-base-forward-merge-is-recorded).
+const FieldForwardMerge = "forward_merge"
+
+// NBaseForwardMerged is the happened note of a recorded forward-merge of a base.
+const NBaseForwardMerged = "a base took a forward-merge"
+
+// ForwardMergeReq records a base branch taking a forward-merge of another
+// branch by hand (sprint/schema-go merged into sprint/schema-luau as
+// 60a42041): Merge is the merge commit, From the branch merged in, Reason why.
+// Every waiting, ready or review card whose BASE is the base is marked to be
+// rechecked (FieldForwardMerge), the merge is logged, and the base's known tip
+// moves to Merge (the work-table per-base tip, which BaseMovedOutside reads).
+type ForwardMergeReq struct {
+	Base   string
+	From   string
+	Merge  string
+	Who    string
+	Reason string
+}
+
+// RecordForwardMerge records a forward-merge of a base. It is the store step a
+// lander recognises a merge commit on a base with; it extends the existing
+// base-tip path (BaseLandingUnits/BaseMovedOutside) rather than adding a second
+// one: the tip moves in the same per-base record the outside-push gate reads.
+func RecordForwardMerge(s *Snapshot, r ForwardMergeReq) Plan { return Lawful(recordForwardMerge(s, r)) }
+
+func recordForwardMerge(s *Snapshot, r ForwardMergeReq) Plan {
+	var p Plan
+	p.on(s)
+	if r.Base == "" || r.Merge == "" {
+		p.refuse(r.Who, "a forward-merge wants the base and the merge commit")
+		return p
+	}
+	type hit struct {
+		card   *Card
+		stream string
+		repo   string
+	}
+	var hits []hit
+	var ids []string
+	for _, col := range []State{Waiting, Ready, Review} {
+		for _, st := range s.Streams() {
+			for _, c := range s.Work.Cell(st, col) {
+				if c.F("kind") == "sentinel" {
+					continue
+				}
+				repo, b := CardRepoAndBase(s, c)
+				if b != r.Base {
+					continue
+				}
+				hits = append(hits, hit{c, st, repo})
+				ids = append(ids, c.ID)
+			}
+		}
+	}
+	if len(hits) == 0 {
+		p.refuse(r.Who, "no waiting, ready or review card names the base "+r.Base+"; nothing was changed")
+		return p
+	}
+	what := fmt.Sprintf("the base %s took a forward-merge of %s at %s%s: its waiting, ready and review cards re-check against the new tip",
+		r.Base, orDash(r.From), r.Merge, cutText(": "+r.Reason, MaxCardTextBytes))
+	for _, h := range hits {
+		u := Unit{Key: h.card.ID, Stream: h.stream, Changes: []Change{change(Work, setEntry(h.card, map[string]string{FieldForwardMerge: r.Merge}))},
+			Moved: fmt.Sprintf("%s: base %s forward-merged to %s; rechecked", h.card.ID, r.Base, r.Merge)}
+		p.Units = append(p.Units, u)
+	}
+	p.Notes = append(p.Notes, Note{Kind: Happened, Type: NBaseForwardMerged, Stream: hits[0].stream, Primaries: ids, What: what, Who: r.Who, At: s.Now})
+	for _, h := range hits {
+		if h.repo == "" {
+			continue
+		}
+		key := BaseLandedKey(h.repo, r.Base)
+		if was, had := s.Work.Prop(key); had {
+			p.Props = append(p.Props, PropWrite{Table: Work, Name: key, Value: r.Merge, Was: was})
+		}
+		break
+	}
+	return p
+}
