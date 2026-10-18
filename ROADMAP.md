@@ -8,8 +8,8 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
 - [The sprint system](#the-sprint-system) (219)
-- [Setup, release and operations](#setup-release-and-operations) (70)
-- [Docs, models and the repository](#docs-models-and-the-repository) (24)
+- [Setup, release and operations](#setup-release-and-operations) (71)
+- [Docs, models and the repository](#docs-models-and-the-repository) (25)
 - [Friend AIs](#friend-ais) (21)
 - [Moved out of the sprint on 2026-10-15: nova-local](#moved-out-of-the-sprint-on-2026-10-15-nova-local) (1)
 - [Moved out of the sprint on 2026-10-15: v13-blockers](#moved-out-of-the-sprint-on-2026-10-15-v13-blockers) (19)
@@ -2484,6 +2484,14 @@ Target: v1.7
 
 From: Glenn, live, 2026-10-16: 'Please add a card so you can disable CI from running on machines as needed. 1.7'
 
+### The live page's throughput tile is blank for ten minutes after an idle hour
+
+Since #490 the dashboard reads the sprint only while someone is looking. On return after more than an hour idle, sampleLanded has no samples inside its one-hour window and the page's own tile (internal/sprintdash/pageview.go, under the page lock) stays blank until ten minutes of new samples span MinSpan; /api/sprint and the pull routes carry the gap (trimWindow keeps the newest sample before the hour as the base). Changing the page's tile needs the owner's exact words (the page lock); the SPEC-SPRINT-DASHBOARD.md section Freshness, once per second, end to end is the owner's locked text and says nothing about the idle case. Target v1.7, with the owner's word.
+
+Why it waits: the page is the owner's; its idle behaviour is his to state
+
+From: the cold read of #490, 2026-10-18
+
 ## Docs, models and the repository
 
 Documentation suites, the TLA+ ledger, and the models.
@@ -2681,6 +2689,14 @@ Why it waits: Two roadmap forms mean defer cannot write to schema, and records a
 Target: v1.7
 
 From: the owner, 2026-10-17: 'please log this for v1.7. We should have only one roadmap format.'
+
+### The nightly TLC run is red on the same models every night
+
+tla/tlc.yml's nightly (04:17 UTC) has failed on main every night since 2026-10-15 on the same cases: dirtytick-goals, dirtytick-handback-live-lapse, dirtytick-small, landpass, level, serverswitch, stopreturn (and sprintrules, sprinttables on 10-17). The nightly gates nothing, so nobody looked; on 2026-10-18 it ran on the v1.6.0 release commit and its red check runs refused the cut (nova-update release cut reads every check run on the commit), which is how it was found. Find whether each case is a model that no longer fits the runner's time, a stale fingerprint, or a real counterexample; fix each or move it to the certification tier by name; and make the nightly's red reach the coordinator's inbox. Target v1.7.
+
+Why it waits: a red nobody reads is a rule nobody has (tla/README.md); and a release cut should never be the first reader of a nightly
+
+From: the v1.6.0 cut, 2026-10-18 04:50Z
 
 ## Friend AIs
 

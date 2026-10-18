@@ -4295,4 +4295,14 @@
    :date "2026-10-18"
    :release "v1.7"
    :origin "sprint card l1-pong-retire-legacy (stream v15-schema-tables, column working, tier flash, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18"
-   :kept (:sprint-card "l1-pong-retire-legacy" :sprint-stream "v15-schema-tables" :sprint-column "working" :tier "flash" :sprint-base "sprint/v15-schema-tables" :needs "l1-pong-dual-read-2,l1-writers-switch-2" :pushed-head "993c5cf173bdd77f9c6402ff0389bb95131a963c" :pushed-branch "sprint/l1-pong-retire-legacy.w1.g4.e21"))))
+   :kept (:sprint-card "l1-pong-retire-legacy" :sprint-stream "v15-schema-tables" :sprint-column "working" :tier "flash" :sprint-base "sprint/v15-schema-tables" :needs "l1-pong-dual-read-2,l1-writers-switch-2" :pushed-head "993c5cf173bdd77f9c6402ff0389bb95131a963c" :pushed-branch "sprint/l1-pong-retire-legacy.w1.g4.e21"))
+  (item "nightly-tlc-models-red" :group "docs" :date "2026-10-18"
+   :title "The nightly TLC run is red on the same models every night"
+   :text "tla/tlc.yml's nightly (04:17 UTC) has failed on main every night since 2026-10-15 on the same cases: dirtytick-goals, dirtytick-handback-live-lapse, dirtytick-small, landpass, level, serverswitch, stopreturn (and sprintrules, sprinttables on 10-17). The nightly gates nothing, so nobody looked; on 2026-10-18 it ran on the v1.6.0 release commit and its red check runs refused the cut (nova-update release cut reads every check run on the commit), which is how it was found. Find whether each case is a model that no longer fits the runner's time, a stale fingerprint, or a real counterexample; fix each or move it to the certification tier by name; and make the nightly's red reach the coordinator's inbox. Target v1.7."
+   :why "a red nobody reads is a rule nobody has (tla/README.md); and a release cut should never be the first reader of a nightly"
+   :origin "the v1.6.0 cut, 2026-10-18 04:50Z")
+  (item "dashboard-page-tile-after-idle" :group "ops" :date "2026-10-18"
+   :title "The live page's throughput tile is blank for ten minutes after an idle hour"
+   :text "Since #490 the dashboard reads the sprint only while someone is looking. On return after more than an hour idle, sampleLanded has no samples inside its one-hour window and the page's own tile (internal/sprintdash/pageview.go, under the page lock) stays blank until ten minutes of new samples span MinSpan; /api/sprint and the pull routes carry the gap (trimWindow keeps the newest sample before the hour as the base). Changing the page's tile needs the owner's exact words (the page lock); the SPEC-SPRINT-DASHBOARD.md section Freshness, once per second, end to end is the owner's locked text and says nothing about the idle case. Target v1.7, with the owner's word."
+   :why "the page is the owner's; its idle behaviour is his to state"
+   :origin "the cold read of #490, 2026-10-18")))
