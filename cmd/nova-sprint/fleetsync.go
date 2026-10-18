@@ -66,11 +66,14 @@ func (a *app) readInventory(ctx context.Context, pg string) ([]config.MachineWid
 // (a.inventory: config.Widths over the config store, no new store). A read that
 // fails, or holds no machine row, returns ok false, and the tick retires nothing:
 // never act on a missing read. A test app that names no inventory returns false.
+// The same read is kept as the members' widths the tick's steps hold to
+// (inventoryWidths), so a tick reads nova-config once.
 func (a *app) inventoryMachines(ctx context.Context) ([]string, bool) {
 	if a.inventory == nil {
 		return nil, false
 	}
 	ws, err := a.inventory(ctx, "")
+	a.keepWidths(ws, err)
 	if err != nil || len(ws) == 0 {
 		return nil, false
 	}
@@ -83,63 +86,84 @@ func (a *app) inventoryMachines(ctx context.Context) ([]string, bool) {
 
 // inventoryWidths is the server's read of the members' widths (store.Store.Widths): every
 // machine row nova-config names with a width of its own, 1 or more, by machine, and whether
-// the read answered. It is the same config read as fleet sync and the tick's inventory
-// (a.inventory: config.Widths), kept for widthsFresh so a busy server reads nova-config at
-// most once in that window. A row with the default width (half its cores, which fleet sync
-// resolves from its beat) or width 0 (no member) is not named: fleet sync holds those. A
-// read that fails, or holds no row, is ok false and the copies stand (never act on a
-// missing read). A test app that names no inventory returns false.
+// the read answered. It is the tick's own read of the inventory (inventoryMachines, made at
+// the start of every tick), so the tick's steps hold to the widths of this tick's read and
+// a tick reads nova-config once; before any tick has read it, it reads once itself. A row
+// with the default width (half its cores, which fleet sync resolves from its beat) or width
+// 0 (no member) is not named: fleet sync holds those. A read that failed, or held no row, is
+// ok false and the copies stand (never act on a missing read). A test app that names no
+// inventory returns false.
 func (a *app) inventoryWidths(ctx context.Context) (map[string]int, bool) {
 	if a.inventory == nil {
 		return nil, false
 	}
+	if ws, read, ok := a.keptWidths(); read {
+		return ws, ok
+	}
+	ws, err := a.inventory(ctx, "")
+	a.keepWidths(ws, err)
+	ks, _, ok := a.keptWidths()
+	return ks, ok
+}
+
+// keepWidths keeps a read of the inventory as the members' widths (inventoryWidths): nil
+// when it failed or held no row.
+func (a *app) keepWidths(ws []config.MachineWidth, err error) {
 	v, _ := widthReads.LoadOrStore(a, &widthRead{})
 	r := v.(*widthRead)
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	now := a.now()
-	if !r.at.IsZero() && now.Sub(r.at) >= 0 && now.Sub(r.at) < widthsFresh {
-		return r.widths, r.widths != nil
-	}
-	r.at, r.widths = now, nil
-	ws, err := a.inventory(ctx, "")
+	r.read, r.widths = true, nil
 	if err != nil || len(ws) == 0 {
-		return nil, false
+		return
 	}
-	out := make(map[string]int, len(ws))
+	r.widths = make(map[string]int, len(ws))
 	for _, w := range ws {
 		if !w.Default && w.Width >= 1 && w.Width <= sprint.MaxWidth {
-			out[w.Machine] = w.Width
+			r.widths[w.Machine] = w.Width
 		}
 	}
-	r.widths = out
-	return out, true
 }
 
-// widthRead is one app's last read of nova-config's widths (inventoryWidths), and when.
+// keptWidths is the last read keepWidths kept: read false when none was kept.
+func (a *app) keptWidths() (ws map[string]int, read, ok bool) {
+	v, found := widthReads.Load(a)
+	if !found {
+		return nil, false, false
+	}
+	r := v.(*widthRead)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.widths, r.read, r.widths != nil
+}
+
+// widthRead is one app's last read of nova-config's widths (keepWidths).
 type widthRead struct {
 	mu     sync.Mutex
-	at     time.Time
+	read   bool
 	widths map[string]int
 }
 
 // widthReads is each app's widthRead, by app: the server process has one app.
 var widthReads sync.Map
 
-// widthsFresh is how long the server keeps its read of nova-config's widths
-// (inventoryWidths) before it reads again.
-const widthsFresh = 10 * time.Second
-
 // configWidthOf is a member's width as nova-config's machine row names it, read now
 // (a.inventory, config.Widths): ok false with why when the row is not there, names the
 // default width or 0, or the config cannot be read. fleet up --width is held to it
-// (fleetStep). A test app that names no inventory is ok true with width 0: no config read.
+// (fleetStep). An app that names no inventory, or a machine that names no config store at
+// all (no --pg and no NOVA_PG_DSN: a twin, a test), is ok true with width 0: there is no
+// config here to hold it to, and the server, which reads nova-config, writes the copy back
+// to it on its next step (sprint.WidthRefresh). A config store named that cannot be read is
+// refused: never write a width on a missing read.
 func (a *app) configWidthOf(ctx context.Context, member string) (width int, ok bool, why string) {
 	if a.inventory == nil {
 		return 0, true, ""
 	}
 	ws, err := a.inventory(ctx, "")
 	if err != nil {
+		if _, named := config.ResolveDSN("", a.getenv); named != nil {
+			return 0, true, ""
+		}
 		return 0, false, "nova-config cannot be read (" + oneline.Escape(err.Error()) + "): a member's width is nova-config's, and none is written that it does not name"
 	}
 	for _, w := range ws {
