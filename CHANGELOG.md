@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.6.1 — 2026-10-18
+
+The coordinator's verbs stop paying for the held rule. `card` took 8.5 s and `check` 11.5 s of CPU on the coordinator's machine (2026-10-18 00:30 EDT, 385 cards): the held rule offered every ready card to every member that is up, and each offer walked the whole fleet table twice and re-parsed every card's brief (465 fleet walks and 19,352 brief parses per check on a 40-card store). The staging refusals are now worked out once per step, keyed on the fleet, work and merge tables and the clock, and each brief is read once; the tick's deal goes through the same rule and gains the same. `card` 8.5 s to 0.4 s, `check` 11.5 s to 3.9 s, output byte-identical. No wire or record change; reads only, so no model change. (#496)
+
+- Requires nova-tools v1.6.0.
+
 ## v1.6.0 — 2026-10-18
 
 The stable release of the v1.5 line: v1.5.4 plus the night's audit of what the sprint server does for nothing. The server now does its work once per change instead of once per read, tick or poll, and the sprint is the same sprint: no wire or record change, every table as it was.
