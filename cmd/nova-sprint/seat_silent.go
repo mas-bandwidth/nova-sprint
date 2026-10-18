@@ -32,13 +32,13 @@ import (
 // seatSilentLook is the least time between two looks for the judgment.
 const seatSilentLook = 5 * time.Second
 
-// seatSilentTold is each raise of the judgment told to the owner, by its token, the last
-// look, and each raise whose send failed: when it is sent again, and what was said of it.
+// seatSilentTold keeps each raise's delivery and advisory marks, and each failed send’s retry state.
 type seatSilentTold struct {
-	mu     sync.Mutex
-	told   map[string]bool
-	lookAt time.Time
-	retry  map[string]busRetry
+	mu      sync.Mutex
+	told    map[string]bool
+	lookAt  time.Time
+	retry   map[string]busRetry
+	advised map[string]bool
 }
 
 // busRetryFirst and busRetryCap bound the wait before a send the bus refused is sent again:
@@ -188,23 +188,25 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 	}
 	if !tells {
 		a.seatSilent.mu.Lock()
-		a.seatSilent.told, a.seatSilent.retry = nil, nil // every raise is closed: forgotten
+		a.seatSilent.told, a.seatSilent.retry, a.seatSilent.advised = nil, nil, nil // every raise is closed: forgotten
 		a.seatSilent.mu.Unlock()
 		return
 	}
 	standby := ""
+	var standbyErr error
 	if hasSeatSilent {
 		shapes, settingsErr := backend.Shapes(ctx, []string{st.Names.Table(sprint.Work)})
 		if settingsErr != nil || len(shapes) != 1 {
 			if settingsErr == nil {
 				settingsErr = fmt.Errorf("work table shape count: %d", len(shapes))
 			}
+			standbyErr = settingsErr
 			a.serveSay("SEAT SILENT: the standby seat setting could not be read: %s", oneline.Escape(settingsErr.Error()))
-			return
-		}
-		standby = shapes[0].Props[sprint.PropSeatSilentTo]
-		if standby == sprint.ReadTierDefault {
-			standby = ""
+		} else {
+			standby = shapes[0].Props[sprint.PropSeatSilentTo]
+			if standby == sprint.ReadTierDefault {
+				standby = ""
+			}
 		}
 	}
 	// the groups as store.OpenGroups makes them, from the notes read above (the printed
@@ -226,6 +228,11 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 	}
 	open := map[string]bool{}
 	for _, g := range groups {
+		if g.Type != sprint.NSeatSilent && g.Type != sprint.NNeedBlocked {
+			continue
+		}
+		token := seatSilentToken(st.Names.Prefix, es.N, g.ID, g.Before)
+		open[token] = true
 		if g.Type == sprint.NSeatSilent && readErr == nil && machineErr == nil {
 			relevant, covered := false, true
 			groupCards := map[string]bool{}
@@ -261,11 +268,9 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 				continue
 			}
 		}
-		if g.Type != sprint.NSeatSilent && g.Type != sprint.NNeedBlocked {
-			continue
+		if g.Type == sprint.NSeatSilent && standbyErr != nil {
+			continue // keep this raise for a later look; other groups still go to the holder
 		}
-		token := seatSilentToken(st.Names.Prefix, es.N, g.ID, g.Before)
-		open[token] = true
 		a.seatSilent.mu.Lock()
 		told := a.seatSilent.told[token]
 		retry, retrying := a.seatSilent.retry[token]
@@ -286,8 +291,17 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 			a.serveSay("SEAT SILENT %s: no coordinator seat is held, tried again at the next look", g.ID)
 			continue
 		}
-		if g.Type == sprint.NSeatSilent && (standby == "" || standby == holder) && !retrying {
-			a.serveSay("SEAT SILENT %s: no standby seat hears this alarm, only the silent seat; run: nova-sprint set --seat-silent-to <bus name>", g.ID)
+		if g.Type == sprint.NSeatSilent && (standby == "" || standby == holder) {
+			a.seatSilent.mu.Lock()
+			if a.seatSilent.advised == nil {
+				a.seatSilent.advised = map[string]bool{}
+			}
+			advise := !a.seatSilent.advised[token]
+			a.seatSilent.advised[token] = true
+			a.seatSilent.mu.Unlock()
+			if advise {
+				a.serveSay("SEAT SILENT %s: no standby seat hears this alarm, only the silent seat; run: nova-sprint set --seat-silent-to <bus name>", g.ID)
+			}
 		}
 		if loginErr != nil {
 			a.serveSay("SEAT SILENT %s: the coordinator's bus login is unresolved, tried again at the next look: %s", g.ID, oneline.Escape(loginErr.Error()))
@@ -340,6 +354,11 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 	for token := range a.seatSilent.retry {
 		if !open[token] {
 			delete(a.seatSilent.retry, token)
+		}
+	}
+	for token := range a.seatSilent.advised {
+		if !open[token] {
+			delete(a.seatSilent.advised, token)
 		}
 	}
 	a.seatSilent.mu.Unlock()
