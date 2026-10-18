@@ -310,7 +310,7 @@ Files == {}
 \* unmarked is queued there, and Repair leaves it alone), so the guards are
 \* not constant-TRUE.
 
-VARIABLES queue, att, landed, epoch, base, tip,
+VARIABLES queue, att, landed, epoch, base, tip, recordedTip, forwardPending, dealtTip, badDeal,
           lphase, lq, lbatch, lep, lrep, ltip, tries,
           events, badcaller, stalepush, stalerec, lpushed,
           lref, lkind, ready, review, stop, carried, ownstop,
@@ -326,8 +326,9 @@ store == <<queue, att, landed, epoch, ready, review, stop, oks, need, reread, ma
 remote == <<base, tip>>
 lander == <<lphase, lq, lbatch, lep, lrep, ltip, tries, lref, lkind, lcheckneed>>
 ghosts == <<badcaller, stalepush, stalerec, lpushed, carried, ownstop, shortland, repairback, capJudged>>
-bound == <<bat, prevw, prevat, allconf, widens, paths, regneed, cleared, twice, cbound, carryoff, wrongmark>>
-vars == <<queue, att, landed, epoch, base, tip, lphase, lq, lbatch, lep, lrep, ltip, tries,
+bound == <<bat, prevw, prevat, allconf, widens, paths, regneed, cleared, twice, cbound, carryoff, wrongmark,
+           recordedTip, forwardPending, dealtTip, badDeal>>
+vars == <<queue, att, landed, epoch, base, tip, recordedTip, forwardPending, dealtTip, badDeal, lphase, lq, lbatch, lep, lrep, ltip, tries,
           events, badcaller, stalepush, stalerec, lpushed,
           lref, lkind, ready, review, stop, carried, ownstop,
           oks, need, reread, shortland, lcheckneed, markneed,
@@ -384,6 +385,10 @@ TypeOK ==
   /\ epoch \in 0..MaxEpoch
   /\ base \subseteq Heads
   /\ tip \in Nat
+  /\ recordedTip \in Nat
+  /\ forwardPending \subseteq Cards
+  /\ dealtTip \in [Cards -> Nat]
+  /\ badDeal \in BOOLEAN
   /\ lphase \in {"idle", "read", "built", "checked", "pushed", "reported", "refusing"}
   /\ lep \in 0..MaxEpoch
   /\ lrep \in 0..MaxEpoch
@@ -415,6 +420,8 @@ TypeOK ==
 Init ==
   /\ queue = <<>> /\ att = [c \in Cards |-> IF Broken = "capaccepted" THEN 4 ELSE 1] /\ landed = {} /\ epoch = 0
   /\ base = {} /\ tip = 0
+  /\ recordedTip = 0 /\ forwardPending = {}
+  /\ dealtTip = [c \in Cards |-> 0] /\ badDeal = FALSE
   /\ lphase = "idle" /\ lq = <<>> /\ lbatch = <<>> /\ lep = 0 /\ lrep = 0 /\ ltip = 0 /\ tries = 0
   /\ events = 0 /\ badcaller = FALSE /\ stalepush = FALSE /\ stalerec = FALSE /\ lpushed = {}
   /\ lref = <<>> /\ lkind = "own" /\ ready = {} /\ review = {} /\ stop = "none"
@@ -667,6 +674,9 @@ Accept ==
   \E c \in Cards, i \in 1..(Len(queue) + 1) :
     /\ c \notin Range(queue) /\ Current(c) \notin landed
     /\ c \notin Sentinels
+    /\ (Broken = "staleaccept" \/ c \notin forwardPending)
+    /\ dealtTip' = [dealtTip EXCEPT ![c] = recordedTip]
+    /\ badDeal' = badDeal \/ (Broken = "staleaccept" /\ c \in forwardPending)
     /\ oks[c] >= need
     /\ queue' = SubSeq(queue, 1, i - 1) \o <<c>> \o SubSeq(queue, i, Len(queue))
     /\ ready' = ready \ {c} /\ review' = review \ {c} /\ reread' = reread \ {c}
@@ -674,7 +684,9 @@ Accept ==
     \* a card it takes out of review leaves its kept head behind (rhead)
     /\ offer' = offer \ {c}
     /\ rhead' = [rhead EXCEPT ![c] = 0]
-    /\ UNCHANGED <<att, landed, epoch, stop, oks, need, shortland, markneed>> /\ UNCHANGED remote /\ UNCHANGED lander /\ UNCHANGED bound
+    /\ UNCHANGED <<att, landed, epoch, stop, oks, need, shortland, markneed>> /\ UNCHANGED remote /\ UNCHANGED lander
+    /\ UNCHANGED <<bat, prevw, prevat, allconf, widens, paths, regneed, cleared, twice, cbound, carryoff, wrongmark,
+                    recordedTip, forwardPending>>
 
 Return ==
   \E c \in Range(queue) :
@@ -735,6 +747,29 @@ MoveBase ==
   /\ tip' = tip + 1
   /\ UNCHANGED store /\ UNCHANGED base /\ UNCHANGED lander /\ UNCHANGED shortland /\ UNCHANGED bound
 
+\* The coordinator records a moved base and marks every card pending in the
+\* same store transition. Recheck clears one card only at the recorded tip;
+\* Accept (the model's deal/queue admission) is disabled while it is pending.
+ForwardMerge ==
+  /\ tip > recordedTip
+  /\ recordedTip' = tip
+  /\ forwardPending' = Cards
+  /\ UNCHANGED <<queue, att, landed, epoch, base, tip, lphase, lq, lbatch, lep, lrep, ltip, tries,
+                  events, badcaller, stalepush, stalerec, lpushed, lref, lkind, ready, review, stop, carried,
+                  ownstop, oks, need, reread, shortland, lcheckneed, markneed, rhead, offer, repairback,
+                  bat, prevw, prevat, allconf, widens, paths, regneed, cleared, twice, cbound, carryoff,
+                  wrongmark, dealtTip, badDeal, capJudged>>
+
+RecheckForwardMergedCard ==
+  \E c \in forwardPending :
+    /\ forwardPending' = forwardPending \ {c}
+    /\ dealtTip' = [dealtTip EXCEPT ![c] = recordedTip]
+    /\ UNCHANGED <<queue, att, landed, epoch, base, tip, recordedTip, lphase, lq, lbatch, lep, lrep, ltip, tries,
+                    events, badcaller, stalepush, stalerec, lpushed, lref, lkind, ready, review, stop, carried,
+                    ownstop, oks, need, reread, shortland, lcheckneed, markneed, rhead, offer, repairback,
+                    bat, prevw, prevat, allconf, widens, paths, regneed, cleared, twice, cbound, carryoff,
+                    wrongmark, badDeal, capJudged>>
+
 Crash ==
   /\ lphase # "idle"
   /\ lphase' = "idle" /\ tries' = 0 /\ lref' = <<>>
@@ -744,7 +779,7 @@ Crash ==
 Outside ==
   /\ events < MaxEvents
   /\ events' = events + 1
-  /\ UNCHANGED <<badcaller, stalepush, stalerec, carried, ownstop, repairback, capJudged>> /\ UNCHANGED bound
+  /\ UNCHANGED <<badcaller, stalepush, stalerec, carried, ownstop, repairback, capJudged>>
   /\ (Accept \/ Return \/ Rework \/ OtherLand \/ Clear \/ MoveBase \/ Crash \/ Resume \/ SetReads \/ ReadOk)
   /\ lpushed' = IF epoch' # epoch THEN {} ELSE lpushed
 
@@ -814,7 +849,7 @@ Redeal ==
   /\ UNCHANGED <<att, landed, epoch, review, stop>> /\ UNCHANGED reads /\ UNCHANGED offers /\ UNCHANGED remote /\ UNCHANGED lander
   /\ UNCHANGED events /\ UNCHANGED ghosts /\ UNCHANGED bound
 
-Next == Land \/ ShortBack \/ OfferAccept \/ Repair \/ Redeal \/ Outside
+Next == Land \/ ShortBack \/ OfferAccept \/ Repair \/ Redeal \/ Outside \/ ForwardMerge \/ RecheckForwardMergedCard
 
 Spec == Init /\ [][Next]_vars
 
@@ -825,6 +860,8 @@ FairSpec == Spec /\ WF_vars(Land) /\ WF_vars(ShortBack) /\ WF_vars(Redeal)
 \* ---- the rules ----
 
 LandedInBase == landed \subseteq base
+
+NoDealAgainstStaleTip == badDeal = FALSE
 
 LandsInOrder ==
   [][LET new == {h[1] : h \in landed' \ landed} IN

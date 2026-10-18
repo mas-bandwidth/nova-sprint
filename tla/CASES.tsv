@@ -239,6 +239,8 @@ MCRouteIndexBrokenReadBelow.cfg	MCRouteIndex.tla	invariant	NeverBelowItsTier	ign
 MCRouteIndexFrontier.cfg	MCRouteIndex.tla	pass	-	ignore-terminal	routeindex	required	-
 MCRouteIndexBrokenFrontierFriends.cfg	MCRouteIndex.tla	temporal	EveryTierIsDealtFromItsRoutes	ignore-terminal	routeindex	required	-
 MCLand.cfg	MCLand.tla	pass	-	ignore-terminal	land	required	-
+MCLandForwardMerge.cfg	MCLand.tla	pass	-	ignore-terminal	land	required	-
+MCLandBrokenForwardMergeDeal.cfg	MCLand.tla	invariant	NoDealAgainstStaleTip	ignore-terminal	land	required	-
 MCLandRecovers.cfg	MCLand.tla	pass	-	ignore-terminal	land	required	-
 MCLandBrokenReportFirst.cfg	MCLand.tla	invariant	LandedInBase	ignore-terminal	land	required	-
 MCLandBrokenLateEpoch.cfg	MCLand.tla	invariant	CallerEpochCheckedBeforePush	ignore-terminal	land	required	-
