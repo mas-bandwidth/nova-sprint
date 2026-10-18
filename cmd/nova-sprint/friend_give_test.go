@@ -55,7 +55,7 @@ func TestAPinnedCardTakenFromItsFriendIsDealtToNoOneUntilGivenBack(t *testing.T)
 	t.Parallel()
 	ta, _ := friendCardApp(t, "only friend amy", "amy", "bob")
 	ta.ok("fleet down m1")
-	ta.ok("fleet down m2")
+	ta.ok("fleet down m2 --force-last")
 	ta.a.tip = func(context.Context, string, string) (string, error) { return "", nil }
 	givenAndDealt(t, ta) // bob up with room all along: the pin admits only her
 }

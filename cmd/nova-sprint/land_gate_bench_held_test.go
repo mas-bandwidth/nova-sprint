@@ -82,7 +82,7 @@ func (r *landRig) downOthers(keep ...string) {
 	r.json("where", &w)
 	for name, row := range w.Tables["fleet"] {
 		if row["status"] == sprint.Up && !slices.Contains(keep, name) {
-			r.ok("fleet down " + name)
+			r.ok("fleet down " + name + " --force-last")
 		}
 	}
 }
