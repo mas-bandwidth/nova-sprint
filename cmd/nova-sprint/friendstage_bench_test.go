@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -211,15 +210,15 @@ func TestFriendStageRefusesABenchThatIsNoMember(t *testing.T) {
 	assert.Empty(t, rec.calls, "a refused bench stages nothing")
 }
 
-// When nova-config cannot be read, friend stage falls back to the sprint row's
-// git_identity (the second source) instead of refusing: it stages, saying
-// identity=sprint.
+// A friend row read fine that names no git_identity still falls back to the
+// sprint row's identity (v1.4.5): the stage succeeds, saying identity=sprint.
 func TestFriendStageNeedsNoPostgresForTheSprintIdentity(t *testing.T) {
-	ta, _ := amyWithIdentity(t)
+	ta, cfg := amyWithIdentity(t)
 	dealToAmy(t, ta)
-	ta.a.friends = func(context.Context, string) ([]config.Row, error) {
-		return nil, errors.New("connection refused")
-	}
+	_, err := cfg.Delete(context.Background(), config.KindFriend, "amy", "t")
+	require.NoError(t, err)
+	_, err = cfg.Insert(context.Background(), config.KindFriend, config.Row{Name: "amy", Fields: map[string]string{"tiers": "flash"}}, "t")
+	require.NoError(t, err)
 
 	rec := &benchRec{t: t, files: map[string]string{}}
 	rec.install()
