@@ -1027,6 +1027,10 @@ func movedReadFields(c *Card, to string, now time.Time) map[string]string {
 // DefaultReadLease is how long an in-flight read's lease stands without renewal (10m).
 const DefaultReadLease = 10 * time.Minute
 
+// ReadLeaseRenewAt is how much of a lease is left when the reader's beat renews it: half
+// of DefaultReadLease (RenewReaderLeases).
+const ReadLeaseRenewAt = DefaultReadLease / 2
+
 // FieldLease is a read card's lease expiration timestamp.
 const FieldLease = "lease"
 
@@ -1098,8 +1102,13 @@ func ServerRestart(s *Snapshot) Plan {
 	return RestartReads(s)
 }
 
-// RenewReaderLeases renews the lease of every in-flight read on reader to now + DefaultReadLease.
-// tla/ServerLanes.tla Renew.
+// RenewReaderLeases renews the lease of every in-flight read on reader to now + DefaultReadLease
+// once half of it or less is left (ReadLeaseRenewAt); a lease with more than half left is
+// left as it is. Every renewal is a card write and a log line, which wakes the tick, the
+// coordinator's push and every long poller: on 2026-10-17 each reader's queue poll (one
+// every few seconds) rewrote the lease of every read it held, though the lease is ten
+// minutes. A reader that polls within each half of its lease keeps every lease live.
+// tla/ServerLanes.tla Renew, LiveLeaseNeverTakenBack.
 func RenewReaderLeases(s *Snapshot, reader string) Plan {
 	var p Plan
 	if s.Readers == nil {
@@ -1108,6 +1117,9 @@ func RenewReaderLeases(s *Snapshot, reader string) Plan {
 	cards := s.Readers.Cell(reader, Reading)
 	SortCards(cards)
 	for _, c := range cards {
+		if left := ReadLeaseExpires(c).Sub(s.Now); left > ReadLeaseRenewAt {
+			continue // more than half the lease is left: renewed on a later beat
+		}
 		exp := s.Now.Add(DefaultReadLease)
 		p.Units = append(p.Units, Unit{
 			Key:    c.ID,
