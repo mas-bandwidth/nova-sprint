@@ -170,6 +170,11 @@ func (a *app) preflightCheck(ctx context.Context, st *store.Store, cards []prefl
 		inDir[p.id] = true
 	}
 	live := preflightLive(snap)
+	open := duplicateOpenCards(snap)
+	briefs := make([]dupCard, 0, len(cards))
+	for _, p := range cards {
+		briefs = append(briefs, dupCardOf(p.id, p.brief))
+	}
 	var v preflightView
 	v.Repos = repoDir != ""
 	failed := 0
@@ -217,6 +222,22 @@ func (a *app) preflightCheck(ctx context.Context, st *store.Store, cards []prefl
 					if preflightOverlap(path, op) {
 						add("PATHS", fmt.Sprintf("%s overlaps %s (%s)", path, other.id, op))
 					}
+				}
+			}
+		}
+		// DUPLICATE: the work another open card, or another brief of the batch,
+		// already does (docs/SPEC-SPRINT.md, the duplicate check)
+		if p.brief != "" {
+			c := dupCardOf(p.id, p.brief)
+			for _, f := range duplicatesRefused(c, open, nil) {
+				add("DUPLICATE", f.String())
+			}
+			for _, other := range briefs {
+				if other.ID == p.id {
+					continue
+				}
+				if f, ok := probableDuplicate(c, other); ok {
+					add("DUPLICATE", f.String())
 				}
 			}
 		}

@@ -1363,6 +1363,7 @@ func (a *app) cmdInit(args []string, stdout, stderr io.Writer) int {
 // cmdAdd admits cards and can mark a new stream on its first add (docs/SPEC-SPRINT.md
 // section 7, protected-bases-pb-b.w2).
 func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
+	args, notDupVals := takeNotDupArgs(args)
 	fs, c := a.verbSetup("add")
 	stream := fs.String("stream", "", "the stream the primaries belong to, for life; with --count, several streams comma separated, one step")
 	count := fs.Int("count", 0, "admit n primaries with generated ids <stream>-<n>")
@@ -1398,6 +1399,10 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	ids, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "add", err.Error())
+	}
+	notDup, whyNotDup := notDupReasons(notDupVals)
+	if whyNotDup != "" {
+		return refuse(stderr, "add", whyNotDup)
 	}
 	if (len(briefOps) > 0 || len(briefUsages) > 0) && a.serveAddr == "" {
 		return refuse(stderr, "add", briefOpWord)
@@ -1475,7 +1480,7 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 		if *every != 0 || *last {
 			return refuse(stderr, "add", "--sentinel-every goes with --count, not a card per brief file")
 		}
-		return a.cmdAddMany(*stream, *needs, *briefDir, briefFiles, *sentinel, *rules, *score, *before, *after, *held, allowShared, *allowPersonal, *landProtected, *decideRecord, *partial, briefOps, sprint.Split(*replaces), c, stdout, stderr)
+		return a.cmdAddMany(*stream, *needs, *briefDir, briefFiles, *sentinel, *rules, *score, *before, *after, *held, allowShared, *allowPersonal, *landProtected, *decideRecord, *partial, briefOps, sprint.Split(*replaces), notDup, c, stdout, stderr)
 	}
 	if len(briefFiles) == 1 {
 		if *brief != "" {
@@ -1563,6 +1568,25 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 			return refuse(stderr, "add", err.Error())
 		}
 	}
+	dupNotes := map[string]string{}
+	if *sentinel == "" && *brief != "" && len(ids) > 0 {
+		open, err := a.duplicateOpen(st)
+		if err != nil {
+			return refuse(stderr, "add", err.Error())
+		}
+		for _, id := range ids {
+			cdup := dupCardOf(id, *brief)
+			if findings := duplicatesRefused(cdup, open, notDup); len(findings) > 0 {
+				for _, f := range findings {
+					fmt.Fprintf(stdout, "DUPLICATE %s: %s; run: nova-sprint add ... --not-a-duplicate-of %s=<reason>\n", id, f.String(), f.Of)
+				}
+				return 1
+			}
+			if reason := dupAdmittedReason(cdup, open, notDup); reason != "" {
+				dupNotes[id] = reason
+			}
+		}
+	}
 	if *brief == "" && *sentinel == "" {
 		c.says = append(c.says, "the cards have no brief, so a worker is handed no task with them; give each one before it is dealt, on a STOPPED machine: nova-sprint brief <id> --brief-file <path>")
 	}
@@ -1615,6 +1639,7 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	}
 	step = promotionGuard(step, rs, *landProtected)
 	step = mirrorNotice(step, rs)
+	step = duplicateNoteStep(step, dupNotes)
 	code := a.runStep("add", *c, st, step, stdout, stderr)
 	if code != 0 && sprint.HasBriefLandAfter(rs) {
 		return 2
@@ -1668,7 +1693,7 @@ func promotionGuard(step store.Step, rs []sprint.AddReq, landProtected string) s
 // store write adds every card.
 // cmdAddMany admits per-file cards and supports the same atomic first-stream mark as add
 // (docs/SPEC-SPRINT.md section 7, protected-bases-pb-b.w2).
-func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, sentinel, rules, score, before, after string, held, allowShared, allowPersonal bool, landProtected, decideRecord string, partial bool, briefOps, replaces []string, c *common, stdout, stderr io.Writer) int {
+func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, sentinel, rules, score, before, after string, held, allowShared, allowPersonal bool, landProtected, decideRecord string, partial bool, briefOps, replaces []string, notDup map[string]string, c *common, stdout, stderr io.Writer) int {
 	if stream == "" {
 		return refuse(stderr, "add", "wants --stream and --brief-dir <dir> or --brief-file <file>...")
 	}
@@ -1730,6 +1755,28 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 	}
 	for i := range cards {
 		cards[i].Rules = cardRules(cards[i].Brief, rs).held // each card names the rules the member injects into it
+	}
+	var dupLines []string
+	var dupNotes map[string]string
+	if a.gateOnly == nil {
+		if st == nil {
+			s, err := a.store(*c)
+			if err != nil {
+				return refuse(stderr, "add", err.Error())
+			}
+			st = s
+		}
+		open, err := a.duplicateOpen(st)
+		if err != nil {
+			return refuse(stderr, "add", err.Error())
+		}
+		cards, dupLines, dupNotes = holdDuplicates(cards, open, notDup)
+		for _, line := range dupLines {
+			fmt.Fprintln(stdout, "DUPLICATE "+line)
+		}
+		if len(cards) == 0 && sentinel == "" {
+			return 1
+		}
 	}
 	var at *float64
 	if score != "" { // every argument is checked before the brief decision asks (briefdecide.go)
@@ -1802,9 +1849,14 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 	c.addStream = stream
 	c.addBefore = before
 	rsReq := []sprint.AddReq{r}
-	code = a.runStep("add", *c, st, promotionGuard(store.AddStep(r), rsReq, landProtected), stdout, stderr)
+	step := promotionGuard(store.AddStep(r), rsReq, landProtected)
+	step = duplicateNoteStep(step, dupNotes)
+	code = a.runStep("add", *c, st, step, stdout, stderr)
 	if code != 0 && sprint.HasBriefLandAfter(rsReq) {
 		return 2
+	}
+	if code == 0 && len(dupLines) > 0 {
+		return 1
 	}
 	return code
 }

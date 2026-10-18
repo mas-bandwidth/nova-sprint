@@ -7070,6 +7070,20 @@ of the batch, as `hygiene.MatchGlob` matches one glob against a path, so a broad
 `PREFLIGHT OK briefs=<n>` or `PREFLIGHT FAIL briefs=<n> failed=<m>`, exit 0 when
 every brief is clean and 1 otherwise. `--json` prints one object.
 
+`add` and `preflight` also name a probable duplicate: two briefs of the same
+`REPO:` that share a `PATHS:` file neither lists `SHARED:` and whose task words
+overlap by at least 20% (the Jaccard index of the words of the id and the `THE
+TASK` paragraph, `duplicateThreshold = 0.20`). Preflight prints one
+`DUPLICATE: probable duplicate of <card>: shares <files> and words <words>
+(overlap <score> >= 0.20)` finding for each. `add` holds the brief back and
+admits the rest of the wave in the same write, one `DUPLICATE <id>: <the same
+line>; run: nova-sprint add ... --not-a-duplicate-of <card>=<reason>` line each,
+exit 1 when any was held (0 when none); a single-card add refuses the one card
+the same way. The repeatable `--not-a-duplicate-of <card>=<reason>` answers the
+finding for `<card>`: a reason is required (an empty one is a usage refusal,
+exit 2), and the reason is written on the admitted card's MOVED line, its
+admission note. When no card is held the add exits 0.
+
 ### Handing over the seat
 
 The holder (or the owner, `init --owner`, else NOVA_SPRINT_OWNER) gives the seat: `coordinator <name> --reason <text>`; with the holder away, `<name>` takes it with the owner's name, `coordinator <name> --take --approved-by <owner> --reason <text>`, refused without that name or with another (the owner, 2026-10-02: "you can be given coordinator status, or you can take it (with my permission only)").

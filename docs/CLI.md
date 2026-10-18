@@ -44,7 +44,7 @@ for routing, restart and hook-display limits.
 
 ```
 nova-sprint init [--readers <a,b,...>] [--members <m1[:<width>],m2,...>] [--coordinator <name>] [--rules <file>]
-nova-sprint add --stream <s> (<id>... | --count <n> | --sentinel <id> | --brief-dir <dir> | --brief-file <f1> --brief-file <f2>...: a card per file, its id the file's name without .md) [--partial] [--needs <a,b>] [--before <id> | --after <id> | --score <n>] [--brief <text> | --brief-file <path>: once, the brief of the cards named] [--rules <file>] [--replaces <old-id>[,<old-id>]]
+nova-sprint add --stream <s> (<id>... | --count <n> | --sentinel <id> | --brief-dir <dir> | --brief-file <f1> --brief-file <f2>...: a card per file, its id the file's name without .md) [--partial] [--needs <a,b>] [--before <id> | --after <id> | --score <n>] [--brief <text> | --brief-file <path>: once, the brief of the cards named] [--rules <file>] [--replaces <old-id>[,<old-id>]] [--not-a-duplicate-of <card>=<reason>]...
 # add refuses an unresolved need (v1.2.17): absent ("needs <id>, which is no primary on the table or in this add"), dropped ("needs <id>, which was <outcome>"), unknown stream ("needs <id> (unknown stream): <id>'s stream <s> has no control card in this epoch") and held ("needs <id> (held): <id> is held by judgment <j> (<type>, open <age>) until it is decided; decide it: nova-sprint rework <id> --fix <text> or nova-sprint drop <id> --reason <text> ..."); an add of more than one card (--brief-dir, many briefs, --count) with one is refused whole, naming every card and need, nothing written; brief check names the same through add's plan
 nova-sprint quack --streams <a,b,...> --count <n> --repo <clone url> [--tiers <t,...>] [--base <branch>]
 nova-sprint release (<sentinel>... | <selector> [--dry-run]) --reason <text> [--answers <note>]
@@ -718,6 +718,17 @@ or `HELD <id>: needs <other>, held back` line per held card, then the add's own 
 what it admitted, and exits 0 when every card was admitted, 1 when some were held and the rest
 written, and 2 when none could be admitted, or for a usage refusal: `--partial` is refused with
 ids, `--count`, `--sentinel` or `--land-protected`, since a marked first add is one step.
+
+`add` and `preflight` name a probable duplicate: two briefs of one repository that share a
+`PATHS:` file neither declares `SHARED:` and whose id-and-`THE TASK` words overlap by at
+least 20% (the Jaccard index, `duplicateThreshold = 0.20`). Preflight prints a `DUPLICATE:
+probable duplicate of <card>: shares <files> and words <words> (overlap <score> >= 0.20)`
+finding. `add` holds that brief back and admits the rest of the wave in the same write, one
+`DUPLICATE <id>: <the same line>; run: nova-sprint add ... --not-a-duplicate-of
+<card>=<reason>` line each, exit 1 when any was held (0 when none); a single-card add admits
+nothing and names it the same way. The repeatable `--not-a-duplicate-of <card>=<reason>`
+answers the finding for `<card>`, the reason required (an empty one is a usage refusal, exit
+2), and writes the reason on the admitted card's MOVED line, its admission note.
 
 ### install-canary-shadow-tick-r.w1: the shadow tick before a server swap
 
