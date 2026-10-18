@@ -1361,8 +1361,10 @@ func (l *lander) baseNow(ctx context.Context, dir, base string) (sha, why string
 
 // prefixTip is the batch branch's tip after its first n merged heads, from the tips the
 // merges left (cardTips: the tip before each head merged, from the cut's first, then after
-// the last): the first that holds head n-1, holds no head from n on, and is on the batch's
-// tip; or why there is none, nothing pushed.
+// the last): the first that holds every head 0..n-1, holds no head from n on, and is on the
+// batch's tip; or why there is none, nothing pushed. Every head is checked, not only head
+// n-1: a head already on the base or inside an earlier head merges as a no-op (landgo.go),
+// so an earlier tip, the base itself, can hold head n-1 and not the heads before it.
 func (l *lander) prefixTip(ctx context.Context, j *landJob, n int) (string, string) {
 	const none = "the tip of the marked landing prefix was not recorded; nothing pushed"
 	if n < 1 || n > len(j.merged) {
@@ -1373,7 +1375,7 @@ func (l *lander) prefixTip(ctx context.Context, j *landJob, n int) (string, stri
 		return err == nil
 	}
 	for _, tip := range l.cardTips {
-		if !holds(tip, j.cards[n-1].head) {
+		if slices.ContainsFunc(j.cards[:n], func(c landCard) bool { return !holds(tip, c.head) }) {
 			continue
 		}
 		if !holds(j.tip, tip) {

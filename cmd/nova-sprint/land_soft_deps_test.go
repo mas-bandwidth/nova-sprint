@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
 )
 
 // The lander's open of a stream with soft dependencies (docs/SPEC-SPRINT.md, LAND-AFTER;
@@ -288,4 +289,69 @@ func TestMarkLandingEndsTheBatchEarlyOnlyForTheSkip(t *testing.T) {
 			assert.Equal(t, tc.premark, sprint.LandingMarked(s, first), "a %s refusal marked the prefix", tc.kind)
 		})
 	}
+}
+
+// The skip's prefix tip holds every head before the skip, not only the last: with pins x,
+// y, z, y's head already on the base (a no-op merge) and z skipped for its LAND-AFTER
+// target c, queued while the batch gates, the base itself holds y's head; the prefix pushed
+// is the tip after x, and x is on the base it is reported landed on.
+func TestLandSkipPrefixTipHoldsEveryHeadBeforeTheSkip(t *testing.T) {
+	t.Parallel()
+	r := newLandRig(t)
+	r.stubGreenGate()
+	r.commit("go.mod", "module example.com/xyz\n\ngo 1.24\n", "module")
+	r.git(r.worker, "push", "-q", "origin", "HEAD:refs/heads/main")
+	r.git(r.worker, "fetch", "-q", "origin")
+	dir := t.TempDir()
+	for _, c := range []struct{ id, after string }{{"c", ""}, {"x", ""}, {"y", ""}, {"z", "c"}} {
+		r.ok("add --stream s1 --one --brief-file " + writeSoftHeaderBrief(t, dir, c.id, "-", c.after, r.remote, "", c.id+".txt"))
+	}
+	heads := map[string]string{}
+	for _, id := range []string{"c", "x", "y", "z"} {
+		heads[id] = r.head(id, "main", id+".txt", id+"\n")
+	}
+	r.git(r.worker, "push", "-q", "origin", "refs/heads/sprint/*:refs/heads/sprint/*")
+	r.deal(4)
+	r.ok("take --as m1 --limit 100")
+	for _, id := range []string{"x", "y", "z"} {
+		r.ok("finish --as m1 " + id + ".w1@1 --head " + heads[id])
+	}
+	r.ok("ask")
+	r.ok("read --as reader-a --ok --limit 100")
+	r.ok("read --as reader-b --ok --limit 100")
+	r.ok("accept --read-ok")
+	r.markProtected()
+	r.ok("rank z --first")
+	r.ok("rank y --first")
+	r.ok("rank x --first")
+	// y's head is on the base before the pass: its merge is a no-op
+	r.git(r.worker, "push", "-q", "origin", heads["y"]+":refs/heads/main")
+	var queueC sync.Once
+	r.a.gateRan = func(string, bool) {
+		queueC.Do(func() {
+			r.ok("finish --as m1 c.w1@1 --head " + heads["c"])
+			r.ok("ask")
+			r.ok("read --as reader-a --ok --limit 100")
+			r.ok("read --as reader-b --ok --limit 100")
+			r.ok("accept --read-ok")
+		})
+	}
+	code, out, errs := r.do("land --repo-dir " + r.clone + " --base main")
+	require.Equal(t, 1, code, out+errs)
+	assert.Contains(t, errs, "z: soft dependency on c not landed; z is skipped this batch")
+	main := r.git(r.remote, "rev-parse", "main")
+	r.git(r.remote, "merge-base", "--is-ancestor", heads["x"], main) // x's head is on the base
+	_, err := gitrunIsAncestor(r, heads["z"], main)
+	assert.Error(t, err, "the skipped z was pushed")
+	places := r.places("x", "y", "z", "c")
+	assert.Equal(t, "merging/queued", places["z"])
+	assert.Equal(t, "landed/merged", places["x"])
+	r.noPushedUnreported("x", "y", "z", "c")
+	r.clean()
+}
+
+// gitrunIsAncestor is git merge-base --is-ancestor in the rig's origin, its error unchecked.
+func gitrunIsAncestor(r *landRig, a, b string) (string, error) {
+	res, err := gitrun.Run(context.Background(), gitrun.Options{C: r.remote, Env: r.env, OwnRepo: true}, "merge-base", "--is-ancestor", a, b)
+	return string(res.Stdout), err
 }
