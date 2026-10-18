@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -248,6 +251,53 @@ func (st *Store) decodeDonePage(raw string) (DoneRecord, uint32, string) {
 	return page.rec, page.pages, ""
 }
 
+// donePages is the fixed-table pages of the done record as decoded, by their stored text,
+// kept in process (donePageOf). The fault of 2026-10-17: every tick, RUNNING or STOPPED,
+// decoded the whole record (every page through the row codec) to find, most ticks, no new
+// line after its cursor. A page's decode depends on its text alone, so a page kept is the
+// page a decode gives. At most doneMemoMax pages are kept; past that the memo starts empty.
+var donePages struct {
+	mu    sync.Mutex
+	pages map[string]donePageMemo
+}
+
+// donePageMemo is one page decoded: its record and declared page count.
+type donePageMemo struct {
+	rec   DoneRecord
+	pages uint32
+}
+
+// doneMemoMax bounds donePages: a done record of 95 entries a page and some.
+const doneMemoMax = 512
+
+// donePageOf is decodeDonePage, from donePages when the page was decoded before. Only a
+// fixed-table page that reads is kept: a legacy page is rewritten at its first read, and a
+// refusal is decoded (and counted) each time. The record given is a copy.
+func (st *Store) donePageOf(raw string) (DoneRecord, uint32, string) {
+	if raw == "" || raw[0] == '{' {
+		return st.decodeDonePage(raw)
+	}
+	donePages.mu.Lock()
+	m, ok := donePages.pages[raw]
+	donePages.mu.Unlock()
+	if !ok {
+		r, pages, why := st.decodeDonePage(raw)
+		if why != "" {
+			return r, pages, why
+		}
+		m = donePageMemo{rec: r, pages: pages}
+		donePages.mu.Lock()
+		if donePages.pages == nil || len(donePages.pages) >= doneMemoMax {
+			donePages.pages = map[string]donePageMemo{}
+		}
+		donePages.pages[raw] = m
+		donePages.mu.Unlock()
+	}
+	r := m.rec
+	r.Done = slices.Clone(r.Done)
+	return r, m.pages, ""
+}
+
 // doneFixedPageOf fills w as one fixed-table page of (epoch, cursor, pages, chunk), or returns
 // the reason the fixed form cannot hold it.
 func doneFixedPageOf(epoch uint64, cursor string, pages uint32, chunk []sprint.Completion, w *donewire.DoneRecord) string {
@@ -342,7 +392,7 @@ func (st *Store) readDoneFrom(ctx context.Context, kv KV, raw string, ok bool) (
 	if !ok {
 		return DoneRecord{Epoch: st.epoch}, 0, "", nil
 	}
-	r, pages, why := st.decodeDonePage(raw)
+	r, pages, why := st.donePageOf(raw)
 	if why != "" {
 		return DoneRecord{Epoch: st.epoch}, 0, why, nil
 	}
@@ -370,7 +420,7 @@ func (st *Store) readDoneFrom(ctx context.Context, kv KV, raw string, ok bool) (
 			if !pok {
 				return DoneRecord{Epoch: st.epoch}, pages, "missing_page", nil
 			}
-			pr, _, pwhy := st.decodeDonePage(vals[i])
+			pr, _, pwhy := st.donePageOf(vals[i])
 			if pwhy != "" {
 				return DoneRecord{Epoch: st.epoch}, pages, pwhy, nil
 			}
@@ -422,8 +472,14 @@ func (st *Store) donePageKeys(ctx context.Context) []string {
 // (row, kind, card), and moves its cursor; more says lines were left
 // (tla/DoneRecord.tla: Take, Complete).
 func (st *Store) doneAfter(ctx context.Context, r *DoneRecord, pages int) (more bool, err error) {
+	return st.doneAfterRead(ctx, r, pages, nil)
+}
+
+// doneAfterRead is doneAfter with the log pages the tick's card log index read (logPagesRead,
+// keepLogIndex) taken from read instead of the store, each by the cursor it was read after.
+func (st *Store) doneAfterRead(ctx context.Context, r *DoneRecord, pages int, read map[string]logPageRead) (more bool, err error) {
 	for n := 0; pages == 0 || n < pages; n++ {
-		lines, ids, err := st.B.LogSince(ctx, r.Cursor, logPage)
+		lines, ids, err := st.logPageAfter(ctx, r.Cursor, read)
 		if err != nil {
 			return false, err
 		}
@@ -450,6 +506,22 @@ func (st *Store) doneAfter(ctx context.Context, r *DoneRecord, pages int) (more 
 // newer layout (layout_newer) refuses by name and writes nothing over it
 // (tla/DoneRecord.tla: Tick, StaleWrite, OlderBuildNeverWritesNewerLayout).
 func (st *Store) keepDone(ctx context.Context, kv KV, raw string, ok bool) error {
+	read := st.takeLogPages()
+	// page 0 alone first: its cursor says whether the log has lines past it, and with none
+	// (most ticks) the record is not read further, as the tick writes nothing then
+	// (tla/DoneRecord.tla: Tick is enabled only while Current.cur < Len(log)). The fault of
+	// 2026-10-17: every tick decoded every page to find no new line.
+	if ok && raw != "" && raw[0] != '{' {
+		if head, _, why := st.donePageOf(raw); why == "" && head.Epoch == st.epoch {
+			_, ids, err := st.logPageAfter(ctx, head.Cursor, read)
+			if err != nil {
+				return err
+			}
+			if len(ids) == 0 {
+				return nil
+			}
+		}
+	}
 	r, prevPages, why, err := st.readDoneFrom(ctx, kv, raw, ok)
 	if err != nil {
 		return err
@@ -458,7 +530,7 @@ func (st *Store) keepDone(ctx context.Context, kv KV, raw string, ok bool) error
 		return fmt.Errorf("%s: the stored done record is a newer build's layout; this build reads the log whole and writes nothing over it", why)
 	}
 	was := r.Cursor
-	if _, err := st.doneAfter(ctx, &r, logIndexPages); err != nil {
+	if _, err := st.doneAfterRead(ctx, &r, logIndexPages, read); err != nil {
 		return err
 	}
 	if r.Cursor == was {
@@ -502,4 +574,62 @@ func (st *Store) DoneOf(ctx context.Context, f WhereFacts, since time.Time) (spr
 		return sprint.CountDone(f.Done.Done, since), nil
 	}
 	return st.DoneSince(ctx, since)
+}
+
+// logPageRead is one page of the log as LogSince gave it.
+type logPageRead struct {
+	lines []sprint.Line
+	ids   []string
+}
+
+// logPagesShared is the log pages the tick's card log index last read (keepLogIndex), by the
+// cursor each was read after, for the done record that reads the same lines next in the same
+// tick (keepWhere: keepLogIndex, then keepDone). The fault of 2026-10-17: the two read and
+// decoded the same new lines twice, and an idle tick asked the log twice for nothing. A page
+// is the store's answer at the moment the index read it: the done record that takes it reads
+// the log as it was a moment earlier, as a tick that ran a moment earlier would
+// (tla/DoneRecord.tla: Take; a line written since is taken by the next tick). It is taken
+// once, by the store (its backend and epoch) that put it.
+var logPagesShared struct {
+	mu    sync.Mutex
+	b     any
+	epoch uint64
+	pages map[string]logPageRead
+}
+
+// shareLogPages puts the pages the card log index read for keepDone to take.
+func (st *Store) shareLogPages(pages map[string]logPageRead) {
+	logPagesShared.mu.Lock()
+	defer logPagesShared.mu.Unlock()
+	logPagesShared.b, logPagesShared.epoch, logPagesShared.pages = st.B, st.epoch, pages
+}
+
+// takeLogPages is the pages shareLogPages put, when this store put them (nil otherwise, and
+// another store's are left as they are); pages taken are left for no other take.
+func (st *Store) takeLogPages() map[string]logPageRead {
+	logPagesShared.mu.Lock()
+	defer logPagesShared.mu.Unlock()
+	if logPagesShared.pages == nil || logPagesShared.epoch != st.epoch || !sameBackend(logPagesShared.b, st.B) {
+		return nil
+	}
+	pages := logPagesShared.pages
+	logPagesShared.b, logPagesShared.pages = nil, nil
+	return pages
+}
+
+// sameBackend says a and b are the same backend value; false for a type that does not compare.
+func sameBackend(a, b any) bool {
+	if a == nil || b == nil || reflect.TypeOf(a) != reflect.TypeOf(b) || !reflect.TypeOf(a).Comparable() {
+		return false
+	}
+	return a == b
+}
+
+// logPageAfter is LogSince of one page after the cursor: from read when it holds that page,
+// else from the store.
+func (st *Store) logPageAfter(ctx context.Context, after string, read map[string]logPageRead) ([]sprint.Line, []string, error) {
+	if p, ok := read[after]; ok {
+		return p.lines, p.ids, nil
+	}
+	return st.B.LogSince(ctx, after, logPage)
 }
