@@ -1075,9 +1075,10 @@ still closes the wait earlier. The wait does not block an eligible read.
 
 `nova-sprint where` begins with `DECISIONS OWED n, oldest <age>; server-defaults applied this hour n; delivery faults n`. A delivery fault means an escalation still
 needs a successful bus receipt; it is not proof that the coordinator or owner saw
-anything. The server folds overdue decisions to the coordinator once per changed
-set and to the configured owner at most every 30 minutes while unchanged. Failed
-or ambiguous sends retry, including a renewed token after expiry. Safe defaults
+anything. The server folds overdue decisions to the coordinator once per changed set. When
+the owner lane has the same recipient and set, that one notice serves both lanes;
+otherwise the owner lane keeps its 30-minute delivery cadence, including changed
+sets. Failed or ambiguous sends retry, including a renewed token after expiry. Safe defaults
 and the terminal sprint-done exemption are listed in SPEC-SPRINT.md, "Decisions owed".
 
 Server-default parked cards remain in DECISIONS OWED and folded escalation until
