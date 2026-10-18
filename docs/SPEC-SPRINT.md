@@ -6726,8 +6726,9 @@ are the evidence a later card reads before that record's writer switches.
     check is caught. The run-time half (one owner judgment for a blocked need, a
     drop that never strands) is its own card. Under 11 as well (no number from
     12 to 14 is free), `check` names a stream merging with at least one queued
-    card while no member can run a land gate (none up or held by the coordinator
-    with no `--return`, `Snapshot.GateMembers`): `stream <s> has <n> merging card(s) and no member can run a land gate: nova-sprint fleet unhold <member>` (the hold guard's rule, section 11).
+    card while no member the land loop can use runs a land gate (none up or held by the
+    coordinator with no `--return`, minus the server's own machine and any host the check
+    refuses, `Snapshot.LandBenches`): `stream <s> has <n> merging card(s) and no member the land loop can use: nova-sprint fleet unhold <member>` (the hold guard's rule, section 11).
 12. Nothing stalls. Every primary on the table that has not landed is held by
     one of: (a) an outside actor before its deadline (its live work card in an
     up member's ready or working cell, a read card asked or reading, its merge
@@ -6940,7 +6941,7 @@ land's place; a head that is not a commit id stops the dry run where land stops,
 | routes rest | `routes rest <provider-or-route> --reason <text> [--for <duration> or --until <RFC3339>]`: the coordinator rests every route of the provider (the fleet property `provider_rest_<provider>`, cause `coordinator`) or one route (its line in `rule3_rest_<provider>`), until the time or until woken; a happened note; the coordinator's; refused whole, nothing written, with no reason, a name that is neither a route nor a provider of one, or a time not after now |
 | routes wake | `routes wake <provider-or-route> --reason <text>`: ends now the rest holding the provider (any cause, a refused take's included) and its routes' own, or one route's own while its provider serves, the reason on the rest's words; never a payment (that is `funded`); refused whole with no reason, an unknown name, nothing resting, or a route under its provider's rest |
 | friend sync | the friends table's rows made nova-config's friend rows (section 1); `--every <d>` loops as the seat each pass, and `friend sync install --every <d>` / `friend sync uninstall` put that loop in place as this machine's service ("Handing over the seat") |
-| friend stage | stages a friend's dealt card in one step, `friend stage <card>@<gen> --as friend.<name> [--bench <host>] [--dir <jobs dir>]`: clones the card's REPO into `jobs/<job>/` at the card's NEXT head when one is carried, else at BASE, creates the delivered branch (the branch the bus message FRIEND-CARD DELIVERED carries), sets the friend's git identity in the clone's local config, the friend's nova-config row `git_identity=` when it names one else the sprint row's git_identity (the OK line says which, `identity=friend` or `identity=sprint`; a nova-config read that fails refuses the stage, so a friend's commits are never attributed to the sprint's identity), and writes JOB.md naming the exact finish command (and its `--failed` form), and a line `BENCH: <host>` (the host it staged on; `BENCH: local` without `--bench`). With `--bench <host>` every git step and the JOB.md write run on that fleet member over ssh, through the one runner seam, the jobs directory default on a bench `~/<friend>-jobs` (`--dir` overrides), and a host that is no fleet member is refused with nothing written; without `--bench` it runs on the machine the verb runs on. The server runs it as a worker's verb, `friend stage <card>@<gen> --as friend.<name> --bench <host> [--dir <d>]`, so a friend needs only the server address. It refuses a card not dealt to the named friend (ready or working), and refuses when neither identity parses as `Name <email>` (it never falls back to the machine's global git config). A second run on an already staged directory refuses unless it is the same card@gen, branch, head and bench, and then prints the JOB.md path and exits 0; a JOB.md with no `BENCH:` line (a v1.6 stage, which only staged on the friend's own machine) matches as a local stage, so a local re-run accepts it and a `--bench` re-run refuses |
+| friend stage | stages a friend's dealt card in one step, `friend stage <card>@<gen> --as friend.<name> [--bench <host>] [--dir <jobs dir>]`: clones the card's REPO into `jobs/<job>/` at the card's NEXT head when one is carried, else at BASE, creates the delivered branch (the branch the bus message FRIEND-CARD DELIVERED carries), sets the friend's git identity in the clone's local config, the friend's nova-config row `git_identity=` when it names one else the sprint row's git_identity (the OK line says which, `identity=friend` or `identity=sprint`; a nova-config read that fails refuses the stage, so a friend's commits are never attributed to the sprint's identity), and writes JOB.md naming the exact finish command (and its `--failed` form), and a line `BENCH: <host>` (the host it staged on; `BENCH: local` without `--bench`). With `--bench <host>` every git step and the JOB.md write run on that fleet member over ssh, through the one runner seam, the jobs directory default on a bench `~/<friend>-jobs` (`--dir` overrides), and a host that is no fleet member is refused with nothing written; without `--bench` it runs on the machine the verb runs on. The server runs it as a worker's verb, `friend stage <card>@<gen> --as friend.<name> --bench <host> [--dir <d>]`, so a friend needs only the server address; the server's `--dir` must name the friend's job root on the bench (`~/<friend>-jobs` or `$HOME/<friend>-jobs`) or a directory beneath it, else the server refuses, so a busy caller cannot choose where the server writes on a fleet machine. It refuses a card not dealt to the named friend (ready or working), and refuses when neither identity parses as `Name <email>` (it never falls back to the machine's global git config). A second run on an already staged directory refuses unless it is the same card@gen, branch, head and bench, and then prints the JOB.md path and exits 0; a JOB.md with no `BENCH:` line (a v1.6 stage, which only staged on the friend's own machine) matches as a local stage, so a local re-run accepts it and a `--bench` re-run refuses |
 | collect | every friend's outbox report of a card working on a friend's row finished as her row, a LAND only at origin's tip, and with `--dead-lanes` a lane her runner ENDed with no report finished failed (section 1, collect): `collect [<friend>...] [--dead-lanes] [--root <dir>] [--dry-run]`; never run by the server |
 | gc | the system's scratch reclaimed on the machine it runs on, or on `--machine`'s through the fleet runner (section 1, gc): `gc [--machine <m>] [--dry-run] [--max-age <d>] [--ai-root <dir>]`; job directories of finished or absent lanes, reader checkouts of recorded findings, lander worktrees and bench directories past `--max-age`, the go caches trimmed to their cap, never a path under no known scratch root or a clone with work that is nowhere else; one line per class and `GC OK freed=<bytes> volume=<use%>`; run by `run` on every machine hourly and on a volume at 80%; never run by the server |
 | friend give | the coordinator's undo of `friend take` (section 1, a friend's card taken back): `friend give <friend> <id>... [--reason <text>]`; on each card named (a primary or its work card), ready or waiting, its current attempt's work card loses `taken_from` her row, so the next deal may deal it to her again, a hard pin taken back from her included; the marks of other friends stay. A card taken back from her is given back as above; a ready card whose current work card is Done (a brief-replaced bounce) or absent is handed to her at its next attempt (`<id>: handed to <friend>`), eligibility as the deal holds it (tier, restriction, needs, a hard pin to another friend refused naming `nova-sprint unpin`). A card not ready or waiting, one whose work card is live on a row, one taken back from another friend, and a friend not on the friends table are refused, one `REFUSED` line each, the rest given; each given says `MOVED <card> may be dealt to <friend> again (<reason>)` (default reason: given back by the coordinator) with a happened note, then `FRIEND-GIVE OK moved=<n> refused=<m>` (`FAILED`, exit 1, when any is refused) |
@@ -7121,7 +7122,11 @@ names it, so the first of two duplicates is admitted. `add` skips and reports
 instead: a brief with a probable duplicate is held
 back and the rest of the wave admitted in one write, one `DUPLICATE <id>: <the same line>; run: nova-sprint add ... --not-a-duplicate-of <id>=<reason>`
 line each, and the add exits with the write's code (0 when it wrote the rest of the wave, and 1 only when every real card was held; 0 when none); `--not-a-duplicate-of <card>=<reason>` (repeated, a reason required) admits the card and records the
-reason on its admission note.
+reason on its admission note. `brief check` runs the same check over the briefs
+it holds, against the open cards of the one read-only snapshot it already
+loads, and names one `duplicate` finding per held brief in add's words, with a
+remedy that names `--not-a-duplicate-of`; brief check takes no such override
+(add does, to admit the brief).
 
 `TEST` names a test
 `git grep` finds at `BASE` in `--repo-dir`, and `BASE` exists there; with no
@@ -7371,6 +7376,67 @@ when the environment names one (`wins=env:NOVA_SPRINT_REDIS_USER`, `redis-wins=e
 `resolves=yes|no` (exit 1 on no); `seat logout` removes the file (`was=recorded|none`). The code is
 `cmd/nova-sprint/storelogin.go`; `TestABareVerbOpensTheStoreWithTheSeatLoginFromSecrets` measures
 it on the in-memory store with a fake secrets reader.
+
+#### No store secret in argv or a running process's environment
+
+(2026-10-18, card v17-store-secret-never-in-process-env: three coordinator helpers printed the
+live coordinator password by inspecting processes, because a long-running `nova-sprint run`
+started under `nova-secrets exec --only <NAME>` held it in its environment, which `ps -E` and
+`/proc/<pid>/environ` read.)
+
+The store password has three sources, and none is argv or a long-running process's environment:
+
+- **the seat login** (above), read in process from nova-secrets;
+- **a password file**: `NOVA_SPRINT_REDIS_PASSWORD_FILE=<absolute path>` names a file holding the
+  password (one trailing newline cut), for the user `NOVA_SPRINT_REDIS_USER` names. It is refused,
+  naming the path and the remedy (`chmod 600 <path>`) and never the content, unless it is a regular
+  file (opened with `O_NOFOLLOW`, so a symbolic link is refused), owned by this uid, with
+  `mode & 0o077 == 0`;
+- **the macOS keychain**: `NOVA_SPRINT_REDIS_PASSWORD_KEYCHAIN=<service>` reads the generic password
+  of that service for the account `NOVA_SPRINT_REDIS_USER` names, through
+  `/usr/bin/security find-generic-password -s <service> -a <user> -w`, its stdout captured in
+  process and its stderr never shown. On any other system the variable is a refusal naming it.
+
+The file and the keychain are read once per process into a `secrets.Secret` and handed to redisconn
+through the getenv storeOptions returns, as the seat login's is (`cmd/nova-sprint/secret_source.go`).
+A source wins over the environment's login and the recorded one; two sources at once, or a source
+beside `NOVA_SPRINT_REDIS_PASSWORD_ENV`, is a refusal naming the variables, never a guess.
+
+**The startup scrub** (`cmd/nova-sprint/secret_scrub.go`) is main's first act. Every
+password-bearing variable (the one `NOVA_SPRINT_REDIS_PASSWORD_ENV` names,
+`NOVA_REDIS_BENCH_PASSWORD`, `NOVA_REDIS_COORDINATOR_PASSWORD`, and any `NOVA_*_PASSWORD`) present
+in the environment is read into an in-process holder and unset, so no child the process starts (a
+land gate, git, a check, a shadow tick) inherits it, and the app's getenv answers the name from the
+holder. The pointers (`…_PASSWORD_ENV`, `…_PASSWORD_FILE`, `…_PASSWORD_KEYCHAIN`) carry no secret
+and stay.
+
+**The children that open the store.** Two verbs start a child that needs the login the scrub took.
+The shadow tick that `server switch` and `doctor --preflight` run (`<candidate> tick --shadow`,
+`runShadow` in `cmd/nova-sprint/shadow.go`) is a nova-sprint, so under an environment login it is
+handed the held password through the password file source: `childStoreEnv` writes it to a 0600
+file in a fresh 0700 temporary directory, points the child at it with
+`NOVA_SPRINT_REDIS_PASSWORD_FILE` in place of `NOVA_SPRINT_REDIS_PASSWORD_ENV` (the user stays),
+and removes the directory once the child exits; any other login is the child's to read itself. `live`
+reads the library with `nova-redis fn check`, which reads only `--password-env`: it resolves the
+login through storeOptions, as every verb does, and hands the password it holds to that short-lived
+child's environment alone, as it hands the seat login's (`TestShadowChildGetsTheEnvLoginThroughAPasswordFile`,
+`TestLiveHandsTheScrubbedEnvLoginToFnCheck`).
+
+**The re-exec.** Unsetting a variable does not clear the environment block the kernel keeps from
+exec, which `ps -E` (sysctl `kern.procargs2`) and `/proc/<pid>/environ` read. So when the scrub
+removed a value and the verb is long-running (`run`, `dashboard`, `watch`, `wait`, `play`, and any
+verb given `--watch`, `--wait` or `--every`: the loops of answer, friend sync, promote, snapshot), the process re-execs itself once: the same binary
+(`os.Executable`), the same argv, the scrubbed environment, and the held values on an inherited
+pipe whose write end is filled and closed before the exec, its descriptor named by
+`NOVA_SPRINT_SECRET_FD=<n>` (a number, never a value). The new process reads and closes that
+descriptor (refused unless it is a pipe) and unsets `NOVA_SPRINT_SECRET_FD` before anything else. A short-lived verb needs no
+re-exec. A re-exec that cannot be made is a refusal (exit 2) naming the password file as the
+remedy, never a server left holding the value. No flag of nova-sprint takes a secret value: a flag
+whose name ends in password, secret or token takes a NAME or a path
+(`TestNoFlagCarriesASecretValue`). `TestARunningServerHoldsNoSecretInArgvOrEnv` (functional)
+starts `nova-sprint run --listen` on a redis-server of the test's own whose ACL user's password is
+a fake secret, once in the launcher's shape and once with a password file, waits for its heartbeat,
+and reads the child's argv and environment as ps does: neither holds a byte of the secret.
 
 ### bases-view-r.w2
 
@@ -8794,7 +8860,7 @@ once, when it begins; while the same cause stands only the beat line names it (a
 unreadable queue's error is said again when its words change, being all that tells two
 outages apart).
 
-A refusal that no member can run a land gate (the gate listed no bench) is classed
+A refusal that no member the land loop can use runs a land gate (the gate listed no bench) is classed
 `no-gate-bench` at the source: its judgment names the streams with cards queued and the
 cause, `code=no-gate-bench: no gate bench ran the tree gate (every fleet member is down, or held with no gate bench left); streams: <s,...>; nova-sprint fleet unhold <member> restores it`, and the streams are display only, never in the key, so the same outage is
 one judgment as the queue changes. When a pass gets past the gate bench and clears it,

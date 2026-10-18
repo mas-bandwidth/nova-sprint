@@ -95,6 +95,10 @@ type HoldReq struct {
 	// ForceLast holds the last member that can run a land gate anyway: the hold passes
 	// and its note says no gate bench is left (--force-last).
 	ForceLast bool `json:",omitempty"`
+	// Self is the machine the land loop runs on (a fleet member): the last-gate
+	// guard counts the benches the land loop can use (LandBenches), which leave
+	// this machine out, so holding the last one left is refused. "" is none.
+	Self string `json:",-"`
 	// Cause, with a member's hold, is what ends it (hold_cause.go): a judgment as the
 	// coordinator named it (j<n>, or its id), with CauseNote the id it named (a
 	// doctor:<check> cause is refused: DoctorCauseDeferred). The tick ends the hold in the
@@ -207,9 +211,11 @@ func holdElsewhere(n string, kinds []string, release bool) string {
 // with no --return (a hold is a deal control, and a gate is not a card). A member a
 // machine holds (held_by or fault_since) is no bench, and neither is one the coordinator
 // took down with fleet down (hold --return, HeldToReturn): the operator took it out of
-// service. Snapshot.GateMembers (the land gate's benches) and check.go rule 11 count
-// the benches by it, and this guard counts the members a hold does not name by it (it
-// still counts a named member as gone, and never refuses a --return). tla/DirtyTick.tla LandGate (MCDirtyTickGateHeld.cfg; the reversed witness
+// service. Snapshot.GateMembers (the land gate's benches) and its LandBenches (those
+// gates the land loop uses, minus the server's own machine and any host check refuses)
+// and check.go rule 11 count the benches by it, and this guard counts the members a hold
+// does not name by LandBenches (it still counts a named member as gone, and never refuses
+// a --return). tla/DirtyTick.tla LandGate (MCDirtyTickGateHeld.cfg; the reversed witness
 // MCDirtyTickBrokenGateReturned.cfg gates a returned member).
 func gateCapable(ctl *Card) bool {
 	if ctl == nil {
@@ -277,20 +283,25 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 			keep[t.Name] = true
 		}
 	}
-	// A hold that would leave no member able to run a land gate is refused before any
-	// plan is built: every landing would be refused until one is unheld. It fires only
-	// when at least one member is outside the hold (a hold naming every member is a
-	// deliberate full-fleet action) and every such member is already no bench. The
-	// members named here count as gone; release, a member already unable to run a gate,
-	// and the old --return maintenance path (fleet down) are never refused. A fleet of
-	// one member is never refused (its only member is its routine maintenance hold, a
-	// long-standing flow). --force-last records the override on the note instead.
+	// A hold that would leave no bench the land loop can use is refused before any plan
+	// is built: every landing would be refused until one is unheld. The benches are the
+	// hold the land loop runs on (Snapshot.LandBenches: up or held by the coordinator
+	// with no --return, the server's own machine and any host check refuses left out), so
+	// a fleet whose only gate-capable member is the server's own machine still has no
+	// usable bench. It fires only when at least one member is outside the hold (a hold
+	// naming every member is a deliberate full-fleet action) and every such member is
+	// already no bench to the land loop. The members named here count as gone; release, a
+	// member already unable to run a gate, and the old --return maintenance path (fleet
+	// down) are never refused. A fleet of one member is never refused (its only member is
+	// its routine maintenance hold, a long-standing flow). --force-last records the
+	// override on the note instead.
 	forceLast := false
 	if len(members) > 0 && !r.Release && !r.Return && !lastGateGuardOff && len(s.Members()) >= 2 {
 		named := map[string]bool{}
 		for _, m := range members {
 			named[m] = true
 		}
+		benches := s.LandBenches(r.Self)
 		capable, last := 0, ""
 		unnamed := 0
 		for _, m := range s.Members() {
@@ -298,12 +309,12 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 				continue
 			}
 			unnamed++
-			if gateCapable(s.MemberCtl(m)) {
+			if slices.Contains(benches, m) {
 				capable++
 			}
 		}
 		for _, m := range members {
-			if gateCapable(s.MemberCtl(m)) {
+			if slices.Contains(benches, m) {
 				last = m
 			}
 		}

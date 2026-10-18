@@ -145,7 +145,7 @@ func (a *app) cmdHoldKind(verb, kind string, release bool, args []string, stdout
 		fmt.Fprintf(stdout, "%s DRY-RUN names=%s return=%t; nothing was written\n", strings.ToUpper(name), strings.Join(pos, ","), ret)
 		return 0
 	}
-	req := sprint.HoldReq{Names: pos, Release: release, Return: ret, Kind: kind, Reason: *reason, Who: c.actor, ForceLast: forceLast}
+	req := sprint.HoldReq{Names: pos, Release: release, Return: ret, Kind: kind, Reason: *reason, Who: c.actor, ForceLast: forceLast, Self: a.machineName()}
 	if req.Cause = strings.TrimSpace(*cause); req.Cause != "" {
 		if _, doctor := sprint.DoctorCause(req.Cause); doctor {
 			// no doctor cause in v1.2.x (hold_cause.go, DoctorCauseDeferred)
@@ -231,7 +231,7 @@ func (a *app) cmdFleetDown(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "fleet down", err.Error())
 	}
-	return a.runHold("fleet down", "fleet hold", *c, st, sprint.HoldReq{Names: pos, Kind: sprint.HoldMember, Return: true, Who: c.actor}, nil, stdout, stderr)
+	return a.runHold("fleet down", "fleet hold", *c, st, sprint.HoldReq{Names: pos, Kind: sprint.HoldMember, Return: true, Who: c.actor, Self: a.machineName()}, nil, stdout, stderr)
 }
 
 // oldHoldWords is what fleet down, reader away and reader up say on -h: the hold verb

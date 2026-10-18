@@ -46,7 +46,7 @@ func holdGateSnapshot(state map[string]string) *sprint.Snapshot {
 func noGateViolations(vs []sprint.Violation) []sprint.Violation {
 	var out []sprint.Violation
 	for _, v := range vs {
-		if strings.Contains(v.Detail, "no member can run a land gate") {
+		if strings.Contains(v.Detail, "no member the land loop can use") {
 			out = append(out, v)
 		}
 	}
@@ -64,7 +64,7 @@ func TestCheckFlagsMergingCardsWithNoGateBench(t *testing.T) {
 	held := holdGateSnapshot(map[string]string{"m1": "ret", "m2": "ret"})
 	vs := noGateViolations(sprint.Check(held, nil))
 	require.Len(t, vs, 1, "check does not name it: %v", sprint.Check(held, nil))
-	assert.Contains(t, vs[0].Detail, "stream s1 has 1 merging card(s) and no member can run a land gate: nova-sprint fleet unhold <member>")
+	assert.Contains(t, vs[0].Detail, "stream s1 has 1 merging card(s) and no member the land loop can use: nova-sprint fleet unhold <member>")
 
 	up := holdGateSnapshot(map[string]string{"m1": "up", "m2": "coord"})
 	assert.Empty(t, noGateViolations(sprint.Check(up, nil)), "one member up leaves a gate bench: %v", sprint.Check(up, nil))
