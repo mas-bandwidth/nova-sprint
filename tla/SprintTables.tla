@@ -141,7 +141,8 @@
 \* tick, NeedsWait and NeedsWithdraw, held by NeedsWithdrawalWaits), AcceptHeld (no primary enters merging short of its
 \* reads), NeverAcceptBroken (no primary enters merging with a broken read at
 \* its head) and NeverReadByItsWorker (a read is never asked of the reader that
-\* worked the card). Action properties: NoCardLostOrTwice, MovesOnlyByTable
+\* worked the card), HeldNeverWorks (a primary held by server-default is never
+\* working: a rework answers the hold, ReworkHeldInPlace). Action properties: NoCardLostOrTwice, MovesOnlyByTable
 \* (every change of cell is a lawful move, a drop from an open state, or a
 \* remove of a landed card), ReadyToWaitingOnlyByInsertOrNeeds, LandedIsFinal,
 \* NeedsLandFirst (waiting -> ready only with every need landed or waived),
@@ -213,6 +214,10 @@
 \*                  card withdrawn or not: a held ready card a sentinel
 \*                  insert would pull, which the lifecycle's hold guard
 \*                  refuses with the whole add (HeldReadyIsWithdrawn).
+\*   "reworkkeepshold" a rework of a held in-place primary deals it and leaves
+\*                  the server-default hold on, as steps_review.go Rework did
+\*                  before 2026-10-18 (deadlock j25715): the primary works
+\*                  while held, and every finish is refused (HeldNeverWorks).
 \*   "halfstep"     the fence is dropped, so a crash leaves a step half-written
 \*                  (its fleet writes committed, its work-table write pending)
 \*                  and other actions may act on the half-written table; a
@@ -1400,6 +1405,32 @@ DecisionReleaseStep ==
   /\ UNCHANGED <<briefGeneration, attemptGeneration, headGeneration, keptHead, operationalEdits,
        needs, waived, everLanded, members, wplace, wmember, rplace, mg, sstream,
        scause, ranked, pending, ci, parkBound, parkSaved, parkCause, parkHead, parkReads>>
+\* ReworkHeldInPlace: a rework of a held in-place primary answers the hold (this
+\* card v17-rework-clears-the-server-default-hold; deadlock j25715): the primary
+\* is dealt again (state -> working, its work card dealt) and the hold is removed
+\* (parkState' = "released"); like Start, the deal stamps the attempt generation
+\* (GenerationStep). Enabled in the instances DecisionParkStep is. The
+\* reversed witness "reworkkeepshold" leaves parkState "held", so HeldNeverWorks
+\* fails: the primary works while still held. Only Rework's deal-at-once branch
+\* is modelled (not its no-member-up branch back to ready, nor ClearReads): the
+\* model admits more than the code, never less.
+ReworkHeldInPlace ==
+  /\ Cardinality(Card) <= 2
+  /\ Free /\ parkState = "held" /\ InPlace(ParkCard)
+  /\ NeedsMet(ParkCard)
+  /\ \E m \in Up :
+        /\ state' = [state EXCEPT ![ParkCard] = "working"]
+        /\ wplace' = [wplace EXCEPT ![ParkCard] = "ready"]
+        /\ wmember' = [wmember EXCEPT ![ParkCard] = m]
+  /\ pendstate' = state'
+  /\ flags' = NoFlags
+  /\ parkState' = IF Broken = "reworkkeepshold" THEN "held" ELSE "released"
+  /\ parkEvent' = "rework"
+  /\ GenerationStep
+  /\ UNCHANGED <<needs, waived, everLanded, members, rplace, mg, sstream,
+       scause, ranked, pending, ci, parkBound, parkSaved, parkCause, parkHead, parkReads>>
+
+HeldNeverWorks == parkState = "held" => state[ParkCard] # "working"
 \* Follow: the needs record's views follow every step that is not a refused finish.
 \* waitsAfter[c] (steps_edit.go NeedsSet, briefDepends, the brief path; the
 \* rule-11 marker) is, for a card working before and after the step, its old
@@ -1440,7 +1471,7 @@ FinishRefused ==
     /\ UNCHANGED <<waitsAfter, vars, parkingVars>>
 
 Next == \/ (((LegacyNext /\ GenerationStep) \/ Brief \/ OperationalEdit) /\ ParkFence /\ UNCHANGED parkingVars /\ Follow)
-        \/ ((DecisionParkStep \/ DecisionReleaseStep) /\ Follow)
+        \/ ((DecisionParkStep \/ DecisionReleaseStep \/ ReworkHeldInPlace) /\ Follow)
         \/ FinishRefused
 
 NoOldBriefHeadInReview ==
