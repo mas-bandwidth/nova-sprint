@@ -543,6 +543,7 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 			land = false
 		}
 	}
+	loopCtx := context.Background()
 	if land {
 		// this server lands: its record says so, and a land by hand beside it is
 		// refused before any clone is touched (landfence.go, serverLanding;
@@ -556,7 +557,8 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 		}
 		// the land loop ends with run: a run that returns (a replaced binary, a test's one loop) stops its land loop
 		// and waits for it, bounded, before its output is given back
-		landCtx, stopLand := context.WithCancel(context.Background())
+		landCtx, stopLand := a.notify(context.Background())
+		loopCtx = landCtx
 		landDone := make(chan struct{})
 		go func() {
 			defer close(landDone)
@@ -604,7 +606,7 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 	_ = a.serverStart(context.Background(), st)
 
 	fmt.Fprintf(stdout, "RUN ticking on every line of the log (at most every %s) and every %s while it is quiet; %s\n", store.TickFloor, a.quietEvery, st.MachineLine(context.Background()))
-	if a.runLoop(context.Background(), st, c.max, 0, stdout, stderr) {
+	if a.runLoop(loopCtx, st, c.max, 0, stdout, stderr) {
 		return exitReplaced
 	}
 	return 0
