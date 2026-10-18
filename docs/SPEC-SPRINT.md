@@ -7455,6 +7455,12 @@ refusal, nothing written. No tree is one `MISSING` line, not a pass, and so is a
 omits BASE, is not read against a tree. The test is
 `TestAdmissionRefusesABriefWhosePathsDoNotHoldWhatItNames`.
 
+`brief check` also compares a file's `LAND-AFTER:` list with the stored soft
+dependencies when its id is a placed primary. A mismatch is reported as
+`land-after` with both lists and the `brief <id> --brief-file <path>` and
+`needs set <id> --land-after <ids>` commands that change each side. Equal lists,
+unknown ids and sentinels have no such finding; this check is read-only.
+
 ### Statistics
 
 The counters the tables show grow for the whole epoch: a fleet row's or a friend's row's
