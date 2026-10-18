@@ -835,11 +835,12 @@ func (l *lander) dryGateBatch(b *landBatch) bool {
 	return true
 }
 
-// dryGate is the dry run's tree gate, which runs nothing: the bench the loop would send
-// the batch's gate to (the first slot of the batch's stream on the ring over gateHosts,
-// benchRing), or, when another member is configured and none may gate, the loop's refusal
-// (benchGateUnavailableWhy). Both are empty for a clone with no gate (no go.mod and no
-// CMakeLists.txt, treeGate) and when the gate would run here. No ssh and no git.
+// dryGate is the dry run's tree gate, which runs nothing: the bench the land would send
+// the batch's gate to (gateBenches, the route runTreeGate takes: the first slot of the
+// batch's stream on the ring over the gate benches, benchRing), or, when another member is
+// configured and none may gate, the land's refusal (benchGateUnavailableWhy). Both are
+// empty for a clone with no gate (no go.mod and no CMakeLists.txt, treeGate) and when the
+// gate would run here, as a direct land's does. No ssh and no git.
 func (l *lander) dryGate(dir string) (host, why string) {
 	if dir != "" {
 		_, gerr := os.Stat(filepath.Join(dir, "go.mod"))
@@ -848,7 +849,7 @@ func (l *lander) dryGate(dir string) (host, why string) {
 			return "", ""
 		}
 	}
-	hosts, remote := l.gateHosts(context.Background())
+	hosts, _, remote := l.gateBenches(context.Background())
 	if len(hosts) > 0 {
 		return benchRing(l.gateKey, hosts)[0], ""
 	}
@@ -2466,7 +2467,11 @@ func (l *lander) runCheck(ctx context.Context, dir string) (why, out string) {
 	}
 	b := subproc.Prepare(ctx, landCheckBudget, "sh", "-c", l.check)
 	defer b.Cancel()
-	b.Cmd.Dir, b.Cmd.Env = dir, l.a.gitEnv
+	env := l.a.gitEnv
+	if env == nil {
+		env = os.Environ()
+	}
+	b.Cmd.Dir, b.Cmd.Env = dir, gateChildEnv(env)
 	raw, err := b.Cmd.CombinedOutput()
 	if err = b.Wrap("check "+l.check, err); err != nil {
 		return "the check " + l.check + " failed: " + oneline.Err(err) + checkTail(string(raw)), string(raw)
@@ -2765,7 +2770,7 @@ func (l *lander) gitEnv() []string {
 	if env == nil {
 		env = os.Environ()
 	}
-	return withMachineGitIdentity(env, l.identity)
+	return withMachineGitIdentity(gateChildEnv(env), l.identity)
 }
 
 // firstLine is a failure's words on one line: the error's, else out's.

@@ -1412,8 +1412,10 @@ DecisionReleaseStep ==
 \* (GenerationStep). Enabled in the instances DecisionParkStep is. The
 \* reversed witness "reworkkeepshold" leaves parkState "held", so HeldNeverWorks
 \* fails: the primary works while still held. Only Rework's deal-at-once branch
-\* is modelled (not its no-member-up branch back to ready, nor ClearReads): the
-\* model admits more than the code, never less.
+\* is modelled: the code's no-member-up branch (reworkAnswersHold with
+\* e.Move == nil, lifecycle.go), which leaves the primary in place in ready, is
+\* not modelled (nor is ClearReads), so the model admits less than the code
+\* there.
 ReworkHeldInPlace ==
   /\ Cardinality(Card) <= 2
   /\ Free /\ parkState = "held" /\ InPlace(ParkCard)

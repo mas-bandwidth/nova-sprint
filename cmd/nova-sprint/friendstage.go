@@ -134,7 +134,7 @@ const friendStageBound = 10 * time.Minute
 var friendStageWithTimeout = context.WithTimeout
 
 // friendStageWords is what friend stage says on -h.
-var friendStageWords = "friend stage <card>@<gen> --as friend.<name> [--bench <host>] [--dir <jobs dir>] stages a friend's dealt card in one step: it clones the card's REPO into <jobs dir>/<card>.w<N> at the card's NEXT head when one is carried, else at BASE, creates the delivered branch (the branch the bus message FRIEND-CARD DELIVERED carries), sets the friend's git identity in the clone's local config (the friend's nova-config row git_identity= field when it names one, else the sprint row's git_identity; when nova-config cannot be read, the sprint row's is used instead of refusing; the OK line says which, identity=friend or identity=sprint), and writes JOB.md naming the exact finish command. With --bench <host> every git step and the JOB.md write run on that host over ssh (the jobs directory default on a bench is ~/<friend>-jobs; --dir overrides; the host must be a fleet member, and JOB.md names it BENCH). Without --bench it runs on this machine and JOB.md says BENCH: local. It gives up after " + friendStageBound.String() + " on a bench that does not answer, refusing an expiry naming the bound and the host. It refuses a card not dealt to the named friend, and refuses when neither identity parses as Name <email> (it never falls back to the machine's global git config). A second run on an already staged directory refuses unless it is the same card@gen, branch, head and bench, and then prints the JOB.md path and exits 0.\n"
+var friendStageWords = "friend stage <card>@<gen> --as friend.<name> [--bench <host>] [--dir <jobs dir>] stages a friend's dealt card in one step: it clones the card's REPO into <jobs dir>/<card>.w<N> at the card's NEXT head when one is carried, else at BASE, creates the delivered branch (the branch the bus message FRIEND-CARD DELIVERED carries), sets the friend's git identity in the clone's local config (the friend's nova-config row git_identity= field when it names one, else the sprint row's git_identity; when nova-config cannot be read, the stage is refused; the OK line says which, identity=friend or identity=sprint), and writes JOB.md naming the exact finish command. With --bench <host> every git step and the JOB.md write run on that host over ssh (the jobs directory default on a bench is ~/<friend>-jobs; --dir overrides; the host must be a fleet member, and JOB.md names it BENCH). Without --bench it runs on this machine and JOB.md says BENCH: local. A friend can run it through the sprint server as friend stage <card>@<gen> --as friend.<name> --bench <host> [--dir <d>]; the server's --dir must name the friend's job root on the bench (~/<friend>-jobs or $HOME/<friend>-jobs) or a directory beneath it, else the server refuses. It gives up after " + friendStageBound.String() + " including store acquisition, refusing an expiry that names the bound and the host; every ssh uses -o BatchMode=yes -o ConnectTimeout=10. It refuses a card not dealt to the named friend, and refuses when neither identity parses as Name <email> (it never falls back to the machine's global git config). A second run on an already staged directory refuses unless it is the same card@gen, branch, head and bench, and then prints the JOB.md path and exits 0.\n"
 
 // splitFriendCardGen parses --as friend.<name> and a <card>@<gen> operand.
 // splitFriendCardGen returns the friend name, the card id, the generation, and
@@ -228,18 +228,20 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	// (3) the friend's own git identity, from her nova-config row when it names one, else the
 	// sprint row's git_identity (v1.4.5: the friend kind has no git_identity field yet, so a
 	// row could never name one and every friend delivery was refused); never the machine's
-	// global git config
-	git := ""
+	// global git config. A read that fails refuses the stage: her identity is unknown then,
+	// and the sprint row's would attribute her commits to someone else.
 	rows, ferr := a.friends(ctx, *pg)
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return friendStageTimedOut(stderr, name, host)
 	}
-	if ferr == nil {
-		for _, r := range rows {
-			if r.Name == friendName {
-				git = r.Fields["git_identity"]
-				break
-			}
+	if ferr != nil {
+		return refuseState(stderr, name, fmt.Sprintf("nova-config could not be read (%s), so friend %s's git identity is unknown; nothing was staged; run: nova-config friend list", oneline.Err(ferr), friendName))
+	}
+	git := ""
+	for _, r := range rows {
+		if r.Name == friendName {
+			git = r.Fields["git_identity"]
+			break
 		}
 	}
 	identityFrom := "friend"
