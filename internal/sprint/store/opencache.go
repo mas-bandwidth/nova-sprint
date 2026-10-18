@@ -18,8 +18,9 @@ import (
 // land loop, the decide lane and the dashboard. A note is decoded again only
 // when its stored text differs from the text the cache holds (SetReview and a
 // commit rewrite a note in place), so a read gives what a fresh decode gives;
-// the round trips are unchanged. The cache holds only the notes the last read
-// named, so it is bounded by the open index.
+// the round trips are unchanged. Each cache holds only the notes its last read
+// named, so it is bounded by the open index; the caches are bounded by
+// openCachesMax (openCacheFor).
 type openCache struct {
 	mu    sync.Mutex
 	notes map[string]openCached // by note id
@@ -38,7 +39,34 @@ type openCacheKey struct {
 	key    string
 }
 
-var openCaches sync.Map // openCacheKey -> *openCache
+// openCaches is the caches by client and notes key: at most openCachesMax, so
+// the keys of past epochs (a clear moves the notes key) and the clients of
+// stores gone are not held for the life of the process.
+var openCaches struct {
+	mu sync.Mutex
+	m  map[openCacheKey]*openCache
+}
+
+// openCachesMax bounds openCaches: a process reads the epoch it is pinned to
+// and, now and then, one before it.
+const openCachesMax = 4
+
+// openCacheFor is the cache of the client and notes key, made on first use;
+// making one past openCachesMax drops the others first.
+func openCacheFor(client redis.UniversalClient, key string) *openCache {
+	k := openCacheKey{client, key}
+	openCaches.mu.Lock()
+	defer openCaches.mu.Unlock()
+	if c := openCaches.m[k]; c != nil {
+		return c
+	}
+	if openCaches.m == nil || len(openCaches.m) >= openCachesMax {
+		openCaches.m = map[openCacheKey]*openCache{}
+	}
+	c := &openCache{}
+	openCaches.m[k] = c
+	return c
+}
 
 // decodeOpenNote is one stored note decoded.
 func decodeOpenNote(raw string) (sprint.Note, error) {
@@ -50,10 +78,13 @@ func decodeOpenNote(raw string) (sprint.Note, error) {
 // notesOf is the notes of the HMGET answer vals for ids (a value that is not a
 // string is a note not found, left out), each decoded by decode only when its
 // text is not the one the cache holds. Every note given is a copy: nothing a
-// caller does to it reaches the cache.
+// caller does to it reaches the cache. The decodes run outside the cache's lock
+// (a read never changes a kept map, it puts a new one), so concurrent readers
+// decode side by side, as before the cache; the last to finish is kept.
 func (c *openCache) notesOf(ids []string, vals []any, decode func(string) (sprint.Note, error)) (map[string]sprint.Note, error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	held := c.notes
+	c.mu.Unlock()
 	kept := make(map[string]openCached, len(ids))
 	out := make(map[string]sprint.Note, len(ids))
 	for i, v := range vals {
@@ -61,7 +92,7 @@ func (c *openCache) notesOf(ids []string, vals []any, decode func(string) (sprin
 		if !ok {
 			continue
 		}
-		e, hit := c.notes[ids[i]]
+		e, hit := held[ids[i]]
 		if !hit || e.raw != s {
 			n, err := decode(s)
 			if err != nil {
@@ -72,7 +103,9 @@ func (c *openCache) notesOf(ids []string, vals []any, decode func(string) (sprin
 		kept[ids[i]] = e
 		out[ids[i]] = cloneNote(e.note)
 	}
+	c.mu.Lock()
 	c.notes = kept
+	c.mu.Unlock()
 	return out, nil
 }
 

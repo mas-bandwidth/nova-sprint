@@ -137,7 +137,8 @@ func doneRowFns() RowFns[donePage] {
 }
 
 // doneRows makes and registers the one done reader on this Store. S4: its counts are the evidence
-// exported by Check and shared with pinned copies.
+// exported by Check and shared with pinned copies. What Check reports is every page read, a page
+// donePageOf gave from its memo included (doneReads): the codec's own counter counts decodes.
 func (st *Store) doneRows() *RowCodec[donePage] {
 	if st == nil {
 		return nil
@@ -145,8 +146,65 @@ func (st *Store) doneRows() *RowCodec[donePage] {
 	lazyMu.Lock()
 	defer lazyMu.Unlock()
 	c := st.doneRowsLocked()
-	c.Register(st)
+	registerRowSource(st, doneReads{c})
 	return c
+}
+
+// doneReads is the done reader as Check counts it: the codec's reads by form, and the pages
+// donePageOf gave from its memo, by the form each was stored in (doneMemoHits), so a page read
+// counts once whether it was decoded or not.
+type doneReads struct{ c *RowCodec[donePage] }
+
+func (d doneReads) rowName() string { return d.c.rowName() }
+
+func (d doneReads) rowSnapshot() map[string]uint64 {
+	m := d.c.rowSnapshot()
+	if v, ok := doneMemoHits.Load(d.c); ok {
+		h := v.(*doneHits)
+		h.mu.Lock()
+		for form, n := range h.n {
+			m[form] += n
+		}
+		h.mu.Unlock()
+	}
+	return m
+}
+
+// doneHits is one done reader's memo hits by form.
+type doneHits struct {
+	mu sync.Mutex
+	n  map[string]uint64
+}
+
+// doneMemoHits is each done reader's memo hits (*RowCodec[donePage] -> *doneHits). It keeps no
+// reader alive longer than rowRegs does already: every reader is registered there for the life
+// of the process.
+var doneMemoHits sync.Map
+
+// countDoneRead counts a page given from the memo as a read of its form on st's reader.
+func (st *Store) countDoneRead(form string) {
+	v, _ := doneMemoHits.LoadOrStore(st.doneRows(), &doneHits{})
+	h := v.(*doneHits)
+	h.mu.Lock()
+	if h.n == nil {
+		h.n = map[string]uint64{}
+	}
+	h.n[form]++
+	h.mu.Unlock()
+}
+
+// doneReadCounts is the done reader's reads by form, as Check reports them (doneReads).
+func (st *Store) doneReadCounts() map[string]uint64 { return doneReads{st.doneRows()}.rowSnapshot() }
+
+// registerRowSource is RowCodec.Register for a source that is not a codec itself.
+func registerRowSource(st *Store, src rowSource) {
+	v, _ := rowRegs.LoadOrStore(st, &rowReg{})
+	r := v.(*rowReg)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !slices.Contains(r.list, src) {
+		r.list = append(r.list, src)
+	}
 }
 
 // doneRowsLocked is doneRows while lazyMu is held (S4).
@@ -261,10 +319,11 @@ var donePages struct {
 	pages map[string]donePageMemo
 }
 
-// donePageMemo is one page decoded: its record and declared page count.
+// donePageMemo is one page decoded: its record, declared page count and stored form.
 type donePageMemo struct {
 	rec   DoneRecord
 	pages uint32
+	form  string
 }
 
 // doneMemoMax bounds donePages: a done record of 95 entries a page and some.
@@ -272,7 +331,8 @@ const doneMemoMax = 512
 
 // donePageOf is decodeDonePage, from donePages when the page was decoded before. Only a
 // fixed-table page that reads is kept: a legacy page is rewritten at its first read, and a
-// refusal is decoded (and counted) each time. The record given is a copy.
+// refusal is decoded (and counted) each time. A page from the memo is counted as a read of its
+// form (countDoneRead), as a decode counts one. The record given is a copy.
 func (st *Store) donePageOf(raw string) (DoneRecord, uint32, string) {
 	if raw == "" || raw[0] == '{' {
 		return st.decodeDonePage(raw)
@@ -285,13 +345,15 @@ func (st *Store) donePageOf(raw string) (DoneRecord, uint32, string) {
 		if why != "" {
 			return r, pages, why
 		}
-		m = donePageMemo{rec: r, pages: pages}
+		m = donePageMemo{rec: r, pages: pages, form: st.doneRows().r.Detect([]byte(raw)).String()}
 		donePages.mu.Lock()
 		if donePages.pages == nil || len(donePages.pages) >= doneMemoMax {
 			donePages.pages = map[string]donePageMemo{}
 		}
 		donePages.pages[raw] = m
 		donePages.mu.Unlock()
+	} else {
+		st.countDoneRead(m.form)
 	}
 	r := m.rec
 	r.Done = slices.Clone(r.Done)
@@ -475,7 +537,7 @@ func (st *Store) doneAfter(ctx context.Context, r *DoneRecord, pages int) (more 
 	return st.doneAfterRead(ctx, r, pages, nil)
 }
 
-// doneAfterRead is doneAfter with the log pages the tick's card log index read (logPagesRead,
+// doneAfterRead is doneAfter with the log pages the tick's card log index read (logPagesShared,
 // keepLogIndex) taken from read instead of the store, each by the cursor it was read after.
 func (st *Store) doneAfterRead(ctx context.Context, r *DoneRecord, pages int, read map[string]logPageRead) (more bool, err error) {
 	for n := 0; pages == 0 || n < pages; n++ {
@@ -506,22 +568,11 @@ func (st *Store) doneAfterRead(ctx context.Context, r *DoneRecord, pages int, re
 // newer layout (layout_newer) refuses by name and writes nothing over it
 // (tla/DoneRecord.tla: Tick, StaleWrite, OlderBuildNeverWritesNewerLayout).
 func (st *Store) keepDone(ctx context.Context, kv KV, raw string, ok bool) error {
+	// the whole record is read every tick (its pages decoded once, donePageOf): a record torn
+	// by a write cut between its pages (page 0 written, a later page not) does not read, and
+	// is rebuilt from the log here, on the next tick, quiet log or not
+	// (tla/DoneRecord.tla: TornWrite, TornRepaired)
 	read := st.takeLogPages()
-	// page 0 alone first: its cursor says whether the log has lines past it, and with none
-	// (most ticks) the record is not read further, as the tick writes nothing then
-	// (tla/DoneRecord.tla: Tick is enabled only while Current.cur < Len(log)). The fault of
-	// 2026-10-17: every tick decoded every page to find no new line.
-	if ok && raw != "" && raw[0] != '{' {
-		if head, _, why := st.donePageOf(raw); why == "" && head.Epoch == st.epoch {
-			_, ids, err := st.logPageAfter(ctx, head.Cursor, read)
-			if err != nil {
-				return err
-			}
-			if len(ids) == 0 {
-				return nil
-			}
-		}
-	}
 	r, prevPages, why, err := st.readDoneFrom(ctx, kv, raw, ok)
 	if err != nil {
 		return err

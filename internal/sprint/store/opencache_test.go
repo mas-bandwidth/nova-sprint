@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -169,5 +170,24 @@ func TestOpenCacheGivesCopies(t *testing.T) {
 	}
 	if !reflect.DeepEqual(again["x"], want) {
 		t.Fatalf("a caller's change to its note reached the cache:\n got %+v\nwant %+v", again["x"], want)
+	}
+}
+
+// The caches are bounded: a process that reads many epochs' notes keys (each clear moves the
+// key) or many clients holds at most openCachesMax caches, not one per key for ever (cold read
+// of PR #486, 2026-10-17). Not parallel: openCaches is the process's.
+func TestOpenCachesAreBounded(t *testing.T) {
+	first := openCacheFor(nil, "bounded-notes:1")
+	if openCacheFor(nil, "bounded-notes:1") != first {
+		t.Fatal("the same key gave another cache")
+	}
+	for e := 2; e <= 3*openCachesMax; e++ {
+		openCacheFor(nil, fmt.Sprintf("bounded-notes:%d", e))
+		openCaches.mu.Lock()
+		n := len(openCaches.m)
+		openCaches.mu.Unlock()
+		if n > openCachesMax {
+			t.Fatalf("%d caches after %d keys, want at most %d", n, e, openCachesMax)
+		}
 	}
 }

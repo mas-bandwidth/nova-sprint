@@ -1067,8 +1067,7 @@ func (r *Redis) openOf(ctx context.Context, open map[string]string) ([]sprint.Op
 		return nil, err
 	}
 	// each note decoded only when its text changed since the last read (opencache.go)
-	c, _ := openCaches.LoadOrStore(openCacheKey{r.C, key}, &openCache{})
-	notes, err := c.(*openCache).notesOf(ids, vals, decodeOpenNote)
+	notes, err := openCacheFor(r.C, key).notesOf(ids, vals, decodeOpenNote)
 	if err != nil {
 		return nil, err
 	}
