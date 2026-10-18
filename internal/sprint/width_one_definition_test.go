@@ -199,9 +199,6 @@ func TestMemberWidthIsNovaConfigs(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, 8, got, "the step's width is nova-config's, not the copy's")
 	// the check names the drift, one line with both values, as a violation
-	drift := WidthDrift(w.s, cfg)
-	require.Len(t, drift, 1)
-	assert.Contains(t, drift[0], "hetzner1: sprint width 16, nova-config width 8")
 	checks := DoctorFleetRows(DoctorInput{Snap: w.s, Machines: []DoctorMachine{{Name: "hetzner1", Width: 8}}})
 	var fails []string
 	for _, c := range checks {
@@ -219,7 +216,6 @@ func TestMemberWidthIsNovaConfigs(t *testing.T) {
 	assert.Contains(t, p.Units[1].Moved, "hetzner1 width=8 (was 16): read from nova-config")
 	w.must(p)
 	assert.Equal(t, 8, w.s.Width("hetzner1"))
-	assert.Empty(t, WidthDrift(w.s, cfg))
 	assert.Len(t, WidthRefresh(w.s, writes, cfg).Units, 1, "a refresh after a refresh writes nothing")
 	// a member that drains keeps its drain: the refresh never lifts it
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "hetzner1", Drain: true}))

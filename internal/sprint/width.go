@@ -457,24 +457,3 @@ func WidthRefresh(s *Snapshot, p Plan, cfg map[string]int) Plan {
 	}
 	return p
 }
-
-// WidthDrift is each member whose control-card width is not nova-config's (cfg), one line
-// each with both values, in member order: what nova-sprint doctor reports as a FAIL and
-// WidthRefresh writes. A member that drains is no drift.
-func WidthDrift(s *Snapshot, cfg map[string]int) []string {
-	if s == nil || s.Fleet == nil {
-		return nil
-	}
-	var out []string
-	for _, m := range s.Members() {
-		ctl := s.MemberCtl(m)
-		n, read := cfg[m]
-		if ctl == nil || !read || n < 1 || MemberWidth(ctl) == 0 {
-			continue
-		}
-		if have := MemberWidth(ctl); have != n {
-			out = append(out, fmt.Sprintf("%s: sprint width %d, nova-config width %d (the one width is nova-config's: nova-config machine list)", m, have, n))
-		}
-	}
-	return out
-}
