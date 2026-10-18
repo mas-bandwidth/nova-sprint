@@ -9602,8 +9602,10 @@ This transport check supplies no session challenge answer or presence proof.
 
 The 2026-10-15 owner's ruling supersedes the earlier repeated coordinator warning
 **after the judgment deadline**. Before that deadline, the 30-minute folded
-warning remains. At the deadline, all unanswered decisions form one message per
-changed set to the coordinator. The owner receives the current folded set at most once every 30 minutes, including changed sets. The owner is the existing
+warning remains. At the deadline, all unanswered decisions form one message per changed set to
+the coordinator. When the owner lane has the same recipient and set, that notice
+serves both lanes and both receipt marks are recorded. Otherwise the owner receives
+the current folded set at most once every 30 minutes, including changed sets. The owner is the existing
 `init --owner` bus name, falling back to `NOVA_SPRINT_OWNER`; no new channel is
 configured. The owner escalation does not depend on a proven coordinator hook.
 An empty set or changed recipient does not erase the owner lane's last successful delivery time; new sets wait for the remaining interval. Successful receipts, frozen
@@ -9618,8 +9620,8 @@ payloads and retry tokens persist through server restart and are epoch-scoped.
 
 The deadline is the existing running-time interval (normally ten minutes), or the
 explicit review interval set by wait. A safe default is recorded with
-`actor=server-default`, its judgment ID and reason, and reported to both channels
-in their next folded message. A default never drops, accepts, merges, lands or
+`actor=server-default`, its judgment ID and reason, and reported in the folded message for each matching lane; when both lanes share a
+recipient and set, one notice records both receipt marks. A default never drops, accepts, merges, lands or
 changes a brief. Existing independent automatic answer rules retain their own
 contracts; they are not decision defaults.
 

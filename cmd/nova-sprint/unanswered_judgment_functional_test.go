@@ -270,20 +270,24 @@ func TestEveryCardHoldingJudgmentIsAnsweredOrEscalatedOnAStore(t *testing.T) {
 	r.mu.Lock()
 	delivered := append([]bus.Message(nil), r.sent[before:]...)
 	r.mu.Unlock()
-	for _, to := range []string{ujSeat, "glenn"} {
-		var notices []bus.Message
-		for _, m := range delivered {
-			if m.Subject == "nova-sprint: decisions owed" && len(m.To) == 1 && m.To[0] == to {
-				notices = append(notices, m)
-			}
+	// Before the fold, this test expected one notice to ujSeat and a second
+	// owner notice to glenn. The owner lane routes to the coordinator seat, so
+	// one matching recipient+set notice now serves both lanes.
+	var notices []bus.Message
+	for _, m := range delivered {
+		if m.Subject == "nova-sprint: decisions owed" && len(m.To) == 1 && m.To[0] == ujSeat {
+			notices = append(notices, m)
 		}
-		require.Len(t, notices, 1, "first look delivers one folded notice to %s: %+v", to, delivered)
-		body := notices[0].Body
-		assert.Contains(t, body, "s3-1")
-		assert.Contains(t, body, "cards=s6-1")
-		assert.Contains(t, body, "1 primaries of tier pro wait:")
-		assert.NotContains(t, body, "s5-1")
-		assert.NotContains(t, body, "2 primaries of tier pro wait:")
+	}
+	require.Len(t, notices, 1, "first look delivers one folded notice to the coordinator: %+v", delivered)
+	body := notices[0].Body
+	assert.Contains(t, body, "s3-1")
+	assert.Contains(t, body, "cards=s6-1")
+	assert.Contains(t, body, "1 primaries of tier pro wait:")
+	assert.NotContains(t, body, "s5-1")
+	assert.NotContains(t, body, "2 primaries of tier pro wait:")
+	for _, m := range delivered {
+		assert.NotEqual(t, []string{"glenn"}, m.To, "the owner does not receive a separate notice when the owner lane folds into the coordinator recipient and set")
 	}
 	r.mu.Lock()
 	before = len(r.sent)
