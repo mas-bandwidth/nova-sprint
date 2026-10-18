@@ -61,6 +61,10 @@ func (st *Store) WaitLog(ctx context.Context, epoch uint64, after string, d time
 	return after, false, nil
 }
 
+// LogWaitBlock is the longest one blocking read of the log: under the store
+// client's 5 s read timeout, so a block is never cut off and retried.
+const LogWaitBlock = 4 * time.Second
+
 // LogTail is the last stream id of the pinned epoch's log ("" when it is
 // empty): where a wait that has seen everything so far starts.
 func (st *Store) LogTail(ctx context.Context) (string, error) {
@@ -73,6 +77,22 @@ func (st *Store) LogTail(ctx context.Context) (string, error) {
 // XREAD returns, so every line up to it was committed before the loop's next
 // read, and the cursor never skips a line the next tick does not see.
 func (r *Redis) WaitLog(ctx context.Context, after string, d time.Duration) (string, bool, error) {
+	// a wait longer than one LogWaitBlock is a run of blocks, counted off d and
+	// not the clock: a block past the client's read timeout (5 s) is cut off and
+	// silently sent again (2026-10-17, the first QuietEvery of 10 s)
+	for {
+		block := min(d, LogWaitBlock)
+		tail, woke, err := r.waitLogOnce(ctx, after, block)
+		d -= block
+		if err != nil || woke || d <= 0 || ctx.Err() != nil {
+			return tail, woke, err
+		}
+		after = tail
+	}
+}
+
+// waitLogOnce is one XREAD BLOCK of at most d.
+func (r *Redis) waitLogOnce(ctx context.Context, after string, d time.Duration) (string, bool, error) {
 	start := after
 	if start == "" {
 		start = "0-0"
