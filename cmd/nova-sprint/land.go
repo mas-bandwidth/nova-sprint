@@ -392,6 +392,9 @@ type lander struct {
 	gateKey  string
 	gateRing int
 	gateSlot int
+	// gateRunBudget is a test's seam for one gate run's budget; zero means
+	// landGateRunBudget (gateOn).
+	gateRunBudget time.Duration
 	// laneAs is the holder this lander's gate records on a bench's Go lane: lander/<stream>
 	// in a stream's fork, landLaneBase in the base re-check (laneWho).
 	laneAs string
