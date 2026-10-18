@@ -10,7 +10,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 - [The sprint system](#the-sprint-system) (221)
 - [Setup, release and operations](#setup-release-and-operations) (72)
 - [Docs, models and the repository](#docs-models-and-the-repository) (25)
-- [Friend AIs](#friend-ais) (21)
+- [Friend AIs](#friend-ais) (22)
 - [Moved out of the sprint on 2026-10-15: nova-local](#moved-out-of-the-sprint-on-2026-10-15-nova-local) (1)
 - [Moved out of the sprint on 2026-10-15: v13-blockers](#moved-out-of-the-sprint-on-2026-10-15-v13-blockers) (19)
 - [Moved out of the sprint on 2026-10-15: v15-features](#moved-out-of-the-sprint-on-2026-10-15-v15-features) (1)
@@ -2905,6 +2905,16 @@ Why it waits: A schema migration on the fleet's configuration store, held out of
 Target: v1.5
 
 From: the coordinator's tool audit, 2026-10-16
+
+### A friend row hands out one ready-to-run worker brief per taken card
+
+Independent cards and merges always run in parallel, one worker per card, yet the coordinator kept batching several taken cards into one serial worker, at least 10 times in a month. The sprint already deals one card at a time; the serial queue comes from the coordinator's brief-writing step. Proposal: when a friend row takes cards, the machine itself writes one ready-to-run worker brief per taken card, carrying the card id, the gen, the epoch, the take and finish commands, the carried head, and the bench choice by load. A verb, `nova-sprint friend jobs <friend>`, lists them one per line for the coordinator's monitor to launch one worker per line, so no batching step is left for the coordinator to get wrong. Plus a check that flags a coordinator child holding more than one working card on the row, unless the cards are dependent or HOLD-only. Tests run on the in-memory twin with time as an argument.
+
+Why it waits: Glenn 2026-10-18, on the coordinator batching taken cards into one worker for a month: "How can you remember it? Or build it into the machine?" His standing rule, told for a month: independent cards and merges always run in parallel, one worker per card.
+
+Target: v1.9
+
+From: the owner, Glenn, 2026-10-18
 
 ## Moved out of the sprint on 2026-10-15: nova-local
 

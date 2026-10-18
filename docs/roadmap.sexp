@@ -4352,6 +4352,13 @@
    :why "the page is the owner's; its idle behaviour is his to state"
    :origin "the cold read of #490, 2026-10-18")
   ; Moved out of the sprint on 2026-10-18: v19, target v1.9
+  (item "v19-friend-row-hands-out-one-worker-brief-per-card" :group "friends" :area "nova-sprint"
+   :title "A friend row hands out one ready-to-run worker brief per taken card"
+   :text "Independent cards and merges always run in parallel, one worker per card, yet the coordinator kept batching several taken cards into one serial worker, at least 10 times in a month. The sprint already deals one card at a time; the serial queue comes from the coordinator's brief-writing step. Proposal: when a friend row takes cards, the machine itself writes one ready-to-run worker brief per taken card, carrying the card id, the gen, the epoch, the take and finish commands, the carried head, and the bench choice by load. A verb, `nova-sprint friend jobs <friend>`, lists them one per line for the coordinator's monitor to launch one worker per line, so no batching step is left for the coordinator to get wrong. Plus a check that flags a coordinator child holding more than one working card on the row, unless the cards are dependent or HOLD-only. Tests run on the in-memory twin with time as an argument."
+   :why "Glenn 2026-10-18, on the coordinator batching taken cards into one worker for a month: \"How can you remember it? Or build it into the machine?\" His standing rule, told for a month: independent cards and merges always run in parallel, one worker per card."
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "the owner, Glenn, 2026-10-18")
   (item "v17-take-batches-model" :group "export-v19" :area "nova-sprint"
    :title "v17-take-batches-model"
    :text "Model in TLA+ (tla/TakeBatch.tla) a take by id of several cards as one batch in deal order. Column ready, tier heavy, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded."
