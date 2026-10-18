@@ -92,11 +92,49 @@ func TestHeldWalksTheStagingRefusalsOnce(t *testing.T) {
 func TestTheStagingRefusalMemoSeesEveryChange(t *testing.T) {
 	t.Parallel()
 	s := mirrorWorld(t, mirrorErr, t0.Add(-time.Minute))
+	// two credential refusals by b1 whose repository is read from the work table (nt-1's
+	// brief) and the merge table (stream nu's control card): neither names one yet
+	const credErr = "staging refused: remote: Write access to repository not granted."
+	for _, id := range []string{"nt-1", "nu-1"} {
+		s.Fleet.Put(&Card{ID: id + ".w1", Row: "studio", Col: Withdrawn, Fields: map[string]string{
+			"gen":                  "1",
+			FieldStagingTake + "1": ProviderTake{Member: "b1", Finished: t0.Add(-time.Minute).Format(time.RFC3339), Error: credErr}.String(),
+		}})
+	}
+	s.Work.Put(&Card{ID: "nt-1", Row: "nt", Col: Ready, Fields: map[string]string{"brief": "tier: flash\n"}})
+	s.Work.Put(&Card{ID: "nu-1", Row: "nu", Col: Ready, Fields: map[string]string{"brief": "tier: flash\n"}})
+	s.Merge.SetRows([]string{"ns", "nu"})
+	s.Merge.Put(&Card{ID: CtlID("nu"), Row: "nu", Col: Ctl, Fields: map[string]string{}})
+	nt := &Card{ID: "nt-9", Row: "nt", Fields: map[string]string{FieldRepo: "https://github.com/mas-bandwidth/nova-tools"}}
+	nu := &Card{ID: "nu-9", Row: "nu", Fields: map[string]string{FieldRepo: "https://github.com/mas-bandwidth/nova-config"}}
 	s, _ = s.withRests()
 	require.NotNil(t, s.refusals, "a dealing step settles the memo")
 	ns := nsPrimary("ns-4")
 	require.Contains(t, s.stagingRepoWhy("studio", ns), "studio refused mas-bandwidth/nova-sprint at staging")
 	require.Empty(t, s.stagingRepoWhy("b1", ns), "b1 refused nothing")
+	require.Empty(t, s.stagingRepoWhy("b1", nt), "nt-1's brief names no repository yet")
+	require.Empty(t, s.stagingRepoWhy("b1", nu), "stream nu's control card names no repository yet")
+
+	// a work put: nt-1 re-cut with a brief that names its repository
+	s.Work.Put(&Card{ID: "nt-1", Row: "nt", Col: Ready, Fields: map[string]string{"brief": "tier: flash\nREPO: mas-bandwidth/nova-tools\n"}})
+	require.Contains(t, s.stagingRepoWhy("b1", nt), "b1 refused mas-bandwidth/nova-tools at staging", "a work put after the first ask is read")
+
+	// a merge put: stream nu's control card now records its repository
+	s.Merge.Put(&Card{ID: CtlID("nu"), Row: "nu", Col: Ctl, Fields: map[string]string{FieldRepo: "https://github.com/mas-bandwidth/nova-config"}})
+	require.Contains(t, s.stagingRepoWhy("b1", nu), "b1 refused mas-bandwidth/nova-config at staging", "a merge put after the first ask is read")
+
+	// hidePrimaries' in-place column change counts as a change, hidden and restored
+	n := s.Work.changes()
+	restore := hidePrimaries(s, []string{"none-in-review"})
+	restore()
+	require.Equal(t, n, s.Work.changes(), "nothing hidden: no change")
+	s.Work.SetRows([]string{"ns", "nt", "nu"})
+	s.Work.Put(&Card{ID: "nt-2", Row: "nt", Col: Review, Fields: map[string]string{"brief": "tier: flash\n"}})
+	n = s.Work.changes()
+	restore = hidePrimaries(s, []string{"nt-2"})
+	require.Equal(t, n+1, s.Work.changes(), "the hide is counted")
+	restore()
+	require.Equal(t, n+2, s.Work.changes(), "the restore is counted")
 
 	// a refusal put on the same table after the first ask
 	s.Fleet.Put(&Card{ID: "ns-2.w1", Row: "studio", Col: Withdrawn, Fields: map[string]string{
@@ -140,6 +178,29 @@ func swarmReadCardBase(brief string) swarm.CardBase { return swarm.ReadCardBase(
 // resetCardBaseMemo empties the brief memo and its counter, for a test that counts parses
 // (it lives with the tests: no production path resets the memo).
 func resetCardBaseMemo() {
+	cardBaseMu.Lock()
+	defer cardBaseMu.Unlock()
 	cardBaseCache.Clear()
+	cardBaseHeld = 0
 	cardBaseReads.Store(0)
+}
+
+// The brief memo is bounded: past cardBaseMax distinct briefs the miss starts the map
+// again, so it never holds more than cardBaseMax, and a brief read after that is parsed
+// once more and then held. Not parallel: the memo is the process's.
+func TestReadCardBaseOnceIsBounded(t *testing.T) {
+	resetCardBaseMemo()
+	t.Cleanup(resetCardBaseMemo)
+	for i := 0; i <= cardBaseMax; i++ {
+		readCardBaseOnce(fmt.Sprintf("c: tier: flash\nREPO: mas-bandwidth/r%d\n", i))
+	}
+	held := 0
+	cardBaseCache.Range(func(any, any) bool { held++; return true })
+	require.LessOrEqual(t, held, cardBaseMax, "the memo holds at most cardBaseMax briefs")
+	require.Equal(t, 1, held, "the miss past the bound started the map again with its own brief")
+	require.Equal(t, held, cardBaseHeld, "the count is what the map holds")
+	before := cardBaseReads.Load()
+	last := fmt.Sprintf("c: tier: flash\nREPO: mas-bandwidth/r%d\n", cardBaseMax)
+	require.Equal(t, "mas-bandwidth/r"+fmt.Sprint(cardBaseMax), readCardBaseOnce(last).Named)
+	require.Equal(t, before, cardBaseReads.Load(), "the brief held after the restart is a hit")
 }

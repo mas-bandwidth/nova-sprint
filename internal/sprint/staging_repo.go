@@ -98,8 +98,9 @@ func stagingRepoRefusals(s *Snapshot, credentials bool) map[string]map[string]ti
 // stagingRepoWhy ask after. Its key is the tables it read, each with its count of cards
 // put or dropped (Table.changes), and the clock: a view that swaps in a frozen table, puts
 // a card, or moves the clock reads a key that differs and derives them again, so the memo
-// never answers for cards it did not read. A card is replaced whole on its table, never
-// changed in place (Table.Frozen), so the count is every change the derivation can see.
+// never answers for cards it did not read. A card is replaced whole on its table (Put); the
+// one write in place, hidePrimaries' column (friend_read.go), bumps the count too
+// (Table.changed), so the count is every change the derivation can see.
 // The deal asks stagingRepoWhy once per member a ready card is offered to, and each
 // derivation walks every fleet card: on the studio's store, 2026-10-18, that walk was
 // the bulk of card's 8.3 s and check's 10 s, by way of the held rule (newHeld).
@@ -228,9 +229,21 @@ func (s *Snapshot) cardRepo(c *Card) string {
 // card is offered to, and each ask walks every fleet card's repository (cardRepo) and,
 // in LandedSince, every placed card's base (repoHasDevBranch): on the studio's store,
 // 2026-10-18, card took 8.3 s and check 10 s, near all of it ReadCardBase splitting the
-// same few hundred briefs again on every ask. Bounded by the distinct briefs the
-// process has read, never by the asks.
+// same few hundred briefs again on every ask. Bounded: at most cardBaseMax briefs, and the
+// miss past that starts the whole map again (as the open-note caches do, openCachesMax in
+// store/opencache.go), so a long-lived server that reads every landed card's brief
+// (LandedSince, repoHasDevBranch) holds a store's worth of briefs, never its history.
 var cardBaseCache sync.Map // brief string -> swarm.CardBase
+
+// cardBaseMax bounds cardBaseCache: well over the briefs one store holds placed (the
+// studio's held about 400 work cards on 2026-10-18), so a tick's asks all hit.
+const cardBaseMax = 4096
+
+// cardBaseHeld is how many briefs cardBaseCache holds, counted under cardBaseMu on a miss.
+var (
+	cardBaseMu   sync.Mutex
+	cardBaseHeld int
+)
 
 // cardBaseReads counts the briefs ReadCardBase actually parsed (a memo miss), a
 // diagnostic for the cost tests (TestHeldWalksTheStagingRefusalsOnce); the machine's own
@@ -246,7 +259,15 @@ func readCardBaseOnce(brief string) swarm.CardBase {
 		return cb
 	}
 	cb := swarm.ReadCardBase([]byte(brief))
-	cardBaseCache.Store(brief, cb)
+	cardBaseMu.Lock()
+	if cardBaseHeld >= cardBaseMax {
+		cardBaseCache.Clear()
+		cardBaseHeld = 0
+	}
+	if _, loaded := cardBaseCache.LoadOrStore(brief, cb); !loaded {
+		cardBaseHeld++
+	}
+	cardBaseMu.Unlock()
 	cardBaseReads.Add(1)
 	cb.Stage = slices.Clone(cb.Stage)
 	return cb
