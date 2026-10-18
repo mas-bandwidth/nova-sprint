@@ -94,7 +94,33 @@ type Table struct {
 	// never a sort of the whole table for each call (a step asks of every primary).
 	ids []string
 
+	// puts counts the cards put or dropped (Put, Drop) and the one in-place change
+	// (changed, from hidePrimaries): a memo of what the cards say (stagingRefusalsOnce) is
+	// good while the count it read is the count now.
+	puts uint64
+
 	mu *sync.RWMutex
+}
+
+// changed counts a change to the table's cards made in place, without Put (hidePrimaries,
+// friend_read.go), as Put and Drop count theirs.
+func (t *Table) changed() {
+	mu := t.mutex()
+	mu.Lock()
+	defer mu.Unlock()
+	t.puts++
+}
+
+// changes is how many times a card was put into or dropped from the table (puts); 0 for
+// no table.
+func (t *Table) changes() uint64 {
+	mu := t.mutex()
+	if mu == nil {
+		return 0
+	}
+	mu.RLock()
+	defer mu.RUnlock()
+	return t.puts
 }
 
 var tableMuInit sync.Mutex
@@ -128,6 +154,7 @@ func (t *Table) Put(c *Card) {
 		t.ids = slices.Insert(t.ids, i, c.ID)
 	}
 	t.cards[c.ID] = c
+	t.puts++
 	// the cells, the primary index and the lines hold the placed cards alone (index): a
 	// kept record put in place of a kept one, or of none, leaves them as they are, so the
 	// twin's showing of the extras it keeps (store/twin.go showExtras) builds no index again
@@ -138,7 +165,8 @@ func (t *Table) Put(c *Card) {
 
 // Frozen is a copy of the table as it is now that later changes to the
 // table leave as it was: its own map of the same cards (a card is replaced
-// whole, never changed in place, by the store's twin), rows, texts and
+// whole by the store's twin; the one write in place is hidePrimaries' column,
+// which it puts back, and which a frozen copy shares), rows, texts and
 // properties. The tick's first read keeps one while the twin it was read
 // from moves on.
 func (t *Table) Frozen() *Table {
@@ -181,6 +209,7 @@ func (t *Table) Drop(id string) {
 		return
 	}
 	delete(t.cards, id)
+	t.puts++
 	if i, ok := slices.BinarySearch(t.ids, id); ok {
 		t.ids = slices.Delete(t.ids, i, i+1)
 	}
@@ -587,6 +616,9 @@ type Snapshot struct {
 	// restScans, when set, counts withRests' scans of the fleet table: the tick's
 	// cost gate (TestTheTicksCheckSettlesTheRestsOnceAtScale) holds them to one a part.
 	restScans *int
+	// refusals is the staging refusals a dealing step reads once (withRests sets it,
+	// stagingRefusalsOnce fills it): nil is none, and each ask derives them again.
+	refusals *refusalMemo
 }
 
 // T is the loaded table by logical name.

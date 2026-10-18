@@ -1018,7 +1018,10 @@ func unsetOn(changes []Change, c *Card, field string) []Change {
 }
 
 // hidePrimaries takes the named primaries out of review for the machine ask
-// and puts them back. The plan is built against the restored places.
+// and puts them back. The plan is built against the restored places. It is the one
+// write that changes a table's cards in place (c.Col, never Put), so it bumps the work
+// table's change count (Table.puts) on the hide and on the restore: a memo keyed on that
+// count (refusalMemo, staging_repo.go) never answers for the places it did not read.
 func hidePrimaries(s *Snapshot, ids []string) func() {
 	if s == nil || s.Work == nil || len(ids) == 0 {
 		return func() {}
@@ -1040,6 +1043,7 @@ func hidePrimaries(s *Snapshot, ids []string) func() {
 	}
 	if len(held) > 0 {
 		s.Work.cells, s.Work.byPrimary = nil, nil
+		s.Work.changed()
 	}
 	return func() {
 		for _, h := range held {
@@ -1047,6 +1051,7 @@ func hidePrimaries(s *Snapshot, ids []string) func() {
 		}
 		if len(held) > 0 {
 			s.Work.cells, s.Work.byPrimary = nil, nil
+			s.Work.changed()
 		}
 	}
 }
