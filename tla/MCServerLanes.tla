@@ -27,4 +27,9 @@ MCKindOfFleet == [r \in MCCallersFleet |->
                     ELSE IF r = "b1" THEN "beat"
                     ELSE "write"]
 MCChangesFleet == [r \in MCCallersFleet |-> r = "f2"]
+\* the fleet beat alone, no friend's beat: the "beatonline" witness over these callers
+\* fails for the changeless fleet beat f1, not for a friend's
+MCCallersFBeat == {"f1", "f2", "w1"}
+MCKindOfFBeat == [r \in MCCallersFBeat |-> MCKindOfFleet[r]]
+MCChangesFBeat == [r \in MCCallersFBeat |-> MCChangesFleet[r]]
 =============================================================================
