@@ -86,7 +86,7 @@ func TestAFriendCardIsStagedByAVerb(t *testing.T) {
 	assert.Contains(t, jobmd, "BRANCH: sprint/s1-1.w1.g1.e0\n")
 	assert.Contains(t, jobmd, "BENCH: local\n")
 	assert.Contains(t, jobmd, "FINISH: nova-sprint finish --as friend.amy s1-1.w1@1 --epoch 0 --head sprint/s1 --branch sprint/s1-1.w1.g1.e0 --base sprint/s1\n")
-	assert.Contains(t, jobmd, "FINISH-FAILED: nova-sprint finish --as friend.amy s1-1.w1@1 --epoch 0 --head sprint/s1 --branch sprint/s1-1.w1.g1.e0 --base sprint/s1 --failed\n")
+	assert.Contains(t, jobmd, "FINISH-FAILED: nova-sprint finish --as friend.amy s1-1.w1@1 --epoch 0 --branch sprint/s1-1.w1.g1.e0 --base sprint/s1 --failed\n")
 
 	// the friend's identity was set in the clone's local config, and the clone
 	// was made at the delivered branch
@@ -160,6 +160,7 @@ func TestAFriendCardIsStagedByAVerb(t *testing.T) {
 	require.True(t, ok, "JOB.md was written")
 	assert.Contains(t, jm3, "HEAD: "+landHead+"\n")
 	assert.Contains(t, jm3, "--head "+landHead+" --branch sprint/s1-3.w1.g1.e0 --base sprint/s1\n")
+	assert.Contains(t, jm3, "FINISH-FAILED: nova-sprint finish --as friend.amy s1-3.w1@1 --epoch 0 --head "+landHead+" --branch sprint/s1-3.w1.g1.e0 --base sprint/s1 --failed\n")
 
 	// a second stage of the same card@gen is idempotent: it prints the JOB.md
 	// path and runs no git (only the staged JOB.md read)
