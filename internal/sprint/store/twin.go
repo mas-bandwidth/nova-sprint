@@ -169,19 +169,30 @@ type Twin struct {
 	// of the table's records, rows or properties: a table read whole, a catch-up that named
 	// records, a receipt applied, a shape whose rows or properties differ, a change in the
 	// kept records shown. A write of text cells alone (the fleet's load and status, SyncFleet)
-	// moves the table's revision and not this. Never reset, so a count taken is never met
-	// again by a later twin's (keepWhere's recount, where.go).
+	// moves the table's revision and not this. A count is compared only with this twin's
+	// own: whereRaw and whereMoves are this twin's, and a new twin, its moves at 0, starts
+	// with no whereRaw, so it counts the record before it writes one again (keepWhere).
 	moves map[string]uint64
-	// whereMu guards whereRaw, the where record this process last wrote, and whereMoves,
-	// the fleet table's moves at the read it was counted from (keepWhere): while the stored
-	// record is that one and the fleet's moves are the same, a fleet revision it is behind
+	// whereMu guards whereKept, the where record this process last wrote and the read it
+	// was counted from (keepWhere): while the stored record is that one, the fleet's moves
+	// are the same, the readers and merge tables are at the revisions counted and the count
+	// is younger than WhereRestampFor on the same UTC day, a fleet revision it is behind
 	// moved text cells alone, and the record is not counted again.
-	whereMu    sync.Mutex
-	whereRaw   string
-	whereMoves uint64
+	whereMu   sync.Mutex
+	whereKept whereCount
 	// whereCounts is how many times keepWhere counted the record (whereOf) through this
 	// twin (tests).
 	whereCounts int
+}
+
+// whereCount is the where record this process last wrote (raw) and the read it was counted
+// from: the fleet's moves (Twin.moves), the readers and merge tables' revisions, and the
+// clock at the count, which a record written again keeps.
+type whereCount struct {
+	raw            string
+	moves          uint64
+	readers, merge uint64
+	at             time.Time
 }
 
 // moved counts a change of what the twin holds of the table (moves).
@@ -348,6 +359,19 @@ func (st *Store) twinView(ctx context.Context, tw *Twin, load []string, v View, 
 			return nil, errCleared
 		}
 	}
+	// the rows and properties each table held before this read (Twin.moves): a table read
+	// whole below counts as its own move, not again as rows or properties that differ
+	// from an empty table's
+	type held struct {
+		rows  []string
+		props map[string]string
+	}
+	before := map[string]held{}
+	for _, name := range load {
+		if t := tw.tables[name]; t != nil {
+			before[name] = held{slices.Clone(t.Rows()), t.Props()}
+		}
+	}
 	// Each table is brought to its shape's revision, or read whole; a table
 	// is in the twin only once its records are the ones at the revision it
 	// holds, so a read cut short leaves no table half read.
@@ -405,7 +429,8 @@ func (st *Store) twinView(ctx context.Context, tw *Twin, load []string, v View, 
 	for i, shape := range shapes {
 		t := tw.tables[load[i]]
 		t.Epoch = shape.Epoch
-		if !maps.Equal(t.Props(), shape.Props) {
+		was, known := before[load[i]]
+		if known && !maps.Equal(was.props, shape.Props) {
 			tw.moved(load[i])
 		}
 		t.SetProps(shape.Props)
@@ -417,7 +442,7 @@ func (st *Store) twinView(ctx context.Context, tw *Twin, load []string, v View, 
 				texts[r.Key] = r.Texts
 			}
 		}
-		if !slices.Equal(t.Rows(), rows) {
+		if known && !slices.Equal(was.rows, rows) {
 			tw.moved(load[i])
 		}
 		t.SetRows(rows)

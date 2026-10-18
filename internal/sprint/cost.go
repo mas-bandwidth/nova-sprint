@@ -350,7 +350,9 @@ type CardCostView struct {
 // walks the cards parse each card's records once, not once a pass (2026-10-17: the
 // where record's recount parsed every work card's records four times a tick). A kept
 // view is given only while the card still carries the fields it was parsed from, so a
-// card changed in place is parsed again.
+// card changed in place is parsed again. The list is the caller's own copy; each record's
+// Usage.Extra and Usage.Raw are the kept view's, shared and read only (no caller writes
+// them).
 func CardCostOf(pr *Card) CardCostView {
 	if pr == nil {
 		return cardCostOf(pr)

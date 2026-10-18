@@ -161,3 +161,33 @@ func TestAKeptRecordLeavesTheTablesIndex(t *testing.T) {
 	tb.Drop("a")
 	assert.Empty(t, tb.Cell("s1", Ready))
 }
+
+// KeepCardMemos keeps the views and tiers of the cards named and lets every other go: a
+// copy a step planned on, or a card replaced since, is not held past the where record's
+// count. Not parallel: the memos are the package's.
+func TestKeepCardMemosLetsGoOfCardsNotNamed(t *testing.T) {
+	live := &Card{ID: "live", Fields: map[string]string{"brief": proBrief}}
+	dead := &Card{ID: "dead", Fields: map[string]string{"brief": proBrief}}
+	for _, c := range []*Card{live, dead} {
+		spend(c, c.ID+"#g0", "1")
+		CardCostOf(c)
+		TierWord(c)
+	}
+	KeepCardMemos([]*Card{live})
+	costMemo.mu.Lock()
+	_, liveCost := costMemo.cur[live]
+	_, deadCost := costMemo.cur[dead]
+	costMemo.mu.Unlock()
+	tierMemo.mu.Lock()
+	_, liveTier := tierMemo.cur[live]
+	_, deadTier := tierMemo.cur[dead]
+	tierMemo.mu.Unlock()
+	assert.True(t, liveCost && liveTier, "the named card's view and tier kept")
+	assert.False(t, deadCost || deadTier, "the other let go")
+	assert.Nil(t, costMemo.old)
+	mark := memoParses()
+	CardCostOf(live)
+	assert.Equal(t, mark, memoParses(), "kept: not parsed again")
+	CardCostOf(dead)
+	assert.Equal(t, mark+1, memoParses(), "let go: parsed again")
+}

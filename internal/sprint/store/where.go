@@ -302,19 +302,30 @@ func (st *Store) keepWhere(ctx context.Context, m Machine) error {
 	// beat), the record is the count at the fleet's revision now, and it is written again
 	// at that revision, not counted (2026-10-17: every member's load cell moved the fleet's
 	// revision, and each tick counted the whole sprint again for a cell no count reads).
-	// The model is tla/StatsReset.tla RestampRead and Display (RecordShowsShown; the
-	// reversed witness restampany writes it again whatever moved).
+	// The count also reads what no table's revision moves: the clock (the reads' 30-minute
+	// window, the day's reads, the series, the stage times, the landings), the machine's
+	// spans, and the readers and merge tables. So the record is written again only while
+	// the readers and merge tables are at the revisions it was counted at and the count is
+	// younger than WhereRestampFor, on the same UTC day; past that it is counted, a count a
+	// minute at most while only text cells move. tla/StatsReset.tla RestampRead and Display
+	// model the moves gate alone (RecordShowsShown; the reversed witness restampany writes
+	// it again whatever moved): a Display there moves no figure by assumption, and the
+	// clock's bound is not in the model.
+	now := st.now()
 	tw.whereMu.Lock()
-	same := held && tw.whereRaw == vals[0] && tw.whereMoves == moves && snap.Work.Revision == old.Rev
+	kept := tw.whereKept
 	tw.whereMu.Unlock()
+	same := held && kept.raw == vals[0] && kept.moves == moves && snap.Work.Revision == old.Rev &&
+		snap.Readers.Revision == kept.readers && snap.Merge.Revision == kept.merge &&
+		!now.Before(kept.at) && now.Sub(kept.at) < WhereRestampFor && now.UTC().Format(time.DateOnly) == kept.at.UTC().Format(time.DateOnly)
 	if same {
 		old.FleetRev = snap.Fleet.Revision
-		return st.putWhereRecord(ctx, kv, tw, old, moves)
+		kept.moves = moves
+		return st.putWhereRecord(ctx, kv, tw, old, kept)
 	}
 	tw.whereMu.Lock()
 	tw.whereCounts++
 	tw.whereMu.Unlock()
-	now := st.now()
 	r := whereOf(snap, m, now)
 	r.Stats = stamp
 	// the archived streams, off the work table's shape (the twin carries no row hide): what
@@ -339,24 +350,32 @@ func (st *Store) keepWhere(ctx context.Context, m Machine) error {
 			r.Rev = after[0].Revision
 		}
 	}
-	return st.putWhereRecord(ctx, kv, tw, r, moves)
+	// the cost views and brief tiers kept for the cards counted, and none other (cost_view.go)
+	sprint.KeepCardMemos(snap.Work.Cards())
+	return st.putWhereRecord(ctx, kv, tw, r, whereCount{moves: moves, readers: snap.Readers.Revision, merge: snap.Merge.Revision, at: now})
 }
 
-// putWhereRecord writes the where record, counted from a read at the fleet's moves (Twin.moves),
-// and the twin keeps both (keepWhere).
-func (st *Store) putWhereRecord(ctx context.Context, kv KV, tw *Twin, r WhereRecord, moves uint64) error {
+// WhereRestampFor is how long after its count the where record may be written again at a
+// fleet revision of text cells alone, uncounted (keepWhere): the count's figures of the
+// clock (the reads' window, the day's reads, the series) are at most this old.
+const WhereRestampFor = time.Minute
+
+// putWhereRecord writes the where record, counted from the read c names, and the twin keeps
+// both (keepWhere).
+func (st *Store) putWhereRecord(ctx context.Context, kv KV, tw *Twin, r WhereRecord, c whereCount) error {
 	b, err := json.Marshal(r)
 	if err != nil {
 		return err
 	}
 	if err := kv.SetKey(ctx, keyWhere, string(b)); err != nil {
 		tw.whereMu.Lock()
-		tw.whereRaw = "" // the store's record is not known
+		tw.whereKept = whereCount{} // the store's record is not known
 		tw.whereMu.Unlock()
 		return err
 	}
+	c.raw = string(b)
 	tw.whereMu.Lock()
-	tw.whereRaw, tw.whereMoves = string(b), moves
+	tw.whereKept = c
 	tw.whereMu.Unlock()
 	return nil
 }

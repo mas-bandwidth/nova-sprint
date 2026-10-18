@@ -90,9 +90,40 @@ type TierCosts struct {
 	Reconciles []CostReconcileRecord `json:"reconciles,omitempty"`
 }
 
-// costMemoCap bounds each generation of the kept views: twice the sprint's cards (about
-// 3,400, 2026-10-17) fit in one, and a card not asked for over a generation is let go.
-const costMemoCap = 8192
+// costMemoCap bounds each generation of the kept views between the where record's counts,
+// which keep the work table's cards alone (KeepCardMemos): several times the work table's
+// cards (about 600, 2026-10-17) fit in one, and a card not asked for over a generation is
+// let go.
+const costMemoCap = 4096
+
+// KeepCardMemos keeps the cost views and brief tiers of the cards named (the work table's,
+// at the where record's count, store/where.go) and lets every other go: the copies a step
+// planned on (a frozen table, a snapshot with its queue) and the cards replaced since.
+func KeepCardMemos(cards []*Card) {
+	live := make(map[*Card]bool, len(cards))
+	for _, c := range cards {
+		live[c] = true
+	}
+	costMemo.mu.Lock()
+	costMemo.cur, costMemo.old = keepLive(costMemo.cur, costMemo.old, live), nil
+	costMemo.mu.Unlock()
+	tierMemo.mu.Lock()
+	tierMemo.cur, tierMemo.old = keepLive(tierMemo.cur, tierMemo.old, live), nil
+	tierMemo.mu.Unlock()
+}
+
+// keepLive is the entries of both generations whose card is live, in one.
+func keepLive[V any](cur, old map[*Card]V, live map[*Card]bool) map[*Card]V {
+	out := make(map[*Card]V, len(live))
+	for _, gen := range []map[*Card]V{old, cur} {
+		for c, v := range gen {
+			if live[c] {
+				out[c] = v
+			}
+		}
+	}
+	return out
+}
 
 // costMemo is CardCostOf's kept views, by card.
 var costMemo = &cardCostMemo{}
@@ -184,7 +215,7 @@ func (m *cardCostMemo) keep(pr *Card, k costKept) {
 		m.old, m.cur = m.cur, nil
 	}
 	if m.cur == nil {
-		m.cur = make(map[*Card]costKept, costMemoCap)
+		m.cur = map[*Card]costKept{}
 	}
 	m.cur[pr] = k
 }
@@ -216,7 +247,7 @@ func briefTierOf(c *Card) string {
 		tierMemo.old, tierMemo.cur = tierMemo.cur, nil
 	}
 	if tierMemo.cur == nil {
-		tierMemo.cur = make(map[*Card]tierKept, costMemoCap)
+		tierMemo.cur = map[*Card]tierKept{}
 	}
 	tierMemo.cur[c] = tierKept{brief: brief, tier: m.Tier}
 	tierMemo.reads++
