@@ -45,7 +45,7 @@ for routing, restart and hook-display limits.
 ```
 nova-sprint init [--readers <a,b,...>] [--members <m1[:<width>],m2,...>] [--coordinator <name>] [--rules <file>]
 nova-sprint add --stream <s> (<id>... | --count <n> | --sentinel <id> | --brief-dir <dir> | --brief-file <f1> --brief-file <f2>...: a card per file, its id the file's name without .md) [--partial] [--needs <a,b>] [--before <id> | --after <id> | --score <n>] [--brief <text> | --brief-file <path>: once, the brief of the cards named] [--rules <file>] [--replaces <old-id>[,<old-id>]] [--not-a-duplicate-of <card>=<reason>]...
-# add and preflight name a probable duplicate (same REPO:, an overlapping PATHS glob neither lists as SHARED:, and a word overlap at or above 0.20, measured 0.273 on the timestamp fixtures and 0.095 on the two v17 landgo.go fixtures); add holds that brief back and admits the rest of the wave, one DUPLICATE line and exit 1, unless --not-a-duplicate-of <card>=<reason> admits it and records the reason on its admission note (a reason is required; preflight prints the DUPLICATE finding)
+# add and preflight name a probable duplicate (same REPO:, an overlapping PATHS glob neither lists as SHARED:, and a word overlap at or above 0.20, measured 0.273 on the timestamp fixtures and 0.095 on the two v17 landgo.go fixtures); add holds that brief back and admits the rest of the wave, one DUPLICATE line each; the add exits with the write's code (0 when it wrote the rest), and exits 1 only when every real card of the wave was held, unless --not-a-duplicate-of <card>=<reason> admits it and records the reason on its admission note (a reason is required; preflight prints the DUPLICATE finding)
 # add refuses an unresolved need (v1.2.17): absent ("needs <id>, which is no primary on the table or in this add"), dropped ("needs <id>, which was <outcome>"), unknown stream ("needs <id> (unknown stream): <id>'s stream <s> has no control card in this epoch") and held ("needs <id> (held): <id> is held by judgment <j> (<type>, open <age>) until it is decided; decide it: nova-sprint rework <id> --fix <text> or nova-sprint drop <id> --reason <text> ..."); an add of more than one card (--brief-dir, many briefs, --count) with one is refused whole, naming every card and need, nothing written; brief check names the same through add's plan
 nova-sprint quack --streams <a,b,...> --count <n> --repo <clone url> [--tiers <t,...>] [--base <branch>]
 nova-sprint release (<sentinel>... | <selector> [--dry-run]) --reason <text> [--answers <note>]
@@ -716,6 +716,12 @@ the lander's run-record check reads. A brief on a placed card with a recorded ti
 the remedy that pins the line 1 tier (`nova-sprint brief c --tier <t> --reason <why>`);
 a file naming the recorded tier, a card with no recorded tier, an id that is no card and
 a sentinel report nothing.
+
+A `brief check` file whose id is a card on the table is also read against the card's soft
+dependencies: a `LAND-AFTER:` line that would change what the store holds is one `land-after`
+finding naming both lists and the verb that writes each side, `nova-sprint brief <id> --brief-file <path>` the file's and `nova-sprint needs set <id> --land-after <ids>` the
+store's. An equal list, an id that is no card, and a sentinel report nothing, and the check
+still writes nothing.
 
 `add --partial`, with `--brief-dir` or a repeated `--brief-file`, runs every check over every
 brief and admits what passes instead of refusing the whole call. Every brief the checks find a

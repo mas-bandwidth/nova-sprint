@@ -3608,7 +3608,20 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 			// member at its width takes no more.
 			// a bench card goes to a member of its bench alone: with none of it up it is
 			// withdrawn, and waits ready for its bench (bench_deal.go)
-			if m := rr.nextFree(onlyBench(without(without(up, StagingRefusers(c)), notLaunching(s, up, c)), benchOfWork(s, c)), q, lanes, widths, ""); m != "" {
+			// its gate's needs (the gate-host rule): the redeal gives it only to a
+			// member whose facts satisfy every need, and when none remains it raises
+			// the judgment as the deal does instead of dealing it
+			cands := onlyBench(without(without(up, StagingRefusers(c)), notLaunching(s, up, c)), benchOfWork(s, c))
+			host := c
+			if pr := s.Work.Placed(c.F("primary")); pr != nil {
+				host = pr
+			}
+			cands, gateWhy := s.GateHostPool(host, cands)
+			m := ""
+			if len(cands) > 0 {
+				m = rr.nextFree(cands, q, lanes, widths, "")
+			}
+			if m != "" {
 				rr.moved(m)
 				moves[c.ID] = m
 				q[m]++
@@ -3620,6 +3633,9 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 				p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.F("stream"), Changes: []Change{change(Fleet, moveEntry(c, m, Ready, set, "taken"))},
 					Moved: fmt.Sprintf("%s %s:%s -> %s:ready gen=%d; %s down", c.ID, c.Row, c.Col, m, c.Int("gen")+1, r.Member)})
 				continue
+			}
+			if gateWhy != "" {
+				p.Notes = append(p.Notes, gateNeedsJudgment(c, gateWhy, r.Who, s.Now))
 			}
 		}
 		withdrew++
@@ -3772,7 +3788,13 @@ func levelWith(s *Snapshot, p *Plan, up []string, rr *round, moves roundMoves, h
 			// a bench card is never moved off its bench: the members its BENCH line does not
 			// name are avoided as a member that refused it at staging is (bench_deal.go)
 			// nor a member that cannot launch its route (notLaunching: fault 10)
-			to = target(rr, up, n, held, lanes, long, append(append(StagingRefusers(q[i]), notBench(up, benchOfWork(s, q[i]))...), notLaunching(s, up, q[i])...))
+			host := q[i]
+			if pr := s.Work.Placed(q[i].F("primary")); pr != nil {
+				host = pr
+			}
+			gateAdm, _ := s.GateHostPool(host, up)
+			avoid := append(append(append(StagingRefusers(q[i]), notBench(up, benchOfWork(s, q[i]))...), notLaunching(s, up, q[i])...), without(up, gateAdm)...)
+			to = target(rr, up, n, held, lanes, long, avoid)
 		}
 		if to == "" {
 			// no card of this source has a target: a less-over source may still

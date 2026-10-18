@@ -53,6 +53,7 @@ func TestTheHelpsWalkthroughLandsACardForReal(t *testing.T) {
 			}
 		}
 		a := newApp(func(k string) string { return sprintEnv[k] })
+		a.landRoot = func() (string, error) { return filepath.Join(dir, "land"), nil }
 		a.gitEnv = env
 		var out, errb bytes.Buffer
 		code := runInto(a, args, &out, &errb)
