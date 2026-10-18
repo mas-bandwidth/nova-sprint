@@ -9378,7 +9378,8 @@ above stay disabled and unchanged (`sprint.LanesDisabled`).
   line again renews the lease the asker holds;
   `nova-sprint lane give go --machine auto --as <who>` gives it back.
 - A grant prints `LANE-TAKE OK go machine=<m> as=<who> slots=<committed>/<slots> until=<RFC3339>`
-  (exit 0; `until` is the lease's deadline). A full fleet prints, exit 1,
+  (exit 0; `until` is the lease's deadline, and `committed` counts the lease just
+  granted). A full fleet prints, exit 1,
   `LANE-TAKE WAIT go as=<who> retry_at=<RFC3339>: every allowed bench is full: <m> <committed>/<slots>, ...`.
 
 The decisions:
@@ -9408,22 +9409,27 @@ The decisions:
 6. **WAIT (D6).** When no allowed bench has room, the answer is WAIT with a retry time (the
    earliest deadline of a live lease on an allowed bench, at most LaneWaitFor, one minute,
    away) and nothing is written: no queue, no place, and not even the removal of an
-   expired lease (the wait counted it as gone; the next write removes it). A waiter that
-   keeps asking is granted once capacity frees again and again; with no queue it is not
-   promised to be first.
+   expired lease (the wait counted it as gone; the next write removes it). A WAIT is
+   answered only when no allowed bench has room, so a waiter that keeps asking is granted
+   once capacity frees and stays free. Capacity that frees only now and then is not
+   promised to it: with no queue, another asker can take it first.
 7. **One step (D7).** A pick and a give are each one step on the record, run by the server
    one at a time: two picks never both take a bench's last slot.
 
-The model checks NeverOverSlots, OneLeaseEach, GrantOnlyAllowed, GrantIsLeastCommitted
-and WaitWritesNothing on two benches (1 and 2 slots) and three workers, and DeadLeaseEnds
-(a dead client's lease ends) and WaiterGetsLease on two workers, with fairness on the
-clock and the sweep. Its reversed witnesses: `noexpiry`, a client-held lease with no
+The model checks NeverOverSlots, OneLeaseEach, GrantOnlyAllowed, GrantIsLeastCommitted,
+WaitWritesNothing, WaitOnlyWhenFull and NoLeaseOutlivesDeadline on two benches (1 and 2
+slots) and three workers, and DeadLeaseEnds (a dead client's lease ends: every slot is
+eventually free after its holder stops) and WaiterGetsLease on two workers. The fairness
+is weak fairness on the clock, the sweep and a waiter's asking again; nothing assumes a
+grant. The tie-break of D4 (most free slots, then the name) is in the pick but not a
+checked property. Its reversed witnesses: `noexpiry`, a client-held lease with no
 server expiry (the stuck lock Glenn banned), fails DeadLeaseEnds; `loadonly`, a pick by
 load alone as one `ssh <bench> uptime` is, fails NeverOverSlots (three grants onto a
 two-slot bench before any load shows); `noceiling`, a full fleet still granting the least
 committed, fails NeverOverSlots; `queue`, a wait recording a place, fails
 WaitWritesNothing; and, run by hand with no case yet, `anybench` fails GrantOnlyAllowed,
-`anyroom` fails GrantIsLeastCommitted and `second` fails OneLeaseEach. Two corrections to
+`anyroom` fails GrantIsLeastCommitted, `second` fails OneLeaseEach, `waitwhenroom` fails
+WaitOnlyWhenFull and WaiterGetsLease, and `renewexpired` fails NoLeaseOutlivesDeadline. Two corrections to
 the card's design came from writing it: a lease is modelled as the set of benches a
 worker holds (a single bench or none made OneLeaseEach true by its type, while the
 record allows two), and D5's "released at the next step that reads the record" is split

@@ -68,15 +68,20 @@
 (*   "anyroom"    the pick takes any bench with room, not the least        *)
 (*                committed: GrantIsLeastCommitted fails;                  *)
 (*   "second"     a worker that holds a lease and asks again is granted a  *)
-(*                second one instead of a renewal: OneLeaseEach fails.     *)
-(* The last three have no committed configuration yet (owed: the card's    *)
+(*                second one instead of a renewal: OneLeaseEach fails;     *)
+(*   "waitwhenroom" a take may answer WAIT while a bench has room:         *)
+(*                WaitOnlyWhenFull fails, and with it WaiterGetsLease;     *)
+(*   "renewexpired" a renewal neither drops expired leases nor refuses its *)
+(*                own expired one: NoLeaseOutlivesDeadline fails.          *)
+(* The last five have no committed configuration yet (owed: the card's     *)
 (* paths named four); each was run by hand with a cfg naming it.           *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets, TLC
 
 CONSTANTS Machines, Workers, Slots, HoldFor, MaxNow, MaxBusy, Broken
 
-Faults == {"none", "noexpiry", "loadonly", "noceiling", "queue", "anybench", "anyroom", "second"}
+Faults == {"none", "noexpiry", "loadonly", "noceiling", "queue", "anybench", "anyroom", "second",
+           "waitwhenroom", "renewexpired"}
 NoMachine == "none"
 NoWorker  == "none"
 ASSUME Broken \in Faults
@@ -177,7 +182,7 @@ Grant(w) ==
 Wait(w) ==
   /\ w \in alive
   /\ Dropped[w] = {}
-  /\ Cands(Dropped) = {}
+  /\ Cands(Dropped) = {} \/ Broken = "waitwhenroom"
   /\ lease' = lease
   /\ seen' = IF Broken = "queue" THEN [seen EXCEPT ![w] = now] ELSE seen
   /\ last' = [w |-> w, kind |-> "wait", m |-> NoMachine]
@@ -190,10 +195,14 @@ Pick(w) == Grant(w) \/ Wait(w)
 \* D4: a worker that holds a live lease asks again: its own bench, renewed
 Renew(w) ==
   /\ w \in alive
-  /\ Dropped[w] # {}
-  /\ lease' = Dropped
-  /\ seen' = [SeenAfter(Dropped) EXCEPT ![w] = now]
-  /\ last' = [w |-> w, kind |-> "renewed", m |-> CHOOSE m \in Dropped[w] : TRUE]
+  /\ IF Broken = "renewexpired"
+       THEN /\ lease[w] # {}
+            /\ lease' = lease
+            /\ seen' = [seen EXCEPT ![w] = now]
+       ELSE /\ Dropped[w] # {}
+            /\ lease' = Dropped
+            /\ seen' = [SeenAfter(Dropped) EXCEPT ![w] = now]
+  /\ last' = [w |-> w, kind |-> "renewed", m |-> CHOOSE m \in lease[w] : TRUE]
   /\ UNCHANGED <<now, busy, allowed, alive, waiting>>
 
 \* D5: a give releases the lease at once
@@ -261,13 +270,14 @@ Next ==
   \/ \E m \in Machines, b \in 0..MaxBusy : Load(m, b)
   \/ \E m \in Machines : Allow(m) \/ Disallow(m)
 
-\* a waiting worker asks again (lane take every few seconds) and is granted
-Retry(w) == w \in waiting /\ Grant(w)
+\* a waiting worker keeps asking (lane take again at its retry time); the answer
+\* is the server's, a grant or another wait
+Ask(w) == w \in waiting /\ Pick(w)
 
 Fairness ==
   /\ WF_vars(Tick)
   /\ WF_vars(Expire)
-  /\ \A w \in Workers : SF_vars(Retry(w))
+  /\ \A w \in Workers : WF_vars(Ask(w))
 
 Spec == Init /\ [][Next]_vars /\ Fairness
 
@@ -293,6 +303,17 @@ GrantIsLeastCommitted ==
            DesignCommitted(Dropped, last'.m) * Slots[m2]
              <= DesignCommitted(Dropped, m2) * Slots[last'.m]]_vars
 
+\* D6: a wait is answered only when no allowed bench has room
+WaitOnlyWhenFull ==
+  [][last'.kind = "wait" => \A m \in allowed : ~DesignRoomIn(Dropped, m)]_vars
+
+\* D5: no step that writes the record leaves a lease past its deadline in it,
+\* and a renewal is never of a lease already past its deadline
+NoLeaseOutlivesDeadline ==
+  [][last'.kind \in {"granted", "renewed"} =>
+       /\ \A v \in Workers : lease'[v] # {} => now' - seen'[v] <= HoldFor
+       /\ (last'.kind = "renewed" => ~Expired(last'.w))]_vars
+
 \* D6: a wait writes nothing: no queue, no place
 WaitWritesNothing ==
   [][last'.kind = "wait" => UNCHANGED <<lease, seen>>]_vars
@@ -307,9 +328,12 @@ DeadLeaseEnds ==
 \* some allowed bench has a slot free, on the record as read
 RoomNow == \E m \in allowed : DesignRoomIn(Dropped, m)
 
-\* D6: when capacity frees again and again, a waiting worker that keeps
-\* asking is granted a lease (no queue: it is not first, it is eventually)
+\* D6: when capacity frees and stays free, a waiting worker that keeps asking
+\* is granted a lease. The fairness is only that it keeps asking (WF on Ask:
+\* the take answers, grant or wait); the grant comes from the pick never
+\* answering WAIT while a bench has room. Capacity that frees only now and
+\* then is not enough: with no queue, other askers can take it first.
 WaiterGetsLease ==
-  \A w \in Workers : ([]<>RoomNow) => ((w \in waiting) ~> (w \notin waiting))
+  \A w \in Workers : (<>[]RoomNow) => ((w \in waiting) ~> (w \notin waiting))
 
 =============================================================================
