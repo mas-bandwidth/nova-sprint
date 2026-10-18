@@ -410,7 +410,7 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		// writes it and cleared when the text names none; only when it differs from what the
 		// card holds, and held to add's checks (validateSoftDeps, softCycleWith) against the
 		// snapshot (docs/SPEC-SPRINT.md, the brief)
-		landSet, landUnset, why := briefLandAfterSet(s, c, b.Brief)
+		landSet, landUnset, why := briefLandAfterSet(s, c, b.Brief, want)
 		if why != "" {
 			p.refuse(c.ID, why)
 			continue
@@ -1613,7 +1613,7 @@ func briefBaseOf(brief string) string {
 // (SoftDepsRaw). It holds the list to the checks add holds (validateSoftDeps, softCycleWith)
 // against the snapshot, with the card's own repository and base from its new brief; why
 // names the card and the reason and changes nothing when it is not a legal write.
-func briefLandAfterSet(s *Snapshot, c *Card, brief string) (set map[string]string, unset []string, why string) {
+func briefLandAfterSet(s *Snapshot, c *Card, brief string, needs []string) (set map[string]string, unset []string, why string) {
 	want := BriefLandAfter(brief)
 	if sameNeeds(SoftDepsRaw(c), want) {
 		return nil, nil, ""
@@ -1626,7 +1626,7 @@ func briefLandAfterSet(s *Snapshot, c *Card, brief string) (set map[string]strin
 	if base == "" {
 		base = cardBaseOf(c)
 	}
-	if why := validateSoftDeps(s, c.ID, repo, base, Split(c.F("needs")), want, nil); why != "" {
+	if why := validateSoftDeps(s, c.ID, repo, base, needs, want, nil); why != "" {
 		return nil, nil, why
 	}
 	if cyc := softCycleWith(s, c.ID, map[string][]string{c.ID: want}, nil); len(cyc) > 0 {
@@ -1699,7 +1699,7 @@ func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string, ti
 	after := keepWaitsInNeeds(s, c, needs, set, &unset)
 	// a LAND-AFTER-only edit (and one that changes both routing lines) writes the new
 	// text's soft dependencies here as the ordinary path does, held to add's checks
-	landSet, landUnset, why := briefLandAfterSet(s, c, brief)
+	landSet, landUnset, why := briefLandAfterSet(s, c, brief, needs)
 	if why != "" {
 		p.refuse(c.ID, why)
 		return p

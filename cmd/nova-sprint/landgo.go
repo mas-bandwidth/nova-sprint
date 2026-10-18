@@ -82,11 +82,19 @@ func (l *lander) goRun(ctx context.Context, dir string, run []string, set ...str
 	if env == nil {
 		env = os.Environ()
 	}
+	env = gateChildEnv(env)
 	with := []string{readonlyGoFlags(env)}
 	if cache := l.goCache(ctx, env); cache != "" {
 		with = append(with, "GOCACHE="+cache)
 	}
 	b.Cmd.Dir, b.Cmd.Env = dir, withEnv(env, append(with, set...)...)
+	if len(run) > 0 && run[0] == "gofmt" {
+		var stdout, stderr bytes.Buffer
+		b.Cmd.Stdout, b.Cmd.Stderr = &stdout, &stderr
+		err := b.Cmd.Run()
+		out := gofmtOutput(stdout.String(), stderr.String(), err)
+		return out, b.Wrap(strings.Join(run, " "), err)
+	}
 	out, err := b.Cmd.CombinedOutput()
 	return string(out), b.Wrap(strings.Join(run, " "), err)
 }
@@ -97,6 +105,7 @@ func (l *lander) goRun(ctx context.Context, dir string, run []string, set ...str
 // cache where its go env names one, asked once a process), else a cache under the land
 // root (<root>/cache/go-build, the swarm's own name for it). "" when none can be named.
 func (l *lander) goCache(ctx context.Context, env []string) string {
+	env = gateChildEnv(env)
 	for _, e := range env {
 		if v, ok := strings.CutPrefix(e, "GOCACHE="); ok && v != "" {
 			return v
@@ -1183,11 +1192,11 @@ func (l *lander) gateBenches(ctx context.Context) (hosts []string, inLoop, remot
 }
 
 // gateHosts is the gate's host choice, which the loop (gateBenches) and the dry run
-// (dryGate) share: the fleet members that may run a gate (Snapshot.GateMembers: up, or
-// held by the coordinator; a hold is a deal control, not a gate one) other than this
-// machine that bench.CheckHost accepts, in the fleet's order. A down member is left out;
-// one that cannot be reached is passed over by the ring (ringGate). remote says another
-// fleet member is configured, even when it is down or the fleet could not be read.
+// (dryGate) share: the benches the land loop can use (Snapshot.LandBenches: GateMembers,
+// up or held by the coordinator, other than this machine and any host bench.CheckHost
+// refuses), in the fleet's order. A down member is left out; one that cannot be reached
+// is passed over by the ring (ringGate). remote says another fleet member is configured,
+// even when it is down or the fleet could not be read.
 // tla/DirtyTick.tla LandGate (MCDirtyTickGateHeld.cfg, MCDirtyTickBrokenGateUpOnly.cfg).
 func (l *lander) gateHosts(ctx context.Context) (hosts []string, remote bool) {
 	if l == nil || l.a == nil || l.st == nil {
@@ -1206,13 +1215,7 @@ func (l *lander) gateHosts(ctx context.Context) (hosts []string, remote bool) {
 			break
 		}
 	}
-	for _, m := range s.GateMembers() {
-		if self != "" && strings.EqualFold(m, self) {
-			continue
-		}
-		if bench.CheckHost(m) != nil {
-			continue
-		}
+	for _, m := range s.LandBenches(self) {
 		hosts = append(hosts, m)
 	}
 	return hosts, remote
