@@ -964,7 +964,7 @@ func namesAFinishPR(raw []byte, h map[string]headerField) bool {
 // `(read: ...)` or `(read; ...)` right after one.
 var (
 	taskPathRE = regexp.MustCompile("[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+")
-	readMarkRE = regexp.MustCompile(`^[` + "`" + `"']?[ \t]*\(read([;:]|\))`)
+	readMarkRE = regexp.MustCompile(`(?i)^[` + "`" + `"']?[ \t]*\(read([;:]|\))`)
 )
 
 // taskPaths is every path-shaped word of the task text that is not marked read anywhere: a

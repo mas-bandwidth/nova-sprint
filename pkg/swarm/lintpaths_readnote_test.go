@@ -33,6 +33,7 @@ func TestAReadMarkingMayCarryANoteAndOneMarkingPerFileIsEnough(t *testing.T) {
 	for _, task := range []string{
 		"Copy the shape of internal/a.go (read: the shape to copy).",
 		"Copy the shape of internal/a.go (read; copied by hand).",
+		"Mixed-case marking: internal/a.go (Read: why).",
 		"internal/a.go (read) is the model. Then internal/a.go is named again here, and again in internal/a.go's own words.",
 		"Later mentions come first: internal/a.go is named here before it is marked, then internal/a.go (read: why).",
 	} {
