@@ -30,7 +30,7 @@ table 28375b546bf6c1b9.a11df2a73cf40d42
     field value id=0x7ce4fd9430e80cea kind=17 type=string
 
 table 28375b546bf6c1b9.a539b948612d1f97
-    field key id=0x3dc94a19365b10ec kind=12 size=65536
+    field key id=0x3dc94a19365b10ec kind=12
     field value id=0x7ce4fd9430e80cea kind=5
 
 table 28375b546bf6c1b9.c6293a6425e1ff65
@@ -52,9 +52,6 @@ table 28375b546bf6c1b9.e26607dbf29ff924.7ce4fd9430e80cea
 table 28375b546bf6c1b9.e26607dbf29ff924.7ce4fd9430e80cea.7ce4fd9430e80cea
     field key id=0x3dc94a19365b10ec kind=12
     field value id=0x7ce4fd9430e80cea kind=17 type=string
-
-table 28375b546bf6c1b9.e685131756c58824
-    field value id=0x7ce4fd9430e80cea kind=12 size=8
 
 table 28da53a6fe32b5ad.23b885a1b02092b5
     field key id=0x3dc94a19365b10ec kind=12
@@ -453,7 +450,6 @@ table WhereView
     field server id=0x7294d77db181ded2 kind=17 type=ServerBeat
     field fleet_work id=0xb9a400e2ab1a653d kind=17 type=string
     field friends_work id=0x7b989cbd26ec648a kind=17 type=string
-    field friends_tiers id=0xe685131756c58824 kind=14 elem=12 type=WhereViewFriendsTiersText array=unbounded
     field goals id=0x6bd3bccef38de2bf kind=14 elem=13 type=GoalView array=unbounded
     field seat id=0x2d08f118d3f933e8 kind=17 type=SeatChange
     field holds id=0x7477287ad37c50f1 kind=14 elem=13 type=HoldView array=unbounded
@@ -481,7 +477,7 @@ table WhereView
     field low id=0x125083191daf6f61 kind=1
     field merge_row id=0xcf0cc5aad6d89b8c kind=13 type=MergeRow
     field friends id=0x82a6b14733b2685a kind=14 elem=13 type=FriendRow array=unbounded
-    field releases id=0xa539b948612d1f97 kind=14 elem=13 array=map keykind=12 keybound=65536
+    field releases id=0xa539b948612d1f97 kind=14 elem=13 array=map keykind=12 keybound=0
     field store_rtt_p50_ms id=0xf603e23e20725712 kind=11 optional=true
     field store_rtt_p99_ms id=0xa899b225b2fb8c07 kind=11 optional=true
     field landed_series id=0x602a969dcf5c554f kind=17 type=LandedSeries
@@ -780,3 +776,7 @@ table ddc8631e5d828d8d.e6f09b190519daa4
 
 ### 2026-10-17 (UTC) — fleet_tiers and reads_needed are keys of two JSON types today and cannot be kept
 - table 28375b546bf6c1b9.7f1b4a5c41ecd465: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
+
+### 2026-10-18 (UTC) — a12-defs-where-view.w9: friends_tiers dropped (two JSON types), releases key unbounded (no code bounds a release name)
+- table 28375b546bf6c1b9.e685131756c58824: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
+- WhereView.releases: map key capacity 65536 -> 0 (an entry whose KEY does not fit the new capacity is skipped WHOLE and counted, because a clamped key is a merged entry (docs/SPEC-TABLES.md §2.8)) [warn]

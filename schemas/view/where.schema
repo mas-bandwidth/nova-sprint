@@ -664,11 +664,15 @@ table WhereView
     // "on" or "off".
     fleet_work   *string
     friends_work *string
-    // the tiers the friends side may take: the list. Each word is "all" or a tier
-    // of flash, pro, heavy and frontier (internal/sprint/settings.go:167-188,
-    // sideTiersWord, with capLadder, lane_cap.go:35), the longest frontier, 8 bytes.
-    friends_tiers []string(8)
-    goals        []GoalView
+    // SHAPE: fleet_tiers, friends_tiers and reads_needed are not declared. Each is
+    // a key the where --json object writes with two JSON types today, so the table
+    // cannot keep it and does not force it into one type: fleet_tiers and
+    // friends_tiers are the string "all" for a nil list, the default
+    // (internal/sprint/defaults.go:81), and the list otherwise (tiersJSON,
+    // cmd/nova-sprint/reads.go:2459-2462; FleetTiers and FriendsTiers are any,
+    // reads.go:746-750); reads_needed is the string "default" or a count number
+    // (ReadsNeeded is any, reads.go:754; reads.go:1501-1503).
+    goals       []GoalView
     seat         *SeatChange
     holds        []HoldView
     seat_waits   *SeatWaits
@@ -700,10 +704,10 @@ table WhereView
     low          bool
     merge_row    MergeRow
     friends      []FriendRow
-    // release -> cards left: a stream's release is a field value of its control
-    // card (internal/sprint/settings.go:35), bounded by the store's field value limit
-    // alone, 64 KiB (pkg/ntable/limits.go:13, checked at pkg/ntable/store.go:959).
-    releases     map[string(65536)]int64
+    // release -> cards left: a stream's release is the release field of its control
+    // card (internal/sprint/settings.go:35, gathered at internal/sprint/streams.go:85-93).
+    // No code bounds the release name's length, so the key declares no bound.
+    releases     map[string]int64
     store_rtt_p50_ms ?float64
     store_rtt_p99_ms ?float64
     landed_series    *LandedSeries | json = "landedSeries"
