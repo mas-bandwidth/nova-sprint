@@ -2991,7 +2991,11 @@ func envFaultNote(s *Snapshot, member, primary, cause, line, who string) (Note, 
 	n := judgment(NMemberEnvFault, sub, s.Now, 0, sub)
 	n.Who, n.To = who, s.Coordinator
 	n.Card = primary
-	n.Decisions = []string{"fleet up " + member, "wait"}
+	firstDecision := "fleet up " + member
+	if IsFriendRow(member) {
+		firstDecision = EnvProbeLine(member)
+	}
+	n.Decisions = []string{firstDecision, "wait"}
 	n.What = envFaultWhat(member, primary, cause, line)
 	return n, nil
 }
@@ -3229,6 +3233,19 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 	var p Plan
 	switch r.Op {
 	case "up", "release":
+		if r.Op == "up" {
+			if name, friend := FriendOfRow(r.Member); friend {
+				cause, _ := s.MemberEnvFault(r.Member)
+				if !ValidID(name) || cause == "" || r.Probe != EnvProbePassed {
+					p.refuse(r.Member, "a friend row is not a fleet member; fleet up "+r.Member+" --probe "+EnvProbePassed+" clears only its environment fault")
+					return p
+				}
+				u := Unit{Key: r.Member, Moved: r.Member + " environment fault cleared (--probe " + EnvProbePassed + ")"}
+				clearEnvFault(s, r.Member, &u)
+				p.Units = append(p.Units, u)
+				return p
+			}
+		}
 		if !ValidID(r.Member) {
 			p.refuse(r.Member, "a member name wants letters, digits, _ and -")
 			return p

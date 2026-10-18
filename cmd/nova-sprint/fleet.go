@@ -117,6 +117,12 @@ func (a *app) fleetStep(st *store.Store, op, member, who string, width int, drai
 	r := sprint.FleetReq{Op: op, Member: member, Who: who, Width: width, Drain: drain, Deadline: deadline, DeadlineOff: deadlineOff, Harnesses: harnesses, Probe: probe, Rebalance: op == "level"}
 	switch op {
 	case "up":
+		if _, friend := sprint.FriendOfRow(member); friend {
+			// A friend's up request is only the environment-fault remedy. The
+			// friend's hook owns liveness, so do not rejoin a machine row or touch
+			// a synthetic beat; fleetStepPlan handles the fault-only operation.
+			break
+		}
 		r.Op = "release"
 		// a member a sync removed in this epoch comes back with its own control
 		// card, placed again before the step reads it (store.RejoinMembers)
