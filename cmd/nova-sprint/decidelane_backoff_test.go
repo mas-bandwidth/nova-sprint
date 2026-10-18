@@ -121,6 +121,9 @@ func TestTheLaneReadsARecordOnlyWhenItsFileChanged(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(path, nil, 0o644))
 	require.NoError(t, lane.recordAnswer(d("j2")))
+	// Force a deterministic metadata transition; coarse-resolution filesystems may
+	// otherwise retain the same mtime for this same-size rewrite.
+	require.NoError(t, os.Chtimes(path, fi.ModTime(), fi.ModTime().Add(time.Second)))
 	open, err = lane.openOf(path)
 	require.NoError(t, err)
 	require.Len(t, open, 1, "the changed file is read again")
