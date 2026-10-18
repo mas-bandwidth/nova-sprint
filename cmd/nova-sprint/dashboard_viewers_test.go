@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -9,6 +11,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/sprintdash"
 )
 
 // fakePoller is the dashboard server's poller as dashViewers.poll drives it: it counts the
@@ -135,5 +139,70 @@ func TestTheDashboardReadsOnlyWhileSomeoneIsLooking(t *testing.T) {
 	require.Equal(t, 3, p.reads())
 	cancel()
 	<-p.stopped
+	<-done
+}
+
+// A viewer back after an idle spell is answered from a read made after it came, never from
+// the copy left from before no one looked: its own request starts the poller, whose full read
+// and the request's own meet, and the request waits for that read (sprintdash Refresh joins a
+// read in flight). The real dashboard server, a read that waits for its release, the fake
+// clock: no socket, no real time.
+func TestAViewerBackIsAnsweredFromAFreshRead(t *testing.T) {
+	t.Parallel()
+	var mu sync.Mutex
+	now := time.Unix(1000, 0)
+	clockNow := func() time.Time { mu.Lock(); defer mu.Unlock(); return now }
+	n := 0
+	began := make(chan int, 8)
+	release := make(chan struct{}, 8)
+	srv := &sprintdash.Server{
+		Now:       clockNow,
+		Every:     time.Second,
+		ReadTimer: func(time.Duration) (<-chan time.Time, func()) { return nil, func() {} },
+		Read: func() ([]byte, error) {
+			mu.Lock()
+			n++
+			k := n
+			mu.Unlock()
+			began <- k
+			if k > 1 {
+				<-release
+			}
+			return fmt.Appendf(nil, `{"at":"2026-10-18T03:00:00Z","landed":%d,"all":100,"summary":"x","tables":{"work":{}}}`, k), nil
+		},
+	}
+	srv.Tick() // the first read, before any listener
+	require.Equal(t, 1, <-began)
+	v := newDashViewers(clockNow)
+	clock := make(chan time.Time)
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() { defer close(done); v.poll(ctx, srv, clock) }()
+	mu.Lock()
+	now = now.Add(10 * time.Minute) // no one looked for ten minutes
+	mu.Unlock()
+
+	page := v.watch(srv.Pull())
+	answered := make(chan []byte, 1)
+	go func() {
+		w := httptest.NewRecorder()
+		page.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/sprint", nil))
+		answered <- w.Body.Bytes()
+	}()
+	require.Equal(t, 2, <-began, "the viewer's arrival reads the sprint")
+	release <- struct{}{}
+	body := <-answered
+	var got struct {
+		Data struct {
+			Landed int `json:"landed"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(body, &got))
+	require.Equal(t, 2, got.Data.Landed, "the viewer is answered from the read its arrival made: %s", body)
+	mu.Lock()
+	reads := n
+	mu.Unlock()
+	require.Equal(t, 2, reads, "one read for the viewer and the poller both")
+	cancel()
 	<-done
 }
