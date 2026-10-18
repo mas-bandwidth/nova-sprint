@@ -68,7 +68,7 @@ import (
 // --load anywhere among them. --load is required, because the server cannot measure the
 // worker's machine. A word the list does not name is refused naming it; why is "" when
 // the words are a beat.
-func fleetBeatWords(rest []string) (as, load, stop, live, noRoom string, draining bool, why string) {
+func fleetBeatWords(rest []string) (as, load, stop, live, noRoom, facts string, draining bool, why string) {
 	// the forwarding CLI puts its caller's `--actor <name>` before the member (forward.go,
 	// ask): the server's own actor is the member, so it is read and dropped here, never
 	// mistaken for the member.
@@ -76,7 +76,7 @@ func fleetBeatWords(rest []string) (as, load, stop, live, noRoom string, drainin
 		rest = rest[2:]
 	}
 	if len(rest) < 1 {
-		return "", "", "", "", "", false, "a beat names its member first"
+		return "", "", "", "", "", "", false, "a beat names its member first"
 	}
 	as, words := rest[0], rest[1:]
 	loadSet, stopSet := false, false
@@ -90,27 +90,27 @@ func fleetBeatWords(rest []string) (as, load, stop, live, noRoom string, drainin
 		switch w {
 		case "--load", "--stop-returns", "--live", "--no-room", "--facts":
 			if i+1 >= len(words) {
-				return "", "", "", "", "", false, "a beat's " + w + " wants its value"
+				return "", "", "", "", "", "", false, "a beat's " + w + " wants its value"
 			}
 			value = words[i+1]
 			i++
 		default:
-			return "", "", "", "", "", false, "a beat takes no word " + oneline.Escape(w) + ": its words are `fleet beat <member> [--stop-returns <n>] [--no-room <why>] [--draining] [--live <set>] [--facts <list>] --load <percent>` and nothing more"
+			return "", "", "", "", "", "", false, "a beat takes no word " + oneline.Escape(w) + ": its words are `fleet beat <member> [--stop-returns <n>] [--no-room <why>] [--draining] [--live <set>] [--facts <list>] --load <percent>` and nothing more"
 		}
 		switch w {
 		case "--load":
 			if loadSet {
-				return "", "", "", "", "", false, "a beat's --load is given once"
+				return "", "", "", "", "", "", false, "a beat's --load is given once"
 			}
 			load, loadSet = value, true
 		case "--stop-returns":
 			if stopSet {
-				return "", "", "", "", "", false, "a beat's --stop-returns is given once"
+				return "", "", "", "", "", "", false, "a beat's --stop-returns is given once"
 			}
 			stop, stopSet = value, true
 		case "--live":
 			if value == "" {
-				return "", "", "", "", "", false, "a beat's --live names a set"
+				return "", "", "", "", "", "", false, "a beat's --live names a set"
 			}
 			live = value
 		case "--no-room":
@@ -119,19 +119,20 @@ func fleetBeatWords(rest []string) (as, load, stop, live, noRoom string, drainin
 			// the member's gate facts, its own measure of its machine (fleet beat --facts):
 			// fact words only, so no word of the list can be taken as a flag
 			if _, err := sprint.FactWords(value); err != nil {
-				return "", "", "", "", "", false, "a beat's " + err.Error()
+				return "", "", "", "", "", "", false, "a beat's " + err.Error()
 			}
+			facts = value
 		}
 	}
 	if !loadSet {
-		return "", "", "", "", "", false, "a beat names its --load and nothing more measures the worker's machine"
+		return "", "", "", "", "", "", false, "a beat names its --load and nothing more measures the worker's machine"
 	}
-	return as, load, stop, live, noRoom, draining, ""
+	return as, load, stop, live, noRoom, facts, draining, ""
 }
 
 func workerVerb(argv []string) (as string, words int, why string) {
 	if len(argv) >= 2 && argv[0] == "fleet" && argv[1] == "beat" {
-		as, load, stop, live, _, _, why := fleetBeatWords(argv[2:])
+		as, load, stop, live, _, _, _, why := fleetBeatWords(argv[2:])
 		if why != "" {
 			return "", 0, why
 		}
@@ -386,6 +387,12 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 			if lanes != nil && (isFriendBeat(argv) || isBudget(argv)) {
 				lane = "beat"
 			}
+			if lanes != nil && isFleetBeat(argv) && !isFleetBeatDryRun(argv) && !lanes.fleetBeatChanges(ctx, argv[2:]) {
+				// a member's beat that changes nothing but its clock and its load: the beat
+				// lane, as a friend's; one that changes the member's word, or its first, takes
+				// the line below (tla/ServerLanes.tla, ChangeHoldsTheLine)
+				lane = "beat"
+			}
 			args = slices.Concat(argv[:words], []string{"--redis", a.serveAddr, "--actor", as}, argv[words:])
 		case local:
 			v := readVerb(argv)
@@ -430,6 +437,11 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 			beats++
 			if isBudget(argv) {
 				out.Results[i] = lanes.budget(ctx, argv, args)
+				a.logRefused(argv, refusedWorker(as, argv), out.Results[i].Code, out.Results[i].Stderr)
+				continue
+			}
+			if isFleetBeat(argv) {
+				out.Results[i] = lanes.fleetBeat(ctx, argv, args)
 				a.logRefused(argv, refusedWorker(as, argv), out.Results[i].Code, out.Results[i].Stderr)
 				continue
 			}

@@ -6,9 +6,11 @@
 //
 // The server is a function of its requests and its clock: Read is how it reads the
 // sprint and Now is its clock, so a test drives it with no socket and no real time.
-// The server reads the sprint once per Every whoever is looking (Run, on a ticker the
-// caller hands it: one poller, its reads back to back with Every as their floor), and
-// while Run polls a request only ever answers from the copy. A read that fails holds the
+// The server reads the sprint once per Every while Run polls (Run, on a ticker the
+// caller hands it: one poller, its reads back to back with Every as their floor; nova-sprint
+// dashboard runs it only while someone is looking), and while Run polls a request only ever
+// answers from the copy; while it does not, a request reads (Refresh, joining a read in
+// flight) and /healthz checks the freshness itself. A read that fails holds the
 // last good copy, marked ok false with a short reason (never the reader's own error
 // text, which goes to Log only), and a read that runs past ReadTimeout is marked so.
 // One freshness check (fresh.go) raises an alarm when the served data stays old; a
@@ -45,7 +47,13 @@ const (
 	Window = time.Hour
 	// MinSpan is the samples throughput needs before it shows: until then it is null. Only a
 	// history that is truly empty (the dashboard's first ever start) waits for it: the samples
-	// are kept across restarts (SaveSamples), so a release adoption does not.
+	// are kept across restarts (SaveSamples), so a release adoption does not. A gap in the
+	// reads (the dashboard reads nothing while no one is looking, or was stopped) keeps the
+	// newest sample before the Window as the base of /api/sprint's throughput (the pull
+	// routes' and a puller's) until the Window's own samples span MinSpan (trimWindow): the
+	// rate is then over the gap, and minutes says how long. The live page's own tile
+	// (pageThroughput, pageview.go, under the page lock) is not changed: after a gap longer
+	// than Window it is null again until its samples span MinSpan, ten minutes of looking.
 	MinSpan = 10 * time.Minute
 	// SaveEvery is the least time between two saves of the samples.
 	SaveEvery = 10 * time.Second
@@ -124,7 +132,8 @@ type Server struct {
 	mu        sync.Mutex
 	polling   bool // Run is the one reader: a request answers from the copy only
 	reading   bool
-	began     time.Time // when the last read began; zero before the first
+	readOver  chan struct{} // closed once the read in flight is recorded (done or timed out)
+	began     time.Time     // when the last read began; zero before the first
 	pageTicks int
 	snap      snapshot
 	page      pageCopy       // the last good read as the page reads it (pageview.go)
@@ -138,6 +147,8 @@ type Server struct {
 	saveBad   bool      // the last save failed (logged once)
 	stats     readStats
 	fresh     freshness
+	rows      json.RawMessage // the last good read's rows (where --json --rows): the charts' cards; nil for a puller
+	charts    chartMemo       // the charts' answers, a minute each (charts_serve.go)
 }
 
 // snapshot is /api/sprint's body: the page reads data, throughput,
@@ -192,10 +203,14 @@ func (s *Server) send(w http.ResponseWriter, r *http.Request, ctype string, body
 	_, _ = w.Write(body) // ignored: a page gone away asks again in a second
 }
 
-// Refresh reads the sprint when Every has passed since the last read began and no
-// read is running; otherwise the cached copy stands. While Run polls it reads nothing
-// once a read has begun: the poller is the one reader, and a request answers from the
-// copy (the verb makes the first read before it listens, so a page never reads).
+// Refresh reads the sprint when Every has passed since the last read began, and waits
+// for a read already running to be recorded (it joins it); otherwise the cached copy
+// stands. While Run polls it reads nothing once a read has begun: the poller is the one
+// reader, and a request answers from the copy (the verb makes the first read before it
+// listens, so a page never reads). While Run does not (no one was looking:
+// nova-sprint dashboard's viewers), the first request back reads the sprint, or joins the
+// read the returning viewer started, and is answered from that read, never from the copy
+// left from before (cold read of PR 490, 2026-10-18).
 func (s *Server) Refresh() {
 	s.mu.Lock()
 	cacheOnly := s.polling && !s.began.IsZero()
@@ -214,15 +229,27 @@ type readResult struct {
 
 // refresh reads the sprint when gap has passed since the last read began and no read is
 // running. It decouples the page tick from slow background reads: at most one read runs
-// at a time, in the background, logging when it exceeds 1s.
+// at a time, in the background, logging when it exceeds 1s. With wait, a read already
+// running is waited for until it is recorded (done, or timed out), and nothing more is
+// read.
 func (s *Server) refresh(gap time.Duration, wait bool) {
 	s.mu.Lock()
 	start := s.Now()
-	if s.reading || !s.began.IsZero() && start.Sub(s.began) < gap {
+	if s.reading {
+		over := s.readOver
+		s.mu.Unlock()
+		if wait && over != nil {
+			<-over
+		}
+		return
+	}
+	if !s.began.IsZero() && start.Sub(s.began) < gap {
 		s.mu.Unlock()
 		return
 	}
-	s.reading, s.began = true, start
+	over := make(chan struct{})
+	recorded := sync.OnceFunc(func() { close(over) })
+	s.reading, s.began, s.readOver = true, start, over
 	s.mu.Unlock()
 
 	readDone := make(chan readResult, 1)
@@ -245,6 +272,7 @@ func (s *Server) refresh(gap time.Duration, wait bool) {
 		s.record(start, end, res.body, res.up, res.err)
 		onRecord := s.OnRecord
 		s.mu.Unlock()
+		recorded()
 		if onRecord != nil {
 			onRecord()
 		}
@@ -266,6 +294,7 @@ func (s *Server) refresh(gap time.Duration, wait bool) {
 					s.mu.Lock()
 					s.record(start, s.Now(), nil, nil, &ReadError{Why: fmt.Sprintf("the read timed out after %s", timeout)})
 					s.mu.Unlock()
+					recorded()
 					res := <-readDone
 					finish(res)
 				}
@@ -274,6 +303,7 @@ func (s *Server) refresh(gap time.Duration, wait bool) {
 			s.mu.Lock()
 			s.record(start, s.Now(), nil, nil, &ReadError{Why: fmt.Sprintf("the read timed out after %s", timeout)})
 			s.mu.Unlock()
+			recorded()
 			res := <-readDone
 			finish(res)
 		}
@@ -367,6 +397,9 @@ func (s *Server) record(start, end time.Time, body []byte, up *snapshot, err err
 		// ignored: sprintJSON has read body as JSON; a field of another shape is left zero
 		_ = json.Unmarshal(body, &c)
 		s.copy = &c
+		if up == nil {
+			s.rows = rowsOf(body)
+		}
 		s.gen++
 		if s.changed != nil {
 			close(s.changed)
@@ -402,17 +435,35 @@ func savedOf(in []sample) []savedSample {
 }
 
 // samplesOf is the saved samples still in the Window at now and not after it (a clock that went
-// back drops them), oldest first.
+// back drops them), oldest first, with the newest before the Window kept as the base while the
+// Window's own span less than MinSpan (trimWindow).
 func samplesOf(in []savedSample, now time.Time) []sample {
 	var out []sample
 	for _, x := range in {
 		at := time.Unix(0, x.At)
-		if at.After(now) || now.Sub(at) > Window || (len(out) > 0 && at.Before(out[len(out)-1].at)) {
+		if at.After(now) || (len(out) > 0 && at.Before(out[len(out)-1].at)) {
 			continue
 		}
 		out = append(out, sample{at, x.Landed})
 	}
-	return out
+	return trimWindow(out, now)
+}
+
+// trimWindow drops the samples older than Window at at, but keeps the newest of them as the
+// base while the samples inside the Window span less than MinSpan (or there are none): after a
+// gap in the reads the rate is the landings over the gap at once, never a blank tile for
+// MinSpan, and once the Window's own samples span MinSpan the base is dropped. On 2026-10-18
+// the dashboard came to read nothing while no one looks, and a viewer back after an idle hour
+// saw no throughput for ten minutes (cold read of PR 490).
+func trimWindow(s []sample, at time.Time) []sample {
+	drop := 0
+	for drop < len(s) && at.Sub(s[drop].at) > Window {
+		drop++
+	}
+	if drop > 0 && (drop == len(s) || at.Sub(s[drop].at) < MinSpan) {
+		drop--
+	}
+	return s[drop:]
 }
 
 // restoreSamples loads the saved samples once, under mu, so the rolling hour carries across a
@@ -458,12 +509,7 @@ func (s *Server) sampleLanded(at time.Time, landed int64) (*float64, float64) {
 	if n := len(s.samples); n > 0 && landed < s.samples[n-1].landed {
 		s.samples = s.samples[:0]
 	}
-	s.samples = append(s.samples, sample{at, landed})
-	drop := 0
-	for drop < len(s.samples) && at.Sub(s.samples[drop].at) > Window {
-		drop++
-	}
-	s.samples = s.samples[drop:]
+	s.samples = trimWindow(append(s.samples, sample{at, landed}), at)
 	span := at.Sub(s.samples[0].at)
 	minutes := round1(span.Minutes())
 	if span < MinSpan {
@@ -539,7 +585,7 @@ func (s *Server) SnapshotOf(release string) []byte {
 // pageSum is the build number's part from the embedded files: it changes with the binary.
 var pageSum = func() uint32 {
 	h := crc32.NewIEEE()
-	for _, n := range []string{"index.html", "app.js", "nunito-800.woff2", "logo-robot-192.png", "logo-robot-384.png"} {
+	for _, n := range []string{"index.html", "app.js", "nunito-800.woff2", "logo-robot-192.png", "logo-robot-384.png", "charts.js", "stream.html", "stream.js"} {
 		h.Write(file(n))
 	}
 	return h.Sum32()

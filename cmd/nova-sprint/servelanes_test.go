@@ -256,3 +256,61 @@ func TestTheLanesRunNothingForACallerThatWent(t *testing.T) {
 	require.Equal(t, 0, where.Code, where.Stderr)
 	assert.NotContains(t, where.Stdout, "amy     |     0 |       0 |     2 |    0 | 0.0% | up", "amy never beat")
 }
+
+// A member's beat that changes nothing but its clock and its load runs on the beat lane; its
+// first beat, and a beat that changes the member's word (its live set, no-room, draining,
+// facts or stop-returns), takes the line, where the tick reconciles the row against the word
+// (tla/ServerLanes.tla, Changes, ChangeHoldsTheLine; MCServerLanesFleetBeat). On 2026-10-17
+// nine idle benches beating every 3 s put ~180 changeless beats a minute on the line.
+func TestAFleetBeatThatChangesNothingRunsOnTheBeatLane(t *testing.T) {
+	t.Parallel()
+	ta := laneRig(t)
+	require.NotNil(t, ta.a.lanesFor(context.Background()), "the in-memory store runs the lanes")
+	beat := func(live, stop string, words ...string) {
+		t.Helper()
+		argv := append([]string{"fleet", "beat", "m1", "--stop-returns", stop, "--live", live, "--load", "3.0", "--facts", "linux,amd64"}, words...)
+		res := serveOne(ta.a, false, argv...)
+		require.Equal(t, 0, res.Code, "%v: %s", argv, res.Stderr)
+		assert.Contains(t, res.Stdout, "FLEET-BEAT OK m1", "%v", argv)
+	}
+	counts := func() (beats, line int) { return ta.a.served.beats, ta.a.served.serialVerbs }
+	beat("-", "0")
+	beats, line := counts()
+	assert.Equal(t, [2]int{0, 1}, [2]int{beats, line}, "the first beat (no record yet) takes the line")
+	beat("-", "0")
+	beats, line = counts()
+	assert.Equal(t, [2]int{1, 1}, [2]int{beats, line}, "the same word again: the beat lane, not the line")
+	beat("-", "0", "--no-room", "the disk is under its floor")
+	beats, line = counts()
+	assert.Equal(t, [2]int{1, 2}, [2]int{beats, line}, "a no-room word is a change: the line")
+	beat("-", "0", "--no-room", "the disk is under its floor")
+	beats, line = counts()
+	assert.Equal(t, [2]int{2, 2}, [2]int{beats, line}, "the same no-room word: the lane")
+	beat("-", "0")
+	beats, line = counts()
+	assert.Equal(t, [2]int{2, 3}, [2]int{beats, line}, "the no-room word cleared: the line")
+	ta.ok("take --as m1 --max 1 --lane 1")
+	beat("s1-1@1", "0")
+	beats, line = counts()
+	assert.Equal(t, [2]int{2, 4}, [2]int{beats, line}, "a live set changed: the line")
+	beat("s1-1@1", "0")
+	beats, line = counts()
+	assert.Equal(t, [2]int{3, 4}, [2]int{beats, line}, "the same live set: the lane")
+	beat("s1-1@1", "0", "--draining")
+	beats, line = counts()
+	assert.Equal(t, [2]int{3, 5}, [2]int{beats, line}, "draining is a change: the line")
+	beat("s1-1@1", "2", "--draining")
+	beats, line = counts()
+	assert.Equal(t, [2]int{3, 6}, [2]int{beats, line}, "a stop-return owed is a change: the line")
+	// the changeless beat is answered while the line is held (a tick, a batch), waiting for
+	// nothing: BeatNeverWaitsForTheLine
+	waited := make(chan struct{}, 8)
+	ta.a.serial.waiting = func() { waited <- struct{}{} }
+	ta.a.serial.Lock()
+	beat("s1-1@1", "2", "--draining")
+	ta.a.serial.Unlock()
+	beats, line = counts()
+	assert.Equal(t, [2]int{4, 6}, [2]int{beats, line}, "the same word while the line is held: the lane")
+	require.Empty(t, waited, "the changeless beat waited for the line")
+	assert.Contains(t, ta.ok("where --json"), "m1", "the member is up on its lane beats")
+}

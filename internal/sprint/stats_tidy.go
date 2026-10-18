@@ -180,7 +180,7 @@ func doneWord(col string) string {
 // PropCarriedMedians is the fleet table's one property holding every tidied row's median
 // run wall as a tidy found it: "row=<seconds>,<samples>" for each row, in row order, a blank
 // between. One property for the whole fleet, not one a row (a table holds at most
-// ntable.LimitTableProps, 64): on 2026-10-10 a tidy of 66 rows wrote 66 properties and the
+// ntable.LimitTableProps, 1024; 64 then): on 2026-10-10 a tidy of 66 rows wrote 66 properties and the
 // store refused at the bound (stats_reset.go, StatsRecord.Reset, took the same lesson). The
 // deadline rules (MemberMedianWall, FriendMedianWall) use it while the row's live ok sample
 // is smaller than its count, and drop it once the live sample is at least as large, so a

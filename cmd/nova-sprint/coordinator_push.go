@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -54,8 +55,25 @@ import (
 //     not fail (unproven while it did). Only the session's answer to nova-hook's challenge
 //     proves the coordinator is there; the sprint push proves the way to the session.
 
-// coordPushLook bounds WaitLog and remains the quiet-log retry backstop.
-const coordPushLook = 5 * time.Second
+// coordPushLook bounds WaitLog and remains the quiet-log retry backstop: a full pass runs at
+// least this often, whatever the skip (coordPassSkip) says. It was 5 s until 2026-10-17. The
+// sprint push's lease (hook.LeaseTTL, 90 s) is renewed every hook.RenewEvery (30 s) on its own
+// clock: the loop's wait ends when the renewal is due (coordPushWait), and the pass renews it
+// first, off the line, before anything that waits on the line (renewEarly).
+const coordPushLook = 30 * time.Second
+
+// coordPushRetry is the longest the loop waits while something failed: a send to the holder
+// (the sprint push is unproven until one goes), a read of the look, a wait on the log. It is
+// main's 5 s look, kept for failures: a blip that clears within it is re-proven within it.
+const coordPushRetry = 5 * time.Second
+
+// holdRetryCap is the longest wait between two tries of a sprint push renewal that failed:
+// the first waits coordPushRetry, each after doubles it, up to this.
+const holdRetryCap = 30 * time.Second
+
+// coordPushFloor is the least time between the starts of two passes: a busy log (a line a
+// tick) wakes at most one pass a second. Before (2026-10-17), every log line woke a pass.
+const coordPushFloor = time.Second
 
 // coordPushMax is the most groups one message names in full; the rest are counted.
 const coordPushMax = 20
@@ -81,6 +99,23 @@ type coordPush struct {
 	failed         bool      // the last send to the holder failed: the sprint push is unproven
 	heldAt         time.Time // the sprint push's last renewal
 	heldWhy        string    // what the last renewal said, said again only when it changes
+	heldOK         bool      // the last renewal proved the sprint push (else it unproved it)
+	holdFailed     bool      // the last renewal could not be made: tried again at holdNext
+	holdNext       time.Time // when a failed renewal is tried again
+	holdWait       time.Duration
+	holdSaid       string // the renewal's failure said, said once until it succeeds or changes
+	readOK         bool   // the last pass read its look: only then is the renewal made early
+
+	passPrint string                   // what the last full pass read as it began (coordPassPrint)
+	passAt    time.Time                // when the last full pass began
+	decisions map[string]decisionRetry // each decision lane's failed delivery, by lane
+}
+
+// decisionRetry is a decision lane's failed delivery: the token it was sent under, and when
+// it is sent again (a refusal waits, doubling; busRetry).
+type decisionRetry struct {
+	token string
+	busRetry
 }
 
 // coordPushLoop wakes on each committed log event. The cursor is captured by
@@ -88,28 +123,156 @@ type coordPush struct {
 // it and wakes the next pass. Never hold the server line while blocking.
 // tla/CoordinatorPush.tla LogPush, Look, PushedWithinOneEvent.
 func (a *app) coordPushLoop(ctx context.Context) {
+	var last time.Time
 	for ctx.Err() == nil {
-		if !a.coordinatorPass(ctx) {
-			if ctx.Err() == nil {
-				a.sleep(coordPushLook)
-			}
-			continue
-		}
-		if ctx.Err() != nil {
-			return
-		}
-		st, err := a.store(common{redis: a.serveAddr})
-		if err == nil {
-			a.coord.mu.Lock()
-			epoch, cursor := a.coord.logEpoch, a.coord.logCursor
-			a.coord.mu.Unlock()
-			_, _, err = st.WaitLog(ctx, epoch, cursor, coordPushLook)
-		}
-		if err != nil && ctx.Err() == nil {
-			// A failed wait must not busy-spin or remove the existing retry backstop.
-			a.sleep(coordPushLook)
+		last = a.coordPushOnce(ctx, last)
+	}
+}
+
+// coordPushOnce is one turn of the loop: at least coordPushFloor after the last pass began, a
+// pass (or its skip, coordPassSkip), then a wait for the next log event. It answers when the
+// pass began.
+func (a *app) coordPushOnce(ctx context.Context, last time.Time) time.Time {
+	if !last.IsZero() {
+		if wait := coordPushFloor - a.now().Sub(last); wait > 0 {
+			a.sleep(wait)
 		}
 	}
+	began := a.now()
+	// the renewal first, before anything that waits on the line (renewEarly)
+	a.renewEarly(ctx)
+	if !a.coordPassSkip(ctx) && !a.coordinatorPass(ctx) {
+		a.coord.mu.Lock()
+		a.coord.passPrint = "" // a pass that could not read is never skipped
+		a.coord.mu.Unlock()
+		if ctx.Err() == nil {
+			a.sleep(max(a.coordPushWait(began), coordPushFloor))
+		}
+		return began
+	}
+	if ctx.Err() != nil {
+		return began
+	}
+	st, err := a.store(common{redis: a.serveAddr})
+	if err == nil {
+		a.coord.mu.Lock()
+		epoch, cursor := a.coord.logEpoch, a.coord.logCursor
+		a.coord.mu.Unlock()
+		if wait := a.coordPushWait(began); wait > 0 {
+			_, _, err = st.WaitLog(ctx, epoch, cursor, wait)
+		}
+	}
+	if err != nil && ctx.Err() == nil {
+		// A failed wait must not busy-spin, nor wait past the renewal or a retry.
+		a.sleep(max(a.coordPushWait(began), coordPushFloor))
+	}
+	return began
+}
+
+// coordPushWait is how long the loop waits, for the next log event or after a failure:
+// coordPushLook, cut short to when the backstop's full pass is due, the sprint push's renewal
+// is due (or a failed renewal's retry), a decision lane's retry is due, and to coordPushRetry
+// while a send to the holder has failed or the last look could not be read. Before, a skipped
+// pass right before the renewal was due waited a whole coordPushLook, and the lease went near
+// two looks unrenewed.
+func (a *app) coordPushWait(began time.Time) time.Duration {
+	now := a.now()
+	p := &a.coord
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	wait := coordPushLook
+	if !p.passAt.IsZero() {
+		wait = min(wait, p.passAt.Add(coordPushLook).Sub(now))
+	}
+	if p.failed || !p.readOK {
+		wait = min(wait, coordPushRetry)
+	}
+	if at := p.renewAt(); !at.IsZero() && p.readOK {
+		wait = min(wait, at.Sub(now)) // (a pass that cannot read renews nothing: coordPushRetry)
+	}
+	for _, r := range p.decisions {
+		if !r.next.IsZero() {
+			wait = min(wait, r.next.Sub(now))
+		}
+	}
+	return wait
+}
+
+// coordPassPrint is what a pass depends on that a log event can change, read on the line in
+// one short look: the epoch, the seat's holder, the end of the inbox's stream (every note
+// written, a stream transition among them) and every open note as stored. It answers the
+// print, and the log's end at the epoch for WaitLog.
+func (a *app) coordPassPrint(ctx context.Context) (print string, epoch uint64, logCursor string, err error) {
+	err = a.onLine(ctx, func(st *store.Store) error {
+		es, err := st.EpochNow(ctx)
+		if err != nil {
+			return err
+		}
+		epoch = es.N
+		backend := st.B
+		if epoch != 0 {
+			backend = backend.AtEpoch(epoch, false)
+		}
+		var inbox string
+		if logCursor, inbox, err = backend.Tails(ctx); err != nil {
+			return err
+		}
+		holder, err := st.B.Coordinator(ctx)
+		if err != nil {
+			return err
+		}
+		open, err := backend.OpenNotes(ctx)
+		if err != nil {
+			return err
+		}
+		h := sha256.New()
+		fmt.Fprintf(h, "%d\x00%s\x00%s\x00", epoch, holder, inbox)
+		for _, o := range open {
+			b, err := json.Marshal(o.Note)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(h, "%s\x00", o.Key)
+			h.Write(b)
+		}
+		print = fmt.Sprintf("%x", h.Sum(nil))
+		return nil
+	})
+	return print, epoch, logCursor, err
+}
+
+// coordPassSkip says the pass may be skipped, and keeps WaitLog's cursor when it is: what the
+// pass reads is as the last full pass began (coordPassPrint), that pass began within
+// coordPushLook, and nothing of the pass's own is due (a failed send to the holder, a stream
+// notice pending, the sprint push's renewal, a decision lane's retry). Every time-driven duty
+// of a pass (a warning, a wait come due, a late tick, a decision's minute) waits at most
+// coordPushLook for the next full pass. Before (2026-10-17), every log line ran a full pass:
+// two decision lanes each loading the work, readers and fleet, then the inbox loaded again.
+// A pass that may not be skipped records what it read as it began.
+func (a *app) coordPassSkip(ctx context.Context) bool {
+	print, epoch, logCursor, err := a.coordPassPrint(ctx)
+	if err != nil {
+		return false // the pass reads again, and says why it could not
+	}
+	now := a.now()
+	p := &a.coord
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	// a renewal is due once its interval is over, or after one that failed; with none made
+	// (no holder, an unresolved identity's unproving, a new epoch) none is due: a full pass
+	// makes it when what it reads changes, and the backstop's pass when it does not
+	renew := p.renewDue(now)
+	skip := p.passPrint == print && !p.passAt.IsZero() && !now.Before(p.passAt) && now.Sub(p.passAt) < coordPushLook &&
+		!p.failed && len(p.streamPending) == 0 && !renew
+	for _, r := range p.decisions {
+		skip = skip && !r.due(now)
+	}
+	if skip {
+		p.logEpoch, p.logCursor = epoch, logCursor
+		return true
+	}
+	p.passPrint, p.passAt = print, now
+	return false
 }
 
 // coordLook is what one look read on the line.
@@ -197,8 +360,12 @@ func (a *app) readCoordLook(ctx context.Context) (coordLook, error) {
 // coordinatorPass is one look: read, then deliver, warn, tell a late tick and hold the
 // sprint push.
 func (a *app) coordinatorPass(ctx context.Context) (read bool) {
+	a.renewEarly(ctx)
 	a.decisionPass(ctx)
 	l, err := a.readCoordLook(ctx)
+	a.coord.mu.Lock()
+	a.coord.readOK = err == nil
+	a.coord.mu.Unlock()
 	if err != nil {
 		a.serveSay("COORDINATOR PUSH: the inbox could not be read, tried again at the next look: %s", oneline.Escape(err.Error()))
 		return
@@ -214,9 +381,7 @@ func (a *app) coordinatorPass(ctx context.Context) (read bool) {
 	login, identityErr := a.coordinatorBusLogin()
 	if identityErr != nil {
 		a.serveSay("COORDINATOR PUSH: sender identity unresolved: %s", identityErr)
-		if _, err := a.holdSprintPush(ctx, l.holder, false); err != nil {
-			a.serveSay("COORDINATOR PUSH: unproving sprint push: %s", err)
-		}
+		a.renewSprintPush(ctx, l.holder, false, now)
 		return
 	}
 	sender := cmp.Or(login, l.holder)
@@ -226,6 +391,7 @@ func (a *app) coordinatorPass(ctx context.Context) (read bool) {
 		// Ordinary delivery keys reset for a new holder or epoch; state receipts remain.
 		p.holder, p.epoch, p.told = l.holder, l.epoch, map[string]bool{}
 		p.failed, p.heldAt, p.recoveryToken, p.recoveryBefore, p.recoveryFrom = false, time.Time{}, "", time.Time{}, ""
+		p.holdFailed, p.holdNext, p.holdWait = false, time.Time{}, 0
 		p.firstSeen, p.warned, p.warnedAt = map[string]time.Time{}, nil, time.Time{}
 	}
 	p.streamCursor, p.streamPending = l.streamCursor, l.streamEvents
@@ -448,25 +614,95 @@ func (a *app) coordinatorPass(ctx context.Context) (read bool) {
 			p.recoveryToken, p.recoveryBefore, p.recoveryFrom = "", time.Time{}, ""
 		}
 	}
-	due := p.heldAt.IsZero() || !now.Before(p.heldAt.Add(hook.RenewEvery))
 	ok := !p.failed
+	// due at its interval, after a failed renewal, and at once when this pass's sends changed
+	// whether the way to the seat is proven
+	// (a failed renewal waits for its retry, whatever changed)
+	due := p.renewDue(now) || !p.holdFailed && (p.heldAt.IsZero() || ok != p.heldOK)
 	p.mu.Unlock()
 	if due {
-		if why, err := a.holdSprintPush(ctx, l.holder, ok); err != nil {
-			a.serveSay("COORDINATOR PUSH: the sprint push of %s could not be held, tried again at the next look: %s", l.holder, oneline.Escape(err.Error()))
-		} else {
-			p.mu.Lock()
-			p.heldAt = now
-			say := why != p.heldWhy
-			p.heldWhy = why
-			p.mu.Unlock()
-			if say {
-				a.serveSay("COORDINATOR PUSH: %s", cmp.Or(why, "the sprint push of "+l.holder+" is held and proven"))
-			}
-		}
+		a.renewSprintPush(ctx, l.holder, ok, now)
 	}
 	return
 
+}
+
+// renewSprintPush holds the sprint push of holder, proven when ok (holdSprintPush), and keeps
+// when, and what it said, said again only when it changes.
+func (a *app) renewSprintPush(ctx context.Context, holder string, ok bool, now time.Time) {
+	why, err := a.holdSprintPush(ctx, holder, ok)
+	p := &a.coord
+	if err != nil {
+		// a failed renewal is tried again in coordPushRetry, doubling to holdRetryCap, and
+		// said once until it succeeds or its text changes; before, it was tried and said on
+		// every pass, a second apart
+		p.mu.Lock()
+		p.holdFailed = true
+		p.holdWait = min(max(2*p.holdWait, coordPushRetry), holdRetryCap)
+		p.holdNext = now.Add(p.holdWait)
+		why := oneline.Escape(err.Error())
+		say := why != p.holdSaid
+		p.holdSaid = why
+		wait := p.holdWait
+		p.mu.Unlock()
+		if say {
+			a.serveSay("COORDINATOR PUSH: the sprint push of %s could not be held, tried again in %s, the wait doubling to %s (said once until it changes): %s", holder, wait, holdRetryCap, why)
+		}
+		return
+	}
+	p.mu.Lock()
+	p.heldAt, p.heldOK, p.holdFailed = now, ok, false
+	p.holdNext, p.holdWait, p.holdSaid = time.Time{}, 0, ""
+	say := why != p.heldWhy
+	p.heldWhy = why
+	p.mu.Unlock()
+	if say {
+		a.serveSay("COORDINATOR PUSH: %s", cmp.Or(why, "the sprint push of "+holder+" is held and proven"))
+	}
+}
+
+// renewAt is when the sprint push's renewal is next due: its interval's end, or a failed
+// renewal's retry; zero with none made. The caller holds p.mu.
+func (p *coordPush) renewAt() time.Time {
+	if p.holdFailed {
+		return p.holdNext
+	}
+	if p.heldAt.IsZero() {
+		return time.Time{}
+	}
+	return p.heldAt.Add(hook.RenewEvery)
+}
+
+// renewDue says the renewal is due at now. The caller holds p.mu.
+func (p *coordPush) renewDue(now time.Time) bool {
+	at := p.renewAt()
+	return !at.IsZero() && !now.Before(at)
+}
+
+// renewEarly renews the sprint push when its renewal is due, first in a turn of the loop and
+// in a pass, before anything that waits on the server's line: a tick holding the line must
+// not let the lease lapse. It reads the seat's holder off the line and renews only for the
+// holder the last pass held it for (the pass itself renews for a new one), and only when the
+// last pass read its look: a pass that cannot read delivers nothing, and its renewal waits for
+// a good read, so the lease lapses and the gate refuses, as before the early renewal.
+func (a *app) renewEarly(ctx context.Context) {
+	now := a.now()
+	p := &a.coord
+	p.mu.Lock()
+	holder, ok := p.holder, !p.failed
+	due := holder != "" && p.readOK && p.renewDue(now)
+	p.mu.Unlock()
+	if !due {
+		return
+	}
+	st, err := a.store(common{redis: a.serveAddr})
+	if err != nil {
+		return // the pass renews it, or says why it could not
+	}
+	if current, err := st.B.Coordinator(ctx); err != nil || current != holder {
+		return
+	}
+	a.renewSprintPush(ctx, holder, ok, now)
 }
 
 // coordSend is one message the look sends: to whom, its kind, its text, and the groups
@@ -531,6 +767,13 @@ func coordFresh(told map[string]bool, l coordLook, now time.Time) []coordSend {
 			continue
 		}
 		if g.Kind == sprint.Judgment && len(g.Notes) > 0 && !g.Due.IsZero() && !now.Before(g.Due) {
+			// An overdue judgment is the deadline lane's (decisionPass), and its keys stay
+			// told: forgetting them here told the whole group again, every note in it, each
+			// time the group came back from overdue (2026-10-17: one group told 36 times).
+			all, _ := deliveryKeys(g, l.open, now, l.stopped)
+			for _, k := range all {
+				active[k] = true
+			}
 			continue
 		}
 		// The deadline lane replaces the old duplicate overdue reminders.
@@ -742,222 +985,336 @@ func coordWarningGroups(l coordLook) []sprint.Group {
 // reminder memory.
 // tla/DecisionsOwed.tla NoSilentPile means an outstanding delivery obligation,
 // not human sight; transport liveness assumes eventual successful sends.
+//
+// Both lanes are prepared on one hold of the line, from one read of the epoch, the seat and
+// the machine, and the open notes are read once after (before, 2026-10-17, each lane read all
+// of it on a hold of its own, every pass); a lane whose seat cannot be read, or whose prepare
+// fails, is said and the other lane goes on. When the coordinator lane owes a send, the owner
+// lane is prepared after that send on a hold of its own, so a same-recipient owner set folds
+// into the coordinator's notice (v17-decisions-owed-folds-into-one-notice) and is suppressed
+// while that notice's receipt is unknown. A send the bus refuses, and a fault of the sender's
+// own (no channel: a seat with no holder; an unresolved identity), waits before it is tried
+// again (busRetry: a minute, doubling, up to thirty; tla/DecisionsOwed.tla RefuseOwner models
+// the owner lane's), and every lane's failure is said once until its text changes.
 func (a *app) decisionPass(ctx context.Context) {
-	type foldAttempt struct {
-		to           string
-		set          string
-		token        string
-		attempted    bool
-		received     bool
-		foldOwner    bool
-		ownerReports []string
-	}
-	var coordinatorFold foldAttempt
 	login, loginErr := a.coordinatorBusLogin()
-	for _, lane := range []string{"coordinator", "owner"} {
-		var job sprint.Note
-		var epoch uint64
-		err := a.onLine(ctx, func(st *store.Store) error {
+	jobs := map[string]sprint.Note{}
+	failed := map[string]error{} // a lane whose prepare failed: the other goes on, as before
+	var epoch uint64
+	// prepare runs the prepare step of each lane in lanes on one hold of the line, and finds
+	// each lane's owed delivery; with deferOwner, the owner lane is left for later when the
+	// coordinator lane owes a send. It says whether the owner lane was left.
+	prepare := func(lanes []string, fold *decisionFold, deferOwner bool) (deferred bool, err error) {
+		err = a.onLine(ctx, func(st *store.Store) error {
+			deferred = false
 			es, err := st.EpochNow(ctx)
 			if err != nil {
 				return err
 			}
 			epoch = es.N
-			to, err := st.B.Coordinator(ctx)
-			sender := cmp.Or(login, to, "nova-sprint")
+			// a seat with no holder is the "no channel" fault, which waits as a refusal does
+			// (decisionSend): its delivery is still made, transferred and closed
+			coordinator, coordinatorErr := st.B.Coordinator(ctx)
+			sender := cmp.Or(login, coordinator, "nova-sprint")
 			if loginErr != nil {
 				sender = ""
-			}
-			if err != nil {
-				return err
 			}
 			machine, _, err := st.Machine(ctx)
 			if err != nil {
 				return err
 			}
-			_, err = st.Run(ctx, store.Step{Verb: "decision escalation prepare", Load: []string{sprint.Work, sprint.Readers, sprint.Fleet}, Routes: true, Readers: true, Friends: true, Actor: sprint.MachineActor, Epoch: &epoch, Plan: func(s *sprint.Snapshot) sprint.Plan {
-				var p sprint.Plan
-				all := append(append([]sprint.Open{}, s.Open...), s.Acked...)
-				set, body, reports := sprint.DecisionBatch(s.Now, all, sprint.DefaultHeldDecisions(s), lane, machine.StoppedBetween, s)
-				var old *sprint.Note
-				var oldOpen []sprint.Open
-				for _, o := range s.Acked {
-					if o.Note.Type == sprint.NDecisionDelivery && o.Note.DecisionDelivery != nil && o.Note.DecisionDelivery.Lane == lane {
-						n := o.Note
-						old = &n
-						oldOpen = append(oldOpen, o)
-					}
+			// one step a lane: a step's notes of one type merge into one (sprint.MergeNotes), and
+			// each lane keeps a delivery note of its own; the second step's load reads only what
+			// changed since the first (the store's read twin)
+			owes := map[string]bool{}
+			var prepared []string
+			for _, lane := range lanes {
+				if lane == "owner" && deferOwner && owes["coordinator"] {
+					deferred = true
+					continue
 				}
-				if old != nil {
-					d := old.DecisionDelivery
-					// A failed send keeps its exact payload, even if the open set changes.
-					if d.SentAt.IsZero() {
-						if d.To != to || loginErr == nil && coordinatorSenderRefusal(d.From, login) != "" {
-							transferred := *d
-							transferred.To = to
-							transferred.From = sender
-							transferred.Token = fmt.Sprintf("decisions:%x", sha256.Sum256([]byte(d.Token+"recipient="+to+s.Now.UTC().Format(time.RFC3339Nano))))
-							transferred.RetryBefore = s.Now.Add(bus.DefaultTokenLife)
-							transferred.UnknownReceipts++
-							transferred.Fault = "earlier recipient receipt unknown; frozen obligation transferred to current recipient"
-							old.DecisionDelivery = &transferred
-							d = &transferred
-							old.What = transferred.Fault + "; judgment IDs=" + strings.ReplaceAll(d.Set, "\x00", ",")
-							p.Updates = []sprint.Note{*old}
+				prepared = append(prepared, lane)
+				to, err := coordinator, coordinatorErr
+				if err == nil {
+					_, err = st.Run(ctx, store.Step{Verb: "decision escalation prepare", Load: []string{sprint.Work, sprint.Readers, sprint.Fleet}, Routes: true, Readers: true, Friends: true, Actor: sprint.MachineActor, Epoch: &epoch, Plan: func(s *sprint.Snapshot) sprint.Plan {
+						delete(jobs, lane) // a plan made again (a retried step) starts over
+						var laneFold *decisionFold
+						if lane == "owner" {
+							laneFold = fold
 						}
-						if d.From == "" && loginErr == nil {
-							resolved := *d
-							resolved.From = sender
-							old.DecisionDelivery = &resolved
-							d = &resolved
-							p.Updates = []sprint.Note{*old}
-						}
-						if !s.Now.Before(d.RetryBefore) {
-							renewed := *d
-							renewed.UnknownReceipts++
-							renewed.Token = fmt.Sprintf("decisions:%x", sha256.Sum256([]byte(d.Token+s.Now.UTC().Format(time.RFC3339Nano))))
-							renewed.RetryBefore = s.Now.Add(bus.DefaultTokenLife)
-							renewed.Fault = "receipt unknown after token expiry; retrying with renewed token (duplicate identifiable by judgment IDs)"
-							old.DecisionDelivery = &renewed
-							old.What = renewed.Fault + "; judgment IDs=" + strings.ReplaceAll(renewed.Set, "\x00", ",")
-							p.Updates = []sprint.Note{*old}
-						}
-						job = *old
+						p := decisionPlan(s, lane, to, sender, login, loginErr, st.Names.Prefix, epoch, machine.StoppedBetween, jobs, laneFold)
+						owes[lane] = jobs[lane].DecisionDelivery != nil || planOwesSend(p, lane)
 						return p
-					}
-					// Owner cadence is global to the lane, including changed/empty sets
-					// and recipient changes. Keep the receipt until the window ends.
-					ownerFold := lane == "owner" && coordinatorFold.attempted && coordinatorFold.received && coordinatorFold.foldOwner && coordinatorFold.to == to
-					if lane == "owner" && s.Now.Sub(d.SentAt) < 30*time.Minute && !ownerFold {
-						return p
-					}
-					if set == "" {
-						if d.UnknownReceipts > 0 {
-							history := *old
-							history.ID = ""
-							history.Alias = ""
-							history.Type = "decision escalation receipt history"
-							p.Notes = append(p.Notes, history)
-						}
-						p.Closes = oldOpen
-						return p
-					}
-					if lane == "coordinator" && d.To == to && d.Set == set {
-						if !sprint.RepeatedDecisionSet(s, set) || s.Now.Sub(d.SentAt) < sprint.RepeatedDecisionEvery {
-							return p
-						}
-					}
+					}})
 				}
-				if set == "" {
-					return p
+				if err != nil {
+					failed[lane] = err
+					delete(jobs, lane)
+					owes[lane] = false
 				}
-				ownerFoldCandidate := coordinatorFold.foldOwner || !coordinatorFold.received && coordinatorFold.set == set
-				if lane == "owner" && coordinatorFold.attempted && coordinatorFold.to == to && ownerFoldCandidate {
-					if !coordinatorFold.received {
-						return p
-					}
-					var coordinatorNote *sprint.Note
-					for _, o := range s.Acked {
-						d := o.Note.DecisionDelivery
-						if o.Note.Type == sprint.NDecisionDelivery && d != nil && d.Lane == "coordinator" &&
-							d.To == to && d.Set == set && d.Token == coordinatorFold.token && !d.SentAt.IsZero() {
-							n := o.Note
-							coordinatorNote = &n
-							break
-						}
-					}
-					if coordinatorNote == nil {
-						return p
-					}
-					folded := *coordinatorNote.DecisionDelivery
-					folded.Lane = "owner"
-					folded.Reports = coordinatorFold.ownerReports
-					folded.UnknownReceipts = 0
-					folded.Fault = ""
-					n := sprint.Note{
-						Kind: sprint.Acknowledged, Type: sprint.NDecisionDelivery, SprintLevel: true,
-						Who: sprint.MachineActor, At: s.Now, DecisionDelivery: &folded,
-						What: "folded coordinator receipt; judgment IDs=" + strings.ReplaceAll(folded.Set, "\x00", ","),
-					}
-					if old != nil {
-						if old.DecisionDelivery.UnknownReceipts > 0 {
-							history := *old
-							history.ID = ""
-							history.Alias = ""
-							history.Type = "decision escalation receipt history"
-							p.Notes = append(p.Notes, history)
-						}
-						n.ID, n.Alias = old.ID, old.Alias
-						p.Updates = append(p.Updates, n)
-					} else {
-						p.Notes = append(p.Notes, n)
-					}
-					return p
-				}
-				token := fmt.Sprintf("decisions:%x", sha256.Sum256([]byte(st.Names.Prefix+strconv.FormatUint(epoch, 10)+lane+to+set+s.Now.UTC().Format(time.RFC3339Nano))))
-				d := &sprint.DecisionDelivery{Lane: lane, To: to, From: sender, Set: set, Body: body, Reports: reports, Token: token, PreparedAt: s.Now, RetryBefore: s.Now.Add(bus.DefaultTokenLife)}
-				n := sprint.Note{Kind: sprint.Acknowledged, Type: sprint.NDecisionDelivery, SprintLevel: true, Who: sprint.MachineActor, At: s.Now, DecisionDelivery: d}
-				if old != nil {
-					if old.DecisionDelivery.UnknownReceipts > 0 {
-						history := *old
-						history.ID = ""
-						history.Alias = ""
-						history.Type = "decision escalation receipt history"
-						p.Notes = append(p.Notes, history)
-					}
-					n.ID, n.Alias = old.ID, old.Alias
-					p.Updates = append(p.Updates, n)
-				} else {
-					p.Notes = append(p.Notes, n)
-				}
-				return p
-			}})
-			if err != nil {
-				return err
 			}
 			all, err := st.B.OpenNotes(ctx)
 			if err != nil {
 				return err
 			}
-			for _, o := range all {
-				if d := o.Note.DecisionDelivery; o.Note.Type == sprint.NDecisionDelivery && d != nil && d.Lane == lane && d.SentAt.IsZero() {
-					job = o.Note
-					break
+			for _, lane := range prepared {
+				if failed[lane] != nil {
+					continue
+				}
+				for _, o := range all {
+					if d := o.Note.DecisionDelivery; o.Note.Type == sprint.NDecisionDelivery && d != nil && d.Lane == lane && d.SentAt.IsZero() {
+						jobs[lane] = o.Note
+						break
+					}
 				}
 			}
 			return nil
 		})
-		if err != nil {
-			a.serveSay("DECISIONS OWED: prepare %s failed: %s", lane, err)
-			continue
+		return deferred, err
+	}
+	send := func(lane string, err error) decisionFold {
+		why := err
+		if why == nil {
+			why = failed[lane]
 		}
-		if job.DecisionDelivery == nil {
-			continue
+		if why != nil {
+			a.serveSay("DECISIONS OWED: prepare %s failed: %s", lane, why)
+			return decisionFold{}
 		}
-		d := *job.DecisionDelivery
-		if lane == "coordinator" {
-			coordinatorFold = foldAttempt{to: d.To, set: d.Set, token: d.Token, attempted: true}
+		if job := jobs[lane]; job.DecisionDelivery != nil {
+			return a.decisionSend(ctx, lane, job, login, loginErr, epoch)
 		}
-		fault := ""
-		switch {
-		case d.To == "":
-			fault = "no " + lane + " channel is configured"
-		case loginErr != nil:
-			fault = "sender identity unresolved: " + loginErr.Error()
-		case coordinatorSenderRefusal(d.From, login) != "":
-			fault = coordinatorSenderRefusal(d.From, login)
-		case !a.now().Before(d.RetryBefore):
-			fault = "delivery receipt unknown: retry token expired; renewal due next look"
-		default:
-			if d.From == "" {
-				d.From = login
+		a.coord.mu.Lock()
+		delete(a.coord.decisions, lane)
+		a.coord.mu.Unlock()
+		return decisionFold{}
+	}
+	ownerDeferred, err := prepare([]string{"coordinator", "owner"}, nil, true)
+	fold := send("coordinator", err)
+	if ownerDeferred {
+		_, err = prepare([]string{"owner"}, &fold, false)
+	}
+	send("owner", err)
+}
+
+// decisionFold is what the coordinator lane's send this pass tells the owner lane's prepare:
+// the notice's recipient, set and token, whether a send was owed (attempted), whether its
+// receipt was recorded (received), and whether the owner lane's set at the receipt was the
+// same as the notice's, with no owner delivery pending (foldOwner), and that set's reports.
+type decisionFold struct {
+	to           string
+	set          string
+	token        string
+	attempted    bool
+	received     bool
+	foldOwner    bool
+	ownerReports []string
+}
+
+// planOwesSend says the plan makes or keeps a delivery note of the lane not yet sent.
+func planOwesSend(p sprint.Plan, lane string) bool {
+	for _, n := range append(append([]sprint.Note{}, p.Notes...), p.Updates...) {
+		if d := n.DecisionDelivery; n.Type == sprint.NDecisionDelivery && d != nil && d.Lane == lane && d.SentAt.IsZero() {
+			return true
+		}
+	}
+	return false
+}
+
+// decisionPlan is one lane's part of the prepare step: its delivery note made, renewed,
+// transferred or closed, and the note owed a send, if one is, put in jobs. fold, for the
+// owner lane after a coordinator send this pass, folds a same-recipient owner set into the
+// coordinator's notice: its receipt is copied to the owner lane, and no second notice is made.
+func decisionPlan(s *sprint.Snapshot, lane, to, sender, login string, loginErr error, prefix string, epoch uint64, stopped func(time.Time, time.Time) time.Duration, jobs map[string]sprint.Note, fold *decisionFold) sprint.Plan {
+	var p sprint.Plan
+	all := append(append([]sprint.Open{}, s.Open...), s.Acked...)
+	set, body, reports := sprint.DecisionBatch(s.Now, all, sprint.DefaultHeldDecisions(s), lane, stopped, s)
+	var old *sprint.Note
+	var oldOpen []sprint.Open
+	for _, o := range s.Acked {
+		if o.Note.Type == sprint.NDecisionDelivery && o.Note.DecisionDelivery != nil && o.Note.DecisionDelivery.Lane == lane {
+			n := o.Note
+			old = &n
+			oldOpen = append(oldOpen, o)
+		}
+	}
+	if old != nil {
+		d := old.DecisionDelivery
+		// A failed send keeps its exact payload, even if the open set changes.
+		if d.SentAt.IsZero() {
+			if d.To != to || loginErr == nil && coordinatorSenderRefusal(d.From, login) != "" {
+				transferred := *d
+				transferred.To = to
+				transferred.From = sender
+				transferred.Token = fmt.Sprintf("decisions:%x", sha256.Sum256([]byte(d.Token+"recipient="+to+s.Now.UTC().Format(time.RFC3339Nano))))
+				transferred.RetryBefore = s.Now.Add(bus.DefaultTokenLife)
+				transferred.UnknownReceipts++
+				transferred.Fault = "earlier recipient receipt unknown; frozen obligation transferred to current recipient"
+				old.DecisionDelivery = &transferred
+				d = &transferred
+				old.What = transferred.Fault + "; judgment IDs=" + strings.ReplaceAll(d.Set, "\x00", ",")
+				p.Updates = []sprint.Note{*old}
 			}
-			if err := a.bus(ctx, bus.Message{From: d.From, To: []string{d.To}, Kind: bus.KindBlocker, Subject: "nova-sprint: decisions owed", Body: d.Body, Token: d.Token}, func(s string) { a.serveSay("%s", s) }); err != nil {
-				fault = err.Error()
+			if d.From == "" && loginErr == nil {
+				resolved := *d
+				resolved.From = sender
+				old.DecisionDelivery = &resolved
+				d = &resolved
+				p.Updates = []sprint.Note{*old}
+			}
+			if !s.Now.Before(d.RetryBefore) {
+				renewed := *d
+				renewed.UnknownReceipts++
+				renewed.Token = fmt.Sprintf("decisions:%x", sha256.Sum256([]byte(d.Token+s.Now.UTC().Format(time.RFC3339Nano))))
+				renewed.RetryBefore = s.Now.Add(bus.DefaultTokenLife)
+				renewed.Fault = "receipt unknown after token expiry; retrying with renewed token (duplicate identifiable by judgment IDs)"
+				old.DecisionDelivery = &renewed
+				old.What = renewed.Fault + "; judgment IDs=" + strings.ReplaceAll(renewed.Set, "\x00", ",")
+				p.Updates = []sprint.Note{*old}
+			}
+			jobs[lane] = *old
+			return p
+		}
+		// Owner cadence is global to the lane, including changed/empty sets
+		// and recipient changes. Keep the receipt until the window ends.
+		ownerFold := lane == "owner" && fold != nil && fold.attempted && fold.received && fold.foldOwner && fold.to == to
+		if lane == "owner" && s.Now.Sub(d.SentAt) < 30*time.Minute && !ownerFold {
+			return p
+		}
+		if set == "" {
+			if d.UnknownReceipts > 0 {
+				history := *old
+				history.ID = ""
+				history.Alias = ""
+				history.Type = "decision escalation receipt history"
+				p.Notes = append(p.Notes, history)
+			}
+			p.Closes = oldOpen
+			return p
+		}
+		if lane == "coordinator" && d.To == to && d.Set == set {
+			if !sprint.RepeatedDecisionSet(s, set) || s.Now.Sub(d.SentAt) < sprint.RepeatedDecisionEvery {
+				return p
 			}
 		}
+	}
+	if set == "" {
+		return p
+	}
+	if lane == "owner" && fold != nil && fold.attempted && fold.to == to && (fold.foldOwner || !fold.received && fold.set == set) {
+		if !fold.received {
+			return p
+		}
+		var coordinatorNote *sprint.Note
+		for _, o := range s.Acked {
+			d := o.Note.DecisionDelivery
+			if o.Note.Type == sprint.NDecisionDelivery && d != nil && d.Lane == "coordinator" &&
+				d.To == to && d.Set == set && d.Token == fold.token && !d.SentAt.IsZero() {
+				n := o.Note
+				coordinatorNote = &n
+				break
+			}
+		}
+		if coordinatorNote == nil {
+			return p
+		}
+		folded := *coordinatorNote.DecisionDelivery
+		folded.Lane = "owner"
+		folded.Reports = fold.ownerReports
+		folded.UnknownReceipts = 0
+		folded.Fault = ""
+		n := sprint.Note{
+			Kind: sprint.Acknowledged, Type: sprint.NDecisionDelivery, SprintLevel: true,
+			Who: sprint.MachineActor, At: s.Now, DecisionDelivery: &folded,
+			What: "folded coordinator receipt; judgment IDs=" + strings.ReplaceAll(folded.Set, "\x00", ","),
+		}
+		if old != nil {
+			if old.DecisionDelivery.UnknownReceipts > 0 {
+				history := *old
+				history.ID = ""
+				history.Alias = ""
+				history.Type = "decision escalation receipt history"
+				p.Notes = append(p.Notes, history)
+			}
+			n.ID, n.Alias = old.ID, old.Alias
+			p.Updates = append(p.Updates, n)
+		} else {
+			p.Notes = append(p.Notes, n)
+		}
+		return p
+	}
+	token := fmt.Sprintf("decisions:%x", sha256.Sum256([]byte(prefix+strconv.FormatUint(epoch, 10)+lane+to+set+s.Now.UTC().Format(time.RFC3339Nano))))
+	d := &sprint.DecisionDelivery{Lane: lane, To: to, From: sender, Set: set, Body: body, Reports: reports, Token: token, PreparedAt: s.Now, RetryBefore: s.Now.Add(bus.DefaultTokenLife)}
+	n := sprint.Note{Kind: sprint.Acknowledged, Type: sprint.NDecisionDelivery, SprintLevel: true, Who: sprint.MachineActor, At: s.Now, DecisionDelivery: d}
+	if old != nil {
+		if old.DecisionDelivery.UnknownReceipts > 0 {
+			history := *old
+			history.ID = ""
+			history.Alias = ""
+			history.Type = "decision escalation receipt history"
+			p.Notes = append(p.Notes, history)
+		}
+		n.ID, n.Alias = old.ID, old.Alias
+		p.Updates = append(p.Updates, n)
+	} else {
+		p.Notes = append(p.Notes, n)
+	}
+	return p
+}
+
+// decisionSend sends a lane's owed delivery and records its receipt, or its fault. A send the
+// bus refused waits before the next (busRetry); while it waits, nothing is sent, recorded or
+// said. A fault the note holds already is not recorded again. For the coordinator lane it
+// says what the owner lane's prepare folds (decisionFold).
+func (a *app) decisionSend(ctx context.Context, lane string, job sprint.Note, login string, loginErr error, epoch uint64) (fold decisionFold) {
+	now := a.now()
+	d := *job.DecisionDelivery
+	a.coord.mu.Lock()
+	retry := a.coord.decisions[lane]
+	a.coord.mu.Unlock()
+	if retry.token != d.Token {
+		retry = decisionRetry{token: d.Token} // another payload: another send
+	}
+	if lane == "coordinator" {
+		fold = decisionFold{to: d.To, set: d.Set, token: d.Token, attempted: true}
+	}
+	if !retry.due(now) {
+		return fold
+	}
+	fault := ""
+	var sendErr error
+	// the sender's own faults stand until someone changes the configuration: they wait as a
+	// refusal does (permanentFault); an expired token is renewed by the next look's prepare
+	permanent := func(why string) { fault, sendErr = why, permanentFault{errors.New(why)} }
+	switch {
+	case d.To == "":
+		permanent("no " + lane + " channel is configured")
+	case loginErr != nil:
+		permanent("sender identity unresolved: " + loginErr.Error())
+	case coordinatorSenderRefusal(d.From, login) != "":
+		permanent(coordinatorSenderRefusal(d.From, login))
+	case !now.Before(d.RetryBefore):
+		fault = "delivery receipt unknown: retry token expired; renewal due next look"
+	default:
+		if d.From == "" {
+			d.From = login
+		}
+		// a send that went under its token before is a delivery (busMessageWent); one whose
+		// token went with other arguments is another message, sent under a token of its own
+		// (busRetoken), as the seat-silent raise is
+		m := bus.Message{From: d.From, To: []string{d.To}, Kind: bus.KindBlocker, Subject: "nova-sprint: decisions owed", Body: d.Body, Token: d.Token}
+		err := a.bus(ctx, m, func(s string) { a.serveSay("%s", s) })
+		if busNeedsNewToken(err) {
+			m.Token = busRetoken(d.Token, d.To, d.From, d.Body)
+			err = a.bus(ctx, m, func(s string) { a.serveSay("%s", s) })
+		}
+		if err != nil && !busMessageWent(err) {
+			fault, sendErr = err.Error(), err
+		}
+	}
+	if fault == "" || fault != d.Fault {
 		receiptApplied := false
-		err = a.onLine(ctx, func(st *store.Store) error {
+		err := a.onLine(ctx, func(st *store.Store) error {
 			receiptTo, err := st.B.Coordinator(ctx)
 			if err != nil {
 				return err
@@ -989,8 +1346,8 @@ func (a *app) decisionPass(ctx context.Context) {
 							}
 						}
 						foldOwner = ownerSet == d.Set && !ownerPending
-						coordinatorFold.foldOwner = foldOwner
-						coordinatorFold.ownerReports = append([]string(nil), reports...)
+						fold.foldOwner = foldOwner
+						fold.ownerReports = append([]string(nil), reports...)
 					}
 					next.Fault = fault
 					if fault == "" {
@@ -1033,12 +1390,31 @@ func (a *app) decisionPass(ctx context.Context) {
 		if err != nil {
 			a.serveSay("DECISIONS OWED: receipt %s failed: %s", lane, err)
 		} else if lane == "coordinator" && fault == "" && receiptApplied {
-			coordinatorFold.received = true
-		}
-		if fault != "" {
-			a.serveSay("DECISIONS OWED: %s delivery pending: %s", lane, fault)
+			fold.received = true
 		}
 	}
+	a.coord.mu.Lock()
+	defer a.coord.mu.Unlock()
+	if fault == "" {
+		delete(a.coord.decisions, lane)
+		return fold
+	}
+	if sendErr == nil {
+		sendErr = errors.New(fault)
+	}
+	say := retry.failed(now, sendErr)
+	if a.coord.decisions == nil {
+		a.coord.decisions = map[string]decisionRetry{}
+	}
+	a.coord.decisions[lane] = retry
+	if say {
+		when := "tried again at the next look"
+		if !retry.next.IsZero() {
+			when = "refused: tried again in " + retry.wait.String() + ", the wait doubling while it stands"
+		}
+		a.serveSay("DECISIONS OWED: %s delivery pending (%s; said once until it changes): %s", lane, when, fault)
+	}
+	return fold
 }
 
 // busMessageWent says the bus refused a send because the message already went under

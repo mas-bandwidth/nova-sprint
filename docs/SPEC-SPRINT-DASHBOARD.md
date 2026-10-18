@@ -120,6 +120,8 @@ the comment-only form exists only in the lock, and the lint knows nothing of it.
 - 2026-10-14 the owner: "You will port the existing python dashboard to golang." (the page files this ask first brought over digest, with pageview.go as it then stood, to 88fc6fba1cc8af3b6aa5bcc9d7d964781dd43d0c96149506b81b322982b6429b: page/index.html and page/app.js byte-identical to the Python live page, dashboard/live/; the same PR's server.py tile-slot port of pageview.go is held by the next lock line, digest c51d1047e2bf7b2315e9c3ab92d1ec57e544f55da069f48f9982c500ef7e5830)
 - 2026-10-14 21:16Z the owner: "Remove the tiers list here: never asked for this." (digest 59b7ebcc11ceca1c8b286f736853a8d8935462723437612453ae653b3c6e7a98)
 - 2026-10-14 the owner: "remove the /events and /landings.json requests"
+- 2026-10-18 the owner: "I would like it if you could create a stats page showing me all the things you can do with https://pele.run for the sprint dashboard. You could put these things below the existing stuff we have at the bottom." (the Last 24 hours panel, below)
+- 2026-10-18 the owner: "Maybe we can click on a work stream by name, and this takes you to a page showing all details for that work stream, including all its cards, sankey for all cards if applicable, dependencies between cards etc etc etc." (the stream pages, below)
 
 
 The 2026-10-12 page asks above (and those of 2026-10-12 ~00:42Z, ~00:43Z, ~00:50Z, ~01:00Z, ~01:02Z,
@@ -192,8 +194,9 @@ each, sharing one cached copy of the sprint. It reads the sprint in-process the 
 `where --json --cards` does (through the sprint's server when `NOVA_SPRINT_SERVER` names
 one, else on the store `--redis` names; given none of them and no `--pull <url>`, it is
 refused on stderr at exit 2 before any listener opens), in one place, once per `--every`
-whether or not a page is open, so the copy is never older than a tick (the owner, 2026-10-04: "I need to
-be able to always trust the dashboard"; "Golang nova-tools and nova-sprint verbs only"):
+while someone is looking, so the copy a viewer sees is never older than a tick (the owner, 2026-10-04: "I need to
+be able to always trust the dashboard"; "Golang nova-tools and nova-sprint verbs only"; and
+2026-10-17, the dashboard updates every second while someone is looking):
 `/api/sprint` is that copy, with the build number and the throughput, and `/events`
 pushes each new copy as it is read (server-sent events); a request between two ticks is
 answered from the copy and reads nothing. The page is served by this verb from the
@@ -212,10 +215,22 @@ the reads' count, failures and read times. `--logo` names an image file
 served as the logo and the favicon; with none, the live page's robot tile (The page is the live page).
 `/healthz` answers `ok`.
 
-The reads have one poller: the verb makes the first read before any listener opens, then
-one each `--every` (back to back when a read takes longer than `--every`, never two at
-once), and while it polls a page, a pull route or a stream reads the copy and never the
-sprint, however many are open. A failed read sets `ok` false and `error` to a short
+The reads have one poller: the verb makes the first read before any listener opens, then,
+while someone is looking, one each `--every` (back to back when a read takes longer than
+`--every`, never two at once), and while it polls a page, a pull route or a stream reads the
+copy and never the sprint, however many are open. Someone is looking while a request on the
+page's or the pull routes' listeners (any but `/healthz`) was seen in the last 30 s, as it
+began or as it ended, or an `/events` stream is open; at the first tick with no one looking
+the poller stops and nothing is read (`nova-sprint dashboard`, dashViewers). The first
+request after reads the sprint, or waits for the read the returning viewer's arrival began,
+and is answered from that read, never from the copy left from before; the poller then runs
+again. While it is stopped, `/healthz` reads the sprint (at most once a `--every`) and checks
+the freshness itself, so it answers the truth whether or not anyone is looking. The
+throughput `/api/sprint` carries keeps, after a gap in the reads longer than its hour, the
+newest sample before the gap as its base until the hour's own samples span ten minutes: the
+rate is then over the gap, and `throughputMinutes` says how long. The live page's own
+throughput tile is under the page lock and unchanged: after a gap longer than an hour it is
+empty for its first ten minutes of looking. A failed read sets `ok` false and `error` to a short
 reason (`where exited <n>`, `the upstream dashboard did not answer`, `where JSON has no tables`); what the read itself printed goes to the dashboard's output only, never to the
 page. A read still running after a minute is marked failed (`the read timed out after 1m0s`) and the next read waits for it to end. `/api/sprint` also carries `attemptAt` and
 `readSeconds`, the last read's end and length, good or not, and `minInterval`, the
@@ -235,7 +250,8 @@ the pull routes' `/api/sprint` carries `"stale": true` (the page's carries the l
 
 The public copy is the same verb as a puller: `nova-sprint dashboard --pull <url>`, the
 `http://` or `https://` URL of another dashboard (its `/api/sprint`, or the base it is
-under), reads that dashboard's copy once per `--every` in place of the sprint and serves
+under), reads that dashboard's copy once per `--every` while someone looks at it (an idle
+public copy reads nothing upstream) in place of the sprint and serves
 the page alone (no pull routes). It serves the copy as the upstream serves it (its data,
 its read time and its throughput), so the two pages agree; an upstream holding a failed
 read is a failed read here too, and the puller's freshness check is on the upstream's
@@ -352,6 +368,56 @@ from the owner edits one line here and nothing else moves.
 
 ## Friends (title "Friends"): same eight-column shape as the live Fleet table, including load (friend, status, ready, working track and fraction, done, ok%, load; headers lowercase); honest empty
   state until the JSON carries tables.friends.
+
+## Last 24 hours (title "Last 24 hours"; the owner's ask of 2026-10-18, its words under "The page lock"): charts of what happened over the last 24 hours, below every other panel, above the footer
+- The owner, 2026-10-18, beside the ask: "Please keep them to the dark theme we have, roughly. I'd love to see things like
+  historical graphs and stuff showing what has happened over the last 24 hours for example. esp. throughput per-hour and other
+  things." and "Just do a whole bunch of stuff, and I'll guide you to completion from the initial set you come up with." This is
+  that initial set; he prunes it.
+- Source: the cards the dashboard already reads (where --json --rows: each primary's stamps admitted, dealt_at, taken_at, landed
+  and its consumer records, consumer:<epoch>:<key>, each {kind work|read|land, who, route, model, taken, ended, outcome}). No new
+  read of the sprint: `History` (internal/sprintdash/history.go) is a pure function of those cards and a clock, served at
+  /api/history, computed at most once a minute (again only when the minute has turned and the copy changed, or the hour turned).
+  /api/sprint is unchanged. The rows are parsed once per copy; every computation is single-flight.
+- Only the dashboard that reads the sprint (the reader, on loopback or the tailnet) serves the charts. A puller (the public
+  copy) holds no rows and shows none of this: what the charts carry (card ids of every stream, archived ones too, the needs
+  between cards, worker and friend names, routes, models, each attempt's times) is not the public copy's to show until the
+  owner decides what it may. On a puller /api/history, /api/stream/<name> and /stream/<name> answer 404, and its page is
+  index.html without the panel and without charts.js (so without the stream links): the page as it was before them
+  (TestAPullerPublishesNothingFromTheRows). The public site itself is a file copier on hetzner2 (fleet's
+  nova-dashboard-pull, a STOPGAP), which copies the reader's page: the reader serves the public copy's page at /public.html,
+  byte for byte the page a puller serves, and the copier saves that as the site's index.html, never the reader's /.
+- The window: 24 hourly buckets on UTC hour boundaries, the current hour last; the page labels the hours in the viewer's time zone.
+- The charts, each a card with a title, one sentence saying what it counts, a legend, and the chart; with nothing to draw, the
+  line "nothing in the last 24h" in its place: Landings per hour (bars, with the 24-hour mean per hour as a line); Work started
+  and finished per hour; Work finishes by outcome (ok, failed, other); Reads per hour (ok, broken, other); Failure and rework
+  rate (percent of attempts failed, of reads broken); Time to land (median and p90 hours, admitted to landed, by landing hour);
+  Queue wait (median and p90 minutes, dealt to taken); Who did the work (the 12 most, ok and not); Routes, Models and Tiers
+  (pies of the attempts ended); Landings by stream (the 15 most); Card flow (a sankey: attempt, outcome, read, landed or
+  reworked); Who was busy when (a gantt of the work and read spans of the 8 busiest workers, 4 spans each).
+- Drawn with Pele (pele.run, MIT, by kepano): Go writes each chart as Mermaid source; page/charts.js hands it to Pele's mount and
+  inserts the SVG. Pele is vendored, pinned and unchanged: page/pele.js, its version, digests and licence in page/PELE.txt. It
+  loads only when the panel comes near the view (after the page above has drawn), and the charts refresh once a minute while
+  the tab is shown. Colours are the page's dark tokens (--pele-* set from --bg, --surface, --text, --border and the state
+  colours). The page above the panel changes in exactly three ways, and is otherwise the page before them byte for byte
+  (TestThePageAboveTheChartsIsUnchanged): the fold rule (.panel.folded) also hides the panel's .charts, so its fold button
+  folds it; charts.js adds a pointer cursor and an underline on hover to the Work table's stream names; and one click
+  listener on the Work table opens a stream's page (Stream pages, below). The table's markup and app.js are unchanged.
+
+## Stream pages (the owner's ask of 2026-10-18, its words under "The page lock"): every stream name in the Work table opens /stream/<name>
+- The Work table is drawn as before; a click on a stream's name (charts.js, one listener on the table) opens /stream/<name>
+  (ctrl or cmd: a new tab). The stream page (page/stream.html, the same dark tokens) shows the stream's display name and state,
+  its cards by column, every scalar cell of its Work row, merge row and stream_costs record, the charts (Dependencies: a
+  flowchart of its cards, each classed by its column, an arrow from each card it needs, a need on another stream's card dashed,
+  cards with no need either way counted and not drawn, at most 150 boxes in all, the other streams' cards it needs included,
+  and at most 400 arrows, what is left out counted; Card flow: the sankey of every attempt of its cards;
+  Landings per hour over the last 24; Work and read spans: a gantt of the last 24 hours), and a table of its cards, at
+  most 500 rows in flow order with the stream's count beside it (card,
+  column, tier, attempts, reworks, reads, who ran the latest attempt, how its latest consumer ended, needs, age since admitted,
+  landed).
+- Source: /api/stream/<name>, `StreamViewOf` (internal/sprintdash/streamview.go), a pure function of the same cards and the page's
+  copy, computed for the one stream asked for, single-flight, and memoized a minute (never every stream at each read). A name that
+  is no stream of the copy answers 404 before anything is computed or memoized. A puller answers 404 (Last 24 hours, above).
 
 ## Footer: one link, "https://github.com/mas-bandwidth/nova-sprint", matching the live page.
 

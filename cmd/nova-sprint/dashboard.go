@@ -92,21 +92,24 @@ func (a *app) cmdDashboard(args []string, stdout, stderr io.Writer) int {
 	a.keepDashboardSamples(srv, c.redis, from)
 	ctx, stop := a.notify(context.Background())
 	defer stop()
-	// one poller: the first read before any listener opens, then one each --every whoever
-	// is looking (back to back when a read takes longer), each new copy pushed to the
-	// /events clients as it is read and its freshness checked; a page reads the copy only
+	// one poller: the first read before any listener opens, then, while someone is looking
+	// (dashViewers), one each --every (back to back when a read takes longer), each new copy
+	// pushed to the /events clients as it is read and its freshness checked; a page reads
+	// the copy only. While no one is looking nothing is read: the first request after reads
+	// the sprint itself and starts the poller again
 	srv.Tick()
 	tick := time.NewTicker(*every)
 	defer tick.Stop()
+	viewers := newDashViewers(a.now)
 	runCtx, endRun := context.WithCancel(ctx)
 	defer endRun()
-	go srv.Run(runCtx, tick.C)
+	go viewers.poll(runCtx, srv, tick.C)
 	var ls []listener
 	for _, addr := range pages {
-		ls = append(ls, listener{"--listen", addr, srv, "DASHBOARD listening on http://%s/\n"})
+		ls = append(ls, listener{"--listen", addr, viewers.watch(srv), "DASHBOARD listening on http://%s/\n"})
 	}
 	for _, addr := range pulls {
-		ls = append(ls, listener{"--pull", addr, srv.Pull(), "DASHBOARD pull routes on http://%s/ (friend/<name>, machine/<name>, team, api/..., events/...)\n"})
+		ls = append(ls, listener{"--pull", addr, viewers.watch(srv.Pull()), "DASHBOARD pull routes on http://%s/ (friend/<name>, machine/<name>, team, api/..., events/...)\n"})
 	}
 	servers, err := a.serveDashboard(ls, stdout)
 	if err != nil {
@@ -331,5 +334,135 @@ func (a *app) keepDashboardSamples(srv *sprintdash.Server, redis, from string) {
 			return err
 		}
 		return os.Rename(tmp, path)
+	}
+}
+
+// DashboardViewerWindow is how long the dashboard keeps reading the sprint once a --every
+// after it last saw a viewer: a request on the page's or the pull routes' listeners (but
+// /healthz), seen as it begins and as it ends, and an /events stream for as long as it is
+// open. The owner, 2026-10-17: the dashboard updates every second while someone is looking.
+// It read the sprint once a second whoever was looking, 86,400 reads a day of where --json
+// --dashboard (the work, merge and fleet tables, the inbox, the routes, the machine and the
+// server's record) with no one looking.
+const DashboardViewerWindow = 30 * time.Second
+
+// dashPoller is the dashboard server's poller (sprintdash.Server): Run reads the sprint on
+// each tick until ctx ends, and Refresh is a request's own read while Run is not running.
+type dashPoller interface {
+	Refresh()
+	Run(ctx context.Context, tick <-chan time.Time)
+}
+
+// dashViewers is who is looking at the dashboard: the requests open and when one was last
+// seen, on the clock now; back is one slot, filled when a viewer comes while no one was
+// looking.
+type dashViewers struct {
+	mu   sync.Mutex
+	now  func() time.Time
+	open int
+	seen time.Time
+	back chan struct{}
+}
+
+func newDashViewers(now func() time.Time) *dashViewers {
+	return &dashViewers{now: now, back: make(chan struct{}, 1)}
+}
+
+// watch is h, each request but /healthz (a check, not a viewer) counted as a viewer while
+// it runs and seen as it ends.
+func (v *dashViewers) watch(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/healthz" {
+			h.ServeHTTP(w, r)
+			return
+		}
+		v.enter()
+		defer v.leave()
+		h.ServeHTTP(w, r)
+	})
+}
+
+// enter counts a viewer in, and fills back when no one was looking.
+func (v *dashViewers) enter() {
+	v.mu.Lock()
+	now := v.now()
+	idle := !v.watchingAt(now)
+	v.open++
+	v.seen = now
+	v.mu.Unlock()
+	if idle {
+		select {
+		case v.back <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// leave counts a viewer out, seen now.
+func (v *dashViewers) leave() {
+	v.mu.Lock()
+	v.open--
+	v.seen = v.now()
+	v.mu.Unlock()
+}
+
+// watching says someone is looking now: a request open, or one seen within
+// DashboardViewerWindow.
+func (v *dashViewers) watching() bool {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.watchingAt(v.now())
+}
+
+// watchingAt is watching at now; the caller holds v.mu.
+func (v *dashViewers) watchingAt(now time.Time) bool {
+	if v.open > 0 {
+		return true
+	}
+	return !v.seen.IsZero() && now.Sub(v.seen) < DashboardViewerWindow && !now.Before(v.seen)
+}
+
+// poll runs srv's poller on the clock's ticks while someone is looking, and stops it at
+// the first tick no one is (DashboardViewerWindow after the last viewer went); stopped, it
+// reads nothing, a request reading the sprint itself, at most once a --every (Refresh).
+// When a viewer comes it reads the sprint in full (Refresh: the poller's first freshness
+// check is of a fresh read, never of the copy left from before no one looked) and runs the
+// poller again. It returns when ctx ends, the poller stopped.
+func (v *dashViewers) poll(ctx context.Context, srv dashPoller, clock <-chan time.Time) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-clock: // no one is looking: the tick reads nothing
+			continue
+		case <-v.back:
+		}
+		srv.Refresh()
+		ticks := make(chan time.Time)
+		runCtx, stop := context.WithCancel(ctx)
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			srv.Run(runCtx, ticks)
+		}()
+		for looking := true; looking; {
+			select {
+			case <-ctx.Done():
+				looking = false
+			case <-v.back: // a viewer came while the poller runs: it already reads
+			case t := <-clock:
+				if !v.watching() {
+					looking = false
+					break
+				}
+				select {
+				case ticks <- t:
+				case <-ctx.Done():
+					looking = false
+				}
+			}
+		}
+		stop()
+		<-done
 	}
 }

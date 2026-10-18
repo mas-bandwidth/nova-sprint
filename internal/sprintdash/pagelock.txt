@@ -18,3 +18,5 @@
 2026-10-14 c51d1047e2bf7b2315e9c3ab92d1ec57e544f55da069f48f9982c500ef7e5830 "Yes, and then we retire the python dashboard, and only use the golang one."
 2026-10-14 59b7ebcc11ceca1c8b286f736853a8d8935462723437612453ae653b3c6e7a98 "Remove the tiers list here: never asked for this."
 2026-10-14 8406540edb5a77369941935117fc581f6564654b9fde9575e776539d4a61f636 "remove the /events and /landings.json requests"
+2026-10-18 05679c6653fa15f0cd7eb75a7e68676b4a4b4bf411a03516be9c05531995e68f "I would like it if you could create a stats page showing me all the things you can do with https://pele.run for the sprint dashboard. You could put these things below the existing stuff we have at the bottom."
+2026-10-18 bf09f3c30cf2c3e54fb4d19beaad0171f02f55270582065df01e41beebb08b5e "Maybe we can click on a work stream by name, and this takes you to a page showing all details for that work stream, including all its cards, sankey for all cards if applicable, dependencies between cards etc etc etc."
