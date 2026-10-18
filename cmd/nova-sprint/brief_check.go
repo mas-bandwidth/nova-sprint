@@ -16,6 +16,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-sprint/pkg/tlc"
+	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-tools/pkg/decide"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
@@ -64,6 +65,7 @@ const (
 	chkPathsAdmit
 	chkSprintBase
 	chkPlan
+	chkTier
 )
 
 func (a *app) cmdBriefCheck(args []string, stdout, stderr io.Writer) int {
@@ -292,6 +294,15 @@ func (a *app) briefStoreChecks(st *store.Store, items []briefItem, stream string
 		out = append(out, collectHold(it.file, it.id, "sprint-base", chkSprintBase, func(w io.Writer) int {
 			return a.holdSprintBase("brief check", st, w, r)
 		})...)
+	}
+	for _, it := range items {
+		if pr := snap.Work.Placed(it.id); pr != nil && !sprint.IsSentinel(pr) {
+			if recorded := pr.F(sprint.FieldTier); recorded != "" {
+				if m, _ := cardhdr.ReadModel(it.text); m.Tier != "" && m.Tier != recorded {
+					out = append(out, briefFinding{File: it.file, ID: it.id, Check: "tier", Why: fmt.Sprintf("line 1 says %s and the card holds %s: brief keeps %s unless --tier names one (nova-sprint brief c --tier %s --reason <why>)", m.Tier, recorded, recorded, m.Tier), order: chkTier})
+				}
+			}
+		}
 	}
 	for _, ref := range step.Plan(snap).Refused {
 		out = append(out, briefFinding{File: byID[ref.Key], ID: ref.Key, Check: "plan", Why: ref.Why, order: chkPlan})
