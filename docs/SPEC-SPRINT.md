@@ -2658,7 +2658,12 @@ reached ready by any path still waits there (tla/Holds.tla NeedsSetH and DealH; 
 witnesses "needssetheld" and "dealheld"). `release` of a held card that is ready clears the hold
 and leaves it ready. A brief
 edit records its needs by the rule below, and a ready card that gains a need not
-landed waits until it lands (section 3, the brief verb). A brief edit's needs
+landed waits until it lands (section 3, the brief verb). A brief edit records its
+soft dependencies the way `add` does: the new text's `LAND-AFTER:` list written on
+the card (`land_after`, `land_after_set`), cleared when the text names none, held to
+`add`'s checks (validateSoftDeps, softCycleWith) against the snapshot, and written
+only when it differs from what the card holds; a LAND-AFTER-only edit takes the
+routing-only path as a DEPENDS-ON-only one does. A brief edit's needs
 are the card's, not the text's: the text's `DEPENDS-ON:` is the admission-time
 list (a `brief --brief-file` of a card dumped from the table names what it was
 admitted with, not what a relink re-pointed), so a brief edit starts from the

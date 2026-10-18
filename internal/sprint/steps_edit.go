@@ -117,7 +117,9 @@ type BriefReq struct {
 // machine's pump holds a card a queued change names until the change drains
 // (store.Step's Pump), so the brief is in place before the card can be dealt. The
 // card keeps its id, stream and score; its needs follow the new brief's
-// DEPENDS-ON lines (a brief that names none clears them; steps_edit.go). One an attempt was dealt for opens its
+// DEPENDS-ON lines (a brief that names none clears them; steps_edit.go), and its soft
+// dependencies follow the new brief's LAND-AFTER lines the way add writes them, cleared
+// when the text names none (briefLandAfterSet). One an attempt was dealt for opens its
 // next attempt (briefInPlace): a brief correction is never a twin (the owner,
 // 2026-10-06: "We gotta stop doing this twin shit. it's waste."). The command line
 // holds the brief to the card lint, and the store to its bound, as add's. A card
@@ -393,6 +395,19 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			// same unit as the needs, inside them (keepWaitsInNeeds)
 			keepWaitsInNeeds(s, c, want, set, &unset)
 		}
+		// the brief's soft dependencies are the new text's LAND-AFTER list, written as add
+		// writes it and cleared when the text names none; only when it differs from what the
+		// card holds, and held to add's checks (validateSoftDeps, softCycleWith) against the
+		// snapshot (docs/SPEC-SPRINT.md, the brief)
+		landSet, landUnset, why := briefLandAfterSet(s, c, b.Brief)
+		if why != "" {
+			p.refuse(c.ID, why)
+			continue
+		}
+		for k, v := range landSet {
+			set[k] = v
+		}
+		unset = append(unset, landUnset...)
 		if c.Int("attempt") > 0 {
 			u, orphan := briefInPlace(s, c, b.Brief, set, unset, r.Who, toWaiting, r.Reason)
 			if orphan {
@@ -1463,9 +1478,9 @@ func MoveCards(s *Snapshot, r MoveReq) Plan {
 	return p
 }
 
-// dependsOnly says two briefs differ in their DEPENDS-ON: line alone: the same
-// lines, in order, but for that line (cardhdr.KeyValue), which differs.
-func dependsOnly(old, brief string) bool {
+// differsOnlyIn says two briefs differ only in their lines under the keys named
+// (cardhdr.KeyValue): the same lines, in order, but for those lines, which differ.
+func differsOnlyIn(old, brief string, keys ...string) bool {
 	a, b := strings.Split(old, "\n"), strings.Split(brief, "\n")
 	if len(a) != len(b) {
 		return false
@@ -1477,12 +1492,79 @@ func dependsOnly(old, brief string) bool {
 		}
 		ka, _, oka := cardhdr.KeyValue(a[i])
 		kb, _, okb := cardhdr.KeyValue(b[i])
-		if !oka || !okb || ka != "DEPENDS-ON" || kb != "DEPENDS-ON" {
+		if !oka || !okb || ka != kb {
+			return false
+		}
+		allowed := false
+		for _, k := range keys {
+			if ka == k {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
 			return false
 		}
 		differ = true
 	}
 	return differ
+}
+
+// dependsOnly says two briefs differ in their DEPENDS-ON: or LAND-AFTER: lines
+// alone: the same lines, in order, but for those routing lines, which differ. It
+// is the routing-only edit that never changes the task, so it is taken in any
+// state (docs/SPEC-SPRINT.md, the brief).
+func dependsOnly(old, brief string) bool {
+	return differsOnlyIn(old, brief, "DEPENDS-ON", "LAND-AFTER")
+}
+
+// briefRepoOf reads the repository a new brief names for itself: its REPO: line,
+// else its named-repo header.
+func briefRepoOf(brief string) string {
+	cb := swarm.ReadCardBase([]byte(brief))
+	if cb.Named != "" {
+		return cb.Named
+	}
+	return cb.Repo
+}
+
+// briefBaseOf reads the base a new brief names for itself: its BASE: line.
+func briefBaseOf(brief string) string {
+	return swarm.ReadCardBase([]byte(brief)).Ref
+}
+
+// briefLandAfterSet is a brief edit's soft-dependency write: the new text's LAND-AFTER
+// list written the way add writes it (FieldLandAfter, FieldLandAfterSet; WithAddSoftDeps),
+// cleared when the text names none, and only when it differs from what the card holds
+// (SoftDepsRaw). It holds the list to the checks add holds (validateSoftDeps, softCycleWith)
+// against the snapshot, with the card's own repository and base from its new brief; why
+// names the card and the reason and changes nothing when it is not a legal write.
+func briefLandAfterSet(s *Snapshot, c *Card, brief string) (set map[string]string, unset []string, why string) {
+	want := BriefLandAfter(brief)
+	if sameNeeds(SoftDepsRaw(c), want) {
+		return nil, nil, ""
+	}
+	repo := briefRepoOf(brief)
+	if repo == "" {
+		repo = cardRepoOf(c)
+	}
+	base := briefBaseOf(brief)
+	if base == "" {
+		base = cardBaseOf(c)
+	}
+	if why := validateSoftDeps(s, c.ID, repo, base, Split(c.F("needs")), want, nil); why != "" {
+		return nil, nil, why
+	}
+	if cyc := softCycleWith(s, c.ID, map[string][]string{c.ID: want}, nil); len(cyc) > 0 {
+		return nil, nil, "cycle in dependencies: " + strings.Join(cyc, " -> ")
+	}
+	set = map[string]string{FieldLandAfterSet: "true"}
+	if len(want) > 0 {
+		set[FieldLandAfter] = strings.Join(want, ",")
+	} else {
+		unset = append(unset, FieldLandAfter)
+	}
+	return set, unset, ""
 }
 
 // briefDepends is a brief whose DEPENDS-ON: line alone changed: taken in any
@@ -1541,6 +1623,17 @@ func briefDepends(s *Snapshot, p Plan, c *Card, brief string, needs []string, ti
 	// needs, inside them (keepWaitsInNeeds); it is empty, and unset, when the
 	// write drops every need the card gained while working
 	after := keepWaitsInNeeds(s, c, needs, set, &unset)
+	// a LAND-AFTER-only edit (and one that changes both routing lines) writes the new
+	// text's soft dependencies here as the ordinary path does, held to add's checks
+	landSet, landUnset, why := briefLandAfterSet(s, c, brief)
+	if why != "" {
+		p.refuse(c.ID, why)
+		return p
+	}
+	for k, v := range landSet {
+		set[k] = v
+	}
+	unset = append(unset, landUnset...)
 	moved := fmt.Sprintf("%s DEPENDS-ON replaced: needs %s (%d bytes) stream=%s %s", c.ID, orDash(set["needs"]), len(brief), c.Row, c.Col)
 	if after != "" {
 		moved += "; working, waits for " + after + " after this attempt"
