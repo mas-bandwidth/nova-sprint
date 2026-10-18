@@ -32,7 +32,7 @@ MCChangesFleet == [r \in MCCallersFleet |-> r = "f2"]
 MCCallersFBeat == {"f1", "f2", "w1"}
 MCKindOfFBeat == [r \in MCCallersFBeat |-> MCKindOfFleet[r]]
 MCChangesFBeat == [r \in MCCallersFBeat |-> MCChangesFleet[r]]
-\* the lease's half-life renewal (Bound 4, so half and the last unit differ): a begin
+\* the lease's renewal at three quarters left (Bound 4: Mark 3, and the last unit 1, differ): a begin
 \* and a reader's queue, one reader card
 MCCallersLease == {"b2", "q1"}
 MCKindOfLease == [r \in MCCallersLease |-> MCKindOf[r]]

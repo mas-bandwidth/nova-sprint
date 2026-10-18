@@ -19,12 +19,15 @@
 (* Readers Reading column (internal/sprint/readers.go): read --begin, a    *)
 (* line verb, begins it (begun + DefaultReadLease); the reader's beat      *)
 (* renews it on a served queue (queue --as <reader>, setting lease to now  *)
-(* + DefaultReadLease) once half of it or less is left (RenewAt;         *)
-(* readers.go ReadLeaseRenewAt: on 2026-10-17 every poll rewrote every     *)
-(* lease, each a log line waking the tick and every long poller), under   *)
-(* the held line, errors ignored (a renew may fail); a lease not renewed  *)
-(* expires. A served queue leaves every live lease more than half its     *)
-(* bound, so a reader polling within each half keeps it live. On start    *)
+(* + DefaultReadLease) once three quarters of it or less is left        *)
+(* (RenewAt, Mark; readers.go ReadLeaseRenewAt, 7.5 of 10 minutes: on     *)
+(* 2026-10-17 every poll rewrote every lease, each a log line waking the  *)
+(* tick and every long poller), under the held line, errors ignored (a    *)
+(* renew may fail); a lease not renewed expires. A served queue leaves    *)
+(* every live lease more than three quarters of its bound. Age (the       *)
+(* lease's decrement) is not tied to how often a reader polls: that a     *)
+(* reader polls at least once each quarter of its lease, and so keeps it  *)
+(* live, is an assumption of the prose, not a step of the model. On start *)
 (* the server keeps every read whose lease is live and only takes back    *)
 (* reads whose lease lapsed.                                               *)
 (* Read-lane verbs (where, card, log, ...) hold no lease.                  *)
@@ -67,7 +70,8 @@
 (*                 LiveLeaseNeverTakenBack fails;                          *)
 (*   "renewlast"   the served queue renews a lease only on its last unit   *)
 (*                 (the margin gone): a queue leaves a live lease with     *)
-(*                 half its bound or less, so LiveLeaseNeverTakenBack      *)
+(*                 three quarters of its bound or less, so                 *)
+(*                 LiveLeaseNeverTakenBack                                 *)
 (*                 fails (MCServerLanesBrokenRenewLast, Bound 4);          *)
 (*   "fbeatlane"   every fleet beat runs on the beat lane, a change of the *)
 (*                 member's word too, beside the tick that reconciles the  *)
@@ -86,10 +90,10 @@ ASSUME \A r \in Callers : KindOf[r] \in Kinds
 ASSUME \A r \in Callers : Changes[r] \in BOOLEAN
 ASSUME Bound > 0
 
-\* half the lease's bound: a served queue renews a lease with this much left or less
-Half == Bound \div 2
-\* the lease left at which the served queue renews it: half (broken "renewlast": the last unit)
-RenewAt == IF "renewlast" \in Broken THEN 1 ELSE Half
+\* three quarters of the lease's bound: a served queue renews a lease with this much left or less
+Mark == (3 * Bound) \div 4
+\* the lease left at which the served queue renews it: Mark (broken "renewlast": the last unit)
+RenewAt == IF "renewlast" \in Broken THEN 1 ELSE Mark
 
 VARIABLES line,      \* the line's holder: "none", "tick" or a caller
           rline,     \* the read lane's holder: "none" or a caller
@@ -398,18 +402,19 @@ FCFS == \A r, s \in Callers :
 TickWaitsOneTurn == (turnDue /\ ticks < MaxTicks) => dueFinishes <= 1
 
 \* A lease renewed inside its bound is never taken back: whenever a served queue
-\* (the reader's beat) runs, it leaves every live lease with more than half its
-\* bound, renewing to the bound each one with half or less left, so a lease a live
-\* reader keeps renewing (a beat within each half) never lapses and is never taken
-\* back on restart. Under "norenew" the served queue never renews, and under
-\* "renewlast" it renews too late (a lease left with half or less): the property
-\* is stated over the Renew that succeeds.
+\* (the reader's beat) runs, it leaves every live lease with more than Mark (three
+\* quarters) of its bound, renewing to the bound each one with Mark or less left, so
+\* a lease a live reader keeps renewing (a beat within each quarter, the prose's
+\* assumption: Age is not tied to the polls) never lapses and is never taken back on
+\* restart. Under "norenew" the served queue never renews, and under "renewlast" it
+\* renews too late (a lease left with Mark or less): the property is stated over the
+\* Renew that succeeds.
 QueueFinishes == \E r \in Callers :
   KindOf[r] = "queue" /\ pc[r] = "running" /\ pc'[r] = "answered"
 LiveLeaseNeverTakenBack ==
   [][\A c \in Cards :
       (QueueFinishes /\ begun[c] /\ lease[c] > 0) =>
-        (lease'[c] > Half /\ (lease[c] <= Half => lease'[c] = Bound))]_vars
+        (lease'[c] > Mark /\ (lease[c] <= Mark => lease'[c] = Bound))]_vars
 
 \* Every lapsed read is taken back on restart.
 EveryLapsedReadTakenBack == \A c \in Cards :
