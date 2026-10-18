@@ -192,6 +192,10 @@ func TestADownMemberRunsNoLandGate(t *testing.T) {
 func TestLandDryRunNamesTheGateBench(t *testing.T) {
 	t.Parallel()
 	r := heldGateRig(t)
+	// the clone holds the module, as a landing clone holds its last landed tree: the dry
+	// run reads the gates kind from the clones files (go.mod), running no git
+	r.git(r.clone, "fetch", "-q", "origin", "+refs/heads/main:refs/remotes/origin/main")
+	r.git(r.clone, "switch", "-q", "--no-track", "--force-create", "land/s1", "refs/remotes/origin/main")
 	r.ok("fleet hold vision space --reason red --force-last")
 	out := r.ok("land --repo-dir " + r.clone + " --base main --dry-run")
 	assert.Regexp(t, `LAND OK stream=s1 .* bench=(vision|space)( |$|\n)`, out, "the dry run names a held bench")
