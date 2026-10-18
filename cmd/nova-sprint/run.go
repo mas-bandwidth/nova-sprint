@@ -44,6 +44,9 @@ type machineOut struct {
 	Refused []sprint.Refusal   `json:"refused,omitempty"`
 	Moved   []string           `json:"moved,omitempty"`
 	Parts   []store.PartResult `json:"parts,omitempty"`
+	// Said is what the transition tells beside its change: a start names the STOP
+	// debts it settled because their jobs had left the table.
+	Said []string `json:"said,omitempty"`
 	// Reason and Until are a stop by hand's (docs/SPEC-SPRINT.md section 14).
 	Reason string `json:"reason,omitempty"`
 	Until  string `json:"until,omitempty"`
@@ -149,7 +152,7 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 	changed := before.Running() != after.Running()
 	line := sprintLine(ctx, st)
 	if c.json {
-		o := machineOut{Before: before.StateWord(), After: after.StateWord(), Changed: changed, Notes: res.Notes, Sprint: line, Reason: after.Reason}
+		o := machineOut{Before: before.StateWord(), After: after.StateWord(), Changed: changed, Notes: res.Notes, Said: res.Said, Sprint: line, Reason: after.Reason}
 		if !after.Until.IsZero() {
 			o.Until = after.Until.UTC().Format(time.RFC3339)
 		}
@@ -180,6 +183,9 @@ func (a *app) setMachine(name string, running bool, args []string, stdout, stder
 		what = "unchanged: the machine is " + after.StateWord() + " already"
 	}
 	fmt.Fprintf(stdout, "%s OK before=%s after=%s %s\n", token(name), shownWord(before), shownWord(after), what)
+	for _, n := range res.Said {
+		fmt.Fprintf(stdout, "NOTE %s\n", oneline.Escape(n))
+	}
 	if running {
 		if _, hb, err := st.Machine(ctx); err == nil && a.now().Sub(hb.Alive()) > store.MachineSilence {
 			if a.twinOpen(c.redis) {
