@@ -6726,8 +6726,9 @@ are the evidence a later card reads before that record's writer switches.
     check is caught. The run-time half (one owner judgment for a blocked need, a
     drop that never strands) is its own card. Under 11 as well (no number from
     12 to 14 is free), `check` names a stream merging with at least one queued
-    card while no member can run a land gate (none up or held by the coordinator
-    with no `--return`, `Snapshot.GateMembers`): `stream <s> has <n> merging card(s) and no member can run a land gate: nova-sprint fleet unhold <member>` (the hold guard's rule, section 11).
+    card while no member the land loop can use runs a land gate (none up or held by the
+    coordinator with no `--return`, minus the server's own machine and any host the check
+    refuses, `Snapshot.LandBenches`): `stream <s> has <n> merging card(s) and no member the land loop can use: nova-sprint fleet unhold <member>` (the hold guard's rule, section 11).
 12. Nothing stalls. Every primary on the table that has not landed is held by
     one of: (a) an outside actor before its deadline (its live work card in an
     up member's ready or working cell, a read card asked or reading, its merge
@@ -8794,7 +8795,7 @@ once, when it begins; while the same cause stands only the beat line names it (a
 unreadable queue's error is said again when its words change, being all that tells two
 outages apart).
 
-A refusal that no member can run a land gate (the gate listed no bench) is classed
+A refusal that no member the land loop can use runs a land gate (the gate listed no bench) is classed
 `no-gate-bench` at the source: its judgment names the streams with cards queued and the
 cause, `code=no-gate-bench: no gate bench ran the tree gate (every fleet member is down, or held with no gate bench left); streams: <s,...>; nova-sprint fleet unhold <member> restores it`, and the streams are display only, never in the key, so the same outage is
 one judgment as the queue changes. When a pass gets past the gate bench and clears it,

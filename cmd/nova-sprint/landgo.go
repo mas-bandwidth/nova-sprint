@@ -1192,11 +1192,11 @@ func (l *lander) gateBenches(ctx context.Context) (hosts []string, inLoop, remot
 }
 
 // gateHosts is the gate's host choice, which the loop (gateBenches) and the dry run
-// (dryGate) share: the fleet members that may run a gate (Snapshot.GateMembers: up, or
-// held by the coordinator; a hold is a deal control, not a gate one) other than this
-// machine that bench.CheckHost accepts, in the fleet's order. A down member is left out;
-// one that cannot be reached is passed over by the ring (ringGate). remote says another
-// fleet member is configured, even when it is down or the fleet could not be read.
+// (dryGate) share: the benches the land loop can use (Snapshot.LandBenches: GateMembers,
+// up or held by the coordinator, other than this machine and any host bench.CheckHost
+// refuses), in the fleet's order. A down member is left out; one that cannot be reached
+// is passed over by the ring (ringGate). remote says another fleet member is configured,
+// even when it is down or the fleet could not be read.
 // tla/DirtyTick.tla LandGate (MCDirtyTickGateHeld.cfg, MCDirtyTickBrokenGateUpOnly.cfg).
 func (l *lander) gateHosts(ctx context.Context) (hosts []string, remote bool) {
 	if l == nil || l.a == nil || l.st == nil {
@@ -1215,13 +1215,7 @@ func (l *lander) gateHosts(ctx context.Context) (hosts []string, remote bool) {
 			break
 		}
 	}
-	for _, m := range s.GateMembers() {
-		if self != "" && strings.EqualFold(m, self) {
-			continue
-		}
-		if bench.CheckHost(m) != nil {
-			continue
-		}
+	for _, m := range s.LandBenches(self) {
 		hosts = append(hosts, m)
 	}
 	return hosts, remote
