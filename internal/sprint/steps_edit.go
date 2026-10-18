@@ -190,11 +190,22 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			if c.Int("attempt") > 0 {
 				p.Said = append(p.Said, fmt.Sprintf("bound: same task (%d attempts stand)", c.Int("attempt")-c.Int(FieldBriefAttempt)))
 			}
+			set := map[string]string{}
+			if c.Int("attempt") > 0 && !sameTask(c.F("brief"), b.Brief) {
+				// a widening that changes the task (its PATHS, NEW or SHARED) is a coordinator
+				// decision: the attempt cap's count starts again from here; a widening that
+				// leaves the task as it was (START read entries alone) decides nothing and keeps
+				// the count standing (brief_bound.go, FieldDecidedAttempt)
+				set[FieldDecidedAttempt] = c.F("attempt")
+				p.Said = append(p.Said, fmt.Sprintf("max attempts: decided at attempt %d (the cap's count starts again)", c.Int("attempt")))
+			}
 			said := fmt.Sprintf("scope widened in place by %s at attempt %d: %s", orDash(r.Who), c.Int("attempt"), briefChange(c.F("brief"), b.Brief))
 			if r.Reason != "" {
 				said += "; reason: " + r.Reason
 			}
-			p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, map[string]string{"brief": b.Brief, "why": cutText(said, MaxCardTextBytes)}))}, Moved: c.ID + " " + said})
+			set["brief"] = b.Brief
+			set["why"] = cutText(said, MaxCardTextBytes)
+			p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, setEntry(c, set))}, Moved: c.ID + " " + said})
 			continue
 		}
 		if c != nil && !IsSentinel(c) && c.Col == Working {
@@ -294,12 +305,18 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			}
 		}
 		// the attempt cap counts attempts since the coordinator last decided (brief_bound.go,
-		// FieldDecidedAttempt): a person's or the seat's edit is a decision, whatever it
-		// changed, and opens a fresh window; a rule's widen (ByRule) is a machine's act and
-		// leaves the count standing, so no widen loop can run a card past the cap unseen
+		// FieldDecidedAttempt): a person's or the seat's edit is a decision only when it
+		// changes the task or its PATHS (not the same task), and opens a fresh window then; the
+		// tier on line 1, a routing line or spacing decide nothing, and leave the count
+		// standing; a rule's widen (ByRule) is a machine's act and leaves the count standing
+		// too, so no widen loop can run a card past the cap unseen
 		if !r.ByRule && c.Int("attempt") > 0 {
-			set[FieldDecidedAttempt] = c.F("attempt")
-			p.Said = append(p.Said, fmt.Sprintf("max attempts: decided at attempt %d (the cap's count starts again)", c.Int("attempt")))
+			if !sameTask(c.F("brief"), b.Brief) {
+				set[FieldDecidedAttempt] = c.F("attempt")
+				p.Said = append(p.Said, fmt.Sprintf("max attempts: decided at attempt %d (the cap's count starts again)", c.Int("attempt")))
+			} else {
+				p.Said = append(p.Said, "max attempts: unchanged (the edit decides nothing about the task)")
+			}
 		}
 		if b.Rules != "" {
 			set[FieldRules] = b.Rules
