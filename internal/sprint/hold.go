@@ -167,15 +167,15 @@ func HoldTargets(s *Snapshot, r HoldReq) ([]HoldTarget, []Refusal) {
 		}
 		switch {
 		case r.Kind != "" && !slices.Contains(kinds, r.Kind):
-			refused = append(refused, Refusal{Key: n, Why: "no " + holdKindWords[r.Kind] + " " + n + holdElsewhere(n, kinds, r.Release)})
+			refused = append(refused, Refusal{n, "no " + holdKindWords[r.Kind] + " " + n + holdElsewhere(n, kinds, r.Release)})
 		case r.Kind != "":
 			out = append(out, HoldTarget{Name: n, Kind: r.Kind})
 		case len(kinds) == 0:
-			refused = append(refused, Refusal{Key: n, Why: "names no fleet member, reader, friend or stream of this sprint: nova-sprint where --all shows them"})
+			refused = append(refused, Refusal{n, "names no fleet member, reader, friend or stream of this sprint: nova-sprint where --all shows them"})
 		case len(kinds) == 1:
 			out = append(out, HoldTarget{Name: n, Kind: kinds[0]})
 		default:
-			refused = append(refused, Refusal{Key: n, Why: "names a " + strings.Join(kinds, " and a ") + ": a hold names one; rename one of them"})
+			refused = append(refused, Refusal{n, "names a " + strings.Join(kinds, " and a ") + ": a hold names one; rename one of them"})
 		}
 	}
 	return out, refused
@@ -235,7 +235,18 @@ var lastGateGuardOff bool
 // lastGateRefusal is the guard's refusal when a hold would leave no gate bench: the
 // member being held, and the consequence with the override that holds it anyway.
 func lastGateRefusal(member string) Refusal {
-	return Refusal{Key: member, Code: RefusedLastGate, Why: "holding " + member + " leaves no gate bench: every landing will be refused until one is unheld; --force-last holds it anyway"}
+	return Refusal{member, "holding " + member + " leaves no gate bench: every landing will be refused until one is unheld; --force-last holds it anyway"}
+}
+
+// refusalCode names a refusal's kind for a caller that must tell it apart by kind, not
+// by its words: RefusedLastGate for the guard's refusal, "" for every other. It is the
+// guard's own construction it compares, so changing the refusal's words never changes
+// the code the verb reads.
+func refusalCode(r Refusal) string {
+	if r.Key != "" && r == lastGateRefusal(r.Key) {
+		return RefusedLastGate
+	}
+	return ""
 }
 
 // HoldNames is hold and unhold as one step (docs/SPEC-SPRINT.md section 11): every name
@@ -248,10 +259,10 @@ func lastGateRefusal(member string) Refusal {
 func HoldNames(s *Snapshot, r HoldReq) Plan {
 	targets, refused := HoldTargets(s, r)
 	if len(r.Names) == 0 {
-		refused = append(refused, Refusal{Key: "hold", Why: "names nothing: name a fleet member, a reader, a friend or a stream"})
+		refused = append(refused, Refusal{"hold", "names nothing: name a fleet member, a reader, a friend or a stream"})
 	}
 	if why := holdCauseWhy(s, r, targets); len(refused) == 0 && why != "" {
-		refused = append(refused, Refusal{Key: "hold", Why: why})
+		refused = append(refused, Refusal{"hold", why})
 	}
 	if len(refused) > 0 {
 		return Plan{Refused: refused}

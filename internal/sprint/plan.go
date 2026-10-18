@@ -42,10 +42,11 @@ type Unit struct {
 type Refusal struct {
 	Key string `json:"id"`
 	Why string `json:"why"`
-	// Code names a refusal a caller must tell apart by kind, not by its words; it is
-	// empty for every refusal that has no such caller (RefusedLastGate).
-	Code string `json:"code,omitempty"`
 }
+
+// Code names a refusal a caller must tell apart by kind, not by its words: it is
+// RefusedLastGate for the last-gate guard's refusal and "" for every other (hold.go).
+func (r Refusal) Code() string { return refusalCode(r) }
 
 // RefusedLastGate is the last-gate guard's refusal code: a hold would leave no member
 // that can run a land gate. The verb reads it rather than the refusal's words.
@@ -171,9 +172,7 @@ func (p Plan) Tables() []string {
 	return out
 }
 
-func (p *Plan) refuse(key, why string) {
-	p.Refused = append(p.Refused, Refusal{Key: key, Why: why})
-}
+func (p *Plan) refuse(key, why string) { p.Refused = append(p.Refused, Refusal{key, why}) }
 
 // StreamRemoveExisting splits the streams stream remove names into the ones
 // that may leave and a refusal for each name that may not, in the order

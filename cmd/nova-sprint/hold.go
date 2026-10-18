@@ -209,7 +209,7 @@ func (a *app) runHold(verbName, stepVerb string, c common, st *store.Store, r sp
 	// the last-gate guard is the verb's refuse form: exit 2, the refusal's line on
 	// stderr, nothing written
 	for _, r := range res.Refused {
-		if r.Code == sprint.RefusedLastGate {
+		if r.Code() == sprint.RefusedLastGate {
 			return refuse(stderr, verbName, r.Key+": "+r.Why)
 		}
 	}
