@@ -597,7 +597,7 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 	// ignored: a best-effort read cleanup on startup; tick takes care of any subsequent lapses
 	_ = a.serverStart(context.Background(), st)
 
-	fmt.Fprintf(stdout, "RUN ticking on every line of the log (at most every %s) and every %s while it is quiet; %s\n", store.TickFloor, store.TickEvery, st.MachineLine(context.Background()))
+	fmt.Fprintf(stdout, "RUN ticking on every line of the log (at most every %s) and every %s while it is quiet; %s\n", store.TickFloor, store.QuietEvery, st.MachineLine(context.Background()))
 	if a.runLoop(context.Background(), st, c.max, 0, stdout, stderr) {
 		return exitReplaced
 	}
@@ -958,7 +958,6 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 	// the server's record, the actor this loop runs as, which seat and handover
 	// show beside the seat's holder: written before the first tick and every
 	// store.ServerEvery (seat-key-follows-record.w2)
-	var said time.Time
 	// the walls of the last ticks, which stretch the deadline (tickDeadlineOf),
 	// the least deadline an overrun lifted it to (liftAfterOverrun), and the
 	// wedged ticks in a row (awaitGivenUp)
@@ -971,7 +970,7 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 			return true
 		}
 		began := a.now()
-		said = a.sayServer(ctx, st, said, stderr)
+		a.serverSaid = a.sayServer(ctx, st, a.serverSaid, stderr)
 		// one tick, or one worker's batch, at a time (serve.go); the tick takes the line at
 		// its turn, after the batch in flight, not behind every batch waiting
 		// (sprint.ControlLine; docs/SPEC-SPRINT.md section 14, The server, "The tick's turn")
@@ -1084,7 +1083,7 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 			continue
 		}
 		failures = 0
-		cursor, why = a.pace(ctx, st, res.Epoch, cursor, began)
+		cursor, why = a.pace(ctx, st, res.Epoch, cursor, began, stderr)
 	}
 	return false
 }
@@ -1135,25 +1134,35 @@ func (a *app) storeRTTLoop(ctx context.Context, st *store.Store) {
 }
 
 // pace is the wait between two ticks of run: it blocks on the log of the
-// epoch the tick ran at from cursor, until a line comes or TickEvery after
+// epoch the tick ran at from cursor, until a line comes or QuietEvery after
 // the tick began (never less than TickFloor); a line wakes it, and the next
-// tick begins TickFloor after the last began at the soonest. It returns the
-// cursor for the next wait and why the next tick begins. A wait the store
-// refuses falls back to the clock.
-func (a *app) pace(ctx context.Context, st *store.Store, epoch uint64, cursor string, began time.Time) (string, string) {
-	d := max(store.TickEvery-a.now().Sub(began), store.TickFloor)
-	tail, woke, err := st.WaitLog(ctx, epoch, cursor, d)
-	if err != nil {
-		a.sleep(max(store.TickEvery-a.now().Sub(began), 0))
-		return cursor, tickClock
+// tick begins TickFloor after the last began at the soonest. The wait is
+// taken in slices of ServerEvery, and the server's record is written between
+// slices (sayServer), so a quiet log never lets the record lapse: its TTL is
+// three ServerEvery and a quiet tick is ten (2026-10-17, the first QuietEvery
+// let it lapse between ticks). It returns the cursor for the next wait and why
+// the next tick begins. A wait the store refuses falls back to the clock.
+func (a *app) pace(ctx context.Context, st *store.Store, epoch uint64, cursor string, began time.Time, stderr io.Writer) (string, string) {
+	for {
+		left := store.QuietEvery - a.now().Sub(began)
+		if left <= 0 {
+			return cursor, tickClock
+		}
+		d := max(min(left, store.ServerEvery), store.TickFloor)
+		tail, woke, err := st.WaitLog(ctx, epoch, cursor, d)
+		if err != nil {
+			a.sleep(d)
+		} else {
+			cursor = tail
+			if woke {
+				if left := store.TickFloor - a.now().Sub(began); left > 0 {
+					a.sleep(left)
+				}
+				return tail, tickLog
+			}
+		}
+		a.serverSaid = a.sayServer(ctx, st, a.serverSaid, stderr)
 	}
-	if !woke {
-		return tail, tickClock
-	}
-	if left := store.TickFloor - a.now().Sub(began); left > 0 {
-		a.sleep(left)
-	}
-	return tail, tickLog
 }
 
 // machineWords is the machine's part of the help.

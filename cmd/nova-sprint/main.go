@@ -259,6 +259,8 @@ type app struct {
 	// before any clone is touched (landfence.go, serverLanding;
 	// docs/fixes.sexp, land-fenced-while-server-lands).
 	serverLands bool
+	// serverSaid is when the run loop last wrote the server's record (sayServer)
+	serverSaid time.Time
 	// serverStarted is when this process began to be the server: the
 	// heartbeat's started (store.ServerRecord.Started, serverRecord), set at
 	// the first tick of run so every later heartbeat names the same start.
