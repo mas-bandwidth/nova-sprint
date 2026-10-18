@@ -114,6 +114,9 @@ type Plan struct {
 	// removing says remove built the plan: the one step that takes a landed
 	// primary off the table.
 	removing bool
+	// reworking says rework built the plan: the one step that may move a
+	// server-default-held primary and clear its hold (reworkAnswersHold).
+	reworking bool
 	// rounds are the rolling indexes the plan moved and each unit's moves
 	// (roundWrites): a unit dropped after planning (LeaveQueued) moves no
 	// index, so the plan's index writes are made again from the units kept.

@@ -64,6 +64,12 @@ func TestACardAtTheCapIsDealtToNoOneUntilTheCoordinatorDecides(t *testing.T) {
 	assert.Contains(t, n.What, "s1-1: brief defect after 4 attempts (max_attempts 4) without a coordinator decision")
 	assert.Contains(t, n.What, "findings: attempt 1: one way; attempt 2: another; attempt 3: a third; attempt 4: a fourth", "every attempt's finding listed")
 	assert.Contains(t, n.What, "nova-sprint rework s1-1 --fix <text> --tier <a higher tier>", "the re-tier is the way to a friend tier")
+	assert.Contains(t, n.What, "nova-sprint brief s1-1 --brief-file <path> (change the task or PATHS; cosmetic edits do not reset max_attempts", "the correction must change task scope to reset the cap")
+	assert.Contains(t, n.What, "nova-sprint brief s1-1 --tier <tier> (re-tier)", "the brief re-tier verb is an explicit remedy")
+	// A finding-specific cap judgment also names task correction and re-tier.
+	finding := BriefBound{ID: "s1-1", Finding: "failing test"}
+	assert.Contains(t, finding.Remedy(), "change the task or PATHS; cosmetic edits do not reset max_attempts")
+	assert.Contains(t, finding.Remedy(), "nova-sprint brief s1-1 --tier <tier> (re-tier)")
 
 	// a second tick finds the judgment open and raises nothing; the card still waits
 	w.part(TickDeal, TickReq{Friends: workerSeatFixtures([]FriendSeat{gus})})

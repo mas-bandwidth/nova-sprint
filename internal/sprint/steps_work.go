@@ -2991,7 +2991,11 @@ func envFaultNote(s *Snapshot, member, primary, cause, line, who string) (Note, 
 	n := judgment(NMemberEnvFault, sub, s.Now, 0, sub)
 	n.Who, n.To = who, s.Coordinator
 	n.Card = primary
-	n.Decisions = []string{"fleet up " + member, "wait"}
+	firstDecision := "fleet up " + member
+	if IsFriendRow(member) {
+		firstDecision = EnvProbeLine(member)
+	}
+	n.Decisions = []string{firstDecision, "wait"}
 	n.What = envFaultWhat(member, primary, cause, line)
 	return n, nil
 }
@@ -3125,6 +3129,10 @@ type FleetReq struct {
 	// only its ready cards, never begun, are dealt round the fleet, and the hold
 	// is marked so (FieldHeldFinish) for the sweep to leave them (hold.go).
 	Finish bool `json:",omitempty"`
+	// Return, with hold, says the hold was made with --return (fleet down): the member is
+	// out of service and runs no land gate, so the hold is marked so (FieldHeldReturn,
+	// hold.go gateCapable). A hold without it clears the mark.
+	Return bool `json:",omitempty"`
 	// Until, with quiet, is when the member's quiet ends, and End ends it now (fleet
 	// quiet, fleet_quiet.go); Reason is its reason.
 	Until time.Time `json:",omitzero"`
@@ -3225,6 +3233,19 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 	var p Plan
 	switch r.Op {
 	case "up", "release":
+		if r.Op == "up" {
+			if name, friend := FriendOfRow(r.Member); friend {
+				cause, _ := s.MemberEnvFault(r.Member)
+				if !ValidID(name) || cause == "" || r.Probe != EnvProbePassed {
+					p.refuse(r.Member, "a friend row is not a fleet member; fleet up "+r.Member+" --probe "+EnvProbePassed+" clears only its environment fault")
+					return p
+				}
+				u := Unit{Key: r.Member, Moved: r.Member + " environment fault cleared (--probe " + EnvProbePassed + ")"}
+				clearEnvFault(s, r.Member, &u)
+				p.Units = append(p.Units, u)
+				return p
+			}
+		}
 		if !ValidID(r.Member) {
 			p.refuse(r.Member, "a member name wants letters, digits, _ and -")
 			return p
@@ -3330,6 +3351,7 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 			// (tla/ProviderBudget.tla, FleetUpRefusesUncleared).
 			if r.Op == "release" && ctl.F("held") != "" && !envCleared {
 				unset = append(unset, holdFields...)
+				unset = append(unset, FieldHeldReturn)
 				if !comeUp {
 					line = r.Member + " released, down until it beats"
 				}
@@ -3520,6 +3542,16 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 			line += "; its working cards finish"
 		} else {
 			unset = append(unset, FieldHeldFinish)
+		}
+		// a coordinator's hold with --return (fleet down) takes the member out of service:
+		// it runs no land gate (hold.go gateCapable). The mark carries the hold's held
+		// stamp (HeldToReturn), and a coordinator's hold without --return clears it; a
+		// machine's hold (held_by: the sync's retire re-holding a member already held)
+		// leaves the mark as it is
+		if held := cmp.Or(set["held"], ctl.F("held")); r.Return && r.HeldBy == "" && held != "" {
+			set[FieldHeldReturn] = held
+		} else if r.HeldBy == "" {
+			unset = append(unset, FieldHeldReturn)
 		}
 		// what ends the hold, and who made a coordinator's (hold_cause.go): a later hold
 		// names them again, and one that names no cause leaves none behind, so its
@@ -4061,11 +4093,43 @@ func tailFirstLine(s string) string {
 	return strings.TrimSpace(line)
 }
 
+// exitCause is the cause of an environment-exit card's last exit, from the harness tail it
+// keeps: the sandbox wall's runaway line (v17-env-exit-bound-names-the-wall-cap, 2026-10-17),
+// else the tail's first line. Walking from the last line, the first that, trimmed, starts
+// `SANDBOX RUNAWAY runaway: ` gives the cause: the text after that prefix up to the first
+// `;`, said as "the sandbox wall's memory cap killed the tree: <text>" when the text
+// contains "bytes of memory", else "the sandbox wall's process cap killed the tree: <text>".
+func exitCause(tail string) string {
+	orig := tail
+	for {
+		line, rest, found := strings.Cut(tail, "\n")
+		if !found {
+			line = tail
+		}
+		trimmed := strings.TrimSpace(line)
+		if text, ok := strings.CutPrefix(trimmed, "SANDBOX RUNAWAY runaway: "); ok {
+			if cause, _, ok := strings.Cut(text, ";"); ok {
+				text = cause
+			}
+			if strings.Contains(text, "bytes of memory") {
+				return "the sandbox wall's memory cap killed the tree: " + strings.TrimSpace(text)
+			}
+			return "the sandbox wall's process cap killed the tree: " + strings.TrimSpace(text)
+		}
+		if !found {
+			break
+		}
+		tail = rest
+	}
+	return tailFirstLine(orig)
+}
+
 // EnvExitCounts is one member's children in the window, as the doctor names them
 // (EnvExitCheck) and `nova-sprint stats --children` prints them: how many of the member's
 // children ended 134 or 137 (Env, HardEnvExit: the doctor's "ended 134/137") out of all its
-// children that ended in the window (N), the first line of the last such exit's harness tail
-// (Last) and the primary it ended on (Card), and the histogram of every environment exit by
+// children that ended in the window (N), the last such exit's harness tail's cause (Last,
+// exitCause: the sandbox wall's runaway line, else the tail's first line) and the primary it
+// ended on (Card), and the histogram of every environment exit by
 // child exit code (Exits, "134" -> count, a no-result at exit 0 in "0"); the N-Env other
 // children include those no-results.
 type EnvExitCounts struct {
@@ -4085,8 +4149,8 @@ type EnvExitCounts struct {
 // exit (IsEnvironmentExit) counts in Env and in its code's bucket; every record that ended
 // in the window counts in N; an environment exit counts in its code's bucket, and in Env
 // only at 134 or 137. A friend's runs are not a member's environment and are left out. Last
-// and Card are the latest 134/137's: the first line of the harness tail on the card it ended
-// on, else on its primary.
+// and Card are the latest 134/137's: the cause of the harness tail on the card it ended on
+// (exitCause), else on its primary.
 func EnvExitChildren(s *Snapshot, now time.Time, window time.Duration) []EnvExitCounts {
 	if s == nil || s.Work == nil {
 		return nil
@@ -4127,7 +4191,7 @@ func EnvExitChildren(s *Snapshot, now time.Time, window time.Duration) []EnvExit
 						tail = run.F(FieldHarnessTail)
 					}
 				}
-				c.Last, c.Card = tailFirstLine(tail), pr.ID
+				c.Last, c.Card = exitCause(tail), pr.ID
 			}
 		}
 	}
@@ -4296,7 +4360,7 @@ func AtEnvExitBound(s *Snapshot, c *Card) *Card {
 }
 
 // envExitBoundWhat is the bound judgment's text for a work card at the environment-exit cap:
-// the card, how many times, the members, the exit codes, the first line of the last tail,
+// the card, how many times, the members, the exit codes, the last tail's cause (exitCause),
 // and what answers it.
 func envExitBoundWhat(wc *Card, primary string) string {
 	h := envExitHistory(wc)
@@ -4309,5 +4373,5 @@ func envExitBoundWhat(wc *Card, primary string) string {
 		codes = append(codes, code)
 	}
 	return fmt.Sprintf("%s: attempt %s's child ended on the member's environment %d times (the cap is %d) and is not dealt again: members %s; exits %s; last: %s; rework it with a fix or drop it; its history: nova-sprint card %s",
-		wc.ID, orDash(wc.F("attempt")), len(h), EnvExitCardCap, strings.Join(members, ", "), strings.Join(codes, ", "), orDash(tailFirstLine(wc.F(FieldHarnessTail))), primary)
+		wc.ID, orDash(wc.F("attempt")), len(h), EnvExitCardCap, strings.Join(members, ", "), strings.Join(codes, ", "), orDash(exitCause(wc.F(FieldHarnessTail))), primary)
 }

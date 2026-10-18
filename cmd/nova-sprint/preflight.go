@@ -170,6 +170,7 @@ func (a *app) preflightCheck(ctx context.Context, st *store.Store, cards []prefl
 		inDir[p.id] = true
 	}
 	live := preflightLive(snap)
+	open := dupOpenCards(snap)
 	var v preflightView
 	v.Repos = repoDir != ""
 	failed := 0
@@ -218,6 +219,24 @@ func (a *app) preflightCheck(ctx context.Context, st *store.Store, cards []prefl
 						add("PATHS", fmt.Sprintf("%s overlaps %s (%s)", path, other.id, op))
 					}
 				}
+			}
+		}
+		// DUPLICATE: a probable duplicate of an open card or another brief of the batch
+		mine := dupCardOf(p.id, p.brief)
+		for _, o := range open {
+			if o.ID == p.id {
+				continue
+			}
+			if f, ok := probableDuplicate(mine, o); ok {
+				add("DUPLICATE", f.String())
+			}
+		}
+		for _, other := range cards {
+			if other.id == p.id {
+				continue
+			}
+			if f, ok := probableDuplicate(mine, dupCardOf(other.id, other.brief)); ok {
+				add("DUPLICATE", f.String())
 			}
 		}
 		// TEST and BASE, at BASE in --repo-dir

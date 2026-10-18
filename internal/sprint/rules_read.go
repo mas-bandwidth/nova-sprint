@@ -100,6 +100,14 @@ func ruleReadBroken(s *Snapshot, a *RuleAnswer) {
 		left(a, bb.String())
 		return
 	}
+	// a read finding the work already at the base is a duplicate of landed work, never a
+	// rework: no rework of landed work can succeed, and the judgment is the coordinator's to
+	// drop (the schema-go timestamp any-length card, dropped, spent four attempts after its
+	// duplicate landed)
+	if BriefDefectOf(finding) == BriefDefectDuplicate {
+		left(a, fmt.Sprintf("a reader found attempt %s's work already at the base: a duplicate of landed work; drop the card (nova-sprint drop <id> --reason ...), never a rework", pr.F("attempt")))
+		return
+	}
 	out := FilesOutsidePaths(pr.F("brief"), finding)
 	if spent := WidensSpent(pr); len(out) > 0 && spent != "" {
 		left(a, spent)

@@ -102,12 +102,17 @@ func sectionHeading(line string) bool {
 	return letter
 }
 
-// ParseFriendReadReport reads a friend's read report. LAND closes the read
-// ok. HOLD closes it broken when a line names a file, a line or a rule
-// (typedrec.NamesADefect, the rule a reader's broken read is held to).
-// why is set when the report does not close the read.
+// ParseFriendReadReport reads a friend's read report (read-findings-carry-every-bullet;
+// docs/SPEC-SPRINT.md section 8, the read-broken rule). LAND closes the read ok. HOLD
+// closes it broken when a line names a file, a line or a rule (typedrec.NamesADefect, the
+// rule a reader's broken read is held to). Every finding is kept, in the order written:
+// each defect line starts one, and the continuation lines under its bullet belong to it,
+// so a report naming three defects carries all three to the next attempt. why is set when
+// the report does not close the read.
 func ParseFriendReadReport(report string) (verdict, finding, why string) {
-	word, defect := "", ""
+	word := ""
+	var findings []string
+	current := -1
 	for _, l := range strings.Split(report, "\n") {
 		t := strings.TrimSpace(l)
 		if word == "" {
@@ -118,18 +123,34 @@ func ParseFriendReadReport(report string) (verdict, finding, why string) {
 				}
 			}
 		}
-		if defect == "" && typedrec.NamesADefect(l) {
-			defect = strings.TrimSpace(l)
+		switch {
+		case t == "":
+			current = -1
+		case strings.HasPrefix(t, "Verdict:") || strings.HasPrefix(t, "Head:") || sectionHeading(l):
+			current = -1
+		case typedrec.NamesADefect(l):
+			findings = append(findings, t)
+			current = len(findings) - 1
+		case strings.HasPrefix(t, "-") || strings.HasPrefix(t, "*") || strings.HasPrefix(t, "+"):
+			current = -1
+		case current >= 0:
+			findings[current] += "\n" + t
+		}
+	}
+	var kept []string
+	for _, f := range findings {
+		if !slices.Contains(kept, f) {
+			kept = append(kept, f)
 		}
 	}
 	switch word {
 	case "LAND":
 		return "ok", "", ""
 	case "HOLD":
-		if defect == "" {
+		if len(kept) == 0 {
 			return "", "", "a HOLD closes a read broken only when a finding names a file, a line or a rule"
 		}
-		return "broken", defect, ""
+		return "broken", cutText(strings.Join(kept, "\n"), MaxCardTextBytes), ""
 	default:
 		return "", "", "a friend's read report says Verdict: LAND or Verdict: HOLD"
 	}

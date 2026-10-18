@@ -44,7 +44,8 @@ for routing, restart and hook-display limits.
 
 ```
 nova-sprint init [--readers <a,b,...>] [--members <m1[:<width>],m2,...>] [--coordinator <name>] [--rules <file>]
-nova-sprint add --stream <s> (<id>... | --count <n> | --sentinel <id> | --brief-dir <dir> | --brief-file <f1> --brief-file <f2>...: a card per file, its id the file's name without .md) [--partial] [--needs <a,b>] [--before <id> | --after <id> | --score <n>] [--brief <text> | --brief-file <path>: once, the brief of the cards named] [--rules <file>] [--replaces <old-id>[,<old-id>]]
+nova-sprint add --stream <s> (<id>... | --count <n> | --sentinel <id> | --brief-dir <dir> | --brief-file <f1> --brief-file <f2>...: a card per file, its id the file's name without .md) [--partial] [--needs <a,b>] [--before <id> | --after <id> | --score <n>] [--brief <text> | --brief-file <path>: once, the brief of the cards named] [--rules <file>] [--replaces <old-id>[,<old-id>]] [--not-a-duplicate-of <card>=<reason>]...
+# add and preflight name a probable duplicate (same REPO:, an overlapping PATHS glob neither lists as SHARED:, and a word overlap at or above 0.20, measured 0.273 on the timestamp fixtures and 0.095 on the two v17 landgo.go fixtures); add holds that brief back and admits the rest of the wave, one DUPLICATE line and exit 1, unless --not-a-duplicate-of <card>=<reason> admits it and records the reason on its admission note (a reason is required; preflight prints the DUPLICATE finding)
 # add refuses an unresolved need (v1.2.17): absent ("needs <id>, which is no primary on the table or in this add"), dropped ("needs <id>, which was <outcome>"), unknown stream ("needs <id> (unknown stream): <id>'s stream <s> has no control card in this epoch") and held ("needs <id> (held): <id> is held by judgment <j> (<type>, open <age>) until it is decided; decide it: nova-sprint rework <id> --fix <text> or nova-sprint drop <id> --reason <text> ..."); an add of more than one card (--brief-dir, many briefs, --count) with one is refused whole, naming every card and need, nothing written; brief check names the same through add's plan
 nova-sprint quack --streams <a,b,...> --count <n> --repo <clone url> [--tiers <t,...>] [--base <branch>]
 nova-sprint release (<sentinel>... | <selector> [--dry-run]) --reason <text> [--answers <note>]
@@ -98,7 +99,7 @@ nova-sprint continue <card> [--note <text>] [--tier <flash|pro|heavy|frontier>] 
 nova-sprint move <id>... --stream <s> [--before <id> | --after <id> | --score <n>]
 nova-sprint merge --stream <s> [--batch <n>] [--conflict <id> [--conflict-kind file|ledger] [--conflict-path <p>...] | --cross <id>=<other> | --red [--suspect <id>...] | --rejected | --base-red <error>] [--note <text>]
 # a merge with no fact flag and no --landed is the twin's; on a real store use land, or record a pushed landing with --landed <id>@<head> --repo <dir> --base-ref <ref>
-nova-sprint land [--stream <s>...] [--repo-dir <clone>] [--base <branch>] [--check <command>] [--dry-run]
+nova-sprint land [--stream <s>...] [--repo-dir <clone>] [--base <branch>] [--check <command>] [--dry-run]   # a gate runs on a member up or held by the coordinator without --return (a hold is a deal control; fleet down, hold --return, writes held_return and runs no gate); --dry-run names that bench (bench=<member>) or refuses the batch as the loop would, running nothing
 nova-sprint rebase --from <branch> --to <branch> [--repo-dir <clone>] [--dry-run]
 nova-sprint stream set <stream>... [--read-tier <flash|pro|heavy|default>] [--land-protected <owner/name,...|any|default>] [--release <name>] [--prose <glob,...|default>] [--seat-accept <on|off>] [--default-tier <flash|pro|heavy|default>] [--attempts <n|default>] [--base <branch>] [--reason <text>] [--answers <notes>]
 nova-sprint settings [--json]   # every setting with its value and default; `set` with no flags prints the same
@@ -141,7 +142,7 @@ nova-sprint friend cards <friend> [--json]
 nova-sprint friend take <friend> (<id>... [--working] | --all-unstarted) [--dry-run] [--reason <text>]
 nova-sprint friend give <friend> <id>... [--reason <text>]   # hands a ready card to her at its next attempt, from no friend too: its current work card Done (a brief-replaced bounce) or absent; refused when that work card is live (Ready or Working on a row), a hard pin names another friend (nova-sprint unpin), or her tiers, restriction or the card's needs refuse it; a friend not up is no refusal, the card waits on her row
  nova-sprint friend level
- nova-sprint friend stage <card>@<gen> --as friend.<name> [--dir <jobs dir>]   # clones the friend's dealt card into jobs/<job>/ at its NEXT head or BASE, creates the delivered branch, sets her own git identity in the clone's local config, writes JOB.md naming the finish command; refuses a card not on her row or a friend with no git_identity
+  nova-sprint friend stage <card>@<gen> --as friend.<name> [--bench <host>] [--dir <jobs dir>]   # clones the friend's dealt card into jobs/<job>/ at its NEXT head or BASE, creates the delivered branch, sets her own git identity in the clone's local config (the friend's nova-config row git_identity= when it names one, else the sprint row's git_identity; identity=friend or identity=sprint; when nova-config cannot be read the sprint row's is used), writes JOB.md (naming the finish command, and BENCH: <host>, or BENCH: local without --bench) naming the finish command; with --bench every git step and the JOB.md write run on that fleet member over ssh (jobs default ~/<friend>-jobs; the host must be a fleet member), and a friend can run it through the sprint server as `friend stage <card>@<gen> --as friend.<name> --bench <host> [--dir <d>]`; refuses a card not on her row or a friend with no git_identity
  nova-sprint reader add <reader>... [--tiers <flash[,pro,heavy,frontier]|all|default>]   # a bare fleet member name (m1) names its member reader reader-m1; READER-ADD prints member-reader=<yes|no> per row and writes the row up
 nova-sprint reader set <reader>... --tiers <flash[,pro,heavy,frontier]|all|default>   # a bare member name is prefixed too; an empty tiers cell (default) reads every tier a route serves
 nova-sprint reader away <reader>...
@@ -705,7 +706,11 @@ naming no `REPO:` or no `BASE:` is held only to the checks that need no tree
 
 The `brief check`'s `tla-records` rule reads the card's base tree too, and a repository
 whose base holds no `tla/CASES.tsv` holds no models and is not held to it, the same file
-the lander's run-record check reads.
+the lander's run-record check reads. A brief on a placed card with a recorded tier
+(`FieldTier`) that its line 1 contradicts gets a `tier` finding naming both tiers, and
+the remedy that pins the line 1 tier (`nova-sprint brief c --tier <t> --reason <why>`);
+a file naming the recorded tier, a card with no recorded tier, an id that is no card and
+a sentinel report nothing.
 
 `add --partial`, with `--brief-dir` or a repeated `--brief-file`, runs every check over every
 brief and admits what passes instead of refusing the whole call. Every brief the checks find a
@@ -1074,9 +1079,10 @@ still closes the wait earlier. The wait does not block an eligible read.
 
 `nova-sprint where` begins with `DECISIONS OWED n, oldest <age>; server-defaults applied this hour n; delivery faults n`. A delivery fault means an escalation still
 needs a successful bus receipt; it is not proof that the coordinator or owner saw
-anything. The server folds overdue decisions to the coordinator once per changed
-set and to the configured owner at most every 30 minutes while unchanged. Failed
-or ambiguous sends retry, including a renewed token after expiry. Safe defaults
+anything. The server folds overdue decisions to the coordinator once per changed set. When
+the owner lane has the same recipient and set, that one notice serves both lanes;
+otherwise the owner lane keeps its 30-minute delivery cadence, including changed
+sets. Failed or ambiguous sends retry, including a renewed token after expiry. Safe defaults
 and the terminal sprint-done exemption are listed in SPEC-SPRINT.md, "Decisions owed".
 
 Server-default parked cards remain in DECISIONS OWED and folded escalation until

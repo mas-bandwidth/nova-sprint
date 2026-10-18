@@ -34,12 +34,13 @@ import (
 // TestUnitTestsUseNoRealTimeSocketsOrServices reads every test file of the module
 // and fails, naming file, line and call, on any unit-tier use of the forbidden
 // calls. The one allowance is unit_rule_allowed.txt beside this file: the files that
-// broke the rule when it was written, allowed until moved (v1.3). A listed file that
-// stops offending fails the test until its line is removed, and an offender not
-// listed fails it; TestTheUnitRuleAllowanceOnlyShrinks fails a line the merge base
-// does not have. So the list only shrinks, and a new offender is red at once. The
-// allowance is by file: a listed file may gain more forbidden uses until it is moved,
-// and the lint does not refuse them (the documented limit).
+// broke the rule when it was written, allowed until moved (v1.3), each line counting
+// the uses per kind (time, socket, service) measured when the list was written. A
+// listed file whose count fell below its line fails until the line is lowered, a
+// listed file that keeps the rule fails until its line is removed, and an offender
+// not listed fails it; TestTheUnitRuleAllowanceOnlyShrinks fails a line the merge
+// base does not have or a count above the base's. So the list only shrinks, by file
+// and by use, and a new offender is red at once.
 //
 // The scan is syntactic (go/ast, no type information), and these are its known gaps,
 // out of scope here: a custom *http.Client.Do on a real transport is not an
@@ -72,6 +73,90 @@ func allowedLines(text string) []string {
 		}
 		out = append(out, line)
 	}
+	return out
+}
+
+// unitRuleAllowedCounts reads unitRuleAllowedFile as counted allowances: each line
+// is <path> [<kind>:<n> ...], a kind absent from the line counting as 0. A line
+// with no counts (the old shape) reads as no bound for its path.
+func unitRuleAllowedCounts(t *testing.T) map[string]map[string]int {
+	t.Helper()
+	return parseAllowedCounts(strings.Join(unitRuleAllowed(t), "\n"))
+}
+
+// parseAllowedCounts parses the counted-allowance text of unitRuleAllowedFile.
+func parseAllowedCounts(text string) map[string]map[string]int {
+	out := map[string]map[string]int{}
+	for _, line := range allowedLines(text) {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		m := map[string]int{}
+		for _, fld := range fields[1:] {
+			i := strings.LastIndex(fld, ":")
+			if i < 0 {
+				continue
+			}
+			n, err := strconv.Atoi(fld[i+1:])
+			if err != nil {
+				continue
+			}
+			m[fld[:i]] = n
+		}
+		out[fields[0]] = m
+	}
+	return out
+}
+
+// unitRuleOverAllowance is the findings of a listed file above its counted allowance:
+// one sorted "<file>: <kind> uses <n> > allowed <m>" line per file and kind above its
+// count. A kind not on the file's line counts as 0.
+func unitRuleOverAllowance(findings []unitRuleFinding, allowed map[string]map[string]int) []string {
+	counts := map[string]map[string]int{}
+	for _, f := range findings {
+		if counts[f.File] == nil {
+			counts[f.File] = map[string]int{}
+		}
+		counts[f.File][f.Kind]++
+	}
+	var out []string
+	for file, kinds := range counts {
+		for kind, n := range kinds {
+			m := allowed[file][kind]
+			if n > m {
+				out = append(out, fmt.Sprintf("%s: %s uses %d > allowed %d", file, kind, n, m))
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// unitRuleUnderAllowance is the counts of a listed file below its line: one sorted
+// "<file>: <kind> uses <n> < allowed <m>" line per kind on the file's line above its
+// count, so the line is lowered to the scan. A kind absent from the findings counts
+// as 0; a file with no finding at all is left to the stale check.
+func unitRuleUnderAllowance(findings []unitRuleFinding, allowed map[string]map[string]int) []string {
+	counts := map[string]map[string]int{}
+	for _, f := range findings {
+		if counts[f.File] == nil {
+			counts[f.File] = map[string]int{}
+		}
+		counts[f.File][f.Kind]++
+	}
+	var out []string
+	for file, kinds := range allowed {
+		if counts[file] == nil {
+			continue
+		}
+		for kind, m := range kinds {
+			if n := counts[file][kind]; n < m {
+				out = append(out, fmt.Sprintf("%s: %s uses %d < allowed %d", file, kind, n, m))
+			}
+		}
+	}
+	sort.Strings(out)
 	return out
 }
 
@@ -141,6 +226,52 @@ var unitRuleMethods = map[string]string{
 // call to one in a unit test is a socket however it is spelled at the call site.
 var unitRuleHelpers = map[string]string{
 	"shortSock": "socket",
+}
+
+// unitRuleExecBinaries are the programs a test may run by os/exec that open a real
+// socket or talk to a network.
+var unitRuleExecBinaries = map[string]bool{
+	"curl": true, "wget": true, "nc": true, "ncat": true, "netcat": true,
+	"socat": true, "telnet": true, "ssh": true, "scp": true, "redis-cli": true,
+}
+
+// unitRuleExecSocket is an os/exec.Command or CommandContext call that opens a real
+// socket: its program is a known networked binary, or a string-literal argument opens
+// /dev/tcp or /dev/udp (bash). It returns the finding's What and whether it is one.
+func unitRuleExecSocket(method string, args []ast.Expr) (string, bool) {
+	progIdx := 0
+	if method == "CommandContext" {
+		progIdx = 1
+	}
+	if progIdx >= len(args) {
+		return "", false
+	}
+	prog := ""
+	if lit, ok := args[progIdx].(*ast.BasicLit); ok && lit.Kind == token.STRING {
+		if s, err := strconv.Unquote(lit.Value); err == nil {
+			prog = s
+		}
+	}
+	if prog != "" && unitRuleExecBinaries[prog] {
+		return "os/exec." + method + " " + prog, true
+	}
+	for _, a := range args {
+		lit, ok := a.(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			continue
+		}
+		s, err := strconv.Unquote(lit.Value)
+		if err != nil {
+			continue
+		}
+		switch {
+		case strings.Contains(s, "/dev/tcp/"):
+			return "os/exec." + method + " " + prog + " /dev/tcp", true
+		case strings.Contains(s, "/dev/udp/"):
+			return "os/exec." + method + " " + prog + " /dev/udp", true
+		}
+	}
+	return "", false
 }
 
 // unitTier says a file's build constraint can hold without the functional tag: no
@@ -318,6 +449,11 @@ func scanUnitRulePackage(fset *token.FileSet, files []unitRuleFile) []unitRuleFi
 				switch v := n.(type) {
 				case *ast.CallExpr:
 					if sel, ok := v.Fun.(*ast.SelectorExpr); ok {
+						if id, ok := sel.X.(*ast.Ident); ok && imports[id.Name] == "os/exec" && (sel.Sel.Name == "Command" || sel.Sel.Name == "CommandContext") {
+							if what, isSocket := unitRuleExecSocket(sel.Sel.Name, v.Args); isSocket {
+								uses = append(uses, unitRuleUse{find(v, "socket", what), bubbled, decl})
+							}
+						}
 						if id, ok := sel.X.(*ast.Ident); ok && imports[id.Name] == "testing/synctest" && (sel.Sel.Name == "Test" || sel.Sel.Name == "Run") {
 							walk(v.Fun, bubbled, decl)
 							for _, a := range v.Args {
@@ -496,9 +632,9 @@ func TestUnitTestsUseNoRealTimeSocketsOrServices(t *testing.T) {
 	findings, err := scanUnitRule(files)
 	require.NoError(t, err)
 
-	unitRuleBurnDown := unitRuleAllowed(t)
+	allowedCounts := unitRuleAllowedCounts(t)
 	listed := map[string]bool{}
-	for _, f := range unitRuleBurnDown {
+	for f := range allowedCounts {
 		require.False(t, listed[f], "%s is listed twice in %s", f, unitRuleAllowedFile)
 		require.NotNil(t, files[f], "%s names %s, which is no test file of the module: remove the line", unitRuleAllowedFile, f)
 		listed[f] = true
@@ -512,20 +648,31 @@ func TestUnitTestsUseNoRealTimeSocketsOrServices(t *testing.T) {
 		}
 	}
 	var stale []string
-	for _, f := range unitRuleBurnDown {
+	for f := range allowedCounts {
 		if !offending[f] {
 			stale = append(stale, f)
 		}
 	}
+	sort.Strings(stale)
+	over := unitRuleOverAllowance(findings, allowedCounts)
+	under := unitRuleUnderAllowance(findings, allowedCounts)
 	if len(unlisted) > 0 {
 		t.Errorf("%d uses: a unit test (no functional build tag) uses real time, a real socket or an external service; "+
 			"move it behind //go:build functional or give it a fake (a fake clock, net.Pipe, httptest.NewRecorder, a synctest bubble):\n%s",
 			len(unlisted), strings.Join(unlisted, "\n"))
 	}
+	if len(over) > 0 {
+		t.Errorf("%d uses: a listed file's use is above its count; lower the count in %s or move the file behind //go:build functional (it only shrinks):\n%s",
+			len(over), unitRuleAllowedFile, strings.Join(over, "\n"))
+	}
+	if len(under) > 0 {
+		t.Errorf("%d uses: a listed file's use is below its count; lower the count in %s to the scan (it only shrinks):\n%s",
+			len(under), unitRuleAllowedFile, strings.Join(under, "\n"))
+	}
 	if len(stale) > 0 {
 		t.Errorf("these files keep the rule now: remove them from %s (it only shrinks):\n%s", unitRuleAllowedFile, strings.Join(stale, "\n"))
 	}
-	t.Logf("unit-rule: %d files still allowed in %s", len(unitRuleBurnDown), unitRuleAllowedFile)
+	t.Logf("unit-rule: %d files still allowed in %s", len(allowedCounts), unitRuleAllowedFile)
 }
 
 // TestTheUnitRuleAllowanceOnlyShrinks: against the base a change is merged into
@@ -560,19 +707,37 @@ func TestTheUnitRuleAllowanceOnlyShrinks(t *testing.T) {
 	}
 	out, err := exec.Command("git", "show", base+":"+path).Output()
 	require.NoError(t, err, "git show %s:%s", base, path)
-	was := map[string]bool{}
-	for _, f := range allowedLines(string(out)) {
-		was[f] = true
-	}
+	was := parseAllowedCounts(string(out))
+	now := unitRuleAllowedCounts(t)
 	var added []string
-	for _, f := range unitRuleAllowed(t) {
-		if !was[f] {
+	for f := range now {
+		if _, ok := was[f]; !ok {
 			added = append(added, f)
 		}
 	}
+	sort.Strings(added)
 	if len(added) > 0 {
 		t.Errorf("%s allows %d files that %s does not: the list only shrinks; move the file behind //go:build functional or give it a fake instead:\n%s",
 			unitRuleAllowedFile, len(added), base, strings.Join(added, "\n"))
+	}
+	// a count above the base's for that path and kind; a base line with no counts
+	// (the old shape) reads as no bound and passes
+	var over []string
+	for file, kinds := range now {
+		bkinds, ok := was[file]
+		if !ok || len(bkinds) == 0 {
+			continue
+		}
+		for kind, n := range kinds {
+			if n > bkinds[kind] {
+				over = append(over, fmt.Sprintf("%s: %s uses %d > base %d", file, kind, n, bkinds[kind]))
+			}
+		}
+	}
+	sort.Strings(over)
+	if len(over) > 0 {
+		t.Errorf("%s raises a count above %s: the list only shrinks by use too:\n%s",
+			unitRuleAllowedFile, base, strings.Join(over, "\n"))
 	}
 }
 
@@ -619,6 +784,12 @@ func TestTheUnitRuleScanSeesAKnownYesAndAKnownNo(t *testing.T) {
 			[]string{"3 service net/http.Get"}},
 		"a redis-server": {"package p\nimport \"github.com/mas-bandwidth/nova-tools/pkg/testredis\"\nfunc TestX(t testing.TB) { testredis.Start(t) }\n",
 			[]string{"3 service github.com/mas-bandwidth/nova-tools/pkg/testredis.Start"}},
+		"a networked exec program": {"package p\nimport \"os/exec\"\nfunc TestX() { exec.Command(\"curl\", \"http://x\") }\n",
+			[]string{"3 socket os/exec.Command curl"}},
+		"an exec opening /dev/tcp": {"package p\nimport \"os/exec\"\nfunc TestX() { exec.Command(\"bash\", \"-c\", \"exec 3<>/dev/tcp/127.0.0.1/1\") }\n",
+			[]string{"3 socket os/exec.Command bash /dev/tcp"}},
+		"a CommandContext networked exec": {"package p\nimport \"os/exec\"\nfunc TestX() { exec.CommandContext(context.Background(), \"nc\", \"-l\", \"1\") }\n",
+			[]string{"3 socket os/exec.CommandContext nc"}},
 		"the hook socket helper": {"package p\nfunc TestX(t T) { a.hookSock = shortSock(t) }\n",
 			[]string{"2 socket shortSock"}},
 		"a !functional file is the unit tier": {"//go:build !functional\n\npackage p\nimport \"time\"\nfunc TestX() { time.Sleep(1) }\n",

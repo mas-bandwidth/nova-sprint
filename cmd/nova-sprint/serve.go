@@ -171,6 +171,16 @@ func workerVerb(argv []string) (as string, words int, why string) {
 		}
 		return argv[2], 2, ""
 	}
+	if len(argv) >= 3 && argv[0] == "friend" && argv[1] == "stage" {
+		// a friend stages her dealt card on a bench through the server, as a member runs
+		// take and finish there (friendstage.go): `friend stage <card>@<gen> --as
+		// friend.<name> --bench <host> [--dir <d>]` and nothing more
+		as, why := friendStageServed(argv)
+		if why != "" {
+			return "", 0, why
+		}
+		return as, 2, ""
+	}
 	if len(argv) >= 2 && argv[0] == "budget" && (argv[1] == "take" || argv[1] == "renew" || argv[1] == "release") {
 		// a model request's take of the global rate budget, or its release (rate_budget.go):
 		// the model, the worker and the request's holder, --json at most, nothing more
@@ -228,6 +238,65 @@ func workerVerb(argv []string) (as string, words int, why string) {
 		}
 	}
 	return as, 1, ""
+}
+
+// friendStageServed is the worker a friend's stage sent to the server names and
+// why its words are not the verb's: `friend stage <card>@<gen> --as
+// friend.<name> --bench <host> [--dir <d>]`, one card, --as and --bench once
+// with their values, --dir at most once, and nothing else; "" when they are.
+func friendStageServed(argv []string) (as string, why string) {
+	rest := argv[2:]
+	id, gen, ok := strings.Cut(rest[0], "@")
+	if !ok || gen == "" || !sprint.ValidCardID(id) {
+		return "", "a friend's stage sent to the server names one card as <card>@<gen>, found " + oneline.Escape(rest[0])
+	}
+	seen := map[string]bool{}
+	for i := 1; i < len(rest); i++ {
+		w := rest[i]
+		if !strings.HasPrefix(w, "-") {
+			return "", "a friend's stage sent to the server takes one card and its flags and nothing more; found " + oneline.Escape(w)
+		}
+		name, val, eq := strings.Cut(strings.TrimLeft(w, "-"), "=")
+		if name != "as" && name != "bench" && name != "dir" {
+			return "", "a friend's stage sent to the server takes --as, --bench and --dir and nothing else; found " + oneline.Escape(w)
+		}
+		if seen[name] {
+			return "", "a friend's stage sent to the server gives --" + name + " once"
+		}
+		if !eq {
+			if i+1 >= len(rest) {
+				return "", "a friend's stage sent to the server's --" + name + " wants its value"
+			}
+			i++
+			val = rest[i]
+		}
+		seen[name] = true
+		switch name {
+		case "as":
+			if !strings.HasPrefix(val, "friend.") {
+				return "", "a friend's stage sent to the server's --as wants friend.<name>, found " + oneline.Escape(val)
+			}
+			as = strings.TrimPrefix(val, "friend.")
+			if !sprint.ValidID(as) {
+				return "", "a friend's stage sent to the server's --as names one friend (letters, digits, _ and -), found " + oneline.Escape(val)
+			}
+		case "bench":
+			if val == "" {
+				return "", "a friend's stage sent to the server's --bench names a host"
+			}
+		case "dir":
+			if val == "" {
+				return "", "a friend's stage sent to the server's --dir names a directory"
+			}
+		}
+	}
+	if !seen["as"] {
+		return "", "a friend's stage sent to the server's --as friend.<name> is required"
+	}
+	if !seen["bench"] {
+		return "", "a friend's stage sent to the server's --bench <host> is required"
+	}
+	return as, ""
 }
 
 // flagWord is the value the words give the flag name (--name v, --name=v, one dash or

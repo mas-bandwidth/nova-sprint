@@ -1554,6 +1554,12 @@ var ReworkResolves = []string{NCannotAsk, NWorkFailed, NReportJudgment, NReadBro
 func Rework(s *Snapshot, r ReworkReq) Plan {
 	s, _ = s.withRests() // the resting routes, read once (rule 3, route_rest.go)
 	var p Plan
+	// the plan is judged against the pre-state it was built on, as the store's repair
+	// judges its entries (Rejudge with the verb "rework"), so the server-default hold
+	// guard runs on both and admits only the rework's own clear of the hold
+	// (reworkAnswersHold; tla/SprintTables.tla ReworkHeldInPlace, DecisionReleaseStep)
+	p.on(s)
+	p.reworking = true
 	// a primary in review, or one at its redeal bound (ready, its work card
 	// withdrawn and dealt no more): rework is its next attempt
 	pool := s.Work.Column(Review)
@@ -1748,6 +1754,15 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		// the reader who found it broken checks the fix: the next attempt's first read is
 		// asked of them (Ask, finderFirst); a rework of failed work names none
 		unset := []string{"readers"}
+		if IsHeld(c) && c.F("held_by") == ServerDefaultActor {
+			// the rework answers the server-default hold (this card, and the j25715
+			// deadlock: a rework dealt the next attempt and left the hold on, so every
+			// finish was refused, and release refused the working primary): clear it
+			unset = append(unset, FieldHeld, "held_by", "held_reason", "held_judgment", "decision_held_from")
+			set["released"] = stamp(s.Now)
+			set["released_by"] = r.Who
+			set["release_reason"] = "rework answers " + c.F("held_judgment")
+		}
 		if finder := finderOf(s, c); finder != "" {
 			set[FieldFindingReader] = finder
 		} else {

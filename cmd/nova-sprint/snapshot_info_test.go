@@ -66,20 +66,19 @@ type fakeRedis struct {
 	failInfo string
 }
 
-func (f *fakeRedis) serve(t *testing.T) string {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	t.Cleanup(func() { ln.Close() })
-	go func() {
-		for {
-			c, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			go f.conn(c)
-		}
-	}()
-	return ln.Addr().String()
+func (f *fakeRedis) serve(t *testing.T) *redis.Client {
+	server, client := net.Pipe()
+	t.Cleanup(func() {
+		_ = client.Close()
+		_ = server.Close()
+	})
+	go f.conn(server)
+	return redis.NewClient(&redis.Options{
+		Addr:            "pipe",
+		Protocol:        2,
+		DisableIdentity: true,
+		Dialer:          func(context.Context, string, string) (net.Conn, error) { return client, nil },
+	})
 }
 
 func (f *fakeRedis) conn(c net.Conn) {
@@ -143,8 +142,7 @@ func TestRedisSourceSaveNeverCallsLastSave(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "dump.rdb"), []byte("RDBDATA"), 0o600))
 	f := &fakeRedis{saves: 3, dir: dir}
-	addr := f.serve(t)
-	cl := redis.NewClient(&redis.Options{Addr: addr, Protocol: 2, DisableIdentity: true})
+	cl := f.serve(t)
 	t.Cleanup(func() { cl.Close() })
 
 	b, _, err := (&redisSource{b: &store.Redis{C: cl}}).Save(context.Background())
@@ -157,8 +155,7 @@ func TestRedisSourceSaveNeverCallsLastSave(t *testing.T) {
 // TestRedisSourceSaveReportsBgsaveFailure: a failed save is still an error.
 func TestRedisSourceSaveReportsBgsaveFailure(t *testing.T) {
 	f := &fakeRedis{saves: 3, dir: t.TempDir(), failInfo: "err"}
-	addr := f.serve(t)
-	cl := redis.NewClient(&redis.Options{Addr: addr, Protocol: 2, DisableIdentity: true})
+	cl := f.serve(t)
 	t.Cleanup(func() { cl.Close() })
 
 	_, _, err := (&redisSource{b: &store.Redis{C: cl}}).Save(context.Background())

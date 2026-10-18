@@ -40,8 +40,7 @@ func TestDecisionsOwedDeadlineFoldOwnerRetryAndRestart(t *testing.T) {
 	require.Zero(t, count("decision-seat"))
 	ta.step(time.Second)
 	ta.a.coordinatorPass(ctx)
-	require.Equal(t, 2, count("decision-seat"), "at deadline a folded message reaches the coordinator seat")
-	require.Equal(t, 2, count("decision-seat"))
+	require.Equal(t, 1, count("decision-seat"), "at deadline one folded message reaches the coordinator seat")
 	for _, m := range b.delivered {
 		if m.Subject == "nova-sprint: decisions owed" {
 			for _, word := range []string{"decision-a", "decision-b", "decision-c"} {
@@ -51,34 +50,139 @@ func TestDecisionsOwedDeadlineFoldOwnerRetryAndRestart(t *testing.T) {
 	}
 	ta.step(29 * time.Minute)
 	ta.a.coordinatorPass(ctx)
-	require.Equal(t, 2, count("decision-seat"))
-	require.Equal(t, 2, count("decision-seat"))
+	require.Equal(t, 1, count("decision-seat"))
 	// A server restart loses process memory; durable escalation receipts remain.
 	ta.a.coord = coordPush{}
 	ta.step(time.Minute)
 	ta.a.coordinatorPass(ctx)
-	require.Equal(t, 3, count("decision-seat"))
-	require.Equal(t, 3, count("decision-seat"), "unchanged overdue set is never repeated to coordinator")
+	require.Equal(t, 2, count("decision-seat"), "unchanged overdue set is never repeated to coordinator")
 	// A changed set is prepared durably before a failed send, and its fault is visible.
 	_, err := st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, SprintLevel: true, Type: "decision-d", At: ta.a.now().Add(-sprint.DeadlineJudgment)}))
 	require.NoError(t, err)
 	ta.step(30 * time.Minute)
-	b.fails = 2
+	b.fails = 1
 	ta.a.coordinatorPass(ctx)
 	var view string
 	_, view, err = ta.a.whereOf(ctx, st, 0, false, true)
 	require.NoError(t, err)
 	require.True(t, strings.HasPrefix(view, "DECISIONS OWED 4, oldest "), view)
-	require.Contains(t, strings.Split(view, "\n")[0], "delivery faults 2")
+	require.Contains(t, strings.Split(view, "\n")[0], "delivery faults 1")
 	before := len(b.attempts)
 	ta.a.coord = coordPush{}
 	ta.a.coordinatorPass(ctx)
 	require.Greater(t, len(b.attempts), before)
-	require.Equal(t, 5, count("decision-seat"))
-	require.Equal(t, 5, count("decision-seat"))
+	require.Equal(t, 3, count("decision-seat"))
 	_, view, err = ta.a.whereOf(ctx, st, 0, false, true)
 	require.NoError(t, err)
 	require.Contains(t, strings.Split(view, "\n")[0], "delivery faults 0")
+}
+
+func TestDecisionsOwedOneRecipientGetsOneFoldedNotice(t *testing.T) {
+	t.Parallel()
+	ta, _, _ := coordSprint(t, "fold-seat")
+	ctx := context.Background()
+	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: "fold-seat"}
+	_, _, _, err := st.SetMachine(ctx, true)
+	require.NoError(t, err)
+	for _, typ := range []string{"fold-a", "fold-b"} {
+		_, err := st.Run(ctx, store.NoteStep("fixture", sprint.Note{
+			Kind: sprint.Judgment, SprintLevel: true, Type: typ, What: typ, At: ta.a.now(),
+		}))
+		require.NoError(t, err)
+	}
+	_, err = st.Run(ctx, store.NoteStep("fixture", sprint.Note{
+		Kind: sprint.Acknowledged, SprintLevel: true, Type: sprint.NServerDefault,
+		Who: sprint.ServerDefaultActor, At: ta.a.now(), What: "held by safe default",
+	}))
+	require.NoError(t, err)
+
+	b := &tokenBus{}
+	ta.a.bus = b.send
+	ta.step(sprint.DeadlineJudgment)
+	ta.a.coordinatorPass(ctx)
+
+	noticeCount := func() int {
+		count := 0
+		for _, m := range b.delivered {
+			if m.Subject == "nova-sprint: decisions owed" && len(m.To) == 1 && m.To[0] == "fold-seat" {
+				count++
+				require.Equal(t, []string{"fold-seat"}, m.To)
+				require.Contains(t, m.Body, "fold-a")
+				require.Contains(t, m.Body, "fold-b")
+			}
+		}
+		return count
+	}
+	attemptCount := func() int {
+		count := 0
+		for _, m := range b.attempts {
+			if m.Subject == "nova-sprint: decisions owed" && len(m.To) == 1 && m.To[0] == "fold-seat" {
+				count++
+			}
+		}
+		return count
+	}
+	require.Equal(t, 1, noticeCount(), "one recipient and one judgment set get one notice")
+	require.Equal(t, 1, attemptCount(), "one folded message means one bus send")
+	notes, err := st.B.OpenNotes(ctx)
+	require.NoError(t, err)
+	var report *sprint.Note
+	for _, o := range notes {
+		if o.Note.Type == sprint.NServerDefault {
+			n := o.Note
+			report = &n
+		}
+	}
+	require.NotNil(t, report)
+	require.True(t, report.DefaultCoordinatorTold, "the folded receipt marks the coordinator lane")
+	require.True(t, report.DefaultOwnerTold, "the folded receipt also marks the owner lane")
+
+	attemptsBefore := attemptCount()
+	ta.step(sprint.RepeatedDecisionEvery - time.Second)
+	ta.a.coordinatorPass(ctx)
+	require.Equal(t, 1, noticeCount(), "a second look within the repeat window sends nothing")
+	require.Equal(t, attemptsBefore, attemptCount(), "the repeated look does not retry a delivered token")
+}
+
+func TestDecisionsOwedAgedDefaultReportFoldsByPreReceiptSet(t *testing.T) {
+	t.Parallel()
+	ta, _, _ := coordSprint(t, "aged-fold-seat")
+	ctx := context.Background()
+	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: "aged-fold-seat"}
+	_, _, _, err := st.SetMachine(ctx, true)
+	require.NoError(t, err)
+	_, err = st.Run(ctx, store.NoteStep("fixture", sprint.Note{
+		Kind: sprint.Judgment, SprintLevel: true, Type: "aged-fold", What: "aged-fold", At: ta.a.now(),
+	}))
+	require.NoError(t, err)
+	_, err = st.Run(ctx, store.NoteStep("fixture", sprint.Note{
+		Kind: sprint.Acknowledged, SprintLevel: true, Type: sprint.NServerDefault,
+		Who: sprint.ServerDefaultActor, At: ta.a.now(), What: "held by safe default",
+	}))
+	require.NoError(t, err)
+
+	b := &tokenBus{}
+	ta.a.bus = b.send
+	ta.step(2 * time.Hour)
+	ta.a.coordinatorPass(ctx)
+	var notices []bus.Message
+	for _, m := range b.delivered {
+		if m.Subject == "nova-sprint: decisions owed" && len(m.To) == 1 && m.To[0] == "aged-fold-seat" {
+			notices = append(notices, m)
+		}
+	}
+	require.Len(t, notices, 1, "the owner pre-receipt set matches the coordinator despite the report aging out after receipt")
+	require.Contains(t, notices[0].Body, "aged-fold")
+	notes, err := st.B.OpenNotes(ctx)
+	require.NoError(t, err)
+	for _, o := range notes {
+		if o.Note.Type == sprint.NServerDefault {
+			require.True(t, o.Note.DefaultCoordinatorTold)
+			require.True(t, o.Note.DefaultOwnerTold)
+			return
+		}
+	}
+	t.Fatal("server-default receipt report was not found")
 }
 
 // A review or merge judgment is pushed on the existing durable coordinator
@@ -168,7 +272,7 @@ func TestDecisionsOwedAmbiguousExpiryRenewsAndKeepsUnknownHistory(t *testing.T) 
 		return errors.New("reply lost after bus acceptance")
 	}
 	ta.a.coordinatorPass(ctx)
-	require.Len(t, b.delivered, 2)
+	require.Len(t, b.delivered, 1)
 	first := append([]bus.Message(nil), b.delivered...)
 	ta.step(bus.DefaultTokenLife + time.Second)
 	ta.a.bus = func(ctx context.Context, m bus.Message, say func(string)) error {
@@ -179,16 +283,14 @@ func TestDecisionsOwedAmbiguousExpiryRenewsAndKeepsUnknownHistory(t *testing.T) 
 	}
 	ta.a.coord = coordPush{}
 	ta.a.coordinatorPass(ctx)
-	require.Len(t, b.delivered, 4, "expired ambiguous token must not leave the owner silent")
-	for i := range 2 {
-		require.NotEqual(t, first[i].Token, b.delivered[i+2].Token)
-		require.Equal(t, first[i].Body, b.delivered[i+2].Body)
-		require.NotEmpty(t, b.delivered[i+2].From)
-	}
+	require.Len(t, b.delivered, 2, "expired ambiguous token must not leave the owner silent")
+	require.NotEqual(t, first[0].Token, b.delivered[1].Token)
+	require.Equal(t, first[0].Body, b.delivered[1].Body)
+	require.NotEmpty(t, b.delivered[1].From)
 	var out string
 	_, out, err = ta.a.whereOf(ctx, st, 0, false, true)
 	require.NoError(t, err)
-	require.Contains(t, strings.Split(out, "\n")[0], "delivery faults 0; earlier receipts unknown 2")
+	require.Contains(t, strings.Split(out, "\n")[0], "delivery faults 0; earlier receipts unknown 1")
 	open, err := st.B.OpenNotes(ctx)
 	require.NoError(t, err)
 	found := 0
@@ -198,7 +300,7 @@ func TestDecisionsOwedAmbiguousExpiryRenewsAndKeepsUnknownHistory(t *testing.T) 
 			require.Contains(t, o.Note.What, "judgment IDs=")
 		}
 	}
-	require.Equal(t, 2, found)
+	require.Equal(t, 1, found)
 	// A later changed set archives the ambiguous history without hiding it.
 	_, err = st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, SprintLevel: true, Type: "next-decision"}))
 	require.NoError(t, err)
@@ -206,7 +308,7 @@ func TestDecisionsOwedAmbiguousExpiryRenewsAndKeepsUnknownHistory(t *testing.T) 
 	ta.a.coordinatorPass(ctx)
 	_, out, err = ta.a.whereOf(ctx, st, 0, false, true)
 	require.NoError(t, err)
-	require.Contains(t, strings.Split(out, "\n")[0], "earlier receipts unknown 2")
+	require.Contains(t, strings.Split(out, "\n")[0], "earlier receipts unknown 1")
 	require.Contains(t, out, "DECISION RECEIPT HISTORY:")
 	require.Contains(t, out, "judgment IDs=")
 	for _, o := range open {
@@ -267,7 +369,7 @@ func TestDecisionsOwedPendingRecipientChangeKeepsFrozenObligation(t *testing.T) 
 		return errors.New("receipt lost")
 	}
 	ta.a.coordinatorPass(ctx)
-	require.Len(t, b.delivered, 2)
+	require.Len(t, b.delivered, 1)
 	frozen := b.delivered[0]
 	require.NoError(t, ta.m.SetCoordinator(ctx, "new-seat"))
 	env[busUserEnv] = "server-two"
@@ -278,15 +380,14 @@ func TestDecisionsOwedPendingRecipientChangeKeepsFrozenObligation(t *testing.T) 
 		return b.send(ctx, m, say)
 	}
 	ta.a.coordinatorPass(ctx)
-	require.Len(t, b.delivered, 4)
-	require.Equal(t, []string{"new-seat"}, b.delivered[2].To)
-	require.Equal(t, "server-two", b.delivered[2].From)
-	require.Equal(t, "server-two", b.delivered[3].From)
-	require.Equal(t, frozen.Body, b.delivered[2].Body)
-	require.NotEqual(t, frozen.Token, b.delivered[2].Token)
+	require.Len(t, b.delivered, 2)
+	require.Equal(t, []string{"new-seat"}, b.delivered[1].To)
+	require.Equal(t, "server-two", b.delivered[1].From)
+	require.Equal(t, frozen.Body, b.delivered[1].Body)
+	require.NotEqual(t, frozen.Token, b.delivered[1].Token)
 	_, frame, err := ta.a.whereOf(ctx, st, 0, false, true)
 	require.NoError(t, err)
-	require.Contains(t, strings.Split(frame, "\n")[0], "delivery faults 0; earlier receipts unknown 2")
+	require.Contains(t, strings.Split(frame, "\n")[0], "delivery faults 0; earlier receipts unknown 1")
 }
 
 func TestDecisionsWhereBatchesSeatServerCoordinator(t *testing.T) {
@@ -332,18 +433,28 @@ func TestDecisionsOwnerChangedSetWaitsFullWindow(t *testing.T) {
 		}
 		return n
 	}
-	require.Equal(t, 2, count())
+	require.Equal(t, 1, count())
 	ta.step(time.Minute)
 	add("second")
 	ta.a.decisionPass(ctx)
-	require.Equal(t, 2, count(), "changed sets must not bypass the owner's 30-minute bound")
+	require.Equal(t, 1, count(), "changed sets must not bypass the owner's 30-minute bound")
 	ta.step(29*time.Minute - time.Second)
 	ta.a.decisionPass(ctx)
-	require.Equal(t, 3, count())
+	require.Equal(t, 2, count())
+	countSecond := func() int {
+		n := 0
+		for _, m := range b.delivered {
+			if m.Subject == "nova-sprint: decisions owed" && len(m.To) == 1 && m.To[0] == "cadence-seat" && strings.Contains(m.Body, "second") {
+				n++
+			}
+		}
+		return n
+	}
+	require.Equal(t, 1, countSecond(), "the changed set is delivered once by the coordinator")
 	ta.step(time.Second)
 	ta.a.decisionPass(ctx)
-	require.Equal(t, 4, count())
-	require.Contains(t, b.delivered[len(b.delivered)-1].Body, "second")
+	require.Equal(t, 2, count(), "the owner cadence boundary folds the already-delivered matching recipient and set")
+	require.Equal(t, 1, countSecond(), "the one-second owner boundary must not redeliver the coordinator's changed set")
 }
 func TestDecisionsParkedCardRemainsOwedUntilRelease(t *testing.T) {
 	ta, rig, _ := coordSprint(t, "parked-seat")
