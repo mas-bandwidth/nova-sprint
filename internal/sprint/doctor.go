@@ -1119,6 +1119,15 @@ func DoctorFleetRows(in DoctorInput) (out []DoctorCheck) {
 				continue // said above as a stale row
 			}
 		}
+		if d.Kind == DriftWidth {
+			// a width that is not nova-config's is a violation, never a drift to converge
+			// later: the one width is nova-config's (the owner, 2026-10-18; tla/WidthHard.tla
+			// OneSource). Both values, one line; the read of nova-config is the fix, never a
+			// widening of it.
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: d.Member, Status: DoctorFail,
+				Evidence: fmt.Sprintf("width: %s: sprint width %d, nova-config width %d (the one width is nova-config's)", d.Member, d.From, d.To), Remedy: "nova-sprint fleet sync (the server's steps write nova-config's width back as they run)"})
+			continue
+		}
 		out = append(out, DoctorCheck{Area: area, Check: check, Subject: d.Member, Status: DoctorDrift, Evidence: d.Kind + ": " + d.Line(), Remedy: "nova-sprint fleet sync"})
 	}
 	if len(out) == 0 {

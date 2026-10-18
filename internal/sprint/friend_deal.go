@@ -462,13 +462,10 @@ func (s *Snapshot) Members() []string {
 // card; the owner's rule): her reads hold her lanes and her room as her work does, in
 // batch and one-shot mode alike.
 //
-// While read cards are on (read_cards.go) a read holds half a slot of her width, as a
-// member's does (halfLoad): her row holds her width of work or twice it of reads.
+// A read holds a whole slot of her width, as a work card does and as a member's does
+// (slotLoad): one definition of a slot (tla/WidthHard.tla WidthHeld).
 func friendLoad(s *Snapshot, name string) int {
 	row := FriendRow(name)
-	if s.ReadCardsOn() {
-		return halfLoad(rowLoad(s, row))
-	}
 	return s.Fleet.Count(row, Ready) + s.Fleet.Count(row, Working)
 }
 
