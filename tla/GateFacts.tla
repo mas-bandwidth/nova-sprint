@@ -11,7 +11,9 @@
 \* Broken = "none" is the code. Broken = "nowriter" is v1.4.2: nothing writes the card's facts, so a card some
 \* member could take is never dealt (every member read "facts: "). Broken =
 \* "onchange" writes the card only when the beat's facts change from the beat
-\* before, so a card made again keeps no facts. Both fail CardDealt.
+\* before, so a card made again keeps no facts. Both fail CardDealt. Broken =
+\* "moveignoresneed" drops Move's gate-host guard, so a dealt card can move to a
+\* member that cannot meet its needs; it fails DealtOnlyWhereTheNeedIs.
 
 EXTENDS FiniteSets
 
@@ -59,8 +61,19 @@ Deal(m) ==
   /\ card' = m
   /\ UNCHANGED <<beat, ctl, rejoined>>
 
+\* a dealt card moves from its member to another member m: rebalance, level and
+\* the redeal of a down member's cards all re-place a dealt card
+\* (internal/sprint/rebalance.go rebalanceTo, internal/sprint/steps_work.go
+\* level/levelWith, internal/sprint/round.go levelTo, and the redeal in
+\* steps_work.go), so the move keeps the same GateHostPool guard as the deal.
+Move(m) ==
+  /\ card # "ready"
+  /\ IF Broken = "moveignoresneed" THEN TRUE ELSE Need \subseteq ctl[m]
+  /\ card' = m
+  /\ UNCHANGED <<beat, ctl, rejoined>>
+
 Next ==
-  \/ \E m \in Members : Beat(m) \/ Rejoin(m) \/ Deal(m)
+  \/ \E m \in Members : Beat(m) \/ Rejoin(m) \/ Deal(m) \/ Move(m)
   \/ Presence
 
 Spec == Init /\ [][Next]_vars /\ WF_vars(Presence) /\ \A m \in Members : WF_vars(Beat(m)) /\ WF_vars(Deal(m))

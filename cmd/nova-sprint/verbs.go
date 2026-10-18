@@ -891,9 +891,9 @@ func (a *app) runStep(verbName string, c common, st *store.Store, step store.Ste
 	}
 	// a step whose work-table changes queue behind a failing tick says so beside
 	// its OK (queued_tick_note.go)
-	if err == nil && len(res.Moved) > 0 {
+	if err == nil && len(res.Moved) > 0 && res.Tables[sprint.Work] > 0 {
 		if m, hb, merr := st.Machine(ctx); merr == nil {
-			if note := queuedTickNote(m, hb, res.Tables[sprint.Work] > 0); note != "" {
+			if note := queuedTickNote(m, hb, true); note != "" {
 				c.says = append(c.says, note)
 			}
 		}
@@ -1623,7 +1623,9 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	}
 	// DUPLICATE: a brief with a probable duplicate is held back, and the rest
 	// of the wave admitted in the same write (docs/SPEC-SPRINT.md section 7).
-	dupHeldMap, dupReasons, code := dupHold(a, rs, st, notDup, stdout, stderr)
+	// An add that wrote cards exits with the write's code (0); exit 1 is only
+	// when every real card of the wave was held (dupHold).
+	_, dupReasons, code := dupHold(a, rs, st, notDup, stdout, stderr)
 	if code != 0 {
 		return code
 	}
@@ -1683,9 +1685,6 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	code = a.runStep("add", *c, st, step, stdout, stderr)
 	if code != 0 && sprint.HasBriefLandAfter(rs) {
 		return 2
-	}
-	if code == 0 && len(dupHeldMap) > 0 {
-		return 1
 	}
 	return code
 }
@@ -1829,6 +1828,8 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 	}
 	// DUPLICATE: a brief with a probable duplicate is held back, and the rest
 	// of the wave admitted in the same write (docs/SPEC-SPRINT.md section 7).
+	// An add that wrote cards exits with the write's code (0); exit 1 is only
+	// when every real card of the wave was held (below).
 	dupHeldMap, dupReasons, code := dupHoldMany(a, cards, st, notDup, stdout, stderr)
 	if code != 0 {
 		return code
@@ -1897,9 +1898,6 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 	code = a.runStep("add", *c, st, step, stdout, stderr)
 	if code != 0 && sprint.HasBriefLandAfter(rsReq) {
 		return 2
-	}
-	if code == 0 && len(dupHeldMap) > 0 {
-		return 1
 	}
 	return code
 }

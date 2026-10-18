@@ -376,7 +376,7 @@ func backupReadme(epoch uint64, base string, parts []string, textSum, xzSum stri
 	fmt.Fprintf(&b, "cat %s > %s.xz\n", strings.Join(names, " "), base)
 	fmt.Fprintf(&b, "xz -dk %s.xz\n", base)
 	b.WriteString("sha256sum -c --ignore-missing SHA256SUMS\n")
-	fmt.Fprintf(&b, "nova-redis fn load --addr <host>:<port>\n")
+	fmt.Fprintf(&b, "nova-redis fn load --redis <host>:<port>\n")
 	fmt.Fprintf(&b, "redis-cli %s < %s\n```\n", load, base)
 	return b.String()
 }

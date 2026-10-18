@@ -219,18 +219,29 @@ const (
 	FieldBaseLandedTip  = "base_landed_tip"
 )
 
-// BaseLandedKey names the old per-base work-table property. It is read only,
-// never written: a store that already holds tips keeps them, and its record is
-// the fallback for a base no control row holds.
+// BaseLandedKey names the old per-base work-table property. It is updated in
+// place on every landing of a base that already holds it and never created, so
+// a v1.6.3 binary reads the current tip of every base it knew; a base new under
+// v1.7 has no property and reads as unknown provenance under v1.6.3, which is
+// v1.6.3's own first-red protection.
 func BaseLandedKey(repo, base string) string {
 	return fmt.Sprintf("base_landed.%x", sha256.Sum256([]byte(repo+"\x00"+base)))
 }
 
 // BaseLandingUnits puts the pushed tip on the landing stream's control row
-// (v17-base-landed-tip-on-the-stream-row). With no control row for stream, p is
-// unchanged. Every other stream's control row holding the same repository and
-// branch has the three fields unset, so exactly one row holds a given base.
+// (v17-base-landed-tip-on-the-stream-row) and keeps the old per-base work-table
+// property current where it already exists, never creating it: a v1.6.3 binary
+// reads the current tip of every base it knew, while a base new under v1.7 has
+// no property and reads as unknown provenance under v1.6.3, which is v1.6.3's
+// own first-red protection. With no control row for stream, only an existing
+// property is updated. Every other stream's control row holding the same
+// repository and branch has the three fields unset, so exactly one row holds a
+// given base.
 func BaseLandingUnits(s *Snapshot, p Plan, stream, repo, base, tip string) Plan {
+	key := BaseLandedKey(repo, base)
+	if was, had := s.Work.Prop(key); had {
+		p.Props = append(p.Props, PropWrite{Table: Work, Name: key, Value: tip, Was: was})
+	}
 	ctl := s.StreamCtl(stream)
 	if ctl == nil {
 		return p
@@ -270,19 +281,24 @@ func BaseLandingUnits(s *Snapshot, p Plan, stream, repo, base, tip string) Plan 
 	return p
 }
 
-// BaseMovedOutside compares the tip with durable lander provenance. The control
-// row holding the repository and branch decides; when no row holds it, the old
-// work-table property is read as today. An absent record is unknown provenance
+// BaseMovedOutside compares the tip with durable lander provenance. The tip is
+// the lander's when the control row holding the repository and branch names it,
+// or the old work-table property names it, so a v1.6.3 binary's landing between
+// two v1.7 landings is not mistaken for an outside push. It is moved outside
+// only when neither names it; an absent record on both is unknown provenance
 // and receives the same first-red protection.
 func BaseMovedOutside(s *Snapshot, repo, base, tip string) bool {
+	if tip == "" {
+		return true
+	}
 	for _, st := range s.Streams() {
 		ctl := s.StreamCtl(st)
-		if ctl != nil && ctl.F(FieldBaseLandedRepo) == repo && ctl.F(FieldBaseLandedBase) == base {
-			return tip == "" || ctl.F(FieldBaseLandedTip) != tip
+		if ctl != nil && ctl.F(FieldBaseLandedRepo) == repo && ctl.F(FieldBaseLandedBase) == base && ctl.F(FieldBaseLandedTip) == tip {
+			return false
 		}
 	}
-	last, _ := s.Work.Prop(BaseLandedKey(repo, base))
-	return last == "" || tip == "" || last != tip
+	last, ok := s.Work.Prop(BaseLandedKey(repo, base))
+	return !ok || last != tip
 }
 
 // RecordBaseLanding adds the pushed tip to the successful merge report, in the

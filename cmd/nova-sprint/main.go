@@ -541,9 +541,9 @@ func libraryMatches(ctx context.Context, c *redis.Client, addr string) error {
 	}
 	switch {
 	case !found:
-		return fmt.Errorf("the store at %s holds no %s function library; run: nova-redis fn load --addr %s", addr, fn.Library, addr)
+		return fmt.Errorf("the store at %s holds no %s function library; run: nova-redis fn load --redis %s", addr, fn.Library, addr)
 	case librarySum(code) != librarySum(source):
-		return fmt.Errorf("the store at %s holds %s library %s, and this build is %s (their code: %s and %s); run: nova-redis fn load --addr %s", addr, fn.Library, fn.Sum(code), fn.Sum(source), librarySum(code), librarySum(source), addr)
+		return fmt.Errorf("the store at %s holds %s library %s, and this build is %s (their code: %s and %s); run: nova-redis fn load --redis %s", addr, fn.Library, fn.Sum(code), fn.Sum(source), librarySum(code), librarySum(source), addr)
 	}
 	return nil
 }
@@ -561,7 +561,7 @@ func libraryShadow(ctx context.Context, c *redis.Client, addr string) (note stri
 	}
 	switch {
 	case !found:
-		return "", fmt.Errorf("the store at %s holds no %s function library; run: nova-redis fn load --addr %s", addr, fn.Library, addr)
+		return "", fmt.Errorf("the store at %s holds no %s function library; run: nova-redis fn load --redis %s", addr, fn.Library, addr)
 	case librarySum(code) != librarySum(source):
 		return "library differs: loaded in the window", nil
 	}
@@ -745,6 +745,7 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 	}
 	// a twin is ticked by hand: no machine runs between its commands (twin.go)
 	st := &store.Store{B: b, Names: names, Actor: c.actor, Now: a.now, NewID: store.NewID, Sleep: a.sleep, CheckTwin: a.checkTwin, ByHand: a.twinOpen(c.redis)}
+	st.SetSelf(a.machineName())
 	st.ReadFriendHooks = a.readFriendHooks
 	if st.ReadFriendHooks == nil {
 		st.ReadFriendHooks = func(ctx context.Context, names ...string) ([]hook.Status, time.Time, error) {

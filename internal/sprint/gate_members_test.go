@@ -103,8 +103,9 @@ func TestAFleetDownCrossesAClearAndStillRunsNoGate(t *testing.T) {
 }
 
 // TestRuleElevenCountsHeldGateBenches: check.go rule 11 names a merging stream with a
-// queued card only when no member can run a land gate (Snapshot.GateMembers): a member
-// the coordinator holds is a bench, one taken down with fleet down (held_return) is not.
+// queued card only when no member the land loop can use runs a land gate
+// (Snapshot.LandBenches): a member the coordinator holds is a bench, one taken down with
+// fleet down (held_return) is not.
 func TestRuleElevenCountsHeldGateBenches(t *testing.T) {
 	t.Parallel()
 	s := &sprint.Snapshot{Now: time.Unix(1000, 0), Work: sprint.NewTable(sprint.Work),
@@ -120,7 +121,7 @@ func TestRuleElevenCountsHeldGateBenches(t *testing.T) {
 	s.Merge.SetRows([]string{"s1"})
 	noGate := func() bool {
 		for _, v := range sprint.Check(s, nil) {
-			if v.Rule == 11 && strings.Contains(v.Detail, "no member can run a land gate") {
+			if v.Rule == 11 && strings.Contains(v.Detail, "no member the land loop can use") {
 				return true
 			}
 		}
