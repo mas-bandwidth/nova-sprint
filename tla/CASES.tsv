@@ -582,6 +582,7 @@ MCStopReturnReaders.cfg	MCStopReturn.tla	pass	-	ignore-terminal	stopreturn	requi
 MCStopReturnPreUpgrade.cfg	MCStopReturn.tla	pass	-	ignore-terminal	stopreturn	required	-
 MCStopReturnClear.cfg	MCStopReturn.tla	pass	-	ignore-terminal	stopreturn	required	-
 MCStopReturnBrokenClearBlocked.cfg	MCStopReturn.tla	invariant	ClearNeverWithALiveLease	ignore-terminal	stopreturn	required	-
+MCStopReturnBrokenGoneBlocksStart.cfg	MCStopReturn.tla	invariant	GoneNeverBlocksStart	ignore-terminal	stopreturn	required	-
 MCProviderBudget.cfg	MCProviderBudget.tla	pass	-	ignore-terminal	providerbudget	required	-
 MCProviderBudgetBrokenClear.cfg	MCProviderBudget.tla	action	FleetUpRefusesUncleared	ignore-terminal	providerbudget	required	-
 MCProviderBudgetBrokenNewMember.cfg	MCProviderBudget.tla	action	NewMemberProbed	ignore-terminal	providerbudget	required	-
