@@ -745,6 +745,7 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 	}
 	// a twin is ticked by hand: no machine runs between its commands (twin.go)
 	st := &store.Store{B: b, Names: names, Actor: c.actor, Now: a.now, NewID: store.NewID, Sleep: a.sleep, CheckTwin: a.checkTwin, ByHand: a.twinOpen(c.redis)}
+	st.SetSelf(a.machineName())
 	st.ReadFriendHooks = a.readFriendHooks
 	if st.ReadFriendHooks == nil {
 		st.ReadFriendHooks = func(ctx context.Context, names ...string) ([]hook.Status, time.Time, error) {

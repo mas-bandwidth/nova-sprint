@@ -66,6 +66,11 @@ type Store struct {
 	B               Backend
 	Names           sprint.Names
 	Actor           string
+	// Self is the machine this process runs on (a fleet member): the store sets
+	// it on every snapshot rule 11 reads, so check counts the benches the land
+	// loop can use (Snapshot.LandBenches), leaving the server's own machine out.
+	// "" is none.
+	Self string
 	Now             func() time.Time
 	NewID           func() string       // a fresh operation id family; nil is NewID
 	Sleep           func(time.Duration) // the wait between tries on busy tables or fence; nil is time.Sleep
@@ -396,6 +401,11 @@ func (st *Store) grace() time.Duration {
 	}
 	return time.Minute
 }
+
+// SetSelf sets the machine this process runs on (a fleet member), which rule 11's
+// benches (Snapshot.LandBenches) leave out. It is set by the store's caller before any
+// read.
+func (st *Store) SetSelf(self string) { st.Self = self }
 
 // Fenced reads the tables with the fence read before and after, finishing a
 // pending operation first: the snapshot is no partial state of any operation,

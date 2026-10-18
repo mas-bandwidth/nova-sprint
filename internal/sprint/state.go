@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/mas-bandwidth/nova-tools/pkg/bench"
 )
 
 // Card is one member of a table as observed: its place (empty when the record
@@ -518,6 +520,11 @@ type Snapshot struct {
 	// answer. Actor is who runs the step (a request's Who, when it names
 	// none).
 	Coordinator, Actor string
+	// Self is the machine the land loop runs on (a fleet member): rule 11 and
+	// the last-gate guard count the benches the land loop can use
+	// (LandBenches), which leave this machine and any host the check refuses
+	// out. "" is none, and every gate-capable member is a bench.
+	Self string
 	// SeatGeneration is the seat's generation as read with the coordinator
 	// (seat.go): FirstSeatGeneration until the seat first moves.
 	SeatGeneration              uint64
@@ -680,6 +687,29 @@ func (s *Snapshot) GateMembers() []string {
 		if gateCapable(s.MemberCtl(m)) {
 			out = append(out, m)
 		}
+	}
+	return out
+}
+
+// LandBenches is the fleet members the land loop can run a gate on now, in
+// row order: GateMembers (up, or held by the coordinator with no --return)
+// without self (strings.EqualFold; an empty self drops nothing) and without any
+// name bench.CheckHost refuses. This is what landgo.go gateHosts builds its
+// hosts from, so the hold guard (hold.go) and rule 11 (check.go) count the same
+// benches the land loop actually uses: a member that is the server's own machine
+// or that the host check refuses is a bench to neither, so a hold that would
+// leave only the server's machine gate-capable is refused and rule 11 fires.
+// tla/DirtyTick.tla LandGate, with the land loop's host choice (gateHosts).
+func (s *Snapshot) LandBenches(self string) []string {
+	var out []string
+	for _, m := range s.GateMembers() {
+		if self != "" && strings.EqualFold(m, self) {
+			continue
+		}
+		if bench.CheckHost(m) != nil {
+			continue
+		}
+		out = append(out, m)
 	}
 	return out
 }
