@@ -7395,6 +7395,11 @@ refuses the whole call. The code is `swarm.LintBrief` (internal/swarm/lintpaths.
 brief per token that fails it and one that passes, and the corrections applied passing) and
 `TestAddRunsTheBriefChecksAtTheBase` (cmd/nova-sprint, add against a twin repository).
 
+The `brief check` verb itself also reports, for a brief on a placed card with a recorded tier
+(`FieldTier`) that its line 1 contradicts, a `tier` finding naming both tiers and the remedy
+that pins the line 1 tier (`nova-sprint brief c --tier <t> --reason <why>`); a file naming the
+recorded tier, a card with no recorded tier, an id that is no card and a sentinel report nothing.
+
 add (both forms), brief (one brief, `--dir`, and `--widen`) and recut `--brief-file` also hold
 the brief to `sprint.PathsAdmission` after those checks on add and after the card lint on brief
 and recut (`cmd/nova-sprint/add.go`, `holdPathsAdmit`; the tree is the same lander's clone and
