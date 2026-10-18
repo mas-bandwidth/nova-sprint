@@ -336,6 +336,30 @@ func dupPrint(stdout io.Writer, held map[string]dupFinding) {
 	}
 }
 
+// dupHoldNeeds holds every card that needs a held duplicate, transitively, and
+// names each of them in one HELD line.
+func dupHoldNeeds(cards []sprint.CardAdd, held map[string]dupFinding, stdout io.Writer) map[string]dupFinding {
+	heldAll := make(map[string]string, len(held))
+	for id := range held {
+		heldAll[id] = ""
+	}
+	heldNeed := map[string]string{}
+	heldClosure(cards, heldAll, heldNeed)
+	out := make(map[string]dupFinding, len(heldAll))
+	for id, f := range held {
+		out[id] = f
+	}
+	for _, cd := range cards {
+		n := heldNeed[cd.ID]
+		if n == "" {
+			continue
+		}
+		out[cd.ID] = dupFinding{}
+		fmt.Fprintf(stdout, "HELD %s: needs %s, held as a probable duplicate\n", cd.ID, n)
+	}
+	return out
+}
+
 // dupNoteStep records each admitted card's --not-a-duplicate-of reason on its
 // admission note.
 func dupNoteStep(step store.Step, reasons map[string]string) store.Step {
@@ -373,12 +397,14 @@ func dupNoteStep(step store.Step, reasons map[string]string) store.Step {
 // is written (the add then exits with the write's code).
 func dupHold(a *app, rs []sprint.AddReq, st *store.Store, notDup map[string]string, stdout, stderr io.Writer) (map[string]dupFinding, map[string]string, int) {
 	var wave []dupCard
+	var closure []sprint.CardAdd
 	for _, r := range rs {
 		if r.Count > 0 || r.Sentinel || len(r.IDs) == 0 {
 			continue
 		}
 		for _, id := range r.IDs {
 			wave = append(wave, dupCardOf(id, r.Brief))
+			closure = append(closure, sprint.CardAdd{ID: id, Brief: r.Brief, Needs: r.Needs})
 		}
 	}
 	if len(wave) == 0 {
@@ -393,6 +419,7 @@ func dupHold(a *app, rs []sprint.AddReq, st *store.Store, notDup map[string]stri
 		return nil, reasons, 0
 	}
 	dupPrint(stdout, held)
+	held = dupHoldNeeds(closure, held, stdout)
 	kept := 0
 	for i := range rs {
 		if rs[i].Count > 0 || rs[i].Sentinel {
@@ -440,6 +467,7 @@ func dupHoldMany(a *app, cards []sprint.CardAdd, st *store.Store, notDup map[str
 	held, reasons := dupHeld(wave, dupOpenCards(snap), notDup)
 	if len(held) > 0 {
 		dupPrint(stdout, held)
+		held = dupHoldNeeds(cards, held, stdout)
 	}
 	return held, reasons, 0
 }
