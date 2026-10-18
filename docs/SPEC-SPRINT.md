@@ -1883,9 +1883,15 @@ a push or lane refused, a landing refused, in the shared ledgers too): the count
 card's `attempt` less `decided_attempt` (`sprint.AttemptsSince`; absent is 0), a redeal
 of one attempt being that one attempt (MaxRedeals bounds those on its own). *What
 resets it*: a coordinator decision on the card or an accept writes `decided_attempt` (the
-card's attempt at the decision): `brief` and `brief --tier` run by a person or the seat
-(`BriefReq.ByRule` false), `rework` answered by the seat, `--tier` and `--carry` included
-(`ReworkCard.Rule` empty), `continue`, and `accept` (`steps_review.go:Accept`, whoever accepts: coordinator or machine); a drop ends the card. An accepted card in merging is never judged by the attempt cap alone (`tla/Land.tla AcceptedNeverCapJudged`): the accept admits it to merge, and only a repeated refusal (the same finding twice) or exhausted widenings bound it. A rule's widen or rework, a
+card's attempt at the decision): a `brief` edit run by a person or the seat that changes the
+task or its PATHS (the old and new briefs' `taskOf` differ: the hash of the body and the
+PATHS, NEW, SHARED, TEST and DONE-WHEN lines), `brief --tier` (a re-tier), `rework` answered by
+the seat, `--tier` and `--carry` included (`ReworkCard.Rule` empty), `continue`, and `accept`
+(`steps_review.go:Accept`, whoever accepts: coordinator or machine); a drop ends the card. A
+brief edit that changes only the tier on line 1, a routing line (PRIORITY, DEPENDS-ON,
+LAND-AFTER, ORDER and the like) or spacing decides nothing about the task: it leaves
+`decided_attempt` as it was and says "max attempts: unchanged (the edit decides nothing about
+the task)", so it opens no fresh cap window. An accepted card in merging is never judged by the attempt cap alone (`tla/Land.tla AcceptedNeverCapJudged`): the accept admits it to merge, and only a repeated refusal (the same finding twice) or exhausted widenings bound it. A rule's widen or rework, a
 stream's `set --base` and the machine's tier escalation never do: each replaces the
 brief or opens an attempt as before, but `brief_attempt` no longer bounds the cap. *At
 the bound*, whatever the attempt found, the card is the coordinator's as exactly one
@@ -1897,8 +1903,11 @@ findings: attempt 1: <first sentence>; attempt 2: ...` (`501x>` the card's charg
 to the cent, rounded up, or `nothing priced`; the findings the primary's `findings`, one
 line an attempt, appended by `rework` with the attempt's readers' finding, else its
 failed report, else its bound's class, the latest kept under the text bound), its
-decisions `rework --carry`, brief, re-tier (`rework --fix <text> --tier <a higher tier>`,
-`sprint.DecisionReTier`: the way to a friend tier) and drop; and it is dealt to no
+decisions `brief --brief-file` with a task or PATHS change (a tier, routing or spacing-only
+edit outside quoted literals and code opens no fresh cap window; internal whitespace in
+quoted values, test selectors and code remains task text), re-tier (`brief --tier` or
+`rework --fix <text> --tier <a higher tier>`, `sprint.DecisionReTier`: the way to a friend tier), `rework --carry` and drop;
+and it is dealt to no
 machine and no friend until a decision, on every path (the deal's refusal,
 `sprint.AtAttemptCap`; the tick's friend offer; every rule leaves it: `ruleFailed`,
 `ruleBound`, `ruleHarness`, `ruleReadBroken`; the landing refusal's return; `Rework` by a
@@ -2658,7 +2667,12 @@ reached ready by any path still waits there (tla/Holds.tla NeedsSetH and DealH; 
 witnesses "needssetheld" and "dealheld"). `release` of a held card that is ready clears the hold
 and leaves it ready. A brief
 edit records its needs by the rule below, and a ready card that gains a need not
-landed waits until it lands (section 3, the brief verb). A brief edit's needs
+landed waits until it lands (section 3, the brief verb). A brief edit records its
+soft dependencies the way `add` does: the new text's `LAND-AFTER:` list written on
+the card (`land_after`, `land_after_set`), cleared when the text names none, held to
+`add`'s checks (validateSoftDeps, softCycleWith) against the snapshot, and written
+only when it differs from what the card holds; a LAND-AFTER-only edit takes the
+routing-only path as a DEPENDS-ON-only one does. A brief edit's needs
 are the card's, not the text's: the text's `DEPENDS-ON:` is the admission-time
 list (a `brief --brief-file` of a card dumped from the table names what it was
 admitted with, not what a relink re-pointed), so a brief edit starts from the
@@ -4807,7 +4821,25 @@ the loop's gate runs in the clone; a `land` command on its own (a hand land,
 the install walkthrough) runs it there as before and its line carries no
 bench. The ledgers' update runs stay in the clone.
 
-**The gate bench is a hash ring.** The up benches, in the fleet's order, are a
+**A held member still runs gates.** The benches a gate may go to are the fleet
+members other than this machine that are up or held by the coordinator with no
+`--return` (held, with no `held_by`, no `fault_since` and no `held_return`;
+`Snapshot.GateMembers`, `hold.go` `gateCapable`): a hold is a deal control (no card
+is dealt there; `UpMembers` stays the deal filter) and a gate is not a card, so
+`fleet hold` on every member no longer refuses every batch. A member down and not
+held, held by a machine mark (fault, sync, probe, adopt), or taken out of service
+with `fleet down` (`hold --return`, which writes `held_return`, the hold's own
+`held` stamp, and a later hold without `--return` clears) runs no gate. `check` rule 11
+counts the same benches, and the last-gate guard counts the members a hold does not
+name by the same rule (`gateHosts`, `landgo.go`;
+`tla/DirtyTick.tla` `LandGate`, `GateLands`, `HeldMayGateNeverDealt`,
+`ReturnedNeverGates`; `MCDirtyTickGateHeld.cfg`, and the reversed witnesses
+`MCDirtyTickBrokenGateUpOnly.cfg` and `MCDirtyTickBrokenGateReturned.cfg`). `land --dry-run` makes the same choice and
+runs nothing: a batch it would land carries `bench=<member>` (the ring's first
+slot for its stream, no `wall=`), or, when another member is configured and none
+may gate, is `refused` with the loop's reason, counted under `refused=`.
+
+**The gate bench is a hash ring.** The gate benches, in the fleet's order, are a
 ring of `n`, and a batch's gate starts at `ring[FNV64(stream) % n]`, FNV-1a
 64-bit of the stream's name (`benchRing`, `landring.go`): the lander asks that
 bench's Go lane first and, while a lane is held, steps to `(h+1) % n`, then
@@ -6691,7 +6723,8 @@ are the evidence a later card reads before that record's writer switches.
     check is caught. The run-time half (one owner judgment for a blocked need, a
     drop that never strands) is its own card. Under 11 as well (no number from
     12 to 14 is free), `check` names a stream merging with at least one queued
-    card while no member can run a land gate: `stream <s> has <n> merging card(s) and no member can run a land gate: nova-sprint fleet unhold <member>` (the hold guard's rule, section 11).
+    card while no member can run a land gate (none up or held by the coordinator
+    with no `--return`, `Snapshot.GateMembers`): `stream <s> has <n> merging card(s) and no member can run a land gate: nova-sprint fleet unhold <member>` (the hold guard's rule, section 11).
 12. Nothing stalls. Every primary on the table that has not landed is held by
     one of: (a) an outside actor before its deadline (its live work card in an
     up member's ready or working cell, a read card asked or reading, its merge
@@ -6904,6 +6937,7 @@ land's place; a head that is not a commit id stops the dry run where land stops,
 | routes rest | `routes rest <provider-or-route> --reason <text> [--for <duration> or --until <RFC3339>]`: the coordinator rests every route of the provider (the fleet property `provider_rest_<provider>`, cause `coordinator`) or one route (its line in `rule3_rest_<provider>`), until the time or until woken; a happened note; the coordinator's; refused whole, nothing written, with no reason, a name that is neither a route nor a provider of one, or a time not after now |
 | routes wake | `routes wake <provider-or-route> --reason <text>`: ends now the rest holding the provider (any cause, a refused take's included) and its routes' own, or one route's own while its provider serves, the reason on the rest's words; never a payment (that is `funded`); refused whole with no reason, an unknown name, nothing resting, or a route under its provider's rest |
 | friend sync | the friends table's rows made nova-config's friend rows (section 1); `--every <d>` loops as the seat each pass, and `friend sync install --every <d>` / `friend sync uninstall` put that loop in place as this machine's service ("Handing over the seat") |
+| friend stage | stages a friend's dealt card in one step, `friend stage <card>@<gen> --as friend.<name> [--bench <host>] [--dir <jobs dir>]`: clones the card's REPO into `jobs/<job>/` at the card's NEXT head when one is carried, else at BASE, creates the delivered branch (the branch the bus message FRIEND-CARD DELIVERED carries), sets the friend's git identity in the clone's local config, the friend's nova-config row `git_identity=` when it names one else the sprint row's git_identity (the OK line says which, `identity=friend` or `identity=sprint`; when nova-config cannot be read, the sprint row's git_identity is used instead of refusing), and writes JOB.md naming the exact finish command (and its `--failed` form), and a line `BENCH: <host>` (the host it staged on; `BENCH: local` without `--bench`). With `--bench <host>` every git step and the JOB.md write run on that fleet member over ssh, through the one runner seam, the jobs directory default on a bench `~/<friend>-jobs` (`--dir` overrides), and a host that is no fleet member is refused with nothing written; without `--bench` it runs on the machine the verb runs on. The server runs it as a worker's verb, `friend stage <card>@<gen> --as friend.<name> --bench <host> [--dir <d>]`, so a friend needs only the server address. It refuses a card not dealt to the named friend (ready or working), and refuses when neither identity parses as `Name <email>` (it never falls back to the machine's global git config). A second run on an already staged directory refuses unless it is the same card@gen, branch, head and bench, and then prints the JOB.md path and exits 0 |
 | collect | every friend's outbox report of a card working on a friend's row finished as her row, a LAND only at origin's tip, and with `--dead-lanes` a lane her runner ENDed with no report finished failed (section 1, collect): `collect [<friend>...] [--dead-lanes] [--root <dir>] [--dry-run]`; never run by the server |
 | gc | the system's scratch reclaimed on the machine it runs on, or on `--machine`'s through the fleet runner (section 1, gc): `gc [--machine <m>] [--dry-run] [--max-age <d>] [--ai-root <dir>]`; job directories of finished or absent lanes, reader checkouts of recorded findings, lander worktrees and bench directories past `--max-age`, the go caches trimmed to their cap, never a path under no known scratch root or a clone with work that is nowhere else; one line per class and `GC OK freed=<bytes> volume=<use%>`; run by `run` on every machine hourly and on a volume at 80%; never run by the server |
 | friend give | the coordinator's undo of `friend take` (section 1, a friend's card taken back): `friend give <friend> <id>... [--reason <text>]`; on each card named (a primary or its work card), ready or waiting, its current attempt's work card loses `taken_from` her row, so the next deal may deal it to her again, a hard pin taken back from her included; the marks of other friends stay. A card taken back from her is given back as above; a ready card whose current work card is Done (a brief-replaced bounce) or absent is handed to her at its next attempt (`<id>: handed to <friend>`), eligibility as the deal holds it (tier, restriction, needs, a hard pin to another friend refused naming `nova-sprint unpin`). A card not ready or waiting, one whose work card is live on a row, one taken back from another friend, and a friend not on the friends table are refused, one `REFUSED` line each, the rest given; each given says `MOVED <card> may be dealt to <friend> again (<reason>)` (default reason: given back by the coordinator) with a happened note, then `FRIEND-GIVE OK moved=<n> refused=<m>` (`FAILED`, exit 1, when any is refused) |
@@ -7373,7 +7407,7 @@ it):
 |---|---|
 | `paths-at-base` | every PATHS entry names a file, directory or glob at the base tip, or is a new `_test` file, or a `NEW:` line names it; the correction is the `NEW:` line with the missing entries |
 | `donewhen-test-name` | a `TEST:` line the brief has reads (`cardhdr.ParseTest`; `TEST: none <why>` passes), and its test is absent at the base tip in its package, so it can be red there; a brief with no `TEST:` line is held to one where the copy wrapper reads it; the one exception is a ledger card, a brief whose `KIND:` is `ledger` and whose `TEST:` package is under `internal/ci/`: its class test is green at the base by construction and its proof is the ledger shrinking, so a test that exists there passes (`swarm.LedgerKind`; docs/SPEC-CARD-CONTRACT.md section 6) |
-| `paths-cover-named` | every repository path `START:` names (split on commas outside parentheses, each entry's first word) is covered by PATHS or NEW (a directory by a file or glob inside it), unless the entry is marked `(read)`; and every path THE TASK paragraph names that is a file at the base tip, unless `(read)` follows it |
+| `paths-cover-named` | every repository path `START:` names (split on commas outside parentheses, each entry's first word) is covered by PATHS or NEW (a directory by a file or glob inside it), unless the entry is marked read (`(read)`, `(read: why)` or `(read; why)`); and every path THE TASK paragraph names that is a file at the base tip, unless the path is marked read anywhere in it (one marking of a file covers every mention) |
 | `paths-cover-test` | PATHS covers a `_test.go` file of the TEST package: its directory, a glob that matches a test file there, or a test file named; the correction adds `<pkg>/*_test.go` |
 | `paths-cover-testdata` | a `<dir>/*.go` entry, whose package has `<dir>/testdata` at the base tip, comes with an entry covering that testdata; the correction adds `<dir>/testdata/**` |
 | `paths-cover-ledgers` | for each package whose Go code (a `.go` file that is no test) PATHS or NEW covers, every class-test ledger at the base that counts it, `internal/ci/testdata/{errcheck,discarded,staticcheck}/<pkg>.txt` and `internal/ci/testdata/dead_code_allowlist.txt` when it has a `<pkg> <count>` row, is on PATHS and on SHARED: a card that changes a package's code can add or remove the functions and error sites those ledgers count |
@@ -7395,6 +7429,11 @@ refuses the whole call. The code is `swarm.LintBrief` (internal/swarm/lintpaths.
 brief per token that fails it and one that passes, and the corrections applied passing) and
 `TestAddRunsTheBriefChecksAtTheBase` (cmd/nova-sprint, add against a twin repository).
 
+The `brief check` verb itself also reports, for a brief on a placed card with a recorded tier
+(`FieldTier`) that its line 1 contradicts, a `tier` finding naming both tiers and the remedy
+that pins the line 1 tier (`nova-sprint brief c --tier <t> --reason <why>`); a file naming the
+recorded tier, a card with no recorded tier, an id that is no card and a sentinel report nothing.
+
 add (both forms), brief (one brief, `--dir`, and `--widen`) and recut `--brief-file` also hold
 the brief to `sprint.PathsAdmission` after those checks on add and after the card lint on brief
 and recut (`cmd/nova-sprint/add.go`, `holdPathsAdmit`; the tree is the same lander's clone and
@@ -7413,6 +7452,12 @@ refusal, nothing written. No tree is one `MISSING` line, not a pass, and so is a
 `REPO:` that no clone can be made of. A brief with no PATHS, or that omits REPO, or that
 omits BASE, is not read against a tree. The test is
 `TestAdmissionRefusesABriefWhosePathsDoNotHoldWhatItNames`.
+
+`brief check` also compares a file's `LAND-AFTER:` list with the stored soft
+dependencies when its id is a placed primary. A mismatch is reported as
+`land-after` with both lists and the `brief <id> --brief-file <path>` and
+`needs set <id> --land-after <ids>` commands that change each side. Equal lists,
+unknown ids and sentinels have no such finding; this check is read-only.
 
 ### Statistics
 
@@ -9417,19 +9462,16 @@ The decisions:
    one at a time: two picks never both take a bench's last slot.
 
 The model checks NeverOverSlots, OneLeaseEach, GrantOnlyAllowed, GrantIsLeastCommitted,
-WaitWritesNothing, WaitOnlyWhenFull and NoLeaseOutlivesDeadline on two benches (1 and 2
-slots) and three workers, and DeadLeaseEnds (a dead client's lease ends: every slot is
-eventually free after its holder stops) and WaiterGetsLease on two workers. The fairness
-is weak fairness on the clock, the sweep and a waiter's asking again; nothing assumes a
-grant. The tie-break of D4 (most free slots, then the name) is in the pick but not a
-checked property. Its reversed witnesses: `noexpiry`, a client-held lease with no
-server expiry (the stuck lock Glenn banned), fails DeadLeaseEnds; `loadonly`, a pick by
-load alone as one `ssh <bench> uptime` is, fails NeverOverSlots (three grants onto a
-two-slot bench before any load shows); `noceiling`, a full fleet still granting the least
-committed, fails NeverOverSlots; `queue`, a wait recording a place, fails
-WaitWritesNothing; and, run by hand with no case yet, `anybench` fails GrantOnlyAllowed,
-`anyroom` fails GrantIsLeastCommitted, `second` fails OneLeaseEach, `waitwhenroom` fails
-WaitOnlyWhenFull and WaiterGetsLease, and `renewexpired` fails NoLeaseOutlivesDeadline. Two corrections to
+GrantTieBreak, WaitWritesNothing, WaitOnlyWhenFull and NoLeaseOutlivesDeadline on two benches
+(1 and 2 slots) and three workers; DeadLeaseEnds and WaiterGetsLease are checked on two
+workers. GrantTieBreak also runs on two equal two-slot benches so the name tie is reachable.
+The fairness is weak fairness on the clock, the sweep and a waiter's asking again; nothing
+assumes a grant. Each reversed witness has a committed configuration and CASES.tsv row:
+`noexpiry` fails DeadLeaseEnds; `loadonly` and `noceiling` fail NeverOverSlots; `queue` fails
+WaitWritesNothing; `anybench` fails GrantOnlyAllowed; `anyroom` fails GrantIsLeastCommitted;
+`second` fails OneLeaseEach; `waitwhenroom` fails WaitOnlyWhenFull and WaiterGetsLease;
+`renewexpired` fails NoLeaseOutlivesDeadline; and `anytie` fails GrantTieBreak on the
+equal-slot instance. Two corrections to
 the card's design came from writing it: a lease is modelled as the set of benches a
 worker holds (a single bench or none made OneLeaseEach true by its type, while the
 record allows two), and D5's "released at the next step that reads the record" is split
@@ -9566,8 +9608,10 @@ This transport check supplies no session challenge answer or presence proof.
 
 The 2026-10-15 owner's ruling supersedes the earlier repeated coordinator warning
 **after the judgment deadline**. Before that deadline, the 30-minute folded
-warning remains. At the deadline, all unanswered decisions form one message per
-changed set to the coordinator. The owner receives the current folded set at most once every 30 minutes, including changed sets. The owner is the existing
+warning remains. At the deadline, all unanswered decisions form one message per changed set to
+the coordinator. When the owner lane has the same recipient and set, that notice
+serves both lanes and both receipt marks are recorded. Otherwise the owner receives
+the current folded set at most once every 30 minutes, including changed sets. The owner is the existing
 `init --owner` bus name, falling back to `NOVA_SPRINT_OWNER`; no new channel is
 configured. The owner escalation does not depend on a proven coordinator hook.
 An empty set or changed recipient does not erase the owner lane's last successful delivery time; new sets wait for the remaining interval. Successful receipts, frozen
@@ -9582,8 +9626,8 @@ payloads and retry tokens persist through server restart and are epoch-scoped.
 
 The deadline is the existing running-time interval (normally ten minutes), or the
 explicit review interval set by wait. A safe default is recorded with
-`actor=server-default`, its judgment ID and reason, and reported to both channels
-in their next folded message. A default never drops, accepts, merges, lands or
+`actor=server-default`, its judgment ID and reason, and reported in the folded message for each matching lane; when both lanes share a
+recipient and set, one notice records both receipt marks. A default never drops, accepts, merges, lands or
 changes a brief. Existing independent automatic answer rules retain their own
 contracts; they are not decision defaults.
 

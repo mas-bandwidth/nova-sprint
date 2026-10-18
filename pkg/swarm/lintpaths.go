@@ -860,8 +860,8 @@ type startEntry struct {
 }
 
 // startEntries reads a START value: entries split on commas outside parentheses, each its
-// first word (the path) and, in parentheses after it, what the card does there; `(read)`
-// marks a file the card only reads.
+// first word (the path) and, in parentheses after it, what the card does there; `(read)`,
+// `(read: why)` or `(read; why)` marks a file the card only reads.
 func startEntries(v string) []startEntry {
 	var out []startEntry
 	depth, from := 0, 0
@@ -879,7 +879,7 @@ func startEntries(v string) []startEntry {
 		if i := strings.Index(s, "("); i >= 0 {
 			note = strings.TrimSuffix(strings.TrimSpace(s[i+1:]), ")")
 		}
-		out = append(out, startEntry{path: cleanEntry(p), read: strings.EqualFold(strings.TrimSpace(note), "read")})
+		out = append(out, startEntry{path: cleanEntry(p), read: isReadNote(note)})
 	}
 	for i, r := range v {
 		switch r {
@@ -896,6 +896,13 @@ func startEntries(v string) []startEntry {
 	}
 	flush(v[from:])
 	return out
+}
+
+// isReadNote says a note in parentheses is a read marking: `read` alone, or `read` followed
+// by `:` or `;` and anything, case-insensitive; `(reader: ...)` and `(readme)` are not.
+func isReadNote(note string) bool {
+	n := strings.ToLower(strings.TrimSpace(note))
+	return n == "read" || strings.HasPrefix(n, "read:") || strings.HasPrefix(n, "read;")
 }
 
 // repoPathRE is a repository path a brief names: segments joined by slashes, or one file name
@@ -953,22 +960,31 @@ func namesAFinishPR(raw []byte, h map[string]headerField) bool {
 	return strings.Contains(strings.ToLower(task), "start from the pr's branch")
 }
 
-// taskPathRE is a path-shaped word in prose; readMarkRE is `(read)` right after one.
+// taskPathRE is a path-shaped word in prose; readMarkRE is a read marking `(read)`,
+// `(read: ...)` or `(read; ...)` right after one.
 var (
 	taskPathRE = regexp.MustCompile("[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+")
-	readMarkRE = regexp.MustCompile(`^[` + "`" + `"']?[ \t]*\(read\)`)
+	readMarkRE = regexp.MustCompile(`(?i)^[` + "`" + `"']?[ \t]*\(read([;:]|\))`)
 )
 
-// taskPaths is every path-shaped word of the task text not marked `(read)` after it, its
-// trailing stop cut; the caller keeps those the tree holds as files.
+// taskPaths is every path-shaped word of the task text that is not marked read anywhere: a
+// path marked once with `(read)`, `(read: ...)` or `(read; ...)` is skipped at every mention.
+// A path never marked is returned once per mention, its trailing stop cut; the caller keeps
+// those the tree holds as files.
 func taskPaths(task string) []string {
+	marked := map[string]bool{}
+	for _, m := range taskPathRE.FindAllStringIndex(task, -1) {
+		if readMarkRE.MatchString(task[m[1]:]) {
+			marked[cleanEntry(strings.TrimRight(task[m[0]:m[1]], "."))] = true
+		}
+	}
 	var out []string
 	for _, m := range taskPathRE.FindAllStringIndex(task, -1) {
-		p := strings.TrimRight(task[m[0]:m[1]], ".")
-		if readMarkRE.MatchString(task[m[1]:]) {
+		p := cleanEntry(strings.TrimRight(task[m[0]:m[1]], "."))
+		if marked[p] {
 			continue
 		}
-		out = append(out, cleanEntry(p))
+		out = append(out, p)
 	}
 	return out
 }

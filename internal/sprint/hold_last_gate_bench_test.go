@@ -27,6 +27,9 @@ func holdGateSnapshot(state map[string]string) *sprint.Snapshot {
 			fields["status"] = sprint.Up
 		case "coord":
 			fields[sprint.FieldHeld] = "2026-01-01T00:00:00Z"
+		case "ret": // the coordinator took it down with fleet down (hold --return)
+			fields[sprint.FieldHeld] = "2026-01-01T00:00:00Z"
+			fields[sprint.FieldHeldReturn] = "2026-01-01T00:00:00Z"
 		default: // "down": a machine holds it (a fault), no recoverable bench
 			fields[sprint.FieldHeld] = "2026-01-01T00:00:00Z"
 			fields[sprint.FieldHeldBy] = sprint.HeldByFault
@@ -52,11 +55,13 @@ func noGateViolations(vs []sprint.Violation) []sprint.Violation {
 
 // TestCheckFlagsMergingCardsWithNoGateBench is the check's half of the guard: a stream
 // merging with a queued card while no member is up is named, and one member up is enough
-// to leave it unsaid. The check asks whether a member can run a gate now, so a held
-// member (even a coordinator's) is no bench: it is down until it is unheld.
+// to leave it unsaid. The check asks for a gate bench (Snapshot.GateMembers): a member
+// the coordinator holds is one, a member taken down with fleet down (hold --return) is not.
 func TestCheckFlagsMergingCardsWithNoGateBench(t *testing.T) {
 	t.Parallel()
-	held := holdGateSnapshot(map[string]string{"m1": "coord", "m2": "coord"})
+	coord := holdGateSnapshot(map[string]string{"m1": "coord", "m2": "coord"})
+	assert.Empty(t, noGateViolations(sprint.Check(coord, nil)), "a coordinator-held member is a gate bench: %v", sprint.Check(coord, nil))
+	held := holdGateSnapshot(map[string]string{"m1": "ret", "m2": "ret"})
 	vs := noGateViolations(sprint.Check(held, nil))
 	require.Len(t, vs, 1, "check does not name it: %v", sprint.Check(held, nil))
 	assert.Contains(t, vs[0].Detail, "stream s1 has 1 merging card(s) and no member can run a land gate: nova-sprint fleet unhold <member>")

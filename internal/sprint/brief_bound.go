@@ -225,25 +225,25 @@ func (b BriefBound) String() string {
 	return line
 }
 
-// Remedy is what the coordinator decides at the bound, each a decision that opens a fresh
-// window of attempts: the brief corrected in place, the card's next attempt staged from its
-// last pushed head; reworked on another tier (re-tier); carried on from its last head; or
-// dropped. The same-finding-twice bound offers no rework: a rework's --fix changes the brief
-// not at all. A conflict bound (Conflict) is the exception, and offers rework --carry first:
-// the base moved under a correct head (tla/Land.tla, THE BOUND, ConflictBoundCarries).
+// Remedy is what the coordinator decides at the bound: a brief edit that changes the task
+// or PATHS, or a re-tier, opens a fresh window of attempts; the card's next attempt is staged
+// from its last pushed head. Carrying continues from that head, or the card may be dropped.
+// The same-finding-twice bound offers no rework: a rework's --fix changes the brief not at all.
+// A conflict bound (Conflict) is the exception, and offers rework --carry first: the base moved
+// under a correct head (tla/Land.tla, THE BOUND, ConflictBoundCarries).
 func (b BriefBound) Remedy() string {
 	if b.Conflict {
 		// the head is right and the base moved: carry the head, merge the current base and rerun
 		// the gates first (tla/Land.tla, THE BOUND, ConflictBoundCarries)
-		return "run: nova-sprint rework " + b.ID + " --carry --fix <text> (carry on from its last pushed head: merge the current base, rerun the gates), nova-sprint brief " + b.ID + " --brief-file <path> (the brief corrected in place), or nova-sprint drop " + b.ID + " --reason '<why>'"
+		return "run: nova-sprint rework " + b.ID + " --carry --fix <text> (carry on from its last pushed head: merge the current base, rerun the gates), nova-sprint brief " + b.ID + " --brief-file <path> (change the task or PATHS; cosmetic edits do not reset max_attempts), nova-sprint brief " + b.ID + " --tier <tier> (re-tier), or nova-sprint drop " + b.ID + " --reason '<why>'"
 	}
 	if b.Finding != "" {
-		return "run: nova-sprint brief " + b.ID + " --brief-file <path> (the brief corrected in place, its next attempt from its last pushed head), or nova-sprint drop " + b.ID + " --reason '<why>'"
+		return "run: nova-sprint brief " + b.ID + " --brief-file <path> (change the task or PATHS; cosmetic edits do not reset max_attempts; next attempt from its last pushed head), nova-sprint brief " + b.ID + " --tier <tier> (re-tier), or nova-sprint drop " + b.ID + " --reason '<why>'"
 	}
 	if b.Harness {
 		return "run: nova-sprint rework " + b.ID + " --carry --fix <text> (carry on from its last pushed head), or nova-sprint drop " + b.ID + " --reason '<why>'"
 	}
-	return "run: nova-sprint brief " + b.ID + " --brief-file <path> (the brief corrected in place, its next attempt from its last pushed head), nova-sprint rework " + b.ID + " --fix <text> --tier <a higher tier> (re-tier), nova-sprint rework " + b.ID + " --carry --fix <text>, or nova-sprint drop " + b.ID + " --reason '<why>'"
+	return "run: nova-sprint brief " + b.ID + " --brief-file <path> (change the task or PATHS; cosmetic edits do not reset max_attempts; next attempt from its last pushed head), nova-sprint brief " + b.ID + " --tier <tier> (re-tier), nova-sprint rework " + b.ID + " --fix <text> --tier <a higher tier> (re-tier), nova-sprint rework " + b.ID + " --carry --fix <text>, or nova-sprint drop " + b.ID + " --reason '<why>'"
 }
 
 // Why is the rework's refusal of a card at the bound: the line, and the remedy.

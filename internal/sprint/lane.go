@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -88,6 +89,54 @@ type Lane struct {
 
 // Lanes is a kind's lanes by machine: the record the store keeps.
 type Lanes map[string]Lane
+
+// BenchLeaseCores is one bench slot's share of a machine for a lease
+// (tla/BenchLease.tla, Slots).
+const BenchLeaseCores = 8
+
+// BenchRoom is a member's free capacity for one bench lease.
+type BenchRoom struct {
+	Machine     string
+	Slots, Busy int
+}
+
+// BenchPick is the result of asking for a bench lease.
+type BenchPick struct {
+	Machine          string
+	Granted, Renewed bool
+	Committed, Slots int
+	RetryAt          time.Time
+	Full             []BenchRoom
+	Released         []string
+}
+
+// BenchRooms applies the fleet's allowed-bench and beat-load rules
+// (tla/BenchLease.tla, Load, Allow, Disallow).
+func BenchRooms(s *Snapshot, beats map[string]Beat, self string, now time.Time) []BenchRoom {
+	var rooms []BenchRoom
+	for _, m := range notQuiet(s, s.UpMembers()) {
+		if s.Width(m) <= 0 || strings.EqualFold(m, self) {
+			continue
+		}
+		beat, ok := beats[m]
+		if !ok || !beat.Fresh(now) || beat.Cores <= 0 {
+			continue
+		}
+		slots := beat.Cores / BenchLeaseCores
+		if slots < 1 {
+			slots = 1
+		}
+		busy := int(math.Ceil(beat.Load / 100 * float64(beat.Cores) / BenchLeaseCores))
+		if busy < 0 {
+			busy = 0
+		}
+		if busy > slots {
+			busy = slots
+		}
+		rooms = append(rooms, BenchRoom{Machine: m, Slots: slots, Busy: busy})
+	}
+	return rooms
+}
 
 // LaneAnswer is a take's or a give's answer: whether the asker holds a lane, its place
 // in the queue (1 is next) when it does not, the holders and the width after, and who
@@ -187,7 +236,7 @@ func (ls Lanes) with(machine string, l Lane) Lanes {
 	return out
 }
 
-// expire releases a holder not seen for LaneHoldFor, a grant not claimed for
+// expire applies tla/BenchLease.tla Expire, releasing a holder not seen for LaneHoldFor, a grant not claimed for
 // LaneWaitFor, and a waiter not seen for LaneWaitFor; released is who it released.
 func (l Lane) expire(now time.Time) (Lane, []string) {
 	var out Lane
@@ -281,4 +330,125 @@ func (ls Lanes) Rows(kind string, width int, now time.Time) []LaneRow {
 		out = append(out, r)
 	}
 	return out
+}
+
+// Pick is the model's one-step Grant, Wait, Renew and Expire (tla/BenchLease.tla).
+// A wait has no queue or place; expired holds are removed before the decision.
+func (ls Lanes) Pick(who string, rooms []BenchRoom, now time.Time) (Lanes, BenchPick) {
+	lanes := make(Lanes, len(ls))
+	machines := make([]string, 0, len(ls))
+	for machine := range ls {
+		machines = append(machines, machine)
+	}
+	slices.Sort(machines)
+
+	var released []string
+	for _, machine := range machines {
+		lane, justReleased := ls[machine].expire(now)
+		released = append(released, justReleased...)
+		if len(lane.Holders)+len(lane.Queue) > 0 {
+			lanes[machine] = lane
+		}
+	}
+
+	// Renew a live lease on its current machine even when the fleet no longer
+	// allows a new lease there (tla/BenchLease.tla, Renew).
+	for _, machine := range machines {
+		lane := lanes[machine]
+		if i := lane.hold(who); i >= 0 {
+			lane.Holders[i].Seen = now
+			lane.Holders[i].Claimed = true
+			lanes[machine] = lane
+			answer := BenchPick{
+				Machine: machine, Granted: true, Renewed: true,
+				Committed: len(lane.Holders), Released: released,
+			}
+			for _, room := range rooms {
+				if room.Machine == machine {
+					answer.Slots = room.Slots
+					if room.Busy > answer.Committed {
+						answer.Committed = room.Busy
+					}
+					break
+				}
+			}
+			return lanes, answer
+		}
+	}
+
+	best := -1
+	bestCommitted := 0
+	for i, room := range rooms {
+		if room.Slots <= 0 {
+			continue
+		}
+		committed := len(lanes[room.Machine].Holders)
+		if room.Busy > committed {
+			committed = room.Busy
+		}
+		if committed+1 > room.Slots {
+			continue
+		}
+		if best < 0 {
+			best, bestCommitted = i, committed
+			continue
+		}
+		bestRoom := rooms[best]
+		left, right := committed*bestRoom.Slots, bestCommitted*room.Slots
+		free, bestFree := room.Slots-committed, bestRoom.Slots-bestCommitted
+		if left < right || left == right && (free > bestFree || free == bestFree && room.Machine < bestRoom.Machine) {
+			best, bestCommitted = i, committed
+		}
+	}
+	if best >= 0 {
+		room := rooms[best]
+		lane := lanes[room.Machine]
+		lane.Holders = append(lane.Holders, LaneHold{Who: who, Since: now, Seen: now, Claimed: true})
+		lanes[room.Machine] = lane
+		return lanes, BenchPick{
+			Machine: room.Machine, Granted: true, Committed: bestCommitted + 1,
+			Slots: room.Slots, Released: released,
+		}
+	}
+
+	retryAt := now.Add(LaneWaitFor)
+	for _, room := range rooms {
+		for _, hold := range lanes[room.Machine].Holders {
+			deadline := hold.Seen.Add(LaneHoldFor)
+			if deadline.Before(retryAt) {
+				retryAt = deadline
+			}
+		}
+	}
+	return lanes, BenchPick{
+		RetryAt: retryAt, Full: slices.Clone(rooms), Released: released,
+	}
+}
+
+// GiveAll releases the model's Give across all benches after applying Expire
+// (tla/BenchLease.tla, Give, Expire).
+func (ls Lanes) GiveAll(who string, now time.Time) (Lanes, bool) {
+	lanes := make(Lanes, len(ls))
+	machines := make([]string, 0, len(ls))
+	for machine := range ls {
+		machines = append(machines, machine)
+	}
+	slices.Sort(machines)
+
+	gave := false
+	for _, machine := range machines {
+		lane, _ := ls[machine].expire(now)
+		if i := lane.hold(who); i >= 0 {
+			lane.Holders = slices.Delete(lane.Holders, i, i+1)
+			gave = true
+		}
+		if i := lane.wait(who); i >= 0 {
+			lane.Queue = slices.Delete(lane.Queue, i, i+1)
+			gave = true
+		}
+		if len(lane.Holders)+len(lane.Queue) > 0 {
+			lanes[machine] = lane
+		}
+	}
+	return lanes, gave
 }

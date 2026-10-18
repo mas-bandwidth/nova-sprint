@@ -76,6 +76,11 @@ func ShapeOf(s *Snapshot) Shape {
 				sh.HeldBy[m] = by
 			}
 			for _, f := range HeldCarried {
+				// a return mark is carried only while it marks this hold (HeldToReturn):
+				// one left by an earlier hold is not
+				if f == FieldHeldReturn && !HeldToReturn(s.MemberCtl(m)) {
+					continue
+				}
 				if v := s.MemberCtl(m).F(f); v != "" {
 					if sh.HeldFields == nil {
 						sh.HeldFields = map[string]map[string]string{}
@@ -132,6 +137,11 @@ func RestoreShape(s *Snapshot, sh Shape) Plan {
 				if slices.Contains(HeldCarried, f) {
 					fields[f] = v
 				}
+			}
+			// a fleet down's return mark carries the hold's own held stamp (HeldToReturn):
+			// the hold is stamped again here, and so is its mark
+			if fields[FieldHeldReturn] != "" {
+				fields[FieldHeldReturn] = now
 			}
 		}
 		if w := sh.Width[m]; w != "" {
