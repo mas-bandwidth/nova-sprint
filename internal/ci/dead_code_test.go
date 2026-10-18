@@ -66,11 +66,12 @@ type deadcodePackage struct {
 func deadCodeEnv(goos string) []string {
 	var env []string
 	for _, kv := range os.Environ() {
-		if strings.HasPrefix(kv, "GOOS=") || strings.HasPrefix(kv, "GOARCH=") {
+		if strings.HasPrefix(kv, "GOOS=") || strings.HasPrefix(kv, "GOARCH=") || strings.HasPrefix(kv, "GOGC=") {
 			continue
 		}
 		env = append(env, kv)
 	}
+	env = append(env, "GOGC=35")
 	if goos != "" {
 		env = append(env, "GOOS="+goos)
 	}
@@ -223,16 +224,29 @@ func measureDeadCode(t *testing.T, ctx context.Context, root string) map[string]
 	var wg sync.WaitGroup
 	for g, goos := range deadCodeGOOS {
 		runs[g] = make([]deadRun, len(deadCodeTagSets))
-		for i, tags := range deadCodeTagSets {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				sem <- struct{}{}
-				defer func() { <-sem }()
-				dead, kept, err := deadFuncs(t, ctx, bin, root, goos, tags, allRoots[g])
-				runs[g][i] = deadRun{dead, kept, err}
-			}()
-		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			dead0, kept0, err0 := deadFuncs(t, ctx, bin, root, goos, deadCodeTagSets[0], allRoots[g])
+			<-sem
+			runs[g][0] = deadRun{dead0, kept0, err0}
+			startRoots := allRoots[g]
+			if err0 == nil && len(kept0) > 0 {
+				startRoots = kept0
+			}
+			for i := 1; i < len(deadCodeTagSets); i++ {
+				tags := deadCodeTagSets[i]
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					sem <- struct{}{}
+					defer func() { <-sem }()
+					dead, kept, err := deadFuncs(t, ctx, bin, root, goos, tags, startRoots)
+					runs[g][i] = deadRun{dead, kept, err}
+				}()
+			}
+		}()
 	}
 	wg.Wait()
 
@@ -272,12 +286,10 @@ func measureDeadCode(t *testing.T, ctx context.Context, root string) map[string]
 	return byPkg
 }
 
-// deadCodeParallel bounds the deadcode runs in flight. Each run loads and
-// analyses the whole program, so the bound is the machine's cores, and two at
-// the least so a small runner still overlaps one run's loading with another's
-// analysis.
+// deadCodeParallel bounds the deadcode runs in flight by both CPU cores and
+// memory so summed peak RSS stays under 4 GiB.
 func deadCodeParallel() int {
-	return max(2, runtime.NumCPU())
+	return deadCodeParallelFor(runtime.NumCPU(), deadCodeHostMemBytes(), deadCodePerRunBytes)
 }
 
 func sameRoots(a, b []deadCodeRoot) bool {
