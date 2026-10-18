@@ -27,6 +27,7 @@ func holdGateSnapshot(state map[string]string) *sprint.Snapshot {
 			fields["status"] = sprint.Up
 		case "coord":
 			fields[sprint.FieldHeld] = "2026-01-01T00:00:00Z"
+			fields[sprint.FieldHeldGate] = "2026-01-01T00:00:00Z"
 		case "ret": // the coordinator took it down with fleet down (hold --return)
 			fields[sprint.FieldHeld] = "2026-01-01T00:00:00Z"
 			fields[sprint.FieldHeldReturn] = "2026-01-01T00:00:00Z"
