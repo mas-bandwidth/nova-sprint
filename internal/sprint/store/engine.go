@@ -70,13 +70,13 @@ type Store struct {
 	// it on every snapshot rule 11 reads, so check counts the benches the land
 	// loop can use (Snapshot.LandBenches), leaving the server's own machine out.
 	// "" is none.
-	Self string
-	Now             func() time.Time
-	NewID           func() string       // a fresh operation id family; nil is NewID
-	Sleep           func(time.Duration) // the wait between tries on busy tables or fence; nil is time.Sleep
-	Rand            func(n int64) int64 // the jitter of that wait, a number in [0, n); nil is math/rand/v2
-	Attempts        int                 // plans per step before giving up on a busy fence; default FenceTries
-	Resends         int                 // sends of one manifest after a lost reply; default 3
+	Self     string
+	Now      func() time.Time
+	NewID    func() string       // a fresh operation id family; nil is NewID
+	Sleep    func(time.Duration) // the wait between tries on busy tables or fence; nil is time.Sleep
+	Rand     func(n int64) int64 // the jitter of that wait, a number in [0, n); nil is math/rand/v2
+	Attempts int                 // plans per step before giving up on a busy fence; default FenceTries
+	Resends  int                 // sends of one manifest after a lost reply; default 3
 	// Grace is how long an operation is taken as in flight (its writer alive)
 	// before a writer that finds its first manifest unapplied abandons it.
 	Grace time.Duration
