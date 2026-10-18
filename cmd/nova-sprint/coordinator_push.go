@@ -757,9 +757,9 @@ func (a *app) decisionPass(ctx context.Context) {
 			if loginErr != nil {
 				sender = ""
 			}
-			if lane == "owner" {
-				to, err = a.owner(ctx, st)
-			}
+			// the owner lane's escalation goes to the coordinator too: the coordinator
+			// runs the sprint (Glenn, 2026-10-17); a delivery frozen to the owner is
+			// transferred to it below, as any change of recipient is
 			if err != nil {
 				return err
 			}
@@ -817,9 +817,12 @@ func (a *app) decisionPass(ctx context.Context) {
 						job = *old
 						return p
 					}
-					// Owner cadence is global to the lane, including changed/empty sets
-					// and recipient changes. Keep the receipt until the window ends.
-					if lane == "owner" && s.Now.Sub(d.SentAt) < 30*time.Minute {
+					// The owner lane is retired (Glenn, 2026-10-17: "i am not involved in
+					// the sprint, you are"): a delivery it sent is closed and none is
+					// prepared again; one frozen unsent was transferred to the coordinator
+					// above and is sent once. The coordinator lane carries every decision.
+					if lane == "owner" {
+						p.Closes = oldOpen
 						return p
 					}
 					if set == "" {
@@ -839,7 +842,7 @@ func (a *app) decisionPass(ctx context.Context) {
 						}
 					}
 				}
-				if set == "" {
+				if set == "" || lane == "owner" {
 					return p
 				}
 				token := fmt.Sprintf("decisions:%x", sha256.Sum256([]byte(st.Names.Prefix+strconv.FormatUint(epoch, 10)+lane+to+set+s.Now.UTC().Format(time.RFC3339Nano))))

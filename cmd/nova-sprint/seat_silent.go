@@ -146,13 +146,16 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 			continue
 		}
 		a.serveSay("SEAT SILENT %s raise=%d: %s", g.ID, g.Before, oneline.Quote(g.What))
-		owner, err := a.owner(ctx, st)
+		// the coordinator runs the sprint, so the raise is the coordinator's (Glenn,
+		// 2026-10-17: "i am not involved in the sprint, you are"); the owner is a
+		// take's name, never a push's recipient
+		owner, err := st.B.Coordinator(ctx)
 		if err != nil {
-			a.serveSay("SEAT SILENT %s: the owner could not be read, tried again at the next look: %s", g.ID, oneline.Escape(err.Error()))
+			a.serveSay("SEAT SILENT %s: the coordinator could not be read, tried again at the next look: %s", g.ID, oneline.Escape(err.Error()))
 			continue
 		}
 		if owner == "" {
-			a.serveSay("SEAT SILENT %s: the sprint names no owner: told on this line only", g.ID)
+			a.serveSay("SEAT SILENT %s: the sprint names no coordinator: told on this line only", g.ID)
 		} else {
 			m := bus.Message{From: "nova-sprint", To: []string{owner}, Kind: bus.KindBlocker, Subject: g.Type, Body: g.What, Token: token}
 			if err := a.bus(ctx, m, func(l string) { a.serveSay("%s", l) }); err != nil {

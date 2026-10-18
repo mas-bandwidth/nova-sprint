@@ -40,8 +40,10 @@ func TestDecisionsOwedDeadlineFoldOwnerRetryAndRestart(t *testing.T) {
 	require.Zero(t, count("glenn"))
 	ta.step(time.Second)
 	ta.a.coordinatorPass(ctx)
-	require.Equal(t, 1, count("glenn"), "at deadline owner receives one folded message despite unproven hook")
-	require.Equal(t, 1, count("decision-seat"))
+	// the owner lane is retired (Glenn, 2026-10-17: the coordinator runs the sprint):
+	// the coordinator receives one folded message, the owner none
+	require.Zero(t, count("glenn"), "the owner is never a push's recipient")
+	require.Equal(t, 1, count("decision-seat"), "at deadline the coordinator receives one folded message")
 	for _, m := range b.delivered {
 		if m.Subject == "nova-sprint: decisions owed" {
 			for _, word := range []string{"decision-a", "decision-b", "decision-c"} {
@@ -51,31 +53,31 @@ func TestDecisionsOwedDeadlineFoldOwnerRetryAndRestart(t *testing.T) {
 	}
 	ta.step(29 * time.Minute)
 	ta.a.coordinatorPass(ctx)
-	require.Equal(t, 1, count("glenn"))
+	require.Zero(t, count("glenn"))
 	require.Equal(t, 1, count("decision-seat"))
 	// A server restart loses process memory; durable escalation receipts remain.
 	ta.a.coord = coordPush{}
 	ta.step(time.Minute)
 	ta.a.coordinatorPass(ctx)
-	require.Equal(t, 2, count("glenn"))
+	require.Zero(t, count("glenn"))
 	require.Equal(t, 1, count("decision-seat"), "unchanged overdue set is never repeated to coordinator")
 	// A changed set is prepared durably before a failed send, and its fault is visible.
 	_, err := st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, SprintLevel: true, Type: "decision-d", At: ta.a.now().Add(-sprint.DeadlineJudgment)}))
 	require.NoError(t, err)
 	ta.step(30 * time.Minute)
-	b.fails = 2
+	b.fails = 1
 	ta.a.coordinatorPass(ctx)
 	var view string
 	_, view, err = ta.a.whereOf(ctx, st, 0, false, true)
 	require.NoError(t, err)
 	require.True(t, strings.HasPrefix(view, "DECISIONS OWED 4, oldest "), view)
-	require.Contains(t, strings.Split(view, "\n")[0], "delivery faults 2")
+	require.Contains(t, strings.Split(view, "\n")[0], "delivery faults 1")
 	before := len(b.attempts)
 	ta.a.coord = coordPush{}
 	ta.a.coordinatorPass(ctx)
 	require.Greater(t, len(b.attempts), before)
-	require.Equal(t, 3, count("glenn"))
-	require.Equal(t, 2, count("decision-seat"))
+	require.Zero(t, count("glenn"))
+	require.Equal(t, 2, count("decision-seat"), "the changed set reaches the coordinator once its failed send is retried")
 	_, view, err = ta.a.whereOf(ctx, st, 0, false, true)
 	require.NoError(t, err)
 	require.Contains(t, strings.Split(view, "\n")[0], "delivery faults 0")
@@ -168,7 +170,7 @@ func TestDecisionsOwedAmbiguousExpiryRenewsAndKeepsUnknownHistory(t *testing.T) 
 		return errors.New("reply lost after bus acceptance")
 	}
 	ta.a.coordinatorPass(ctx)
-	require.Len(t, b.delivered, 2)
+	require.Len(t, b.delivered, 1)
 	first := append([]bus.Message(nil), b.delivered...)
 	ta.step(bus.DefaultTokenLife + time.Second)
 	ta.a.bus = func(ctx context.Context, m bus.Message, say func(string)) error {
@@ -179,16 +181,14 @@ func TestDecisionsOwedAmbiguousExpiryRenewsAndKeepsUnknownHistory(t *testing.T) 
 	}
 	ta.a.coord = coordPush{}
 	ta.a.coordinatorPass(ctx)
-	require.Len(t, b.delivered, 4, "expired ambiguous token must not leave the owner silent")
-	for i := range 2 {
-		require.NotEqual(t, first[i].Token, b.delivered[i+2].Token)
-		require.Equal(t, first[i].Body, b.delivered[i+2].Body)
-		require.NotEmpty(t, b.delivered[i+2].From)
-	}
+	require.Len(t, b.delivered, 2, "expired ambiguous token must not leave the coordinator silent")
+	require.NotEqual(t, first[0].Token, b.delivered[1].Token)
+	require.Equal(t, first[0].Body, b.delivered[1].Body)
+	require.NotEmpty(t, b.delivered[1].From)
 	var out string
 	_, out, err = ta.a.whereOf(ctx, st, 0, false, true)
 	require.NoError(t, err)
-	require.Contains(t, strings.Split(out, "\n")[0], "delivery faults 0; earlier receipts unknown 2")
+	require.Contains(t, strings.Split(out, "\n")[0], "delivery faults 0; earlier receipts unknown 1")
 	open, err := st.B.OpenNotes(ctx)
 	require.NoError(t, err)
 	found := 0
@@ -198,7 +198,7 @@ func TestDecisionsOwedAmbiguousExpiryRenewsAndKeepsUnknownHistory(t *testing.T) 
 			require.Contains(t, o.Note.What, "judgment IDs=")
 		}
 	}
-	require.Equal(t, 2, found)
+	require.Equal(t, 1, found)
 	// A later changed set archives the ambiguous history without hiding it.
 	_, err = st.Run(ctx, store.NoteStep("fixture", sprint.Note{Kind: sprint.Judgment, SprintLevel: true, Type: "next-decision"}))
 	require.NoError(t, err)
@@ -206,7 +206,7 @@ func TestDecisionsOwedAmbiguousExpiryRenewsAndKeepsUnknownHistory(t *testing.T) 
 	ta.a.coordinatorPass(ctx)
 	_, out, err = ta.a.whereOf(ctx, st, 0, false, true)
 	require.NoError(t, err)
-	require.Contains(t, strings.Split(out, "\n")[0], "earlier receipts unknown 2")
+	require.Contains(t, strings.Split(out, "\n")[0], "earlier receipts unknown 1")
 	require.Contains(t, out, "DECISION RECEIPT HISTORY:")
 	require.Contains(t, out, "judgment IDs=")
 	for _, o := range open {
@@ -267,7 +267,7 @@ func TestDecisionsOwedPendingRecipientChangeKeepsFrozenObligation(t *testing.T) 
 		return errors.New("receipt lost")
 	}
 	ta.a.coordinatorPass(ctx)
-	require.Len(t, b.delivered, 2)
+	require.Len(t, b.delivered, 1)
 	frozen := b.delivered[0]
 	require.NoError(t, ta.m.SetCoordinator(ctx, "new-seat"))
 	env[busUserEnv] = "server-two"
@@ -278,15 +278,14 @@ func TestDecisionsOwedPendingRecipientChangeKeepsFrozenObligation(t *testing.T) 
 		return b.send(ctx, m, say)
 	}
 	ta.a.coordinatorPass(ctx)
-	require.Len(t, b.delivered, 4)
-	require.Equal(t, []string{"new-seat"}, b.delivered[2].To)
-	require.Equal(t, "server-two", b.delivered[2].From)
-	require.Equal(t, "server-two", b.delivered[3].From)
-	require.Equal(t, frozen.Body, b.delivered[2].Body)
-	require.NotEqual(t, frozen.Token, b.delivered[2].Token)
+	require.Len(t, b.delivered, 2)
+	require.Equal(t, []string{"new-seat"}, b.delivered[1].To)
+	require.Equal(t, "server-two", b.delivered[1].From)
+	require.Equal(t, frozen.Body, b.delivered[1].Body)
+	require.NotEqual(t, frozen.Token, b.delivered[1].Token)
 	_, frame, err := ta.a.whereOf(ctx, st, 0, false, true)
 	require.NoError(t, err)
-	require.Contains(t, strings.Split(frame, "\n")[0], "delivery faults 0; earlier receipts unknown 2")
+	require.Contains(t, strings.Split(frame, "\n")[0], "delivery faults 0; earlier receipts unknown 1")
 }
 
 func TestDecisionsWhereBatchesSeatServerCoordinator(t *testing.T) {
@@ -308,7 +307,7 @@ func TestDecisionsWhereBatchesSeatServerCoordinator(t *testing.T) {
 	require.Equal(t, map[string]int{"kv": 1}, ta.m.Calls, "three actual keys share the backend multi-key read")
 }
 
-func TestDecisionsOwnerChangedSetWaitsFullWindow(t *testing.T) {
+func TestDecisionsOwnerLaneIsRetired(t *testing.T) {
 	ta, _, _ := coordSprint(t, "cadence-seat")
 	ctx := context.Background()
 	st := &store.Store{B: ta.m, Names: sprint.Names{}, Now: ta.a.now, Actor: "cadence-seat"}
@@ -326,24 +325,23 @@ func TestDecisionsOwnerChangedSetWaitsFullWindow(t *testing.T) {
 	count := func() int {
 		n := 0
 		for _, m := range b.delivered {
-			if len(m.To) == 1 && m.To[0] == "glenn" {
+			if len(m.To) == 1 && m.To[0] == "cadence-seat" {
 				n++
 			}
 		}
 		return n
 	}
-	require.Equal(t, 1, count())
-	ta.step(time.Minute)
-	add("second")
+	// the owner lane is retired: the coordinator lane alone delivers, one message
+	// per changed set, and nothing ever goes to the owner (Glenn, 2026-10-17)
+	require.Equal(t, 1, count(), "the coordinator lane delivers the first set once")
+	for _, m := range b.delivered {
+		require.NotEqual(t, []string{"glenn"}, m.To, "the owner is never a push's recipient")
+	}
+	ta.step(30 * time.Minute)
 	ta.a.decisionPass(ctx)
-	require.Equal(t, 1, count(), "changed sets must not bypass the owner's 30-minute bound")
-	ta.step(29*time.Minute - time.Second)
-	ta.a.decisionPass(ctx)
-	require.Equal(t, 1, count())
-	ta.step(time.Second)
-	ta.a.decisionPass(ctx)
-	require.Equal(t, 2, count())
-	require.Contains(t, b.delivered[len(b.delivered)-1].Body, "second")
+	for _, m := range b.delivered {
+		require.NotEqual(t, []string{"glenn"}, m.To, "the owner is never a push's recipient")
+	}
 }
 
 func TestDecisionsParkedCardRemainsOwedUntilRelease(t *testing.T) {
