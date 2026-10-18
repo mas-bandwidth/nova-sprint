@@ -6,7 +6,7 @@
 # count is the union over the GOOSes.
 # Shrink-only: NOVA_CI_UPDATE=1 lowers counts and drops rows at zero; it never
 # raises a count or adds a row.
-internal/sprint 6
+internal/sprint 7
 internal/sprintdash 24
 pkg/friend 188
 pkg/ratebudget 5

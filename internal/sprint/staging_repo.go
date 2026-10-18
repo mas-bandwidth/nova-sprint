@@ -2,6 +2,8 @@ package sprint
 
 import (
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
@@ -116,6 +118,54 @@ func mirrorRepoOf(err string) string {
 	return RepoName(url)
 }
 
+// briefRepoRead is one brief's repository and the number of times the brief was
+// actually read (parsed) for it, a memo miss.
+type briefRepoRead struct {
+	repo  string
+	reads atomic.Int64
+}
+
+// briefRepoCache is a brief's repository memoized by the brief string, kept for the
+// process like route.go's modelCache: a brief is immutable on the table (a re-cut
+// writes a new brief), so its repository is read once. Before it, the staging repo
+// check re-split a primary's whole brief for every ok fleet card on every member of
+// every ready card: on 2026-10-17 19:16:10 EDT the server wedged (TICK WEDGED), 251
+// verbs waited at ControlLine.Lock while one ack under the line ran the tick's
+// deadlines through steps_tick.go TickDeadlines -> ready_over.go -> route.go
+// launchersOf/routeServed -> stagingRepoWhy -> stagingRepoRefusals -> cardRepo to
+// pkg/swarm/stage.go:86 ReadCardBase, cardHeader splitting a 4772-byte brief.
+var briefRepoCache sync.Map // brief string -> *briefRepoRead
+
+// briefRepo is the repository a brief names: its REPO:/base-repo: header as
+// owner/name (RepoName), "" when it names none. A miss runs ReadCardBase and is
+// stored with LoadOrStore so concurrent readers share one entry and count one read.
+func briefRepo(brief string) string {
+	if v, ok := briefRepoCache.Load(brief); ok {
+		return v.(*briefRepoRead).repo
+	}
+	repo := ""
+	cb := swarm.ReadCardBase([]byte(brief))
+	if cb.Named != "" {
+		repo = RepoName(cb.Named)
+	} else if cb.Repo != "" {
+		repo = RepoName(cb.Repo)
+	}
+	v, _ := briefRepoCache.LoadOrStore(brief, &briefRepoRead{repo: repo})
+	r := v.(*briefRepoRead)
+	r.reads.Add(1)
+	return r.repo
+}
+
+// briefRepoReads counts the times brief was actually read for its repository (a
+// memo miss). It is the test's seam for the 19:16:10 wedge's cost: the machine's own
+// path never reads it.
+func briefRepoReads(brief string) int64 {
+	if v, ok := briefRepoCache.Load(brief); ok {
+		return v.(*briefRepoRead).reads.Load()
+	}
+	return 0
+}
+
 // cardRepo is the repository a card is of: the card's own repo field (FieldRepo; cards
 // remember their repo), else its primary's field or brief, else its stream's.
 // owner/name, "" when none.
@@ -140,12 +190,8 @@ func (s *Snapshot) cardRepo(c *Card) string {
 		// Most eligibility checks have no repository header. Avoid allocating
 		// parser lines per ready card; the parser still validates every match.
 		if strings.Contains(brief, "REPO:") || strings.Contains(brief, "base-repo:") {
-			cb := swarm.ReadCardBase([]byte(brief))
-			if cb.Named != "" {
-				return RepoName(cb.Named)
-			}
-			if cb.Repo != "" {
-				return RepoName(cb.Repo)
+			if r := briefRepo(brief); r != "" {
+				return r
 			}
 		}
 		if ctl := s.StreamCtl(p.Row); ctl != nil {
