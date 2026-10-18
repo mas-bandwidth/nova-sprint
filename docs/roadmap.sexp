@@ -2000,6 +2000,21 @@
    :date "2026-10-10"
    :release "after v1.4"
    :origin "issue #2556")
+  (item "public-dashboard-google-sign-in" :group "ops" :area "dashboard"
+   :title "Sign in to the public dashboard with Google to see private projects"
+   :text "The public dashboard on hetzner2 (Caddy serving static files at 37.27.135.206, refreshed by
+    the dashboard puller) stays as it is for everyone; a signed-in allowlisted Google account
+    (glenn@mas-bandwidth.com first) also sees the private projects' streams and roadmaps. Needs a
+    DNS name for HTTPS (Google refuses bare-IP redirects), an OAuth client the owner creates in the
+    Google Cloud console with its secret placed on the box by the owner, and the owner's allowlist.
+    Sketch: oauth2-proxy behind Caddy on /private/ only; the puller writes a private snapshot to a
+    directory Caddy never serves directly; the page loads it only when signed in. Tests: private
+    data never lands in the public directory; the private path refuses an unsigned request. A
+    security read before it ships. First check whether today's public snapshot already carries
+    private repositories' cards; if it does, filtering them out comes first."
+   :date "2026-10-18"
+   :release "v1.9"
+   :origin "Glenn 2026-10-18: \"How easy would be to extend the dashboard so that if I logged in (via my google cloud account glenn@mas-bandwidth.com) I was authenticated and could see private stuff?\" then \"let's not do it now, add to future roadmap.\"")
   (item "friend-per-tier-model-choice" :group "friends"
    :title "Each friend's model per tier is decided and recorded"
    :text "Friend rows record which model serves each tier, so the deal and the friend agree on it. Friends
