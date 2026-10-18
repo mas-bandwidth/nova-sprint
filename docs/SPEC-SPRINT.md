@@ -1445,7 +1445,7 @@ manual."; `sprint.Rebalance`'s read pass). The excess read cards of a unit (its 
 beyond the halves its working cards leave free, taken from the end of its start order) go, in
 the same one tick and in the same pass, to a unit with a free lane whose reader row serves
 the read's tier (`readRefusal`, `mayReadCard`) and which has not read the card at this
-attempt, as many as the free lanes take (a read is half a slot). A read never goes back to a
+attempt, as many as the free lanes take (a read is one slot). A read never goes back to a
 row it was rebalanced off (`rebalanced_from`), to a reader row that does not serve its tier,
 or to a reader that already read the card at the attempt, never to the attempt's worker
 (`attemptUnit`) or a reader that spent it (`readSpent`); it keeps its attempt number and is
@@ -1460,7 +1460,7 @@ the next epoch at the first reader. Each read goes cheapest first: a free lane b
 one (a lane counts the unit's queue: ready and working, `readUnit.idle`), then the nearest
 served tier (`readTierDistance`), then the cursor round every unit with a free lane, so a
 burst spreads over equal readers in cursor order and never exceeds a
-unit's room (`DealAhead` times its width, reads at half a slot); a unit that is down, does
+unit's room (`DealAhead` times its width, a read one slot); a unit that is down, does
 not serve the tier, has no room, refused the read at staging, or already read that primary
 at the attempt is skipped (`TestReadCardDealUsesAPersistedRoundRobinCursor`,
 `TestReadCardDealSkipsAReaderWhoseReadWasRefusedAtStaging`). A read card is created only at an id the deal has seen absent; a refused create drops that read, never the deal.
@@ -2731,14 +2731,29 @@ order the cards were dealt in, so a card brought to the front of its stream by
   reader, then her reads, then normal and low work in the room the reads leave, against her one
   width; the machines' ready cards in the ladder's order, stream turns within a level, so a
   low card fills only a lane no other ready card can.
-- A member is a fleet machine with a width: the most work cards it runs at
-  once (its child cap; `init --members m1:64` or `fleet up m1 --width 64`;
-  default 64; `fleet up m1 --width 0` drains it: its width cell is `0`, so no
+- A member is a fleet machine with a width: the most cards it runs at once,
+  every card working counting one, a read as a work card (its child cap). The
+  width is nova-config's, the member's machine row (`nova-config machine set m1
+  --width 64`, then `nova-config apply`), and nothing else: the control card's
+  width field is a refreshed copy of that read, written only from it (`fleet
+  sync`, and every step of the server, which reads nova-config's widths at most
+  every 10 s, holds each take to them and writes a copy that differs back:
+  `sprint.HoldWidths`, `sprint.WidthRefresh`); `fleet up m1 --width <n>` is
+  refused, writing nothing, when n is not nova-config's, naming the config
+  verbs; `nova-sprint doctor` reports a member whose copy differs as a FAIL, one
+  line with both values. The width is held at the sprint's one writer on every
+  path that puts a card into working (a take by count, by id or by a lane, a
+  friend's next, a start receipt, a read made working): the store's step skips a
+  unit that would pass the width, alone, with one refusal line naming the row,
+  its working count and its width, and applies every other unit; nothing is
+  refused for the fleet as a whole and no attempt is spent (`tla/WidthHard.tla`
+  WidthHeld, OneSource). Default 64 for a member with no machine row;
+  `fleet up m1 --width 0` drains it: its width cell is `0`, so no
   deal, redeal or level places a card on it and a take by count takes none,
   its untaken ready cards are levelled away and its working cards finish where
   they are, unlike `fleet down`, which deals them again elsewhere; `fleet up
-  m1 --width <n>` ends the drain, and `fleet sync` writes the inventory's width
-  back; `init --members m1:0` stays refused). It holds up to DealAhead (two) times its width, ready and
+  m1 --width <n>` at nova-config's width ends the drain, and the server's next
+  step writes the inventory's width back; `init --members m1:0` stays refused). It holds up to DealAhead (two) times its width, ready and
   working together: its width working and as many again ready behind them, so
   a lane that frees takes its next card at once (the owner, 2026-10-01: "The
   WHOLE POINT of nova-sprint is to feed the fleet at width and keep it working
@@ -4174,12 +4189,16 @@ reads close as `read --ok|--broken` closes them, and it leaves review only by th
   `TestTheReadDealSkipsAMemberWithAQueue`).
   (`TestAReadCardGoesToTheCheapestReaderThatMayTakeIt`, `TestTheReadDealGivesNarrowMembersTheirTurn`).
   There is no finder, no rolling index and no per-reader room.
-- **Half a slot.** A read card holds half a slot of its unit's one width: a row's load is its
-  work cards and half its reads, rounded up (`halfLoad`), in the deal's room (`memberLoads`,
-  `widthRoom`, `friendLoad`), so a member of width 8, holding DealAhead (2) widths, holds 16 work
-  cards or 32 reads or any mix. The take holds the width in half slots (a read one, a work card
-  two) and takes the reads first; the member's own lanes count the same (`member.halves`): a
-  member of width 1 runs two reads at once.
+- **A whole slot.** A read card holds a whole slot of its unit's one width, as a work card
+  does: one definition of a slot for members and friends alike (the owner, 2026-10-18: every
+  fleet machine and every friend follows the single definition of width, in nova-config, with
+  no exceptions). A row's load is its cards, one a card (`slotLoad`), in the deal's room
+  (`memberLoads`, `widthRoom`, `friendLoad`), the read ask (`readUnitsOf`) and the rebalance
+  (`freeSlots`), so a member of width 8, holding DealAhead (2) widths, holds 16 cards of either
+  kind. The take's room is the width less the cards working, and takes the reads first: a member
+  of width 1 runs one read or one work card at once. The half-slot count this replaced let
+  hetzner1 run 20 cards at width 16 (`tla/WidthHard.tla`, witness
+  `MCWidthHardBrokenHalfRead`).
 - **The member runs a read card.** A read card in a member's fleet queue is taken with its work
   and run by the same loop as a read: its packet is a read's (`Kind: read`, the head, the work
   branch, the worker's report), it pushes nothing, and its end is reported with the read verb as
