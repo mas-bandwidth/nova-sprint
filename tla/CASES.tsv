@@ -799,3 +799,7 @@ MCRepairLogBrokenSkipApplied.cfg	MCRepairLog.tla	invariant	AppliedHasLine	ignore
 MCRepairLogReconcileSkipApplied.cfg	MCRepairLog.tla	pass	-	ignore-terminal	repair-log	required	-
 MCRepairLogBrokenNoProbe.cfg	MCRepairLog.tla	invariant	ProbeSparesEntries	ignore-terminal	repair-log	required	-
 MCRepairLogBrokenReconcileBlind.cfg	MCRepairLog.tla	invariant	ReconciledHasLine	ignore-terminal	repair-log	required	-
+MCWidthHard.cfg	MCWidthHard.tla	pass	-	ignore-terminal	widthhard	required	-
+MCWidthHardBrokenHalfRead.cfg	MCWidthHard.tla	invariant	WidthHeld	ignore-terminal	widthhard	required	-
+MCWidthHardBrokenFriendNext.cfg	MCWidthHard.tla	invariant	WidthHeld	ignore-terminal	widthhard	required	-
+MCWidthHardBrokenSecondSource.cfg	MCWidthHard.tla	invariant	WidthHeld	ignore-terminal	widthhard	required	-
