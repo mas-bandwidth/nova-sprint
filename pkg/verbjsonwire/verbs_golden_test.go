@@ -30,6 +30,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -38,8 +41,12 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-tools/pkg/schemaread"
+	"github.com/mas-bandwidth/nova-tools/pkg/units"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -55,9 +62,10 @@ type typ struct {
 }
 
 type field struct {
-	name string
-	key  string // the JSON text key
-	t    *typ
+	name  string
+	key   string // the JSON text key
+	t     *typ
+	spell string // the type as the schema spells it (?T optional, *T pointer)
 }
 
 type tableDef struct {
@@ -140,7 +148,7 @@ func loadSchema(t *testing.T) (map[string]*tableDef, []string) {
 		if key == "" {
 			key = m[1]
 		}
-		cur.fields = append(cur.fields, field{name: m[1], key: key, t: parseType(m[2])})
+		cur.fields = append(cur.fields, field{name: m[1], key: key, t: parseType(m[2]), spell: m[2]})
 	}
 	require.NotEmpty(t, defs)
 	return defs, order
@@ -511,7 +519,6 @@ var samples = map[string][]string{
 	},
 	"WakeState":     {`{"seeded":true,"bus":"1760000000000-0","judgments":["j1"],"stop":"","down":{"friend.amy":2},"told":["friend.amy"],"last":{"judgment":"` + instant + `"}}`},
 	"WakeAnswer":    {`{"cursor":"1760000000000-3","woke":true}`},
-	"GoalList":      {`{"goals":[{"name":"rowan","route":"rowan","last":"` + instant + `","count":3,"state":"ok","text":"keep going\n"}]}`},
 	"GoalShow":      {`[{"name":"rowan","route":"rowan","last":"` + instant + `","count":3,"state":"ok","text":"keep going\n"}]`},
 	"GoalSet":       {`{"name":"rowan","route":"rowan","last":"` + zeroAt + `","count":0,"state":"waiting","new":true}`},
 	"GoalDrop":      {`{"name":"rowan","dropped":true}`},
@@ -577,9 +584,6 @@ func roots() []root {
 		}},
 		{table: "WakeAnswer", name: "WAKE-ANSWER", help: "nova-sprint log -h", samples: samples["WakeAnswer"], newCode: func() erased {
 			return newCodec("WAKE-ANSWER", "nova-sprint log -h", WakeAnswerLoadMeasureReason, WakeAnswerLoadBuilder, WakeAnswerFromJson, WakeAnswerMeasure, WakeAnswerSave, WakeAnswerToJsonMeasure, WakeAnswerToJson)
-		}},
-		{table: "GoalList", name: "GOAL-LIST", help: "nova-sprint goal list -h", samples: samples["GoalList"], newCode: func() erased {
-			return newCodec("GOAL-LIST", "nova-sprint goal list -h", GoalListLoadMeasureReason, GoalListLoadBuilder, GoalListFromJson, GoalListMeasure, GoalListSave, GoalListToJsonMeasure, GoalListToJson)
 		}},
 		{table: "GoalSet", name: "GOAL-SET", help: "nova-sprint goal set -h", samples: samples["GoalSet"], newCode: func() erased {
 			return newCodec("GOAL-SET", "nova-sprint goal set -h", GoalSetLoadMeasureReason, GoalSetLoadBuilder, GoalSetFromJson, GoalSetMeasure, GoalSetSave, GoalSetToJsonMeasure, GoalSetToJson)
@@ -670,6 +674,7 @@ func TestVerbJSONGolden(t *testing.T) {
 	t.Parallel()
 	defs, order := loadSchema(t)
 	rs := roots()
+	src := loadToday(t)
 
 	// the roots are tables of the schema, and together reach every table.
 	seen := map[string]bool{}
@@ -682,6 +687,41 @@ func TestVerbJSONGolden(t *testing.T) {
 	for _, name := range order {
 		assert.True(t, seen[name], "table %s is reached from no root: a verb prints it or it is dead", name)
 	}
+
+	// a field today's code omits when empty (omitempty) is optional (?T) in
+	// the schema wherever the schema can spell it (a bool, a number, a
+	// bounded array), so the text form omits it too (SPEC-TABLES 2.3, 16.2):
+	// every table is walked beside the Go type its verb hands encoding/json.
+	// A pointer, a text and an unbounded list have no optional spelling at
+	// this pin; they are named in elided.
+	t.Run("omitempty is optional", func(t *testing.T) {
+		t.Parallel()
+		walked := map[string]bool{}
+		for _, r := range append(rs, root{table: "GoalShow"}) {
+			spec := todaySpecs[r.table]
+			var rt reflect.Type
+			var err error
+			switch {
+			case spec.typ != "":
+				rt, err = src.expr(spec.typ)
+			case spec.lit != "":
+				rt, err = src.literal(spec.src, spec.lit)
+			}
+			require.NoError(t, err, "%s", r.table)
+			if rt != nil {
+				omitsLikeToday(t, defs, &typ{kind: "table", table: r.table}, rt, walked)
+			}
+			for k, e := range spec.keys {
+				kt, err := src.expr(e)
+				require.NoError(t, err, "%s.%s", r.table, k)
+				for _, f := range defs[r.table].fields {
+					if f.key == k {
+						omitsLikeToday(t, defs, f.t, kt, walked)
+					}
+				}
+			}
+		}
+	})
 
 	for _, r := range rs {
 		t.Run(r.table, func(t *testing.T) {
@@ -703,17 +743,25 @@ func TestVerbJSONGolden(t *testing.T) {
 				roundTrip(t, r, encode(t, full), prune(base(defs, rootType)))
 			})
 
-			// the generated JSON text is the bytes encoding/json writes for
-			// today's Go value: same keys, same field order, same shapes.
+			// the generated JSON text is the bytes today's code writes: the real
+			// Go value of the verb (its struct as cmd/nova-sprint declares it, or
+			// its map literal), through encoding/json, for each sample of today's
+			// output and for the fixture of every field (S2: the JSON text form).
 			t.Run("json interop", func(t *testing.T) {
-				full := base(defs, rootType)
-				text := encode(t, full)
-				got, _, err := r.newCode().read(text)
-				require.NoError(t, err, "%s: read JSON", r.name)
-				var compact bytes.Buffer
-				require.NoError(t, json.Compact(&compact, got))
-				want := encode(t, reflectValue(defs, rootType, full))
-				assert.Equal(t, string(want), compact.String(), "%s: the generated JSON text is encoding/json's bytes", r.name)
+				texts := append([][]byte{}, encode(t, base(defs, rootType)))
+				for _, s := range r.samples {
+					texts = append(texts, []byte(s))
+				}
+				for i, text := range texts {
+					_, want := src.today(t, r.table, text)
+					got, _, err := r.newCode().read(want)
+					require.NoError(t, err, "%s: read today's bytes %d", r.name, i)
+					kept, named := elided(t, got, decode(t, want))
+					for _, n := range named {
+						t.Logf("%s: text %d: %s (named under Schema improvements wanted)", r.name, i, n)
+					}
+					assert.Equal(t, string(want), string(kept), "%s: text %d: the generated JSON text is the bytes today's code writes", r.name, i)
+				}
 			})
 
 			// a value past a declared bound is refused by name, never clamped.
@@ -812,6 +860,10 @@ func TestVerbJSONGolden(t *testing.T) {
 			require.NoError(t, err, "GOAL-SHOW: read %s", form)
 			assert.Equal(t, form, res.Form)
 			assert.Equal(t, prune(decode(t, text)), prune(decode(t, back)), "GOAL-SHOW: %s round trip", form)
+			// the generated JSON text is the bytes goal.go:189 writes for []goalView.
+			_, want := src.today(t, "GoalShow", text)
+			kept, _ := elided(t, back, decode(t, want))
+			assert.Equal(t, string(want), string(kept), "GOAL-SHOW: the generated JSON text is the bytes today's code writes")
 		}
 		_, _, err := c.read(text)
 		require.Error(t, err)
@@ -821,63 +873,516 @@ func TestVerbJSONGolden(t *testing.T) {
 	})
 }
 
-// reflectValue builds today's Go value of t (the struct encoding/json writes)
-// from a generic value: fields in schema order, the schema's JSON key as the tag.
-func reflectValue(defs map[string]*tableDef, t *typ, v any) any {
-	_, rv := reflected(defs, t, v)
-	return rv.Interface()
+// ---- today's bytes: what cmd/nova-sprint writes ----------------------------------
+
+// todaySpec is where a root's --json bytes come from in today's code. A verb
+// prints a named Go type (typ), a struct literal handed to json.Marshal (lit:
+// the json key that names the literal, in file src), or a map literal (neither:
+// encoding/json writes its keys sorted), whose typed values keys names.
+type todaySpec struct {
+	typ  string            // a Go type expression: main's own (goalView) or a real one (sprint.StreamsView)
+	src  string            // the file under cmd/nova-sprint holding lit
+	lit  string            // a json key of the struct literal json.Marshal is handed in src
+	keys map[string]string // a map literal's key -> the Go type expression of its value
 }
 
-func reflected(defs map[string]*tableDef, t *typ, v any) (reflect.Type, reflect.Value) {
-	switch t.kind {
-	case "string":
-		return reflect.TypeOf(""), reflect.ValueOf(v.(string))
-	case "bool":
-		return reflect.TypeOf(false), reflect.ValueOf(v.(bool))
-	case "num":
-		return reflect.TypeOf(float64(0)), reflect.ValueOf(v.(float64))
-	case "list", "array":
-		a, _ := v.([]any)
-		et, ev := reflected(defs, t.elem, base(defs, t.elem))
-		st := reflect.SliceOf(et)
-		out := reflect.MakeSlice(st, len(a), len(a))
-		for i, x := range a {
-			_, e := reflected(defs, t.elem, x)
-			out.Index(i).Set(e)
+// todaySpecs names, for every root, the Go value its verb hands encoding/json
+// (the file and line in the schema's comment of the table).
+var todaySpecs = map[string]todaySpec{
+	"SayOK":           {},                                                      // sayok.go:22
+	"UnitRemoved":     {},                                                      // install.go:123,136, friendsync_install.go:161,174
+	"UnitInstalled":   {},                                                      // install.go:301,314, friendsync_install.go:94,107
+	"UnitsCheck":      {keys: map[string]string{"units": "[]units.UnitState"}}, // install.go:369
+	"SeatInstall":     {},                                                      // seatinstall.go:77
+	"SeatCoordinator": {keys: map[string]string{"handover": "handoverView"}},   // seat.go:105
+	"Handover":        {typ: "handoverView"},
+	"SeatCheck":       {}, // seat.go:537 facts through sayOK
+	"SeatRepaired":    {}, // seat.go:586 facts through sayOK
+	"SeatRecord":      {typ: "seatRecord"},
+	"StoreLogin":      {typ: "storeLogin"},
+	"SyncReport":      {typ: "syncReport"},
+	"WakeState":       {typ: "wakeState"},
+	"WakeAnswer":      {}, // log.go:60, serve.go:1020
+	"GoalShow":        {typ: "[]goalView"},
+	"GoalSet":         {src: "goal.go", lit: "new"},
+	"GoalDrop":        {},                                                          // goal.go:221
+	"SnapshotDrill":   {keys: map[string]string{"counts": "store.SnapshotCounts"}}, // snapshot.go:57
+	"SnapshotTaken":   {typ: "store.SnapshotTaken"},
+	"ShadowOut":       {typ: "shadowOut"},
+	"ShadowRecord":    {typ: "shadowRecord"},
+	"SettingValue":    {typ: "sprint.SettingValue"},
+	"SettingsOk":      {}, // settings_verb.go:60
+	"MachineOut":      {typ: "machineOut"},
+	"RemindView":      {typ: "remindView"},
+	"RemindList":      {src: "remind.go", lit: "items"},
+	"LogOut":          {src: "log.go", lit: "lines"},
+	"StreamsView":     {typ: "sprint.StreamsView"},
+	"PassStats":       {typ: "sprint.PassStats"},
+}
+
+// realTypes are the types today's structs name from other packages: the real
+// ones, imported, so their fields and tags are the code's own.
+var realTypes = map[string]reflect.Type{
+	"time.Time":            reflect.TypeOf(time.Time{}),
+	"time.Duration":        reflect.TypeOf(time.Duration(0)),
+	"json.RawMessage":      reflect.TypeOf(json.RawMessage{}),
+	"units.UnitState":      reflect.TypeOf(units.UnitState{}),
+	"sprint.SeatChange":    reflect.TypeOf(sprint.SeatChange{}),
+	"sprint.Refusal":       reflect.TypeOf(sprint.Refusal{}),
+	"sprint.Group":         reflect.TypeOf(sprint.Group{}),
+	"store.Result":         reflect.TypeOf(store.Result{}),
+	"store.PartResult":     reflect.TypeOf(store.PartResult{}),
+	"sprint.SettingValue":  reflect.TypeOf(sprint.SettingValue{}),
+	"sprint.Line":          reflect.TypeOf(sprint.Line{}),
+	"sprint.StreamsView":   reflect.TypeOf(sprint.StreamsView{}),
+	"sprint.PassStats":     reflect.TypeOf(sprint.PassStats{}),
+	"store.SnapshotCounts": reflect.TypeOf(store.SnapshotCounts{}),
+	"store.SnapshotTaken":  reflect.TypeOf(store.SnapshotTaken{}),
+	"store.ShadowPlan":     reflect.TypeOf(store.ShadowPlan{}),
+	"store.TickResult":     reflect.TypeOf(store.TickResult{}),
+}
+
+// today is cmd/nova-sprint's own declarations, parsed from its source (the
+// package is main, so its types are read from their text, never copied).
+type today struct {
+	fset  *token.FileSet
+	files map[string]*ast.File
+	types map[string]*ast.TypeSpec
+	built map[string]reflect.Type
+	doing map[string]bool
+}
+
+func loadToday(t *testing.T) *today {
+	t.Helper()
+	dir := filepath.Join("..", "..", "cmd", "nova-sprint")
+	ents, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	g := &today{fset: token.NewFileSet(), files: map[string]*ast.File{}, types: map[string]*ast.TypeSpec{}, built: map[string]reflect.Type{}, doing: map[string]bool{}}
+	for _, e := range ents {
+		n := e.Name()
+		if !strings.HasSuffix(n, ".go") || strings.HasSuffix(n, "_test.go") {
+			continue
 		}
-		_ = ev
-		return st, out
-	case "map":
-		m, _ := v.(map[string]any)
-		et, _ := reflected(defs, t.elem, base(defs, t.elem))
-		mt := reflect.MapOf(reflect.TypeOf(""), et)
-		out := reflect.MakeMap(mt)
-		for k, x := range m {
-			_, e := reflected(defs, t.elem, x)
-			out.SetMapIndex(reflect.ValueOf(k), e)
+		f, err := parser.ParseFile(g.fset, filepath.Join(dir, n), nil, parser.SkipObjectResolution)
+		require.NoError(t, err)
+		g.files[n] = f
+		for _, d := range f.Decls {
+			gd, ok := d.(*ast.GenDecl)
+			if !ok || gd.Tok != token.TYPE {
+				continue
+			}
+			for _, sp := range gd.Specs {
+				ts := sp.(*ast.TypeSpec)
+				g.types[ts.Name.Name] = ts
+			}
 		}
-		return mt, out
-	case "table":
-		def := defs[t.table]
-		if def.array {
-			return reflected(defs, def.fields[0].t, v)
-		}
-		o, _ := v.(map[string]any)
-		var fs []reflect.StructField
-		var vs []reflect.Value
-		for i, f := range def.fields {
-			ft, fv := reflected(defs, f.t, o[f.key])
-			fs = append(fs, reflect.StructField{Name: fmt.Sprintf("F%d", i), Type: ft, Tag: reflect.StructTag(`json:"` + f.key + `"`)})
-			vs = append(vs, fv)
-		}
-		st := reflect.StructOf(fs)
-		out := reflect.New(st).Elem()
-		for i := range vs {
-			out.Field(i).Set(vs[i])
-		}
-		return st, out
 	}
-	panic("unknown kind " + t.kind)
+	require.NotEmpty(t, g.types)
+	return g
+}
+
+var basicTypes = map[string]reflect.Type{
+	"string": reflect.TypeOf(""), "bool": reflect.TypeOf(false), "int": reflect.TypeOf(0),
+	"int32": reflect.TypeOf(int32(0)), "int64": reflect.TypeOf(int64(0)), "uint32": reflect.TypeOf(uint32(0)),
+	"uint64": reflect.TypeOf(uint64(0)), "float64": reflect.TypeOf(float64(0)), "byte": reflect.TypeOf(byte(0)),
+	"any": reflect.TypeOf((*any)(nil)).Elem(),
+}
+
+// typeOf is the reflect type of a Go type expression as today's source spells it.
+func (g *today) typeOf(e ast.Expr) (reflect.Type, error) {
+	switch x := e.(type) {
+	case *ast.Ident:
+		if b, ok := basicTypes[x.Name]; ok {
+			return b, nil
+		}
+		return g.named(x.Name)
+	case *ast.SelectorExpr:
+		q := x.X.(*ast.Ident).Name + "." + x.Sel.Name
+		if rt, ok := realTypes[q]; ok {
+			return rt, nil
+		}
+		return nil, fmt.Errorf("today's code names %s: add the real type to realTypes", q)
+	case *ast.StarExpr:
+		rt, err := g.typeOf(x.X)
+		if err != nil {
+			return nil, err
+		}
+		return reflect.PointerTo(rt), nil
+	case *ast.ArrayType:
+		rt, err := g.typeOf(x.Elt)
+		if err != nil {
+			return nil, err
+		}
+		if x.Len != nil {
+			return nil, fmt.Errorf("a fixed Go array in today's output is not expected")
+		}
+		return reflect.SliceOf(rt), nil
+	case *ast.MapType:
+		kt, err := g.typeOf(x.Key)
+		if err != nil {
+			return nil, err
+		}
+		vt, err := g.typeOf(x.Value)
+		if err != nil {
+			return nil, err
+		}
+		return reflect.MapOf(kt, vt), nil
+	case *ast.InterfaceType:
+		return basicTypes["any"], nil
+	case *ast.StructType:
+		return g.structOf(x)
+	}
+	return nil, fmt.Errorf("a Go type the test cannot read: %T", e)
+}
+
+// named is main's own type name: its struct, or the type it is defined as.
+func (g *today) named(name string) (reflect.Type, error) {
+	if rt, ok := g.built[name]; ok {
+		return rt, nil
+	}
+	ts, ok := g.types[name]
+	if !ok {
+		return nil, fmt.Errorf("cmd/nova-sprint declares no type %s", name)
+	}
+	if g.doing[name] {
+		return nil, fmt.Errorf("type %s is recursive", name)
+	}
+	g.doing[name] = true
+	rt, err := g.typeOf(ts.Type)
+	delete(g.doing, name)
+	if err == nil {
+		g.built[name] = rt
+	}
+	return rt, err
+}
+
+// structOf is a struct as encoding/json sees it: its exported fields in their
+// order, each with its own tag; an untagged embedded struct of main's lends its
+// fields in place (encoding/json's promotion).
+func (g *today) structOf(st *ast.StructType) (reflect.Type, error) {
+	var fs []reflect.StructField
+	if err := g.fieldsOf(st, &fs); err != nil {
+		return nil, err
+	}
+	return reflect.StructOf(fs), nil
+}
+
+func (g *today) fieldsOf(st *ast.StructType, fs *[]reflect.StructField) error {
+	for _, f := range st.Fields.List {
+		tag := ""
+		if f.Tag != nil {
+			tag, _ = strconv.Unquote(f.Tag.Value)
+		}
+		if reflect.StructTag(tag).Get("json") == "-" {
+			continue
+		}
+		if len(f.Names) == 0 {
+			id, ok := f.Type.(*ast.Ident)
+			if !ok || reflect.StructTag(tag).Get("json") != "" {
+				return fmt.Errorf("an embedded field the test cannot read: %T", f.Type)
+			}
+			inner, ok := g.types[id.Name].Type.(*ast.StructType)
+			if !ok {
+				return fmt.Errorf("embedded %s is no struct", id.Name)
+			}
+			if err := g.fieldsOf(inner, fs); err != nil {
+				return err
+			}
+			continue
+		}
+		ft, err := g.typeOf(f.Type)
+		if err != nil {
+			return err
+		}
+		for _, n := range f.Names {
+			if !n.IsExported() {
+				continue
+			}
+			*fs = append(*fs, reflect.StructField{Name: n.Name, Type: ft, Tag: reflect.StructTag(tag)})
+		}
+	}
+	return nil
+}
+
+// literal is the struct literal json.Marshal is handed in file src whose type
+// holds the json key key.
+func (g *today) literal(src, key string) (reflect.Type, error) {
+	f, ok := g.files[src]
+	if !ok {
+		return nil, fmt.Errorf("cmd/nova-sprint has no file %s", src)
+	}
+	var found *ast.StructType
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || len(call.Args) == 0 {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || sel.Sel.Name != "Marshal" {
+			return true
+		}
+		lit, ok := call.Args[0].(*ast.CompositeLit)
+		if !ok {
+			return true
+		}
+		st, ok := lit.Type.(*ast.StructType)
+		if !ok {
+			return true
+		}
+		for _, fl := range st.Fields.List {
+			if fl.Tag != nil && strings.Contains(fl.Tag.Value, `json:"`+key) {
+				found = st
+			}
+		}
+		return true
+	})
+	if found == nil {
+		return nil, fmt.Errorf("%s hands json.Marshal no struct literal with key %q", src, key)
+	}
+	return g.structOf(found)
+}
+
+func (g *today) expr(s string) (reflect.Type, error) {
+	e, err := parser.ParseExpr(s)
+	if err != nil {
+		return nil, err
+	}
+	return g.typeOf(e)
+}
+
+// today reads text into the Go value the root's verb hands encoding/json and
+// answers the text a time field can hold (in) and encoding/json's bytes of
+// that value (want). A key the Go value does not hold is refused: the schema
+// keeps no key today's code does not write.
+func (g *today) today(t *testing.T, table string, text []byte) (in, want []byte) {
+	t.Helper()
+	spec, ok := todaySpecs[table]
+	require.True(t, ok, "root %s names no Go value in todaySpecs", table)
+	var rt reflect.Type
+	var err error
+	switch {
+	case spec.typ != "":
+		rt, err = g.expr(spec.typ)
+	case spec.lit != "":
+		rt, err = g.literal(spec.src, spec.lit)
+	}
+	require.NoError(t, err, "%s", table)
+	if rt != nil {
+		v := fit(rt, decode(t, text))
+		in = encode(t, v)
+		return in, strict(t, rt, in)
+	}
+	// a map literal: each typed value through its Go type, the rest as it is.
+	o, isMap := decode(t, text).(map[string]any)
+	require.True(t, isMap, "%s: a map literal's text is an object", table)
+	out := map[string]json.RawMessage{}
+	for k, x := range o {
+		if e, typed := spec.keys[k]; typed {
+			kt, err := g.expr(e)
+			require.NoError(t, err, "%s.%s", table, k)
+			x = fit(kt, x)
+			o[k] = x
+			out[k] = strict(t, kt, encode(t, x))
+			continue
+		}
+		out[k] = encode(t, x)
+	}
+	return encode(t, o), encode(t, out)
+}
+
+// strict decodes text into a new rt, refusing an unknown key, and answers
+// encoding/json's bytes of the value.
+func strict(t *testing.T, rt reflect.Type, text []byte) []byte {
+	t.Helper()
+	p := reflect.New(rt)
+	dec := json.NewDecoder(bytes.NewReader(text))
+	dec.DisallowUnknownFields()
+	require.NoError(t, dec.Decode(p.Interface()), "today's %s reads %s", rt, text)
+	return encode(t, p.Elem().Interface())
+}
+
+// elided is got, compacted, without each key today's code omits (absent from
+// want) that the text form writes as null, [], {} or "": a null pointer, an
+// unbounded text never set (*string), an empty unbounded list ([]T), an empty
+// map and an empty bounded text (string(N)), which SPEC-TABLES 16.2 always
+// writes and
+// which the schema has no elided spelling of at this pin (?*T and ?[]T are
+// refused, 2.3 and 2.13.1; ?string(N) is a named follow-on, 15). Each is
+// named in the answer. Every other byte, key order included, is compared as
+// it is: an omitempty bool or number is ?T and is omitted as today.
+func elided(t *testing.T, got []byte, want any) ([]byte, []string) {
+	t.Helper()
+	var out bytes.Buffer
+	var named []string
+	require.NoError(t, elide(got, want, "", &out, &named))
+	return out.Bytes(), named
+}
+
+func elide(raw []byte, want any, path string, out *bytes.Buffer, named *[]string) error {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || (raw[0] != '{' && raw[0] != '[') {
+		return json.Compact(out, raw)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	open, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	if open == json.Delim('{') {
+		wm, _ := want.(map[string]any)
+		out.WriteByte('{')
+		first := true
+		for dec.More() {
+			kt, err := dec.Token()
+			if err != nil {
+				return err
+			}
+			key := kt.(string)
+			var v json.RawMessage
+			if err := dec.Decode(&v); err != nil {
+				return err
+			}
+			if _, kept := wm[key]; !kept && (string(v) == "null" || string(v) == "[]" || string(v) == "{}" || string(v) == `""`) {
+				*named = append(*named, fmt.Sprintf("%s.%s written %s, omitted today", path, key, v))
+				continue
+			}
+			if !first {
+				out.WriteByte(',')
+			}
+			first = false
+			out.Write(encodeKey(key))
+			out.WriteByte(':')
+			if err := elide(v, wm[key], path+"."+key, out, named); err != nil {
+				return err
+			}
+		}
+		out.WriteByte('}')
+		return nil
+	}
+	wa, _ := want.([]any)
+	out.WriteByte('[')
+	for i := 0; dec.More(); i++ {
+		var v json.RawMessage
+		if err := dec.Decode(&v); err != nil {
+			return err
+		}
+		if i > 0 {
+			out.WriteByte(',')
+		}
+		var w any
+		if i < len(wa) {
+			w = wa[i]
+		}
+		if err := elide(v, w, fmt.Sprintf("%s[%d]", path, i), out, named); err != nil {
+			return err
+		}
+	}
+	out.WriteByte(']')
+	return nil
+}
+
+func encodeKey(k string) []byte {
+	b, _ := json.Marshal(k)
+	return b
+}
+
+// omitsLikeToday walks the schema type st beside the Go type rt and holds that
+// each Go field tagged omitempty of a kind the schema can make optional (a
+// bounded text, a bool, a number, a bounded array) is ?T in the schema.
+func omitsLikeToday(t *testing.T, defs map[string]*tableDef, st *typ, rt reflect.Type, walked map[string]bool) {
+	t.Helper()
+	for rt.Kind() == reflect.Pointer || rt.Kind() == reflect.Slice || rt.Kind() == reflect.Map {
+		rt = rt.Elem()
+	}
+	for st.kind == "list" || st.kind == "array" || st.kind == "map" {
+		st = st.elem
+	}
+	if st.kind != "table" || rt.Kind() != reflect.Struct || rt == realTypes["time.Time"] {
+		return
+	}
+	def := defs[st.table]
+	if def.array {
+		omitsLikeToday(t, defs, def.fields[0].t, rt, walked)
+		return
+	}
+	if walked[st.table] {
+		return
+	}
+	walked[st.table] = true
+	byKey := map[string]reflect.StructField{}
+	for _, f := range reflect.VisibleFields(rt) {
+		if !f.IsExported() || (f.Anonymous && f.Tag.Get("json") == "") {
+			continue
+		}
+		key, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+		if key == "" {
+			key = f.Name
+		}
+		byKey[key] = f
+	}
+	for _, f := range def.fields {
+		gf, ok := byKey[f.key]
+		if !ok {
+			continue // the fixture's strict decode names a key today's type lacks
+		}
+		_, opts, _ := strings.Cut(gf.Tag.Get("json"), ",")
+		omits := strings.Contains(opts, "omitempty") && gf.Type.Kind() != reflect.Struct // omitempty never omits a struct value
+		optional := strings.HasPrefix(f.spell, "?")
+		// ?string(N) is a named follow-on at this pin (SPEC-TABLES 15), as
+		// ?*T and ?[]T are refused (2.3, 2.13.1): those are named in elided.
+		spellable := (f.t.kind == "bool" || f.t.kind == "num" || f.t.kind == "array") && !strings.HasPrefix(f.spell, "[]")
+		if omits && spellable {
+			assert.True(t, optional, "%s.%s: today's %s omits it when empty (omitempty): declare ?%s", st.table, f.name, rt, f.spell)
+		}
+		omitsLikeToday(t, defs, f.t, gf.Type, walked)
+	}
+}
+
+// fit gives each time.Time of rt a time (the fixture's text is "x").
+func fit(rt reflect.Type, v any) any {
+	for rt.Kind() == reflect.Pointer {
+		rt = rt.Elem()
+	}
+	if rt == realTypes["time.Time"] {
+		if s, ok := v.(string); ok {
+			if _, err := time.Parse(time.RFC3339Nano, s); err != nil {
+				return instant
+			}
+		}
+		return v
+	}
+	switch rt.Kind() {
+	case reflect.Struct:
+		o, ok := v.(map[string]any)
+		if !ok {
+			return v
+		}
+		for _, f := range reflect.VisibleFields(rt) {
+			if !f.IsExported() || (f.Anonymous && f.Tag.Get("json") == "") {
+				continue
+			}
+			key, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+			if key == "" {
+				key = f.Name
+			}
+			if x, ok := o[key]; ok {
+				o[key] = fit(f.Type, x)
+			}
+		}
+	case reflect.Slice:
+		if a, ok := v.([]any); ok {
+			for i := range a {
+				a[i] = fit(rt.Elem(), a[i])
+			}
+		}
+	case reflect.Map:
+		if m, ok := v.(map[string]any); ok {
+			for k := range m {
+				m[k] = fit(rt.Elem(), m[k])
+			}
+		}
+	}
+	return v
 }
 
 // firstDiff names the longest string of the text, the value that crossed the bound.
@@ -939,7 +1444,7 @@ func TestVerbJSONPin(t *testing.T) {
 
 	// every table is a generated type: its descriptor names it.
 	infos := map[string]*TableTypeInfo{
-		"SayOK": SayOKTableType(), "GoalList": GoalListTableType(), "GoalShow": GoalShowTableType(), "PassStats": PassStatsTableType(),
+		"SayOK": SayOKTableType(), "GoalSet": GoalSetTableType(), "GoalShow": GoalShowTableType(), "PassStats": PassStatsTableType(),
 		"LogLine": LogLineTableType(), "TickResult": TickResultTableType(),
 	}
 	for name, info := range infos {

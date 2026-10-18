@@ -67,14 +67,13 @@ func init() {
 
 var tableUnitView = UnitViewInfo{Package: "verbjsonwire", ProtocolId: 0xbbe7b02ec776920b,
 	NumTypes: 0, Types: []ViewType{},
-	NumTables: 68, Tables: []ViewType{
+	NumTables: 67, Tables: []ViewType{
 		{Name: "ArchiveResult", File: "verbs.schema", Table: true, Type: &ArchiveResultTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "CoordinatorDelivery", File: "verbs.schema", Table: true, Type: &CoordinatorDeliveryTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "DecisionDelivery", File: "verbs.schema", Table: true, Type: &DecisionDeliveryTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "DecisionView", File: "verbs.schema", Table: true, Type: &DecisionViewTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "DrainedResult", File: "verbs.schema", Table: true, Type: &DrainedResultTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "GoalDrop", File: "verbs.schema", Table: true, Type: &GoalDropTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
-		{Name: "GoalList", File: "verbs.schema", Table: true, Type: &GoalListTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "GoalSet", File: "verbs.schema", Table: true, Type: &GoalSetTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "GoalShow", File: "verbs.schema", Table: true, Type: &GoalShowTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "GoalView", File: "verbs.schema", Table: true, Type: &GoalViewTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},

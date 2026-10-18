@@ -21,15 +21,26 @@
 //     id, a card id at most four dot-joined ids 515);
 //   - a Go time.Time is the string it marshals to (RFC 3339 with nanoseconds,
 //     at most 35 bytes; 40 here), and *time.Time is an optional of it;
-//   - a field that is omitted when empty (omitempty) is a field that reads as
-//     empty when absent; the text form may write the empty value.
+//   - a field today's Go omits when empty (omitempty) is optional (?T) when it
+//     is a bool or a number, so the text form omits it too (docs/SPEC-TABLES.md
+//     section 2.3). A pointer (*T), a text (*string, string(N)), an unbounded
+//     list ([]T) and a map have no optional spelling at this pin (?*T and ?[]T
+//     are refused, sections 2.3 and 2.13.1; ?string(N) is a named follow-on,
+//     section 15): absent, the text form writes null, "", [] or {} where
+//     today's Go writes nothing (section 16.2);
+//   - a root that is a Go map literal (sayOK's facts, the install verbs, goal
+//     drop, snapshot --restore-drill, settings, seat, coordinator) lists its
+//     fields in key order, the order encoding/json writes a map's keys;
+//   - an optional object that holds an unbounded text is a pointer (*T), the
+//     Go *T it is today (section 2.3: ? on a variable-length closure is a
+//     named follow-on).
 //
 // The root table of every --json verb is named beside its source file: SayOK
 // (sayok.go), UnitRemoved and UnitInstalled and UnitsCheck (install.go,
 // friendsync_install.go), SeatInstall (seatinstall.go), SeatCoordinator and
 // Handover and SeatCheck and SeatRepaired and SeatRecord and StoreLogin
 // (seat.go, storelogin.go), SyncReport (fleetsync.go), WakeState
-// (watchwake.go), WakeAnswer (log.go, serve.go), GoalShow and GoalList and GoalSet and
+// (watchwake.go), WakeAnswer (log.go, serve.go), GoalShow and GoalSet and
 // GoalDrop (goal.go), SnapshotDrill and SnapshotTaken (snapshot.go), ShadowOut
 // and ShadowRecord (shadow.go), SettingValue and SettingsOk
 // (settings_verb.go), MachineOut (run.go), RemindView and RemindList
@@ -39,9 +50,10 @@
 // The bounds are the code's where it holds one: sprint.MaxIDLen (128) for an
 // id, a card id of at most four dot-joined ids (515), a friend row of
 // "friend." plus an id (135), store.MaxCardTextBytes (64 KiB) for the words a
-// change carries, sprint.MaxCause (300) for a cause, a path at the platform's
-// PATH_MAX (4096). A text the code bounds nowhere is bounded here at 4096
-// bytes, and a count the code bounds nowhere is unbounded ([]T): a list is
+// change carries, sprint.MaxCause (300) for a cause. A text the code bounds
+// nowhere (a path, a unit file, an error, a reason, a summary) is unbounded
+// text, *string (docs/SPEC-TABLES.md sections 2.5 and 2.13.1: no cap is
+// invented), and a count the code bounds nowhere is unbounded ([]T): a list is
 // never clamped, and the reader refuses what a declared bound would cut.
 package verbjsonwire
 
@@ -52,9 +64,9 @@ package verbjsonwire
 // beside these keys in the verb's own table.
 table SayOK
 {
-    verb   string(32)
-    status string(16)
     exit   int64
+    status string(16)
+    verb   string(32)
 }
 
 // ---- install.go, friendsync_install.go, seatinstall.go: the unit verbs ----------
@@ -64,53 +76,53 @@ table SayOK
 // removal prints path and removed.
 table UnitRemoved
 {
-    path    string(4096)
-    present ?bool
     dry_run ?bool
+    path    *string
+    present ?bool
     removed ?bool
 }
 
 // UnitInstalled is the install verbs' object (install.go, friendsync_install.go):
 // a dry run prints path, the unit text, args and dry_run; an install prints
 // path, written, loaded and args. The unit text is a launchd plist or a
-// systemd unit, at most 32 KiB here.
+// systemd unit, which no code bounds (unbounded text).
 table UnitInstalled
 {
-    path    string(4096)
-    unit    string(32768)
     args    []string
     dry_run ?bool
-    written ?bool
     loaded  ?bool
+    path    *string
+    unit    *string
+    written ?bool
 }
 
 // UnitState is units.UnitState: one unit kind a running sprint needs.
 table UnitState
 {
     kind    string(64)
-    owed    string(4096)
-    path    string(4096)
+    owed    *string
+    path    *string
     state   string(16)
-    why     string(4096)
-    install string(4096)
+    why     *string
+    install *string
 }
 
 // UnitsCheck is units --check's object: the directory looked in, each unit's
 // state and whether every unit is installed.
 table UnitsCheck
 {
-    dir   string(4096)
-    units []UnitState
+    dir   *string
     ok    bool
+    units []UnitState
 }
 
 // SeatInstall is seat install's object (seatinstall.go): the server recorded,
 // whether it was a dry run, and the lines it printed.
 table SeatInstall
 {
-    server  string(256)
     dry_run bool
     seat    []string
+    server  string(256)
 }
 
 // ---- seat.go: the seat ------------------------------------------------------------
@@ -123,9 +135,9 @@ table SeatChange
     from         string(135)
     at           string(40)
     by           string(135)
-    taken        bool
+    taken        ?bool
     approved_by  string(135)
-    reason       string(4096)
+    reason       *string
 }
 
 // SeatView is seatView: the holder, the seat's generation and the last change
@@ -136,7 +148,7 @@ table SeatView
     holder     string(135)
     generation uint64
     since      string(40)
-    last       ?SeatChange
+    last       *SeatChange
 }
 
 // ServerView is serverView: the actor the server runs as and, when it is not
@@ -144,7 +156,7 @@ table SeatView
 table ServerView
 {
     actor  string(135)
-    change string(4096)
+    change *string
 }
 
 // StreamCounts is streamCounts: a stream and its cards in each state. The key
@@ -169,7 +181,7 @@ table SentinelView
 // InboxAnswer is inboxAnswer: one decision and the command lines that make it.
 table InboxAnswer
 {
-    decision string(4096)
+    decision *string
     commands []string
 }
 
@@ -181,7 +193,7 @@ table InboxJudgment
     alias     string(16)
     kind      string(32)
     type_     string(64) | json = "type"
-    what      string(4096)
+    what      *string
     stream    string(128)
     size      int64
     cards     []string(515)
@@ -214,9 +226,9 @@ table DecisionView
 {
     at     string(40)
     verb   string(32)
-    what   string(4096)
+    what   *string
     by     string(135)
-    reason string(4096)
+    reason *string
 }
 
 // Handover is handoverView: what the next seat needs. The decisions are the
@@ -226,9 +238,9 @@ table Handover
     at        string(40)
     seat      SeatView
     owner     string(135)
-    server    ?ServerView
-    machine   string(4096)
-    summary   string(4096)
+    server    *ServerView
+    machine   *string
+    summary   *string
     streams   []StreamCounts
     sentinels []SentinelView
     judgments []InboxJudgment
@@ -243,13 +255,13 @@ table Handover
 // holder, the previous one, who moved it and the handover that follows.
 table SeatCoordinator
 {
-    holder      string(135)
-    from        string(135)
-    by          string(135)
-    taken       bool
     approved_by string(135)
-    op          string(128)
+    by          string(135)
+    from        string(135)
     handover    Handover
+    holder      string(135)
+    op          string(128)
+    taken       bool
 }
 
 // SeatCheck is seat's object (seat.go cmdSeat): sayOK's verb, status and exit
@@ -257,28 +269,28 @@ table SeatCoordinator
 // the server; a drifting seat names the drift and exits 1 (it prints no verb).
 table SeatCheck
 {
-    verb       string(32)
-    status     string(16)
-    exit       int64
-    holder     string(135)
+    drift      *string
     epoch      uint64
+    exit       int64
     generation uint64
+    holder     string(135)
     record     string(135)
     server     string(256)
-    drift      string(4096)
+    status     string(16)
+    verb       string(32)
 }
 
 // SeatRepaired is seat --repair's object (seat.go seatRepair).
 table SeatRepaired
 {
-    verb   string(32)
-    status string(16)
+    by     string(135)
+    drift  *string
     exit   int64
     holder string(135)
-    was    string(135)
-    by     string(135)
     op     string(128)
-    drift  string(4096)
+    status string(16)
+    verb   string(32)
+    was    string(135)
 }
 
 // SeatRecord is seat.json (seat.go seatRecord): the server and the nova-config
@@ -295,10 +307,10 @@ table StoreLogin
 {
     redis  string(256)
     user   string(128)
-    store  string(4096)
+    store  *string
     as_    string(128) | json = "as"
-    key    string(4096)
-    sops   string(4096)
+    key    *string
+    sops   *string
     secret string(128)
 }
 
@@ -309,8 +321,8 @@ table SyncDrift
 {
     member string(128)
     kind   string(32)
-    from   int64
-    to     int64
+    from   ?int64
+    to     ?int64
 }
 
 // SyncReport is syncReport: fleet sync's one shape whether the verb checked,
@@ -326,7 +338,7 @@ table SyncReport
     waiting []string
     moved   []string
     refused []string
-    error   string(4096)
+    error   *string
 }
 
 // ---- watchwake.go -------------------------------------------------------------------
@@ -339,7 +351,7 @@ table WakeState
     seeded    bool
     bus       string(41)
     judgments []string
-    stop      string(4096)
+    stop      *string
     down      map[string(128)]int64
     told      []string(128)
     last      map[string(128)]string(40)
@@ -364,7 +376,7 @@ table GoalView
     last  string(40)
     count int64
     state string(16)
-    error string(4096)
+    error *string
     text  string(65536)
 }
 
@@ -376,12 +388,6 @@ table GoalShow | json = "array"
     goals []GoalView
 }
 
-// GoalList is goal list's object: the views as a "goals" array.
-table GoalList
-{
-    goals []GoalView | json = "goals"
-}
-
 // GoalSet is goal set's object: a GoalView with new, whether the goal was
 // created.
 table GoalSet
@@ -391,7 +397,7 @@ table GoalSet
     last    string(40)
     count   int64
     state   string(16)
-    error   string(4096)
+    error   *string
     text    string(65536)
     created bool | json = "new"
 }
@@ -399,8 +405,8 @@ table GoalSet
 // GoalDrop is goal drop's object.
 table GoalDrop
 {
-    name    string(128)
     dropped bool
+    name    string(128)
 }
 
 // ---- snapshot.go -------------------------------------------------------------------------
@@ -416,16 +422,16 @@ table SnapshotCounts
 // restore is store.RestoreIntegrity or store.RestoreSemantic.
 table SnapshotDrill
 {
-    file    string(4096)
-    sha256  string(64)
     counts  SnapshotCounts
+    file    *string
     restore string(16)
+    sha256  string(64)
 }
 
 // SnapshotTaken is store.SnapshotTaken: snapshot's object.
 table SnapshotTaken
 {
-    file    string(4096)
+    file    *string
     sha256  string(64)
     bytes_  int64 | json = "bytes"
     counts  SnapshotCounts
@@ -441,7 +447,7 @@ table ShadowPart
     table_ string(32) | json = "table"
     name   string(64)
     size   int64
-    due    int64
+    due    ?int64
 }
 
 // ShadowPlan is store.ShadowPlan: what a shadow tick planned.
@@ -459,14 +465,14 @@ table ShadowPlan
 table ShadowOut
 {
     shadow ?ShadowPlan
-    error  string(4096)
+    error  *string
 }
 
 // ShadowRecord is <target>.shadow.json (shadow.go shadowRecord): the
 // candidate's shadow tick beside the switch record.
 table ShadowRecord
 {
-    binary  string(4096)
+    binary  *string
     at      string(40)
     wall_ns int64
     plan    ShadowPlan
@@ -479,8 +485,8 @@ table SettingValue
 {
     flag     string(64)
     prop     string(64)
-    value    string(4096)
-    dflt     string(4096) | json = "default"
+    value    *string
+    dflt     *string | json = "default"
     set      bool
     accessor string(256)
 }
@@ -490,8 +496,8 @@ table SettingValue
 table SettingsOk
 {
     count int64
-    set   int64
     epoch uint64
+    set   int64
 }
 
 // ---- run.go: start, stop, tick -------------------------------------------------------------
@@ -500,7 +506,7 @@ table SettingsOk
 table Refusal
 {
     id  string(515)
-    why string(4096)
+    why *string
 }
 
 // DrainedResult is a store.Result a step drained before it planned (the
@@ -515,12 +521,12 @@ table DrainedResult
     raised   []string
     said     []string
     attempts int64
-    replay   bool
+    replay   ?bool
     repaired []string
     pending  string(128)
     skipped  []string
-    args     string(4096)
-    lost     bool
+    args     *string
+    lost     ?bool
     tables   map[string(32)]int64
 }
 
@@ -537,12 +543,12 @@ table PartResult
     raised   []string
     said     []string
     attempts int64
-    replay   bool
+    replay   ?bool
     repaired []string
     pending  string(128)
     skipped  []string
-    args     string(4096)
-    lost     bool
+    args     *string
+    lost     ?bool
     tables   map[string(32)]int64
     drained  []DrainedResult
 }
@@ -553,7 +559,7 @@ table RepairResult
     op      string(128)
     verb    string(32)
     done    string(32)
-    detail  string(4096)
+    detail  *string
     skipped []string
 }
 
@@ -561,10 +567,10 @@ table RepairResult
 table LaneQuiet
 {
     type_   string(64) | json = "type"
-    subject string(4096)
-    why     string(4096)
+    subject *string
+    why     *string
     friend_name string(135) | json = "friend"
-    run     string(4096)
+    run     *string
 }
 
 // TableRows is store.TableRows: a table of a tick and the rows its parts
@@ -591,34 +597,34 @@ table PartTime
     trips    int64
     reads    int64
     rows     int64
-    stale    int64
-    mismatch int64
-    asked    int64
-    refused  int64
-    lost     int64
+    stale    ?int64
+    mismatch ?int64
+    asked    ?int64
+    refused  ?int64
+    lost     ?int64
 }
 
 // TickResult is store.TickResult: what a tick did.
 table TickResult
 {
     state        string(16)
-    tick_end     int64
-    idle         bool
+    tick_end     ?int64
+    idle         ?bool
     repaired     []RepairResult
     parts        []PartResult
-    stale        string(4096)
-    halted       string(4096)
-    due          int64
+    stale        *string
+    halted       *string
+    due          ?int64
     quiet        []LaneQuiet
     tables       []TableRows
-    done         string(4096)
-    hint         string(4096)
+    done         *string
+    hint         *string
     archive      ?ArchiveResult
     order        []string(128)
     times        []PartTime
     took_ns      int64
-    busy_retries int64
-    route_trips  int64
+    busy_retries ?int64
+    route_trips  ?int64
     said         []string
 }
 
@@ -629,14 +635,14 @@ table MachineOut
     before  string(16)
     after   string(16)
     changed bool
-    tick    ?TickResult
+    tick    *TickResult
     notes   int64
-    error   string(4096)
-    sprint  string(4096)
+    error   *string
+    sprint  *string
     refused []Refusal
     moved   []string
     parts   []PartResult
-    reason  string(4096)
+    reason  *string
     until   string(40)
 }
 
@@ -649,10 +655,10 @@ table RemindView
     id      string(128)
     for_    string(135) | json = "for"
     due     string(40)
-    note    string(4096)
+    note    *string
     by      string(135)
     set     string(40)
-    dry_run bool
+    dry_run ?bool
     outcome string(16)
     changed string(16)
 }
@@ -679,7 +685,7 @@ table RemindList
 table StreamTransition
 {
     state   string(16)
-    cause   string(4096)
+    cause   *string
     waiting int64
     owners  []string(128)
 }
@@ -690,15 +696,15 @@ table DecisionDelivery
     lane             string(135)
     to               string(135)
     from             string(135)
-    set              string(4096)
+    set              *string
     body             string(65536)
     token            string(128)
     prepared_at      string(40)
     retry_before     string(40)
     sent_at          string(40)
-    fault            string(4096)
+    fault            *string
     reports          []string
-    unknown_receipts int64
+    unknown_receipts ?int64
 }
 
 // CoordinatorDelivery is sprint.CoordinatorDelivery; its Go fields carry no
@@ -709,7 +715,7 @@ table CoordinatorDelivery
     from         string(135) | json = "From"
     to           string(135) | json = "To"
     token        string(128) | json = "Token"
-    subject      string(4096) | json = "Subject"
+    subject      *string | json = "Subject"
     body         string(65536) | json = "Body"
     episode      string(128) | json = "Episode"
     sent         bool | json = "Sent"
@@ -719,39 +725,39 @@ table CoordinatorDelivery
 // Note is sprint.Note: one notification.
 table Note
 {
-    stream_transition        ?StreamTransition
+    stream_transition        *StreamTransition
     id                       string(128)
-    safe_default             string(4096)
-    decision_delivery        ?DecisionDelivery
-    default_coordinator_told bool
-    default_owner_told       bool
-    coordinator_delivery     ?CoordinatorDelivery
+    safe_default             *string
+    decision_delivery        *DecisionDelivery
+    default_coordinator_told ?bool
+    default_owner_told       ?bool
+    coordinator_delivery     *CoordinatorDelivery
     alias                    string(16)
     kind                     string(32)
     type_                    string(64) | json = "type"
     stream                   string(128)
     primaries                []string(515)
     count                    int64
-    what                     string(4096)
+    what                     *string
     who                      string(135)
-    attempt                  int64
-    before                   int64
+    attempt                  ?int64
+    before                   ?int64
     at                       string(40)
     decisions                []string
-    marked                   bool
-    answers                  string(4096)
+    marked                   ?bool
+    answers                  *string
     suspects                 []string(515)
     card                     string(515)
     other                    string(515)
     tier                     string(16)
     other_stream             string(128)
-    stream_level             bool
-    sprint_level             bool
+    stream_level             ?bool
+    sprint_level             ?bool
     needs                    []string(515)
     review                   string(40)
     review_set               string(40)
     to                       string(135)
-    hint                     string(4096)
+    hint                     *string
 }
 
 // LogLine is sprint.Line: one line of the log. cause is at most
@@ -771,15 +777,15 @@ table LogLine
     table_  string(32) | json = "table"
     from    string(256)
     to      string(256)
-    removed bool
-    gen     int64
+    removed ?bool
+    gen     ?int64
     actor   string(135)
     verb    string(32)
     cause   string(300)
     answers []string
     text    map[string(32)]string(65536)
-    set     map[string(32)]string(4096)
-    note    ?Note
+    set     map[string(32)]*string
+    note    *Note
 }
 
 // LogOut is log --json's object.
@@ -796,7 +802,7 @@ table StreamCard
     id    string(515)
     state string(16)
     tier  string(16)
-    title string(4096)
+    title *string
     needs []string(515)
 }
 

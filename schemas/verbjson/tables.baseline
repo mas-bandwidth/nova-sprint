@@ -94,7 +94,7 @@ table 73664bfe1b3dae05.c341febe5aae51e5
 
 table 77a71a561f6ca92b.823b87195ce20e23
     field key id=0x3dc94a19365b10ec kind=12 size=32
-    field value id=0x7ce4fd9430e80cea kind=12 size=4096
+    field value id=0x7ce4fd9430e80cea kind=17 type=string
 
 table 77a71a561f6ca92b.af9dac3b097689c4
     field value id=0x7ce4fd9430e80cea kind=12 size=515
@@ -127,7 +127,7 @@ table CoordinatorDelivery
     field from id=0x7f845078d7a5c0b5 kind=12 size=135
     field to id=0x08c83907b56ac0a4 kind=12 size=135
     field token id=0x26c4b17d50b3c152 kind=12 size=128
-    field subject id=0x9640735281e90c0f kind=12 size=4096
+    field subject id=0x9640735281e90c0f kind=17 type=string
     field body id=0xcd4de79bc6c93295 kind=12 size=65536
     field episode id=0xdc04396c642e5212 kind=12 size=128
     field sent id=0x2d1fe318d40bfaff kind=1
@@ -137,22 +137,22 @@ table DecisionDelivery
     field lane id=0x0460ddad9060af0f kind=12 size=135
     field to id=0x08c83907b56ac0a4 kind=12 size=135
     field from id=0x7f845078d7a5c0b5 kind=12 size=135
-    field set id=0x823b87195ce20e23 kind=12 size=4096
+    field set id=0x823b87195ce20e23 kind=17 type=string
     field body id=0xcd4de79bc6c93295 kind=12 size=65536
     field token id=0x26c4b17d50b3c152 kind=12 size=128
     field prepared_at id=0x01ed4842eeeaacf8 kind=12 size=40
     field retry_before id=0xfa2e8461180cfa6d kind=12 size=40
     field sent_at id=0x4a1ef4b32bf8fea5 kind=12 size=40
-    field fault id=0x8e54e4c1bcb53cdf kind=12 size=4096
+    field fault id=0x8e54e4c1bcb53cdf kind=17 type=string
     field reports id=0x11ab2d8ba31717e8 kind=14 elem=12 type=DecisionDeliveryReportsText array=unbounded
-    field unknown_receipts id=0xc48bbb17ab629fab kind=5
+    field unknown_receipts id=0xc48bbb17ab629fab kind=5 optional=true
 
 table DecisionView
     field at id=0x089c4e07b545a968 kind=12 size=40
     field verb id=0x673ebb0102773a20 kind=12 size=32
-    field what id=0x9be8c5f64f26c30f kind=12 size=4096
+    field what id=0x9be8c5f64f26c30f kind=17 type=string
     field by id=0x08a64b07b54df8d4 kind=12 size=135
-    field reason id=0x65e8d7f3474f2639 kind=12 size=4096
+    field reason id=0x65e8d7f3474f2639 kind=17 type=string
 
 table DrainedResult
     field verb id=0x673ebb0102773a20 kind=12 size=32
@@ -163,20 +163,17 @@ table DrainedResult
     field raised id=0x9c15222f70851f25 kind=14 elem=12 type=DrainedResultRaisedText array=unbounded
     field said id=0x096e4d18bf89481c kind=14 elem=12 type=DrainedResultSaidText array=unbounded
     field attempts id=0xf039a67062f8b1c7 kind=5
-    field replay id=0x93e4cd644f65cef2 kind=1
+    field replay id=0x93e4cd644f65cef2 kind=1 optional=true
     field repaired id=0xb238d277e29fd945 kind=14 elem=12 type=DrainedResultRepairedText array=unbounded
     field pending id=0x52dea0d6eeb5083c kind=12 size=128
     field skipped id=0xeee13c69133b70b7 kind=14 elem=12 type=DrainedResultSkippedText array=unbounded
-    field args id=0x894930843ebc9d7c kind=12 size=4096
-    field lost id=0xce4be8ad7126193b kind=1
+    field args id=0x894930843ebc9d7c kind=17 type=string
+    field lost id=0xce4be8ad7126193b kind=1 optional=true
     field tables id=0xe26607dbf29ff924 kind=14 elem=13 array=map keykind=12 keybound=32
 
 table GoalDrop
-    field name id=0xc4bcadba8e631b86 kind=12 size=128
     field dropped id=0x79ea20c686c765c5 kind=1
-
-table GoalList
-    field goals id=0x6bd3bccef38de2bf kind=14 elem=13 type=GoalView array=unbounded
+    field name id=0xc4bcadba8e631b86 kind=12 size=128
 
 table GoalSet
     field name id=0xc4bcadba8e631b86 kind=12 size=128
@@ -184,7 +181,7 @@ table GoalSet
     field last id=0x0456d2ad905847d9 kind=12 size=40
     field count id=0xb1e5e28e4479a274 kind=5
     field state id=0xee63aaad45b1b116 kind=12 size=16
-    field error id=0x9f7452dd75d54d31 kind=12 size=4096
+    field error id=0x9f7452dd75d54d31 kind=17 type=string
     field text id=0xfa04f4ef1995407e kind=12 size=65536
     field created id=0xe1a0951856896cfb kind=1
 
@@ -197,16 +194,16 @@ table GoalView
     field last id=0x0456d2ad905847d9 kind=12 size=40
     field count id=0xb1e5e28e4479a274 kind=5
     field state id=0xee63aaad45b1b116 kind=12 size=16
-    field error id=0x9f7452dd75d54d31 kind=12 size=4096
+    field error id=0x9f7452dd75d54d31 kind=17 type=string
     field text id=0xfa04f4ef1995407e kind=12 size=65536
 
 table Handover
     field at id=0x089c4e07b545a968 kind=12 size=40
     field seat id=0x2d08f118d3f933e8 kind=13 type=SeatView
     field owner id=0xa692f75ab08b8cf4 kind=12 size=135
-    field server id=0x7294d77db181ded2 kind=13 type=ServerView optional=true
-    field machine id=0x385157cb98d7be6e kind=12 size=4096
-    field summary id=0xa3c2813bcd780513 kind=12 size=4096
+    field server id=0x7294d77db181ded2 kind=17 type=ServerView
+    field machine id=0x385157cb98d7be6e kind=17 type=string
+    field summary id=0xa3c2813bcd780513 kind=17 type=string
     field streams id=0x81f528932d7f3d02 kind=14 elem=13 type=StreamCounts array=unbounded
     field sentinels id=0x87835f41ad67b3fa kind=14 elem=13 type=SentinelView array=unbounded
     field judgments id=0x96f1955a44843146 kind=14 elem=13 type=InboxJudgment array=unbounded
@@ -217,7 +214,7 @@ table Handover
     field first id=0x89d7ed7f996f1d41 kind=14 elem=12 type=HandoverFirstText array=unbounded
 
 table InboxAnswer
-    field decision id=0x4065e278cd7560a3 kind=12 size=4096
+    field decision id=0x4065e278cd7560a3 kind=17 type=string
     field commands id=0x3cc8bf892e4522d3 kind=14 elem=12 type=InboxAnswerCommandsText array=unbounded
 
 table InboxJudgment
@@ -225,7 +222,7 @@ table InboxJudgment
     field alias id=0x509220bb65a646b7 kind=12 size=16
     field kind id=0xef9c96d721673243 kind=12 size=32
     field type_ id=0xbb7ae3efaad7d5b6 kind=12 size=64
-    field what id=0x9be8c5f64f26c30f kind=12 size=4096
+    field what id=0x9be8c5f64f26c30f kind=17 type=string
     field stream id=0x4f6a36d8e8907985 kind=12 size=128
     field size id=0x4dea9618e618ae3c kind=5
     field cards id=0xaf9dac3b097689c4 kind=14 elem=12 type=InboxJudgmentCardsText array=unbounded
@@ -239,10 +236,10 @@ table InboxJudgment
 
 table LaneQuiet
     field type_ id=0xbb7ae3efaad7d5b6 kind=12 size=64
-    field subject id=0x9640735281e90c0f kind=12 size=4096
-    field why id=0x5ec5ea1948914a79 kind=12 size=4096
+    field subject id=0x9640735281e90c0f kind=17 type=string
+    field why id=0x5ec5ea1948914a79 kind=17 type=string
     field friend_name id=0x2bcee2fac7bb6eb5 kind=12 size=135
-    field run id=0x89b2a81960c55a4a kind=12 size=4096
+    field run id=0x89b2a81960c55a4a kind=17 type=string
 
 table LogLine
     field kind id=0xef9c96d721673243 kind=12 size=32
@@ -256,15 +253,15 @@ table LogLine
     field table_ id=0xe2661bdbf2a01b20 kind=12 size=32
     field from id=0x7f845078d7a5c0b5 kind=12 size=256
     field to id=0x08c83907b56ac0a4 kind=12 size=256
-    field removed id=0x10154dbd4fbc697b kind=1
-    field gen id=0xd4e26d18faaa8af5 kind=5
+    field removed id=0x10154dbd4fbc697b kind=1 optional=true
+    field gen id=0xd4e26d18faaa8af5 kind=5 optional=true
     field actor id=0xdcccc5391c47d4da kind=12 size=135
     field verb id=0x673ebb0102773a20 kind=12 size=32
     field cause id=0xb733af3b0d745380 kind=12 size=300
     field answers id=0xd7316b9dd9f8d444 kind=14 elem=12 type=LogLineAnswersText array=unbounded
     field text id=0xfa04f4ef1995407e kind=14 elem=13 array=map keykind=12 keybound=32
     field set id=0x823b87195ce20e23 kind=14 elem=13 array=map keykind=12 keybound=32
-    field note id=0x3bf8fbbad1587cdd kind=13 type=Note optional=true
+    field note id=0x3bf8fbbad1587cdd kind=17 type=Note
 
 table LogOut
     field lines id=0x5ce3f9a9f1d5001c kind=14 elem=13 type=LogLine array=unbounded
@@ -273,14 +270,14 @@ table MachineOut
     field before id=0xd89aa06245afb2be kind=12 size=16
     field after id=0xbf82010f6f71eae9 kind=12 size=16
     field changed id=0xdf38879af614707b kind=1
-    field tick id=0x1e7683ef2ebc7684 kind=13 type=TickResult optional=true
+    field tick id=0x1e7683ef2ebc7684 kind=17 type=TickResult
     field notes id=0x40906c71b95bdbaa kind=5
-    field error id=0x9f7452dd75d54d31 kind=12 size=4096
-    field sprint id=0x0b4d8c10d825b055 kind=12 size=4096
+    field error id=0x9f7452dd75d54d31 kind=17 type=string
+    field sprint id=0x0b4d8c10d825b055 kind=17 type=string
     field refused id=0xdd362779f48a4b03 kind=14 elem=13 type=Refusal array=unbounded
     field moved id=0x272cf992fbe8c670 kind=14 elem=12 type=MachineOutMovedText array=unbounded
     field parts id=0x0c519da7a1f958c5 kind=14 elem=13 type=PartResult array=unbounded
-    field reason id=0x65e8d7f3474f2639 kind=12 size=4096
+    field reason id=0x65e8d7f3474f2639 kind=17 type=string
     field until id=0x1fcc8b4e81fbac2f kind=12 size=40
 
 table Measure
@@ -306,39 +303,39 @@ table MoreView
     field total id=0x2dcede7d543a4ffd kind=5
 
 table Note
-    field stream_transition id=0xc3f9c8c777cc7c35 kind=13 type=StreamTransition optional=true
+    field stream_transition id=0xc3f9c8c777cc7c35 kind=17 type=StreamTransition
     field id id=0x08b72e07b55c3ac0 kind=12 size=128
-    field safe_default id=0x6841d32120de9a5e kind=12 size=4096
-    field decision_delivery id=0x818c426b23e35a14 kind=13 type=DecisionDelivery optional=true
-    field default_coordinator_told id=0xe513af0ce75cf351 kind=1
-    field default_owner_told id=0x045fe49e7f2e967e kind=1
-    field coordinator_delivery id=0x3e6819a72438e142 kind=13 type=CoordinatorDelivery optional=true
+    field safe_default id=0x6841d32120de9a5e kind=17 type=string
+    field decision_delivery id=0x818c426b23e35a14 kind=17 type=DecisionDelivery
+    field default_coordinator_told id=0xe513af0ce75cf351 kind=1 optional=true
+    field default_owner_told id=0x045fe49e7f2e967e kind=1 optional=true
+    field coordinator_delivery id=0x3e6819a72438e142 kind=17 type=CoordinatorDelivery
     field alias id=0x509220bb65a646b7 kind=12 size=16
     field kind id=0xef9c96d721673243 kind=12 size=32
     field type_ id=0xbb7ae3efaad7d5b6 kind=12 size=64
     field stream id=0x4f6a36d8e8907985 kind=12 size=128
     field primaries id=0x1e199200bbd2c715 kind=14 elem=12 type=NotePrimariesText array=unbounded
     field count id=0xb1e5e28e4479a274 kind=5
-    field what id=0x9be8c5f64f26c30f kind=12 size=4096
+    field what id=0x9be8c5f64f26c30f kind=17 type=string
     field who id=0x5ec5fc194891690f kind=12 size=135
-    field attempt id=0x63e618bd2b303dee kind=5
-    field before id=0xd89aa06245afb2be kind=5
+    field attempt id=0x63e618bd2b303dee kind=5 optional=true
+    field before id=0xd89aa06245afb2be kind=5 optional=true
     field at id=0x089c4e07b545a968 kind=12 size=40
     field decisions id=0xe280a3451e738170 kind=14 elem=12 type=NoteDecisionsText array=unbounded
-    field marked id=0xeddcc52b15488641 kind=1
-    field answers id=0xd7316b9dd9f8d444 kind=12 size=4096
+    field marked id=0xeddcc52b15488641 kind=1 optional=true
+    field answers id=0xd7316b9dd9f8d444 kind=17 type=string
     field suspects id=0x22b24d859cab0707 kind=14 elem=12 type=NoteSuspectsText array=unbounded
     field card id=0xb5614e90e87b455f kind=12 size=515
     field other id=0x0a24ad61c2562a55 kind=12 size=515
     field tier id=0x1e6f84ef2eb65989 kind=12 size=16
     field other_stream id=0x69d9147830b8815e kind=12 size=128
-    field stream_level id=0x928b726c815092cc kind=1
-    field sprint_level id=0xe432996e4b38a7dc kind=1
+    field stream_level id=0x928b726c815092cc kind=1 optional=true
+    field sprint_level id=0xe432996e4b38a7dc kind=1 optional=true
     field needs id=0x4dde811e86af67ba kind=14 elem=12 type=NoteNeedsText array=unbounded
     field review id=0x0e9718950b3dd3a1 kind=12 size=40
     field review_set id=0xb9be9ca27fd4975a kind=12 size=40
     field to id=0x08c83907b56ac0a4 kind=12 size=135
-    field hint id=0x7341fccc9b1d9b78 kind=12 size=4096
+    field hint id=0x7341fccc9b1d9b78 kind=17 type=string
 
 table PartResult
     field name id=0xc4bcadba8e631b86 kind=12 size=64
@@ -350,12 +347,12 @@ table PartResult
     field raised id=0x9c15222f70851f25 kind=14 elem=12 type=PartResultRaisedText array=unbounded
     field said id=0x096e4d18bf89481c kind=14 elem=12 type=PartResultSaidText array=unbounded
     field attempts id=0xf039a67062f8b1c7 kind=5
-    field replay id=0x93e4cd644f65cef2 kind=1
+    field replay id=0x93e4cd644f65cef2 kind=1 optional=true
     field repaired id=0xb238d277e29fd945 kind=14 elem=12 type=PartResultRepairedText array=unbounded
     field pending id=0x52dea0d6eeb5083c kind=12 size=128
     field skipped id=0xeee13c69133b70b7 kind=14 elem=12 type=PartResultSkippedText array=unbounded
-    field args id=0x894930843ebc9d7c kind=12 size=4096
-    field lost id=0xce4be8ad7126193b kind=1
+    field args id=0x894930843ebc9d7c kind=17 type=string
+    field lost id=0xce4be8ad7126193b kind=1 optional=true
     field tables id=0xe26607dbf29ff924 kind=14 elem=13 array=map keykind=12 keybound=32
     field drained id=0xe4a62beec8268510 kind=14 elem=13 type=DrainedResult array=unbounded
 
@@ -366,11 +363,11 @@ table PartTime
     field trips id=0x23ded0a6ec00cf9b kind=5
     field reads id=0x8935b4f305f36a82 kind=5
     field rows id=0xa3a7061ff10a8138 kind=5
-    field stale id=0xee7f9aad45ca109e kind=5
-    field mismatch id=0xeac6148398159d31 kind=5
-    field asked id=0xfb0ab6bc4db98323 kind=5
-    field refused id=0xdd362779f48a4b03 kind=5
-    field lost id=0xce4be8ad7126193b kind=5
+    field stale id=0xee7f9aad45ca109e kind=5 optional=true
+    field mismatch id=0xeac6148398159d31 kind=5 optional=true
+    field asked id=0xfb0ab6bc4db98323 kind=5 optional=true
+    field refused id=0xdd362779f48a4b03 kind=5 optional=true
+    field lost id=0xce4be8ad7126193b kind=5 optional=true
 
 table PassStats
     field epoch id=0xfc9697d1196e6ba6 kind=9
@@ -390,7 +387,7 @@ table ReaderStat
 
 table Refusal
     field id id=0x08b72e07b55c3ac0 kind=12 size=515
-    field why id=0x5ec5ea1948914a79 kind=12 size=4096
+    field why id=0x5ec5ea1948914a79 kind=17 type=string
 
 table RemindList
     field items id=0x3e7884bf4f412c6f kind=14 elem=13 type=RemindView array=unbounded
@@ -402,10 +399,10 @@ table RemindView
     field id id=0x08b72e07b55c3ac0 kind=12 size=128
     field for_ id=0xdd1ce1790c2ecdbd kind=12 size=135
     field due id=0xca643d18f43490d5 kind=12 size=40
-    field note id=0x3bf8fbbad1587cdd kind=12 size=4096
+    field note id=0x3bf8fbbad1587cdd kind=17 type=string
     field by id=0x08a64b07b54df8d4 kind=12 size=135
     field set id=0x823b87195ce20e23 kind=12 size=40
-    field dry_run id=0x2493e27bcb234f74 kind=1
+    field dry_run id=0x2493e27bcb234f74 kind=1 optional=true
     field outcome id=0x75fe2a8465b02e53 kind=12 size=16
     field changed id=0xdf38879af614707b kind=12 size=16
 
@@ -413,7 +410,7 @@ table RepairResult
     field op id=0x08b05607b556600a kind=12 size=128
     field verb id=0x673ebb0102773a20 kind=12 size=32
     field done id=0xdc51fb6761fd6e91 kind=12 size=32
-    field detail id=0xa8a74aa141250df4 kind=12 size=4096
+    field detail id=0xa8a74aa141250df4 kind=17 type=string
     field skipped id=0xeee13c69133b70b7 kind=14 elem=12 type=RepairResultSkippedText array=unbounded
 
 table RouteTakes
@@ -429,9 +426,9 @@ table RoutesView
     field disabled id=0x0fa3391db68e4425 kind=14 elem=12 type=RoutesViewDisabledText array=unbounded
 
 table SayOK
-    field verb id=0x673ebb0102773a20 kind=12 size=32
-    field status id=0xc4d5696d6cc12c2f kind=12 size=16
     field exit id=0xe79e4d608e807965 kind=5
+    field status id=0xc4d5696d6cc12c2f kind=12 size=16
+    field verb id=0x673ebb0102773a20 kind=12 size=32
 
 table SeatChange
     field holder id=0x630853b55c723d4f kind=12 size=135
@@ -439,54 +436,54 @@ table SeatChange
     field from id=0x7f845078d7a5c0b5 kind=12 size=135
     field at id=0x089c4e07b545a968 kind=12 size=40
     field by id=0x08a64b07b54df8d4 kind=12 size=135
-    field taken id=0xc379d129de405f48 kind=1
+    field taken id=0xc379d129de405f48 kind=1 optional=true
     field approved_by id=0xd820e861048719da kind=12 size=135
-    field reason id=0x65e8d7f3474f2639 kind=12 size=4096
+    field reason id=0x65e8d7f3474f2639 kind=17 type=string
 
 table SeatCheck
-    field verb id=0x673ebb0102773a20 kind=12 size=32
-    field status id=0xc4d5696d6cc12c2f kind=12 size=16
-    field exit id=0xe79e4d608e807965 kind=5
-    field holder id=0x630853b55c723d4f kind=12 size=135
+    field drift id=0x5ab3f9c9341f6c04 kind=17 type=string
     field epoch id=0xfc9697d1196e6ba6 kind=9
+    field exit id=0xe79e4d608e807965 kind=5
     field generation id=0xe700a2848d46a857 kind=9
+    field holder id=0x630853b55c723d4f kind=12 size=135
     field record id=0x9c9327fff79474ac kind=12 size=135
     field server id=0x7294d77db181ded2 kind=12 size=256
-    field drift id=0x5ab3f9c9341f6c04 kind=12 size=4096
+    field status id=0xc4d5696d6cc12c2f kind=12 size=16
+    field verb id=0x673ebb0102773a20 kind=12 size=32
 
 table SeatCoordinator
-    field holder id=0x630853b55c723d4f kind=12 size=135
-    field from id=0x7f845078d7a5c0b5 kind=12 size=135
-    field by id=0x08a64b07b54df8d4 kind=12 size=135
-    field taken id=0xc379d129de405f48 kind=1
     field approved_by id=0xd820e861048719da kind=12 size=135
-    field op id=0x08b05607b556600a kind=12 size=128
+    field by id=0x08a64b07b54df8d4 kind=12 size=135
+    field from id=0x7f845078d7a5c0b5 kind=12 size=135
     field handover id=0xd97e65c7c952bd0a kind=13 type=Handover
+    field holder id=0x630853b55c723d4f kind=12 size=135
+    field op id=0x08b05607b556600a kind=12 size=128
+    field taken id=0xc379d129de405f48 kind=1
 
 table SeatInstall
-    field server id=0x7294d77db181ded2 kind=12 size=256
     field dry_run id=0x2493e27bcb234f74 kind=1
     field seat id=0x2d08f118d3f933e8 kind=14 elem=12 type=SeatInstallSeatText array=unbounded
+    field server id=0x7294d77db181ded2 kind=12 size=256
 
 table SeatRecord
     field server id=0x7294d77db181ded2 kind=12 size=256
     field config_seat id=0x354d2090b7514a99 kind=12 size=128
 
 table SeatRepaired
-    field verb id=0x673ebb0102773a20 kind=12 size=32
-    field status id=0xc4d5696d6cc12c2f kind=12 size=16
+    field by id=0x08a64b07b54df8d4 kind=12 size=135
+    field drift id=0x5ab3f9c9341f6c04 kind=17 type=string
     field exit id=0xe79e4d608e807965 kind=5
     field holder id=0x630853b55c723d4f kind=12 size=135
-    field was id=0x5eade819487cb532 kind=12 size=135
-    field by id=0x08a64b07b54df8d4 kind=12 size=135
     field op id=0x08b05607b556600a kind=12 size=128
-    field drift id=0x5ab3f9c9341f6c04 kind=12 size=4096
+    field status id=0xc4d5696d6cc12c2f kind=12 size=16
+    field verb id=0x673ebb0102773a20 kind=12 size=32
+    field was id=0x5eade819487cb532 kind=12 size=135
 
 table SeatView
     field holder id=0x630853b55c723d4f kind=12 size=135
     field generation id=0xe700a2848d46a857 kind=9
     field since id=0x2b827d4f5e0ada9d kind=12 size=40
-    field last id=0x0456d2ad905847d9 kind=13 type=SeatChange optional=true
+    field last id=0x0456d2ad905847d9 kind=17 type=SeatChange
 
 table SentinelView
     field id id=0x08b72e07b55c3ac0 kind=12 size=515
@@ -496,30 +493,30 @@ table SentinelView
 
 table ServerView
     field actor id=0xdcccc5391c47d4da kind=12 size=135
-    field change id=0x4a6173034c7ba27d kind=12 size=4096
+    field change id=0x4a6173034c7ba27d kind=17 type=string
 
 table SettingValue
     field flag id=0xd5f2d079088c0b17 kind=12 size=64
     field prop id=0x8572880e35379c18 kind=12 size=64
-    field value id=0x7ce4fd9430e80cea kind=12 size=4096
-    field dflt id=0x9e98e9673eb8a577 kind=12 size=4096
+    field value id=0x7ce4fd9430e80cea kind=17 type=string
+    field dflt id=0x9e98e9673eb8a577 kind=17 type=string
     field set id=0x823b87195ce20e23 kind=1
     field accessor id=0x463c3859bbaaf89a kind=12 size=256
 
 table SettingsOk
     field count id=0xb1e5e28e4479a274 kind=5
-    field set id=0x823b87195ce20e23 kind=5
     field epoch id=0xfc9697d1196e6ba6 kind=9
+    field set id=0x823b87195ce20e23 kind=5
 
 table ShadowOut
     field shadow id=0x48996f6e7b2a8a21 kind=13 type=ShadowPlan optional=true
-    field error id=0x9f7452dd75d54d31 kind=12 size=4096
+    field error id=0x9f7452dd75d54d31 kind=17 type=string
 
 table ShadowPart
     field table_ id=0xe2661bdbf2a01b20 kind=12 size=32
     field name id=0xc4bcadba8e631b86 kind=12 size=64
     field size id=0x4dea9618e618ae3c kind=5
-    field due id=0xca643d18f43490d5 kind=5
+    field due id=0xca643d18f43490d5 kind=5 optional=true
 
 table ShadowPlan
     field epoch id=0xfc9697d1196e6ba6 kind=9
@@ -530,7 +527,7 @@ table ShadowPlan
     field reads id=0x8935b4f305f36a82 kind=14 elem=12 type=ShadowPlanReadsText array=unbounded
 
 table ShadowRecord
-    field binary id=0xee885e7447d3d73c kind=12 size=4096
+    field binary id=0xee885e7447d3d73c kind=17 type=string
     field at id=0x089c4e07b545a968 kind=12 size=40
     field wall_ns id=0x2f630eb4972f8f19 kind=5
     field plan id=0xa5e84c0db713a4b2 kind=13 type=ShadowPlan
@@ -540,13 +537,13 @@ table SnapshotCounts
     field cards id=0xaf9dac3b097689c4 kind=5
 
 table SnapshotDrill
-    field file id=0xaad01178f02a6a23 kind=12 size=4096
-    field sha256 id=0x31c5f470214e1c5a kind=12 size=64
     field counts id=0xc341febe5aae51e5 kind=13 type=SnapshotCounts
+    field file id=0xaad01178f02a6a23 kind=17 type=string
     field restore id=0xb0577b29135f0bb1 kind=12 size=16
+    field sha256 id=0x31c5f470214e1c5a kind=12 size=64
 
 table SnapshotTaken
-    field file id=0xaad01178f02a6a23 kind=12 size=4096
+    field file id=0xaad01178f02a6a23 kind=17 type=string
     field sha256 id=0x31c5f470214e1c5a kind=12 size=64
     field bytes_ id=0x48c0742b6d1b7ac1 kind=5
     field counts id=0xc341febe5aae51e5 kind=13 type=SnapshotCounts
@@ -562,17 +559,17 @@ table Stages
 table StoreLogin
     field redis id=0xa30c3ff3148ac374 kind=12 size=256
     field user id=0x7d6780e4032b48f2 kind=12 size=128
-    field store id=0x44ee54ad76b0bd8e kind=12 size=4096
+    field store id=0x44ee54ad76b0bd8e kind=17 type=string
     field as_ id=0xe7598e190572ad96 kind=12 size=128
-    field key id=0x3dc94a19365b10ec kind=12 size=4096
-    field sops id=0x5ff4de18f0844142 kind=12 size=4096
+    field key id=0x3dc94a19365b10ec kind=17 type=string
+    field sops id=0x5ff4de18f0844142 kind=17 type=string
     field secret id=0xab23f0eec020c951 kind=12 size=128
 
 table StreamCard
     field id id=0x08b72e07b55c3ac0 kind=12 size=515
     field state id=0xee63aaad45b1b116 kind=12 size=16
     field tier id=0x1e6f84ef2eb65989 kind=12 size=16
-    field title id=0xda31296c0c1b6029 kind=12 size=4096
+    field title id=0xda31296c0c1b6029 kind=17 type=string
     field needs id=0x4dde811e86af67ba kind=14 elem=12 type=StreamCardNeedsText array=unbounded
 
 table StreamCounts
@@ -592,7 +589,7 @@ table StreamEntry
 
 table StreamTransition
     field state id=0xee63aaad45b1b116 kind=12 size=16
-    field cause id=0xb733af3b0d745380 kind=12 size=4096
+    field cause id=0xb733af3b0d745380 kind=17 type=string
     field waiting id=0xeac9afef1a00b5e8 kind=5
     field owners id=0x9746d619fd1fc965 kind=14 elem=12 type=StreamTransitionOwnersText array=unbounded
 
@@ -603,8 +600,8 @@ table StreamsView
 table SyncDrift
     field member id=0x8cada599d66ec543 kind=12 size=128
     field kind id=0xef9c96d721673243 kind=12 size=32
-    field from id=0x7f845078d7a5c0b5 kind=5
-    field to id=0x08c83907b56ac0a4 kind=5
+    field from id=0x7f845078d7a5c0b5 kind=5 optional=true
+    field to id=0x08c83907b56ac0a4 kind=5 optional=true
 
 table SyncReport
     field verb id=0x673ebb0102773a20 kind=12 size=32
@@ -616,7 +613,7 @@ table SyncReport
     field waiting id=0xeac9afef1a00b5e8 kind=14 elem=12 type=SyncReportWaitingText array=unbounded
     field moved id=0x272cf992fbe8c670 kind=14 elem=12 type=SyncReportMovedText array=unbounded
     field refused id=0xdd362779f48a4b03 kind=14 elem=12 type=SyncReportRefusedText array=unbounded
-    field error id=0x9f7452dd75d54d31 kind=12 size=4096
+    field error id=0x9f7452dd75d54d31 kind=17 type=string
 
 table TableRows
     field table_ id=0xe2661bdbf2a01b20 kind=12 size=32
@@ -624,51 +621,51 @@ table TableRows
 
 table TickResult
     field state id=0xee63aaad45b1b116 kind=12 size=16
-    field tick_end id=0x5129a996ba0fe386 kind=5
-    field idle id=0x9e9b04c54923ae13 kind=1
+    field tick_end id=0x5129a996ba0fe386 kind=5 optional=true
+    field idle id=0x9e9b04c54923ae13 kind=1 optional=true
     field repaired id=0xb238d277e29fd945 kind=14 elem=13 type=RepairResult array=unbounded
     field parts id=0x0c519da7a1f958c5 kind=14 elem=13 type=PartResult array=unbounded
-    field stale id=0xee7f9aad45ca109e kind=12 size=4096
-    field halted id=0xf02e41cf737eddcb kind=12 size=4096
-    field due id=0xca643d18f43490d5 kind=5
+    field stale id=0xee7f9aad45ca109e kind=17 type=string
+    field halted id=0xf02e41cf737eddcb kind=17 type=string
+    field due id=0xca643d18f43490d5 kind=5 optional=true
     field quiet id=0x4b67b014335f38d7 kind=14 elem=13 type=LaneQuiet array=unbounded
     field tables id=0xe26607dbf29ff924 kind=14 elem=13 type=TableRows array=unbounded
-    field done id=0xdc51fb6761fd6e91 kind=12 size=4096
-    field hint id=0x7341fccc9b1d9b78 kind=12 size=4096
+    field done id=0xdc51fb6761fd6e91 kind=17 type=string
+    field hint id=0x7341fccc9b1d9b78 kind=17 type=string
     field archive id=0xbea01422b5f77185 kind=13 type=ArchiveResult optional=true
     field order id=0x6be60d7281a829f7 kind=14 elem=12 type=TickResultOrderText array=unbounded
     field times id=0x29338c6c39286cb5 kind=14 elem=13 type=PartTime array=unbounded
     field took_ns id=0x8c0600a7f768530c kind=5
-    field busy_retries id=0x373b89219f5ec8fd kind=5
-    field route_trips id=0x3c406458bf24030d kind=5
+    field busy_retries id=0x373b89219f5ec8fd kind=5 optional=true
+    field route_trips id=0x3c406458bf24030d kind=5 optional=true
     field said id=0x096e4d18bf89481c kind=14 elem=12 type=TickResultSaidText array=unbounded
 
 table UnitInstalled
-    field path id=0x03c52d0debd70676 kind=12 size=4096
-    field unit id=0x6498dfe4855bb3a7 kind=12 size=32768
     field args id=0x894930843ebc9d7c kind=14 elem=12 type=UnitInstalledArgsText array=unbounded
     field dry_run id=0x2493e27bcb234f74 kind=1 optional=true
-    field written id=0x25a86efad3ce0dc0 kind=1 optional=true
     field loaded id=0x037df8d2f49aa980 kind=1 optional=true
+    field path id=0x03c52d0debd70676 kind=17 type=string
+    field unit id=0x6498dfe4855bb3a7 kind=17 type=string
+    field written id=0x25a86efad3ce0dc0 kind=1 optional=true
 
 table UnitRemoved
-    field path id=0x03c52d0debd70676 kind=12 size=4096
-    field present id=0x6f3f2303c0258eac kind=1 optional=true
     field dry_run id=0x2493e27bcb234f74 kind=1 optional=true
+    field path id=0x03c52d0debd70676 kind=17 type=string
+    field present id=0x6f3f2303c0258eac kind=1 optional=true
     field removed id=0x10154dbd4fbc697b kind=1 optional=true
 
 table UnitState
     field kind id=0xef9c96d721673243 kind=12 size=64
-    field owed id=0xccf8b2b44aa782ca kind=12 size=4096
-    field path id=0x03c52d0debd70676 kind=12 size=4096
+    field owed id=0xccf8b2b44aa782ca kind=17 type=string
+    field path id=0x03c52d0debd70676 kind=17 type=string
     field state id=0xee63aaad45b1b116 kind=12 size=16
-    field why id=0x5ec5ea1948914a79 kind=12 size=4096
-    field install id=0x3c114a80781d9640 kind=12 size=4096
+    field why id=0x5ec5ea1948914a79 kind=17 type=string
+    field install id=0x3c114a80781d9640 kind=17 type=string
 
 table UnitsCheck
-    field dir id=0xcaa83e18f46e5f54 kind=12 size=4096
-    field units id=0x4b78454e9ad2913c kind=14 elem=13 type=UnitState array=unbounded
+    field dir id=0xcaa83e18f46e5f54 kind=17 type=string
     field ok id=0x08b05d07b5566bef kind=1
+    field units id=0x4b78454e9ad2913c kind=14 elem=13 type=UnitState array=unbounded
 
 table WakeAnswer
     field cursor id=0xf927453fbe6252ef kind=12 size=41
@@ -678,7 +675,7 @@ table WakeState
     field seeded id=0xd33ea2be5ffe309d kind=1
     field bus id=0x00611d19135a7119 kind=12 size=41
     field judgments id=0x96f1955a44843146 kind=14 elem=12 type=WakeStateJudgmentsText array=unbounded
-    field stop id=0xaf1f52191db2bcc5 kind=12 size=4096
+    field stop id=0xaf1f52191db2bcc5 kind=17 type=string
     field down id=0xdc04126761bb7455 kind=14 elem=13 array=map keykind=12 keybound=128
     field told id=0x2fd9f6ef389a0874 kind=14 elem=12 type=WakeStateToldText array=unbounded
     field last id=0x0456d2ad905847d9 kind=14 elem=13 array=map keykind=12 keybound=128
@@ -842,3 +839,125 @@ table f533a3b5edde754d.eee13c69133b70b7
 - table CardWord: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
 - table IdWord: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
 - table TextWord: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
+
+### 2026-10-18 (UTC) — a12-defs-verb-json-outputs.w9: unbounded text where no code bounds it (*string, SPEC-TABLES 2.13.1, 2.5) and the optional tables holding one as pointers (2.3); omitempty fields optional (2.3); map-literal roots in key order; GoalList dropped, no verb prints it. The area has not landed: no stored data reads differently
+- 77a71a561f6ca92b.823b87195ce20e23.value: wire kind 12 -> 17 [refuse]
+- 77a71a561f6ca92b.823b87195ce20e23.value: nested table string added [refuse]
+- CoordinatorDelivery.subject: wire kind 12 -> 17 [refuse]
+- CoordinatorDelivery.subject: nested table string added [refuse]
+- DecisionDelivery.set: wire kind 12 -> 17 [refuse]
+- DecisionDelivery.set: nested table string added [refuse]
+- DecisionDelivery.fault: wire kind 12 -> 17 [refuse]
+- DecisionDelivery.fault: nested table string added [refuse]
+- DecisionView.what: wire kind 12 -> 17 [refuse]
+- DecisionView.what: nested table string added [refuse]
+- DecisionView.reason: wire kind 12 -> 17 [refuse]
+- DecisionView.reason: nested table string added [refuse]
+- DrainedResult.args: wire kind 12 -> 17 [refuse]
+- DrainedResult.args: nested table string added [refuse]
+- GoalSet.error: wire kind 12 -> 17 [refuse]
+- GoalSet.error: nested table string added [refuse]
+- GoalView.error: wire kind 12 -> 17 [refuse]
+- GoalView.error: nested table string added [refuse]
+- Handover.server: wire kind 13 -> 17 [refuse]
+- Handover.machine: wire kind 12 -> 17 [refuse]
+- Handover.machine: nested table string added [refuse]
+- Handover.summary: wire kind 12 -> 17 [refuse]
+- Handover.summary: nested table string added [refuse]
+- InboxAnswer.decision: wire kind 12 -> 17 [refuse]
+- InboxAnswer.decision: nested table string added [refuse]
+- InboxJudgment.what: wire kind 12 -> 17 [refuse]
+- InboxJudgment.what: nested table string added [refuse]
+- LaneQuiet.subject: wire kind 12 -> 17 [refuse]
+- LaneQuiet.subject: nested table string added [refuse]
+- LaneQuiet.why: wire kind 12 -> 17 [refuse]
+- LaneQuiet.why: nested table string added [refuse]
+- LaneQuiet.run: wire kind 12 -> 17 [refuse]
+- LaneQuiet.run: nested table string added [refuse]
+- LogLine.note: wire kind 13 -> 17 [refuse]
+- MachineOut.tick: wire kind 13 -> 17 [refuse]
+- MachineOut.error: wire kind 12 -> 17 [refuse]
+- MachineOut.error: nested table string added [refuse]
+- MachineOut.sprint: wire kind 12 -> 17 [refuse]
+- MachineOut.sprint: nested table string added [refuse]
+- MachineOut.reason: wire kind 12 -> 17 [refuse]
+- MachineOut.reason: nested table string added [refuse]
+- Note.stream_transition: wire kind 13 -> 17 [refuse]
+- Note.safe_default: wire kind 12 -> 17 [refuse]
+- Note.safe_default: nested table string added [refuse]
+- Note.decision_delivery: wire kind 13 -> 17 [refuse]
+- Note.coordinator_delivery: wire kind 13 -> 17 [refuse]
+- Note.what: wire kind 12 -> 17 [refuse]
+- Note.what: nested table string added [refuse]
+- Note.answers: wire kind 12 -> 17 [refuse]
+- Note.answers: nested table string added [refuse]
+- Note.hint: wire kind 12 -> 17 [refuse]
+- Note.hint: nested table string added [refuse]
+- PartResult.args: wire kind 12 -> 17 [refuse]
+- PartResult.args: nested table string added [refuse]
+- Refusal.why: wire kind 12 -> 17 [refuse]
+- Refusal.why: nested table string added [refuse]
+- RemindView.note: wire kind 12 -> 17 [refuse]
+- RemindView.note: nested table string added [refuse]
+- RepairResult.detail: wire kind 12 -> 17 [refuse]
+- RepairResult.detail: nested table string added [refuse]
+- SeatChange.reason: wire kind 12 -> 17 [refuse]
+- SeatChange.reason: nested table string added [refuse]
+- SeatCheck.drift: wire kind 12 -> 17 [refuse]
+- SeatCheck.drift: nested table string added [refuse]
+- SeatRepaired.drift: wire kind 12 -> 17 [refuse]
+- SeatRepaired.drift: nested table string added [refuse]
+- SeatView.last: wire kind 13 -> 17 [refuse]
+- ServerView.change: wire kind 12 -> 17 [refuse]
+- ServerView.change: nested table string added [refuse]
+- SettingValue.value: wire kind 12 -> 17 [refuse]
+- SettingValue.value: nested table string added [refuse]
+- SettingValue.dflt: wire kind 12 -> 17 [refuse]
+- SettingValue.dflt: nested table string added [refuse]
+- ShadowOut.error: wire kind 12 -> 17 [refuse]
+- ShadowOut.error: nested table string added [refuse]
+- ShadowRecord.binary: wire kind 12 -> 17 [refuse]
+- ShadowRecord.binary: nested table string added [refuse]
+- SnapshotDrill.file: wire kind 12 -> 17 [refuse]
+- SnapshotDrill.file: nested table string added [refuse]
+- SnapshotTaken.file: wire kind 12 -> 17 [refuse]
+- SnapshotTaken.file: nested table string added [refuse]
+- StoreLogin.store: wire kind 12 -> 17 [refuse]
+- StoreLogin.store: nested table string added [refuse]
+- StoreLogin.key: wire kind 12 -> 17 [refuse]
+- StoreLogin.key: nested table string added [refuse]
+- StoreLogin.sops: wire kind 12 -> 17 [refuse]
+- StoreLogin.sops: nested table string added [refuse]
+- StreamCard.title: wire kind 12 -> 17 [refuse]
+- StreamCard.title: nested table string added [refuse]
+- StreamTransition.cause: wire kind 12 -> 17 [refuse]
+- StreamTransition.cause: nested table string added [refuse]
+- SyncReport.error: wire kind 12 -> 17 [refuse]
+- SyncReport.error: nested table string added [refuse]
+- TickResult.stale: wire kind 12 -> 17 [refuse]
+- TickResult.stale: nested table string added [refuse]
+- TickResult.halted: wire kind 12 -> 17 [refuse]
+- TickResult.halted: nested table string added [refuse]
+- TickResult.done: wire kind 12 -> 17 [refuse]
+- TickResult.done: nested table string added [refuse]
+- TickResult.hint: wire kind 12 -> 17 [refuse]
+- TickResult.hint: nested table string added [refuse]
+- UnitInstalled.path: wire kind 12 -> 17 [refuse]
+- UnitInstalled.path: nested table string added [refuse]
+- UnitInstalled.unit: wire kind 12 -> 17 [refuse]
+- UnitInstalled.unit: nested table string added [refuse]
+- UnitRemoved.path: wire kind 12 -> 17 [refuse]
+- UnitRemoved.path: nested table string added [refuse]
+- UnitState.owed: wire kind 12 -> 17 [refuse]
+- UnitState.owed: nested table string added [refuse]
+- UnitState.path: wire kind 12 -> 17 [refuse]
+- UnitState.path: nested table string added [refuse]
+- UnitState.why: wire kind 12 -> 17 [refuse]
+- UnitState.why: nested table string added [refuse]
+- UnitState.install: wire kind 12 -> 17 [refuse]
+- UnitState.install: nested table string added [refuse]
+- UnitsCheck.dir: wire kind 12 -> 17 [refuse]
+- UnitsCheck.dir: nested table string added [refuse]
+- WakeState.stop: wire kind 12 -> 17 [refuse]
+- WakeState.stop: nested table string added [refuse]
+- table GoalList: no longer in the closure — no declaration carries any of its identities, so this baseline no longer covers it [warn]
