@@ -2186,10 +2186,13 @@ func friendOwnRules(brief string) bool {
 	return why == "" && w.Friend && friendRulesHeadRE.MatchString(brief)
 }
 
-// lintBriefReads holds one brief to the card lint's child rules and to its
-// model lines: it returns the model-line why ("" when the lines read) and the
-// lint findings. The single-brief and many-brief paths both call it, so one
-// brief is held the same however it is given.
+// lintBriefReads holds one brief to nova-sprint add's card lint and returns the
+// model-line why ("" when the lines read) and the findings. Its shared pure rules
+// after cardtree.Lint are swarm.LintHeaderStranded and swarm.LintDashboardAsk, in
+// the same order as internal/cardgen.Lint (docs/SPEC-CARD-CONTRACT.md). The
+// by-reference rules, friendOwnRules, and needs-are-card-ids rule need the add's
+// rule set or store and stay here. The single-brief and many-brief paths both call
+// it, so one brief is held the same however it is given.
 func lintBriefReads(brief string, rs ruleSet) (modelWhy string, findings []swarm.CardHeaderFinding) {
 	if _, why := cardhdr.ReadModel(brief); why != "" {
 		return why, nil
