@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -36,6 +37,73 @@ const (
 
 // heldSecrets is the password-bearing variables the scrub removed, by name.
 type heldSecrets map[string]secrets.Secret
+
+// processHeld is what this process's startup scrub removed: set once by startupScrub,
+// main's first act and before any goroutine, and read by the children that open the
+// store with this process's environment login (childStoreEnv).
+var processHeld heldSecrets
+
+// childStoreEnv is environ for a nova-sprint child that opens the store with this
+// process's environment login (NOVA_SPRINT_REDIS_USER / NOVA_SPRINT_REDIS_PASSWORD_ENV)
+// after the scrub took its password out of the environment (docs/SPEC-SPRINT.md, "The
+// seat's store login"): the held password is written to a 0600 file in a fresh 0700
+// directory under tmp ("" is the system's), and the child is pointed at it with
+// NOVA_SPRINT_REDIS_PASSWORD_FILE in place of NOVA_SPRINT_REDIS_PASSWORD_ENV, so the
+// value is in neither the child's environment nor its argv. done removes the directory;
+// call it once the child has exited. Any other login (a password file or keychain
+// already named, the seat login, the default user, a password not held) is environ
+// unchanged, as the child reads that login itself.
+func childStoreEnv(environ []string, held heldSecrets, tmp string) (env []string, done func(), err error) {
+	done = func() {}
+	get := func(name string) string {
+		v := ""
+		for _, kv := range environ {
+			if k, x, ok := strings.Cut(kv, "="); ok && k == name {
+				v = x
+			}
+		}
+		return v
+	}
+	if get(passwordFileEnv) != "" || get(passwordKeychainEnv) != "" {
+		return environ, done, nil
+	}
+	named, user := get(redisauth.PasswordEnvEnv), get(redisauth.UserEnv)
+	if named == "" && user == "" {
+		return environ, done, nil
+	}
+	name := named
+	if name == "" {
+		name = redisauth.DefaultPasswordEnv // storeOptions: a user with no password name
+	}
+	s, ok := held[name]
+	if !ok {
+		return environ, done, nil
+	}
+	dir, err := os.MkdirTemp(tmp, "nova-sprint-login-") // mode 0700
+	if err != nil {
+		return nil, done, fmt.Errorf("the child's store password file has no directory: %v", pathless(err))
+	}
+	path := filepath.Join(dir, "store-password")
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err == nil {
+		err = s.Use(func(p string) error { _, werr := f.WriteString(p + "\n"); return werr })
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+	}
+	if err != nil {
+		_ = os.RemoveAll(dir) // ignored: the write's error is the one returned
+		return nil, done, fmt.Errorf("the child's store password file %s could not be written: %v", path, pathless(err))
+	}
+	for _, kv := range environ {
+		if k, _, _ := strings.Cut(kv, "="); k == redisauth.PasswordEnvEnv || k == passwordFileEnv {
+			continue
+		}
+		env = append(env, kv)
+	}
+	env = append(env, passwordFileEnv+"="+path)
+	return env, func() { _ = os.RemoveAll(dir) }, nil // ignored: a temporary directory of ours
+}
 
 // passwordName says the variable name bears a password value: the one named holds
 // (the variable NOVA_SPRINT_REDIS_PASSWORD_ENV names), the bench and coordinator
@@ -167,6 +235,7 @@ func startupScrub(args []string) (func(string) string, error) {
 		for k, v := range rest {
 			h[k] = v
 		}
+		processHeld = h
 		return h.getenv(os.Getenv), nil
 	}
 	h, err := scrubEnv(os.Environ(), os.Unsetenv)
@@ -176,6 +245,7 @@ func startupScrub(args []string) (func(string) string, error) {
 	if len(h) > 0 && longRunning(args) {
 		return nil, reexecHolding(h)
 	}
+	processHeld = h
 	return h.getenv(os.Getenv), nil
 }
 

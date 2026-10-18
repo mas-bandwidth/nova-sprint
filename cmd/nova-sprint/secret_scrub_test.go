@@ -1,11 +1,20 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/fn"
+	"github.com/mas-bandwidth/nova-tools/pkg/secrets"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -101,4 +110,119 @@ func TestPasswordNamesAndLongRunningVerbs(t *testing.T) {
 	} {
 		assert.Equal(t, want, longRunning(strings.Fields(line)), line)
 	}
+}
+
+// A nova-sprint child (server switch's and doctor --preflight's shadow tick) of a process
+// whose environment login the scrub took: the child is handed the password through a
+// 0600 file and NOVA_SPRINT_REDIS_PASSWORD_FILE, its environment holds no byte of it nor
+// the variable NOVA_SPRINT_REDIS_PASSWORD_ENV named, and the child's own storeOptions
+// reads it back for the same ACL user; done removes the file. Another login is environ
+// unchanged.
+func TestShadowChildGetsTheEnvLoginThroughAPasswordFile(t *testing.T) {
+	t.Parallel()
+	pw := unitSecret(t)
+	held := heldSecrets{"FAKE_STORE_PASSWORD": secrets.NewSecret(pw)}
+	tmp := t.TempDir()
+	environ := []string{"PATH=/usr/bin", "NOVA_SPRINT_REDIS_USER=sprinter", "NOVA_SPRINT_REDIS_PASSWORD_ENV=FAKE_STORE_PASSWORD"}
+
+	env, done, err := childStoreEnv(environ, held, tmp)
+	require.NoError(t, err)
+	child := map[string]string{}
+	for _, kv := range env {
+		assert.NotContains(t, kv, pw, "the child's environment holds no byte of the password")
+		k, v, _ := strings.Cut(kv, "=")
+		child[k] = v
+	}
+	assert.NotContains(t, child, "NOVA_SPRINT_REDIS_PASSWORD_ENV", "the child is not pointed at a variable it lacks")
+	assert.Equal(t, "sprinter", child["NOVA_SPRINT_REDIS_USER"])
+	path := child[passwordFileEnv]
+	require.NotEmpty(t, path, "the child is pointed at the file")
+	assert.True(t, strings.HasPrefix(path, tmp+string(os.PathSeparator)), "the file is under the directory named: %s", path)
+	fi, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), fi.Mode().Perm())
+	di, err := os.Stat(filepath.Dir(path))
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o700), di.Mode().Perm())
+
+	c := newApp(func(k string) string { return child[k] })
+	o, getenv, err := c.storeOptions("s:1")
+	require.NoError(t, err)
+	assert.Equal(t, "sprinter", getenv(o.Env.User), "the same ACL user")
+	assert.Equal(t, pw, getenv(o.PasswordEnv), "the child's storeOptions reads the password from the file")
+
+	done()
+	_, err = os.Stat(filepath.Dir(path))
+	assert.True(t, os.IsNotExist(err), "done removes the file and its directory")
+
+	// a user with no password name is the default password variable's (storeOptions)
+	env, done, err = childStoreEnv([]string{"NOVA_SPRINT_REDIS_USER=sprinter"}, heldSecrets{"NOVA_REDIS_BENCH_PASSWORD": secrets.NewSecret(pw)}, tmp)
+	require.NoError(t, err)
+	assert.NotContains(t, strings.Join(env, "\n"), pw)
+	assert.Contains(t, strings.Join(env, "\n"), passwordFileEnv+"=")
+	done()
+
+	for _, e := range [][]string{
+		{"PATH=/usr/bin"}, // the seat login or the default user: the child reads its own
+		{"NOVA_SPRINT_REDIS_USER=sprinter", "NOVA_SPRINT_REDIS_PASSWORD_FILE=/run/fake/pw"}, // a file already named
+		{"NOVA_SPRINT_REDIS_USER=sprinter", "NOVA_SPRINT_REDIS_PASSWORD_ENV=NOT_HELD"},      // nothing held to hand
+	} {
+		got, done, err := childStoreEnv(e, held, tmp)
+		require.NoError(t, err)
+		assert.Equal(t, e, got, "another login is the environment unchanged")
+		done()
+	}
+	left, err := os.ReadDir(tmp)
+	require.NoError(t, err)
+	assert.Empty(t, left, "nothing is left behind")
+}
+
+// live under an environment login the scrub took: nova-redis fn check (which reads only
+// --password-env) is handed the password the app holds, in that child's environment
+// alone, so the library is read rather than UNKNOWN.
+func TestLiveHandsTheScrubbedEnvLoginToFnCheck(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	pw := unitSecret(t)
+	base := map[string]string{
+		"HOME":                           dir,
+		"NOVA_SPRINT_REDIS":              "s:1",
+		"NOVA_SPRINT_REDIS_USER":         "sprinter",
+		"NOVA_SPRINT_REDIS_PASSWORD_ENV": "FAKE_STORE_PASSWORD",
+		"XDG_CONFIG_HOME":                filepath.Join(dir, "cfg"),
+	}
+	held := heldSecrets{"FAKE_STORE_PASSWORD": secrets.NewSecret(pw)}
+	a := newApp(held.getenv(func(k string) string { return base[k] }))
+	a.now = func() time.Time { return time.Unix(1000, 0).UTC() }
+	var fnArgs string
+	var fnEnv []string
+	fake := adoptRunner(func(ctx context.Context, name string, args ...string) (string, error) {
+		line := strings.Join(append([]string{name}, args...), " ")
+		if strings.HasSuffix(name, "nova-sprint") && len(args) > 0 && args[0] == "version" {
+			return "nova-sprint v1.2.0-dev.abcdef1 linux/amd64 go1.27.1", nil
+		}
+		if strings.Contains(line, "fn check") {
+			fnArgs, fnEnv = line, adoptEnv(ctx)
+			src, _ := fn.Source()
+			return "OK nova_sprint loaded=" + fn.Sum(src) + " want=" + fn.Sum(src) + " store=s:1", nil
+		}
+		return "", errors.New("no such process")
+	})
+	liveRunnerOf.Store(a, fake)
+	t.Cleanup(func() { liveRunnerOf.Delete(a) })
+	bin, agents := filepath.Join(dir, "bin"), filepath.Join(dir, "agents")
+	require.NoError(t, os.MkdirAll(bin, 0o755))
+	require.NoError(t, os.MkdirAll(agents, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(bin, "nova-sprint"), []byte("x"), 0o755))
+
+	var out, errs bytes.Buffer
+	code := runInto(a, []string{"live", "--json", "--bin-dir", bin, "--agents-dir", agents}, &out, &errs)
+	require.Equal(t, 0, code, "%s", errs.String())
+	assert.Contains(t, fnArgs, "--user sprinter --password-env FAKE_STORE_PASSWORD")
+	assert.NotContains(t, fnArgs, pw, "never in argv")
+	assert.Equal(t, []string{"FAKE_STORE_PASSWORD=" + pw}, fnEnv, "the fn check child alone is handed the held password")
+	var m liveManifest
+	require.NoError(t, json.Unmarshal(out.Bytes(), &m))
+	assert.Equal(t, "OK", m.Library.State)
+	assert.NotContains(t, out.String()+errs.String(), pw, "never printed")
 }

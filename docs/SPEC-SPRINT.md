@@ -7400,6 +7400,18 @@ land gate, git, a check, a shadow tick) inherits it, and the app's getenv answer
 holder. The pointers (`…_PASSWORD_ENV`, `…_PASSWORD_FILE`, `…_PASSWORD_KEYCHAIN`) carry no secret
 and stay.
 
+**The children that open the store.** Two verbs start a child that needs the login the scrub took.
+The shadow tick that `server switch` and `doctor --preflight` run (`<candidate> tick --shadow`,
+`runShadow` in `cmd/nova-sprint/shadow.go`) is a nova-sprint, so under an environment login it is
+handed the held password through the password file source: `childStoreEnv` writes it to a 0600
+file in a fresh 0700 temporary directory, points the child at it with
+`NOVA_SPRINT_REDIS_PASSWORD_FILE` in place of `NOVA_SPRINT_REDIS_PASSWORD_ENV` (the user stays),
+and removes the directory once the child exits; any other login is the child's to read itself. `live`
+reads the library with `nova-redis fn check`, which reads only `--password-env`: it resolves the
+login through storeOptions, as every verb does, and hands the password it holds to that short-lived
+child's environment alone, as it hands the seat login's (`TestShadowChildGetsTheEnvLoginThroughAPasswordFile`,
+`TestLiveHandsTheScrubbedEnvLoginToFnCheck`).
+
 **The re-exec.** Unsetting a variable does not clear the environment block the kernel keeps from
 exec, which `ps -E` (sysctl `kern.procargs2`) and `/proc/<pid>/environ` read. So when the scrub
 removed a value and the verb is long-running (`run`, `dashboard`, `watch`, `wait`, `play`, and any
