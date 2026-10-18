@@ -332,7 +332,7 @@ func TestFailedWarningRetriesAtTheNextLook(t *testing.T) {
 	ta.a.bus = func(context.Context, bus.Message, func(string)) error { return errors.New("bus unavailable") }
 	ta.a.coordinatorPass(context.Background())
 	ta.a.bus = send
-	ta.step(coordPushLook)
+	ta.step(coordPushFloor) // the next look: a failed send is not skipped (coordPassSkip)
 	messages := ta.pass(name)
 	require.Len(t, messages, 1)
 	assert.Equal(t, "nova-sprint: judgments waiting on the coordinator", messages[0].Subject)

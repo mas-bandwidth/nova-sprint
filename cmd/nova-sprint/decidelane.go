@@ -51,6 +51,20 @@ const GradeWidth = 8
 // GradeWait is the default bound on one grade's answer (newDecideLane's wait).
 const GradeWait = time.Minute
 
+// readRetryFirst and readRetryCap bound the wait before a failed shadow read of one card at
+// one head is asked again: the first failure waits readRetryFirst, each failure after doubles
+// it, up to readRetryCap. A new head is a new ask, asked at once. Before (2026-10-17), a failed
+// shadow read was asked again every DecideEvery, each ask a handful of git processes, for
+// hours.
+const (
+	readRetryFirst = time.Minute
+	readRetryCap   = 30 * time.Minute
+)
+
+// decideQuietMax is the longest the lane goes without a full round while the store's write
+// generation stands still and nothing of its own is due (decideLane.quiet).
+const decideQuietMax = time.Minute
+
 // decideLane is the lane's state: where the record is, the backend that grades (nil: no
 // grading, no key), how long one grade's answer may take, the decisions the finishes handed
 // it, and what it has done this process.
@@ -75,6 +89,81 @@ type decideLane struct {
 	readOpen  map[string]bool // cards with a shadow read whose outcome is not attached: read placed or not
 	loaded    bool
 	said      string // the last failure said, said once until it changes
+
+	readFail map[string]readRetry     // card@head pairs whose shadow read failed: when each is asked again
+	records  map[string]openDecisions // each record's decisions without an outcome, as last read, by path
+	dirty    bool                     // a record was appended to since the last round (recordAnswer)
+	gen      uint64                   // the store's write generation the last full round read
+	genAt    time.Time                // when the last full round ran; zero: none has
+}
+
+// readRetry is when a failed shadow read is asked again, and the wait that led to it.
+type readRetry struct {
+	next time.Time
+	wait time.Duration
+}
+
+// openDecisions is a record's decisions without an outcome, as read when the record's file
+// had this size and modification time.
+type openDecisions struct {
+	size int64
+	mod  time.Time
+	open []decide.Decision
+}
+
+// openOf is the decisions of the record at path without an outcome. The record is read and
+// decoded again only when its file's size or modification time changed since the last read.
+// That is sound because every write to a record, the lane's or a verb's (answer.go writes
+// these records too), appends a line under the record's file lock (pkg/decide record.go), so
+// every write grows the file; before (2026-10-17), every round decoded the whole of
+// judgment-answer.jsonl and read-shadow.jsonl, megabytes every DecideEvery.
+func (l *decideLane) openOf(path string) ([]decide.Decision, error) {
+	fi, statErr := os.Stat(path)
+	if c, ok := l.records[path]; ok && statErr == nil && c.size == fi.Size() && c.mod.Equal(fi.ModTime()) {
+		return c.open, nil
+	}
+	ds, err := decide.Load(path)
+	if err != nil {
+		return nil, err
+	}
+	var open []decide.Decision
+	for _, d := range ds {
+		if d.Outcome == nil {
+			open = append(open, d)
+		}
+	}
+	if l.records == nil {
+		l.records = map[string]openDecisions{}
+	}
+	if statErr == nil {
+		// the stat is from before the read: a write between the two is read again next round
+		l.records[path] = openDecisions{size: fi.Size(), mod: fi.ModTime(), open: open}
+	} else {
+		delete(l.records, path)
+	}
+	return open, nil
+}
+
+// quiet says a round would find nothing to do: the store's write generation is the one the
+// last full round read, no decision is queued and no record was appended to, the last round
+// failed in nothing, no failed shadow read is due again, and a full round ran within
+// decideQuietMax. A quiet round takes neither the line nor a read of the work table.
+func (l *decideLane) quiet(gen uint64, now time.Time) bool {
+	if l.genAt.IsZero() || gen != l.gen || l.said != "" || now.Sub(l.genAt) >= decideQuietMax || now.Before(l.genAt) {
+		return false
+	}
+	l.mu.Lock()
+	busy := len(l.queued) > 0 || l.dirty
+	l.mu.Unlock()
+	if busy {
+		return false
+	}
+	for _, r := range l.readFail {
+		if !now.Before(r.next) {
+			return false
+		}
+	}
+	return true
 }
 
 // newDecideLane is the lane over dir, grading through b (nil grades nothing), each grade's
@@ -106,6 +195,7 @@ func (l *decideLane) recordAnswer(d decide.Decision) error {
 	}
 	l.mu.Lock()
 	l.answering[d.Inputs["card"]] = true
+	l.dirty = true
 	l.mu.Unlock()
 	return nil
 }
@@ -124,7 +214,7 @@ func markOf(c *sprint.Card) decide.CardMark {
 // now says (decide.AnswerOutcome), once: how many it attached, and every record failure. The
 // cards of the answers still without one are the ones the lane watches.
 func (l *decideLane) answerOutcomes(s *sprint.Snapshot) (int, []string) {
-	ds, err := decide.Load(l.record(decide.JudgmentAnswerName))
+	ds, err := l.openOf(l.record(decide.JudgmentAnswerName))
 	if err != nil {
 		return 0, []string{"the judgment answers: " + err.Error()}
 	}
@@ -177,6 +267,21 @@ func (a *app) decideLoop(ctx context.Context, addr string, stdout io.Writer) {
 func (a *app) decideRound(ctx context.Context, addr string, stdout io.Writer) {
 	l := a.decide
 	at := oneline.Field(a.now().Format("15:04:05"))
+	// the store's write generation, read off the line: a round over a store that has not
+	// changed, with nothing of its own due, is skipped whole (decideLane.quiet)
+	var gen uint64
+	genOK := false
+	if st, err := a.storeCtx(ctx, common{verb: "where", redis: addr}); err == nil {
+		if f, err := st.B.ReadFence(ctx); err == nil {
+			gen, genOK = f.Gen, true
+		}
+	}
+	if genOK && l.quiet(gen, a.now()) {
+		return
+	}
+	l.mu.Lock()
+	l.dirty = false
+	l.mu.Unlock()
 	recorded, problems := l.recordQueued()
 	if !l.loaded {
 		if err := l.load(); err != nil {
@@ -218,6 +323,10 @@ func (a *app) decideRound(ctx context.Context, addr string, stdout io.Writer) {
 		written = len(res.Moved)
 	}
 	l.watch(s)
+	l.gen, l.genAt = gen, time.Time{}
+	if genOK {
+		l.genAt = a.now()
+	}
 	if recorded+attached+len(got)+shadowed+read > 0 {
 		fmt.Fprintf(stdout, "%s DECIDE recorded=%d graded=%d written=%d attached=%d", at, recorded, len(got), written, attached)
 		if shadowed > 0 {
@@ -299,8 +408,28 @@ func (l *decideLane) shadowReadRound(ctx context.Context, s *sprint.Snapshot) (i
 	var problems []string
 	n := 0
 	if l.backend != nil && l.diffOf != nil {
+		now := l.now()
+		if l.readFail == nil {
+			l.readFail = map[string]readRetry{}
+		}
+		inReview := map[string]bool{}
+		// failed is a failed ask of key: asked again once its wait is over, the wait
+		// doubling from readRetryFirst to readRetryCap
+		failed := func(key, id string, err error) {
+			problems = append(problems, fmt.Sprintf("%s not shadow-read: %v", id, err))
+			delete(l.readSeen, key)
+			wait := readRetryFirst
+			if r, ok := l.readFail[key]; ok {
+				wait = min(r.wait*2, readRetryCap)
+			}
+			l.readFail[key] = readRetry{next: now.Add(wait), wait: wait}
+		}
 		for _, c := range s.Work.Column(sprint.Review) {
 			key := c.ID + "@" + c.F("head")
+			inReview[key] = true
+			if r, ok := l.readFail[key]; ok && now.Before(r.next) {
+				continue
+			}
 			if !c.Placed() || sprint.IsSentinel(c) || c.F("brief") == "" || l.readSeen[key] || n+len(problems) >= GradeWidth {
 				continue
 			}
@@ -310,8 +439,7 @@ func (l *decideLane) shadowReadRound(ctx context.Context, s *sprint.Snapshot) (i
 				err = os.MkdirAll(l.dir, 0o755)
 			}
 			if err != nil {
-				problems = append(problems, fmt.Sprintf("%s not shadow-read: %v", c.ID, err))
-				delete(l.readSeen, key)
+				failed(key, c.ID, err)
 				continue
 			}
 			actx, cancel := context.WithTimeout(ctx, l.wait)
@@ -319,14 +447,22 @@ func (l *decideLane) shadowReadRound(ctx context.Context, s *sprint.Snapshot) (i
 			cancel()
 			switch {
 			case err != nil:
-				problems = append(problems, fmt.Sprintf("%s not shadow-read: %v", c.ID, err))
-				delete(l.readSeen, key) // asked again on the next round
-			case !existing:
-				n++
+				failed(key, c.ID, err) // asked again once its wait is over
+			default:
+				delete(l.readFail, key)
+				if !existing {
+					n++
+				}
+			}
+		}
+		// a card that left review, or moved to another head, is forgotten
+		for key := range l.readFail {
+			if !inReview[key] {
+				delete(l.readFail, key)
 			}
 		}
 	}
-	ds, err := decide.Load(l.record(decide.ShadowReadName))
+	ds, err := l.openOf(l.record(decide.ShadowReadName))
 	if err != nil {
 		return n, append(problems, "the shadow reads: "+err.Error())
 	}
