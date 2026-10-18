@@ -1,4 +1,4 @@
-package friend
+package ci
 
 import (
 	"go/ast"
@@ -23,11 +23,12 @@ import (
 // session or a row is a thing.
 var personalPronoun = regexp.MustCompile(`(?i)\b(she|her|hers|herself|he|him|himself|his)\b`)
 
-// pronounGuardRoots cover sprint command output, the friend daemon's records and
-// seat judgments, the sprint rules that generate those judgments, and the one
-// renderer. Paths are from this package's directory. The configuration help is
-// nova-tools pkg/config's, guarded by nova-tools' own copy of this test.
-var pronounGuardRoots = []string{".", "../../cmd/nova-sprint", "../../internal/sprint"}
+// pronounGuardRoots cover sprint command output and the sprint rules that generate
+// the friend judgments. Paths are from this package's directory. The friend
+// daemon's records, the renderer (Pronouns.Say) and the configuration help are
+// nova-tools pkg/friend's and pkg/config's, guarded by nova-tools' own copy of this
+// test; this one moved here from nova-sprint's pkg/friend copy when it was deleted.
+var pronounGuardRoots = []string{"../../cmd/nova-sprint", "../../internal/sprint"}
 
 // pronounGuardAllowed are the literals that say a pronoun word for a reason that
 // is not a friend: file (base name) to the literal's text.
@@ -129,5 +130,5 @@ func TestNoStringLiteralCallsAFriendHerOrHim(t *testing.T) {
 		}
 	}
 	sort.Strings(found)
-	assert.Empty(t, found, "%d string literal(s) carry a personal pronoun; say {their}/{them}/{they} through Pronouns.Say (pkg/friend/pronouns.go), name the friend, or say \"the friend's\":\n%s", len(found), strings.Join(found, "\n"))
+	assert.Empty(t, found, "%d string literal(s) carry a personal pronoun; say {their}/{them}/{they} through Pronouns.Say (nova-tools pkg/friend/pronouns.go), name the friend, or say \"the friend's\":\n%s", len(found), strings.Join(found, "\n"))
 }

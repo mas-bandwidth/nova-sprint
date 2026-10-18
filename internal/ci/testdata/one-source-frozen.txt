@@ -8,6 +8,5 @@
 # a copy's contents move only by landing the change in nova-tools first and then
 # updating its row here in the same pull request.
 tlc	7c1d4c2f847341504242d9b625b1c77eabf63293517f5661743ed5e1f99b5912
-friend	235bfd2ab425761b57c26ec0a201cbc5871a5e1a8c4313903005213fb4afecc9
 safepath	628b142ee9beb190b736b7a2592ebf20ad4063288bf5424e6993db3012fd68f8
 swarm	88bb7a6aa881e4aac019b9262fc1ad7263b1e8031eb8a486b6410f7830180c91
