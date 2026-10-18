@@ -181,15 +181,31 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 		return
 	}
 	judgments, _ := sprint.SplitOpen(all)
-	tells := false
+	tells, hasSeatSilent := false, false
 	for _, o := range judgments {
 		tells = tells || o.Note.Type == sprint.NSeatSilent || o.Note.Type == sprint.NNeedBlocked
+		hasSeatSilent = hasSeatSilent || o.Note.Type == sprint.NSeatSilent
 	}
 	if !tells {
 		a.seatSilent.mu.Lock()
 		a.seatSilent.told, a.seatSilent.retry = nil, nil // every raise is closed: forgotten
 		a.seatSilent.mu.Unlock()
 		return
+	}
+	standby := ""
+	if hasSeatSilent {
+		shapes, settingsErr := backend.Shapes(ctx, []string{st.Names.Table(sprint.Work)})
+		if settingsErr != nil || len(shapes) != 1 {
+			if settingsErr == nil {
+				settingsErr = fmt.Errorf("work table shape count: %d", len(shapes))
+			}
+			a.serveSay("SEAT SILENT: the standby seat setting could not be read: %s", oneline.Escape(settingsErr.Error()))
+			return
+		}
+		standby = shapes[0].Props[sprint.PropSeatSilentTo]
+		if standby == sprint.ReadTierDefault {
+			standby = ""
+		}
 	}
 	// the groups as store.OpenGroups makes them, from the notes read above (the printed
 	// commands, which read the work table, are not used here)
@@ -270,16 +286,23 @@ func (a *app) tellSeatSilent(ctx context.Context, st *store.Store) {
 			a.serveSay("SEAT SILENT %s: no coordinator seat is held, tried again at the next look", g.ID)
 			continue
 		}
+		if g.Type == sprint.NSeatSilent && (standby == "" || standby == holder) && !retrying {
+			a.serveSay("SEAT SILENT %s: no standby seat hears this alarm, only the silent seat; run: nova-sprint set --seat-silent-to <bus name>", g.ID)
+		}
 		if loginErr != nil {
 			a.serveSay("SEAT SILENT %s: the coordinator's bus login is unresolved, tried again at the next look: %s", g.ID, oneline.Escape(loginErr.Error()))
 			continue
 		}
-		m := bus.Message{From: cmp.Or(login, holder), To: []string{holder}, Kind: bus.KindBlocker, Subject: g.Type, Body: g.What, Token: token}
+		to := []string{holder}
+		if g.Type == sprint.NSeatSilent && standby != "" && standby != holder {
+			to = append(to, standby)
+		}
+		m := bus.Message{From: cmp.Or(login, holder), To: to, Kind: bus.KindBlocker, Subject: g.Type, Body: g.What, Token: token}
 		err = a.bus(ctx, m, func(l string) { a.serveSay("%s", l) })
 		if busNeedsNewToken(err) {
 			// the raise's token went with other arguments (its text or its recipient changed
 			// under it): this is another message, sent under a token of its own
-			m.Token = busRetoken(token, holder, g.Type, g.What)
+			m.Token = busRetoken(token, strings.Join(to, "\x00"), g.Type, g.What)
 			err = a.bus(ctx, m, func(l string) { a.serveSay("%s", l) })
 		}
 		if err != nil && !busMessageWent(err) {
