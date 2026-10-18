@@ -90,6 +90,11 @@ func TestFleetUpFriendRowCLIOnlyClearsItsEnvironmentFault(t *testing.T) {
 	assert.Equal(t, want, afterCards[0].Fields, "only the environment fault and its own hold clear")
 	assert.Equal(t, before["status"], afterCards[0].F("status"), "friend status remains hook-owned")
 	assert.Equal(t, before[sprint.FieldWidth], afterCards[0].F(sprint.FieldWidth), "friend width remains hook-owned")
+	open, err := afterStore.B.OpenNotes(context.Background())
+	require.NoError(t, err)
+	for _, note := range open {
+		assert.False(t, note.Note.Type == sprint.NMemberEnvFault && note.Note.Stream == sprint.MemberSubject(row), "the matching judgment closes with its environment fault")
+	}
 
 	afterBeats, err := afterStore.Beats(context.Background(), []string{row})
 	require.NoError(t, err)
