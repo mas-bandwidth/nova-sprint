@@ -88,11 +88,11 @@ func SyncProblems(want []SyncMember) []Refusal {
 	for _, m := range want {
 		switch {
 		case !ValidID(m.Name):
-			out = append(out, Refusal{m.Name, fmt.Sprintf("a member name wants letters, digits, _ and -: %q", m.Name)})
+			out = append(out, Refusal{Key: m.Name, Why: fmt.Sprintf("a member name wants letters, digits, _ and -: %q", m.Name)})
 		case m.Width < 1 || m.Width > MaxWidth:
-			out = append(out, Refusal{m.Name, fmt.Sprintf("%s: a width wants a whole number from 1 to %d, got %d", m.Name, MaxWidth, m.Width)})
+			out = append(out, Refusal{Key: m.Name, Why: fmt.Sprintf("%s: a width wants a whole number from 1 to %d, got %d", m.Name, MaxWidth, m.Width)})
 		case seen[m.Name]:
-			out = append(out, Refusal{m.Name, m.Name + " is named twice"})
+			out = append(out, Refusal{Key: m.Name, Why: m.Name + " is named twice"})
 		}
 		seen[m.Name] = true
 	}
