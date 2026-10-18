@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-tools/hook"
 	"github.com/mas-bandwidth/nova-tools/pkg/config"
 	"github.com/mas-bandwidth/nova-tools/pkg/harness"
+	"github.com/mas-bandwidth/nova-tools/pkg/swarm"
 )
 
 // The doctor's checks (the owner, 2026-10-11 ~02:10Z: "I think we need to prioritize sprint

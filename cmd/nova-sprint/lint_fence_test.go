@@ -6,17 +6,18 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/pkg/swarm"
 )
 
-// The card lint reads no text inside a fenced code block: a fenced block is a program or
-// an example the card shows, not a command it runs. A card that documents its make-driven
-// gate — a Makefile target whose body runs `go test` and `rm -rf`, or a `cd ../scratch`
-// example — is admitted, and the parent-path rule reads no walk there either. The same
-// lines outside a fence are still read, so the rules keep their teeth.
+// The card lint's child scans read no text inside a fenced code block: a fenced block is a
+// program or an example the card shows, not a command it runs. A card that documents its
+// make-driven gate — a Makefile target whose body runs `go test` and `rm -rf` — is
+// admitted. A walk above the job (`cd ../scratch`) is still a parent-path finding inside a
+// fence: the wall refuses it wherever it is written (nova-tools pkg/swarm
+// TestAWalkInsideAFenceIsStillAFinding, settled in nova-tools af9a13348). The same lines
+// outside a fence are read by every rule, so the rules keep their teeth.
 //
-// This pins the fix of swarm-lint-card-false-refusals: the child scan (lintchild.go) and
-// the parent-path rule (lintparent.go) both skipped the fence before this card.
+// This pins the child-scan half of swarm-lint-card-false-refusals.
 func TestCardLintReadsNoTextInsideAFencedBlock(t *testing.T) {
 	t.Parallel()
 	rules := append(append([]swarm.ChildRule{}, swarm.DefaultChildRules...),
@@ -34,8 +35,8 @@ func TestCardLintReadsNoTextInsideAFencedBlock(t *testing.T) {
 		assert.Falsef(t, strings.HasPrefix(f.Check, "step-"),
 			"the fenced block drew %s on line %d: %s", f.Check, f.Line, f.Excerpt)
 	}
-	assert.Empty(t, swarm.CardParentPaths(strings.Split(fenced, "\n")),
-		"a parent path inside a fenced block is not a walk")
+	assert.Equal(t, []int{6}, swarm.CardParentPaths(strings.Split(fenced, "\n")),
+		"a walk inside a fenced block is still a walk")
 
 	unfenced := "STEP 3. Run go test ./internal/x\n" +
 		"STEP 4. Run the gate, then rm -rf /tmp/cache\n" +

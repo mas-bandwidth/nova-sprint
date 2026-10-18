@@ -27,6 +27,8 @@ github.com/mas-bandwidth/nova-tools v1.5.2 h1:v5igVzTLaCgkRp3qgpEi/u/7n8TwjdwDg2
 github.com/mas-bandwidth/nova-tools v1.5.2/go.mod h1:5wbTroYXH4lOc1qmQgFe6QZK8o2THzMJCOcYBqwPqjY=
 github.com/mas-bandwidth/nova-tools v1.5.3-0.20261018045302-2697f1d27ad9 h1:p0YRMm0nhl7/eHXHjS6ROYDvirIieVEBmRYZSstCsaM=
 github.com/mas-bandwidth/nova-tools v1.5.3-0.20261018045302-2697f1d27ad9/go.mod h1:5wbTroYXH4lOc1qmQgFe6QZK8o2THzMJCOcYBqwPqjY=
+github.com/mas-bandwidth/nova-tools v1.5.3-0.20261018130333-9e2e1cd6d199 h1:f4xDkWW+n0m2FSXvI5SDwf43rMrFJUUOv9UGRNFd6FI=
+github.com/mas-bandwidth/nova-tools v1.5.3-0.20261018130333-9e2e1cd6d199/go.mod h1:5wbTroYXH4lOc1qmQgFe6QZK8o2THzMJCOcYBqwPqjY=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/redis/go-redis/v9 v9.22.0 h1:laDvpYXTJtZLloinw1fA5Kqd6HAEH2XKxOkG/PDq2F0=
 github.com/redis/go-redis/v9 v9.22.0/go.mod h1:y2g0Wj8rQvuK0ELM+oxSudcLtC09JScs98I/X9gRWY4=
