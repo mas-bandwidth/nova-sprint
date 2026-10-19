@@ -106,7 +106,9 @@ func alarmFacts(s *Snapshot) map[string]string {
 	if _, on := s.alarmSetting(PropAlarmReady); on && ready == 0 && waiting > 0 {
 		out[NAlarmReady] = fmt.Sprintf("0 primaries ready and %d waiting: the deal has nothing to feed the fleet; run: nova-sprint where --all", waiting)
 	}
-	if pct, on := s.alarmSetting(PropAlarmFleet); on && ready+waiting > 0 && !s.FleetOff() {
+	// the fleet alarm's feed leaves out the new work the deal throttle holds (deal_throttle.go):
+	// a fleet under its width while landing drains is the throttle's, not an alarm
+	if pct, on := s.alarmSetting(PropAlarmFleet); on && ready-throttledReady(s)+waiting > 0 && !s.FleetOff() {
 		working, width := 0, 0
 		for _, m := range s.UpMembers() {
 			work, _ := rowWorking(s, m)

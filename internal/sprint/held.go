@@ -635,6 +635,11 @@ func (c *held) waits(pr *Card) (why, root string, ok bool) {
 		}
 		return strings.Join(held, "; "), "", true
 	case Ready:
+		// a new work card the deal throttle holds while landing backs up waits on the
+		// throttle, never stalled (deal_throttle.go; tla/DealThrottle.tla WorkResumes)
+		if h, why := s.throttleHolds(pr); h {
+			return why, "", true
+		}
 		if OnlyFriend(pr) && !PinReleased(s, pr, s.Friends) {
 			// the one hard pin (WHO: only friend <name>) waits for her up below her room,
 			// DealAhead times her width (friendDealPass), whose beats and widths are the friends'

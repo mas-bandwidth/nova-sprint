@@ -810,3 +810,6 @@ MCLaneCheckBrokenBounceLive.cfg	MCLaneCheck.tla	invariant	LiveLaneNeverBouncedOr
 MCLaneCheckBrokenRedealLive.cfg	MCLaneCheck.tla	invariant	LiveLaneNeverBouncedOrRedealt	ignore-terminal	lanecheck	required	-
 MCLaneCheckBrokenNoNotice.cfg	MCLaneCheck.tla	invariant	LivePastDeadlineHasOneNotice	ignore-terminal	lanecheck	required	-
 MCLaneCheckBrokenRepeatNotice.cfg	MCLaneCheck.tla	invariant	LivePastDeadlineHasOneNotice	ignore-terminal	lanecheck	required	-
+MCDealThrottle.cfg	MCDealThrottle.tla	pass	-	ignore-terminal	dealthrottle	required	-
+MCDealThrottleBrokenNoResume.cfg	MCDealThrottle.tla	temporal	WorkResumes	ignore-terminal	dealthrottle	required	-
+MCDealThrottleBrokenCutsInFlight.cfg	MCDealThrottle.tla	action	InFlightNeverCut	ignore-terminal	dealthrottle	required	-

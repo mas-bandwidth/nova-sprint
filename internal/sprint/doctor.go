@@ -239,6 +239,7 @@ func okCheck(area, check, subject, evidence string) DoctorCheck {
 
 // readyClasses is how a deal's reason is named: the first whose words it carries.
 var readyClasses = []struct{ class, words string }{
+	{"throttle", "starts no new work while landing backs up"},
 	{"fleet-off", "the fleet's work is off"},
 	{"not-ticked", "the deal deals it now"},
 	{"no-launcher", "can launch no route"},
@@ -308,6 +309,7 @@ var readyDefaultRemedy = map[string]string{
 	"no-launcher": "nova-sprint fleet up <member> --harnesses <harness>",
 	"no-route":    "nova-sprint routes",
 	"friend":      "nova-sprint friends",
+	"throttle":    "nova-sprint land (the deal throttle lifts as landing and review drain to their bounds)",
 }
 
 // dealJudgments are the judgment types the tick's deal raises over ready cards (TickDeal's notify).
@@ -362,7 +364,7 @@ func DoctorReadyNotDealt(in DoctorInput) (out []DoctorCheck) {
 	for _, k := range keys {
 		g := groups[k]
 		status := DoctorFail
-		if g.class == "no-width" || g.class == "friend" {
+		if g.class == "no-width" || g.class == "friend" || g.class == "throttle" {
 			status = DoctorWarn
 		}
 		out = append(out, DoctorCheck{Area: area, Check: check, Subject: g.class, Status: status,
@@ -424,6 +426,8 @@ func readyWhys(s *Snapshot, r TickReq, cards []*Card) (why map[string]string) {
 			why[c.ID] = "the deal deals it now (" + placed[c.ID] + "): the run loop's tick has not"
 		case judged[c.ID] != "":
 			why[c.ID] = judged[c.ID]
+		case throttleHeld(s, c):
+			_, why[c.ID] = s.throttleHolds(c)
 		default:
 			p := Deal(s, DealReq{Sel: Sel{IDs: []string{c.ID}}, Who: MachineActor})
 			for _, rf := range p.Refused {
