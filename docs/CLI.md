@@ -115,7 +115,7 @@ nova-sprint demo stop [--dir <dir>]
 nova-sprint fleet beat <member> [--stop-returns <n>] [--no-room <why>] [--draining] [--live <set>] [--facts <list>] --load <percent> [--dry-run]
 nova-sprint fleet up <member> [--width <n>]
 nova-sprint fleet down <member> [--force-last]
-nova-sprint lane take go --machine <m|auto> --as <worker> [--wait <duration>] [--dry-run]
+nova-sprint lane take go --machine <m|auto> --as <worker> [--wait <duration>] [--dry-run] [--needs <a,b>]
 nova-sprint lane give go --machine <m|auto> --as <worker> [--dry-run]
 nova-sprint hold <name>... --reason <text> [--return] [--force-last]
 
@@ -130,7 +130,11 @@ verb holds it anyway and the log line ends `--force-last: no gate bench left`.
 `--machine auto` asks the server to pick an allowed bench by committed load / slots;
 a successful take prints its lease deadline and the give command. Take again within
 20m to renew it. A full fleet prints its retry time and full benches, exits 1, and
-asks the caller to retry then. `--wait` and `--dry-run` are refused with `auto`.
+asks the caller to retry then. `--needs <a,b>` names the gate facts the bench must
+carry, the same words as a `GATE-NEEDS` line (for example `linux,tla`): the pick keeps
+to benches whose member facts meet every need, and when none does the WAIT names the
+need and the facts the benches carry. No `--needs` is the pick as it was.
+`--wait` and `--dry-run` are refused with `auto`.
 
 nova-sprint fleet sync [--check] [--pg <dsn>]
 nova-sprint fleet level

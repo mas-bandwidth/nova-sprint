@@ -108,14 +108,22 @@ type BenchPick struct {
 	RetryAt          time.Time
 	Full             []BenchRoom
 	Released         []string
+	// Why names the need no allowed bench's facts meet, when there is one
+	// (tla/BenchLease.tla, GrantOnlyWhereTheFactsAre).
+	Why string
 }
 
 // BenchRooms applies the fleet's allowed-bench and beat-load rules
-// (tla/BenchLease.tla, Load, Allow, Disallow).
-func BenchRooms(s *Snapshot, beats map[string]Beat, self string, now time.Time) []BenchRoom {
+// (tla/BenchLease.tla, Load, Allow, Disallow). A machine whose facts do not satisfy
+// every need (deal.go memberSatisfies) is no bench for this take; no needs keeps every
+// bench, as before.
+func BenchRooms(s *Snapshot, beats map[string]Beat, self string, now time.Time, needs ...string) []BenchRoom {
 	var rooms []BenchRoom
 	for _, m := range notQuiet(s, s.UpMembers()) {
 		if s.Width(m) <= 0 || strings.EqualFold(m, self) {
+			continue
+		}
+		if !memberSatisfies(s.MemberFacts(m), needs) {
 			continue
 		}
 		beat, ok := beats[m]
@@ -137,6 +145,20 @@ func BenchRooms(s *Snapshot, beats map[string]Beat, self string, now time.Time) 
 		rooms = append(rooms, BenchRoom{Machine: m, Slots: slots, Busy: busy})
 	}
 	return rooms
+}
+
+// BenchNeedsWhy is the WAIT's why when no room's facts meet the needs: gateNeedsWhy's
+// sentence over the benches the take looked at (tla/BenchLease.tla,
+// GrantOnlyWhereTheFactsAre).
+func BenchNeedsWhy(needs []string, rooms []BenchRoom, s *Snapshot) string {
+	if len(needs) == 0 || len(rooms) == 0 {
+		return ""
+	}
+	ms := make([]string, 0, len(rooms))
+	for _, room := range rooms {
+		ms = append(ms, room.Machine)
+	}
+	return gateNeedsWhy(needs, ms, s)
 }
 
 // LaneAnswer is a take's or a give's answer: whether the asker holds a lane, its place

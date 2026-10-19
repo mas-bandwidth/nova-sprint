@@ -9531,8 +9531,9 @@ server owns every lease and its deadline on the server's clock, a client holds n
 that can strand a slot, and no client coordinates with another. The named-machine lanes
 above stay disabled and unchanged (`sprint.LanesDisabled`).
 
-- `nova-sprint lane take go --machine auto --as <who>` asks for a bench, and the same
-  line again renews the lease the asker holds; `nova-sprint lane give go --machine auto --as <who>` gives it back on any bench. `--wait` and `--dry-run` are refused with
+- `nova-sprint lane take go --machine auto --as <who> [--needs <a,b>]` asks for a bench,
+  and the same line again renews the lease the asker holds; `--needs` names the gate
+  facts the bench must carry, the same words as a `GATE-NEEDS` line; `nova-sprint lane give go --machine auto --as <who>` gives it back on any bench. `--wait` and `--dry-run` are refused with
   `auto`: the caller waits by `retry_at`, and a dry pick cannot reserve capacity.
 - A grant prints `LANE-TAKE OK go machine=<m> as=<who> slots=<committed>/<slots> until=<RFC3339> renewed=<yes|no>`
   (exit 0; `until` is the lease's deadline and `committed` includes the lease just
@@ -9547,7 +9548,10 @@ The decisions:
    queues and never waits behind another holder.
 2. **The allowed benches (D2)** are the fleet table's members that are up, not quiet, not
    NoRoom, of width above 0, not the server's own machine, accepted by `bench.CheckHost`,
-   with a fresh beat carrying Cores above 0. No list of benches lives in a brief or in
+   with a fresh beat carrying Cores above 0, and (when the take names `--needs`) whose
+   member facts (`MemberFacts`) satisfy every need with the deal's `memberSatisfies`: the
+   pick keeps to benches whose facts meet the take's needs, never to one that cannot run
+   the gate. No list of benches lives in a brief or in
    code: they come from nova-config's machine rows through `fleet sync`, and a hold
    (space, mini-m5-1) keeps a machine out.
 3. **Slots (D3).** A lease is one bench slot: one job at `go test -p 8`. A bench's slots
@@ -9568,24 +9572,29 @@ The decisions:
    (`Lanes.Expire`) removes it, so a dead or lost client never holds a slot past it. A give
    releases at once. A lease on a bench that becomes held or down stays until it is given
    or expires, and that bench gets no new lease.
-6. **WAIT (D6).** When no allowed bench has room, the answer is WAIT with a retry time (the
+6. **WAIT (D6).** When no allowed bench whose facts meet the take's `--needs` exists, or
+   no allowed bench has room, the answer is WAIT with a retry time (the
    earliest deadline of a live lease on an allowed bench, at most LaneWaitFor, one minute,
    away) and nothing is written: no queue, no place, and not even the removal of an
    expired lease (the wait counted it as gone; the next write removes it). A WAIT is
    answered only when no allowed bench has room, so a waiter that keeps asking is granted
-   once capacity frees and stays free. Capacity that frees only now and then is not
+   once capacity frees and stays free. A WAIT with an unmet `--needs` says so in the same
+   line, naming the need and the facts the benches carry (`gateNeedsWhy`), never granting
+   a bench that cannot run the gate; a bench full of leases whose facts meet the needs is
+   the WAIT as before. Capacity that frees only now and then is not
    promised to it: with no queue, another asker can take it first.
 7. **One step (D7).** A pick and a give are each one step on the record, run by the server
    one at a time: two picks never both take a bench's last slot.
 
-The model checks NeverOverSlots, OneLeaseEach, GrantOnlyAllowed, GrantIsLeastCommitted,
-GrantTieBreak, WaitWritesNothing, WaitOnlyWhenFull and NoLeaseOutlivesDeadline on two benches
+The model checks NeverOverSlots, OneLeaseEach, GrantOnlyAllowed, GrantOnlyWhereTheFactsAre,
+GrantIsLeastCommitted, GrantTieBreak, WaitWritesNothing, WaitOnlyWhenFull and NoLeaseOutlivesDeadline on two benches
 (1 and 2 slots) and three workers; DeadLeaseEnds and WaiterGetsLease are checked on two
 workers. GrantTieBreak also runs on two equal two-slot benches so the name tie is reachable.
 The fairness is weak fairness on the clock, the sweep and a waiter's asking again; nothing
 assumes a grant. Each reversed witness has a committed configuration and CASES.tsv row:
 `noexpiry` fails DeadLeaseEnds; `loadonly` and `noceiling` fail NeverOverSlots; `queue` fails
-WaitWritesNothing; `anybench` fails GrantOnlyAllowed; `anyroom` fails GrantIsLeastCommitted;
+WaitWritesNothing; `anybench` fails GrantOnlyAllowed; `anyfacts` (the pick ignoring the
+machine's facts) fails GrantOnlyWhereTheFactsAre; `anyroom` fails GrantIsLeastCommitted;
 `second` fails OneLeaseEach; `waitwhenroom` fails WaitOnlyWhenFull and WaiterGetsLease;
 `renewexpired` fails NoLeaseOutlivesDeadline; and `anytie` fails GrantTieBreak on the
 equal-slot instance. Two corrections to
