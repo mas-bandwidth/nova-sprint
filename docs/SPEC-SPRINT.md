@@ -1711,7 +1711,7 @@ contract line (line 1), blank lines skipped; the run ends at the first line that
 `KEY: value` line, and that line begins the card's prose. Only the header is read, so a
 header key written below the first prose line — `KIND:`, `PATHS:`, `TEST:`, `LEGS:`,
 `SOURCE:`, `START:`, `STOP:`, `DEPENDS-ON:`, `PRIORITY:`, `NEW:`, `SHARED:`, `REPO:`,
- `BASE:`, `RESULT:`, `MERGE-OF:` or `tier:` — is refused, never ignored: the card lint
+`BASE:`, `RESULT:`, `MERGE-OF:` or `tier:` — is refused, never ignored: the card lint
 (`swarm.LintHeaderStranded`) draws one `stranded-key` finding naming the key and its line,
 and `add`, `brief`, `recut` and `preflight` refuse it, exit 2 (preflight exit 1), nothing
 written. `add` and `brief` both print the finding as `LINT DRIFT brief <file>: stranded-key: <line>: <key>: on line <line> is below the header block and is not read: ... remedy=<remedy>`. The card that wrote

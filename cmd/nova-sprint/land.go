@@ -539,7 +539,7 @@ func (a *app) land(args []string, stdout, stderr io.Writer, gate **hookGateError
 	if a.baseGateFails == nil {
 		a.baseGateFails = map[string]*baseGateFail{}
 	}
-	l := &lander{a: a, c: *c, st: st, repoDir: *repoDir, base: *base, check: *check, dry: *dry, twin: a.twinOpen(c.redis), epoch: st.PinnedEpoch(), 	diffs: map[string]string{}, scope: map[string][]string{}, mergeOf: map[string]string{}, prose: map[string][]string{},
+	l := &lander{a: a, c: *c, st: st, repoDir: *repoDir, base: *base, check: *check, dry: *dry, twin: a.twinOpen(c.redis), epoch: st.PinnedEpoch(), diffs: map[string]string{}, scope: map[string][]string{}, mergeOf: map[string]string{}, prose: map[string][]string{},
 		baseGateCache: a.baseGateCache, baseGateFails: a.baseGateFails, cureTried: map[string]bool{}, parallel: *parallel}
 	l.locks()
 	defer l.release()
