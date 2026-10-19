@@ -177,10 +177,13 @@ func FilesOutsidePaths(brief, finding string) []string {
 // PathsWidened is brief with files added to its header's one PATHS: line, each once, the old
 // first, and carry (when given) as its header CARRY: line (member.CarryLine's shape), in place
 // of one there or after line 1. Lines below the header are prose, never read or written; a
-// header naming PATHS twice is returned unchanged for its caller to refuse
+// header naming PATHS or SHARED twice is returned unchanged for its caller to refuse
 // (TestAWidenChangesOnlyTheHeaderScopeLines).
 func PathsWidened(brief string, files []string, carry string) string {
 	lines := strings.Split(brief, "\n")
+	if headerRepeatsScope(lines) {
+		return brief
+	}
 	end := headerEnd(lines)
 	start := 1
 	if len(lines) == 1 {
@@ -191,9 +194,6 @@ func PathsWidened(brief string, files []string, carry string) string {
 		if k, _, ok := cardhdr.KeyValue(lines[i]); ok && k == cardhdr.KeyPaths {
 			at = append(at, i)
 		}
-	}
-	if len(at) > 1 {
-		return brief
 	}
 	for _, i := range at {
 		l := lines[i]

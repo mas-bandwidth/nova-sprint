@@ -50,4 +50,12 @@ func TestBriefWidenChangesOnlyTheHeaderPaths(t *testing.T) {
 	twiceShared := "c: twice (w) tier: pro\nSHARED: a.go\nSHARED: b.go\n\nSHARED: quoted.txt\n"
 	assert.Equal(t, twiceShared, widenBrief(twiceShared, []string{"c.go"}, briefWidenHeaderCarry),
 		"a header naming SHARED twice is not widened")
+
+	crossPaths := "c: crossed (w) tier: pro\nPATHS: a.go\nSHARED: x.txt\nSHARED: y.txt\n\nPATHS: quoted.go\n"
+	assert.Equal(t, crossPaths, widenBrief(crossPaths, []string{"c.go"}, briefWidenHeaderCarry),
+		"a header naming SHARED twice is not widened")
+
+	crossShared := "c: crossed (w) tier: pro\nPATHS: a.go\nPATHS: b.go\nSHARED: x.txt\n\nSHARED: quoted.txt\n"
+	assert.Equal(t, crossShared, widenBrief(crossShared, []string{"c.go"}, briefWidenHeaderCarry),
+		"a header naming PATHS twice is not widened")
 }

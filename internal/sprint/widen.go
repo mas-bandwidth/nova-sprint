@@ -274,20 +274,38 @@ func headerEnd(lines []string) int {
 // HeaderEnd is headerEnd over brief, for the command's widenBrief (recut_widen.go).
 func HeaderEnd(brief string) int { return headerEnd(strings.Split(brief, "\n")) }
 
+// headerRepeatsScope is whether the header names PATHS or SHARED more than once: an edit that
+// rewrites a scope line refuses such a brief whole, whichever key repeats
+// (TestAWidenChangesOnlyTheHeaderScopeLines).
+func headerRepeatsScope(lines []string) bool {
+	end := headerEnd(lines)
+	paths, shared := 0, 0
+	for i := 1; i < end; i++ {
+		switch k, _, ok := cardhdr.KeyValue(lines[i]); {
+		case ok && k == cardhdr.KeyPaths:
+			paths++
+		case ok && k == "SHARED":
+			shared++
+		}
+	}
+	return paths > 1 || shared > 1
+}
+
 // SharedWidened is brief with files added to its header's one SHARED: line, each once, the
-// old first; a brief with no header SHARED: line is returned as it is. A header naming SHARED
-// twice is returned unchanged for its caller to refuse (TestAWidenChangesOnlyTheHeaderScopeLines).
+// old first; a brief with no header SHARED: line is returned as it is. A header naming PATHS
+// or SHARED twice is returned unchanged for its caller to refuse
+// (TestAWidenChangesOnlyTheHeaderScopeLines).
 func SharedWidened(brief string, files []string) string {
 	lines := strings.Split(brief, "\n")
+	if headerRepeatsScope(lines) {
+		return brief
+	}
 	end := headerEnd(lines)
 	var at []int
 	for i := 1; i < end; i++ {
 		if k, _, ok := cardhdr.KeyValue(lines[i]); ok && k == "SHARED" {
 			at = append(at, i)
 		}
-	}
-	if len(at) > 1 {
-		return brief
 	}
 	for _, i := range at {
 		l := lines[i]

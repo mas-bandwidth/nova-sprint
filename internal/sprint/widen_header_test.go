@@ -68,4 +68,15 @@ func TestAWidenChangesOnlyTheHeaderScopeLines(t *testing.T) {
 	twiceShared := "c: twice (w) tier: pro\nSHARED: a.go\nSHARED: b.go\n\nSHARED: quoted.txt\n"
 	assert.Equal(t, twiceShared, SharedWidened(twiceShared, []string{"c.go"}),
 		"a header naming SHARED twice is not widened")
+
+	crossPaths := "c: crossed (w) tier: pro\nPATHS: a.go\nSHARED: x.txt\nSHARED: y.txt\n\nPATHS: quoted.go\n"
+	assert.Equal(t, crossPaths, PathsWidened(crossPaths, []string{"c.go"}, widenHeaderCarry),
+		"a header naming SHARED twice is not widened by PathsWidened")
+
+	crossShared := "c: crossed (w) tier: pro\nPATHS: a.go\nPATHS: b.go\nSHARED: x.txt\n\nSHARED: quoted.txt\n"
+	assert.Equal(t, crossShared, SharedWidened(crossShared, []string{"c.go"}),
+		"a header naming PATHS twice is not widened by SharedWidened")
+
+	assert.Equal(t, crossPaths, WidenBrief(crossPaths, []string{"c.go"}, widenHeaderCarry),
+		"a header naming SHARED twice is not widened by WidenBrief")
 }
