@@ -1497,6 +1497,18 @@ func settle(p *Plan, s *Snapshot, who string, offQueue, offTable map[string]bool
 	}
 }
 
+// openGateNeed says an NGateNeeds judgment is already open on the card: the rework
+// raises the gate-host judgment once, never every tick (one judgment per cause), as
+// the applied plan's OnePerCause dedups the deal's.
+func openGateNeed(s *Snapshot, c *Card) bool {
+	for _, o := range s.Open {
+		if o.Note.Kind == Judgment && o.Note.Type == NGateNeeds && slices.Contains(o.Note.Primaries, c.ID) {
+			return true
+		}
+	}
+	return false
+}
+
 // ReworkReq is the coordinator sending primaries back with a fix. With no
 // fix, each primary's fix is its own: the finding of its broken read, or the
 // report of its failed work; a primary with neither is refused by name.
@@ -1815,30 +1827,42 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		// the next member round the fleet with room (width.go; tla/DirtyTick.tla, HoldRespected):
 		// none up, or none below twice its width, and the primary waits ready for the tick's deal
 		m := ""
+		gateBlocked := false
+		var gateWhy string
 		_, friend := FriendCard(c)
 		bench := Bench(c)
 		// no route serves its tier and a friend up does: the friends' deal's, never a machine's
 		_, routeTier, toFriend, byFriend := s.routeOf(c, nil, nil, "")
 		if len(up) > 0 && !friend && !byFriend {
 			// a bench card's next attempt goes to a member of its bench alone (bench_deal.go),
-			// one that can launch a route of its tier (launchersOf)
-			ms, why := s.launchersOf(c, nil, onlyBench(up, bench))
-			if len(ms) == 0 && why != "" {
-				// A tier-only draw can see a route no fleet member can launch.
-				// Its eligible friends still receive the next attempt in the tick.
-				for _, f := range s.friendsFor(c, routeTier) {
-					if friendRestrictionAllows(f, c) {
-						byFriend, toFriend = true, why
-						break
+			// one that can launch a route of its tier (launchersOf); the pool is narrowed by
+			// the card's GATE-NEEDS exactly as the deal narrows it (GateHostPool): a card no
+			// member of the pool satisfies is never dealt to a member that cannot run it
+			pool := onlyBench(up, bench)
+			pool, gateWhy = s.GateHostPool(c, pool)
+			if len(pool) == 0 {
+				if len(onlyBench(up, bench)) > 0 && gateWhy != "" {
+					gateBlocked = true
+				}
+			} else {
+				ms, why := s.launchersOf(c, nil, pool)
+				if len(ms) == 0 && why != "" {
+					// A tier-only draw can see a route no fleet member can launch.
+					// Its eligible friends still receive the next attempt in the tick.
+					for _, f := range s.friendsFor(c, routeTier) {
+						if friendRestrictionAllows(f, c) {
+							byFriend, toFriend = true, why
+							break
+						}
+					}
+					if !byFriend {
+						p.refuse(c.ID, why)
+						stays()
+						continue
 					}
 				}
-				if !byFriend {
-					p.refuse(c.ID, why)
-					stays()
-					continue
-				}
+				m = rr.next(ms, q, room, reworkAvoid(s, c))
 			}
-			m = rr.next(ms, q, room, reworkAvoid(s, c))
 		}
 		if m != "" {
 			var why string
@@ -1859,6 +1883,11 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 				later = "a friend's card: the tick deals it to a friend up with room"
 			case byFriend:
 				later = toFriend
+			case gateBlocked:
+				later = "no member of its pool satisfies its GATE-NEEDS"
+				if !openGateNeed(s, c) {
+					p.Notes = append(p.Notes, gateNeedsJudgment(c, gateWhy, r.Who, s.Now))
+				}
 			case len(bench) > 0 && len(onlyBench(up, bench)) == 0:
 				later = benchWaits(bench) // no member of its bench is up (bench_deal.go)
 			case len(up) > 0:
