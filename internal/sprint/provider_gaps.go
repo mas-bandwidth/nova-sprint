@@ -13,6 +13,13 @@ type Provider struct {
 	Billing string `json:"billing"`
 	Funded  bool   `json:"funded"`
 	Problem string `json:"problem,omitempty"` // malformed declaration, never a funded row
+	// BaseURL, KeyEnv and NPMAdapter are an uncatalogued provider's custom block (nova-config
+	// provider base_url, key_env and npm_adapter): the API base, the NAME of the environment
+	// variable holding its key (never a value), and the harness adapter. All empty is a
+	// catalogued provider.
+	BaseURL    string `json:"base_url,omitempty"`
+	KeyEnv     string `json:"key_env,omitempty"`
+	NPMAdapter string `json:"npm_adapter,omitempty"`
 }
 
 // RouteGap names an enabled, funded route absent from every effective array.

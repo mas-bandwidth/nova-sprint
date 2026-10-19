@@ -164,6 +164,13 @@ func (st *Store) Packets(ctx context.Context, cards []*sprint.Card) ([]sprint.Pa
 		return nil, err
 	}
 	nt, mt := byID(ns), byID(ms)
+	// The routes and provider rows are read once per call, never once per card. A store
+	// with no routes, or a failed routes read, leaves every packet's provider block empty:
+	// the member then runs the harness's own catalog, as before the block existed.
+	var routeSet RouteSet
+	if rs, rerr := st.routes(ctx); rerr == nil {
+		routeSet = rs
+	}
 	var out []sprint.Packet
 	for _, c := range cards {
 		p, earlier, w := sprint.PacketCards(c)
@@ -186,6 +193,7 @@ func (st *Store) Packets(ctx context.Context, cards []*sprint.Card) ([]sprint.Pa
 		if pk.Tier == "" {
 			pk.Tier = sprint.DealtTier(c, pt[p]) // every packet names its tier, a route or none
 		}
+		packetProviderRow(&pk, routeSet)
 		out = append(out, pk)
 	}
 	return out, nil
@@ -468,4 +476,25 @@ func cellsOf(t ntable.Table, cols []string) ntable.Table {
 		v.Rows[i] = r
 	}
 	return v
+}
+
+// packetProviderRow sets the packet's custom provider block from its route's provider row:
+// for a real route (not "" and not a pin) whose provider row has a base_url, the three
+// fields are the row's base_url, key_env and npm_adapter; otherwise all three stay empty.
+// key_env is a variable NAME, copied as a string and never resolved.
+func packetProviderRow(pk *sprint.Packet, rs RouteSet) {
+	if pk.Route == "" || pk.Route == sprint.RoutePin {
+		return
+	}
+	for _, r := range rs.Routes {
+		if r.Name != pk.Route {
+			continue
+		}
+		row, ok := rs.Providers[r.Provider]
+		if !ok || row.BaseURL == "" {
+			return
+		}
+		pk.ProviderBaseURL, pk.ProviderKeyEnv, pk.ProviderNPMAdapter = row.BaseURL, row.KeyEnv, row.NPMAdapter
+		return
+	}
 }

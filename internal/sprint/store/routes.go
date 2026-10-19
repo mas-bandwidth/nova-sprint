@@ -562,7 +562,7 @@ func (st *Store) GitIdentity(ctx context.Context) (string, error) {
 // ProviderOf reads an applied provider hash. Malformed funding is non-fatal
 // for tick route reads, but remains a named diagnostic and never counts funded.
 func ProviderOf(name string, h map[string]string) (sprint.Provider, error) {
-	p := sprint.Provider{Name: name, Billing: h["billing"]}
+	p := sprint.Provider{Name: name, Billing: h["billing"], BaseURL: h["base_url"], KeyEnv: h["key_env"], NPMAdapter: h["npm_adapter"]}
 	funded, err := strconv.ParseBool(h["funded"])
 	if err == nil {
 		p.Funded = funded
