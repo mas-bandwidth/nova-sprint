@@ -213,6 +213,9 @@ const friendReportReadCap = 64 * 1024
 // that could not be read.
 type tipFn func(ctx context.Context, repo, branch string) (string, error)
 
+// tipsFn is every sprint branch tip of a repository, keyed by its branch name.
+type tipsFn func(ctx context.Context, repo string) (map[string]string, error)
+
 // friendTipBudget bounds the one ls-remote of a friend's LAND, well inside the period of
 // the loop friend sync runs in.
 const friendTipBudget = 10 * time.Second
@@ -230,6 +233,21 @@ func (a *app) branchTip(ctx context.Context, repo, branch string) (string, error
 		}
 	}
 	return "", nil
+}
+
+// branchTips is one bounded origin read for every sprint branch of a repository.
+func (a *app) branchTips(ctx context.Context, repo string) (map[string]string, error) {
+	out, err := gitrun.Output(ctx, gitrun.Options{Env: a.gitEnv, Timeout: friendTipBudget}, "ls-remote", "--", repo, "refs/heads/sprint/*")
+	if err != nil {
+		return nil, err
+	}
+	tips := map[string]string{}
+	for _, line := range strings.Split(out, "\n") {
+		if f := strings.Fields(line); len(f) == 2 && strings.HasPrefix(f[1], "refs/heads/sprint/") {
+			tips[strings.TrimPrefix(f[1], "refs/heads/")] = f[0]
+		}
+	}
+	return tips, nil
 }
 
 // friendFinish is the finish a friend's report gives her card (a reworked card's LAND that
