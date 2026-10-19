@@ -109,7 +109,7 @@ func landedRefusals(s *Snapshot, stream string, pins []LandedPin) []Refusal {
 		}
 		seen[pin.ID] = true
 		if why != "" {
-			out = append(out, Refusal{pin.ID, why})
+			out = append(out, Refusal{Key: pin.ID, Why: why})
 		}
 	}
 	return out
