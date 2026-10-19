@@ -44,6 +44,8 @@ type Refusal struct {
 	Why string `json:"why"`
 	// Code names a refusal a caller must tell apart by kind, not by its words: it is
 	// RefusedLastGate for the last-gate guard's refusal and "" for every other (hold.go).
+	// Adding the field makes positional Refusal{key, why} literals invalid throughout
+	// the package, so every one is written named (Refusal{Key: key, Why: why}).
 	Code string `json:"code,omitempty"`
 }
 
