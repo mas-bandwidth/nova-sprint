@@ -14,7 +14,7 @@ import (
 	"github.com/mas-bandwidth/nova-tools/hook"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/config"
+	"github.com/mas-bandwidth/nova-tools/pkg/config"
 )
 
 // oneShotApp is a sprint whose roster names fay, a one-shot friend (nova-config friend

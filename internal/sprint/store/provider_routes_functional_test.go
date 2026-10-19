@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
-	"github.com/mas-bandwidth/nova-sprint/pkg/config"
+	"github.com/mas-bandwidth/nova-tools/pkg/config"
 	"github.com/mas-bandwidth/nova-tools/pkg/redisacl"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
