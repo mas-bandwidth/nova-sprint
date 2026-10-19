@@ -73,8 +73,8 @@ func niceArgv(argv []string) []string {
 	return append(out, argv...)
 }
 
-// gateArgv is the argv a bench runs the gate script at: `nice -n <landGateNice> sh -c
-// <script>`.
+// gateArgv is the argv any gate exec runs a shell script at (the bench's tree gate and
+// the lander's own --check): `nice -n <landGateNice> sh -c <script>`.
 func gateArgv(script string) []string { return niceArgv([]string{"sh", "-c", script}) }
 
 // cloneGoArgv is a go run's command line in the clone, started at the gate's level

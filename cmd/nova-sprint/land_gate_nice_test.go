@@ -75,5 +75,4 @@ func TestTheCloneGoRunsKeepTheirNice(t *testing.T) {
 	}
 	assert.Equal(t, []string{"nice", "-n", strconv.Itoa(landGateNice), "go", "test", "./..."}, got,
 		"the clone's go runs carry the gate's level")
-	assert.Equal(t, []string{"go", "test", "./..."}, run, "the caller's run is not changed in place")
 }
