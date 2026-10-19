@@ -13,6 +13,14 @@ type Provider struct {
 	Billing string `json:"billing"`
 	Funded  bool   `json:"funded"`
 	Problem string `json:"problem,omitempty"` // malformed declaration, never a funded row
+	// BaseURL, KeyEnv and NPMAdapter are a custom provider's block (ProviderBaseURL,
+	// ProviderKeyEnv, ProviderNPMAdapter in a member's packet): the base URL the
+	// member's opencode custom provider talks to, the environment variable NAME (a
+	// name, never a value) holding its key, and the npm adapter it is built with.
+	// All three empty for a catalogued provider, and they ride together.
+	BaseURL    string `json:"base_url,omitempty"`
+	KeyEnv     string `json:"key_env,omitempty"`
+	NPMAdapter string `json:"npm_adapter,omitempty"`
 }
 
 // RouteGap names an enabled, funded route absent from every effective array.

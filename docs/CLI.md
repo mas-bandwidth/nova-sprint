@@ -114,7 +114,7 @@ nova-sprint demo load <backup.xz part>... [--sha256 <hex>] [--dir <dir>] [--xz <
 nova-sprint demo stop [--dir <dir>]
 nova-sprint fleet beat <member> [--stop-returns <n>] [--no-room <why>] [--draining] [--live <set>] [--facts <list>] --load <percent> [--dry-run]
 nova-sprint fleet up <member> [--width <n>]
-nova-sprint fleet down <member>
+nova-sprint fleet down <member> [--force-last]
 nova-sprint lane take go --machine <m|auto> --as <worker> [--wait <duration>] [--dry-run]
 nova-sprint lane give go --machine <m|auto> --as <worker> [--dry-run]
 nova-sprint hold <name>... --reason <text> [--return] [--force-last]
@@ -130,11 +130,11 @@ a friend's, her start receipts included.
 
 A member that is up keeps taken cards and finishes them, including with `--return`; that
 flag hands back only its dealt, untaken cards. A member that is down also returns its dead
-working cards. `fleet down <member>` follows the same rule. A hold that would leave no
-bench the land loop can use (the members up or held by the coordinator without `--return`,
-minus this machine and any host the check refuses) is refused, exit 2, naming the member:
-every landing would be refused until one is unheld. `--force-last` holds it anyway and the
-log line ends `--force-last: no gate bench left`.
+working cards. `fleet down <member>` follows the same rule. A hold or fleet down that would
+leave no bench the land loop can use (the members up or held by the coordinator without
+`--return`, minus this machine and any host the check refuses) is refused, exit 2, naming
+the member: every landing would be refused until one is unheld. `--force-last` on either
+verb holds it anyway and the log line ends `--force-last: no gate bench left`.
 
 `--machine auto` asks the server to pick an allowed bench by committed load / slots;
 a successful take prints its lease deadline and the give command. Take again within
@@ -212,6 +212,7 @@ nova-sprint doctor [--all] [--area <group>] [--preflight <candidate>] [--json]
 # `doctor --all` runs `nova-doctor run` alongside the sprint doctor, then prints both named reports and preserves each exit and stderr; `--json` wraps both child reports, statuses and stderr in one object. `--area` scopes the sprint checks. `--preflight` remains the candidate-binary gate and cannot be combined with `--all`.
 nova-sprint stats tidy (--friends | --fleet | --routes | --streams | --all)... --reason <text> [--dry-run]
 nova-sprint play [--simulation] [--seed <n>] [--every <duration>] [--broken <p>] [--fail <p>] [--stuck <p>] [--cross <p>] [--down <p>] [--up <p>] [--red <p>] [--flap <p>] [--batch <n>] [--hold] [--silent <member>@<from>+<for>]... [--ticks <n>]
+# play drives the outside actors (take, finish, read, merge) on a twin store, where its bare merge stands in for land; it reports a member's read cards when reads are dealt as cards and the readers table's asks when --read-cards is off, so every stream lands. A real store refuses the bare merge, so play is for a twin.
 nova-sprint clear --confirm sprint
 nova-sprint teardown --confirm sprint
 ```

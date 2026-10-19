@@ -65,6 +65,14 @@ type Packet struct {
 	// unlimited, and no gate is installed.
 	RateRPM        int `json:"rate_rpm,omitempty"`
 	RateConcurrent int `json:"rate_concurrent,omitempty"`
+	// ProviderBaseURL, ProviderKeyEnv and ProviderNPMAdapter are the route's
+	// provider row when it is a custom one the harness catalog does not know (a
+	// non-empty base_url): opencode's custom provider block is built from them,
+	// the key's variable NAME only, never its value. All three empty for a
+	// catalogued provider or no row, and they ride together.
+	ProviderBaseURL    string `json:"provider_base_url,omitempty"`
+	ProviderKeyEnv     string `json:"provider_key_env,omitempty"`
+	ProviderNPMAdapter string `json:"provider_npm_adapter,omitempty"`
 	// Tier is the tier the card's route is drawn from when the sprint decided it
 	// and not the brief's line 1: a read's read tier (route.go, readTierOf), a work
 	// card's tier from rework --tier; empty otherwise. JOB.md names it.

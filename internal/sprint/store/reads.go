@@ -164,6 +164,14 @@ func (st *Store) Packets(ctx context.Context, cards []*sprint.Card) ([]sprint.Pa
 		return nil, err
 	}
 	nt, mt := byID(ns), byID(ms)
+	// The routes the cards are on are read once per build, never once per card:
+	// a card's route finds its provider row in the set the store already reads
+	// (Routes), and when that row's BaseURL is non-empty the packet carries the
+	// three custom-provider fields from it, together.
+	set := RouteSet{}
+	if rs, err := st.routes(ctx); err == nil {
+		set = rs
+	}
 	var out []sprint.Packet
 	for _, c := range cards {
 		p, earlier, w := sprint.PacketCards(c)
@@ -186,9 +194,37 @@ func (st *Store) Packets(ctx context.Context, cards []*sprint.Card) ([]sprint.Pa
 		if pk.Tier == "" {
 			pk.Tier = sprint.DealtTier(c, pt[p]) // every packet names its tier, a route or none
 		}
+		pk.ProviderBaseURL, pk.ProviderKeyEnv, pk.ProviderNPMAdapter = providerRowOf(set, pk.Route)
 		out = append(out, pk)
 	}
 	return out, nil
+}
+
+// providerRowOf is a route's custom-provider row: the provider word the route
+// rests on, looked up in the routes the store reads, and that provider's BaseURL,
+// KeyEnv and NPMAdapter when it is a custom row (a non-empty base_url). A route
+// that is not real, a route or provider with no row, and a catalogued provider
+// (empty base_url) all yield three empties: the three are filled together or not
+// at all.
+func providerRowOf(set RouteSet, route string) (baseURL, keyEnv, npmAdapter string) {
+	if route == "" || route == sprint.RoutePin {
+		return "", "", ""
+	}
+	var provider string
+	for _, r := range set.Routes {
+		if r.Name == route {
+			provider = r.Provider
+			break
+		}
+	}
+	if provider == "" {
+		return "", "", ""
+	}
+	row, ok := set.Providers[provider]
+	if !ok || row.BaseURL == "" {
+		return "", "", ""
+	}
+	return row.BaseURL, row.KeyEnv, row.NPMAdapter
 }
 
 // CardInfo is everything about one primary: its record, its work cards and

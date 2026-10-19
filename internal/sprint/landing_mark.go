@@ -22,16 +22,34 @@ func LandingMarked(s *Snapshot, id string) bool {
 	return pr != nil && m != nil && pr.Col == Merging && m.F(FieldLandingHead) != "" && m.F(FieldLandingHead) == pr.F("head")
 }
 
+// landOrderSkipped ends the refusal MarkLanding gives a pin whose LAND-AFTER order is not
+// met at the mark (LandOrderSkipped): the one refusal that ends the batch at its pin.
+const landOrderSkipped = " is skipped this batch"
+
+// LandOrderSkipped says MarkLanding's refusal r is the LAND-AFTER skip (LandOrderBlocked at
+// the mark): the pins before r's were marked in the same step and are a pushable prefix.
+// Every other MarkLanding refusal writes nothing and refuses the whole batch.
+func LandOrderSkipped(r Refusal) bool { return strings.HasSuffix(r.Why, landOrderSkipped) }
+
 // MarkLanding is the lander's check and mark before the push, one step: every pinned card
 // still merging and queued in stream at the head pinned, and with the reads it needs there
 // (ReadsShortWhy) unless it is marked already (a landing a lander committed to before), or
 // the whole step is refused naming the first card and why, nothing written; then each card
 // is marked landing at its head (FieldLandingHead). tla/Land.tla Check.
+//
+// One refusal is not the whole step's: a pin whose LAND-AFTER order is not met on the store
+// as it is at the mark (LandOrderBlocked, with landing = the pins ahead of it) ends the batch
+// there. The pins before it are marked in this step; it and every pin after it are not, and
+// the refusal (LandOrderSkipped) names it, its targets and the skip. So nothing is pushed
+// that the report would refuse for LAND-AFTER, and the pushed history keeps LAND-AFTER order
+// (tla/SoftDependency.tla MarkPush, BaseRecorded and BaseSoftOrder; the reversed witness
+// is MCSoftDependencyBrokenCutUnguarded.cfg).
 func MarkLanding(s *Snapshot, stream string, pins []PushedPin) Plan {
 	var p Plan
 	p.on(s)
 	var changes []Change
 	var ids []string
+	landing := map[string]bool{}
 	for _, pin := range pins {
 		pr, m := s.Work.Placed(pin.ID), s.Merge.Placed(pin.ID)
 		switch {
@@ -48,7 +66,12 @@ func MarkLanding(s *Snapshot, stream string, pins []PushedPin) Plan {
 			p.refuse(pin.ID, "re-pointed to BASE "+baseOfBrief(pr.F("brief"))+" during the gate, not "+pin.Base+" as it was built: it lands on the next pass; nothing pushed")
 			return p
 		case m.F(FieldLandingHead) == pin.Head:
+			landing[pin.ID] = true
 			continue // committed to already: its reads were judged at that mark
+		}
+		if blocked := LandOrderBlocked(s, pr, landing); len(blocked) > 0 {
+			p.refuse(pin.ID, "soft dependency on "+strings.Join(blocked, ", ")+" not landed; "+pin.ID+landOrderSkipped)
+			break
 		}
 		if why := ReadsShortWhy(s, pr); why != "" && !PushedUnreportedMatches(s, pin.ID) {
 			p.refuse(pin.ID, why+" now (the reads setting or its tier raised since land read it); nothing pushed, and the tick sends it back to review for the read it lacks")
@@ -56,6 +79,7 @@ func MarkLanding(s *Snapshot, stream string, pins []PushedPin) Plan {
 		}
 		changes = append(changes, change(Merge, setEntry(m, map[string]string{FieldLandingHead: pin.Head})))
 		ids = append(ids, pin.ID)
+		landing[pin.ID] = true
 	}
 	if len(changes) == 0 {
 		return p
