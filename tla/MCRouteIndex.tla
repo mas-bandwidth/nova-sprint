@@ -27,6 +27,10 @@ MCRestedB == {"b"}
 MCAvoidA == [c \in Cards |-> IF c \in Reads THEN {"a"} ELSE {}]
 MCReadTierProFlash == [t \in Tiers |-> IF t = "pro" THEN "flash" ELSE t]
 
+\* The reads-only case (MCRouteIndexReadsOnly.cfg): e, a pro route, is reserved for
+\* reads; the pro work card c5 draws d alone, and the read c6 draws e.
+MCReadsOnlyE == {"e"}
+
 MCArr == [t \in {"flash", "pro"} |-> IF t = "flash" THEN <<"a", "b", "c">> ELSE <<"d", "e", "e">>]
 MCTierOf == [c \in Cards |-> IF c \in ProCards THEN "pro" ELSE "flash"]
 

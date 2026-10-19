@@ -108,7 +108,8 @@ func (s *Snapshot) ProviderGaps(tier string) (routes []RouteGap, tiers []string)
 	}
 	for _, t := range s.providerTiers() {
 		funded := false
-		for _, name := range s.tierArray(t) {
+		// a reads-only route (set --read-routes) is a route the tier's reads draw: placed
+		for _, name := range s.servedArray(t) {
 			r, ok := byName[name]
 			if !ok || !r.Enabled || r.Tier != t {
 				continue
@@ -149,7 +150,7 @@ func (s *Snapshot) ProviderCoverages() []ProviderCoverage {
 				}
 			}
 			seen := map[string]bool{}
-			for _, n := range s.tierArray(tier) {
+			for _, n := range s.servedArray(tier) {
 				r, ok := byName[n]
 				if ok && !seen[n] && r.Enabled && r.Tier == tier && r.Provider == name {
 					count.In++

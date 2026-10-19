@@ -185,21 +185,7 @@ func SelftestLand(ctx context.Context, opts ...SelftestLandOption) error {
 		}
 
 		// Run through standard coordinator/worker lifecycle to queue canned card in merge
-		commands := [][]string{
-			{"init", "--readers", "reader-a", "--members", "m1:1", "--redis", redisAddr, "--actor", "boss"},
-			{"add", "--stream", "selftest", "--count", "1", "--brief-file", briefPath, "--redis", redisAddr, "--actor", "boss"},
-			{"start", "--redis", redisAddr, "--actor", "boss"},
-			{"tick", "--redis", redisAddr, "--actor", "boss"},
-			{"tick", "--redis", redisAddr, "--actor", "boss"},
-			{"take", "--as", "m1", "--epoch", "0", "--redis", redisAddr, "--actor", "m1"},
-			{"finish", "--as", "m1", "selftest-1.w1@1", "--epoch", "0", "--head", headSha, "--branch", cardBranch, "--report", "canned done", "--redis", redisAddr, "--actor", "m1"},
-			{"tick", "--redis", redisAddr, "--actor", "boss"},
-			{"read", "--as", "reader-a", "--begin", "--epoch", "0", "--redis", redisAddr, "--actor", "reader-a"},
-			{"read", "--as", "reader-a", "--ok", "--epoch", "0", "--redis", redisAddr, "--actor", "reader-a"},
-			{"tick", "--redis", redisAddr, "--actor", "boss"},
-			{"accept", "--read-ok", "--redis", redisAddr, "--actor", "boss"},
-			{"land", "--stream", "selftest", "--repo-dir", workDir, "--base", "main", "--redis", redisAddr, "--actor", "boss", "--check", "true"},
-		}
+		commands := selftestLandCommands(redisAddr, briefPath, headSha, cardBranch)
 
 		for _, argv := range commands {
 			out, err := runBin(argv...)
@@ -219,4 +205,25 @@ func SelftestLand(ctx context.Context, opts ...SelftestLandOption) error {
 	}
 
 	return nil
+}
+
+// selftestLandCommands is the coordinator/worker lifecycle selftest land drives to queue,
+// finish and land its canned card.
+func selftestLandCommands(redisAddr, briefPath, headSha, cardBranch string) [][]string {
+	workDir := filepath.Join(filepath.Dir(briefPath), "work")
+	return [][]string{
+		{"init", "--readers", "reader-a", "--members", "m1:1", "--redis", redisAddr, "--actor", "boss"},
+		{"add", "--stream", "selftest", "--count", "1", "--brief-file", briefPath, "--one", "--redis", redisAddr, "--actor", "boss"}, // one card on purpose: add refuses a single card without --one
+		{"start", "--redis", redisAddr, "--actor", "boss"},
+		{"tick", "--redis", redisAddr, "--actor", "boss"},
+		{"tick", "--redis", redisAddr, "--actor", "boss"},
+		{"take", "--as", "m1", "--epoch", "0", "--redis", redisAddr, "--actor", "m1"},
+		{"finish", "--as", "m1", "selftest-1.w1@1", "--epoch", "0", "--head", headSha, "--branch", cardBranch, "--report", "canned done", "--redis", redisAddr, "--actor", "m1"},
+		{"tick", "--redis", redisAddr, "--actor", "boss"},
+		{"read", "--as", "reader-a", "--begin", "--epoch", "0", "--redis", redisAddr, "--actor", "reader-a"},
+		{"read", "--as", "reader-a", "--ok", "--epoch", "0", "--redis", redisAddr, "--actor", "reader-a"},
+		{"tick", "--redis", redisAddr, "--actor", "boss"},
+		{"accept", "--read-ok", "--redis", redisAddr, "--actor", "boss"},
+		{"land", "--stream", "selftest", "--repo-dir", workDir, "--base", "main", "--redis", redisAddr, "--actor", "boss", "--check", "true"},
+	}
 }

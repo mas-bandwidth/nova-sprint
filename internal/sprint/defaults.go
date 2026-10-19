@@ -82,6 +82,7 @@ var Defaults = []Default{
 	{Name: PropReworkPriority, Home: HomeProp, Value: PriorityFix, Why: "a next attempt is dealt at fix priority"},
 	{Name: PropReadTier, Home: HomeProp, Value: ReadTierDefault, Why: "each card's reads run at its own tier"},
 	{Name: PropReadsNeeded, Home: HomeProp, Value: ReadTierDefault, Why: "each card's own rule: one read for a flash card, two above"},
+	{Name: PropReadRoutes, Home: HomeProp, Value: ReadTierDefault, Why: "no route is reserved for reads: work and reads share each tier's routes"},
 	// the bounds
 	{Name: PropDealtMax, Home: HomeProp, Value: DealtMaxDefault.String(), Why: "three times the take deadline"},
 	{Name: PropReadyMax, Home: HomeProp, Value: ReadyMaxDefault.String(), Why: "a card ready over a minute pushes the seat"},
