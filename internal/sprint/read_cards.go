@@ -3,6 +3,7 @@ package sprint
 import (
 	"cmp"
 	"maps"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -315,7 +316,8 @@ func attemptUnit(s *Snapshot, primary string, attempt int) string {
 }
 
 // spentBy is the retired_by of a read card its reader itself ended: it closed it (read) or
-// handed it back (returned), or let it pass its deadline (late). A card the machine took
+// handed it back (returned, except on a provider failure below ProviderReadCap: readSpender),
+// or let it pass its deadline (late). A card the machine took
 // back (a reader down, away or held, a restart, the coordinator's hold --return, its
 // primary moved) spends nothing: its reader may be dealt the read again at the attempt.
 var spentBy = []string{"read", RetiredByReturned, RetiredByLate}
@@ -340,14 +342,63 @@ func readerCardsAt(cards []*Card, primary string, attempt int, reader string) []
 // withdrawn with retired_by returned and spends her.
 func readSpent(cards []*Card) bool { return readSpender(cards) != nil }
 
-// readSpender is the first card that spends its reader (readSpent), nil for none.
+// readSpender is the first card that spends its reader (readSpent), nil for none. A read the
+// reader handed back on a provider failure (ProviderFailureReturn: a rate limit, the
+// provider's 5xx, a timeout) is the provider's, never the reader's: it spends nothing until
+// ProviderReadCap of them at the attempt, and the last of those is then the spender
+// (tla/ReadProviderReturn.tla). It is read from the cards themselves, so a return recorded
+// before this rule spends nothing either.
 func readSpender(cards []*Card) *Card {
+	var provider []*Card
 	for _, c := range cards {
-		if c.Placed() && c.Col != Withdrawn || c.F("verdict") != "" || slices.Contains(spentBy, c.F("retired_by")) {
+		if c.Placed() && c.Col != Withdrawn || c.F("verdict") != "" {
 			return c
 		}
+		if !slices.Contains(spentBy, c.F("retired_by")) {
+			continue
+		}
+		if c.F("retired_by") == RetiredByReturned && ProviderFailureReturn(c.F("reason")) {
+			provider = append(provider, c)
+			continue
+		}
+		return c
+	}
+	if len(provider) >= ProviderReadCap {
+		return provider[len(provider)-1]
 	}
 	return nil
+}
+
+// ProviderReadCap bounds one reader's provider-failure returns of one attempt's read (every
+// generation of its read card): at this many the reader is spent at the attempt as by any
+// return of its own, so a provider that never recovers cannot deal the read to it forever.
+const ProviderReadCap = 3
+
+// providerReturnRE finds the member's provider-failure words in a read's return reason
+// ("... no verdict (ran=false verdict=\"\"): provider failure: provider: class=<class>
+// status=<status> msg=...", pkg/member's reportOne).
+var providerReturnRE = regexp.MustCompile(`provider failure: (?:provider: )?class=(\S+) status=(\S+)`)
+
+// ProviderFailureReturn says a read's return reason is a transient provider failure: class
+// rate-limited, provider-5xx or timeout, or a 429 or 5xx status. Out of credit and a refused
+// key are not: they rest the provider by their own rules, and the return spends as before.
+func ProviderFailureReturn(reason string) bool {
+	m := providerReturnRE.FindStringSubmatch(reason)
+	if m == nil {
+		return false
+	}
+	low := strings.ToLower(reason)
+	if strings.Contains(low, "quota") || strings.Contains(low, "credit") || strings.Contains(low, "balance") {
+		return false // out of funds under any class or status: it spends as before
+	}
+	switch m[1] {
+	case classRateLimited, class5xx, classTimeout:
+		return true
+	case RestCredit, RestAuth:
+		return false
+	}
+	st := m[2]
+	return st == "429" || len(st) == 3 && st[0] == '5'
 }
 
 // readGenOf is the generation an id names of the reader's plain read card identity (base):

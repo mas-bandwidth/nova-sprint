@@ -680,8 +680,16 @@ func readCardVerb(s *Snapshot, r ReadReq, row, name string) Plan {
 			}
 			n := happened(NReadReturned, pr.Row, s.Now, pr.ID)
 			n.Who, n.Attempt, n.What = name, c.Int("attempt"), name+" returned "+c.ID+": "+r.Reason
+			moved := c.ID + " " + c.Col + " -> returned (retired: " + name + " gave no verdict)"
+			if ProviderFailureReturn(r.Reason) {
+				// the provider's failure, not the reader's: it spends the reader only at
+				// ProviderReadCap such returns of the attempt (readSpender), so the deal may
+				// deal it the read again (tla/ReadProviderReturn.tla)
+				n.What += "; a provider failure: its reader is not spent below " + itoa(ProviderReadCap) + " of them"
+				moved = c.ID + " " + c.Col + " -> returned (retired: a provider failure, its reader not spent below " + itoa(ProviderReadCap) + ")"
+			}
 			p.Units = append(p.Units, Unit{Key: pr.ID, Stream: pr.Row, Changes: []Change{change(Fleet, removeEntry(c, set))},
-				Moved: c.ID + " " + c.Col + " -> returned (retired: " + name + " gave no verdict)", Notes: []Note{n}})
+				Moved: moved, Notes: []Note{n}})
 			continue
 		}
 		if m, ok := r.missingBranch(c); ok {
