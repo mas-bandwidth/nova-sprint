@@ -257,20 +257,66 @@ func fileNames(files []WidenFile) []string {
 	return out
 }
 
-// SharedWidened is brief with files added to every SHARED: line it has, each once, the old
-// first; a brief with no SHARED: line is returned as it is.
+// headerEnd is the index after the brief's header: the key: value lines under line 1, as
+// BriefEdit.Apply reads them (select_batch.go). A line below it is prose however it reads.
+// TestAWidenChangesOnlyTheHeaderScopeLines pins this card's rule: a widen edits only these.
+func headerEnd(lines []string) int {
+	i := 1
+	for i < len(lines) {
+		if _, _, ok := cardhdr.KeyValue(lines[i]); !ok {
+			break
+		}
+		i++
+	}
+	return i
+}
+
+// HeaderEnd is headerEnd over brief, for the command's widenBrief (recut_widen.go).
+func HeaderEnd(brief string) int { return headerEnd(strings.Split(brief, "\n")) }
+
+// headerRepeatsScope is whether the header names PATHS or SHARED more than once: an edit that
+// rewrites a scope line refuses such a brief whole, whichever key repeats
+// (TestAWidenChangesOnlyTheHeaderScopeLines).
+func headerRepeatsScope(lines []string) bool {
+	end := headerEnd(lines)
+	paths, shared := 0, 0
+	for i := 1; i < end; i++ {
+		switch k, _, ok := cardhdr.KeyValue(lines[i]); {
+		case ok && k == cardhdr.KeyPaths:
+			paths++
+		case ok && k == "SHARED":
+			shared++
+		}
+	}
+	return paths > 1 || shared > 1
+}
+
+// SharedWidened is brief with files added to its header's one SHARED: line, each once, the
+// old first; a brief with no header SHARED: line is returned as it is. A header naming PATHS
+// or SHARED twice is returned unchanged for its caller to refuse
+// (TestAWidenChangesOnlyTheHeaderScopeLines).
 func SharedWidened(brief string, files []string) string {
 	lines := strings.Split(brief, "\n")
-	for i, l := range lines {
-		if k, v, ok := cardhdr.KeyValue(strings.TrimSpace(l)); ok && k == "SHARED" {
-			var all []string
-			for _, g := range append(strings.Split(v, ","), files...) {
-				if g = strings.TrimSpace(g); g != "" && g != "none" && !slices.Contains(all, g) {
-					all = append(all, g)
-				}
-			}
-			lines[i] = l[:len(l)-len(strings.TrimLeft(l, " \t"))] + k + ": " + strings.Join(all, ",")
+	if headerRepeatsScope(lines) {
+		return brief
+	}
+	end := headerEnd(lines)
+	var at []int
+	for i := 1; i < end; i++ {
+		if k, _, ok := cardhdr.KeyValue(lines[i]); ok && k == "SHARED" {
+			at = append(at, i)
 		}
+	}
+	for _, i := range at {
+		l := lines[i]
+		k, v, _ := cardhdr.KeyValue(l)
+		var all []string
+		for _, g := range append(strings.Split(v, ","), files...) {
+			if g = strings.TrimSpace(g); g != "" && g != "none" && !slices.Contains(all, g) {
+				all = append(all, g)
+			}
+		}
+		lines[i] = l[:len(l)-len(strings.TrimLeft(l, " \t"))] + k + ": " + strings.Join(all, ",")
 	}
 	return strings.Join(lines, "\n")
 }
@@ -310,7 +356,36 @@ func widenInPlace(s *Snapshot, r TickReq, a widenAnswer) Plan {
 	files := fileNames(a.files)
 	pr := a.pr
 	carry := fmt.Sprintf("CARRY: %s attempt %d head=%s", pr.ID, pr.Int("attempt"), pr.F("head"))
-	p := Brief(s, BriefReq{ID: pr.ID, Brief: SharedWidened(PathsWidened(pr.F("brief"), files, carry), files), Rules: pr.F(FieldRules), Who: r.who(), ByRule: true})
+	brief := pr.F("brief")
+	lines := strings.Split(brief, "\n")
+	end := headerEnd(lines)
+	paths, shared := 0, 0
+	for i := 1; i < end; i++ {
+		switch k, _, ok := cardhdr.KeyValue(lines[i]); {
+		case ok && k == cardhdr.KeyPaths:
+			paths++
+		case ok && k == "SHARED":
+			shared++
+		}
+	}
+	if paths > 1 || shared > 1 {
+		// a header naming PATHS or SHARED twice is not widened: leave the judgment open with
+		// the words (TestAWidenChangesOnlyTheHeaderScopeLines)
+		why := "the header names PATHS twice; widen by hand"
+		var updates []Note
+		for _, o := range a.opens {
+			if n := o.Note; !strings.HasPrefix(n.What, why) {
+				n.What = why + ": " + n.What
+				updates = append(updates, n)
+			}
+		}
+		return Plan{Updates: updates}
+	}
+	edited := SharedWidened(PathsWidened(brief, files, carry), files)
+	if edited == brief {
+		return Plan{} // an unchanged brief is a refused edit, the judgment's
+	}
+	p := Brief(s, BriefReq{ID: pr.ID, Brief: edited, Rules: pr.F(FieldRules), Who: r.who(), ByRule: true})
 	if len(p.Refused) > 0 {
 		return Plan{}
 	}

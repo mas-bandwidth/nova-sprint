@@ -99,6 +99,10 @@ func (a *app) widen(ctx context.Context, st *store.Store, id, repoDir string) (w
 	}
 	w.carry = member.Carry{Card: id, Attempt: n, Head: head}
 	w.brief = widenBrief(brief, globs, member.CarryLine(w.carry))
+	if w.brief == brief {
+		// unchanged: a header naming PATHS or SHARED twice (TestBriefWidenChangesOnlyTheHeaderPaths)
+		return w, "the header names PATHS twice; widen by hand", nil
+	}
 	return w, "", nil
 }
 
@@ -192,17 +196,33 @@ func (a *app) widenTrees(ctx context.Context, dir string, base swarm.CardBase, h
 	return files, ""
 }
 
-// widenBrief is brief with every PATHS: line the union of its globs and globs, each once in
-// that order, and the CARRY: line carry in its header, in place of one there or after line 1.
-// Each line is read by the header's one reader (cardhdr.KeyValue, as decide.CardPaths reads
-// PATHS), so the line rewritten is the line every gate reads.
+// widenBrief is brief with its header's PATHS: lines the union of their globs and globs, each
+// once in that order, and the CARRY: line carry in its header, in place of one there or after
+// line 1. Lines below the header are prose, never read or written. A header naming PATHS or
+// SHARED twice is returned unchanged for the verb to refuse
+// (TestBriefWidenChangesOnlyTheHeaderPaths).
 func widenBrief(brief string, globs []string, carry string) string {
 	lines := strings.Split(brief, "\n")
+	end := sprint.HeaderEnd(brief)
+	paths, shared := 0, 0
+	for i := 1; i < end; i++ {
+		switch k, _, ok := cardhdr.KeyValue(lines[i]); {
+		case ok && k == cardhdr.KeyPaths:
+			paths++
+		case ok && k == "SHARED":
+			shared++
+		}
+	}
+	if paths > 1 || shared > 1 {
+		return brief
+	}
 	var union []string
 	at := -1
-	for i, l := range lines {
-		if k, old, ok := cardhdr.KeyValue(strings.TrimSpace(l)); ok && k == cardhdr.KeyPaths && at < 0 {
-			at = i
+	for i := 1; i < end; i++ {
+		if k, old, ok := cardhdr.KeyValue(lines[i]); ok && k == cardhdr.KeyPaths {
+			if at < 0 {
+				at = i
+			}
 			for _, g := range strings.Split(old, ",") {
 				if g = strings.TrimSpace(g); g != "" && !slices.Contains(union, g) {
 					union = append(union, g)
@@ -217,13 +237,13 @@ func widenBrief(brief string, globs []string, carry string) string {
 	}
 	set := cardhdr.KeyPaths + ": " + strings.Join(union, ",")
 	carried := false
-	for i, l := range lines {
-		t := strings.TrimSpace(l)
-		k, _, ok := cardhdr.KeyValue(t)
+	for i := 1; i < end; i++ {
+		l := lines[i]
+		k, _, ok := cardhdr.KeyValue(l)
 		switch {
 		case ok && k == cardhdr.KeyPaths:
 			lines[i] = l[:len(l)-len(strings.TrimLeft(l, " \t"))] + set
-		case strings.HasPrefix(t, member.CarryKey) && !carried:
+		case ok && k == "CARRY" && !carried:
 			lines[i], carried = carry, true
 		}
 	}
