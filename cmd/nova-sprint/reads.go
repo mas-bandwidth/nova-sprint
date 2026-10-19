@@ -1518,6 +1518,10 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	if line := backupLine(v.Backup, working, review, merging, v.ReadsWaiting); line != "" {
 		b.WriteString(line + "\n")
 	}
+	// the deal throttle while it stands, once (deal_throttle.go): the same counts
+	if line := sprint.ThrottleLine(shapes[0].Props, int(review), int(merging)); line != "" {
+		b.WriteString(line + "\n")
+	}
 	// the streams' costs as every total counts them: the archived streams' are under
 	// archived alone (the owner, 2026-10-14; where_live_totals.go), a sprint done the epoch's
 	liveCosts := facts.Streams

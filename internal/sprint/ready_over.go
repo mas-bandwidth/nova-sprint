@@ -80,6 +80,11 @@ func (s *Snapshot) readyWhy(c *Card) (tier, why string) {
 	if StreamHeld(s, c.Row) {
 		return cardTierOf(c), "its stream " + c.Row + " is held (" + orDash(s.StreamCtl(c.Row).F(FieldHeldReason)) + "): release it: nova-sprint unhold " + c.Row
 	}
+	// a new work card the deal throttle holds while landing backs up: explained by the
+	// throttle, never an alarm (readyOverConds skips it; deal_throttle.go)
+	if held, why := s.throttleHolds(c); held {
+		return cardTierOf(c), why
+	}
 	ec := escalating(s, c)
 	_, tier, rwhy, byFriend := s.routeOf(ec, nil, nil, "")
 	if byFriend {
@@ -168,6 +173,9 @@ func readyOverConds(s *Snapshot, r TickReq) []cond {
 	for _, c := range s.Work.Column(Ready) {
 		if d, ok := r.running(s.Now, c.F(FieldReadyAt)); !ok || d <= max {
 			continue
+		}
+		if held, _ := s.throttleHolds(c); held {
+			continue // the throttle holds it (readyWhy says so): explained, never alarming
 		}
 		tier, why := s.readyWhy(c)
 		if why == "" {

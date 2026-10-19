@@ -850,11 +850,15 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	capOf := s.AttemptsCapOf()
 	unserved, whyOf := map[string][]string{}, map[string]string{}
 	up := s.UpMembers()
+	// the throttle (deal_throttle.go; tla/DealThrottle.tla): while merging or review is
+	// above its backlog bound, no new work attempt is offered to a friend or dealt to a
+	// machine; reads, fixes and next attempts are, and nothing working is touched
+	readyCol, throttled := throttledOut(s, s.Work.Column(Ready))
 	// Friends first: every ready card a friend may take, except a held stream
 	// (dealt nowhere) and a bench card (bench_deal.go keeps it for its bench).
 	// A hard pin that no friend takes stays out of the fleet below.
 	var offer []*Card
-	for _, c := range s.Work.Column(Ready) {
+	for _, c := range readyCol {
 		if StreamHeld(s, c.Row) || IsSentinel(c) {
 			continue
 		}
@@ -885,7 +889,7 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	for _, u := range fp.Units {
 		friendPlaced[u.Key] = true
 	}
-	for _, c := range s.Work.Column(Ready) {
+	for _, c := range readyCol {
 		if StreamHeld(s, c.Row) {
 			continue // its stream is held (hold.go): dealt to no machine and no friend until unhold
 		}
@@ -1116,6 +1120,7 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	}
 	p.Rows, p.Units, p.Refused = append(p.Rows, fp.Rows...), append(p.Units, fp.Units...), append(p.Refused, fp.Refused...)
 	p.Refused = append(p.Refused, reads.Refused...)
+	p.Refused = append(p.Refused, throttled...)
 	p.Props = append(p.Props, fp.Props...)
 	p.Props = append(p.Props, reads.Props...)
 	for _, row := range reads.Rows {
