@@ -66,6 +66,21 @@ func SelftestLand(ctx context.Context, opts ...SelftestLandOption) error {
 			return fmt.Errorf("selftest land: cannot create scratch directory: %w", err)
 		}
 	}
+
+	// SelftestLand owns exactly four names under the scratch directory: the bare
+	// origin, the work clone, the twin and the canned brief. It removes them at
+	// the start, so an earlier run's leftovers never make the clone fail, and on
+	// every return, so a caller's --scratch-dir is left with nothing of this run
+	// (docs/SPEC-SPRINT.md section 14). Never the scratch directory itself or
+	// anything else in it.
+	owned := []string{"origin.git", "work", "selftest.twin", "canned-brief.md"}
+	cleanOwned := func() {
+		for _, name := range owned {
+			_ = safepath.RemoveUnder(scratch, filepath.Join(scratch, name))
+		}
+	}
+	cleanOwned()
+	defer cleanOwned()
 	if cleanScratch {
 		defer func() {
 			// ignored: best-effort scratch cleanup
@@ -148,6 +163,7 @@ func SelftestLand(ctx context.Context, opts ...SelftestLandOption) error {
 	}
 
 	// 5. Land the canned card
+	var lastOut string
 	if cfg.lander != nil {
 		if err := cfg.lander(ctx, workDir); err != nil {
 			return fmt.Errorf("selftest land: lander failed: %w", err)
@@ -192,6 +208,7 @@ func SelftestLand(ctx context.Context, opts ...SelftestLandOption) error {
 			if err != nil {
 				return fmt.Errorf("selftest land: command %v failed: %s: %w", argv, out, err)
 			}
+			lastOut = out
 		}
 	}
 
@@ -201,7 +218,7 @@ func SelftestLand(ctx context.Context, opts ...SelftestLandOption) error {
 		return fmt.Errorf("selftest land: git log origin main failed: %s: %w", logOut, err)
 	}
 	if cfg.lander == nil && !strings.Contains(logOut, "land selftest-1") {
-		return fmt.Errorf("selftest land: landing commit not found in origin main: %s", logOut)
+		return fmt.Errorf("selftest land: landing commit not found in origin main: %s (lander's last output: %s)", logOut, lastOut)
 	}
 
 	return nil
@@ -219,11 +236,11 @@ func selftestLandCommands(redisAddr, briefPath, headSha, cardBranch string) [][]
 		{"tick", "--redis", redisAddr, "--actor", "boss"},
 		{"take", "--as", "m1", "--epoch", "0", "--redis", redisAddr, "--actor", "m1"},
 		{"finish", "--as", "m1", "selftest-1.w1@1", "--epoch", "0", "--head", headSha, "--branch", cardBranch, "--report", "canned done", "--redis", redisAddr, "--actor", "m1"},
-		{"tick", "--redis", redisAddr, "--actor", "boss"},
-		{"read", "--as", "reader-a", "--begin", "--epoch", "0", "--redis", redisAddr, "--actor", "reader-a"},
-		{"read", "--as", "reader-a", "--ok", "--epoch", "0", "--redis", redisAddr, "--actor", "reader-a"},
+		{"ask", "--redis", redisAddr, "--actor", "boss"},
+		{"read", "--as", "reader-a", "--ok", "selftest-1.r1.reader-a", "--epoch", "0", "--redis", redisAddr, "--actor", "reader-a"},
 		{"tick", "--redis", redisAddr, "--actor", "boss"},
 		{"accept", "--read-ok", "--redis", redisAddr, "--actor", "boss"},
+		{"stream", "set", "selftest", "--land-protected", "any", "--redis", redisAddr, "--actor", "boss"},
 		{"land", "--stream", "selftest", "--repo-dir", workDir, "--base", "main", "--redis", redisAddr, "--actor", "boss", "--check", "true"},
 	}
 }
