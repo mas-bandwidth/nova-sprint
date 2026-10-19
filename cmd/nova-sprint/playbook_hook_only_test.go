@@ -17,18 +17,18 @@ import (
 // installs or runs one (section 2, "Running a friend row, the coordinator's
 // own included").
 
-// retiredFriendDaemonRe is a line that installs or runs a nova-friend daemon.
+// retiredFriendDaemonRe names a verb that installs or runs a nova-friend daemon.
 // `nova-friend help run` reads a verb's help and is not refused.
 var retiredFriendDaemonRe = regexp.MustCompile(`nova-friend\s+(install|run)\b`)
 
-// retiredFriendDaemonLines is every line of text naming a retired daemon
-// verb, each with its line number.
+// retiredFriendDaemonLines is every place in text naming a retired daemon
+// verb, each with the line it starts on. The whole text is scanned, so a
+// wrap between "nova-friend" and its verb is still found.
 func retiredFriendDaemonLines(text string) []string {
 	var found []string
-	for i, l := range strings.Split(text, "\n") {
-		if retiredFriendDaemonRe.MatchString(l) {
-			found = append(found, strconv.Itoa(i+1)+": "+l)
-		}
+	for _, m := range retiredFriendDaemonRe.FindAllStringIndex(text, -1) {
+		line := strings.Count(text[:m[0]], "\n") + 1
+		found = append(found, strconv.Itoa(line)+": "+strings.Join(strings.Fields(text[m[0]:m[1]]), " "))
 	}
 	return found
 }
@@ -53,10 +53,13 @@ func TestPlaybookNamesNoRetiredFriendDaemon(t *testing.T) {
 			"4. Let launchd run the daemon. usage: `nova-friend run --as <me> --harness <h> --dir <d>`.",
 			"the directory a lane runs with, and nova-friend run refuses a friend without it",
 			"`nova-friend  install --dry-run`",
+			"and nova-friend\n   run refuses a friend without it",
+			"the daemon (nova-friend\ninstall writes it)",
 		} {
 			assert.NotEmpty(t, retiredFriendDaemonLines("a\n"+bad+"\nb"), "the line is not refused: %s", bad)
 		}
-		assert.Equal(t, []string{"2: `nova-friend run --as f1`"}, retiredFriendDaemonLines("a\n`nova-friend run --as f1`\nb"), "the refusal names its line")
+		assert.Equal(t, []string{"2: nova-friend run"}, retiredFriendDaemonLines("a\n`nova-friend run --as f1`\nb"), "the refusal names its line")
+		assert.Equal(t, []string{"2: nova-friend install"}, retiredFriendDaemonLines("a\nb nova-friend\n  install c"), "a wrapped refusal names the line it starts on")
 		for _, good := range []string{
 			"usage: `nova-hook hook --as <me> --role <role> [--once] [--harness <name>] [--redis <addr>] [--dry-run]`",
 			"(`nova-friend help run`, `nova-friend help resume`)",

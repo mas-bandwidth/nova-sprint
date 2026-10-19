@@ -125,14 +125,16 @@ is reached by nova-hook alone.
 4. The deal reaches her as a push. The tick deals to her row while she is up, and the deal of a
    card to her row reaches her session as a hook push naming the card, its generation, its kind,
    its tier and its column. Until the tick pushes each deal (card sprint-spec-fix-push-on-deal),
-   the coordinator, when a note or judgment its own push brings names her row, sends her one bus
-   message naming the cards newly dealt to her (`nova-bus send --to <friend> --subject <s> --body <text>`),
-   and no timed look at her row stands in for the push. Spec: SPEC-SPRINT.md section 8, "Push,
-   not poll".
+   the coordinator, each time its own hook wakes it, reads `nova-sprint friend cards <friend>`
+   once and sends her one bus message naming the cards dealt to her since it last told her
+   (`nova-bus send --to <friend> --subject <s> --body <text>`), a stopgap and never a timed loop.
+   Spec: SPEC-SPRINT.md section 8, "Push, not poll".
 5. Taking is the machine's. The tick takes each card dealt to her ready queue into working, up to
    her width, for a row that is up and hooked; no session takes for her, and the coordinator never
    does. Until the tick takes (card sprint-spec-fix-friend-auto-take), her own session takes each
-   card the push names, by id, with `nova-sprint take --as friend.<name> <card>@<gen>`
+   card dealt to her row, by id, as it hears of it (from the deal's push once
+   sprint-spec-fix-push-on-deal lands, until then from the coordinator's message of step 4), with
+   `nova-sprint take --as friend.<name> <card>@<gen>`
    (`nova-sprint help`, "take --as friend.<name>"). Spec: SPEC-SPRINT.md section 1, "A friend
    takes her own ready cards".
 6. Reads arrive the same way. A read dealt to her row is a read card on that row: it is pushed and
@@ -144,8 +146,10 @@ is reached by nova-hook alone.
 8. A friend that goes down is marked down at once. When her hook record goes down (a FRIEND DOWN
    judgment), or she is out of credits or away, hold her row at once with usage
    `nova-sprint hold <member|reader|friend|stream>... --reason <text> [--return] [--dry-run]`;
-   every card on her row goes back to ready and the deal places it again. Section 6 below is the
-   whole of it.
+   every card on her row goes back to ready and the deal places it again. This is section 6's
+   step 3, run at once rather than kept for a friend who will not be back soon: a down friend
+   left unheld keeps her cards on her row (section 6, "What happens without you"). Section 6
+   gives the rest (look, reach, collect, release with `unhold`).
 
 **Success looks like.** `nova-hook status --as <friend>` says proven, `where` shows the row up
 with cards working, and finishes arrive without you.
