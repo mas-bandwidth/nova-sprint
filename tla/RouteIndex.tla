@@ -113,9 +113,11 @@
 \* the pool can launch strands the card (it is judged, StrandedIsJudged). A read
 \* draws a reads-only route of its read tier first: while one is not avoided and does
 \* not rest, the read takes one (ReadTakesReadsOnly), else it is drawn from the tier's
-\* shared entries as before. The code walks the read routes as an array of their own
-\* at the tier's index (readRouteOf); the model walks the tier's array with the other
-\* entries left out, the same pick. Broken "readsonlyblind" is a work deal that does
+\* shared entries as before (and, with no shared entry served, the reads-only ones with
+\* the exclusion lapsed). The code walks the read routes as an array of their own at
+\* the tier's index and leaves them out of the shared array (readRouteOf, tierArray);
+\* the model walks the tier's one array with the other entries left out: the same set of
+\* routes is drawable, while where the index lands after a pick is abstracted. Broken "readsonlyblind" is a work deal that does
 \* not walk past a reads-only entry (WorkNeverOnReadsOnly fails); "readshared" is a
 \* read drawn from the shared entries with a reads-only route open
 \* (ReadTakesReadsOnly fails).

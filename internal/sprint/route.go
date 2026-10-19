@@ -414,6 +414,17 @@ func (s *Snapshot) readsOnly(name string) bool {
 	return false
 }
 
+// servedArray is the tier's routes that work or reads draw: the shared array and the
+// reads-only routes of the tier (readRoutesOf), for the provider coverage and gaps, which
+// count a route placed when either draws it.
+func (s *Snapshot) servedArray(tier string) []string {
+	ra := s.readRoutesOf(tier)
+	if len(ra) == 0 {
+		return s.tierArray(tier)
+	}
+	return append(ra, s.tierArray(tier)...)
+}
+
 // readRoutesOf is the read-routes setting's routes of tier, in the setting's order: the
 // array a read of the tier draws from first (readRouteOf).
 func (s *Snapshot) readRoutesOf(tier string) []string {
@@ -1180,6 +1191,12 @@ func (s *Snapshot) readRouteOf(ri routeIndexes, pr *Card, avoid []string) map[st
 	}
 	if !ok {
 		r, steps, ok = preferFirst(arr, lookup, skip, other, at)
+	}
+	if ra := s.readRoutesOf(tier); !ok && len(ra) > 0 {
+		// the tier's shared array serves nothing (a tier whose routes are all reads-only):
+		// the exclusion lapses over the reads-only routes, as the walk over a tier's one
+		// array lapses when every entry is left out
+		r, steps, ok = preferFirst(ra, lookup, skip, false, at)
 	}
 	if !ok {
 		return base
