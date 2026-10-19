@@ -33,7 +33,7 @@ Next == Replay \/ Conflict \/ Check \/ Push \/ Crash \/ Resume
 Spec == Init /\ [][Next]_vars /\ WF_vars(Replay) /\ WF_vars(Check) /\ WF_vars(Push)
 
 BaseStaysLinear == \A i \in 1..Len(base): base[i].parents = 1
-EachLandedCardOnce == \A c \in Cards: Cardinality({i \in 1..Len(base): base[i].card = c}) <= 1
+EachLandedCardOnce == \A k \in 1..Len(Cards): Cardinality({i \in 1..Len(base): base[i].card = Cards[k]}) <= 1
 NothingPushedOnRefusal == refused => base = initial
-AllLand == <> (\A c \in Cards: \E i \in 1..Len(base): base[i].card = c)
+AllLand == <> (\A k \in 1..Len(Cards): \E i \in 1..Len(base): base[i].card = Cards[k])
 =============================================================================

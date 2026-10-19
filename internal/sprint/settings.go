@@ -524,7 +524,7 @@ func Set(s *Snapshot, r SetReq) Plan {
 	if r.Base != "" && len(r.Streams) == 0 {
 		why = append(why, "--base is a stream's, not the sprint's: nova-sprint stream set <s> --base <branch>")
 	}
-	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Display == "" && r.Prose == "" && r.SeatAccept == "" && r.DefaultTier == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.LandingStallBound == "" && r.SeatSilentTo == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.ReworkPriority == "" && r.LandBacklogBound == "" && r.ReviewBacklogBound == "" {
+	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Display == "" && r.Prose == "" && r.SeatAccept == "" && r.DefaultTier == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.LandingStallBound == "" && r.SeatSilentTo == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.ReworkPriority == "" && r.LandBacklogBound == "" && r.ReviewBacklogBound == "" && r.LinearBases == "" {
 		why = append(why, "nothing to set: --rework-priority, --read-tier, --read-cards, --reads, --prose, --base, --dealt-max, --go-lanes, --attempts, --friend-idle, --landing-stall-bound, --seat-silent-to, --drift-commits, --drift-hours, --fleet, --friends, --fleet-tiers, --friends-tiers, --land-backlog-bound, --review-backlog-bound or an --alarm-... threshold")
 	}
 	if len(r.Streams) > 0 && r.GoLanes != "" {

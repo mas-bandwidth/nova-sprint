@@ -350,6 +350,67 @@ func (l *lander) openStream(s *sprint.Snapshot, stream string) ([]landCard, bool
 	return cards, true
 }
 
+// builtOnSkipped leaves out of the cut every card whose head carries the commits of an
+// unlanded LAND-AFTER target: the target's recorded head is an ancestor of the card's
+// head. It is a git fact, read in the lander's clone, and only the one built-on check
+// beside MergeSoftOrder: LandOrderBlocked's order-only rule is unchanged. A landed or
+// dropped target releases the card (DropReleasesSoft), and a card whose head does not
+// contain the target's commits is untouched (tla/SoftDependency.tla BuiltOnHeld).
+func (l *lander) builtOnSkipped(ctx context.Context, s *sprint.Snapshot, cards []landCard) (kept []landCard, built []string) {
+	if s == nil || s.Work == nil || len(cards) == 0 {
+		return cards, nil
+	}
+	dir := l.repoDir
+	for _, c := range cards {
+		pr := s.Work.Placed(c.id)
+		if pr == nil || c.head == "" {
+			kept = append(kept, c)
+			continue
+		}
+		target := ""
+		for _, dep := range sprint.SoftDepsOf(s, pr) {
+			t := s.Work.Placed(dep)
+			if t == nil || t.Col == sprint.Landed {
+				continue // landed or released: never holds (DropReleasesSoft)
+			}
+			head := t.F("head")
+			if head == "" {
+				if m := s.Merge.Placed(dep); m != nil {
+					head = m.F(sprint.FieldPushedHead)
+				}
+			}
+			if head == "" {
+				continue
+			}
+			if dir == "" {
+				d, why := l.clone(ctx, c.repo)
+				if why != "" {
+					continue // cannot know: the order-only rule stays
+				}
+				dir = d
+			}
+			in, why := l.ancestor(ctx, dir, head, c.head)
+			if why != "" {
+				// the clone may not hold the target's head yet: fetch it once, then ask
+				if _, ferr := l.fetched(ctx, dir, "fetch", "--no-tags", "origin", head); ferr == nil {
+					in, why = l.ancestor(ctx, dir, head, c.head)
+				}
+			}
+			if why != "" || !in {
+				continue
+			}
+			target = dep
+			break
+		}
+		if target != "" {
+			built = append(built, c.id+": built on "+target+", which has not landed; "+c.id+" is skipped this batch")
+			continue
+		}
+		kept = append(kept, c)
+	}
+	return kept, built
+}
+
 // cardBaseNow is the base a primary's brief names now (its BASE: line, as openStream reads
 // it), "" when the brief names none: what headWhy holds a pinned card's base to.
 func cardBaseNow(pr *sprint.Card) string {
@@ -451,6 +512,16 @@ func (l *lander) pass(ctx context.Context, s *sprint.Snapshot, order []string) (
 	var streams []string
 	for _, name := range order {
 		if cards, ok := l.openStream(s, name); ok {
+			if kept, built := l.builtOnSkipped(ctx, s, cards); len(built) > 0 {
+				// a head built on an unlanded LAND-AFTER target is left out before any
+				// PATHS/E12 check or merge; it stays merging and queued
+				// (tla/SoftDependency.tla BuiltOnHeld)
+				l.keep(landBatch{Stream: name, Status: "refused", IDs: []string{}, Reason: strings.Join(built, "; ")})
+				cards = kept
+				if len(cards) == 0 {
+					continue
+				}
+			}
 			queues[name], streams = cards, append(streams, name)
 		}
 	}

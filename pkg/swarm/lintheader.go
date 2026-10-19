@@ -282,7 +282,7 @@ var cardHeaderKeys = map[string]bool{
 	"START": true, "STOP": true,
 	"DEPENDS-ON": true, "LAND-AFTER": true, "PRIORITY": true, "NEW": true, "SHARED": true,
 	"REPO": true, "BASE": true, "tier": true, "RESULT": true,
-	"CONSUMERS": true, "WHO": true,
+	"CONSUMERS": true, "WHO": true, "MERGE-OF": true,
 }
 
 // LintHeaderStranded returns one finding per header key (cardHeaderKeys) written as a
