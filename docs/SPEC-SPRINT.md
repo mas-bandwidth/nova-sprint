@@ -9542,9 +9542,12 @@ The decisions:
    code: they come from nova-config's machine rows through `fleet sync`, and a hold
    (space, mini-m5-1) keeps a machine out.
 3. **Slots (D3).** A lease is one bench slot: one job at `go test -p 8`. A bench's slots
-   are max(1, Cores / 8). Its committed slots are max(held, busy), where held is its live
-   leases and busy is ceil(Load / 100 * Cores / 8), so a lease counts before its load
-   shows and outside load (the fleet's own cards, a stray process) counts too.
+    are max(1, Cores / 8). Its committed slots are max(held, busy), where held is its live
+    leases and busy is round(Load / 100 * Cores / 8), rounded to the nearest slot with halves
+    up, so a lease counts before its load shows and outside load (the fleet's own cards, a
+    stray process) counts too. Round, not ceil: a small background load must not take a
+    whole slot (12% of a one-slot bench reads 0, 1% of a two-slot bench reads 0), while a
+    bench at 50% of its slot reads 1 and a full bench still reads its slots.
 4. **The pick (D4).** The allowed bench with the lowest committed / slots, a tie going to
    the most free slots, then the name; granted only when committed + 1 <= slots. A worker
    that already holds a lease is answered its own bench and its lease renewed (Seen = now):
