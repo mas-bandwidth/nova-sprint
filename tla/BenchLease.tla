@@ -28,8 +28,13 @@
 (*                       quiet windows, NoRoom, width, bench.CheckHost.    *)
 (*                                                                         *)
 (* What it abstracts. Cores and the busy percent are folded into slots:    *)
-(* Slots[m] is max(1, Cores / 8) and busy[m] is ceil(Load / 100 * Cores /  *)
-(* 8), both in slots. Every reason a member is not a bench (status not up, *)
+(* Slots[m] is max(1, Cores / 8) and busy[m] is round(Load / 100 * Cores / *)
+(* 8) to the nearest slot, halves up (internal/sprint/lane.go BenchRooms,  *)
+(* math.Round), both in slots. Round, not ceil: a small background load must *)
+(* not take a whole slot (12% of a one-slot bench reads 0, 1% of a          *)
+(* two-slot bench reads 0), while a bench at 50% of its slot reads 1 and a  *)
+(* full bench reads its slots. Every reason a member is not a bench (status *)
+(* not up,                                                                  *)
 (* held, quiet, NoRoom, width 0, the server's own machine, CheckHost, a    *)
 (* stale beat, Cores 0) is folded into `allowed`. Time is the store's      *)
 (* clock in whole steps; seen is the last renewal; HoldFor is LaneHoldFor. *)
@@ -75,6 +80,11 @@
 (*                own expired one: NoLeaseOutlivesDeadline fails;           *)
 (*   "anytie"     chooses freely among least-committed ties: GrantTieBreak  *)
 (*                fails (MCBenchLeaseBrokenAnyTie.cfg).                    *)
+(*   "ceilbusy"   busy is the old ceil fold, ceil(Load / 100 * Cores / 8): *)
+(*                a one-slot bench at any nonzero load reads busy 1, so a   *)
+(*                small background load takes a whole slot and the bench is *)
+(*                never leasable while loaded: LowLoadOneSlotLeasable fails *)
+(*                (MCBenchLeaseBrokenCeilBusy.cfg).                        *)
 (* Each reversed witness has a committed configuration and CASES.tsv row.  *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets, TLC
@@ -82,7 +92,7 @@ EXTENDS Naturals, FiniteSets, TLC
 CONSTANTS Machines, Workers, Slots, NameRank, HoldFor, MaxNow, MaxBusy, Broken
 
 Faults == {"none", "noexpiry", "loadonly", "noceiling", "queue", "anybench", "anyroom", "second",
-           "waitwhenroom", "renewexpired", "anytie"}
+           "waitwhenroom", "renewexpired", "anytie", "ceilbusy"}
 NoMachine == "none"
 NoWorker  == "none"
 ASSUME Broken \in Faults
@@ -92,16 +102,21 @@ ASSUME \A m1, m2 \in Machines : m1 # m2 => NameRank[m1] # NameRank[m2]
 ASSUME MaxNow > HoldFor /\ HoldFor > 0
 ASSUME NoMachine \notin Machines /\ NoWorker \notin Workers
 
+\* a representative set of load percents: enough to reach every fold step on a one-slot
+\* and a two-slot bench (0, a low load that rounds down, half a slot, near-full, full)
+Loads == {0, 12, 50, 99}
+
 VARIABLES now,     \* the store's clock
           lease,   \* each worker: the benches it holds (one under the design)
           seen,    \* each worker: when it last took or renewed (0 with no lease)
-          busy,    \* each machine: its outside load, in slots (the beat)
+          busy,    \* each machine: its folded load, in slots (the beat)
+          loadpct, \* each machine: its outside load, in percent (the beat), folded by BusyF
           allowed, \* the machines the fleet table makes benches now
           alive,   \* the workers still running
           waiting, \* ghost: workers answered WAIT that still want a bench
           last     \* the last answer: [w, kind, m]
 
-vars == <<now, lease, seen, busy, allowed, alive, waiting, last>>
+vars == <<now, lease, seen, busy, loadpct, allowed, alive, waiting, last>>
 
 Kinds == {"granted", "renewed", "wait", "none"}
 NoAnswer == [w |-> NoWorker, kind |-> "none", m |-> NoMachine]
@@ -152,6 +167,7 @@ TypeOK ==
   /\ lease \in [Workers -> SUBSET Machines]
   /\ seen \in [Workers -> 0..MaxNow]
   /\ busy \in [Machines -> 0..MaxBusy]
+  /\ loadpct \in [Machines -> Loads]
   /\ allowed \in SUBSET Machines
   /\ alive \in SUBSET Workers
   /\ waiting \in SUBSET Workers
@@ -162,6 +178,7 @@ Init ==
   /\ lease = [w \in Workers |-> {}]
   /\ seen = [w \in Workers |-> 0]
   /\ busy = [m \in Machines |-> 0]
+  /\ loadpct = [m \in Machines |-> 0]
   /\ allowed = Machines
   /\ alive = Workers
   /\ waiting = {}
@@ -180,7 +197,7 @@ Grant(w) ==
              /\ seen' = [SeenAfter(L) EXCEPT ![w] = now]
              /\ last' = [w |-> w, kind |-> "granted", m |-> m]
   /\ waiting' = waiting \ {w}
-  /\ UNCHANGED <<now, busy, allowed, alive>>
+  /\ UNCHANGED <<now, loadpct, busy, allowed, alive>>
 
 \* D6: no allowed bench has room: WAIT, and nothing is written (no queue, no
 \* place; the expired leases the answer counted as gone stay for the next write)
@@ -192,7 +209,7 @@ Wait(w) ==
   /\ seen' = IF Broken = "queue" THEN [seen EXCEPT ![w] = now] ELSE seen
   /\ last' = [w |-> w, kind |-> "wait", m |-> NoMachine]
   /\ waiting' = waiting \cup {w}
-  /\ UNCHANGED <<now, busy, allowed, alive>>
+  /\ UNCHANGED <<now, loadpct, busy, allowed, alive>>
 
 \* the take line, one step: a grant or a wait
 Pick(w) == Grant(w) \/ Wait(w)
@@ -208,7 +225,7 @@ Renew(w) ==
             /\ lease' = Dropped
             /\ seen' = [SeenAfter(Dropped) EXCEPT ![w] = now]
   /\ last' = [w |-> w, kind |-> "renewed", m |-> CHOOSE m \in lease[w] : TRUE]
-  /\ UNCHANGED <<now, busy, allowed, alive, waiting>>
+  /\ UNCHANGED <<now, loadpct, busy, allowed, alive, waiting>>
 
 \* D5: a give releases the lease at once
 Give(w) ==
@@ -217,7 +234,7 @@ Give(w) ==
   /\ lease' = [Dropped EXCEPT ![w] = {}]
   /\ seen' = SeenAfter([Dropped EXCEPT ![w] = {}])
   /\ last' = NoAnswer
-  /\ UNCHANGED <<now, busy, allowed, alive, waiting>>
+  /\ UNCHANGED <<now, loadpct, busy, allowed, alive, waiting>>
 
 \* a worker is killed or lost; its lease stays in the record
 Die(w) ==
@@ -225,7 +242,7 @@ Die(w) ==
   /\ alive' = alive \ {w}
   /\ waiting' = waiting \ {w}
   /\ last' = NoAnswer
-  /\ UNCHANGED <<now, lease, seen, busy, allowed>>
+  /\ UNCHANGED <<now, lease, seen, loadpct, busy, allowed>>
 
 \* D5: a lease past its deadline is dropped (in the code, at every step)
 Expire ==
@@ -234,7 +251,7 @@ Expire ==
   /\ lease' = Dropped
   /\ seen' = SeenAfter(Dropped)
   /\ last' = NoAnswer
-  /\ UNCHANGED <<now, busy, allowed, alive, waiting>>
+  /\ UNCHANGED <<now, loadpct, busy, allowed, alive, waiting>>
 
 \* the store's clock, with the time abstraction at MaxNow
 Tick ==
@@ -244,12 +261,30 @@ Tick ==
        ELSE /\ now' = now
             /\ seen' = [v \in Workers |-> IF seen[v] > 0 THEN seen[v] - 1 ELSE 0]
   /\ last' = NoAnswer
-  /\ UNCHANGED <<lease, busy, allowed, alive, waiting>>
+  /\ UNCHANGED <<lease, loadpct, busy, allowed, alive, waiting>>
 
-\* a beat changes a machine's outside load
-Load(m, b) ==
-  /\ busy[m] # b
-  /\ busy' = [busy EXCEPT ![m] = b]
+\* D3: the fold from a load in percent to slots, rounded to the nearest slot with
+\* halves up, as internal/sprint/lane.go BenchRooms does (math.Round), capped at slots.
+\* round(load * slots / 100) with halves up is floor((2 * load * slots + 100) / 200).
+RoundBusy(lp, slots) ==
+  LET r == (2 * lp * slots + 100) \div 200 IN
+  IF r < 0 THEN 0 ELSE IF r > slots THEN slots ELSE r
+
+\* the old ceil fold, the broken witness: a one-slot bench at any nonzero load reads 1
+CeilBusy(lp, slots) ==
+  LET r == (lp * slots + 99) \div 100 IN
+  IF r > slots THEN slots ELSE r
+
+BusyF(lp, slots) ==
+  IF Broken = "ceilbusy" THEN CeilBusy(lp, slots) ELSE RoundBusy(lp, slots)
+
+\* a beat changes a machine's outside load, folded to slots by the design
+Load(m, p) ==
+  /\ p \in Loads
+  /\ BusyF(p, Slots[m]) <= MaxBusy
+  /\ busy[m] # BusyF(p, Slots[m])
+  /\ busy' = [busy EXCEPT ![m] = BusyF(p, Slots[m])]
+  /\ loadpct' = [loadpct EXCEPT ![m] = p]
   /\ last' = NoAnswer
   /\ UNCHANGED <<now, lease, seen, allowed, alive, waiting>>
 
@@ -260,19 +295,19 @@ Allow(m) ==
   /\ m \notin allowed
   /\ allowed' = allowed \cup {m}
   /\ last' = NoAnswer
-  /\ UNCHANGED <<now, lease, seen, busy, alive, waiting>>
+  /\ UNCHANGED <<now, lease, seen, loadpct, busy, alive, waiting>>
 
 Disallow(m) ==
   /\ m \in allowed
   /\ allowed' = allowed \ {m}
   /\ last' = NoAnswer
-  /\ UNCHANGED <<now, lease, seen, busy, alive, waiting>>
+  /\ UNCHANGED <<now, lease, seen, loadpct, busy, alive, waiting>>
 
 Next ==
   \/ \E w \in Workers : Pick(w) \/ Renew(w) \/ Give(w) \/ Die(w)
   \/ Expire
   \/ Tick
-  \/ \E m \in Machines, b \in 0..MaxBusy : Load(m, b)
+  \/ \E m \in Machines, p \in Loads : Load(m, p)
   \/ \E m \in Machines : Allow(m) \/ Disallow(m)
 
 \* a waiting worker keeps asking (lane take again at its retry time); the answer
@@ -291,6 +326,14 @@ Spec == Init /\ [][Next]_vars /\ Fairness
 
 \* D3, D4, D7: no bench ever holds more leases than its slots
 NeverOverSlots == \A m \in Machines : HeldIn(lease, m) <= Slots[m]
+
+\* D3: round folds a small nonzero load on a one-slot bench to busy 0, so it is
+\* leasable (leased or with room); the ceil fold would read busy 1 and strand it
+LowLoadOneSlotLeasable ==
+  \A m \in Machines :
+    Slots[m] = 1 /\ loadpct[m] > 0 /\ loadpct[m] < 50 =>
+      /\ busy[m] = 0
+      /\ (HeldIn(lease, m) > 0 \/ DesignRoomIn(lease, m))
 
 \* D4: a worker holds at most one lease; asking again renews it
 OneLeaseEach == \A w \in Workers : Cardinality(lease[w]) <= 1
