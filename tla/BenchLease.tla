@@ -79,7 +79,11 @@
 (*   "renewexpired" a renewal neither drops expired leases nor refuses its *)
 (*                own expired one: NoLeaseOutlivesDeadline fails;           *)
 (*   "anytie"     chooses freely among least-committed ties: GrantTieBreak  *)
-(*                fails (MCBenchLeaseBrokenAnyTie.cfg).                    *)
+(*                fails (MCBenchLeaseBrokenAnyTie.cfg);                     *)
+(*   "anyfacts"   the pick ignores the machine's facts: a grant lands where *)
+(*                the facts do not meet the take's needs, so                *)
+(*                GrantOnlyWhereTheFactsAre fails                            *)
+(*                (MCBenchLeaseBrokenAnyFacts.cfg).                         *)
 (* The design's witness LowLoadOneSlotLeasable (D3) says a one-slot bench  *)
 (* at 12% load folds to busy 0 and stays leasable; MCBenchLease.cfg checks  *)
 (* it through TypeOK, and the reversed fold below fails it.                *)
@@ -95,7 +99,7 @@ EXTENDS Naturals, FiniteSets, TLC
 CONSTANTS Machines, Workers, Slots, NameRank, HoldFor, MaxNow, MaxBusy, Broken
 
 Faults == {"none", "noexpiry", "loadonly", "noceiling", "queue", "anybench", "anyroom", "second",
-           "waitwhenroom", "renewexpired", "anytie", "ceilbusy"}
+           "waitwhenroom", "renewexpired", "anytie", "ceilbusy", "anyfacts"}
 NoMachine == "none"
 NoWorker  == "none"
 ASSUME Broken \in Faults
@@ -104,6 +108,13 @@ ASSUME NameRank \in [Machines -> 1..Cardinality(Machines)]
 ASSUME \A m1, m2 \in Machines : m1 # m2 => NameRank[m1] # NameRank[m2]
 ASSUME MaxNow > HoldFor /\ HoldFor > 0
 ASSUME NoMachine \notin Machines /\ NoWorker \notin Workers
+
+\* The take's needs (one per take, the words a GATE-NEEDS line carries) and the
+\* facts each machine carries (MemberFacts in internal/sprint/deal.go). The plain
+\* runs need nothing, so every existing witness keeps its behaviour; the facts
+\* witness names linux, which only m1 carries.
+Needs == IF Broken = "anyfacts" THEN {"linux"} ELSE {}
+Facts == [m \in Machines |-> IF m = "m1" THEN {"linux", "tla"} ELSE {"darwin", "tla"}]
 
 \* a representative set of load percents: enough to reach every fold step on a one-slot
 \* and a two-slot bench (0, a low load that rounds down, half a slot, near-full, full)
@@ -147,10 +158,14 @@ Committed(L, m) == IF Broken = "loadonly" THEN busy[m] ELSE DesignCommitted(L, m
 RoomIn(L, m) == Committed(L, m) + 1 <= Slots[m]
 DesignRoomIn(L, m) == DesignCommitted(L, m) + 1 <= Slots[m]
 
+\* D2, D4: the bench's facts meet the take's needs (GrantOnlyWhereTheFactsAre);
+\* the anyfacts witness is the pick that ignores them.
+FactsMeet(m) == Broken = "anyfacts" \/ Needs \subseteq Facts[m]
+
 \* D2, D4: the benches a pick may grant
-Cands(L) == IF Broken = "anybench"  THEN {m \in Machines : RoomIn(L, m)}
-            ELSE IF Broken = "noceiling" THEN allowed
-            ELSE {m \in allowed : RoomIn(L, m)}
+Cands(L) == IF Broken = "anybench"  THEN {m \in Machines : RoomIn(L, m) /\ FactsMeet(m)}
+            ELSE IF Broken = "noceiling" THEN {m \in allowed : FactsMeet(m)}
+            ELSE {m \in allowed : RoomIn(L, m) /\ FactsMeet(m)}
 
 \* D4: the lowest committed / slots, compared without division
 Least(L, C) == IF Broken = "anyroom" THEN C
@@ -349,6 +364,10 @@ OneLeaseEach == \A w \in Workers : Cardinality(lease[w]) <= 1
 \* D2: a grant is only ever of an allowed bench
 GrantOnlyAllowed ==
   [][last'.kind = "granted" => last'.m \in allowed]_vars
+
+\* D2: a grant is only ever of a bench whose facts meet the take's needs
+GrantOnlyWhereTheFactsAre ==
+  [][last'.kind = "granted" => Needs \subseteq Facts[last'.m]]_vars
 
 \* D3, D4: a grant is of the allowed bench with the lowest committed / slots
 \* among those with room, by the design's committed, on the record as read

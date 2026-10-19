@@ -796,6 +796,7 @@ MCBenchLeaseBrokenWaitWhenRoomLive.cfg	MCBenchLease.tla	temporal	WaiterGetsLease
 MCBenchLeaseBrokenRenewExpired.cfg	MCBenchLease.tla	action	NoLeaseOutlivesDeadline	ignore-terminal	benchlease	required	-
 MCBenchLeaseTie.cfg	MCBenchLease.tla	pass	-	ignore-terminal	benchlease	required	-
 MCBenchLeaseBrokenAnyTie.cfg	MCBenchLease.tla	action	GrantTieBreak	ignore-terminal	benchlease	required	-
+MCBenchLeaseBrokenAnyFacts.cfg	MCBenchLease.tla	action	GrantOnlyWhereTheFactsAre	ignore-terminal	benchlease	required	-
 MCBenchLeaseBrokenCeilBusy.cfg	MCBenchLease.tla	invariant	LowLoadOneSlotLeasable	ignore-terminal	benchlease	required	-
 MCJudgmentRetireBrokenStoppedStays.cfg	MCJudgmentRetire.tla	invariant	NoOrphanAfterRetire	ignore-terminal	judgment-retire	required	-
 MCRepairLog.cfg	MCRepairLog.tla	pass	-	ignore-terminal	repair-log	required	-

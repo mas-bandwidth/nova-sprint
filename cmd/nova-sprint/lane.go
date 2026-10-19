@@ -77,6 +77,7 @@ func (a *app) cmdLaneTake(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup(name)
 	machine := fs.String("machine", "", "the machine the run is on, or auto to ask the server to pick")
 	as := fs.String("as", "", "the worker asking, the holder or waiter the lane records")
+	needsFlag := fs.String("needs", "", "the gate facts a bench must carry, comma separated, as a GATE-NEEDS line (linux, tla)")
 	wait := fs.Duration("wait", 0, fmt.Sprintf("how long to wait for the grant, asking again every %s (30m); 0, the default, asks once", sprint.LaneAskEvery))
 	dry := fs.Bool("dry-run", false, "check the machine's lanes and say whether the take would be granted or queued; write nothing")
 	kind, code := laneArgs(name, fs, args, stderr, machine, as)
@@ -86,8 +87,12 @@ func (a *app) cmdLaneTake(args []string, stdout, stderr io.Writer) int {
 	if *wait < 0 {
 		return refuse(stderr, name, "--wait wants a duration from 0, found "+wait.String())
 	}
+	needs, err := needWords(*needsFlag)
+	if err != nil {
+		return refuse(stderr, name, err.Error())
+	}
 	if *machine == "auto" {
-		return a.laneTakeAuto(name, kind, *as, *wait, *dry, *c, stdout, stderr)
+		return a.laneTakeAuto(name, kind, *as, *wait, *dry, *c, needs, stdout, stderr)
 	}
 	if sprint.LanesDisabled {
 		return a.laneDisabled(name, kind, *machine, *as, true, c.json, stdout, stderr)
@@ -158,8 +163,23 @@ func (a *app) cmdLaneTake(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// needWords reads a take's --needs: the same comma list a GATE-NEEDS line carries,
+// each a fact word (sprint.FactWords' rule); empty names no need.
+func needWords(s string) ([]string, error) {
+	if strings.TrimSpace(s) == "" {
+		return nil, nil
+	}
+	out := sprint.Split(s)
+	for _, n := range out {
+		if !sprint.ValidID(n) || strings.HasPrefix(n, "-") {
+			return nil, fmt.Errorf("--needs wants need words (letters, digits, _ and -), found %q", n)
+		}
+	}
+	return out, nil
+}
+
 // laneTakeAuto asks the store to pick one allowed bench in one server-line turn.
-func (a *app) laneTakeAuto(name, kind, who string, wait time.Duration, dry bool, c common, stdout, stderr io.Writer) int {
+func (a *app) laneTakeAuto(name, kind, who string, wait time.Duration, dry bool, c common, needs []string, stdout, stderr io.Writer) int {
 	if wait > 0 {
 		return refuse(stderr, name, "--wait is not supported with --machine auto: the caller waits until retry_at and asks again")
 	}
@@ -173,7 +193,7 @@ func (a *app) laneTakeAuto(name, kind, who string, wait time.Duration, dry bool,
 	}
 	now := a.now().UTC()
 	st.Now = func() time.Time { return now }
-	answer, err := st.LanePick(context.Background(), kind, who, a.machineName(), func(m string) bool { return bench.CheckHost(m) == nil })
+	answer, err := st.LanePick(context.Background(), kind, who, a.machineName(), func(m string) bool { return bench.CheckHost(m) == nil }, needs...)
 	if err != nil {
 		a.outcome, a.changed = "unknown", "unknown"
 		fmt.Fprintf(stderr, "%s %s: %s; run: nova-sprint help lane\n", prog, name, oneline.Escape(err.Error()))
@@ -189,7 +209,7 @@ func (a *app) laneTakeAuto(name, kind, who string, wait time.Duration, dry bool,
 		"kind": kind, "machine": answer.Machine, "as": who,
 		"slots": answer.Slots, "committed": answer.Committed,
 		"until": "", "renewed": answer.Renewed, "retry_at": "",
-		"full": full, "released": released,
+		"full": full, "released": released, "needs": needs,
 	}
 	if !answer.Granted {
 		facts["retry_at"] = answer.RetryAt.UTC().Format(time.RFC3339)
@@ -198,6 +218,9 @@ func (a *app) laneTakeAuto(name, kind, who string, wait time.Duration, dry bool,
 			rooms = append(rooms, fmt.Sprintf("%s %d/%d", room.Machine, room.Busy, room.Slots))
 		}
 		line := fmt.Sprintf("LANE-TAKE WAIT go as=%s retry_at=%s: every allowed bench is full: %s", who, answer.RetryAt.UTC().Format(time.RFC3339), strings.Join(rooms, ", "))
+		if answer.Why != "" {
+			line = fmt.Sprintf("LANE-TAKE WAIT go as=%s retry_at=%s: %s", who, answer.RetryAt.UTC().Format(time.RFC3339), answer.Why)
+		}
 		a.outcome, a.changed = "refused", "no"
 		facts["outcome"], facts["changed"] = a.outcome, a.changed
 		if c.json {
