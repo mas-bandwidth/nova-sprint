@@ -43,7 +43,7 @@ func (a *app) friendStartedFor(ctx context.Context, st *store.Store, friends []s
 	owner := map[string]string{}
 	running := map[string][]string{}
 	pronouns := map[string]toolsfriend.Pronouns{}
-	var cards []store.Cell
+	var cards []*sprint.Card
 	for _, friend := range friends {
 		rows, err := st.ReadCells(ctx, sprint.Fleet, sprint.FriendRow(friend), sprint.Working, sprint.Ready)
 		if err != nil {
@@ -247,6 +247,9 @@ type friendLevelPlan struct {
 // server can do this on its read lane, then apply only FriendLevelStep under the serial line.
 func (a *app) prepareFriendLevel(ctx context.Context, args []string, stdout, stderr io.Writer) (*friendLevelPlan, int) {
 	const name = "friend level"
+	if len(args) >= 2 && args[0] == "friend" && args[1] == "level" {
+		args = args[2:] // the server hands the verb's words whole (serve.go); a direct run has stripped them
+	}
 	fs, c := a.verbSetup(name)
 	dry := fs.Bool("dry-run", false, "say which friends are up to be levelled and write nothing")
 	pos, err := parse(fs, args)

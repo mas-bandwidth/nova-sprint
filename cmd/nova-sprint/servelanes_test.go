@@ -181,7 +181,7 @@ func TestFriendLevelReadsStartedOffTheLine(t *testing.T) {
 	ta.a.serial.waiting = func() { waiting <- struct{}{} }
 	ta.a.serial.Lock()
 	done := make(chan sprintwire.Result, 1)
-	go func() { done <- serveOne(ta.a, true, "friend", "level") }()
+	go func() { done <- serveOne(ta.a, true, "friend", "level", "--actor", "coordinator") }()
 	select {
 	case <-read:
 	case <-waiting:

@@ -24,6 +24,7 @@ import (
 func friendStartedFixture(t *testing.T, count int, repoCount int, friends ...string) *testApp {
 	t.Helper()
 	ta, _ := friendApp(t, friends...)
+	ta.a.tip = tipIs(t, landHead)
 	ta.ok("friend sync")
 	for _, friend := range friends {
 		ta.beatUp(friend)
@@ -42,7 +43,8 @@ func friendStartedFixture(t *testing.T, count int, repoCount int, friends ...str
 	for _, dir := range dirs {
 		ta.ok(fmt.Sprintf("add --stream s1 --brief-dir %s", dir))
 	}
-	ta.deal(count)
+	ta.ok("start")
+	ta.ok("tick") // the friend deal puts every card on the friends' rows, ready or working
 	return ta
 }
 
@@ -52,11 +54,13 @@ func TestFriendStartedReadsEachRepoOnce(t *testing.T) {
 	ta := friendStartedFixture(t, 30, 2, friends...)
 	calls := map[string]int{}
 	var callsMu sync.Mutex
+	repo0 := swarm.CardRepoURL("mas-bandwidth/repo-0")
+	repo1 := swarm.CardRepoURL("mas-bandwidth/repo-1")
 	ta.a.tips = func(_ context.Context, repo string) (map[string]string, error) {
 		callsMu.Lock()
 		calls[repo]++
 		callsMu.Unlock()
-		if repo == "mas-bandwidth/repo-0" {
+		if repo == repo0 {
 			return map[string]string{"sprint/started-000.w1.g1.e0": landHead}, nil
 		}
 		return map[string]string{}, nil
@@ -66,7 +70,7 @@ func TestFriendStartedReadsEachRepoOnce(t *testing.T) {
 	started, err := ta.a.friendStartedFor(context.Background(), st, friends)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{"started-000.w1": "a push on its branch sprint/started-000.w1.g1.e0 at " + landHead}, started)
-	assert.Equal(t, map[string]int{"mas-bandwidth/repo-0": 1, "mas-bandwidth/repo-1": 1}, calls)
+	assert.Equal(t, map[string]int{repo0: 1, repo1: 1}, calls)
 }
 
 func TestFriendStartedAnUnreadRepoKeepsItsCards(t *testing.T) {
@@ -92,11 +96,11 @@ func BenchmarkFriendStarted(b *testing.B) {
 	cfg := config.NewMem()
 	friends := []string{"amy", "bob", "cy"}
 	for _, name := range friends {
-		if _, err := cfg.Insert(context.Background(), config.KindFriend, config.Row{Name: name, Fields: map[string]string{"tiers": "flash", "width": "8"}}, "bench"); err != nil {
+		if _, err := cfg.Insert(context.Background(), config.KindFriend, config.Row{Name: name, Fields: map[string]string{"tiers": "flash", "width": "50"}}, "bench"); err != nil {
 			b.Fatal(err)
 		}
 	}
-	env := map[string]string{"NOVA_SPRINT_REDIS": "mem:0", "NOVA_SPRINT_ACTOR": "coordinator"}
+	env := map[string]string{"NOVA_SPRINT_REDIS": "mem:0", "NOVA_SPRINT_ACTOR": "coordinator", "HOME": b.TempDir()}
 	a := newApp(func(k string) string { return env[k] })
 	a.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return mem, nil }
 	at := time.Unix(1000, 0).UTC()
@@ -141,8 +145,9 @@ func BenchmarkFriendStarted(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	if _, err := st.Run(context.Background(), dealStep(sprint.DealReq{Sel: sprint.Sel{Limit: 100}})); err != nil {
-		b.Fatal(err)
+	run("start")
+	for i := 0; i < 8; i++ {
+		run("tick") // the friend deal puts all 100 cards on the friends' rows across ticks
 	}
 	tipsCalls := 0
 	var tipsMu sync.Mutex
