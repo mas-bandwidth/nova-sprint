@@ -1173,7 +1173,8 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 			return why
 		}
 		if tip := c.F(FieldForwardMerge); tip != "" && c.F(FieldForwardMergeChecked) != tip {
-			// tla/Land.tla NoDealAgainstStaleTip models this pending-card guard.
+			// tla/Land.tla NoDealAgainstStaleTip models this pending-card guard;
+			// MCLandBrokenStaleTip is the reversed witness that finds the stale deal.
 			return c.ID + " was not rechecked after its base forward-merged to " + tip + ": its behind count and brief-at-base checks must pass before it is dealt"
 		}
 		// a card that carries a hold is dealt by no path: it moves only by the coordinator's
