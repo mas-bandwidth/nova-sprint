@@ -114,7 +114,8 @@ func TestAlwaysInPathsNamesTheFilesThatKeepTheTreeGreen(t *testing.T) {
 	for _, p := range []string{
 		"a_test.go", "internal/x/y_test.go", "./internal/x/y_test.go", "cmd/z/testdata/a/b.json",
 		"testdata/x.txt", "tla/RUNS.tsv", "tla/CASES.tsv", "internal/docs/catalog.go", "AGENTS.md", "cmd/AGENTS.md",
-		"tla/COVERAGE.tsv", // a shared ledger since lander-resolves-ledger-conflicts (v1.2.13)
+		"tla/COVERAGE.tsv",                                        // a shared ledger since lander-resolves-ledger-conflicts (v1.2.13)
+		"parser_test.c", "test_parser.py", "tests/integration.rs", // a test file in any language (cardgen.IsTestFile)
 	} {
 		assert.True(t, cardgen.AlwaysInPaths(p), p)
 	}
