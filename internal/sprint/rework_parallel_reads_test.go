@@ -68,20 +68,31 @@ func TestTwoReadsReworkWaitsForBoth(t *testing.T) {
 
 	t.Run("the second is handed back: the rework runs", func(t *testing.T) {
 		t.Parallel()
-		w, _, second := waiting(t)
+		w, first, second := waiting(t)
 		w.must(Read(w.s, ReadReq{Sel: Sel{IDs: []string{second.ID}}, As: second.F("reader"), Return: true, Reason: "cannot read it here"}))
-		require.Contains(t, reworked(t, w).Finding, firstFinding)
+		require.Contains(t, reworked(t, w).Finding, "read by "+first.F("reader")+": broken: "+firstFinding,
+			"the sole broken finding keeps its reader's name")
+	})
+
+	t.Run("the second reports ok with no words: the broken finding keeps its reader", func(t *testing.T) {
+		t.Parallel()
+		w, first, second := waiting(t)
+		w.must(readBy(w, second, "ok", ""))
+		pk := reworked(t, w)
+		require.Contains(t, pk.Finding, "read by "+first.F("reader")+": broken: "+firstFinding)
+		require.NotContains(t, pk.Finding, "read by "+second.F("reader"), "an ok with no words adds no line")
 	})
 
 	t.Run("the deadline passes: the rework runs and the open read's later verdict is a late read", func(t *testing.T) {
 		t.Parallel()
-		w, _, second := waiting(t)
+		w, first, second := waiting(t)
 		w.s.Now = w.s.Now.Add(ReadCardDeadline - 1)
 		p, _ := TickRuleRework(w.s, on())
 		require.Empty(t, p.Units, "still within the open read's deadline")
 		w.s.Now = w.s.Now.Add(1)
 		pk := reworked(t, w)
-		require.Contains(t, pk.Finding, firstFinding)
+		require.Contains(t, pk.Finding, "read by "+first.F("reader")+": broken: "+firstFinding,
+			"the sole broken finding keeps its reader's name past the deadline")
 		second = w.s.Fleet.Card(second.ID)
 		require.False(t, second.Placed())
 		require.Equal(t, RetiredByRework, second.F("retired_by"))
@@ -106,6 +117,9 @@ func TestTwoReadsReworkWaitsForBoth(t *testing.T) {
 		w.must(readBy(w, one[0], "broken", "c.go:3: one read"))
 		w.must(w.ruleRework(t))
 		require.Equal(t, 2, w.s.Work.Card("s1-2").Int("attempt"), "one read: the broken verdict reworks at once")
+		pk := nextPacket(t, w, "s1-2", 2)
+		require.Contains(t, pk.Finding, "c.go:3: one read")
+		require.NotContains(t, pk.Finding, "read by ", "one reader: the finding stays plain, as before")
 	})
 }
 
