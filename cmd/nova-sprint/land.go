@@ -282,7 +282,7 @@ func idSpan(ids []string) string {
 // keeps the id and the epoch), and the repository and base its brief names.
 type landCard struct {
 	id, head, attempt, repo, base string
-	linear                       bool
+	linear                        bool
 	paths                         []string     // the brief's PATHS globs, nil when it names none (checkCard)
 	brief                         string       // the brief, the card a landed diff is scored against (landscore.go)
 	primary                       *sprint.Card // the primary, whose brief decision its landing attaches to (briefdecide.go)
@@ -2061,22 +2061,10 @@ func (l *lander) mergeHeadLedgers(ctx context.Context, dir, stream string, c lan
 	if why := headNotCommit(stream, c); why != "" {
 		return why, "", ""
 	}
+	if c.linear {
+		return l.linearMergeHead(ctx, dir, stream, c)
+	}
 	merge := func() error {
-		if c.linear {
-			if _, err := l.git(ctx, dir, "merge", "--squash", c.head); err != nil {
-				return err
-			}
-			title := c.id
-			for _, line := range strings.Split(c.brief, "\n") {
-				if strings.HasPrefix(line, "# ") {
-					title = strings.TrimSpace(strings.TrimPrefix(line, "# "))
-					break
-				}
-			}
-			message := c.id + ": " + title + "\n\nFinish report: nova-sprint card " + c.id + "\n\nNova-Card: " + c.id + "\nNova-Linear-Source: " + c.head
-			_, err := l.git(ctx, dir, "commit", "-m", message)
-			return err
-		}
 		_, err := l.git(ctx, dir, "merge", "--no-ff", "--no-edit", "-m", "land "+c.id+" (sprint stream "+stream+")", c.head)
 		return err
 	}

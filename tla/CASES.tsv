@@ -819,3 +819,7 @@ MCLaneCheckBrokenRepeatNotice.cfg	MCLaneCheck.tla	invariant	LivePastDeadlineHasO
 MCDealThrottle.cfg	MCDealThrottle.tla	pass	-	ignore-terminal	dealthrottle	required	-
 MCDealThrottleBrokenNoResume.cfg	MCDealThrottle.tla	temporal	WorkResumes	ignore-terminal	dealthrottle	required	-
 MCDealThrottleBrokenCutsInFlight.cfg	MCDealThrottle.tla	action	InFlightNeverCut	ignore-terminal	dealthrottle	required	-
+MCLandLinear.cfg	MCLandLinear.tla	pass	-	ignore-terminal	landlinear	required	-
+MCLandLinearBrokenMergePushed.cfg	MCLandLinear.tla	invariant	BaseStaysLinear	ignore-terminal	landlinear	required	-
+MCLandLinearBrokenTwice.cfg	MCLandLinear.tla	invariant	EachLandedCardOnce	ignore-terminal	landlinear	required	-
+MCLandLinearBrokenPushOnRefusal.cfg	MCLandLinear.tla	invariant	NothingPushedOnRefusal	ignore-terminal	landlinear	required	-

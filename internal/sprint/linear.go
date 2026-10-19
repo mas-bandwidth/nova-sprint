@@ -43,7 +43,7 @@ func IsLinearBase(s *Snapshot, repo, base string) bool {
 // LinearCard is the information the linear replay needs from a landed card.
 type LinearCard struct {
 	ID, Title, Head, Source, PullRequest string
-	Forward                            bool
+	Forward                              bool
 }
 
 // LinearSourceCommit is one source stream first-parent commit and its card identity.
