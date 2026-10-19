@@ -589,8 +589,12 @@ func streamTurnsBy(cards []*Card, streamOf func(*Card) string, r *round) []*Card
 // every member up, stays with the machines' deal and its judgment; one at its redeal bound
 // below its ceiling is offered at the tier it escalates to (escalating), as the machines
 // would escalate it, and a friend's deal of it is a new attempt on that tier, the bound
-// attempt retired (friendEscalateUnit). A friend at or over her room is never
-// dealt. In batch and one-shot mode alike (docs/SPEC-SPRINT.md section 1, "A friend's
+// attempt retired (friendEscalateUnit). Width bounds what a friend WORKS at once, never
+// what is QUEUED in her ready queue: a friend at her width still takes every ready card
+// into her queue, bounded so ready+working = DealAhead times her width (the owner,
+// 2026-10-18: "My dude, ready cards, go to friend ready queues, even if friends are full.
+// That's what the ready queues are FOR per-friend and per-fleet machine."; tla/FriendReadyTake.tla
+// NoUndealtWhileRoom). In batch and one-shot mode alike (docs/SPEC-SPRINT.md section 1, "A friend's
 // card"), a friend's room is DealAhead times her width and her lanes are her width. A lane of hers is idle while no card on her row
 // holds it, started or not.
 // Each is its next attempt's work card, created on the friend's row at generation 1, ready
@@ -620,18 +624,18 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 		if friendDealable(s, f) {
 			room, width := friendRoom(f)
 			work, reads := rowLoad(s, FriendRow(f.Name))
-			// the one count: her width less her live lanes (work cards plus read
-			// cards, ready and working), never below zero. Once a read holds a lane
-			// it counts against her width as a work card does, so the deal never
-			// deals a read or a work card to a friend whose live lanes are at her
-			// width (docs/SPEC-SPRINT.md section 1, a friend's card; takeOne counts
-			// the same cells). A row with no reads keeps its work queue,
-			// DealAhead times her width.
-			if s.ReadCardsOn() && reads > 0 {
-				free[f.Name] = friendFreeLanes(width, work, reads)
-			} else {
-				free[f.Name] = room - work - reads
-			}
+			// her free room is always her room less what she holds (ready and
+			// working, work and reads together): width bounds what she WORKS at
+			// once, never what is QUEUED in her ready queue, so a friend at her
+			// width still takes every ready card into her queue (the owner,
+			// 2026-10-18: "My dude, ready cards, go to friend ready queues, even
+			// if friends are full. That's what the ready queues are FOR per-friend
+			// and per-fleet machine."). Her queue is bounded: ready+working =
+			// DealAhead times her width (docs/SPEC-SPRINT.md section 1, a friend's
+			// card). Her idle lanes (friendFreeLanes) stay the chooser's first
+			// order, and keep ordering the choice (preferredFriend). The model is
+			// tla/FriendReadyTake.tla NoUndealtWhileRoom.
+			free[f.Name] = room - work - reads
 			// a lane is idle while no card on her row holds it, started or not
 			lanes[f.Name] = friendFreeLanes(width, work, reads)
 			seat[f.Name] = f

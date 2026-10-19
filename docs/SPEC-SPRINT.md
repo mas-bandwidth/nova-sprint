@@ -457,12 +457,20 @@ nothing ready for over an hour while the machines were dealt flash cards):
   Her deal writes that tier on the primary (`tier_now`), as a machine's deal does, and
   its reads and its escalation go by it (`TestAFlashFriendWithRoomIsDealtFleetFlashCards`,
   `TestAnUntieredCardIsFlashForAFriend`).
-- One width bounds her row, her reads and her work together (the owner's rule): her
-  room (DealAhead times her width) and her lanes (her width) count every card on her
-  row, ready and working, work card or read (`sprint.friendLoad`), in the deal, the
-  level, her start and the friends' read ask alike; there is no read room beside it.
-  A friend at width 16 holding 10 work cards and 9 reads has no idle lane, in
-  either mode (`TestOneWidthHoldsHerWorkAndReads`).
+- Width bounds what a friend WORKS at once, never what is QUEUED in her ready queue
+  (the owner, 2026-10-18: "My dude, ready cards, go to friend ready queues, even if
+  friends are full. That's what the ready queues are FOR per-friend and per-fleet
+  machine."; earlier: "Cards should not sit in ready like this, they should be
+  distributed to friend or fleet machine ready queues."). Every ready card goes to the
+  ready queue of an eligible friend that is up, even when her row is at its width; her
+  queue is bounded (DealAhead times her width, ready and working together, so a row at
+  width queues up to its width again) and the deal spreads by queue depth. Her lanes
+  (her width) count every card on her row, ready and working, work card or read
+  (`sprint.friendLoad`), and bound what enters working (`sprint.friendFreeLanes`,
+  `takeOne`); a friend at width 16 holding 10 work cards and 9 reads has no idle lane,
+  in either mode, yet is still dealt into her ready queue while room remains
+  (`TestOneWidthHoldsHerWorkAndReads`; `TestTheFriendDealQueuesPastWidth`). The model
+  is `tla/FriendReadyTake.tla` `NoUndealtWhileRoom`.
 - The deal order is one for friends and machines (`sprint.dealOrder`): the stream
   turns from the deal's stream index, each stream's cards in work order, the order
   `tla/SprintTables.tla` and the reference model check; each card then goes to the
