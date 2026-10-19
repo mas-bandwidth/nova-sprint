@@ -110,6 +110,20 @@ func (g *linearGitAdapter) MergeCommits(_, tip string) ([]string, error) {
 }
 func (g *linearGitAdapter) Push(string, string) error { return nil }
 
+// pushLinearBase is landpass's final linear-base boundary. It proves the exact
+// range merge-free and performs the same non-force push as an ordinary base.
+func (l *lander) pushLinearBase(ctx context.Context, dir, repo, base, baseSHA, tip string) (string, error) {
+	merges, err := l.git(ctx, dir, "rev-list", "--min-parents=2", baseSHA+".."+tip)
+	if err != nil {
+		return "the linear base could not be checked for merge commits: " + firstLine("", err) + "; nothing pushed", nil
+	}
+	if fields := strings.Fields(merges); len(fields) > 0 {
+		return "the linear base " + repo + ":" + base + " takes no merge commit; " + fields[0] + " is one; nothing pushed", nil
+	}
+	_, err = l.git(ctx, dir, "push", "--porcelain", "origin", tip+":refs/heads/"+base)
+	return "", err
+}
+
 func (l *lander) linearMergeHead(ctx context.Context, dir, _ string, c landCard) (card, env, note string) {
 	before, err := l.git(ctx, dir, "rev-parse", "--verify", "HEAD^{commit}")
 	if err != nil {

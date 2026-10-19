@@ -1322,20 +1322,19 @@ func (l *lander) land(ctx context.Context, j *landJob, pushed []*landJob) {
 			j.refuse(why)
 			return
 		}
-		if len(j.cards) > 0 && j.cards[0].linear {
-			merges, err := f.git(ctx, j.dir, "rev-list", "--min-parents=2", j.baseSha+".."+j.tip)
-			if err != nil {
-				j.refuse("the linear base could not be checked for merge commits: " + firstLine("", err) + "; nothing pushed")
-				return
-			}
-			if fields := strings.Fields(merges); len(fields) > 0 {
-				j.refuse("the linear base " + j.cards[0].repo + ":" + b.Base + " takes no merge commit; " + fields[0] + " is one; nothing pushed")
-				return
-			}
-		}
 		f.stage("push", "git push")
 		start = time.Now()
-		_, err := f.git(ctx, j.dir, "push", "--porcelain", "origin", j.tip+":refs/heads/"+b.Base)
+		var err error
+		if len(j.cards) > 0 && j.cards[0].linear {
+			var refused string
+			refused, err = f.pushLinearBase(ctx, j.dir, j.cards[0].repo, b.Base, j.baseSha, j.tip)
+			if refused != "" {
+				j.refuse(refused)
+				return
+			}
+		} else {
+			_, err = f.git(ctx, j.dir, "push", "--porcelain", "origin", j.tip+":refs/heads/"+b.Base)
+		}
 		since(&b.Times.Push, start)
 		if err == nil {
 			b.Tip = j.tip

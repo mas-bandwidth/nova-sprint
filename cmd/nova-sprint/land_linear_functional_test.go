@@ -78,7 +78,9 @@ func TestLandLinearBaseFunctional(t *testing.T) {
 	require.Contains(t, log, "Nova-Card: alpha.w1")
 	require.Contains(t, log, "Nova-Card: beta.w1")
 	require.Contains(t, log, "Nova-Card: gamma.w1")
-	git("push", "-q", "origin", "HEAD:main")
+	refused, err := l.pushLinearBase(ctx, dir, remote, "main", base, git("rev-parse", "HEAD"))
+	require.NoError(t, err)
+	require.Empty(t, refused)
 	require.Equal(t, git("rev-parse", "HEAD"), bare("rev-parse", "main"))
 
 	tip := git("rev-parse", "HEAD")
