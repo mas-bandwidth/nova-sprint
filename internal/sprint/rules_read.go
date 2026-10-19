@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
@@ -113,6 +114,24 @@ func ruleReadBroken(s *Snapshot, a *RuleAnswer) {
 		left(a, spent)
 		return
 	}
+	// a sibling read of the same attempt that is begun and whose lease is live at the sprint's
+	// now still owes its verdict: reworking now would retire it, its finding lost, so the rule
+	// waits for the latest such lease to expire or report. An asked read not yet begun, a read
+	// of another attempt and a read whose lease has lapsed never hold it (time is s.Now, never
+	// time.Now()).
+	if siblings := liveReadSiblings(s, pr); len(siblings) > 0 {
+		ids, until := make([]string, 0, len(siblings)), time.Time{}
+		for _, rc := range siblings {
+			ids = append(ids, rc.ID)
+			if exp := ReadLeaseExpires(rc); exp.After(until) {
+				until = exp
+			}
+		}
+		a.Card, a.Act, a.until = pr.ID, ActWaitReads, until
+		a.Why = fmt.Sprintf("a reader found attempt %s broken: waiting for read %s, begun and its lease live until %s; the fix carries every broken finding once it reports or its lease expires",
+			pr.F("attempt"), strings.Join(ids, ","), stamp(until))
+		return
+	}
 	// below the cap: a finding outside PATHS under the widen cap widens the brief in place (a
 	// machine's act: the attempt cap's count stands, BriefReq.ByRule); a finding inside PATHS
 	// is reworked with the finding as the fix, the same-finding bound outweighed by the broken
@@ -128,6 +147,18 @@ func ruleReadBroken(s *Snapshot, a *RuleAnswer) {
 	a.Act = ActRework
 	a.Why = fmt.Sprintf("a reader found attempt %s broken: its finding is the fix, on the same tier", pr.F("attempt"))
 	a.set = map[string]string{FieldNote: cutText(RuleSaid(RuleReadBroken, a.Act+": "+a.Why), MaxCardTextBytes)}
+}
+
+// liveReadSiblings is the primary's reads of its attempt that are begun (Reading) and whose
+// lease is live at the sprint's now, in readers-table order.
+func liveReadSiblings(s *Snapshot, pr *Card) []*Card {
+	var out []*Card
+	for _, rc := range s.Readers.Of(pr.ID) {
+		if rc.Col == Reading && rc.Int("attempt") == pr.Int("attempt") && ReadLeaseLive(rc, s.Now) {
+			out = append(out, rc)
+		}
+	}
+	return out
 }
 
 // findingFileRE is a repository path a finding names: a relative path of two or more parts.

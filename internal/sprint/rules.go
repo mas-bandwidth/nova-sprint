@@ -150,6 +150,7 @@ const (
 	ActTake   = "take back and deal again"  // the friend's card she has not started withdrawn from her row, dealt to another
 	ActAsk    = "ask another reader"        // the late read taken back, asked of another reader
 	ActNeed   = "wait for the card"         // the HOLD's card has not landed: the judgment waits on it
+	ActWaitReads = "wait for the reads"     // a broken read's sibling of the attempt is begun and its lease live: wait for it
 	ActLeft   = "left"                      // the judgment needs a mind
 	ActOff    = "off"                       // its rule is turned off
 )
