@@ -89,7 +89,7 @@ func TestLateReadOfAReworkedAttemptIsANote(t *testing.T) {
 		require.Len(t, p.Units, 1)
 		require.Contains(t, p.Units[0].Moved, "recorded as a late read of s1-1")
 		want := lateLine(second, "broken", "b.go:2: the second reader's finding")
-		notes := w.notesOf(NReadLate)
+		notes := w.notesOf(NLateRead)
 		require.Len(t, notes, 1, "the late read is a note on the primary")
 		require.Equal(t, second.F("reader"), notes[0].Who)
 		require.Equal(t, want, notes[0].What)
@@ -113,7 +113,7 @@ func TestLateReadOfAReworkedAttemptIsANote(t *testing.T) {
 		second := reworkedAtFirstBroken(t, w, "s1-1", 1)
 		w.must(readBy(w, second, "ok", "looks right at its head"))
 		want := lateLine(second, "ok", "looks right at its head")
-		require.Len(t, w.notesOf(NReadLate), 1)
+		require.Len(t, w.notesOf(NLateRead), 1)
 		require.Contains(t, nextPacket(t, w, "s1-1", 2).Finding, want)
 		pr := w.s.Work.Card("s1-1")
 		standing, broken := readCardsStanding(w.s, pr, nil)
@@ -144,7 +144,7 @@ func TestLateReadOfAReworkedAttemptIsANote(t *testing.T) {
 		w := lateReadsWorld(t)
 		second := reworkedAtFirstBroken(t, w, "s1-1", 1)
 		w.must(FriendReadCloseChecked(w.s, second.F("reader"), "s1-1", second.ID, "Verdict: HOLD\n- d.go:4 the outbox finding\n", nil))
-		require.Len(t, w.notesOf(NReadLate), 1)
+		require.Len(t, w.notesOf(NLateRead), 1)
 		require.Contains(t, nextPacket(t, w, "s1-1", 2).Finding, "late read by "+second.F("reader")+" of attempt 1")
 		require.Contains(t, nextPacket(t, w, "s1-1", 2).Finding, "d.go:4 the outbox finding")
 	})
@@ -155,7 +155,7 @@ func TestLateReadOfAReworkedAttemptIsANote(t *testing.T) {
 		require.Empty(t, p.Units, "nothing is recorded")
 		require.NotEmpty(t, p.Refused)
 		require.True(t, strings.Contains(p.Refused[0].Why, "off the table") && strings.Contains(p.Refused[0].Why, "nothing to report"), "%v", p.Refused)
-		require.Empty(t, w.notesOf(NReadLate))
+		require.Empty(t, w.notesOf(NLateRead))
 	}
 
 	t.Run("a late read of a dropped card is still refused", func(t *testing.T) {

@@ -643,10 +643,10 @@ func friendReadCloseUnit(s *Snapshot, name string, pr, rc *Card, verdict, findin
 	return Unit{Key: pr.ID, Stream: pr.Row, Changes: changes, Moved: rc.ID + " retired " + verdict, Notes: notes}
 }
 
-// NReadLate is the happened note of a late read: a verdict a reader reported on a read card
+// NLateRead is the happened note of a late read: a verdict a reader reported on a read card
 // a rework retired (RetiredByRework), or one its primary's move past the attempt retired
 // (RetiredByPrimary). It is a record, never a standing read: it counts toward no accept.
-const NReadLate = "a late read of a retired read card"
+const NLateRead = "a late read of a retired read card"
 
 // lateReadOf is the primary of a late read and "", or why the retired read card c takes no
 // verdict: a card not retired by a rework or by its primary's move (RetiredByRework,
@@ -714,7 +714,7 @@ func lateReadCardNamed(s *Snapshot, name, primary string, attempt int, card stri
 //     attempt: a ready one's take carries it in its packet's finding;
 //   - on the primary's own finding when it waits ready with no work card (the deal copies it);
 //
-// and as a note on the primary (NReadLate). The read's usage, when given, is recorded on
+// and as a note on the primary (NLateRead). The read's usage, when given, is recorded on
 // the primary as a closed read's is. tla/ReadCards.tla LateClose, NoFindingLost, BugDropLate.
 func lateReadUnit(s *Snapshot, name string, pr, rc *Card, verdict, finding, usage string) Unit {
 	attempt := max(rc.Int("attempt"), 1)
@@ -753,7 +753,7 @@ func lateReadUnit(s *Snapshot, name string, pr, rc *Card, verdict, finding, usag
 		addConsumer(pr, set, readConsumer(s, rc, 0, verdict, rec))
 	}
 	changes = append([]Change{change(Work, setEntry(pr, set))}, changes...)
-	n := happened(NReadLate, pr.Row, s.Now, pr.ID)
+	n := happened(NLateRead, pr.Row, s.Now, pr.ID)
 	n.Who, n.Attempt, n.What = name, attempt, line
 	moved := rc.ID + " recorded as a late read of " + pr.ID + " (retired by " + orDash(rc.F("retired_by")) + "; counted toward no read"
 	if rc.F("head") != "" && rc.F("head") != pr.F("head") {
