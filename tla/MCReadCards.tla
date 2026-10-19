@@ -7,6 +7,9 @@
 \* Findings = TRUE (MCReadCardsFindings.cfg) checks the findings of a reworked attempt:
 \* NoFindingLost, which BugDropLate and BugReworkAtFirstBroken each break
 \* (MCReadCardsFindingsBrokenDropLate.cfg, MCReadCardsFindingsBrokenReworkAtFirstBroken.cfg).
+\* BugWidenAtFirstBroken (a PATHS widen) and BugLateMissesRunning (a late read while the next
+\* attempt runs) break it too (MCReadCardsFindingsBrokenWidenAtFirstBroken.cfg,
+\* MCReadCardsFindingsBrokenLateMissesRunning.cfg).
 EXTENDS ReadCards
 
 \* the live reads' cfgs (Live = TRUE) check one attempt at the cfg's need: the beats and the
