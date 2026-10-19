@@ -75,6 +75,7 @@ var treeTests = []string{"internal/docs", "internal/ci"}
 func (l *lander) goRun(ctx context.Context, dir string, run []string, set ...string) (string, error) {
 	b := subproc.Prepare(ctx, landGoBudget, run[0], run[1:]...)
 	defer b.Cancel()
+	gateGroupCmd(b.Cmd)
 	var env []string
 	if l.a != nil {
 		env = l.a.gitEnv
