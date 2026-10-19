@@ -2755,18 +2755,13 @@ order the cards were dealt in, so a card brought to the front of its stream by
   cores its beat reports for a row with the default width (0 while no beat has
   reported them), and 0 for a row of width 0 or a member with no machine row:
   no step falls back to the control card's copy or to 64 while nova-config
-  answered. A read that answered with no machine row at all is such a read
-  (every member 0, every copy drained), never a missing one; only a read that
-  failed leaves the copies as they are. Such a member's copy is written 0, a drain marked as the config's
+  answered (a read with no machine row at all is no such read: the last
+  applied widths are kept, and the tick judges the empty inventory). Such a member's copy is written 0, a drain marked as the config's
   (`width_from=config`), so the deal and the level hold to it as the steps do;
   the server lifts that drain, and only that one, when nova-config names a
   width again (`sprint.WidthRefresh`), and `fleet up --width` clears the mark. A friend's width is her nova-config friend row's: `friend up
   <friend> --width <n>` and `friend beat <friend> --width <n>` are refused,
-  writing nothing, when n is not her row's as nova-config holds it now (read at
-  the verb, never the friends table's copy, which is stale until the next
-  friend sync; the copy stands in only on a machine that names no config store,
-  and a named store that cannot be read refuses the width). A beat with no
-  `--width` reads no config. Default 64 only for a step with no
+  writing nothing, when n is not her row's. Default 64 only for a step with no
   config read, and a member whose control card names none;
   `fleet up m1 --width 0` drains it: its width cell is `0`, so no
   deal, redeal or level places a card on it and a take by count takes none,
@@ -5820,6 +5815,17 @@ not name keeps its open judgment, and a wait on it, as they stand (no fact is ne
 clear, as the drift alarms carry a drift the facts say nothing of). A new stretch (green,
 then red again) is a new judgment. There is no raise again: the coordinator's pass reminds
 of an open judgment as it does for any.
+
+An empty inventory is judged the same way (internal/sprint inventory_empty.go,
+`TickInventoryEmpty`, in the deadlines part): when the tick's read of nova-config's machine
+rows answers with none, that is a likely-wrong config (an empty or wrong database, which
+`fleet sync` refuses with exit 3), never a fleet of width 0. The server keeps the members'
+last applied widths, writes no width 0 and retires no member, and the tick keeps one
+judgment of **nova-config inventory is empty** (`nova-config inventory is empty`, its line
+starting `nova-config inventory is empty; widths kept`), subject `config:inventory` (no card), decisions
+`act` and `wait`, closed when a read holds rows again. A read that fails neither raises nor
+closes it (`TickReq.InventoryEmpty` nil). A read with rows and none for a member still
+gives that member width 0.
 
 The facts are the binding's: `TickReq.BaseCI`, a `sprint.BaseCIFacts` per repository and
 base (`Repo`, `Base`, `Tip` the newest landed commit whose check runs all completed, `Red`

@@ -64,18 +64,20 @@ func (a *app) readInventory(ctx context.Context, pg string) ([]config.MachineWid
 // sprint.TickRetireAbsent, fleet_retire.go): every machine record nova-config
 // names, and whether the read answered. It is the same config read as fleet sync
 // (a.inventory: config.Widths over the config store, no new store). A read that
-// fails, or holds no machine row, returns ok false, and the tick retires nothing:
-// never act on a missing read. A test app that names no inventory returns false.
+// fails returns ok false; a read that answered with no machine row returns an empty
+// list and ok true, so the tick can tell the two apart: it retires nothing on either
+// (never act on a missing read, and an empty inventory is a likely-wrong config, as
+// fleet sync refuses it) and raises one judgment on the empty one
+// (sprint.NInventoryEmpty). A test app that names no inventory returns false.
 // The same read is kept as the members' widths the tick's steps hold to
-// (inventoryWidths), so a tick reads nova-config once; there a read with no row is
-// kept as a read (every member's width 0), never as a missing one (keepWidths).
+// (inventoryWidths), so a tick reads nova-config once.
 func (a *app) inventoryMachines(ctx context.Context) ([]string, bool) {
 	if a.inventory == nil {
 		return nil, false
 	}
 	ws, err := a.inventory(ctx, "")
 	a.keepWidths(ws, err)
-	if err != nil || len(ws) == 0 {
+	if err != nil {
 		return nil, false
 	}
 	names := make([]string, 0, len(ws))
@@ -93,11 +95,10 @@ func (a *app) inventoryMachines(ctx context.Context) ([]string, bool) {
 // a row of width 0 is 0 (no member); a row with the default width is half the cores its
 // machine's beat reports (sprint.WidthOfCores, read from st's beats as fleet sync reads
 // them), 0 while no beat has reported them: the one definition, with no fallback to a
-// width nova-config does not name (sprint.RowWidth). A read that answered and held no row
-// is ok true with no width in it: every member is 0, and no stale copy admits a take. A
-// read that failed, or whose default rows' beats cannot be read, is ok false and the
-// copies stand (never act on a missing read). A test app that names no inventory returns
-// false.
+// width nova-config does not name (sprint.RowWidth). A read that failed, or whose default
+// rows' beats cannot be read, is ok false and the copies stand (never act on a missing
+// read); a read that held no row keeps the last applied widths (keepWidths). A test app
+// that names no inventory returns false.
 func (a *app) inventoryWidths(st *store.Store) func(ctx context.Context) (map[string]int, bool) {
 	return func(ctx context.Context) (map[string]int, bool) {
 		if a.inventory == nil {
@@ -142,18 +143,23 @@ func (a *app) inventoryWidths(st *store.Store) func(ctx context.Context) (map[st
 const widthDefault = -1
 
 // keepWidths keeps a read of the inventory as the members' widths (inventoryWidths): every
-// machine row, its own width (0 for width 0) or widthDefault; nil when the read failed (no
-// read: the copies stand). A read that answered and held no machine row is kept apart from
-// a failed one, as an empty map: nova-config names no member, so every member's width is 0
-// (sprint.ConfigWidth) and the control-card copy admits nothing after the last row is
-// removed (the reader's finding on w3; tla/WidthHard.tla OneSource). The retire keeps its
-// own rule (inventoryMachines: a read with no row retires nothing).
+// machine row, its own width (0 for width 0) or widthDefault; nil when the read failed. A
+// read that answered with no machine row at all is a likely-wrong config (an empty or wrong
+// database: fleet sync refuses it, exitCannotRead), never a fleet of width 0: the last
+// applied widths are kept as they were (nil when none was kept, and the copies stand), no
+// zero is written, and the tick raises its judgment (sprint.NInventoryEmpty; the coordinator,
+// 2026-10-18). A read with rows and no row for a member still gives that member 0
+// (sprint.ConfigWidth).
 func (a *app) keepWidths(ws []config.MachineWidth, err error) {
 	v, _ := widthReads.LoadOrStore(a, &widthRead{})
 	r := v.(*widthRead)
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.read, r.widths = true, nil
+	r.read = true
+	if err == nil && len(ws) == 0 {
+		return // the empty inventory: the last applied widths stand
+	}
+	r.widths = nil
 	if err != nil {
 		return
 	}

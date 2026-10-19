@@ -124,10 +124,7 @@ A member's width is nova-config's alone (`nova-config machine set <member> --wid
 member's nova-config width (for a row with the default width, half the cores its beat
 reports), and `--width 0` drains it. A friend's width is her nova-config friend row's alone
 (`nova-config friend set <friend> --width <n>`, then `nova-config apply`): `friend up --width
-<n>` and `friend beat --width <n>` are refused, writing nothing, when n is not her row's as
-nova-config holds it at the verb (never the friends table's copy, stale until the next
-`friend sync`; a beat with no `--width` reads no config). A config read that answers with no
-machine row holds every member at 0; only a read that fails leaves the sprint's copies.
+<n>` and `friend beat --width <n>` are refused, writing nothing, when n is not her row's.
 Every card working counts one slot of the width, a read as a work card, on a member's row and
 a friend's, her start receipts included.
 

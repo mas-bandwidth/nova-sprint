@@ -180,6 +180,9 @@ var TickDecisions = map[string][]string{
 	NDriftBaseRed:  {"act", "wait"},
 	// the base's CI after a landing (base_ci.go): the same, mended, or quiet a while
 	NBaseCIRed: {"act", "wait"},
+	// nova-config's inventory read answered with no machine row (inventory_empty.go):
+	// mended (the config store holds the fleet's rows again), or quiet a while
+	NInventoryEmpty: {"act", "wait"},
 	// a repository lacks a bench mirror on some members (mirror_need.go): the
 	// fleet's mirror refresh serves it
 	NMirrorNeed: {"fleet up <m>", "wait"},
@@ -235,6 +238,12 @@ type TickReq struct {
 	// is no read, or a read that failed or held no row, and the part retires nothing
 	// (never act on a missing read).
 	Machines []string
+	// InventoryEmpty is the binding's word on nova-config's inventory read with the tick
+	// (inventory_empty.go): true when the read answered with no machine row (a
+	// likely-wrong config: the widths are kept, nothing is retired), false when it held
+	// rows, nil when there was no read (a read that failed, or none bound), which neither
+	// raises nor closes the judgment.
+	InventoryEmpty *bool
 }
 
 func (r TickReq) who() string {
@@ -1882,6 +1891,10 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 	// the base's CI after a landing, on a plan of its own the same way (base_ci.go)
 	b, baseCIDue := TickBaseCI(s, r)
 	p.Notes, p.Closes, p.Updates = append(p.Notes, b.Notes...), append(p.Closes, b.Closes...), append(p.Updates, b.Updates...)
+	// the empty inventory, on a plan of its own the same way (inventory_empty.go)
+	ie, inventoryDue := TickInventoryEmpty(s, r)
+	p.Notes, p.Closes, p.Updates = append(p.Notes, ie.Notes...), append(p.Closes, ie.Closes...), append(p.Updates, ie.Updates...)
+	baseCIDue += inventoryDue
 	// the landing-stall alarm (judgments.go), on a plan of its own the same way:
 	// raised once at the tick end while cards wait in review or merging and no
 	// card has landed for the bound, re-raised each bound, and cleared on the
@@ -2111,7 +2124,7 @@ func condKey(typ, subject, card, what string) string {
 		NBrokenReadsOutrun, NReaderBreaks,
 		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFilesAlarm, NFriendIdle,
 		NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed, NFriendSyncFailing,
-		NBaseCIRed,
+		NBaseCIRed, NInventoryEmpty,
 		NStopMemberDown, NStopPinWaits, NMemberIdleReaps,
 		NNoFrontierRoom,
 		NMirrorNeed, NMemberPegged, NGateNeeds:

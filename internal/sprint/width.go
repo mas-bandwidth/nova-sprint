@@ -445,10 +445,8 @@ func movedWithout(moved string, ids []string) string {
 // drain (fleet up --width 0, unmarked) stays until fleet up lifts it. It never widens
 // nova-config: the read of nova-config is the fix.
 func WidthRefresh(s *Snapshot, p Plan, cfg map[string]int) Plan {
-	if s == nil || s.Fleet == nil || cfg == nil || len(p.Units) == 0 {
-		// a step that writes nothing writes no refresh either: the next step that writes does;
-		// cfg nil is no config read (the copies stand), while an empty cfg is a read that
-		// answered with no machine row: every member is drained
+	if s == nil || s.Fleet == nil || len(cfg) == 0 || len(p.Units) == 0 {
+		// a step that writes nothing writes no refresh either: the next step that writes does
 		return p
 	}
 	touched := map[string]bool{}

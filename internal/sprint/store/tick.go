@@ -1175,14 +1175,14 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 	// same config read as fleet sync; sprint.TickRetireAbsent, fleet_retire.go): a
 	// read that fails or holds no row leaves Machines nil, and the retire part
 	// wants nothing (never act on a missing read).
-	machines, inventoryRead := st.tickInventory(ctx)
+	machines, inventoryRead, inventoryEmpty := st.tickInventory(ctx)
 	// the tick's read of the base's CI after a landing (sprint.TickBaseCI, base_ci.go):
 	// nil when the binding sets none, and no red-base judgment is raised or closed.
 	var baseCI []sprint.BaseCIFacts
 	if st.BaseCI != nil {
 		baseCI = st.BaseCI()
 	}
-	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(snap.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm, Machines: machines, BaseCI: baseCI}
+	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(snap.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm, Machines: machines, InventoryEmpty: inventoryEmpty, BaseCI: baseCI}
 	// the first read as it was: the twin it came from moves on with every
 	// part's writes, and with any other writer in this process
 	first := *snap
@@ -1339,16 +1339,23 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 // tickInventory is the tick's read of the inventory: the machine records nova-config
 // names (the same config read as fleet sync), and whether the read answered. A read
 // that fails or holds no row is ok false: the retire part wants nothing then (never
-// act on a missing read). nil Inventory is ok false.
-func (st *Store) tickInventory(ctx context.Context) (machines []string, ok bool) {
+// act on a missing read). nil Inventory is ok false. empty is the tick's word on the
+// empty inventory for its judgment (sprint.TickReq.InventoryEmpty): true for a read
+// that answered with no row, false for a read with rows, nil for no read (a failed
+// read, or no Inventory), which neither raises nor closes it.
+func (st *Store) tickInventory(ctx context.Context) (machines []string, ok bool, empty *bool) {
 	if st.Inventory == nil {
-		return nil, false
+		return nil, false, nil
 	}
 	ms, read := st.Inventory(ctx)
-	if !read || len(ms) == 0 {
-		return nil, false
+	if !read {
+		return nil, false, nil
 	}
-	return ms, true
+	e := len(ms) == 0
+	if e {
+		return nil, false, &e
+	}
+	return ms, true, &e
 }
 
 // routesPart says a tick part plans with the routes: the deal and the ask draw
