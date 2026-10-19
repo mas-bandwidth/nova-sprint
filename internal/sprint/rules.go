@@ -138,21 +138,21 @@ const NRuleAnswered = "answered by rule"
 
 // The acts of a rule answer.
 const (
-	ActRework = "rework"                    // the next attempt, on the next route of its tier
-	ActUp     = "rework on a tier up"       // the next attempt, pinned a tier up
-	ActFriend = "rework as a friend's card" // the next attempt, a friend's (above heavy)
-	ActWait   = "wait 30m"                  // the late card made progress: held once
-	ActHold   = "hold"                      // the late card's holder has not had its own deadline yet, or never stamped progress
-	ActRedeal = "return and redeal"         // the late card withdrawn, dealt again
-	ActReturn = "return"                    // the conflict card back to review
-	ActResume = "resume"                    // the stream again, its conflict card out
-	ActMark   = "mark brief defect"         // the card marked, the judgment kept
-	ActTake   = "take back and deal again"  // the friend's card she has not started withdrawn from her row, dealt to another
-	ActAsk    = "ask another reader"        // the late read taken back, asked of another reader
-	ActNeed   = "wait for the card"         // the HOLD's card has not landed: the judgment waits on it
-	ActWaitReads = "wait for the reads"     // a broken read's sibling of the attempt is begun and its lease live: wait for it
-	ActLeft   = "left"                      // the judgment needs a mind
-	ActOff    = "off"                       // its rule is turned off
+	ActRework    = "rework"                    // the next attempt, on the next route of its tier
+	ActUp        = "rework on a tier up"       // the next attempt, pinned a tier up
+	ActFriend    = "rework as a friend's card" // the next attempt, a friend's (above heavy)
+	ActWait      = "wait 30m"                  // the late card made progress: held once
+	ActHold      = "hold"                      // the late card's holder has not had its own deadline yet, or never stamped progress
+	ActRedeal    = "return and redeal"         // the late card withdrawn, dealt again
+	ActReturn    = "return"                    // the conflict card back to review
+	ActResume    = "resume"                    // the stream again, its conflict card out
+	ActMark      = "mark brief defect"         // the card marked, the judgment kept
+	ActTake      = "take back and deal again"  // the friend's card she has not started withdrawn from her row, dealt to another
+	ActAsk       = "ask another reader"        // the late read taken back, asked of another reader
+	ActNeed      = "wait for the card"         // the HOLD's card has not landed: the judgment waits on it
+	ActWaitReads = "wait for the reads"        // a broken read's sibling of the attempt is begun and its lease live: wait for it
+	ActLeft      = "left"                      // the judgment needs a mind
+	ActOff       = "off"                       // its rule is turned off
 )
 
 // RuleSaid is the answer a rule records on a judgment: "answered by rule <name>: <what>".
