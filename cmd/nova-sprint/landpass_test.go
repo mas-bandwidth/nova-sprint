@@ -12,7 +12,73 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
+
+// TestABuiltOnUnlandedTargetSkipsBeforeTheScopeCheck proves the cut leaves out a card
+// whose head carries an unlanded LAND-AFTER target's commits before any merge or scope
+// check, and leaves a card not built on its target in the batch (tla/SoftDependency.tla
+// BuiltOnHeld, SoftIsOrderOnly).
+func TestABuiltOnUnlandedTargetSkipsBeforeTheScopeCheck(t *testing.T) {
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	dir := t.TempDir()
+	fakeGit := filepath.Join(dir, "git")
+	gitCalled := filepath.Join(dir, "git-called")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> " + gitCalled + "\ncase \"$*\" in *merge-base*--is-ancestor*) exit "
+	require.NoError(t, os.WriteFile(fakeGit, []byte(script+"0;; esac\nexit 97\n"), 0o755))
+	ta.ok("add --stream s1 --one --brief-file " + writeSoftHeaderBrief(t, dir, "p", "", "", "mas-bandwidth/nova-sprint", "", "internal/p.go"))
+	ta.ok("add --stream s1 --one --brief-file " + writeSoftHeaderBrief(t, dir, "c", "", "p", "mas-bandwidth/nova-sprint", "", "internal/c.go"))
+	ta.deal(2)
+	ta.ok("take --as m1 --limit 10")
+	pHead := strings.Repeat("1", 40)
+	cHead := strings.Repeat("2", 40)
+	ta.ok("finish --as m1 p.w1@1 --head " + pHead)
+	ta.ok("finish --as m1 c.w1@1 --head " + cHead)
+	ta.ok("ask")
+	ta.ok("read --as reader-a --ok --limit 10")
+	ta.ok("read --as reader-b --ok --limit 10")
+	ta.ok("accept --read-ok")
+	st, err := ta.a.store(common{redis: "mem:0", actor: "coordinator"})
+	require.NoError(t, err)
+	s, err := st.Load(t.Context(), []string{sprint.Work, sprint.Merge, sprint.Fleet, sprint.Readers}, nil)
+	require.NoError(t, err)
+	pCard := s.Work.Card("p")
+	pCard.Col = sprint.Review
+	s.Work.Put(pCard)
+	s.Merge.Drop("p") // a review target has no queued merge card
+	beforeAttempt := s.Work.Card("c").Int("attempt")
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	ta.a.gitEnv = []string{"PATH=" + dir}
+	l := &lander{a: ta.a, st: st, repoDir: dir, base: "main", prose: map[string][]string{}, diffs: map[string]string{}, scope: map[string][]string{}}
+	l.locks()
+	failed := l.pass(t.Context(), s, []string{"s1"})
+	assert.False(t, failed, "skipping an unlanded soft target is not a failed pass")
+	require.Len(t, l.out, 1)
+	assert.Equal(t, "refused", l.out[0].Status)
+	assert.Equal(t, "c: built on p, which has not landed; c is skipped this batch", l.out[0].Reason)
+	_, gitErr := os.Stat(gitCalled)
+	require.NoError(t, gitErr)
+	called, err := os.ReadFile(gitCalled)
+	require.NoError(t, err)
+	assert.Contains(t, string(called), "merge-base --is-ancestor")
+	assert.Equal(t, 1, strings.Count(string(called), "\n"), "the skipped card reaches no Git merge or checkCard")
+	assert.Equal(t, sprint.Review, s.Work.Card("p").Col)
+	assert.Equal(t, sprint.Merging, s.Work.Card("c").Col)
+	assert.Equal(t, beforeAttempt, s.Work.Card("c").Int("attempt"), "the skip does not count an attempt")
+
+	// the same card, not built on its target: the cut keeps it (order-only), so the pass
+	// goes past the cut and asks Git for the clone and the merge
+	require.NoError(t, os.WriteFile(fakeGit, []byte("#!/bin/sh\nprintf '%s\\n' \"$*\" >> "+gitCalled+"\ncase \"$*\" in *merge-base*--is-ancestor*) exit 1;; esac\nexit 97\n"), 0o755))
+	require.NoError(t, os.Remove(gitCalled))
+	l = &lander{a: ta.a, st: st, repoDir: dir, base: "main", prose: map[string][]string{}, diffs: map[string]string{}, scope: map[string][]string{}}
+	l.locks()
+	l.pass(t.Context(), s, []string{"s1"})
+	for _, line := range l.out {
+		assert.NotContains(t, line.Reason, "built on p", "the order-only card is not left out for built-on")
+	}
+}
 
 // The merge step's receipt for a landing holds more than the batch's landings: the waiting
 // cards the landing released (`<id> waiting -> ready (its needs landed)`) and the sentinels

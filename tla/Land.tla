@@ -178,6 +178,11 @@
 \*   NeverHeldBack: repair never sends back to review a card a change is queued
 \*     for (check.go Rule6Merging s.Held): the card is the owner's while that
 \*     change waits. Broken "repairheld" drops the guard and the rule fails.
+\*   NoPathsRefusalNamesMerged: an E12 refusal of a forward-merge card never
+\*     names a file that arrived unchanged through its MERGE-OF merge
+\*     (sprint.MergeOf, docs/SPEC-SPRINT.md section 7): the refusal draws its
+\*     files from Files \ (paths[c] \cup merged[c]). Broken "nomergeexempt"
+\*     draws from Files \ paths[c] alone and the rule fails.
 \*   NoSentinelInQueue: no sentinel is ever in the merge queue (a sentinel is
 \*     released straight to landed by the coordinator, never merged), so
 \*     Repair's sentinel guard (IsSentinel) is not constant-TRUE by assumption.
@@ -252,6 +257,8 @@
 \*     a card a change is queued for (NeverHeldBack fails).
 \*   "offerrefused" offers to accept a card at the head the landing refused
 \*     (NoOfferAtRefusedHead fails: Accept, Rework, Read, Build, Refuse).
+\*   "nomergeexempt" refuses a forward-merge card with the merged files not
+\*     exempt (the E12 of before this rule); NoPathsRefusalNamesMerged fails.
 \*   "norepair" removes the repair verb's return of a short merging card to
 \*     review (ReachRepair, the reversed witness, holds: nothing repairs).
 \*   "nowidencap" widens with no cap, as the E12 branch did before
@@ -277,6 +284,11 @@
 \*             resets it
 \*   paths     the files outside its first PATHS that widenings added
 \*   regneed   the regression's files outside the first PATHS (chosen at Init)
+\*   merged    the files that arrive unchanged through the card's MERGE-OF
+\*             merge (sprint.MergeOf; chosen at Init, empty for a card with
+\*             no MERGE-OF); a "paths" refusal never names one
+\*   named     the files the card's last "paths" refusal named (empty until
+\*             one), so NoPathsRefusalNamesMerged can speak of the refusal
 \*   cleared   the card's head no longer fails: chosen at each new attempt,
 \*             TRUE only when regneed is empty or the PATHS meet it (meeting it
 \*             is necessary, not sufficient)
@@ -347,8 +359,8 @@ VARIABLES queue, att, landed, epoch, base, tip,
           lref, lkind, ready, review, stop, carried, ownstop,
           oks, need, reread, shortland, lcheckneed, markneed,
           rhead, offer, repairback,
-          bat, prevw, prevat, allconf, widens, paths, fm, cleared, twice,
-          cbound, carryoff, wrongmark,
+          bat, prevw, prevat, allconf, widens, paths, merged, named, fm,
+          cleared, twice, cbound, carryoff, wrongmark,
           capJudged
 
 reads == <<oks, need, reread, markneed>>
@@ -357,14 +369,14 @@ store == <<queue, att, landed, epoch, ready, review, stop, oks, need, reread, ma
 remote == <<base, tip>>
 lander == <<lphase, lq, lbatch, lep, lrep, ltip, tries, lref, lkind, lcheckneed>>
 ghosts == <<badcaller, stalepush, stalerec, lpushed, carried, ownstop, shortland, repairback, capJudged>>
-bound == <<bat, prevw, prevat, allconf, widens, paths, fm, cleared, twice, cbound, carryoff, wrongmark>>
+bound == <<bat, prevw, prevat, allconf, widens, paths, merged, named, fm, cleared, twice, cbound, carryoff, wrongmark>>
 vars == <<queue, att, landed, epoch, base, tip, lphase, lq, lbatch, lep, lrep, ltip, tries,
           events, badcaller, stalepush, stalerec, lpushed,
           lref, lkind, ready, review, stop, carried, ownstop,
           oks, need, reread, shortland, lcheckneed, markneed,
           rhead, offer, repairback,
-          bat, prevw, prevat, allconf, widens, paths, fm, cleared, twice,
-          cbound, carryoff, wrongmark,
+          bat, prevw, prevat, allconf, widens, paths, merged, named, fm,
+          cleared, twice, cbound, carryoff, wrongmark,
           capJudged>>
 
 Heads == Cards \X (1..(MaxAttempts + 2))
@@ -445,6 +457,7 @@ TypeOK ==
   /\ cbound \subseteq Cards /\ carryoff \subseteq Cards /\ wrongmark \subseteq Cards
   /\ widens \in [Cards -> Nat]
   /\ paths \in [Cards -> SUBSET Files]
+  /\ merged \in [Cards -> SUBSET Files] /\ named \in [Cards -> SUBSET Files]
   /\ cleared \in [Cards -> BOOLEAN] /\ twice \in BOOLEAN
   \* fm carries the regression's files (regneed) beside the recorded base tip,
   \* the per-card forward-merge marks and the merge log (it is one state
@@ -474,6 +487,8 @@ Init ==
              fmtip : {[c \in Cards |-> 0]},
              fmchecked : {[c \in Cards |-> 0]},
              merges : {{}}]
+  /\ merged \in [Cards -> SUBSET Files]
+  /\ named = [c \in Cards |-> {}]
   /\ cleared = [c \in Cards |-> FALSE] /\ twice = FALSE
   /\ cbound = {} /\ carryoff = {} /\ wrongmark = {}
 
@@ -607,10 +622,16 @@ NextAttempt(c, cl) ==
 \* landRefused with the bound on: the way w of the refusal (the lander names
 \* the files F outside PATHS for "paths"), the brief's bound first for both
 \* ways, then the rework ("other"), the widen in place or the redo ("paths").
+\* E12's forward-merge exemption (sprint.MergeOf, docs/SPEC-SPRINT.md section
+\* 7) draws F from Files \ (paths[c] \cup merged[c]): a file that arrived
+\* unchanged through the merge is never the card's own change and is never
+\* named. Broken "nomergeexempt" draws from Files \ paths[c] alone, the
+\* refusal of a forward-merge card as it was before the exemption.
 RefuseWays(c) ==
-  \E w \in {"paths", "other"}, F \in SUBSET (Files \ paths[c]), isconf \in BOOLEAN :
+  \E w \in {"paths", "other"}, F \in SUBSET (IF Broken = "nomergeexempt" THEN Files \ paths[c] ELSE Files \ (paths[c] \cup merged[c])), isconf \in BOOLEAN :
     /\ (w = "paths") = (F # {})
     /\ (w = "paths") => ~isconf
+    /\ named' = IF w = "paths" THEN [named EXCEPT ![c] = F] ELSE named
     /\ LET same == w \in prevw[c]
            capped == att[c] - bat[c] >= Cap
            spent == w = "paths" /\ widens[c] >= MaxWidens /\ Broken # "nowidencap"
@@ -627,11 +648,11 @@ RefuseWays(c) ==
                /\ wrongmark' = IF carries THEN wrongmark \ {c} ELSE wrongmark \cup {c}
                /\ capJudged' = (capJudged \/ (capped /\ ~spent /\ ~(same /\ Broken # "nosamefinding")))
                /\ UNCHANGED <<att, ready, carried>>
-               /\ UNCHANGED <<bat, prevw, prevat, allconf, widens, paths, fm, cleared, twice>>
+               /\ UNCHANGED <<bat, prevw, prevat, allconf, widens, paths, merged, fm, cleared, twice>>
           ELSE /\ capJudged' = capJudged
                /\ UNCHANGED <<cbound, carryoff, wrongmark>>
                /\ twice' = (twice \/ same)
-               /\ UNCHANGED fm
+               /\ UNCHANGED <<merged, fm>>
                /\ IF w = "other"
                   THEN \E cl \in IF Clearable(c, paths[c]) THEN BOOLEAN ELSE {FALSE} :
                          /\ NextAttempt(c, cl)
@@ -807,7 +828,7 @@ ForwardMerge ==
   /\ UNCHANGED store /\ UNCHANGED base
   /\ UNCHANGED lander /\ UNCHANGED shortland
   /\ UNCHANGED <<badcaller, stalepush, stalerec, lpushed, carried, ownstop, repairback, capJudged>>
-  /\ UNCHANGED <<bat, prevw, prevat, allconf, widens, paths, cleared, twice, cbound, carryoff, wrongmark>>
+  /\ UNCHANGED <<bat, prevw, prevat, allconf, widens, paths, merged, named, cleared, twice, cbound, carryoff, wrongmark>>
 
 \* Recheck: the coordinator's forward-merge recheck clears one card's pending
 \* mark at the tip it was marked for (RecheckForwardMerge), after the behind
@@ -819,7 +840,7 @@ Recheck ==
   /\ UNCHANGED store /\ UNCHANGED remote
   /\ UNCHANGED lander /\ UNCHANGED events
   /\ UNCHANGED ghosts
-  /\ UNCHANGED <<bat, prevw, prevat, allconf, widens, paths, cleared, twice, cbound, carryoff, wrongmark>>
+  /\ UNCHANGED <<bat, prevw, prevat, allconf, widens, paths, merged, named, cleared, twice, cbound, carryoff, wrongmark>>
 
 Crash ==
   /\ lphase # "idle"
@@ -964,6 +985,17 @@ Settles == <>[](stop = "none" => queue = <<>> /\ ready = {})
 \* Reversed witness: a card widened by the rule and then landed (its fix
 \* reachable through the widened PATHS).
 ReachWidenLands == ~(\E c \in Cards : widens[c] > 0 /\ Current(c) \in landed)
+
+\* E12 never names a file that arrived unchanged through a forward-merge card's
+\* MERGE-OF merge (sprint.MergeOf, docs/SPEC-SPRINT.md section 7): a "paths"
+\* refusal's files are drawn from Files \ (paths[c] \cup merged[c]). Broken
+\* "nomergeexempt" drops merged from that subtraction and the rule fails.
+NoPathsRefusalNamesMerged == \A c \in Cards : named[c] \cap merged[c] = {}
+
+\* Reversed witness: a card whose regression needs a file outside both its
+\* PATHS and its merged set is still refused (it reaches review at its bound),
+\* so the exemption does not refuse the hand edits the card still makes.
+ReachMergeOutside == ~(\E c \in review : fm.regneed[c] \ (paths[c] \cup merged[c]) # {})
 
 CarriedHead == \A c \in ready : <<c, att[c] - 1>> \in carried
 
