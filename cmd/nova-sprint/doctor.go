@@ -301,7 +301,8 @@ func (a *app) doctorChecks(ctx context.Context, st *store.Store, m sprint.SeatCh
 	}
 	in := sprint.DoctorInput{Snap: read.Snap, Req: read.Req, ReaderBeats: read.ReaderBeats, FriendBeats: read.FriendBeats, Hook: m.Hook, Seat: rec.Seat}
 	in.HostGitEmail = hostGitEmail(ctx)
-	// tla/WidthHard.tla (OneSource): doctor reads nova-config friend widths to report friend width drift.
+	// tla/WidthHard.tla (OneSource): doctor reads nova-config's friend widths to
+	// report a friend's width drift as it does a member's.
 	if fw, ok := a.inventoryFriendWidths()(ctx); ok {
 		in.FriendWidths = fw
 	}

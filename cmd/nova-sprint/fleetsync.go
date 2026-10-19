@@ -8,7 +8,6 @@ import (
 	"io"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -66,14 +65,11 @@ func (a *app) readInventory(ctx context.Context, pg string) ([]config.MachineWid
 // (a.inventory: config.Widths over the config store, no new store). A read that
 // fails, or holds no machine row, returns ok false, and the tick retires nothing:
 // never act on a missing read. A test app that names no inventory returns false.
-// The same read is kept as the members' widths the tick's steps hold to
-// (inventoryWidths), so a tick reads nova-config once.
 func (a *app) inventoryMachines(ctx context.Context) ([]string, bool) {
 	if a.inventory == nil {
 		return nil, false
 	}
 	ws, err := a.inventory(ctx, "")
-	a.keepWidths(ws, err)
 	if err != nil || len(ws) == 0 {
 		return nil, false
 	}
@@ -82,148 +78,6 @@ func (a *app) inventoryMachines(ctx context.Context) ([]string, bool) {
 		names = append(names, w.Machine)
 	}
 	return names, true
-}
-
-// inventoryWidths is the server's read of the members' widths (store.Store.Widths): every
-// machine row nova-config names, by machine, and whether the read answered. It is the
-// tick's own read of the inventory (inventoryMachines, made at the start of every tick), so
-// the tick's steps hold to the widths of this tick's read and a tick reads nova-config
-// once; before any tick has read it, it reads once itself. A row's own width is its width;
-// a row of width 0 is 0 (no member); a row with the default width is half the cores its
-// machine's beat reports (sprint.WidthOfCores, read from st's beats as fleet sync reads
-// them), 0 while no beat has reported them: the one definition, with no fallback to a
-// width nova-config does not name (sprint.RowWidth). A read that failed, or held no row,
-// or whose default rows' beats cannot be read, is ok false and the copies stand (never act
-// on a missing read). A test app that names no inventory returns false.
-func (a *app) inventoryWidths(st *store.Store) func(ctx context.Context) (map[string]int, bool) {
-	return func(ctx context.Context) (map[string]int, bool) {
-		if a.inventory == nil {
-			return nil, false
-		}
-		ws, read, ok := a.keptWidths()
-		if !read {
-			rows, err := a.inventory(ctx, "")
-			a.keepWidths(rows, err)
-			ws, _, ok = a.keptWidths()
-		}
-		if !ok {
-			return nil, false
-		}
-		var defaults []string
-		for m, w := range ws {
-			if w == widthDefault {
-				defaults = append(defaults, m)
-			}
-		}
-		if len(defaults) == 0 {
-			return ws, true
-		}
-		sort.Strings(defaults)
-		beats, err := st.Beats(ctx, defaults)
-		if err != nil {
-			return nil, false
-		}
-		out := make(map[string]int, len(ws))
-		for m, w := range ws {
-			if w == widthDefault {
-				w = sprint.WidthOfCores(beats[m].Cores)
-			}
-			out[m] = w
-		}
-		return out, true
-	}
-}
-
-// widthDefault is a kept machine row with the default width: inventoryWidths resolves it
-// from the machine's beat at each read.
-const widthDefault = -1
-
-// keepWidths keeps a read of the inventory as the members' widths (inventoryWidths): every
-// machine row, its own width (0 for width 0) or widthDefault; nil when the read failed or
-// held no row.
-func (a *app) keepWidths(ws []config.MachineWidth, err error) {
-	v, _ := widthReads.LoadOrStore(a, &widthRead{})
-	r := v.(*widthRead)
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.read, r.widths = true, nil
-	if err != nil || len(ws) == 0 {
-		return
-	}
-	r.widths = make(map[string]int, len(ws))
-	for _, w := range ws {
-		switch {
-		case w.Default:
-			r.widths[w.Machine] = widthDefault
-		default:
-			r.widths[w.Machine] = min(max(w.Width, 0), sprint.MaxWidth)
-		}
-	}
-}
-
-// keptWidths is the last read keepWidths kept: read false when none was kept.
-func (a *app) keptWidths() (ws map[string]int, read, ok bool) {
-	v, found := widthReads.Load(a)
-	if !found {
-		return nil, false, false
-	}
-	r := v.(*widthRead)
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.widths, r.read, r.widths != nil
-}
-
-// widthRead is one app's last read of nova-config's widths (keepWidths).
-type widthRead struct {
-	mu     sync.Mutex
-	read   bool
-	widths map[string]int
-}
-
-// widthReads is each app's widthRead, by app: the server process has one app.
-var widthReads sync.Map
-
-// configWidthOf is a member's width as nova-config's machine row names it, read now
-// (a.inventory, config.Widths): a row's own width, or, for a row with the default width,
-// half the cores its machine's beat reports (sprint.WidthOfCores, st's beats, as fleet sync
-// resolves it); ok false with why when the row is not there, has width 0, has the default
-// width and no beat has reported its cores, or the config cannot be read. fleet up --width is held to it
-// (fleetStep). An app that names no inventory, or a machine that names no config store at
-// all (no --pg and no NOVA_PG_DSN: a twin, a test), is ok true with width 0: there is no
-// config here to hold it to, and the server, which reads nova-config, writes the copy back
-// to it on its next step (sprint.WidthRefresh). A config store named that cannot be read is
-// refused: never write a width on a missing read.
-func (a *app) configWidthOf(ctx context.Context, st *store.Store, member string) (width int, ok bool, why string) {
-	if a.inventory == nil {
-		return 0, true, ""
-	}
-	ws, err := a.inventory(ctx, "")
-	if err != nil {
-		if _, named := config.ResolveDSN("", a.getenv); named != nil {
-			return 0, true, ""
-		}
-		return 0, false, "nova-config cannot be read (" + oneline.Escape(err.Error()) + "): a member's width is nova-config's, and none is written that it does not name"
-	}
-	for _, w := range ws {
-		if w.Machine != member {
-			continue
-		}
-		switch {
-		case w.Default:
-			beats, err := st.Beats(ctx, []string{member})
-			if err != nil {
-				return 0, false, member + "'s nova-config machine row has the default width (half its cores), and its beat cannot be read (" + oneline.Escape(err.Error()) + ")"
-			}
-			if cw := sprint.WidthOfCores(beats[member].Cores); cw > 0 {
-				return cw, true, ""
-			}
-			return 0, false, member + "'s nova-config machine row has the default width (half its cores), and no beat has reported its cores yet (nova-sprint fleet beat " + member + " on the machine), or set one: nova-config machine set " + member + " --width <n>, then nova-config apply"
-		case w.Width < 1:
-			return 0, false, member + "'s nova-config machine row has width 0 (no member)"
-		}
-		return w.Width, true, ""
-	}
-	return 0, false, member + " has no nova-config machine row: nova-config machine add " + member + " ... --width <n>, then nova-config apply"
 }
 
 // withConfig runs read on nova-config's Postgres store, found by the config

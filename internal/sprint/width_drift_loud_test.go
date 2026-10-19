@@ -1,12 +1,16 @@
 package sprint
 
 import (
+	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+var widthClock = time.Unix(1000, 0).UTC()
 
 // A drift is held at the take but loud (the owner, 2026-10-18: "every fleet machine and every
 // friend follows the one width definition in nova-config, with no exceptions"; tla/WidthHard.tla
@@ -15,14 +19,17 @@ import (
 // clear carries a drained row's width_from=config mark.
 
 func TestTickJudgesEachDriftingRow(t *testing.T) {
-	t.Parallel()
+	// it sets the package's width read, so it does not run in parallel
 	w := newWorld(t, "reader-a", "reader-b")
 	w.s.Now = widthClock
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 8}))
 	w.s.Friends = []FriendSeat{workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash"})}
 
-	r := TickReq{Who: MachineActor, Widths: map[string]int{"m1": 4}, FriendWidths: map[string]int{"amy": 4}}
-	p, _ := TickDeadlines(w.s, r)
+	SetWidthConfigRead(func(context.Context) (map[string]int, map[string]int, bool) {
+		return map[string]int{"m1": 4}, map[string]int{"amy": 4}, true
+	})
+	defer SetWidthConfigRead(nil)
+	p, _ := tickWidthDrift(w.s, TickReq{Who: MachineActor})
 	var raised []Note
 	for _, n := range p.Notes {
 		if n.Type == NWidthDrift {
@@ -39,7 +46,7 @@ func TestTickJudgesEachDriftingRow(t *testing.T) {
 	w.must(p) // the judgments are now open
 
 	// the same drift, the next tick: no new judgment (once per drift, not one per tick)
-	p2, _ := TickDeadlines(w.s, r)
+	p2, _ := tickWidthDrift(w.s, TickReq{Who: MachineActor})
 	var again []Note
 	for _, n := range p2.Notes {
 		if n.Type == NWidthDrift {
@@ -49,9 +56,10 @@ func TestTickJudgesEachDriftingRow(t *testing.T) {
 	assert.Empty(t, again, "no re-raise while the rows still drift")
 
 	// the rows agree again: the judgments close
-	r.Widths = map[string]int{"m1": 8}
-	r.FriendWidths = map[string]int{"amy": 2}
-	p3, _ := TickDeadlines(w.s, r)
+	SetWidthConfigRead(func(context.Context) (map[string]int, map[string]int, bool) {
+		return map[string]int{"m1": 8}, map[string]int{"amy": 2}, true
+	})
+	p3, _ := tickWidthDrift(w.s, TickReq{Who: MachineActor})
 	require.Len(t, p3.Closes, 2, "the drift judgments close when the rows agree: %v", p3.Closes)
 }
 
@@ -90,7 +98,7 @@ func TestDrainWidthMarkSurvivesClear(t *testing.T) {
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1", Width: 0})) // drains
 	ctl := w.s.MemberCtl("m1")
 	require.NotNil(t, ctl)
-	// the config-drain mark, as WidthRefresh writes a draining member
+	// the config-drain mark, as the width refresh writes a draining member
 	ctl.Fields[FieldWidthFrom] = WidthFromConfig
 
 	sh := ShapeOf(w.s)

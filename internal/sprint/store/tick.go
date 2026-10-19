@@ -1183,7 +1183,6 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 		baseCI = st.BaseCI()
 	}
 	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(snap.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm, Machines: machines, BaseCI: baseCI}
-	req.Widths, req.FriendWidths = st.tickWidthCfg(ctx) // tla/WidthHard.tla (OneSource)
 	// the first read as it was: the twin it came from moves on with every
 	// part's writes, and with any other writer in this process
 	first := *snap
@@ -2198,7 +2197,6 @@ func (st *Store) ShadowTick(ctx context.Context) (ShadowPlan, error) {
 	}
 	// a shadow tick writes nothing and sends nothing
 	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(first.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm}
-	req.Widths, req.FriendWidths = st.tickWidthCfg(ctx) // tla/WidthHard.tla (OneSource)
 	if req.Friends, err = ro.friendSeats(ctx, &first, now); err != nil {
 		return out, err
 	}

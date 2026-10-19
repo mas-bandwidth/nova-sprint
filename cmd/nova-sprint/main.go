@@ -760,8 +760,13 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 	// a twin is ticked by hand: no machine runs between its commands (twin.go)
 	st := &store.Store{B: b, Names: names, Actor: c.actor, Now: a.now, NewID: store.NewID, Sleep: a.sleep, CheckTwin: a.checkTwin, ByHand: a.twinOpen(c.redis)}
 	st.SetSelf(a.machineName())
-	// tla/WidthHard.tla (OneSource): wire nova-config friend widths for live tick and check judgments.
-	st.FriendWidths = a.inventoryFriendWidths()
+	// tla/WidthHard.tla OneSource: the tick reads nova-config's member and friend
+	// widths so a drift is loud; check and doctor read them on their own paths.
+	switch c.verb {
+	case "tick", "run":
+		st.Widths = a.inventoryWidthsFresh(st)
+		st.FriendWidths = a.inventoryFriendWidths()
+	}
 	st.ReadFriendHooks = a.readFriendHooks
 	if st.ReadFriendHooks == nil {
 		st.ReadFriendHooks = func(ctx context.Context, names ...string) ([]hook.Status, time.Time, error) {

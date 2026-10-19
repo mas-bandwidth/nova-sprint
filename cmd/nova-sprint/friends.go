@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -374,7 +373,7 @@ func (a *app) friendBeat(ctx context.Context, args []string, open func(common) (
 	working := fs.String("working", "", "how many jobs the friend is working now, as the friend's daemon counts them")
 	stopReturns := fs.String("stop-returns", "", "how many stop-returns the friend's lanes still owe after the machine's stop (section 14): start waits for zero")
 	queue := fs.String("queue", "", "how many jobs the friend holds queued, as the friend's daemon counts them")
-	width := fs.String("width", "", "the friend's width as the friend's daemon has it: refused, writing nothing, when it is not her nova-config friend row's (the one width)")
+	width := fs.String("width", "", "the friend's width as the friend's daemon has it (the deal's is the roster's: friend up --width)")
 	load := fs.String("load", "", "the friend's load as a percent, as fleet beat --load gives a machine's")
 	active := fs.String("active", "", "the newest write under the friend's working directory and outbox, as the friend's daemon found it, RFC3339: the friend's session's last activity")
 	until := fs.String("until", "", "the friend's daemon's word that the friend is down until then, RFC3339: the friend's harness at its usage limit or out of credits")
@@ -455,17 +454,6 @@ func (a *app) friendBeat(ctx context.Context, args []string, open func(common) (
 			return refuse(stderr, name, err.Error())
 		}
 		liveSet = v
-	}
-	if rep.Width != nil {
-		// a friend's width is her nova-config friend row's alone (the owner, 2026-10-18; tla/WidthHard.tla
-		// OneSource): a beat naming another is refused before anything of it is written
-		// beat lane: checked against the friends table's copy of her row (friend sync's), never a
-		// read of nova-config on the beat's path, which must never wait
-		if msg := a.friendWidthRefusal(ctx, st, friend, *rep.Width, false); msg != "" {
-			a.outcome, a.changed = "refused", "no"
-			fmt.Fprintf(stderr, "%s %s REFUSED: %s\n", prog, name, oneline.Escape(msg))
-			return 1
-		}
 	}
 	b, err := st.FriendBeatLive(ctx, friend, rep, given, liveSet)
 	if err != nil {
@@ -569,7 +557,7 @@ func (a *app) cmdFriendHold(held bool, args []string, stdout, stderr io.Writer) 
 		reason = fs.String("reason", "", "why the friend is held, shown on the friend's row (the friend's model allowance ran out)")
 		until = fs.String("until", "", "when you expect the friend back, RFC3339, shown on the friend's row")
 	} else {
-		width = fs.String("width", "", fmt.Sprintf("the friend's width: the jobs the friend works at once; the deal holds the friend at %d times that, ready and working; refused, writing nothing, when it is not her nova-config friend row's (the one width; set it with nova-config friend set <friend> --width <n>, then nova-config apply); 1 to %d; default: as it is", sprint.DealAhead, sprint.MaxWidth))
+		width = fs.String("width", "", fmt.Sprintf("the friend's width: the jobs the friend works at once; the deal holds the friend at %d times that, ready and working; 1 to %d (default: as it is; friend sync sets it to the friend's nova-config row's again)", sprint.DealAhead, sprint.MaxWidth))
 	}
 	friend, code := oneFriend(name, fs, args, stderr)
 	if code != 0 {
@@ -598,14 +586,6 @@ func (a *app) cmdFriendHold(held bool, args []string, stdout, stderr io.Writer) 
 		return refuse(stderr, name, err.Error())
 	}
 	ctx := context.Background()
-	if w > 0 {
-		// friend up --width is held to her nova-config friend row's width, as fleet up --width is
-		// to a machine row's (tla/WidthHard.tla OneSource, MCWidthHardBrokenSecondSource)
-		if msg := a.friendWidthRefusal(ctx, st, friend, w, true); msg != "" {
-			fmt.Fprintf(stderr, "%s %s REFUSED: %s\n", prog, name, oneline.Escape(msg))
-			return 1
-		}
-	}
 	if err := st.SetFriendHeld(ctx, friend, held, c.actor, why, back, w); err != nil {
 		fmt.Fprintf(stderr, "%s %s: %s\n", prog, name, oneline.Escape(err.Error()))
 		return 1
@@ -634,48 +614,6 @@ func (a *app) cmdFriendHold(held bool, args []string, stdout, stderr io.Writer) 
 	}
 	sayOK(stdout, c.json, name, line, facts)
 	return 0
-}
-
-// friendWidthRefusal is why a width a friend verb names (friend up --width, friend beat
-// --width) is refused, "" when it is the friend's own: a friend's width is her nova-config
-// friend row's alone (the owner, 2026-10-18: every fleet machine and every friend follows
-// the one definition of width, in nova-config, with no exceptions; tla/WidthHard.tla
-// OneSource). With readConfig (friend up) the row is read now (a.friends,
-// config.FriendWidth); on a machine that names no config store at all (no --pg and no
-// NOVA_PG_DSN: a twin, a test) the friends table's copy of it stands in, which only friend
-// sync writes from her row, and a config store named that cannot be read is refused: never
-// take a width on a missing read. Without it (friend beat, on the server's beat lane, which
-// must never wait on Postgres) the friends table's copy is the row.
-func (a *app) friendWidthRefusal(ctx context.Context, st *store.Store, friend string, width int, readConfig bool) string {
-	fix := fmt.Sprintf("run nova-config friend set %s --width %d, then nova-config apply, and friend sync reads it; nothing was changed", friend, width)
-	var rows []config.Row
-	err := errors.New("the friends table's copy of her row is read")
-	if readConfig {
-		rows, err = a.friends(ctx, "")
-	}
-	if err != nil {
-		if _, noStore := config.ResolveDSN("", a.getenv); readConfig && noStore == nil {
-			return fmt.Sprintf("--width %d: nova-config cannot be read (%s), and a friend's width is her nova-config friend row's alone; %s", width, oneline.Escape(err.Error()), fix)
-		}
-		spec, err := st.FriendSpecOf(ctx, friend)
-		if err != nil {
-			return fmt.Sprintf("--width %d: friend %s's row cannot be read (%s); %s", width, friend, oneline.Escape(err.Error()), fix)
-		}
-		if spec.Width != width {
-			return fmt.Sprintf("--width %d is not friend %s's nova-config width (her friend row names %d): a friend's width is her nova-config friend row's alone; %s", width, friend, spec.Width, fix)
-		}
-		return ""
-	}
-	for _, r := range rows {
-		if r.Name != friend {
-			continue
-		}
-		if cw := config.FriendWidth(r); cw != width {
-			return fmt.Sprintf("--width %d is not friend %s's nova-config width (her friend row names %d): a friend's width is her nova-config friend row's alone; %s", width, friend, cw, fix)
-		}
-		return ""
-	}
-	return fmt.Sprintf("--width %d: friend %s has no nova-config friend row: nova-config friend add %s --width <n>, then nova-config apply; nothing was changed", width, friend, friend)
 }
 
 // oneFriend is the one friend a verb names, or its refusal.

@@ -100,17 +100,15 @@ type Store struct {
 	// fleet_retire.go): the names, and whether the read answered. A read that fails or
 	// holds no row retires nothing (never act on a missing read). nil retires nothing.
 	Inventory func(ctx context.Context) (machines []string, ok bool)
-	// Widths, when set (run and tick), is the read of the members' widths as nova-config's
-	// applied machine rows hold them (config.Widths, a row's own width of 1 or more; the
-	// same config read as fleet sync): the one width source. Every step this store runs
-	// holds each row's width to it (sprint.HoldWidths) and writes a member's control-card
-	// copy that differs back to it (sprint.WidthRefresh). ok false (a failed read) holds
-	// the copies as they are. nil is no config read: the copies alone.
+	// Widths, when set, is the read of the members' widths as nova-config's
+	// applied machine rows hold them (config.Widths; the same config read as
+	// fleet sync): the one width source. Check counts a member row whose width
+	// differs, and the tick judges it (tla/WidthHard.tla OneSource).
 	Widths func(ctx context.Context) (widths map[string]int, ok bool)
-	// FriendWidths, when set (check), is the read of the friends' widths as nova-config's
-	// friend rows hold them (config.FriendWidth, the same config read as friend sync): the one
-	// width source. Check counts a friend row whose seat width differs. nil is no config read:
-	// no friend drift is judged.
+	// FriendWidths, when set, is the read of the friends' widths as
+	// nova-config's friend rows hold them (config.FriendWidth, the same read as
+	// friend sync). Check counts a friend row whose width differs, and the tick
+	// and the doctor judge it (tla/WidthHard.tla OneSource).
 	FriendWidths func(ctx context.Context) (widths map[string]int, ok bool)
 	// Stats is what the store's reads cost (stats.go); nil is made on the
 	// first tick. Its pinned copies share it.
@@ -437,7 +435,28 @@ func (st *Store) fenced(ctx context.Context, tables []string, extras func(*sprin
 	}
 	snap.QueueLen, snap.Running = f2.Queued, f2.Running
 	f2.Gen = gen
+	// the tick's width judgment reads the same nova-config as this read
+	// (tla/WidthHard.tla OneSource)
+	sprint.SetWidthConfigRead(st.tickWidthCfg)
 	return snap, f2, nil
+}
+
+// tickWidthCfg is the width judgment's read of nova-config's row widths: the
+// members' (Widths) and the friends' (FriendWidths). A side not held is nil,
+// and its rows are not judged (never act on a missing read).
+// tla/WidthHard.tla OneSource.
+func (st *Store) tickWidthCfg(ctx context.Context) (cfg, friendCfg map[string]int, ok bool) {
+	if st.Widths != nil {
+		if ws, wok := st.Widths(ctx); wok {
+			cfg, ok = ws, true
+		}
+	}
+	if st.FriendWidths != nil {
+		if ws, wok := st.FriendWidths(ctx); wok {
+			friendCfg, ok = ws, true
+		}
+	}
+	return cfg, friendCfg, ok
 }
 
 func (st *Store) fencedRead(ctx context.Context, tables []string, extras func(*sprint.Snapshot) map[string][]string, repaired *[]string) (*sprint.Snapshot, uint64, Fence, error) {
@@ -797,14 +816,6 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			plan.Units, plan.Notes, plan.Closes, plan.Rows = nil, nil, nil, nil
 		}
 		plan.Units = append(plan.Units, tally...)
-		// THE WIDTH IS HARD, at the one writer, on every path: a change that would put a card
-		// into a fleet row's working column at the row's width is skipped alone, with one
-		// refusal line, and every other unit applies (sprint.HoldWidths; tla/WidthHard.tla
-		// WidthHeld). It runs after the all-or-none of a named step, so the cut never
-		// refuses a step whole. A member's width is nova-config's when this store holds the
-		// config read (Widths), and a control-card copy that differs is written back to it
-		// in the same step (sprint.WidthRefresh; OneSource).
-		plan = st.holdWidths(ctx, snap, plan)
 		actor := st.Actor
 		if step.Actor != "" {
 			actor = step.Actor
@@ -1376,48 +1387,6 @@ func curable(err error, man ntable.BatchManifest) bool {
 		return false
 	}
 	return invalid(man) == ""
-}
-
-// holdWidths is the step's plan held to every fleet row's width (sprint.HoldWidths), the
-// friends' seats read when the plan puts a card into a friend's working and the step did
-// not read them (a read that fails leaves her row to takeSeat's own refusal), and each
-// member's control-card width made nova-config's again when the store holds the config
-// read (sprint.WidthRefresh). tla/WidthHard.tla WidthHeld, OneSource.
-func (st *Store) holdWidths(ctx context.Context, snap *sprint.Snapshot, plan sprint.Plan) sprint.Plan {
-	var cfg map[string]int
-	if st.Widths != nil {
-		if ws, ok := st.Widths(ctx); ok {
-			cfg = ws
-		}
-	}
-	view := snap
-	if snap != nil && snap.Friends == nil && sprint.MovesIntoFriendWorking(snap, plan) {
-		if seats, err := st.FriendSeats(ctx, snap.Now); err == nil {
-			v := *snap
-			v.Friends = seats
-			view = &v
-		}
-	}
-	plan = sprint.HoldWidths(view, plan, cfg)
-	return sprint.WidthRefresh(view, plan, cfg)
-}
-
-// tickWidthCfg is the tick's read of nova-config's widths for its width-drift judgment: the
-// members' (Widths) and the friends' (FriendWidths). A read not held is nil, and nothing is
-// judged on it (never act on a missing read).
-// tla/WidthHard.tla (OneSource)
-func (st *Store) tickWidthCfg(ctx context.Context) (cfg, friendCfg map[string]int) {
-	if st.Widths != nil {
-		if ws, ok := st.Widths(ctx); ok {
-			cfg = ws
-		}
-	}
-	if st.FriendWidths != nil {
-		if ws, ok := st.FriendWidths(ctx); ok {
-			friendCfg = ws
-		}
-	}
-	return
 }
 
 // refuseWhole is a step refused whole before anything of it was written: every

@@ -157,9 +157,10 @@ func (st *Store) check(ctx context.Context, reads int, streams bool) (CheckRepor
 			return rep, nil, err
 		}
 		rep.Violations = append(rep.Violations, sprint.CheckHeld(held, s.Now)...)
-		// the one width is nova-config's (the owner, 2026-10-18; tla/WidthHard.tla OneSource): a
-		// member or friend row whose width differs is a violation, one line per drifting row, both
-		// values. A config read that was not held (nil) judges nothing.
+		// the one width is nova-config's (the owner, 2026-10-18; tla/WidthHard.tla
+		// OneSource): a member or friend row whose width differs is a violation, one
+		// line per drifting row, both values. A config read that was not held (nil)
+		// judges nothing.
 		rep.Violations = append(rep.Violations, widthDriftViolations(st, ctx, s)...)
 		if rep.InFlight {
 			var kept []sprint.Violation
@@ -678,24 +679,23 @@ func parseStamp(s string) time.Time {
 	return t
 }
 
-// widthDriftViolations is rule 14: every fleet row whose width differs from nova-config's
-// (sprint.WidthDriftRows), one line per drifting row naming both values. A config read the store
-// did not hold (Widths and FriendWidths both nil) judges nothing.
-// tla/WidthHard.tla (OneSource)
+// widthDriftViolations is rule 14: every fleet row whose width differs from
+// nova-config's (sprint.WidthDriftRows), one line per drifting row naming both
+// values. A store whose width readers are nil judges nothing (never act on a
+// missing read). tla/WidthHard.tla OneSource.
 func widthDriftViolations(st *Store, ctx context.Context, s *sprint.Snapshot) []sprint.Violation {
 	var cfg, friendCfg map[string]int
-	ok := false
 	if st.Widths != nil {
-		if ws, wok := st.Widths(ctx); wok {
-			cfg, ok = ws, true
+		if ws, ok := st.Widths(ctx); ok {
+			cfg = ws
 		}
 	}
 	if st.FriendWidths != nil {
-		if ws, wok := st.FriendWidths(ctx); wok {
-			friendCfg, ok = ws, true
+		if ws, ok := st.FriendWidths(ctx); ok {
+			friendCfg = ws
 		}
 	}
-	if !ok {
+	if cfg == nil && friendCfg == nil {
 		return nil
 	}
 	drifts := sprint.WidthDriftRows(s, cfg, friendCfg)

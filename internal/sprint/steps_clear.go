@@ -26,8 +26,9 @@ type Shape struct {
 	// Width is each member's width its control card names (width.go); a
 	// member with the default is not in it.
 	Width map[string]string `json:"width,omitempty"`
-	// WidthFrom is each member whose drain is nova-config's (FieldWidthFrom=config): a clear
-	// carries the mark, so a drained row stays marked as following the config across it.
+	// WidthFrom is each member whose drain is nova-config's (FieldWidthFrom=config):
+	// a clear carries the mark, so a drained row stays marked as following the config
+	// across it (tla/WidthHard.tla OneSource).
 	WidthFrom map[string]string `json:"width_from,omitempty"`
 	// ReaderTiers is each reader's tiers cell (reader_tiers.go): a reader
 	// with the default (an empty cell) is not in it.
@@ -52,13 +53,14 @@ func MemberReaderRows(s *Snapshot) []string {
 	return out
 }
 
-// ShapeOf is a snapshot's shape.
 func init() {
-	// tla/WidthHard.tla (OneSource): register width_from in Defaults so clear carries the config-drain mark.
-	Defaults = append(Defaults, Default{Name: "width_from", Home: HomeShape, Value: ShapeCarried, Why: "each member whose drain is nova-config's (the config-drain mark, width.go)"})
+	// a Shape field with no Defaults row is red (defaults_test.go): the clear
+	// carries the config-drain mark (tla/WidthHard.tla OneSource)
+	Defaults = append(Defaults, Default{Name: "width_from", Home: HomeShape, Value: ShapeCarried, Why: "each member whose drain is nova-config's (the config-drain mark)"})
 }
 
-// ShapeOf captures the sprint's carried shape across a clear, including width_from (tla/WidthHard.tla (OneSource)).
+// ShapeOf is a snapshot's shape, including the config-drain mark
+// (tla/WidthHard.tla OneSource).
 func ShapeOf(s *Snapshot) Shape {
 	sh := Shape{Readers: append([]string(nil), s.Readers.Rows()...), Members: s.Members(), Status: map[string]string{}}
 	// a clear keeps every up member a reader: a member reader row the old
@@ -108,11 +110,11 @@ func ShapeOf(s *Snapshot) Shape {
 			}
 			sh.Width[m] = w
 		}
-		if s.MemberCtl(m).F(FieldWidthFrom) == WidthFromConfig {
+		if wf := s.MemberCtl(m).F(FieldWidthFrom); wf == WidthFromConfig {
 			if sh.WidthFrom == nil {
 				sh.WidthFrom = map[string]string{}
 			}
-			sh.WidthFrom[m] = WidthFromConfig
+			sh.WidthFrom[m] = wf
 		}
 	}
 	for _, rd := range sh.Readers {
@@ -127,9 +129,9 @@ func ShapeOf(s *Snapshot) Shape {
 }
 
 // RestoreShape is the plan that gives a new epoch its control cards: each
-// stream waiting, each member with its status and no work counted. A control
-// card the epoch has already is left as it is.
-// RestoreShape restores the carried shape into the new epoch, including width_from (tla/WidthHard.tla (OneSource)).
+// stream waiting, each member with its status and no work counted; it restores
+// the config-drain mark too (tla/WidthHard.tla OneSource). A control card the
+// epoch has already is left as it is.
 func RestoreShape(s *Snapshot, sh Shape) Plan {
 	var p Plan
 	now := stamp(s.Now)
