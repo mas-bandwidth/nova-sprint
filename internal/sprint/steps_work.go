@@ -2059,13 +2059,6 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 	// member, however many of its cards finish here (envFaulted; rule (2), tla/ProviderBudget.tla)
 	envSeen := map[string]bool{}
 	for _, c := range chosen {
-		// A failed finish can keep the commit it pushed. Its only non-SHA value is
-		// the existing no-push default: this work card's id. Refuse every other
-		// invalid head here so neither the primary nor a later widen can carry it.
-		if r.Failed && r.Head != "" && r.Head != c.ID && !typedrec.IsFullSha(r.Head) {
-			p.refuse(c.ID, "a failed finish --head must be a full commit SHA (only the card id default may be non-SHA); nothing was changed")
-			continue
-		}
 		// a finish is routed only by a decision of its own take (decide.go, decidedFor)
 		if why := decidedFor(c, r.Decided); why != "" {
 			p.refuse(c.ID, why)
@@ -2184,6 +2177,16 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			continue
 		case cardhdr.EndStaging:
 			p.Units = append(p.Units, stagingRefused(s, c, pr, r))
+			continue
+		}
+		// A failed finish can keep the commit it pushed. Its only non-SHA value is
+		// the existing no-push default: this work card's id. Refuse every other
+		// invalid head here, after the routes above that end the take with nothing
+		// pushed and record no head (so a JOB.md's older FINISH-FAILED line, whose
+		// --head is the staged branch, is still routed), and before the head is
+		// written, so neither the primary nor a later widen can carry it.
+		if r.Failed && r.Head != "" && r.Head != c.ID && !typedrec.IsFullSha(r.Head) {
+			p.refuse(c.ID, "a failed finish --head must be a full commit SHA (only the card id default may be non-SHA); nothing was changed")
 			continue
 		}
 		head := r.Head

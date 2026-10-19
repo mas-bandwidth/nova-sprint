@@ -197,6 +197,24 @@ func TestAFailedFinishRecordsItsHead(t *testing.T) {
 		assert.Equal(t, sprint.Working, r.snap().Fleet.Card(wc.ID).Col, "a bad head never reaches the next attempt")
 	})
 
+	t.Run("a no-push finish carrying a branch-name head is routed, not refused", func(t *testing.T) {
+		t.Parallel()
+		// An older JOB.md's FINISH-FAILED line passes the staged branch as --head. A take
+		// that ended with nothing pushed records no head on its route, so the head rule
+		// has nothing to guard there and must not turn the route into a refusal.
+		r := newFailedFinishRig(t, 1)
+		wc := r.take("s1-1")
+		res, err := r.st.Run(r.ctx, store.FinishStep(sprint.FinishReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}},
+			Gens: map[string]int{wc.ID: wc.Int("gen")}, Failed: true, Head: "sprint/s1",
+			Report: "provider failure: runner could not start", Who: wc.Row}))
+		require.NoError(t, err)
+		assert.Empty(t, res.Refused, "the take-ended route is taken, not refused for its head")
+		s := r.snap()
+		assert.NotEqual(t, sprint.Working, s.Fleet.Card(wc.ID).Col, "the take ended: the work card left working")
+		assert.Empty(t, s.Fleet.Card(wc.ID).F("head"))
+		assert.Empty(t, s.Work.Card("s1-1").F("head"))
+	})
+
 	t.Run("brief widen carries the failed finish head", func(t *testing.T) {
 		t.Parallel()
 		r := newFailedFinishRig(t, 1)
