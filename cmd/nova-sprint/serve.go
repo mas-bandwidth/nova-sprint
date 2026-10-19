@@ -521,6 +521,8 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 			// A prior serial verb in this batch stays before friend level, but its line is
 			// given up while rows, beats, specs, packets and branch tips are read. A card can
 			// start in this read/step window, the same window the coordinator has off-server.
+			// A read runs beside the line, never on it (tla/ServerLanes.tla,
+			// ReadWaitsOnlyForReads).
 			if held {
 				now := a.now()
 				holdTotal += now.Sub(took)
