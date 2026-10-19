@@ -115,8 +115,9 @@ func (l *lander) linearMergeHead(ctx context.Context, dir, stream string, c land
 
 func (l *lander) linearLandOne(ctx context.Context, dir, before, source, id, title string, c landCard) (string, string, string) {
 	if _, err := l.git(ctx, dir, "merge", "--squash", source); err != nil {
+		paths, _ := l.git(ctx, dir, "diff", "--name-only", "--diff-filter=U")
 		_, _ = l.git(ctx, dir, "reset", "--hard", before)
-		return "linear squash of " + id + " conflicted", "", ""
+		return "linear squash of " + id + " conflicted at " + source + linearPaths(paths), "", ""
 	}
 	msg := id + ": " + title + "\n\nFinish report: nova-sprint card " + id + "\n\nNova-Card: " + id + "\nNova-Linear-Source: " + source
 	if _, err := l.git(ctx, dir, "commit", "-m", msg); err != nil {
@@ -146,6 +147,11 @@ func linearTitle(c landCard) string {
 	for _, line := range strings.Split(c.brief, "\n") {
 		if strings.HasPrefix(line, "# ") {
 			return strings.TrimSpace(strings.TrimPrefix(line, "# "))
+		}
+		if strings.HasPrefix(line, "RESULT:") {
+			if title := strings.TrimSpace(strings.TrimPrefix(line, "RESULT:")); title != "" {
+				return title
+			}
 		}
 	}
 	return c.id
