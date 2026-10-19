@@ -57,7 +57,7 @@ var verbs []verb
 func init() {
 	verbs = []verb{
 		{"init", "[--readers <a,b,...>] [--members <m1[:<width>],m2,...>] [--coordinator <name>] [--owner <name>] [--rules <file>]", "init --readers reader-a,reader-b,reader-c --members m1:64,m2:64", (*app).cmdInit},
-		{"add", "--stream <s> (<id>... | --count <n> | --sentinel <id> | --brief-dir <dir> | --brief-file <f1> [--brief-file <f2>...]: a card per file, its id the file's name without .md) [--needs <a,b>] [--before <id> | --after <id> | --score <n>] [--brief <text> | --brief-file <path>: once, the brief of the cards named] [--rules <file>] [--held] [--one: a single card is meant] [--replaces <old-id>[,<old-id>]: the one card is their twin] [--allow-personal-base] [--land-protected <owner/name,...|any>] [--plan <dir>: print the plan review's overlap table and exit 0 without admitting]", "add --stream s1 --count 100", (*app).cmdAdd},
+		{"add", "--stream <s> (<id>... | --count <n> | --sentinel <id> | --brief-dir <dir> | --brief-file <f1> [--brief-file <f2>...]: a card per file, its id the file's name without .md) [--needs <a,b>] [--before <id> | --after <id> | --score <n>] [--brief <text> | --brief-file <path>: once, the brief of the cards named] [--rules <file>] [--held] [--one: a single card is meant] [--replaces <old-id>[,<old-id>]: the one card is their twin] [--allow-personal-base] [--land-protected <owner/name,...|any>] [--plan <dir>: print the plan review's overlap table and exit 0 without admitting] [--apply-fix: apply the corrected header PATHS, NEW and SHARED lines of a brief read from a file, re-lint at the base, and rewrite the file when clean]", "add --stream s1 --count 100", (*app).cmdAdd},
 		{"quack", "--streams <a,b,...> --count <n> --repo <clone url> [--tiers <t,...>] [--base <branch>]", "quack --streams a,b --count 2 --repo https://example.com/quack.git", (*app).cmdQuack},
 		{"preflight", "--brief-dir <dir> [--repo-dir <dir>]", "preflight --brief-dir .", (*app).cmdPreflight},
 		{"release check", "[--json] [--streams <glob>] [--window <duration>] [--merge-p90 <duration>] [--check <name>]...", "release check", (*app).cmdReleaseCheck},
@@ -1440,6 +1440,7 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	replaces := fs.String("replaces", "", "the card this add admits is the twin of these `ids`, comma separated: it takes over every edge where a waiting card needs one of them (that card needs the twin instead, in the same place), each still on the table is dropped with the reason \"replaced by <the new id>\", and no blocked judgment is raised for it, in one step; a card dropped before is replaced too, and its blocked judgments are answered; one card only (it means --one), never a sentinel")
 	allowPersonal := fs.Bool("allow-personal-base", false, "admit cards whose brief's BASE: is a personal branch (<name>/* for the sprint's coordinator, its owner or a friends table row), by default refused naming the base and this flag: no sprint watches a personal branch's gate (docs/SPEC-SPRINT.md section 11, bases-view-r.w2)")
 	partial := fs.Bool("partial", false, "with --brief-dir or a repeated --brief-file: hold back every brief the checks find a fault in, and every card that needs a held card, and admit the rest in one store write; one HELD line per held card, then the add's closing line; exit 0 when every card was admitted, 1 when some were held and the rest written, 2 when none could be admitted; refused with ids, --count, --sentinel or --land-protected (a marked first add is one step)")
+	applyFix := fs.Bool("apply-fix", false, "with a brief read from a file (--brief-file or --brief-dir): apply the corrected PATHS, NEW and SHARED header lines the base brief checks compute, re-lint at the base, and when the re-lint is clean rewrite the file in place and admit the fixed brief; only header PATHS, NEW and SHARED lines are ever rewritten (never the tier line); refused with --brief, no brief file, --partial or --plan")
 	plan := fs.String("plan", "", "print the overlap table of the cards' brief files in this directory (a plan review: path, cards, ledger or not, edge if any) and exit 0 without admitting, for a seat that wants to read the overlaps first (docs/SPRINT-COORDINATOR.md; docs/SPEC-CARD-CONTRACT.md, the shared-path rule)")
 	landProtected := fs.String("land-protected", "", "mark a new stream for protected branches while admitting its first card: repositories (owner/name, comma separated) or any")
 	held := fs.Bool("held", false, "admit the cards held: waiting, a sentinel never reached and no card dealt, nothing raised, until nova-sprint release <id> --reason <text>; a wave loads behind a held sentinel with nothing before it")
@@ -1466,6 +1467,20 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 	}
 	if why := reservedCardID(append(ids, *sentinel)...); why != "" {
 		return refuse(stderr, "add", why)
+	}
+	if *applyFix {
+		if *brief != "" {
+			return refuse(stderr, "add", "--apply-fix fixes a brief read from a file, and --brief gives the text inline: give --brief-file <file> or --brief-dir <dir>")
+		}
+		if *briefDir == "" && len(briefFiles) == 0 {
+			return refuse(stderr, "add", "--apply-fix has no brief file to fix: give --brief-file <file> or --brief-dir <dir>")
+		}
+	}
+	if *applyFix && *plan != "" {
+		return refuse(stderr, "add", "--apply-fix takes no --plan: a plan review admits nothing")
+	}
+	if *applyFix && *partial {
+		return refuse(stderr, "add", "--apply-fix takes no --partial: a marked first add is one step")
 	}
 	if *plan != "" {
 		// --plan is the plan review before any card is written: print the overlap
@@ -1533,7 +1548,7 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 		if *every != 0 || *last {
 			return refuse(stderr, "add", "--sentinel-every goes with --count, not a card per brief file")
 		}
-		return a.cmdAddMany(*stream, *needs, *briefDir, briefFiles, *sentinel, *rules, *score, *before, *after, *held, allowShared, *allowPersonal, *landProtected, *decideRecord, *partial, briefOps, sprint.Split(*replaces), notDup, c, stdout, stderr)
+		return a.cmdAddMany(*stream, *needs, *briefDir, briefFiles, *sentinel, *rules, *score, *before, *after, *held, allowShared, *allowPersonal, *applyFix, *landProtected, *decideRecord, *partial, briefOps, sprint.Split(*replaces), notDup, c, stdout, stderr)
 	}
 	if len(briefFiles) == 1 {
 		if *brief != "" {
@@ -1621,6 +1636,33 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 			return refuse(stderr, "add", err.Error())
 		}
 	}
+	// --apply-fix: fix a brief read from a file at its base before the checks run, so the
+	// rest of add sees the fixed text; the file is rewritten only once every check passes.
+	var fixWrites []fixWrite
+	if *applyFix && len(briefFiles) == 1 {
+		one := ""
+		if len(streams) == 1 {
+			one = streams[0]
+		}
+		fb := make([]fileBrief, 0, max(len(ids), 1))
+		for _, id := range ids {
+			fb = append(fb, fileBrief{id: id, brief: *brief, file: briefFiles[0], stream: one})
+		}
+		if len(ids) == 0 {
+			fb = append(fb, fileBrief{brief: *brief, file: briefFiles[0], stream: one})
+		}
+		var code int
+		fixWrites, code = a.applyFixFiles("add", st, *allowPersonal, stderr, fb)
+		if code != 0 {
+			return code
+		}
+		if len(fb) > 0 && fb[0].brief != *brief {
+			*brief = fb[0].brief
+			for i := range rs {
+				rs[i].Brief = *brief
+			}
+		}
+	}
 	// DUPLICATE: a brief with a probable duplicate is held back, and the rest
 	// of the wave admitted in the same write (docs/SPEC-SPRINT.md section 7).
 	// An add that wrote cards exits with the write's code (0); exit 1 is only
@@ -1672,6 +1714,9 @@ func (a *app) cmdAdd(args []string, stdout, stderr io.Writer) int {
 		if code := a.holdPathsAdmit("add", stderr, checks...); code != 0 {
 			return code
 		}
+	}
+	if code := a.writeFixWrites("add", stderr, fixWrites); code != 0 {
+		return code
 	}
 	c.addStream = *stream
 	c.addBefore = *before
@@ -1735,7 +1780,7 @@ func promotionGuard(step store.Step, rs []sprint.AddReq, landProtected string) s
 // store write adds every card.
 // cmdAddMany admits per-file cards and supports the same atomic first-stream mark as add
 // (docs/SPEC-SPRINT.md section 7, protected-bases-pb-b.w2).
-func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, sentinel, rules, score, before, after string, held, allowShared, allowPersonal bool, landProtected, decideRecord string, partial bool, briefOps, replaces []string, notDup map[string]string, c *common, stdout, stderr io.Writer) int {
+func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, sentinel, rules, score, before, after string, held, allowShared, allowPersonal, applyFix bool, landProtected, decideRecord string, partial bool, briefOps, replaces []string, notDup map[string]string, c *common, stdout, stderr io.Writer) int {
 	if stream == "" {
 		return refuse(stderr, "add", "wants --stream and --brief-dir <dir> or --brief-file <file>...")
 	}
@@ -1851,6 +1896,23 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 		}
 		cards = kept
 	}
+	// --apply-fix: fix a brief read from a file at its base before the checks run, so the
+	// rest of add sees the fixed text; the file is rewritten only once every check passes.
+	var fixWrites []fixWrite
+	if applyFix {
+		fb := make([]fileBrief, len(cards))
+		for i, cd := range cards {
+			fb[i] = fileBrief{id: cd.ID, brief: cd.Brief, file: cd.File, stream: stream}
+		}
+		var code int
+		fixWrites, code = a.applyFixFiles("add", st, allowPersonal, stderr, fb)
+		if code != 0 {
+			return code
+		}
+		for i := range cards {
+			cards[i].Brief = fb[i].brief
+		}
+	}
 	texts := make([]string, len(cards))
 	streams := make([]string, len(cards))
 	for i, cd := range cards {
@@ -1877,6 +1939,9 @@ func (a *app) cmdAddMany(stream, needs, briefDir string, briefFiles []string, se
 		return code
 	}
 	if code := a.holdPathsAdmit("add", stderr, checks...); code != 0 {
+		return code
+	}
+	if code := a.writeFixWrites("add", stderr, fixWrites); code != 0 {
 		return code
 	}
 	r := sprint.AddReq{Stream: stream, Cards: cards, Who: c.actor, Before: before, After: after, Held: held, Score: at, BriefOps: asked.ops, BriefRecord: asked.record, BriefUsage: asked.usage, Replaces: replaces}
