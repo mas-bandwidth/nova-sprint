@@ -8670,4 +8670,10 @@ The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 
    :why "Ready lasts at most one tick before the deal; a held stream must not strand or deal cards"
    :release "v1.7"
    :origin "the owner, 2026-10-19")
+  (item "throughput-counts-only-landings" :group "sprint" :date "2026-10-19"
+   :title "Throughput counts only cards that landed"
+   :text "Throughput (cards per hour on the dashboard and in where) counts only cards that landed in the window. A card that is archived, deferred to a roadmap, dropped or moved out must never count. Observed 2026-10-19: 302 cards/hour shown during a bulk move of about 600 cards to roadmaps. Code location: the dashboard's rate is pageThroughput.add in internal/sprintdash/pageview.go (and sample_landed in internal/sprintdash/stopgap/server.py), which takes cards an hour from the change in the sampled landed count over the samples' span, so any move that raises that count is counted as a landing; where's own landing rate is in internal/sprint/rate.go (LandingRate). Tests: a window with N landings and M archives, defers and drops reports N per window, with time as an argument."
+   :why "A rate that counts bulk moves reads far above the real landing rate and hides how fast work lands"
+   :release "v1.7"
+   :origin "the owner, 2026-10-19")
 ))
