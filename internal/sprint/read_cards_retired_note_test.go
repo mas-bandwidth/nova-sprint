@@ -61,9 +61,13 @@ func lateLine(rc *Card, verdict, finding string) string {
 // the primary and a line in the next attempt's brief (its packet's finding), "late read by
 // <reader> of attempt <n> at <head12>: <verdict>: <finding>"; it never counts as a standing
 // read; the reader is told "recorded as a late read of <primary>"; a late read the next
-// attempt was already running for is carried by the rework after it; the same report twice is
-// one record; and a late read of a card dropped off the table is still refused.
-// tla/ReadCards.tla LateClose, NoFindingLost, BugDropLate.
+// attempt was already running for is handed to that attempt's reads (the primary's fix every
+// read packet carries) and carried by the rework after it; the same report twice is one
+// record; a late verdict is on the reads ledger; a read retired by a brief edited in place (a
+// PATHS widen) or by the live reconcile (lost) keeps its verdict too; an outbox report naming
+// no read card is refused, never guessed; and a late read of a card dropped or landed is
+// still refused. tla/ReadCards.tla LateClose, NoFindingLost, BugDropLate,
+// BugLateMissesRunning.
 func TestLateReadOfAReworkedAttemptIsANote(t *testing.T) {
 	t.Parallel()
 
@@ -127,7 +131,7 @@ func TestLateReadOfAReworkedAttemptIsANote(t *testing.T) {
 		require.Equal(t, RetiredByRework, w.s.Fleet.Card(second.ID).F("retired_by"), "the read card stays as the rework retired it")
 	})
 
-	t.Run("a late read the next attempt already runs for is carried by the rework after it", func(t *testing.T) {
+	t.Run("a late read the next attempt already runs for is handed to its reads and carried by the rework after it", func(t *testing.T) {
 		t.Parallel()
 		w := lateReadsWorld(t)
 		second := reworkedAtFirstBroken(t, w, "s1-1", 1)

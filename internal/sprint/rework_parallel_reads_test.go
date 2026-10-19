@@ -11,9 +11,11 @@ import (
 // first broken verdict while the other read is open within its deadline. The primary stays in
 // review with the broken read standing, and the rework runs when the other read reports ok or
 // broken (carrying both readers' findings, a line each naming its reader), is handed back, or
-// passes its deadline (the snapshot's clock: never forever). With one read (--reads 1), a
-// broken read reworks at once. tla/ReadCards.tla Rework, ReadDeadline, NoFindingLost,
-// BugReworkAtFirstBroken.
+// passes its deadline (the snapshot's clock: never forever); a sole broken finding keeps its
+// reader's name whatever the other read did. The read-broken rule's PATHS widen waits the same
+// way and carries both readers' words. With one read (--reads 1), a broken read reworks at
+// once. tla/ReadCards.tla Rework, Widen, ReadDeadline, NoFindingLost, BugReworkAtFirstBroken,
+// BugWidenAtFirstBroken.
 func TestTwoReadsReworkWaitsForBoth(t *testing.T) {
 	t.Parallel()
 

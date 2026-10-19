@@ -54,7 +54,8 @@ func TestAGroupReworkGivesEachCardItsOwnFinding(t *testing.T) {
 		for id, f := range own {
 			assert.Equal(t, f, w.s.Work.Card(id).F("finding"), "%s: its own finding on the primary", id)
 			p := nextAttempt(t, w, id)
-			assert.Equal(t, f, p.Finding, "%s: its own finding", id)
+			// its reader named with it (readersGiven): a sole broken read keeps its reader
+			assert.Equal(t, "read by reader-a: broken: "+f, p.Finding, "%s: its own finding", id)
 			assert.Equal(t, f, p.Fix, "%s: its own finding is its fix", id)
 			assert.NotContains(t, p.Finding+p.Fix+p.Why, other[id], "%s: never the other card's finding", id)
 		}
@@ -68,7 +69,7 @@ func TestAGroupReworkGivesEachCardItsOwnFinding(t *testing.T) {
 			assert.Equal(t, f, w.s.Work.Card(id).F("finding"), "%s: its own finding on the primary", id)
 			p := nextAttempt(t, w, id)
 			assert.Equal(t, "run the gate before finishing", p.Fix, "%s: the fix as written", id)
-			assert.Equal(t, f, p.Finding, "%s: its own finding beside it", id)
+			assert.Equal(t, "read by reader-a: broken: "+f, p.Finding, "%s: its own finding beside it, its reader named", id)
 			assert.NotContains(t, p.Finding+p.Fix+p.Why, other[id], "%s: never the other card's finding", id)
 		}
 	})
