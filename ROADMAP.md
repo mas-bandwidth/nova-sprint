@@ -17,7 +17,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 - [Moved out of the sprint on 2026-10-15: target v1.5](#moved-out-of-the-sprint-on-2026-10-15-target-v15) (6)
 - [Resume after the rocketnet milestone](#resume-after-the-rocketnet-milestone) (7)
 - [Moved out of the sprint on 2026-10-18: v15-schema-tables, target v1.7](#moved-out-of-the-sprint-on-2026-10-18-v15-schema-tables-target-v17) (199)
-- [Moved out of the sprint on 2026-10-18: v19, target v1.9](#moved-out-of-the-sprint-on-2026-10-18-v19-target-v19) (24)
+- [Moved out of the sprint on 2026-10-18: v19, target v1.9](#moved-out-of-the-sprint-on-2026-10-18-v19-target-v19) (30)
 - [Moved out of the sprint on 2026-10-18: v111, target v1.11](#moved-out-of-the-sprint-on-2026-10-18-v111-target-v111) (3)
 
 ## Lessons from Prime Agent's rewrite
@@ -5449,6 +5449,66 @@ Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. Th
 Target: v1.9
 
 From: sprint card v19-friend-level-every-minute (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): "friend levelling should be built into the machine! once every minute!" Friend levelling is the sprint server's own work, once every minute, with the moves nova-sprint friend level makes, and each move says why.
+
+### v19-ok-read-widens-paths-within-bounds
+
+An OK read's PATHS-PROPOSED widens PATHS when the proposal is within bounds (a sibling in the same package, a generated file whose generator is inside PATHS, a test or registry file), with the attempt unchanged and no coordinator ruling; any other proposal raises one judgment and widens nothing. DONE-WHEN: TestAnOkReadWidensPathsWithinBounds RUNs and PASSes at head (red at BASE: no test of that name), and the named package suites have no new red against BASE. Reversed witness: an OK read proposing cmd/other/c.go (another package, not generated, not a test or registry) widens nothing, raises exactly one judgment naming cmd/other/c.go, and the primary is not accepted. Column ready, tier pro, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-19: "move v19 stuff in sprint to roadmap thanks" (his standing ruling of 2026-10-18, PR #538: v1.9 lives in roadmaps only).
+
+Target: v1.9
+
+From: glenn: sprint card v19-ok-read-widens-paths-within-bounds (stream v19, column ready, tier pro, base sprint/v19), moved out of the sprint 2026-10-19; card source: Glenn, 2026-10-19 ("yes"): card the PATHS/scope friction fixes into the v1.9 line. The night of 2026-10-18 port forward-merge and port cards in mas-bandwidth/schema spent attempts and coordinator rulings on scope, not on code: a reader whose verdict was OK still wrote PATHS-PROPOSED for a file the w
+
+### v19-land-rereads-brief-before-scope-refusal
+
+The land pass re-reads the brief before an E12 scope refusal: a head refused only for files the brief has named since it was queued (PATHS widened while merging) is requeued on the same head with no attempt spent. DONE-WHEN: TestAScopeRefusalUnderAWidenedBriefRequeuesTheSameHead RUNs and PASSes at head (red at BASE: no test of that name), and the named package suites have no new red against BASE. Reversed witness: the same refusal when the brief does not name internal/foo/b.go returns the card to review as today (attempt marks set). Column ready, tier pro, base sprint/v19, lands after v19-ok-read-widens-paths-within-bounds. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-19: "move v19 stuff in sprint to roadmap thanks" (his standing ruling of 2026-10-18, PR #538: v1.9 lives in roadmaps only).
+
+Target: v1.9
+
+From: glenn: sprint card v19-land-rereads-brief-before-scope-refusal (stream v19, column ready, tier pro, base sprint/v19), moved out of the sprint 2026-10-19; card source: Glenn, 2026-10-19 ("yes"): card the PATHS/scope friction fixes into the v1.9 line. The night of 2026-10-18 port forward-merge and port cards in mas-bandwidth/schema spent attempts and coordinator rulings on scope, not on code: twice that night a card's PATHS were widened while its head sat in the me
+
+### v19-new-derived-from-the-base-tree
+
+Whether a file is new is derived from the tree at BASE: a PATHS entry absent at BASE is admitted as new (NOTE NEW derived) with no NEW: line, in the admit, the lint and the lander alike. DONE-WHEN: TestAPathsEntryAbsentAtBaseIsNewByDerivation RUNs and PASSes at head (red at BASE: no test of that name), and the named package suites have no new red against BASE. Reversed witness: a PATHS glob internal/nothing/*.go that matches nothing at BASE is still refused. Column ready, tier pro, base sprint/v19, lands after v19-land-rereads-brief-before-scope-refusal. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-19: "move v19 stuff in sprint to roadmap thanks" (his standing ruling of 2026-10-18, PR #538: v1.9 lives in roadmaps only).
+
+Target: v1.9
+
+From: glenn: sprint card v19-new-derived-from-the-base-tree (stream v19, column ready, tier pro, base sprint/v19), moved out of the sprint 2026-10-19; card source: Glenn, 2026-10-19 ("yes"): card the PATHS/scope friction fixes into the v1.9 line. The night of 2026-10-18 port forward-merge and port cards in mas-bandwidth/schema spent attempts and coordinator rulings on scope, not on code: every card that created a file or a directory had to repeat it on a NEW:
+
+### v19-owns-shared-file-refused-at-admit
+
+A brief may own a section of a shared file (OWNS: Makefile#ports); another card naming that file without depending on the owner is refused at admit, naming the owner, instead of colliding at land. DONE-WHEN: TestAnOwnedFileIsRefusedAtAdmitWithItsOwner RUNs and PASSes at head (red at BASE: no test of that name), and the named package suites have no new red against BASE. Reversed witness: card C with the same PATHS and `DEPENDS-ON: A` is admitted. Column ready, tier pro, base sprint/v19, lands after v19-new-derived-from-the-base-tree. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-19: "move v19 stuff in sprint to roadmap thanks" (his standing ruling of 2026-10-18, PR #538: v1.9 lives in roadmaps only).
+
+Target: v1.9
+
+From: glenn: sprint card v19-owns-shared-file-refused-at-admit (stream v19, column ready, tier pro, base sprint/v19), moved out of the sprint 2026-10-19; card source: Glenn, 2026-10-19 ("yes"): card the PATHS/scope friction fixes into the v1.9 line. The night of 2026-10-18 port forward-merge and port cards in mas-bandwidth/schema spent attempts and coordinator rulings on scope, not on code: several port cards each edited the same section of one shared file (the M
+
+### v19-port-profile-expands-scope
+
+A PROFILE: port <language> line expands at admit to the repository's profile table (.nova/profiles), so every port card gets the same PATHS shape without listing it by hand. DONE-WHEN: TestAPortProfileExpandsToTheRepositorysTable RUNs and PASSes at head (red at BASE: no test of that name), and the named package suites have no new red against BASE. Reversed witness: `PROFILE: port nosuch` whose expansion matches nothing at BASE is refused, and a repository with no .nova/profiles refuses any PROFILE line; a file outside the expansion and outside PATHS is still refused by the lander's scope check (sprint.LandScope over the stored PATHS). Column ready, tier pro, base sprint/v19, lands after v19-owns-shared-file-refused-at-admit. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-19: "move v19 stuff in sprint to roadmap thanks" (his standing ruling of 2026-10-18, PR #538: v1.9 lives in roadmaps only).
+
+Target: v1.9
+
+From: glenn: sprint card v19-port-profile-expands-scope (stream v19, column ready, tier pro, base sprint/v19), moved out of the sprint 2026-10-19; card source: Glenn, 2026-10-19 ("yes"): card the PATHS/scope friction fixes into the v1.9 line. The night of 2026-10-18 port forward-merge and port cards in mas-bandwidth/schema spent attempts and coordinator rulings on scope, not on code: every port card in mas-bandwidth/schema listed the same shape of PATHS by
+
+### v19-merge-of-reads-list-only-hand-edits
+
+Readers of a MERGE-OF forward-merge card see only its hand-edited files: a read-class verb `nova-sprint merge-of files` lists them with the lander's exemption function, and the read packet names that command. DONE-WHEN: TestAMergeOfReadPacketNamesTheHandEditCommand RUNs and PASSes at head (red at BASE: no test of that name), and the named package suites have no new red against BASE. Reversed witness: the read packet of a primary with no MERGE-OF line has no such note. Column waiting, tier pro, base sprint/v19, needs v17-forward-merge-card-exempts-merged-files-from-e12. The whole brief is kept under :kept :brief. No pushed head recorded.
+
+Why it waits: Glenn 2026-10-19: "move v19 stuff in sprint to roadmap thanks" (his standing ruling of 2026-10-18, PR #538: v1.9 lives in roadmaps only).
+
+Target: v1.9
+
+From: glenn: sprint card v19-merge-of-reads-list-only-hand-edits (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-19; card source: coordinator, 2026-10-18: port forward-merge cards in mas-bandwidth/schema bring about 1000 byte-identical files from sprint/schema-go; readers were handed the whole diff and asked the coordinator for scope rulings one card at a time, when only the few hand-edited files need review. DEPENDS-ON reason
 
 ## Moved out of the sprint on 2026-10-18: v111, target v1.11
 

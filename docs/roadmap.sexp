@@ -6116,4 +6116,371 @@ Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-exist
 The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
 Schema-table bounds: a bound is declared only if every writer and reader path enforces it; otherwise the field stays open (*string, []T).
 \"Not done\" is a welcome report; a green claim you did not run is not.
+"))
+  (item "v19-ok-read-widens-paths-within-bounds" :group "export-v19" :date "2026-10-18"
+   :title "v19-ok-read-widens-paths-within-bounds"
+   :text "An OK read's PATHS-PROPOSED widens PATHS when the proposal is within bounds (a sibling in the same package, a generated file whose generator is inside PATHS, a test or registry file), with the attempt unchanged and no coordinator ruling; any other proposal raises one judgment and widens nothing. DONE-WHEN: TestAnOkReadWidensPathsWithinBounds RUNs and PASSes at head (red at BASE: no test of that name), and the named package suites have no new red against BASE. Reversed witness: an OK read proposing cmd/other/c.go (another package, not generated, not a test or registry) widens nothing, raises exactly one judgment naming cmd/other/c.go, and the primary is not accepted. Column ready, tier pro, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-19: \"move v19 stuff in sprint to roadmap thanks\" (his standing ruling of 2026-10-18, PR #538: v1.9 lives in roadmaps only)."
+   :origin "glenn: sprint card v19-ok-read-widens-paths-within-bounds (stream v19, column ready, tier pro, base sprint/v19), moved out of the sprint 2026-10-19; card source: Glenn, 2026-10-19 (\"yes\"): card the PATHS/scope friction fixes into the v1.9 line. The night of 2026-10-18 port forward-merge and port cards in mas-bandwidth/schema spent attempts and coordinator rulings on scope, not on code: a reader whose verdict was OK still wrote PATHS-PROPOSED for a file the w"
+   :release "v1.9"
+   :kept (:sprint-card "v19-ok-read-widens-paths-within-bounds" :sprint-stream "v19" :sprint-column "ready" :tier "pro" :sprint-base "sprint/v19" :needs "" :land-after "" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-ok-read-widens-paths-within-bounds sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: feature
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: none
+SOURCE: Glenn, 2026-10-19 (\"yes\"): card the PATHS/scope friction fixes into the v1.9 line. The night of 2026-10-18 port forward-merge and port cards in mas-bandwidth/schema spent attempts and coordinator rulings on scope, not on code: a reader whose verdict was OK still wrote PATHS-PROPOSED for a file the work needed (a test registry, a generated file, a sibling in the same package), and the card waited on a coordinator ruling for a scope the reader had already judged. Only a broken read or a HOLD widens today (rules_read.go ruleReadBroken, widen.go TickRuleWiden); an OK read's proposal is dropped.
+PATHS: internal/sprint/read_ok_widen.go,internal/sprint/read_ok_widen_test.go,internal/sprint/rules_read.go,internal/sprint/steps_tick.go,internal/sprint/widen.go,internal/sprint/rules.go,tla/SprintRules.tla,tla/MCSprintRules.tla,tla/MCSprintRulesReads*.cfg,tla/RUNS.tsv,tla/CASES.tsv,docs/SPEC-SPRINT.md,internal/ci/testdata/dead_code_allowlist.txt
+NEW: internal/sprint/read_ok_widen.go,internal/sprint/read_ok_widen_test.go
+SHARED: docs/SPEC-SPRINT.md,tla/RUNS.tsv,tla/CASES.tsv,internal/ci/testdata/dead_code_allowlist.txt,internal/sprint/widen.go,internal/sprint/rules.go
+TEST: internal/sprint TestAnOkReadWidensPathsWithinBounds
+START: internal/sprint/rules_read.go (read), internal/sprint/widen.go (read), internal/sprint/paths_proposed.go (read), internal/sprint/steps_tick.go (read), internal/sprint/land_scope.go (read), internal/cardgen (read), tla/SprintRules.tla (read)
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux, tla
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 120 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 120 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: none new; member.PathsProposed (nova-tools pkg/member) reads the proposal, Brief in place as widen.go and brief --widen already edit PATHS and SHARED, cardgen.AlwaysInPaths for test and registry files, diffcheck.Covers for what a PATHS entry names.
+
+THE TASK. A read card finished OK whose report or finding carries a `PATHS-PROPOSED: <file,...>` line, with a reason after each file (namedWithReason in widen.go), widens the primary's PATHS itself, before the primary is accepted, and the coordinator is told (one happened note, NPathsWidened, naming the files and the reader), never asked. Only inside these bounds, each a named function in internal/sprint/read_ok_widen.go:
+1. same package: the proposed file's directory is the directory of a file an existing PATHS entry names (or a directory entry of PATHS);
+2. generated: the file at the read's head begins with the Go generated-file header (`// Code generated by <generator> ... DO NOT EDIT.`) and <generator> resolves to a path an existing PATHS entry covers (diffcheck.Covers);
+3. a test or a registry file: cardgen.AlwaysInPaths holds for it (a _test.go file, testdata, a ledger, the docs catalog, an AGENTS.md map, a shared registry).
+A proposal with any file outside all three is not widened at all (no partial widen): the read stays OK, the primary is not accepted on it, and one judgment goes to the coordinator naming the files outside the bounds and the brief --widen command that would admit them; nothing else changes. A widen by this rule counts toward MaxWidens (FieldWidens) exactly as the other widen rules do and is refused past it (WidensSpent). The widened brief keeps the head: no new attempt, no CARRY, the ok reads still count (the head did not change), and the tick's accept (TickAccept) then moves it on the next pump with the widened PATHS, so the lander checks E12 against them. Register the part beside PartRuleWidenRead and document the rule in docs/SPEC-SPRINT.md section 8 (the rules table, a row ok-read-widen).
+TLA+: extend tla/SprintRules.tla, Part \"reads\": an OK read may carry a proposal drawn from Files, split into InBounds and the rest at Init; add the action OkReadWiden (widens PATHS by the proposal only when it is a subset of InBounds, and leaves attempt unchanged), the invariant that no PATHS ever holds a file outside InBounds \\cup PATHS at Init unless a coordinator act put it there, a Broken mode \"widenanyok\" (the rule widens by any proposal) under which it fails, and a reversed witness that a card whose proposal holds a file outside the bounds is refused at land (E12) if accepted without a ruling. Check it with TLC on a small instance and cite it from read_ok_widen.go.
+
+DONE-WHEN: `go test -count=1 -timeout 600s ./internal/sprint/ -run '^TestAnOkReadWidensPathsWithinBounds$' -v` shows RUN and PASS at head (red at BASE: no test of that name exists). On the twin store (mem:, clock at 1000.0): a primary in review with PATHS internal/foo/a.go and an OK read whose report says `PATHS-PROPOSED: internal/foo/b.go` with a reason is widened to name internal/foo/b.go, its attempt unchanged, one NPathsWidened note to the coordinator, no judgment, and accepted on the next tick; the same with a generated file whose header names a generator inside PATHS, and with a _test.go file. REVERSED WITNESS in the same test: an OK read proposing cmd/other/c.go (another package, not generated, not a test or registry) widens nothing, raises exactly one judgment naming cmd/other/c.go, and the primary is not accepted; and the lander's scope check (sprint.LandScope) over a diff touching cmd/other/c.go with the unwidened PATHS still refuses it. `go test -count=1 -timeout 900s ./internal/sprint/ ./cmd/nova-sprint/` has no new red against BASE.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first: write the tests THE TASK names, each opening with t.Parallel(), with no real time, no sockets, no network and no host facts beyond git in t.TempDir(); a fake store (the twin, mem:) for anything that reads the sprint; any clock starts at 1000.0 seconds. Run the DONE-WHEN commands and keep the failing lines.
+STEP 3. Make the change THE TASK says, in the PATHS files only (a new _test file is always in PATHS). Cite docs/SPEC-SPRINT.md and, where the PATHS reach tla/, the model from each function that implements a rule.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN commands; the rule documented in docs/SPEC-SPRINT.md section 8. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 4b. The PATHS reach tla/, so the gate also runs the model: on a Linux TLC bench (java, the pinned jar at /opt/tla/tla2tools.jar; never a working machine and never captain), for each group g that `go run ./tools/tlacheck groups --root . --stale` lists, run `make tlc TLC_JAR=/opt/tla/tla2tools.jar TLC_OUT=$JOB/scratch/tlc-$g TLC_GROUP=$g`, then `go run ./tools/tlacheck merge --root . --keep tla/RUNS.tsv --out tla/RUNS.tsv $JOB/scratch/tlc-*/RUNS.tsv`, until the groups command prints []; commit tla/RUNS.tsv with the change, never a row written by hand. Verify every counterexample against the code by hand before writing it down. The lander refuses a head that edits tla/*.tla or tla/*.cfg without a current RUNS.tsv row for each case it touches.
+STEP 5. Commit as `v19-ok-read-widens-paths-within-bounds: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red lines, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Never print an environment value or a process environment (no env, printenv, ps e/eww, /proc/*/environ); env holds store and seat secrets.
+Never search /, ~ or /Volumes; search only inside the job's checkout.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor. Never delete live code for looking unused.
+Before writing new code, check whether it already exists (search the repository by name and behaviour, read `git log --since=7.days`); extend it, never add a second path.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+"))
+  (item "v19-land-rereads-brief-before-scope-refusal" :group "export-v19" :date "2026-10-18"
+   :title "v19-land-rereads-brief-before-scope-refusal"
+   :text "The land pass re-reads the brief before an E12 scope refusal: a head refused only for files the brief has named since it was queued (PATHS widened while merging) is requeued on the same head with no attempt spent. DONE-WHEN: TestAScopeRefusalUnderAWidenedBriefRequeuesTheSameHead RUNs and PASSes at head (red at BASE: no test of that name), and the named package suites have no new red against BASE. Reversed witness: the same refusal when the brief does not name internal/foo/b.go returns the card to review as today (attempt marks set). Column ready, tier pro, base sprint/v19, lands after v19-ok-read-widens-paths-within-bounds. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-19: \"move v19 stuff in sprint to roadmap thanks\" (his standing ruling of 2026-10-18, PR #538: v1.9 lives in roadmaps only)."
+   :origin "glenn: sprint card v19-land-rereads-brief-before-scope-refusal (stream v19, column ready, tier pro, base sprint/v19), moved out of the sprint 2026-10-19; card source: Glenn, 2026-10-19 (\"yes\"): card the PATHS/scope friction fixes into the v1.9 line. The night of 2026-10-18 port forward-merge and port cards in mas-bandwidth/schema spent attempts and coordinator rulings on scope, not on code: twice that night a card's PATHS were widened while its head sat in the me"
+   :release "v1.9"
+   :kept (:sprint-card "v19-land-rereads-brief-before-scope-refusal" :sprint-stream "v19" :sprint-column "ready" :tier "pro" :sprint-base "sprint/v19" :needs "" :land-after "v19-ok-read-widens-paths-within-bounds" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-land-rereads-brief-before-scope-refusal sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: feature
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: none
+LAND-AFTER: v19-ok-read-widens-paths-within-bounds
+SOURCE: Glenn, 2026-10-19 (\"yes\"): card the PATHS/scope friction fixes into the v1.9 line. The night of 2026-10-18 port forward-merge and port cards in mas-bandwidth/schema spent attempts and coordinator rulings on scope, not on code: twice that night a card's PATHS were widened while its head sat in the merge queue; the land pass had read PATHS when it began (landCard.paths), refused the head E12 for files the brief now held, and the refusal (internal/sprint/redo.go landRefused, way paths) returned it to review and cost a new attempt on work that was already right. Two attempts were lost to this race. LAND-AFTER reason: v19-ok-read-widens-paths-within-bounds also edits docs/SPEC-SPRINT.md; ordering only.
+PATHS: internal/sprint/redo.go,internal/sprint/land_scope.go,internal/sprint/land_requeue_scope_test.go,tla/Land.tla,tla/MCLandBound.tla,tla/MCLandBound*.cfg,tla/RUNS.tsv,tla/CASES.tsv,docs/SPEC-SPRINT.md,internal/ci/testdata/dead_code_allowlist.txt
+NEW: internal/sprint/land_requeue_scope_test.go
+SHARED: docs/SPEC-SPRINT.md,tla/RUNS.tsv,tla/CASES.tsv,internal/ci/testdata/dead_code_allowlist.txt
+TEST: internal/sprint TestAScopeRefusalUnderAWidenedBriefRequeuesTheSameHead
+START: internal/sprint/redo.go (read), internal/sprint/rules.go (read), internal/sprint/land_scope.go (read), cmd/nova-sprint/land.go (read), internal/sprint/widen.go (read), tla/Land.tla (read), tla/MCLandBound.tla (read)
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux, tla
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 120 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 120 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: none new; the E12 refusal's own file list (the text checkCard writes: \"it changes files outside its PATHS (E12): <file> (expected to match PATHS entry <e>), ...\"), diffcheck.Covers.
+
+THE TASK. When the merge step records a landing refusal whose way is RefusedPaths (landRefused in internal/sprint/redo.go), re-read the primary's brief as the snapshot holds it now (pr.F(\"brief\"), not the land pass's copy) and parse the refused files from the refusal (one exported parser in internal/sprint/land_scope.go, the inverse of checkCard's E12 text). If the refusal is E12 only (no other reason in it) and the current PATHS cover every refused file (diffcheck.Covers, the always-in-PATHS rule as LandScope applies it), the refusal is stale: the merge entry goes back to queued on the same head and attempt; no return, no returns count, no finding, no FieldRuleRedo marks, no attempt; the stream stays merging; and the coordinator gets one happened note `requeued: PATHS widened since the land pass read them (<files>)`. Otherwise everything is exactly as today. Bound the requeue: a head requeued this way once that is refused again for the same files takes today's path (no loop), recorded on the primary (one field).
+Document the rule in docs/SPEC-SPRINT.md section 7 (the lander's checks, the E12 row) and section 8 if a rule row names it.
+TLA+: tla/Land.tla holds E12 refusals as the \"paths\" way of THE BOUND (MCLandBound). Extend it: let PATHS change while a card is queued (an action Widen adding files to paths[c]); the refusal reads the files against the land pass's copy, and the merge step's record re-reads paths[c]; add the invariant that no attempt is spent on a refusal whose files are all inside paths[c] at the record (StaleRefusalCostsNoAttempt), a Broken mode \"noreread\" (the record uses the pass's copy) under which it fails, a reversed witness that a refusal naming a file outside the current paths[c] still returns the card, and the bound (at most one requeue per head). Check it with TLC on a small instance and cite it from redo.go.
+
+DONE-WHEN: `go test -count=1 -timeout 600s ./internal/sprint/ -run '^TestAScopeRefusalUnderAWidenedBriefRequeuesTheSameHead$' -v` shows RUN and PASS at head (red at BASE: no test of that name exists). On the twin store (mem:, clock at 1000.0): a primary in merging at attempt 2 whose brief was widened to name internal/foo/b.go after its head was queued; a merge refusal `it changes files outside its PATHS (E12): internal/foo/b.go` leaves the merge entry queued on the same head, the attempt 2, returns unchanged, no judgment, and one note to the coordinator; REVERSED WITNESS: the same refusal when the brief does not name internal/foo/b.go returns the card to review as today (attempt marks set); and a refusal with an E4 reason beside the E12 file is not requeued. A second refusal of the requeued head for the same files takes today's path. `go test -count=1 -timeout 900s ./internal/sprint/ ./cmd/nova-sprint/` has no new red against BASE.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first: write the tests THE TASK names, each opening with t.Parallel(), with no real time, no sockets, no network and no host facts beyond git in t.TempDir(); a fake store (the twin, mem:) for anything that reads the sprint; any clock starts at 1000.0 seconds. Run the DONE-WHEN commands and keep the failing lines.
+STEP 3. Make the change THE TASK says, in the PATHS files only (a new _test file is always in PATHS). Cite docs/SPEC-SPRINT.md and, where the PATHS reach tla/, the model from each function that implements a rule.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN commands; the rule documented in docs/SPEC-SPRINT.md section 7. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 4b. The PATHS reach tla/, so the gate also runs the model: on a Linux TLC bench (java, the pinned jar at /opt/tla/tla2tools.jar; never a working machine and never captain), for each group g that `go run ./tools/tlacheck groups --root . --stale` lists, run `make tlc TLC_JAR=/opt/tla/tla2tools.jar TLC_OUT=$JOB/scratch/tlc-$g TLC_GROUP=$g`, then `go run ./tools/tlacheck merge --root . --keep tla/RUNS.tsv --out tla/RUNS.tsv $JOB/scratch/tlc-*/RUNS.tsv`, until the groups command prints []; commit tla/RUNS.tsv with the change, never a row written by hand. Verify every counterexample against the code by hand before writing it down. The lander refuses a head that edits tla/*.tla or tla/*.cfg without a current RUNS.tsv row for each case it touches.
+STEP 5. Commit as `v19-land-rereads-brief-before-scope-refusal: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red lines, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Never print an environment value or a process environment (no env, printenv, ps e/eww, /proc/*/environ); env holds store and seat secrets.
+Never search /, ~ or /Volumes; search only inside the job's checkout.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor. Never delete live code for looking unused.
+Before writing new code, check whether it already exists (search the repository by name and behaviour, read `git log --since=7.days`); extend it, never add a second path.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+"))
+  (item "v19-new-derived-from-the-base-tree" :group "export-v19" :date "2026-10-18"
+   :title "v19-new-derived-from-the-base-tree"
+   :text "Whether a file is new is derived from the tree at BASE: a PATHS entry absent at BASE is admitted as new (NOTE NEW derived) with no NEW: line, in the admit, the lint and the lander alike. DONE-WHEN: TestAPathsEntryAbsentAtBaseIsNewByDerivation RUNs and PASSes at head (red at BASE: no test of that name), and the named package suites have no new red against BASE. Reversed witness: a PATHS glob internal/nothing/*.go that matches nothing at BASE is still refused. Column ready, tier pro, base sprint/v19, lands after v19-land-rereads-brief-before-scope-refusal. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-19: \"move v19 stuff in sprint to roadmap thanks\" (his standing ruling of 2026-10-18, PR #538: v1.9 lives in roadmaps only)."
+   :origin "glenn: sprint card v19-new-derived-from-the-base-tree (stream v19, column ready, tier pro, base sprint/v19), moved out of the sprint 2026-10-19; card source: Glenn, 2026-10-19 (\"yes\"): card the PATHS/scope friction fixes into the v1.9 line. The night of 2026-10-18 port forward-merge and port cards in mas-bandwidth/schema spent attempts and coordinator rulings on scope, not on code: every card that created a file or a directory had to repeat it on a NEW: "
+   :release "v1.9"
+   :kept (:sprint-card "v19-new-derived-from-the-base-tree" :sprint-stream "v19" :sprint-column "ready" :tier "pro" :sprint-base "sprint/v19" :needs "" :land-after "v19-land-rereads-brief-before-scope-refusal" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-new-derived-from-the-base-tree sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: feature
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: none
+LAND-AFTER: v19-land-rereads-brief-before-scope-refusal
+SOURCE: Glenn, 2026-10-19 (\"yes\"): card the PATHS/scope friction fixes into the v1.9 line. The night of 2026-10-18 port forward-merge and port cards in mas-bandwidth/schema spent attempts and coordinator rulings on scope, not on code: every card that created a file or a directory had to repeat it on a NEW: line, and a missed NEW tripped paths-at-base in the lint and the admit's existence check (\"PATHS <entry> names nothing at <base>\"), so hand-widened PATHS for new directories were refused at admit again and again. Whether a file is new is a fact of the tree at BASE, not something a brief should declare. LAND-AFTER reason: v19-land-rereads-brief-before-scope-refusal also edits docs/SPEC-SPRINT.md; ordering only.
+PATHS: pkg/swarm/lintpaths.go,pkg/swarm/lintpaths_new_derived_test.go,internal/sprint/add_paths.go,internal/sprint/add_paths_new_derived_test.go,cmd/nova-sprint/land_new_derived_test.go,docs/SPEC-CARD-CONTRACT.md,docs/SPEC-SPRINT.md,internal/ci/testdata/dead_code_allowlist.txt
+NEW: pkg/swarm/lintpaths_new_derived_test.go,internal/sprint/add_paths_new_derived_test.go,cmd/nova-sprint/land_new_derived_test.go
+SHARED: pkg/swarm/lintpaths.go,internal/sprint/add_paths.go,docs/SPEC-CARD-CONTRACT.md,docs/SPEC-SPRINT.md,internal/ci/testdata/dead_code_allowlist.txt
+TEST: internal/sprint TestAPathsEntryAbsentAtBaseIsNewByDerivation
+START: pkg/swarm/lintpaths.go (read), internal/sprint/add_paths.go (read), internal/sprint/land_scope.go (read), cmd/nova-sprint/land.go (read), internal/sprint/land_scope_test.go (read)
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 90 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 90 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: none new; the tree listing the lint and the admit already read at BASE (git ls-tree), diffcheck.Covers.
+
+THE TASK. Derive NEW from the tree at BASE instead of requiring it to be declared:
+1. Lint (pkg/swarm/lintpaths.go, check 1 paths-at-base) and admit (internal/sprint/add_paths.go): a PATHS entry that is a plain path (no glob characters) and names nothing at BASE is new by derivation when its nearest existing ancestor directory at BASE exists (the repository root counts): no paths-at-base finding and no admit refusal; the lint prints one informational line `NEW derived: <entry>` (not a finding: brief check's findings count is unchanged by it) and admit prints `NOTE NEW derived: <entry>`. A NEW: line is still accepted and means the same; a file on NEW: that exists at BASE is still the existing finding.
+2. A glob entry that matches nothing at BASE is still a finding and still refused at admit (a glob that matches nothing is a typo, not a creation), unless NEW: answers it as today.
+3. The lander needs no change for this (a changed file absent at BASE is covered by the PATHS entry that names it, through diffcheck.Covers); pin that with a test, and pin the reversed witness: a file present at BASE and outside PATHS is still refused by E12.
+Document the derivation in docs/SPEC-CARD-CONTRACT.md (the NEW: line becomes optional, and why) and docs/SPEC-SPRINT.md section 7 (the lander's checks, the E12 row).
+
+DONE-WHEN: `go test -count=1 -timeout 600s ./internal/sprint/ -run '^TestAPathsEntryAbsentAtBaseIsNewByDerivation$' -v` shows RUN and PASS at head (red at BASE: no test of that name exists): in a git repository in t.TempDir() (any clock at 1000.0), a brief whose PATHS names internal/newpkg/x.go and internal/newpkg/x_test.go, absent at BASE, with no NEW: line, is admitted with a `NOTE NEW derived` line for each and no refusal; REVERSED WITNESS: a PATHS glob internal/nothing/*.go that matches nothing at BASE is still refused. `go test -count=1 -timeout 600s ./pkg/swarm/ -run '^TestLintDerivesNewFromTheBaseTree$' -v` shows RUN and PASS: the same brief has no paths-at-base finding. `go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^TestLandCoversANewFileAndRefusesAnOldOneOutsidePaths$' -v` shows RUN and PASS: on a land rig in t.TempDir(), a head adding internal/newpkg/x.go lands under PATHS internal/newpkg/x.go, and a head that also edits README.md (present at BASE, outside PATHS) is refused E12 naming README.md only. `go test -count=1 -timeout 900s ./internal/sprint/ ./cmd/nova-sprint/ ./pkg/swarm/` has no new red against BASE.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first: write the tests THE TASK names, each opening with t.Parallel(), with no real time, no sockets, no network and no host facts beyond git in t.TempDir(); a fake store (the twin, mem:) for anything that reads the sprint; any clock starts at 1000.0 seconds. Run the DONE-WHEN commands and keep the failing lines.
+STEP 3. Make the change THE TASK says, in the PATHS files only (a new _test file is always in PATHS). Cite docs/SPEC-SPRINT.md and, where the PATHS reach tla/, the model from each function that implements a rule.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN commands; the derivation documented in docs/SPEC-CARD-CONTRACT.md and docs/SPEC-SPRINT.md section 7. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-new-derived-from-the-base-tree: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red lines, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Never print an environment value or a process environment (no env, printenv, ps e/eww, /proc/*/environ); env holds store and seat secrets.
+Never search /, ~ or /Volumes; search only inside the job's checkout.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor. Never delete live code for looking unused.
+Before writing new code, check whether it already exists (search the repository by name and behaviour, read `git log --since=7.days`); extend it, never add a second path.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+"))
+  (item "v19-owns-shared-file-refused-at-admit" :group "export-v19" :date "2026-10-18"
+   :title "v19-owns-shared-file-refused-at-admit"
+   :text "A brief may own a section of a shared file (OWNS: Makefile#ports); another card naming that file without depending on the owner is refused at admit, naming the owner, instead of colliding at land. DONE-WHEN: TestAnOwnedFileIsRefusedAtAdmitWithItsOwner RUNs and PASSes at head (red at BASE: no test of that name), and the named package suites have no new red against BASE. Reversed witness: card C with the same PATHS and `DEPENDS-ON: A` is admitted. Column ready, tier pro, base sprint/v19, lands after v19-new-derived-from-the-base-tree. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-19: \"move v19 stuff in sprint to roadmap thanks\" (his standing ruling of 2026-10-18, PR #538: v1.9 lives in roadmaps only)."
+   :origin "glenn: sprint card v19-owns-shared-file-refused-at-admit (stream v19, column ready, tier pro, base sprint/v19), moved out of the sprint 2026-10-19; card source: Glenn, 2026-10-19 (\"yes\"): card the PATHS/scope friction fixes into the v1.9 line. The night of 2026-10-18 port forward-merge and port cards in mas-bandwidth/schema spent attempts and coordinator rulings on scope, not on code: several port cards each edited the same section of one shared file (the M"
+   :release "v1.9"
+   :kept (:sprint-card "v19-owns-shared-file-refused-at-admit" :sprint-stream "v19" :sprint-column "ready" :tier "pro" :sprint-base "sprint/v19" :needs "" :land-after "v19-new-derived-from-the-base-tree" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-owns-shared-file-refused-at-admit sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: feature
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: none
+LAND-AFTER: v19-new-derived-from-the-base-tree
+SOURCE: Glenn, 2026-10-19 (\"yes\"): card the PATHS/scope friction fixes into the v1.9 line. The night of 2026-10-18 port forward-merge and port cards in mas-bandwidth/schema spent attempts and coordinator rulings on scope, not on code: several port cards each edited the same section of one shared file (the Makefile's ports targets) and collided at land, one conflict at a time, after their work was done. Today a shared file is worked out in the merge (Glenn, 2026-10-15; internal/sprint/cardcheck.go overlapRemedy), which is right for ledgers but wrong for a section one card builds and the others extend. LAND-AFTER reason: v19-new-derived-from-the-base-tree also edits docs/SPEC-SPRINT.md; ordering only.
+PATHS: pkg/swarm/lintheader.go,internal/sprint/owns.go,internal/sprint/owns_test.go,internal/sprint/cardcheck.go,cmd/nova-sprint/add.go,docs/SPEC-CARD-CONTRACT.md,docs/SPEC-SPRINT.md,internal/ci/testdata/dead_code_allowlist.txt
+NEW: internal/sprint/owns.go,internal/sprint/owns_test.go
+SHARED: pkg/swarm/lintheader.go,internal/sprint/cardcheck.go,cmd/nova-sprint/add.go,docs/SPEC-CARD-CONTRACT.md,docs/SPEC-SPRINT.md,internal/ci/testdata/dead_code_allowlist.txt
+TEST: internal/sprint TestAnOwnedFileIsRefusedAtAdmitWithItsOwner
+START: internal/sprint/cardcheck.go (read), pkg/swarm/lintheader.go (read), cmd/nova-sprint/add.go (read), internal/sprint/paths_proposed.go (read), internal/sprint/add_paths.go (read)
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 90 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 90 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: none new; the header reader (cardhdr.KeyValue), the overlap reading the paths rule already uses (overlaps, globNames).
+
+THE TASK. Add a header key `OWNS: <file>[#<section>][,<file>[#<section>]...]` (add OWNS to cardHeaderKeys in pkg/swarm/lintheader.go). A brief that owns a file must also name it on PATHS (the lint refuses an OWNS file not on PATHS). The section after `#` is a label for people and the report; ownership is of the file.
+At admit (cmd/nova-sprint/add.go, through one function in internal/sprint/owns.go that the card check in cardcheck.go also calls): a card being admitted whose PATHS or SHARED names a file that an open card (any column but landed or dropped, any stream) OWNS, and which does not itself list that owner on DEPENDS-ON (directly or through a need), is refused with the line `REFUSED <card>: <file> is owned by <owner> (OWNS: <file>#<section>): depends on <owner>; add DEPENDS-ON: <owner>` and nothing is admitted for that card. A card that names the owner on DEPENDS-ON is admitted as today. Two cards that both OWN the same file are refused at the second admit the same way. The refusal also applies within one add of several briefs (the owner may be admitted in the same add: then the other must depend on it). A landed or dropped owner owns nothing.
+Ledgers stay as they are: a file every card may write (SharedLedger, cardgen.LedgerInPaths) cannot be owned, and the lint says so.
+Document OWNS in docs/SPEC-CARD-CONTRACT.md (the header) and docs/SPEC-SPRINT.md (the admit checks).
+
+DONE-WHEN: `go test -count=1 -timeout 600s ./internal/sprint/ -run '^TestAnOwnedFileIsRefusedAtAdmitWithItsOwner$' -v` shows RUN and PASS at head (red at BASE: no test of that name exists). On the twin store (mem:, clock at 1000.0): card A admitted with `OWNS: Makefile#ports` and Makefile on PATHS; card B whose PATHS names Makefile and whose DEPENDS-ON is none is refused with a line containing `depends on A`, and nothing of B is admitted; REVERSED WITNESS: card C with the same PATHS and `DEPENDS-ON: A` is admitted; and after A is dropped, B is admitted. A brief owning a ledger (tla/RUNS.tsv) is a lint finding. `go test -count=1 -timeout 900s ./internal/sprint/ ./cmd/nova-sprint/ ./pkg/swarm/` has no new red against BASE.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first: write the tests THE TASK names, each opening with t.Parallel(), with no real time, no sockets, no network and no host facts beyond git in t.TempDir(); a fake store (the twin, mem:) for anything that reads the sprint; any clock starts at 1000.0 seconds. Run the DONE-WHEN commands and keep the failing lines.
+STEP 3. Make the change THE TASK says, in the PATHS files only (a new _test file is always in PATHS). Cite docs/SPEC-SPRINT.md and, where the PATHS reach tla/, the model from each function that implements a rule.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN commands; OWNS documented in docs/SPEC-CARD-CONTRACT.md and docs/SPEC-SPRINT.md. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-owns-shared-file-refused-at-admit: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red lines, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Never print an environment value or a process environment (no env, printenv, ps e/eww, /proc/*/environ); env holds store and seat secrets.
+Never search /, ~ or /Volumes; search only inside the job's checkout.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor. Never delete live code for looking unused.
+Before writing new code, check whether it already exists (search the repository by name and behaviour, read `git log --since=7.days`); extend it, never add a second path.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+"))
+  (item "v19-port-profile-expands-scope" :group "export-v19" :date "2026-10-18"
+   :title "v19-port-profile-expands-scope"
+   :text "A PROFILE: port <language> line expands at admit to the repository's profile table (.nova/profiles), so every port card gets the same PATHS shape without listing it by hand. DONE-WHEN: TestAPortProfileExpandsToTheRepositorysTable RUNs and PASSes at head (red at BASE: no test of that name), and the named package suites have no new red against BASE. Reversed witness: `PROFILE: port nosuch` whose expansion matches nothing at BASE is refused, and a repository with no .nova/profiles refuses any PROFILE line; a file outside the expansion and outside PATHS is still refused by the lander's scope check (sprint.LandScope over the stored PATHS). Column ready, tier pro, base sprint/v19, lands after v19-owns-shared-file-refused-at-admit. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-19: \"move v19 stuff in sprint to roadmap thanks\" (his standing ruling of 2026-10-18, PR #538: v1.9 lives in roadmaps only)."
+   :origin "glenn: sprint card v19-port-profile-expands-scope (stream v19, column ready, tier pro, base sprint/v19), moved out of the sprint 2026-10-19; card source: Glenn, 2026-10-19 (\"yes\"): card the PATHS/scope friction fixes into the v1.9 line. The night of 2026-10-18 port forward-merge and port cards in mas-bandwidth/schema spent attempts and coordinator rulings on scope, not on code: every port card in mas-bandwidth/schema listed the same shape of PATHS by"
+   :release "v1.9"
+   :kept (:sprint-card "v19-port-profile-expands-scope" :sprint-stream "v19" :sprint-column "ready" :tier "pro" :sprint-base "sprint/v19" :needs "" :land-after "v19-owns-shared-file-refused-at-admit" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-port-profile-expands-scope sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: feature
+PRIORITY: normal
+STREAM: v19
+DEPENDS-ON: none
+LAND-AFTER: v19-owns-shared-file-refused-at-admit
+SOURCE: Glenn, 2026-10-19 (\"yes\"): card the PATHS/scope friction fixes into the v1.9 line. The night of 2026-10-18 port forward-merge and port cards in mas-bandwidth/schema spent attempts and coordinator rulings on scope, not on code: every port card in mas-bandwidth/schema listed the same shape of PATHS by hand (the language's emitter directories, its generated trees, its goldens and its make file) and most scope holds were a missed one of them. A profile named once in the repository, expanded at admit, gives every port card the same scope. LAND-AFTER reason: v19-owns-shared-file-refused-at-admit also edits docs/SPEC-SPRINT.md; ordering only.
+PATHS: pkg/swarm/lintheader.go,pkg/swarm/lintpaths.go,internal/sprint/profile.go,internal/sprint/profile_test.go,internal/sprint/add_paths.go,cmd/nova-sprint/add.go,docs/SPEC-CARD-CONTRACT.md,docs/SPEC-SPRINT.md,internal/ci/testdata/dead_code_allowlist.txt
+NEW: internal/sprint/profile.go,internal/sprint/profile_test.go
+SHARED: pkg/swarm/lintheader.go,pkg/swarm/lintpaths.go,internal/sprint/add_paths.go,cmd/nova-sprint/add.go,docs/SPEC-CARD-CONTRACT.md,docs/SPEC-SPRINT.md,internal/ci/testdata/dead_code_allowlist.txt
+TEST: internal/sprint TestAPortProfileExpandsToTheRepositorysTable
+START: pkg/swarm/lintheader.go (read), pkg/swarm/lintpaths.go (read), internal/sprint/add_paths.go (read), cmd/nova-sprint/add.go (read), cmd/nova-sprint/land.go (read)
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 90 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 90 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: none new; the tree read at BASE that admit and the lint already do, the way the lander reads .nova/always-allowed from the base (git show <base>:<file>).
+
+THE TASK. Add a header key `PROFILE: <name> <arg>` (add PROFILE to cardHeaderKeys in pkg/swarm/lintheader.go), first form `PROFILE: port <lang>`. The profiles are a table in the card's repository, read at BASE, never hard-coded in nova-sprint: the file `.nova/profiles`, one profile per line, `<name> <glob>[,<glob>...]`, where `{arg}` in a glob is replaced by the PROFILE line's argument (for example `port emit/{arg}/**,generated/{arg}/**,testdata/golden/{arg}/**,make/{arg}.mk`), `#` starting a comment. One function in internal/sprint/profile.go parses the table and expands a PROFILE line.
+At admit (cmd/nova-sprint/add.go) the PROFILE line is expanded and the expansion is written into the stored brief as explicit entries on its PATHS: line (strict write: everything downstream, the lander, the readers and the widen rules, reads a plain PATHS line and never the profile); the PROFILE line stays in the brief as the record, and admit prints `NOTE PROFILE port <lang> expanded: <globs>`. The lint (pkg/swarm/lintpaths.go) expands the same way when it has the tree at BASE, so its PATHS checks see the expansion. Refusals, each a line naming the remedy: the repository has no .nova/profiles at BASE; the table has no profile of that name; the argument is empty or holds a `/` or `..`; an expanded glob matches nothing at BASE and is not answered by NEW:.
+The table for mas-bandwidth/schema itself is not this card's: it is owed in that repository after this lands. Document PROFILE and the table's format in docs/SPEC-CARD-CONTRACT.md and docs/SPEC-SPRINT.md (the admit checks).
+
+DONE-WHEN: `go test -count=1 -timeout 600s ./internal/sprint/ -run '^TestAPortProfileExpandsToTheRepositorysTable$' -v` shows RUN and PASS at head (red at BASE: no test of that name exists): in a git repository in t.TempDir() (any clock at 1000.0) whose BASE holds `.nova/profiles` with a port profile and the trees it names for `lua`, a brief with `PROFILE: port lua` and PATHS docs/x.md is admitted with its stored PATHS line naming docs/x.md and every expanded glob for lua; REVERSED WITNESS: `PROFILE: port nosuch` whose expansion matches nothing at BASE is refused, and a repository with no .nova/profiles refuses any PROFILE line; a file outside the expansion and outside PATHS is still refused by the lander's scope check (sprint.LandScope over the stored PATHS). `go test -count=1 -timeout 900s ./internal/sprint/ ./cmd/nova-sprint/ ./pkg/swarm/` has no new red against BASE.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first: write the tests THE TASK names, each opening with t.Parallel(), with no real time, no sockets, no network and no host facts beyond git in t.TempDir(); a fake store (the twin, mem:) for anything that reads the sprint; any clock starts at 1000.0 seconds. Run the DONE-WHEN commands and keep the failing lines.
+STEP 3. Make the change THE TASK says, in the PATHS files only (a new _test file is always in PATHS). Cite docs/SPEC-SPRINT.md and, where the PATHS reach tla/, the model from each function that implements a rule.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN commands; PROFILE documented in docs/SPEC-CARD-CONTRACT.md and docs/SPEC-SPRINT.md. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-port-profile-expands-scope: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red lines, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Never print an environment value or a process environment (no env, printenv, ps e/eww, /proc/*/environ); env holds store and seat secrets.
+Never search /, ~ or /Volumes; search only inside the job's checkout.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor. Never delete live code for looking unused.
+Before writing new code, check whether it already exists (search the repository by name and behaviour, read `git log --since=7.days`); extend it, never add a second path.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
+"))
+  (item "v19-merge-of-reads-list-only-hand-edits" :group "export-v19" :date "2026-10-18"
+   :title "v19-merge-of-reads-list-only-hand-edits"
+   :text "Readers of a MERGE-OF forward-merge card see only its hand-edited files: a read-class verb `nova-sprint merge-of files` lists them with the lander's exemption function, and the read packet names that command. DONE-WHEN: TestAMergeOfReadPacketNamesTheHandEditCommand RUNs and PASSes at head (red at BASE: no test of that name), and the named package suites have no new red against BASE. Reversed witness: the read packet of a primary with no MERGE-OF line has no such note. Column waiting, tier pro, base sprint/v19, needs v17-forward-merge-card-exempts-merged-files-from-e12. The whole brief is kept under :kept :brief. No pushed head recorded."
+   :why "Glenn 2026-10-19: \"move v19 stuff in sprint to roadmap thanks\" (his standing ruling of 2026-10-18, PR #538: v1.9 lives in roadmaps only)."
+   :origin "glenn: sprint card v19-merge-of-reads-list-only-hand-edits (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-19; card source: coordinator, 2026-10-18: port forward-merge cards in mas-bandwidth/schema bring about 1000 byte-identical files from sprint/schema-go; readers were handed the whole diff and asked the coordinator for scope rulings one card at a time, when only the few hand-edited files need review. DEPENDS-ON reason"
+   :release "v1.9"
+   :kept (:sprint-card "v19-merge-of-reads-list-only-hand-edits" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v17-forward-merge-card-exempts-merged-files-from-e12" :land-after "" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-merge-of-reads-list-only-hand-edits sha=<sha12> tier: pro
+REPO: mas-bandwidth/nova-sprint
+BASE: sprint/v19
+KIND: feature
+PRIORITY: high
+STREAM: v19
+DEPENDS-ON: v17-forward-merge-card-exempts-merged-files-from-e12
+SOURCE: coordinator, 2026-10-18: port forward-merge cards in mas-bandwidth/schema bring about 1000 byte-identical files from sprint/schema-go; readers were handed the whole diff and asked the coordinator for scope rulings one card at a time, when only the few hand-edited files need review. DEPENDS-ON reason: this card calls the exemption function (internal/sprint/merge_of.go) and the MERGE-OF header key that card adds; neither exists at BASE today. Moved to v1.9 (Glenn, 2026-10-19, \"yes\"): that card lands on sprint/v17, so sprint/v19 is forwarded from sprint/v17 (it is strictly behind) before this card is dealt.
+PATHS: cmd/nova-sprint/mergeof.go,cmd/nova-sprint/mergeof_test.go,cmd/nova-sprint/verbs.go,internal/sprint/packet.go,internal/sprint/packet_merge_of_test.go,docs/CLI.md,docs/SPEC-SPRINT.md,internal/ci/testdata/dead_code_allowlist.txt
+NEW: cmd/nova-sprint/mergeof.go,cmd/nova-sprint/mergeof_test.go,internal/sprint/packet_merge_of_test.go
+SHARED: docs/CLI.md,docs/SPEC-SPRINT.md,cmd/nova-sprint/verbs.go,internal/ci/testdata/dead_code_allowlist.txt
+TEST: internal/sprint TestAMergeOfReadPacketNamesTheHandEditCommand
+START: internal/sprint/merge_of.go (read), internal/sprint/packet.go (read), cmd/nova-sprint/verbs.go (read), cmd/nova-sprint/landverify.go (read), internal/sprint/soft_deps.go (read)
+TOOLCHAIN: go (the version go.mod names) on the Linux bench JOB.md names
+GATE-NEEDS: linux
+STOP: the change and its tests are committed with DONE-WHEN holding, or the deadline is reached
+DEADLINE: finish within 90 minutes.
+
+The REPO: and BASE: lines are the repository and the branch the work starts from and lands on: the member stages REPO: at BASE:, and nova-sprint land merges the card's head onto BASE: (land --base stands in for a card naming no BASE:, land --repo-dir for one naming no REPO:).
+You are a child of the coordinator: one task, one worktree, one branch, unattended. This card is the whole of the task and it stands alone in front of a stranger; nothing outside it is owed to you.
+Deadline: finish within 90 minutes; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it.
+Libraries considered: none new; the exemption function internal/sprint/merge_of.go (the lander's own, so readers and the lander give one answer) and git plumbing the lander already runs.
+
+THE TASK. A card whose brief has `MERGE-OF: <branch>` is a forward-merge; the lander exempts from E12 every file that arrived unchanged through the merge (internal/sprint/merge_of.go, docs/SPEC-SPRINT.md section 7). Readers must see the same split. Two parts:
+1. A read-class verb `nova-sprint merge-of files --repo-dir <clone> --base <branch> --head <commit> --of <branch> [--json]` that runs the lander's exemption function in the clone (no store) and prints `MERGE-OF <branch>@<merged parent sha12> EXEMPT <n> HAND-EDITED <m>` and then one line per hand-edited file (every changed file that is not exempt); a branch that cannot be resolved is refused with the lander's reason, exit 1. Register it in the verb table (cmd/nova-sprint/verbs.go) with its usage and example, and document it in docs/CLI.md.
+2. A read packet (sprint.PacketOf, kind read) whose primary's brief has a MERGE-OF line carries one note: that the card is a forward-merge of <branch>, that files arriving unchanged through the merge are exempt from PATHS and from review, and the exact merge-of files command to list the hand-edited files with this packet's base and head filled in. A packet of a card with no MERGE-OF line is unchanged (no note).
+Keep the store untouched: the verb reads only the clone, and the packet change only adds a note.
+
+DONE-WHEN: `go test -count=1 -timeout 600s ./internal/sprint/ -run '^TestAMergeOfReadPacketNamesTheHandEditCommand$' -v` shows RUN and PASS at head (red at BASE: no test of that name exists): a read packet of a primary whose brief says `MERGE-OF: sprint/merged` has a note naming sprint/merged and a `nova-sprint merge-of files` command with the packet's base and head; REVERSED WITNESS: the read packet of a primary with no MERGE-OF line has no such note. And `go test -count=1 -timeout 600s ./cmd/nova-sprint/ -run '^TestMergeOfFilesListsOnlyHandEdits$' -v` shows RUN and PASS: in a git repository in t.TempDir() (no real time; any clock starts at 1000.0), a head that merges a branch changing 20 files and hand-edits 2 prints EXEMPT 20 and lists exactly the 2 hand-edited files. `go test -count=1 -timeout 600s ./internal/sprint/ ./cmd/nova-sprint/` has no new red against BASE, including the playbook and help tests that hold the verb table.
+
+STEP 1. cd into the staged checkout JOB.md names and run git log --oneline -1; it is a NEW worktree on the branch this card names.
+STEP 2. Red first: write both tests THE TASK names, each opening with t.Parallel(), with no real time, no sockets, no network and no host facts beyond git in t.TempDir(); any clock starts at 1000.0 seconds. Run the DONE-WHEN commands and keep the failing lines.
+STEP 3. Make the change THE TASK says, in the PATHS files only (a new _test file is always in PATHS). Call the exported function in internal/sprint/merge_of.go as it is; if it lacks something the verb needs, report the proposed diff rather than editing it.
+STEP 4. Run the gate: go vet ./... ; the DONE-WHEN commands; the new verb documented in docs/CLI.md and docs/SPEC-SPRINT.md. When a test fails, name its file and say whether that file was changed by your work (yours) or is unchanged (already red at BASE: run the same test on the unchanged base to say so), and report that line first.
+STEP 5. Commit as `v19-merge-of-reads-list-only-hand-edits: <what>` with the trailer and end as JOB.md says (docs/SPEC-CARD-CONTRACT.md): the pull request body states the diff stat, the red lines, each test and what it pins, and what was not done.
+
+RULES.
+Work only in the job directory this card names.
+Never force-push or rebase a shared branch.
+Never kill a process you did not start.
+Never start a server on this machine.
+No `rm -rf` outside the job directory.
+Report what was not done.
+Never print an environment value or a process environment (no env, printenv, ps e/eww, /proc/*/environ); env holds store and seat secrets.
+Never search /, ~ or /Volumes; search only inside the job's checkout.
+Unit tests use no real time, no sockets, no network and no outside services; a test that needs any of them is a functional test and keeps to that tier. Time is an argument, and a test clock starts at 1000.0 seconds, never 0.
+Make the smallest change, with no refactor. Never delete live code for looking unused.
+Before writing new code, check whether it already exists (search the repository by name and behaviour, read `git log --since=7.days`); extend it, never add a second path.
+Export GOFLAGS=-mod=readonly NOVA_TEST_NO_HOST=1 before any go command; GOCACHE is already set to the machine's shared build cache (JOB.md names it): keep it.
+Commit on your own branch; no gh, no push: JOB.md's finish does both, from outside the wall. Never merge into BASE.
+Touch only the files PATHS and NEW name; a fix that needs another file goes into the report as a proposed diff, not a commit.
+Finish LAND with `--head <sha>`; finish HOLD with `--failed`. A red is pre-existing only if reproduced at BASE in the same environment.
+The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 2.
 "))))
