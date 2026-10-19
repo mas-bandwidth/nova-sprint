@@ -13,7 +13,10 @@
 \* "onchange" writes the card only when the beat's facts change from the beat
 \* before, so a card made again keeps no facts. Both fail CardDealt. Broken =
 \* "moveignoresneed" drops Move's gate-host guard, so a dealt card can move to a
-\* member that cannot meet its needs; it fails DealtOnlyWhereTheNeedIs.
+\* member that cannot meet its needs; it fails DealtOnlyWhereTheNeedIs. Broken =
+\* "reworkignoresneed" drops Rework's gate-host guard, so the rule rework of a
+\* failed finish deals the card's next attempt to a member that cannot meet its
+\* needs; it fails DealtOnlyWhereTheNeedIs.
 
 EXTENDS FiniteSets
 
@@ -72,8 +75,18 @@ Move(m) ==
   /\ card' = m
   /\ UNCHANGED <<beat, ctl, rejoined>>
 
+\* the rule rework of a failed finish deals the card's next attempt to a member
+\* whose card carries every need, under the same gate-host guard as the deal
+\* (internal/sprint/steps_review.go Rework, narrowing its member pool by
+\* GateHostPool as dealPlan does)
+Rework(m) ==
+  /\ card # "ready"
+  /\ IF Broken = "reworkignoresneed" THEN TRUE ELSE Need \subseteq ctl[m]
+  /\ card' = m
+  /\ UNCHANGED <<beat, ctl, rejoined>>
+
 Next ==
-  \/ \E m \in Members : Beat(m) \/ Rejoin(m) \/ Deal(m) \/ Move(m)
+  \/ \E m \in Members : Beat(m) \/ Rejoin(m) \/ Deal(m) \/ Move(m) \/ Rework(m)
   \/ Presence
 
 Spec == Init /\ [][Next]_vars /\ WF_vars(Presence) /\ \A m \in Members : WF_vars(Beat(m)) /\ WF_vars(Deal(m))
