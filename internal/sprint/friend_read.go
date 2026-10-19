@@ -537,6 +537,22 @@ func FriendReadCloseChecked(s *Snapshot, name, primary, card, report string, mis
 	}
 	rc := friendReadCardOf(s, name, primary, attempt, card)
 	if rc == nil {
+		// her report on a read card a rework retired is a late read: recorded on the primary
+		// and carried to its next attempt, never dropped (tla/ReadCards.tla LateClose)
+		if lc := lateReadCardNamed(s, name, primary, attempt, card); lc != nil {
+			lpr, why := lateReadOf(s, lc, name)
+			if why != "" {
+				p.refuse(primary, why)
+				return p
+			}
+			verdict, finding, why := ParseFriendReadReport(report)
+			if why != "" {
+				p.refuse(primary, why)
+				return p
+			}
+			p.Units = append(p.Units, lateReadUnit(s, name, lpr, lc, verdict, finding, ""))
+			return p
+		}
 		p.refuse(primary, "no read asked of "+name)
 		return p
 	}
@@ -599,6 +615,11 @@ func friendReadCloseUnit(s *Snapshot, name string, pr, rc *Card, verdict, findin
 		n := judgment(NReadBroken, pr.Row, s.Now, pr.Int("broken_reads"), pr.ID)
 		n.Who, n.Attempt, n.What = name, attempt, finding
 		notes = append(notes, n)
+	} else if strings.TrimSpace(finding) != "" {
+		// an ok read's words are kept too: a rework that waited for both of an attempt's
+		// reads carries them with the broken one's (readFindingsByReader;
+		// tla/ReadCards.tla Rework, NoFindingLost)
+		set["finding"] = cutText(finding, MaxCardTextBytes)
 	}
 	// the card is still placed when the judgment is read; the verdict is the column it stands as
 	stood := OK
@@ -622,6 +643,125 @@ func friendReadCloseUnit(s *Snapshot, name string, pr, rc *Card, verdict, findin
 	return Unit{Key: pr.ID, Stream: pr.Row, Changes: changes, Moved: rc.ID + " retired " + verdict, Notes: notes}
 }
 
+// NReadLate is the happened note of a late read: a verdict a reader reported on a read card
+// a rework retired (RetiredByRework), or one its primary's move past the attempt retired
+// (RetiredByPrimary). It is a record, never a standing read: it counts toward no accept.
+const NReadLate = "a late read of a retired read card"
+
+// lateReadOf is the primary of a late read and "", or why the retired read card c takes no
+// verdict: a card not retired by a rework or by its primary's move (RetiredByRework,
+// RetiredByPrimary), one not name's, one whose primary is off the table (dropped or
+// landed), or one recorded late already (FieldLateReadCards: the same report twice is one
+// record). tla/ReadCards.tla LateClose.
+func lateReadOf(s *Snapshot, c *Card, name string) (*Card, string) {
+	retired := "retired at " + orDash(c.F("retired")) + " by " + orDash(c.F("retired_by"))
+	switch {
+	case !isRead(c) || c.Placed():
+		return nil, "not a retired read card"
+	case c.F("retired_by") != RetiredByRework && c.F("retired_by") != RetiredByPrimary:
+		return nil, retired + ": nothing to report"
+	case c.F("reader") != name:
+		return nil, retired + ": not " + name + "'s read (it was " + orDash(c.F("reader")) + "'s): nothing to report"
+	}
+	pr := s.Work.Placed(c.F("primary"))
+	if pr == nil {
+		return nil, retired + ": its primary " + orDash(c.F("primary")) + " is off the table (dropped or landed): nothing to report"
+	}
+	if slices.Contains(Split(pr.F(FieldLateReadCards)), c.ID) {
+		return nil, retired + ": recorded as a late read of " + pr.ID + " already"
+	}
+	return pr, ""
+}
+
+// lateReadCardNamed is the friend's retired read card of the primary her report names (card),
+// or with none named the latest of her identities at the attempt or the one before that is
+// retired and not yet recorded late; nil when there is none.
+func lateReadCardNamed(s *Snapshot, name, primary string, attempt int, card string) *Card {
+	if s.Fleet == nil {
+		return nil
+	}
+	mine := func(rc *Card) bool {
+		return rc != nil && isRead(rc) && !rc.Placed() && rc.F("primary") == primary && rc.F("reader") == name
+	}
+	if card != "" {
+		if rc := s.Fleet.Card(card); mine(rc) {
+			return rc
+		}
+		return nil
+	}
+	var found *Card
+	for _, a := range []int{attempt - 1, attempt} {
+		if a < 1 {
+			continue
+		}
+		for _, id := range ReadCardGenIDs(primary, a, name, readNextGen(s.Fleet.Cards(), primary, a, name)+readCardLoadWindow) {
+			if rc := s.Fleet.Card(id); mine(rc) {
+				found = rc
+			}
+		}
+	}
+	return found
+}
+
+// lateReadUnit records a late read (lateReadOf) on its primary, and changes nothing that
+// counts: the read card stays retired as the rework left it, so the verdict never stands as
+// a read (readCardsStanding, okReaders) and a late ok, on a head the primary has moved past
+// or not, counts toward no accept. Its line, "late read by <reader> of attempt <n> at
+// <head12>: <verdict>: <finding>", is written
+//   - on the primary's late reads (FieldLateReads), which its next rework carries into the
+//     next attempt's finding (reworkGiven) and clears, and on its findings (FieldFindings);
+//   - on the work card of the primary's current attempt when one is placed past the read's
+//     attempt: a ready one's take carries it in its packet's finding;
+//   - on the primary's own finding when it waits ready with no work card (the deal copies it);
+//
+// and as a note on the primary (NReadLate). The read's usage, when given, is recorded on
+// the primary as a closed read's is. tla/ReadCards.tla LateClose, NoFindingLost, BugDropLate.
+func lateReadUnit(s *Snapshot, name string, pr, rc *Card, verdict, finding, usage string) Unit {
+	attempt := max(rc.Int("attempt"), 1)
+	head := rc.F("head")
+	if len(head) > 12 {
+		head = head[:12]
+	}
+	words := strings.Join(strings.Fields(finding), " ")
+	line := cutText(fmt.Sprintf("late read by %s of attempt %d at %s: %s: %s", name, attempt, orDash(head), orDash(verdict), orDash(words)), MaxCardTextBytes/2)
+	var late []string
+	for _, l := range strings.Split(pr.F(FieldLateReads), "\n") {
+		if l != "" {
+			late = append(late, l)
+		}
+	}
+	set := map[string]string{
+		FieldLateReads:     findingsLine(append(late, line)),
+		FieldLateReadCards: strings.Join(append(Split(pr.F(FieldLateReadCards)), rc.ID), ","),
+		FieldFindings:      findingsLine(findingsOf(pr, attempt, line)),
+	}
+	appended := func(prev string) string {
+		if strings.TrimSpace(prev) == "" {
+			return line
+		}
+		return cutText(prev, MaxCardTextBytes-len(line)-1) + "\n" + line
+	}
+	var changes []Change
+	wc := s.Fleet.Placed(WorkCardID(pr.ID, readAttempt(pr)))
+	if wc != nil && readAttempt(pr) > attempt && (wc.Col == Ready || wc.Col == Working) {
+		changes = append(changes, change(Fleet, setEntry(wc, map[string]string{"finding": appended(wc.F("finding"))})))
+	} else if pr.Col == Ready && readAttempt(pr) > attempt {
+		set["finding"] = appended(pr.F("finding"))
+	}
+	if strings.TrimSpace(usage) != "" {
+		rec := readCostRecord(s, rc, usage, rc.F("asked"), cmp.Or(rc.F("begun"), stamp(s.Now)))
+		addConsumer(pr, set, readConsumer(s, rc, 0, verdict, rec))
+	}
+	changes = append([]Change{change(Work, setEntry(pr, set))}, changes...)
+	n := happened(NReadLate, pr.Row, s.Now, pr.ID)
+	n.Who, n.Attempt, n.What = name, attempt, line
+	moved := rc.ID + " recorded as a late read of " + pr.ID + " (retired by " + orDash(rc.F("retired_by")) + "; counted toward no read"
+	if rc.F("head") != "" && rc.F("head") != pr.F("head") {
+		moved += ": the primary's head is " + orDash(pr.F("head")) + " now"
+	}
+	return Unit{Key: pr.ID, Stream: pr.Row, Changes: changes, Moved: moved + ")", Notes: []Note{n}}
+}
+
 // FriendReadOutboxLine is how a read on a friend's row is returned: her
 // outbox report, which friend sync reads (FriendReadClose), or the read verb
 // her packet prints, which writes the same close (readCardVerb).
@@ -630,7 +770,9 @@ func FriendReadOutboxLine(row, id string, epoch uint64) string {
 }
 
 // readCardVerb is the read verb on a fleet row, a friend's or a member's (read_cards.go):
-// a verdict closes its read card as her outbox report does (friendReadCloseUnit); a return
+// a verdict closes its read card as her outbox report does (friendReadCloseUnit); a verdict
+// on a read card a rework retired is a late read (lateReadOf, lateReadUnit: exit 0, the line
+// "recorded as a late read of <primary>"; tla/ReadCards.tla LateClose, NoFindingLost); a return
 // (--return, with the reason) hands it back with no verdict, retired by returned, which
 // spends the reader's read of the attempt, and the read-card deal deals it to another
 // reader. A read card has no begin: the take moves it to working.
@@ -667,8 +809,13 @@ func readCardVerb(s *Snapshot, r ReadReq, row, name string) Plan {
 		switch {
 		case c.F("kind") != "read":
 			return "not a read (it is " + orDash(c.F("kind")) + "): work is reported with finish"
+		case !c.Placed() && r.Return:
+			return "retired at " + orDash(c.F("retired")) + " by " + orDash(c.F("retired_by")) + ": nothing to return"
 		case !c.Placed():
-			return "retired at " + orDash(c.F("retired")) + " by " + orDash(c.F("retired_by")) + ": nothing to report"
+			// a verdict on a read card a rework retired is a late read, recorded on its
+			// primary (lateReadOf); any other retired card has nothing to report
+			_, why := lateReadOf(s, c, name)
+			return why
 		case c.Row != row:
 			return "not " + r.As + "'s to read (it is " + placeWord(c) + ")"
 		case s.Work.Card(c.F("primary")) == nil:
@@ -682,6 +829,12 @@ func readCardVerb(s *Snapshot, r ReadReq, row, name string) Plan {
 	var verdicts []ReadVerdict // the ledger's (reads_window.go)
 	for _, c := range chosen {
 		pr := s.Work.Card(c.F("primary"))
+		if !c.Placed() {
+			// a late read (lateReadOf passed it): a note on the primary, carried to its next
+			// attempt, never a standing read (tla/ReadCards.tla LateClose, NoFindingLost)
+			p.Units = append(p.Units, lateReadUnit(s, name, pr, c, r.Verdict, r.Finding, r.Usage))
+			continue
+		}
 		if r.Return {
 			readHead := c.F("head")
 			ended, code, env := ReadEnvEnd(r.Reason, r.Exit, readHead, pr.F("head"))

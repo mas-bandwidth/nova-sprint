@@ -56,6 +56,30 @@
 \* window past the highest placed card alone, v1.4.3's) and BugNoTop (the deal cuts past the
 \* window without raising the top).
 
+\* The findings of a reworked attempt (sprint-spec-fix-retired-read-keeps-findings, 2026-10-18:
+\* three heavy reads refused "retired at ... by rework: nothing to report", one a BROKEN
+\* verdict with real findings, one an OK on the correct head; the next attempt undid a fix the
+\* lost read had confirmed). Under Findings (the cfg MCReadCardsFindings and its witnesses;
+\* FALSE elsewhere, where the variables stay empty and the actions below are off) every
+\* verdict a reader reports is a finding, tagged with its attempt, reader and generation
+\* (findings). The rule's Rework waits: a broken read reworks only when no other read of the
+\* attempt is open (reworkWaitsForReads, read_cards.go); the deadline is the open read's own,
+\* Late (a working read past ReadCardDeadline) and TakeBack (a ready read past the deal bound),
+\* each leaving it open no more. Rework carries every finding of the attempt, and the late
+\* reads, into the next attempt's brief (carried; reworkGiven, steps_review.go). The seat's
+\* own rework (SeatRework, a mind's) runs at once and retires the open reads (st "seat"). A
+\* reader still running a retired read reports it later (LateClose; lateReadUnit,
+\* friend_read.go): its finding is a late read (late), and it reaches the next attempt's
+\* brief at once while that attempt's work has not started (the work card's finding), else
+\* by the rework after it (FieldLateReads). StartWork is that work starting.
+\* NoFindingLost: every finding is of the current attempt, or carried, or a late read of a
+\* read the seat retired: the machine never makes a finding late. Two reversed witnesses break
+\* it, each alone: BugDropLate (a late close drops its finding, the code before this card) and
+\* BugReworkAtFirstBroken (the rule reworks at the first broken read, retiring the other
+\* while it works, so its finding misses the next attempt's brief). The code also retires a
+\* read past its deadline that the take-back has not yet taken at the rework (RetiredByRework);
+\* its verdict is then a late read too, a record beyond what NoFindingLost asks.
+
 EXTENDS Naturals, FiniteSets
 
 CONSTANT BugIgnoreSpent, Need, Live, BugNamesHeld, BugNoLiveReturn
@@ -77,22 +101,34 @@ Window == 0
 BugPlacedWindow == FALSE
 BugNoTop == FALSE
 
-VARIABLES attempt, pstate, need, cards, top
-vars == <<attempt, pstate, need, cards, top>>
+\* the findings (above): plain definitions, overridden by the findings cfgs
+Findings == FALSE
+BugDropLate == FALSE
+BugReworkAtFirstBroken == FALSE
+
+VARIABLES attempt, pstate, need, cards, top, findings, carried, late, started
+vars == <<attempt, pstate, need, cards, top, findings, carried, late, started>>
 
 \* cards: a set of records, one per card ever cut
 Card(a, r, g, st) == [att |-> a, rd |-> r, gen |-> g, st |-> st, run |-> FALSE, gone |-> 0]
+
+\* a reported verdict: its card's attempt, reader and generation, and the verdict
+Finding(c, v) == [att |-> c.att, rd |-> c.rd, gen |-> c.gen, v |-> v]
+FindingRecs == [att : 1..MaxAttempt, rd : Readers, gen : 0..MaxGen, v : {"ok", "broken"}]
 
 TypeOK ==
   /\ attempt \in 1..MaxAttempt
   /\ pstate \in {"review", "merging"}
   /\ need \in {0, 1, 2}
   /\ \A c \in cards : c.att \in 1..MaxAttempt /\ c.rd \in Readers /\ c.gen \in 0..MaxGen
-                      /\ c.st \in Open \cup Spent \cup {"away", "rework", "lost"}
+                      /\ c.st \in Open \cup Spent \cup {"away", "rework", "seat", "lost"}
                       /\ c.run \in BOOLEAN /\ c.gone \in 0..(Grace + 1)
   /\ top \in [1..MaxAttempt -> 0..MaxGen]
+  /\ findings \subseteq FindingRecs /\ carried \subseteq FindingRecs /\ late \subseteq FindingRecs
+  /\ started \in BOOLEAN
 
 Init == attempt = 1 /\ pstate = "review" /\ need = Need /\ cards = {} /\ top = [a \in 1..MaxAttempt |-> 0]
+        /\ findings = {} /\ carried = {} /\ late = {} /\ started = FALSE
 
 At(a) == {c \in cards : c.att = a}
 Mine(a, r) == {c \in At(a) : c.rd = r}
@@ -147,7 +183,7 @@ Deal ==
        /\ Cardinality(S) <= Wanted
        /\ cards' = cards \cup {Card(attempt, r, SeenNext(attempt, r), "ready") : r \in S}
        /\ top' = TopAfter(S)
-  /\ UNCHANGED <<attempt, pstate, need>>
+  /\ UNCHANGED <<attempt, pstate, need, findings, carried, late, started>>
 
 \* a card leaving working keeps no child and no count: what it was is its st alone
 Move(c, st) == cards' = (cards \ {c}) \cup {[c EXCEPT !.st = st, !.run = FALSE, !.gone = 0]}
@@ -156,11 +192,15 @@ Set(c, d) == cards' = (cards \ {c}) \cup {d}
 
 \* the take starts a child (run); a take recorded with no child started is Take then Lose
 \* (the same states: a separate action would add none)
-Take == \E c \in At(attempt) : c.st = "ready" /\ Set(c, [c EXCEPT !.st = "working", !.run = TRUE, !.gone = 0]) /\ UNCHANGED <<attempt, pstate, need, top>>
+Take == \E c \in At(attempt) : c.st = "ready" /\ Set(c, [c EXCEPT !.st = "working", !.run = TRUE, !.gone = 0]) /\ UNCHANGED <<attempt, pstate, need, top, findings, carried, late, started>>
 \* the member loses the child of a working card: restarted, crashed, its stage failed, or
 \* its take started none
-Lose == Live /\ \E c \in cards : c.st = "working" /\ c.run /\ Set(c, [c EXCEPT !.run = FALSE]) /\ UNCHANGED <<attempt, pstate, need, top>>
-Close == \E c \in At(attempt), v \in {"ok", "broken"} : c.st = "working" /\ c.run /\ Move(c, v) /\ UNCHANGED <<attempt, pstate, need, top>>
+Lose == Live /\ \E c \in cards : c.st = "working" /\ c.run /\ Set(c, [c EXCEPT !.run = FALSE]) /\ UNCHANGED <<attempt, pstate, need, top, findings, carried, late, started>>
+\* a verdict on time: under Findings it is a finding of the attempt
+Close == \E c \in At(attempt), v \in {"ok", "broken"} :
+  /\ c.st = "working" /\ c.run /\ Move(c, v)
+  /\ findings' = IF Findings THEN findings \cup {Finding(c, v)} ELSE findings
+  /\ UNCHANGED <<attempt, pstate, need, top, carried, late, started>>
 
 \* the member's live set names the card: while a child runs it, or, under BugNamesHeld,
 \* whenever it is working (a held launch with no child)
@@ -173,38 +213,78 @@ Beat ==
   /\ cards' = {IF c.st = "working"
                 THEN [c EXCEPT !.gone = IF c.run THEN 0 ELSE IF c.gone > Grace THEN Grace + 1 ELSE c.gone + 1]
                 ELSE c : c \in cards}
-  /\ UNCHANGED <<attempt, pstate, need, top>>
+  /\ UNCHANGED <<attempt, pstate, need, top, findings, carried, late, started>>
 \* the reconcile (sprint.LiveReturns): a working read its member's beats have not named for
 \* Grace windows goes back to the read deal, lost, spending no one
 LiveReturn ==
   /\ Live
   /\ ~BugNoLiveReturn
   /\ \E c \in cards : c.st = "working" /\ ~Named(c) /\ c.gone >= Grace /\ Move(c, "lost")
-  /\ UNCHANGED <<attempt, pstate, need, top>>
-Return == \E c \in At(attempt) : c.st \in Open /\ Move(c, "returned") /\ UNCHANGED <<attempt, pstate, need, top>>
-Late == \E c \in At(attempt) : c.st = "working" /\ Move(c, "late") /\ UNCHANGED <<attempt, pstate, need, top>>
-TakeBack == \E c \in At(attempt) : c.st \in Open /\ Move(c, "away") /\ UNCHANGED <<attempt, pstate, need, top>>
+  /\ UNCHANGED <<attempt, pstate, need, top, findings, carried, late, started>>
+Return == \E c \in At(attempt) : c.st \in Open /\ Move(c, "returned") /\ UNCHANGED <<attempt, pstate, need, top, findings, carried, late, started>>
+Late == \E c \in At(attempt) : c.st = "working" /\ Move(c, "late") /\ UNCHANGED <<attempt, pstate, need, top, findings, carried, late, started>>
+TakeBack == \E c \in At(attempt) : c.st \in Open /\ Move(c, "away") /\ UNCHANGED <<attempt, pstate, need, top, findings, carried, late, started>>
 
 Accept ==
   /\ pstate = "review"
   /\ Cardinality(CountedCards(attempt)) >= need
   /\ pstate' = "merging"
-  /\ UNCHANGED <<attempt, need, cards, top>>
+  /\ UNCHANGED <<attempt, need, cards, top, findings, carried, late, started>>
 
+OpenAt(a) == {c \in At(a) : c.st \in Open}
+
+\* what a rework carries into the next attempt's brief: every finding of the attempt and the
+\* late reads (reworkGiven)
+Carry == carried \cup {f \in findings : f.att = attempt} \cup late
+
+\* the rule's rework (read-broken: TickRuleRework, Rework): it waits while another read of
+\* the attempt is open (reworkWaitsForReads); BugReworkAtFirstBroken does not wait
 Rework ==
+  /\ pstate = "review"
+  /\ Broken(attempt)
+  /\ BugReworkAtFirstBroken \/ OpenAt(attempt) = {}
+  /\ attempt < MaxAttempt
+  /\ attempt' = attempt + 1
+  /\ cards' = {IF c.st \in Open THEN [c EXCEPT !.st = "rework"] ELSE c : c \in cards}
+  /\ carried' = Carry
+  /\ started' = FALSE
+  /\ UNCHANGED <<pstate, need, top, findings, late>>
+
+\* the seat's rework (rework <card>, a mind's): at once, its open reads retired
+SeatRework ==
+  /\ Findings
   /\ pstate = "review"
   /\ Broken(attempt)
   /\ attempt < MaxAttempt
   /\ attempt' = attempt + 1
-  /\ cards' = {IF c.st \in Open THEN [c EXCEPT !.st = "rework"] ELSE c : c \in cards}
-  /\ UNCHANGED <<pstate, need, top>>
+  /\ cards' = {IF c.st \in Open THEN [c EXCEPT !.st = "seat"] ELSE c : c \in cards}
+  /\ carried' = Carry
+  /\ started' = FALSE
+  /\ UNCHANGED <<pstate, need, top, findings, late>>
+
+\* the next attempt's work starts: its brief is read (the take reads its packet)
+StartWork == Findings /\ attempt > 1 /\ ~started /\ started' = TRUE
+             /\ UNCHANGED <<attempt, pstate, need, cards, top, findings, carried, late>>
+
+\* a reader still running a read a rework retired reports it: a late read (lateReadUnit). Its
+\* finding is kept (late), and reaches the next attempt's brief at once while that work has
+\* not started; BugDropLate drops it ("retired at ... by rework: nothing to report")
+LateClose ==
+  /\ Findings
+  /\ \E c \in cards, v \in {"ok", "broken"} :
+       /\ c.st \in {"rework", "seat"} /\ c.run
+       /\ Set(c, [c EXCEPT !.run = FALSE])
+       /\ findings' = findings \cup {Finding(c, v)}
+       /\ late' = IF BugDropLate THEN late ELSE late \cup {Finding(c, v)}
+       /\ carried' = IF BugDropLate \/ started THEN carried ELSE carried \cup {Finding(c, v)}
+  /\ UNCHANGED <<attempt, pstate, need, top, started>>
 
 \* the setting raised (nova-sprint set --reads, or a tier pinned after the accept):
 \* the count a card needs rises. A lower count is not modelled: it strands no card.
 SetReads ==
   /\ need < 2
   /\ need' \in (need + 1)..2
-  /\ UNCHANGED <<attempt, pstate, cards, top>>
+  /\ UNCHANGED <<attempt, pstate, cards, top, findings, carried, late, started>>
 
 \* ShortReadsBack: a merging card short of its reads goes back to review for the
 \* read it lacks (sprint.ShortReadsBack, steps_tick.go)
@@ -212,10 +292,11 @@ ShortReadsBack ==
   /\ pstate = "merging"
   /\ Cardinality(CountedCards(attempt)) < need
   /\ pstate' = "review"
-  /\ UNCHANGED <<attempt, need, cards, top>>
+  /\ UNCHANGED <<attempt, need, cards, top, findings, carried, late, started>>
 
 Next == Deal \/ Take \/ Lose \/ Close \/ Return \/ Late \/ TakeBack \/ Beat \/ LiveReturn
         \/ Accept \/ Rework \/ SetReads \/ ShortReadsBack
+        \/ SeatRework \/ StartWork \/ LateClose
 
 Spec == Init /\ [][Next]_vars
 
@@ -275,5 +356,15 @@ Keys == (1..MaxAttempt) \X Readers \X (0..MaxGen)
 Ghost(k) == \E c \in cards : Key(c) = k /\ c.st = "working" /\ ~c.run
 LeftWorking(k) == ~\E c \in cards : Key(c) = k /\ c.st = "working"
 NoGhostRead == \A k \in Keys : Ghost(k) ~> LeftWorking(k)
+
+\* NO FINDING LOST: every reported finding is of the attempt under review (or accepted at it),
+\* or carried into the next attempt's brief, or a late read of a read the seat's own rework
+\* retired, kept and carried by the rework after it: the machine never makes a finding late.
+\* BugDropLate and BugReworkAtFirstBroken each break it.
+NoFindingLost ==
+  \A f \in findings :
+    \/ f.att = attempt
+    \/ f \in carried
+    \/ f \in late /\ \E c \in cards : c.att = f.att /\ c.rd = f.rd /\ c.gen = f.gen /\ c.st = "seat"
 
 =============================================================================

@@ -145,7 +145,75 @@ const (
 	// for LiveGrace (LiveReturns): no child of its member runs it. The machine takes it back
 	// to the read deal, spending nothing of the reader's and marking no failure.
 	RetiredByLost = "lost"
+	// RetiredByRework is a read card a rework retired with the attempt it replaced (Rework,
+	// steps_review.go). Its reader's verdict, reported after it, is a late read: recorded on
+	// the primary and carried to the next attempt, never refused and never a standing read
+	// (lateReadOf, friend_read.go; tla/ReadCards.tla LateClose, NoFindingLost).
+	RetiredByRework = "rework"
 )
+
+// The fields a late read writes on its primary (lateReadUnit, friend_read.go):
+// FieldLateReads is the late reads' lines not yet carried by a rework, each "late read by
+// <reader> of attempt <n> at <head12>: <verdict>: <finding>", which the next rework carries
+// into its attempt's finding (reworkGiven) and clears; FieldLateReadCards is every read card
+// recorded late, so the same report twice is one record. tla/ReadCards.tla LateClose,
+// NoFindingLost.
+const (
+	FieldLateReads     = "late_reads"
+	FieldLateReadCards = "late_read_cards"
+)
+
+// reworkWaitsForReads says a rule's rework of the primary waits for its other reads: a read
+// of its attempt found it broken, and another read card of that attempt is still open (ready
+// or working) within its own deadline, the one readCardsTakeBack holds it to: a working read
+// ReadCardDeadline from its start (a friend's read asked the old way, FriendReadDeadline), a
+// ready one the deal bound (DealtMax) from its ask. Then
+// the primary stays in review, the broken read's finding stands, and the rework runs when
+// the other read reports, is retired (returned, late, away), or passes its deadline; it
+// carries every finding of the attempt's reads (reworkGiven). The clock is the snapshot's
+// (s.Now): a read with no stamp to hold it to is never waited for, so no wait is forever.
+// With one read (--reads 1) there is no other read, and a broken read reworks at once.
+// tla/ReadCards.tla Rework (its wait), ReadDeadline, NoFindingLost, BugReworkAtFirstBroken.
+func reworkWaitsForReads(s *Snapshot, pr *Card) bool {
+	if s == nil || s.Fleet == nil || pr == nil || pr.Col != Review {
+		return false
+	}
+	if _, broken := readCardsStanding(s, pr, nil); !broken {
+		return false
+	}
+	return len(readsWaitedFor(s, pr)) > 0
+}
+
+// readsWaitedFor is the primary's open read cards at its attempt that a rework waits for:
+// each within its own deadline (reworkWaitsForReads).
+func readsWaitedFor(s *Snapshot, pr *Card) []*Card {
+	var out []*Card
+	attempt := readAttempt(pr)
+	for _, rc := range openFriendReads(s, pr.ID) {
+		if max(rc.Int("attempt"), 1) != attempt {
+			continue
+		}
+		var until time.Time
+		switch rc.Col {
+		case Working:
+			deadline := ReadCardDeadline
+			if rc.F(FieldReadCard) == "" {
+				deadline = FriendReadDeadline // a friend's read asked the old way (friendReadAsk)
+			}
+			if start := readStart(rc); !start.IsZero() {
+				until = start.Add(deadline)
+			}
+		case Ready:
+			if asked := stampAt(rc, "asked"); !asked.IsZero() {
+				until = asked.Add(s.DealtMax())
+			}
+		}
+		if !until.IsZero() && s.Now.Before(until) {
+			out = append(out, rc)
+		}
+	}
+	return out
+}
 
 // isRead says the card is a read card.
 func isRead(c *Card) bool { return c != nil && c.F("kind") == "read" }

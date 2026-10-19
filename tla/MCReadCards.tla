@@ -4,6 +4,9 @@
 \* 2). BugIgnoreSpent = FALSE holds every invariant; TRUE is the reversed witness
 \* (MCReadCardsBrokenIgnoreSpent.cfg) that breaks NeverTwiceAfterSpent;
 \* BugNamesHeld and BugNoLiveReturn each break NoGhostRead (v1.2.14), under LiveSpec.
+\* Findings = TRUE (MCReadCardsFindings.cfg) checks the findings of a reworked attempt:
+\* NoFindingLost, which BugDropLate and BugReworkAtFirstBroken each break
+\* (MCReadCardsFindingsBrokenDropLate.cfg, MCReadCardsFindingsBrokenReworkAtFirstBroken.cfg).
 EXTENDS ReadCards
 
 \* the live reads' cfgs (Live = TRUE) check one attempt at the cfg's need: the beats and the

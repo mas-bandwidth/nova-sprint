@@ -545,6 +545,9 @@ MCReadCardsBrokenNoLiveReturn.cfg	MCReadCards.tla	temporal	NoGhostRead	ignore-te
 MCReadCardsBrokenPlainOnly.cfg	MCReadCards.tla	invariant	OkReadsAccept	ignore-terminal	readcards	required	-
 MCReadCardsBrokenPlacedWindow.cfg	MCReadCards.tla	invariant	NeverWedged	ignore-terminal	readcards	required	-
 MCReadCardsBrokenNoTop.cfg	MCReadCards.tla	invariant	NeverWedged	ignore-terminal	readcards	required	-
+MCReadCardsFindings.cfg	MCReadCards.tla	pass	-	ignore-terminal	readcards	required	-
+MCReadCardsFindingsBrokenDropLate.cfg	MCReadCards.tla	invariant	NoFindingLost	ignore-terminal	readcards	required	-
+MCReadCardsFindingsBrokenReworkAtFirstBroken.cfg	MCReadCards.tla	invariant	NoFindingLost	ignore-terminal	readcards	required	-
 MCReadVerdict.cfg	MCReadVerdict.tla	pass	-	ignore-terminal	readverdict	required	-
 MCReadVerdictNeedOne.cfg	MCReadVerdict.tla	pass	-	ignore-terminal	readverdict	required	-
 MCReadVerdictBrokenReadersOnly.cfg	MCReadVerdict.tla	temporal	AcceptedWorkCountsOk	ignore-terminal	readverdict	required	-
