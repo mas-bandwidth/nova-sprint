@@ -2,9 +2,10 @@
 (***************************************************************************)
 (* A soft dependency (`LAND-AFTER: <card-id>`, or `needs set --land-after`) *)
 (* orders landing without blocking the deal: cards a and b may be dealt,   *)
-(* worked and queued in parallel. A dependent stays out of the cut until  *)
-(* its target is landed or can be placed ahead in the same batch         *)
-(* (SoftIsOrderOnly, SoftLandsInOrder); a queued card that cannot be      *)
+(* worked and queued in parallel, and the lander orders a before b only    *)
+(* among cards both queued to merge. When a is not queued, b lands and a   *)
+(* re-merges onto it later (SoftIsOrderOnly); when a is queued, b lands    *)
+(* after it in the batch (SoftLandsInOrder); a queued card that cannot be  *)
 (* placed is skipped and the batch lands every other one                  *)
 (* (HeldNeverEmptiesBatch). If a is dropped, b's soft dependency is        *)
 (* released (docs/SPEC-SPRINT.md, docs/SPEC-CARD-CONTRACT.md).             *)
@@ -32,10 +33,13 @@
 (*                 (violates SoftNeverBlocksDeal)                          *)
 (*   "anyorder"    LandBatch takes queued heads ignoring soft dependencies *)
 (*                 (violates SoftLandsInOrder)                             *)
-(*   "softishard"  an unlanded target in any column is ignored, the       *)
-(*                 reversed new cut rule (violates SoftIsOrderOnly)       *)
-(*   "reportrefilters" rechecks a pushed batch after a concurrent soft    *)
-(*                 edge and target queue (violates BaseRecorded)          *)
+(*   "softishard"  an unqueued, unlanded target holds its dependent, the   *)
+(*                 rule before 2026-10-16 (violates SoftIsOrderOnly)       *)
+(*   "reportrefilters" Report rechecks the queue after MarkPush and can    *)
+(*                 refuse a pushed batch (violates BaseRecorded)           *)
+(*   "builtoncut"  the cut ignores builtOn and places a card whose head     *)
+(*                 carries an unlanded target's commits (violates           *)
+(*                 BuiltOnHeld)                                             *)
 (*   "heldblocks"  one queued card that cannot be placed empties the       *)
 (*                 batch, the stream refused whole (violates               *)
 (*                 HeldNeverEmptiesBatch)                                  *)
@@ -66,11 +70,12 @@ VARIABLES
     recordedLandings,       \* SUBSET Cards: cards recorded by Report
     inFlightBatch,          \* SUBSET Cards: pushed batch awaiting Report
     reportRefused,          \* BOOLEAN: Report refused a pushed batch
-    hardRefused             \* BOOLEAN: MarkRefuse ran (bounds it to once)
+    hardRefused,            \* BOOLEAN: MarkRefuse ran (bounds it to once)
+    builtOn                 \* [Cards -> SUBSET Cards]: t -> cards whose head carries t's commits
 
-phaseVars == <<cutOrder, markedOrder, queuedAtMark, baseCommits, recordedLandings, inFlightBatch, reportRefused, hardRefused>>
-vars == <<col, soft, needs, landedOrder, reworked, droppedEver, dealtWhileSoftUnlanded, held, heldEver, outOfOrder, cutOrder, markedOrder, queuedAtMark, baseCommits, recordedLandings, inFlightBatch, reportRefused, hardRefused>>
-rest == <<held, heldEver, outOfOrder, cutOrder, markedOrder, queuedAtMark, baseCommits, recordedLandings, inFlightBatch, reportRefused, hardRefused>>
+phaseVars == <<cutOrder, markedOrder, queuedAtMark, baseCommits, recordedLandings, inFlightBatch, reportRefused, hardRefused, builtOn>>
+vars == <<col, soft, needs, landedOrder, reworked, droppedEver, dealtWhileSoftUnlanded, held, heldEver, outOfOrder, cutOrder, markedOrder, queuedAtMark, baseCommits, recordedLandings, inFlightBatch, reportRefused, hardRefused, builtOn>>
+rest == <<held, heldEver, outOfOrder, cutOrder, markedOrder, queuedAtMark, baseCommits, recordedLandings, inFlightBatch, reportRefused, hardRefused, builtOn>>
 
 Placed(x) == col[x] # "dropped"
 
@@ -99,8 +104,8 @@ Free(x) == col[x] = "queued" /\ x \notin held /\ NeedsMet(x)
 \* have no soft dependencies of their own, so one level is the whole order).
 SoftPlaceable(s) ==
     IF Broken = "softishard"
-    THEN col[s] \in {"landed", "dropped"} \/ col[s] # "queued" \/ Free(s)
-    ELSE col[s] \in {"landed", "dropped"} \/ Free(s)
+    THEN ~Placed(s) \/ col[s] = "landed" \/ Free(s)
+    ELSE col[s] # "queued" \/ Free(s)
 
 \* Placeable: what MergeSoftOrder places this batch (LandOrderBlocked is empty).
 Placeable(x) == Free(x) /\ (Broken = "anyorder" \/ \A s \in soft[x] : SoftPlaceable(s))
@@ -118,8 +123,16 @@ RECURSIVE SetToSeq(_)
 SetToSeq(S) == IF S = {} THEN <<>> ELSE LET e == CHOOSE e \in S : TRUE IN <<e>> \o SetToSeq(S \ {e})
 
 \* The batch's order: the cards with no soft dependency in the batch first, then the rest.
-Ahead == {x \in Batch : \A s \in soft[x] : s \notin Batch}
-BatchOrder == SetToSeq(Ahead) \o SetToSeq(Batch \ Ahead)
+AheadOf(S) == {x \in S : \A s \in soft[x] : s \notin S}
+OrderOf(S) == SetToSeq(AheadOf(S)) \o SetToSeq(S \ AheadOf(S))
+BatchOrder == OrderOf(Batch)
+
+\* A card whose head carries an unlanded, undropped target's commits is held out of
+\* the cut before any scope check or merge. The order-only rule is unchanged for a
+\* card not built on its target (tla/SoftDependency.tla BuiltOnHeld).
+HeldBuiltOn(x) == \E t \in Cards : x \in builtOn[t] /\ col[t] \notin {"landed", "dropped"}
+CutBatch == IF Broken = "builtoncut" THEN Batch ELSE {x \in Batch : ~HeldBuiltOn(x)}
+CutOrder == OrderOf(CutBatch)
 
 InSeq(s, e) == \E i \in 1..Len(s) : s[i] = e
 
@@ -145,10 +158,11 @@ TypeOK ==
     /\ inFlightBatch \subseteq Cards
     /\ reportRefused \in BOOLEAN
     /\ hardRefused \in BOOLEAN
+    /\ builtOn \in [Cards -> SUBSET Cards]
 
 Init ==
     /\ col = [x \in Cards |-> IF x = "c" THEN "waiting" ELSE "ready"]
-    /\ soft = [x \in Cards |-> IF x = "b" /\ Broken # "reportrefilters" THEN {"a"} ELSE {}]
+    /\ soft = [x \in Cards |-> IF x = "b" THEN {"a"} ELSE {}]
     /\ needs = [x \in Cards |-> IF x = "c" THEN {"a"} ELSE {}]
     /\ landedOrder = <<>>
     /\ reworked = [x \in Cards |-> FALSE]
@@ -165,6 +179,7 @@ Init ==
     /\ inFlightBatch = {}
     /\ reportRefused = FALSE
     /\ hardRefused = FALSE
+    /\ builtOn = [x \in Cards |-> {}]
 
 \* Waiting card whose hard needs have landed moves to ready.
 Resolve(x) ==
@@ -193,15 +208,16 @@ Finish(x) ==
 
 Queue(x) == Finish(x)
 
-\* The soft order can be edited while a pushed card awaits its report. The
-\* reportrefilters witness adds b's edge to a, then lets a finish/queue; the
-\* fixed Report keeps the decision made at MarkPush.
-AddSoftAfterMark ==
-    /\ Broken = "reportrefilters"
-    /\ "b" \in inFlightBatch
-    /\ "a" \notin soft["b"]
-    /\ soft' = [soft EXCEPT !["b"] = @ \cup {"a"}]
-    /\ UNCHANGED <<col, needs, landedOrder, reworked, droppedEver,
+\* An outside rebase carries a card's head onto an unlanded soft target's commits.
+\* Its head is then built on that target: the fixed cut holds it out, the
+\* builtoncut witness places it (violates BuiltOnHeld).
+Carry ==
+    /\ Broken = "builtoncut"
+    /\ "b" \notin inFlightBatch
+    /\ col["a"] \notin {"landed", "dropped"}
+    /\ "b" \notin builtOn["a"]
+    /\ builtOn' = [builtOn EXCEPT !["a"] = @ \cup {"b"}]
+    /\ UNCHANGED <<col, soft, needs, landedOrder, reworked, droppedEver,
                    dealtWhileSoftUnlanded, held, heldEver, outOfOrder,
                    cutOrder, markedOrder, queuedAtMark, baseCommits,
                    recordedLandings, inFlightBatch, reportRefused, hardRefused>>
@@ -210,15 +226,15 @@ AddSoftAfterMark ==
 Cut ==
     /\ cutOrder = <<>>
     /\ inFlightBatch = {}
-    /\ Batch # {}
-    /\ cutOrder' = BatchOrder
+    /\ CutBatch # {}
+    /\ cutOrder' = CutOrder
     /\ UNCHANGED <<col, soft, needs, landedOrder, reworked, droppedEver,
                    dealtWhileSoftUnlanded, held, heldEver, outOfOrder,
                    markedOrder, queuedAtMark, baseCommits, recordedLandings,
-                   inFlightBatch, reportRefused, hardRefused>>
+                   inFlightBatch, reportRefused, hardRefused, builtOn>>
 
 LandOrderBlockedAtMark(x, ahead) ==
-    \E t \in soft[x] : col[t] \notin {"landed", "dropped"} /\ t \notin ahead
+    \E t \in soft[x] : col[t] = "queued" /\ t \notin ahead
 
 RECURSIVE GuardedPrefix(_, _)
 GuardedPrefix(order, ahead) ==
@@ -232,7 +248,7 @@ MarkOrder == IF Broken \in {"cutunguarded", "anyorder"} THEN cutOrder ELSE Guard
 
 CutBlockedAtMark ==
     \E i \in 1..Len(cutOrder) : \E t \in soft[cutOrder[i]] :
-        col[t] \notin {"landed", "dropped"} /\ ~(\E j \in 1..(i-1) : cutOrder[j] = t)
+        col[t] = "queued" /\ ~(\E j \in 1..(i-1) : cutOrder[j] = t)
 
 \* MarkLanding is the final store step before push. It reuses LandOrderBlocked and
 \* pushes only the safe prefix. internal/sprint/landing_mark.go MarkLanding.
@@ -250,7 +266,7 @@ MarkPush ==
               ~(\E j \in 1..(i-1) : MarkOrder[j] = t))
     /\ UNCHANGED <<col, soft, needs, landedOrder, reworked, droppedEver,
                    dealtWhileSoftUnlanded, held, heldEver, cutOrder,
-                   recordedLandings, reportRefused, hardRefused>>
+                   recordedLandings, reportRefused, hardRefused, builtOn>>
 
 \* MarkLanding's other refusals (a pin not queued, its head moved, re-pointed, its reads
 \* short; landing_mark.go) are all or nothing: nothing is marked and nothing is pushed,
@@ -267,7 +283,7 @@ MarkRefuse ==
     /\ UNCHANGED <<col, soft, needs, landedOrder, reworked, droppedEver,
                    dealtWhileSoftUnlanded, held, heldEver, outOfOrder,
                    markedOrder, queuedAtMark, baseCommits, recordedLandings,
-                   inFlightBatch, reportRefused>>
+                   inFlightBatch, reportRefused, builtOn>>
 
 SkipCut ==
     /\ cutOrder # <<>>
@@ -277,11 +293,11 @@ SkipCut ==
     /\ UNCHANGED <<col, soft, needs, landedOrder, reworked, droppedEver,
                    dealtWhileSoftUnlanded, held, heldEver, outOfOrder,
                    markedOrder, queuedAtMark, baseCommits, recordedLandings,
-                   inFlightBatch, reportRefused, hardRefused>>
+                   inFlightBatch, reportRefused, hardRefused, builtOn>>
 
 ReportBlocked ==
     \E i \in 1..Len(markedOrder) : \E t \in soft[markedOrder[i]] :
-        col[t] \notin {"landed", "dropped"} /\ ~(\E j \in 1..(i-1) : markedOrder[j] = t)
+        col[t] = "queued" /\ ~(\E j \in 1..(i-1) : markedOrder[j] = t)
 
 \* Report honors the fixed mark. The broken witness keeps the former report recheck
 \* from steps_merge.go:502 and can refuse a batch already pushed.
@@ -300,7 +316,7 @@ Report ==
     /\ markedOrder' = <<>>
     /\ inFlightBatch' = {}
     /\ UNCHANGED <<soft, needs, reworked, droppedEver, dealtWhileSoftUnlanded,
-                   held, heldEver, outOfOrder, queuedAtMark, baseCommits, hardRefused>>
+                   held, heldEver, outOfOrder, queuedAtMark, baseCommits, hardRefused, builtOn>>
 
 Land(x) == InSeq(markedOrder, x) /\ Report
 
@@ -348,7 +364,7 @@ NextProgress ==
     \/ MarkPush
     \/ SkipCut
     \/ Report
-    \/ AddSoftAfterMark
+    \/ Carry
     \/ \E x \in Cards : Resolve(x) \/ Deal(x) \/ Queue(x) \/ Release(x)
 
 Next ==
@@ -374,12 +390,18 @@ SoftNeverBlocksDeal ==
 \* the batch they land in together.
 SoftLandsInOrder == ~outOfOrder
 
-\* SoftIsOrderOnly: a placed card's soft targets are either landed/released or
-\* free and placeable ahead. In particular, a target in ready, working or review
-\* keeps its dependent out of the cut (reversed witness "softishard").
+\* SoftIsOrderOnly: a soft dependency orders only among queued cards. A free queued
+\* card none of whose soft dependencies is queued is placed in the batch, whatever
+\* column its targets are in (reversed witness "softishard": an unqueued, unlanded
+\* target holds it).
 SoftIsOrderOnly ==
-    \A x \in Cards : Placeable(x) =>
-        \A s \in soft[x] : col[s] \in {"landed", "dropped"} \/ Free(s)
+    \A x \in Cards : (Free(x) /\ \A s \in soft[x] : col[s] # "queued") => Placeable(x)
+
+\* BuiltOnHeld: a card is never in the cut while a target whose commits its head
+\* carries is unlanded and undropped (reversed witness "builtoncut": the cut ignores
+\* builtOn). A card not built on its target keeps the order-only rule.
+BuiltOnHeld ==
+    \A i \in 1..Len(cutOrder) : ~HeldBuiltOn(cutOrder[i])
 
 \* HeldNeverEmptiesBatch: a card that cannot be placed is skipped; every placeable
 \* queued card is in the batch (reversed witness "heldblocks": one held card empties it).

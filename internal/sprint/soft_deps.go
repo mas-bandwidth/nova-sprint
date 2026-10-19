@@ -152,19 +152,20 @@ func resolveSoftTarget(s *Snapshot, id string) string {
 	return ""
 }
 
-// LandOrderBlocked returns the soft dependencies of c that have not landed
-// and are not included ahead of c in this landing. A target in any other column
-// stays out of the cut until it lands (a dropped or replaced target is released
-// or relinked by SoftDepsOf).
+// LandOrderBlocked returns the soft dependencies of c that are queued to merge
+// (in the merging column of c's stream) and not included ahead of c in landing.
+// A soft dependency orders only among cards queued to merge: one not in merging
+// is ignored for this batch, c lands, and the target re-merges onto it later.
 //
-// tla/SoftDependency.tla LandOrderBlockedAtMark, SoftIsOrderOnly, SoftLandsInOrder
+// tla/SoftDependency.tla LandOrderBlocked, SoftIsOrderOnly, SoftLandsInOrder,
+// BaseRecorded and BaseSoftOrder (the order is judged at the mark before the push)
 func LandOrderBlocked(s *Snapshot, c *Card, landing map[string]bool) []string {
 	if c == nil {
 		return nil
 	}
 	var out []string
 	for _, dep := range SoftDepsOf(s, c) {
-		if t := s.Work.Placed(dep); t != nil && t.Col != Landed && !landing[dep] {
+		if t := s.Work.Placed(dep); t != nil && t.Col == Merging && t.Row == c.Row && !landing[dep] {
 			out = append(out, dep)
 		}
 	}
@@ -177,6 +178,10 @@ func LandOrderBlocked(s *Snapshot, c *Card, landing map[string]bool) []string {
 // cannot be placed ahead of it is skipped for this batch without blocking the
 // cards that can be placed; softWhy names each such card and its soft
 // dependency, whether or not other cards were placed.
+//
+// A pin already marked landing at its head is kept: its order was judged at the mark
+// before the push, and a target queued since never refuses it (tla/SoftDependency.tla
+// BaseRecorded and BaseSoftOrder, Report).
 //
 // tla/SoftDependency.tla MergeSoftOrder, SoftLandsInOrder, HeldNeverEmptiesBatch
 func MergeSoftOrder(s *Snapshot, cards []*Card) (ordered []*Card, softWhy string) {
