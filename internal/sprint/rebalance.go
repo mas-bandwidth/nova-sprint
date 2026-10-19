@@ -250,6 +250,9 @@ func rebalanceTo(s *Snapshot, units []*rebalanceUnit, g *rebalanceUnit, pr, wc *
 			if !s.FleetTakes(tier) || slices.Contains(StagingRefusers(wc), u.name) {
 				continue
 			}
+			if !s.gateEligible(pr, u.name) {
+				continue // never to a machine whose gates or facts refuse the card (gates_only.go)
+			}
 			if _, _, why, byFriend := s.routeOf(pr, wc, nil, u.name); why != "" || byFriend {
 				continue
 			}

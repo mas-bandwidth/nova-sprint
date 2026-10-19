@@ -18,6 +18,19 @@
 \* GenericNeverToGatesOnly. Broken = "readsto" deals the cards right but reads go to every
 \* member up; it fails ReadsNeverToGatesOnly. Broken = "nogates" drops the gates on a
 \* rejoin (the control card made again without gates_only); it fails GenericNeverToGatesOnly.
+\*
+\* Move (v1.6.8): every place that moves an attempt already on a member to another (the
+\* next attempt's deal, steps_review.go; the redeal of a member gone down or held and the
+\* level, steps_work.go; the rebalance, rebalance.go) holds the one rule the deal holds,
+\* gates and facts together (gates_only.go gateEligible, AdmitGate). Broken = "movegates" is
+\* the code before v1.6.8 for the next attempt and the redeal: the gates alone, so the
+\* windows card leaves "win" for the plain bench "lin" that lacks the fact; it fails
+\* DealtOnlyWhereTheNeedIs (in the fleet: a GATE-NEEDS darwin, arm64 card moved off the one
+\* Mac to a Linux bench, every attempt there HOLD, the bound marking a sound brief
+\* defective: a card dealt to a member that can never satisfy it, a livelock). Broken =
+\* "movefree" is the level and the rebalance before v1.6.8: no check at all; it fails
+\* DealtOnlyWhereTheNeedIs too. "lin2" is a second plain bench so a sound move exists
+\* (NeverMoved is violated in the pass instance: Move is not vacuous).
 
 EXTENDS FiniteSets
 
@@ -29,8 +42,8 @@ Needs == [c \in Cards |-> CASE c = "gen" -> {}
                             [] c = "wcard" -> {"windows"}
                             [] OTHER -> {"windows", "linux"}]
 
-VARIABLES ctlGates, placed, read, rejoined
-vars == <<ctlGates, placed, read, rejoined>>
+VARIABLES ctlGates, placed, read, rejoined, moved
+vars == <<ctlGates, placed, read, rejoined, moved>>
 
 \* a member's control card is made by the sync's add with its gates in the same write
 \* (fleetSyncPlan, DriftAdd), and a card the sync held comes back with its release and its
@@ -40,19 +53,20 @@ Init ==
   /\ placed = [c \in Cards |-> "ready"]
   /\ read = [c \in Cards |-> "none"]
   /\ rejoined = FALSE
+  /\ moved = FALSE
 
 \* fleet sync writes each member's gates from its machine row onto its control card
 Sync ==
   /\ \E m \in Members : ctlGates[m] # GatesOf[m]
   /\ ctlGates' = GatesOf
-  /\ UNCHANGED <<placed, read, rejoined>>
+  /\ UNCHANGED <<placed, read, rejoined, moved>>
 
 \* a control card made again (a rejoin): the sync's add writes gates_only with the width
 Rejoin(m) ==
   /\ ~rejoined
   /\ ctlGates' = [ctlGates EXCEPT ![m] = IF Broken = "nogates" THEN {} ELSE GatesOf[m]]
   /\ rejoined' = TRUE
-  /\ UNCHANGED <<placed, read>>
+  /\ UNCHANGED <<placed, read, moved>>
 
 \* gatesOnlyAdmits: a member with no gates admits every card; one with gates admits a
 \* card only when its GATE-NEEDS names one of them
@@ -64,7 +78,7 @@ Deal(m, c) ==
   /\ Broken = "nofilter" \/ Admits(m, c)
   /\ Needs[c] \subseteq Facts[m]
   /\ placed' = [placed EXCEPT ![c] = m]
-  /\ UNCHANGED <<ctlGates, read, rejoined>>
+  /\ UNCHANGED <<ctlGates, read, rejoined, moved>>
 
 \* a read of a dealt card (readUnitsOf): never by a gates-only member, never its worker
 Read(m, c) ==
@@ -73,12 +87,27 @@ Read(m, c) ==
   /\ m # placed[c]
   /\ Broken = "readsto" \/ ctlGates[m] = {}
   /\ read' = [read EXCEPT ![c] = m]
-  /\ UNCHANGED <<ctlGates, placed, rejoined>>
+  /\ UNCHANGED <<ctlGates, placed, rejoined, moved>>
+
+\* gateEligible: the member's gates admit the card and its facts carry every need
+Eligible(m, c) == Admits(m, c) /\ Needs[c] \subseteq Facts[m]
+
+\* a move of an attempt already on a member (rework's next attempt, a redeal, the level,
+\* the rebalance): to another member the one rule admits
+Move(m, c) ==
+  /\ placed[c] \in Members
+  /\ m # placed[c]
+  /\ CASE Broken = "movefree" -> TRUE
+       [] Broken = "movegates" -> Admits(m, c)
+       [] OTHER -> Eligible(m, c)
+  /\ placed' = [placed EXCEPT ![c] = m]
+  /\ moved' = TRUE
+  /\ UNCHANGED <<ctlGates, read, rejoined>>
 
 Next ==
   \/ Sync
   \/ \E m \in Members : Rejoin(m)
-  \/ \E m \in Members, c \in Cards : Deal(m, c) \/ Read(m, c)
+  \/ \E m \in Members, c \in Cards : Deal(m, c) \/ Read(m, c) \/ Move(m, c)
 
 Spec == Init /\ [][Next]_vars /\ WF_vars(Sync)
           /\ \A m \in Members, c \in Cards : WF_vars(Deal(m, c))
@@ -88,6 +117,7 @@ TypeOK ==
   /\ placed \in [Cards -> Members \cup {"ready"}]
   /\ read \in [Cards -> Members \cup {"none"}]
   /\ rejoined \in BOOLEAN
+  /\ moved \in BOOLEAN
 
 \* the rule: a card that names none of a gates-only member's gates never reaches it.
 \* GatesOf is the machine row: the rule is held against the row, the truth the deal must
@@ -104,6 +134,9 @@ DealtOnlyWhereTheNeedIs == \A c \in Cards : placed[c] \in Members => Needs[c] \s
 
 \* the windows card and the generic card are both dealt: gates-only narrows, never starves
 WindowsCardDealt == <>(placed["wcard"] = "win")
-GenericCardDealt == <>(placed["gen"] = "lin")
+GenericCardDealt == <>(placed["gen"] \in {"lin", "lin2"})
+
+\* the cover: a sound move is reachable (expected violated in MCGatesOnlyMoveCover.cfg)
+NeverMoved == ~moved
 
 =============================================================================

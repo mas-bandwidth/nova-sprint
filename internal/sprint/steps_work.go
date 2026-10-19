@@ -3583,7 +3583,7 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 			// member at its width takes no more.
 			// a bench card goes to a member of its bench alone: with none of it up it is
 			// withdrawn, and waits ready for its bench (bench_deal.go)
-			if m := rr.nextFree(s.admitGatesOnlyWork(c, onlyBench(without(without(up, StagingRefusers(c)), notLaunching(s, up, c)), benchOfWork(s, c))), q, lanes, widths, ""); m != "" {
+			if m := rr.nextFree(s.admitGateWork(c, onlyBench(without(without(up, StagingRefusers(c)), notLaunching(s, up, c)), benchOfWork(s, c))), q, lanes, widths, ""); m != "" {
 				rr.moved(m)
 				moves[c.ID] = m
 				q[m]++
@@ -3747,7 +3747,9 @@ func levelWith(s *Snapshot, p *Plan, up []string, rr *round, moves roundMoves, h
 			// a bench card is never moved off its bench: the members its BENCH line does not
 			// name are avoided as a member that refused it at staging is (bench_deal.go)
 			// nor a member that cannot launch its route (notLaunching: fault 10)
-			to = target(rr, up, n, held, lanes, long, append(append(StagingRefusers(q[i]), notBench(up, benchOfWork(s, q[i]))...), notLaunching(s, up, q[i])...))
+			// nor a member whose gates or facts refuse it (gateEligible, gates_only.go)
+			avoid := append(append(StagingRefusers(q[i]), notBench(up, benchOfWork(s, q[i]))...), notLaunching(s, up, q[i])...)
+			to = target(rr, up, n, held, lanes, long, append(avoid, s.notGateWork(q[i], up)...))
 		}
 		if to == "" {
 			// no card of this source has a target: a less-over source may still
