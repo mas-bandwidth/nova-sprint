@@ -310,7 +310,7 @@ Files == {}
 \* unmarked is queued there, and Repair leaves it alone), so the guards are
 \* not constant-TRUE.
 
-VARIABLES queue, att, landed, epoch, base, tip, recordedTip, forwardPending, dealtTip,
+VARIABLES queue, att, landed, epoch, base, tip, recordedTip, forwardPending, checkedTip,
           lphase, lq, lbatch, lep, lrep, ltip, tries,
           events, badcaller, stalepush, stalerec, lpushed,
           lref, lkind, ready, review, stop, carried, ownstop,
@@ -327,8 +327,8 @@ remote == <<base, tip>>
 lander == <<lphase, lq, lbatch, lep, lrep, ltip, tries, lref, lkind, lcheckneed>>
 ghosts == <<badcaller, stalepush, stalerec, lpushed, carried, ownstop, shortland, repairback, capJudged>>
 bound == <<bat, prevw, prevat, allconf, widens, paths, regneed, cleared, twice, cbound, carryoff, wrongmark,
-           recordedTip, forwardPending, dealtTip>>
-vars == <<queue, att, landed, epoch, base, tip, recordedTip, forwardPending, dealtTip, lphase, lq, lbatch, lep, lrep, ltip, tries,
+           recordedTip, forwardPending, checkedTip>>
+vars == <<queue, att, landed, epoch, base, tip, recordedTip, forwardPending, checkedTip, lphase, lq, lbatch, lep, lrep, ltip, tries,
           events, badcaller, stalepush, stalerec, lpushed,
           lref, lkind, ready, review, stop, carried, ownstop,
           oks, need, reread, shortland, lcheckneed, markneed,
@@ -387,7 +387,7 @@ TypeOK ==
   /\ tip \in Nat
   /\ recordedTip \in Nat
   /\ forwardPending \subseteq Cards
-  /\ dealtTip \in [Cards -> Nat]
+  /\ checkedTip \in [Cards -> Nat]
   /\ lphase \in {"idle", "read", "built", "checked", "pushed", "reported", "refusing"}
   /\ lep \in 0..MaxEpoch
   /\ lrep \in 0..MaxEpoch
@@ -420,7 +420,7 @@ Init ==
   /\ queue = <<>> /\ att = [c \in Cards |-> IF Broken = "capaccepted" THEN 4 ELSE 1] /\ landed = {} /\ epoch = 0
   /\ base = {} /\ tip = 0
   /\ recordedTip = 0 /\ forwardPending = {}
-  /\ dealtTip = [c \in Cards |-> 0]
+  /\ checkedTip = [c \in Cards |-> 0]
   /\ lphase = "idle" /\ lq = <<>> /\ lbatch = <<>> /\ lep = 0 /\ lrep = 0 /\ ltip = 0 /\ tries = 0
   /\ events = 0 /\ badcaller = FALSE /\ stalepush = FALSE /\ stalerec = FALSE /\ lpushed = {}
   /\ lref = <<>> /\ lkind = "own" /\ ready = {} /\ review = {} /\ stop = "none"
@@ -658,7 +658,8 @@ Refuse ==
   /\ UNCHANGED <<lcheckneed, lq, lbatch, lep, lrep, ltip, tries, lkind>>
   /\ UNCHANGED events /\ UNCHANGED <<badcaller, stalepush, stalerec, lpushed, repairback>>
 
-Land == Read \/ Build \/ Check \/ Push \/ Report \/ Refuse
+Land == (Read \/ Build \/ Check \/ Push \/ Report \/ Refuse)
+  /\ UNCHANGED <<recordedTip, forwardPending, checkedTip>>
 
 \* ---- the outside, each event counted ----
 
@@ -674,7 +675,6 @@ Accept ==
     /\ c \notin Range(queue) /\ Current(c) \notin landed
     /\ c \notin Sentinels
     /\ (Broken = "staleaccept" \/ c \notin forwardPending)
-    /\ dealtTip' = [dealtTip EXCEPT ![c] = IF Broken = "staleaccept" /\ c \in forwardPending THEN recordedTip - 1 ELSE recordedTip]
     /\ oks[c] >= need
     /\ queue' = SubSeq(queue, 1, i - 1) \o <<c>> \o SubSeq(queue, i, Len(queue))
     /\ ready' = ready \ {c} /\ review' = review \ {c} /\ reread' = reread \ {c}
@@ -684,7 +684,7 @@ Accept ==
     /\ rhead' = [rhead EXCEPT ![c] = 0]
     /\ UNCHANGED <<att, landed, epoch, stop, oks, need, shortland, markneed>> /\ UNCHANGED remote /\ UNCHANGED lander
     /\ UNCHANGED <<bat, prevw, prevat, allconf, widens, paths, regneed, cleared, twice, cbound, carryoff, wrongmark,
-                    recordedTip, forwardPending>>
+                    recordedTip, forwardPending, checkedTip>>
 
 Return ==
   \E c \in Range(queue) :
@@ -744,6 +744,7 @@ ReadOk ==
 MoveBase ==
   /\ tip' = tip + 1
   /\ UNCHANGED store /\ UNCHANGED base /\ UNCHANGED lander /\ UNCHANGED shortland /\ UNCHANGED bound
+  /\ UNCHANGED <<recordedTip, forwardPending, checkedTip>>
 
 \* The coordinator records a moved base and marks every card pending in the
 \* same store transition. Recheck clears one card only at the recorded tip;
@@ -755,17 +756,16 @@ ForwardMerge ==
   /\ tip > recordedTip
   /\ recordedTip' = tip
   /\ forwardPending' = Cards
-  /\ dealtTip' = [c \in Cards |-> tip]
   /\ UNCHANGED <<queue, att, landed, epoch, base, tip, lphase, lq, lbatch, lep, lrep, ltip, tries,
                   events, badcaller, stalepush, stalerec, lpushed, lref, lkind, ready, review, stop, carried,
                   ownstop, oks, need, reread, shortland, lcheckneed, markneed, rhead, offer, repairback,
                   bat, prevw, prevat, allconf, widens, paths, regneed, cleared, twice, cbound, carryoff,
-                  wrongmark, capJudged>>
+                  wrongmark, capJudged, checkedTip>>
 
 RecheckForwardMergedCard ==
   \E c \in forwardPending :
     /\ forwardPending' = forwardPending \ {c}
-    /\ dealtTip' = [dealtTip EXCEPT ![c] = recordedTip]
+    /\ checkedTip' = [checkedTip EXCEPT ![c] = recordedTip]
     /\ UNCHANGED <<queue, att, landed, epoch, base, tip, recordedTip, lphase, lq, lbatch, lep, lrep, ltip, tries,
                     events, badcaller, stalepush, stalerec, lpushed, lref, lkind, ready, review, stop, carried,
                     ownstop, oks, need, reread, shortland, lcheckneed, markneed, rhead, offer, repairback,
@@ -783,6 +783,7 @@ Outside ==
   /\ events' = events + 1
   /\ UNCHANGED <<badcaller, stalepush, stalerec, carried, ownstop, repairback, capJudged>>
   /\ (Accept \/ Return \/ Rework \/ OtherLand \/ Clear \/ MoveBase \/ Crash \/ Resume \/ SetReads \/ ReadOk)
+  /\ UNCHANGED <<recordedTip, forwardPending, checkedTip>>
   /\ lpushed' = IF epoch' # epoch THEN {} ELSE lpushed
 
 \* ---- the tick (v1.2.6) ----
@@ -800,6 +801,7 @@ ShortBack ==
        /\ reread' = reread \cup {c}
   /\ UNCHANGED <<att, landed, epoch, ready, review, stop, oks, need, markneed>> /\ UNCHANGED offers /\ UNCHANGED bound
   /\ UNCHANGED remote /\ UNCHANGED lander /\ UNCHANGED events /\ UNCHANGED ghosts
+  /\ UNCHANGED <<recordedTip, forwardPending, checkedTip>>
 
 \* OfferAccept: the machine's ready to accept on a card in review whose reads
 \* stand at its head (sprint's reviewJudgment: the accept held for a mind, as a
@@ -812,6 +814,7 @@ OfferAccept ==
        /\ offer' = offer \cup {c}
   /\ UNCHANGED <<queue, att, landed, epoch, ready, review, stop, rhead>> /\ UNCHANGED reads /\ UNCHANGED bound
   /\ UNCHANGED remote /\ UNCHANGED lander /\ UNCHANGED events /\ UNCHANGED ghosts
+  /\ UNCHANGED <<recordedTip, forwardPending, checkedTip>>
 
 \* Repair: the repair verb returns a queued card short of its reads to review
 \* (cmd/nova-sprint/repair.go cmdRepair -> sprint.Rule6Merging ->
@@ -840,6 +843,7 @@ Repair ==
   /\ UNCHANGED <<att, landed, epoch, ready, review, stop, oks, need, markneed>> /\ UNCHANGED offers /\ UNCHANGED bound
   /\ UNCHANGED remote /\ UNCHANGED lander /\ UNCHANGED events
   /\ UNCHANGED <<badcaller, stalepush, stalerec, lpushed, carried, ownstop, shortland, capJudged>>
+  /\ UNCHANGED <<recordedTip, forwardPending, checkedTip>>
 
 \* With the bound on, a reworked card comes back: its next attempt worked, read
 \* and accepted, queued at the end (the machine's own step, fair).
@@ -847,8 +851,10 @@ Redeal ==
   /\ WaysOn
   /\ \E c \in ready :
        /\ c \notin Range(queue)
+       /\ c \notin forwardPending
        /\ queue' = Append(queue, c) /\ ready' = ready \ {c}
   /\ UNCHANGED <<att, landed, epoch, review, stop>> /\ UNCHANGED reads /\ UNCHANGED offers /\ UNCHANGED remote /\ UNCHANGED lander
+  /\ UNCHANGED <<recordedTip, forwardPending, checkedTip>>
   /\ UNCHANGED events /\ UNCHANGED ghosts /\ UNCHANGED bound
 
 Next == Land \/ ShortBack \/ OfferAccept \/ Repair \/ Redeal \/ Outside \/ ForwardMerge \/ RecheckForwardMergedCard
@@ -863,7 +869,7 @@ FairSpec == Spec /\ WF_vars(Land) /\ WF_vars(ShortBack) /\ WF_vars(Redeal)
 
 LandedInBase == landed \subseteq base
 
-NoDealAgainstStaleTip == \A c \in Cards : dealtTip[c] >= recordedTip
+\* Check every new queue admission against the last generation actually\n\* rechecked for that card. Historical admissions are not invalidated by a\n\* later base move; the stale admission mutant removes only Accept's guard.\nNoDealAgainstStaleTip ==\n  [][\A c \in Cards :\n       c \in Range(queue') \ Range(queue) => checkedTip[c] >= recordedTip]_vars
 
 LandsInOrder ==
   [][LET new == {h[1] : h \in landed' \ landed} IN
