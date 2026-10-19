@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"testing"
@@ -69,4 +70,36 @@ func TestInitRefusesACoordinatorTheBusDoesNotName(t *testing.T) {
 
 	out = ta.ok("init --readers reader-a --members m1 --coordinator glenn")
 	require.Contains(t, out, "INIT OK")
+}
+
+// The read lane's app shares the server's failed coordinator send with the gate: a
+// read the server serves on the lane (where, card, routes) refuses naming the failed
+// send and its remedy, not just "not hooked in".
+func TestReadLaneRefusalNamesAnUndeliverableCoordinatorPush(t *testing.T) {
+	t.Parallel()
+	const name = "read-lane-no-name"
+	ta, rig, _ := coordSprint(t, name)
+	hookBusOnly(t, rig, name)
+	ta.refusedFirst("where", sprint.HookFirst+": "+name+" is not hooked in: partial as coordinator")
+	ta.pass(name)
+	ta.lined(func() { ta.ok("where") })
+	timerJudgment(ta, name)
+
+	send := ta.a.bus
+	unknown := &bus.Refusal{Problems: []string{fmt.Sprintf("%s is no known name; the names are nova-config's friend and machine rows (nova-bus names lists them); add one with nova-config friend add %s --width 1 --tiers flash --as <you>, then nova-config apply", name, name)}}
+	ta.a.bus = func(context.Context, bus.Message, func(string)) error { return unknown }
+	ta.step(hook.RenewEvery)
+	ta.a.coordinatorPass(context.Background())
+
+	lanes := ta.a.lanesFor(context.Background())
+	require.NotNil(t, lanes)
+	var out, errb bytes.Buffer
+	code := lanes.read.run([]string{"where"}, &out, &errb)
+	require.Equal(t, 1, code, "%s%s", out.String(), errb.String())
+	why := errb.String()
+	assert.Contains(t, why, sprint.HookFirst)
+	assert.Contains(t, why, "the last send to it failed")
+	assert.Contains(t, why, "no known name")
+	assert.Contains(t, why, "nova-config friend add "+name)
+	ta.a.bus = send
 }

@@ -451,6 +451,9 @@ func (a *app) coordinatorPass(ctx context.Context) (read bool) {
 				a.coord.mu.Lock()
 				a.coord.sendErr = oneline.Escape(err.Error())
 				a.coord.mu.Unlock()
+				coordFailures.Lock()
+				coordFailures.m[l.holder] = coordFail{failed: true, sendErr: a.coord.sendErr}
+				coordFailures.Unlock()
 			}
 			return false
 		}
@@ -458,6 +461,9 @@ func (a *app) coordinatorPass(ctx context.Context) (read bool) {
 			a.coord.mu.Lock()
 			a.coord.sendErr = ""
 			a.coord.mu.Unlock()
+			coordFailures.Lock()
+			delete(coordFailures.m, l.holder)
+			coordFailures.Unlock()
 		}
 		return true
 	}
