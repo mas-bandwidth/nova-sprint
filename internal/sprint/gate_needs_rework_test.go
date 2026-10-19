@@ -124,7 +124,8 @@ func TestRedoWithNoMatchingMemberRaisesTheGateNeedsJudgment(t *testing.T) {
 	p := w.must(Redo(w.s, RedoReq{Sel: Sel{IDs: []string{"s1-2"}}, Who: "coordinator"}))
 	require.Nil(t, w.s.Fleet.Card("s1-2.w2"), "no matching member: redo waits ready")
 	require.Equal(t, Ready, w.state("s1-2"))
-	require.Len(t, p.Notes, 1)
-	assert.Equal(t, NGateNeeds, p.Notes[0].Kind)
+	require.Len(t, p.Notes, 1, "one gate-needs judgment for the redo")
+	assert.Equal(t, Judgment, p.Notes[0].Kind, "the note is a judgment")
+	assert.Equal(t, NGateNeeds, p.Notes[0].Type, "the judgment identifies the missing GATE-NEEDS host")
 	assert.Contains(t, p.Notes[0].What, "GATE-NEEDS linux")
 }
