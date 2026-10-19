@@ -3132,7 +3132,7 @@ order the cards were dealt in, so a card brought to the front of its stream by
   the provider's own words when they name one, `retry after N s`, `try again in Ns`,
   `Retry-After: N`, capped at RateBackoffMax, else Min(60 s * 2^(k-1), 15 min)), rests for
   5xxs or timeouts, or rests out of credit, while its own cool record
-  (`provider_cool_<provider>`, written by a read's fault and by a take's 5xx or timeout
+  (`provider_cool_<provider>`, written by a read's fault and by a take's rate-limit
   fallback) holds, or while nova-config applied it with `funded=false` (unfunded: out
   until the owner funds it, no expiry). Cooling is per PROVIDER, not per route: every route
   of a cooling provider leaves the line (`NoDealToCooling`).
@@ -3142,7 +3142,11 @@ order the cards were dealt in, so a card brought to the front of its stream by
   ran on, to its own member when that member launches it, else to a member up with room
   that does: the same work card at the same attempt, its generation moved, no take ended,
   no redeal, no attempt and no MaxRateReturns spent, its primary left working; the fault's
-  record stays (a 429's `rate_take_<n>`, so its route backs off) and its provider cools.
+  record stays (a 429's `rate_take_<n>`, so its route backs off, and the provider's cool
+  record; a 5xx's, a timeout's or an out-of-credit refusal's `provider_take_<n>` in a free
+  return slot, so the route's 3-in-10 rest and the provider's credit rest count it as
+  before, and that rest cools the provider). A card whose return slots are all held takes
+  today's bounded return.
   A read returned with a provider cause is asked again at once of the same reader on the
   next route in line, never counted against that reader (no re-ask counted, not stamped
   returned, so its reads and its ok% are untouched), and its provider cools

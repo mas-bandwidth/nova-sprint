@@ -126,7 +126,7 @@ func coolRests(s *Snapshot, rests map[string]RouteRest) {
 }
 
 // PropProviderCool is the fleet table's property of a provider's own cooling, written when a
-// read ends with a provider fault or a take falls back from a 5xx or a timeout: the rest
+// read ends with a provider fault or a take falls back from a rate limit: the rest
 // value (RouteRest.value) whose window the provider's words name (retryAfter) or
 // RateBackoff(k) gives, k carried in its words (coolK).
 func PropProviderCool(provider string) string { return "provider_cool_" + provider }
@@ -462,6 +462,18 @@ func faultProvider(s *Snapshot, c *Card) string {
 	return p
 }
 
+// freeReturnNumber is the first return record number (returnTakeNumber(1) up to
+// returnTakeNumber(MaxRateReturns)) the work card c holds no record at, 0 when every one
+// holds one: a fallback's record and a return's never overwrite each other.
+func freeReturnNumber(c *Card) int {
+	for n := 1; n <= MaxRateReturns; n++ {
+		if c.F(FieldProviderTake+itoa(returnTakeNumber(n))) == "" {
+			return returnTakeNumber(n)
+		}
+	}
+	return 0
+}
+
 // fallbackMembers is the members a fallback of the work card c may deal it to, in order:
 // its own member first (the take that faulted freed its lane), then each other member up
 // that is not held by an environment fault, not quiet, on the card's bench, did not refuse it
@@ -494,10 +506,13 @@ func fallbackMembers(s *Snapshot, c, pr *Card) []string {
 // launches it (fallbackMembers): the same work card at the same attempt, its generation
 // moved, no take ended, no redeal and no MaxRateReturns spent, its primary left working
 // (ProviderFallback.tla Fallback, FaultSpendsNothing). The fault's record is kept as the
-// return keeps it (a rate-limited take's FieldRateTake, so the route backs off; the provider
-// line), and the provider's cooling is written in the plan (coolWrite for a 5xx or timeout,
-// creditRestWrite for out of credit). ok is false when no route is in line for any member:
-// the caller keeps today's return (rateLimitedReturned), the card waiting as (3) says.
+// return keeps it: a rate-limited take's FieldRateTake (the route backs off) with the
+// provider's own cool record (coolWrite); a 5xx's, a timeout's or an out-of-credit refusal's
+// FieldProviderTake in a free return slot (freeReturnNumber), so the route's 3-in-10 rest
+// and the provider's credit rest count it as before, and that rest is the provider's
+// cooling. ok is false when no route is in line for any member, or every return slot holds
+// a record: the caller keeps today's return (rateLimitedReturned), the card waiting as (3)
+// says.
 func fallbackUnit(p *Plan, s *Snapshot, c, pr *Card, r FinishReq, class string) (Unit, bool) {
 	if IsFriendRow(c.Row) || pr == nil || c.F(FieldRoute) == "" || c.F(FieldRoute) == RoutePin {
 		return Unit{}, false
@@ -505,6 +520,12 @@ func fallbackUnit(p *Plan, s *Snapshot, c, pr *Card, r FinishReq, class string) 
 	tier := c.F(FieldTier)
 	if tier == "" {
 		return Unit{}, false
+	}
+	slot := 0
+	if class != classRateLimited {
+		if slot = freeReturnNumber(c); slot == 0 {
+			return Unit{}, false // every return slot holds a record: today's bounded return
+		}
 	}
 	faulted := faultProvider(s, c)
 	ss, _ := s.withRests()
@@ -528,10 +549,21 @@ func fallbackUnit(p *Plan, s *Snapshot, c, pr *Card, r FinishReq, class string) 
 	rec := costRecord(s, r.Usage, c.F(FieldRoute), c.F(FieldModel), false, dealt, taken)
 	if class == classRateLimited {
 		// the rate-limited take's own record: the route backs off from it (rateBackoffs),
-		// and with it, its provider (providerCooling)
+		// and its provider cools by its own record (coolWrite, below)
 		rates, _ := RateTakes(c)
 		set[FieldRateTake+itoa(len(rates)+1)] = ProviderTake{Route: c.F(FieldRoute), Model: c.F(FieldModel), Member: c.Row,
 			Finished: stamp(s.Now), Error: line, Taken: taken}.String()
+	} else {
+		// a 5xx, a timeout or an out-of-credit refusal keeps the record a return keeps, in
+		// a free return slot (freeReturnNumber), so the route's 3-in-10 rest and the
+		// provider's credit rest count it exactly as before (routeEnds, providerRestsDue):
+		// the provider's cooling is that rest, settled per provider (coolRests)
+		usage := ""
+		if r.Usage != "" {
+			usage = rec
+		}
+		set[FieldProviderTake+itoa(slot)] = ProviderTake{Route: c.F(FieldRoute), Model: c.F(FieldModel), Member: c.Row,
+			Finished: stamp(s.Now), Usage: usage, Error: line, Taken: taken}.String()
 	}
 	if fallbackSeam(s, "spend") {
 		// the reversed witness: the fault counted as an ended take (FaultSpendsNothing)
@@ -559,11 +591,8 @@ func fallbackUnit(p *Plan, s *Snapshot, c, pr *Card, r FinishReq, class string) 
 	if r.Usage != "" {
 		addConsumer(pr, prSet, workConsumer(s, c, 0, class, rec))
 	}
-	switch class {
-	case classRateLimited, class5xx, classTimeout:
+	if class == classRateLimited {
 		coolWrite(p, s, faulted, class, line, c.ID)
-	case RestCredit:
-		creditRestWrite(p, s, faulted, line, c.ID)
 	}
 	return Unit{Key: c.ID, Stream: pr.Row, Changes: []Change{
 		change(Fleet, moveEntry(c, member, Ready, set, unset...)),
