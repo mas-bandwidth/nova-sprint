@@ -3320,8 +3320,9 @@ const checkDefaultWidth = -1
 // nova-config names, by machine, and whether the read answered. It is
 // inventoryWidths without the tick's keep-cache: check reads nova-config fresh
 // on every run, so a config change in the same process is seen. A row's own
-// width is its width; a default-width row is half the cores its beat reports;
-// a failed read or no row is ok false (never act on a missing read).
+// width is its width; a default-width row is half the cores its beat reports,
+// and a default row whose cores are not known is not judged (never act on a
+// missing read); a failed read or no row is ok false.
 func (a *app) inventoryWidthsFresh(st *store.Store) func(ctx context.Context) (map[string]int, bool) {
 	return func(ctx context.Context) (map[string]int, bool) {
 		if a.inventory == nil {
@@ -3349,6 +3350,10 @@ func (a *app) inventoryWidthsFresh(st *store.Store) func(ctx context.Context) (m
 				return nil, false
 			}
 			for _, m := range defaults {
+				if beats[m].Cores <= 0 {
+					delete(ws, m)
+					continue
+				}
 				ws[m] = sprint.WidthOfCores(beats[m].Cores)
 			}
 		}
