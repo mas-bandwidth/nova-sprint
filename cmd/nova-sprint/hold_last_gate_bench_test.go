@@ -125,3 +125,18 @@ func TestTheNoGateBenchPushFiresOncePerOutage(t *testing.T) {
 	require.Len(t, r.judgments(), 1, "a second outage judges once again")
 	assert.Len(t, r.allJudgments(), 2, "one judgment per outage")
 }
+
+// TestFleetDownForceLastTakesTheLastGateBench pins the CLI guard and its explicit
+// override on fleet down, the common way a machine is taken out of service.
+func TestFleetDownForceLastTakesTheLastGateBench(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --members m1,m2")
+	ta.ok("fleet down m1")
+	code, _, errs := ta.do("fleet down m2")
+	assert.Equal(t, 2, code, errs) // refuse uses the standard usage-refusal exit status
+	assert.Contains(t, errs, "--force-last")
+	code, _, errs = ta.do("fleet down m2 --force-last")
+	assert.Equal(t, 0, code, errs)
+	assert.Contains(t, ta.ok("log"), "--force-last: no gate bench left")
+}
