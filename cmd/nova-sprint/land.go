@@ -2389,8 +2389,10 @@ func (l *lander) checkCard(ctx context.Context, dir, stream string, c landCard, 
 	// SPEC-SPRINT section 7: a forward-merge card (a MERGE-OF line) resolves the
 	// merged parent and exempts every changed file that arrived unchanged through the
 	// merge (sprint.MergeOf); the rest still need PATHS exactly as today. When the
-	// branch cannot be resolved the refusal says why and nothing is exempt.
+	// branch cannot be resolved the refusal says why and nothing is exempt. A card
+	// with no MERGE-OF line is checked exactly as today (rule 5, sprint.LandScope).
 	var exempt []string
+	var amended, out []string
 	if br, ok := swarm.CardHeaderValue([]byte(c.brief), "MERGE-OF"); ok && strings.TrimSpace(br) != "" {
 		br = strings.TrimSpace(br)
 		res, merr := sprint.MergeOf(dir, func(args ...string) (string, error) { return l.git(ctx, dir, args...) }, before, after, br)
@@ -2400,10 +2402,10 @@ func (l *lander) checkCard(ctx context.Context, dir, stream string, c landCard, 
 			exempt = res.Exempt
 			l.mergeOf[c.id] = fmt.Sprintf("merge-of=%s@%s exempt=%d", br, shortSha(res.Parent), len(exempt))
 		}
+		amended, out = sprint.LandScopeMergeOf(c.paths, diff, beforePaths, exempt, registries...)
+	} else {
+		amended, out = sprint.LandScope(c.paths, diff, beforePaths, registries...)
 	}
-	// SPEC-SPRINT section 7: required validation files are inside every PATHS;
-	// ordinary scope amendments remain recorded and unrelated source stays refused.
-	amended, out := sprint.LandScopeMergeOf(c.paths, diff, beforePaths, exempt, registries...)
 	if len(out) > 0 {
 		parts := make([]string, 0, len(out))
 		for _, f := range out {

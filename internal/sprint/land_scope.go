@@ -16,27 +16,9 @@ import (
 // holds inside every card's PATHS beside the built-in set (cardgen.SharedRegistries;
 // docs/SPEC-LANDING.md).
 func LandScope(paths []string, diff string, trackedBefore []string, registries ...string) (amended, refused []string) {
-	files := diffcheck.Parse(diff)
-	var changed []string
-	blockedRename := map[string]bool{}
-	for _, f := range files {
-		changed = append(changed, f.New)
-		if f.Old != f.New && !cardgen.AlwaysInPaths(f.Old, registries...) && cardgen.AlwaysInPaths(f.New, registries...) {
-			blockedRename[f.New] = true
-		}
-	}
-	var ordinary, renamed []string
-	for _, p := range OutsideByRule(files, diffcheck.Outside(paths, diff, trackedBefore), registries...) {
-		if blockedRename[p] {
-			renamed = append(renamed, p)
-		} else {
-			ordinary = append(ordinary, p)
-		}
-	}
-	// SPEC-SPRINT section 7: a rename cannot borrow another file's test amendment
-	// to move source that the card did not own into an always-allowed category.
-	amended, refused = ScopeAmended(changed, ordinary)
-	return amended, append(refused, renamed...)
+	// A card with no MERGE-OF line is checked exactly as today, with no exemption:
+	// the one loop is LandScopeMergeOf's, with an empty exempt set (rule 5).
+	return LandScopeMergeOf(paths, diff, trackedBefore, nil, registries...)
 }
 
 // OutsideByRule is outside, files a diff changes outside a card's PATHS, without those
