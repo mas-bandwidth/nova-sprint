@@ -1,0 +1,19 @@
+# s9 The bus, hooks and pushes: pins of standard/sprint/s9.md, one per line: <R-NAME> <kind> <a> <b>, tab-separated (standard/STYLE.md section 9)
+R-HOOKED	divergence	sprint-spec-fix-hooked	./internal/sprint TestAFriendWhoseHookGoesDownIsMarkedDownAndTheCoordinatorIsTold
+R-PUSH-ONLY	divergence	sprint-spec-fix-push-on-deal	./cmd/nova-sprint TestEveryRowLearnsEachEventByPushAlone
+R-PUSH-DEAL	divergence	sprint-spec-fix-push-on-deal	./cmd/nova-sprint TestACardDealtToAMembersRowIsPushedToIt
+R-PUSH-READ	divergence	sprint-spec-fix-push-on-deal	./cmd/nova-sprint TestAReadDealtOrLevelledToARowIsPushedToIt
+R-PUSH-JUDGMENT	test	./cmd/nova-sprint	TestAJudgmentReachesTheCoordinatorsBusOnce
+R-PUSH-JUDGMENT	test	./cmd/nova-sprint	TestAWaitingJudgmentIsWarnedOnTheBus
+R-PUSH-STUCK	divergence	sprint-spec-fix-push-on-judgment	./cmd/nova-sprint TestAStuckOperationIsPushedAsItsOwnClass
+R-PUSH-BOUND	divergence	sprint-spec-fix-push-on-judgment	./cmd/nova-sprint TestABoundReachedIsPushedToItsRowAndTheCoordinator
+R-PUSH-STALLED	divergence	sprint-spec-fix-push-on-judgment	./cmd/nova-sprint TestAStallIsPushedToTheCoordinator
+R-PUSH-FINISH-DUE	divergence	sprint-spec-fix-push-finish-due	./cmd/nova-sprint TestAFinishComingDueIsPushedToItsRow
+R-PUSH-FRIEND-STATE	divergence	sprint-spec-fix-push-friend-state	./cmd/nova-sprint TestAFriendsChangeOfStateIsPushedToTheCoordinatorAndToHer
+R-PUSH-LANDING	divergence	sprint-spec-fix-push-landing	./cmd/nova-sprint TestEveryLandingReachesTheCoordinatorsBusOnceTheBaseHoldsIt
+R-PUSH-CI	test	./cmd/nova-sprint	TestCIReceiptTellsTheOwnerAndSeat
+R-HOOKED	test	./internal/sprint	TestFriendHookStatus
+R-HOOKED	test	./internal/sprint	TestAnUnhookedFriendIsNotDealt
+R-HOOKED	test	./cmd/nova-sprint	TestATickDealsNothingToAnUnhookedFriend
+R-HOOKED	test	./cmd/nova-sprint	TestEveryVerbRefusesTheCoordinatorUntilHooked
+R-HOOKED	test	./internal/sprint	TestTheCoordinatorGateReadsTheNovaHookRecord

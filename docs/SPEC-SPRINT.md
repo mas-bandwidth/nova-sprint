@@ -1,5 +1,7 @@
 # nova-sprint: the sprint table
 
+The normative requirements are [standard/SPRINT.md](../standard/SPRINT.md); this document is descriptive.
+
 The **system** is nova-sprint: it coordinates work across the fleet.
 A **machine** is a computer in that fleet. Existing command output, record
 fields, actor names, and historical quotations retain their literal spelling.
