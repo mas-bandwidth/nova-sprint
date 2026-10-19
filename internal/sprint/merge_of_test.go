@@ -116,6 +116,31 @@ func TestAForwardMergeCardIsExemptForItsMergedFiles(t *testing.T) {
 		assert.NotContains(t, res.Exempt, "internal/a/a.go")
 	})
 
+	t.Run("a rename the merge brings unchanged is exempt", func(t *testing.T) {
+		t.Parallel()
+		r := &mergeRig{t: t, dir: t.TempDir()}
+		r.must("init", "-q", "-b", "main")
+		r.write("pkg/x/old.go", "package x\n\n// old\n")
+		r.write("internal/a/a.go", "package a\n")
+		r.must("commit", "-q", "-m", "base")
+		before := r.must("rev-parse", "HEAD")
+		r.must("switch", "-q", "-c", "sprint/merged")
+		r.must("mv", "pkg/x/old.go", "pkg/x/new.go")
+		r.must("commit", "-q", "-m", "rename")
+		mergedTip := r.must("rev-parse", "HEAD")
+		r.must("update-ref", "refs/remotes/origin/sprint/merged", mergedTip)
+		r.must("switch", "-q", "main")
+		r.must("merge", "--no-ff", "--no-edit", "-m", "merge sprint/merged", "sprint/merged")
+		r.write("internal/a/a.go", "package a\n\n// edited\n")
+		r.must("commit", "-q", "-m", "hand edit")
+		after := r.must("rev-parse", "HEAD")
+		res, err := sprint.MergeOf(r.dir, r.git, before, after, "sprint/merged")
+		require.NoError(t, err)
+		assert.Contains(t, res.Exempt, "pkg/x/new.go", "a fully-merged rename is exempt (rule 3)")
+		assert.NotContains(t, res.Rest, "pkg/x/new.go")
+		assert.NotContains(t, res.Exempt, "internal/a/a.go")
+	})
+
 	t.Run("an unresolvable branch exempts nothing and says why", func(t *testing.T) {
 		t.Parallel()
 		r, before, after, _ := setup(nil)

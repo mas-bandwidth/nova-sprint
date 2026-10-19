@@ -63,9 +63,10 @@ func MergeOf(dir string, git func(args ...string) (string, error), before, after
 	if err != nil || m == "" {
 		return nil, fmt.Errorf("merge-of unresolved: the merge-base with %s could not be resolved: %v", branch, err)
 	}
-	// M already an ancestor of before: the merge brings nothing new, no exemption.
+	// M already an ancestor of before: the merge brings nothing new, no exemption,
+	// and the refusal says why.
 	if _, err := git("merge-base", "--is-ancestor", m, before); err == nil {
-		return &MergeOfResult{Parent: m}, nil
+		return nil, fmt.Errorf("merge-of unresolved: %s is already an ancestor of before; the merge brings nothing new", branch)
 	}
 	treeOut, err := git("merge-tree", "--write-tree", before, m)
 	if err != nil {
@@ -83,6 +84,9 @@ func MergeOf(dir string, git func(args ...string) (string, error), before, after
 	for _, f := range diffcheck.Parse(diff) {
 		files = append(files, f)
 		granted[f.New] = mergeOfGranted(git, after, m, tree, conflicted, f.New)
+		if f.Old != f.New && f.Old != "" {
+			granted[f.Old] = mergeOfGranted(git, after, m, tree, conflicted, f.Old)
+		}
 	}
 	res := &MergeOfResult{Parent: m}
 	for _, f := range files {
