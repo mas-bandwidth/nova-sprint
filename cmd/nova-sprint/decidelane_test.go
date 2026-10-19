@@ -76,7 +76,7 @@ func TestTheDecideLaneGradesRecordsAndAttachesOutcomes(t *testing.T) {
 	assert.Contains(t, errs, "finish REFUSED: --decision: ", "a decision that does not fit is refused, nothing finished")
 	ta.ok("finish --as m1 s1-2.w1@" + gens["s1-2.w1"] + " s1-3.w1@" + gens["s1-3.w1"])
 	assert.Contains(t, ta.ok("card s1-1"), "decided=done:0.90", "the ATTEMPT line shows the decision")
-	for range 2 { // ask and read: the reads are asked together
+	for range 2 { // reads are asked one at a time: the first, then the second once ok
 		ta.ok("ask --limit 100")
 		ta.ok("read --as reader-a --ok --limit 100")
 		ta.ok("read --as reader-b --ok --limit 100")

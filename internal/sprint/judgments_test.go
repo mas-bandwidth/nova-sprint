@@ -94,7 +94,7 @@ func TestAReportOnAnAskedCardBeginsIt(t *testing.T) {
 	w.tick(time.Minute)
 	for i, verdict := range []string{"ok", "broken"} {
 		if i > 0 {
-			w.must(Ask(w.s, AskReq{})) // the second read of the pair
+			w.must(Ask(w.s, AskReq{})) // the second read, once the first came back ok
 		}
 		rc := readsAt(w.s, w.s.Work.Card("s1-1"), 1)[i]
 		w.must(Read(w.s, ReadReq{Usage: "input=1000 output=100", As: rc.F("reader"), Verdict: verdict, Finding: "f:1", Sel: Sel{IDs: []string{rc.ID}}}))

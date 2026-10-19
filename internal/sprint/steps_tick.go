@@ -1482,9 +1482,9 @@ func TickLevel(s *Snapshot, r TickReq) (Plan, int) {
 	return bound(FleetStep(s, FleetReq{Op: "level", Who: r.who()}))
 }
 
-// T2. TickAsk asks the reads wanted now (ReadsWanted: every read it needs at
-// once, a read outstanding counted among those that stand; ReadsNeeded: one for
-// a flash card, two for a pro card; cost rule 4) of every primary in review
+// T2. TickAsk asks the reads wanted now (ReadsWanted: the first read alone,
+// then the rest it needs once the first came back ok; ReadsNeeded: one for a
+// flash card, two for a pro card; cost rule 4) of every primary in review
 // whose work did not fail, readers up with room only (each read to the free
 // reader with the greatest share of room, the finder's first; Ask,
 // askPicks): a primary whose reads wanted now find too few free readers with

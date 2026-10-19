@@ -172,7 +172,7 @@ func TestTheModelAndTheEngineAgreeOnTheAcceptAndRedealLaws(t *testing.T) {
 	}
 	readOK := func(p string) {
 		t.Helper()
-		// the reads are asked together: the first ok, the other stands
+		// the reads are asked one at a time: the first ok, a tick asks the second
 		for range 2 {
 			s := h.observe()
 			for _, id := range refmodel.Keys(s.Reads) {
