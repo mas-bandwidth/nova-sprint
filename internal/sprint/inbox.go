@@ -635,6 +635,10 @@ func commands(g Group, first Note, prefix string, onWork func(id string) bool) [
 			add(d, "nova-config route add '<name>' --tier "+tier+" --provider '<provider>' --model '<model>' --deadline '<seconds>'", "nova-config apply")
 		case d == "fleet level":
 			add(d, cmd+"fleet level")
+		case d == "fleet sync":
+			add(d, cmd+"fleet sync")
+		case d == "friend sync":
+			add(d, cmd+"friend sync --root '<the friends' working directory>'")
 		case d == "fleet up":
 			add(d, cmd+"fleet up '<member>'")
 		case d == "fleet beat":

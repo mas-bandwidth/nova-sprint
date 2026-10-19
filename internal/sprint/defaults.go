@@ -136,6 +136,7 @@ var Defaults = []Default{
 	{Name: "held_by", Home: HomeShape, Value: ShapeCarried, Why: "who made a hold"},
 	{Name: "held_fields", Home: HomeShape, Value: ShapeCarried, Why: "a hold's cause, reason and who made it (hold_cause.go, HeldCarried)"},
 	{Name: "width", Home: HomeShape, Value: ShapeCarried, Why: "each member's width"},
+	{Name: "width_from", Home: HomeShape, Value: ShapeCarried, Why: "each member whose drain is nova-config's (the config-drain mark, width.go)"},
 }
 
 // NotSettings is the fields of SetReq and Shape, and the flags of `set`, that hold no

@@ -3088,6 +3088,10 @@ func (a *app) cmdCheck(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "check", err.Error())
 	}
+	// the one width is nova-config's: check holds each member and friend row to it (a row
+	// whose width differs is a violation). A config read that is not held judges nothing.
+	st.Widths = a.inventoryWidthsFresh(st)
+	st.FriendWidths = a.inventoryFriendWidths()
 	rep, _, err := st.Check(context.Background(), 5)
 	if err != nil {
 		return a.readFailed("check", err, stderr)

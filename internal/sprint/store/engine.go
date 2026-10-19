@@ -107,6 +107,11 @@ type Store struct {
 	// copy that differs back to it (sprint.WidthRefresh). ok false (a failed read) holds
 	// the copies as they are. nil is no config read: the copies alone.
 	Widths func(ctx context.Context) (widths map[string]int, ok bool)
+	// FriendWidths, when set (check), is the read of the friends' widths as nova-config's
+	// friend rows hold them (config.FriendWidth, the same config read as friend sync): the one
+	// width source. Check counts a friend row whose seat width differs. nil is no config read:
+	// no friend drift is judged.
+	FriendWidths func(ctx context.Context) (widths map[string]int, ok bool)
 	// Stats is what the store's reads cost (stats.go); nil is made on the
 	// first tick. Its pinned copies share it.
 	Stats *Stats
@@ -1395,6 +1400,23 @@ func (st *Store) holdWidths(ctx context.Context, snap *sprint.Snapshot, plan spr
 	}
 	plan = sprint.HoldWidths(view, plan, cfg)
 	return sprint.WidthRefresh(view, plan, cfg)
+}
+
+// tickWidthCfg is the tick's read of nova-config's widths for its width-drift judgment: the
+// members' (Widths) and the friends' (FriendWidths). A read not held is nil, and nothing is
+// judged on it (never act on a missing read).
+func (st *Store) tickWidthCfg(ctx context.Context) (cfg, friendCfg map[string]int) {
+	if st.Widths != nil {
+		if ws, ok := st.Widths(ctx); ok {
+			cfg = ws
+		}
+	}
+	if st.FriendWidths != nil {
+		if ws, ok := st.FriendWidths(ctx); ok {
+			friendCfg = ws
+		}
+	}
+	return
 }
 
 // refuseWhole is a step refused whole before anything of it was written: every

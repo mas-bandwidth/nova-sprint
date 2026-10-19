@@ -157,6 +157,10 @@ func (st *Store) check(ctx context.Context, reads int, streams bool) (CheckRepor
 			return rep, nil, err
 		}
 		rep.Violations = append(rep.Violations, sprint.CheckHeld(held, s.Now)...)
+		// the one width is nova-config's (the owner, 2026-10-18; tla/WidthHard.tla OneSource): a
+		// member or friend row whose width differs is a violation, one line per drifting row, both
+		// values. A config read that was not held (nil) judges nothing.
+		rep.Violations = append(rep.Violations, widthDriftViolations(st, ctx, s)...)
 		if rep.InFlight {
 			var kept []sprint.Violation
 			for _, v := range rep.Violations {
@@ -672,6 +676,33 @@ func (st *Store) StreamClocks(ctx context.Context) ([]sprint.StreamClock, error)
 func parseStamp(s string) time.Time {
 	t, _ := time.Parse(time.RFC3339, s)
 	return t
+}
+
+// widthDriftViolations is rule 14: every fleet row whose width differs from nova-config's
+// (sprint.WidthDriftRows), one line per drifting row naming both values. A config read the store
+// did not hold (Widths and FriendWidths both nil) judges nothing.
+func widthDriftViolations(st *Store, ctx context.Context, s *sprint.Snapshot) []sprint.Violation {
+	var cfg, friendCfg map[string]int
+	ok := false
+	if st.Widths != nil {
+		if ws, wok := st.Widths(ctx); wok {
+			cfg, ok = ws, true
+		}
+	}
+	if st.FriendWidths != nil {
+		if ws, wok := st.FriendWidths(ctx); wok {
+			friendCfg, ok = ws, true
+		}
+	}
+	if !ok {
+		return nil
+	}
+	drifts := sprint.WidthDriftRows(s, cfg, friendCfg)
+	out := make([]sprint.Violation, 0, len(drifts))
+	for _, d := range drifts {
+		out = append(out, sprint.Violation{Rule: 14, Detail: d.Line()})
+	}
+	return out
 }
 
 // pendingOf is a pending operation as check judges it: a rank's new scores of
