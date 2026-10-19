@@ -19,3 +19,5 @@ R-HOOKED	test	./cmd/nova-sprint	TestEveryVerbRefusesTheCoordinatorUntilHooked
 R-HOOKED	test	./internal/sprint	TestTheCoordinatorGateReadsTheNovaHookRecord
 R-PUSH-READ	divergence	sprint-spec-fix-push-on-deal	./cmd/nova-sprint TestALevelledCardIsPushedToBothRows
 R-PUSH-CI	divergence	sprint-spec-fix-push-ci-on-base	./cmd/nova-sprint TestACIResultOnABaseIsPushedToTheCoordinator
+R-HOOKED	external	mas-bandwidth/nova-tools	./hook TestTheCoordinatorIsChallengedEveryTenMinutesAndAnUnansweredOneUnhooksIt
+R-HOOKED	divergence	sprint-spec-fix-hooked	./internal/sprint TestEveryUpFriendIsChallengedWithinTenMinutes

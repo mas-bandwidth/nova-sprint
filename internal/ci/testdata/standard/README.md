@@ -39,6 +39,14 @@ The test names the line each witness must fail with; that line names the row or 
 | cgo-only-test | a test pin naming a test whose file builds only without cgo |
 | skip-through-a-cycle | a test whose helpers call each other, one of them calling t.Skip, checked after another test walked the cycle |
 
+| tla-commented-definition | a pin supported only by commented or quoted text |
+| tla-commented-config | a pin supported only by commented or quoted text |
+| tla-commented-extends | a pin supported only by commented or quoted text |
+| tla-line-commented-definition | a pin supported only by commented or quoted text |
+| tla-line-commented-config | a pin supported only by commented or quoted text |
+| tla-line-commented-extends | a pin supported only by commented or quoted text |
+| tla-config-string | a pin supported only by commented or quoted text |
+
 ## base
 
 ~~~ file base standard/STYLE.md
@@ -451,4 +459,46 @@ package x
 import "testing"
 
 func TestXHolds(t *testing.T) {}
+~~~
+
+~~~ file tla-commented-definition tla/X.tla
+---- MODULE X ----
+(* outer (* nested *)
+Safe == TRUE
+*)
+====
+~~~
+
+~~~ file tla-commented-config tla/MCX.cfg
+(* outer (* nested *)
+INVARIANT Safe
+*)
+~~~
+
+~~~ file tla-commented-extends tla/MCX.tla
+---- MODULE MCX ----
+(* outer (* nested *)
+EXTENDS X
+*)
+====
+~~~
+
+~~~ file tla-line-commented-definition tla/X.tla
+---- MODULE X ----
+\* Safe == TRUE
+====
+~~~
+
+~~~ file tla-line-commented-config tla/MCX.cfg
+\* INVARIANT Safe
+~~~
+
+~~~ file tla-line-commented-extends tla/MCX.tla
+---- MODULE MCX ----
+\* EXTENDS X
+====
+~~~
+
+~~~ file tla-config-string tla/MCX.cfg
+CONSTANT Text = "INVARIANT Safe"
 ~~~

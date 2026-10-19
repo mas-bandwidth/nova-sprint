@@ -45,3 +45,4 @@ R-READ-BOUNDS	const	./internal/sprint	ReadCardDeadline=60m
 R-READ-BOUNDS	const	./internal/sprint	DealtMaxDefault=6h
 R-READ-BOUNDS	const	./internal/sprint	LiveGrace=60s
 R-READ-TAKEBACK	test	./internal/sprint	TestAReadTheMemberDoesNotRunIsReturnedAtTheNextBeat
+R-READS-PARALLEL	divergence	sprint-spec-fix-readcards-parallel-model	./internal/ci TestReadCardsGatesAllAvailableReadsInOneStep

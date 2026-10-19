@@ -120,6 +120,13 @@ func TestTheStandardRefusesEachReversedWitness(t *testing.T) {
 		"heading-off-outline":            {"s2", `standard/sprint/s2.md heading is "# s2. Other things", the outline says "# s2. Things"`},
 		"lower-case-must":                {"R-ONE", `lower-case "must"`},
 		"tla-undefined":                  {"R-ONE", "tla X does not define Unsafe"},
+		"tla-commented-definition":       {"R-ONE", "tla X does not define Safe"},
+		"tla-commented-config":           {"R-ONE", "tla X Safe: no required case"},
+		"tla-commented-extends":          {"R-ONE", "tla X Safe: no required case"},
+		"tla-line-commented-definition":  {"R-ONE", "tla X does not define Safe"},
+		"tla-line-commented-config":      {"R-ONE", "tla X Safe: no required case"},
+		"tla-line-commented-extends":     {"R-ONE", "tla X Safe: no required case"},
+		"tla-config-string":              {"R-ONE", "tla X Safe: no required case"},
 		"tla-not-gated":                  {"R-ONE", "tla X Unchecked: no required case of tla/CASES.tsv expecting pass checks it"},
 		"tla-not-extended":               {"R-ONE", "tla X Safe: no required case of tla/CASES.tsv expecting pass checks it"},
 		"tla-bench-only":                 {"R-ONE", "tla X Safe: no required case of tla/CASES.tsv expecting pass checks it"},
@@ -149,6 +156,26 @@ func TestTheStandardRefusesEachReversedWitness(t *testing.T) {
 			require.True(t, slices.ContainsFunc(got, func(p string) bool {
 				return strings.HasPrefix(p, want.who+": ") && strings.Contains(p, want.says)
 			}), "the witness %s fails naming %s: want a line %q, got:\n%s", name, want.who, want.says, strings.Join(got, "\n"))
+		})
+	}
+}
+
+func TestTheStandardTLACommentLexing(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, source, code string }{
+		{"nested", "a(* outer (* inner *) tail *)b", "a b"},
+		{"line", "a\\* (* ignored\nb", "a b"},
+		{"quoted", `a "(* \\* *)" b`, "a b"},
+		{"escaped quote", `a "\" (* still quoted *)" b`, "a b"},
+		{"quote in block", `a (* " (* nested *) tail *) b`, "a b"},
+		{"multiline", "a(*\ninside\n*)b", "a b"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := stdStripTLAComments(tc.source)
+			require.Len(t, got, len(tc.source))
+			require.Equal(t, strings.Count(tc.source, "\n"), strings.Count(got, "\n"))
+			require.Equal(t, tc.code, strings.Join(strings.Fields(got), " "))
 		})
 	}
 }
@@ -1022,7 +1049,7 @@ func (c *stdCheck) tla(name, module, prop string) {
 		c.fail("%s: tla module tla/%s.tla is missing", name, module)
 		return
 	}
-	if !regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(prop) + `\s*(\([^)]*\))?\s*==`).MatchString(src) {
+	if !regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(prop) + `\s*(\([^)]*\))?\s*==`).MatchString(stdStripTLAComments(src)) {
 		c.fail("%s: tla %s does not define %s", name, module, prop)
 		return
 	}
@@ -1071,16 +1098,59 @@ func stdCfgChecks(cfg string) []string {
 	return out
 }
 
-// stdStripTLAComments drops \* line comments from a TLC config.
+// stdStripTLAComments leaves only code for the pin resolver: nested block comments,
+// line comments and string literals become spaces, preserving token boundaries and lines.
+// Quotes inside comments are inert; comment markers inside strings are inert too.
 func stdStripTLAComments(src string) string {
-	var out []string
-	for _, l := range strings.Split(src, "\n") {
-		if i := strings.Index(l, `\*`); i >= 0 {
-			l = l[:i]
+	out := []byte(src)
+	depth := 0
+	line, quoted, escaped := false, false, false
+	for i := 0; i < len(src); i++ {
+		ch := src[i]
+		next := byte(0)
+		if i+1 < len(src) {
+			next = src[i+1]
 		}
-		out = append(out, l)
+		if ch == '\n' {
+			line, quoted, escaped = false, false, false
+			continue
+		}
+		switch {
+		case line:
+			out[i] = ' '
+		case depth > 0:
+			out[i] = ' '
+			if ch == '(' && next == '*' {
+				depth++
+				out[i+1] = ' '
+				i++
+			} else if ch == '*' && next == ')' {
+				depth--
+				out[i+1] = ' '
+				i++
+			}
+		case quoted:
+			out[i] = ' '
+			if escaped {
+				escaped = false
+			} else if ch == '\\' {
+				escaped = true
+			} else if ch == '"' {
+				quoted = false
+			}
+		case ch == '"':
+			quoted = true
+			out[i] = ' '
+		case ch == '\\' && next == '*':
+			line = true
+			out[i] = ' '
+		case ch == '(' && next == '*':
+			depth = 1
+			out[i], out[i+1] = ' ', ' '
+			i++
+		}
 	}
-	return strings.Join(out, "\n")
+	return string(out)
 }
 
 // constant checks the package declares the constant and that it equals the pin's value, by
