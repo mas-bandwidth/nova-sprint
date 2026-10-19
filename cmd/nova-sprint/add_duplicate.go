@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -155,14 +156,12 @@ func probableDuplicate(a, b dupCard) (dupFinding, bool) {
 	if a.Repo == "" || a.Repo != b.Repo {
 		return dupFinding{}, false
 	}
+	aPaths, bPaths := dupPathsWithoutLedgers(a, b), dupPathsWithoutLedgers(b, a)
 	var files []string
 	seen := map[string]bool{}
-	for _, pa := range a.Paths {
-		for _, pb := range b.Paths {
+	for _, pa := range aPaths {
+		for _, pb := range bPaths {
 			if !preflightOverlap(pa, pb) {
-				continue
-			}
-			if dupShared(a, pa) || dupShared(a, pb) || dupShared(b, pa) || dupShared(b, pb) {
 				continue
 			}
 			if !seen[pa] {
@@ -189,6 +188,43 @@ func probableDuplicate(a, b dupCard) (dupFinding, bool) {
 		shared = shared[:8]
 	}
 	return dupFinding{Of: b.ID, Score: score, Files: files, Shared: shared}, true
+}
+
+// dupLedger says the path is a ledger file, no evidence that two cards are one
+// change: a file on either card's SHARED: line, a .tsv under a tla directory, or
+// a .tsv, .csv or .ledger under a testdata directory. Many unrelated cards
+// append to these.
+func dupLedger(c, other dupCard, path string) bool {
+	if dupShared(c, path) || dupShared(other, path) {
+		return true
+	}
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext == ".tsv" && dupUnderDir(path, "tla") {
+		return true
+	}
+	return dupUnderDir(path, "testdata") && (ext == ".tsv" || ext == ".csv" || ext == ".ledger")
+}
+
+// dupUnderDir says a slash-separated path has dir as one of its directories.
+func dupUnderDir(path, dir string) bool {
+	for _, part := range strings.Split(filepath.ToSlash(path), "/") {
+		if part == dir {
+			return true
+		}
+	}
+	return false
+}
+
+// dupPathsWithoutLedgers is the card's PATHS less every ledger it or the other
+// card names.
+func dupPathsWithoutLedgers(c, other dupCard) []string {
+	out := make([]string, 0, len(c.Paths))
+	for _, p := range c.Paths {
+		if !dupLedger(c, other, p) {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // dupShared says the card lists the path, or a glob naming it, on its SHARED: line.
