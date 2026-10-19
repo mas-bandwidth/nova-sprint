@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (265)
+- [The sprint system](#the-sprint-system) (268)
 - [Setup, release and operations](#setup-release-and-operations) (72)
 - [Docs, models and the repository](#docs-models-and-the-repository) (25)
 - [Friend AIs](#friend-ais) (22)
@@ -2199,6 +2199,24 @@ From: found deferring the sprint's non-rocketnet cards, 2026-10-19
 defer refuses a roadmap with no (group "sprint" ...) record, and nova-work roadmap check refuses a group that holds no item, so the group cannot be added on its own: on 2026-10-19 each repository needed a hand-written placeholder item, removed after the defer. defer should add the group in the same write, and create docs/roadmap.sexp when a repository has none.
 
 From: found deferring the sprint's non-rocketnet cards, 2026-10-19
+
+### A per-base linear landing mode, configured per repository and base: land squashes each card to one commit on a linear base
+
+Carried: branch sprint/v17-linear-base-squash-landing.w1.g2.e21 head eab6b4d65b65670a63cfbba8eb514b6841eefc77 (attempt 3, ready). A per-base linear landing mode, configured per repository and base: land squashes each card to one commit on a linear base.
+
+From: sprint card v17-linear-base-squash-landing, moved out of the sprint 2026-10-19 (Glenn: not for the rocketnet v1.0.0 release)
+
+### friend cards on the server's read lane, and friend level reads its started set off the serial line with one tip read per repository
+
+Carried: branch sprint/v17-server-friend-level-and-friend-cards-off-the-line.w7.g2.e21 head 8d2e246ee877bfd37b541e902cf6caf1d7d56202 (attempt 8, review). friend cards on the server's read lane, and friend level reads its started set off the serial line with one tip read per repository.
+
+From: sprint card v17-server-friend-level-and-friend-cards-off-the-line, moved out of the sprint 2026-10-19 (Glenn: not for the rocketnet v1.0.0 release)
+
+### Write the skeleton of the standard: STYLE.md, the checker, sections s1 and s5 in full, every other section pending with a one-sentence Scope, and the hard rows pinned
+
+Carried: branch sprint/sprint-spec-skeleton.w5.g1.e21 head c0ab21bd227d1929f9b33aea1823d1346227bdc1 (attempt 6, ready). Write the skeleton of the standard: STYLE.md, the checker, sections s1 and s5 in full, every other section pending with a one-sentence Scope, and the hard rows pinned.
+
+From: sprint card sprint-spec-skeleton, moved out of the sprint 2026-10-19 (Glenn: not for the rocketnet v1.0.0 release)
 
 ## Setup, release and operations
 
