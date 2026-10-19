@@ -20,6 +20,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # the module is read-only in CI: a missing go.sum entry fails rather than
+  # being fetched, so the pinned graph is what runs
+  GOFLAGS: -mod=readonly
+
 concurrency:
   group: tlc-${{ github.ref }}
   cancel-in-progress: true
@@ -37,9 +42,11 @@ jobs:
         run: |
           set -euo pipefail
           want=$(grep -m1 '^go ' go.mod | awk '{print $2}')
-          got=$(go version | sed -E 's/.*go([0-9.]+).*/\1/')
+          # command -v first: with set -e a bare `go version` would abort the
+          # step on a shell error before the TOOL-MISSING diagnostic
+          got=$(command -v go >/dev/null 2>&1 && go version | sed -E 's/.*go([0-9.]+).*/\1/' || true)
           if [ "$got" != "$want" ]; then
-            echo "TOOL-MISSING go $want $got on $RUNNER_NAME" >&2
+            echo "TOOL-MISSING go $want ${got:-missing} on $RUNNER_NAME" >&2
             exit 1
           fi
       - name: make tlc-test
@@ -77,9 +84,11 @@ jobs:
         run: |
           set -euo pipefail
           want=$(grep -m1 '^go ' go.mod | awk '{print $2}')
-          got=$(go version | sed -E 's/.*go([0-9.]+).*/\1/')
+          # command -v first: with set -e a bare `go version` would abort the
+          # step on a shell error before the TOOL-MISSING diagnostic
+          got=$(command -v go >/dev/null 2>&1 && go version | sed -E 's/.*go([0-9.]+).*/\1/' || true)
           if [ "$got" != "$want" ]; then
-            echo "TOOL-MISSING go $want $got on $RUNNER_NAME" >&2
+            echo "TOOL-MISSING go $want ${got:-missing} on $RUNNER_NAME" >&2
             exit 1
           fi
       - name: java from the runner image

@@ -15,6 +15,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # the module is read-only in CI: a missing go.sum entry fails rather than
+  # being fetched, so the pinned graph is what runs
+  GOFLAGS: -mod=readonly
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -40,9 +45,11 @@ jobs:
         run: |
           set -euo pipefail
           want=$(grep -m1 '^go ' go.mod | awk '{print $2}')
-          got=$(go version | sed -E 's/.*go([0-9.]+).*/\1/')
+          # command -v first: with set -e a bare `go version` would abort the
+          # step on a shell error before the TOOL-MISSING diagnostic
+          got=$(command -v go >/dev/null 2>&1 && go version | sed -E 's/.*go([0-9.]+).*/\1/' || true)
           if [ "$got" != "$want" ]; then
-            echo "TOOL-MISSING go $want $got on $RUNNER_NAME" >&2
+            echo "TOOL-MISSING go $want ${got:-missing} on $RUNNER_NAME" >&2
             exit 1
           fi
       - name: build
@@ -51,7 +58,7 @@ jobs:
         run: go vet ./...
       - name: test
         # every test but the tick's wall-clock gate, which runs alone in the next step
-        run: go test -p 4 -skip '^TestTickDrainAndDealUnderTheGateAtLoad$' ./...
+        run: go test -p 4 -timeout 600s -skip '^TestTickDrainAndDealUnderTheGateAtLoad$' ./...
       - name: tick deal under the gate, alone
         # TestTickDrainAndDealUnderTheGateAtLoad times the deal on a loaded store against the
         # one-second gate (internal/sprint/deal_load_bench_test.go). Beside three sibling
@@ -61,7 +68,7 @@ jobs:
         # cores of a bench. It runs here with the runner to itself, as the tick runs on the
         # server; nothing is skipped, and it runs whether or not the step before passed.
         if: ${{ !cancelled() }}
-        run: go test -count=1 -run '^TestTickDrainAndDealUnderTheGateAtLoad$' ./internal/sprint/
+        run: go test -count=1 -timeout 600s -run '^TestTickDrainAndDealUnderTheGateAtLoad$' ./internal/sprint/
       - name: page lock only grows
         # the dashboard page's lock (internal/sprintdash/pagelock.go): every line of the base's
         # pagelock.txt is kept, so a page change is a new line with the owner's new ask; the base
@@ -77,13 +84,13 @@ jobs:
           else
             git fetch --no-tags --depth=1 origin "${{ github.event.before }}"
           fi
-          PAGELOCK_BASE=FETCH_HEAD go test -count=1 -run 'TestThePageLockOnlyGrows' ./internal/sprintdash/
+          PAGELOCK_BASE=FETCH_HEAD go test -count=1 -timeout 600s -run 'TestThePageLockOnlyGrows' ./internal/sprintdash/
           # the unit-test rule's allowance (internal/ci/unit_rule_allowed.txt) only shrinks
           # against the same base: a new allowance line is red
-          UNIT_RULE_BASE=FETCH_HEAD go test -count=1 -run 'TestTheUnitRuleAllowanceOnlyShrinks' ./internal/ci/
+          UNIT_RULE_BASE=FETCH_HEAD go test -count=1 -timeout 600s -run 'TestTheUnitRuleAllowanceOnlyShrinks' ./internal/ci/
           # the one-source allowance (internal/ci/one_source_allowed.txt: pkg/ copies of nova-tools
           # not yet merged) only shrinks against the same base
-          UNIT_RULE_BASE=FETCH_HEAD go test -count=1 -run 'TestTheOneSourceAllowanceOnlyShrinks' ./internal/ci/
+          UNIT_RULE_BASE=FETCH_HEAD go test -count=1 -timeout 600s -run 'TestTheOneSourceAllowanceOnlyShrinks' ./internal/ci/
 
   # functional is the functional tier, run per pull request and push to main on
   # the fleet's self-hosted runners: redis-server is checked on PATH as the store
@@ -108,9 +115,11 @@ jobs:
         run: |
           set -euo pipefail
           want=$(grep -m1 '^go ' go.mod | awk '{print $2}')
-          got=$(go version | sed -E 's/.*go([0-9.]+).*/\1/')
+          # command -v first: with set -e a bare `go version` would abort the
+          # step on a shell error before the TOOL-MISSING diagnostic
+          got=$(command -v go >/dev/null 2>&1 && go version | sed -E 's/.*go([0-9.]+).*/\1/' || true)
           if [ "$got" != "$want" ]; then
-            echo "TOOL-MISSING go $want $got on $RUNNER_NAME" >&2
+            echo "TOOL-MISSING go $want ${got:-missing} on $RUNNER_NAME" >&2
             exit 1
           fi
       - name: redis-server on PATH
@@ -146,9 +155,11 @@ jobs:
         run: |
           set -euo pipefail
           want=$(grep -m1 '^go ' go.mod | awk '{print $2}')
-          got=$(go version | sed -E 's/.*go([0-9.]+).*/\1/')
+          # command -v first: with set -e a bare `go version` would abort the
+          # step on a shell error before the TOOL-MISSING diagnostic
+          got=$(command -v go >/dev/null 2>&1 && go version | sed -E 's/.*go([0-9.]+).*/\1/' || true)
           if [ "$got" != "$want" ]; then
-            echo "TOOL-MISSING go $want $got on $RUNNER_NAME" >&2
+            echo "TOOL-MISSING go $want ${got:-missing} on $RUNNER_NAME" >&2
             exit 1
           fi
       - name: redis-server on PATH
