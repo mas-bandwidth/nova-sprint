@@ -84,6 +84,10 @@ func cloneGoArgv(run []string) []string { return niceArgv(run) }
 // benchRun is bench.Run, a test's seam for the argv the bench is given.
 var benchRun = bench.Run
 
+// subprocPrepare is subproc.Prepare, a test's seam for the command line a go run in
+// the clone is given (goRun).
+var subprocPrepare = subproc.Prepare
+
 // gateRunBudgetOverride is a test's seam for one gate run's budget; the zero value
 // means landGateRunBudget (gateOn).
 var gateRunBudgetOverride time.Duration
@@ -101,7 +105,7 @@ var treeTests = []string{"internal/docs", "internal/ci"}
 func (l *lander) goRun(ctx context.Context, dir string, run []string, set ...string) (string, error) {
 	gofmtRun := len(run) > 0 && run[0] == "gofmt"
 	run = cloneGoArgv(run)
-	b := subproc.Prepare(ctx, landGoBudget, run[0], run[1:]...)
+	b := subprocPrepare(ctx, landGoBudget, run[0], run[1:]...)
 	defer b.Cancel()
 	gateGroupCmd(b.Cmd)
 	var env []string

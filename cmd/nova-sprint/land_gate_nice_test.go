@@ -4,19 +4,21 @@ import (
 	"context"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/mas-bandwidth/nova-tools/pkg/bench"
+	"github.com/mas-bandwidth/nova-tools/pkg/subproc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// cardWorkNice is the level a member card's work runs at on a bench: nova-tools
-// cmd/nova-swarm lowers the card's child (a harness or the nova-sandbox) with
-// `nice -n 19` on its gate line (native_nice_test.go), and the coordinator's reading
-// of the 2026-10-18 bench is 10. The nova-tools half of this card
-// (v17-swarm-card-work-nice-is-one-constant) settles the one constant; the gate only
-// has to stay below it.
-const cardWorkNice = 10
+// cardWorkNice is the level a member card's work runs at on a bench, as measured on
+// vision 2026-10-18 with `ps -o ni= -p <pid>`: nova-swarm and the card's nova-sandbox
+// at ni 15, and their go children at ni 19. nova-tools cmd/nova-swarm lowers the
+// card's child on its gate line (`nice -n 19`, native_nice_test.go); the nova-tools
+// half of this card (v17-swarm-card-work-nice-is-one-constant) settles the one
+// constant. The gate only has to stay below the card work's own level.
+const cardWorkNice = 15
 
 // The owner, 2026-10-18: landing is the highest priority in the sprint, above
 // everything else. A gate run must never be niced down to the card work's level: its
@@ -55,12 +57,23 @@ func TestTheGateRunsAtAHigherPriorityThanCardWork(t *testing.T) {
 }
 
 // The lander's own go runs in the clone take the same word, so no gate exec takes the
-// level of whatever started it. goRun checks the run's own name for the gofmt branch
-// before it wraps it.
+// level of whatever started it. The seam stands in for subproc.Prepare, so the test
+// reads the command line goRun builds and starts nothing.
 func TestTheCloneGoRunsKeepTheirNice(t *testing.T) {
-	t.Parallel()
+	// not parallel: it stands in for subproc.Prepare through the package seam
+	old := subprocPrepare
+	defer func() { subprocPrepare = old }()
+	var got []string
+	subprocPrepare = func(ctx context.Context, _ time.Duration, name string, args ...string) subproc.Bounded {
+		got = append([]string{name}, args...)
+		return subproc.Prepare(ctx, landGoBudget, "nova-gate-nice-test-no-such-command")
+	}
 	run := []string{"go", "test", "./..."}
-	assert.Equal(t, []string{"nice", "-n", strconv.Itoa(landGateNice), "go", "test", "./..."}, cloneGoArgv(run),
+	l := &lander{}
+	if _, err := l.goRun(t.Context(), t.TempDir(), run); err == nil {
+		t.Fatal("the stand-in command must fail; nothing is started")
+	}
+	assert.Equal(t, []string{"nice", "-n", strconv.Itoa(landGateNice), "go", "test", "./..."}, got,
 		"the clone's go runs carry the gate's level")
-	assert.Equal(t, run, []string{"go", "test", "./..."}, "the caller's run is not changed in place")
+	assert.Equal(t, []string{"go", "test", "./..."}, run, "the caller's run is not changed in place")
 }
