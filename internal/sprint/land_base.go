@@ -326,3 +326,176 @@ func OutsideBaseRed(s *Snapshot, r BaseGreenReq, why string) Plan {
 	return LandBaseRefused(s, MergeReq{Stream: r.Stream, Base: r.Base, Who: r.Who,
 		BaseRed: fmt.Sprintf("outside commit %s on %s: %s", r.Sha, r.Base, why)})
 }
+
+// FieldForwardMerge is the newest forward-merge tip a card must be checked against.
+// A card is pending when this differs from FieldForwardMergeChecked; Deal refuses it
+// until the coordinator has recomputed its behind count and brief-at-base checks.
+const (
+	FieldForwardMerge        = "forward_merge"
+	FieldForwardMergeChecked = "forward_merge_checked"
+	FieldForwardMergeBehind  = "forward_merge_behind"
+)
+
+// NBaseForwardMerged is the happened note of a recorded forward-merge of a base.
+const NBaseForwardMerged = "a base took a forward-merge"
+
+// ForwardMergeCardCheck pins one card's brief at the time the coordinator re-ran its
+// brief-at-base checks. The digest lets the store fence a concurrent brief edit without
+// retaining the card's whole brief in the operation arguments.
+type ForwardMergeCardCheck struct {
+	ID, Stream, BriefSHA256 string
+}
+
+// ForwardMergeReq records a verified forward-merge. Repo scopes the base identity;
+// Base and Merge are the destination branch and commit, and From names the merged branch.
+type ForwardMergeReq struct {
+	Repo   string
+	Base   string
+	From   string
+	Merge  string
+	Who    string
+	Reason string
+}
+
+// ForwardMergeRecheckReq records successful behind and brief-at-base checks for the exact
+// cards the forward-merge marked pending. Brief digests fence edits while checks ran.
+type ForwardMergeRecheckReq struct {
+	Repo   string
+	Base   string
+	Merge  string
+	Who    string
+	Behind int
+	Checks []ForwardMergeCardCheck
+}
+
+// RecordForwardMerge records a verified move in the durable (repo, base) tip used by
+// BaseMovedOutside and marks every waiting, ready and review card pending. The coordinator
+// clears that mark only in a separate RecheckForwardMerge step after its checks pass.
+func RecordForwardMerge(s *Snapshot, r ForwardMergeReq) Plan { return Lawful(recordForwardMerge(s, r)) }
+
+func recordForwardMerge(s *Snapshot, r ForwardMergeReq) Plan {
+	var p Plan
+	p.on(s)
+	if r.Repo == "" || r.Base == "" || r.From == "" || r.Merge == "" {
+		p.refuse(r.Who, "a forward-merge wants its repository, source branch, destination base and merge commit")
+		return p
+	}
+	if tip := forwardMergeRecordedTip(s, r.Repo, r.Base); tip == r.Merge {
+		p.refuse(r.Who, "the forward-merge tip is already recorded; resume its card rechecks instead")
+		return p
+	}
+	type hit struct {
+		card   *Card
+		stream string
+	}
+	var hits []hit
+	var ids []string
+	for _, col := range []State{Waiting, Ready, Review} {
+		for _, st := range s.Streams() {
+			for _, c := range s.Work.Cell(st, col) {
+				if c.F("kind") == "sentinel" {
+					continue
+				}
+				repo, base := CardRepoAndBase(s, c)
+				if repo != r.Repo || base != r.Base {
+					continue
+				}
+				hits = append(hits, hit{c, st})
+				ids = append(ids, c.ID)
+			}
+		}
+	}
+	if len(hits) == 0 {
+		p.refuse(r.Who, "no waiting, ready or review card names "+r.Repo+" BASE "+r.Base+"; nothing was changed")
+		return p
+	}
+	what := fmt.Sprintf("%s %s took a forward-merge of %s at %s: its waiting, ready and review cards are pending brief and behind rechecks%s",
+		r.Repo, r.Base, r.From, r.Merge, cutText(": "+r.Reason, MaxCardTextBytes))
+	for _, h := range hits {
+		p.Units = append(p.Units, Unit{Key: h.card.ID, Stream: h.stream,
+			Changes: []Change{change(Work, setEntry(h.card, map[string]string{FieldForwardMerge: r.Merge},
+				FieldForwardMergeChecked, FieldForwardMergeBehind))},
+			Moved: fmt.Sprintf("%s: %s BASE %s forward-merged to %s; recheck pending", h.card.ID, r.Repo, r.Base, r.Merge)})
+	}
+	p.Notes = append(p.Notes, Note{Kind: Happened, Type: NBaseForwardMerged, Stream: hits[0].stream, Primaries: ids, What: what, Who: r.Who, At: s.Now})
+	return BaseLandingUnits(s, p, hits[0].stream, r.Repo, r.Base, r.Merge)
+}
+
+// RecheckForwardMerge clears pending only after every card marked for this tip has a
+// matching current brief witness. A changed brief or card set leaves all marks in place.
+func RecheckForwardMerge(s *Snapshot, r ForwardMergeRecheckReq) Plan {
+	var p Plan
+	p.on(s)
+	if r.Repo == "" || r.Base == "" || r.Merge == "" || r.Behind < 0 {
+		p.refuse(r.Who, "a forward-merge recheck wants its repository, base, merge tip and non-negative behind count")
+		return p
+	}
+	if forwardMergeRecordedTip(s, r.Repo, r.Base) != r.Merge {
+		p.refuse(r.Who, "the recorded base tip moved during the forward-merge recheck; pending marks remain; run the verb again")
+		return p
+	}
+	type hit struct {
+		card   *Card
+		stream string
+	}
+	var hits []hit
+	for _, col := range []State{Waiting, Ready, Review} {
+		for _, st := range s.Streams() {
+			for _, c := range s.Work.Cell(st, col) {
+				if c.F("kind") == "sentinel" || c.F(FieldForwardMerge) != r.Merge || c.F(FieldForwardMergeChecked) == r.Merge {
+					continue
+				}
+				repo, base := CardRepoAndBase(s, c)
+				if repo == r.Repo && base == r.Base {
+					hits = append(hits, hit{c, st})
+				}
+			}
+		}
+	}
+	if len(hits) == 0 {
+		p.refuse(r.Who, "no cards remain pending recheck for "+r.Repo+" BASE "+r.Base+" at "+r.Merge)
+		return p
+	}
+	checks := make(map[string]ForwardMergeCardCheck, len(r.Checks))
+	for _, check := range r.Checks {
+		if check.ID == "" || check.Stream == "" || check.BriefSHA256 == "" || checks[check.ID].ID != "" {
+			p.refuse(r.Who, "the forward-merge recheck has an invalid or duplicate card witness; pending marks remain")
+			return p
+		}
+		checks[check.ID] = check
+	}
+	if len(checks) != len(hits) {
+		p.refuse(r.Who, "the pending cards changed during the forward-merge recheck; pending marks remain; run the verb again")
+		return p
+	}
+	for _, h := range hits {
+		w := checks[h.card.ID]
+		if w.ID == "" || w.Stream != h.stream || w.BriefSHA256 != fmt.Sprintf("%x", sha256.Sum256([]byte(h.card.F("brief")))) {
+			p.refuse(r.Who, "card "+h.card.ID+" changed during the forward-merge recheck; pending marks remain; run the verb again")
+			return p
+		}
+	}
+	for _, h := range hits {
+		p.Units = append(p.Units, Unit{Key: h.card.ID, Stream: h.stream,
+			Changes: []Change{change(Work, setEntry(h.card, map[string]string{
+				FieldForwardMergeChecked: r.Merge, FieldForwardMergeBehind: fmt.Sprint(r.Behind)}))},
+			Moved: fmt.Sprintf("%s: %s BASE %s rechecked at %s; behind=%d", h.card.ID, r.Repo, r.Base, r.Merge, r.Behind)})
+	}
+	return p
+}
+
+func forwardMergeRecordedTip(s *Snapshot, repo, base string) string {
+	if s == nil {
+		return ""
+	}
+	for _, stream := range s.Streams() {
+		ctl := s.StreamCtl(stream)
+		if ctl != nil && ctl.F(FieldBaseLandedRepo) == repo && ctl.F(FieldBaseLandedBase) == base {
+			return ctl.F(FieldBaseLandedTip)
+		}
+	}
+	if tip, ok := s.Work.Prop(BaseLandedKey(repo, base)); ok {
+		return tip
+	}
+	return ""
+}
