@@ -195,9 +195,10 @@ func probableDuplicate(a, b dupCard) (dupFinding, bool) {
 }
 
 // dupLedger says the path is a ledger file, no evidence that two cards are one
-// change: a file on either card's SHARED: line, a .tsv under a tla directory, or
-// a .tsv, .csv or .ledger under a testdata directory. Many unrelated cards
-// append to these.
+// change: a file on either card's SHARED: line, a .tsv under a tla directory, a
+// .tsv, .csv or .ledger under a testdata directory, or a lander-owned roadmap
+// ledger (ROADMAP.md at the root, docs/roadmap.sexp, and any .sexp under
+// docs/roadmap-evidence/). Many unrelated cards append to these.
 func dupLedger(c, other dupCard, path string) bool {
 	if dupShared(c, path) || dupShared(other, path) {
 		return true
@@ -206,7 +207,13 @@ func dupLedger(c, other dupCard, path string) bool {
 	if ext == ".tsv" && dupUnderDir(path, "tla") {
 		return true
 	}
-	return dupUnderDir(path, "testdata") && (ext == ".tsv" || ext == ".csv" || ext == ".ledger")
+	if dupUnderDir(path, "testdata") && (ext == ".tsv" || ext == ".csv" || ext == ".ledger") {
+		return true
+	}
+	if path == "ROADMAP.md" || path == "docs/roadmap.sexp" {
+		return true
+	}
+	return ext == ".sexp" && dupUnderDir(path, "roadmap-evidence")
 }
 
 // dupUnderDir says a slash-separated path has dir as one of its directories.
