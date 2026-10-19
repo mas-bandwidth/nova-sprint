@@ -21,9 +21,9 @@ func seedWork(w *world, friend string, n int) {
 		w.s.Fleet.SetRows(append(w.s.Fleet.Rows(), row))
 	}
 	for i := 0; i < n; i++ {
-		id := "seedw-" + itoa(i+1)
+		id := "seedw-" + friend + "-" + itoa(i+1)
 		w.s.Fleet.Put(&Card{ID: id, Row: row, Col: Working, Score: 1, Rev: 1,
-			Fields: map[string]string{"kind": "work", "gen": "1", "primary": id, "stream": "s1"}})
+			Fields: map[string]string{"kind": "work", "gen": "1", "primary": id, "stream": "s1", FieldStarted: "1"}})
 	}
 }
 
@@ -113,7 +113,7 @@ func TestTheFriendDealCountsReadsAgainstHerWidth(t *testing.T) {
 	t.Parallel()
 	const width = 8
 
-	t.Run("at width she is dealt nothing", func(t *testing.T) {
+	t.Run("at width she is dealt into her queue", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t)
 		seedWork(w, "amy", 4)
@@ -121,10 +121,11 @@ func TestTheFriendDealCountsReadsAgainstHerWidth(t *testing.T) {
 		require.Equal(t, 12, friendLiveLanes(w.s, "amy"), "4 work + 8 reads live")
 
 		dealt, live2 := dealsN(w, "amy", 3)
-		assert.Zero(t, dealt, "a friend at live %d of width %d is dealt nothing (BASE dealt more)", live2, width)
+		assert.Equal(t, 3, dealt, "a friend at live %d of width %d is dealt into her ready queue (the owner's rule: width bounds work, never queued)", live2, width)
+		assert.Equal(t, 12, w.s.Fleet.Count(FriendRow("amy"), Working), "her working stays at width (4 work, 8 reads)")
 	})
 
-	t.Run("below width she is dealt exactly the free lanes", func(t *testing.T) {
+	t.Run("below width she is dealt into her queue", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t)
 		seedWork(w, "amy", 4)
@@ -132,25 +133,25 @@ func TestTheFriendDealCountsReadsAgainstHerWidth(t *testing.T) {
 		require.Equal(t, 7, friendLiveLanes(w.s, "amy"), "4 work + 3 reads (7 of 8)")
 
 		dealt, live2 := dealsN(w, "amy", 5)
-		assert.Equal(t, 1, dealt, "7 of 8: exactly one more is dealt")
-		assert.Equal(t, width, live2, "she is filled to her width, never past it")
+		assert.Equal(t, 5, dealt, "7 of 8: every card offered is dealt into her queue (width bounds work, never queued)")
+		assert.Equal(t, 7, w.s.Fleet.Count(FriendRow("amy"), Working), "her working stays at 7 (4 work, 3 reads)")
+		assert.Equal(t, width+4, live2, "ready+working = 12")
 	})
 
-	t.Run("reads finish and the next tick deals into the freed lanes", func(t *testing.T) {
+	t.Run("reads hold lanes and their finish frees room", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t)
 		seedWork(w, "amy", 0)
 		seedReads(w, "amy", 8)
 		dealt, _ := dealsN(w, "amy", 2)
-		assert.Zero(t, dealt, "8 reads of width 8: nothing is dealt")
+		assert.Equal(t, 2, dealt, "8 reads of width 8: she still deals into her queue (width bounds work, never queued)")
 
-		// three reads finish this tick: they leave her row
+		// three reads finish this tick: they leave her row, freeing room
 		for i := 0; i < 3; i++ {
 			w.place(w.s.Fleet, ReadCardID("read-"+itoa(i), 1, "amy"), "", DoneOK)
 		}
-		require.Equal(t, 5, friendLiveLanes(w.s, "amy"), "three reads finished")
-		dealt, live2 := dealsN(w, "amy", 2)
-		assert.Positive(t, dealt, "the next tick deals into the freed lanes")
-		assert.Equal(t, width, live2, "filled to her width, no earlier")
+		require.Equal(t, 7, friendLiveLanes(w.s, "amy"), "three reads finished: 2 queued work + 5 reads")
+		dealt2, _ := dealsN(w, "amy", 4)
+		assert.Equal(t, 4, dealt2, "the freed room takes more queued cards")
 	})
 }
