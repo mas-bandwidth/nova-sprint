@@ -4,8 +4,35 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 )
+
+// tickCountBlockersWalk counts calls of the Blockers walk (tick_memo_complexity_test.go):
+// a package-level counter, a few ns each, no build tag. tickCountUnresolvedNeeds counts
+// the walk's UnresolvedNeeds calls; needs_resolve.go is not this card's to touch, so the
+// counter sits on the walk's call site here.
+var (
+	tickCountBlockersWalk    int64
+	tickCountUnresolvedNeeds int64
+)
+
+// tickCountEnabled gates the counters: the complexity test sets it around its measured
+// tick, so the parallel equivalence test's ticks (which read the same package counters)
+// cannot disturb the counts. The load is a few ns.
+var tickCountEnabled int32
+
+func tickCount(p *int64) {
+	if atomic.LoadInt32(&tickCountEnabled) != 0 {
+		atomic.AddInt64(p, 1)
+	}
+}
+
+// tickUnresolvedNeeds is UnresolvedNeeds with the tick counter (the walk's call site).
+func tickUnresolvedNeeds(s *Snapshot, id string, needs []string, adding map[string]bool) []UnresolvedNeed {
+	tickCount(&tickCountUnresolvedNeeds)
+	return UnresolvedNeeds(s, id, needs, adding)
+}
 
 // NNeedBlocked is the judgment raised when an unlanded card's need is held, dropped or absent.
 const NNeedBlocked = "a need is blocked: its dependents cannot move"
@@ -52,6 +79,7 @@ func shortAge(d time.Duration) string {
 //
 // tla/NeedsBlocked.tla BlockedDependentsCovered
 func Blockers(s *Snapshot) []Blocker {
+	tickCount(&tickCountBlockersWalk)
 	if s == nil || s.Work == nil {
 		return nil
 	}
@@ -71,9 +99,31 @@ func Blockers(s *Snapshot) []Blocker {
 	}
 
 	// 2. Discover blockers: any need named by an unlanded card that UnresolvedNeeds reports held, dropped or absent.
+	// The needs are split once per card and indexed by the need they name, in the
+	// unlanded cards' order: the queue walk below then visits only the cards that need
+	// the current blocker, instead of splitting every card's needs for every blocker.
+	// The answers and the dependents' order are the scan's.
+	needsOf := make(map[*Card][]string, len(unlandedCards))
+	needers := map[string][]*Card{}
 	blockerSet := map[string]bool{}
 	for _, c := range unlandedCards {
-		unres := UnresolvedNeeds(s, c.ID, Split(c.F("needs")), nil)
+		needs := Split(c.F("needs"))
+		needsOf[c] = needs
+		if len(needs) == 0 {
+			continue
+		}
+		waived := Split(c.F("waived"))
+		seen := map[string]bool{}
+		for _, n := range needs {
+			if seen[n] || contains(waived, n) {
+				continue
+			}
+			seen[n] = true
+			needers[n] = append(needers[n], c)
+		}
+	}
+	for _, c := range unlandedCards {
+		unres := tickUnresolvedNeeds(s, c.ID, needsOf[c], nil)
 		for _, u := range unres {
 			if u.Reason == UnresolvedHeld || u.Reason == UnresolvedDropped || u.Reason == UnresolvedAbsent {
 				blockerSet[u.Need] = true
@@ -113,27 +163,23 @@ func Blockers(s *Snapshot) []Blocker {
 				}
 			}
 
-			// Forward needs: any unlanded card needing curr.
-			for _, c := range unlandedCards {
+			// Forward needs: any unlanded card needing curr, in unlanded order.
+			for _, c := range needers[curr] {
 				if visited[c.ID] {
 					continue
 				}
-				needs := Split(c.F("needs"))
-				waived := Split(c.F("waived"))
-				if contains(needs, curr) && !contains(waived, curr) {
-					visited[c.ID] = true
-					queue = append(queue, c.ID)
-					if !IsSentinel(c) {
-						depList = append(depList, Dependent{ID: c.ID, Stream: c.Row})
-					}
-					if IsSentinel(c) {
-						for _, bh := range Behind(s, c) {
-							if bh.Placed() && bh.Col != Landed && !visited[bh.ID] {
-								visited[bh.ID] = true
-								queue = append(queue, bh.ID)
-								if !IsSentinel(bh) {
-									depList = append(depList, Dependent{ID: bh.ID, Stream: bh.Row})
-								}
+				visited[c.ID] = true
+				queue = append(queue, c.ID)
+				if !IsSentinel(c) {
+					depList = append(depList, Dependent{ID: c.ID, Stream: c.Row})
+				}
+				if IsSentinel(c) {
+					for _, bh := range Behind(s, c) {
+						if bh.Placed() && bh.Col != Landed && !visited[bh.ID] {
+							visited[bh.ID] = true
+							queue = append(queue, bh.ID)
+							if !IsSentinel(bh) {
+								depList = append(depList, Dependent{ID: bh.ID, Stream: bh.Row})
 							}
 						}
 					}
@@ -150,6 +196,31 @@ func Blockers(s *Snapshot) []Blocker {
 		}
 	}
 	return blockers
+}
+
+// tickBlockers is Blockers(s) memoized on the snapshot: a tick's quietedByBlocker calls it
+// for every judgment, and the first call walks the table once and the rest read the memo.
+// The memo is per-snapshot and is reset wherever the snapshot is copied with a changed Work
+// or Fleet (newHeld), so it never describes tables the snapshot does not hold. Blockers is a
+// pure function of the snapshot (tla/NeedsBlocked.tla BlockedDependentsCovered), so the memo
+// changes no decision.
+func (s *Snapshot) tickBlockers() []Blocker {
+	if s == nil {
+		return nil
+	}
+	if s.Work == nil {
+		if !s.blockersSet {
+			s.blockersMemo, s.blockersSet = Blockers(s), true
+		}
+		return s.blockersMemo
+	}
+	// the work table's change count is the cache's key: a card put, dropped or
+	// changed in place invalidates the memo even when the snapshot is not copied
+	puts := s.Work.changes()
+	if !s.blockersSet || s.blockersWorkPuts != puts {
+		s.blockersMemo, s.blockersSet, s.blockersWorkPuts = Blockers(s), true, puts
+	}
+	return s.blockersMemo
 }
 
 // CoveredDependents returns a map of dependent ID -> blocker's judgment ID or alias (or blocker ID)

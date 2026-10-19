@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -22,12 +23,13 @@ const duplicateThreshold = 0.20
 
 // dupCard is what the duplicate check reads from one brief.
 type dupCard struct {
-	ID      string
-	Repo    string
-	Paths   []string
-	Shared  []string
-	Tokens  map[string]bool
-	Follows map[string]bool
+	ID           string
+	Repo         string
+	GeneratedSet string
+	Paths        []string
+	Shared       []string
+	Tokens       map[string]bool
+	Follows      map[string]bool
 }
 
 // dupWordRE is a word of a card's id or task paragraph: a letter, then at
@@ -56,6 +58,9 @@ func dupCardOf(id, brief string) dupCard {
 	c := dupCard{ID: id, Repo: base.Named, Paths: swarm.CardPaths(raw), Shared: dupHeaderGlobs(brief, "SHARED"), Tokens: map[string]bool{}, Follows: dupFollows(brief)}
 	if c.Repo == "" {
 		c.Repo = base.Repo
+	}
+	if sets := dupHeaderGlobs(brief, "GENERATED-SET"); len(sets) == 1 {
+		c.GeneratedSet = sets[0]
 	}
 	text := id + " " + dupTaskParagraph(brief)
 	for _, w := range dupWordRE.FindAllString(strings.ToLower(text), -1) {
@@ -155,14 +160,12 @@ func probableDuplicate(a, b dupCard) (dupFinding, bool) {
 	if a.Repo == "" || a.Repo != b.Repo {
 		return dupFinding{}, false
 	}
+	aPaths, bPaths := dupPathsWithoutLedgers(a, b), dupPathsWithoutLedgers(b, a)
 	var files []string
 	seen := map[string]bool{}
-	for _, pa := range a.Paths {
-		for _, pb := range b.Paths {
+	for _, pa := range aPaths {
+		for _, pb := range bPaths {
 			if !preflightOverlap(pa, pb) {
-				continue
-			}
-			if dupShared(a, pa) || dupShared(a, pb) || dupShared(b, pa) || dupShared(b, pb) {
 				continue
 			}
 			if !seen[pa] {
@@ -189,6 +192,43 @@ func probableDuplicate(a, b dupCard) (dupFinding, bool) {
 		shared = shared[:8]
 	}
 	return dupFinding{Of: b.ID, Score: score, Files: files, Shared: shared}, true
+}
+
+// dupLedger says the path is a ledger file, no evidence that two cards are one
+// change: a file on either card's SHARED: line, a .tsv under a tla directory, or
+// a .tsv, .csv or .ledger under a testdata directory. Many unrelated cards
+// append to these.
+func dupLedger(c, other dupCard, path string) bool {
+	if dupShared(c, path) || dupShared(other, path) {
+		return true
+	}
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext == ".tsv" && dupUnderDir(path, "tla") {
+		return true
+	}
+	return dupUnderDir(path, "testdata") && (ext == ".tsv" || ext == ".csv" || ext == ".ledger")
+}
+
+// dupUnderDir says a slash-separated path has dir as one of its directories.
+func dupUnderDir(path, dir string) bool {
+	for _, part := range strings.Split(filepath.ToSlash(path), "/") {
+		if part == dir {
+			return true
+		}
+	}
+	return false
+}
+
+// dupPathsWithoutLedgers is the card's PATHS less every ledger it or the other
+// card names.
+func dupPathsWithoutLedgers(c, other dupCard) []string {
+	out := make([]string, 0, len(c.Paths))
+	for _, p := range c.Paths {
+		if !dupLedger(c, other, p) {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // dupShared says the card lists the path, or a glob naming it, on its SHARED: line.
@@ -235,6 +275,9 @@ func dupCommon(a, b map[string]bool) []string {
 func duplicatesRefused(c dupCard, open []dupCard, notDup map[string]string) []dupFinding {
 	var out []dupFinding
 	for _, o := range open {
+		if c.GeneratedSet != "" && c.GeneratedSet == o.GeneratedSet {
+			continue
+		}
 		if notDup[o.ID] != "" {
 			continue
 		}
@@ -297,6 +340,9 @@ func dupHeld(cards []dupCard, open []dupCard, notDup map[string]string) (held ma
 		all := duplicatesRefused(c, open, nil)
 		left := duplicatesRefused(c, open, notDup)
 		for _, earlier := range admitted {
+			if c.GeneratedSet != "" && c.GeneratedSet == earlier.GeneratedSet {
+				continue
+			}
 			if c.Follows[earlier.ID] || notDup[earlier.ID] != "" {
 				continue
 			}

@@ -235,6 +235,11 @@ var heldParts = []TickPartFn{TickLevel, TickLevelReads, TickResolve, TickResume,
 func newHeld(h HeldState, now time.Time) *held {
 	s := *h.Snap
 	s.Now, s.rests = now, nil
+	// the tick memos describe the snapshot's Work and Fleet as they were: this copy sets a
+	// new Now and may move cards (the rule asks what the next tick does), so the Blockers and
+	// read-card-index memos are stale and must be reset (tickBlockers, readCardIndex).
+	s.blockersSet, s.blockersMemo, s.blockersWorkPuts = false, nil, 0
+	s.readIndex, s.readIndexPlaced = nil, nil
 	// the resting routes, settled once at this clock: the rule asks noRoute of every
 	// ready primary (judgment), each a map read (route_rest.go)
 	sp, _ := s.withRests()

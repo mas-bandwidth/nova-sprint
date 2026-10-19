@@ -44,8 +44,22 @@ TICK_GATE_TEST := ^TestTickDrainAndDealUnderTheGateAtLoad$$
 NO_AUTO_MAINTENANCE := GIT_CONFIG_PARAMETERS="'maintenance.auto'='false'"
 
 test: vet
-	$(NO_AUTO_MAINTENANCE) $(GO) test -p $(GOTEST_P) -skip '$(TICK_GATE_TEST)' ./...
-	$(NO_AUTO_MAINTENANCE) $(GO) test -count=1 -run '$(TICK_GATE_TEST)' ./internal/sprint/
+	@set -eu; \
+	readonly_home=$$(mktemp -d); \
+	cleanup() { chmod 0700 "$$readonly_home" 2>/dev/null || :; find "$$readonly_home" -mindepth 1 -delete 2>/dev/null || :; rmdir "$$readonly_home" 2>/dev/null || :; }; \
+	trap cleanup EXIT; \
+	$(GO) env GOPATH GOMODCACHE GOCACHE > "$$readonly_home/go-env"; \
+	{ IFS= read -r GOPATH; IFS= read -r GOMODCACHE; IFS= read -r GOCACHE; } < "$$readonly_home/go-env"; \
+	rm "$$readonly_home/go-env"; \
+	export GOPATH GOMODCACHE GOCACHE; \
+	chmod 0555 "$$readonly_home"; \
+	printf 'read-only HOME: %s\n' "$$readonly_home"; \
+	rc=0; \
+	env -u XDG_CONFIG_HOME -u XDG_CACHE_HOME HOME="$$readonly_home" $(NO_AUTO_MAINTENANCE) $(GO) test -p $(GOTEST_P) -skip '$(TICK_GATE_TEST)' ./... || rc=$$?; \
+	env -u XDG_CONFIG_HOME -u XDG_CACHE_HOME HOME="$$readonly_home" $(NO_AUTO_MAINTENANCE) $(GO) test -count=1 -run '$(TICK_GATE_TEST)' ./internal/sprint/ || { test_rc=$$?; if [ "$$rc" -eq 0 ]; then rc=$$test_rc; fi; }; \
+	written=$$(find "$$readonly_home" -mindepth 1 -print); \
+	if [ -n "$$written" ]; then printf 'a test wrote outside its working directory: %s\n' "$$written" >&2; rc=1; else printf 'read-only HOME is empty\n'; fi; \
+	exit "$$rc"
 
 # the functional tier: the real store's tests. Bounded at two minutes per
 # package (the standing rule: one minute ideally, two max; over the bound is

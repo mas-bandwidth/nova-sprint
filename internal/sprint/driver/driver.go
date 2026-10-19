@@ -427,6 +427,13 @@ func (d *Driver) tick(tick int, c Config, w where) {
 	var finishers []string
 	var good []string
 	bad := map[string][]string{}
+	// A member's read cards are reported as a reader's are: a card in working
+	// is one its take moved there (a read card has no begin), and its verdict
+	// comes from the same facts. They are reported one member at a time, as the
+	// read verb takes a member's read cards on her own row.
+	readOK := map[string][]string{}
+	readBroken := map[string]map[string][]string{}
+	var readReporters []string
 	takers := map[int][]string{} // by take limit, the members up whose queue was read
 	anyReady := false            // a member's queue showed a ready card
 	for _, m := range members {
@@ -437,20 +444,42 @@ func (d *Driver) tick(tick int, c Config, w where) {
 		if !d.read(&q, "queue", "--as", m) {
 			continue
 		}
-		ready, done := 0, 0
+		ready, done, reported := 0, 0, 0
 		for _, card := range q.Cards {
 			switch {
 			case card.Col == "ready":
 				ready++
-			case card.Col == "working" && done < Most:
-				done++
-				word := card.ID + "@" + strconv.Itoa(card.Gen)
-				if ok, report := d.Facts.Work(card.ID); ok {
-					good = append(good, word)
-				} else {
-					bad[report] = append(bad[report], word)
+			case card.Col == "working":
+				if isReadCard(card.ID) {
+					if reported >= c.ReadLimit {
+						continue
+					}
+					reported++
+					word := card.ID + "@" + strconv.Itoa(max(card.Gen, 1))
+					if ok, finding := d.Facts.Read(card.ID); ok {
+						readOK[m] = append(readOK[m], word)
+					} else {
+						finding = fmt.Sprintf("%s (attempt %s)", finding, readAttempt(card.ID))
+						if readBroken[m] == nil {
+							readBroken[m] = map[string][]string{}
+						}
+						readBroken[m][finding] = append(readBroken[m][finding], word)
+					}
+					continue
+				}
+				if done < Most {
+					done++
+					word := card.ID + "@" + strconv.Itoa(card.Gen)
+					if ok, report := d.Facts.Work(card.ID); ok {
+						good = append(good, word)
+					} else {
+						bad[report] = append(bad[report], word)
+					}
 				}
 			}
+		}
+		if reported > 0 {
+			readReporters = append(readReporters, m)
 		}
 		if done > 0 {
 			finishers = append(finishers, m)
@@ -523,6 +552,14 @@ func (d *Driver) tick(tick int, c Config, w where) {
 		d.batches(append(append([]string{"read", "--as", strings.Join(reporters, ","), "--broken", "--finding", f}, held...), usage...), broken[f])
 	}
 	d.batches(append([]string{"read", "--as", strings.Join(beginners, ","), "--begin"}, held...), begin)
+	// a member's read cards, one member's row at a time: the read verb reports
+	// a read card on its own member's row, never several members' in one step
+	for _, m := range readReporters {
+		d.batches(append(append([]string{"read", "--as", m, "--ok"}, held...), usage...), readOK[m])
+		for _, f := range slices.Sorted(maps.Keys(readBroken[m])) {
+			d.batches(append(append([]string{"read", "--as", m, "--broken", "--finding", f}, held...), usage...), readBroken[m][f])
+		}
+	}
 	// Each stream's merge step, with its facts. A stream's queue is read just
 	// before its step, and the other streams' queues only when a fact needs
 	// them, after every step before it has run.
@@ -619,6 +656,32 @@ func (d *Driver) waits() {
 	if len(parts) > 0 {
 		fmt.Fprintf(d.Out, "  waits for the coordinator: %s\n", strings.Join(parts, "; "))
 	}
+}
+
+// isReadCard says the card's id is a read card's (<primary>.r<attempt>.<reader>,
+// sprint.ReadCardID, or that with a .g<n> generation): a card a member's take moved to
+// working is reported with read, not finished. The driver keeps its own reading of the
+// id so it reaches the tables only through the verbs.
+func isReadCard(id string) bool {
+	parts := strings.Split(id, ".")
+	if len(parts) != 3 && len(parts) != 4 {
+		return false
+	}
+	if len(parts) == 4 {
+		g, ok := strings.CutPrefix(parts[3], "g")
+		if !ok {
+			return false
+		}
+		if n, err := strconv.Atoi(g); err != nil || n < 1 {
+			return false
+		}
+	}
+	attempt, ok := strings.CutPrefix(parts[1], "r")
+	if !ok {
+		return false
+	}
+	n, err := strconv.Atoi(attempt)
+	return err == nil && n >= 1
 }
 
 // readAttempt is the attempt number in a read card's id (<primary>.r<attempt>.<reader>,
