@@ -1,6 +1,9 @@
 # s2 Cards and briefs: pins of standard/sprint/s2.md, one per line: <R-NAME> <kind> <a> <b>, tab-separated (standard/STYLE.md section 9)
 R-MINIMAL-DEPS	divergence	sprint-spec-fix-minimal-deps-lint	./cmd/nova-sprint TestAFullySerialStreamWithoutReasonsIsRefused
-R-LINT-ON-ADD	divergence	sprint-spec-fix-lint-on-every-admit	./cmd/nova-sprint TestATwinRefusesALintFailingBrief
+R-LINT-ON-ADD	divergence	sprint-spec-fix-lint-on-every-admit	./cmd/nova-sprint TestTwinAndRecutRefuseALintFailingBrief
 R-LINT-ON-ADD	divergence	sprint-spec-fix-lint-on-every-admit	./cmd/nova-sprint TestAMachineMadeCardRunsTheFullLint
 R-LINT-ON-ADD	divergence	sprint-spec-fix-lint-on-every-admit	./cmd/nova-sprint TestABriefEditAndARecutRunTheCardChecks
 R-LINT-ON-ADD	test	./cmd/nova-sprint	TestEveryAdmitPathRefusesALintFailingBrief
+R-MINIMAL-DEPS	divergence	sprint-spec-fix-minimal-deps-lint	./cmd/nova-sprint TestStreamsPrintsTheLongestHardChain
+R-LINT-ON-ADD	test	./cmd/nova-sprint	TestAddRefusesABriefThatFailsTheCardLint
+R-LINT-ON-ADD	test	./cmd/nova-sprint	TestAddHoldsABriefToTheCardChecks

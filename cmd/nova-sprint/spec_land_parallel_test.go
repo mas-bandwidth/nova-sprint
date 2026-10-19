@@ -12,7 +12,8 @@ import (
 // fork, holding only its own stream's cards on one base. The rest of the row is a divergence: the
 // land loop runs one pass at a time, a lane's cuts chain, a base commit's gate has one writer,
 // a built batch waits landGrace for another stream's gate, the width is capped at
-// landParallelDefault and --land-parallel 1 is accepted (standard/pins/s6.tsv, every divergence
+// landParallelDefault, --land-parallel 1 is accepted, and one stream's batches run one after
+// another, its second base waiting on its first (standard/pins/s6.tsv, every divergence
 // owed by sprint-spec-fix-land-parallel).
 
 // TestEachStreamLandsAsItsOwnBatchOnItsOwnFork: two streams queued in one pass are two batches,

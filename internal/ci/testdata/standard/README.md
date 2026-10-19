@@ -27,6 +27,17 @@ The test names the line each witness must fail with; that line names the row or 
 | skipped-test | a test pin naming a test that calls t.Skip |
 | build-tagged-test | a test pin naming a test whose file the unit tier's build leaves out |
 | owed-test-elsewhere | a divergence whose owed test exists in another package |
+| pin-file-names-another-section | a pin file whose first comment names another section |
+| skipped-in-a-helper | a test pin naming a test whose helper calls t.Skip |
+| platform-tagged-test | a test pin naming a test whose file builds on Linux only |
+| platform-named-file | a test pin naming a test whose file's name limits it to Linux |
+| bound-unpinned | a bound of a Bounds table with no const pin of its value |
+| const-float-for-int | a const pin writing a float for an integer constant |
+| const-duration-as-number | a const pin writing a duration constant as a bare number |
+| const-number-as-duration | a const pin writing a count as a duration |
+| bounds-share-one-pin | two bounds of one value held by a single const pin |
+| cgo-only-test | a test pin naming a test whose file builds only without cgo |
+| skip-through-a-cycle | a test whose helpers call each other, one of them calling t.Skip, checked after another test walked the cycle |
 
 ## base
 
@@ -68,6 +79,11 @@ all capitals, as shown here.
 
 <a id="R-OPTION"></a>
 **NS-1.2 R-OPTION.** The coordinator MAY ask again.
+
+| Bound | Value | Holds | On reaching it |
+|---|---|---|---|
+| wait | 60 minutes | a card waiting, from its deal | taken back |
+| width | 4 | the cards on a row | dealt nothing more |
 ~~~
 
 ~~~ file base standard/sprint/s2.md
@@ -102,6 +118,10 @@ R-ONE	test	./pkg/x	TestXHolds
 R-ONE	const	./pkg/x	Width=4
 R-ONE	const	./pkg/x	Wait=60m
 R-ONE	const	./pkg/x	Name="x"
+R-ONE	const	./pkg/x	PerHour=3600
+R-ONE	const	./pkg/x	Third=0.5
+R-ONE	const	./pkg/x	Thousand=1000
+R-ONE	const	./pkg/x	Tick=4s
 R-ONE	tla	X	Safe
 R-ONE	external	mas-bandwidth/other	./cmd/y TestYHolds
 ~~~
@@ -119,17 +139,29 @@ import "time"
 const Width = 4
 
 const (
-	Wait = 60 * time.Minute
-	Name = "x"
+	Wait    = 60 * time.Minute
+	Name    = "x"
+	PerHour = int(time.Hour / time.Second)
+	Third   = float64(1) / 2
+	Tick    = time.Second << 2
 )
+
+const Thousand int = 1e3
 ~~~
 
 ~~~ file base pkg/x/x_test.go
 package x
 
-import "testing"
+import (
+	"encoding/xml"
+	"strings"
+	"testing"
+)
 
-func TestXHolds(t *testing.T) {}
+func TestXHolds(t *testing.T) {
+	d := xml.NewDecoder(strings.NewReader("<a/>"))
+	_ = d.Skip()
+}
 ~~~
 
 ~~~ file base tla/X.tla
@@ -299,3 +331,124 @@ import "testing"
 func TestXNeverWaits(t *testing.T) {}
 ~~~
 
+~~~ file pin-file-names-another-section standard/pins/s2.tsv
+# s1 Introduction
+R-HARD-ONE	divergence	fix-card	./pkg/x TestXNeverWaits
+~~~
+
+~~~ file skipped-in-a-helper pkg/x/x_test.go
+package x
+
+import "testing"
+
+func TestXHolds(t *testing.T) { needsHost(t) }
+
+func needsHost(t *testing.T) { onHost(t) }
+
+func onHost(t *testing.T) { t.Skip("no host") }
+~~~
+
+~~~ file platform-tagged-test pkg/x/x_test.go
+//go:build linux
+
+package x
+
+import "testing"
+
+func TestXHolds(t *testing.T) {}
+~~~
+
+~~~ file platform-named-file pkg/x/x_test.go
+package x
+~~~
+
+~~~ file platform-named-file pkg/x/x_linux_test.go
+package x
+
+import "testing"
+
+func TestXHolds(t *testing.T) {}
+~~~
+
+~~~ file bound-unpinned standard/sprint/s1.md
+<a id="s1"></a>
+# s1. Introduction
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT",
+"RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
+interpreted as described in BCP 14 (RFC 2119, RFC 8174) when, and only when, they appear in
+all capitals, as shown here.
+
+<a id="R-ONE"></a>
+**NS-1.1 R-ONE.** The tick MUST deal at the width.
+
+| Bound | Value | Holds | On reaching it |
+|---|---|---|---|
+| wait | 5 minutes | a card waiting, from its deal | taken back |
+~~~
+
+~~~ file const-float-for-int standard/pins/s1.tsv
+# s1 Introduction
+R-ONE	const	./pkg/x	Width=4.0
+~~~
+
+~~~ file const-duration-as-number standard/pins/s1.tsv
+# s1 Introduction
+R-ONE	const	./pkg/x	Wait=3600000000000
+~~~
+
+~~~ file const-number-as-duration standard/pins/s1.tsv
+# s1 Introduction
+R-ONE	const	./pkg/x	Width=4ns
+~~~
+
+~~~ file bounds-share-one-pin standard/sprint/s1.md
+<a id="s1"></a>
+# s1. Introduction
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT",
+"RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
+interpreted as described in BCP 14 (RFC 2119, RFC 8174) when, and only when, they appear in
+all capitals, as shown here.
+
+<a id="R-ONE"></a>
+**NS-1.1 R-ONE.** The tick MUST deal at the width.
+
+| Bound | Value | Holds | On reaching it |
+|---|---|---|---|
+| wait | 60 minutes | a card waiting, from its deal | taken back |
+| again | 60 minutes | a card asked again, from its ask | judged |
+~~~
+
+~~~ file skip-through-a-cycle standard/pins/s1.tsv
+# s1 Introduction
+R-ONE	test	./pkg/x	TestAFirst
+R-ONE	test	./pkg/x	TestXHolds
+~~~
+
+~~~ file skip-through-a-cycle pkg/x/x_test.go
+package x
+
+import "testing"
+
+func TestAFirst(t *testing.T) { a(t) }
+
+func TestXHolds(t *testing.T) { b(t) }
+
+func a(t *testing.T) {
+	b(t)
+	t.Skip("no host")
+}
+
+func b(t *testing.T) { a(t) }
+~~~
+
+~~~ file cgo-only-test pkg/x/x_test.go
+//go:build !cgo
+
+package x
+
+import "testing"
+
+func TestXHolds(t *testing.T) {}
+~~~

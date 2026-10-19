@@ -6,3 +6,5 @@ R-LAND-PARALLEL	divergence	sprint-spec-fix-land-parallel	./cmd/nova-sprint TestA
 R-LAND-PARALLEL	divergence	sprint-spec-fix-land-parallel	./cmd/nova-sprint TestTheLandWidthIsNotCappedBelowTheStreamsQueued
 R-LAND-PARALLEL	divergence	sprint-spec-fix-land-parallel	./cmd/nova-sprint TestLandRefusesAWidthThatMergesOneStreamAtATime
 R-LAND-PARALLEL	test	./cmd/nova-sprint	TestEachStreamLandsAsItsOwnBatchOnItsOwnFork
+R-LAND-PARALLEL	divergence	sprint-spec-fix-land-parallel	./cmd/nova-sprint TestOneStreamsBatchesOnTwoBasesMergeSideBySide
+R-LAND-PARALLEL	test	./cmd/nova-sprint	TestALaneLandsWhileAnotherLanesCombinedGateBlocks

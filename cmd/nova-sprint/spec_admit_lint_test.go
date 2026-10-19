@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,7 +18,7 @@ import (
 
 // TestEveryAdmitPathRefusesALintFailingBrief: a brief that lacks the child rules is refused,
 // exit 2, naming the lint's findings and that the brief fails the card lint, with nothing
-// written, by add from a file, by add from a directory, by add replacing a card, by a brief edit
+// written, by add with the brief given by flag, by add from a file, by add from a directory, by add replacing a card, by a brief edit
 // of an unstarted primary and by a recut with a new brief; each of those paths admits a brief
 // that passes; and none of their verbs offers a flag that skips the lint.
 func TestEveryAdmitPathRefusesALintFailingBrief(t *testing.T) {
@@ -38,6 +39,8 @@ func TestEveryAdmitPathRefusesALintFailingBrief(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(goodDir, "s3-1.md"), []byte(passingBrief("the directory's work")), 0o600))
 
 	paths := []struct{ path, bad, good string }{
+		{"add --brief", "add --stream s4 --count 1 --one --brief 'handle the empty case'",
+			"add --stream s4 --count 1 --one --brief '" + strings.ReplaceAll(passingBrief("the flag's work"), "'", "") + "'"},
 		{"add --brief-file", "add --stream s2 --count 1 --one --brief-file " + bad,
 			"add --stream s2 --count 1 --one --brief-file " + writeBrief(t, "the new work")},
 		{"add --brief-dir", "add --stream s3 --brief-dir " + badDir,

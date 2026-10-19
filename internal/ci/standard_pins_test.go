@@ -113,23 +113,34 @@ func TestTheStandardRefusesEachReversedWitness(t *testing.T) {
 
 	// each witness and the line it fails with: who it names (its row or section), what it says
 	cases := map[string]struct{ who, says string }{
-		"unpinned-must":          {"R-LOOSE", "a binding row with no pin"},
-		"missing-test":           {"R-ONE", "test ./pkg/x TestGone is declared in no _test.go file"},
-		"wrong-constant":         {"R-ONE", "const ./pkg/x Width is 4, the pin says 5"},
-		"divergence-test-exists": {"R-HARD-ONE", "divergence fix-card owes ./pkg/x TestXHolds, which exists"},
-		"heading-off-outline":    {"s2", `standard/sprint/s2.md heading is "# s2. Other things", the outline says "# s2. Things"`},
-		"lower-case-must":        {"R-ONE", `lower-case "must"`},
-		"tla-undefined":          {"R-ONE", "tla X does not define Unsafe"},
-		"tla-not-gated":          {"R-ONE", "tla X Unchecked: no required case of tla/CASES.tsv expecting pass checks it"},
-		"tla-not-extended":       {"R-ONE", "tla X Safe: no required case of tla/CASES.tsv expecting pass checks it"},
-		"tla-bench-only":         {"R-ONE", "tla X Safe: no required case of tla/CASES.tsv expecting pass checks it"},
-		"tla-only-a-constant":    {"R-ONE", "tla X Safe: no required case of tla/CASES.tsv expecting pass checks it"},
-		"skipped-test":           {"R-ONE", "test ./pkg/x TestXHolds does not run in the unit tier: pkg/x/x_test.go: it calls t.Skip"},
-		"build-tagged-test":      {"R-ONE", "test ./pkg/x TestXHolds does not run in the unit tier: pkg/x/x_test.go: its file builds only under functional"},
-		"owed-test-elsewhere":    {"R-HARD-ONE", "divergence fix-card owes ./pkg/x TestXNeverWaits, which exists in cmd/y/y_test.go"},
-		"hard-row-removed":       {"R-HARD-ONE", "hard row H1 is not in s2"},
-		"pin-in-wrong-section":   {"R-ONE", "pinned in standard/pins/s2.tsv, the row is in s1"},
-		"key-word-outside-a-row": {"s1", "a key word outside a row"},
+		"unpinned-must":                  {"R-LOOSE", "a binding row with no pin"},
+		"missing-test":                   {"R-ONE", "test ./pkg/x TestGone is declared in no _test.go file"},
+		"wrong-constant":                 {"R-ONE", "const ./pkg/x Width is 4, the pin says 5"},
+		"divergence-test-exists":         {"R-HARD-ONE", "divergence fix-card owes ./pkg/x TestXHolds, which exists"},
+		"heading-off-outline":            {"s2", `standard/sprint/s2.md heading is "# s2. Other things", the outline says "# s2. Things"`},
+		"lower-case-must":                {"R-ONE", `lower-case "must"`},
+		"tla-undefined":                  {"R-ONE", "tla X does not define Unsafe"},
+		"tla-not-gated":                  {"R-ONE", "tla X Unchecked: no required case of tla/CASES.tsv expecting pass checks it"},
+		"tla-not-extended":               {"R-ONE", "tla X Safe: no required case of tla/CASES.tsv expecting pass checks it"},
+		"tla-bench-only":                 {"R-ONE", "tla X Safe: no required case of tla/CASES.tsv expecting pass checks it"},
+		"tla-only-a-constant":            {"R-ONE", "tla X Safe: no required case of tla/CASES.tsv expecting pass checks it"},
+		"skipped-test":                   {"R-ONE", "test ./pkg/x TestXHolds does not run in the unit tier: pkg/x/x_test.go: it calls t.Skip"},
+		"build-tagged-test":              {"R-ONE", "test ./pkg/x TestXHolds does not run in the unit tier: pkg/x/x_test.go: its file builds only under functional"},
+		"owed-test-elsewhere":            {"R-HARD-ONE", "divergence fix-card owes ./pkg/x TestXNeverWaits, which exists in cmd/y/y_test.go"},
+		"hard-row-removed":               {"R-HARD-ONE", "hard row H1 is not in s2"},
+		"pin-in-wrong-section":           {"R-ONE", "pinned in standard/pins/s2.tsv, the row is in s1"},
+		"key-word-outside-a-row":         {"s1", "a key word outside a row"},
+		"pin-file-names-another-section": {"s2", `standard/pins/s2.tsv begins with "# s1 Introduction", not a comment naming its section "# s2 Things"`},
+		"skipped-in-a-helper":            {"R-ONE", "test ./pkg/x TestXHolds does not run in the unit tier: pkg/x/x_test.go: it calls needsHost, which calls onHost, which calls t.Skip"},
+		"platform-tagged-test":           {"R-ONE", "test ./pkg/x TestXHolds does not run in the unit tier: pkg/x/x_test.go: its file builds only under linux"},
+		"platform-named-file":            {"R-ONE", "test ./pkg/x TestXHolds does not run in the unit tier: pkg/x/x_linux_test.go: its file builds only under linux (its name)"},
+		"bound-unpinned":                 {"s1", `the bound "wait" (5 minutes) has no const pin of its value in standard/pins/s1.tsv`},
+		"const-float-for-int":            {"R-ONE", "const ./pkg/x Width is 4, an integer, the pin says 4.0, a float"},
+		"const-duration-as-number":       {"R-ONE", "const ./pkg/x Wait is a duration, the pin says 3600000000000: write it as a duration"},
+		"const-number-as-duration":       {"R-ONE", "const ./pkg/x Width is not a duration, the pin says 4ns"},
+		"bounds-share-one-pin":           {"s1", `the bound "again" (60 minutes) has no const pin of its value in standard/pins/s1.tsv`},
+		"cgo-only-test":                  {"R-ONE", "test ./pkg/x TestXHolds does not run in the unit tier: pkg/x/x_test.go: its file builds only under !cgo"},
+		"skip-through-a-cycle":           {"R-ONE", "test ./pkg/x TestXHolds does not run in the unit tier: pkg/x/x_test.go: it calls b, which calls a, which calls t.Skip"},
 	}
 	for name, want := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -178,8 +189,8 @@ type stdSection struct {
 // stdRow is one numbered requirement row of NS-1.
 type stdRow struct {
 	sec, name, text, file string
-	num, line           int
-	hard, binds         bool
+	num, line             int
+	hard, binds           bool
 }
 
 // stdHard is one row of STYLE.md's hard table.
@@ -195,7 +206,14 @@ type stdCheck struct {
 	problems    []string
 	divergences []string
 	external    []string
-	files       []stdFile // every _test.go file of the repository, read once
+	consts      map[string][]stdConstPin // each section's const pins, by section id
+	files       []stdFile                // every _test.go file of the repository, read once
+	parsed      map[string]*ast.File     // the _test.go files parsed so far, by name
+	skipped     map[string]string        // what each helper (dir, name) reaches of a Skip, once known
+	walking     map[string]bool          // the helpers being followed now, to cut a cycle
+	cycles      int                      // how many times a cycle was cut: a "none" found under one is not kept
+	visited     []string                 // the helpers one test's walk followed
+	declared    map[string][]stdFile     // the _test.go files declaring each (dir, name)
 }
 
 var (
@@ -503,8 +521,9 @@ func (c *stdCheck) pins() {
 			c.fail("%s: %s is missing", s.id, file)
 			continue
 		}
-		if !strings.HasPrefix(src, "#") {
-			c.fail("%s: %s begins with a comment naming its section", s.id, file)
+		if want := "# " + s.id + " " + s.heading; !stdHeadsWith(src, want) {
+			first, _, _ := strings.Cut(src, "\n")
+			c.fail("%s: %s begins with %q, not a comment naming its section %q", s.id, file, first, want)
 		}
 		sc := bufio.NewScanner(strings.NewReader(src))
 		for n := 1; sc.Scan(); n++ {
@@ -555,6 +574,84 @@ func (c *stdCheck) pins() {
 			c.fail("%s: marked (hard) and not in STYLE.md's hard table", name)
 		}
 	}
+	c.bounds()
+}
+
+var (
+	stdBoundsHeadRE = regexp.MustCompile(`^\|\s*Bound\s*\|\s*Value\s*\|\s*Holds\s*\|\s*On reaching it\s*\|$`)
+	stdAmountRE     = regexp.MustCompile(`(\d+(?:\.\d+)?)\s*(milliseconds?|ms|seconds?|s|minutes?|m|hours?|h|days?)?\b`)
+	stdUnitWords    = map[string]time.Duration{"millisecond": time.Millisecond, "ms": time.Millisecond, "second": time.Second, "s": time.Second,
+		"minute": time.Minute, "m": time.Minute, "hour": time.Hour, "h": time.Hour, "day": 24 * time.Hour}
+)
+
+// bounds checks STYLE.md section 7: each bound of a section's Bounds table is also a row
+// pinned to its constant, so the bound's value (its first amount: "60 minutes", "6 hours",
+// "3") equals a const pin of a row of that section, one pin a bound. The check holds the
+// values only: which constant a bound means is the writer's and the reader's to see.
+func (c *stdCheck) bounds() {
+	for _, s := range c.sections {
+		file := "standard/sprint/" + s.id + ".md"
+		src, _ := c.read(file)
+		lines := strings.Split(src, "\n")
+		for i := 0; i < len(lines); i++ {
+			if !stdBoundsHeadRE.MatchString(strings.TrimSpace(lines[i])) {
+				continue
+			}
+			for j := i + 2; j < len(lines) && strings.HasPrefix(strings.TrimSpace(lines[j]), "|"); j++ {
+				cells := strings.Split(strings.Trim(strings.TrimSpace(lines[j]), "|"), "|")
+				if len(cells) < 2 {
+					continue
+				}
+				bound, value := strings.TrimSpace(cells[0]), strings.TrimSpace(cells[1])
+				v, dur, ok := stdBoundValue(value)
+				if !ok {
+					c.fail("%s: %s:%d: the bound %q has no amount in its value %q", s.id, file, j+1, bound, value)
+					continue
+				}
+				// each bound takes a const pin of its own: two bounds of one value need two pins
+				at := slices.IndexFunc(c.consts[s.id], func(p stdConstPin) bool {
+					return !p.used && p.dur == dur && p.v.Kind() == v.Kind() && constant.Compare(p.v, token.EQL, v)
+				})
+				if at >= 0 {
+					c.consts[s.id][at].used = true
+				} else {
+					c.fail("%s: %s:%d: the bound %q (%s) has no const pin of its value in standard/pins/%s.tsv", s.id, file, j+1, bound, value, s.id)
+				}
+			}
+		}
+	}
+}
+
+// stdBoundValue reads a bound's value: its first amount, a duration when a unit follows it.
+func stdBoundValue(value string) (v constant.Value, dur, ok bool) {
+	m := stdAmountRE.FindStringSubmatch(value)
+	if m == nil {
+		return nil, false, false
+	}
+	if m[2] == "" {
+		v := constant.MakeFromLiteral(m[1], token.INT, 0)
+		if v.Kind() == constant.Unknown {
+			v = constant.ToFloat(constant.MakeFromLiteral(m[1], token.FLOAT, 0))
+		}
+		return v, false, true
+	}
+	unit, exact := stdUnitWords[m[2]]
+	if !exact {
+		unit = stdUnitWords[strings.TrimSuffix(m[2], "s")]
+	}
+	f, err := strconv.ParseFloat(m[1], 64)
+	if err != nil {
+		return nil, false, false
+	}
+	return constant.MakeInt64(int64(f * float64(unit))), true, true
+}
+
+// stdHeadsWith says the file's first line is the comment want, alone or followed by a space,
+// a colon or a comma and more words.
+func stdHeadsWith(src, want string) bool {
+	first, _, _ := strings.Cut(src, "\n")
+	rest, ok := strings.CutPrefix(first, want)
+	return ok && (rest == "" || strings.ContainsAny(rest[:1], " :,"))
 }
 
 // pin checks one pin against the code.
@@ -622,13 +719,12 @@ type stdTestAt struct {
 // parsed, so the check stays inside the unit tier's time.
 func (c *stdCheck) testDecls(dir, test string) []stdTestAt {
 	var out []stdTestAt
-	fset := token.NewFileSet()
 	for _, tf := range c.testFiles() {
 		if dir != "" && path.Dir(tf.name) != dir || !strings.Contains(tf.src, "func "+test+"(") {
 			continue
 		}
-		f, err := parser.ParseFile(fset, tf.name, tf.src, parser.SkipObjectResolution|parser.ParseComments)
-		if err != nil {
+		f := c.parse(tf)
+		if f == nil {
 			continue
 		}
 		for _, d := range f.Decls {
@@ -637,12 +733,61 @@ func (c *stdCheck) testDecls(dir, test string) []stdTestAt {
 				continue
 			}
 			at := stdTestAt{file: tf.name}
-			if tags := stdBuildTagsOut(f); tags != "" {
-				at.why = "its file builds only under " + tags + ", which the unit tier does not set"
-			} else if skip := stdSkips(fn); skip != "" {
+			if tags := stdFileOut(tf.name, f); tags != "" {
+				at.why = "its file builds only under " + tags + ", which the unit tier does not set on every platform it runs on"
+			} else if skip := c.testSkips(path.Dir(tf.name), fn); skip != "" {
 				at.why = "it calls " + skip + ", so the unit tier may not run it"
 			}
 			out = append(out, at)
+		}
+	}
+	return out
+}
+
+// parse is the parsed file, read once a check; nil when it does not parse.
+func (c *stdCheck) parse(tf stdFile) *ast.File {
+	if f, ok := c.parsed[tf.name]; ok {
+		return f
+	}
+	if c.parsed == nil {
+		c.parsed = map[string]*ast.File{}
+	}
+	f, err := parser.ParseFile(token.NewFileSet(), tf.name, tf.src, parser.SkipObjectResolution|parser.ParseComments)
+	if err != nil {
+		f = nil
+	}
+	c.parsed[tf.name] = f
+	return f
+}
+
+// stdFuncDeclRE finds a function or method declaration's name in a file's text.
+var stdFuncDeclRE = regexp.MustCompile(`(?m)^func (?:\([^)]*\) )?([A-Za-z_][A-Za-z0-9_]*)[\[(]`)
+
+// helpers is every function and method named name that a _test.go file of dir declares.
+// The files are indexed by the names they declare once a check; only the files that declare
+// name are parsed.
+func (c *stdCheck) helpers(dir, name string) []*ast.FuncDecl {
+	if c.declared == nil {
+		c.declared = map[string][]stdFile{}
+		for _, tf := range c.testFiles() {
+			for _, m := range stdFuncDeclRE.FindAllStringSubmatch(tf.src, -1) {
+				key := path.Dir(tf.name) + "\x00" + m[1]
+				if fs := c.declared[key]; len(fs) == 0 || fs[len(fs)-1].name != tf.name {
+					c.declared[key] = append(fs, tf)
+				}
+			}
+		}
+	}
+	var out []*ast.FuncDecl
+	for _, tf := range c.declared[dir+"\x00"+name] {
+		f := c.parse(tf)
+		if f == nil {
+			continue
+		}
+		for _, d := range f.Decls {
+			if fn, ok := d.(*ast.FuncDecl); ok && fn.Name.Name == name && fn.Body != nil {
+				out = append(out, fn)
+			}
 		}
 	}
 	return out
@@ -660,19 +805,57 @@ func (c *stdCheck) testDeclared(dir, test string) (declared bool, why string) {
 	return false, why
 }
 
-// stdUnitTags is what the unit tier's build sets: the gate's platform and the toolchain, no
-// custom tag (functional, slow and the rest are left out).
-func stdUnitTags(tag string) bool {
-	switch tag {
-	case "linux", "amd64", "unix", "gc", "cgo":
-		return true
-	}
-	return strings.HasPrefix(tag, "go1.")
+// stdPlatforms is every platform the unit tier runs on: the fleet's Linux benches and CI
+// runners (amd64 and arm64) and the Macs (arm64 and amd64). A pinned test runs on each, so a
+// file left out on any one of them does not pin.
+var stdPlatforms = []struct{ goos, goarch string }{
+	{"linux", "amd64"}, {"linux", "arm64"}, {"darwin", "arm64"}, {"darwin", "amd64"},
 }
 
-// stdBuildTagsOut is the file's //go:build line when the unit tier's build leaves it out, ""
-// when it builds.
-func stdBuildTagsOut(f *ast.File) string {
+// stdKnownOS and stdKnownArch are the GOOS and GOARCH words a file name's suffix may carry
+// (go help buildconstraint).
+var (
+	stdKnownOS   = map[string]bool{"aix": true, "android": true, "darwin": true, "dragonfly": true, "freebsd": true, "hurd": true, "illumos": true, "ios": true, "js": true, "linux": true, "nacl": true, "netbsd": true, "openbsd": true, "plan9": true, "solaris": true, "wasip1": true, "windows": true, "zos": true}
+	stdKnownArch = map[string]bool{"386": true, "amd64": true, "arm": true, "arm64": true, "loong64": true, "mips": true, "mipsle": true, "mips64": true, "mips64le": true, "ppc64": true, "ppc64le": true, "riscv64": true, "s390x": true, "wasm": true}
+)
+
+// stdUnitTags is what the unit tier's build sets on one platform: its GOOS and GOARCH, unix
+// on both, the toolchain, and cgo or not (a bench may have a C compiler or not, CGO_ENABLED
+// either way, so a file is checked both ways); no custom tag (functional, slow and the rest
+// are left out).
+func stdUnitTags(goos, goarch string, cgo bool) func(string) bool {
+	return func(tag string) bool {
+		switch tag {
+		case goos, goarch, "unix", "gc":
+			return true
+		case "cgo":
+			return cgo
+		}
+		return strings.HasPrefix(tag, "go1.")
+	}
+}
+
+// stdFileOut is why the unit tier's build leaves the file out on some platform it runs on: its
+// //go:build line, or its name's GOOS or GOARCH suffix; "" when it builds on every one.
+func stdFileOut(name string, f *ast.File) string {
+	parts := strings.Split(strings.TrimSuffix(strings.TrimSuffix(path.Base(name), ".go"), "_test"), "_")
+	goos, goarch := "", ""
+	if n := len(parts); n >= 2 {
+		last := parts[n-1]
+		switch {
+		case stdKnownArch[last] && n >= 3 && stdKnownOS[parts[n-2]]:
+			goos, goarch = parts[n-2], last
+		case stdKnownArch[last]:
+			goarch = last
+		case stdKnownOS[last]:
+			goos = last
+		}
+	}
+	for _, p := range stdPlatforms {
+		if goos != "" && goos != p.goos || goarch != "" && goarch != p.goarch {
+			return strings.Trim(goos+"/"+goarch, "/") + " (its name)"
+		}
+	}
 	for _, g := range f.Comments {
 		if g.Pos() > f.Package {
 			break
@@ -682,28 +865,117 @@ func stdBuildTagsOut(f *ast.File) string {
 				continue
 			}
 			x, err := constraint.Parse(cm.Text)
-			if err == nil && !x.Eval(stdUnitTags) {
-				return strings.TrimPrefix(cm.Text, "//go:build ")
+			if err != nil {
+				continue
+			}
+			for _, p := range stdPlatforms {
+				if !x.Eval(stdUnitTags(p.goos, p.goarch, true)) || !x.Eval(stdUnitTags(p.goos, p.goarch, false)) {
+					return strings.TrimPrefix(cm.Text, "//go:build ")
+				}
 			}
 		}
 	}
 	return ""
 }
 
-// stdSkips is the first Skip, Skipf or SkipNow the test calls, "" for none.
-func stdSkips(fn *ast.FuncDecl) string {
+// stdTestingType says t is *testing.T, *testing.B, *testing.F or testing.TB.
+func stdTestingType(t ast.Expr) bool {
+	if st, ok := t.(*ast.StarExpr); ok {
+		t = st.X
+	}
+	sel, ok := t.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	p, ok := sel.X.(*ast.Ident)
+	return ok && p.Name == "testing" && (sel.Sel.Name == "T" || sel.Sel.Name == "B" || sel.Sel.Name == "F" || sel.Sel.Name == "TB")
+}
+
+// testSkips is skips for one test: when its walk reaches no Skip, every helper it followed
+// reaches none either (the walk saw all they reach), so each is kept as none, cycle or not.
+func (c *stdCheck) testSkips(dir string, fn *ast.FuncDecl) string {
+	c.visited = c.visited[:0]
+	via := c.skips(dir, fn)
+	if via == "" {
+		for _, key := range c.visited {
+			c.skipped[key] = ""
+		}
+	}
+	return via
+}
+
+// skips is the first Skip, Skipf or SkipNow the function calls, itself or through a helper
+// its package's _test.go files declare (a function, or a method, called by name, followed to
+// any depth), "" for none: "t.Skip", or "needsHost, which calls t.Skip". A helper of another
+// package is not followed.
+func (c *stdCheck) skips(dir string, fn *ast.FuncDecl) string {
+	// the names of the function's and its closures' *testing.T, *testing.B and testing.TB
+	// parameters: a Skip on another value (a decoder's, a fake's) is no test's skip
+	testing := map[string]bool{}
+	ast.Inspect(fn, func(n ast.Node) bool {
+		if ft, ok := n.(*ast.FuncType); ok && ft.Params != nil {
+			for _, f := range ft.Params.List {
+				if stdTestingType(f.Type) {
+					for _, id := range f.Names {
+						testing[id.Name] = true
+					}
+				}
+			}
+		}
+		return true
+	})
 	found := ""
 	ast.Inspect(fn.Body, func(n ast.Node) bool {
 		if found != "" {
 			return false
 		}
-		if call, ok := n.(*ast.CallExpr); ok {
-			if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
-				switch sel.Sel.Name {
-				case "Skip", "Skipf", "SkipNow":
-					found = "t." + sel.Sel.Name
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		var name string
+		switch f := call.Fun.(type) {
+		case *ast.SelectorExpr:
+			switch f.Sel.Name {
+			case "Skip", "Skipf", "SkipNow":
+				if id, ok := f.X.(*ast.Ident); ok && testing[id.Name] {
+					found = "t." + f.Sel.Name
+					return false
 				}
 			}
+			name = f.Sel.Name
+		case *ast.Ident:
+			name = f.Name
+		}
+		if name == "" {
+			return true
+		}
+		key := dir + "\x00" + name
+		via, known := c.skipped[key]
+		switch {
+		case known:
+		case c.walking[key]:
+			c.cycles++ // in progress further up: the answer below it is not final
+		default:
+			if c.skipped == nil {
+				c.skipped, c.walking = map[string]string{}, map[string]bool{}
+			}
+			c.walking[key] = true
+			c.visited = append(c.visited, key)
+			before := c.cycles
+			for _, h := range c.helpers(dir, name) {
+				if via = c.skips(dir, h); via != "" {
+					break
+				}
+			}
+			delete(c.walking, key)
+			if via != "" || c.cycles == before {
+				c.skipped[key] = via // a Skip found, or none reached with no cycle cut short
+			}
+		}
+		if via != "" {
+			found = name + ", which calls " + via
+			return false
 		}
 		return true
 	})
@@ -818,7 +1090,7 @@ func (c *stdCheck) constant(name, dir, k, want string) {
 	clean := path.Clean(strings.TrimPrefix(dir, "./"))
 	// the files that name the constant first; every file of the package only when its
 	// expression refers to a constant declared elsewhere
-	exprs := c.constExprs(clean, k)
+	exprs, types := c.constExprs(clean, k)
 	e, ok := exprs[k]
 	if !ok {
 		c.fail("%s: const %s %s is declared in no file of the package", name, dir, k)
@@ -826,28 +1098,118 @@ func (c *stdCheck) constant(name, dir, k, want string) {
 	}
 	got, err := stdEval(e, exprs, 0)
 	if err != nil {
-		exprs = c.constExprs(clean, "")
+		exprs, types = c.constExprs(clean, "")
 		got, err = stdEval(exprs[k], exprs, 0)
 	}
 	if err != nil {
 		c.fail("%s: const %s %s: %v", name, dir, k, err)
 		return
 	}
-	w, err := stdPinValue(want)
+	w, dur, err := stdPinValue(want)
 	if err != nil {
 		c.fail("%s: const %s %s: the pin's value %q: %v", name, dir, k, want, err)
 		return
 	}
-	if !stdSameValue(got, w) {
+	if types[k] != nil {
+		got = stdConvert(got, types[k])
+	}
+	switch isDur := stdIsDuration(k, exprs, types, 0); {
+	case isDur && !dur:
+		c.fail("%s: const %s %s is a duration, the pin says %s: write it as a duration (60m)", name, dir, k, want)
+	case !isDur && dur:
+		c.fail("%s: const %s %s is not a duration, the pin says %s", name, dir, k, want)
+	case got.Kind() != w.Kind():
+		c.fail("%s: const %s %s is %s, %s, the pin says %s, %s", name, dir, k, got.ExactString(), stdKindWord(got), want, stdKindWord(w))
+	case !constant.Compare(got, token.EQL, w):
 		c.fail("%s: const %s %s is %s, the pin says %s", name, dir, k, got.ExactString(), want)
 	}
+	if c.consts == nil {
+		c.consts = map[string][]stdConstPin{}
+	}
+	c.consts[c.rows[name].sec] = append(c.consts[c.rows[name].sec], stdConstPin{v: w, dur: dur})
+}
+
+// stdConstPin is one const pin's value and whether it is a duration.
+type stdConstPin struct {
+	v    constant.Value
+	dur  bool
+	used bool // taken by a bound of the Bounds table
+}
+
+// stdKindWord names a constant's kind for a refusal.
+func stdKindWord(v constant.Value) string {
+	switch v.Kind() {
+	case constant.Int:
+		return "an integer"
+	case constant.Float:
+		return "a float"
+	case constant.String:
+		return "a string"
+	case constant.Bool:
+		return "a boolean"
+	}
+	return "of another kind"
+}
+
+// stdIsDuration says the constant is a time.Duration: its declared type is, or, untyped, its
+// expression is one (stdDurExpr).
+func stdIsDuration(k string, exprs, types map[string]ast.Expr, depth int) bool {
+	if t, ok := types[k].(*ast.SelectorExpr); ok {
+		if p, ok := t.X.(*ast.Ident); ok && p.Name == "time" && t.Sel.Name == "Duration" {
+			return true
+		}
+	}
+	if types[k] != nil || depth > 32 {
+		return false // declared of another type
+	}
+	e, ok := exprs[k]
+	return ok && stdDurExpr(e, exprs, types, depth+1)
+}
+
+// stdDurExpr says an untyped constant expression is a duration: a time unit, a conversion to
+// time.Duration, a duration constant of the package, or arithmetic that keeps one (a sum or a
+// product with a duration, or a duration divided by a count); a duration divided by a duration,
+// and a conversion to another type, are counts.
+func stdDurExpr(e ast.Expr, exprs, types map[string]ast.Expr, depth int) bool {
+	if depth > 32 {
+		return false
+	}
+	switch x := e.(type) {
+	case *ast.ParenExpr:
+		return stdDurExpr(x.X, exprs, types, depth+1)
+	case *ast.UnaryExpr:
+		return stdDurExpr(x.X, exprs, types, depth+1)
+	case *ast.SelectorExpr:
+		p, ok := x.X.(*ast.Ident)
+		return ok && p.Name == "time" && stdTimeUnits[x.Sel.Name] != 0
+	case *ast.Ident:
+		return exprs[x.Name] != nil && stdIsDuration(x.Name, exprs, types, depth+1)
+	case *ast.CallExpr:
+		sel, ok := x.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return false
+		}
+		p, ok := sel.X.(*ast.Ident)
+		return ok && p.Name == "time" && sel.Sel.Name == "Duration"
+	case *ast.BinaryExpr:
+		l, r := stdDurExpr(x.X, exprs, types, depth+1), stdDurExpr(x.Y, exprs, types, depth+1)
+		switch x.Op {
+		case token.ADD, token.SUB, token.MUL, token.REM:
+			return l || r
+		case token.SHL, token.SHR:
+			return l
+		case token.QUO:
+			return l && !r
+		}
+	}
+	return false
 }
 
 // constExprs is every constant's declaring expression in the package's non-test files whose
 // text names word ("" for every file), read with go/parser.
-func (c *stdCheck) constExprs(dir, word string) map[string]ast.Expr {
+func (c *stdCheck) constExprs(dir, word string) (exprs, types map[string]ast.Expr) {
 	entries, _ := fs.ReadDir(c.fsys, dir)
-	exprs := map[string]ast.Expr{}
+	exprs, types = map[string]ast.Expr{}, map[string]ast.Expr{}
 	fset := token.NewFileSet()
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
@@ -871,12 +1233,15 @@ func (c *stdCheck) constExprs(dir, word string) map[string]ast.Expr {
 				for i, id := range vs.Names {
 					if i < len(vs.Values) {
 						exprs[id.Name] = vs.Values[i]
+						if vs.Type != nil {
+							types[id.Name] = vs.Type
+						}
 					}
 				}
 			}
 		}
 	}
-	return exprs
+	return exprs, types
 }
 
 // stdTimeUnits is the time package's duration constants, in nanoseconds.
@@ -944,38 +1309,60 @@ func stdEval(e ast.Expr, consts map[string]ast.Expr, depth int) (constant.Value,
 		return constant.BinaryOp(l, x.Op, r), nil
 	case *ast.CallExpr:
 		if len(x.Args) == 1 {
-			return stdEval(x.Args[0], consts, depth+1) // a conversion: time.Duration(5), int64(n)
+			v, err := stdEval(x.Args[0], consts, depth+1) // a conversion: time.Duration(5), int64(n)
+			if err != nil {
+				return nil, err
+			}
+			return stdConvert(v, x.Fun), nil
 		}
 	}
 	return nil, fmt.Errorf("the expression is not evaluated")
 }
 
-// stdPinValue reads a pin's value: a Go literal, or a duration for a duration constant.
-func stdPinValue(s string) (constant.Value, error) {
+// stdConvert is v converted to the type t names, as Go converts a constant: to a float for
+// float32 and float64, to an integer for the integer types and time.Duration; any other type
+// leaves it as it is.
+func stdConvert(v constant.Value, t ast.Expr) constant.Value {
+	name := ""
+	switch x := t.(type) {
+	case *ast.Ident:
+		name = x.Name
+	case *ast.SelectorExpr:
+		if p, ok := x.X.(*ast.Ident); ok && p.Name == "time" && x.Sel.Name == "Duration" {
+			name = "int64"
+		}
+	}
+	switch name {
+	case "float32", "float64":
+		return constant.ToFloat(v)
+	case "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64", "uintptr", "byte", "rune":
+		if i := constant.ToInt(v); i.Kind() == constant.Int {
+			return i
+		}
+	}
+	return v
+}
+
+// stdPinValue reads a pin's value: a Go literal, or a duration (dur) for a duration
+// constant. An integer literal is an integer and a literal with a point or an exponent a
+// float, as Go reads them.
+func stdPinValue(s string) (v constant.Value, dur bool, err error) {
 	switch {
 	case strings.HasPrefix(s, `"`) || strings.HasPrefix(s, "`"):
 		if v := constant.MakeFromLiteral(s, token.STRING, 0); v.Kind() != constant.Unknown {
-			return v, nil
+			return v, false, nil
 		}
 	case s == "true" || s == "false":
-		return constant.MakeBool(s == "true"), nil
+		return constant.MakeBool(s == "true"), false, nil
 	}
-	for _, k := range []token.Token{token.INT, token.FLOAT} {
-		if v := constant.MakeFromLiteral(s, k, 0); v.Kind() != constant.Unknown {
-			return v, nil
-		}
+	if v := constant.MakeFromLiteral(s, token.INT, 0); v.Kind() != constant.Unknown {
+		return v, false, nil
+	}
+	if v := constant.MakeFromLiteral(s, token.FLOAT, 0); v.Kind() != constant.Unknown {
+		return constant.ToFloat(v), false, nil
 	}
 	if d, err := time.ParseDuration(s); err == nil {
-		return constant.MakeInt64(int64(d)), nil
+		return constant.MakeInt64(int64(d)), true, nil
 	}
-	return nil, fmt.Errorf("neither a Go literal nor a duration")
-}
-
-// stdSameValue says two constants are equal: of one kind, or both numeric.
-func stdSameValue(a, b constant.Value) bool {
-	num := func(v constant.Value) bool { return v.Kind() == constant.Int || v.Kind() == constant.Float }
-	if a.Kind() != b.Kind() && !(num(a) && num(b)) {
-		return false
-	}
-	return constant.Compare(a, token.EQL, b)
+	return nil, false, fmt.Errorf("neither a Go literal nor a duration")
 }
