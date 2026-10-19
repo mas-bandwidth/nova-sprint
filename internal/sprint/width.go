@@ -181,12 +181,18 @@ func WidthOfCores(cores int) int {
 
 // RowWidth is a fleet row's width as the step holds it, one definition for members and
 // friends alike: a member's is its nova-config machine row's width (cfg, the applied
-// config the store read for the step, by member; config.Widths), else its control
-// card's refreshed copy of it (MemberWidth); a member that drains (fleet up --width 0)
-// is 0 whatever cfg says; a friend's is her friend row's width (FriendSeat.Width, which
-// friend sync reads from her nova-config friend row). ok is false when the step does not
-// hold it: a friend whose seat the snapshot has not read, or a row with no control card.
-// tla/WidthHard.tla width[r] (OneSource).
+// config the store read for the step, by machine; config.Widths): a row's own width, or,
+// for a row with the default width, half the cores its beat reports (WidthOfCores, the
+// store's reader resolves it; 0 while no beat has reported them), or 0 for a row of width
+// 0 (no member); a member with no machine row in a config read that answered is 0 too: it
+// is no member of nova-config's fleet, and fleet sync holds it (DefaultWidth is never a
+// width a step holds to). Only a step with no config read at all (cfg nil: a twin, a test,
+// a read that failed) holds to the control card's copy (MemberWidth), never act on a
+// missing read. A member that drains (fleet up --width 0) is 0 whatever cfg says. A
+// friend's is her friend row's width (FriendSeat.Width, which friend sync reads from her
+// nova-config friend row). ok is false when the step does not hold it: a friend whose seat
+// the snapshot has not read, or a row with no control card. tla/WidthHard.tla width[r]
+// (OneSource).
 func RowWidth(s *Snapshot, row string, cfg map[string]int) (width int, ok bool) {
 	if s == nil || s.Fleet == nil {
 		return 0, false
@@ -207,10 +213,17 @@ func RowWidth(s *Snapshot, row string, cfg map[string]int) (width int, ok bool) 
 	if w == 0 {
 		return 0, true // the drain: no card is taken while its working cards finish
 	}
-	if n, read := cfg[row]; read && n >= 1 && n <= MaxWidth {
-		return n, true
+	if cfg != nil {
+		return ConfigWidth(cfg, row), true
 	}
 	return w, true
+}
+
+// ConfigWidth is a member's width in a config read that answered (cfg non-nil): its
+// machine row's width, 0 to MaxWidth; 0 for a row of width 0, a default row whose cores no
+// beat has reported, or a member with no machine row at all (RowWidth).
+func ConfigWidth(cfg map[string]int, member string) int {
+	return min(max(cfg[member], 0), MaxWidth)
 }
 
 // intoWorking is the fleet row a change puts a card into the working column of: a move
@@ -295,8 +308,9 @@ func MovesIntoFriendWorking(s *Snapshot, p Plan) bool {
 // >= RowWidth) is skipped alone, with one refusal line naming the row, its working count
 // and its width: a move is dropped (the card stays where it is and is taken when a card
 // there finishes); a create is made in ready instead; a unit left with no change is
-// dropped. Every other unit applies: nothing is refused for the fleet as a whole, no card
-// is failed and no attempt is spent. A row whose width the step does not hold (RowWidth ok
+// dropped. A friend's start receipt is held the same, with no exception (startMove: the
+// card she runs past her width stays ready on her row). Every other unit applies: nothing
+// is refused for the fleet as a whole, no card is failed and no attempt is spent. A row whose width the step does not hold (RowWidth ok
 // false) is not cut here; takeSeat refuses its takes. cfg is the applied config's member
 // widths (nil when the store holds no config read). tla/WidthHard.tla WidthHeld (the
 // reversed witnesses: MCWidthHardBrokenHalfRead, MCWidthHardBrokenFriendNext,
@@ -336,15 +350,6 @@ func HoldWidths(s *Snapshot, p Plan, cfg map[string]int) Plan {
 				continue
 			}
 			seen(row)
-			if startReceipt(ch) {
-				// a friend's start receipt is her fact, not a take: her beat says she runs
-				// the card, so it is counted working and never cut (cutting it would leave
-				// a card she runs ready, for the level or the rebalance to move); her takes,
-				// her next and the deal's are held (friend_start.go friendStartUnits)
-				working[row]++
-				keep = append(keep, ch)
-				continue
-			}
 			if working[row] < width {
 				working[row]++
 				keep = append(keep, ch)
@@ -352,6 +357,13 @@ func HoldWidths(s *Snapshot, p Plan, cfg map[string]int) Plan {
 			}
 			cut = true
 			why := fmt.Sprintf("%s is at its width (%d working of %d): %s is not moved to working; it waits and is taken when a card there finishes (the width is hard, every card working counts one: tla/WidthHard.tla WidthHeld)", row, working[row], width, ch.Entry.ID)
+			if startMove(ch) {
+				// a friend's start receipt is held like any take (the owner, 2026-10-18: no
+				// exceptions): her beat names a card running past her width, so it stays ready on
+				// her row, where no level or rebalance moves a card she runs (friendStarted), and
+				// her next start receipt moves it to working once a lane is free
+				why = fmt.Sprintf("%s is at its width (%d working of %d): %s, a start of hers, stays ready on her row and moves to working at her next start receipt once a lane is free; her daemon runs past her width (the width is hard, every card working counts one: tla/WidthHard.tla WidthHeld)", row, working[row], width, ch.Entry.ID)
+			}
 			p.Refused = append(p.Refused, Refusal{Key: ch.Entry.ID, Why: why})
 			if ch.Entry.Create != nil {
 				e := ch.Entry
@@ -385,11 +397,10 @@ func HoldWidths(s *Snapshot, p Plan, cfg map[string]int) Plan {
 	return p
 }
 
-// startReceipt says a change is a friend's start receipt: a move that writes her start
-// (FieldStarted, friendStartSet) of a card not taken by her own take in this step. Her own
-// take by count or by id writes it too, and takeOne's room has cut that take already; the
-// store does not cut a start (HoldWidths).
-func startReceipt(ch Change) bool {
+// startMove says a change is a friend's start: a move onto her row that writes her start
+// (FieldStarted, friendStartSet): her start receipt, or her own take. HoldWidths holds it
+// to her width as it holds every other move into working, and says so in its own words.
+func startMove(ch Change) bool {
 	if ch.Entry.Move == nil || !IsFriendRow(ch.Entry.Move.Row) {
 		return false
 	}
@@ -422,11 +433,16 @@ func movedWithout(moved string, ids []string) string {
 
 // WidthRefresh makes each member's control-card width nova-config's again: the one width
 // source (tla/WidthHard.tla Apply, OneSource). cfg is the applied config's member widths
-// as the store read them for the step (config.Widths: a machine row's own width, 1 or
-// more); a member whose copy differs gets one unit setting it, unless the plan already
-// changes its control card (that step's own write stands; the next step refreshes it) or
-// it drains (fleet up --width 0 stays until fleet up lifts it). A row with the default
-// width or width 0 is fleet sync's (it resolves the cores and the holds). It never widens
+// as the store read them for the step (config.Widths: a machine row's own width, or half
+// the cores its beat reports for a row with the default width: RowWidth); a member whose
+// copy differs gets one unit setting it, unless the plan already changes its control card
+// (that step's own write stands; the next step refreshes it). A member nova-config gives
+// no width (a row of width 0, a default row whose cores no beat has reported, no machine
+// row) is drained, its copy 0 marked as the config's (FieldWidthFrom), so the deal, the
+// level and a take by count treat it as the steps do (RowWidth 0): no card is dealt to it,
+// its ready cards are levelled away and its working cards finish; the refresh lifts that
+// drain, and only that one, when nova-config names a width again. The coordinator's own
+// drain (fleet up --width 0, unmarked) stays until fleet up lifts it. It never widens
 // nova-config: the read of nova-config is the fix.
 func WidthRefresh(s *Snapshot, p Plan, cfg map[string]int) Plan {
 	if s == nil || s.Fleet == nil || len(cfg) == 0 || len(p.Units) == 0 {
@@ -443,17 +459,33 @@ func WidthRefresh(s *Snapshot, p Plan, cfg map[string]int) Plan {
 	}
 	for _, m := range s.Members() {
 		ctl := s.MemberCtl(m)
-		n, read := cfg[m]
-		if ctl == nil || !read || n < 1 || n > MaxWidth || touched[ctl.ID] {
+		if ctl == nil || touched[ctl.ID] {
 			continue
 		}
-		have := MemberWidth(ctl)
-		if have == 0 || strings.TrimSpace(ctl.F(FieldWidth)) == itoa(n) {
-			continue
+		n, have := ConfigWidth(cfg, m), MemberWidth(ctl)
+		ours := ctl.F(FieldWidthFrom) == WidthFromConfig
+		switch {
+		case n == 0 && have != 0:
+			p.Units = append(p.Units, Unit{Key: ctl.ID,
+				Changes: []Change{change(Fleet, setEntry(ctl, map[string]string{FieldWidth: DrainWidth, FieldWidthFrom: WidthFromConfig}))},
+				Moved:   fmt.Sprintf("%s width=0 (was %d), drains: nova-config names it no width (a machine row of width 0, the default width with no cores reported, or no machine row: nova-config machine list)", m, have)})
+		case n >= 1 && have == 0 && ours, n >= 1 && have != 0 && strings.TrimSpace(ctl.F(FieldWidth)) != itoa(n):
+			var unset []string
+			if ours {
+				unset = append(unset, FieldWidthFrom)
+			}
+			p.Units = append(p.Units, Unit{Key: ctl.ID,
+				Changes: []Change{change(Fleet, setEntry(ctl, map[string]string{FieldWidth: itoa(n)}, unset...))},
+				Moved:   fmt.Sprintf("%s width=%d (was %d): read from nova-config, the one width (nova-config machine list)", m, n, have)})
 		}
-		p.Units = append(p.Units, Unit{Key: ctl.ID,
-			Changes: []Change{change(Fleet, setEntry(ctl, map[string]string{FieldWidth: itoa(n)}))},
-			Moved:   fmt.Sprintf("%s width=%d (was %d): read from nova-config, the one width (nova-config machine list)", m, n, have)})
 	}
 	return p
 }
+
+// FieldWidthFrom marks a member's drain as nova-config's (WidthFromConfig): WidthRefresh
+// wrote it because nova-config names the member no width, and lifts it when nova-config
+// names one; fleet up's own width write clears it.
+const (
+	FieldWidthFrom  = "width_from"
+	WidthFromConfig = "config"
+)

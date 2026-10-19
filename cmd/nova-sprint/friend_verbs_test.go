@@ -31,6 +31,14 @@ func TestFriendUpWidthSetsHerWidthAsFleetUpWidthSetsAMembers(t *testing.T) {
 	ta, _ := friendApp(t, "amy")
 	ta.ok("friend sync")
 	assert.Equal(t, "8", friendWidth(ta, "amy"))
+	// a friend's width is her nova-config row's alone (the owner, 2026-10-18): a width that
+	// is not her row's is refused, writing nothing
+	code, _, errs := ta.do("friend up amy --width 3")
+	assert.NotEqual(t, 0, code)
+	assert.Contains(t, errs, "--width 3 is not friend amy's nova-config width (her friend row names 8)")
+	assert.Equal(t, "8", friendWidth(ta, "amy"))
+	// her row set to 3: friend up --width 3 sets it at once, as fleet up --width does a member's
+	ta.configFriendWidth("amy", 3)
 	out := ta.ok("friend up amy --width 3")
 	assert.Contains(t, out, "FRIEND-UP OK amy held=false width=3")
 	assert.Equal(t, "3", friendWidth(ta, "amy"))
@@ -38,15 +46,15 @@ func TestFriendUpWidthSetsHerWidthAsFleetUpWidthSetsAMembers(t *testing.T) {
 	ta.ok("friend up amy")
 	assert.Equal(t, "3", friendWidth(ta, "amy"), "a release without --width leaves it as it is")
 
-	code, _, errs := ta.do("friend up amy --width 0")
+	code, _, errs = ta.do("friend up amy --width 0")
 	assert.Equal(t, 2, code)
 	assert.Contains(t, errs, "--width: a width wants a whole number from 1 to")
 	code, _, _ = ta.do("friend down amy --width 3")
 	assert.Equal(t, 2, code, "friend down takes no width")
 
-	// friend sync sets her nova-config row's again, as fleet sync sets a member's
+	// friend sync sets her nova-config row's, as fleet sync sets a member's
 	ta.ok("friend sync")
-	assert.Equal(t, "8", friendWidth(ta, "amy"))
+	assert.Equal(t, "3", friendWidth(ta, "amy"))
 }
 
 // whereFriends is where --json's friends, by name.
@@ -69,14 +77,14 @@ func TestFriendBeatTakesHerCountsAndLoadAsFleetBeatTakesALoad(t *testing.T) {
 	ta, _ := friendApp(t, "amy")
 	ta.ok("friend sync")
 	ta.pong("amy")
-	out := ta.ok("friend beat amy --working 2 --queue 3 --width 4 --running s1-1.w1,s1-2.w1 --load 40%")
+	out := ta.ok("friend beat amy --working 2 --queue 3 --width 8 --running s1-1.w1,s1-2.w1 --load 40%")
 	assert.Contains(t, out, "FRIEND-BEAT OK amy at=")
-	assert.Contains(t, out, " working=2 queue=3 width=4 load=40.0% running=s1-1.w1,s1-2.w1")
+	assert.Contains(t, out, " working=2 queue=3 width=8 load=40.0% running=s1-1.w1,s1-2.w1")
 	f := whereFriends(ta)["amy"]
 	require.NotNil(t, f.Report)
 	assert.Equal(t, 2, *f.Report.Working)
 	assert.Equal(t, 3, *f.Report.Queue)
-	assert.Equal(t, 4, *f.Report.Width)
+	assert.Equal(t, 8, *f.Report.Width, "a beat's width is her row's: another is refused (TestFriendWidthIsRefusedWhenItIsNotNovaConfigs)")
 	assert.Equal(t, []string{"s1-1.w1", "s1-2.w1"}, f.Report.Running)
 	assert.Equal(t, 40.0, f.Load)
 	assert.Equal(t, 8, f.Width, "her width is the roster's, not her word")
@@ -106,6 +114,8 @@ func TestFriendBeatTakesHerCountsAndLoadAsFleetBeatTakesALoad(t *testing.T) {
 func TestFriendLevelMovesAQueuedCardAndTheQueueFilesFollow(t *testing.T) {
 	t.Parallel()
 	ta, root := takeApp(t, 4, nil, "amy", "bob")
+	ta.configFriendWidth("amy", 1)
+	ta.configFriendWidth("bob", 1)
 	ta.ok("friend up amy --width 1")
 	ta.ok("friend up bob --width 1")
 	ta.ok("friend down bob")
@@ -114,7 +124,7 @@ func TestFriendLevelMovesAQueuedCardAndTheQueueFilesFollow(t *testing.T) {
 	ta.ok("friend sync --root " + root)
 	require.Equal(t, "queued", queueStates(t, root, "amy")["s1-2.w1"])
 	ta.ok("friend up bob")
-	// friend sync set her width back to the config's 8; at 1 her lane is her started card's,
+	// her row's width is 1, and friend sync keeps it; at 1 her lane is her started card's,
 	// and s1-2.w1 waits behind it (an unstarted card in a free lane of hers is hers to start)
 	ta.ok("friend up amy --width 1")
 	ta.beatUp("bob")
@@ -210,8 +220,10 @@ func TestStatsTimesAFriendsRunFromHerReport(t *testing.T) {
 func TestAFriendsNextCardsDeadlineFollowsHerRunWall(t *testing.T) {
 	t.Parallel()
 	ta, root := takeApp(t, 3, map[string]string{"sprint/s1-1.w1.g1.e0": landHead}, "amy")
+	ta.configFriendWidth("amy", 1)
 	ta.ok("friend up amy --width 1")
-	ta.ok("tick") // s1-1 and s1-2 ready, s1-3 waits (friend sync sets her width back to 8); she starts s1-1
+	ta.ok("tick")                  // s1-1 and s1-2 ready, s1-3 waits; she starts s1-1
+	ta.configFriendWidth("amy", 8) // her row back to 8, which the next friend sync reads
 	ta.startFriend("amy", 1)
 	ta.ok("friend sync --root " + root)
 	taken := ta.a.now()

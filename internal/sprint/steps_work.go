@@ -3320,6 +3320,11 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 			if w, ok := r.width(); ok && ctl.F(FieldWidth) != w {
 				set[FieldWidth] = w
 			}
+			if _, ok := r.width(); ok && ctl.F(FieldWidthFrom) != "" {
+				// fleet up's width is the coordinator's own write: a drain it makes is hers, never
+				// the refresh's to lift (WidthRefresh; tla/WidthHard.tla OneSource)
+				unset = append(unset, FieldWidthFrom)
+			}
 			if r.Deadline > 0 && ctl.F(FieldMemberDeadline) != itoa(r.Deadline) {
 				set[FieldMemberDeadline] = itoa(r.Deadline)
 			}

@@ -121,8 +121,12 @@ nova-sprint hold <name>... --reason <text> [--return] [--force-last]
 
 A member's width is nova-config's alone (`nova-config machine set <member> --width <n>`, then
 `nova-config apply`): `fleet up --width <n>` is refused, writing nothing, when n is not the
-member's nova-config width, and `--width 0` drains it. Every card working counts one slot of
-the width, a read as a work card, on a member's row and a friend's.
+member's nova-config width (for a row with the default width, half the cores its beat
+reports), and `--width 0` drains it. A friend's width is her nova-config friend row's alone
+(`nova-config friend set <friend> --width <n>`, then `nova-config apply`): `friend up --width
+<n>` and `friend beat --width <n>` are refused, writing nothing, when n is not her row's.
+Every card working counts one slot of the width, a read as a work card, on a member's row and
+a friend's, her start receipts included.
 
 A member that is up keeps taken cards and finishes them, including with `--return`; that
 flag hands back only its dealt, untaken cards. A member that is down also returns its dead

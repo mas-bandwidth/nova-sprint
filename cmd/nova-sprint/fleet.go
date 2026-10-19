@@ -121,7 +121,7 @@ func init() {
 func (a *app) fleetStep(st *store.Store, op, member, who string, width int, drain bool, deadline int, deadlineOff bool, harnesses, probe string) store.Step {
 	r := sprint.FleetReq{Op: op, Member: member, Who: who, Width: width, Drain: drain, Deadline: deadline, DeadlineOff: deadlineOff, Harnesses: harnesses, Probe: probe, Rebalance: op == "level"}
 	if _, friend := sprint.FriendOfRow(member); op == "up" && width > 0 && !drain && !friend {
-		if cw, ok, why := a.configWidthOf(context.Background(), member); !ok || (cw > 0 && cw != width) {
+		if cw, ok, why := a.configWidthOf(context.Background(), st, member); !ok || (cw > 0 && cw != width) {
 			if why == "" {
 				why = fmt.Sprintf("nova-config names %d", cw)
 			}

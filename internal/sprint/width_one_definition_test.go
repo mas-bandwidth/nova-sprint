@@ -137,16 +137,97 @@ func TestFriendNextHoldsTheWidth(t *testing.T) {
 	w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{wc.ID}}, As: row, Gens: gensOf(w.s, wc.ID), Head: "abd"}))
 	assert.Equal(t, 1, w.s.Fleet.Count(row, Working), "her finish frees a lane of width 2 and her next takes it")
 
-	// her start receipt is her fact, never cut: her beat names a card running, so it is
-	// counted working even at her width (friendStartUnits; a cut would leave a card she
-	// runs ready for the level to move)
+	// her start receipt is held the same, with no exception (the owner, 2026-10-18): her
+	// beat names a ready card running while she is at her width, so it stays ready on her
+	// row, one refusal naming her row, her working count and her width (at w2 a start
+	// receipt was never cut: rowan's row showed 33 working of width 32)
 	w.s.Friends = []FriendSeat{lowered}
 	rc := w.s.Fleet.Cell(row, Ready)[0]
 	set, unset := friendStartSet(w.s, rc, "amy")
 	start := Plan{Units: []Unit{{Key: rc.ID, Changes: []Change{change(Fleet, moveEntry(rc, row, Working, set, unset...))}, Moved: rc.ID + " started"}}}
 	held := HoldWidths(w.s, start, nil)
-	assert.Empty(t, held.Refused, "a start receipt is not cut")
+	require.Len(t, held.Refused, 1, "a start receipt at her width is cut: %v", held.Units)
+	assert.Equal(t, rc.ID, held.Refused[0].Key)
+	assert.Contains(t, held.Refused[0].Why, row+" is at its width (1 working of 1)")
+	assert.Contains(t, held.Refused[0].Why, "a start of hers, stays ready on her row")
+	assert.Empty(t, held.Units, "the start was the unit's only change")
+	assert.Equal(t, 1, w.s.Fleet.Count(row, Working), "working stays at her width")
+	assert.Equal(t, Ready, w.s.Fleet.Card(rc.ID).Col, "the card she runs waits ready on her row")
+	// under her width the same start receipt applies
+	w.s.Friends = []FriendSeat{amy}
+	held = HoldWidths(w.s, start, nil)
+	assert.Empty(t, held.Refused, "a lane is free: %v", held.Refused)
 	assert.Len(t, held.Units, 1)
+}
+
+// A member's width in a config read that answered is nova-config's and nothing else: its
+// row's own width, a default row's half its cores (resolved by the store's reader), 0 for a
+// row of width 0 or no row at all; DefaultWidth (64) and the control card's copy stand only
+// when the step holds no config read (the reader's finding on w2: width.go fell back to a
+// local 64 rather than the configured or core width).
+func TestRowWidthHasNoFallbackOnAConfigRead(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, "reader-a")
+	w.s.Now = widthClock
+	for _, m := range []string{"m1", "m2", "m3"} {
+		w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: m, Width: 16}))
+	}
+	// m1's row has the default width and its beat reports 6 cores: the reader resolved 3;
+	// m2's row has width 0 (no member); m3 has no machine row
+	cfg := map[string]int{"m1": WidthOfCores(6), "m2": 0}
+	for m, want := range map[string]int{"m1": 3, "m2": 0, "m3": 0} {
+		got, ok := RowWidth(w.s, m, cfg)
+		require.True(t, ok)
+		assert.Equal(t, want, got, "%s holds to nova-config's width", m)
+		got, _ = RowWidth(w.s, m, nil)
+		assert.Equal(t, 16, got, "%s: with no config read the copy stands", m)
+	}
+	// m3, with no machine row, takes nothing: a move into its working is cut
+	w.s.Fleet.Put(&Card{ID: "x.w1", Row: "m3", Col: Ready, Score: 1, Rev: 1, Fields: map[string]string{"kind": "work", "stream": "s1", "attempt": "1", "gen": "1", "member": "m3"}})
+	w.s.Fleet.cells, w.s.Fleet.byPrimary = nil, nil
+	x := w.s.Fleet.Card("x.w1")
+	held := HoldWidths(w.s, Plan{Units: []Unit{{Key: x.ID, Changes: []Change{change(Fleet, moveEntry(x, "m3", Working, nil))}, Moved: "x"}}}, cfg)
+	require.Len(t, held.Refused, 1)
+	assert.Contains(t, held.Refused[0].Why, "m3 is at its width (0 working of 0)")
+	// m1, a default row of 6 cores, runs 3: a plan taking 4 ready cards keeps 3
+	var units []Unit
+	for i := 1; i <= 4; i++ {
+		c := &Card{ID: fmt.Sprintf("d%d.w1", i), Row: "m1", Col: Ready, Score: float64(i), Rev: 1, Fields: map[string]string{"kind": "work", "stream": "s1", "attempt": "1", "gen": "1", "member": "m1"}}
+		w.s.Fleet.Put(c)
+		units = append(units, Unit{Key: c.ID, Changes: []Change{change(Fleet, moveEntry(c, "m1", Working, nil))}, Moved: c.ID})
+	}
+	w.s.Fleet.cells, w.s.Fleet.byPrimary = nil, nil
+	held = HoldWidths(w.s, Plan{Units: units}, cfg)
+	assert.Len(t, held.Units, 3, "half its 6 cores")
+	assert.Len(t, held.Refused, 1)
+	// the refresh writes the resolved default width as the copy, and drains, marked as the
+	// config's, each member nova-config names no width, so the deal and the level hold to
+	// what the steps hold to (the cold read of w3: a copy of 16 kept dealing to a member
+	// whose takes were all cut)
+	p := WidthRefresh(w.s, Plan{Units: []Unit{{Key: "some-step"}}}, cfg)
+	var moved []string
+	for _, u := range p.Units[1:] {
+		moved = append(moved, u.Moved)
+	}
+	require.Len(t, moved, 3, "%v", moved)
+	assert.Contains(t, strings.Join(moved, "\n"), "m1 width=3 (was 16)")
+	assert.Contains(t, strings.Join(moved, "\n"), "m2 width=0 (was 16), drains: nova-config names it no width")
+	assert.Contains(t, strings.Join(moved, "\n"), "m3 width=0 (was 16), drains")
+	w.must(Plan{Units: p.Units[1:]})
+	assert.Equal(t, 0, w.s.Width("m2"), "the deal and the level see the drain")
+	assert.Equal(t, WidthFromConfig, w.s.MemberCtl("m2").F(FieldWidthFrom))
+	// nova-config names m2 a width again: the refresh lifts its own drain; a drain the
+	// coordinator made (fleet up --width 0, which clears the mark) stays
+	w.must(FleetStep(w.s, FleetReq{Op: "up", Member: "m3", Drain: true}))
+	assert.Empty(t, w.s.MemberCtl("m3").F(FieldWidthFrom), "fleet up's drain is the coordinator's")
+	cfg = map[string]int{"m1": 3, "m2": 5, "m3": 7}
+	p = WidthRefresh(w.s, Plan{Units: []Unit{{Key: "some-step"}}}, cfg)
+	require.Len(t, p.Units, 2, "only m2's drain is lifted")
+	assert.Contains(t, p.Units[1].Moved, "m2 width=5 (was 0)")
+	w.must(Plan{Units: p.Units[1:]})
+	assert.Equal(t, 5, w.s.Width("m2"))
+	assert.Empty(t, w.s.MemberCtl("m2").F(FieldWidthFrom))
+	assert.Equal(t, 0, w.s.Width("m3"))
 }
 
 func TestOverWidthDealSkipsToTheNextMember(t *testing.T) {
