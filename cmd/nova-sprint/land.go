@@ -2478,7 +2478,8 @@ func (l *lander) runCheck(ctx context.Context, dir string) (why, out string) {
 	if l.check == "" {
 		return "", ""
 	}
-	b := subproc.Prepare(ctx, landCheckBudget, "sh", "-c", l.check)
+	argv := gateArgv(l.check)
+	b := subproc.Prepare(ctx, landCheckBudget, argv[0], argv[1:]...)
 	defer b.Cancel()
 	env := l.a.gitEnv
 	if env == nil {
