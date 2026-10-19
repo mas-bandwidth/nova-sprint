@@ -96,3 +96,35 @@ func TestARuleReworkWithNoMatchingMemberRaisesTheGateNeedsJudgment(t *testing.T)
 	})
 	require.Len(t, w.notesOf(NGateNeeds), 1, "a standing cause is judged once, never every tick")
 }
+
+// TestRedoDealsToAMemberWhoseFactsMeetTheGateNeeds holds the conflict redo to
+// the same GateHostPool path as an ordinary deal and a review rework.
+func TestRedoDealsToAMemberWhoseFactsMeetTheGateNeeds(t *testing.T) {
+	t.Parallel()
+	w := stoppedForConflict(t)
+	w.s.MemberCtl("m1").Fields[FieldFacts] = "darwin,go"
+	w.s.MemberCtl("m2").Fields[FieldFacts] = "linux,go"
+	w.s.Work.Card("s1-2").Fields["brief"] = "tier: pro\nGATE-NEEDS: linux\n\nThe task.\n"
+
+	w.must(Redo(w.s, RedoReq{Sel: Sel{IDs: []string{"s1-2"}}, Who: "coordinator"}))
+	wc := w.s.Fleet.Card("s1-2.w2")
+	require.NotNil(t, wc, "redo deals attempt 2")
+	assert.Equal(t, "m2", wc.Row, "redo chooses the member whose facts meet GATE-NEEDS")
+}
+
+// TestRedoWithNoMatchingMemberRaisesTheGateNeedsJudgment refuses to deal a
+// conflict redo to an incapable host and makes the wait visible once.
+func TestRedoWithNoMatchingMemberRaisesTheGateNeedsJudgment(t *testing.T) {
+	t.Parallel()
+	w := stoppedForConflict(t)
+	w.s.MemberCtl("m1").Fields[FieldFacts] = "darwin,go"
+	w.s.MemberCtl("m2").Fields[FieldFacts] = "darwin,go"
+	w.s.Work.Card("s1-2").Fields["brief"] = "tier: pro\nGATE-NEEDS: linux\n\nThe task.\n"
+
+	p := w.must(Redo(w.s, RedoReq{Sel: Sel{IDs: []string{"s1-2"}}, Who: "coordinator"}))
+	require.Nil(t, w.s.Fleet.Card("s1-2.w2"), "no matching member: redo waits ready")
+	require.Equal(t, Ready, w.state("s1-2"))
+	require.Len(t, p.Notes, 1)
+	assert.Equal(t, NGateNeeds, p.Notes[0].Kind)
+	assert.Contains(t, p.Notes[0].What, "GATE-NEEDS linux")
+}

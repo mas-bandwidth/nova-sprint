@@ -286,17 +286,29 @@ func Redo(s *Snapshot, r RedoReq) Plan {
 			set["finding"] = f
 		}
 		m := ""
+		gateBlocked := false
+		var gateWhy string
 		_, friend := FriendCard(c)
 		// no route serves its tier and a friend up does: the friends' deal's, never a machine's
 		_, _, toFriend, byFriend := s.routeOf(c, nil, nil, "")
 		if len(up) > 0 && !friend && !byFriend {
-			// a member that can launch a route of its tier (launchersOf), never one refused after
-			ms, why := s.launchersOf(c, nil, up)
-			if len(ms) == 0 && why != "" {
-				p.refuse(c.ID, why)
-				continue
+			// As Deal and Rework do, narrow the fleet by this card's one parsed
+			// GATE-NEEDS fact set before choosing a launcher (tla/GateFacts.tla Rework).
+			pool := up
+			pool, gateWhy = s.GateHostPool(c, pool)
+			if len(pool) == 0 {
+				if gateWhy != "" {
+					gateBlocked = true
+				}
+			} else {
+				// a member that can launch a route of its tier (launchersOf), never one refused after
+				ms, why := s.launchersOf(c, nil, pool)
+				if len(ms) == 0 && why != "" {
+					p.refuse(c.ID, why)
+					continue
+				}
+				m = rr.next(ms, q, room, reworkAvoid(s, c))
 			}
-			m = rr.next(ms, q, room, reworkAvoid(s, c))
 		}
 		var u Unit
 		if m != "" {
@@ -317,6 +329,11 @@ func Redo(s *Snapshot, r RedoReq) Plan {
 				later = "a friend's card: the tick deals it to a friend up with room"
 			case byFriend:
 				later = toFriend
+			case gateBlocked:
+				later = "no member of its pool satisfies its GATE-NEEDS"
+				if !openGateNeed(s, c) {
+					p.Notes = append(p.Notes, gateNeedsJudgment(c, gateWhy, r.Who, s.Now))
+				}
 			case len(up) > 0:
 				later = "no fleet member has room: the tick deals it when one has"
 			}
