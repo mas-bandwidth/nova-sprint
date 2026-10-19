@@ -39,6 +39,10 @@ func (f *linearFake) Squash(head string) error {
 	f.actions = append(f.actions, "squash "+head)
 	return nil
 }
+func (f *linearFake) SetTree(head string) error {
+	f.actions = append(f.actions, "tree "+head)
+	return nil
+}
 func (f *linearFake) Tree(ref string) (string, error) { return f.trees[ref], nil }
 func (f *linearFake) Commit(message string) error {
 	f.messages = append(f.messages, message)

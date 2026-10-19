@@ -61,6 +61,7 @@ type LinearGit interface {
 	CardOnBase(base, card string) (bool, error)
 	CherryPick(sha string, mainline bool) error
 	Squash(head string) error
+	SetTree(head string) error
 	Tree(ref string) (string, error)
 	Commit(message string) error
 	Abort() error
@@ -95,7 +96,7 @@ func LandLinear(g LinearGit, repo, base, sourceTip string, cards []LinearCard) e
 	}
 	for _, card := range cards {
 		if !card.Forward {
-			if err := g.Squash(card.Head); err != nil {
+			if err := g.SetTree(card.Head); err != nil {
 				_ = g.Abort()
 				return fmt.Errorf("linear replay refused card %s at %s: %w", card.ID, card.Head, err)
 			}

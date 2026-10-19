@@ -5,142 +5,141 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
 var linearLandSubject = regexp.MustCompile(`^land ([^ ]+) \(sprint stream [^)]+\)$`)
+var linearURL = regexp.MustCompile(`https://[^\s]+`)
 
-// linearMergeHead adapts a forward-merge head to a linear base. It replays the
-// forward branch's first-parent card commits, records durable resume trailers,
-// and repairs the final tree to the reviewed head without putting a merge on
-// the protected base.
-func (l *lander) linearMergeHead(ctx context.Context, dir, stream string, c landCard) (card, env, note string) {
+type linearGitAdapter struct {
+	l           *lander
+	ctx         context.Context
+	dir, before string
+}
+
+func (g *linearGitAdapter) LatestTrailer(_, key string) (string, error) {
+	out, err := g.l.git(g.ctx, g.dir, "log", "--first-parent", "--format=%(trailers:key="+key+",valueonly)", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	if v := strings.Fields(out); len(v) > 0 {
+		return v[0], nil
+	}
+	return "", nil
+}
+func (g *linearGitAdapter) MergeBase(_, tip string) (string, error) {
+	return g.l.git(g.ctx, g.dir, "merge-base", "HEAD", tip)
+}
+func (g *linearGitAdapter) FirstParentRange(from, to string) ([]sprint.LinearSourceCommit, error) {
+	out, err := g.l.git(g.ctx, g.dir, "rev-list", "--first-parent", "--reverse", from+".."+to)
+	if err != nil {
+		return nil, err
+	}
+	var commits []sprint.LinearSourceCommit
+	for _, sha := range strings.Fields(out) {
+		subject, err := g.l.git(g.ctx, g.dir, "show", "-s", "--format=%s", sha)
+		if err != nil {
+			return nil, err
+		}
+		parents, err := g.l.git(g.ctx, g.dir, "rev-list", "--parents", "-n", "1", sha)
+		if err != nil {
+			return nil, err
+		}
+		id := sha
+		if m := linearLandSubject.FindStringSubmatch(subject); len(m) == 2 {
+			id = m[1]
+		}
+		commits = append(commits, sprint.LinearSourceCommit{SHA: sha, Card: id, Subject: subject, Merge: len(strings.Fields(parents)) > 2})
+	}
+	return commits, nil
+}
+func (g *linearGitAdapter) CardOnBase(_ string, card string) (bool, error) {
+	out, err := g.l.git(g.ctx, g.dir, "log", "--first-parent", "--format=%(trailers:key=Nova-Card,valueonly)", "HEAD")
+	if err != nil {
+		return false, err
+	}
+	for _, id := range strings.Fields(out) {
+		if id == card {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+func (g *linearGitAdapter) CherryPick(sha string, mainline bool) error {
+	args := []string{"cherry-pick", "--no-commit"}
+	if mainline {
+		args = append(args, "-m", "1")
+	}
+	args = append(args, sha)
+	_, err := g.l.git(g.ctx, g.dir, args...)
+	if err != nil {
+		paths, _ := g.l.git(g.ctx, g.dir, "diff", "--name-only", "--diff-filter=U")
+		return fmt.Errorf("%w%s", err, linearPaths(paths))
+	}
+	return nil
+}
+func (g *linearGitAdapter) Squash(head string) error {
+	_, err := g.l.git(g.ctx, g.dir, "merge", "--squash", head)
+	if err != nil {
+		paths, _ := g.l.git(g.ctx, g.dir, "diff", "--name-only", "--diff-filter=U")
+		return fmt.Errorf("%w%s", err, linearPaths(paths))
+	}
+	return nil
+}
+func (g *linearGitAdapter) SetTree(head string) error {
+	_, err := g.l.git(g.ctx, g.dir, "read-tree", "--reset", "-u", head)
+	return err
+}
+func (g *linearGitAdapter) Tree(ref string) (string, error) {
+	return g.l.git(g.ctx, g.dir, "rev-parse", ref+"^{tree}")
+}
+func (g *linearGitAdapter) Commit(message string) error {
+	_, err := g.l.git(g.ctx, g.dir, "commit", "--allow-empty", "-m", message)
+	return err
+}
+func (g *linearGitAdapter) Abort() error {
+	_, _ = g.l.git(g.ctx, g.dir, "cherry-pick", "--abort")
+	_, err := g.l.git(g.ctx, g.dir, "reset", "--hard", g.before)
+	return err
+}
+func (g *linearGitAdapter) Tip() (string, error) { return g.l.git(g.ctx, g.dir, "rev-parse", "HEAD") }
+func (g *linearGitAdapter) MergeCommits(_, tip string) ([]string, error) {
+	out, err := g.l.git(g.ctx, g.dir, "rev-list", "--min-parents=2", g.before+".."+tip)
+	return strings.Fields(out), err
+}
+func (g *linearGitAdapter) Push(string, string) error { return nil }
+
+func (l *lander) linearMergeHead(ctx context.Context, dir, _ string, c landCard) (card, env, note string) {
 	before, err := l.git(ctx, dir, "rev-parse", "--verify", "HEAD^{commit}")
 	if err != nil {
 		return "", "the linear landing of " + c.id + " could not read its base: " + firstLine("", err), ""
 	}
 	if _, err = l.git(ctx, dir, "cat-file", "-e", c.head+"^{commit}"); err != nil {
 		if _, ferr := l.fetched(ctx, dir, "fetch", "--no-tags", "origin", c.head); ferr != nil {
-			if containsAny(ferr.Error(), notOnOrigin) {
-				if _, all := l.fetched(ctx, dir, "fetch", "--no-tags", "origin", "+refs/heads/*:refs/remotes/origin/*"); all != nil {
-					return "", "the fetch of origin's branches for the head " + c.head + " of " + c.id + " failed: " + firstLine("", all), ""
-				}
-				if _, still := l.git(ctx, dir, "cat-file", "-e", c.head+"^{commit}"); still != nil {
-					return "the head " + c.head + " of " + c.id + " is missing: origin holds no such commit (" + firstLine("", ferr) + ")", "", ""
-				}
-			} else {
-				return "", "the fetch of the head " + c.head + " of " + c.id + " failed: " + firstLine("", ferr), ""
-			}
+			return "", "the fetch of the head " + c.head + " of " + c.id + " failed: " + firstLine("", ferr), ""
 		}
 	}
-
 	parents, err := l.git(ctx, dir, "rev-list", "--parents", "-n", "1", c.head)
 	if err != nil {
 		return "", "the linear landing of " + c.id + " could not inspect its head: " + firstLine("", err), ""
 	}
 	fields := strings.Fields(parents)
-	if len(fields) < 3 {
-		return l.linearLandOne(ctx, dir, before, c.head, c.id, linearTitle(c), c)
+	forward, source := len(fields) >= 3, c.head
+	if forward {
+		source = fields[2]
 	}
-	sourceTip := fields[2]
-	last := linearLastSource(l, ctx, dir)
-	if last == "" {
-		last, err = l.git(ctx, dir, "merge-base", "HEAD", sourceTip)
-		if err != nil {
-			return "", "the linear landing of " + c.id + " could not find its replay base: " + firstLine("", err), ""
-		}
+	pr := ""
+	if u := linearURL.FindString(c.result); strings.Contains(u, "/pull/") {
+		pr = u
 	}
-	commits, err := l.git(ctx, dir, "rev-list", "--first-parent", "--reverse", last+".."+sourceTip)
+	g := &linearGitAdapter{l: l, ctx: ctx, dir: dir, before: before}
+	err = sprint.LandLinear(g, c.repo, c.base, source, []sprint.LinearCard{{ID: c.id, Title: linearTitle(c), Head: c.head, Source: source, PullRequest: pr, Forward: forward}})
 	if err != nil {
-		return "", "the linear landing of " + c.id + " could not list source commits: " + firstLine("", err), ""
+		_ = g.Abort()
+		return err.Error(), "", ""
 	}
-	landed, err := l.git(ctx, dir, "log", "--first-parent", "--format=%B%x00", "HEAD")
-	if err != nil {
-		return "", "the linear landing of " + c.id + " could not read resume trailers: " + firstLine("", err), ""
-	}
-	for _, source := range strings.Fields(commits) {
-		subject, serr := l.git(ctx, dir, "show", "-s", "--format=%s", source)
-		if serr != nil {
-			return "", "the linear landing of " + c.id + " could not read source " + source + ": " + firstLine("", serr), ""
-		}
-		id := source
-		if m := linearLandSubject.FindStringSubmatch(subject); len(m) == 2 {
-			id = m[1]
-		}
-		if strings.Contains(landed, "Nova-Card: "+id) {
-			continue
-		}
-		ps, perr := l.git(ctx, dir, "rev-list", "--parents", "-n", "1", source)
-		if perr != nil {
-			return "", "the linear landing of " + c.id + " could not inspect source " + source + ": " + firstLine("", perr), ""
-		}
-		args := []string{"cherry-pick", "--no-commit"}
-		if len(strings.Fields(ps)) > 2 {
-			args = append(args, "-m", "1")
-		}
-		args = append(args, source)
-		if _, cerr := l.git(ctx, dir, args...); cerr != nil {
-			paths, _ := l.git(ctx, dir, "diff", "--name-only", "--diff-filter=U")
-			_, _ = l.git(ctx, dir, "cherry-pick", "--abort")
-			if _, rerr := l.git(ctx, dir, "reset", "--hard", before); rerr != nil {
-				return "", "the reset after the linear conflict of " + id + " failed: " + firstLine("", rerr), ""
-			}
-			return fmt.Sprintf("linear replay of %s for %s conflicted at %s%s", id, c.id, source, linearPaths(paths)), "", ""
-		}
-		msg := id + ": " + subject + "\n\nFinish report: nova-sprint card " + id + "\n\nNova-Card: " + id + "\nNova-Linear-Source: " + source
-		if _, cerr := l.git(ctx, dir, "commit", "--allow-empty", "-m", msg); cerr != nil {
-			_, _ = l.git(ctx, dir, "reset", "--hard", before)
-			return "", "the linear replay commit of " + id + " failed: " + firstLine("", cerr), ""
-		}
-		landed += "\x00Nova-Card: " + id
-	}
-
-	want, err := l.git(ctx, dir, "rev-parse", c.head+"^{tree}")
-	if err != nil {
-		return "", "the linear landing of " + c.id + " could not read its reviewed tree: " + firstLine("", err), ""
-	}
-	got, _ := l.git(ctx, dir, "rev-parse", "HEAD^{tree}")
-	if got != want {
-		if _, err := l.git(ctx, dir, "read-tree", "--reset", "-u", c.head); err != nil {
-			_, _ = l.git(ctx, dir, "reset", "--hard", before)
-			return "", "the linear tree repair of " + c.id + " failed: " + firstLine("", err), ""
-		}
-		msg := c.id + ": " + linearTitle(c) + "\n\nFinish report: nova-sprint card " + c.id + "\n\nNova-Card: " + c.id + "\nNova-Linear-Source: " + c.head
-		if _, err := l.git(ctx, dir, "commit", "-m", msg); err != nil {
-			_, _ = l.git(ctx, dir, "reset", "--hard", before)
-			return "", "the linear tree repair commit of " + c.id + " failed: " + firstLine("", err), ""
-		}
-	}
-	return "", "", "forward-merge head replayed onto linear base"
-}
-
-func (l *lander) linearLandOne(ctx context.Context, dir, before, source, id, title string, c landCard) (string, string, string) {
-	if _, err := l.git(ctx, dir, "merge", "--squash", source); err != nil {
-		paths, _ := l.git(ctx, dir, "diff", "--name-only", "--diff-filter=U")
-		_, _ = l.git(ctx, dir, "reset", "--hard", before)
-		return "linear squash of " + id + " conflicted at " + source + linearPaths(paths), "", ""
-	}
-	msg := id + ": " + title + "\n\nFinish report: nova-sprint card " + id + "\n\nNova-Card: " + id + "\nNova-Linear-Source: " + source
-	if _, err := l.git(ctx, dir, "commit", "-m", msg); err != nil {
-		_, _ = l.git(ctx, dir, "reset", "--hard", before)
-		return "", "the linear squash commit of " + id + " failed: " + firstLine("", err), ""
-	}
-	return "", "", "head squashed onto linear base"
-}
-
-func linearLastSource(l *lander, ctx context.Context, dir string) string {
-	log, err := l.git(ctx, dir, "log", "--first-parent", "--format=%B", "HEAD")
-	if err != nil {
-		return ""
-	}
-	for _, line := range strings.Split(log, "\n") {
-		if !strings.HasPrefix(line, "Nova-Linear-Source:") {
-			continue
-		}
-		if v := strings.TrimSpace(strings.TrimPrefix(line, "Nova-Linear-Source:")); v != "" {
-			return v
-		}
-	}
-	return ""
+	return "", "", "head replayed onto linear base"
 }
 
 func linearTitle(c landCard) string {
@@ -149,14 +148,11 @@ func linearTitle(c landCard) string {
 			return strings.TrimSpace(strings.TrimPrefix(line, "# "))
 		}
 		if strings.HasPrefix(line, "RESULT:") {
-			if title := strings.TrimSpace(strings.TrimPrefix(line, "RESULT:")); title != "" {
-				return title
-			}
+			return strings.TrimSpace(strings.TrimPrefix(line, "RESULT:"))
 		}
 	}
 	return c.id
 }
-
 func linearPaths(paths string) string {
 	paths = strings.Join(strings.Fields(paths), ", ")
 	if paths == "" {
