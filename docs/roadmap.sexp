@@ -8664,4 +8664,10 @@ The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 
    :title "Write the skeleton of the standard: STYLE.md, the checker, sections s1 and s5 in full, every other section pending with a one-sentence Scope, and the hard rows pinned"
    :text "Carried: branch sprint/sprint-spec-skeleton.w5.g1.e21 head c0ab21bd227d1929f9b33aea1823d1346227bdc1 (attempt 6, ready). Write the skeleton of the standard: STYLE.md, the checker, sections s1 and s5 in full, every other section pending with a one-sentence Scope, and the hard rows pinned."
    :origin "sprint card sprint-spec-skeleton, moved out of the sprint 2026-10-19 (Glenn: not for the rocketnet v1.0.0 release)")
+  (item "held-stream-rework-returns-to-waiting" :group "sprint" :date "2026-10-19"
+   :title "A card brought back into play on a held stream returns to waiting"
+   :text "On a held stream, a card that rework, a broken read verdict or add puts back into play goes to WAITING. It is never ready and never dealt. Unholding lets the next tick move it on. Observed 2026-10-19: reworked cards sat in ready forever on held stream rocketnet-tests (rocketnet-cbmc-ack-block-read, rocketnet-cbmc-server-packet-readers); a card reworked by a broken read after the hold of schema-c-cpp was dealt to friend.emma (cpp-carries-the-json-options w4); a card added to held stream schema-dart was dealt (schema-dart-runs-hostile-corpus-t w1). Tests: one per path (rework, broken read verdict, add), each on a held stream, with time as an argument; plus an invariant that no card is in ready on a held stream after any step."
+   :why "Ready lasts at most one tick before the deal; a held stream must not strand or deal cards"
+   :release "v1.7"
+   :origin "the owner, 2026-10-19")
 ))

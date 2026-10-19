@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (268)
+- [The sprint system](#the-sprint-system) (269)
 - [Setup, release and operations](#setup-release-and-operations) (72)
 - [Docs, models and the repository](#docs-models-and-the-repository) (25)
 - [Friend AIs](#friend-ais) (22)
@@ -2217,6 +2217,16 @@ From: sprint card v17-server-friend-level-and-friend-cards-off-the-line, moved o
 Carried: branch sprint/sprint-spec-skeleton.w5.g1.e21 head c0ab21bd227d1929f9b33aea1823d1346227bdc1 (attempt 6, ready). Write the skeleton of the standard: STYLE.md, the checker, sections s1 and s5 in full, every other section pending with a one-sentence Scope, and the hard rows pinned.
 
 From: sprint card sprint-spec-skeleton, moved out of the sprint 2026-10-19 (Glenn: not for the rocketnet v1.0.0 release)
+
+### A card brought back into play on a held stream returns to waiting
+
+On a held stream, a card that rework, a broken read verdict or add puts back into play goes to WAITING. It is never ready and never dealt. Unholding lets the next tick move it on. Observed 2026-10-19: reworked cards sat in ready forever on held stream rocketnet-tests (rocketnet-cbmc-ack-block-read, rocketnet-cbmc-server-packet-readers); a card reworked by a broken read after the hold of schema-c-cpp was dealt to friend.emma (cpp-carries-the-json-options w4); a card added to held stream schema-dart was dealt (schema-dart-runs-hostile-corpus-t w1). Tests: one per path (rework, broken read verdict, add), each on a held stream, with time as an argument; plus an invariant that no card is in ready on a held stream after any step.
+
+Why it waits: Ready lasts at most one tick before the deal; a held stream must not strand or deal cards
+
+Target: v1.7
+
+From: the owner, 2026-10-19
 
 ## Setup, release and operations
 
