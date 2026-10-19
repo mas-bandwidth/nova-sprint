@@ -4180,6 +4180,15 @@ reads close as `read --ok|--broken` closes them, and it leaves review only by th
   cards or 32 reads or any mix. The take holds the width in half slots (a read one, a work card
   two) and takes the reads first; the member's own lanes count the same (`member.halves`): a
   member of width 1 runs two reads at once.
+- **The friend's ready queue holds reads past her width.** Width bounds what a friend
+  WORKS at once, never what is queued in her ready queue; a read card is a card like any
+  other. Her queue is bounded by her room, DealAhead times her width, ready and working
+  together (the owner, 2026-10-18: "My dude, ready cards, go to friend ready queues, even
+  if friends are full. That's what the ready queues are FOR per-friend and per-fleet
+  machine."), so a friend at width keeps taking reads into her ready column while her room
+  has space (`readUnitsOf`: her `half`, what the ask may fill, is her free room,
+  `max(DealAhead*width-(work+reads), 0)`, and her `idle` stays her free lanes, `friendFreeLanes`,
+  so the ask still prefers a friend with an idle lane).
 - **The member runs a read card.** A read card in a member's fleet queue is taken with its work
   and run by the same loop as a read: its packet is a read's (`Kind: read`, the head, the work
   branch, the worker's report), it pushes nothing, and its end is reported with the read verb as
