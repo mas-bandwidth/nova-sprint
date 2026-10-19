@@ -1,3 +1,5 @@
+//go:build functional
+
 package main
 
 import (
@@ -14,7 +16,8 @@ import (
 // starts from that sha (recut_widen.go reads last.F("head")), while a HOLD that finished
 // `--failed` with no --head records the card id default, which is no full commit SHA, so
 // the same widen is refused naming it and writes nothing. The stores and remotes are
-// local temporary directories (newLandRig): no network and no outside service.
+// local temporary directories (newLandRig): no network and no outside service, but the
+// rig runs git, so this is a functional test (internal/ci unit_rule_test.go).
 func TestAFailedFinishRecordsItsHeadForWiden(t *testing.T) {
 	t.Parallel()
 	r := newLandRig(t)
