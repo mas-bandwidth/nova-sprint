@@ -20,6 +20,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprintdash"
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
 	"github.com/mas-bandwidth/nova-tools/pkg/decide"
 	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
@@ -3088,6 +3089,11 @@ func (a *app) cmdCheck(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "check", err.Error())
 	}
+	// the one width is nova-config's (tla/WidthHard.tla OneSource): check holds
+	// each member and friend row to it (a row whose width differs is a violation).
+	// A config read that is not held judges nothing.
+	st.Widths = a.inventoryWidthsFresh(st)
+	st.FriendWidths = a.inventoryFriendWidths()
 	rep, _, err := st.Check(context.Background(), 5)
 	if err != nil {
 		return a.readFailed("check", err, stderr)
@@ -3303,4 +3309,77 @@ func (a *app) statusCell(f store.FriendRow, now time.Time) string {
 		why = strings.TrimPrefix(why+", until "+a.clock12(until, now), ", ")
 	}
 	return f.Status + " (" + why + ")"
+}
+
+// checkDefaultWidth is a machine row with the default width, resolved from its
+// beat by inventoryWidthsFresh.
+const checkDefaultWidth = -1
+
+// inventoryWidthsFresh is the check's read of the members' widths
+// (store.Store.Widths; tla/WidthHard.tla OneSource): every machine row
+// nova-config names, by machine, and whether the read answered. It is
+// inventoryWidths without the tick's keep-cache: check reads nova-config fresh
+// on every run, so a config change in the same process is seen. A row's own
+// width is its width; a default-width row is half the cores its beat reports;
+// a failed read or no row is ok false (never act on a missing read).
+func (a *app) inventoryWidthsFresh(st *store.Store) func(ctx context.Context) (map[string]int, bool) {
+	return func(ctx context.Context) (map[string]int, bool) {
+		if a.inventory == nil {
+			return nil, false
+		}
+		rows, err := a.inventory(ctx, "")
+		if err != nil || len(rows) == 0 {
+			return nil, false
+		}
+		ws := make(map[string]int, len(rows))
+		var defaults []string
+		for _, w := range rows {
+			switch {
+			case w.Default:
+				ws[w.Machine] = checkDefaultWidth
+				defaults = append(defaults, w.Machine)
+			default:
+				ws[w.Machine] = min(max(w.Width, 0), sprint.MaxWidth)
+			}
+		}
+		if len(defaults) > 0 {
+			sort.Strings(defaults)
+			beats, err := st.Beats(ctx, defaults)
+			if err != nil {
+				return nil, false
+			}
+			for _, m := range defaults {
+				ws[m] = sprint.WidthOfCores(beats[m].Cores)
+			}
+		}
+		return ws, true
+	}
+}
+
+// inventoryFriendWidths is the check's, the doctor's and the tick's read of the
+// friends' widths (store.Store.FriendWidths; tla/WidthHard.tla OneSource): every
+// friend row nova-config names, by friend, and whether the read answered. It is
+// the same config read as friend sync (a.friends, config.FriendWidth). A read
+// that failed, or held no row, is ok false, and no friend drift is judged
+// (never act on a missing read).
+func (a *app) inventoryFriendWidths() func(ctx context.Context) (map[string]int, bool) {
+	return func(ctx context.Context) (map[string]int, bool) {
+		if a.friends == nil {
+			return nil, false
+		}
+		rows, err := a.friends(ctx, "")
+		if err != nil || len(rows) == 0 {
+			return nil, false
+		}
+		out := make(map[string]int, len(rows))
+		for _, r := range rows {
+			// a row that names no width is nova-config's default (config.FriendWidth);
+			// a friend's own row is the definition only when it names one, as friend sync
+			// writes it (tla/WidthHard.tla OneSource)
+			if strings.TrimSpace(r.Fields["width"]) != "" {
+				out[r.Name] = config.FriendWidth(r)
+			}
+		}
+		return out, true
+	}
 }
