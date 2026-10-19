@@ -155,7 +155,28 @@ func (a *app) coordinatorHookWhy(ctx context.Context, name string) string {
 	if err != nil {
 		return sprint.HookUnread(name, oneline.Escape(err.Error()))
 	}
-	return sprint.CoordinatorGate(name, st)
+	why := sprint.CoordinatorGate(name, st)
+	if why != "" {
+		// the sprint push is held and unproven after a failed send to the holder:
+		// the refusal names the send's error and its remedy (the bus's no-known-name
+		// refusal names nova-config friend add <name> ..., then nova-config apply)
+		if s := a.coordSendFailure(name); s != "" {
+			why += "; " + s
+		}
+	}
+	return why
+}
+
+// coordSendFailure is why the last send to name failed, "" when the server's last
+// send to it did not: the sprint push is held and unproven, and the gate's refusal
+// names the send's error so the holder can mend it.
+func (a *app) coordSendFailure(name string) string {
+	a.coord.mu.Lock()
+	defer a.coord.mu.Unlock()
+	if a.coord.holder == name && a.coord.failed && a.coord.sendErr != "" {
+		return "the sprint push of " + name + " is held and unproven: the last send to it failed: " + a.coord.sendErr
+	}
+	return ""
 }
 
 // hookedIn is why the call may not run for want of the coordinator's hook, "" when it

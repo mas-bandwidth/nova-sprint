@@ -1259,6 +1259,31 @@ func tookSince(ctx context.Context, st *store.Store) string {
 	return ""
 }
 
+// coordinatorOnBus asks the bus store whether name is a known name: nova-config's
+// friend and machine rows (the set the bus keeps, which nova-config apply writes).
+// known is true when the bus says the name is one, or when the bus cannot be read
+// (why names it: init leaves itself as it is today then); false when the bus
+// answers the name is no known name.
+func (a *app) coordinatorOnBus(ctx context.Context, name string) (known bool, why string) {
+	addr := strings.TrimSpace(a.getenv(busRedisEnv))
+	if addr == "" {
+		return true, ""
+	}
+	b, closeBus, err := a.busOpen(ctx, addr, a.getenv(busUserEnv))
+	if err != nil {
+		return true, "the bus store could not be read at " + oneline.Field(addr) + ", so the coordinator name was not checked: " + oneline.Escape(err.Error())
+	}
+	defer closeBus()
+	friends, machines, _, err := b.Store.Members(ctx)
+	if err != nil {
+		return true, "the bus store could not be read at " + oneline.Field(addr) + ", so the coordinator name was not checked: " + oneline.Escape(err.Error())
+	}
+	if slices.Contains(friends, name) || slices.Contains(machines, name) {
+		return true, ""
+	}
+	return false, ""
+}
+
 func (a *app) cmdInit(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("init")
 	readers := fs.String("readers", "", "the readers' rows, comma separated")
@@ -1316,6 +1341,12 @@ func (a *app) cmdInit(args []string, stdout, stderr io.Writer) int {
 	}
 	if !sprint.ValidID(*coordinator) {
 		return refuse(stderr, "init", "--coordinator wants letters, digits, _ and -: "+*coordinator)
+	}
+	busNote := ""
+	if known, note := a.coordinatorOnBus(ctx, *coordinator); !known {
+		return refuse(stderr, "init", "the coordinator "+oneline.Field(*coordinator)+" is no known name on the bus store (the names are nova-config's friend and machine rows); add one with nova-config friend add "+oneline.Field(*coordinator)+" --width 1 --tiers flash --as <you>, then nova-config apply")
+	} else if note != "" {
+		busNote = note
 	}
 	if err := st.EnsureReaderTiers(ctx); err != nil {
 		fmt.Fprintf(stderr, "%s init: %s\n", prog, oneline.Escape(err.Error()))
@@ -1397,6 +1428,9 @@ func (a *app) cmdInit(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	notes := []string{}
+	if busNote != "" {
+		notes = append(notes, busNote)
+	}
 	if len(specs) > 0 && a.twinOpen(c.redis) {
 		// a twin beats every member at every verb (beatTwin): a member added
 		// down beats at the next verb and is up from the next tick's presence
