@@ -7,11 +7,21 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"testing"
 	"time"
 )
 
 // Exported helpers for the tests of package sprint_test, which reach the package from
 // outside: test-only, so no production code calls them.
+
+// DisableLastGateGuard switches the last-gate guard off for the calling test and resets
+// it with t.Cleanup: the plant test shows the guard a change removed goes red. The
+// calling test must not run in parallel, so no other test sees the guard off.
+func DisableLastGateGuard(t *testing.T) {
+	t.Helper()
+	lastGateGuardOff = true
+	t.Cleanup(func() { lastGateGuardOff = false })
+}
 
 // FleetBackTables is the tick's table updates with the presence part
 // FleetBackPresence(a): a store's Updates.

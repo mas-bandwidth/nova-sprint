@@ -126,7 +126,8 @@ func BenchRooms(s *Snapshot, beats map[string]Beat, self string, now time.Time) 
 		if slots < 1 {
 			slots = 1
 		}
-		busy := int(math.Ceil(beat.Load / 100 * float64(beat.Cores) / BenchLeaseCores))
+		// D3: round to the nearest slot, halves up, as tla/BenchLease.tla RoundBusy does.
+		busy := int(math.Round(beat.Load / 100 * float64(beat.Cores) / BenchLeaseCores))
 		if busy < 0 {
 			busy = 0
 		}
