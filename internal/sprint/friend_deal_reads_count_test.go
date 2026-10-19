@@ -7,10 +7,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The friend deal counts reads against her width (the-friend-deal-counts-reads-against-
-// her-width.w1, v1.2.24). The take gate counts every live lane, work and read, and refuses
-// a work take at "12 of 8"; the deal stops at the same number (friendLiveLanes,
-// friendFreeLanes). No test here uses real time or a socket: the tick's now is t0.
+// The take gate counts every live lane, work and read, and refuses a work take at
+// "12 of 8" (friendLiveLanes, friendFreeLanes). Width bounds what a friend works at once,
+// never what is queued in her ready queue: the deal's room counts reads too but queues
+// past her width (the owner, 2026-10-18). No test here uses real time or a socket: the
+// tick's now is t0.
 
 // seedWork puts n work cards working on the friend's row, by primaries that are not on the
 // work table (they are never offered to the deal), as a store that already holds them
@@ -66,9 +67,9 @@ func dealsN(w *world, friend string, n int) (dealt, live int) {
 	return after - before, after
 }
 
-// (4) the property: the number the take gate refuses at (live lanes at the width) and the
-// number the deal stops at (free lanes zero) are the same, for widths 1 to 8 and 0 to 12
-// reads. The pure count, no store.
+// (4) the property: the free lanes friendFreeLanes reports are her width less every live
+// lane, never below zero, for widths 1 to 8 and 0 to 12 reads. The pure count, no store:
+// the deal keeps these lanes as its first order and queues against her room.
 func TestTheDealStopsAtTheNumberTheGateRefusesAt(t *testing.T) {
 	t.Parallel()
 	for width := 1; width <= 8; width++ {
@@ -105,10 +106,10 @@ func TestTheFriendLiveLanesCountsReads(t *testing.T) {
 	assert.Positive(t, units[0].half, "room remains in her ready queue at width, below her room: 12 of 16")
 }
 
-// (1) a friend at width 8 with 4 work cards and 8 reads is dealt no ninth read and no work
-// card; (2) the same friend with 4 work and 3 reads (7 of 8) is dealt exactly one more;
-// (3) a friend with 8 lanes live where reads finish is dealt into the freed lanes, no
-// earlier.
+// (1) a friend at width 8 with 4 work cards and 8 reads is dealt into her ready queue and
+// her working stays at width; (2) the same friend with 4 work and 3 reads (7 of 8) is
+// dealt every card offered, up to her room; (3) a friend with 8 reads where reads finish
+// takes only the freed room, no earlier.
 func TestTheFriendDealCountsReadsAgainstHerWidth(t *testing.T) {
 	t.Parallel()
 	const width = 8
