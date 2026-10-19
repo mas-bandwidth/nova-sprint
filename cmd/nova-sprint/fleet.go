@@ -84,8 +84,8 @@ reader false, and the reader loop says MEMBER NOT A READER. A reader is up while
 when it beat and has lapsed, down when it has never beaten; reader away holds
 one away whatever it beats and reader up releases the hold (the old words of
 hold <reader> --return and unhold <reader>: its state reads held). A flash card is
-read once and a pro card twice, by two different readers, one read at a time
-(the second asked once the first comes back ok), each read on a route of the
+read once and a pro card twice, by two different readers; a pro card's two reads
+are asked together, each by a different reader, each read on a route of the
 card's tier. The ask deals a read to a reader up only: a read asked of a
 reader that is not up is asked of another at the next tick, and a card that
 needs more readers than are up is not asked: the tick raises one judgment

@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-// serialLock is the read lane's own line (servelanes.go): one read at a time on the read
+// serialLock is the read lane's own line (servelanes.go): a read at a time on the read
 // twin's state, beside the server's line of control (app.serial, a sprint.ControlLine).
 // It is a mutex whose waiters wait in the order they came (a channel's senders queue
 // first in, first out) and whose wait can be given up: a read waits for it under its

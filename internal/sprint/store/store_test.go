@@ -202,7 +202,7 @@ func verdictsStep() Step {
 }
 
 // readAllOK has every outstanding read of the primary say ok and, while it wants
-// another (its reads are asked one at a time, sprint.ReadsWanted), asks it and
+// another (sprint.ReadsWanted), asks it and
 // has that one say ok too.
 func (h *harness) readAllOK(id string) {
 	h.t.Helper()

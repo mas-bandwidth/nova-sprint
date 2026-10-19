@@ -35,7 +35,7 @@ import (
 //     written): it runs on the beat lane, beside the line and beside every other beat,
 //     never waiting for a tick, a batch or another beat;
 //   - a read (where, card, log, check, routes, stats, needs, goal show, handover, and
-//     inbox without --read) writes nothing: it runs on the read lane, one read at a time
+//     inbox without --read) writes nothing: it runs on the read lane, a read at a time
 //     on its own process state (its own read twin), beside the line, as a client reading
 //     the store directly always has;
 //   - the dashboard's read (`where --json --dashboard`, once a second for each dashboard)
@@ -115,7 +115,7 @@ type serveLanes struct {
 	// tick's TIMES count the tick's trips alone.
 	b   store.Backend
 	now func() time.Time
-	// line is the read lane's own line: one read at a time on read's state, given up by a
+	// line is the read lane's own line: a read at a time on read's state, given up by a
 	// caller that has gone as the server's line is.
 	line serialLock
 	read *app

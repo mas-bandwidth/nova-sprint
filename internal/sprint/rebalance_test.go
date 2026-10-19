@@ -165,8 +165,8 @@ func TestTheReadersRebalanceTakesTheReadsOfAReaderAway(t *testing.T) {
 	w.part(TickAsk, TickReq{})
 	for i := 1; i <= 3; i++ {
 		p := fmt.Sprintf("p%d", i)
-		// a read taken back is asked again only once the one outstanding came back
-		// ok (reads are asked one at a time): every read that stands is a reader up's
+		// a read taken back is asked again at the next ask; every read that
+		// stands is a reader up's
 		live := liveReadsAt(w.s, w.s.Work.Card(p), 1)
 		assert.NotEmpty(t, live, "%s is read", p)
 		for _, rc := range live {

@@ -168,7 +168,7 @@ func TestMemberReaderWithoutExplicitTiersNeedsEnabledRoute(t *testing.T) {
 }
 
 // TestReadCardsOffAskAsBefore pins the setting: with read cards off the readers table is
-// asked, one read at a time, as before.
+// asked, every read at once, as before.
 func TestReadCardsOffAskAsBefore(t *testing.T) {
 	t.Parallel()
 	w := readCardsWorld(t, 4, "m1", "m2", "m3")

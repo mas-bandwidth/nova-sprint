@@ -178,7 +178,7 @@ func TestAReturnedReadWhoseNextReaderGoesAwayIsAskedOrJudgedNeverSilent(t *testi
 	}
 	asked := readersOf()
 	assert.NotContains(t, asked, "reader-c", "the away read is taken back: %v", asked)
-	// reader-b's read stands, outstanding (reads are asked one at a time); it comes back ok,
+	// reader-b's read stands, outstanding; it comes back ok,
 	// and the second read is asked of reader-a under the second identity: its returned
 	// read, which reader-c took, has no verdict and spends no reader (the interim rule,
 	// ReadCardForAsk). A read left on reader-c, away, with nothing said is the silence

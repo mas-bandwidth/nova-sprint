@@ -83,7 +83,7 @@ func (w *world) ask(t *testing.T, id string) {
 }
 
 // report has every reader asked of the primary say the verdict and, after an
-// ok, asks the next read the primary wants (reads are asked one at a time) and
+// ok, asks the next read the primary wants (reads are asked a read at a time) and
 // has that reader say it too, until the primary wants no read.
 func (w *world) report(t *testing.T, id, verdict string) {
 	t.Helper()

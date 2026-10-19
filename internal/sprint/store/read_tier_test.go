@@ -36,7 +36,7 @@ func TestAReadTierSettingRaisesTheReadsAndNeverLowersThem(t *testing.T) {
 	readsOf := func(h *harness, id string) (drawn, recorded, packed []string) {
 		h.t.Helper()
 		s := h.snap()
-		// the reads are asked one at a time: each read ok, the next is asked
+		// the reads are asked together: read them all ok
 		for len(s.Readers.Of(id)) < sprint.ReadsNeeded(s.Work.Card(id)) {
 			h.readAllOK(id)
 			s = h.snap()
