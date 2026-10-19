@@ -1479,6 +1479,18 @@ Next == \/ (((LegacyNext /\ GenerationStep) \/ Brief \/ OperationalEdit) /\ Park
 NoOldBriefHeadInReview ==
   \A c \in Card : state[c] = "review" => (headGeneration[c] = briefGeneration[c] \/ keptHead[c])
 
+\* A failed finish keeps the head it pushed (steps_work.go finishPlan): a card
+\* that finished into review carries a recorded head, never the absent default,
+\* so a rework and brief --widen can start from it. GenerationStep sets
+\* headGeneration to the attempt's when a working card finishes into review, and
+\* FinishTarget admits review only at the brief's generation (or a kept head), so
+\* this is implied by NoOldBriefHeadInReview; it names the pushed attempt head
+\* explicitly so the review-head record of a failed finish is pinned.
+FailedFinishRecordsHead ==
+  \A c \in Card :
+    state[c] = "review" =>
+      headGeneration[c] \in {briefGeneration[c], attemptGeneration[c]} \/ keptHead[c]
+
 CrashNext ==
   \/ Next
   \/ (CiRed \/ CiGreen \/ Ack \/ Crash \/ Repair) /\ GenerationStep /\ ParkFence /\ UNCHANGED parkingVars /\ Follow
