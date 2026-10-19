@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (272)
+- [The sprint system](#the-sprint-system) (273)
 - [Setup, release and operations](#setup-release-and-operations) (72)
 - [Docs, models and the repository](#docs-models-and-the-repository) (25)
 - [Friend AIs](#friend-ais) (22)
@@ -2253,6 +2253,16 @@ From: the owner, 2026-10-19
 The lander's generated-ledger list is hard-coded in var landLedgers in cmd/nova-sprint/landledger.go (lines 52-79), so a repo cannot declare its own, and a pin file every card re-pins makes every concurrent card conflict. Observed 2026-10-19: schema-java's internal/codegen/javatable/testdata/keyedindex_base.sha256 forced 5+ reworks, each costing two new reads. Proposal: a repo file .nova/ledgers.sexp gives paths, owning tests and an update command, appended in ledgers(). Safety: regenerate only when BOTH sides of the merge re-pinned the file, otherwise refuse; the pin guards intentional wire moves, so it must never be silently accepted. The schema-java entry: SCHEMA_UPDATE_KEYED_GOLDEN=1 go test -count=1 -run '^TestKeyedFormLeavesWireCodeByteIdentical$' ./internal/codegen/javatable
 
 Why it waits: Without a repo-declared ledger, one re-pinned file makes every concurrent card conflict and rework
+
+Target: v1.7
+
+From: the owner, 2026-10-19
+
+### The lander does not read a merge card before the accept has drained
+
+After accept, the merge card is Queued at once (internal/sprint/steps_review.go:1384), but the primary's move to merging, with readers and heavy_*, waits for the next tick's drain (store/engine.go:787, sprint.QueueOf, queue.go:44). If the land loop reads in that gap, readsWhy (cmd/nova-sprint/land.go:736-742, via ReadsStanding readers.go:407) counts 0 of 2 readers and logs a refusal. Harmless, because the card lands on the next cycle, but misleading. Observed 2026-10-19 on rocketnet-iocp-live-matrix-speed: refused at 13:43:56, landed at 13:44:43. Fix: skip a queued merge card whose primary is not yet in Merging and say 'accept not drained yet', or load with the work queue applied. Model the split write (accept queues the merge card, the drain moves the primary) in tla/Land.tla, with a witness for the race.
+
+Why it waits: A refusal logged in the gap between accept and the next drain is misleading, though harmless
 
 Target: v1.7
 
