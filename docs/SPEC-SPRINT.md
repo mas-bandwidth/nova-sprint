@@ -1703,7 +1703,7 @@ contract line (line 1), blank lines skipped; the run ends at the first line that
 `KEY: value` line, and that line begins the card's prose. Only the header is read, so a
 header key written below the first prose line — `KIND:`, `PATHS:`, `TEST:`, `LEGS:`,
 `SOURCE:`, `START:`, `STOP:`, `DEPENDS-ON:`, `PRIORITY:`, `NEW:`, `SHARED:`, `REPO:`,
-`BASE:`, `RESULT:` or `tier:` — is refused, never ignored: the card lint
+ `BASE:`, `RESULT:`, `MERGE-OF:` or `tier:` — is refused, never ignored: the card lint
 (`swarm.LintHeaderStranded`) draws one `stranded-key` finding naming the key and its line,
 and `add`, `brief`, `recut` and `preflight` refuse it, exit 2 (preflight exit 1), nothing
 written. `add` and `brief` both print the finding as `LINT DRIFT brief <file>: stranded-key: <line>: <key>: on line <line> is below the header block and is not read: ... remedy=<remedy>`. The card that wrote
@@ -4670,6 +4670,7 @@ What each of the lander's checks does with a head:
 |---|---|
 | files outside PATHS (E12) | refuses; a `*_test.go`, a file under `testdata/`, `tla/RUNS.tsv`, `tla/CASES.tsv`, `internal/docs/catalog.go` and an `AGENTS.md` map are inside every PATHS (`sprint.LandScope`) |
 | a rename outside PATHS (E12) | refuses |
+| a forward-merge card's exempt files (E12) | a card whose brief carries a `MERGE-OF: <branch>` line resolves the merged parent M (`git merge-base <after> origin/<branch>`, fetching the branch as the lander fetches the base) and exempts every changed file that arrived unchanged through the merge: its blob at `after` equals its blob at M (absent at both counts as equal) or equals its blob in the tree `git merge-tree --write-tree before M` writes; a file merge-tree reports as conflicted is never exempt by that tree, and a rename is exempt only when both its old and new paths are. Exempt files are removed before the scope amendment, so an exempt file never lends a test, fixture or doc amendment to a hand edit in its directory (`sprint.MergeOf`, `sprint.LandScopeMergeOf`). When the branch cannot be resolved, or M is already an ancestor of `before` (the merge brings nothing new), there is no exemption and the refusal says `merge-of unresolved`; never exempt silently. The land report notes `merge-of=<branch>@<M>` exempt=<n>` beside the card; an E12 refusal names only the non-exempt files |
 | a stranded sentence fragment (E4) | refuses |
 | an unmatched backquote in a Markdown or text file (E4) | repairs; refuses only when ambiguous, naming the line; not read on a prose path |
 | an unmatched backquote in a Go comment (E4) | refuses; not read on a prose path |
