@@ -170,13 +170,14 @@ func TestFriendLevelReadsStartedOffTheLine(t *testing.T) {
 	require.NotNil(t, lanes)
 	read := make(chan struct{})
 	release := make(chan struct{})
-	ta.a.tips = func(context.Context, string) (map[string]string, error) {
+	tips := func(context.Context, string) (map[string]string, error) {
 		ta.advance(40 * time.Second)
 		close(read)
 		<-release
 		return map[string]string{}, nil
 	}
-	lanes.read.tips = ta.a.tips
+	ta.a.setFriendTips(tips)
+	lanes.read.setFriendTips(tips)
 	waiting := make(chan struct{}, 1)
 	ta.a.serial.waiting = func() { waiting <- struct{}{} }
 	ta.a.serial.Lock()

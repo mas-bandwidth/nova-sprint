@@ -34,10 +34,10 @@ import (
 //     every table (the friend's beat record; store.FriendBeat: the roster read, the record
 //     written): it runs on the beat lane, beside the line and beside every other beat,
 //     never waiting for a tick, a batch or another beat;
-//   - a read (where, card, log, check, routes, stats, needs, goal show, handover, and
-//     inbox without --read) writes nothing: it runs on the read lane, one read at a time
-//     on its own process state (its own read twin), beside the line, as a client reading
-//     the store directly always has;
+//   - a read (where, card, log, check, routes, stats, needs, goal show, handover, friend
+//     cards, and inbox without --read) writes nothing: it runs on the read lane, one read
+//     at a time on its own process state (its own read twin), beside the line, as a client
+//     reading the store directly always has;
 //   - the dashboard's read (`where --json --dashboard`, once a second for each dashboard)
 //     has a lane of its own, beside the line and the read lane: it is answered from a
 //     copy computed one at a time on its own app and lock, which callers within a second
@@ -184,7 +184,8 @@ func (a *app) lanesFor(ctx context.Context) *serveLanes {
 	r.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return b, nil }
 	r.serveAddr = a.serveAddr
 	r.readFriendHooks = a.readFriendHooks
-	r.tip, r.tips = a.tip, a.tips
+	r.tip = a.tip
+	copyFriendTips(r, a)
 	r.hk, r.hookStoreFn, r.busOpen = a.hk, a.hookStoreFn, a.busOpen // the server's hook record connection: the gate reads it on this lane too
 	l.read = r
 	a.lanes = l
@@ -295,7 +296,8 @@ func (l *serveLanes) laneApp() *app {
 	r.now, r.serveAddr = l.now, l.read.serveAddr
 	r.meter = l.read.meter
 	r.readFriendHooks = l.read.readFriendHooks
-	r.tip, r.tips = l.read.tip, l.read.tips
+	r.tip = l.read.tip
+	copyFriendTips(r, l.read)
 	r.hk, r.hookStoreFn, r.busOpen = l.read.hk, l.read.hookStoreFn, l.read.busOpen // the server's hook record connection, never a store per verb
 	r.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return b, nil }
 	return r

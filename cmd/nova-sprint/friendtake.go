@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -21,9 +22,11 @@ import (
 // not started and refuses the rest (the card friend-take-partial.w1; --all-or-nothing takes
 // none when one is refused; a named card in flight wants --working), friend take
 // --all-unstarted only the cards dealt and not taken (never a working one), and friend down
-// every one as it holds her. What she has started is read here, outside the step: her beat's running cards and a
-// push on each card's branch (one git ls-remote each, the tip friend sync reads); the step
-// is a function of the tables and that set.
+// every one as it holds her. What she has started is read here, outside the step: her beat's
+// running cards and a push on each card's branch (one git ls-remote for every sprint branch
+// of each distinct repository, the tip friend sync reads); the step is a function of the
+// tables and that set, and a card started between the read and the step is in the same
+// window the coordinator's command outside the server has always had.
 
 // friendTakeWords is what friend take says on -h.
 const friendTakeWords = "friend take takes back and marks cards dealt to the friend: each goes back to ready, withdrawn from the friend's row (no failure, no bound spent: the card records \"taken back by the coordinator: <reason>\"), and the next tick deals the same card at its next generation to another friend up with room, never back to the friend until friend give (a friend's card is never a machine's); each card taken is said as \"<id>: back to ready, not dealt to <friend> again until friend give\" and the summary counts them (marked=<n>); a card whose WHO line pins the friend waits until it is given back to the friend (friend give), briefed for another friend or dropped. The selectors: --all-unstarted takes ONLY the cards dealt to the friend and not taken: ready in the friend's queue with no take recorded (taken, first_taken), no progress, no report and no carried head, and not started (no push on its branch, not named running by the friend's beat); it never takes a working card, and says each card the friend keeps (\"friend <f> keeps <id>: <why>\"). <id>... takes the cards named that are dealt to the friend and not taken; a named card in flight (working, or with a take, progress, report or carried head recorded) is refused unless --working is given, and with --working it is withdrawn mid-flight and one WARNING line counts the working cards withdrawn. --working is for named cards only, never with --all-unstarted. A card is refused, one REFUSED line each, when it is not dealt to that friend, when the friend has started it (a push on its branch, the friend's beat naming it running), or finished (in review or later), even with --working; the others named are taken, and the exit is 1 when any is refused. --all-or-nothing takes none when one is refused. --dry-run lists each card that would move (WOULD), each the friend keeps and each refused, and writes nothing. A working card taken frees the friend's lane, and the friend's oldest ready card is taken into working at once. friend sync marks a card taken back as taken in the friend's queue file.\n"
@@ -33,6 +36,42 @@ const friendTakeWords = "friend take takes back and marks cards dealt to the fri
 // primary), whose branch origin holds, or whose push cannot be read (the card stays with her).
 func (a *app) friendStarted(ctx context.Context, st *store.Store, friend string) (map[string]string, error) {
 	return a.friendStartedFor(ctx, st, []string{friend})
+}
+
+// friendTipsHooks gives one app a repository-tips reader a test can block, count or fail.
+// It is a map rather than an app field because the app's fields are in main.go, which this
+// card may not change; production registers nothing and reads each repository once.
+var friendTipsHooks sync.Map // map[*app]tipsFn
+
+// setFriendTips installs f as the app's tips reader (nil restores the default).
+func (a *app) setFriendTips(f tipsFn) {
+	if f == nil {
+		friendTipsHooks.Delete(a)
+		return
+	}
+	friendTipsHooks.Store(a, f)
+}
+
+// copyFriendTips carries the tips hook between apps the lanes make (lanesFor, laneApp).
+func copyFriendTips(dst, src *app) {
+	if f, ok := friendTipsHooks.Load(src); ok {
+		friendTipsHooks.Store(dst, f)
+		return
+	}
+	friendTipsHooks.Delete(dst)
+}
+
+// friendTips is the app's repository-tips reader: a test's hook when it gave one, the
+// per-card tip when a test injected only that older seam, and otherwise one bounded read
+// of every sprint branch of a repository.
+func (a *app) friendTips() tipsFn {
+	if f, ok := friendTipsHooks.Load(a); ok {
+		return f.(tipsFn)
+	}
+	if a.tip != nil && reflect.ValueOf(a.tip).Pointer() != reflect.ValueOf(a.branchTip).Pointer() {
+		return nil
+	}
+	return a.branchTips
 }
 
 // friendStartedFor reads all selected friends' cards and checks each distinct repository
@@ -90,9 +129,9 @@ func (a *app) friendStartedFor(ctx context.Context, st *store.Store, friends []s
 	if len(byRepo) == 0 {
 		return out, nil
 	}
-	if a.tips == nil {
-		// Commands and older tests that inject only a branch tip retain that seam. The
-		// production server installs branchTips, which reads once per repository.
+	tips := a.friendTips()
+	if tips == nil {
+		// A test that injects only the per-card branch tip retains that seam.
 		for repo, repoPackets := range byRepo {
 			for _, p := range repoPackets {
 				tip, err := a.tip(ctx, repo, p.Branch)
@@ -127,8 +166,8 @@ func (a *app) friendStartedFor(ctx context.Context, st *store.Store, friends []s
 				results <- result{repo: repo, err: ctx.Err()}
 				return
 			}
-			tips, err := a.tips(ctx, repo)
-			results <- result{repo: repo, tips: tips, err: err}
+			byBranch, err := tips(ctx, repo)
+			results <- result{repo: repo, tips: byBranch, err: err}
 		}()
 	}
 	wg.Wait()

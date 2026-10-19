@@ -56,7 +56,7 @@ func TestFriendStartedReadsEachRepoOnce(t *testing.T) {
 	var callsMu sync.Mutex
 	repo0 := swarm.CardRepoURL("mas-bandwidth/repo-0")
 	repo1 := swarm.CardRepoURL("mas-bandwidth/repo-1")
-	ta.a.tips = func(_ context.Context, repo string) (map[string]string, error) {
+	ta.a.setFriendTips(func(_ context.Context, repo string) (map[string]string, error) {
 		callsMu.Lock()
 		calls[repo]++
 		callsMu.Unlock()
@@ -64,7 +64,7 @@ func TestFriendStartedReadsEachRepoOnce(t *testing.T) {
 			return map[string]string{"sprint/started-000.w1.g1.e0": landHead}, nil
 		}
 		return map[string]string{}, nil
-	}
+	})
 	st, err := ta.a.store(common{redis: "mem:0"})
 	require.NoError(t, err)
 	started, err := ta.a.friendStartedFor(context.Background(), st, friends)
@@ -76,7 +76,7 @@ func TestFriendStartedReadsEachRepoOnce(t *testing.T) {
 func TestFriendStartedAnUnreadRepoKeepsItsCards(t *testing.T) {
 	t.Parallel()
 	ta := friendStartedFixture(t, 10, 1, "amy")
-	ta.a.tips = func(context.Context, string) (map[string]string, error) { return nil, errors.New("offline") }
+	ta.a.setFriendTips(func(context.Context, string) (map[string]string, error) { return nil, errors.New("offline") })
 	st, err := ta.a.store(common{redis: "mem:0"})
 	require.NoError(t, err)
 	started, err := ta.a.friendStarted(context.Background(), st, "amy")
@@ -151,12 +151,12 @@ func BenchmarkFriendStarted(b *testing.B) {
 	}
 	tipsCalls := 0
 	var tipsMu sync.Mutex
-	a.tips = func(context.Context, string) (map[string]string, error) {
+	a.setFriendTips(func(context.Context, string) (map[string]string, error) {
 		tipsMu.Lock()
 		tipsCalls++
 		tipsMu.Unlock()
 		return map[string]string{}, nil
-	}
+	})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if _, err := a.friendStartedFor(context.Background(), st, friends); err != nil {
