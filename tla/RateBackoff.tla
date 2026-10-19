@@ -5,6 +5,8 @@
 \* for Min(2^(k-1), Cap) time units, k counting the route's rate-limited ends since
 \* its last ok end; an ok end resets k; the backoff ends by itself when the clock
 \* passes it. The owner, 2026-10-11: a rate limit stalls, it never fails a card.
+\* The same-attempt fallback, provider-wide cooling and the all-cooling wait are
+\* modeled by tla/ProviderFallback.tla (ProviderFault, Fallback, CoolExpire).
 EXTENDS Naturals
 CONSTANTS Cap, MaxTime, MaxK, Broken
 VARIABLES now, k, until, redeals, ready

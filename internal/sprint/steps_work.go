@@ -2145,32 +2145,51 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		case cardhdr.EndProvider:
 			if IsRateLimited(r.Report) {
 				// a rate limit NEVER fails the card, on any route and however many times: the
-				// card is returned untouched (no take ended, no redeal, no attempt) and the
-				// route backs off briefly from the take's record (RestsDue, rateBackoffs), so
-				// the deal falls back to another route of the tier or waits and tries again
+				// provider cools and the same card, attempt and generation is dealt at once to
+				// the next route in line (fallback.go, providerFallbackReturned;
+				// tla/ProviderFallback.tla, Fallback); with no route in line the card is
+				// returned untouched (no take ended, no redeal, no attempt) and the route backs
+				// off briefly from the take's record (RestsDue, rateBackoffs)
 				// (a-rate-limited-refusal-never-fails-the-cardc; tla/RateBackoff.tla,
 				// RateLimitSpendsNoRedeal)
+				if u, ok := providerFallbackReturned(s, c, pr, r, "rate limited", "the provider rate limited the take", &p); ok {
+					p.Units = append(p.Units, u)
+					continue
+				}
 				p.Units = append(p.Units, rateLimitedReturned(s, c, pr, r, "rate limited",
 					fmt.Sprintf("%s working -> withdrawn gen=%d, the provider rate limited the take (returned untouched: no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, pr.ID)))
 				continue
 			}
 			if outOfCredit(r.Report) && rateLimitedRoute(c) && c.Int(FieldRateReturns) < MaxRateReturns {
-				// a limited route's out-of-credit refusal (class out-of-credit, a 402): the card
-				// is returned untouched (no FieldTakeEnded, no redeal, no attempt), but the
-				// refusal is recorded so the provider rests exactly as before; an auth refusal
-				// (a 401) and an unlimited route keep takeEnded's path (provider_funds.go;
-				// tla/RouteRest.tla, OutOfCreditSpendsNoRedeal)
+				// a limited route's out-of-credit refusal (class out-of-credit, a 402): the
+				// provider cools until it is funded and another route of the tier serves the
+				// same card, attempt and generation (fallback.go; tla/ProviderFallback.tla,
+				// ProviderFault(p, "unfunded")); with none the card is returned untouched (no
+				// FieldTakeEnded, no redeal, no attempt), but the refusal is recorded so the
+				// provider rests exactly as before; an auth refusal (a 401) and an unlimited
+				// route keep takeEnded's path (provider_funds.go; tla/RouteRest.tla,
+				// OutOfCreditSpendsNoRedeal)
+				if u, ok := providerFallbackReturned(s, c, pr, r, "out of credit", "the provider refused out of credit", &p); ok {
+					p.Units = append(p.Units, u)
+					continue
+				}
 				p.Units = append(p.Units, rateLimitedReturned(s, c, pr, r, "out of credit",
 					fmt.Sprintf("%s working -> withdrawn gen=%d, the provider refused out of credit (returned untouched: no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, pr.ID)))
 				continue
 			}
 			if isProvider5xx(r.Report) && c.Int(FieldRateReturns) < MaxRateReturns {
 				// the provider's own server failed the take (class provider-5xx): a transient
-				// provider fault, never the card's. The card is returned untouched on any
-				// route (no FieldTakeEnded, no redeal, no attempt) under MaxRateReturns, and
-				// its record still counts toward the route's 3-in-10 rest; past the bound the
-				// take ends as any provider failure does (tla/RouteRest.tla,
+				// provider fault, never the card's. The provider cools and the same card,
+				// attempt and generation falls back to the next route in line (fallback.go;
+				// tla/ProviderFallback.tla); with none it is returned untouched on any route
+				// (no FieldTakeEnded, no redeal, no attempt) under MaxRateReturns, and its
+				// record still counts toward the route's 3-in-10 rest; past the bound the take
+				// ends as any provider failure does (tla/RouteRest.tla,
 				// Provider5xxSpendsNoRedeal)
+				if u, ok := providerFallbackReturned(s, c, pr, r, "provider 5xx", "the provider's server failed the take", &p); ok {
+					p.Units = append(p.Units, u)
+					continue
+				}
 				p.Units = append(p.Units, rateLimitedReturned(s, c, pr, r, "provider 5xx",
 					fmt.Sprintf("%s working -> withdrawn gen=%d, the provider's server failed the take (returned untouched: no attempt spent); %s working -> ready", c.ID, c.Int("gen")+1, pr.ID)))
 				continue

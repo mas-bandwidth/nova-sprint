@@ -768,9 +768,17 @@ func (s *Snapshot) drawRoute(c, wc *Card, ri routeIndexes, member, tier string) 
 // is never a judgment. A route disabled or removed since the tier's array was set, a
 // resting one, and one the member cannot launch are not served.
 func (s *Snapshot) servedRoute(tier, member, name string, drawing bool) (Route, bool) {
+	cools := s.providerCoolings()
+	ignoreCooling := testSeam(s, seamIgnoreCooling)
 	for _, r := range s.Routes {
 		if r.Name != name || r.Tier != tier || !r.Enabled {
 			continue
+		}
+		if c, ok := cools[r.Provider]; ok && c.cooling(s.Now) && !ignoreCooling && (c.Kind != ProviderFaultRate || c.Whole) {
+			// a cooling provider is out of the line, every route of it (tla/ProviderFallback.tla,
+			// NoDealToCooling); a rate backoff stays the route rest's own, so a check of the
+			// tier never calls a backing-off route unserved (route_rest.go, servedRoute)
+			return Route{}, false
 		}
 		if rest, ok := s.resting(r.Name); ok && (drawing || rest.Cause != RestRateBackoff) {
 			// a rate-limit backoff is a stall, never an unserved tier: the draw leaves the
@@ -1091,10 +1099,18 @@ func (s *Snapshot) readRouteOf(ri routeIndexes, pr *Card, avoid []string) map[st
 	arr := s.tierArray(tier)
 	// a resting route is left out as an avoided one is: skip holds both, and other
 	// asks whether any served entry is left drawable, so with every route resting the
-	// walk falls back to the first of them as it did before the ask knew of rests
+	// walk falls back to the first of them as it did before the ask knew of rests. A
+	// cooling provider's every route is left out too (tla/ProviderFallback.tla,
+	// NoDealToCooling).
 	skip := slices.Clone(avoid)
+	cools := s.providerCoolings()
+	ignoreCooling := testSeam(s, seamIgnoreCooling)
 	for _, r := range served {
 		if _, rests := s.resting(r.Name); rests {
+			skip = append(skip, r.Name)
+			continue
+		}
+		if c, ok := cools[r.Provider]; ok && c.cooling(s.Now) && !ignoreCooling {
 			skip = append(skip, r.Name)
 		}
 	}

@@ -3126,6 +3126,35 @@ order the cards were dealt in, so a card brought to the front of its stream by
   (`sprint.RestsDue`, `TestRestsDueCountsTransientProviderFailuresNeverNoResults`,
   `TestANoResultNeverRestsAndA429Does`, `TestARetiredRuleRestsNoRoute`,
   `TestARestingRouteServesNoDealWhileAnotherServes`).
+- **One ordered fallback, for work and reads alike** (Glenn, 2026-10-19: "one
+  provider failing never stalls the fleet, it just falls back to the next one in
+  line"; the model is `tla/ProviderFallback.tla`). Per tier the routes IN LINE are
+  the tier's array order across providers (`tierArray`), filtered to routes that
+  serve: enabled, provider funded, not resting, not cooling. A provider is
+  COOLING while it has a rate-limit backoff (its window from the provider's own
+  words when they name one, `retry after N s`, `try again in Ns`,
+  `Retry-After: N`, else `RateBackoff`), a transient rest (a 5xx or a timeout), or
+  an out-of-credit rest / `funded=false`: unfunded is out until the owner funds
+  it, with no expiry. Cooling is per PROVIDER, never per route: every route of a
+  cooling provider leaves the line (`internal/sprint/fallback.go`, `providerCoolings`;
+  `NoDealToCooling`). A take or a read that ends with a provider fault (class
+  `rate-limited`, `provider-5xx`, `timeout` or `out-of-credit`) cools its provider
+  and is retried AT ONCE on the next route in line: the same card, attempt and
+  read, no new attempt, no redeal and no reader spent, dealt in the same tick to a
+  member that launches the next route (work: `providerFallbackReturned`, the same
+  work card moved to the next member's ready queue; reads: the same read card
+  asked of the next route). It counts no attempt, no bound and no
+  `MaxRateReturns`: that bound now only applies while every route of the tier
+  cools. A reader that returned a provider fault is not counted against its reads
+  or its ok%. Only when NO route of the tier is in line does the card, or the
+  read, wait, never fail: with a server-computed deadline (the earliest cooling
+  end of the tier's providers, or `ProviderRecheck` when every provider is
+  unfunded) and ONE coordinator judgment per tier naming each provider and its
+  cooling (`tier <t> has no route in line: <p1> rate-limited until <t>, <p2>
+  unfunded (the owner's to fund)`; `ProviderWaitFor`, `WaitHasDeadline`). The
+  wait ends by itself when any provider of the tier stops cooling (`Wake`). The
+  deal, the redeal and every read draw the line: `servedRoute`, `readRouteOf` and
+  `tierRouted` use `providerCoolings` (`NoDealToCooling`).
 - The coordinator rests and wakes routes (`sprint.RestRoutes`, `sprint.WakeRoutes`):
   `routes rest <provider|route> --reason <text> [--for <duration> | --until <RFC3339>]` rests
   every route of the provider (its one property `provider_rest_<provider>`, cause
@@ -3917,6 +3946,11 @@ is served. `card` and `where --json --rows` show the tier it is on.
   AND no reader up that brings its own model reads it (`route.go`,
   readRouteMissing), closed when either serves it
   (`TestAHeavyCardIsReadByAFriendReaderWithNoHeavyRoute`).
+  A read that comes back with a provider fault is not a read of that provider's:
+  the provider cools (every route of it out of the line) and the same read is
+  asked again on the next route in line; its reader's reads and ok% do not move,
+  and the read's re-asks are not spent (`internal/sprint/steps_review.go`,
+  `tla/ProviderFallback.tla`; section 5, the one ordered fallback).
   Work that came back failed is not read: it waits for the coordinator.
   `ask --another` deals a primary already asked to one more reader, for that
   attempt only (the primary's `asked` field still names the readers the

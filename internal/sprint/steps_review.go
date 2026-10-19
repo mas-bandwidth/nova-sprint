@@ -823,6 +823,24 @@ func Read(s *Snapshot, r ReadReq) Plan {
 					Moved:   c.ID + " " + c.Col + " -> refused (retired: not a read, asked again elsewhere)", Notes: []Note{n}})
 				continue
 			}
+			if kind := ProviderFaultKind(r.Reason); kind != "" && c.F(FieldRoute) != "" && c.F(FieldRoute) != RoutePin {
+				// a provider fault is not the reader's and never a re-ask it spends: the
+				// provider cools, and the same read is asked again on the next route in line
+				// (fallback.go; tla/ProviderFallback.tla, ProviderFault and Fallback). The
+				// read's own record keeps its cost; its re-asks are not counted.
+				if route, ok := s.lookupRoute(c.F(FieldRoute)); ok && route.Provider != "" {
+					rest := providerRestFor(route.Provider, kind, r.Reason, s.Now)
+					was, had := s.Fleet.Prop(PropProviderRest(route.Provider))
+					p.Props = append(p.Props, PropWrite{Table: Fleet, Name: PropProviderRest(route.Provider), Value: rest.value(), Was: was, WasAbsent: !had})
+					n.What += "; provider " + route.Provider + " " + kind + ": its routes cool, the read is asked of the next route in line"
+				}
+				set := map[string]string{FieldReadTake + itoa(run): rec, FieldReturned: stamp(s.Now)}
+				record(pr, readConsumer(s, c, run, "returned", rec))
+				p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.F("stream"),
+					Changes: []Change{change(Readers, moveEntry(c, c.Row, Asked, set, "begun"))},
+					Moved:   c.ID + " " + c.Col + " -> asked (returned: a provider fault, re-asked on the next route in line)", Notes: []Note{n}})
+				continue
+			}
 			set := map[string]string{FieldReadTake + itoa(run): rec, FieldReasked: itoa(returns)}
 			record(pr, readConsumer(s, c, run, "returned", rec))
 			if returns > MaxReadReasks {

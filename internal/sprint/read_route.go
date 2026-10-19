@@ -62,9 +62,14 @@ func (s *Snapshot) tierRouted(tier string) bool {
 	if len(s.Routes) == 0 {
 		return true
 	}
+	cools := s.providerCoolings()
+	ignoreCooling := testSeam(s, seamIgnoreCooling)
 	for _, name := range s.tierArray(tier) {
 		for _, r := range s.Routes {
 			if r.Name == name && r.Tier == tier && r.Enabled {
+				if c, ok := cools[r.Provider]; ok && c.cooling(s.Now) && !ignoreCooling && c.Kind != ProviderFaultRate {
+					continue // a cooling provider's routes are out of the line (tla/ProviderFallback.tla); a rate backoff is the rest rules'
+				}
 				return true
 			}
 		}

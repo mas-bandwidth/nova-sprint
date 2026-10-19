@@ -825,3 +825,8 @@ MCDealThrottleBrokenNoResume.cfg	MCDealThrottle.tla	temporal	WorkResumes	ignore-
 MCDealThrottleBrokenCutsInFlight.cfg	MCDealThrottle.tla	action	InFlightNeverCut	ignore-terminal	dealthrottle	required	-
 MCLandBoundBrokenNoMergeExempt.cfg	MCLandBound.tla	invariant	NoPathsRefusalNamesMerged	ignore-terminal	land	required	-
 MCLandBoundReachMergeOutside.cfg	MCLandBound.tla	invariant	ReachMergeOutside	ignore-terminal	land	required	-
+MCProviderFallback.cfg	MCProviderFallback.tla	pass	-	ignore-terminal	providerfallback	required	-
+MCProviderFallbackBrokenSpend.cfg	MCProviderFallback.tla	invariant	FaultSpendsNothing	ignore-terminal	providerfallback	required	-
+MCProviderFallbackBrokenDealCooling.cfg	MCProviderFallback.tla	invariant	NoDealToCooling	ignore-terminal	providerfallback	required	-
+MCProviderFallbackBrokenNoDeadline.cfg	MCProviderFallback.tla	invariant	WaitHasDeadline	ignore-terminal	providerfallback	required	-
+MCProviderFallbackBrokenNoFallback.cfg	MCProviderFallback.tla	temporal	NeverLeftUnworked	ignore-terminal	providerfallback	required	-
