@@ -20,7 +20,7 @@
 \* rejoin (the control card made again without gates_only); it fails GenericNeverToGatesOnly.
 \*
 \* Move (v1.6.8): every place that moves an attempt already on a member to another (the
-\* next attempt's deal, steps_review.go; the redeal of a member gone down or held and the
+\* next attempt's deal, steps_review.go, and the conflict redo, redo.go; the redeal of a member gone down or held and the
 \* level, steps_work.go; the rebalance, rebalance.go) holds the one rule the deal holds,
 \* gates and facts together (gates_only.go gateEligible, AdmitGate). Broken = "movegates" is
 \* the code before v1.6.8 for the next attempt and the redeal: the gates alone, so the

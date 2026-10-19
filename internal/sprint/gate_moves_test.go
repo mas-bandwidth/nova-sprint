@@ -127,3 +127,21 @@ func TestAReworkOfADarwinCardIsNeverDealtToLinux(t *testing.T) {
 	require.NotNil(t, wc, "attempt 2 is dealt")
 	assert.Equal(t, "m1", wc.Row, "attempt 2 is the Mac's")
 }
+
+// A conflict redo deals the next attempt as the rework does: never to a member the card's
+// needs refuse, here with the Mac the member that held attempt 1 (the one the redo avoids).
+func TestAConflictRedoOfADarwinCardIsNeverDealtToLinux(t *testing.T) {
+	t.Parallel()
+	w := stoppedForConflict(t)
+	mac := w.s.Fleet.Card("s1-2.w1").Row
+	lin := "m2"
+	if mac == "m2" {
+		lin = "m1"
+	}
+	macFacts(w, mac, lin)
+	w.s.Work.Card("s1-2").Fields["brief"] = darwinBrief
+	w.must(Redo(w.s, RedoReq{Sel: Sel{IDs: []string{"s1-2"}}, Who: "coordinator"}))
+	if wc := w.s.Fleet.Card("s1-2.w2"); wc != nil {
+		assert.Equal(t, mac, wc.Row, "attempt 2 is the Mac's, never the Linux bench's")
+	}
+}
