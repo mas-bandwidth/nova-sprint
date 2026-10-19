@@ -16,6 +16,11 @@ import (
 var serverOnlyPacketFields = map[string]string{
 	"need_heads": "the server records it; no member reads it yet (a member-side refusal would be a nova-tools card)",
 	"read_job":   "a friend's read job, read by cmd/nova-sprint's friend cards path, never by a member",
+	// the v1.6 backport of the route's provider row: nova-tools v1.6.4 member.Packet reads these
+	// three (3fe6fe6d), but this line pins nova-tools v1.5.2, whose member.Packet predates them
+	"provider_base_url":    "read by nova-tools v1.6.4 members; the pinned v1.5.2 member.Packet predates it",
+	"provider_key_env":     "read by nova-tools v1.6.4 members; the pinned v1.5.2 member.Packet predates it",
+	"provider_npm_adapter": "read by nova-tools v1.6.4 members; the pinned v1.5.2 member.Packet predates it",
 }
 
 func packetJSONFieldNames(t *testing.T, typ reflect.Type) []string {
