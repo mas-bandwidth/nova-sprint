@@ -8652,7 +8652,9 @@ as a client reading the store directly always has. `friend level` reads friend r
 specs, packets and branch tips on this lane, then takes the line only for
 `store.FriendLevelStep`; a card started between that read and the step is inside the same
 read/step window as the coordinator's command outside the server (`tla/ServerLanes.tla`,
-`ReadWaitsOnlyForReads`). `friend cards <friend> [--json]` writes nothing and runs here too.
+`ReadWaitsOnlyForReads`). The branch tips are read once per distinct `REPO` with one
+`git ls-remote -- <repo> 'refs/heads/sprint/*'`, at most four repositories at once, and a
+repository whose read fails keeps every card naming it started.
 The dashboard's read (`where --json --dashboard`, once a
 second for each dashboard, with no other flag but the actor) has a lane of its own, beside the
 line and the read lane, so it never waits behind the reads ahead of the read lane (the owner,
