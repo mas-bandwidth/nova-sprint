@@ -12,9 +12,9 @@ import (
 func reworkByRule(w *world, id string) {
 	w.t.Helper()
 	w.must(Rework(w.s, ReworkReq{
-		Sel: Sel{Only: []string{id}},
+		Sel:     Sel{Only: []string{id}},
 		PerCard: map[string]ReworkCard{id: {Fix: "make the test pass", Rule: "failed", Said: "attempt"}},
-		Who: "tick",
+		Who:     "tick",
 	}))
 }
 
@@ -90,9 +90,9 @@ func TestARuleReworkWithNoMatchingMemberRaisesTheGateNeedsJudgment(t *testing.T)
 	// a second tick's rule rework (the card is ready now, not reworked again) raises no
 	// second judgment: the standing cause is judged once, never every tick
 	Rework(w.s, ReworkReq{
-		Sel: Sel{Only: []string{"s1-1"}},
+		Sel:     Sel{Only: []string{"s1-1"}},
 		PerCard: map[string]ReworkCard{"s1-1": {Fix: "make the test pass", Rule: "failed", Said: "attempt"}},
-		Who: "tick",
+		Who:     "tick",
 	})
 	require.Len(t, w.notesOf(NGateNeeds), 1, "a standing cause is judged once, never every tick")
 }
