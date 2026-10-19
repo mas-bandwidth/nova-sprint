@@ -212,6 +212,7 @@ nova-sprint doctor [--all] [--area <group>] [--preflight <candidate>] [--json]
 # `doctor --all` runs `nova-doctor run` alongside the sprint doctor, then prints both named reports and preserves each exit and stderr; `--json` wraps both child reports, statuses and stderr in one object. `--area` scopes the sprint checks. `--preflight` remains the candidate-binary gate and cannot be combined with `--all`.
 nova-sprint stats tidy (--friends | --fleet | --routes | --streams | --all)... --reason <text> [--dry-run]
 nova-sprint play [--simulation] [--seed <n>] [--every <duration>] [--broken <p>] [--fail <p>] [--stuck <p>] [--cross <p>] [--down <p>] [--up <p>] [--red <p>] [--flap <p>] [--batch <n>] [--hold] [--silent <member>@<from>+<for>]... [--ticks <n>]
+# play drives the outside actors (take, finish, read, merge) on a twin store, where its bare merge stands in for land; it reports a member's read cards when reads are dealt as cards and the readers table's asks when --read-cards is off, so every stream lands. A real store refuses the bare merge, so play is for a twin.
 nova-sprint clear --confirm sprint
 nova-sprint teardown --confirm sprint
 ```
