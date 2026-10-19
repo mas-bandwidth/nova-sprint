@@ -1617,6 +1617,15 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 	orphans := map[string]bool{}
 	for _, c := range chosen {
 		one := r.PerCard[c.ID]
+		if one.Rule != "" && reworkWaitsForReads(s, c) {
+			// a rule's rework waits while another read of the attempt is open within its
+			// deadline: the card stays in review with its broken read standing, and a later
+			// tick reworks it, carrying every read's finding, once the other read reports, is
+			// retired or passes its deadline. The seat's rework is a mind's and runs now; a
+			// read it retires reports as a late read (lateReadOf). tla/ReadCards.tla Rework,
+			// NoFindingLost, BugReworkAtFirstBroken.
+			continue
+		}
 		tier := r.Tier
 		if one.Tier != "" {
 			tier = one.Tier
@@ -1701,18 +1710,18 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		broken := 0
 		var retire []Change
 		if bound != nil {
-			retire = append(retire, change(Fleet, removeEntry(bound, map[string]string{"retired": stamp(s.Now), "retired_by": "rework"})))
+			retire = append(retire, change(Fleet, removeEntry(bound, map[string]string{"retired": stamp(s.Now), "retired_by": RetiredByRework})))
 		} else if env := AtEnvExitBound(s, c); env != nil {
 			// the attempt held at its environment-exit cap: its withdrawn work card is retired,
 			// its record kept, and the new attempt starts with no count (no failure is recorded:
 			// the environment, not the card, ended it)
-			retire = append(retire, change(Fleet, removeEntry(env, map[string]string{"retired": stamp(s.Now), "retired_by": "rework"})))
+			retire = append(retire, change(Fleet, removeEntry(env, map[string]string{"retired": stamp(s.Now), "retired_by": RetiredByRework})))
 		}
 		for _, rc := range s.Readers.Of(c.ID) {
 			if rc.Col == Broken {
 				broken++
 			}
-			retire = append(retire, change(Readers, removeEntry(rc, map[string]string{"retired": stamp(s.Now), "retired_by": "rework"})))
+			retire = append(retire, change(Readers, removeEntry(rc, map[string]string{"retired": stamp(s.Now), "retired_by": RetiredByRework})))
 		}
 		// its open read cards on the fleet table, a friend's or a member's (read_cards.go):
 		// left, one keeps its reader's room and closes against the attempt this rework
@@ -1722,12 +1731,17 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 			broken += len(fbr)
 		}
 		for _, rc := range openFriendReads(s, c.ID) {
-			retire = append(retire, change(Fleet, removeEntry(rc, map[string]string{"retired": stamp(s.Now), "retired_by": "rework"})))
+			retire = append(retire, change(Fleet, removeEntry(rc, map[string]string{"retired": stamp(s.Now), "retired_by": RetiredByRework})))
 		}
 		// the finding and why ride on the primary too: a rework with no member up deals later
 		// (start), from the primary, and its child is told all the same
 		given := reworkGiven(s, c)
-		finding := given["finding"]
+		// the primary keeps the broken reads' own finding: the bounds compare it (AtBriefBound,
+		// AtIdenticalFindings, FindingKey), so the readers' named lines and the late reads ride
+		// on the next attempt's work card (given) and, dealt later, on the primary's why
+		// (tla/ReadCards.tla Rework, NoFindingLost)
+		plain := cutText(brokenFindings(s, c), MaxCardTextBytes)
+		finding := plain
 		findingAttempt := c.F("attempt")
 		if finding == "" && c.F(FieldRuleRefused) == RefusedPaths && c.F("finding") != "" {
 			finding = c.F("finding")
@@ -1747,7 +1761,7 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		}
 		// what this attempt found, kept for the cap's judgment (brief_bound.go, FieldFindings):
 		// its readers' finding, else the report of its failed work, else its bound's class
-		found := given["finding"]
+		found := plain
 		if found == "" {
 			found = ownFix(s, c)
 		}
@@ -1765,7 +1779,8 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		}
 		// the reader who found it broken checks the fix: the next attempt's first read is
 		// asked of them (Ask, finderFirst); a rework of failed work names none
-		unset := []string{"readers"}
+		// the late reads given now (reworkGiven) are carried: cleared off the primary
+		unset := []string{"readers", FieldLateReads}
 		if IsHeld(c) && c.F("held_by") == ServerDefaultActor {
 			// the rework answers the server-default hold (this card, and the j25715
 			// deadlock: a rework dealt the next attempt and left the hold on, so every
@@ -1892,6 +1907,11 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 				later = benchWaits(bench) // no member of its bench is up (bench_deal.go)
 			case len(up) > 0:
 				later = "no fleet member has room: the tick deals it when one has"
+			}
+			if given["finding"] != plain {
+				// dealt later from the primary (its finding and why): the readers' named lines
+				// and the late reads ride on its why, the finding staying the bounds' own
+				set["why"] = cutText(given["why"]+"\n"+given["finding"], MaxCardTextBytes)
 			}
 			u = Unit{Key: c.ID, Stream: c.Row, Changes: append(retire, change(Work, moveEntry(c, c.Row, Ready, set, append(unset, "result")...))),
 				Moved: c.ID + " review -> ready (rework; " + later + ")"}
@@ -2233,20 +2253,93 @@ func cutText(s string, n int) string {
 
 // reworkGiven is what a rework writes on the next attempt's work card besides
 // the fix, so the child learns why it exists (docs/SPEC-SPRINT.md, rework):
-// finding, the broken reads' words, and why, how the attempt before ended.
+// finding, the broken reads' words, and why, how the attempt before ended. When the attempt
+// was read in parallel (readInParallel: two reads dealt at once, the rework having waited
+// for both: reworkWaitsForReads), the finding is every read's words that stand, a line each
+// naming its reader (readFindingsByReader), even when only one read left words (the other
+// handed back, past its deadline, or ok with nothing to say): the reader's name is kept
+// whenever it is known. With one read needed (--reads 1) the finding stays the plain broken
+// words, as before, however many readers its one read was dealt to in turn. And the late reads recorded on the primary
+// since the last rework (FieldLateReads: a verdict reported on a read card a rework retired)
+// follow, a line each, so no reader's finding is lost. MaxCardTextBytes holds the whole, the
+// late lines given at most half of it. tla/ReadCards.tla Rework, LateClose, NoFindingLost.
 func reworkGiven(s *Snapshot, c *Card) map[string]string {
 	attempt := c.Int("attempt")
 	finding := cutText(brokenFindings(s, c), MaxCardTextBytes)
+	if lines := readFindingsByReader(s, c); len(lines) > 1 || (len(lines) == 1 && readInParallel(s, c)) {
+		finding = cutText(strings.Join(lines, "\n"), MaxCardTextBytes)
+	}
+	read := finding
+	if late := strings.TrimSpace(c.F(FieldLateReads)); late != "" {
+		late = cutText(late, MaxCardTextBytes/2)
+		if finding == "" {
+			finding = late
+		} else {
+			finding = cutText(finding, MaxCardTextBytes-len(late)-1) + "\n" + late
+		}
+	}
 	why := fmt.Sprintf("attempt %d was sent back by the coordinator", attempt)
 	switch wc := s.Fleet.Card(c.F("work")); {
 	case c.F("result") == "failed" && wc != nil && strings.TrimSpace(wc.F("report")) != "":
 		why = fmt.Sprintf("attempt %d failed: %s", attempt, strings.TrimSpace(wc.F("report")))
 	case c.F("result") == "failed":
 		why = fmt.Sprintf("attempt %d failed", attempt)
-	case finding != "":
+	case read != "":
 		why = fmt.Sprintf("attempt %d finished and a reader found it broken", attempt)
 	}
 	return map[string]string{"finding": finding, "why": cutText(why, MaxCardTextBytes)}
+}
+
+// readInParallel says the primary's attempt was read in parallel: the card needs more than
+// one read (ReadsNeededIn) and more than one reader was dealt a read card of the attempt
+// (placed, retired or handed back). Then its rework names each finding's reader
+// (reworkGiven), even when only one read left words. A --reads 1 read handed back and dealt
+// again to another reader is not in parallel, nor is a card with one read dealt.
+// tla/ReadCards.tla Rework, NoFindingLost.
+func readInParallel(s *Snapshot, c *Card) bool {
+	if s == nil || s.Fleet == nil || c == nil || ReadsNeededIn(s, c) < 2 {
+		return false
+	}
+	var readers []string
+	for _, rc := range s.Fleet.WithPrefix(attemptReadPrefix(c)) {
+		if r := rc.F("reader"); isRead(rc) && r != "" && !slices.Contains(readers, r) {
+			readers = append(readers, r)
+		}
+	}
+	return len(readers) > 1
+}
+
+// readFindingsByReader is the words of every read card of the primary's attempt that stands
+// with a verdict on the fleet table (friendReadLive: broken, or ok at its head), the broken
+// first, each a line "read by <reader>: <verdict>: <finding>", each once: what a rework
+// that waited for both of an attempt's parallel reads carries, so neither reader's finding
+// is lost. tla/ReadCards.tla Rework, NoFindingLost.
+func readFindingsByReader(s *Snapshot, c *Card) []string {
+	if s == nil || s.Fleet == nil {
+		return nil
+	}
+	_, oks, brk := friendReadLive(s, c)
+	var legacy []*Card // the readers table's broken reads at the attempt and head (brokenFindings)
+	for _, rc := range s.Readers.Of(c.ID) {
+		if rc.Col == Broken && rc.Int("attempt") == c.Int("attempt") && (rc.F("head") == "" || rc.F("head") == c.F("head")) {
+			legacy = append(legacy, withField(rc, "reader", rc.Row))
+		}
+	}
+	var out []string
+	for _, rc := range append(append(legacy, brk...), oks...) {
+		f := strings.TrimSpace(rc.F("finding"))
+		if f == "" {
+			continue
+		}
+		verdict := "ok"
+		if rc.Col == Broken {
+			verdict = "broken"
+		}
+		if line := "read by " + orDash(rc.F("reader")) + ": " + verdict + ": " + f; !slices.Contains(out, line) {
+			out = append(out, line)
+		}
+	}
+	return out
 }
 
 // ReturnReq is the coordinator sending merging primaries back to review.
