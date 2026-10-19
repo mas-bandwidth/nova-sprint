@@ -13,9 +13,8 @@ import (
 //   - Cards A and B admitted in the same stream where B has LAND-AFTER: A and no
 //     hard need are both placed in ready (neither is waiting), and both can be
 //     dealt, taken, finished, read and accepted to merging in either order.
-//   - A soft dependency orders only among cards queued to merge: when B reaches
-//     merging while A is still working, B lands with the rest of the stream and A
-//     re-merges onto it later (SoftIsOrderOnly); when A and B are both in merging,
+//   - A soft dependency holds its dependent out of the landing cut until its target
+//     lands or is included ahead in the same batch; when A and B are both in merging,
 //     the batch orders [a, b] so A lands before B, whatever their rank.
 //   - When A is dropped, B's soft dependency on A is released.
 //   - When A is replaced/relinked to A2, B's soft dependency moves to A2.
@@ -58,13 +57,11 @@ func TestSoftDependencyLandsInOrderWithoutBlockingTheDeal(t *testing.T) {
 	require.Equal(t, Merging, w.state("b"))
 	require.Equal(t, Merging, w.state("c"))
 
-	// a is working, not queued to merge: b's soft dependency orders nothing this batch,
-	// and MergeStep lands b with c (2026-10-16: four streams refused whole while the
-	// LAND-AFTER target was in review).
+	// a is working, not landed: b is skipped, while c still lands.
 	w.must(MergeStep(w.s, MergeReq{Stream: "s1", Batch: 10}))
 	assert.Equal(t, Landed, w.state("c"), "c has no soft dependency and lands")
-	assert.Equal(t, Landed, w.state("b"), "b lands: its soft dependency a is not in merging")
-	assert.Equal(t, Working, w.state("a"), "a re-merges onto b later")
+	assert.Equal(t, Merging, w.state("b"), "b stays queued until its soft target lands")
+	assert.Equal(t, Working, w.state("a"), "a remains the unlanded target")
 
 	// With a and b both in merging, b ranked first, a batch of 1 lands a first, and the
 	// next lands b.

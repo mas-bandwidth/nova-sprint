@@ -2,10 +2,9 @@
 (***************************************************************************)
 (* A soft dependency (`LAND-AFTER: <card-id>`, or `needs set --land-after`) *)
 (* orders landing without blocking the deal: cards a and b may be dealt,   *)
-(* worked and queued in parallel, and the lander orders a before b only    *)
-(* among cards both queued to merge. When a is not queued, b lands and a   *)
-(* re-merges onto it later (SoftIsOrderOnly); when a is queued, b lands    *)
-(* after it in the batch (SoftLandsInOrder); a queued card that cannot be  *)
+(* worked and queued in parallel. A dependent stays out of the cut until  *)
+(* its target is landed or can be placed ahead in the same batch         *)
+(* (SoftIsOrderOnly, SoftLandsInOrder); a queued card that cannot be      *)
 (* placed is skipped and the batch lands every other one                  *)
 (* (HeldNeverEmptiesBatch). If a is dropped, b's soft dependency is        *)
 (* released (docs/SPEC-SPRINT.md, docs/SPEC-CARD-CONTRACT.md).             *)
@@ -33,8 +32,10 @@
 (*                 (violates SoftNeverBlocksDeal)                          *)
 (*   "anyorder"    LandBatch takes queued heads ignoring soft dependencies *)
 (*                 (violates SoftLandsInOrder)                             *)
-(*   "softishard"  an unqueued, unlanded target holds its dependent, the   *)
-(*                 rule before 2026-10-16 (violates SoftIsOrderOnly)       *)
+(*   "softishard"  an unlanded target in any column is ignored, the       *)
+(*                 reversed new cut rule (violates SoftIsOrderOnly)       *)
+(*   "reportrefilters" rechecks a pushed batch after a concurrent soft    *)
+(*                 edge and target queue (violates BaseRecorded)          *)
 (*   "heldblocks"  one queued card that cannot be placed empties the       *)
 (*                 batch, the stream refused whole (violates               *)
 (*                 HeldNeverEmptiesBatch)                                  *)
@@ -98,8 +99,8 @@ Free(x) == col[x] = "queued" /\ x \notin held /\ NeedsMet(x)
 \* have no soft dependencies of their own, so one level is the whole order).
 SoftPlaceable(s) ==
     IF Broken = "softishard"
-    THEN ~Placed(s) \/ col[s] = "landed" \/ Free(s)
-    ELSE col[s] # "queued" \/ Free(s)
+    THEN col[s] \in {"landed", "dropped"} \/ col[s] # "queued" \/ Free(s)
+    ELSE col[s] \in {"landed", "dropped"} \/ Free(s)
 
 \* Placeable: what MergeSoftOrder places this batch (LandOrderBlocked is empty).
 Placeable(x) == Free(x) /\ (Broken = "anyorder" \/ \A s \in soft[x] : SoftPlaceable(s))
@@ -147,7 +148,7 @@ TypeOK ==
 
 Init ==
     /\ col = [x \in Cards |-> IF x = "c" THEN "waiting" ELSE "ready"]
-    /\ soft = [x \in Cards |-> IF x = "b" THEN {"a"} ELSE {}]
+    /\ soft = [x \in Cards |-> IF x = "b" /\ Broken # "reportrefilters" THEN {"a"} ELSE {}]
     /\ needs = [x \in Cards |-> IF x = "c" THEN {"a"} ELSE {}]
     /\ landedOrder = <<>>
     /\ reworked = [x \in Cards |-> FALSE]
@@ -192,6 +193,19 @@ Finish(x) ==
 
 Queue(x) == Finish(x)
 
+\* The soft order can be edited while a pushed card awaits its report. The
+\* reportrefilters witness adds b's edge to a, then lets a finish/queue; the
+\* fixed Report keeps the decision made at MarkPush.
+AddSoftAfterMark ==
+    /\ Broken = "reportrefilters"
+    /\ "b" \in inFlightBatch
+    /\ "a" \notin soft["b"]
+    /\ soft' = [soft EXCEPT !["b"] = @ \cup {"a"}]
+    /\ UNCHANGED <<col, needs, landedOrder, reworked, droppedEver,
+                   dealtWhileSoftUnlanded, held, heldEver, outOfOrder,
+                   cutOrder, markedOrder, queuedAtMark, baseCommits,
+                   recordedLandings, inFlightBatch, reportRefused, hardRefused>>
+
 \* Cut pins the lander's snapshot; Queue and Finish may interleave before MarkPush.
 Cut ==
     /\ cutOrder = <<>>
@@ -204,7 +218,7 @@ Cut ==
                    inFlightBatch, reportRefused, hardRefused>>
 
 LandOrderBlockedAtMark(x, ahead) ==
-    \E t \in soft[x] : col[t] = "queued" /\ t \notin ahead
+    \E t \in soft[x] : col[t] \notin {"landed", "dropped"} /\ t \notin ahead
 
 RECURSIVE GuardedPrefix(_, _)
 GuardedPrefix(order, ahead) ==
@@ -218,7 +232,7 @@ MarkOrder == IF Broken \in {"cutunguarded", "anyorder"} THEN cutOrder ELSE Guard
 
 CutBlockedAtMark ==
     \E i \in 1..Len(cutOrder) : \E t \in soft[cutOrder[i]] :
-        col[t] = "queued" /\ ~(\E j \in 1..(i-1) : cutOrder[j] = t)
+        col[t] \notin {"landed", "dropped"} /\ ~(\E j \in 1..(i-1) : cutOrder[j] = t)
 
 \* MarkLanding is the final store step before push. It reuses LandOrderBlocked and
 \* pushes only the safe prefix. internal/sprint/landing_mark.go MarkLanding.
@@ -267,13 +281,13 @@ SkipCut ==
 
 ReportBlocked ==
     \E i \in 1..Len(markedOrder) : \E t \in soft[markedOrder[i]] :
-        col[t] = "queued" /\ ~(\E j \in 1..(i-1) : markedOrder[j] = t)
+        col[t] \notin {"landed", "dropped"} /\ ~(\E j \in 1..(i-1) : markedOrder[j] = t)
 
 \* Report honors the fixed mark. The broken witness keeps the former report recheck
 \* from steps_merge.go:502 and can refuse a batch already pushed.
 Report ==
     /\ inFlightBatch # {}
-    /\ IF Broken = "cutunguarded" /\ ReportBlocked
+    /\ IF Broken \in {"cutunguarded", "reportrefilters"} /\ ReportBlocked
        THEN
          /\ reportRefused' = TRUE
          /\ UNCHANGED <<col, landedOrder, recordedLandings>>
@@ -334,6 +348,7 @@ NextProgress ==
     \/ MarkPush
     \/ SkipCut
     \/ Report
+    \/ AddSoftAfterMark
     \/ \E x \in Cards : Resolve(x) \/ Deal(x) \/ Queue(x) \/ Release(x)
 
 Next ==
@@ -359,12 +374,12 @@ SoftNeverBlocksDeal ==
 \* the batch they land in together.
 SoftLandsInOrder == ~outOfOrder
 
-\* SoftIsOrderOnly: a soft dependency orders only among queued cards. A free queued
-\* card none of whose soft dependencies is queued is placed in the batch, whatever
-\* column its targets are in (reversed witness "softishard": an unqueued, unlanded
-\* target holds it).
+\* SoftIsOrderOnly: a placed card's soft targets are either landed/released or
+\* free and placeable ahead. In particular, a target in ready, working or review
+\* keeps its dependent out of the cut (reversed witness "softishard").
 SoftIsOrderOnly ==
-    \A x \in Cards : (Free(x) /\ \A s \in soft[x] : col[s] # "queued") => Placeable(x)
+    \A x \in Cards : Placeable(x) =>
+        \A s \in soft[x] : col[s] \in {"landed", "dropped"} \/ Free(s)
 
 \* HeldNeverEmptiesBatch: a card that cannot be placed is skipped; every placeable
 \* queued card is in the batch (reversed witness "heldblocks": one held card empties it).

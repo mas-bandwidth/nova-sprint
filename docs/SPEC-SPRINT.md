@@ -9870,12 +9870,13 @@ runs in parallel, and the lander lands the two in order**:
   card IDs), read through `sprint.SoftDepsOf` and `sprint.LandOrderBlocked`
   (`internal/sprint/soft_deps.go`). No table column is added (`internal/sprint/TABLES.lock`).
   `nova-sprint card <id>` prints `soft: <ids>` on its own line when set.
-- **Landing order and conflict**: A soft dependency orders only among cards that are
-  both queued to merge. When both A and B are in the merging column of the stream,
-  `MergeSoftOrder` places A ahead of B in the batch even if B was queued earlier or has a
-  higher score. When A is not in merging (ready, working, in review, or in another
-  stream), the soft dependency is ignored for this batch: B lands, and A re-merges onto
-  it later (a true dependency is a need, `--needs`). A card that cannot be placed (B,
+- **Landing order and conflict**: LAND-AFTER is judged before a push, at the landing
+  mark. A target must already be landed or be placed ahead of its dependent in the same
+  batch; until then, a dependent whose target is in any other column stays out of the cut.
+  A dropped target is released or relinked. When both A and B are queued to merge,
+  `MergeSoftOrder` places A ahead of B even if B was queued earlier or has a higher score.
+  A pushed batch is never refused for LAND-AFTER after the push; its order was fixed at
+  the mark. A card that cannot be placed (B,
   when A is queued but held from this batch) is skipped for this batch and named with
   the reason `<B>: soft dependency on <A> not landed; <B> is skipped this batch`, and the
   batch lands every other queued card; the stream is never refused whole for it. When B conflicts at the base tip after A lands, B takes the

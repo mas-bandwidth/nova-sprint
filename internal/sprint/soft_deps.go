@@ -152,19 +152,19 @@ func resolveSoftTarget(s *Snapshot, id string) string {
 	return ""
 }
 
-// LandOrderBlocked returns the soft dependencies of c that are queued to merge
-// (in the merging column of c's stream) and not included ahead of c in landing.
-// A soft dependency orders only among cards queued to merge: one not in merging
-// is ignored for this batch, c lands, and the target re-merges onto it later.
+// LandOrderBlocked returns the soft dependencies of c that have not landed
+// and are not included ahead of c in this landing. A target in any other column
+// stays out of the cut until it lands (a dropped or replaced target is released
+// or relinked by SoftDepsOf).
 //
-// tla/SoftDependency.tla LandOrderBlocked, SoftIsOrderOnly, SoftLandsInOrder
+// tla/SoftDependency.tla LandOrderBlockedAtMark, SoftIsOrderOnly, SoftLandsInOrder
 func LandOrderBlocked(s *Snapshot, c *Card, landing map[string]bool) []string {
 	if c == nil {
 		return nil
 	}
 	var out []string
 	for _, dep := range SoftDepsOf(s, c) {
-		if t := s.Work.Placed(dep); t != nil && t.Col == Merging && t.Row == c.Row && !landing[dep] {
+		if t := s.Work.Placed(dep); t != nil && t.Col != Landed && !landing[dep] {
 			out = append(out, dep)
 		}
 	}
@@ -190,7 +190,8 @@ func MergeSoftOrder(s *Snapshot, cards []*Card) (ordered []*Card, softWhy string
 		best := -1
 		for i, c := range pending {
 			pr := s.Work.Card(c.ID)
-			if len(WaitsFor(s, pr, landed)) == 0 && len(LandOrderBlocked(s, pr, landed)) == 0 {
+			softBlocked := len(LandOrderBlocked(s, pr, landed)) > 0 && !LandingMarked(s, c.ID)
+			if len(WaitsFor(s, pr, landed)) == 0 && !softBlocked {
 				best = i
 				break
 			}
@@ -206,7 +207,7 @@ func MergeSoftOrder(s *Snapshot, cards []*Card) (ordered []*Card, softWhy string
 	var why []string
 	for _, c := range pending {
 		pr := s.Work.Card(c.ID)
-		if blocked := LandOrderBlocked(s, pr, landed); len(blocked) > 0 {
+		if blocked := LandOrderBlocked(s, pr, landed); len(blocked) > 0 && !LandingMarked(s, c.ID) {
 			why = append(why, fmt.Sprintf("%s: soft dependency on %s not landed; %s is skipped this batch", c.ID, strings.Join(blocked, ", "), c.ID))
 		}
 	}

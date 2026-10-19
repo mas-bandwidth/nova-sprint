@@ -12,7 +12,52 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
+
+// TestALandAfterTargetInReviewSkipsBeforeTheScopeCheck proves the land pass's cut
+// excludes a dependent before any merge or scope check when its target is in review.
+func TestALandAfterTargetInReviewSkipsBeforeTheScopeCheck(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	dir := t.TempDir()
+	fakeGit := filepath.Join(dir, "git")
+	gitCalled := filepath.Join(dir, "git-called")
+	require.NoError(t, os.WriteFile(fakeGit, []byte("#!/bin/sh\n: > "+gitCalled+"\nexit 97\n"), 0o755))
+	ta.ok("add --stream s1 --one --brief-file " + writeSoftHeaderBrief(t, dir, "p", "", "", "mas-bandwidth/nova-sprint", "", "internal/p.go"))
+	ta.ok("add --stream s1 --one --brief-file " + writeSoftHeaderBrief(t, dir, "c", "", "p", "mas-bandwidth/nova-sprint", "", "internal/c.go"))
+	ta.deal(2)
+	ta.ok("take --as m1 --limit 10")
+	ta.ok("finish --as m1 p.w1@1")
+	ta.ok("finish --as m1 c.w1@1")
+	ta.ok("ask")
+	ta.ok("read --as reader-a --ok --limit 10")
+	ta.ok("read --as reader-b --ok --limit 10")
+	ta.ok("accept --read-ok")
+	st, err := ta.a.store(common{redis: "mem:0", actor: "coordinator"})
+	require.NoError(t, err)
+	s, err := st.Load(t.Context(), []string{sprint.Work, sprint.Merge, sprint.Fleet, sprint.Readers}, nil)
+	require.NoError(t, err)
+	pCard := s.Work.Card("p")
+	pCard.Col = sprint.Review
+	s.Work.Put(pCard)
+	s.Merge.Drop("p") // a review target has no queued merge card
+	beforeAttempt := s.Work.Card("c").Int("attempt")
+	ta.a.gitEnv = []string{"PATH=" + dir}
+	l := &lander{a: ta.a, st: st, base: "main", prose: map[string][]string{}, diffs: map[string]string{}, scope: map[string][]string{}}
+	failed := l.pass(t.Context(), s, []string{"s1"})
+	assert.False(t, failed, "skipping an unlanded soft target is not a failed pass")
+	_, gitErr := os.Stat(gitCalled)
+	assert.ErrorIs(t, gitErr, os.ErrNotExist, "the skipped card never reaches Git merge or checkCard")
+	require.Len(t, l.out, 1)
+	assert.Equal(t, "refused", l.out[0].Status)
+	assert.Equal(t, "c: soft dependency on p not landed; c is skipped this batch", l.out[0].Reason)
+	assert.Equal(t, sprint.Review, s.Work.Card("p").Col)
+	assert.Equal(t, sprint.Merging, s.Work.Card("c").Col)
+	assert.Equal(t, beforeAttempt, s.Work.Card("c").Int("attempt"), "the skip does not count an attempt")
+}
 
 // The merge step's receipt for a landing holds more than the batch's landings: the waiting
 // cards the landing released (`<id> waiting -> ready (its needs landed)`) and the sentinels

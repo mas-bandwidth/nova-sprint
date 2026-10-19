@@ -9,12 +9,10 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
-// The lander's open of a stream with soft dependencies (docs/SPEC-SPRINT.md, LAND-AFTER;
-// tla/SoftDependency.tla SoftIsOrderOnly, HeldNeverEmptiesBatch). On 2026-10-16 four
-// streams were refused whole, "LAND REFUSED stream=schema-go cards=0 ... soft dependency
-// on fixed-count-and-length-past-bound-refuse-or-clamp-2 not landed", while the target
-// was in review, not queued, and six finished cards sat in merging for hours.
-func TestLanderOpensAStreamWhoseSoftDependencyIsNotQueuedOrIsHeld(t *testing.T) {
+// The lander's open keeps an unlanded soft target out of the cut even when the
+// target is not queued; a blocked dependent is named while other cards may proceed.
+// tla/SoftDependency.tla SoftIsOrderOnly, HeldNeverEmptiesBatch.
+func TestLanderOpensAStreamWhoseSoftDependencyIsNotLandedOrIsHeld(t *testing.T) {
 	t.Parallel()
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
@@ -52,17 +50,19 @@ func TestLanderOpensAStreamWhoseSoftDependencyIsNotQueuedOrIsHeld(t *testing.T) 
 		return ids, l.out
 	}
 
-	// 1. e's soft dependency d is not queued: it orders nothing, e lands with the batch;
-	// a and b are both queued, and a is placed ahead of b.
+	// 1. e's target d is working and unlanded, so e stays out; a and b are both
+	// queued, and a is placed ahead of b.
 	ids, out := open(false)
-	assert.Equal(t, []string{"a", "b", "c", "e"}, ids)
-	assert.Empty(t, out, "nothing is refused")
+	assert.Equal(t, []string{"a", "b", "c"}, ids)
+	require.Len(t, out, 1)
+	assert.Equal(t, "e: soft dependency on d not landed; e is skipped this batch", out[0].Reason)
 
-	// 2. a is queued and held: b cannot be placed after it and is skipped, named with its
-	// reason; c and e land.
+	// 2. a is queued and held: b cannot be placed after it and e still has an
+	// unlanded working target; c lands while both dependents are named.
 	ids, out = open(true)
-	assert.Equal(t, []string{"c", "e"}, ids, "every other queued card lands")
+	assert.Equal(t, []string{"c"}, ids, "an independent queued card still lands")
 	require.Len(t, out, 1)
 	assert.Equal(t, "refused", out[0].Status)
-	assert.Equal(t, "b: soft dependency on a not landed; b is skipped this batch", out[0].Reason)
+	assert.Contains(t, out[0].Reason, "b: soft dependency on a not landed; b is skipped this batch")
+	assert.Contains(t, out[0].Reason, "e: soft dependency on d not landed; e is skipped this batch")
 }
