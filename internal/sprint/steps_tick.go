@@ -179,7 +179,7 @@ var TickDecisions = map[string][]string{
 	NDriftServer:   {"act", "wait"},
 	NDriftBaseRed:  {"act", "wait"},
 	// the width drifts (width_drift.go): the read of nova-config is the fix, never a widening of it
-	NWidthDrift: {"fleet sync", "friend sync", "wait"},
+	NWidthDrift: {"act", "wait"}, // tla/WidthHard.tla (OneSource)
 	// the base's CI after a landing (base_ci.go): the same, mended, or quiet a while
 	NBaseCIRed: {"act", "wait"},
 	// a repository lacks a bench mirror on some members (mirror_need.go): the
@@ -1888,7 +1888,7 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 	// the drift alarms, on a plan of their own the same way (drift.go)
 	d, driftDue := TickDrift(s, r, r.Drift)
 	p.Notes, p.Closes, p.Updates = append(p.Notes, d.Notes...), append(p.Closes, d.Closes...), append(p.Updates, d.Updates...)
-	// the width drifts, on a plan of their own the same way (width_drift.go): one judgment
+	// the width drifts, on a plan of their own the same way (width_drift.go; tla/WidthHard.tla (OneSource)): one judgment
 	// per drifting row, raised once while the row drifts, closed when it agrees again.
 	wd, wdDue := tickWidthDrift(s, r)
 	p.Notes, p.Closes, p.Updates = append(p.Notes, wd.Notes...), append(p.Closes, wd.Closes...), append(p.Updates, wd.Updates...)
@@ -2128,7 +2128,7 @@ func condKey(typ, subject, card, what string) string {
 		NStopMemberDown, NStopPinWaits, NMemberIdleReaps,
 		NNoFrontierRoom,
 		NMirrorNeed, NMemberPegged, NGateNeeds,
-		NWidthDrift:
+		NWidthDrift: // tla/WidthHard.tla (OneSource)
 		what = ""
 	case NReadyOver:
 		// one judgment per (reason, tier): the reason is the stable cause, so

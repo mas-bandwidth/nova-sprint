@@ -1405,6 +1405,7 @@ func (st *Store) holdWidths(ctx context.Context, snap *sprint.Snapshot, plan spr
 // tickWidthCfg is the tick's read of nova-config's widths for its width-drift judgment: the
 // members' (Widths) and the friends' (FriendWidths). A read not held is nil, and nothing is
 // judged on it (never act on a missing read).
+// tla/WidthHard.tla (OneSource)
 func (st *Store) tickWidthCfg(ctx context.Context) (cfg, friendCfg map[string]int) {
 	if st.Widths != nil {
 		if ws, ok := st.Widths(ctx); ok {

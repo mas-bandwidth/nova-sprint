@@ -681,6 +681,7 @@ func parseStamp(s string) time.Time {
 // widthDriftViolations is rule 14: every fleet row whose width differs from nova-config's
 // (sprint.WidthDriftRows), one line per drifting row naming both values. A config read the store
 // did not hold (Widths and FriendWidths both nil) judges nothing.
+// tla/WidthHard.tla (OneSource)
 func widthDriftViolations(st *Store, ctx context.Context, s *sprint.Snapshot) []sprint.Violation {
 	var cfg, friendCfg map[string]int
 	ok := false

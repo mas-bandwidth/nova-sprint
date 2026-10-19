@@ -301,6 +301,10 @@ func (a *app) doctorChecks(ctx context.Context, st *store.Store, m sprint.SeatCh
 	}
 	in := sprint.DoctorInput{Snap: read.Snap, Req: read.Req, ReaderBeats: read.ReaderBeats, FriendBeats: read.FriendBeats, Hook: m.Hook, Seat: rec.Seat}
 	in.HostGitEmail = hostGitEmail(ctx)
+	// tla/WidthHard.tla (OneSource): doctor reads nova-config friend widths to report friend width drift.
+	if fw, ok := a.inventoryFriendWidths()(ctx); ok {
+		in.FriendWidths = fw
+	}
 	var cfg doctorConfig
 	if o.doctorConfig != nil {
 		if cfg, err = o.doctorConfig(ctx); err != nil {

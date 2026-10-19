@@ -134,66 +134,6 @@ func (a *app) inventoryWidths(st *store.Store) func(ctx context.Context) (map[st
 	}
 }
 
-// inventoryWidthsFresh is the check's read of the members' widths (store.Store.Widths): every
-// machine row nova-config names, by machine, and whether the read answered. It is inventoryWidths
-// without the tick's keep-cache: check reads nova-config fresh on every run, so a config change in
-// the same process is seen. A row's own width is its width; a default-width row is half the cores
-// its beat reports; a failed read or no row is ok false (never act on a missing read).
-func (a *app) inventoryWidthsFresh(st *store.Store) func(ctx context.Context) (map[string]int, bool) {
-	return func(ctx context.Context) (map[string]int, bool) {
-		if a.inventory == nil {
-			return nil, false
-		}
-		rows, err := a.inventory(ctx, "")
-		if err != nil || len(rows) == 0 {
-			return nil, false
-		}
-		ws := make(map[string]int, len(rows))
-		var defaults []string
-		for _, w := range rows {
-			switch {
-			case w.Default:
-				ws[w.Machine] = widthDefault
-				defaults = append(defaults, w.Machine)
-			default:
-				ws[w.Machine] = min(max(w.Width, 0), sprint.MaxWidth)
-			}
-		}
-		if len(defaults) > 0 {
-			sort.Strings(defaults)
-			beats, err := st.Beats(ctx, defaults)
-			if err != nil {
-				return nil, false
-			}
-			for _, m := range defaults {
-				ws[m] = sprint.WidthOfCores(beats[m].Cores)
-			}
-		}
-		return ws, true
-	}
-}
-
-// inventoryFriendWidths is the check's read of the friends' widths (store.Store.FriendWidths):
-// every friend row nova-config names, by friend, and whether the read answered. It is the same
-// config read as friend sync (a.friends, config.FriendWidth). A read that failed, or held no row,
-// is ok false, and no friend drift is judged (never act on a missing read).
-func (a *app) inventoryFriendWidths() func(ctx context.Context) (map[string]int, bool) {
-	return func(ctx context.Context) (map[string]int, bool) {
-		if a.friends == nil {
-			return nil, false
-		}
-		rows, err := a.friends(ctx, "")
-		if err != nil || len(rows) == 0 {
-			return nil, false
-		}
-		out := make(map[string]int, len(rows))
-		for _, r := range rows {
-			out[r.Name] = config.FriendWidth(r)
-		}
-		return out, true
-	}
-}
-
 // widthDefault is a kept machine row with the default width: inventoryWidths resolves it
 // from the machine's beat at each read.
 const widthDefault = -1

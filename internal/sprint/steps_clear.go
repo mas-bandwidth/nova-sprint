@@ -53,6 +53,12 @@ func MemberReaderRows(s *Snapshot) []string {
 }
 
 // ShapeOf is a snapshot's shape.
+func init() {
+	// tla/WidthHard.tla (OneSource): register width_from in Defaults so clear carries the config-drain mark.
+	Defaults = append(Defaults, Default{Name: "width_from", Home: HomeShape, Value: ShapeCarried, Why: "each member whose drain is nova-config's (the config-drain mark, width.go)"})
+}
+
+// ShapeOf captures the sprint's carried shape across a clear, including width_from (tla/WidthHard.tla (OneSource)).
 func ShapeOf(s *Snapshot) Shape {
 	sh := Shape{Readers: append([]string(nil), s.Readers.Rows()...), Members: s.Members(), Status: map[string]string{}}
 	// a clear keeps every up member a reader: a member reader row the old
@@ -123,6 +129,7 @@ func ShapeOf(s *Snapshot) Shape {
 // RestoreShape is the plan that gives a new epoch its control cards: each
 // stream waiting, each member with its status and no work counted. A control
 // card the epoch has already is left as it is.
+// RestoreShape restores the carried shape into the new epoch, including width_from (tla/WidthHard.tla (OneSource)).
 func RestoreShape(s *Snapshot, sh Shape) Plan {
 	var p Plan
 	now := stamp(s.Now)

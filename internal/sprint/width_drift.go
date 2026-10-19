@@ -30,6 +30,7 @@ type WidthDrift struct {
 // differs from its machine row's width, a friend whose seat width differs from her friend row's.
 // The config maps may be nil (no read: never act on a missing read); a row the config does not
 // name is not judged.
+// tla/WidthHard.tla (OneSource)
 func WidthDriftRows(s *Snapshot, cfg, friendCfg map[string]int) []WidthDrift {
 	if s == nil || s.Fleet == nil {
 		return nil
@@ -43,6 +44,9 @@ func WidthDriftRows(s *Snapshot, cfg, friendCfg map[string]int) []WidthDrift {
 			}
 			if n, ok := cfg[m]; ok {
 				have := MemberWidth(ctl)
+				if have == 0 && ctl.F(FieldWidthFrom) != WidthFromConfig {
+					continue // the coordinator's own drain (fleet up --width 0; tla/WidthHard.tla (OneSource))
+				}
 				if have != n {
 					out = append(out, WidthDrift{Row: m, Sprint: have, Config: n})
 				}
@@ -60,6 +64,7 @@ func WidthDriftRows(s *Snapshot, cfg, friendCfg map[string]int) []WidthDrift {
 	return out
 }
 
+// tla/WidthHard.tla (OneSource)
 func cmpStr(a, b string) int {
 	if a < b {
 		return -1
@@ -71,6 +76,7 @@ func cmpStr(a, b string) int {
 }
 
 // Line is the one line naming one drifting row, both values.
+// tla/WidthHard.tla (OneSource)
 func (d WidthDrift) Line() string {
 	return fmt.Sprintf("width: %s: sprint width %d, nova-config width %d (the one width is nova-config's)", d.Row, d.Sprint, d.Config)
 }
@@ -80,6 +86,7 @@ func (d WidthDrift) Line() string {
 // (notify keys it by type and row, so the same row is one episode), closed when the row agrees
 // again. A tick that read no config (Widths and FriendWidths both nil) raises or closes nothing:
 // never act on a missing read.
+// tla/WidthHard.tla (OneSource)
 func tickWidthDrift(s *Snapshot, r TickReq) (Plan, int) {
 	if r.Widths == nil && r.FriendWidths == nil {
 		return Plan{}, 0
