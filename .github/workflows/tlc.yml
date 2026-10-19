@@ -1,10 +1,9 @@
-# nova-sprint TLC: the models in tla/ run on GitHub-hosted ubuntu-latest
-# runners. nova-sprint is a public repository, so the fleet's self-hosted
-# runners (registered to nova-tools) are not allowed here, and neither is a
-# desktop. The TLC jar is pinned by digest in tla/tla2tools.sha256 -- the same
-# digest every tla/RUNS.tsv record names -- and downloaded from the tlaplus
-# v1.7.4 release. The jobs never write tla/RUNS.tsv: records still land
-# through cards, from a bench.
+# nova-sprint TLC: the models in tla/ run on the fleet's self-hosted runners.
+# nova-sprint is a public repository, so every job carries the fork guard and a
+# fork's pull request gets no run. The TLC jar is pinned by digest in
+# tla/tla2tools.sha256 -- the same digest every tla/RUNS.tsv record names -- and
+# downloaded from the tlaplus v1.7.4 release. The jobs never write
+# tla/RUNS.tsv: records still land through cards, from a bench.
 name: TLC
 
 on:
@@ -27,15 +26,22 @@ concurrency:
 
 jobs:
   groups:
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, nova-sprint]
     timeout-minutes: 5
     outputs:
       groups: ${{ steps.groups.outputs.groups }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
-        with:
-          go-version-file: go.mod
+      - name: go on PATH
+        run: |
+          set -euo pipefail
+          want=$(grep -m1 '^go ' go.mod | awk '{print $2}')
+          got=$(go version | sed -E 's/.*go([0-9.]+).*/\1/')
+          if [ "$got" != "$want" ]; then
+            echo "TOOL-MISSING go $want $got on $RUNNER_NAME" >&2
+            exit 1
+          fi
       - name: make tlc-test
         run: make tlc-test
       - name: the groups to run
@@ -57,8 +63,8 @@ jobs:
   models:
     needs: groups
     # an empty list ends the workflow green: no groups means no matrix
-    if: ${{ needs.groups.outputs.groups != '[]' }}
-    runs-on: ubuntu-latest
+    if: ${{ needs.groups.outputs.groups != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: [self-hosted, Linux, X64, nova-sprint]
     timeout-minutes: 5
     strategy:
       fail-fast: false
@@ -67,11 +73,17 @@ jobs:
         group: ${{ fromJSON(needs.groups.outputs.groups) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
-        with:
-          go-version-file: go.mod
+      - name: go on PATH
+        run: |
+          set -euo pipefail
+          want=$(grep -m1 '^go ' go.mod | awk '{print $2}')
+          got=$(go version | sed -E 's/.*go([0-9.]+).*/\1/')
+          if [ "$got" != "$want" ]; then
+            echo "TOOL-MISSING go $want $got on $RUNNER_NAME" >&2
+            exit 1
+          fi
       - name: java from the runner image
-        # the runner image ships JDK 21; no setup-java action
+        # the fleet image ships JDK 21; no setup-java action
         run: |
           set -euo pipefail
           echo "${JAVA_HOME_21_X64}/bin" >> "${GITHUB_PATH}"

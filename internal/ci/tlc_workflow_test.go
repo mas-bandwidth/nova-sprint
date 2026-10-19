@@ -9,13 +9,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestTLCWorkflowRunsOnHostedRunners pins .github/workflows/tlc.yml: the models
-// run on GitHub-hosted ubuntu-latest runners (nova-sprint is public, so the
-// fleet's self-hosted runners are not allowed), every job is bounded at five
-// minutes, the downloaded TLC jar is checked against tla/tla2tools.sha256
-// before make tlc runs, and make tlc is called with the 110-second budget.
-// The workflow is read as text: no YAML dependency is added.
-func TestTLCWorkflowRunsOnHostedRunners(t *testing.T) {
+// TestTLCWorkflowRunsOnFleetRunners pins .github/workflows/tlc.yml: the models
+// run on the fleet's self-hosted runners (nova-sprint is public, so every job
+// carries the fork guard and checks the pinned go on PATH), every job is bounded
+// at five minutes, the downloaded TLC jar is checked against
+// tla/tla2tools.sha256 before make tlc runs, and make tlc is called with the
+// 110-second budget. The workflow is read as text: no YAML dependency is added.
+func TestTLCWorkflowRunsOnFleetRunners(t *testing.T) {
 	b, err := os.ReadFile("../../.github/workflows/tlc.yml")
 	require.NoError(t, err)
 	jobs := workflowJobs(t, string(b))
@@ -24,8 +24,14 @@ func TestTLCWorkflowRunsOnHostedRunners(t *testing.T) {
 	models := ""
 	groups := ""
 	for name, body := range jobs {
-		require.Contains(t, body, "runs-on: ubuntu-latest", "job %q does not run on ubuntu-latest", name)
-		require.NotContains(t, body, "self-hosted", "job %q names a self-hosted runner", name)
+		require.Contains(t, body, "runs-on: [self-hosted", "job %q does not run on the fleet's self-hosted runners", name)
+		require.NotContains(t, body, "ubuntu-latest", "job %q names a GitHub-hosted runner", name)
+		require.NotContains(t, body, "macos-", "job %q names a GitHub-hosted runner", name)
+		require.NotContains(t, body, "windows-", "job %q names a GitHub-hosted runner", name)
+		require.Contains(t, body, "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository",
+			"job %q lacks the fork guard", name)
+		require.Contains(t, body, "TOOL-MISSING go", "job %q does not check the pinned go on PATH", name)
+		require.NotContains(t, body, "setup-go", "job %q still uses actions/setup-go", name)
 		minutes := jobTimeout(t, name, body)
 		require.LessOrEqual(t, minutes, 5, "job %q allows %d minutes, over the five-minute cap", name, minutes)
 		if strings.Contains(body, "make tlc ") {

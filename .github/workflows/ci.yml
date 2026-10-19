@@ -1,7 +1,9 @@
 # nova-sprint CI: build, vet, the unit tier and the functional tier, cut down
-# from nova-tools' ci.yml to this module. Both tiers run on GitHub-hosted
-# ubuntu-latest runners; the functional tier (below) installs redis-server and
-# runs make functional-gate for every pull request and push to main.
+# from nova-tools' ci.yml to this module. Both tiers run on the fleet's
+# self-hosted runners; the functional tier (below) checks redis-server is on
+# PATH and runs make functional-gate for every pull request and push to main.
+# nova-sprint is public, so every job carries the fork guard and a fork's pull
+# request gets no run (a maintainer dispatches it after reading the diff).
 name: CI
 
 on:
@@ -19,7 +21,8 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, nova-sprint]
     timeout-minutes: 30
     env:
       # git 2.46 and later end a commit or merge by starting `git maintenance run --auto
@@ -33,9 +36,15 @@ jobs:
       GIT_CONFIG_PARAMETERS: "'maintenance.auto'='false'"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
-        with:
-          go-version-file: go.mod
+      - name: go on PATH
+        run: |
+          set -euo pipefail
+          want=$(grep -m1 '^go ' go.mod | awk '{print $2}')
+          got=$(go version | sed -E 's/.*go([0-9.]+).*/\1/')
+          if [ "$got" != "$want" ]; then
+            echo "TOOL-MISSING go $want $got on $RUNNER_NAME" >&2
+            exit 1
+          fi
       - name: build
         run: go build ./...
       - name: vet
@@ -77,14 +86,15 @@ jobs:
           UNIT_RULE_BASE=FETCH_HEAD go test -count=1 -run 'TestTheOneSourceAllowanceOnlyShrinks' ./internal/ci/
 
   # functional is the functional tier, run per pull request and push to main on
-  # ubuntu-latest: redis-server is installed as the store the tests spawn their
-  # own throwaway servers from, a missing redis-server fails closed under
-  # NOVA_CI=1, and each package is bounded at two minutes by make functional-gate.
-  # The deadcode leg runs TestDeadCode alone (Makefile, DEAD_CODE_TEST): beside the
-  # rest leg's packages it did not finish inside the two minutes.
+  # the fleet's self-hosted runners: redis-server is checked on PATH as the store
+  # the tests spawn their own throwaway servers from, a missing redis-server fails
+  # closed under NOVA_CI=1, and each package is bounded at two minutes by make
+  # functional-gate. The deadcode leg runs TestDeadCode alone (Makefile,
+  # DEAD_CODE_TEST): beside the rest leg's packages it did not finish inside the
+  # two minutes.
   functional:
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    runs-on: ubuntu-latest
+    if: (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Linux, X64, nova-sprint]
     timeout-minutes: 30
     env:
       GIT_CONFIG_PARAMETERS: "'maintenance.auto'='false'"
@@ -94,11 +104,23 @@ jobs:
         leg: [rest, deadcode, "1/3", "2/3", "3/3"]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
-        with:
-          go-version-file: go.mod
-      - name: redis-server
-        run: sudo apt-get update && sudo apt-get install -y redis-server
+      - name: go on PATH
+        run: |
+          set -euo pipefail
+          want=$(grep -m1 '^go ' go.mod | awk '{print $2}')
+          got=$(go version | sed -E 's/.*go([0-9.]+).*/\1/')
+          if [ "$got" != "$want" ]; then
+            echo "TOOL-MISSING go $want $got on $RUNNER_NAME" >&2
+            exit 1
+          fi
+      - name: redis-server on PATH
+        run: |
+          set -euo pipefail
+          if ! command -v redis-server >/dev/null 2>&1; then
+            echo "TOOL-MISSING redis-server present missing on $RUNNER_NAME" >&2
+            exit 1
+          fi
+          redis-server --version
       - name: functional tier
         run: |
           case "${{ matrix.leg }}" in
@@ -112,19 +134,31 @@ jobs:
   # tick-gate is the wall-clock gate the split moved out of nova-tools'
   # certification.yml: the dirty tick drive against a real store, every tick
   # held to MaxTickWall (NOVA_SPRINT_GATE_STORE=1 asserts it). It is a bench's
-  # job, not a per-PR gate: run it by hand (workflow_dispatch) on a runner with
-  # redis-server and enough cores to meet the one-second tick bound.
+  # job, not a per-PR gate: run it by hand (workflow_dispatch) on a fleet runner
+  # with redis-server and enough cores to meet the one-second tick bound.
   tick-gate:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Linux, X64, nova-sprint]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
-        with:
-          go-version-file: go.mod
-      - name: redis-server
-        run: sudo apt-get update && sudo apt-get install -y redis-server
+      - name: go on PATH
+        run: |
+          set -euo pipefail
+          want=$(grep -m1 '^go ' go.mod | awk '{print $2}')
+          got=$(go version | sed -E 's/.*go([0-9.]+).*/\1/')
+          if [ "$got" != "$want" ]; then
+            echo "TOOL-MISSING go $want $got on $RUNNER_NAME" >&2
+            exit 1
+          fi
+      - name: redis-server on PATH
+        run: |
+          set -euo pipefail
+          if ! command -v redis-server >/dev/null 2>&1; then
+            echo "TOOL-MISSING redis-server present missing on $RUNNER_NAME" >&2
+            exit 1
+          fi
+          redis-server --version
       - name: tick gate
         env:
           NOVA_CI: "1"
