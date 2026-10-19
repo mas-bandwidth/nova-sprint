@@ -4806,6 +4806,13 @@ run `cmake -S . -B build`, `cmake --build build -j`, then
 head's finding as a red Go run is, through the same runner seam and benches. A clone
 with neither `go.mod` nor `CMakeLists.txt` has no gate, and the batch's line says
 `no gate: no go.mod and no CMakeLists.txt` instead of passing silently.
+**The gate's shutdown.** A server's shutdown (`run --listen` stopped with SIGINT or
+SIGTERM, as a launchd restart stops it) cancels its land loop's context, so a gate in
+flight is cancelled and `run` returns through its existing bounded wait for the loop
+instead of being killed under it. Each gate run starts in a process group of its own:
+cancellation signals the whole group with SIGTERM at once and, after `gateKillGrace`
+(5 s), SIGKILL to any member left, so the gate's descendants (a `go test` and the test
+binaries it built) end with it; a group already gone is not an error.
 When the server's land loop (`run --land`) has a landing in flight and a fleet
 member other than this machine is up, that landing's gate does not run on the
 server: the lander asks every such member's Go lane, takes the first granted
