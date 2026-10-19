@@ -8635,4 +8635,21 @@ The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 
    :date "2026-10-19"
    :release "after v1.4"
    :origin "card moved out of the sprint (work record, 2026-10-19)")
+  (item "defer-takes-any-unlanded-card-keeping-its-head" :group "sprint" :date "2026-10-19"
+   :title "defer takes a review, ready or failed card and keeps its head"
+   :text "defer takes only waiting cards. It cannot defer a review, ready or failed card while keeping its pushed head, and a held stream still deals reworked cards, so rework is no way to park one: on 2026-10-19 every stream deferred left its review and ready cards in the sprint."
+   :why "Needs a design for what a deferred head is and how a resumed card picks it up."
+   :origin "found deferring the sprint's non-rocketnet cards, 2026-10-19")
+  (item "defer-moved-count-matches-cards-written" :group "sprint" :date "2026-10-19"
+   :title "defer's moved= count is the number of cards it wrote"
+   :text "defer --expect 37 printed moved=38 for sprint-spec while writing 37; the same day vg-rules --expect 1 printed moved=3, moo --expect 14 moved=15, framework-delta --expect 9 moved=10. The count seems to include the queue moves it prints as MOVED lines. moved= should be the cards deferred, and equal --expect."
+   :origin "found deferring the sprint's non-rocketnet cards, 2026-10-19")
+  (item "refused-defer-writes-no-roadmap" :group "sprint" :date "2026-10-19"
+   :title "A refused defer writes nothing to the roadmap"
+   :text "defer --stream vg-physics --expect 11 was REFUSED (vg-stone-colour-adopt is needed by vg-render-takes-vg-physics-placement; DEFER FAILED moved=0 refused=1) and deferred nothing in the store, yet it wrote all 11 cards' items into robotgamedevelopers/virtualgo docs/roadmap.sexp: the file and the store disagree, and a retry meets its own items. The roadmap write must follow the store's commit, or be undone with it."
+   :origin "found deferring the sprint's non-rocketnet cards, 2026-10-19")
+  (item "defer-creates-its-group" :group "sprint" :date "2026-10-19"
+   :title "defer adds the (group \"sprint\" ...) record when a roadmap has none"
+   :text "defer refuses a roadmap with no (group \"sprint\" ...) record, and nova-work roadmap check refuses a group that holds no item, so the group cannot be added on its own: on 2026-10-19 each repository needed a hand-written placeholder item, removed after the defer. defer should add the group in the same write, and create docs/roadmap.sexp when a repository has none."
+   :origin "found deferring the sprint's non-rocketnet cards, 2026-10-19")
 ))
