@@ -2785,7 +2785,10 @@ func (l *lander) git(ctx context.Context, dir string, args ...string) (string, e
 	res, err := gitrun.Run(ctx, gitrun.Options{C: dir, Env: l.gitEnv(), OwnRepo: dir != ""}, args...)
 	if err != nil {
 		words := strings.TrimSpace(string(res.Stderr) + "\n" + string(res.Stdout))
-		return "", fmt.Errorf("git %s: %w: %s", args[0], err, words)
+		if slices.Contains(args, "-z") {
+			return string(res.Stdout), fmt.Errorf("git %s: %w: %s", args[0], err, words)
+		}
+		return strings.TrimSpace(string(res.Stdout)), fmt.Errorf("git %s: %w: %s", args[0], err, words)
 	}
 	if slices.Contains(args, "-z") {
 		return string(res.Stdout), nil

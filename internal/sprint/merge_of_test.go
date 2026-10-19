@@ -2,6 +2,8 @@ package sprint_test
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -10,6 +12,18 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
+
+// landerGit runs git as the lander's fixed wrapper does (cmd/nova-sprint/land.go,
+// (*lander).git): its trimmed stdout is preserved even when the command exits
+// nonzero, so a conflicting `git merge-tree --write-tree` still yields its tree
+// OID and unmerged stage rows.
+func landerGit(dir string, args ...string) (string, error) {
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1",
+		"GIT_AUTHOR_NAME=lander", "GIT_AUTHOR_EMAIL=lander@example.invalid", "GIT_COMMITTER_NAME=lander", "GIT_COMMITTER_EMAIL=lander@example.invalid")
+	out, err := cmd.CombinedOutput()
+	return strings.TrimSpace(string(out)), err
+}
 
 // A forward-merge card (a MERGE-OF line) is exempt from E12 for every file the
 // merge brings unchanged from the merged branch: the lander resolves the merged
@@ -114,6 +128,69 @@ func TestAForwardMergeCardIsExemptForItsMergedFiles(t *testing.T) {
 		require.NotNil(t, res)
 		assert.Contains(t, res.Exempt, "f.txt", "a clean merge of both sides is exempt by T")
 		assert.NotContains(t, res.Exempt, "internal/a/a.go")
+	})
+
+	t.Run("a conflicted merge still exempts its clean arrivals", func(t *testing.T) {
+		t.Parallel()
+		r := &mergeRig{t: t, dir: t.TempDir()}
+		r.must("init", "-q", "-b", "main")
+		r.write("internal/a/a.go", "package a\n")
+		r.write("conflict.txt", "line1\nline2\nline3\n")
+		r.must("commit", "-q", "-m", "base")
+		r.must("switch", "-q", "-c", "sprint/merged")
+		r.write("pkg/x/clean.go", "package x\n\n// merged\n")
+		r.write("conflict.txt", "MERGED\nline2\nline3\n")
+		r.must("commit", "-q", "-m", "merged work")
+		mergedTip := r.must("rev-parse", "HEAD")
+		r.must("update-ref", "refs/remotes/origin/sprint/merged", mergedTip)
+		r.must("switch", "-q", "main")
+		r.write("conflict.txt", "BASE\nline2\nline3\n")
+		r.must("commit", "-q", "-m", "base line")
+		before := r.must("rev-parse", "HEAD")
+		_, merr := r.git("merge", "--no-ff", "--no-edit", "-m", "merge sprint/merged", "sprint/merged")
+		require.Error(t, merr, "the merge conflicts on conflict.txt")
+		r.write("conflict.txt", "RESOLVED\nline2\nline3\n")
+		r.must("add", "conflict.txt")
+		r.must("commit", "-q", "-m", "resolve conflict")
+		after := r.must("rev-parse", "HEAD")
+
+		res, err := sprint.MergeOf(r.dir, func(args ...string) (string, error) { return landerGit(r.dir, args...) }, before, after, "sprint/merged")
+		require.NoError(t, err)
+		require.NotNil(t, res)
+		assert.Contains(t, res.Exempt, "pkg/x/clean.go", "the clean arrival is exempt despite the conflict")
+		assert.NotContains(t, res.Exempt, "conflict.txt", "the conflicted file is never exempt by T")
+		assert.Contains(t, res.Rest, "conflict.txt")
+
+		diff := r.must("diff", "-M", "--no-color", before, after)
+		tracked := strings.Split(r.must("ls-tree", "-r", "--name-only", before), "\n")
+		_, refused := sprint.LandScopeMergeOf(paths, diff, tracked, res.Exempt)
+		require.Contains(t, refused, "conflict.txt")
+		assert.NotContains(t, refused, "pkg/x/clean.go")
+	})
+
+	t.Run("a merged branch already an ancestor of before exempts nothing and says why", func(t *testing.T) {
+		t.Parallel()
+		r := &mergeRig{t: t, dir: t.TempDir()}
+		r.must("init", "-q", "-b", "main")
+		r.write("internal/a/a.go", "package a\n")
+		r.must("commit", "-q", "-m", "base")
+		r.must("switch", "-q", "-c", "sprint/merged")
+		r.write("pkg/x/clean.go", "package x\n\n// merged\n")
+		r.must("commit", "-q", "-m", "merged work")
+		mergedTip := r.must("rev-parse", "HEAD")
+		r.must("update-ref", "refs/remotes/origin/sprint/merged", mergedTip)
+		r.must("switch", "-q", "main")
+		r.must("merge", "--no-ff", "--no-edit", "-m", "merge sprint/merged", "sprint/merged")
+		before := r.must("rev-parse", "HEAD")
+		r.write("internal/a/a.go", "package a\n\n// edited\n")
+		r.must("commit", "-q", "-m", "hand edit")
+		after := r.must("rev-parse", "HEAD")
+
+		res, err := sprint.MergeOf(r.dir, r.git, before, after, "sprint/merged")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "merge-of unresolved")
+		assert.Contains(t, err.Error(), "already an ancestor")
+		require.Nil(t, res, "the merge brings nothing new, so nothing is exempt")
 	})
 
 	t.Run("a rename the merge brings unchanged is exempt", func(t *testing.T) {

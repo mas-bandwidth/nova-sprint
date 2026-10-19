@@ -68,13 +68,16 @@ func MergeOf(dir string, git func(args ...string) (string, error), before, after
 	if _, err := git("merge-base", "--is-ancestor", m, before); err == nil {
 		return nil, fmt.Errorf("merge-of unresolved: %s is already an ancestor of before; the merge brings nothing new", branch)
 	}
-	treeOut, err := git("merge-tree", "--write-tree", before, m)
-	if err != nil {
-		return nil, fmt.Errorf("merge-of unresolved: merge-tree with %s failed: %v", branch, err)
-	}
+	treeOut, treeErr := git("merge-tree", "--write-tree", before, m)
+	conflicted := mergeTreeConflicted(treeOut)
 	line := strings.SplitN(treeOut, "\n", 2)
 	tree := strings.TrimSpace(line[0])
-	conflicted := mergeTreeConflicted(treeOut)
+	// A content conflict is merge-tree's status 1, still emitting the tree OID and
+	// the unmerged stage rows; only a command/parse failure (no tree, no stages) is
+	// unresolved. Conflicted files are never exempt by T (rule 2).
+	if treeErr != nil && len(conflicted) == 0 {
+		return nil, fmt.Errorf("merge-of unresolved: merge-tree with %s failed: %v", branch, treeErr)
+	}
 	diff, err := git("diff", "-M", "--no-color", before, after)
 	if err != nil {
 		return nil, fmt.Errorf("merge-of unresolved: the merge's diff could not be read: %v", err)
