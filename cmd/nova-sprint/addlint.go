@@ -23,35 +23,26 @@ const briefBaseFetch = 2 * time.Minute
 // own, so a fetch here never takes the lock of a ref the lander is moving.
 const briefBaseRef = "refs/nova-add/"
 
-// holdBriefBase holds each card brief of an add (one with a PATHS: line) to the brief checks
-// at its base (swarm.LintBrief; docs/SPEC-SPRINT.md section 11, the brief checks): the
-// repository its REPO: names, in the lander's clone of it (made as land makes it, when there is
-// none), at the tip of its BASE: fetched once a call, read with git and no go command; beside it
-// the bases the store lists in use and the friends' tiers. Each finding prints as a LINT DRIFT
-// line with its remedy, each corrected header line as a LINT FIX line, and one refusal follows,
-// exit 2, nothing written. A brief with no PATHS: line is no card brief and is not held here.
-func (a *app) holdBriefBase(verbName string, st *store.Store, allowPersonal bool, stderr io.Writer, briefs ...briefCheck) int {
-	var cards []briefCheck
-	friendNeeded := false
-	for _, b := range briefs {
-		_, hasPaths := swarm.CardHeaderValue([]byte(b.brief), "PATHS")
-		// a finish-PR card is held here even with no PATHS: line: its CARRY: line is the
-		// card's whole staging (LintBrief's pr-carry check)
-		if !hasPaths && !swarm.NamesAFinishPR([]byte(b.brief)) {
-			continue
-		}
-		cards = append(cards, b)
-		if w, _ := cardhdr.ReadWho(b.brief); w.Friend {
-			friendNeeded = true
-		}
-	}
-	if len(cards) == 0 {
-		return 0
-	}
+// key is the evidence cache key of one card's base: repo, ref and pin.
+type key struct{ repo, ref, pin string }
+
+// baseEnv is the environment the brief checks read beside each brief: the store's bases in
+// use and the friends' tiers, loaded once for a call.
+type baseEnv struct {
+	ctx     context.Context
+	s       *sprint.Snapshot
+	listed  []string
+	friends map[string][]string
+}
+
+// baseEnv builds the environment the brief checks read beside each brief: the store's bases
+// in use, the friends' tiers when any brief names a friend, and the fetch context. It is the
+// part of holdBriefBase every card of a call shares.
+func (a *app) baseEnv(verbName string, st *store.Store, stderr io.Writer, briefs []briefCheck) (*baseEnv, int) {
 	ctx := context.Background()
 	s, err := st.Load(ctx, []string{sprint.Work, sprint.Merge}, nil)
 	if err != nil {
-		return a.readFailed(verbName, err, stderr)
+		return nil, a.readFailed(verbName, err, stderr)
 	}
 	var listed []string
 	for _, r := range basesInUse(s) {
@@ -59,11 +50,17 @@ func (a *app) holdBriefBase(verbName string, st *store.Store, allowPersonal bool
 			listed = append(listed, r.Base)
 		}
 	}
+	friendNeeded := false
+	for _, b := range briefs {
+		if w, _ := cardhdr.ReadWho(b.brief); w.Friend {
+			friendNeeded = true
+		}
+	}
 	var friends map[string][]string
 	if friendNeeded {
 		seats, err := st.FriendSeats(ctx, a.now())
 		if err != nil {
-			return a.readFailed(verbName, err, stderr)
+			return nil, a.readFailed(verbName, err, stderr)
 		}
 		friends = map[string][]string{}
 		for _, f := range seats {
@@ -74,34 +71,73 @@ func (a *app) holdBriefBase(verbName string, st *store.Store, allowPersonal bool
 			friends[f.Name] = tiers
 		}
 	}
-	type key struct{ repo, ref, pin string }
+	return &baseEnv{ctx: ctx, s: s, listed: listed, friends: friends}, 0
+}
+
+// bb is the brief-base evidence for one card: the lander's clone at the base's tip, cached
+// per repo/ref/sha across the cards of a call.
+func (e *baseEnv) bb(a *app, allowPersonal bool, c briefCheck, evidence map[key]swarm.BriefBase) swarm.BriefBase {
+	cb := swarm.ReadCardBase([]byte(c.brief))
+	bb := swarm.BriefBase{Friends: e.friends, Listed: e.listed}
+	if cb.Ref != "" && cb.Named != "" {
+		k := key{cb.Named, cb.Ref, cb.Sha}
+		got, ok := evidence[k]
+		if !ok {
+			got = a.briefBaseAt(e.ctx, &lander{a: a}, cb)
+			evidence[k] = got
+		}
+		bb.Repo, bb.Sha, bb.Missing, bb.Gone = got.Repo, got.Sha, got.Missing, got.Gone
+		if allowPersonal {
+			bb.Listed = append(append([]string(nil), e.listed...), cb.Ref) // --allow-personal-base admits the base it names
+		}
+	}
+	return bb
+}
+
+// lintAt is LintBrief with the stream's default tier standing for a line 1 that names none
+// (stream set --default-tier): the card is stored with it, so no tier-set finding holds it.
+func lintAt(stream string, s *sprint.Snapshot, brief string, bb swarm.BriefBase) ([]swarm.CardHeaderFinding, swarm.BriefFix) {
+	fs, fix := swarm.LintBrief([]byte(brief), bb)
+	if ctl := s.StreamCtl(stream); stream != "" && ctl != nil && ctl.F(sprint.FieldDefaultTier) != "" {
+		fs = slices.DeleteFunc(fs, func(f swarm.CardHeaderFinding) bool { return f.Check == "tier-set" })
+	}
+	return fs, fix
+}
+
+// holdBriefBase holds each card brief of an add (one with a PATHS: line) to the brief checks
+// at its base (swarm.LintBrief; docs/SPEC-SPRINT.md section 11, the brief checks): the
+// repository its REPO: names, in the lander's clone of it (made as land makes it, when there is
+// none), at the tip of its BASE: fetched once a call, read with git and no go command; beside it
+// the bases the store lists in use and the friends' tiers. Each finding prints as a LINT DRIFT
+// line with its remedy, each corrected header line as a LINT FIX line, and one refusal follows,
+// exit 2, nothing written. A brief with no PATHS: line is no card brief and is not held here.
+func (a *app) holdBriefBase(verbName string, st *store.Store, allowPersonal bool, stderr io.Writer, briefs ...briefCheck) int {
+	var cards []briefCheck
+	for _, b := range briefs {
+		_, hasPaths := swarm.CardHeaderValue([]byte(b.brief), "PATHS")
+		// a finish-PR card is held here even with no PATHS: line: its CARRY: line is the
+		// card's whole staging (LintBrief's pr-carry check)
+		if !hasPaths && !swarm.NamesAFinishPR([]byte(b.brief)) {
+			continue
+		}
+		cards = append(cards, b)
+	}
+	if len(cards) == 0 {
+		return 0
+	}
+	env, code := a.baseEnv(verbName, st, stderr, cards)
+	if code != 0 {
+		return code
+	}
 	evidence := map[key]swarm.BriefBase{}
-	l := &lander{a: a}
 	var lines []string
 	var tokens []string
 	var ids []string
 	findings, first := 0, ""
-	for _, c := range cards {
-		cb := swarm.ReadCardBase([]byte(c.brief))
-		bb := swarm.BriefBase{Friends: friends, Listed: listed}
-		if cb.Ref != "" && cb.Named != "" {
-			k := key{cb.Named, cb.Ref, cb.Sha}
-			got, ok := evidence[k]
-			if !ok {
-				got = a.briefBaseAt(ctx, l, cb)
-				evidence[k] = got
-			}
-			bb.Repo, bb.Sha, bb.Missing, bb.Gone = got.Repo, got.Sha, got.Missing, got.Gone
-			if allowPersonal {
-				bb.Listed = append(append([]string(nil), listed...), cb.Ref) // --allow-personal-base admits the base it names
-			}
-		}
-		fs, fix := swarm.LintBrief([]byte(c.brief), bb)
-		if ctl := s.StreamCtl(c.stream); c.stream != "" && ctl != nil && ctl.F(sprint.FieldDefaultTier) != "" {
-			// the stream's default tier stands for a line 1 that names none (stream set
-			// --default-tier): the card is stored with it, so no tier-set finding holds it
-			fs = slices.DeleteFunc(fs, func(f swarm.CardHeaderFinding) bool { return f.Check == "tier-set" })
-		}
+	for ci := range cards {
+		c := &cards[ci]
+		bb := env.bb(a, allowPersonal, *c, evidence)
+		fs, fix := lintAt(c.stream, env.s, c.brief, bb)
 		id := c.id
 		if id == "" {
 			id = "-"
