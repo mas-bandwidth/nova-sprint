@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-tools/pkg/decide"
 	"github.com/mas-bandwidth/nova-tools/pkg/hygiene"
@@ -91,7 +92,7 @@ func WidenAdjacent(paths []string, f, text string, hold bool) string {
 		})
 	}
 	switch {
-	case strings.HasSuffix(f, "_test.go") && pkg(dir):
+	case cardgen.IsTestFile(f) && pkg(dir):
 		return AdjTests
 	case strings.Contains(f, "/testdata/") && pkg(strings.SplitN(f, "/testdata/", 2)[0]):
 		return AdjTestdata

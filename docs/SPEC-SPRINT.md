@@ -4676,7 +4676,7 @@ What each of the lander's checks does with a head:
 
 | check | does |
 |---|---|
-| files outside PATHS (E12) | refuses; a `*_test.go`, a file under `testdata/`, `tla/RUNS.tsv`, `tla/CASES.tsv`, `internal/docs/catalog.go` and an `AGENTS.md` map are inside every PATHS (`sprint.LandScope`) |
+| files outside PATHS (E12) | refuses; a test file in any language (`cardgen.IsTestFile`, their one home: `*_test.*`, `*.test.*`, `test_*`, or under a `tests/` or `__tests__/` directory), a file under `testdata/`, `tla/RUNS.tsv`, `tla/CASES.tsv`, `internal/docs/catalog.go` and an `AGENTS.md` map are inside every PATHS (`sprint.LandScope`) |
 | a rename outside PATHS (E12) | refuses |
 | a stranded sentence fragment (E4) | refuses |
 | an unmatched backquote in a Markdown or text file (E4) | repairs; refuses only when ambiguous, naming the line; not read on a prose path |
@@ -4943,10 +4943,11 @@ push of the temporary ref that is refused is said as `copy refused: push
 **The base's class gate.** Before a head is merged, the base passes its classes in three stages: stage 0 is the build; stage 1 runs side by side over the one read-only tree: `gofmt -l .` (nonempty output is red even at exit zero), `go vet ./...`, `go vet -tags functional ./...` (the functional tier) and the whole-tree analyzer classes; stage 2 runs side by side: the available tree packages `internal/ci` and `internal/docs` and any unit packages. The three analyzer classes (staticcheck, errcheck and dead-code) are one `go test -tags functional` run of one test binary, with a 600-second test timeout; their whole-tree analysis needs the tag and starts no store, and a red run is attributed to the class its `--- FAIL:` line names. The report order is the class order: `sprint.BaseClasses` names the classes in order and carries each class's stage, a red stage stops the later stages, and the first red class in class order refuses every landing onto the base, under the existing base-gate retries. `sprint.BaseClasses` supplies the runs to the same local or bench runner used by the lander; a clone that lacks a class's package skips that class, and a clone without `go.mod` has no gate. The rule's stop raises one judgment for that base, naming its class, run and finding plus the `fix-red-<class>-<base>` card stamped by `cardgen.PlanClassRed` and its test. A green base commit is cached across rounds and streams. A queued head is a cure only when its tree passes this complete suite; it lands first, and a head that fixes one class but leaves another red is not a cure. The real lander regression is `TestARedClassOnTheBaseStopsLandings` in `cmd/nova-sprint/land_class_test.go`.
 
 **Always inside PATHS.** Files a change must touch to keep the tree green are always
-inside PATHS, whatever the brief names: every `*_test.go`, every file under a `testdata/`
-directory, `tla/RUNS.tsv` and `tla/CASES.tsv`, `internal/docs/catalog.go`, and every
-`AGENTS.md` map; any other file outside PATHS is still out of scope
-(`cardgen.AlwaysInPathsRule`). The lander's E12 reads the merge through `sprint.LandScope`
+inside PATHS, whatever the brief names: every test file (`cardgen.IsTestFile`, their one
+home: `*_test.*`, `*.test.*`, `test_*`, or under a `tests/` or `__tests__/` directory),
+every file under a `testdata/` directory, `tla/RUNS.tsv` and `tla/CASES.tsv`,
+`internal/docs/catalog.go`, and every `AGENTS.md` map; any other file outside PATHS is
+still out of scope (`cardgen.AlwaysInPathsRule`). The lander's E12 reads the merge through `sprint.LandScope`
 (`cmd/nova-sprint/land.go`, `checkCard`): those files are never refused and are not
 recorded as scope amendments, and a non-test source file outside PATHS is still refused,
 as is a source file renamed to a test's name (a rename is inside by rule only when both
@@ -5019,8 +5020,10 @@ N+k)`, stopped the stream's next batches, exited 2 and could roll the server bac
 **The scope amendment.** A file outside the brief's `PATHS` that is the test, the fixture or
 the doc of the same change is allowed by rule, never by a message to the coordinator
 (`sprint.ScopeAmended`): the change also changes a file of its own (in `PATHS`), and the
-file is a Go test file (`_test.go`) in the directory of one of those files, a file under
-that directory's `testdata/`, or a Markdown file under `docs/` or in that directory. Each
+file is a test file in the directory of one of those files (`cardgen.IsTestFile`, their
+one home: `*_test.*`, `*.test.*`, `test_*`, or under a `tests/` or `__tests__/`
+directory), a file under that directory's `testdata/`, or a Markdown file under `docs/`
+or in that directory. Each
 one is recorded on the batch's line, `scope=<card>:<file>,...` (and `scope` under
 `--json`). Any other file outside `PATHS` is refused as E12 says; a change with no file
 of its own amends nothing. A file `cardgen.AlwaysInPaths` puts inside every PATHS is
