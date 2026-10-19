@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (270)
+- [The sprint system](#the-sprint-system) (272)
 - [Setup, release and operations](#setup-release-and-operations) (72)
 - [Docs, models and the repository](#docs-models-and-the-repository) (25)
 - [Friend AIs](#friend-ais) (22)
@@ -2233,6 +2233,26 @@ From: the owner, 2026-10-19
 Throughput (cards per hour on the dashboard and in where) counts only cards that landed in the window. A card that is archived, deferred to a roadmap, dropped or moved out must never count. Observed 2026-10-19: 302 cards/hour shown during a bulk move of about 600 cards to roadmaps. Code location: the dashboard's rate is pageThroughput.add in internal/sprintdash/pageview.go (and sample_landed in internal/sprintdash/stopgap/server.py), which takes cards an hour from the change in the sampled landed count over the samples' span, so any move that raises that count is counted as a landing; where's own landing rate is in internal/sprint/rate.go (LandingRate). Tests: a window with N landings and M archives, defers and drops reports N per window, with time as an argument.
 
 Why it waits: A rate that counts bulk moves reads far above the real landing rate and hides how fast work lands
+
+Target: v1.7
+
+From: the owner, 2026-10-19
+
+### The lander checks soft dependencies before it pushes
+
+The lander must check a card's LAND-AFTER (soft) dependencies before the merge and the push, never after. Observed 2026-10-19 at 12:23: the lander pushed luau-fix-node-index-shift to sprint/schema-luau at 07f5155, and only then refused to report because its LAND-AFTER dependency luau-fix-root-trailing-bytes had not landed. The base held B before A, against the declared order. Fix: evaluate soft dependencies first; a card whose soft dependency is unlanded is skipped this batch with nothing merged or pushed. Test: B is queued with A unlanded; nothing is pushed and B is skipped this batch.
+
+Why it waits: A push before the dependency check puts the base in an order the cards declared against
+
+Target: v1.7
+
+From: the owner, 2026-10-19
+
+### A repository declares its own generated ledgers for the lander
+
+The lander's generated-ledger list is hard-coded in var landLedgers in cmd/nova-sprint/landledger.go (lines 52-79), so a repo cannot declare its own, and a pin file every card re-pins makes every concurrent card conflict. Observed 2026-10-19: schema-java's internal/codegen/javatable/testdata/keyedindex_base.sha256 forced 5+ reworks, each costing two new reads. Proposal: a repo file .nova/ledgers.sexp gives paths, owning tests and an update command, appended in ledgers(). Safety: regenerate only when BOTH sides of the merge re-pinned the file, otherwise refuse; the pin guards intentional wire moves, so it must never be silently accepted. The schema-java entry: SCHEMA_UPDATE_KEYED_GOLDEN=1 go test -count=1 -run '^TestKeyedFormLeavesWireCodeByteIdentical$' ./internal/codegen/javatable
+
+Why it waits: Without a repo-declared ledger, one re-pinned file makes every concurrent card conflict and rework
 
 Target: v1.7
 
