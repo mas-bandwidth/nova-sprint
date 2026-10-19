@@ -2373,10 +2373,17 @@ func (l *lander) checkCard(ctx context.Context, dir, stream string, c landCard, 
 	// The repository's shared registry (.nova/always-allowed) is read at the base, never
 	// at the head, so a card that edits it gets no exemption from its own edit, and the
 	// registry file is not itself always-allowed (cardgen.SharedRegistries;
-	// docs/SPEC-LANDING.md, docs/SPEC-SPRINT.md section 7).
+	// docs/SPEC-LANDING.md, docs/SPEC-SPRINT.md section 7). The base's bytes are read
+	// from git and handed to the same reader a checkout would use.
 	var registries []string
 	if data, err := l.git(ctx, dir, "show", before+":.nova/always-allowed"); err == nil {
-		registries = cardgen.ParseSharedRegistries([]byte(data))
+		if tmp, terr := os.MkdirTemp("", "nova-always-allowed-"); terr == nil {
+			defer os.RemoveAll(tmp)
+			if os.MkdirAll(filepath.Join(tmp, ".nova"), 0o755) == nil &&
+				os.WriteFile(filepath.Join(tmp, ".nova", "always-allowed"), []byte(data), 0o644) == nil {
+				registries = cardgen.SharedRegistries(tmp)
+			}
+		}
 	}
 	// SPEC-SPRINT section 7: required validation files are inside every PATHS;
 	// ordinary scope amendments remain recorded and unrelated source stays refused.

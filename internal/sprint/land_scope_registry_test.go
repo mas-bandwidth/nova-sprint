@@ -29,13 +29,13 @@ func TestE12TakesARepoDeclaredSharedRegistry(t *testing.T) {
 
 // The registry is read at the base, not the head: a head that adds its own stray file to
 // .nova/always-allowed is still refused for that file (the base does not name it) and for
-// the registry edit itself, which is never exempt.
+// the registry edit itself, which is never exempt even when an entry names it.
 func TestE12RegistryIsReadAtTheBaseNotTheHead(t *testing.T) {
 	t.Parallel()
 	paths := []string{"internal/a/*.go"}
 	diff := "diff --git a/.nova/always-allowed b/.nova/always-allowed\n" +
 		"diff --git a/tools/stray.txt b/tools/stray.txt\n"
-	_, refused := sprint.LandScope(paths, diff, nil, "make/negative-controls.json")
+	_, refused := sprint.LandScope(paths, diff, nil, "make/negative-controls.json", ".nova/always-allowed")
 	assert.ElementsMatch(t, []string{".nova/always-allowed", "tools/stray.txt"}, refused)
 }
 

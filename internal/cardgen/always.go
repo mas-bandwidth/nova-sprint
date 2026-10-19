@@ -134,11 +134,12 @@ func LedgerInPaths(p string, catalog ...string) bool {
 // file a repository's own shared registry names (.nova/always-allowed, SharedRegistries;
 // docs/SPEC-LANDING.md, docs/SPEC-SPRINT.md section 7), which stands beside the built-in
 // set. p is a path relative to the repository root. registries is the repository's shared
-// registry; absent (nil), the built-in set stands.
+// registry; absent (nil), the built-in set stands. The registry file itself is never
+// always-allowed, even when an entry names it.
 func AlwaysInPaths(p string, registries ...string) bool {
 	p = strings.TrimPrefix(path.Clean(p), "./")
 	switch {
-	case p == "." || p == "" || strings.HasPrefix(p, "../") || strings.HasPrefix(p, "/"):
+	case p == "." || p == "" || p == sharedRegistriesFile || strings.HasPrefix(p, "../") || strings.HasPrefix(p, "/"):
 		return false
 	case strings.HasSuffix(p, "_test.go"), path.Base(p) == "AGENTS.md", slices.Contains(alwaysInPathsFiles, p), LedgerInPaths(p), matchesRegistry(p, registries):
 		return true
