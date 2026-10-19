@@ -178,6 +178,8 @@ var TickDecisions = map[string][]string{
 	NDriftCardBase: {"act", "wait"},
 	NDriftServer:   {"act", "wait"},
 	NDriftBaseRed:  {"act", "wait"},
+	// the width drifts (width_drift.go): the read of nova-config is the fix, never a widening of it
+	NWidthDrift: {"act", "wait"}, // tla/WidthHard.tla (OneSource)
 	// the base's CI after a landing (base_ci.go): the same, mended, or quiet a while
 	NBaseCIRed: {"act", "wait"},
 	// a repository lacks a bench mirror on some members (mirror_need.go): the
@@ -235,6 +237,13 @@ type TickReq struct {
 	// is no read, or a read that failed or held no row, and the part retires nothing
 	// (never act on a missing read).
 	Machines []string
+	// Widths is nova-config's member widths as the tick read them (config.Widths, the same
+	// read as fleet sync; WidthRefresh): the one width source. nil is none read, and no width
+	// drift judgment is raised or closed.
+	Widths map[string]int
+	// FriendWidths is nova-config's friend row widths as the tick read them (config.FriendWidth):
+	// a friend whose seat width differs is a drift. nil is none read.
+	FriendWidths map[string]int
 }
 
 func (r TickReq) who() string {
@@ -1879,6 +1888,10 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 	// the drift alarms, on a plan of their own the same way (drift.go)
 	d, driftDue := TickDrift(s, r, r.Drift)
 	p.Notes, p.Closes, p.Updates = append(p.Notes, d.Notes...), append(p.Closes, d.Closes...), append(p.Updates, d.Updates...)
+	// the width drifts, on a plan of their own the same way (width_drift.go; tla/WidthHard.tla (OneSource)): one judgment
+	// per drifting row, raised once while the row drifts, closed when it agrees again.
+	wd, wdDue := tickWidthDrift(s, r)
+	p.Notes, p.Closes, p.Updates = append(p.Notes, wd.Notes...), append(p.Closes, wd.Closes...), append(p.Updates, wd.Updates...)
 	// the base's CI after a landing, on a plan of its own the same way (base_ci.go)
 	b, baseCIDue := TickBaseCI(s, r)
 	p.Notes, p.Closes, p.Updates = append(p.Notes, b.Notes...), append(p.Closes, b.Closes...), append(p.Updates, b.Updates...)
@@ -1895,7 +1908,7 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 	ft, ftDue := TickFirstTime(s, r)
 	p.Notes, p.Closes, p.Updates, p.Props = append(p.Notes, ft.Notes...), append(p.Closes, ft.Closes...), append(p.Updates, ft.Updates...), append(p.Props, ft.Props...)
 	p.Units = append(p.Units, ft.Units...)
-	return p, due + readyDue + alarmsDue + driftDue + baseCIDue + stallDue + ftDue
+	return p, due + readyDue + alarmsDue + driftDue + wdDue + baseCIDue + stallDue + ftDue
 }
 
 // TickOverdue marks each open judgment overdue once, when it passes its due
@@ -2114,7 +2127,8 @@ func condKey(typ, subject, card, what string) string {
 		NBaseCIRed,
 		NStopMemberDown, NStopPinWaits, NMemberIdleReaps,
 		NNoFrontierRoom,
-		NMirrorNeed, NMemberPegged, NGateNeeds:
+		NMirrorNeed, NMemberPegged, NGateNeeds,
+		NWidthDrift: // tla/WidthHard.tla (OneSource)
 		what = ""
 	case NReadyOver:
 		// one judgment per (reason, tier): the reason is the stable cause, so

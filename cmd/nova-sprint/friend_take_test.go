@@ -176,6 +176,7 @@ func TestTheServerRunsAFriendsBeatWithTheCardsSheIsRunning(t *testing.T) {
 func TestFriendTakeAllUnstartedTakesOnlyTheCardsDealtAndNotTaken(t *testing.T) {
 	t.Parallel()
 	ta, root := takeApp(t, 5, nil, "amy")
+	ta.configFriendWidth("amy", 3)
 	ta.ok("friend up amy --width 3")
 	ta.ok("tick")
 	ta.ok("friend sync --root " + root)

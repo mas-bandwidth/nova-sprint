@@ -168,6 +168,9 @@ type DoctorInput struct {
 	// Machines is nova-config's machine rows, nil when not read (ConfigErr says why).
 	Machines  []DoctorMachine
 	ConfigErr string
+	// FriendWidths is nova-config's friend row widths, by friend, nil when not read: a
+	// friend whose seat width differs is a Drift (DoctorFriends).
+	FriendWidths map[string]int
 	// Probes is each member host's probe, nil when not run (ProbeErr says why).
 	Probes   map[string]MemberProbe
 	ProbeErr string
@@ -1119,6 +1122,15 @@ func DoctorFleetRows(in DoctorInput) (out []DoctorCheck) {
 				continue // said above as a stale row
 			}
 		}
+		if d.Kind == DriftWidth {
+			// a width that is not nova-config's is a violation, never a drift to converge
+			// later: the one width is nova-config's (the owner, 2026-10-18; tla/WidthHard.tla
+			// OneSource). Both values, one line; the read of nova-config is the fix, never a
+			// widening of it.
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: d.Member, Status: DoctorFail,
+				Evidence: fmt.Sprintf("width: %s: sprint width %d, nova-config width %d (the one width is nova-config's)", d.Member, d.From, d.To), Remedy: "nova-sprint fleet sync (the server's steps write nova-config's width back as they run)"})
+			continue
+		}
 		out = append(out, DoctorCheck{Area: area, Check: check, Subject: d.Member, Status: DoctorDrift, Evidence: d.Kind + ": " + d.Line(), Remedy: "nova-sprint fleet sync"})
 	}
 	if len(out) == 0 {
@@ -1460,7 +1472,15 @@ func DoctorFriends(in DoctorInput) (out []DoctorCheck) {
 			beat = age.Round(time.Second).String()
 		}
 		ev := fmt.Sprintf("status=%s report_age=%s working=%d width=%d running=%d", f.Status, beat, working, f.Width, len(f.Running))
+		cfgWidth, cfgKnown := in.FriendWidths[f.Name]
 		switch {
+		case cfgKnown && cfgWidth != f.Width:
+			// a friend whose width is not her nova-config friend row's is a violation, never a
+			// drift to converge later: the one width is nova-config's (the owner, 2026-10-18;
+			// tla/WidthHard.tla (OneSource)). Both values, one line; the read of nova-config is the
+			// fix, never a widening of it.
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorFail,
+				Evidence: fmt.Sprintf("width: %s: sprint width %d, nova-config width %d (the one width is nova-config's)", f.Name, f.Width, cfgWidth), Remedy: "nova-sprint friend sync (the friend's row is her nova-config friend row's width)"})
 		case f.Status == Down:
 			out = append(out, DoctorCheck{Area: area, Check: check, Subject: f.Name, Status: DoctorWarn, Evidence: ev + " why=" + cmp.Or(f.Why, "-"), Remedy: "inspect nova-hook status for " + f.Name})
 		case f.Status == Held:

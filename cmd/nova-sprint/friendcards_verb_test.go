@@ -147,6 +147,7 @@ func TestFriendCardsJSONCarriesHerRow(t *testing.T) {
 	assert.Equal(t, store.FriendHold{Held: true, Reason: "allowance out", Width: row("friend-b").Width}, row("friend-b"))
 	assert.Positive(t, row("friend-b").Width)
 	assert.False(t, row("friend-a").Held)
+	ta.configFriendWidth("friend-b", 3)
 	ta.ok("friend up friend-b --width 3")
 	assert.Equal(t, store.FriendHold{Width: 3}, row("friend-b"))
 	ta.ok("friend hold friend-a --reason 'rate limited'")

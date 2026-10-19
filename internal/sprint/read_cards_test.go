@@ -246,7 +246,10 @@ func TestAReadCardIsDealtToAReaderOfItsTierAndNeverTheWorker(t *testing.T) {
 // holding DealAhead (2) widths, is dealt 8 reads and no more; with a work card on it, 6;
 // the work of the same deal goes in the room the reads leave; and its take runs 2 work cards
 // or 4 reads at once, its reads first.
-func TestAReadCostsHalfASlot(t *testing.T) {
+// A read costs a whole slot, as a work card does: one definition of a slot (the owner,
+// 2026-10-18; tla/WidthHard.tla WidthHeld; the half-slot rule this replaced let width 16
+// run 20 cards, witness MCWidthHardBrokenHalfRead).
+func TestAReadCostsAWholeSlot(t *testing.T) {
 	t.Parallel()
 	t.Run("the deal", func(t *testing.T) {
 		t.Parallel()
@@ -255,7 +258,7 @@ func TestAReadCostsHalfASlot(t *testing.T) {
 			putReviewBy(w, "s1-"+itoa(i), "s1-"+itoa(i)+": work (s1)\n", "m1", float64(i))
 		}
 		dealReads(t, w, nil)
-		require.Equal(t, 8, w.s.Fleet.Count("m2", Ready), "8 reads fill 4 slots")
+		require.Equal(t, 4, w.s.Fleet.Count("m2", Ready), "4 reads fill 4 slots: DealAhead times width 2")
 		require.Equal(t, 0, w.s.Fleet.Count("m1", Ready), "m1 worked them all")
 		require.Equal(t, 4, memberLoads(w.s, []string{"m2"})["m2"])
 	})
@@ -271,17 +274,15 @@ func TestAReadCostsHalfASlot(t *testing.T) {
 		dealReads(t, w, nil)
 		work, reads := rowLoad(w.s, "m2")
 		require.Equal(t, 1, reads)
-		require.Equal(t, 1, work, "room 2 slots: one read (half), one work card; the half left takes no work")
+		require.Equal(t, 1, work, "room 2 slots: one read, one work card, each a whole slot")
 
-		// the half-slot edge (v1.4.5, the strict deal): with exactly half a slot left, a read it
-		// may take waits, and the half goes to that read, never to new work (halfLoad rounds a
-		// half read up, so the work room is none)
-		require.Equal(t, 0, DealAhead*w.s.Width("m2")-halfLoad(work, reads), "no work room in the half left")
+		// no slot is left: a read it may take waits, and no new work is dealt
+		require.Equal(t, 0, DealAhead*w.s.Width("m2")-slotLoad(work, reads), "no room left")
 		putReviewBy(w, "s1-2", "s1-2: work (s1)\n", "m1", 2)
 		dealReads(t, w, nil)
 		work, reads = rowLoad(w.s, "m2")
-		require.Equal(t, 2, reads, "the waiting read takes the half slot")
-		require.Equal(t, 1, work, "and no new work card is dealt into it")
+		require.Equal(t, 1, reads, "the waiting read is not dealt past the room")
+		require.Equal(t, 1, work, "and no new work card is dealt")
 	})
 	t.Run("the take", func(t *testing.T) {
 		t.Parallel()
@@ -291,7 +292,7 @@ func TestAReadCostsHalfASlot(t *testing.T) {
 		}
 		dealReads(t, w, nil)
 		w.must(Take(w.s, TakeReq{As: "m2", Sel: Sel{Limit: -1}, Who: "m2"}))
-		require.Equal(t, 4, w.s.Fleet.Count("m2", Working), "width 2 runs 4 reads at once")
+		require.Equal(t, 2, w.s.Fleet.Count("m2", Working), "width 2 runs 2 reads at once, never 4")
 		require.Equal(t, 2, w.s.Fleet.Count("m2", Ready))
 	})
 }
