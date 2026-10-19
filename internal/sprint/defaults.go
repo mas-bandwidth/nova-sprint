@@ -137,6 +137,7 @@ var Defaults = []Default{
 	{Name: "held_by", Home: HomeShape, Value: ShapeCarried, Why: "who made a hold"},
 	{Name: "held_fields", Home: HomeShape, Value: ShapeCarried, Why: "a hold's cause, reason and who made it (hold_cause.go, HeldCarried)"},
 	{Name: "width", Home: HomeShape, Value: ShapeCarried, Why: "each member's width"},
+	{Name: "gates_only", Home: HomeShape, Value: ShapeCarried, Why: "each member's gates_only, the GATE-NEEDS words that alone bring it work"},
 }
 
 // NotSettings is the fields of SetReq and Shape, and the flags of `set`, that hold no

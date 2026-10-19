@@ -11,7 +11,7 @@ import (
 // refuse, and a name twice, are refused whole.
 func TestSyncProblemsRefusesWhatTheFleetRefuses(t *testing.T) {
 	t.Parallel()
-	ps := SyncProblems([]SyncMember{{"m1", 4}, {"m2", MaxWidth}})
+	ps := SyncProblems([]SyncMember{{Name: "m1", Width: 4}, {Name: "m2", Width: MaxWidth}})
 	require.Empty(t, ps, "a valid sync: %v", ps)
 	ps = SyncProblems(nil)
 	require.Empty(t, ps, "an empty sync holds the fleet and is valid: %v", ps)
@@ -19,10 +19,10 @@ func TestSyncProblemsRefusesWhatTheFleetRefuses(t *testing.T) {
 		want []SyncMember
 		say  string
 	}{
-		{[]SyncMember{{"m 1", 4}}, "a member name wants"},
-		{[]SyncMember{{"m1", 0}}, "a width wants a whole number from 1"},
-		{[]SyncMember{{"m1", MaxWidth + 1}}, "a width wants a whole number from 1"},
-		{[]SyncMember{{"m1", 1}, {"m1", 2}}, "m1 is named twice"},
+		{[]SyncMember{{Name: "m 1", Width: 4}}, "a member name wants"},
+		{[]SyncMember{{Name: "m1", Width: 0}}, "a width wants a whole number from 1"},
+		{[]SyncMember{{Name: "m1", Width: MaxWidth + 1}}, "a width wants a whole number from 1"},
+		{[]SyncMember{{Name: "m1", Width: 1}, {Name: "m1", Width: 2}}, "m1 is named twice"},
 	} {
 		ps = SyncProblems(c.want)
 		require.Len(t, ps, 1, "%v: %v", c.want, ps)
@@ -53,7 +53,7 @@ func syncHeld(t *testing.T) *world {
 	w := newWorld(t, "reader-a")
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m1"}))
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
-	w.must(FleetStep(w.s, FleetReq{Op: "sync", Who: "sync", Sync: []SyncMember{{"m1", DefaultWidth}}, Machines: []string{"m1", "m2"}}))
+	w.must(FleetStep(w.s, FleetReq{Op: "sync", Who: "sync", Sync: []SyncMember{{Name: "m1", Width: DefaultWidth}}, Machines: []string{"m1", "m2"}}))
 	ctl := w.s.MemberCtl("m2")
 	require.NotEmpty(t, ctl.F("held"), "m2 is not held by the sync: %v", ctl.Fields)
 	require.Equal(t, HeldBySync, ctl.F(FieldHeldBy), "m2 is not held by the sync: %v", ctl.Fields)
@@ -70,7 +70,7 @@ func dSyncAdded(t *testing.T, count, width int) (*world, FleetReq) {
 		w.must(Add(w.s, AddReq{Stream: "s1", Count: count}))
 	}
 	sync := FleetReq{Op: "sync", Who: "sync",
-		Sync:     []SyncMember{{"m1", DefaultWidth}, {"m9", width}},
+		Sync:     []SyncMember{{Name: "m1", Width: DefaultWidth}, {Name: "m9", Width: width}},
 		Machines: []string{"m1", "m9"}}
 	w.must(FleetStep(w.s, sync))
 	return w, sync
@@ -160,7 +160,7 @@ func TestACoordinatorsHoldOnAMemberTheSyncHoldsClearsTheMark(t *testing.T) {
 	ctl := w.s.MemberCtl("m2")
 	require.NotEmpty(t, ctl.F("held"), "m2 after the coordinator's hold: %v", ctl.Fields)
 	require.Empty(t, ctl.F(FieldHeldBy), "m2 after the coordinator's hold: %v", ctl.Fields)
-	for _, d := range FleetDrift(w.s, []SyncMember{{"m1", DefaultWidth}, {"m2", DefaultWidth}}, []string{"m1", "m2"}) {
+	for _, d := range FleetDrift(w.s, []SyncMember{{Name: "m1", Width: DefaultWidth}, {Name: "m2", Width: DefaultWidth}}, []string{"m1", "m2"}) {
 		require.NotEqual(t, DriftRelease, d.Kind, "the sync would release the coordinator's hold: %+v", d)
 	}
 }
@@ -170,7 +170,7 @@ func TestACoordinatorsHoldOnAMemberTheSyncHoldsClearsTheMark(t *testing.T) {
 // without the machines; FleetDrift DriftRelease, fleet_sync.go) or by fleet up.
 func TestASyncHeldMemberReleasedKeepsNoMark(t *testing.T) {
 	t.Parallel()
-	both := []SyncMember{{"m1", DefaultWidth}, {"m2", DefaultWidth}}
+	both := []SyncMember{{Name: "m1", Width: DefaultWidth}, {Name: "m2", Width: DefaultWidth}}
 	for _, tc := range []struct {
 		name, msg string
 		req       FleetReq
@@ -224,7 +224,7 @@ func TestALiveFinishedCardKeepsAMemberWithNoMachineRow(t *testing.T) {
 	w.must(Take(w.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1")}))
 	w.must(Finish(w.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: gensOf(w.s, "s1-1.w1"), Failed: true, Report: "tests red"}))
 	w.must(FleetStep(w.s, FleetReq{Op: "up", Probe: EnvProbePassed, Member: "m2"}))
-	sync := FleetReq{Op: "sync", Who: "sync", Sync: []SyncMember{{"m2", DefaultWidth}}, Machines: []string{"m2"}}
+	sync := FleetReq{Op: "sync", Who: "sync", Sync: []SyncMember{{Name: "m2", Width: DefaultWidth}}, Machines: []string{"m2"}}
 	require.Equal(t, []Drift{{Member: "m1", Kind: DriftHold}}, FleetDrift(w.s, sync.Sync, sync.Machines), "s1-1, in review, reads its failed card on m1")
 	w.must(FleetStep(w.s, sync))
 	require.NotNil(t, w.s.MemberCtl("m1"), "m1 is held, not removed")

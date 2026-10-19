@@ -58,7 +58,7 @@ func (a *app) readDoctorConfig(ctx context.Context) (doctorConfig, error) {
 		}
 		out.Machines = []sprint.DoctorMachine{}
 		for _, r := range rows {
-			out.Machines = append(out.Machines, sprint.DoctorMachine{Name: r.Name, User: r.Fields["user"], Seat: r.Fields["seat"], Width: r.Int("width"), Default: r.Fields["width"] == ""})
+			out.Machines = append(out.Machines, sprint.DoctorMachine{Name: r.Name, User: r.Fields["user"], Seat: r.Fields["seat"], Width: r.Int("width"), Default: r.Fields["width"] == "", GatesOnly: sprint.Split(r.Fields["gates_only"])})
 		}
 		loops, err := st.List(ctx, config.KindLoop)
 		if err != nil {

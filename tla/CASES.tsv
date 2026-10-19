@@ -781,3 +781,7 @@ MCRepairLogBrokenSkipApplied.cfg	MCRepairLog.tla	invariant	AppliedHasLine	ignore
 MCRepairLogReconcileSkipApplied.cfg	MCRepairLog.tla	pass	-	ignore-terminal	repair-log	required	-
 MCRepairLogBrokenNoProbe.cfg	MCRepairLog.tla	invariant	ProbeSparesEntries	ignore-terminal	repair-log	required	-
 MCRepairLogBrokenReconcileBlind.cfg	MCRepairLog.tla	invariant	ReconciledHasLine	ignore-terminal	repair-log	required	-
+MCGatesOnly.cfg	MCGatesOnly.tla	pass	-	ignore-terminal	gatesonly	required	-
+MCGatesOnlyBrokenNoFilter.cfg	MCGatesOnly.tla	invariant	GenericNeverToGatesOnly	ignore-terminal	gatesonly	required	-
+MCGatesOnlyBrokenNoGates.cfg	MCGatesOnly.tla	invariant	GenericNeverToGatesOnly	ignore-terminal	gatesonly	required	-
+MCGatesOnlyBrokenReadsTo.cfg	MCGatesOnly.tla	invariant	ReadsNeverToGatesOnly	ignore-terminal	gatesonly	required	-

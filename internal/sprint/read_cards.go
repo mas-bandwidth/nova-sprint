@@ -272,7 +272,9 @@ func readUnitsOf(s *Snapshot, seats []FriendSeat) []readUnit {
 		out = append(out, readUnit{name: f.Name, row: row, friend: true, seat: f, half: free, idle: free})
 	}
 	for _, m := range notQuiet(s, s.UpMembers()) { // a member quiet, under its floor or draining reads nothing (drain.go)
-		if !memberReads(s, m) {
+		// a gates-only member reads nothing: a read is generic work (gates_only.go;
+		// tla/GatesOnly.tla, ReadsNeverToGatesOnly)
+		if !memberReads(s, m) || s.MemberCtl(m).F(FieldGatesOnly) != "" {
 			continue
 		}
 		w := s.Width(m)

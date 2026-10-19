@@ -26,6 +26,9 @@ type Shape struct {
 	// Width is each member's width its control card names (width.go); a
 	// member with the default is not in it.
 	Width map[string]string `json:"width,omitempty"`
+	// GatesOnly is each member's gates_only its control card names (gates_only.go); a
+	// member with none is not in it.
+	GatesOnly map[string]string `json:"gates_only,omitempty"`
 	// ReaderTiers is each reader's tiers cell (reader_tiers.go): a reader
 	// with the default (an empty cell) is not in it.
 	ReaderTiers map[string]string `json:"reader_tiers,omitempty"`
@@ -93,6 +96,12 @@ func ShapeOf(s *Snapshot) Shape {
 			}
 			sh.Width[m] = w
 		}
+		if g := s.MemberCtl(m).F(FieldGatesOnly); g != "" {
+			if sh.GatesOnly == nil {
+				sh.GatesOnly = map[string]string{}
+			}
+			sh.GatesOnly[m] = g
+		}
 	}
 	for _, rd := range sh.Readers {
 		if tiers := s.readerTiersStored(rd); strings.TrimSpace(tiers) != "" {
@@ -136,6 +145,9 @@ func RestoreShape(s *Snapshot, sh Shape) Plan {
 		}
 		if w := sh.Width[m]; w != "" {
 			fields[FieldWidth] = w
+		}
+		if g := sh.GatesOnly[m]; g != "" {
+			fields[FieldGatesOnly] = g
 		}
 		p.Units = append(p.Units, Unit{Key: CtlID(m), Changes: []Change{change(Fleet, createEntry(CtlID(m), m, Ctl, 0, fields))}, Moved: "member " + m + " " + sh.Status[m]})
 	}

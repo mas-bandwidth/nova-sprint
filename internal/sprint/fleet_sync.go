@@ -38,6 +38,9 @@ import (
 type SyncMember struct {
 	Name  string
 	Width int
+	// GatesOnly is the machine row's gates_only (gates_only.go): the gate words that alone
+	// bring work to the member; nil for a member dealt any card.
+	GatesOnly []string
 }
 
 // FieldHeldBy is the control card's field naming who made the member's hold
@@ -54,6 +57,7 @@ const (
 	DriftHold    = "hold"    // the table has a member the inventory no longer names
 	DriftRelease = "release" // a member the sync held is back in the inventory with room
 	DriftRemove  = "remove"  // a member with no machine row on which no card stays
+	DriftGates   = "gates"   // a member's gates_only differs (gates_only.go)
 )
 
 // Drift is one difference between the fleet table and the inventory: what
@@ -63,6 +67,9 @@ type Drift struct {
 	Kind   string
 	// From and To are a width change's widths; To is the width of an add.
 	From, To int
+	// GatesFrom and GatesTo are a gates change's comma lists ("" for none); GatesTo is
+	// the gates of an add.
+	GatesFrom, GatesTo string
 }
 
 // Line is the drift as a sentence.
@@ -76,6 +83,8 @@ func (d Drift) Line() string {
 		return fmt.Sprintf("%s was held by the sync and is back in the inventory: release it", d.Member)
 	case DriftRemove:
 		return fmt.Sprintf("%s has no machine row in the inventory and no card stays on it: remove it from the fleet", d.Member)
+	case DriftGates:
+		return fmt.Sprintf("%s has gates_only %q and the inventory says %q", d.Member, d.GatesFrom, d.GatesTo)
 	}
 	return fmt.Sprintf("%s is a member of the fleet and not of the inventory: hold it down", d.Member)
 }
@@ -108,15 +117,22 @@ func SyncProblems(want []SyncMember) []Refusal {
 // removes it in the same step when none stays (downPlan, Remove).
 func FleetDrift(s *Snapshot, want []SyncMember, machines []string) []Drift {
 	wanted := map[string]int{}
+	gates := map[string]string{}
 	for _, m := range want {
 		wanted[m.Name] = m.Width
+		gates[m.Name] = strings.Join(m.GatesOnly, ",")
 	}
 	var out []Drift
 	for name, w := range wanted {
 		ctl := s.MemberCtl(name)
 		if ctl == nil {
-			out = append(out, Drift{Member: name, Kind: DriftAdd, To: w})
+			out = append(out, Drift{Member: name, Kind: DriftAdd, To: w, GatesTo: gates[name]})
 			continue
+		}
+		// the gates ride the same unit as a release or a width (fleetSyncPlan), so a member
+		// the sync brings back is never up without them (tla/GatesOnly.tla, Init)
+		if have := ctl.F(FieldGatesOnly); have != gates[name] {
+			out = append(out, Drift{Member: name, Kind: DriftGates, GatesFrom: have, GatesTo: gates[name]})
 		}
 		if ctl.F("held") != "" && ctl.F(FieldHeldBy) == HeldBySync {
 			out = append(out, Drift{Member: name, Kind: DriftRelease})
@@ -241,6 +257,10 @@ func fleetSyncPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 			fields := map[string]string{"kind": "member", "status": Down, "since": stamp(s.Now), FieldWidth: itoa(d.To),
 				FieldHeld: stamp(s.Now), FieldHeldBy: by,
 				FieldHeldReason: "its own probe has not passed: " + EnvProbeLine(m)}
+			if d.GatesTo != "" {
+				// written with the card, so the member is never up without its gates
+				fields[FieldGatesOnly] = d.GatesTo
+			}
 			p.Units = append(p.Units, Unit{Key: CtlID(m),
 				Changes: []Change{change(Fleet, createEntry(CtlID(m), m, Ctl, 0, fields))},
 				Moved:   fmt.Sprintf("%s added, held until its own probe passes (%s) width=%d", m, EnvProbeLine(m), d.To)})
@@ -257,6 +277,13 @@ func fleetSyncPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 			case DriftWidth:
 				set[FieldWidth] = itoa(d.To)
 				said = append(said, fmt.Sprintf("width=%d (was %d)", d.To, d.From))
+			case DriftGates:
+				if d.GatesTo == "" {
+					unset = append(unset, FieldGatesOnly)
+				} else {
+					set[FieldGatesOnly] = d.GatesTo
+				}
+				said = append(said, fmt.Sprintf("gates_only=%s (was %s)", cmpDash(d.GatesTo), cmpDash(d.GatesFrom)))
 			}
 		}
 		p.Units = append(p.Units, Unit{Key: CtlID(m),
@@ -290,4 +317,12 @@ func fleetSyncPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 		p.Notes = append(p.Notes, hp.Notes...)
 	}
 	return p
+}
+
+// cmpDash is a gates list as a sync line says it: the list, or - for none.
+func cmpDash(v string) string {
+	if v == "" {
+		return "-"
+	}
+	return v
 }

@@ -98,7 +98,7 @@ func (s *Snapshot) launchersOf(c, wc *Card, ms []string) (out []string, why stri
 // (StagingRefusers). wc is that withdrawn attempt (nil for a new attempt or an escalation,
 // whose route is drawn afresh), refused the members taken out for it.
 func (s *Snapshot) dealPool(c *Card, up []string) (pool []string, wc *Card, refused []string) {
-	pool = onlyBench(up, Bench(c))
+	pool = s.AdmitGatesOnly(c, onlyBench(up, Bench(c)))
 	if w := s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt"))); w != nil && w.Col == Withdrawn && !redealBound(w) {
 		wc, refused = w, StagingRefusers(w)
 		pool = without(pool, refused)
