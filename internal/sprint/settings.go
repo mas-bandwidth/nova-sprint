@@ -322,7 +322,7 @@ type SetReq struct {
 	// default (off): merging, and review, above which the deal starts no new work.
 	LandBacklogBound   string `json:",omitempty" prop:"land_backlog_bound"`
 	ReviewBacklogBound string `json:",omitempty" prop:"review_backlog_bound"`
-	GoLanes      string `json:",omitempty" prop:"go_lanes"` // the Go lanes of every machine (PropGoLanes, section 18)
+	GoLanes            string `json:",omitempty" prop:"go_lanes"` // the Go lanes of every machine (PropGoLanes, section 18)
 	// The drift alarm's thresholds of the base ahead of dev (drift.go): commits and hours,
 	// whole numbers from 1, or default.
 	DriftCommits string `json:",omitempty" prop:"drift_commits"`
