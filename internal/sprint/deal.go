@@ -92,26 +92,31 @@ func withFacts(p Plan, f Plan) Plan {
 	return p
 }
 
-// GateHostPool narrows ms to the members whose facts satisfy every need of the card's
-// GATE-NEEDS line (GateNeeds). A card with no GATE-NEEDS keeps every member of ms, so a
-// card that names no gate need is dealt as before. why is "" while at least one member
-// satisfies; when none does it names the need the members lack and the facts each member
-// carries, so the deal raises one judgment naming the need (never a silent wait).
+// GateHostPool narrows ms first to the members whose gates admit the card (AdmitGatesOnly,
+// gates_only.go: a gates-only member takes only the cards whose GATE-NEEDS names one of its
+// gates), then to those whose facts satisfy every need of the card's GATE-NEEDS line
+// (GateNeeds). A card with no GATE-NEEDS keeps every admitted member, so a card that names
+// no gate need is dealt as before, to every member but a gates-only one. why is "" while at
+// least one member satisfies, and "" when no member is admitted at all (the card waits for
+// a member that takes it: gatesOnlyWhy); when admitted members lack a need it names the
+// need and the facts each carries, so the deal raises one judgment naming the need (never
+// a silent wait). tla/GatesOnly.tla, Deal.
 func (s *Snapshot) GateHostPool(c *Card, ms []string) (out []string, why string) {
 	if c == nil {
 		return ms, ""
 	}
+	admitted := s.AdmitGatesOnly(c, ms)
 	needs := GateNeeds(c.F("brief"))
 	if len(needs) == 0 {
-		return ms, ""
+		return admitted, ""
 	}
-	for _, m := range ms {
+	for _, m := range admitted {
 		if memberSatisfies(s.MemberFacts(m), needs) {
 			out = append(out, m)
 		}
 	}
-	if len(out) == 0 && len(ms) > 0 {
-		return nil, gateNeedsWhy(needs, ms, s)
+	if len(out) == 0 && len(admitted) > 0 {
+		return nil, gateNeedsWhy(needs, admitted, s)
 	}
 	return out, ""
 }

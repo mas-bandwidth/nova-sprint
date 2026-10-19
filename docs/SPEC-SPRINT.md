@@ -31,6 +31,23 @@ the facts it had.
 The coordinator machine (the Studio) is never dealt a card whose
 `GATE-NEEDS:` it cannot meet and is never named as a gate host.
 
+A gates-only member takes only gated work. Its machine row in nova-config
+names `gates_only`, a comma list of gate words (for example
+`nova-config machine set win1 --gates_only windows`). Fleet sync writes the
+list onto the member's control card (`gates_only`) in the same step that
+adds or releases the member, and a clear carries it. Every place that picks a
+member for a card first narrows the pool to the members whose gates admit it:
+the deal, the next attempt after review, the redeal of a held member's cards,
+and the dealable pool a no-launcher judgment reads. A member with no gates
+admits every card. A gates-only member admits only a card whose
+`GATE-NEEDS:` names one of its gates, so it is never dealt a generic card.
+Reads are generic work, so a gates-only member is never dealt a read.
+After that narrowing, the facts are held against the needs as above. A card
+that every member up refuses by their gates alone waits ready, with a wait
+that names their gates; it raises no judgment, because no need is unmet
+(`tla/GatesOnly.tla`: GenericNeverToGatesOnly, ReadsNeverToGatesOnly, and the
+reversed witnesses nofilter, nogates and readsto).
+
 ## 1. The tables
 
 ```

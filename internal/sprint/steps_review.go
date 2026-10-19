@@ -1807,7 +1807,7 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		if len(up) > 0 && !friend && !byFriend {
 			// a bench card's next attempt goes to a member of its bench alone (bench_deal.go),
 			// one that can launch a route of its tier (launchersOf)
-			ms, why := s.launchersOf(c, nil, onlyBench(up, bench))
+			ms, why := s.launchersOf(c, nil, s.AdmitGatesOnly(c, onlyBench(up, bench)))
 			if len(ms) == 0 && why != "" {
 				// A tier-only draw can see a route no fleet member can launch.
 				// Its eligible friends still receive the next attempt in the tick.

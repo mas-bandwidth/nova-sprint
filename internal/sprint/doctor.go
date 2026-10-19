@@ -102,6 +102,8 @@ type DoctorMachine struct {
 	Seat    string `json:"seat,omitempty"`
 	Width   int    `json:"width"`
 	Default bool   `json:"default,omitempty"`
+	// GatesOnly is the row's gates_only as its comma list (gates_only.go); nil for none.
+	GatesOnly []string `json:"gates_only,omitempty"`
 }
 
 // MemberProbe is what one probe of a member's host found, over the path the fleet reaches it
@@ -1097,7 +1099,7 @@ func DoctorFleetRows(in DoctorInput) (out []DoctorCheck) {
 			w = WidthOfCores(in.Req.Beats[m.Name].Cores)
 		}
 		if w > 0 {
-			want = append(want, SyncMember{Name: m.Name, Width: w})
+			want = append(want, SyncMember{Name: m.Name, Width: w, GatesOnly: m.GatesOnly})
 		}
 	}
 	slices.SortFunc(want, func(a, b SyncMember) int { return strings.Compare(a.Name, b.Name) })

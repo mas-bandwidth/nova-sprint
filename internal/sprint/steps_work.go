@@ -1233,8 +1233,15 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 		// to a member whose facts satisfy every need, and a card no member up satisfies is
 		// never dealt; the deal raises the one judgment naming the need (NGateNeeds,
 		// gateNeedsJudgment), at once, never a silent wait.
+		// a gates-only member (gates_only.go) is dealt only the cards whose GATE-NEEDS
+		// names one of its gates: a card no member up admits waits ready, never a judgment
+		benchPool := members
 		members, gateWhy := s.GateHostPool(c, members)
 		if len(members) == 0 {
+			if gateWhy == "" {
+				p.refuse(c.ID, gatesOnlyWhy(s, benchPool))
+				continue
+			}
 			p.Notes = append(p.Notes, gateNeedsJudgment(c, gateWhy, r.Who, s.Now))
 			continue
 		}
@@ -3576,7 +3583,7 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 			// member at its width takes no more.
 			// a bench card goes to a member of its bench alone: with none of it up it is
 			// withdrawn, and waits ready for its bench (bench_deal.go)
-			if m := rr.nextFree(onlyBench(without(without(up, StagingRefusers(c)), notLaunching(s, up, c)), benchOfWork(s, c)), q, lanes, widths, ""); m != "" {
+			if m := rr.nextFree(s.admitGatesOnlyWork(c, onlyBench(without(without(up, StagingRefusers(c)), notLaunching(s, up, c)), benchOfWork(s, c))), q, lanes, widths, ""); m != "" {
 				rr.moved(m)
 				moves[c.ID] = m
 				q[m]++

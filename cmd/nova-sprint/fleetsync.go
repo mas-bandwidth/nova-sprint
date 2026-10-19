@@ -198,7 +198,7 @@ func (a *app) cmdFleetSync(args []string, stdout, stderr io.Writer) int {
 			}
 		}
 		if w.Member() {
-			want = append(want, sprint.SyncMember{Name: w.Machine, Width: width})
+			want = append(want, sprint.SyncMember{Name: w.Machine, Width: width, GatesOnly: w.GatesOnly})
 			names = append(names, w.Machine)
 		}
 	}
