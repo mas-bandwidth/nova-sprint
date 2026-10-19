@@ -680,6 +680,7 @@ func lateReadCardNamed(s *Snapshot, name, primary string, attempt int, card stri
 	if s.Fleet == nil {
 		return nil
 	}
+	recorded := Split(s.Work.Card(primary).F(FieldLateReadCards))
 	mine := func(rc *Card) bool {
 		return rc != nil && isRead(rc) && !rc.Placed() && rc.F("primary") == primary && rc.F("reader") == name
 	}
@@ -695,7 +696,7 @@ func lateReadCardNamed(s *Snapshot, name, primary string, attempt int, card stri
 			continue
 		}
 		for _, id := range ReadCardGenIDs(primary, a, name, readNextGen(s.Fleet.Cards(), primary, a, name)+readCardLoadWindow) {
-			if rc := s.Fleet.Card(id); mine(rc) {
+			if rc := s.Fleet.Card(id); mine(rc) && !slices.Contains(recorded, rc.ID) {
 				found = rc
 			}
 		}
@@ -709,9 +710,11 @@ func lateReadCardNamed(s *Snapshot, name, primary string, attempt int, card stri
 // or not, counts toward no accept. Its line, "late read by <reader> of attempt <n> at
 // <head12>: <verdict>: <finding>", is written
 //   - on the primary's late reads (FieldLateReads), which its next rework carries into the
-//     next attempt's finding (reworkGiven) and clears, and on its findings (FieldFindings);
-//   - on the work card of the primary's current attempt when one is placed past the read's
-//     attempt: a ready one's take carries it in its packet's finding;
+//     next attempt's finding (reworkGiven) and clears; never on its findings (FieldFindings),
+//     which the bounds read as one line per attempt;
+//   - on the work card of the primary's current attempt when it waits ready past the read's
+//     attempt: its take carries it in its packet's finding (one already working has read its
+//     packet: the rework after it carries the line, and the note tells the seat);
 //   - on the primary's own finding when it waits ready with no work card (the deal copies it);
 //
 // and as a note on the primary (NLateRead). The read's usage, when given, is recorded on
@@ -730,10 +733,10 @@ func lateReadUnit(s *Snapshot, name string, pr, rc *Card, verdict, finding, usag
 			late = append(late, l)
 		}
 	}
+	// never on FieldFindings: the bounds read it as one line per attempt
 	set := map[string]string{
 		FieldLateReads:     findingsLine(append(late, line)),
 		FieldLateReadCards: strings.Join(append(Split(pr.F(FieldLateReadCards)), rc.ID), ","),
-		FieldFindings:      findingsLine(findingsOf(pr, attempt, line)),
 	}
 	appended := func(prev string) string {
 		if strings.TrimSpace(prev) == "" {
@@ -743,7 +746,7 @@ func lateReadUnit(s *Snapshot, name string, pr, rc *Card, verdict, finding, usag
 	}
 	var changes []Change
 	wc := s.Fleet.Placed(WorkCardID(pr.ID, readAttempt(pr)))
-	if wc != nil && readAttempt(pr) > attempt && (wc.Col == Ready || wc.Col == Working) {
+	if wc != nil && readAttempt(pr) > attempt && wc.Col == Ready {
 		changes = append(changes, change(Fleet, setEntry(wc, map[string]string{"finding": appended(wc.F("finding"))})))
 	} else if pr.Col == Ready && readAttempt(pr) > attempt {
 		set["finding"] = appended(pr.F("finding"))

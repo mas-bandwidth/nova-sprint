@@ -97,7 +97,8 @@ func TestLateReadOfAReworkedAttemptIsANote(t *testing.T) {
 		pk := nextPacket(t, w, "s1-1", 2)
 		require.Contains(t, pk.Finding, want, "the next attempt's brief carries the late read")
 		require.Contains(t, pk.Finding, "a.go:1: the first reader's finding", "and the rework's own finding")
-		require.Contains(t, w.s.Work.Card("s1-1").F(FieldFindings), "late read by "+second.F("reader"))
+		require.Contains(t, w.s.Work.Card("s1-1").F(FieldLateReads), want, "kept on the primary for the rework after")
+		require.NotContains(t, w.s.Work.Card("s1-1").F(FieldFindings), "late read", "never on the bounds' one line per attempt")
 		require.Empty(t, openOf(w, NReadBroken, "s1-1"), "a late broken read raises no judgment: the attempt it read is gone")
 
 		// the same report twice is one record

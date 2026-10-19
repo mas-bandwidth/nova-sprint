@@ -61,6 +61,9 @@ func TestTwoReadsReworkWaitsForBoth(t *testing.T) {
 		require.Contains(t, pk.Finding, "read by "+second.F("reader")+": broken: b.go:2: the second reader's finding")
 		require.Contains(t, pk.Fix, firstFinding, "the fix is every broken finding")
 		require.Contains(t, pk.Fix, "b.go:2: the second reader's finding")
+		pr := w.s.Work.Card("s1-1")
+		require.NotContains(t, pr.F("finding"), "read by ", "the primary keeps the plain finding the bounds compare")
+		require.NotContains(t, pr.F(FieldFindings), "read by ")
 	})
 
 	t.Run("the second is handed back: the rework runs", func(t *testing.T) {

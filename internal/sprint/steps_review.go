@@ -1724,7 +1724,12 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		// the finding and why ride on the primary too: a rework with no member up deals later
 		// (start), from the primary, and its child is told all the same
 		given := reworkGiven(s, c)
-		finding := given["finding"]
+		// the primary keeps the broken reads' own finding: the bounds compare it (AtBriefBound,
+		// AtIdenticalFindings, FindingKey), so the readers' named lines and the late reads ride
+		// on the next attempt's work card (given) and, dealt later, on the primary's why
+		// (tla/ReadCards.tla Rework, NoFindingLost)
+		plain := cutText(brokenFindings(s, c), MaxCardTextBytes)
+		finding := plain
 		findingAttempt := c.F("attempt")
 		if finding == "" && c.F(FieldRuleRefused) == RefusedPaths && c.F("finding") != "" {
 			finding = c.F("finding")
@@ -1744,7 +1749,7 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		}
 		// what this attempt found, kept for the cap's judgment (brief_bound.go, FieldFindings):
 		// its readers' finding, else the report of its failed work, else its bound's class
-		found := given["finding"]
+		found := plain
 		if found == "" {
 			found = ownFix(s, c)
 		}
@@ -1873,6 +1878,11 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 				later = benchWaits(bench) // no member of its bench is up (bench_deal.go)
 			case len(up) > 0:
 				later = "no fleet member has room: the tick deals it when one has"
+			}
+			if given["finding"] != plain {
+				// dealt later from the primary (its finding and why): the readers' named lines
+				// and the late reads ride on its why, the finding staying the bounds' own
+				set["why"] = cutText(given["why"]+"\n"+given["finding"], MaxCardTextBytes)
 			}
 			u = Unit{Key: c.ID, Stream: c.Row, Changes: append(retire, change(Work, moveEntry(c, c.Row, Ready, set, append(unset, "result")...))),
 				Moved: c.ID + " review -> ready (rework; " + later + ")"}
@@ -2258,8 +2268,14 @@ func readFindingsByReader(s *Snapshot, c *Card) []string {
 		return nil
 	}
 	_, oks, brk := friendReadLive(s, c)
+	var legacy []*Card // the readers table's broken reads at the attempt and head (brokenFindings)
+	for _, rc := range s.Readers.Of(c.ID) {
+		if rc.Col == Broken && rc.Int("attempt") == c.Int("attempt") && (rc.F("head") == "" || rc.F("head") == c.F("head")) {
+			legacy = append(legacy, withField(rc, "reader", rc.Row))
+		}
+	}
 	var out []string
-	for _, rc := range append(append([]*Card(nil), brk...), oks...) {
+	for _, rc := range append(append(legacy, brk...), oks...) {
 		f := strings.TrimSpace(rc.F("finding"))
 		if f == "" {
 			continue
