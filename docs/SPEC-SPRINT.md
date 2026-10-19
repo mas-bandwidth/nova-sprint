@@ -9888,16 +9888,22 @@ runs in parallel, and the lander lands the two in order**:
   card IDs), read through `sprint.SoftDepsOf` and `sprint.LandOrderBlocked`
   (`internal/sprint/soft_deps.go`). No table column is added (`internal/sprint/TABLES.lock`).
   `nova-sprint card <id>` prints `soft: <ids>` on its own line when set.
-- **Landing order and conflict**: A soft dependency orders only among cards that are
-  both queued to merge. When both A and B are in the merging column of the stream,
+- **Landing order and conflict**: LAND-AFTER is judged once, at the landing mark before
+  anything is pushed, and a pushed batch is never refused for it after the push: the mark
+  records the order decision, and a target that queues between the mark and the report
+  does not undo it. A soft dependency otherwise orders only among cards that are both
+  queued to merge. When both A and B are in the merging column of the stream,
   `MergeSoftOrder` places A ahead of B in the batch even if B was queued earlier or has a
   higher score. When A is not in merging (ready, working, in review, or in another
-  stream), the soft dependency is ignored for this batch: B lands, and A re-merges onto
-  it later (a true dependency is a need, `--needs`). A card that cannot be placed (B,
-  when A is queued but held from this batch) is skipped for this batch and named with
-  the reason `<B>: soft dependency on <A> not landed; <B> is skipped this batch`, and the
-  batch lands every other queued card; the stream is never refused whole for it. When B conflicts at the base tip after A lands, B takes the
+  stream), the soft dependency is order-only: B lands, and A re-merges onto it later (a
+  true dependency is a need, `--needs`). A card whose head is built on an unlanded A,
+  though, is left out of the cut before any merge or `PATHS`/E12 check: it stays merging
+  and queued, named `<B>: built on <A>, which has not landed; <B> is skipped this batch`,
+  and a landed or dropped A releases it (`tla/SoftDependency.tla` `BuiltOnHeld`). A card
+  that cannot be placed (B, when A is queued but held from this batch) is skipped for this
+  batch and named with the reason `<B>: soft dependency on <A> not landed; <B> is skipped this batch`, and the batch lands every other queued card; the stream is never refused
+  whole for it. When B conflicts at the base tip after A lands, B takes the
   ordinary refused-head rework at the base tip and then lands after A. If A is dropped
   or replaced (`drop`, `relink`, `replace`), B's soft dependency on A is released or
   re-pointed so B never waits on a card off the table (`tla/SoftDependency.tla`:
-  `SoftLandsInOrder`, `SoftIsOrderOnly`, `HeldNeverEmptiesBatch`, `SoftNeverBlocksDeal`, `BothLand`, `DropReleasesOrRelinks`).
+  `SoftLandsInOrder`, `SoftIsOrderOnly`, `HeldNeverEmptiesBatch`, `SoftNeverBlocksDeal`, `BothLand`, `DropReleasesOrRelinks`, `BaseRecorded`, `BaseSoftOrder`).
