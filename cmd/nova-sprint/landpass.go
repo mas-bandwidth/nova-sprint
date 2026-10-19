@@ -320,6 +320,7 @@ func (l *lander) openStream(s *sprint.Snapshot, stream string) ([]landCard, bool
 			if cb.Ref != "" {
 				lc.base = cb.Ref
 			}
+			lc.linear = sprint.IsLinearBase(s, lc.repo, lc.base)
 			if sprint.DeadBaseHeld(s, pr, lc.base) || slices.ContainsFunc(sprint.Split(pr.F("needs")), func(n string) bool { return held[n] }) || slices.ContainsFunc(sprint.SoftDepsOf(s, pr), func(n string) bool { return held[n] }) {
 				held[c.ID] = true
 				continue
@@ -1320,6 +1321,17 @@ func (l *lander) land(ctx context.Context, j *landJob, pushed []*landJob) {
 		if why := f.basePinnedWhy(ctx, j.cards[:len(j.merged)]); why != "" {
 			j.refuse(why)
 			return
+		}
+		if len(j.cards) > 0 && j.cards[0].linear {
+			merges, err := f.git(ctx, j.dir, "rev-list", "--min-parents=2", j.baseSha+".."+j.tip)
+			if err != nil {
+				j.refuse("the linear base could not be checked for merge commits: " + firstLine("", err) + "; nothing pushed")
+				return
+			}
+			if fields := strings.Fields(merges); len(fields) > 0 {
+				j.refuse("the linear base " + j.cards[0].repo + ":" + b.Base + " takes no merge commit; " + fields[0] + " is one; nothing pushed")
+				return
+			}
 		}
 		f.stage("push", "git push")
 		start = time.Now()

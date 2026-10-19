@@ -4364,6 +4364,24 @@ cards had none outstanding.
 
 ## 7. Merging
 
+### Linear bases
+
+`nova-sprint set --linear-bases owner/name:branch,...` marks repository bases whose
+landing history must remain linear; `default` removes the setting. Repository names use
+the same normalized owner/name comparison as protected landing. On a marked base the
+lander squashes an ordinary card to one single-parent commit. A forward-merge card is
+replayed in source first-parent order, using mainline 1 for merge commits, and its own
+remaining tree change is one final card commit. Each commit records `Nova-Card` and
+`Nova-Linear-Source`; the newest source trailer is the next run's resume cursor and an
+already-recorded card is skipped.
+
+Before pushing, the lander refuses any merge commit between the old base and batch tip.
+A conflict aborts the replay and pushes nothing, and the eventual push remains a normal
+non-forced ref update. [LandLinear.tla](../tla/LandLinear.tla) models replay, refusal,
+crash and resume. GitHub's require-linear-history protection is enabled only after this
+code has landed, a release carrying it is installed, and the repository main is present
+in `--linear-bases`; enabling protection earlier would refuse the existing merge landing.
+
 1. In work order, never random: the head of the stream's queued cell first.
 2. In batches onto the sprint branch, the branch every stream lands on; the
    batch is proved there. Promotion alone takes the sprint branch to the

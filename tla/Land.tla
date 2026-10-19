@@ -4,6 +4,7 @@
 \* reports it to the store through the merge step. The push and the report
 \* are two operations on two systems; this module is that sequence, the
 \* outside events that can come between them, and the fences land keeps.
+\* LandLinear is the sibling model for replay onto a configured linear base.
 \*
 \* A HEAD. A card keeps its id and its epoch across attempts: a return, a
 \* rework and a new accept put the same id back in the queue at a new head.

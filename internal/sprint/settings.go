@@ -286,6 +286,7 @@ func stronger(a, b string) string {
 // AttemptsCap).
 type SetReq struct {
 	ReworkPriority    string   `json:",omitempty" prop:"rework_priority"`
+	LinearBases       string   `json:",omitempty" prop:"linear_bases"`
 	Streams           []string `json:",omitempty"`
 	ReadTier          string   `json:",omitempty" prop:"read_tier"`
 	DealtMax          string   `json:",omitempty" prop:"dealt_max"`
@@ -366,6 +367,9 @@ func Set(s *Snapshot, r SetReq) Plan {
 	}
 	if r.ReadTier != "" && r.ReadTier != ReadTierDefault && !slices.Contains(readTiers, r.ReadTier) {
 		why = append(why, "--read-tier wants "+strings.Join(readTiers, " or ")+", or "+ReadTierDefault+" to take it off; found "+r.ReadTier)
+	}
+	if r.LinearBases != "" && !linearBasesValid(r.LinearBases) {
+		why = append(why, "--linear-bases wants owner/name:branch pairs, comma separated, or default to take them off; found "+r.LinearBases)
 	}
 	if r.DealtMax != "" && r.DealtMax != ReadTierDefault {
 		if d, err := time.ParseDuration(r.DealtMax); err != nil || d <= 0 {
@@ -674,6 +678,7 @@ func Set(s *Snapshot, r SetReq) Plan {
 	// default for none (DealtMax, readTierSetting)
 	var moved []string
 	kvs := [][2]string{
+		{PropLinearBases, r.LinearBases},
 		{PropReadTier, r.ReadTier},
 		{PropDealtMax, r.DealtMax},
 		{PropGoLanes, r.GoLanes},

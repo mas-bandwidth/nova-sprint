@@ -4314,6 +4314,7 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	reworkPriority := fs.String("rework-priority", "", "the priority a normal or low card gets when its next attempt opens: fix (the default), high, or keep to retain its level")
 	reads := fs.String("reads", "", "the ok reads at its head every card in review needs, whatever its tier: 0 (no read: a primary whose work finished LAND is accepted on it), 1 or 2; default: one for a flash card, two above")
 	landBacklog := fs.String("land-backlog-bound", "", "the deal throttle on landing: while more primaries than this whole number are merging, the tick's deal starts no new work attempt (reads, fixes and next attempts still deal; nothing working is cut); 0 or off never throttles, and default is off")
+	linearBases := fs.String("linear-bases", "", "repository bases whose landed history is replayed as one single-parent commit per card: owner/name:branch pairs, comma separated, or default to take them off")
 	reviewBacklog := fs.String("review-backlog-bound", "", "the deal throttle on review: while more primaries than this whole number are in review, the tick's deal starts no new work attempt, as --land-backlog-bound says; 0 or off never throttles, and default is off")
 	pegged := fs.String("pegged-bound", "", fmt.Sprintf("how long a member up with no card working may beat at %.0f%% load or more before it is a judgment to the coordinator (member-pegged, once an episode): a duration, or default (%s)", sprint.HeavyLoadPercent, sprint.PeggedBoundDefault))
 	if a.onSetFlags != nil {
@@ -4330,7 +4331,7 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "set", err.Error())
 	}
-	if *tier == "" && *dealt == "" && *lanes == "" && *review == "" && *merging == "" && *fleet == "" && *readyAlarm == "" && *attempts == "" && *idle == "" && *landingStallBound == "" && *seatSilentTo == "" && *fleetWork == "" && *friendsWork == "" && *fleetTiers == "" && *friendsTiers == "" && *finish == "" && *base == "" && *readCards == "" && *reworkPriority == "" && *reads == "" && *pegged == "" && *landBacklog == "" && *reviewBacklog == "" {
+	if *tier == "" && *dealt == "" && *lanes == "" && *review == "" && *merging == "" && *fleet == "" && *readyAlarm == "" && *attempts == "" && *idle == "" && *landingStallBound == "" && *seatSilentTo == "" && *fleetWork == "" && *friendsWork == "" && *fleetTiers == "" && *friendsTiers == "" && *finish == "" && *base == "" && *readCards == "" && *reworkPriority == "" && *reads == "" && *pegged == "" && *landBacklog == "" && *reviewBacklog == "" && *linearBases == "" {
 		s, err := st.Load(context.Background(), []string{sprint.Work}, nil)
 		if err != nil {
 			return a.readFailed("set", err, stderr)
@@ -4338,7 +4339,7 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 		printSettings(stdout, s, c.json)
 		return 0
 	}
-	step := store.SetStep(sprint.SetReq{ReadTier: *tier, DealtMax: *dealt, GoLanes: *lanes, Attempts: *attempts, FriendIdle: *idle, LandingStallBound: *landingStallBound, SeatSilentTo: *seatSilentTo,
+	step := store.SetStep(sprint.SetReq{ReadTier: *tier, DealtMax: *dealt, GoLanes: *lanes, Attempts: *attempts, FriendIdle: *idle, LandingStallBound: *landingStallBound, SeatSilentTo: *seatSilentTo, LinearBases: *linearBases,
 		AlarmReview: *review, AlarmMerging: *merging, AlarmFleet: *fleet, AlarmReady: *readyAlarm,
 		Fleet: *fleetWork, Friends: *friendsWork, FleetTiers: *fleetTiers, FriendsTiers: *friendsTiers, ReadCards: *readCards, Reads: *reads, ReworkPriority: *reworkPriority,
 		LandBacklogBound: *landBacklog, ReviewBacklogBound: *reviewBacklog, Who: c.actor})
