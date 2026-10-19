@@ -4561,8 +4561,12 @@ the head lands on the new base. The new base must contain the old one, checked b
 `git merge-base --is-ancestor <from> <to>` in `--repo-dir` (one check for the
 operation); a base that does not is refused, nothing changed. A card landed, a
 sentinel, and a card whose `BASE:` names another branch are left alone. Each card
-is one line in the log and one `MOVED` line, naming `BASE <from> -> <to>`. The
-preview (`--dry-run`) reports the plan without writing it. A land whose fetch of
+ is one line in the log and one `MOVED` line, naming `BASE <from> -> <to>`. The
+ preview (`--dry-run`) reports the plan without writing it.
+
+A coordinator can record a manual forward merge of a base with `nova-sprint rebase --record-forward-merge --repo <owner/name> --repo-dir <clone> --from <source> --to <base> --sha <full-merge-commit> --reason <text>`. The verb verifies the repository origin, merge commit, source parent and exact current destination tip, computes behind against dev, and reruns the existing brief-at-base checks for every waiting, ready or review card naming that repository/base. It refreshes the destination ref after checks and atomically fences the write to the exact card IDs, streams and brief hashes checked. The durable base tip advances in the same stream-control record used by the outside-push gate; the event names repository, source branch and merge SHA. Each affected card records the forward-merge tip and fresh behind count. A card with an unchecked tip is refused by deal until the recheck succeeds. The verified merge and pending marks are recorded before the brief recheck, so a failed check or moved base leaves cards blocked until the check is retried; a changed card leaves the exact checked set fenced. This extends the existing outside-base provenance path; it does not create a second tip store. `tla/Land.tla` models the forward-merge record and the per-card recheck (ForwardMerge, Recheck) and checks the invariant `NoDealAgainstStaleTip`: no card is dealt against a tip older than the base's recorded tip. `tla/MCLandBrokenStaleTip.cfg` is the reversed witness that finds the stale deal, and `tla/MCLandForwardMerge.cfg` is the control instance.
+
+A land whose fetch of
 the base alone finds the branch not on origin is the dead-base fact (section 7, a
 dead base): one judgment per merging card, `a merging card names a base not on origin`, and the stream goes on. The merge step still raises `the base branch is gone` when asked with that fact (`MergeReq.MissingBase`, `sprint.MissingBaseJudgment`),
 naming every unlanded card on that base and the rebase line, one decision for every
