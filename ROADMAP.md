@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (221)
+- [The sprint system](#the-sprint-system) (222)
 - [Setup, release and operations](#setup-release-and-operations) (72)
 - [Docs, models and the repository](#docs-models-and-the-repository) (25)
 - [Friend AIs](#friend-ais) (22)
@@ -1851,6 +1851,16 @@ When a card's head no longer merges onto its stream's tip, the lander merges the
 Target: v1.7
 
 From: the owner, 2026-10-17: these bad merges should not become fixes; they should be done in the merge step
+
+### A route can be marked reads-only
+
+A route can be marked reads-only, so it takes read cards and never work cards. Today a route belongs to one tier and is shared by work and reads (tier set --routes adds it to work dealing too), so a model good for reading but weak at code, such as Ultramarine 1 Flash, cannot be tried on reads alone. Proposal: a reads_only flag on the route row that the work deal skips and the read ask honours, with a route per tier where the tier has none (frontier has no tier row today).
+
+Why it waits: Glenn 2026-10-18: run Ultramarine 1 Flash on reads at every tier; blocker 3 of the trial, no reads-only route placement.
+
+Target: v1.9
+
+From: the owner, Glenn, 2026-10-18
 
 ## Setup, release and operations
 

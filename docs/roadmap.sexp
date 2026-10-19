@@ -4352,7 +4352,7 @@
    :why "the page is the owner's; its idle behaviour is his to state"
    :origin "the cold read of #490, 2026-10-18")
   ; Moved out of the sprint on 2026-10-18: v19, target v1.9
-  (item "v19-route-reads-only" :group "routes" :area "nova-config"
+  (item "v19-route-reads-only" :group "sprint" :area "nova-config"
    :title "A route can be marked reads-only"
    :text "A route can be marked reads-only, so it takes read cards and never work cards. Today a route belongs to one tier and is shared by work and reads (tier set --routes adds it to work dealing too), so a model good for reading but weak at code, such as Ultramarine 1 Flash, cannot be tried on reads alone. Proposal: a reads_only flag on the route row that the work deal skips and the read ask honours, with a route per tier where the tier has none (frontier has no tier row today)."
    :why "Glenn 2026-10-18: run Ultramarine 1 Flash on reads at every tier; blocker 3 of the trial, no reads-only route placement."
