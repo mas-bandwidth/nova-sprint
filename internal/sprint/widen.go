@@ -47,11 +47,12 @@ const WidenBlocked = "outside PATHS and not adjacent: "
 
 // What makes a file outside PATHS adjacent to the change (WidenAdjacent).
 const (
-	AdjTests    = "the same package's tests"
-	AdjTestdata = "the same package's testdata"
-	AdjLedger   = "a ledger"
-	AdjDocs     = "docs a class test reads"
-	AdjNamed    = "the HOLD names it with its reason"
+	AdjTests       = "the same package's tests"
+	AdjSamePackage = "the same package's source"
+	AdjTestdata    = "the same package's testdata"
+	AdjLedger      = "a ledger"
+	AdjDocs        = "docs a class test reads"
+	AdjNamed       = "the HOLD names it with its reason"
 )
 
 // ledgerDir holds the shrink-only ledgers the class tests read (docs/STANDARD.md).
@@ -76,8 +77,10 @@ func WidenFiles(brief, text string, hold bool) []WidenFile {
 }
 
 // WidenAdjacent is why file f is adjacent to a change inside paths: a test file of a package
-// PATHS name, a file under that package's testdata, a ledger under internal/ci/testdata, a
-// markdown file under docs/ or an AGENTS.md map (the docs the class tests read), or, in a
+// PATHS name, another source file of a package a concrete PATHS file names (same directory
+// only: a subdirectory is another package, and a directory entry covers its own files while a
+// glob lends none), a file under that package's testdata, a ledger under internal/ci/testdata,
+// a markdown file under docs/ or an AGENTS.md map (the docs the class tests read), or, in a
 // HOLD, a file named with its reason (namedWithReason); "" when none holds.
 func WidenAdjacent(paths []string, f, text string, hold bool) string {
 	dir := path.Dir(f)
@@ -90,9 +93,22 @@ func WidenAdjacent(paths []string, f, text string, hold bool) string {
 			return gd == d || hygiene.MatchGlob(gd, d)
 		})
 	}
+	samePackageSource := func() bool {
+		if !strings.HasSuffix(f, ".go") || strings.HasSuffix(f, "_test.go") {
+			return false
+		}
+		return slices.ContainsFunc(paths, func(g string) bool {
+			if g == "" || strings.HasSuffix(g, "/") || strings.ContainsAny(g, "*?[{") {
+				return false
+			}
+			return path.Dir(g) == dir
+		})
+	}
 	switch {
 	case strings.HasSuffix(f, "_test.go") && pkg(dir):
 		return AdjTests
+	case samePackageSource():
+		return AdjSamePackage
 	case strings.Contains(f, "/testdata/") && pkg(strings.SplitN(f, "/testdata/", 2)[0]):
 		return AdjTestdata
 	case strings.HasPrefix(f, ledgerDir):
