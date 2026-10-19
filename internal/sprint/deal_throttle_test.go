@@ -34,15 +34,12 @@ func throttleWorld(t *testing.T, working, merging int) (*world, FriendSeat) {
 	return w, amy
 }
 
-// dealTick runs the tick's deal once with amy's seat and applies its plan; the throttle's own
-// refusal is the only refusal it may carry.
+// dealTick runs the tick's deal once with amy's seat and applies its plan: the throttle
+// refuses nothing, so the plan carries no refusal.
 func dealTick(t *testing.T, w *world, amy FriendSeat) Plan {
 	t.Helper()
 	p, _ := tickDealFixture(w.s, TickReq{Friends: workerSeatFixtures([]FriendSeat{amy})})
-	for _, r := range p.Refused {
-		require.Equal(t, "throttle", r.Key, "refused: %v", p.Refused)
-	}
-	return w.do(p)
+	return w.must(p)
 }
 
 // dealtTo says the primary has a work card at its attempt on amy's row.
@@ -67,20 +64,13 @@ func TestTheDealStopsNewWorkWhileLandingBacksUp(t *testing.T) {
 	require.True(t, on, "merging 3 is above the land bound 2")
 	assert.Contains(t, why, "3 primaries merging, above the land backlog bound of 2")
 
-	p := dealTick(t, w, amy)
+	dealTick(t, w, amy)
 	assert.Equal(t, Ready, w.s.StateOf("s2-1"), "a new work attempt is not started")
 	assert.Equal(t, Ready, w.s.StateOf("s2-2"), "nor the second")
 	assert.False(t, dealtTo(w, "s2-1", "amy"))
 	assert.True(t, dealtTo(w, "s2-3", "amy"), "the fix card is dealt in the same tick")
 	assert.Equal(t, []string{"s1-1"}, friendReads(w, "amy"), "the read is placed in the same tick")
-	var refusal string
-	for _, r := range p.Refused {
-		if r.Key == "throttle" {
-			refusal = r.Why
-		}
-	}
-	assert.Contains(t, refusal, "2 new work cards held in ready", "one refusal names the held cards")
-	assert.Contains(t, refusal, "above the land backlog bound of 2")
+	assert.Equal(t, 2, throttledReady(w.s), "two new work cards held in ready")
 	assert.Contains(t, ThrottleLine(w.s.Work.Props(), 1, 3), "3 primaries merging, above the land backlog bound of 2", "where shows the throttle as a line")
 
 	// the ready-over part: the held card is explained by the throttle and raises nothing
@@ -88,6 +78,16 @@ func TestTheDealStopsNewWorkWhileLandingBacksUp(t *testing.T) {
 	_, rw := w.s.readyWhy(w.s.Work.Card("s2-1"))
 	assert.Contains(t, rw, "the deal starts no new work while landing backs up")
 	assert.Empty(t, readyOverConds(w.s, TickReq{}), "a throttled card is no ready-over alarm")
+	// nor stalled by the no-stall rule, nor a friend's empty-row wait, nor a doctor FAIL
+	for _, f := range Unheld(HeldState{Snap: w.s, Running: true}, w.s.Now) {
+		assert.NotEqual(t, "s2-1", f.Subject, "a throttled card is not stalled: %+v", f)
+	}
+	for _, iw := range cardsWaitingFor(w.s, amy, nil) {
+		assert.NotContains(t, iw.phrase, "s2-1", "a throttled card is no work waiting for an idle friend")
+	}
+	assert.Equal(t, "throttle", ReadyClass(rw), "the doctor classes it as the throttle's, a WARN")
+	// a recut twin is a redo, never new work
+	assert.False(t, NewWorkAttempt(&Card{ID: "x", Fields: map[string]string{FieldReplaces: "y"}}))
 }
 
 // TestTheThrottleDealsFixesAndReadsAndKeepsWhatIsInFlight: while the throttle stands, a

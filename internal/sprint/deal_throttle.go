@@ -113,7 +113,8 @@ func (s *Snapshot) WorkThrottled() (bool, string) {
 // level (blocker, critical, fix; its set level, as the ladder orders it, cardRank), and it
 // is not a read card. Only such a card is held by the throttle. tla/DealThrottle.tla IsNew.
 func NewWorkAttempt(c *Card) bool {
-	if c == nil || c.F("kind") == "read" || IsSentinel(c) || c.Int("attempt") > 0 {
+	// a recut twin (FieldReplaces, twins.go) is a redo of its brief, never new work
+	if c == nil || c.F("kind") == "read" || IsSentinel(c) || c.Int("attempt") > 0 || c.F(FieldReplaces) != "" {
 		return false
 	}
 	switch c.F(FieldPriority) {
@@ -135,34 +136,48 @@ func (s *Snapshot) throttleHolds(c *Card) (bool, string) {
 	return true, throttleWhy(why)
 }
 
+// throttleHeld is throttleHolds' yes alone.
+func throttleHeld(s *Snapshot, c *Card) bool {
+	h, _ := s.throttleHolds(c)
+	return h
+}
+
+// throttledReady is the ready primaries the throttle holds now (none while it does not stand).
+func throttledReady(s *Snapshot) int {
+	if on, _ := s.WorkThrottled(); !on {
+		return 0
+	}
+	n := 0
+	for _, c := range s.Work.Column(Ready) {
+		if !IsHeld(c) && NewWorkAttempt(c) {
+			n++
+		}
+	}
+	return n
+}
+
 // throttleWhy is the sentence for a new work card the throttle holds in ready.
 func throttleWhy(why string) string {
 	return "the deal starts no new work while landing backs up (" + why + "): it stays ready and is dealt on the first tick the count is at or under its bound; reads, fixes and next attempts still deal"
 }
 
 // throttledOut is the tick deal's filter (TickDeal, friends and machines alike): the ready
-// cards with every new work attempt taken out while the throttle stands, and the one
-// refusal that names the held cards' count and the reason (none when nothing is held). It
-// writes no card: a card working or dealt is never touched (tla/DealThrottle.tla
-// InFlightNeverCut).
-func throttledOut(s *Snapshot, ready []*Card) ([]*Card, []Refusal) {
-	on, why := s.WorkThrottled()
-	if !on {
-		return ready, nil
+// cards with every new work attempt taken out while the throttle stands. It writes no card
+// and refuses nothing (a refusal every tick would keep an idle tick from being idle): a card
+// working or dealt is never touched (tla/DealThrottle.tla InFlightNeverCut), and a held
+// card's cause is told where a ready card is explained (readyWhy, the no-stall rule, the
+// doctor, where's throttle line).
+func throttledOut(s *Snapshot, ready []*Card) []*Card {
+	if on, _ := s.WorkThrottled(); !on {
+		return ready
 	}
 	out := make([]*Card, 0, len(ready))
-	held := 0
 	for _, c := range ready {
-		if NewWorkAttempt(c) {
-			held++
-			continue
+		if !NewWorkAttempt(c) {
+			out = append(out, c)
 		}
-		out = append(out, c)
 	}
-	if held == 0 {
-		return out, nil
-	}
-	return out, []Refusal{{Key: "throttle", Why: fmt.Sprintf("%d new work cards held in ready: %s", held, throttleWhy(why))}}
+	return out
 }
 
 // ThrottleLine is where's one line for the throttle while it stands, "" else: the reason
