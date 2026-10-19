@@ -25,6 +25,12 @@ const (
 	// PropFriendIdle is the work table's property: how long a friend holding cards may
 	// show no session activity before it is an alarm, a duration.
 	PropFriendIdle = "friend_idle"
+	// PropReadRoutes is the work table's property: the routes reserved for reads (set
+	// --read-routes, a comma list of route names, or default for none). A route named
+	// here is never drawn for a work attempt, and a read of its tier draws it first
+	// (route.go readsOnly, readRouteOf; tla/RouteIndex.tla WorkNeverOnReadsOnly,
+	// ReadTakesReadsOnly).
+	PropReadRoutes = "read_routes"
 	// PropReadTier is the work table's property: the sprint's read tier.
 	PropReadTier = "read_tier"
 	// FieldReadTier is a stream's control card's field: the stream's read tier,
@@ -335,6 +341,9 @@ type SetReq struct {
 	// Reads is the reads every card in review needs (PropReadsNeeded): 0, 1, 2, 3, or
 	// default (each card's own rule, ReadsNeeded).
 	Reads string `json:",omitempty" prop:"reads_needed"`
+	// ReadRoutes is the routes reserved for reads (PropReadRoutes): route names comma
+	// separated, each a route the store holds, or default for none.
+	ReadRoutes string `json:",omitempty" prop:"read_routes"`
 	// Base, with Streams, re-points every card of the stream not yet landed to
 	// another base branch (stream set --base, streamSetBaseCards).
 	Base string `json:",omitempty"`
@@ -490,6 +499,18 @@ func Set(s *Snapshot, r SetReq) Plan {
 			why = append(why, "--rework-priority is the sprint's, not a stream's: nova-sprint set --rework-priority "+r.ReworkPriority)
 		}
 	}
+	if r.ReadRoutes != "" {
+		if len(r.Streams) > 0 {
+			why = append(why, "--read-routes is the sprint's, not a stream's: nova-sprint set --read-routes "+r.ReadRoutes)
+		}
+		if r.ReadRoutes != ReadTierDefault {
+			for _, name := range strings.Split(r.ReadRoutes, ",") {
+				if !slices.ContainsFunc(s.Routes, func(rt Route) bool { return rt.Name == name }) {
+					why = append(why, "--read-routes wants route names the store holds, comma separated, or "+ReadTierDefault+" for none; "+strconv.Quote(name)+" is no route (nova-sprint routes)")
+				}
+			}
+		}
+	}
 	if r.Reads != "" {
 		if r.Reads != ReadTierDefault && !slices.Contains(readsWords, r.Reads) {
 			why = append(why, "--reads wants 0, 1, 2, 3 or "+ReadTierDefault+" (one for a flash card, two above); found "+r.Reads)
@@ -501,8 +522,8 @@ func Set(s *Snapshot, r SetReq) Plan {
 	if r.Base != "" && len(r.Streams) == 0 {
 		why = append(why, "--base is a stream's, not the sprint's: nova-sprint stream set <s> --base <branch>")
 	}
-	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Display == "" && r.Prose == "" && r.SeatAccept == "" && r.DefaultTier == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.LandingStallBound == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.ReworkPriority == "" {
-		why = append(why, "nothing to set: --rework-priority, --read-tier, --read-cards, --reads, --prose, --base, --dealt-max, --go-lanes, --attempts, --friend-idle, --landing-stall-bound, --drift-commits, --drift-hours, --fleet, --friends, --fleet-tiers, --friends-tiers or an --alarm-... threshold")
+	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Display == "" && r.Prose == "" && r.SeatAccept == "" && r.DefaultTier == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.LandingStallBound == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.ReadRoutes == "" && r.ReworkPriority == "" {
+		why = append(why, "nothing to set: --rework-priority, --read-tier, --read-cards, --reads, --read-routes, --prose, --base, --dealt-max, --go-lanes, --attempts, --friend-idle, --landing-stall-bound, --drift-commits, --drift-hours, --fleet, --friends, --fleet-tiers, --friends-tiers or an --alarm-... threshold")
 	}
 	if len(r.Streams) > 0 && r.GoLanes != "" {
 		why = append(why, "--go-lanes is the sprint's, not a stream's: nova-sprint set --go-lanes "+r.GoLanes)
@@ -665,6 +686,7 @@ func Set(s *Snapshot, r SetReq) Plan {
 		{PropFriendsTiers, sideTiers[PropFriendsTiers]},
 		{PropReadCards, r.ReadCards},
 		{PropReadsNeeded, r.Reads},
+		{PropReadRoutes, r.ReadRoutes},
 		{PropReworkPriority, r.ReworkPriority},
 	}
 	for _, a := range alarmProps {
@@ -706,6 +728,8 @@ func orDefault(v, name string) string {
 		return "default (on: the deal asks every read at once)"
 	case name == PropReadsNeeded:
 		return "default (one for a flash card, two above)"
+	case name == PropReadRoutes:
+		return "default (no route reserved for reads)"
 	}
 	return "default (each card's own tier)"
 }

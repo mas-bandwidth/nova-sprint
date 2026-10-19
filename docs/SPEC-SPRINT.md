@@ -3858,7 +3858,14 @@ is served. `card` and `where --json --rows` show the tier it is on.
   the reader's JOB.md names it. It is drawn at that tier's rolling index on the
   fleet table, which the deal and the reads share and the ask moves once a
   read (`internal/sprint/route.go`, readRouteOf;
-  tla/RouteIndex.tla, THE READS); its packet hands the reader that route, so a
+  tla/RouteIndex.tla, THE READS). **Reads-only routes** (`nova-sprint set --read-routes
+  <route,...|default>`, the work table's `read_routes`; v19-route-reads-only, on the v1.6
+  line): a route named there is never drawn for a work attempt, even when a tier's array
+  names it (`sprint.readsOnly`, servedRoute, tierArray; WorkNeverOnReadsOnly), and a read of
+  its tier draws one of them first, at the tier's index, while one is enabled and neither
+  avoided nor resting, else the tier's shared routes as before (ReadTakesReadsOnly; reversed
+  witnesses MCRouteIndexBrokenReadsOnlyBlind.cfg and MCRouteIndexBrokenReadShared.cfg;
+  `TestAReadsOnlyRouteTakesReadsAndNeverWork`). Its packet hands the reader that route, so a
   reader loop needs no `--model`, and a reader started with `--model`,
   `--tokens` and `--deadline` runs its reads on those. A store with no route
   asks with none, and the reader runs its own. **A read needs a reader, not a

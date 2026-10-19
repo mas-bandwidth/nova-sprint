@@ -271,7 +271,10 @@ func MergeStep(r sprint.MergeReq) Step {
 // SetStep is the coordinator's settings: the sprint's dealt bound and read tier, or
 // a stream's read tier (sprint.Set).
 func SetStep(r sprint.SetReq) Step {
-	return Step{Args: ArgsOf(r), Verb: "set", Load: tables(sprint.Work, sprint.Merge), Bars: true,
+	// --read-routes names routes, checked against the routes the store holds: the step
+	// reads them then (Routes covers the bars)
+	routes := r.ReadRoutes != "" && r.ReadRoutes != sprint.ReadTierDefault
+	return Step{Args: ArgsOf(r), Verb: "set", Load: tables(sprint.Work, sprint.Merge), Bars: true, Routes: routes,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Set(s, r) }}
 }
 

@@ -369,12 +369,63 @@ func frontierWaits(tier, why string) string {
 // (tla/RouteIndex.tla, Arr).
 func (s *Snapshot) tierArray(tier string) []string {
 	if a := s.Tiers[tier]; len(a) > 0 {
-		return a
+		if s.readRoutesProp() == "" || !slices.ContainsFunc(a, s.readsOnly) {
+			return a
+		}
+		// a reads-only route named in the shared array is left out of it: work never
+		// draws it (WorkNeverOnReadsOnly), and a read draws it from the read routes
+		return slices.DeleteFunc(slices.Clone(a), s.readsOnly)
 	}
 	var out []string
 	for _, r := range s.Routes {
-		if r.Tier == tier && r.Enabled {
+		if r.Tier == tier && r.Enabled && !s.readsOnly(r.Name) {
 			out = append(out, r.Name)
+		}
+	}
+	return out
+}
+
+// readRoutesProp is the sprint's read-routes setting (PropReadRoutes): the routes
+// reserved for reads, comma separated; "" when none is set or it is default.
+func (s *Snapshot) readRoutesProp() string {
+	if s == nil || s.Work == nil {
+		return ""
+	}
+	v, _ := s.Work.Prop(PropReadRoutes)
+	if v == ReadTierDefault {
+		return ""
+	}
+	return v
+}
+
+// readsOnly says the route named is reserved for reads (set --read-routes): no work
+// attempt is ever dealt on it (servedRoute, tierArray), and a read of its tier draws it
+// first (readRouteOf). tla/RouteIndex.tla WorkNeverOnReadsOnly (reversed witness
+// MCRouteIndexBrokenReadsOnlyBlind.cfg). It scans the setting in place, building nothing,
+// since the deal asks it for every entry it walks.
+func (s *Snapshot) readsOnly(name string) bool {
+	for rest := s.readRoutesProp(); rest != ""; {
+		var cur string
+		cur, rest, _ = strings.Cut(rest, ",")
+		if cur == name {
+			return true
+		}
+	}
+	return false
+}
+
+// readRoutesOf is the read-routes setting's routes of tier, in the setting's order: the
+// array a read of the tier draws from first (readRouteOf).
+func (s *Snapshot) readRoutesOf(tier string) []string {
+	var out []string
+	for rest := s.readRoutesProp(); rest != ""; {
+		var cur string
+		cur, rest, _ = strings.Cut(rest, ",")
+		for _, r := range s.Routes {
+			if r.Name == cur && r.Tier == tier {
+				out = append(out, cur)
+				break
+			}
 		}
 	}
 	return out
@@ -772,6 +823,11 @@ func (s *Snapshot) servedRoute(tier, member, name string, drawing bool) (Route, 
 		if r.Name != name || r.Tier != tier || !r.Enabled {
 			continue
 		}
+		if s.readsOnly(r.Name) {
+			// a route reserved for reads never serves a work deal (set --read-routes;
+			// tla/RouteIndex.tla WorkNeverOnReadsOnly)
+			return Route{}, false
+		}
 		if rest, ok := s.resting(r.Name); ok && (drawing || rest.Cause != RestRateBackoff) {
 			// a rate-limit backoff is a stall, never an unserved tier: the draw leaves the
 			// route out, a check of the tier does not, so a backoff is never a judgment, as a
@@ -1104,7 +1160,27 @@ func (s *Snapshot) readRouteOf(ri routeIndexes, pr *Card, avoid []string) map[st
 		other = other || ok && !contains(skip, name)
 	}
 	at := ri[tier].r.count
-	r, steps, ok := preferFirst(arr, func(name string) (Route, bool) { return routeByName(served, name) }, skip, other, at)
+	lookup := func(name string) (Route, bool) { return routeByName(served, name) }
+	// a route reserved for reads (set --read-routes) is drawn first while one of the tier
+	// is served and neither avoided nor resting; else the read is drawn from the tier's
+	// shared array, which leaves the reads-only routes out (tierArray).
+	// tla/RouteIndex.tla ReadTakesReadsOnly (reversed witness MCRouteIndexBrokenReadShared.cfg)
+	var r Route
+	var steps uint64
+	ok := false
+	if ra := s.readRoutesOf(tier); len(ra) > 0 {
+		open := false
+		for _, name := range ra {
+			_, isServed := routeByName(served, name)
+			open = open || isServed && !contains(skip, name)
+		}
+		if open {
+			r, steps, ok = preferFirst(ra, lookup, skip, true, at)
+		}
+	}
+	if !ok {
+		r, steps, ok = preferFirst(arr, lookup, skip, other, at)
+	}
 	if !ok {
 		return base
 	}

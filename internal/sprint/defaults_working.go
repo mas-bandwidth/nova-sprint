@@ -86,6 +86,7 @@ var workingChecks = map[string]workingCheck{
 	SettingMaxAttempts:    {Check: maxAttemptsWorking},
 	SettingLand:           {Check: landWorking},
 	PropReadTier:          {BySet: true},
+	PropReadRoutes:        {BySet: true},
 	PropDealtMax:          {BySet: true},
 	PropGoLanes:           {BySet: true},
 	PropFriendIdle:        {BySet: true},

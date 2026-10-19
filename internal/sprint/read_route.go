@@ -62,7 +62,7 @@ func (s *Snapshot) tierRouted(tier string) bool {
 	if len(s.Routes) == 0 {
 		return true
 	}
-	for _, name := range s.tierArray(tier) {
+	for _, name := range append(s.readRoutesOf(tier), s.tierArray(tier)...) {
 		for _, r := range s.Routes {
 			if r.Name == name && r.Tier == tier && r.Enabled {
 				return true

@@ -104,6 +104,22 @@
 \* work card ready while a member of its pool can launch an entry of its tier is
 \* dealt (EveryTierIsDealtFromItsRoutes).
 \*
+\* THE READS-ONLY ROUTES (2026-10-19, the owner: run Ultramarine 1 Flash on reads
+\* alone; v19-route-reads-only). ReadsOnly is the routes the sprint's read-routes
+\* setting reserves for reads (internal/sprint route.go readsOnly; nova-sprint set
+\* --read-routes). The work deal and the redeal walk past such an entry as they walk
+\* past one their member cannot launch: a work card is never dealt on a reads-only
+\* route (WorkNeverOnReadsOnly), and a tier none of whose other entries a member of
+\* the pool can launch strands the card (it is judged, StrandedIsJudged). A read
+\* draws a reads-only route of its read tier first: while one is not avoided and does
+\* not rest, the read takes one (ReadTakesReadsOnly), else it is drawn from the tier's
+\* shared entries as before. The code walks the read routes as an array of their own
+\* at the tier's index (readRouteOf); the model walks the tier's array with the other
+\* entries left out, the same pick. Broken "readsonlyblind" is a work deal that does
+\* not walk past a reads-only entry (WorkNeverOnReadsOnly fails); "readshared" is a
+\* read drawn from the shared entries with a reads-only route open
+\* (ReadTakesReadsOnly fails).
+\*
 \* WHAT IS NOT MODELLED. Members, widths and the tick (DirtyTick.tla); an entry
 \* that names no enabled route (the deal skips it as it skips an excluded one,
 \* and the Go test pins it); a provider at its concurrency budget, which the
@@ -117,7 +133,7 @@ EXTENDS Integers, Sequences, FiniteSets, TLC
 
 CONSTANTS Tiers, Arr, Cards, TierOf, Pinned, Reads, MaxRedeals, Broken,
           Members, MemberUnlaunch, BenchOf, Refused, First, Rested, Avoid,
-          ReadTier
+          ReadTier, ReadsOnly
 
 VARIABLES ridx, st, route, drawn, rdl, deals, skipped, hist, last, judged, tock,
           memb, shares
@@ -190,7 +206,10 @@ DrawTier(c) == IF c \in Reads THEN ReadTier[TierOf[c]] ELSE TierOf[c]
 \* The routes a draw of c walks past whatever else: those m cannot launch, for a
 \* work card (a read is the ask's, drawn for no member), and a resting route
 \* (Rested), which is skipped as an unserved one is.
-Blind(c, m) == Rested \cup (IF c \in Reads THEN {} ELSE MemberUnlaunch[m])
+\* The reads-only routes a work draw walks past (readsonlyblind: none).
+WorkRO == IF Broken = "readsonlyblind" THEN {} ELSE ReadsOnly
+
+Blind(c, m) == Rested \cup (IF c \in Reads THEN {} ELSE MemberUnlaunch[m] \cup WorkRO)
 
 \* The routes already taken for c that its next draw leaves out: the redeal's
 \* drawn set for a work card, the read's avoided routes (Avoid) for a read.
@@ -198,6 +217,12 @@ LeftOut(c) == IF c \in Reads THEN Avoid[c] ELSE drawn[c]
 
 \* Whether tier t's array holds an entry outside ex.
 Open(t, ex) == \E k \in 1..Len(Arr[t]) : Arr[t][k] \notin ex
+
+\* Whether tier t's array holds a reads-only entry outside ex.
+OpenRO(t, ex) == \E k \in 1..Len(Arr[t]) : Arr[t][k] \in ReadsOnly /\ Arr[t][k] \notin ex
+
+\* A read draws a reads-only route first while one is open (readshared: never).
+ReadPrefers(c, t, ex) == c \in Reads /\ Broken # "readshared" /\ OpenRO(t, ex)
 
 \* The work cards: neither pinned nor a read.
 WorkCards == Cards \ (Pinned \cup Reads)
@@ -208,7 +233,7 @@ Pool(c) == BenchOf[c] \ (IF st[c] = "withdrawn" THEN Refused[c] ELSE {})
 
 \* Whether a member of P can launch an entry of c's tier (an entry that does not
 \* rest, and the member can launch).
-CanLaunchIn(c, P) == \E m \in P : Open(TierOf[c], MemberUnlaunch[m] \cup Rested)
+CanLaunchIn(c, P) == \E m \in P : Open(TierOf[c], MemberUnlaunch[m] \cup Rested \cup WorkRO)
 
 \* A work card waiting to be dealt that no member of its pool can launch.
 Stranded(c) == c \in WorkCards /\ st[c] \in {"ready", "withdrawn"} /\ Pool(c) # {} /\ ~CanLaunchIn(c, Pool(c))
@@ -273,7 +298,8 @@ Take(c, m, r, adv, by) ==
 DealTo(c, m) ==
   LET t == DrawTier(c)
       b == Blind(c, m)
-      ex == IF Open(t, LeftOut(c) \cup b) THEN LeftOut(c) \cup b ELSE b
+      ex0 == IF Open(t, LeftOut(c) \cup b) THEN LeftOut(c) \cup b ELSE b
+      ex == IF ReadPrefers(c, t, LeftOut(c) \cup b) THEN ex0 \cup (Routes \ ReadsOnly) ELSE ex0
       s == Steps(t, ridx[t], ex)
   IN
   /\ st[c] = "ready"
@@ -416,7 +442,7 @@ ShareFallsWithCost ==
 \* breaks it).
 EveryTierIsDealtFromItsRoutes ==
   \A c \in WorkCards :
-    (st[c] = "ready" /\ \E m \in Pool(c) : Open(TierOf[c], MemberUnlaunch[m] \cup Rested))
+    (st[c] = "ready" /\ \E m \in Pool(c) : Open(TierOf[c], MemberUnlaunch[m] \cup Rested \cup WorkRO))
       ~> st[c] # "ready"
 
 \* The ladder, weakest first, and a tier's place on it.
@@ -428,6 +454,13 @@ Rank(t) == CHOOSE k \in 1..Len(Ladder) : Ladder[k] = t
 \* deal or a read's, takes a route of the card's tier or above (internal/sprint
 \* route.go cardTier, drawTier, readTierOf).
 NeverBelowItsTier == last.c \in Cards => Rank(last.t) >= Rank(TierOf[last.c])
+
+\* A work card is never dealt on a reads-only route (v19-route-reads-only).
+WorkNeverOnReadsOnly == last.c \in WorkCards => last.r \notin ReadsOnly
+
+\* A read takes a reads-only route of its read tier while one is neither avoided nor
+\* resting.
+ReadTakesReadsOnly == (last.c \in Reads /\ OpenRO(last.t, last.ex \cup Rested)) => last.r \in ReadsOnly
 
 \* Reachability (a reversed witness, written to be false where the design must
 \* reach): a redeal that passed over an entry it left out.
