@@ -324,6 +324,7 @@ type lander struct {
 	epoch         uint64              // the epoch land read: every report is fenced to it
 	diffs         map[string]string   // each card's merge diff, as checkCard read it, for its score
 	scope         map[string][]string // each card's scope amendments, as checkCard allowed them (sprint.ScopeAmended)
+	mergeOf       map[string]string   // each forward-merge card's exemption note, as checkCard resolved it (sprint.MergeOf)
 	prose         map[string][]string // each stream's prose globs (sprint.StreamProse), whose backquotes checkCard does not read
 	toScore       []scoreJob          // the landed batches, scored after the whole pass (landscore.go)
 	// toCost is the red gates' decide calls, each split over its batch's cards, written on
@@ -538,7 +539,7 @@ func (a *app) land(args []string, stdout, stderr io.Writer, gate **hookGateError
 	if a.baseGateFails == nil {
 		a.baseGateFails = map[string]*baseGateFail{}
 	}
-	l := &lander{a: a, c: *c, st: st, repoDir: *repoDir, base: *base, check: *check, dry: *dry, twin: a.twinOpen(c.redis), epoch: st.PinnedEpoch(), diffs: map[string]string{}, scope: map[string][]string{}, prose: map[string][]string{},
+	l := &lander{a: a, c: *c, st: st, repoDir: *repoDir, base: *base, check: *check, dry: *dry, twin: a.twinOpen(c.redis), epoch: st.PinnedEpoch(), diffs: map[string]string{}, scope: map[string][]string{}, mergeOf: map[string]string{}, prose: map[string][]string{},
 		baseGateCache: a.baseGateCache, baseGateFails: a.baseGateFails, cureTried: map[string]bool{}, parallel: *parallel}
 	l.locks()
 	defer l.release()
@@ -2385,9 +2386,33 @@ func (l *lander) checkCard(ctx context.Context, dir, stream string, c landCard, 
 			}
 		}
 	}
+	// SPEC-SPRINT section 7: a forward-merge card (a MERGE-OF line) resolves the
+	// merged parent and exempts every changed file that arrived unchanged through the
+	// merge (sprint.MergeOf); the rest still need PATHS exactly as today. When the
+	// branch cannot be resolved the refusal says why and nothing is exempt.
+	var exempt []string
+	mergeOfCard := false
+	if br, ok := swarm.CardHeaderValue([]byte(c.brief), "MERGE-OF"); ok && strings.TrimSpace(br) != "" {
+		mergeOfCard = true
+		br = strings.TrimSpace(br)
+		res, merr := sprint.MergeOf(dir, func(args ...string) (string, error) { return l.git(ctx, dir, args...) }, before, after, br)
+		if merr != nil {
+			why = append(why, "merge-of unresolved ("+br+"): "+merr.Error())
+		} else if res != nil {
+			exempt = res.Exempt
+			l.mergeOf[c.id] = fmt.Sprintf("merge-of=%s@%s exempt=%d", br, shortSha(res.Parent), len(exempt))
+		}
+	}
 	// SPEC-SPRINT section 7: required validation files are inside every PATHS;
 	// ordinary scope amendments remain recorded and unrelated source stays refused.
-	amended, out := sprint.LandScope(c.paths, diff, beforePaths, registries...)
+	// A card with no MERGE-OF line is checked exactly as today, through LandScope
+	// with no git call added (rule 5); only a forward-merge card uses the exemption.
+	var amended, out []string
+	if mergeOfCard {
+		amended, out = sprint.LandScopeMergeOf(c.paths, diff, beforePaths, exempt, registries...)
+	} else {
+		amended, out = sprint.LandScope(c.paths, diff, beforePaths, registries...)
+	}
 	if len(out) > 0 {
 		parts := make([]string, 0, len(out))
 		for _, f := range out {
@@ -2769,7 +2794,10 @@ func (l *lander) git(ctx context.Context, dir string, args ...string) (string, e
 	res, err := gitrun.Run(ctx, gitrun.Options{C: dir, Env: l.gitEnv(), OwnRepo: dir != ""}, args...)
 	if err != nil {
 		words := strings.TrimSpace(string(res.Stderr) + "\n" + string(res.Stdout))
-		return "", fmt.Errorf("git %s: %w: %s", args[0], err, words)
+		if slices.Contains(args, "-z") {
+			return string(res.Stdout), fmt.Errorf("git %s: %w: %s", args[0], err, words)
+		}
+		return strings.TrimSpace(string(res.Stdout)), fmt.Errorf("git %s: %w: %s", args[0], err, words)
 	}
 	if slices.Contains(args, "-z") {
 		return string(res.Stdout), nil
@@ -2840,6 +2868,9 @@ func (l *lander) scopeOf(merged []string) []string {
 	for _, id := range merged {
 		for _, f := range l.scope[id] {
 			out = append(out, id+":"+f)
+		}
+		if n := l.mergeOf[id]; n != "" {
+			out = append(out, id+":"+n)
 		}
 	}
 	return out
