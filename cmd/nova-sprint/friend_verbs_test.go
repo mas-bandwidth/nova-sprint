@@ -119,7 +119,7 @@ func BenchmarkFriendStarted(b *testing.B) {
 	}
 	run := func(args ...string) {
 		var out, stderr bytes.Buffer
-		if code := a.run(args, &out, &stderr); code != 0 {
+		if code := runInto(a, append(args, "--redis", "mem:0"), &out, &stderr); code != 0 {
 			b.Fatalf("%v: exit %d: %s%s", args, code, out.String(), stderr.String())
 		}
 	}
