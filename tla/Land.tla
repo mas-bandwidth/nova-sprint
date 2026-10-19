@@ -747,11 +747,10 @@ MoveBase ==
   /\ UNCHANGED <<recordedTip, forwardPending, checkedTip>>
 
 \* The coordinator records a moved base and marks every card pending in the
-\* same store transition. Recheck clears one card only at the recorded tip;
-\* Accept (the model's deal/queue admission) is disabled while it is pending.
-\* dealtTip tracks the base generation accepted by each card. Recording a moved
-\* base advances the floor for all cards; the reversed staleaccept action records
-\* the old generation and violates NoDealAgainstStaleTip.
+\* same store transition. Recheck clears one card only at the recorded tip.
+\* Accept and Redeal are the modeled queue-admission paths; both refuse pending
+\* cards. checkedTip records an actual per-card recheck, and the temporal
+\* property checks this evidence at each new queue admission.
 ForwardMerge ==
   /\ tip > recordedTip
   /\ recordedTip' = tip
