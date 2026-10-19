@@ -121,6 +121,33 @@ func TestTwoReadsReworkWaitsForBoth(t *testing.T) {
 		require.Contains(t, pk.Finding, "c.go:3: one read")
 		require.NotContains(t, pk.Finding, "read by ", "one reader: the finding stays plain, as before")
 	})
+
+	t.Run("--reads 1 handed back and read by another reader stays plain", func(t *testing.T) {
+		t.Parallel()
+		w := lateReadsWorld(t)
+		putReviewBy(w, "s1-3", "s1-3: work (s1) tier: flash\n", "m1", 2)
+		dealReads(t, w, nil)
+		one := readCardsOf(w, "s1-3")
+		require.Len(t, one, 1, "a flash card's one read")
+		w.must(Take(w.s, TakeReq{As: one[0].Row, Sel: Sel{IDs: []string{one[0].ID}}, Gens: gensOf(w.s, one[0].ID)}))
+		w.must(Read(w.s, ReadReq{Sel: Sel{IDs: []string{one[0].ID}}, As: one[0].F("reader"), Return: true, Reason: "cannot read it here"}))
+		dealReads(t, w, nil)
+		var again []*Card
+		for _, rc := range readCardsOf(w, "s1-3") {
+			if rc.Placed() {
+				again = append(again, rc)
+			}
+		}
+		require.Len(t, again, 1, "the one read is dealt again")
+		w.must(Take(w.s, TakeReq{As: again[0].Row, Sel: Sel{IDs: []string{again[0].ID}}, Gens: gensOf(w.s, again[0].ID)}))
+		again[0] = w.s.Fleet.Card(again[0].ID)
+		require.NotEqual(t, one[0].F("reader"), again[0].F("reader"), "to another reader")
+		w.must(readBy(w, again[0], "broken", "d.go:4: the second reader of one read"))
+		w.must(w.ruleRework(t))
+		pk := nextPacket(t, w, "s1-3", 2)
+		require.Contains(t, pk.Finding, "d.go:4: the second reader of one read")
+		require.NotContains(t, pk.Finding, "read by ", "one read needed: plain, however many readers it passed through")
+	})
 }
 
 // ruleRework is the tick's rule rework part, which must act.
