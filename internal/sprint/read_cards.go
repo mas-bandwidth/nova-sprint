@@ -150,7 +150,21 @@ const (
 	// the primary and carried to the next attempt, never refused and never a standing read
 	// (lateReadOf, friend_read.go; tla/ReadCards.tla LateClose, NoFindingLost).
 	RetiredByRework = "rework"
+	// RetiredByBrief is a read card a brief edited in place retired with the attempt it
+	// replaced (briefInPlace, steps_edit.go): the coordinator's brief --widen, or the
+	// read-broken rule's PATHS widen (TickRuleWidenRead). Its reader's verdict, reported after
+	// it, is a late read as a rework's is (tla/ReadCards.tla Widen, LateClose, NoFindingLost).
+	RetiredByBrief = "brief"
 )
+
+// lateReadRetirements is every retired_by of a read card whose reader may still be running it
+// when the machine or the seat retires it, so that a verdict reported after it is a late read
+// (lateReadOf, friend_read.go), never refused and never lost: by a rework, by its primary's
+// move past the attempt, by a brief edited in place (a PATHS widen), by the live reconcile
+// (lost), past its deadline (late) or taken back off a reader away. On 2026-10-18 verdicts
+// were lost to "retired ... by rework", "by brief" and "by lost". A read handed back
+// (returned) or closed (read) has no verdict to come. tla/ReadCards.tla LateClose.
+var lateReadRetirements = []string{RetiredByRework, RetiredByPrimary, RetiredByBrief, RetiredByLost, RetiredByLate, RetiredByAway}
 
 // The fields a late read writes on its primary (lateReadUnit, friend_read.go):
 // FieldLateReads is the late reads' lines not yet carried by a rework, each "late read by

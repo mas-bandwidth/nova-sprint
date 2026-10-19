@@ -1724,6 +1724,7 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		// the finding and why ride on the primary too: a rework with no member up deals later
 		// (start), from the primary, and its child is told all the same
 		given := reworkGiven(s, c)
+		given["finding"] = readersGiven(s, c, given["finding"])
 		// the primary keeps the broken reads' own finding: the bounds compare it (AtBriefBound,
 		// AtIdenticalFindings, FindingKey), so the readers' named lines and the late reads ride
 		// on the next attempt's work card (given) and, dealt later, on the primary's why
@@ -2224,28 +2225,13 @@ func cutText(s string, n int) string {
 
 // reworkGiven is what a rework writes on the next attempt's work card besides
 // the fix, so the child learns why it exists (docs/SPEC-SPRINT.md, rework):
-// finding, the broken reads' words, and why, how the attempt before ended. With more than
-// one read of the attempt standing with words (two reads dealt in parallel, the rework
-// having waited for both: reworkWaitsForReads), the finding is every one of them, a line
-// each naming its reader (readFindingsByReader); and the late reads recorded on the primary
-// since the last rework (FieldLateReads: a verdict reported on a read card a rework retired)
-// follow, a line each, so no reader's finding is lost. MaxCardTextBytes holds the whole, the
-// late lines given at most half of it. tla/ReadCards.tla Rework, LateClose, NoFindingLost.
+// finding, the broken reads' words, and why, how the attempt before ended. Its finding is the
+// plain one the bounds compare (briefInPlace keeps it in FieldFindings); what the next
+// attempt's brief carries is readersGiven's.
 func reworkGiven(s *Snapshot, c *Card) map[string]string {
 	attempt := c.Int("attempt")
 	finding := cutText(brokenFindings(s, c), MaxCardTextBytes)
-	if lines := readFindingsByReader(s, c); len(lines) > 1 {
-		finding = cutText(strings.Join(lines, "\n"), MaxCardTextBytes)
-	}
 	read := finding
-	if late := strings.TrimSpace(c.F(FieldLateReads)); late != "" {
-		late = cutText(late, MaxCardTextBytes/2)
-		if finding == "" {
-			finding = late
-		} else {
-			finding = cutText(finding, MaxCardTextBytes-len(late)-1) + "\n" + late
-		}
-	}
 	why := fmt.Sprintf("attempt %d was sent back by the coordinator", attempt)
 	switch wc := s.Fleet.Card(c.F("work")); {
 	case c.F("result") == "failed" && wc != nil && strings.TrimSpace(wc.F("report")) != "":
@@ -2256,6 +2242,30 @@ func reworkGiven(s *Snapshot, c *Card) map[string]string {
 		why = fmt.Sprintf("attempt %d finished and a reader found it broken", attempt)
 	}
 	return map[string]string{"finding": finding, "why": cutText(why, MaxCardTextBytes)}
+}
+
+// readersGiven is the finding the next attempt's brief carries, given what reworkGiven gave
+// (plain): every read of the attempt that stands with words, a line each naming its reader
+// and verdict (readFindingsByReader), whenever there is one, so a sole broken read keeps its
+// reader too (attempt 4's reader: with the other read returned, past its deadline, or ok with
+// no words, the broken one lost its name); with none, the plain finding. The late reads
+// recorded on the primary since the last rework (FieldLateReads) follow, a line each, so no
+// reader's finding is lost. MaxCardTextBytes holds the whole, the late lines at most half of
+// it. tla/ReadCards.tla Rework, Widen, LateClose, NoFindingLost.
+func readersGiven(s *Snapshot, c *Card, plain string) string {
+	finding := plain
+	if lines := readFindingsByReader(s, c); len(lines) > 0 {
+		finding = cutText(strings.Join(lines, "\n"), MaxCardTextBytes)
+	}
+	if late := strings.TrimSpace(c.F(FieldLateReads)); late != "" {
+		late = cutText(late, MaxCardTextBytes/2)
+		if finding == "" {
+			finding = late
+		} else {
+			finding = cutText(finding, MaxCardTextBytes-len(late)-1) + "\n" + late
+		}
+	}
+	return finding
 }
 
 // readFindingsByReader is the words of every read card of the primary's attempt that stands

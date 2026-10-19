@@ -82,9 +82,9 @@
 \* Two more ways a verdict was lost (attempt 5 of the card): a PATHS widen (Widen: the
 \* read-broken rule widens the brief in place, TickRuleWidenRead, rules_read.go; Brief retires
 \* the open reads "brief") and a late read that arrives while the next attempt's work already
-\* runs. The rule's Widen waits as its Rework does, and carries what a rework carries; the
-\* seat's own widen (brief --widen, a mind's) is SeatRework's twin with st "brief", at once. A
-\* late read that arrives while the next attempt runs is handed to that attempt's reads
+\* runs. The rule's Widen waits as its Rework does, and carries what a rework carries (the
+\* seat's own brief --widen is a mind's rewrite of the brief, not modelled: the code takes its
+\* retired reads' verdicts as late reads too, RetiredByBrief). A late read that arrives while the next attempt runs is handed to that attempt's reads
 \* (checked: the primary's fix, which every read packet of the attempt carries, and the work
 \* card's finding, which a redeal of the attempt carries; lateReadUnit), and kept for the
 \* rework after it (late). Their reversed witnesses: BugWidenAtFirstBroken (the rule's widen
@@ -134,7 +134,7 @@ TypeOK ==
   /\ pstate \in {"review", "merging"}
   /\ need \in {0, 1, 2}
   /\ \A c \in cards : c.att \in 1..MaxAttempt /\ c.rd \in Readers /\ c.gen \in 0..MaxGen
-                      /\ c.st \in Open \cup Spent \cup {"away", "rework", "seat", "widen", "brief", "lost"}
+                      /\ c.st \in Open \cup Spent \cup {"away", "rework", "seat", "widen", "lost"}
                       /\ c.run \in BOOLEAN /\ c.gone \in 0..(Grace + 1)
   /\ top \in [1..MaxAttempt -> 0..MaxGen]
   /\ findings \subseteq FindingRecs /\ carried \subseteq FindingRecs /\ late \subseteq FindingRecs
@@ -281,15 +281,14 @@ Widen ==
   /\ checked' = {}
   /\ UNCHANGED <<pstate, need, top, findings, late>>
 
-\* the seat's rework (rework <card>) or its widen (brief --widen), a mind's: at once, its open
-\* reads retired (st "seat" or "brief")
+\* the seat's rework (rework <card>, a mind's): at once, its open reads retired
 SeatRework ==
   /\ Findings
   /\ pstate = "review"
   /\ Broken(attempt)
   /\ attempt < MaxAttempt
   /\ attempt' = attempt + 1
-  /\ \E st \in {"seat", "brief"} : cards' = {IF c.st \in Open THEN [c EXCEPT !.st = st] ELSE c : c \in cards}
+  /\ cards' = {IF c.st \in Open THEN [c EXCEPT !.st = "seat"] ELSE c : c \in cards}
   /\ carried' = Carry
   /\ started' = FALSE
   /\ checked' = {}
@@ -307,7 +306,7 @@ StartWork == Findings /\ attempt > 1 /\ ~started /\ started' = TRUE
 LateClose ==
   /\ Findings
   /\ \E c \in cards, v \in {"ok", "broken"} :
-       /\ c.st \in {"rework", "seat", "widen", "brief"} /\ c.run
+       /\ c.st \in {"rework", "seat", "widen"} /\ c.run
        /\ Set(c, [c EXCEPT !.run = FALSE])
        /\ findings' = findings \cup {Finding(c, v)}
        /\ late' = IF BugDropLate \/ ~started THEN late ELSE late \cup {Finding(c, v)}
@@ -394,8 +393,8 @@ LeftWorking(k) == ~\E c \in cards : Key(c) = k /\ c.st = "working"
 NoGhostRead == \A k \in Keys : Ghost(k) ~> LeftWorking(k)
 
 \* NO FINDING LOST: every reported finding is of the attempt under review (or accepted at it),
-\* or carried into the next attempt's brief, or, a late read of a read the seat's own rework or
-\* widen retired (a mind's: the machine never makes a finding late) that arrived while the next
+\* or carried into the next attempt's brief, or, a late read of a read the seat's own rework
+\* retired (a mind's: the machine never makes a finding late) that arrived while the next
 \* attempt ran, handed to that attempt's reads and kept for the rework after it.
 \* BugDropLate, BugReworkAtFirstBroken, BugWidenAtFirstBroken and BugLateMissesRunning each
 \* break it.
@@ -403,6 +402,6 @@ NoFindingLost ==
   \A f \in findings :
     \/ f.att = attempt
     \/ f \in carried
-    \/ f \in checked /\ f \in late /\ \E c \in cards : c.att = f.att /\ c.rd = f.rd /\ c.gen = f.gen /\ c.st \in {"seat", "brief"}
+    \/ f \in checked /\ f \in late /\ \E c \in cards : c.att = f.att /\ c.rd = f.rd /\ c.gen = f.gen /\ c.st = "seat"
 
 =============================================================================

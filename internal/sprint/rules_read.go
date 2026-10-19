@@ -209,6 +209,16 @@ func PathsWidened(brief string, files []string, carry string) string {
 func TickRuleWidenRead(s *Snapshot, r TickReq) (Plan, int) {
 	for _, a := range acting(s, r, ActWidenRead) {
 		pr := s.Work.Placed(a.Card)
+		if reworkWaitsForReads(s, pr) {
+			// the widen waits as the rule's rework does: another read of the attempt is open
+			// within its deadline, and the Brief would retire it while its reader reads
+			// (2026-10-18, "retired ... by brief"); a later tick widens it, carrying every
+			// read's finding. tla/ReadCards.tla Widen, NoFindingLost, BugWidenAtFirstBroken.
+			continue
+		}
+		// what the widened attempt's brief carries besides its fix: every read's words, named,
+		// and the late reads (readersGiven), on the primary's why, which the deal copies
+		given := readersGiven(s, pr, a.fix)
 		carry := ""
 		if head := pr.F("head"); typedrec.IsFullSha(head) {
 			carry = fmt.Sprintf("CARRY: %s attempt %d head=%s", pr.ID, pr.Int("attempt"), head)
@@ -232,6 +242,12 @@ func TickRuleWidenRead(s *Snapshot, r TickReq) (Plan, int) {
 					e.Set = map[string]string{}
 				}
 				e.Set["fix"], e.Set["finding"] = a.fix, a.fix
+				if given != a.fix {
+					e.Set["why"] = cutText(e.Set["why"]+"\n"+given, MaxCardTextBytes)
+				}
+				if pr.F(FieldLateReads) != "" {
+					e.Unset = append(e.Unset, FieldLateReads) // carried: cleared, as a rework clears it
+				}
 				e.Set[FieldNote], e.Set[FieldRuleAnswer] = said, a.Rule+": "+a.Act+" at "+stamp(s.Now)
 				e.Set[FieldWidens] = itoa(pr.Int(FieldWidens) + 1) // Brief never resets it
 				// the finding is the broken attempt's: Brief unsets finding_attempt, and with it
