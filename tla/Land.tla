@@ -862,7 +862,7 @@ Spec == Init /\ [][Next]_vars
 
 \* The lander runs again whenever it can: the coordinator re-runs land; with
 \* the bound on, a reworked card is redealt, and the tick runs.
-FairSpec == Spec /\ WF_vars(Land) /\ WF_vars(ShortBack) /\ WF_vars(Redeal)
+FairSpec == Spec /\ WF_vars(Land) /\ WF_vars(ShortBack) /\ WF_vars(Redeal) /\ WF_vars(RecheckForwardMergedCard)
 
 \* ---- the rules ----
 
