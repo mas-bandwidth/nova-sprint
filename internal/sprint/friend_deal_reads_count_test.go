@@ -86,8 +86,10 @@ func TestTheDealStopsAtTheNumberTheGateRefusesAt(t *testing.T) {
 }
 
 // The live count is one place: friendLiveLanes is her work cards plus her reads, and her
-// free lanes are her width less it, never below zero. The read ask fills that count too, so
-// a friend at her width is dealt no read.
+// free lanes are her width less it, never below zero. The read ask fills her free lanes
+// first, but a friend at width still keeps half a slot for her ready queue past her width
+// (the owner, 2026-10-18: width bounds what she works at once, never what is queued in her
+// ready queue; her queue is bounded by her room, DealAhead times her width).
 func TestTheFriendLiveLanesCountsReads(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)
@@ -99,7 +101,8 @@ func TestTheFriendLiveLanesCountsReads(t *testing.T) {
 	seat := workerSeatFixture(FriendSeat{Name: "amy", Width: 8, Status: Up, Class: "flash,pro", Roles: []string{RoleReader}})
 	units := readUnitsOf(w.s, workerSeatFixtures([]FriendSeat{seat}))
 	require.Len(t, units, 1)
-	assert.LessOrEqual(t, units[0].half, 0, "the read ask may deal her no read at her width")
+	assert.LessOrEqual(t, units[0].idle, 0, "no free lane at width")
+	assert.Positive(t, units[0].half, "room remains in her ready queue at width, below her room: 12 of 16")
 }
 
 // (1) a friend at width 8 with 4 work cards and 8 reads is dealt no ninth read and no work
