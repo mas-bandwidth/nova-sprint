@@ -5,6 +5,9 @@
 \* for Min(2^(k-1), Cap) time units, k counting the route's rate-limited ends since
 \* its last ok end; an ok end resets k; the backoff ends by itself when the clock
 \* passes it. The owner, 2026-10-11: a rate limit stalls, it never fails a card.
+\* Since v1.7 a provider fault is retried at once, at the same attempt, on the next
+\* route in line, its provider cooling per provider: that fallback is modelled in
+\* ProviderFallback (internal/sprint fallback.go); this module keeps the backoff alone.
 EXTENDS Naturals
 CONSTANTS Cap, MaxTime, MaxK, Broken
 VARIABLES now, k, until, redeals, ready

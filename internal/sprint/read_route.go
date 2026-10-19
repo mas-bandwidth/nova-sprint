@@ -64,7 +64,11 @@ func (s *Snapshot) tierRouted(tier string) bool {
 	}
 	for _, name := range s.tierArray(tier) {
 		for _, r := range s.Routes {
-			if r.Name == name && r.Tier == tier && r.Enabled {
+			if r.Name != name || r.Tier != tier || !r.Enabled {
+				continue
+			}
+			// the line (fallback.go, (4)): a route of a cooling provider is out of it
+			if _, cools := s.providerCooling(r.Provider); !cools {
 				return true
 			}
 		}
