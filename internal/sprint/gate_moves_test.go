@@ -145,3 +145,91 @@ func TestAConflictRedoOfADarwinCardIsNeverDealtToLinux(t *testing.T) {
 		assert.Equal(t, mac, wc.Row, "attempt 2 is the Mac's, never the Linux bench's")
 	}
 }
+
+// The other direction of the same rule, path by path: a gates-only member (captain, gates_only
+// windows) is never moved a card whose GATE-NEEDS names none of its gates. Seen live on
+// v1.6.7: elixir-defaults-and-table-rename (GATE-NEEDS: linux) was rebalanced from amd-1 to
+// captain at 18:49 and levelled from amd-3 to captain at 19:13. The table covers every move:
+// the level, the rebalance, the redeal of a member gone down, the rework and the conflict redo.
+func TestNoMoveGivesAGatesOnlyMemberACardNamingNoneOfItsGates(t *testing.T) {
+	t.Parallel()
+	const linuxBrief = "c: a linux card tier: pro\nREPO: mas-bandwidth/nova-tools\nGATE-NEEDS: linux\n\nThe task."
+	winFacts := func(w *world, win string) {
+		w.s.MemberCtl(win).Fields[FieldFacts] = "windows,amd64,go,dotnet,java"
+		w.s.MemberCtl(win).Fields[FieldGatesOnly] = "windows"
+	}
+	for _, brief := range []string{linuxBrief, fleetBrief("pro")} {
+		t.Run("level", func(t *testing.T) {
+			t.Parallel()
+			w := fleetWorld(t, 0, 2, "lin", "win")
+			w.s.MemberCtl("lin").Fields[FieldFacts] = "linux,amd64,go"
+			winFacts(w, "win")
+			for i, id := range []string{"a", "b", "c", "d"} {
+				col := Working
+				if i >= 2 {
+					col = Ready
+				}
+				putWorkCard(w, id, "lin", col, float64(i+1), nil)
+				w.s.Work.Card(id).Fields["brief"] = brief
+			}
+			w.part(TickLevel, TickReq{})
+			assert.Equal(t, 0, w.s.Fleet.Count("win", Ready), "the level never feeds the gates-only member")
+		})
+		t.Run("rebalance", func(t *testing.T) {
+			t.Parallel()
+			w := rbWorld(t, "lin", "win")
+			w.s.MemberCtl("lin").Fields[FieldFacts] = "linux,amd64,go"
+			winFacts(w, "win")
+			rbPlace(w, "s1-1", "pro", "lin", Working, "pr.brief", brief)
+			wc := rbPlace(w, "s1-2", "pro", "lin", Ready, "pr.brief", brief)
+			w.must(Rebalance(w.s, nil, "machine"))
+			assert.Equal(t, "lin", w.s.Fleet.Card(wc.ID).Row, "the rebalance never moves it to the gates-only member")
+		})
+		t.Run("redeal of a member gone down", func(t *testing.T) {
+			t.Parallel()
+			w := fleetWorld(t, 0, 4, "lin", "win")
+			w.s.Work.SetRows([]string{"s1"})
+			w.s.MemberCtl("lin").Fields[FieldFacts] = "linux,amd64,go"
+			winFacts(w, "win")
+			putWorkCard(w, "a", "lin", Ready, 1, nil)
+			w.s.Work.Card("a").Fields["brief"] = brief
+			w.must(FleetStep(w.s, FleetReq{Op: "down", Member: "lin", Who: "coordinator"}))
+			assert.Equal(t, Withdrawn, w.s.Fleet.Card("a.w1").Col, "withdrawn, never redealt to the gates-only member")
+		})
+		t.Run("rework", func(t *testing.T) {
+			t.Parallel()
+			w := setup(t, 1)
+			w.s.Work.Card("s1-1").Fields["brief"] = brief
+			w.s.MemberCtl("m1").Fields[FieldFacts] = "linux,amd64,go"
+			w.s.MemberCtl("m2").Fields[FieldFacts] = "linux,amd64,go"
+			pushedFirstAttempt(w, "s1-1", carryHead1)
+			first := w.s.Fleet.Card("s1-1.w1").Row
+			other := "m2"
+			if first == "m2" {
+				other = "m1"
+			}
+			winFacts(w, other)
+			w.must(Rework(w.s, ReworkReq{Sel: Sel{IDs: []string{"s1-1"}}, Fix: "again"}))
+			w.part(TickDeal, TickReq{})
+			if wc := w.s.Fleet.Card("s1-1.w2"); wc != nil {
+				assert.Equal(t, first, wc.Row, "attempt 2 never goes to the gates-only member")
+			}
+		})
+		t.Run("conflict redo", func(t *testing.T) {
+			t.Parallel()
+			w := stoppedForConflict(t)
+			first := w.s.Fleet.Card("s1-2.w1").Row
+			other := "m2"
+			if first == "m2" {
+				other = "m1"
+			}
+			w.s.MemberCtl(first).Fields[FieldFacts] = "linux,amd64,go"
+			winFacts(w, other)
+			w.s.Work.Card("s1-2").Fields["brief"] = brief
+			w.must(Redo(w.s, RedoReq{Sel: Sel{IDs: []string{"s1-2"}}, Who: "coordinator"}))
+			if wc := w.s.Fleet.Card("s1-2.w2"); wc != nil {
+				assert.Equal(t, first, wc.Row, "the redo never deals it to the gates-only member")
+			}
+		})
+	}
+}
