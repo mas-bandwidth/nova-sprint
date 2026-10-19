@@ -249,7 +249,7 @@ func TestWhereDecisionsOwedIsFirstEvenWhenEmpty(t *testing.T) {
 	ta := newTestApp(t)
 	ta.ok("init --readers reader-a,reader-b --members m1")
 	text := ta.ok("where")
-	require.True(t, strings.HasPrefix(text, "DECISIONS OWED 0, oldest 0s; server-defaults applied this hour 0; delivery faults 0; earlier receipts unknown 0\n"), text)
+	require.True(t, strings.HasPrefix(text, "DECISIONS OWED 0, oldest 0s; server-defaults applied this hour 0; delivery faults 0; earlier receipts unknown 0; held by server-default 0\n"), text)
 }
 
 func TestDecisionsOwedAmbiguousExpiryRenewsAndKeepsUnknownHistory(t *testing.T) {

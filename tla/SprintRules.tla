@@ -149,6 +149,11 @@
 \*                FriendKeepsStarted
 \*   "conflictkeeps" the conflict rule leaves the tier a failure raised it to:
 \*                ConflictResetsToFlash
+\*   "retireinflight" the read-broken rule reworks while a sibling read of the same
+\*                attempt is begun and its lease live, retiring the read and losing
+\*                its finding: NoInflightReadRetired
+\*   "waitforever" the sibling read's lease never expires (no fairness on
+\*                RdSiblingEnds): ReadAnswered
 \*   "answersmind" the read-broken answer leaves a non-empty finding at the brief's bound to a
 \*                mind instead of reworking it: PartsAgree
 \*   "parkfailed" failed work below its bound that no harness class names is left to the seat,
@@ -210,6 +215,7 @@ VARIABLES col, need, blocked, twin,               \* twins
           tier, fails, st, attempts, envFails, fclass, same, bbound, \* rules
           gen, waited, progress, late, waits, lst, stamped, badReturn, own, badDeadline, judged, \* late
           rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, rdsince, rdminds, \* reads
+          rdinflight, rdlost, rdbegun, \* reads: a sibling in flight, a lost finding, a sibling begun
           gfails, stopped,                         \* gate
           idle, since, said, alarms, clk, nalarm, nclear, \* idle
           anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked, anrun, \* answers
@@ -225,7 +231,7 @@ VARIABLES col, need, blocked, twin,               \* twins
 twinVars == <<col, need, blocked, twin>>
 ruleVars == <<tier, fails, st, attempts, envFails, fclass, same, bbound>>
 lateVars == <<gen, waited, progress, late, waits, lst, stamped, badReturn, own, badDeadline, judged>>
-rdVars == <<rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, rdsince, rdminds>>
+rdVars == <<rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, rdsince, rdminds, rdinflight, rdlost, rdbegun>>
 gateVars == <<gfails, stopped>>
 idleVars == <<idle, since, said, alarms, clk, nalarm, nclear>>
 anVars == <<anst, anatt, anreworks, anhead, ancarry, anfind, anfail, anlast, anland, anlost, anfixless, anhold, anfixed, anharness, anfleet, anredealt, andec, anvotes, anmarked, anrun>>
@@ -283,6 +289,7 @@ TypeOK ==
   /\ rdtotal \in Nat
   /\ rdfixed \subseteq RdFindings
   /\ rdsince \in Nat /\ rdminds \in 0..MaxGen
+  /\ rdinflight \in BOOLEAN /\ rdlost \in BOOLEAN /\ rdbegun \in BOOLEAN
   /\ gfails \in 0..3
   /\ stopped \in BOOLEAN
   /\ idle \in BOOLEAN
@@ -346,6 +353,7 @@ Init ==
   /\ stamped = FALSE /\ badReturn = FALSE /\ own = 0 /\ badDeadline = FALSE /\ judged = FALSE
   /\ rdst = "working" /\ rdatt = 1 /\ rdlast = None /\ rdfind = None /\ rdpaths = {}
   /\ rdwidens = 0 /\ rdtotal = 0 /\ rdfixed = {} /\ rdsince = 1 /\ rdminds = 0
+  /\ rdinflight = FALSE /\ rdlost = FALSE /\ rdbegun = FALSE
   /\ gfails = 0 /\ stopped = FALSE
   /\ idle = FALSE /\ since = -1 /\ said = FALSE /\ alarms = 0 /\ clk = 0 /\ nalarm = 0 /\ nclear = 0
   /\ anst = "working" /\ anatt = 1 /\ anreworks = 0 /\ anhead = 0 /\ ancarry = 0
@@ -707,11 +715,11 @@ RdReadBroken(f) ==
                            \/ RdOutside(f) /\ ~RdWidenable(f)
                            \/ RdOutside(f) /\ Broken = "boundoutside"
                       THEN "bound" ELSE "broken"
-  /\ UNCHANGED <<rdatt, rdlast, rdpaths, rdwidens, rdtotal, rdfixed, rdsince, rdminds>>
+  /\ UNCHANGED <<rdatt, rdlast, rdpaths, rdwidens, rdtotal, rdfixed, rdsince, rdminds, rdinflight, rdlost, rdbegun>>
 RdLands ==
   /\ rdst = "working"
   /\ rdst' = "done"
-  /\ UNCHANGED <<rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, rdsince, rdminds>>
+  /\ UNCHANGED <<rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, rdsince, rdminds, rdinflight, rdlost, rdbegun>>
 
 \* the rule, below the bound: a finding naming a file outside PATHS widens the card's PATHS in
 \* place by it (a machine's act: the cap's count stands, BriefReq.ByRule; the widenresets
@@ -721,6 +729,7 @@ RdLands ==
 RuleReadBroken ==
   /\ \/ rdst = "broken"
      \/ rdst = "bound" /\ ~RdOutside(rdfind) /\ Broken = "ruleatbound"
+  /\ ~rdinflight \/ Broken = "retireinflight"
   /\ IF RdWidenable(rdfind) \/ Broken = "widenall"
        THEN /\ rdpaths' = rdpaths \cup ({rdfind} \cap RdFiles)
             /\ rdatt' = IF Broken = "widenresets" THEN 1 ELSE rdatt + 1
@@ -728,6 +737,8 @@ RuleReadBroken ==
        ELSE /\ rdatt' = rdatt + 1 /\ rdlast' = rdfind
             /\ UNCHANGED <<rdpaths, rdwidens>>
   /\ rdst' = "working" /\ rdtotal' = rdtotal + 1 /\ rdsince' = rdsince + 1
+  /\ rdlost' = (rdinflight /\ Broken = "retireinflight")
+  /\ rdinflight' = FALSE /\ rdbegun' = FALSE
   /\ UNCHANGED <<rdfind, rdfixed, rdminds>>
 
 \* a card at its bound is the coordinator's: the decision (brief, rework --tier, rework
@@ -744,9 +755,24 @@ RdMind ==
         /\ rdatt' = 1 /\ rdsince' = 1 /\ rdminds' = rdminds + 1
      \/ /\ rdst' = "judged"
         /\ UNCHANGED <<rdfixed, rdatt, rdsince, rdminds>>
-  /\ UNCHANGED <<rdlast, rdfind, rdpaths, rdwidens, rdtotal>>
+  /\ rdbegun' = FALSE
+  /\ UNCHANGED <<rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdinflight, rdlost>>
 
-RdNext == RdLands \/ RuleReadBroken \/ RdMind \/ \E f \in RdFindings : RdReadBroken(f)
+\* a sibling read of the attempt is begun and its lease is live, once an attempt: while it
+\* is in flight the rule waits (never retires it), the code's ActWaitReads.
+RdBeginSibling ==
+  /\ rdst \in {"working", "broken"}
+  /\ ~rdinflight /\ ~rdbegun
+  /\ rdinflight' = TRUE /\ rdbegun' = TRUE
+  /\ UNCHANGED <<rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, rdsince, rdminds, rdlost>>
+
+\* the sibling reports, or its lease expires: the rule may answer as today.
+RdSiblingEnds ==
+  /\ rdinflight
+  /\ rdinflight' = FALSE
+  /\ UNCHANGED <<rdst, rdatt, rdlast, rdfind, rdpaths, rdwidens, rdtotal, rdfixed, rdsince, rdminds, rdlost, rdbegun>>
+
+RdNext == RdLands \/ RuleReadBroken \/ RdMind \/ RdBeginSibling \/ RdSiblingEnds \/ \E f \in RdFindings : RdReadBroken(f)
 
 \* The rule's answers never loop: under Cap attempts between two decisions.
 ReadAnswersBounded == rdtotal <= Cap * (rdminds + 1)
@@ -767,6 +793,9 @@ NoAttemptPastCapWithoutDecision == rdsince <= Cap /\ anatt - andec <= Cap
 \* Readers' findings widen one card's PATHS at most MaxWidens times: a reader naming a new
 \* file outside PATHS every round never widens it for ever.
 WidensBounded == rdwidens <= MaxWidens
+
+\* An in-flight read is never retired by a rework: its finding is never lost.
+NoInflightReadRetired == ~rdlost
 
 \* Every broken read is answered: by rule below the bound, by a mind at it.
 ReadAnswered == (rdst \in {"broken", "bound"}) ~> (rdst \notin {"broken", "bound"})
@@ -1817,6 +1846,7 @@ Next ==
 Fairness ==
   /\ WF_vars(Part = "rules" /\ (RuleFailed \/ RuleBound \/ Mind) /\ UNCHANGED <<twinVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>)
   /\ WF_vars(Part = "reads" /\ (RuleReadBroken \/ RdMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>)
+  /\ (Broken = "waitforever" \/ WF_vars(Part = "reads" /\ RdSiblingEnds /\ UNCHANGED <<twinVars, ruleVars, lateVars, gateVars, idleVars, anVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>))
   /\ WF_vars(Part = "answers" /\ (RuleAnBroken \/ RuleAnHarness \/ RuleAnFailed \/ AnMind \/ AnMindRework) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, epVars, judgVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>)
   /\ WF_vars(Part = "judgments" /\ (RuleFriendTake \/ RuleReadLate \/ RuleHoldNeedRework \/ RuleHoldNeedMind) /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, stallVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>)
   /\ SF_vars(Part = "stall" /\ LsTick /\ ~lsstopped /\ UNCHANGED <<twinVars, ruleVars, lateVars, rdVars, gateVars, idleVars, anVars, epVars, judgVars, conflictVars, norouteVars, alertVars, tierVars, ftVars>>)

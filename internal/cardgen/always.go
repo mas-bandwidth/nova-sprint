@@ -15,7 +15,7 @@ import (
 // docs/SPEC-CARD-CONTRACT.md): the files a change must touch to keep the tree green are
 // inside every card's PATHS. The owner, 2026-10-06: "Can we stop this whole 'test
 // outside of paths' thing. It's wasteful."
-const AlwaysInPathsRule = "Files a change must touch to keep the tree green are always inside PATHS, whatever the brief names: every *_test.go, every file under a testdata/ directory, tla/RUNS.tsv, tla/CASES.tsv and tla/COVERAGE.tsv, internal/docs/catalog.go, and every AGENTS.md map; any other file outside PATHS is still out of scope."
+const AlwaysInPathsRule = "Files a change must touch to keep the tree green are always inside PATHS, whatever the brief names: every test file (*_test.*, *.test.*, test_*, or under a tests/ or __tests__/ directory), every file under a testdata/ directory, tla/RUNS.tsv, tla/CASES.tsv and tla/COVERAGE.tsv, internal/docs/catalog.go, and every AGENTS.md map; any other file outside PATHS is still out of scope."
 
 // alwaysInPathsFiles are the single files AlwaysInPathsRule names.
 var alwaysInPathsFiles = []string{"tla/RUNS.tsv", "tla/CASES.tsv", "internal/docs/catalog.go"}
@@ -128,8 +128,8 @@ func LedgerInPaths(p string, catalog ...string) bool {
 	return diffcheck.Ledger(p) || diffcheck.AgentsMap(p)
 }
 
-// AlwaysInPaths says p is a file AlwaysInPathsRule puts inside every card's PATHS: a Go
-// test file, a file under a testdata directory at any depth, one of the TLA+ ledgers,
+// AlwaysInPaths says p is a file AlwaysInPathsRule puts inside every card's PATHS: a
+// test file in any language (IsTestFile), a file under a testdata directory at any depth, one of the TLA+ ledgers,
 // the docs catalog, an AGENTS.md map, a shared or evidence ledger (LedgerInPaths), or a
 // file a repository's own shared registry names (.nova/always-allowed, SharedRegistries;
 // docs/SPEC-LANDING.md, docs/SPEC-SPRINT.md section 7), which stands beside the built-in
@@ -141,7 +141,7 @@ func AlwaysInPaths(p string, registries ...string) bool {
 	switch {
 	case p == "." || p == "" || p == sharedRegistriesFile || strings.HasPrefix(p, "../") || strings.HasPrefix(p, "/"):
 		return false
-	case strings.HasSuffix(p, "_test.go"), path.Base(p) == "AGENTS.md", slices.Contains(alwaysInPathsFiles, p), LedgerInPaths(p), matchesRegistry(p, registries):
+	case IsTestFile(p), path.Base(p) == "AGENTS.md", slices.Contains(alwaysInPathsFiles, p), LedgerInPaths(p), matchesRegistry(p, registries):
 		return true
 	}
 	return slices.Contains(strings.Split(path.Dir(p), "/"), "testdata")
