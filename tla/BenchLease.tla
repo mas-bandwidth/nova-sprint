@@ -80,6 +80,9 @@
 (*                own expired one: NoLeaseOutlivesDeadline fails;           *)
 (*   "anytie"     chooses freely among least-committed ties: GrantTieBreak  *)
 (*                fails (MCBenchLeaseBrokenAnyTie.cfg).                    *)
+(* The design's witness LowLoadOneSlotLeasable (D3) says a one-slot bench  *)
+(* at 12% load folds to busy 0 and stays leasable; MCBenchLease.cfg checks  *)
+(* it through TypeOK, and the reversed fold below fails it.                *)
 (*   "ceilbusy"   busy is the old ceil fold, ceil(Load / 100 * Cores / 8): *)
 (*                a one-slot bench at any nonzero load reads busy 1, so a   *)
 (*                small background load takes a whole slot and the bench is *)
@@ -162,6 +165,16 @@ Best(L, C) == LET Lc == Least(L, C) IN
                       /\ (Slots[m] + Committed(L, m2) > Slots[m2] + Committed(L, m)
                           \/ NameRank[m] <= NameRank[m2])}
 
+\* D3: round folds a small nonzero load on a one-slot bench to busy 0, so its one
+\* slot is free or held by the asker (NeverOverSlots keeps the holders at most one)
+\* and the bench stays leasable; the ceil fold would read busy 1 and strand it.
+\* Written over busy alone so the main run's check stays as cheap as its other
+\* invariants.
+LowLoadOneSlotLeasable ==
+  \A m \in Machines :
+    Slots[m] = 1 /\ loadpct[m] > 0 /\ loadpct[m] < 50 =>
+      busy[m] = 0
+
 TypeOK ==
   /\ now \in 0..MaxNow
   /\ lease \in [Workers -> SUBSET Machines]
@@ -172,6 +185,9 @@ TypeOK ==
   /\ alive \in SUBSET Workers
   /\ waiting \in SUBSET Workers
   /\ last \in [w : Workers \cup {NoWorker}, kind : Kinds, m : Machines \cup {NoMachine}]
+  \* D3's low-load witness rides in TypeOK, which MCBenchLease.cfg checks, so the
+  \* main run checks the fold the code uses without a second config.
+  /\ LowLoadOneSlotLeasable
 
 Init ==
   /\ now = 0
@@ -326,14 +342,6 @@ Spec == Init /\ [][Next]_vars /\ Fairness
 
 \* D3, D4, D7: no bench ever holds more leases than its slots
 NeverOverSlots == \A m \in Machines : HeldIn(lease, m) <= Slots[m]
-
-\* D3: round folds a small nonzero load on a one-slot bench to busy 0, so it is
-\* leasable (leased or with room); the ceil fold would read busy 1 and strand it
-LowLoadOneSlotLeasable ==
-  \A m \in Machines :
-    Slots[m] = 1 /\ loadpct[m] > 0 /\ loadpct[m] < 50 =>
-      /\ busy[m] = 0
-      /\ (HeldIn(lease, m) > 0 \/ DesignRoomIn(lease, m))
 
 \* D4: a worker holds at most one lease; asking again renews it
 OneLeaseEach == \A w \in Workers : Cardinality(lease[w]) <= 1
