@@ -1265,7 +1265,46 @@ func (l *lander) land(ctx context.Context, j *landJob, pushed []*landJob) {
 		since(&b.Times.Queue, start)
 		if why == "" {
 			// the reads checked and the landing marked, in one step, just before the push
-			why = f.markLanding(stream, j.cards[:len(j.merged)])
+			var marked int
+			marked, why = f.markLanding(stream, j.cards[:len(j.merged)])
+			if marked > 0 && marked < len(j.merged) {
+				// the LAND-AFTER skip at pin marked: the marked prefix goes on to the push, the
+				// skipped pin and every pin after it stay queued (tla/SoftDependency.tla MarkPush)
+				tip, err := f.prefixTip(ctx, j, marked)
+				if err != "" {
+					j.refuse(err)
+					return
+				}
+				skipWhy := why
+				if _, err := f.git(ctx, j.dir, "reset", "-q", "--hard", tip); err != nil {
+					j.refuse("the batch branch could not be moved to the marked landing prefix: " + firstLine("", err) + "; nothing pushed")
+					return
+				}
+				// The whole batch's green gate does not prove this shortened tree green:
+				// a skipped later pin may have repaired a red earlier one. Gate the exact
+				// tip before push, including its tree tests, and cache only this result.
+				f.ctestTests = ctestTestsOf(j.cards[:marked])
+				f.stage("gate", "the marked landing prefix's tree")
+				red := f.treeGate(ctx, j.dir, true, nil)
+				if wait := gateWaitWhy(ctx); wait != "" {
+					j.refuse(wait + "; nothing pushed")
+					return
+				}
+				if red == benchGateUnavailableWhy {
+					j.refuse(red + "; nothing pushed")
+					return
+				}
+				if red != "" {
+					j.refuse("the marked landing prefix fails the tree gate: " + red + "; nothing pushed")
+					return
+				}
+				f.keep(landBatch{Stream: stream, Status: "refused", IDs: []string{}, Reason: skipWhy + "; the batch ends there: " + strings.Join(j.ids[:marked], ", ") + " go on to the push, " + strings.Join(j.ids[marked:], ", ") + " stay queued"})
+				why = ""
+				j.tip, j.gated, j.failed = tip, true, conflictCard{}
+				j.merged = j.merged[:marked]
+				j.cards, j.ids = j.cards[:marked], j.ids[:marked]
+				b.Cards, b.IDs, b.Scope = marked, j.ids, f.scopeOf(j.merged)
+			}
 		}
 		if why != "" {
 			j.refuse(why)
@@ -1333,6 +1372,38 @@ func (l *lander) baseNow(ctx context.Context, dir, base string) (sha, why string
 		return "", "the base " + base + " has no tip in " + dir + ": " + firstLine("", err)
 	}
 	return sha, ""
+}
+
+// prefixTip is the batch branch's tip after its first n merged heads, from the tips the
+// merges left (cardTips: the tip before each head merged, from the cut's first, then after
+// the last): the first that holds every head 0..n-1, holds no head from n on, and is on the
+// batch's tip; or why there is none, nothing pushed. Every head is checked, not only head
+// n-1: a head already on the base or inside an earlier head merges as a no-op (landgo.go),
+// so an earlier tip, the base itself, can hold head n-1 and not the heads before it.
+func (l *lander) prefixTip(ctx context.Context, j *landJob, n int) (string, string) {
+	const none = "the tip of the marked landing prefix was not recorded; nothing pushed"
+	if n < 1 || n > len(j.merged) {
+		return "", none
+	}
+	holds := func(tip, head string) bool {
+		_, err := l.git(ctx, j.dir, "merge-base", "--is-ancestor", head, tip)
+		return err == nil
+	}
+	for _, tip := range l.cardTips {
+		if slices.ContainsFunc(j.cards[:n], func(c landCard) bool { return !holds(tip, c.head) }) {
+			continue
+		}
+		if !holds(j.tip, tip) {
+			return "", none
+		}
+		for _, c := range j.cards[n:len(j.merged)] {
+			if holds(tip, c.head) {
+				return "", "the marked landing prefix's tip holds " + c.id + "'s head, which is skipped this batch; nothing pushed"
+			}
+		}
+		return tip, ""
+	}
+	return "", none
 }
 
 // again merges the batch onto the base's new tip, in the stream's worktree: the same
