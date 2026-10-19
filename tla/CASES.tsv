@@ -813,3 +813,5 @@ MCLaneCheckBrokenRepeatNotice.cfg	MCLaneCheck.tla	invariant	LivePastDeadlineHasO
 MCDealThrottle.cfg	MCDealThrottle.tla	pass	-	ignore-terminal	dealthrottle	required	-
 MCDealThrottleBrokenNoResume.cfg	MCDealThrottle.tla	temporal	WorkResumes	ignore-terminal	dealthrottle	required	-
 MCDealThrottleBrokenCutsInFlight.cfg	MCDealThrottle.tla	action	InFlightNeverCut	ignore-terminal	dealthrottle	required	-
+MCLandBoundBrokenNoMergeExempt.cfg	MCLandBound.tla	invariant	NoPathsRefusalNamesMerged	ignore-terminal	land	required	-
+MCLandBoundReachMergeOutside.cfg	MCLandBound.tla	invariant	ReachMergeOutside	ignore-terminal	land	required	-

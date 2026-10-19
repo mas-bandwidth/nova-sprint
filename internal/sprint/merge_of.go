@@ -14,6 +14,9 @@ import (
 // such a card the lander resolves the merged parent and exempts from E12 every
 // changed file that arrived unchanged through the merge; every other file still
 // needs PATHS exactly as today (docs/SPEC-SPRINT.md section 7, the lander's checks).
+// The model is tla/Land.tla: merged[c] is a card's merged set, a "paths" refusal
+// draws its files from Files \ (paths[c] \cup merged[c]), and
+// NoPathsRefusalNamesMerged holds (Broken "nomergeexempt" is its witness).
 
 // MergeOfResult is one forward-merge card's exemption: the merged parent M, the
 // files exempt (arrived unchanged through the merge) and the rest, the files the
