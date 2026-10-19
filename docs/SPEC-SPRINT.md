@@ -3732,7 +3732,7 @@ is served. `card` and `where --json --rows` show the tier it is on.
   One read card per reader. The two rules meet in one pin,
   `TestSequentialReadsAtReaderWidthKeepThreeReadsPerLanding`: pro cards whose
   first read fails once land on three reads each while no reader holds more
-  reads than its machine's width (with `TestAProCardsReadsAreAskedOneAtATime`
+  reads than its machine's width (with `TestAProCardsReadsAreAskedTogether`
   and the reader-width tests of cmd/nova-sprint). **The reader who found the
   defect checks the fix** (the owner, 2026-10-04): `rework` writes on the
   primary the reader whose finding it sends back (`finding_reader`, the first
@@ -3758,7 +3758,7 @@ is served. `card` and `where --json --rows` show the tier it is on.
   preferred, and a busy reader is not asked again only to have the next
   tick's level move the read (the owner, 2026-10-01, deleting the preference
   for the readers kept on the primary: "yes on the decision."). The model is
-  tla/ReadsByRoom.tla (one read at a time, the finder first, every read on a
+  tla/ReadsByRoom.tla (reads asked together, the finder first, every read on a
   reader with room under its machine's width, three reads for a pro card
   found broken once) and the reference model (internal/sprint/refmodel,
   AskChoice: the finder first, then the least loaded reader).
@@ -8423,9 +8423,9 @@ moves to merging and into its stream's merge queue, and the coordinator is
 told once a tick, one "ready to merge" notice naming every primary accepted;
 the merge is the coordinator's, and the notice names each stream's
 `land --stream <s>`, which a `run --land` does itself),
-ask (T2: the reads each primary in review with work not failed wants now, one
-at a time: its first read alone, the rest it needs once the first came back ok,
-one for a flash card and two for a pro card; a read asked of a
+ask (T2: the reads each primary in review with work not failed wants now, all
+at once: a flash card's one read and a pro card's two, each of a different
+reader, a read outstanding counted among those that stand; a read asked of a
 reader that is not up is taken back first, section 6), check (T6: section 9, and the
 no-stall rule), deadlines (and the backlog alarms, section 8), overdue, done
 (the sprint done: the system stops). Each part is
@@ -8618,7 +8618,7 @@ changes the word, or is the member's first, takes the line, so the tick sees the
 order with the takes and finishes before it (`tla/ServerLanes.tla`, `ChangeHoldsTheLine`; on
 2026-10-17 nine idle benches put ~180 changeless beats a minute on the line). A read (`where`, `card`, `log`, `check`, `routes`, `stats`,
 `needs`, `goal show`, `handover`, and `inbox` without `--read`) writes nothing and runs on the
-read lane: one read at a time on the lane's own process state, beside the line, as a client
+read lane: a read at a time on the lane's own process state, beside the line, as a client
 reading the store directly always has. The dashboard's read (`where --json --dashboard`, once a
 second for each dashboard, with no other flag but the actor) has a lane of its own, beside the
 line and the read lane, so it never waits behind the reads ahead of the read lane (the owner,
@@ -9542,9 +9542,12 @@ The decisions:
    code: they come from nova-config's machine rows through `fleet sync`, and a hold
    (space, mini-m5-1) keeps a machine out.
 3. **Slots (D3).** A lease is one bench slot: one job at `go test -p 8`. A bench's slots
-   are max(1, Cores / 8). Its committed slots are max(held, busy), where held is its live
-   leases and busy is ceil(Load / 100 * Cores / 8), so a lease counts before its load
-   shows and outside load (the fleet's own cards, a stray process) counts too.
+    are max(1, Cores / 8). Its committed slots are max(held, busy), where held is its live
+    leases and busy is round(Load / 100 * Cores / 8), rounded to the nearest slot with halves
+    up, so a lease counts before its load shows and outside load (the fleet's own cards, a
+    stray process) counts too. Round, not ceil: a small background load must not take a
+    whole slot (12% of a one-slot bench reads 0, 1% of a two-slot bench reads 0), while a
+    bench at 50% of its slot reads 1 and a full bench still reads its slots.
 4. **The pick (D4).** The allowed bench with the lowest committed / slots, a tie going to
    the most free slots, then the name; granted only when committed + 1 <= slots. A worker
    that already holds a lease is answered its own bench and its lease renewed (Seen = now):

@@ -33,6 +33,7 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -58,6 +59,35 @@ const landGoBudget = 15 * time.Minute
 // AskRefused).
 const landGateRunBudget = 15 * time.Minute
 
+// landGateNice is the priority every gate exec runs at: a gate run is never niced
+// down, because landing is the highest priority in the sprint (the owner, 2026-10-18;
+// standard row R-PRIORITY.2). The card work it competes with on a bench runs at a
+// higher nice number, so the OS gives the gate the CPU first.
+const landGateNice = 0
+
+// niceArgv is argv started at the gate's level, named explicitly even at 0 so the tell
+// is on the command line. A value below 0 would need root and is not used.
+func niceArgv(argv []string) []string {
+	out := make([]string, 0, 3+len(argv))
+	out = append(out, "nice", "-n", strconv.Itoa(landGateNice))
+	return append(out, argv...)
+}
+
+// gateArgv is the argv any gate exec runs a shell script at (the bench's tree gate and
+// the lander's own --check): `nice -n <landGateNice> sh -c <script>`.
+func gateArgv(script string) []string { return niceArgv([]string{"sh", "-c", script}) }
+
+// cloneGoArgv is a go run's command line in the clone, started at the gate's level
+// (goRun). goRun checks the run's own program for the gofmt branch before wrapping.
+func cloneGoArgv(run []string) []string { return niceArgv(run) }
+
+// benchRun is bench.Run, a test's seam for the argv the bench is given.
+var benchRun = bench.Run
+
+// subprocPrepare is subproc.Prepare, a test's seam for the command line a go run in
+// the clone is given (goRun).
+var subprocPrepare = subproc.Prepare
+
 // gateRunBudgetOverride is a test's seam for one gate run's budget; the zero value
 // means landGateRunBudget (gateOn).
 var gateRunBudgetOverride time.Duration
@@ -73,7 +103,9 @@ var treeTests = []string{"internal/docs", "internal/ci"}
 // cache every run of this process shares (goCache), and set (NAME=value each); its combined
 // output.
 func (l *lander) goRun(ctx context.Context, dir string, run []string, set ...string) (string, error) {
-	b := subproc.Prepare(ctx, landGoBudget, run[0], run[1:]...)
+	gofmtRun := len(run) > 0 && run[0] == "gofmt"
+	run = cloneGoArgv(run)
+	b := subprocPrepare(ctx, landGoBudget, run[0], run[1:]...)
 	defer b.Cancel()
 	gateGroupCmd(b.Cmd)
 	var env []string
@@ -89,7 +121,7 @@ func (l *lander) goRun(ctx context.Context, dir string, run []string, set ...str
 		with = append(with, "GOCACHE="+cache)
 	}
 	b.Cmd.Dir, b.Cmd.Env = dir, withEnv(env, append(with, set...)...)
-	if len(run) > 0 && run[0] == "gofmt" {
+	if gofmtRun {
 		var stdout, stderr bytes.Buffer
 		b.Cmd.Stdout, b.Cmd.Stderr = &stdout, &stderr
 		err := b.Cmd.Run()
@@ -1365,10 +1397,10 @@ func (l *lander) runOnBench(ctx context.Context, host, dir string, runs [][]stri
 		return "", 0, fmt.Errorf("no mirror stage for %s: the gate runs here", dir)
 	}
 	var buf bytes.Buffer
-	res, err := bench.Run(ctx, bench.Exec{}, bench.Options{
+	res, err := benchRun(ctx, bench.Exec{}, bench.Options{
 		Hosts:  []string{host},
 		Stage:  st,
-		Argv:   []string{"sh", "-c", gateScript(runs)},
+		Argv:   gateArgv(gateScript(runs)),
 		Stdout: &buf,
 		Stderr: &buf,
 		Now:    l.clock,
