@@ -68,7 +68,7 @@ func TestTwoReadsReworkWaitsForBoth(t *testing.T) {
 
 	t.Run("the second is handed back: the rework runs", func(t *testing.T) {
 		t.Parallel()
-		w, _, second := waiting(t)
+		w, first, second := waiting(t)
 		w.must(Read(w.s, ReadReq{Sel: Sel{IDs: []string{second.ID}}, As: second.F("reader"), Return: true, Reason: "cannot read it here"}))
 		pk := reworked(t, w)
 		require.Contains(t, pk.Finding, "read by "+first.F("reader")+": broken: "+firstFinding, "the sole broken finding keeps its reader")
