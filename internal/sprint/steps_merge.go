@@ -499,7 +499,10 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 			p.refuse(c.ID, "the batch omits prerequisites "+strings.Join(needs, ", ")+"; nothing was changed; run: nova-sprint land --stream "+r.Stream)
 			return p
 		}
-		if soft := LandOrderBlocked(s, s.Work.Card(c.ID), landing); len(soft) > 0 {
+		// a pin marked landing at its head had its LAND-AFTER order judged at the mark
+		// (MarkLanding): a target queued after the mark never refuses a pushed batch
+		// (tla/SoftDependency.tla Report, BaseRecorded and BaseSoftOrder)
+		if soft := LandOrderBlocked(s, s.Work.Card(c.ID), landing); len(soft) > 0 && !LandingMarked(s, c.ID) {
 			p.refuse(c.ID, fmt.Sprintf("%s: soft dependency on %s not landed; nothing was changed; run: nova-sprint land --stream %s", c.ID, strings.Join(soft, ", "), r.Stream))
 			return p
 		}

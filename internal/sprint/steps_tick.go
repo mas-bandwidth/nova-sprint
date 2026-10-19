@@ -2080,7 +2080,7 @@ func quietedByBlocker(s *Snapshot, n Note) bool {
 	}
 	if contains(NeedHoldingKinds, n.Type) {
 		cards := cardsHeldBy(n)
-		for _, b := range Blockers(s) {
+		for _, b := range s.tickBlockers() {
 			if contains(cards, b.ID) && len(b.Dependents) > 0 {
 				return true
 			}

@@ -217,9 +217,11 @@ func (a *app) runHold(verbName, stepVerb string, c common, st *store.Store, r sp
 }
 
 // cmdFleetDown is fleet down <member>, hold <member> --return in the old words (one
-// release): the member's unfinished work, ready and working, dealt round the fleet now.
+// release): the member's unfinished work, ready and working, dealt round the fleet now;
+// --force-last opts into leaving no gate bench, as it does on hold.
 func (a *app) cmdFleetDown(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("fleet down")
+	forceLast := fs.Bool("force-last", false, "hold the last member that can run a land gate anyway: every landing will be refused until one is unheld, and the note says no gate bench is left")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "fleet down", err.Error())
@@ -231,7 +233,7 @@ func (a *app) cmdFleetDown(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "fleet down", err.Error())
 	}
-	return a.runHold("fleet down", "fleet hold", *c, st, sprint.HoldReq{Names: pos, Kind: sprint.HoldMember, Return: true, Who: c.actor, Self: a.machineName()}, nil, stdout, stderr)
+	return a.runHold("fleet down", "fleet hold", *c, st, sprint.HoldReq{Names: pos, Kind: sprint.HoldMember, Return: true, ForceLast: *forceLast, Who: c.actor, Self: a.machineName()}, nil, stdout, stderr)
 }
 
 // oldHoldWords is what fleet down, reader away and reader up say on -h: the hold verb
