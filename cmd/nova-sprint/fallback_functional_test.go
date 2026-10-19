@@ -31,7 +31,7 @@ import (
 // redeal, no ended take and no re-ask of a reader spent, and no card is left behind. The
 // readers table's reads (set --read-cards off): a reader's return there falls back in
 // steps_review.go's Read, which needs the read step to load the fleet table and the routes
-// on a return (internal/sprint/store/steps.go ReadStep, outside this card's PATHS).
+// on a return (internal/sprint/store/steps.go ReadStep, which now loads Routes).
 func TestProviderFallbackFunctional(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -141,6 +141,149 @@ func TestProviderFallbackFunctional(t *testing.T) {
 	require.True(t, done(), "every card finished on the other providers and accepted")
 	assert.NotZero(t, faults, "the first provider faulted takes")
 	t.Logf("take faults on flash-a: %d, read faults on flash-a: %d", faults, readFaults)
+	for _, id := range ids {
+		v := cardOf(id)
+		assert.Equal(t, "1", v.Primary.Fields["attempt"], "%s: no attempt spent", id)
+		for _, wc := range v.Work {
+			assert.Empty(t, wc.Fields[sprint.FieldTakeEnded], "%s: no take ended", wc.ID)
+			assert.Empty(t, wc.Fields["redeals"], "%s: no redeal spent", wc.ID)
+			assert.NotEqual(t, "flash-a", wc.F(sprint.FieldRoute), "%s: finished on another provider", wc.ID)
+		}
+		for _, rc := range v.Reads {
+			assert.Empty(t, rc.Fields[sprint.FieldReasked], "%s: no reader spent", rc.ID)
+			if rc.F("verdict") != "" {
+				assert.NotEqual(t, "flash-a", rc.F(sprint.FieldRoute), "%s: read on another provider", rc.ID)
+			}
+		}
+	}
+}
+
+// TestProviderFallbackReadCardsFunctional is the read-cards variant: the same three
+// providers and two fake members, but the reads are cards on the members' rows
+// (set --read-cards on). The first provider answers every take and every read with a 429;
+// a member's read card returned with that cause is asked again at once on the next route
+// in line, the same read card and the same reader, and finishes there with no re-ask
+// counted; every work card finishes on the other providers, at its first attempt.
+// docs/SPEC-SPRINT.md section 5, provider fallback; tla/ProviderFallback.tla Fallback,
+// FaultSpendsNothing.
+func TestProviderFallbackReadCardsFunctional(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	addr := testutil.Start(t)
+	admin := redis.NewClient(&redis.Options{Addr: addr})
+	t.Cleanup(func() { _ = admin.Close() })
+	require.NoError(t, fn.Load(ctx, admin))
+	for _, x := range [][2]string{{"flash-a", "pa"}, {"flash-b", "pb"}, {"flash-c", "pc"}} {
+		require.NoError(t, admin.SAdd(ctx, config.RoutesKey, x[0]).Err())
+		require.NoError(t, admin.HSet(ctx, config.RouteKey(x[0]), "name", x[0], "tier", "flash", "provider", x[1], "model", "m",
+			"tokens", "100000", "deadline", "900", "enabled", "true").Err())
+	}
+	ta := newFunctionalTestApp(t, addr)
+	run := func(args ...string) string { t.Helper(); return ta.runVerb(args...) }
+	const n = 3
+	const limit429 = "provider failure: provider: class=rate-limited status=429 msg=Too many requests, try again in 1s"
+	const read429 = "no verdict: provider: class=rate-limited status=429 msg=Too many requests, try again in 1s"
+	members, readers := []string{"m1", "m2"}, []string{"reader-m1", "reader-m2"}
+	run("init", "--readers", "reader-m1,reader-m2", "--members", "m1:4,m2:4")
+	run("set", "--read-cards", "on")
+	for _, rd := range readers {
+		run("reader", "set", rd, "--tiers", "all")
+	}
+	run("add", "--stream", "s1", "--count", strconv.Itoa(n))
+	beat := func() {
+		for _, m := range members {
+			run("fleet", "beat", m)
+		}
+		for _, rd := range readers {
+			run("queue", "--as", rd)
+		}
+	}
+	beat()
+	run("start")
+	beat()
+	run("tick")
+	cardOf := func(id string) cardView {
+		t.Helper()
+		var v cardView
+		require.NoError(t, json.Unmarshal([]byte(run("card", id, "--json")), &v), id)
+		return v
+	}
+	ids := make([]string, n)
+	for i := range ids {
+		ids[i] = fmt.Sprintf("s1-%d", i+1)
+	}
+	faults, readFaults := 0, 0
+	done := func() bool {
+		for _, id := range ids {
+			if c := cardOf(id).Column; c != sprint.Merging && c != sprint.Landed {
+				return false
+			}
+		}
+		return true
+	}
+	for round := 0; round < 60 && !done(); round++ {
+		time.Sleep(1100 * time.Millisecond)
+		beat()
+		run("tick")
+		for _, m := range members {
+			var q struct {
+				Epoch uint64 `json:"epoch"`
+				Cards []struct {
+					ID      string `json:"id"`
+					Primary string `json:"primary"`
+					Gen     int    `json:"gen"`
+				} `json:"cards"`
+			}
+			require.NoError(t, json.Unmarshal([]byte(run("queue", "--as", m, "--json")), &q))
+			if len(q.Cards) == 0 {
+				continue
+			}
+			epoch := strconv.FormatUint(q.Epoch, 10)
+			run("take", "--as", m, "--limit", "100", "--epoch", epoch)
+			for _, c := range q.Cards {
+				v := cardOf(c.Primary)
+				route, read := "", false
+				for _, wc := range v.Work {
+					if wc.ID == c.ID {
+						route = wc.F(sprint.FieldRoute)
+					}
+				}
+				for _, rc := range v.Reads {
+					if rc.ID == c.ID {
+						route, read = rc.F(sprint.FieldRoute), true
+					}
+				}
+				at := c.ID + "@" + strconv.Itoa(c.Gen)
+				if route == "flash-a" {
+					if read {
+						readFaults++
+						run("read", "--as", m, "--return", c.ID, "--reason", read429, "--epoch", "0")
+						continue
+					}
+					faults++
+					run("finish", "--as", m, at, "--epoch", epoch, "--failed", "--report", limit429)
+					continue
+				}
+				if read {
+					model := ""
+					v = cardOf(c.Primary)
+					for _, rc := range v.Reads {
+						if rc.ID == c.ID {
+							route, model = rc.F(sprint.FieldRoute), rc.F(sprint.FieldModel)
+						}
+					}
+					run("read", "--as", m, "--ok", c.ID, "--epoch", "0", "--usage", "input=1000 cache_read=0 cache_write=0 output=100 model="+model)
+					continue
+				}
+				run("finish", "--as", m, at, "--epoch", epoch, "--head", c.ID)
+			}
+		}
+		beat()
+		run("tick") // the finishes drain; a fault falls back in the same step
+	}
+	require.True(t, done(), "every card finished on the other providers and accepted")
+	assert.NotZero(t, faults, "the first provider faulted takes")
+	assert.NotZero(t, readFaults, "the first provider faulted read cards")
 	for _, id := range ids {
 		v := cardOf(id)
 		assert.Equal(t, "1", v.Primary.Fields["attempt"], "%s: no attempt spent", id)

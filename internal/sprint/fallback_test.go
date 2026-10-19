@@ -154,6 +154,17 @@ func TestReadProviderFaultSpendsNoReader(t *testing.T) {
 // read no funded flag and dealt the card on B at once.
 func TestEveryRouteCoolingWaitsWithADeadline(t *testing.T) {
 	t.Parallel()
+	everyRouteCoolingWaitsWithADeadline(t)
+}
+
+// TestFallbackEveryRouteCoolingWaitsWithADeadline is the same check under the name the
+// DONE-WHEN command's Fallback|ProviderFault run reaches.
+func TestFallbackEveryRouteCoolingWaitsWithADeadline(t *testing.T) {
+	t.Parallel()
+	everyRouteCoolingWaitsWithADeadline(t)
+}
+
+func everyRouteCoolingWaitsWithADeadline(t *testing.T) {
 	w := fallbackWorld(t, abc...)
 	w.s.Providers = map[string]Provider{"A": {Name: "A", Funded: true}, "B": {Name: "B"}, "C": {Name: "C"}}
 	wc, member, attempt := dealAndTake(t, w)
@@ -196,6 +207,17 @@ func TestEveryRouteCoolingWaitsWithADeadline(t *testing.T) {
 // (tla/ProviderFallback.tla NoDealToCooling). Red at BASE: the draw never read funded.
 func TestUnfundedProviderNeverInLine(t *testing.T) {
 	t.Parallel()
+	unfundedProviderNeverInLine(t)
+}
+
+// TestFallbackUnfundedProviderNeverInLine is the same check under the name the DONE-WHEN
+// command's Fallback|ProviderFault run reaches.
+func TestFallbackUnfundedProviderNeverInLine(t *testing.T) {
+	t.Parallel()
+	unfundedProviderNeverInLine(t)
+}
+
+func unfundedProviderNeverInLine(t *testing.T) {
 	w := fallbackWorld(t, abc...)
 	w.s.Providers = map[string]Provider{"A": {Name: "A"}, "B": {Name: "B", Funded: true}, "C": {Name: "C", Funded: true}}
 	wc, _, _ := dealAndTake(t, w)
@@ -227,6 +249,17 @@ func coolsPerProvider(t *testing.T, seams ...string) string {
 // "nocooling" seam, MCProviderFallbackBrokenDealCooling): the card falls back onto pro-a2.
 func TestCoolingIsPerProvider(t *testing.T) {
 	t.Parallel()
+	coolingIsPerProvider(t)
+}
+
+// TestFallbackCoolingIsPerProvider is the same check under the name the DONE-WHEN
+// command's Fallback|ProviderFault run reaches.
+func TestFallbackCoolingIsPerProvider(t *testing.T) {
+	t.Parallel()
+	coolingIsPerProvider(t)
+}
+
+func coolingIsPerProvider(t *testing.T) {
 	assert.Equal(t, "pro-b", coolsPerProvider(t), "both of A's routes cool")
 	t.Run("reversed witness: the line ignores cooling", func(t *testing.T) {
 		t.Parallel()

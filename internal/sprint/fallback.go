@@ -614,9 +614,15 @@ func readFallbackSet(p *Plan, s *Snapshot, c, pr *Card, reason, class string) (m
 	}
 	faulted := faultProvider(s, c)
 	tier := cmpOr(c.F(FieldTier), s.readTierOf(pr))
+	// a member's read card is re-asked of the same member first, when it can run the next
+	// route; a reader's read, on the readers table, has no member to check (row "")
+	reader := ""
+	if !IsFriendRow(c.Row) && s.Fleet != nil && s.Fleet.HasRow(c.Row) {
+		reader = c.Row
+	}
 	ss, _ := s.withRests()
 	ss = ss.withBudgets()
-	r, ok := ss.nextInLine(tier, "", c.F(FieldRoute), faulted)
+	r, ok := ss.nextInLine(tier, reader, c.F(FieldRoute), faulted)
 	if !ok {
 		return nil, false
 	}
