@@ -828,7 +828,7 @@ ForwardMerge ==
   /\ UNCHANGED store /\ UNCHANGED base
   /\ UNCHANGED lander /\ UNCHANGED shortland
   /\ UNCHANGED <<badcaller, stalepush, stalerec, lpushed, carried, ownstop, repairback, capJudged>>
-  /\ UNCHANGED <<bat, prevw, prevat, allconf, widens, paths, cleared, twice, cbound, carryoff, wrongmark>>
+  /\ UNCHANGED <<bat, prevw, prevat, allconf, widens, paths, merged, named, cleared, twice, cbound, carryoff, wrongmark>>
 
 \* Recheck: the coordinator's forward-merge recheck clears one card's pending
 \* mark at the tip it was marked for (RecheckForwardMerge), after the behind
@@ -840,7 +840,7 @@ Recheck ==
   /\ UNCHANGED store /\ UNCHANGED remote
   /\ UNCHANGED lander /\ UNCHANGED events
   /\ UNCHANGED ghosts
-  /\ UNCHANGED <<bat, prevw, prevat, allconf, widens, paths, cleared, twice, cbound, carryoff, wrongmark>>
+  /\ UNCHANGED <<bat, prevw, prevat, allconf, widens, paths, merged, named, cleared, twice, cbound, carryoff, wrongmark>>
 
 Crash ==
   /\ lphase # "idle"
