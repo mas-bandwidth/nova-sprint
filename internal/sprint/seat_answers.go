@@ -511,14 +511,20 @@ type DecisionSummary struct {
 	DefaultsHour   int           `json:"defaults_hour"`
 	DeliveryFaults int           `json:"delivery_faults"`
 	ReceiptUnknown int           `json:"receipt_unknown"`
+	HeldByDefault  int           `json:"held_by_default"`
 	ReceiptHistory []string      `json:"receipt_history,omitempty"`
 }
 
 func DecisionsOwed(now time.Time, all []Open, held []Note, stopped func(time.Time, time.Time) time.Duration) DecisionSummary {
+	var out DecisionSummary
+	heldSeen := map[string]bool{}
 	for _, n := range held {
+		if !heldSeen[n.ID] {
+			heldSeen[n.ID] = true
+			out.HeldByDefault++
+		}
 		all = append(all, Open{Note: n})
 	}
-	var out DecisionSummary
 	seen := map[string]bool{}
 	for _, o := range all {
 		n := o.Note
@@ -547,7 +553,7 @@ func DecisionsOwed(now time.Time, all []Open, held []Note, stopped func(time.Tim
 	return out
 }
 func (d DecisionSummary) Line() string {
-	return fmt.Sprintf("DECISIONS OWED %d, oldest %s; server-defaults applied this hour %d; delivery faults %d; earlier receipts unknown %d", d.Count, d.Oldest.Truncate(time.Second), d.DefaultsHour, d.DeliveryFaults, d.ReceiptUnknown)
+	return fmt.Sprintf("DECISIONS OWED %d, oldest %s; server-defaults applied this hour %d; delivery faults %d; earlier receipts unknown %d; held by server-default %d", d.Count, d.Oldest.Truncate(time.Second), d.DefaultsHour, d.DeliveryFaults, d.ReceiptUnknown, d.HeldByDefault)
 }
 
 // DecisionBatch folds by stable note identity, never by changing ages. A default

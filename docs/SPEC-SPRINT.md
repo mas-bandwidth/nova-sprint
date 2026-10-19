@@ -9786,7 +9786,8 @@ requires the transport eventually to succeed. `tla/DecisionsOwed.tla` models thi
 boundary separately from hook proof (`SeatHealth.tla`).
 
 `where` starts with `DECISIONS OWED n, oldest <age>`, the number of defaults applied
-in the last hour, the number of unresolved delivery faults, and earlier ambiguous receipts retained for inspection. Counts include distinct open judgment IDs and each primary still held by server-default.
+in the last hour, the number of unresolved delivery faults, earlier ambiguous receipts retained for inspection, and the number of cards held by server-default. Counts include distinct open judgment IDs and each primary still held by server-default.
+DecisionsOwed (`internal/sprint/seat_answers.go`) sets the held-by-default count from the distinct live hold notes DefaultHeldDecisions returns, one per card; a coordinator's own hold is not one.
 Parked primaries remain owed and included in folded notices until release; their
 original judgment ID and cause remain visible after the one-hour audit-report window.
 Oldest age uses the running clock, excluding STOPPED spans. Default reports are
