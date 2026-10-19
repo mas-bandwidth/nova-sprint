@@ -871,7 +871,9 @@ LandedInBase == landed \subseteq base
 \* Check every new queue admission against the last generation actually
 \* rechecked for that card. Historical admissions are not invalidated by a
 \* later base move; the stale admission mutant removes only Accept's guard.
-NoDealAgainstStaleTip ==\n  [][\A c \in Cards :\n       c \in Range(queue') \ Range(queue) => checkedTip[c] >= recordedTip]_vars
+NoDealAgainstStaleTip ==
+  [][\A c \in Cards :
+       c \in Range(queue') \ Range(queue) => checkedTip[c] >= recordedTip]_vars
 
 LandsInOrder ==
   [][LET new == {h[1] : h \in landed' \ landed} IN
