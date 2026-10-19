@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
@@ -24,9 +25,13 @@ import (
 // tla/ProviderFallback.tla). A private store (a redis-server of its own, the function library
 // loaded, explicit --redis, a scrubbed environment) with three flash routes on three
 // providers, two fake members and three readers; the first provider answers every take and
-// every read with a 429. Every card and every read is finished on the other two providers,
-// at its first attempt, with no redeal, no ended take and no re-ask of a reader spent, and
-// no card is left behind.
+// every read with a 429 that asks for a second (its words, `try again in 1s`, are the
+// cooling's window, so its routes come back into line and are faulted again). Every card
+// and every read is finished on the other two providers, at its first attempt, with no
+// redeal, no ended take and no re-ask of a reader spent, and no card is left behind. The
+// readers table's reads (set --read-cards off): a reader's return there falls back in
+// steps_review.go's Read, which needs the read step to load the fleet table and the routes
+// on a return (internal/sprint/store/steps.go ReadStep, outside this card's PATHS).
 func TestProviderFallbackFunctional(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -42,8 +47,8 @@ func TestProviderFallbackFunctional(t *testing.T) {
 	ta := newFunctionalTestApp(t, addr)
 	run := func(args ...string) string { t.Helper(); return ta.runVerb(args...) }
 	const n = 4
-	const limit429 = "provider failure: provider: class=rate-limited status=429 msg=Too many requests"
-	const read429 = "no verdict: provider: class=rate-limited status=429 msg=Too many requests"
+	const limit429 = "provider failure: provider: class=rate-limited status=429 msg=Too many requests, try again in 1s"
+	const read429 = "no verdict: provider: class=rate-limited status=429 msg=Too many requests, try again in 1s"
 	members, readers := []string{"m1", "m2"}, []string{"reader-a", "reader-b", "reader-c"}
 
 	run("init", "--readers", "reader-a,reader-b,reader-c", "--members", "m1:4,m2:4")
@@ -81,6 +86,9 @@ func TestProviderFallbackFunctional(t *testing.T) {
 		return true
 	}
 	for round := 0; round < 40 && !done(); round++ {
+		// the provider asks for a second: its cooling ends by itself, so the reads are drawn
+		// onto it again and its 429 answers them too
+		time.Sleep(1100 * time.Millisecond)
 		beat()
 		run("tick")
 		for _, m := range members {
@@ -126,7 +134,7 @@ func TestProviderFallbackFunctional(t *testing.T) {
 					run("read", "--as", rc.Row, "--return", rc.ID, "--reason", read429, "--epoch", "0")
 					continue
 				}
-				run("read", "--as", rc.Row, "--ok", rc.ID, "--epoch", "0")
+				run("read", "--as", rc.Row, "--ok", rc.ID, "--epoch", "0", "--usage", "input=1000 cache_read=0 cache_write=0 output=100 model="+rc.F(sprint.FieldModel))
 			}
 		}
 	}

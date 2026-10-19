@@ -2770,7 +2770,13 @@ func rateLimitedReturned(s *Snapshot, c, pr *Card, r FinishReq, label, moved str
 		if r.Usage != "" {
 			usage = rec
 		}
-		set[FieldProviderTake+itoa(returnTakeNumber(c.Int(FieldRateReturns)+1))] = ProviderTake{Route: c.F(FieldRoute), Model: c.F(FieldModel), Member: c.Row,
+		// the first free return slot (fallback.go, freeReturnNumber): a fallback's record
+		// may hold an earlier one, and none is ever overwritten
+		n := freeReturnNumber(c)
+		if n == 0 {
+			n = returnTakeNumber(c.Int(FieldRateReturns) + 1)
+		}
+		set[FieldProviderTake+itoa(n)] = ProviderTake{Route: c.F(FieldRoute), Model: c.F(FieldModel), Member: c.Row,
 			Finished: stamp(s.Now), Usage: usage, Error: line, Taken: taken}.String()
 	}
 	prSet := map[string]string{}
