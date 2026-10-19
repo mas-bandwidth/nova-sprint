@@ -57,13 +57,14 @@ func TestProviderFailureReturnClasses(t *testing.T) {
 	t.Parallel()
 	for reason, want := range map[string]bool{
 		ultramarine429Return: true,
-		`no verdict (ran=false verdict=""): provider failure: provider: class=provider-5xx status=503 msg=unavailable`:                         true,
-		`no verdict (ran=false verdict=""): provider failure: provider: class=timeout status=- msg=no headers`:                                 true,
-		`no verdict (ran=false verdict=""): provider failure: provider: class=other status=502 msg=bad gateway`:                                true,
-		`no verdict (ran=false verdict=""): provider failure: provider: class=out-of-credit status=402 msg=This request requires more credits`: false,
-		`no verdict (ran=false verdict=""): provider failure: provider: class=auth status=401 msg=Missing API key`:                             false,
-		`no verdict (ran=false verdict=""): the child ended without a result`:                                                                  false,
-		`no verdict (ran=true verdict="nothing"): rate limit mentioned in a finding`:                                                           false,
+		`no verdict (ran=false verdict=""): provider failure: provider: class=provider-5xx status=503 msg=unavailable`:                                   true,
+		`no verdict (ran=false verdict=""): provider failure: provider: class=timeout status=- msg=no headers`:                                           true,
+		`no verdict (ran=false verdict=""): provider failure: provider: class=other status=502 msg=bad gateway`:                                          true,
+		`no verdict (ran=false verdict=""): provider failure: provider: class=out-of-credit status=402 msg=This request requires more credits`:           false,
+		`no verdict (ran=false verdict=""): provider failure: provider: class=auth status=401 msg=Missing API key`:                                       false,
+		`no verdict (ran=false verdict=""): provider failure: provider: class=other status=429 msg=You exceeded your current quota (insufficient_quota)`: false,
+		`no verdict (ran=false verdict=""): the child ended without a result`:                                                                            false,
+		`no verdict (ran=true verdict="nothing"): rate limit mentioned in a finding`:                                                                     false,
 	} {
 		assert.Equal(t, want, ProviderFailureReturn(reason), reason)
 	}

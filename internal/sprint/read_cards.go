@@ -387,10 +387,14 @@ func ProviderFailureReturn(reason string) bool {
 	if m == nil {
 		return false
 	}
+	low := strings.ToLower(reason)
+	if strings.Contains(low, "quota") || strings.Contains(low, "credit") || strings.Contains(low, "balance") {
+		return false // out of funds under any class or status: it spends as before
+	}
 	switch m[1] {
 	case classRateLimited, class5xx, classTimeout:
 		return true
-	case RestCredit, "auth", "key", "refused":
+	case RestCredit, RestAuth:
 		return false
 	}
 	st := m[2]
