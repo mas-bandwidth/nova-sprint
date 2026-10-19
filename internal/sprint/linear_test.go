@@ -102,6 +102,36 @@ func TestLinearNeverPushesAMergeCommit(t *testing.T) {
 	}
 }
 
+func TestLinearOrdinaryCardUsesSquash(t *testing.T) {
+	t.Parallel()
+	f := &linearFake{tip: "tip", seen: map[string]bool{}, trees: map[string]string{}}
+	card := LinearCard{ID: "ordinary.w1", Title: "ordinary", Head: "ordinary-head", Source: "ordinary-head"}
+	if err := LandLinear(f, "owner/repo", "main", "ordinary-head", []LinearCard{card}); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(f.actions, ","); got != "squash ordinary-head" {
+		t.Fatalf("ordinary command order = %q, want squash ordinary-head", got)
+	}
+}
+
+func TestLinearForwardRepairSetsExactTree(t *testing.T) {
+	t.Parallel()
+	f := &linearFake{
+		mergeBase: "base", tip: "tip", commits: threeLinear(), seen: map[string]bool{},
+		trees: map[string]string{"HEAD": "replayed-tree", "forward": "reviewed-tree"},
+	}
+	card := LinearCard{ID: "forward.w1", Title: "forward", Head: "forward", Source: "c", Forward: true}
+	if err := LandLinear(f, "owner/repo", "main", "c", []LinearCard{card}); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(f.actions, ","); got != "a,b,c,tree forward" {
+		t.Fatalf("forward command order = %q, want replay then exact-tree repair", got)
+	}
+	if len(f.messages) != 4 || !strings.Contains(f.messages[3], "Nova-Linear-Source: c") {
+		t.Fatalf("repair messages = %#v", f.messages)
+	}
+}
+
 func TestLinearBasesSetting(t *testing.T) {
 	t.Parallel()
 	s := settingsSnapshot(nil)

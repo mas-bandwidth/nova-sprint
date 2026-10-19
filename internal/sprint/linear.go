@@ -96,7 +96,7 @@ func LandLinear(g LinearGit, repo, base, sourceTip string, cards []LinearCard) e
 	}
 	for _, card := range cards {
 		if !card.Forward {
-			if err := g.SetTree(card.Head); err != nil {
+			if err := g.Squash(card.Head); err != nil {
 				_ = g.Abort()
 				return fmt.Errorf("linear replay refused card %s at %s: %w", card.ID, card.Head, err)
 			}
@@ -138,7 +138,7 @@ func LandLinear(g LinearGit, repo, base, sourceTip string, cards []LinearCard) e
 			return err
 		}
 		if have != want {
-			if err := g.Squash(card.Head); err != nil {
+			if err := g.SetTree(card.Head); err != nil {
 				_ = g.Abort()
 				return fmt.Errorf("linear replay refused card %s at stream commit %s: %w", card.ID, card.Source, err)
 			}
