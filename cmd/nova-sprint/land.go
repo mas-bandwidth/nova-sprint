@@ -2391,7 +2391,9 @@ func (l *lander) checkCard(ctx context.Context, dir, stream string, c landCard, 
 	// merge (sprint.MergeOf); the rest still need PATHS exactly as today. When the
 	// branch cannot be resolved the refusal says why and nothing is exempt.
 	var exempt []string
+	mergeOfCard := false
 	if br, ok := swarm.CardHeaderValue([]byte(c.brief), "MERGE-OF"); ok && strings.TrimSpace(br) != "" {
+		mergeOfCard = true
 		br = strings.TrimSpace(br)
 		res, merr := sprint.MergeOf(dir, func(args ...string) (string, error) { return l.git(ctx, dir, args...) }, before, after, br)
 		if merr != nil {
@@ -2403,7 +2405,14 @@ func (l *lander) checkCard(ctx context.Context, dir, stream string, c landCard, 
 	}
 	// SPEC-SPRINT section 7: required validation files are inside every PATHS;
 	// ordinary scope amendments remain recorded and unrelated source stays refused.
-	amended, out := sprint.LandScopeMergeOf(c.paths, diff, beforePaths, exempt, registries...)
+	// A card with no MERGE-OF line is checked exactly as today, through LandScope
+	// with no git call added (rule 5); only a forward-merge card uses the exemption.
+	var amended, out []string
+	if mergeOfCard {
+		amended, out = sprint.LandScopeMergeOf(c.paths, diff, beforePaths, exempt, registries...)
+	} else {
+		amended, out = sprint.LandScope(c.paths, diff, beforePaths, registries...)
+	}
 	if len(out) > 0 {
 		parts := make([]string, 0, len(out))
 		for _, f := range out {
