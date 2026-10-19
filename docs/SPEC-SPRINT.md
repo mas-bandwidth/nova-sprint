@@ -4940,6 +4940,15 @@ A generated brief carries the sentence in its AS A READ section (`cardgen.AsARea
 `sprint.FriendReadBrief` copies that section onto a friend read). The owner, 2026-10-06:
 "Can we stop this whole 'test outside of paths' thing. It's wasteful."
 
+A repository can declare its own shared registry files in `.nova/always-allowed` at the
+repository root, one repository-relative path or glob per line (`#` comments and blank
+lines ignored), and those files are always inside every card's PATHS beside the built-in
+set. The lander reads the list from the tree at the base, never from the card's head, so a
+card that edits `.nova/always-allowed` itself gets no exemption from its own edit, and the
+registry file is not itself always-allowed. `cardgen.SharedRegistries` reads it,
+`cardgen.ParseSharedRegistries` parses its bytes, and `sprint.LandScope` holds its entries
+inside every PATHS (docs/SPEC-LANDING.md).
+
 **The pass: the merges in parallel, the landing serial** (the owner, 2026-10-07: "We can
 do merges across work streams in parallel. The only thing that needs to be serial is the
 merge after"; cmd/nova-sprint/landpass.go; tla/LandPass.tla). A land pass has two phases
