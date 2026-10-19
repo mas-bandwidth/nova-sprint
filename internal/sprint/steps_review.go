@@ -2224,9 +2224,9 @@ func cutText(s string, n int) string {
 
 // reworkGiven is what a rework writes on the next attempt's work card besides
 // the fix, so the child learns why it exists (docs/SPEC-SPRINT.md, rework):
-// finding, the broken reads' words, and why, how the attempt before ended. When the card
-// needs more than one read (ReadsNeededIn: two reads dealt in parallel, the rework having
-// waited for both: reworkWaitsForReads), the finding is every read's words that stand, a line each
+// finding, the broken reads' words, and why, how the attempt before ended. When the attempt
+// was read in parallel (readInParallel: two reads dealt at once, the rework having waited
+// for both: reworkWaitsForReads), the finding is every read's words that stand, a line each
 // naming its reader (readFindingsByReader), even when only one read left words (the other
 // handed back, past its deadline, or ok with nothing to say): the reader's name is kept
 // whenever it is known. With one read needed (--reads 1) the finding stays the plain broken
@@ -2237,7 +2237,7 @@ func cutText(s string, n int) string {
 func reworkGiven(s *Snapshot, c *Card) map[string]string {
 	attempt := c.Int("attempt")
 	finding := cutText(brokenFindings(s, c), MaxCardTextBytes)
-	if lines := readFindingsByReader(s, c); len(lines) > 1 || (len(lines) == 1 && ReadsNeededIn(s, c) > 1) {
+	if lines := readFindingsByReader(s, c); len(lines) > 1 || (len(lines) == 1 && readInParallel(s, c)) {
 		finding = cutText(strings.Join(lines, "\n"), MaxCardTextBytes)
 	}
 	read := finding
@@ -2259,6 +2259,25 @@ func reworkGiven(s *Snapshot, c *Card) map[string]string {
 		why = fmt.Sprintf("attempt %d finished and a reader found it broken", attempt)
 	}
 	return map[string]string{"finding": finding, "why": cutText(why, MaxCardTextBytes)}
+}
+
+// readInParallel says the primary's attempt was read in parallel: the card needs more than
+// one read (ReadsNeededIn) and more than one reader was dealt a read card of the attempt
+// (placed, retired or handed back). Then its rework names each finding's reader
+// (reworkGiven), even when only one read left words. A --reads 1 read handed back and dealt
+// again to another reader is not in parallel, nor is a card with one read dealt.
+// tla/ReadCards.tla Rework, NoFindingLost.
+func readInParallel(s *Snapshot, c *Card) bool {
+	if s == nil || s.Fleet == nil || c == nil || ReadsNeededIn(s, c) < 2 {
+		return false
+	}
+	var readers []string
+	for _, rc := range s.Fleet.WithPrefix(attemptReadPrefix(c)) {
+		if r := rc.F("reader"); isRead(rc) && r != "" && !slices.Contains(readers, r) {
+			readers = append(readers, r)
+		}
+	}
+	return len(readers) > 1
 }
 
 // readFindingsByReader is the words of every read card of the primary's attempt that stands
