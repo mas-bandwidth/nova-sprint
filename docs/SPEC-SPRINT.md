@@ -3167,7 +3167,8 @@ order the cards were dealt in, so a card brought to the front of its stream by
     refused for want of credit (its line `provider: class=out-of-credit ...`,
     docs/SPEC-SWARM.md). It holds with no time (`open`, said `until paid`) and counts toward
     stopping the sprint. It ends ONLY on `funded`, on `routes wake`, or on a payment the poll
-    sees: a balance read strictly higher than the read before it, or than the balance at the
+    sees (none of the last two for a provider whose row says funded=false: see "A provider
+    unfunded" below): a balance read strictly higher than the read before it, or than the balance at the
     refusal (the rest keeps it, `balance=<x>`); when neither mark is known (no read before it,
     none kept at the refusal: a cold start, nova-tools#5220), the first read over zero
     (`TestARefusedRestWithNoMarkEndsOnTheFirstReadOverZero`). A balance over zero that is not higher never
@@ -3222,10 +3223,49 @@ order the cards were dealt in, so a card brought to the front of its stream by
     note, "a provider's routes serve again: its balance is back". Each poll prints one
     `BALANCE` line naming the balances, never a key (`sprint.Balance`;
     `TestALowBalanceIsAJudgmentNeverARest`, `TestTheNightsBalanceRestLiftsOnTheNextPoll`).
-  - `funded <provider> --reason <text>` is the coordinator's word that a provider was paid: it
+  - `funded <provider> --reason <text>` is the OWNER's word that a provider was paid: it
     ends the provider's rest of its funds now, for a provider whose balance no poll can read
-    (opencode) as for any; it is refused when the provider does not rest for its funds. A rest
-    to end with no payment made is `routes wake`'s.
+    (opencode) as for any; it is refused when the provider does not rest for its funds. It is
+    the owner's alone (init --owner, else NOVA_SPRINT_OWNER; the seat's owner comparison,
+    `sprint.NotOwnerFunds`): the coordinator and the machine are refused with the remedy `the
+    owner funds it: nova-config provider set <p> --funded true --actor <owner>, then
+    nova-config apply --kind provider`, and it never writes nova-config
+    (`TestFundedVerbIsTheOwners`). A rest to end with no payment made is `routes wake`'s.
+  - A provider unfunded (the owner, 2026-10-19: "when a route is not funded, it must FLIP into
+    unfunded *automatically* in the config"; `tla/ProviderFunding.tla`). The provider row's
+    `funded` field in nova-config is the one true source, and the system keeps it true:
+    (1) The deal skips an unfunded provider: the work deal, every read's draw (the fallback of
+    a tier whose every route rests included), a fleet reader's tier and the tier's judgment
+    leave out a route whose provider's applied row says funded=false or is malformed, as they
+    leave out a resting route, though the route stays enabled; the tier's reason names
+    `provider <p> unfunded (the owner's to fund)`. A store with no provider row at all, and a
+    provider with no row of its own, are dealt as before (`sprint.providerFunded`;
+    NoDealToUnfunded; `TestUnfundedProviderIsNeverDealt`).
+    (2) The flip. When a take refused for credit rests a provider whose applied row says
+    funded=true, ONE flip is owed for the provider, never one per route or per take: the fleet
+    property `provider_unfunded_owed_<p>` (`owed <rest> <at> <class> <status> <card> <msg>`),
+    keyed by the rest it is owed for (`sprint.UnfundedOwed`). The run loop, outside the tick's
+    plan, writes it at once through the normal config path: nova-config's store (ResolveDSN,
+    OpenPG, within 30 s), the row set to funded=false as actor `machine` with the note
+    `unfunded by the machine <RFC3339>: <class> <status> <msg> on <card>`, then the provider
+    kind applied; the property then says `done <rest> <at> <note>`. A row already false writes
+    nothing (OneWritePerProvider); a flip done for a rest is never owed again for it, so an
+    owner who funds the row while the sprint's rest holds is never flipped back. A config store
+    that does not answer leaves the flip owed, says `UNFUNDED-FLIP OWED provider=<p>` on the
+    run loop's line and in the doctor, and is tried again next pass; the provider rests in the
+    sprint's store meanwhile. Only class out-of-credit flips: a 429, a 5xx and a timeout never
+    write (RateLimitKeepsFunding) (`cmd/nova-sprint/unfunded_flip.go`;
+    `TestOutOfCreditOwesOneFlip`, `TestRateLimitOwesNoFlip`, `TestUnfundedFlipWritesOnceAsMachine`).
+    (3) No other path re-funds: `funded` is the owner's and ends only the sprint store's rest;
+    the balance poll ends no funds rest of a provider whose row says funded=false (it says the
+    balance beside it); `routes wake` refuses a provider, or a route of one, whose row says
+    funded=false, naming the owner's verbs (`sprint.WakeRoutesFunded`; NoEnableOnUnfunded;
+    `TestRoutesWakeRefusesAnUnfundedProvider`); the provider's judgment says it was flipped
+    unfunded and that funding is the owner's.
+    (4) The doctor reports a provider whose row says funded=false as `UNFUNDED <p> since
+    <time> (<note>)` on a passing check: the expected state until the owner pays, never a
+    FAIL. A rest for credit on a row still funded=true (a flip owed) stays a FAIL naming
+    `provider_unfunded_owed_<p>`: that is the machine failing to flip.
   - One judgment of the provider, never one per card: `a provider is out of funds` while a
     refused take's rest holds (`provider <p> is out of funds (balance $x): it refused a take
     for credit; ...`; decisions `funded <p>`, `routes wake <p>`, ack, wait), `a provider

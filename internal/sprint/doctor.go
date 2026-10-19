@@ -1134,8 +1134,12 @@ func DoctorFleetRows(in DoctorInput) (out []DoctorCheck) {
 // ---- 8. providers -------------------------------------------------------------------------
 
 // DoctorProviders is check 8: each provider resting, its balance where the poll read one, and
-// how many enabled routes its rest takes from the deal. A provider out of credit or refused for
-// its key is FAIL (only the owner's payment or key ends it); a transient rest is WARN.
+// how many enabled routes its rest takes from the deal. A provider whose applied row says
+// funded=false is UNFUNDED, since when and the note, on a passing check: the expected state
+// until the owner pays, never a FAIL (unfunded.go). A provider out of credit on a row that
+// still says funded=true is a FAIL naming the flip owed (the machine failing to flip:
+// PropUnfundedOwed); refused for its key is FAIL (only the owner's key ends it); a transient
+// rest is WARN.
 func DoctorProviders(in DoctorInput) (out []DoctorCheck) {
 	const area, check = AreaRoutes, CheckProviders
 	s := in.Snap
@@ -1143,8 +1147,17 @@ func DoctorProviders(in DoctorInput) (out []DoctorCheck) {
 		return nil
 	}
 	rests := RouteRests(s.Routes, s.Fleet)
+	flips := UnfundedFlips(s.Fleet.Props())
 	serving := 0
 	for _, row := range ProviderRows(s.Routes, s.Fleet, s.Now) {
+		if s.rowUnfunded(row.Name) {
+			since, note := "unknown", "funded=false by hand or before the machine flipped it"
+			if f, ok := flips[row.Name]; ok && f.State == FlipDone {
+				since, note = stamp(f.At), f.Note
+			}
+			out = append(out, okCheck(area, check, row.Name, fmt.Sprintf("UNFUNDED %s since %s (%s): the owner's to fund", row.Name, since, cutText(note, 300))))
+			continue
+		}
 		taken, cause := 0, ""
 		for _, r := range s.Routes {
 			if r.Provider != row.Name || !r.Enabled {
@@ -1163,7 +1176,12 @@ func DoctorProviders(in DoctorInput) (out []DoctorCheck) {
 			Evidence: fmt.Sprintf("routes-taken=%d balance=%s state=%s", taken, row.Balance, cutText(row.State, 300)), Remedy: "wait: the rest ends by itself"}
 		switch cause {
 		case RestCredit:
+			// its row still says funded=true: the flip is owed, the machine's to write
+			// (unfunded.go, cmd/nova-sprint/unfunded_flip.go)
+			// the run loop flips it on its next pass, with the config store answering
 			c.Status, c.Remedy = DoctorFail, "nova-sprint funded "+row.Name+" --reason '<the payment>'"
+			v, _ := s.Fleet.Prop(PropUnfundedOwed(row.Name))
+			c.Evidence += " flip owed: " + PropUnfundedOwed(row.Name) + "=" + cutText(orDash(v), 200) + " (the machine's to write: nova-sprint run)"
 		case RestAuth:
 			c.Status, c.Remedy = DoctorFail, "nova-sprint routes wake "+row.Name+" --reason '<the key replaced>'"
 		case RestCoordinator:

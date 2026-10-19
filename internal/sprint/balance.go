@@ -145,6 +145,13 @@ func Balance(s *Snapshot, r BalanceReq) Plan {
 		if !b.Known || !has || !rest.Resting(s.Now) || !rest.Refused() || !paid(rest, was, b) {
 			continue // the poll ends only a refused take's rest, and only on a payment seen
 		}
+		if s.rowUnfunded(rd.Provider) {
+			// a provider flipped unfunded is funded again only by the owner: a balance read
+			// higher ends no rest of it by itself, it is said on the judgment
+			// (unfunded.go; tla/ProviderFunding.tla StaysUnfundedUntilOwner)
+			said[len(said)-1] += " (" + UnfundedWhy(rd.Provider) + ": its rest holds)"
+			continue
+		}
 		next := rest
 		next.Until = s.Now // the rest's end: a refusal launched before it starts no new rest
 		next.Why = oneLine(rest.Why + "; ended: a payment seen, balance " + b.Said())

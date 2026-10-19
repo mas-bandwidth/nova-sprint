@@ -1086,6 +1086,10 @@ func (a *app) runLoop(ctx context.Context, st *store.Store, max, n int, stdout, 
 			// the seat not answering goes to the owner on the bus, as well as to the seat's
 			// hook, at its raise and at each raise again (seat_silent.go)
 			a.tellSeatSilent(ctx, st)
+			// a provider's credit refusal flips its nova-config row to funded=false, by the
+			// machine, at once and once (unfunded_flip.go; tla/ProviderFunding.tla
+			// BillingFailure, OneWritePerProvider)
+			a.flipUnfunded(ctx, st, a.flipConfigOf(), stdout)
 		}
 		if n != 0 && i == n-1 {
 			return false

@@ -399,6 +399,16 @@ model answers a challenge (`nova-hook help`).
    scratch root, and never a clone with work that is nowhere else. Spec: SPEC-SPRINT.md section
    1, "gc: the system's scratch is reclaimed by a verb".
 
+7. A provider flipped unfunded. usage: `nova-sprint funded <provider> --reason <text>`. A take
+   refused for credit flips the provider's nova-config row to funded=false by itself (the run
+   loop, as the machine, once): the deal draws none of its routes, and `nova-sprint doctor`
+   says `UNFUNDED <p> since <time> (<note>)` on a passing check. Do not disable its routes by
+   hand. Funding is the owner's alone: the owner runs
+   `nova-config provider set <p> --funded true --actor <owner>`, then
+   `nova-config apply --kind provider`, then `nova-sprint funded <p> --reason <text> --actor <owner>`.
+   The coordinator and the machine are refused, and `nova-sprint routes wake <p>` refuses an
+   unfunded provider. Spec: SPEC-SPRINT.md section 5, "A provider unfunded".
+
 **Success looks like.** `fleet sync --check` exits 0, `doctor` reports no fleet FAIL, and every hold
 names a cause.
 
