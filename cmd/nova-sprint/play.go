@@ -18,7 +18,9 @@ func (c appClock) Now() time.Time        { return c.a.now() }
 func (c appClock) Sleep(d time.Duration) { c.a.sleep(d) }
 
 // cmdPlay plays the world outside the table through this command's own verbs. It is for a
-// twin: its merge steps are bare merges, which a real store refuses (nova-sprint#50).
+// twin: its merge steps are bare merges, which a real store refuses (nova-sprint#50). It
+// answers read cards on the members' own rows when reads are dealt as cards, and the
+// readers table's asks when they are not, so a played sprint lands under either setting.
 func (a *app) cmdPlay(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("play")
 	seed := fs.Uint64("seed", 1, "the seed: the same seed plays the same run")
@@ -36,7 +38,7 @@ func (a *app) cmdPlay(args []string, stdout, stderr io.Writer) int {
 	fs.Var(&silent, "silent", "<member>@<from>+<for>: the member's machine stops beating <from> after play starts, for <for> (e.g. m3@30s+20s); repeatable")
 	ticks := fs.Int("ticks", 0, "stop after n ticks; 0 is until every stream lands")
 	take := fs.Int("take", 0, "work cards a member takes in its one take a tick; 0 is the member's width, else 64")
-	reads := fs.Int("reads", 0, "read cards a reader begins, and reports, in its one call of each a tick; 0 is its whole queue")
+	reads := fs.Int("reads", 0, "read cards a reader begins or reports, and a member's read cards it reports, in its one call of each a tick; 0 is its whole queue")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "play", err.Error())
