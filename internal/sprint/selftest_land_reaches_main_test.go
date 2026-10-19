@@ -30,11 +30,12 @@ func TestSelftestLandCheckSeesTheLandOnOriginMain(t *testing.T) {
 }
 
 // TestSelftestLandCleansAnOldScratchAndKeepsNothingAfterAFailure pins:
-// - selftest land must not fail on a scratch a previous run left: an old `work`
-//   directory is removed before the clone, so the run passes
-// - on a failure, the four names selftest land owns under the scratch (origin.git,
-//   work, selftest.twin, canned-brief.md) are gone, and the scratch itself and
-//   anything else in it remain
+//   - selftest land must not fail on a scratch a previous run left: an old `work`
+//     directory is removed before the clone, so the run passes
+//   - on a failure, the four names selftest land owns under the scratch (origin.git,
+//     work, selftest.twin, canned-brief.md) are gone, and the scratch itself and
+//     anything else in it remain
+//
 // (docs/SPEC-SPRINT.md section 14; item 14).
 func TestSelftestLandCleansAnOldScratchAndKeepsNothingAfterAFailure(t *testing.T) {
 	t.Parallel()
