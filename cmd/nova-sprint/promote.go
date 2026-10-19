@@ -994,7 +994,8 @@ func (p *promoter) runGate(ctx context.Context, sha string) (string, error) {
 	if p.check == "" {
 		return "", nil
 	}
-	b := subproc.Prepare(ctx, landCheckBudget, "sh", "-c", p.check)
+	argv := gateArgv(p.check)
+	b := subproc.Prepare(ctx, landCheckBudget, argv[0], argv[1:]...)
 	defer b.Cancel()
 	b.Cmd.Dir = p.dir
 	env := p.env

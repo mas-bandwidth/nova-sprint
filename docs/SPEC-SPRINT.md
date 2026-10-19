@@ -4180,6 +4180,15 @@ reads close as `read --ok|--broken` closes them, and it leaves review only by th
   cards or 32 reads or any mix. The take holds the width in half slots (a read one, a work card
   two) and takes the reads first; the member's own lanes count the same (`member.halves`): a
   member of width 1 runs two reads at once.
+- **The friend's ready queue holds reads past her width.** Width bounds what a friend
+  WORKS at once, never what is queued in her ready queue; a read card is a card like any
+  other. Her queue is bounded by her room, DealAhead times her width, ready and working
+  together (the owner, 2026-10-18: "My dude, ready cards, go to friend ready queues, even
+  if friends are full. That's what the ready queues are FOR per-friend and per-fleet
+  machine."), so a friend at width keeps taking reads into her ready column while her room
+  has space (`readUnitsOf`: her `half`, what the ask may fill, is her free room,
+  `max(DealAhead*width-(work+reads), 0)`, and her `idle` stays her free lanes, `friendFreeLanes`,
+  so the ask still prefers a friend with an idle lane).
 - **The member runs a read card.** A read card in a member's fleet queue is taken with its work
   and run by the same loop as a read: its packet is a read's (`Kind: read`, the head, the work
   branch, the worker's report), it pushes nothing, and its end is reported with the read verb as
@@ -4939,6 +4948,15 @@ that names only them is a rework, never a twin (`TestE12NeverRefusesATestOrALedg
 A generated brief carries the sentence in its AS A READ section (`cardgen.AsARead`;
 `sprint.FriendReadBrief` copies that section onto a friend read). The owner, 2026-10-06:
 "Can we stop this whole 'test outside of paths' thing. It's wasteful."
+
+A repository can declare its own shared registry files in `.nova/always-allowed` at the
+repository root, one repository-relative path or glob per line (`#` comments and blank
+lines ignored), and those files are always inside every card's PATHS beside the built-in
+set. The lander reads the list from the tree at the base, never from the card's head, so a
+card that edits `.nova/always-allowed` itself gets no exemption from its own edit, and the
+registry file is not itself always-allowed. `cardgen.SharedRegistries` reads it,
+`cardgen.ParseSharedRegistries` parses its bytes, and `sprint.LandScope` holds its entries
+inside every PATHS (docs/SPEC-LANDING.md).
 
 **The pass: the merges in parallel, the landing serial** (the owner, 2026-10-07: "We can
 do merges across work streams in parallel. The only thing that needs to be serial is the
@@ -6970,7 +6988,7 @@ land's place; a head that is not a commit id stops the dry run where land stops,
 | reader remove | takes readers off the readers table; refused (exit 1, nothing written) when a named reader is no row or holds a read card, asked, reading, ok or broken, naming the reader and its read cards |
 | reader retire | retires readers and keeps their history (the comfort list of 2026-10-03, item 6: `reader remove` refuses a reader that holds read cards, so the second readers could not be retired without losing the record): each named reader, a row of the readers table, is held away for good, its state `retired`: no read is asked of it and a read asked and not begun is asked of another at the next tick (as `reader away`); a read it is reading is taken back at the next tick and asked of a reader up with no card at that attempt, and it stays when none can take it, the few-readers judgment names it no more, its own `queue --as` writes no beat and answers `reader: false` (its loop stops as for a name with no row), while its row and its read cards stay on the table, counted on their cards and in `where`; `reader up` brings it back; a named reader with no row refuses the whole call, nothing written; `--dry-run` prints `READER-RETIRE DRY-RUN readers=<names>; nothing was changed` and writes nothing; `reader remove` is as it was |
 | stream set | `stream set <s>... [--read-tier <flash|pro|heavy|default>] [--land-protected <owner/name,...|any|default>] [--release <name>] [--display <name>] [--prose <glob,...|default>] [--attempts <n|default>] [--reason <why>] [--answers <note>]`: `--prose` sets the streams' prose globs, their control cards' `prose`, the files the lander does not read for a code span (section 7, the document repairs), `default` takes them off; `--attempts` sets the streams' attempt cap, their control cards' `attempts`, over the sprint's (nova-config's sprint row `max_attempts`, default 4; section 2); `--reason` records why the read tier is set as `read_tier_reason`, and `--answers` answers the judgment `raise the read tier of the stream?`; the read tier of the streams named, their control cards' `read_tier`, over the sprint's (`set`), and their protected-branch mark, `land_protected` (section 7, the protected branches); `default` takes a stream's off; `--release <name>` records the release on each stream's control card, `default` or `none` takes it off; `--display <name>` records each stream's display name, its control card's `display`, the label the dashboard's Work table shows in place of the key (one line of printable text, at most 60 bytes; `default` or `none` takes it off; the stream's key is unchanged); the coordinator's; refused whole, nothing written, for a stream that is no row, a tier that is not flash, pro or heavy, a mark that names no repository, or another actor |
-| set | `set [--read-tier <flash|pro|heavy|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--alarm-review <n|off>] [--alarm-merging <n|off>] [--alarm-fleet <percent|off>] [--alarm-ready <on|off>] [--friend-idle <duration|default>] [--seat-silent-to <bus name|default>] [--attempts <n|default>] [--fleet <on|off>] [--friends <on|off>] [--fleet-tiers <tiers|all>] [--friends-tiers <tiers|all>] [--reads <0|1|2|default>]`: also `reads_needed` (the ok reads every card in review needs whatever its tier, 0 to 2, default each card's tier's rule; section 6), `fleet` and `friends` (the work switches, default on: off deals that side no work card, reads still flow; section 6, the interim rules), `fleet_tiers` and `friends_tiers` (the tiers each side may take, flash, pro, heavy, frontier comma separated, default all, which `all` sets again; an unknown tier is refused naming the four; section 5, the deal), `friend_idle` (how long a friend holding cards may show no file write before it is an alarm, default 20 minutes), and seat_silent_to (the bus name of one standby seat for seat-silent alerts; default none); and `--attempts` (retired 2026-10-12: the sprint's attempt cap is nova-config's sprint row `max_attempts`, default 4, and the flag refuses naming `nova-config sprint set --max_attempts <n>`; section 2); the sprint's settings, the work table's properties `read_tier` (every card's reads raised to it, never lowered), `dealt_max` (how long a work card may wait dealt and never taken before it is a judgment; default 3 times the take deadline, 6 hours), `go_lanes` (the Go lanes of every machine, section 18; default 1) and the backlog alarms' thresholds `alarm_review`, `alarm_merging`, `alarm_fleet` and `alarm_ready` (section 8, off by default); the coordinator's; refused whole, nothing written, for a tier that is not flash, pro or heavy, a bound that is not a duration above zero, a lane count under 1, a threshold its alarm does not take, nothing to set, or another actor; a clear starts the next epoch with none of them; `set` with no flags prints the settings (as `settings` does) and exits 0 |
+| set | `set [--read-tier <flash|pro|heavy|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--alarm-review <n|off>] [--alarm-merging <n|off>] [--alarm-fleet <percent|off>] [--alarm-ready <on|off>] [--friend-idle <duration|default>] [--seat-silent-to <bus name|default>] [--attempts <n|default>] [--fleet <on|off>] [--friends <on|off>] [--fleet-tiers <tiers|all>] [--friends-tiers <tiers|all>] [--reads <0|1|2|default>]`: also `reads_needed` (the ok reads every card in review needs whatever its tier, 0 to 2, default each card's tier's rule; section 6), `fleet` and `friends` (the work switches, default on: off deals that side no work card, reads still flow; section 6, the interim rules), `fleet_tiers` and `friends_tiers` (the tiers each side may take, flash, pro, heavy, frontier comma separated, default all, which `all` sets again; an unknown tier is refused naming the four; section 5, the deal), `friend_idle` (how long a friend holding cards may show no file write before it is an alarm, default 20 minutes), and seat_silent_to (the bus name of one standby seat for seat-silent alerts; default none); and `--attempts` (retired 2026-10-12: the sprint's attempt cap is nova-config's sprint row `max_attempts`, default 4, and the flag refuses naming `nova-config sprint set --max_attempts <n>`; section 2); the sprint's settings, the work table's properties `read_tier` (every card's reads raised to it, never lowered), `dealt_max` (how long a work card may wait dealt and never taken before it is a judgment; default 3 times the take deadline, 6 hours), `go_lanes` (the Go lanes of every machine, section 18; default 1) and the backlog alarms' thresholds `alarm_review`, `alarm_merging`, `alarm_fleet` and `alarm_ready` (section 8, off by default); and the deal throttle's bounds `--land-backlog-bound <n|off|default>` and `--review-backlog-bound <n|off|default>`, the work table's `land_backlog_bound` and `review_backlog_bound` (off by default, and 0, off or default never throttles; carried across a clear as the alarms' thresholds are, the one exception to the clear below): while more non-sentinel primaries than the land bound are merging, or more than the review bound are in review, the tick's deal (friends and machines alike) starts no new work attempt (a primary at attempt 0 not at blocker, critical or fix), while reads, fix-level cards and every next attempt still deal and nothing working or dealt is cut; a held card stays ready, is dealt on the first tick its count is at or under the bound, raises no judgment (the ready-over part, the no-stall rule, the friend-empty pass and the doctor name the throttle as its cause, and the fleet alarm leaves held cards out of its feed); a recut twin and a set fix level are never held, a critical computed by weight alone is (the ladder orders by the set level); the coordinator's own `deal` and `friend give` are not throttled, and `where` shows the throttle as one line (deal_throttle.go; tla/DealThrottle.tla; the owner, 2026-10-18: "if reading, fixing and landing are all higher priority than work, the system balances"); the coordinator's; refused whole, nothing written, for a tier that is not flash, pro or heavy, a bound that is not a duration above zero, a lane count under 1, a threshold its alarm does not take, nothing to set, or another actor; a clear starts the next epoch with none of them; `set` with no flags prints the settings (as `settings` does) and exits 0 |
 | settings | `settings [--json]`: one line per setting `set` takes, `SETTING <flag> value=<v> default=<d> set=<yes|no>`, then `SETTINGS OK count=<n> set=<k> epoch=<e>`; a read; the table is `sprint.SettingsOf` over `sprint.SettingsRows` (internal/sprint/settings_view.go), one row per flag of `set` (TestEverySetFlagHasASettingsRow, TestSettingsPrintsEverySettingWithItsValueAndDefault) |
 | stream remove | takes streams off the work and merge tables (the owner, 2026-10-01: "remove work streams a/b/c" / "you should have a verb to remove work streams" / "they should only succeed on a STOPPED sprint machine"): each stream's row of both tables, with the stream's control card, the one card `add` made for it, which the merge row's delete takes off the table (its record kept); refused (exit 1, nothing written) on a RUNNING system (`nova-sprint stop` first), for a stream that is no row of either table, named, and for a stream that holds a card (a primary or a sentinel placed in any column of its work row, landed included, or a merge card in its merge row), naming how many of each and the remedy (`nova-sprint clear --confirm sprint`, or `drop`); all or none for the streams named. A clear keeps the streams and does not bring a removed one back. A removal is not a tombstone: `add --stream <s>` of a stream removed in this epoch adds its rows again and places its control card again, the record the removal kept, by the table layer's cell add before the step's manifests (a batch never places a removed member; `sprint.Plan.Places`, as a fleet member's control card rejoins), and prints `NOTE stream <s> was removed in this epoch and comes back: its control card is placed again`; after a clear the name is added fresh (`sprint.StreamRemove`, `sprint.RemovedStream`, `sprint.ComeBack`; the roadmap re-add of 2026-10-06 was refused for 384 of 844 cards under removed streams' names before this rule). `stream archive` stays the verb that takes landed streams off the table. Every open judgment and held condition (an alarm held, an overdue hold, a stale stream's) that names a removed stream is retired with it, closed with a decided note `retired: stream <s> was removed (stream remove), ...`, and the verb prints a `NOTE judgment <alias> <id> (<type>) retired: ...` line for each (the coordinator view of 2026-10-06 00:11 held six `stream stopped` judgments of removed streams, each next step refused "no such stream"). The tick, every RUNNING tick before its start part, retires with the same note any open judgment or held condition naming a stream that is a row of neither table (one open before this rule, or left by a remove whose retirement did not finish), and no tick part raises or rewrites a judgment or held condition for such a stream (`sprint.RetireStreams`, `sprint.TickRetireGone`, `sprint.ForTables`) |
 | stream archive | takes streams whose every card has landed off the work and merge tables and keeps their record (the owner, 2026-10-05 ~11:45 PM ET: "I would like you to remove all the already landed work streams"; 107 streams of landed cards crowded the table, and `stream remove` refuses them): each stream's rows of both tables are hidden (the table layer's row hide) and no card moves, so every landed card stays placed in its landed cell with its cost and its landing, and `where --json --rows --archived`, `stream_costs` and every record that reads the cards count them as before; the headline (the summary line, the frame's footers, the dashboard's hero, total row and cost) counts only the streams on the table, so the stream's cards leave it when it is archived, and `where --json` keeps its figures in `archived` and in `archived_cards` and `archived_landed` beside the headline (section 1, the summary line); runs on a RUNNING system (no stop); refused (exit 1, nothing written) for a stream that is no row of either table and for one holding a card not landed (a primary or sentinel in any column of its work row but landed, a merge card queued or stuck), naming the cards; all or none for the streams named; archiving an archived stream changes nothing. An archived stream that holds a card not landed again (an `add`) is drawn again by the next tick, RUNNING or STOPPED. A clear keeps an archived stream archived. where draws no archived row and prints one line under the work table, `N archived streams, M cards landed, $X (where --json --archived)`; `where --json` carries `archived` (`streams`, `cards`, `landed`, `cost`, the cost cells summed to the cent) and leaves the archived rows out of `tables` and `rows` but with `--archived` (`sprint.StreamArchive`, `store.ArchiveStreams`, `store.keepArchive`). The verb retires every open judgment and held condition that names a stream it archived, as `stream remove` does, a NOTE line each (`sprint.RetireStreams`) |
@@ -9522,8 +9540,9 @@ server owns every lease and its deadline on the server's clock, a client holds n
 that can strand a slot, and no client coordinates with another. The named-machine lanes
 above stay disabled and unchanged (`sprint.LanesDisabled`).
 
-- `nova-sprint lane take go --machine auto --as <who>` asks for a bench, and the same
-  line again renews the lease the asker holds; `nova-sprint lane give go --machine auto --as <who>` gives it back on any bench. `--wait` and `--dry-run` are refused with
+- `nova-sprint lane take go --machine auto --as <who> [--needs <a,b>]` asks for a bench,
+  and the same line again renews the lease the asker holds; `--needs` names the gate
+  facts the bench must carry, the same words as a `GATE-NEEDS` line; `nova-sprint lane give go --machine auto --as <who>` gives it back on any bench. `--wait` and `--dry-run` are refused with
   `auto`: the caller waits by `retry_at`, and a dry pick cannot reserve capacity.
 - A grant prints `LANE-TAKE OK go machine=<m> as=<who> slots=<committed>/<slots> until=<RFC3339> renewed=<yes|no>`
   (exit 0; `until` is the lease's deadline and `committed` includes the lease just
@@ -9538,13 +9557,19 @@ The decisions:
    queues and never waits behind another holder.
 2. **The allowed benches (D2)** are the fleet table's members that are up, not quiet, not
    NoRoom, of width above 0, not the server's own machine, accepted by `bench.CheckHost`,
-   with a fresh beat carrying Cores above 0. No list of benches lives in a brief or in
+   with a fresh beat carrying Cores above 0, and (when the take names `--needs`) whose
+   member facts (`MemberFacts`) satisfy every need with the deal's `memberSatisfies`: the
+   pick keeps to benches whose facts meet the take's needs, never to one that cannot run
+   the gate. No list of benches lives in a brief or in
    code: they come from nova-config's machine rows through `fleet sync`, and a hold
    (space, mini-m5-1) keeps a machine out.
 3. **Slots (D3).** A lease is one bench slot: one job at `go test -p 8`. A bench's slots
-   are max(1, Cores / 8). Its committed slots are max(held, busy), where held is its live
-   leases and busy is ceil(Load / 100 * Cores / 8), so a lease counts before its load
-   shows and outside load (the fleet's own cards, a stray process) counts too.
+    are max(1, Cores / 8). Its committed slots are max(held, busy), where held is its live
+    leases and busy is round(Load / 100 * Cores / 8), rounded to the nearest slot with halves
+    up, so a lease counts before its load shows and outside load (the fleet's own cards, a
+    stray process) counts too. Round, not ceil: a small background load must not take a
+    whole slot (12% of a one-slot bench reads 0, 1% of a two-slot bench reads 0), while a
+    bench at 50% of its slot reads 1 and a full bench still reads its slots.
 4. **The pick (D4).** The allowed bench with the lowest committed / slots, a tie going to
    the most free slots, then the name; granted only when committed + 1 <= slots. A worker
    that already holds a lease is answered its own bench and its lease renewed (Seen = now):
@@ -9556,24 +9581,29 @@ The decisions:
    (`Lanes.Expire`) removes it, so a dead or lost client never holds a slot past it. A give
    releases at once. A lease on a bench that becomes held or down stays until it is given
    or expires, and that bench gets no new lease.
-6. **WAIT (D6).** When no allowed bench has room, the answer is WAIT with a retry time (the
+6. **WAIT (D6).** When no allowed bench whose facts meet the take's `--needs` exists, or
+   no allowed bench has room, the answer is WAIT with a retry time (the
    earliest deadline of a live lease on an allowed bench, at most LaneWaitFor, one minute,
    away) and nothing is written: no queue, no place, and not even the removal of an
    expired lease (the wait counted it as gone; the next write removes it). A WAIT is
    answered only when no allowed bench has room, so a waiter that keeps asking is granted
-   once capacity frees and stays free. Capacity that frees only now and then is not
+   once capacity frees and stays free. A WAIT with an unmet `--needs` says so in the same
+   line, naming the need and the facts the benches carry (`gateNeedsWhy`), never granting
+   a bench that cannot run the gate; a bench full of leases whose facts meet the needs is
+   the WAIT as before. Capacity that frees only now and then is not
    promised to it: with no queue, another asker can take it first.
 7. **One step (D7).** A pick and a give are each one step on the record, run by the server
    one at a time: two picks never both take a bench's last slot.
 
-The model checks NeverOverSlots, OneLeaseEach, GrantOnlyAllowed, GrantIsLeastCommitted,
-GrantTieBreak, WaitWritesNothing, WaitOnlyWhenFull and NoLeaseOutlivesDeadline on two benches
+The model checks NeverOverSlots, OneLeaseEach, GrantOnlyAllowed, GrantOnlyWhereTheFactsAre,
+GrantIsLeastCommitted, GrantTieBreak, WaitWritesNothing, WaitOnlyWhenFull and NoLeaseOutlivesDeadline on two benches
 (1 and 2 slots) and three workers; DeadLeaseEnds and WaiterGetsLease are checked on two
 workers. GrantTieBreak also runs on two equal two-slot benches so the name tie is reachable.
 The fairness is weak fairness on the clock, the sweep and a waiter's asking again; nothing
 assumes a grant. Each reversed witness has a committed configuration and CASES.tsv row:
 `noexpiry` fails DeadLeaseEnds; `loadonly` and `noceiling` fail NeverOverSlots; `queue` fails
-WaitWritesNothing; `anybench` fails GrantOnlyAllowed; `anyroom` fails GrantIsLeastCommitted;
+WaitWritesNothing; `anybench` fails GrantOnlyAllowed; `anyfacts` (the pick ignoring the
+machine's facts) fails GrantOnlyWhereTheFactsAre; `anyroom` fails GrantIsLeastCommitted;
 `second` fails OneLeaseEach; `waitwhenroom` fails WaitOnlyWhenFull and WaiterGetsLease;
 `renewexpired` fails NoLeaseOutlivesDeadline; and `anytie` fails GrantTieBreak on the
 equal-slot instance. Two corrections to

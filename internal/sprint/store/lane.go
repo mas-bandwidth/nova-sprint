@@ -112,7 +112,7 @@ func (st *Store) LaneStep(ctx context.Context, kind, machine, who string, give b
 // benches. Like LaneStep, its read and write run as one server-line turn: serve.go
 // holds app.serial while it runs a worker verb; no other line verb interleaves.
 // This lease is independent of sprint.LanesDisabled (tla/BenchLease.tla, Pick).
-func (st *Store) LanePick(ctx context.Context, kind, who, self string, allow func(string) bool) (sprint.BenchPick, error) {
+func (st *Store) LanePick(ctx context.Context, kind, who, self string, allow func(string) bool, needs ...string) (sprint.BenchPick, error) {
 	if why := laneWhy(kind, "auto", who); why != "" {
 		return sprint.BenchPick{}, fmt.Errorf("%s", why)
 	}
@@ -125,7 +125,7 @@ func (st *Store) LanePick(ctx context.Context, kind, who, self string, allow fun
 	if err != nil {
 		return sprint.BenchPick{}, err
 	}
-	rooms := sprint.BenchRooms(s, beats, self, now)
+	rooms := sprint.BenchRooms(s, beats, self, now, needs...)
 	if allow != nil {
 		rooms = slices.DeleteFunc(rooms, func(room sprint.BenchRoom) bool { return !allow(room.Machine) })
 	}
@@ -134,6 +134,9 @@ func (st *Store) LanePick(ctx context.Context, kind, who, self string, allow fun
 		return sprint.BenchPick{}, err
 	}
 	next, answer := ls.Pick(who, rooms, now)
+	if len(needs) > 0 && len(rooms) == 0 {
+		answer.Why = sprint.BenchNeedsWhy(needs, sprint.BenchRooms(s, beats, self, now), s)
+	}
 	// Full is the displayed committed load: existing lease holders or observed
 	// host load, whichever is greater, as tla/BenchLease.tla defines it.
 	for i := range answer.Full {

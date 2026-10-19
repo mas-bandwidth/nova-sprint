@@ -106,6 +106,8 @@ func SettingsRows() []SettingRow {
 			}
 			return strconv.Itoa(LaneWidth(v, ok))
 		}),
+		settingRow("land-backlog-bound", PropLandBacklogBound, "Snapshot.WorkThrottled", backlogBoundValue(PropLandBacklogBound)),
+		settingRow("review-backlog-bound", PropReviewBacklogBound, "Snapshot.WorkThrottled", backlogBoundValue(PropReviewBacklogBound)),
 		settingRow("landing-stall-bound", PropLandingStallBound, "Snapshot.landingStallBound", func(s *Snapshot) string { return s.landingStallBound().String() }),
 		settingRow("seat-silent-to", PropSeatSilentTo, "Snapshot.Work.Prop(seat_silent_to)", propOrDefault(PropSeatSilentTo)),
 		settingRow("pegged-bound", PropPeggedBound, "Snapshot.PeggedBound", func(s *Snapshot) string { return s.PeggedBound().String() }),
@@ -146,4 +148,17 @@ func SettingsOf(s *Snapshot) []SettingValue {
 		out = append(out, SettingValue{Flag: r.Flag, Prop: r.Prop, Value: v, Default: r.Default, Set: v != r.Default, Accessor: r.Accessor})
 	}
 	return out
+}
+
+// backlogBoundValue is a deal throttle bound as the deal reads it (backlogBound): its count,
+// or off when it is off (deal_throttle.go).
+func backlogBoundValue(prop string) func(s *Snapshot) string {
+	return func(s *Snapshot) string {
+		if s != nil && s.Work != nil {
+			if n := backlogBound(s.Work.Props(), prop); n > 0 {
+				return strconv.Itoa(n)
+			}
+		}
+		return BacklogBoundOff
+	}
 }

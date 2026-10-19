@@ -105,7 +105,8 @@ nova-sprint land [--stream <s>...] [--repo-dir <clone>] [--base <branch>] [--che
 nova-sprint rebase --from <branch> --to <branch> [--repo-dir <clone>] [--dry-run]
 nova-sprint stream set <stream>... [--read-tier <flash|pro|heavy|default>] [--land-protected <owner/name,...|any|default>] [--release <name>] [--prose <glob,...|default>] [--seat-accept <on|off>] [--default-tier <flash|pro|heavy|default>] [--attempts <n|default>] [--base <branch>] [--reason <text>] [--answers <notes>]
 nova-sprint settings [--json]   # every setting with its value and default; `set` with no flags prints the same
-nova-sprint set [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--friend-idle <duration|default>] [--seat-silent-to <bus name|default>] [--friend-finish <duration|default>] [--fleet <on|off>] [--friends <on|off>] [--fleet-tiers <flash,pro,heavy,frontier|all>] [--friends-tiers <flash,pro,heavy,frontier|all>] [--reads <0|1|2|3|default>]
+nova-sprint set [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--friend-idle <duration|default>] [--seat-silent-to <bus name|default>] [--friend-finish <duration|default>] [--fleet <on|off>] [--friends <on|off>] [--fleet-tiers <flash,pro,heavy,frontier|all>] [--friends-tiers <flash,pro,heavy,frontier|all>] [--reads <0|1|2|3|default>] [--land-backlog-bound <n|off|default>] [--review-backlog-bound <n|off|default>]
+# --land-backlog-bound and --review-backlog-bound are the deal throttle (off by default): while more primaries than the bound are merging, or in review, the tick's deal starts no new work attempt; reads, fix-level cards and next attempts still deal, nothing working is cut, and where shows one throttle line
 nova-sprint resume --stream <s> [--did <text>] [--answers <note>]
 
 A card waits for its own tier: no cross-tier dealing. The `set --unserved-tier-falls-to` fallback is retired.
@@ -115,7 +116,7 @@ nova-sprint demo stop [--dir <dir>]
 nova-sprint fleet beat <member> [--stop-returns <n>] [--no-room <why>] [--draining] [--live <set>] [--facts <list>] --load <percent> [--dry-run]
 nova-sprint fleet up <member> [--width <n>]
 nova-sprint fleet down <member> [--force-last]
-nova-sprint lane take go --machine <m|auto> --as <worker> [--wait <duration>] [--dry-run]
+nova-sprint lane take go --machine <m|auto> --as <worker> [--wait <duration>] [--dry-run] [--needs <a,b>]
 nova-sprint lane give go --machine <m|auto> --as <worker> [--dry-run]
 nova-sprint hold <name>... --reason <text> [--return] [--force-last]
 
@@ -130,7 +131,11 @@ verb holds it anyway and the log line ends `--force-last: no gate bench left`.
 `--machine auto` asks the server to pick an allowed bench by committed load / slots;
 a successful take prints its lease deadline and the give command. Take again within
 20m to renew it. A full fleet prints its retry time and full benches, exits 1, and
-asks the caller to retry then. `--wait` and `--dry-run` are refused with `auto`.
+asks the caller to retry then. `--needs <a,b>` names the gate facts the bench must
+carry, the same words as a `GATE-NEEDS` line (for example `linux,tla`): the pick keeps
+to benches whose member facts meet every need, and when none does the WAIT names the
+need and the facts the benches carry. No `--needs` is the pick as it was.
+`--wait` and `--dry-run` are refused with `auto`.
 
 nova-sprint fleet sync [--check] [--pg <dsn>]
 nova-sprint fleet level

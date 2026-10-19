@@ -244,7 +244,9 @@ type readUnit struct {
 	row    string // the fleet row
 	friend bool
 	seat   FriendSeat
-	half   int // free room, in half slots: twice its room less twice its work and its reads
+	half   int // free room the ask may fill: a member's in half slots (twice its room less
+	// twice its work and its reads), a friend's her room less her work and her reads
+	// (readUnitsOf), so a friend at width still queues reads while her room has space
 	// idle is its free lanes, in half slots: twice its width less twice its work cards and
 	// its read cards, ready and working (rowLoad): a lane promised to a queued card is not
 	// free (the owner, 2026-10-11: "cards only may accrue per-fleet or friend, if there are
@@ -272,11 +274,14 @@ func readUnitsOf(s *Snapshot, seats []FriendSeat) []readUnit {
 		_, width := friendRoom(g)
 		row := FriendRow(f.Name)
 		work, reads := rowLoad(s, row)
-		// a friend's read counts against her width as a work card does
-		// (friendLiveLanes, friendFreeLanes): her free lanes are what the read ask
-		// may fill, so no read is dealt to a friend at her width
+		// The owner's rule (2026-10-18): width bounds what a friend works at once,
+		// never what is queued in her ready queue; her queue is bounded by her room,
+		// DealAhead times her width, ready and working together. A read card is a card
+		// like any other, so her half (what the ask may fill) is her free room and her
+		// idle stays her free lanes (friendFreeLanes), so the ask still prefers a
+		// friend with an idle lane.
 		free := friendFreeLanes(width, work, reads)
-		out = append(out, readUnit{name: f.Name, row: row, friend: true, seat: f, half: free, idle: free})
+		out = append(out, readUnit{name: f.Name, row: row, friend: true, seat: f, half: max(DealAhead*width-(work+reads), 0), idle: free})
 	}
 	for _, m := range notQuiet(s, s.UpMembers()) { // a member quiet, under its floor or draining reads nothing (drain.go)
 		if !memberReads(s, m) {

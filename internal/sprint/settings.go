@@ -318,7 +318,11 @@ type SetReq struct {
 	AlarmMerging string `json:",omitempty" prop:"alarm_merging"`
 	AlarmFleet   string `json:",omitempty" prop:"alarm_fleet"`
 	AlarmReady   string `json:",omitempty" prop:"alarm_ready"`
-	GoLanes      string `json:",omitempty" prop:"go_lanes"` // the Go lanes of every machine (PropGoLanes, section 18)
+	// The deal throttle's bounds (deal_throttle.go): a whole number of primaries, off or
+	// default (off): merging, and review, above which the deal starts no new work.
+	LandBacklogBound   string `json:",omitempty" prop:"land_backlog_bound"`
+	ReviewBacklogBound string `json:",omitempty" prop:"review_backlog_bound"`
+	GoLanes            string `json:",omitempty" prop:"go_lanes"` // the Go lanes of every machine (PropGoLanes, section 18)
 	// The drift alarm's thresholds of the base ahead of dev (drift.go): commits and hours,
 	// whole numbers from 1, or default.
 	DriftCommits string `json:",omitempty" prop:"drift_commits"`
@@ -417,6 +421,17 @@ func Set(s *Snapshot, r SetReq) Plan {
 			why = append(why, a.flag+" is the sprint's, not a stream's: nova-sprint set "+a.flag+" "+v)
 		}
 	}
+	for _, b := range [][2]string{{"--land-backlog-bound", r.LandBacklogBound}, {"--review-backlog-bound", r.ReviewBacklogBound}} {
+		if b[1] == "" {
+			continue
+		}
+		if !backlogBoundValid(b[1]) {
+			why = append(why, b[0]+" wants a whole number of primaries (0 or "+BacklogBoundOff+" never throttles), or "+ReadTierDefault+" ("+BacklogBoundOff+"); found "+b[1])
+		}
+		if len(r.Streams) > 0 {
+			why = append(why, b[0]+" is the sprint's, not a stream's: nova-sprint set "+b[0]+" "+b[1])
+		}
+	}
 	for _, d := range [][2]string{{"--drift-commits", r.DriftCommits}, {"--drift-hours", r.DriftHours}} {
 		if d[1] == "" {
 			continue
@@ -505,8 +520,8 @@ func Set(s *Snapshot, r SetReq) Plan {
 	if r.Base != "" && len(r.Streams) == 0 {
 		why = append(why, "--base is a stream's, not the sprint's: nova-sprint stream set <s> --base <branch>")
 	}
-	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Display == "" && r.Prose == "" && r.SeatAccept == "" && r.DefaultTier == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.LandingStallBound == "" && r.SeatSilentTo == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.ReworkPriority == "" {
-		why = append(why, "nothing to set: --rework-priority, --read-tier, --read-cards, --reads, --prose, --base, --dealt-max, --go-lanes, --attempts, --friend-idle, --landing-stall-bound, --seat-silent-to, --drift-commits, --drift-hours, --fleet, --friends, --fleet-tiers, --friends-tiers or an --alarm-... threshold")
+	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Display == "" && r.Prose == "" && r.SeatAccept == "" && r.DefaultTier == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.LandingStallBound == "" && r.SeatSilentTo == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.ReworkPriority == "" && r.LandBacklogBound == "" && r.ReviewBacklogBound == "" {
+		why = append(why, "nothing to set: --rework-priority, --read-tier, --read-cards, --reads, --prose, --base, --dealt-max, --go-lanes, --attempts, --friend-idle, --landing-stall-bound, --seat-silent-to, --drift-commits, --drift-hours, --fleet, --friends, --fleet-tiers, --friends-tiers, --land-backlog-bound, --review-backlog-bound or an --alarm-... threshold")
 	}
 	if len(r.Streams) > 0 && r.GoLanes != "" {
 		why = append(why, "--go-lanes is the sprint's, not a stream's: nova-sprint set --go-lanes "+r.GoLanes)
@@ -674,6 +689,8 @@ func Set(s *Snapshot, r SetReq) Plan {
 		{PropReadCards, r.ReadCards},
 		{PropReadsNeeded, r.Reads},
 		{PropReworkPriority, r.ReworkPriority},
+		{PropLandBacklogBound, r.LandBacklogBound},
+		{PropReviewBacklogBound, r.ReviewBacklogBound},
 	}
 	for _, a := range alarmProps {
 		kvs = append(kvs, [2]string{a.prop, alarms[a.prop]})
@@ -716,6 +733,8 @@ func orDefault(v, name string) string {
 		return "default (on: the deal asks every read at once)"
 	case name == PropReadsNeeded:
 		return "default (one for a flash card, two above)"
+	case name == PropLandBacklogBound, name == PropReviewBacklogBound:
+		return "default (" + BacklogBoundOff + ": the deal never throttles new work)"
 	}
 	return "default (each card's own tier)"
 }
