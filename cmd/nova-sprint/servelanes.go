@@ -53,9 +53,10 @@ import (
 //     and in order with the takes and finishes before it. On 2026-10-17 nine idle benches
 //     beating every 3 s put ~180 such beats a minute on the line, none changing a word
 //     (tla/ServerLanes.tla, ChangeHoldsTheLine);
-//   - every other verb (take, finish, read, queue, which records a reader's beat, a
-//     member's beat that changes its word, and every coordinator's write) waits for the
-//     line as before, and the line waits for its caller: a batch whose caller has gone is
+//   - friend level reads rows and branch tips before the line and takes it only for
+//     FriendLevelStep; every other verb (take, finish, read, queue, which records a
+//     reader's beat, a member's beat that changes its word, and every coordinator's
+//     write) waits for the line as before, and the line waits for its caller: a batch whose caller has gone is
 //     not run (serialLock.LockCtx).
 //
 // The lanes run only on a store that is safe from more than one goroutine: Redis, and
@@ -64,10 +65,11 @@ import (
 // docs/SPEC-SPRINT.md section 14, The server; tla/ServerLanes.tla.
 
 // readLaneVerbs are the verbs the read lane runs: each reads the store and writes
-// nothing (inbox only without --read, which moves the coordinator's cursor).
+// nothing (inbox only without --read, which moves the coordinator's cursor). Friend
+// cards uses ReadWaitsOnlyForReads (tla/ServerLanes.tla).
 var readLaneVerbs = map[string]bool{
 	"where": true, "card": true, "log": true, "check": true, "routes": true, "stats": true,
-	"needs": true, "goal show": true, "handover": true, "inbox": true,
+	"needs": true, "goal show": true, "handover": true, "inbox": true, "friend cards": true,
 }
 
 // onReadLane says the verb, as its flags read it, writes nothing and runs on the read lane.
@@ -182,6 +184,7 @@ func (a *app) lanesFor(ctx context.Context) *serveLanes {
 	r.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return b, nil }
 	r.serveAddr = a.serveAddr
 	r.readFriendHooks = a.readFriendHooks
+	r.tip, r.tips = a.tip, a.tips
 	r.hk, r.hookStoreFn, r.busOpen = a.hk, a.hookStoreFn, a.busOpen // the server's hook record connection: the gate reads it on this lane too
 	l.read = r
 	a.lanes = l
@@ -292,6 +295,7 @@ func (l *serveLanes) laneApp() *app {
 	r.now, r.serveAddr = l.now, l.read.serveAddr
 	r.meter = l.read.meter
 	r.readFriendHooks = l.read.readFriendHooks
+	r.tip, r.tips = l.read.tip, l.read.tips
 	r.hk, r.hookStoreFn, r.busOpen = l.read.hk, l.read.hookStoreFn, l.read.busOpen // the server's hook record connection, never a store per verb
 	r.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return b, nil }
 	return r
@@ -315,6 +319,23 @@ func (l *serveLanes) budget(ctx context.Context, argv, args []string) sprintwire
 	var stdout, stderr bytes.Buffer
 	code := r.run(args, &stdout, &stderr)
 	return sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String(), Outcome: r.outcome, Changed: r.changed}
+}
+
+// prepareFriendLevel reads the started set on the read lane before the caller takes the
+// server line. The card/tip window ends when FriendLevelStep begins, as it does for a
+// coordinator running friend level directly (tla/ServerLanes.tla, a read beside the line).
+func (l *serveLanes) prepareFriendLevel(ctx context.Context, args []string) (*friendLevelPlan, sprintwire.Result) {
+	if err := l.line.LockCtx(ctx); err != nil {
+		return nil, goneResult(args)
+	}
+	defer l.line.Unlock()
+	r := l.laneApp()
+	var stdout, stderr bytes.Buffer
+	plan, code := r.prepareFriendLevel(ctx, args, &stdout, &stderr)
+	if plan == nil {
+		return nil, sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String(), Outcome: r.outcome, Changed: r.changed}
+	}
+	return plan, sprintwire.Result{Code: 0, Outcome: "accepted", Changed: "no"}
 }
 
 // readVerbRun is a read on the read lane: it waits for the reads ahead of it alone, and

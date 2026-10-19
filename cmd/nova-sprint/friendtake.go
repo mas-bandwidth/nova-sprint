@@ -7,6 +7,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
@@ -29,34 +30,54 @@ const friendTakeWords = "friend take takes back and marks cards dealt to the fri
 
 // friendStarted is the friend's cards she has started, each with its why: every work card
 // ready or working on her row that her last beat names running (by its id, its job or its
-// primary), or whose branch origin holds (a push on it), or whose push cannot be read (the
-// card stays with her rather than be taken from under her).
+// primary), whose branch origin holds, or whose push cannot be read (the card stays with her).
 func (a *app) friendStarted(ctx context.Context, st *store.Store, friend string) (map[string]string, error) {
-	cards, err := st.ReadCells(ctx, sprint.Fleet, sprint.FriendRow(friend), sprint.Working, sprint.Ready)
-	if err != nil || len(cards) == 0 {
-		return nil, err
+	return a.friendStartedFor(ctx, st, []string{friend})
+}
+
+// friendStartedFor reads all selected friends' cards and checks each distinct repository
+// once. The server's friend level gives it every up friend at once, so repository reads do
+// not multiply by the number of cards.
+func (a *app) friendStartedFor(ctx context.Context, st *store.Store, friends []string) (map[string]string, error) {
+	out := map[string]string{}
+	owner := map[string]string{}
+	running := map[string][]string{}
+	pronouns := map[string]toolsfriend.Pronouns{}
+	var cards []store.Cell
+	for _, friend := range friends {
+		rows, err := st.ReadCells(ctx, sprint.Fleet, sprint.FriendRow(friend), sprint.Working, sprint.Ready)
+		if err != nil {
+			return nil, err
+		}
+		beat, err := st.FriendBeatOf(ctx, friend)
+		if err != nil {
+			return nil, err
+		}
+		spec, err := st.FriendSpecOf(ctx, friend)
+		if err != nil {
+			return nil, err
+		}
+		pronouns[friend], _ = toolsfriend.ParsePronouns(spec.Pronouns)
+		if beat.Friend != nil {
+			running[friend] = beat.Friend.Running
+		}
+		for _, card := range rows {
+			owner[card.ID] = friend
+			cards = append(cards, card)
+		}
 	}
-	b, err := st.FriendBeatOf(ctx, friend)
-	if err != nil {
-		return nil, err
-	}
-	spec, err := st.FriendSpecOf(ctx, friend)
-	if err != nil {
-		return nil, err
-	}
-	pro, _ := toolsfriend.ParsePronouns(spec.Pronouns)
-	var running []string
-	if b.Friend != nil {
-		running = b.Friend.Running
+	if len(cards) == 0 {
+		return out, nil
 	}
 	packets, err := st.Packets(ctx, cards)
 	if err != nil {
 		return nil, err
 	}
-	out := map[string]string{}
+	byRepo := map[string][]sprint.Packet{}
 	for _, p := range packets {
-		if slices.Contains(running, p.Card) || slices.Contains(running, friendJobOf(p)) || slices.Contains(running, p.Primary) {
-			out[p.Card] = pro.Say("{their} beat names it running")
+		friend := owner[p.Card]
+		if slices.Contains(running[friend], p.Card) || slices.Contains(running[friend], friendJobOf(p)) || slices.Contains(running[friend], p.Primary) {
+			out[p.Card] = pronouns[friend].Say("{their} beat names it running")
 			continue
 		}
 		repo := swarm.ReadCardBase([]byte(p.Brief)).Repo
@@ -64,11 +85,67 @@ func (a *app) friendStarted(ctx context.Context, st *store.Store, friend string)
 			out[p.Card] = "the card names no REPO: line, so a push on " + p.Branch + " cannot be read"
 			continue
 		}
-		switch tip, err := a.tip(ctx, repo, p.Branch); {
-		case err != nil:
-			out[p.Card] = "a push on " + p.Branch + " cannot be read (" + oneline.Escape(err.Error()) + ")"
-		case tip != "":
-			out[p.Card] = "a push on its branch " + p.Branch + " at " + tip
+		byRepo[repo] = append(byRepo[repo], p)
+	}
+	if len(byRepo) == 0 {
+		return out, nil
+	}
+	if a.tips == nil {
+		// Commands and older tests that inject only a branch tip retain that seam. The
+		// production server installs branchTips, which reads once per repository.
+		for repo, repoPackets := range byRepo {
+			for _, p := range repoPackets {
+				tip, err := a.tip(ctx, repo, p.Branch)
+				switch {
+				case err != nil:
+					out[p.Card] = "a push on " + p.Branch + " cannot be read (" + oneline.Escape(err.Error()) + ")"
+				case tip != "":
+					out[p.Card] = "a push on its branch " + p.Branch + " at " + tip
+				}
+			}
+		}
+		return out, nil
+	}
+	type result struct {
+		repo string
+		tips map[string]string
+		err  error
+	}
+	repos := slices.Sorted(maps.Keys(byRepo))
+	results := make(chan result, len(repos))
+	sem := make(chan struct{}, 4)
+	var wg sync.WaitGroup
+	for _, repo := range repos {
+		repo := repo
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				results <- result{repo: repo, err: ctx.Err()}
+				return
+			}
+			tips, err := a.tips(ctx, repo)
+			results <- result{repo: repo, tips: tips, err: err}
+		}()
+	}
+	wg.Wait()
+	close(results)
+	byRepoTips := make(map[string]result, len(repos))
+	for r := range results {
+		byRepoTips[r.repo] = r
+	}
+	for repo, repoPackets := range byRepo {
+		r := byRepoTips[repo]
+		for _, p := range repoPackets {
+			switch tip := r.tips[p.Branch]; {
+			case r.err != nil:
+				out[p.Card] = "a push on " + p.Branch + " cannot be read (" + oneline.Escape(r.err.Error()) + ")"
+			case tip != "":
+				out[p.Card] = "a push on its branch " + p.Branch + " at " + tip
+			}
 		}
 	}
 	return out, nil
@@ -159,41 +236,55 @@ func (a *app) cmdFriendGive(args []string, stdout, stderr io.Writer) int {
 // friendLevelWords is what friend level says on -h.
 const friendLevelWords = "friend level evens the friends' ready queues as fleet level evens the members': among the friends up of one class (the tiers the friend's nova-config row says the friend can do), while one has two more cards over the friend's width than another below the friend's room (twice the friend's width, in batch and one-shot mode alike), the newest card of the first moves to the second at its next generation, into working when the friend has a lane free. Only a card for any friend (WHO: friend) that is ready on the friend's row and that the friend has not started (a push on its branch, the friend's beat naming it running) moves; a card naming the friend and a working card stay. The MOVED line says moved=N to <friend>(n) from <friend>(n). friend sync delivers a moved card as a new job and marks it taken in the queue file of the friend it left.\n"
 
-func (a *app) cmdFriendLevel(args []string, stdout, stderr io.Writer) int {
+type friendLevelPlan struct {
+	c   common
+	st  *store.Store
+	req sprint.FriendLevelReq
+	dry bool
+}
+
+// prepareFriendLevel reads the friend rows and started set without applying a step. The
+// server can do this on its read lane, then apply only FriendLevelStep under the serial line.
+func (a *app) prepareFriendLevel(ctx context.Context, args []string, stdout, stderr io.Writer) (*friendLevelPlan, int) {
 	const name = "friend level"
 	fs, c := a.verbSetup(name)
 	dry := fs.Bool("dry-run", false, "say which friends are up to be levelled and write nothing")
 	pos, err := parse(fs, args)
 	if err != nil {
-		return refuse(stderr, name, err.Error())
+		return nil, refuse(stderr, name, err.Error())
 	}
 	if len(pos) > 0 {
-		return refuse(stderr, name, "takes no words, found "+oneline.Escape(pos[0]))
+		return nil, refuse(stderr, name, "takes no words, found "+oneline.Escape(pos[0]))
 	}
 	st, err := a.store(*c)
 	if err != nil {
-		return refuse(stderr, name, err.Error())
+		return nil, refuse(stderr, name, err.Error())
 	}
-	ctx := context.Background()
 	rows, err := st.FriendRows(ctx, a.now())
 	if err != nil {
-		return a.readFailed(name, err, stderr)
+		return nil, a.readFailed(name, err, stderr)
 	}
-	r := sprint.FriendLevelReq{Started: map[string]string{}, Who: c.actor}
+	plan := &friendLevelPlan{c: *c, st: st, dry: *dry, req: sprint.FriendLevelReq{Started: map[string]string{}, Who: c.actor}}
+	var up []string
 	for _, f := range rows {
-		r.Seats = append(r.Seats, sprint.FriendSeat{Name: f.Name, Pronouns: f.Pronouns, Width: f.Width, Status: f.Status, Class: f.Class, Mode: f.Mode, WorkerLive: f.WorkerLive})
-		if f.Status != sprint.Up {
-			continue
+		plan.req.Seats = append(plan.req.Seats, sprint.FriendSeat{Name: f.Name, Pronouns: f.Pronouns, Width: f.Width, Status: f.Status, Class: f.Class, Mode: f.Mode, WorkerLive: f.WorkerLive})
+		if f.Status == sprint.Up {
+			up = append(up, f.Name)
 		}
-		started, err := a.friendStarted(ctx, st, f.Name)
-		if err != nil {
-			return a.readFailed(name, err, stderr)
-		}
-		maps.Copy(r.Started, started)
 	}
-	if *dry {
+	started, err := a.friendStartedFor(ctx, st, up)
+	if err != nil {
+		return nil, a.readFailed(name, err, stderr)
+	}
+	maps.Copy(plan.req.Started, started)
+	return plan, 0
+}
+
+func (a *app) finishFriendLevel(plan *friendLevelPlan, stdout, stderr io.Writer) int {
+	const name = "friend level"
+	if plan.dry {
 		var up []string
-		for _, f := range r.Seats {
+		for _, f := range plan.req.Seats {
 			if f.Status == sprint.Up {
 				up = append(up, f.Name)
 			}
@@ -201,5 +292,13 @@ func (a *app) cmdFriendLevel(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "FRIEND-LEVEL DRY-RUN up=%s; nothing was changed\n", orDashStr(strings.Join(up, ","), "-"))
 		return 0
 	}
-	return a.runStep(name, *c, st, store.FriendLevelStep(r), stdout, stderr)
+	return a.runStep(name, plan.c, plan.st, store.FriendLevelStep(plan.req), stdout, stderr)
+}
+
+func (a *app) cmdFriendLevel(args []string, stdout, stderr io.Writer) int {
+	plan, code := a.prepareFriendLevel(context.Background(), args, stdout, stderr)
+	if plan == nil {
+		return code
+	}
+	return a.finishFriendLevel(plan, stdout, stderr)
 }

@@ -65,6 +65,7 @@ func main() {
 		os.Exit(2)
 	}
 	a := newApp(getenv)
+	a.tips = a.branchTips // friend level reads each repository once, before its store step
 	if seatEnvironmentNeeded(os.Args[1:]) {
 		if err := a.loadSeatEnvironment(); err != nil {
 			path, pathErr := a.seatEnvironmentPath()
@@ -108,6 +109,8 @@ type app struct {
 	// tip reads origin's tip of a branch (friend sync, a friend's LAND): tests give
 	// it a table of tips and open no socket.
 	tip tipFn
+	// tips reads every sprint branch of an origin repository once; tests give a map.
+	tips tipsFn
 	// readTip and readHeads are the server's check of a broken read's branch at its close
 	// (readMissing): origin's tip of the branch the read named, and origin's branches of the
 	// work card by pattern. nil checks nothing: tests open no socket unless they give one.

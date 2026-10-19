@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,7 +17,150 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-tools/hook"
 )
+
+func friendStartedFixture(t *testing.T, count int, repoCount int, friends ...string) *testApp {
+	t.Helper()
+	ta, _ := friendApp(t, friends...)
+	ta.ok("friend sync")
+	for _, friend := range friends {
+		ta.beatUp(friend)
+	}
+	dirs := make([]string, repoCount)
+	for i := range dirs {
+		dirs[i] = t.TempDir()
+	}
+	for i := 0; i < count; i++ {
+		id := fmt.Sprintf("started-%03d", i)
+		repo := fmt.Sprintf("mas-bandwidth/repo-%d", i%repoCount)
+		path := filepath.Join(dirs[i%repoCount], id+".md")
+		brief := passingBrief(fmt.Sprintf("%s: friend started fixture\nREPO: %s\nWHO: friend", id, repo))
+		require.NoError(t, os.WriteFile(path, []byte(brief), 0o644))
+	}
+	for _, dir := range dirs {
+		ta.ok(fmt.Sprintf("add --stream s1 --brief-dir %s", dir))
+	}
+	ta.deal(count)
+	return ta
+}
+
+func TestFriendStartedReadsEachRepoOnce(t *testing.T) {
+	t.Parallel()
+	friends := []string{"amy", "bob", "cy"}
+	ta := friendStartedFixture(t, 30, 2, friends...)
+	calls := map[string]int{}
+	var callsMu sync.Mutex
+	ta.a.tips = func(_ context.Context, repo string) (map[string]string, error) {
+		callsMu.Lock()
+		calls[repo]++
+		callsMu.Unlock()
+		if repo == "mas-bandwidth/repo-0" {
+			return map[string]string{"sprint/started-000.w1.g1.e0": landHead}, nil
+		}
+		return map[string]string{}, nil
+	}
+	st, err := ta.a.store(common{redis: "mem:0"})
+	require.NoError(t, err)
+	started, err := ta.a.friendStartedFor(context.Background(), st, friends)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"started-000.w1": "a push on its branch sprint/started-000.w1.g1.e0 at " + landHead}, started)
+	assert.Equal(t, map[string]int{"mas-bandwidth/repo-0": 1, "mas-bandwidth/repo-1": 1}, calls)
+}
+
+func TestFriendStartedAnUnreadRepoKeepsItsCards(t *testing.T) {
+	t.Parallel()
+	ta := friendStartedFixture(t, 10, 1, "amy")
+	ta.a.tips = func(context.Context, string) (map[string]string, error) { return nil, errors.New("offline") }
+	st, err := ta.a.store(common{redis: "mem:0"})
+	require.NoError(t, err)
+	started, err := ta.a.friendStarted(context.Background(), st, "amy")
+	require.NoError(t, err)
+	require.Len(t, started, 10)
+	for id, why := range started {
+		assert.Contains(t, why, "cannot be read (offline)", id)
+	}
+	out := ta.ok("friend level")
+	assert.Contains(t, out, "FRIEND-LEVEL OK moved=0")
+}
+
+// BenchmarkFriendStarted has 100 held cards on three friends, across three repositories.
+// The fake tips reader reports calls per operation so the per-card regression is visible.
+func BenchmarkFriendStarted(b *testing.B) {
+	mem := store.NewMem()
+	cfg := config.NewMem()
+	friends := []string{"amy", "bob", "cy"}
+	for _, name := range friends {
+		if _, err := cfg.Insert(context.Background(), config.KindFriend, config.Row{Name: name, Fields: map[string]string{"tiers": "flash", "width": "8"}}, "bench"); err != nil {
+			b.Fatal(err)
+		}
+	}
+	env := map[string]string{"NOVA_SPRINT_REDIS": "mem:0", "NOVA_SPRINT_ACTOR": "coordinator"}
+	a := newApp(func(k string) string { return env[k] })
+	a.backend = func(context.Context, string, sprint.Names) (store.Backend, error) { return mem, nil }
+	at := time.Unix(1000, 0).UTC()
+	a.now = func() time.Time { return at }
+	a.cardCheckGate = false
+	a.checkTree = func(context.Context, swarm.CardBase) sprint.AdmissionTree {
+		return sprint.AdmissionTree{Missing: "benchmark fixture"}
+	}
+	a.friends = func(ctx context.Context, _ string) ([]config.Row, error) { return cfg.List(ctx, config.KindFriend) }
+	a.readFriendHooks = func(_ context.Context, names ...string) ([]hook.Status, time.Time, error) {
+		var statuses []hook.Status
+		for _, name := range names {
+			statuses = append(statuses, hook.Status{Name: name, Role: hook.Friend, State: hook.StateProven})
+		}
+		return statuses, at, nil
+	}
+	run := func(args ...string) {
+		var out, stderr bytes.Buffer
+		if code := a.run(args, &out, &stderr); code != 0 {
+			b.Fatalf("%v: exit %d: %s%s", args, code, out.String(), stderr.String())
+		}
+	}
+	run("init", "--readers", "reader-a,reader-b", "--members", "m1,m2")
+	run("friend", "sync")
+	for _, name := range friends {
+		run("friend", "up", name)
+		run("friend", "beat", name)
+	}
+	dirs := []string{b.TempDir(), b.TempDir(), b.TempDir()}
+	for i := 0; i < 100; i++ {
+		id := fmt.Sprintf("bench-%03d", i)
+		repo := i % len(dirs)
+		brief := passingBrief(fmt.Sprintf("%s: friend started benchmark\nREPO: mas-bandwidth/repo-%d\nWHO: friend", id, repo))
+		if err := os.WriteFile(filepath.Join(dirs[repo], id+".md"), []byte(brief), 0o644); err != nil {
+			b.Fatal(err)
+		}
+	}
+	for _, dir := range dirs {
+		run("add", "--stream", "s1", "--brief-dir", dir)
+	}
+	st, err := a.store(common{redis: "mem:0"})
+	if err != nil {
+		b.Fatal(err)
+	}
+	if _, err := st.Run(context.Background(), dealStep(sprint.DealReq{Sel: sprint.Sel{Limit: 100}})); err != nil {
+		b.Fatal(err)
+	}
+	tipsCalls := 0
+	var tipsMu sync.Mutex
+	a.tips = func(context.Context, string) (map[string]string, error) {
+		tipsMu.Lock()
+		tipsCalls++
+		tipsMu.Unlock()
+		return map[string]string{}, nil
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := a.friendStartedFor(context.Background(), st, friends); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.StopTimer()
+	b.ReportMetric(float64(tipsCalls)/float64(b.N), "tips/op")
+}
 
 // The verbs friends lacked that machines have (the owner, 2026-10-04: "What else is like
 // this? Missing verbs we need for friends, that machines already have"), on the twin.

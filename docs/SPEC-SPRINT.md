@@ -8646,9 +8646,14 @@ changes nothing but its clock and its load runs on the beat lane as a friend's d
 changes the word, or is the member's first, takes the line, so the tick sees the word whole and in
 order with the takes and finishes before it (`tla/ServerLanes.tla`, `ChangeHoldsTheLine`; on
 2026-10-17 nine idle benches put ~180 changeless beats a minute on the line). A read (`where`, `card`, `log`, `check`, `routes`, `stats`,
-`needs`, `goal show`, `handover`, and `inbox` without `--read`) writes nothing and runs on the
-read lane: a read at a time on the lane's own process state, beside the line, as a client
-reading the store directly always has. The dashboard's read (`where --json --dashboard`, once a
+`needs`, `goal show`, `handover`, `inbox` without `--read`, and `friend cards`) writes nothing
+and runs on the read lane: a read at a time on the lane's own process state, beside the line,
+as a client reading the store directly always has. `friend level` reads friend rows, beats,
+specs, packets and branch tips on this lane, then takes the line only for
+`store.FriendLevelStep`; a card started between that read and the step is inside the same
+read/step window as the coordinator's command outside the server (`tla/ServerLanes.tla`,
+`ReadWaitsOnlyForReads`). `friend cards <friend> [--json]` writes nothing and runs here too.
+The dashboard's read (`where --json --dashboard`, once a
 second for each dashboard, with no other flag but the actor) has a lane of its own, beside the
 line and the read lane, so it never waits behind the reads ahead of the read lane (the owner,
 2026-10-15: "The dashboard is chugging 3-5 seconds per-update instead of every 1s": its read

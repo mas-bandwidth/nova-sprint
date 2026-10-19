@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -132,6 +133,72 @@ func TestBeatsAndReadsAnswerWhileTheLineIsHeld(t *testing.T) {
 	assert.Equal(t, 1, ta.a.served.beats)
 	assert.Equal(t, 5, ta.a.served.reads)
 	assert.Equal(t, 2, ta.a.served.serialVerbs)
+}
+
+// friend cards is a read in the worker's lane: it answers while a tick holds the line.
+func TestFriendCardsRunsOnTheReadLane(t *testing.T) {
+	t.Parallel()
+	ta, _ := takeApp(t, 1, nil, "amy")
+	ta.a.serveAddr = "mem:0"
+	lanes := ta.a.lanesFor(context.Background())
+	require.NotNil(t, lanes)
+	waiting := make(chan struct{}, 1)
+	ta.a.serial.waiting = func() { waiting <- struct{}{} }
+	ta.a.serial.Lock()
+	done := make(chan sprintwire.Result, 1)
+	go func() { done <- serveOne(ta.a, false, "friend", "cards", "amy", "--json") }()
+	select {
+	case res := <-done:
+		require.Equal(t, 0, res.Code, res.Stderr)
+		assert.Contains(t, res.Stdout, `"friend":"amy"`)
+	case <-waiting:
+		ta.a.serial.Unlock()
+		res := <-done
+		t.Fatalf("friend cards waited for the serial line: %s", res.Stderr)
+	}
+	assert.Empty(t, waiting)
+	ta.a.serial.Unlock()
+}
+
+// friend level reads rows and branch tips before it takes the line, then holds the line for
+// only FriendLevelStep. The fake tip advances the deterministic clock by 40 seconds.
+func TestFriendLevelReadsStartedOffTheLine(t *testing.T) {
+	t.Parallel()
+	ta := friendStartedFixture(t, 1, 1, "amy")
+	ta.a.serveAddr = "mem:0"
+	lanes := ta.a.lanesFor(context.Background())
+	require.NotNil(t, lanes)
+	read := make(chan struct{})
+	release := make(chan struct{})
+	ta.a.tips = func(context.Context, string) (map[string]string, error) {
+		ta.advance(40 * time.Second)
+		close(read)
+		<-release
+		return map[string]string{}, nil
+	}
+	lanes.read.tips = ta.a.tips
+	waiting := make(chan struct{}, 1)
+	ta.a.serial.waiting = func() { waiting <- struct{}{} }
+	ta.a.serial.Lock()
+	done := make(chan sprintwire.Result, 1)
+	go func() { done <- serveOne(ta.a, true, "friend", "level") }()
+	select {
+	case <-read:
+	case <-waiting:
+		ta.a.serial.Unlock()
+		<-done
+		t.Fatal("friend level took the serial line before its branch reads")
+	case res := <-done:
+		ta.a.serial.Unlock()
+		t.Fatalf("friend level did not reach its fake branch read: %s", res.Stderr)
+	}
+	close(release)
+	<-waiting // the started set is complete; only the step now waits on the line
+	ta.a.serial.Unlock()
+	res := <-done
+	require.Equal(t, 0, res.Code, res.Stderr)
+	assert.Contains(t, res.Stdout, "FRIEND-LEVEL OK moved=0")
+	assert.Less(t, ta.a.served.holdMax, time.Second, "40-second reads are outside the serial hold")
 }
 
 // A batch whose caller went away while it waited for the line is not run: on

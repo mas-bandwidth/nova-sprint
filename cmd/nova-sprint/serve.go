@@ -131,6 +131,10 @@ func fleetBeatWords(rest []string) (as, load, stop, live, noRoom, facts string, 
 	return as, load, stop, live, noRoom, facts, draining, ""
 }
 
+func isFriendCards(argv []string) bool {
+	return len(argv) >= 2 && argv[0] == "friend" && argv[1] == "cards"
+}
+
 func workerVerb(argv []string) (as string, words int, why string) {
 	if len(argv) >= 2 && argv[0] == "fleet" && argv[1] == "beat" {
 		as, load, stop, live, _, _, _, why := fleetBeatWords(argv[2:])
@@ -408,21 +412,24 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 	out := sprintwire.Response{Results: make([]sprintwire.Result, len(req.Verbs))}
 	lanes := a.lanesFor(ctx)
 	begun := a.now()
-	var took time.Time
+	var took, waitBegan time.Time
+	waitBegan = begun
+	var waitTotal, holdTotal time.Duration
 	held, beats, reads, onLine, gone := false, 0, 0, 0, 0
 	var first []string
 	defer func() {
-		var wait, hold time.Duration
 		if held {
 			a.serving = false
-			hold = a.now().Sub(took)
-			wait = took.Sub(begun)
+			now := a.now()
+			holdTotal += now.Sub(took)
+			waitTotal += took.Sub(waitBegan)
 			a.serial.Unlock()
 		}
-		a.tally(beats, reads, onLine, gone, wait, hold, first)
+		a.tally(beats, reads, onLine, gone, waitTotal, holdTotal, first)
 	}()
 	for i, argv := range req.Verbs {
 		var args []string
+		var friendLevel *friendLevelPlan
 		actorNotice := ""
 		actorResolved := false
 		serving, lane := false, ""
@@ -431,7 +438,9 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 		case why == "":
 			// a worker's write names the epoch its worker holds, whoever sent it (runStep)
 			serving = true
-			if lanes != nil && (isFriendBeat(argv) || isBudget(argv)) {
+			if lanes != nil && isFriendCards(argv) {
+				lane = "read"
+			} else if lanes != nil && (isFriendBeat(argv) || isBudget(argv)) {
 				lane = "beat"
 			}
 			if lanes != nil && isFleetBeat(argv) && !isFleetBeatDryRun(argv) && !lanes.fleetBeatChanges(ctx, argv[2:]) {
@@ -453,6 +462,8 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 					if onDashLane(v, argv) {
 						lane = "dash" // the dashboard's read: its own lane (tla/ServerLanes.tla, DashWaitsOnlyForDash)
 					}
+				} else if lanes != nil && v.err == nil && !v.help && v.name == "friend level" {
+					lane = "friend-level"
 				}
 				callerArgs := argv
 				callerArgs, actorNotice, actorResolved = a.defaultHookActor(argv, a.serveAddr, true)
@@ -496,8 +507,6 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 			a.logRefused(argv, refusedWorker(as, argv), out.Results[i].Code, out.Results[i].Stderr)
 			continue
 		case "dash":
-			// the dashboard's read: a copy kept on the dashboard lane, counted as a read
-			// (servelanes.go dashWhere; tla/ServerLanes.tla, DashWaitsOnlyForDash)
 			reads++
 			out.Results[i] = lanes.dashWhere(ctx, args)
 			a.logRefused(argv, refusedWorker(as, argv), out.Results[i].Code, out.Results[i].Stderr)
@@ -507,7 +516,33 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 			out.Results[i] = lanes.readVerbRun(ctx, args)
 			a.logRefused(argv, refusedWorker(as, argv), out.Results[i].Code, out.Results[i].Stderr)
 			continue
+		case "friend-level":
+			reads++
+			// A prior serial verb in this batch stays before friend level, but its line is
+			// given up while rows, beats, specs, packets and branch tips are read. A card can
+			// start in this read/step window, the same window the coordinator has off-server.
+			if held {
+				now := a.now()
+				holdTotal += now.Sub(took)
+				a.serving = false
+				a.serial.Unlock()
+				held = false
+			}
+			var prepared sprintwire.Result
+			friendLevel, prepared = lanes.prepareFriendLevel(ctx, args)
+			if friendLevel == nil || friendLevel.dry {
+				if friendLevel != nil {
+					var stdout, stderr bytes.Buffer
+					code := lanes.read.finishFriendLevel(friendLevel, &stdout, &stderr)
+					prepared = sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String(), Outcome: lanes.read.outcome, Changed: lanes.read.changed}
+				}
+				out.Results[i] = prepared
+				a.logRefused(argv, refusedWorker(as, argv), prepared.Code, prepared.Stderr)
+				continue
+			}
+			waitBegan = a.now()
 		}
+
 		if !held {
 			if err := a.serial.LockCtx(ctx); err != nil {
 				for j := i; j < len(req.Verbs); j++ {
@@ -516,7 +551,9 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 				}
 				return out
 			}
-			held, took, first = true, a.now(), argv
+			took = a.now()
+			waitTotal += took.Sub(waitBegan)
+			held, first = true, argv
 		}
 		onLine++
 		a.serving = serving
@@ -524,7 +561,12 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 		if actorNotice != "" {
 			fmt.Fprintln(&stderr, actorNotice)
 		}
-		code := a.run(args, &stdout, &stderr)
+		code := 0
+		if friendLevel != nil {
+			code = a.finishFriendLevel(friendLevel, &stdout, &stderr)
+		} else {
+			code = a.run(args, &stdout, &stderr)
+		}
 		out.Results[i] = sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String(), Outcome: a.outcome, Changed: a.changed}
 		a.logRefused(argv, as, code, stderr.String())
 
