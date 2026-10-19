@@ -51,15 +51,6 @@ func (s *Snapshot) AdmitGatesOnly(c *Card, ms []string) []string {
 	return out
 }
 
-// admitGatesOnlyWork is AdmitGatesOnly for a work card: the needs are its primary's brief's.
-func (s *Snapshot) admitGatesOnlyWork(wc *Card, ms []string) []string {
-	var pr *Card
-	if s != nil && s.Work != nil && wc != nil {
-		pr = s.Work.Placed(wc.F("primary"))
-	}
-	return s.AdmitGatesOnly(pr, ms)
-}
-
 // gatesOnlyWhy is why a card waits ready when every member its bench and room allow is a
 // gates-only member whose gates its GATE-NEEDS does not name: it waits for a member that
 // takes it, never a judgment (no need is unmet; the members up are reserved).
@@ -69,4 +60,51 @@ func gatesOnlyWhy(s *Snapshot, ms []string) string {
 		named = append(named, m+" (gates_only: "+strings.Join(s.MemberGatesOnly(m), ",")+")")
 	}
 	return "no member up takes it: every member up is gates-only and its GATE-NEEDS names none of their gates (" + strings.Join(named, "; ") + ")"
+}
+
+// gateEligible says the member m may hold an attempt of the primary c by its gates and its
+// facts together: its gates admit the card (gatesOnlyAdmits) and its facts carry every need
+// of the card's GATE-NEEDS line (memberSatisfies). It is the one rule every place that puts
+// an attempt on a member holds: the first deal (GateHostPool) and every move after it, the
+// next attempt's deal, the redeal of a member gone down or held, the level and the
+// rebalance. Before v1.6.8 the moves held the gates alone or nothing, so a card the first
+// deal gave the only darwin member was moved to a Linux bench to even the queues, every
+// attempt there ended HOLD and the bound marked a sound brief defective (a card dealt to a
+// member that can never satisfy it: a livelock). A nil c names no need. tla/GatesOnly.tla, Move.
+func (s *Snapshot) gateEligible(c *Card, m string) bool {
+	var needs []string
+	if c != nil {
+		needs = GateNeeds(c.F("brief"))
+	}
+	return gatesOnlyAdmits(s.MemberGatesOnly(m), needs) && memberSatisfies(s.MemberFacts(m), needs)
+}
+
+// AdmitGate narrows ms to the members gateEligible for the primary c; ms is never changed.
+func (s *Snapshot) AdmitGate(c *Card, ms []string) []string {
+	out := make([]string, 0, len(ms))
+	for _, m := range ms {
+		if s.gateEligible(c, m) {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// primaryOfWork is the primary a work card is an attempt of, nil when it has none.
+func (s *Snapshot) primaryOfWork(wc *Card) *Card {
+	if s == nil || s.Work == nil || wc == nil {
+		return nil
+	}
+	return s.Work.Placed(wc.F("primary"))
+}
+
+// admitGateWork is AdmitGate for a work card: the needs are its primary's brief's.
+func (s *Snapshot) admitGateWork(wc *Card, ms []string) []string {
+	return s.AdmitGate(s.primaryOfWork(wc), ms)
+}
+
+// notGateWork is the members of up the work card wc may not move to by gateEligible: the
+// avoid list the level holds beside its bench and its staging refusers.
+func (s *Snapshot) notGateWork(wc *Card, up []string) []string {
+	return without(up, s.admitGateWork(wc, up))
 }

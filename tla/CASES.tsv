@@ -785,6 +785,10 @@ MCGatesOnly.cfg	MCGatesOnly.tla	pass	-	ignore-terminal	gatesonly	required	-
 MCGatesOnlyBrokenNoFilter.cfg	MCGatesOnly.tla	invariant	GenericNeverToGatesOnly	ignore-terminal	gatesonly	required	-
 MCGatesOnlyBrokenNoGates.cfg	MCGatesOnly.tla	invariant	GenericNeverToGatesOnly	ignore-terminal	gatesonly	required	-
 MCGatesOnlyBrokenReadsTo.cfg	MCGatesOnly.tla	invariant	ReadsNeverToGatesOnly	ignore-terminal	gatesonly	required	-
+MCGatesOnlyMove.cfg	MCGatesOnly.tla	pass	-	ignore-terminal	gatesonly	required	-
+MCGatesOnlyMoveCover.cfg	MCGatesOnly.tla	invariant	NeverMoved	ignore-terminal	gatesonly	required	-
+MCGatesOnlyBrokenMoveGates.cfg	MCGatesOnly.tla	invariant	DealtOnlyWhereTheNeedIs	ignore-terminal	gatesonly	required	-
+MCGatesOnlyBrokenMoveFree.cfg	MCGatesOnly.tla	invariant	DealtOnlyWhereTheNeedIs	ignore-terminal	gatesonly	required	-
 MCReadProviderReturn.cfg	MCReadProviderReturn.tla	pass	-	ignore-terminal	readproviderreturn	required	-
 MCReadProviderReturnBrokenProviderSpends.cfg	MCReadProviderReturn.tla	invariant	ProviderBelowCapIsAskable	ignore-terminal	readproviderreturn	required	-
 MCReadProviderReturnBrokenNoCap.cfg	MCReadProviderReturn.tla	invariant	ProviderReturnsBounded	ignore-terminal	readproviderreturn	required	-
