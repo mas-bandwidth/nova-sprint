@@ -105,7 +105,9 @@ type Store struct {
 	// same config read as fleet sync): the one width source. Every step this store runs
 	// holds each row's width to it (sprint.HoldWidths) and writes a member's control-card
 	// copy that differs back to it (sprint.WidthRefresh). ok false (a failed read) holds
-	// the copies as they are. nil is no config read: the copies alone.
+	// the copies as they are. ok true with no width in it is a read that answered with no
+	// machine row: every member's width is 0 and its copy is drained, never left to admit.
+	// nil is no config read: the copies alone.
 	Widths func(ctx context.Context) (widths map[string]int, ok bool)
 	// Stats is what the store's reads cost (stats.go); nil is made on the
 	// first tick. Its pinned copies share it.

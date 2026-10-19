@@ -2755,12 +2755,18 @@ order the cards were dealt in, so a card brought to the front of its stream by
   cores its beat reports for a row with the default width (0 while no beat has
   reported them), and 0 for a row of width 0 or a member with no machine row:
   no step falls back to the control card's copy or to 64 while nova-config
-  answered. Such a member's copy is written 0, a drain marked as the config's
+  answered. A read that answered with no machine row at all is such a read
+  (every member 0, every copy drained), never a missing one; only a read that
+  failed leaves the copies as they are. Such a member's copy is written 0, a drain marked as the config's
   (`width_from=config`), so the deal and the level hold to it as the steps do;
   the server lifts that drain, and only that one, when nova-config names a
   width again (`sprint.WidthRefresh`), and `fleet up --width` clears the mark. A friend's width is her nova-config friend row's: `friend up
   <friend> --width <n>` and `friend beat <friend> --width <n>` are refused,
-  writing nothing, when n is not her row's. Default 64 only for a step with no
+  writing nothing, when n is not her row's as nova-config holds it now (read at
+  the verb, never the friends table's copy, which is stale until the next
+  friend sync; the copy stands in only on a machine that names no config store,
+  and a named store that cannot be read refuses the width). A beat with no
+  `--width` reads no config. Default 64 only for a step with no
   config read, and a member whose control card names none;
   `fleet up m1 --width 0` drains it: its width cell is `0`, so no
   deal, redeal or level places a card on it and a take by count takes none,

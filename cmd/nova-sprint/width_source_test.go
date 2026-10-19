@@ -6,7 +6,10 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
+	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -80,9 +83,9 @@ func TestFriendWidthIsRefusedWhenItIsNotNovaConfigs(t *testing.T) {
 	assert.Equal(t, 1, code, "%s %s", out, errs)
 	assert.Contains(t, out+errs, "friend zed has no nova-config friend row")
 
-	// a config store named that cannot be read refuses friend up any width: never take one on a
-	// missing read; friend beat never reads it (the beat lane never waits on Postgres) and
-	// holds to the friends table's copy
+	// a config store named that cannot be read refuses friend up and friend beat any width:
+	// never take one on a missing read, and never the friends table's copy in its place; a
+	// beat with no --width (what her daemon sends) reads no config and is taken
 	ta.a.friends = func(context.Context, string) ([]config.Row, error) { return nil, errors.New("connection refused") }
 	env := ta.a.getenv
 	ta.a.getenv = func(k string) string {
@@ -91,14 +94,92 @@ func TestFriendWidthIsRefusedWhenItIsNotNovaConfigs(t *testing.T) {
 		}
 		return env(k)
 	}
-	code, out, errs = ta.do("friend up amy --width 2")
-	assert.Equal(t, 1, code, "%s %s", out, errs)
-	assert.Contains(t, out+errs, "nova-config cannot be read (connection refused)")
-	ta.ok("friend beat amy --width 2")
-	code, out, errs = ta.do("friend beat amy --width 4")
-	assert.Equal(t, 1, code, "%s %s", out, errs)
-	assert.Contains(t, out+errs, "her friend row names 2")
+	for _, verb := range []string{"friend up amy --width 2", "friend beat amy --width 2"} {
+		code, out, errs = ta.do(verb)
+		assert.Equal(t, 1, code, "%s: %s %s", verb, out, errs)
+		assert.Contains(t, out+errs, "nova-config cannot be read (connection refused)", verb)
+	}
+	assert.Contains(t, ta.ok("friend beat amy --working 0"), "row_width=2")
 	ta.a.friends, ta.a.getenv = read, env
+}
+
+// Between a nova-config change and the next friend sync the friends table's copy of her row
+// is stale, and it is never the check: friend beat --width and friend up --width are held to
+// nova-config's applied friend row as it is now (the reader's finding on w3: the beat checked
+// the stale copy and took the old width). At w3 the beat took the old width 2 here and
+// refused the new 3.
+func TestFriendWidthIsHeldToTheAppliedConfigBeforeFriendSync(t *testing.T) {
+	t.Parallel()
+	ta, cfg := friendApp(t, "amy")
+	ctx := context.Background()
+	_, _, err := cfg.Update(ctx, config.KindFriend, "amy", map[string]string{"width": "2"}, "t")
+	require.NoError(t, err)
+	ta.ok("friend sync --root " + t.TempDir())
+	require.Contains(t, ta.ok("friend beat amy"), "row_width=2")
+
+	// nova-config friend set amy --width 3, then nova-config apply: no friend sync yet
+	_, _, err = cfg.Update(ctx, config.KindFriend, "amy", map[string]string{"width": "3"}, "t")
+	require.NoError(t, err)
+	require.Contains(t, ta.ok("friend beat amy"), "row_width=2", "the copy is stale until friend sync")
+
+	for _, verb := range []string{"friend beat amy --width 2", "friend up amy --width 2"} {
+		code, out, errs := ta.do(verb)
+		assert.Equal(t, 1, code, "%s: the copy's old width is refused: %s %s", verb, out, errs)
+		assert.Contains(t, out+errs, "--width 2 is not friend amy's nova-config width (her friend row names 3)", verb)
+	}
+	ta.ok("friend beat amy --width 3")
+	ta.ok("friend up amy --width 3")
+
+	// friend sync brings the copy to the applied row
+	ta.ok("friend sync --root " + t.TempDir())
+	assert.Contains(t, ta.ok("friend beat amy"), "row_width=3")
+}
+
+// A read of nova-config that answers with no machine row is a read, never a missing one
+// (the reader's finding on w3: it was kept as no read, so the control card's stale copy
+// still admitted takes after the last machine row was removed). Every member's width is 0 in
+// it: the server's steps admit no take and drain the copy (sprint.WidthRefresh); the retire
+// keeps its own rule and retires nothing on it. Only a read that fails leaves the copies.
+// At w3 the take below applied (the copy's 4 admitted it) and the copy stayed 4.
+func TestAnEmptyInventoryHoldsEveryMemberAtZero(t *testing.T) {
+	t.Parallel()
+	ta, inv := syncApp(t)
+	inv.set("m1", 4)
+	ta.ok("fleet sync")
+	ta.probeUp("m1")
+	require.Equal(t, "4", ta.fleetRows()["m1"]["width"])
+
+	ctx := context.Background()
+	st, err := ta.a.store(common{redis: "mem:0", actor: "tester"})
+	require.NoError(t, err)
+	st.Widths = ta.a.inventoryWidths(st)
+
+	// a read that fails: the copies stand, as before
+	inv.fail = errors.New("connection refused")
+	_, ok := ta.a.inventoryMachines(ctx)
+	require.False(t, ok)
+	_, ok = st.Widths(ctx)
+	require.False(t, ok, "a failed read is no read")
+
+	// nova-config machine remove m1, then nova-config apply: the read answers with no row
+	inv.fail = nil
+	inv.remove("m1")
+	names, ok := ta.a.inventoryMachines(ctx)
+	assert.False(t, ok, "the retire acts on no read with no row: %v", names)
+	ws, ok := st.Widths(ctx)
+	require.True(t, ok, "a read that answered with no row is a read")
+	assert.Empty(t, ws)
+
+	res, err := st.Run(ctx, store.Step{Verb: "width probe", Load: []string{sprint.Fleet}, Plan: func(*sprint.Snapshot) sprint.Plan {
+		return sprint.Plan{Units: []sprint.Unit{{Key: "z1", Changes: []sprint.Change{{Table: sprint.Fleet, Entry: ntable.BatchMemberEntry{ID: "z1",
+			Expect: &ntable.MemberExpect{Absent: true},
+			Create: &ntable.MemberCreateOp{Row: "m1", Col: sprint.Working}, Set: map[string]string{"kind": "work", "gen": "1"}}}},
+			Moved: "z1 created working on m1"}}}
+	}})
+	require.NoError(t, err)
+	require.Len(t, res.Refused, 1, "the stale copy's 4 admits nothing: %v", res.Refused)
+	assert.Contains(t, res.Refused[0].Why, "m1 is at its width (0 working of 0)")
+	assert.Equal(t, "0", ta.fleetRows()["m1"]["width"], "the copy is drained to nova-config's 0")
 }
 
 // A member whose nova-config machine row has the default width is half the cores its beat

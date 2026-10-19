@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -458,10 +457,12 @@ func (a *app) friendBeat(ctx context.Context, args []string, open func(common) (
 	}
 	if rep.Width != nil {
 		// a friend's width is her nova-config friend row's alone (the owner, 2026-10-18; tla/WidthHard.tla
-		// OneSource): a beat naming another is refused before anything of it is written
-		// beat lane: checked against the friends table's copy of her row (friend sync's), never a
-		// read of nova-config on the beat's path, which must never wait
-		if msg := a.friendWidthRefusal(ctx, st, friend, *rep.Width, false); msg != "" {
+		// OneSource): a beat naming another is refused before anything of it is written. It is
+		// checked against nova-config's applied friend row as friend up's is, never the friends
+		// table's copy alone, which is stale between a nova-config change and the next friend sync
+		// (the reader's finding on w3). Only a beat that names a width reads nova-config (bounded,
+		// withConfig); a beat with no --width, which is what her daemon sends, never waits on it
+		if msg := a.friendWidthRefusal(ctx, st, friend, *rep.Width); msg != "" {
 			a.outcome, a.changed = "refused", "no"
 			fmt.Fprintf(stderr, "%s %s REFUSED: %s\n", prog, name, oneline.Escape(msg))
 			return 1
@@ -601,7 +602,7 @@ func (a *app) cmdFriendHold(held bool, args []string, stdout, stderr io.Writer) 
 	if w > 0 {
 		// friend up --width is held to her nova-config friend row's width, as fleet up --width is
 		// to a machine row's (tla/WidthHard.tla OneSource, MCWidthHardBrokenSecondSource)
-		if msg := a.friendWidthRefusal(ctx, st, friend, w, true); msg != "" {
+		if msg := a.friendWidthRefusal(ctx, st, friend, w); msg != "" {
 			fmt.Fprintf(stderr, "%s %s REFUSED: %s\n", prog, name, oneline.Escape(msg))
 			return 1
 		}
@@ -640,21 +641,17 @@ func (a *app) cmdFriendHold(held bool, args []string, stdout, stderr io.Writer) 
 // --width) is refused, "" when it is the friend's own: a friend's width is her nova-config
 // friend row's alone (the owner, 2026-10-18: every fleet machine and every friend follows
 // the one definition of width, in nova-config, with no exceptions; tla/WidthHard.tla
-// OneSource). With readConfig (friend up) the row is read now (a.friends,
-// config.FriendWidth); on a machine that names no config store at all (no --pg and no
-// NOVA_PG_DSN: a twin, a test) the friends table's copy of it stands in, which only friend
-// sync writes from her row, and a config store named that cannot be read is refused: never
-// take a width on a missing read. Without it (friend beat, on the server's beat lane, which
-// must never wait on Postgres) the friends table's copy is the row.
-func (a *app) friendWidthRefusal(ctx context.Context, st *store.Store, friend string, width int, readConfig bool) string {
+// OneSource). Her row is read now (a.friends, config.FriendWidth), for friend up and friend
+// beat alike: the friends table's copy is friend sync's, and it is stale between a
+// nova-config change and the next sync, so it is never the check while nova-config can be
+// read. On a machine that names no config store at all (no --pg and no NOVA_PG_DSN: a
+// twin, a test) the copy stands in, as there is no config to read; a config store named
+// that cannot be read is refused: never take a width on a missing read.
+func (a *app) friendWidthRefusal(ctx context.Context, st *store.Store, friend string, width int) string {
 	fix := fmt.Sprintf("run nova-config friend set %s --width %d, then nova-config apply, and friend sync reads it; nothing was changed", friend, width)
-	var rows []config.Row
-	err := errors.New("the friends table's copy of her row is read")
-	if readConfig {
-		rows, err = a.friends(ctx, "")
-	}
+	rows, err := a.friends(ctx, "")
 	if err != nil {
-		if _, noStore := config.ResolveDSN("", a.getenv); readConfig && noStore == nil {
+		if _, noStore := config.ResolveDSN("", a.getenv); noStore == nil {
 			return fmt.Sprintf("--width %d: nova-config cannot be read (%s), and a friend's width is her nova-config friend row's alone; %s", width, oneline.Escape(err.Error()), fix)
 		}
 		spec, err := st.FriendSpecOf(ctx, friend)
