@@ -3561,6 +3561,23 @@ A card waits for its own tier: no cross-tier dealing. The unserved-tier fallback
 whose brief tier no route and no up friend serves stays ready for that tier until it
 is served. `card` and `where --json --rows` show the tier it is on.
 
+**First landing at the finish.** A card lands first time when five rules are mechanical
+rather than remembered: (1) the finish holds the base it merged, so the card's head is the
+base tip (`head = base`), and a base move never spends an attempt; (2) the finish carries the
+stream command's receipt in Debug, since a Release build hides asserts and CI builds Debug;
+(3) the plant is proven at its own line, so a hang, a timeout and an unrelated red are no
+proof; (4) every file the head touches outside its PATHS is named in its `PATHS-PROPOSED`;
+and (5) the add lint flags two open cards that edit one registry hunk, so a shared-line
+conflict is seen before the lander meets it. `tla/FirstLand.tla` is the model every
+v19-firstland card cites: `MCFirstLand.cfg` checks `ReviewHeadHoldsBaseAtFinish`,
+`AttemptsAreOwnReds`, `NoReleaseOnlyGreen`, `PlantProvenAtItsLine`, `NoSilentOutsideFile` and
+`SharedHunkFlagged`, and the liveness that a card whose worker merges, gates in Debug, plants
+at its own line and proposes every outside file eventually lands. The six reversed witnesses
+`stalebase`, `basemovespends`, `releasegreen`, `anyred`, `silentfile` and `nohunklint` each
+remove one rule and violate exactly its invariant. The finish's code is
+`cmd/nova-sprint/read_missing.go` `finishStep` and `internal/sprint/steps_work.go` `finishPlan`;
+the add lint's is `internal/sprint/cardcheck.go` `sameFile`.
+
 ## 6. The readers
 
 - **The interim rules of 2026-10-06, until read cards** (the owner, 7:25 PM ET: "fix it
@@ -4366,6 +4383,16 @@ cards had none outstanding.
    rejected push, a need of another stream's card) the stream stops and the
    coordinator is told. The coordinator may act on the card, the stream, or
    several streams together.
+
+**First landing at the lander.** The lander keeps the same five rules from its side. It lands
+a card only on the tip it finished on; when the base moved under the card and the merged tree
+is red only for the base's change, the conflict is a clash and the card is reworked at the tip
+with no attempt spent; only the card's own red spends an attempt, so `attempts` always equals
+`ownReds` (`tla/FirstLand.tla`, `AttemptsAreOwnReds` and `ReviewHeadHoldsBaseAtFinish`). A
+finish whose receipt is not the stream command's Debug receipt, whose plant is not at its own
+line, or whose outside-PATHS files are not proposed never reaches review
+(`NoReleaseOnlyGreen`, `PlantProvenAtItsLine`, `NoSilentOutsideFile`). The lander's code is
+`cmd/nova-sprint/landpass.go` and `internal/sprint/redo.go` `landRefused`.
 
 **The machine's commit identity.** Every commit the sprint machine makes (land,
 merge, rework-at-tip, the promotion's cut, ledger and roadmap writes) carries an

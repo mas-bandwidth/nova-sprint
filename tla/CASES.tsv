@@ -796,3 +796,10 @@ MCFallout.cfg	MCFallout.tla	pass	-	ignore-terminal	fallout	required	-
 MCFalloutBrokenNoSweep.cfg	MCFallout.tla	invariant	LandedHasNoStaleRefs	ignore-terminal	fallout	required	-
 MCFalloutBrokenAnyHunk.cfg	MCFallout.tla	invariant	NonFalloutOutsidePathsNeverLands	ignore-terminal	fallout	required	-
 MCFalloutBrokenReaderPasses.cfg	MCFallout.tla	invariant	ReaderNeverPassesStale	ignore-terminal	fallout	required	-
+MCFirstLand.cfg	MCFirstLand.tla	pass	-	ignore-terminal	firstland	required	-
+MCFirstLandBrokenStaleBase.cfg	MCFirstLand.tla	invariant	ReviewHeadHoldsBaseAtFinish	ignore-terminal	firstland	required	-
+MCFirstLandBrokenBaseMoveSpends.cfg	MCFirstLand.tla	invariant	AttemptsAreOwnReds	ignore-terminal	firstland	required	-
+MCFirstLandBrokenReleaseGreen.cfg	MCFirstLand.tla	invariant	NoReleaseOnlyGreen	ignore-terminal	firstland	required	-
+MCFirstLandBrokenAnyRed.cfg	MCFirstLand.tla	invariant	PlantProvenAtItsLine	ignore-terminal	firstland	required	-
+MCFirstLandBrokenSilentFile.cfg	MCFirstLand.tla	invariant	NoSilentOutsideFile	ignore-terminal	firstland	required	-
+MCFirstLandBrokenNoHunkLint.cfg	MCFirstLand.tla	invariant	SharedHunkFlagged	ignore-terminal	firstland	required	-
