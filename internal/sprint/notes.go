@@ -118,7 +118,9 @@ const (
 	// NGateFixCycle is the judgment of a finish blocked by a card that needs it, or
 	// whose need would close a cycle: finishing the card is the other's gate fix, so
 	// the two are split or one is reworked (blocked_by.go; tla/WaitFor.tla
-	// FinishHoldGateFix and Split).
+	// FinishHoldGateFix and Split). A finish raises it once and the coordinator
+	// answers it, so it is not one of the tick's: it has no TickDecisions row
+	// (steps_tick.go), the tick never re-raises it.
 	NGateFixCycle    = "a blocked card's blocker needs it: split the gate fix"
 	NCIRed           = "ci red"
 	NReadsExhausted  = "reads exhausted"

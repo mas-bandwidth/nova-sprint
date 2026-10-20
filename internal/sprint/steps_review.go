@@ -1549,7 +1549,10 @@ type ReworkCard struct {
 // ReworkResolves is the judgments a rework discharges on its primary (NReadBranchMissing
 // too: tla/ReadBranchMissing.tla, OfferedDecisionResolves).
 // SprintRules.EpNext: rework ends the cannot-ask attempt.
-var ReworkResolves = []string{NCannotAsk, NWorkFailed, NReportJudgment, NReadBroken, NBriefWrong, NCIRed, NRepairSkipped, NReadyToAccept, NReturned, NReadsExhausted, NStranded, NStalled, NBound, NHarnessFault, NReadBranchMissing}
+// NGateFixCycle too: the gate-fix judgment holds its card, so a rework of that
+// card is how the coordinator answers it (blocked_by.go; docs/SPEC-SPRINT.md
+// section 8; tla/WaitFor.tla, FinishHoldGateFix).
+var ReworkResolves = []string{NCannotAsk, NWorkFailed, NReportJudgment, NReadBroken, NBriefWrong, NCIRed, NRepairSkipped, NReadyToAccept, NReturned, NReadsExhausted, NStranded, NStalled, NBound, NHarnessFault, NReadBranchMissing, NGateFixCycle}
 
 // Rework delegates at once: the next work card attempt, carrying the fix, is
 // cut into the next member round the fleet (round.go:

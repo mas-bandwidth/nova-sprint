@@ -136,9 +136,8 @@ const ReworkOnAHigherTier = "rework with a fix on a higher tier"
 // TickDecisions are the decisions open to the tick's judgments.
 var TickDecisions = map[string][]string{
 	NFriendSyncFailing: {"ack", "wait"},
-	NBound:             {"rework with a fix", "drop"},                       // never wait: it holds its card (wait_refused.go)
-	NGateFixCycle:      {"split the gate fix", "rework with a fix", "drop"}, // never wait: it holds both cards (blocked_by.go)
-	NCannotAsk:         {"ask", "rework", "drop", "wait"},                   // ask deals a read; rework/drop end the attempt; wait parks the condition
+	NBound:             {"rework with a fix", "drop"},     // never wait: it holds its card (wait_refused.go)
+	NCannotAsk:         {"ask", "rework", "drop", "wait"}, // ask deals a read; rework/drop end the attempt; wait parks the condition
 	NFewReaders:        {"reader up", "reader add", "wait"},
 	NReviewNoReader:    {"reader add", "wait"},
 	NNoMember:          {"fleet beat", "fleet up", "wait"},

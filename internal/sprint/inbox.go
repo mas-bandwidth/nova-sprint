@@ -571,6 +571,11 @@ func commands(g Group, first Note, prefix string, onWork func(id string) bool) [
 			}
 		case d == "rework with the finding" || d == "rework with a fix" && g.Type == NWorkFailed:
 			add(d, cmd+"rework"+subj+subjAns) // each takes its own finding or report
+		case d == "split the gate fix" && g.Type == NGateFixCycle:
+			// the gate fix is split, never a need: the blocking card is twinned with the
+			// card that needs it, and the twin carries the shared DONE-WHEN command
+			// (blocked_by.go; docs/SPEC-SPRINT.md section 8; tla/WaitFor.tla, Split)
+			add(d, cmd+"twin "+other+" --needs "+card+" --instruction '<the DONE-WHEN command> green'")
 		case d == ReworkOnAHigherTier, d == DecisionReTier:
 			// the re-tier (DecisionReTier): the attempt cap's judgment offers it as the
 			// coordinator's way to a higher tier, a friend's included (brief_bound.go)
@@ -650,6 +655,10 @@ func commands(g Group, first Note, prefix string, onWork func(id string) bool) [
 			add(d, cmd+"land --stream "+strings.TrimPrefix(d, "merge --stream "))
 		case strings.HasPrefix(d, "friend take "):
 			add(d, cmd+d+" --reason "+whyText)
+		case strings.HasPrefix(d, "twin "):
+			// the split as the judgment names it: the twin command runs as printed
+			// (blocked_by.go; tla/WaitFor.tla, Split)
+			add(d, cmd+d)
 		case strings.HasPrefix(d, "fleet down ") || strings.HasPrefix(d, "fleet up ") || strings.HasPrefix(d, "reader up ") || strings.HasPrefix(d, "goal "):
 			add(d, cmd+d)
 		case d == "promoted":
