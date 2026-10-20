@@ -1918,16 +1918,20 @@ func TickOverdue(s *Snapshot, r TickReq) (Plan, int) {
 	p, due := tickOverdue(s, r)
 	p.on(s)
 	// an environment wait past its deadline is one judgment (env_wait.go;
-	// tla/WaitFor.tla Overdue): the card waits on the environment, not a decision
-	for _, c := range s.Work.Column(Ready) {
-		var opens []Open
-		for _, o := range s.Open {
-			if o.Subject() == c.ID {
-				opens = append(opens, o)
+	// tla/WaitFor.tla Overdue): the card waits on the environment, not a decision.
+	// A snapshot with no work table has no card to judge (a timer or a stream-only
+	// tick), so the loop asks nothing of it.
+	if s.Work != nil {
+		for _, c := range s.Work.Column(Ready) {
+			var opens []Open
+			for _, o := range s.Open {
+				if o.Subject() == c.ID {
+					opens = append(opens, o)
+				}
 			}
-		}
-		if envWaitDue(s, c, opens, s.Now) {
-			p.Notes = append(p.Notes, envWaitJudgment(c, s.Now, r.who()))
+			if envWaitDue(s, c, opens, s.Now) {
+				p.Notes = append(p.Notes, envWaitJudgment(c, s.Now, r.who()))
+			}
 		}
 	}
 	defaults := TickDecisionDefaults(s, r)
