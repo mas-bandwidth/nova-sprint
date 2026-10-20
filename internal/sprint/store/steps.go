@@ -126,15 +126,21 @@ func ReadStep(r sprint.ReadReq) Step {
 		// that is no reader-<m> is a fleet row
 		if _, isReader := sprint.ReaderMachine(rd); sprint.IsFriendRow(rd) || !isReader {
 			// a member's read card that returns a provider fault falls back on the routes
-			// (fallback.go; docs/SPEC-SPRINT.md section 5, provider fallback)
-			return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "read", Load: tables(sprint.Fleet, sprint.Work, sprint.Readers, sprint.Merge), Extras: sprint.NamedExtras(sprint.Fleet, r.IDs), Mirrors: true, Prices: r.Usage != "", StartsWork: r.Begin, ReportsWork: !r.Begin && !r.Return, Bars: true, Routes: true,
+			// (fallback.go; docs/SPEC-SPRINT.md section 5, provider fallback): Step.Prices
+			// reads the routes set and route records alone, never a tier's array, which the
+			// member role may not read
+			return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "read", Load: tables(sprint.Fleet, sprint.Work, sprint.Readers, sprint.Merge), Extras: sprint.NamedExtras(sprint.Fleet, r.IDs), Mirrors: true, Prices: true, StartsWork: r.Begin, ReportsWork: !r.Begin && !r.Return, Bars: true,
 				Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Read(s, r) }}
 		}
 	}
-	// a read that reports what it spent prices it with the routes alone, the keys a
-	// reader may read (sprint's cost.go; Step.Prices); the merge table for the streams'
-	// own attempt caps, as the finish loads it
-	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "read", Load: tables(sprint.Readers, sprint.Work, sprint.Merge), Extras: sprint.NamedExtras(sprint.Readers, r.IDs), Prices: r.Usage != "", StartsWork: r.Begin, ReportsWork: !r.Begin && !r.Return, Bars: true,
+	// a read prices with the routes alone, the keys a reader may read (sprint's cost.go;
+	// Step.Prices); the merge table for the streams' own attempt caps, as the finish loads
+	// it. The routes are loaded on every read, not only one that reports usage, and the
+	// fleet table with them, so a reader's provider-fault return is re-asked at once on the
+	// next route in line rather than spent (fallback.go; docs/SPEC-SPRINT.md section 5,
+	// provider fallback). Step.Prices reads the routes set and route records alone, never a
+	// tier's array, which the member role may not read.
+	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "read", Load: tables(sprint.Readers, sprint.Fleet, sprint.Work, sprint.Merge), Extras: sprint.NamedExtras(sprint.Readers, r.IDs), Prices: true, StartsWork: r.Begin, ReportsWork: !r.Begin && !r.Return, Bars: true,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Read(s, r) }}
 }
 
