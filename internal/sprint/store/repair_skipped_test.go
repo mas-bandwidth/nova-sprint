@@ -24,6 +24,14 @@ func (h *harness) oldSkippedDrain() string {
 	h.t.Helper()
 	h.startMachine()
 	h.must(DealStep(sprint.DealReq{Sel: sprint.Sel{IDs: []string{"s1-1", "s1-2"}}}))
+	return h.oldSkippedDrainOf(2)
+}
+
+// oldSkippedDrainOf is oldSkippedDrain after the queue is filled: the drain
+// applies it, its release is lost, and the old repair skips its want work
+// entries and drops their lines.
+func (h *harness) oldSkippedDrainOf(want int) string {
+	h.t.Helper()
 	h.m.Fail = func(p string) error {
 		if p == "release" {
 			return errors.New("lost")
@@ -51,7 +59,7 @@ func (h *harness) oldSkippedDrain() string {
 			skips = append(skips, k)
 		}
 	}
-	require.Len(h.t, skips, 2, "the drain's work manifest: %+v", op.Manifests)
+	require.Len(h.t, skips, want, "the drain's work manifest: %+v", op.Manifests)
 	require.NoError(h.t, pinned.B.Release(h.ctx, pinned.withSkips(*op, skips), true))
 	rep, _, err := h.st.Check(h.ctx, 0)
 	require.NoError(h.t, err)
@@ -61,7 +69,7 @@ func (h *harness) oldSkippedDrain() string {
 			n++
 		}
 	}
-	require.Equal(h.t, 2, n, "the old repair's rule 13 violations: %v", rep.Violations)
+	require.Equal(h.t, want, n, "the old repair's rule 13 violations: %v", rep.Violations)
 	return op.ID
 }
 
@@ -329,4 +337,23 @@ func TestCutCauseKeepsUTF8Whole(t *testing.T) {
 	assert.True(t, utf8.ValidString(got), "%q", got)
 	assert.True(t, strings.HasSuffix(got, "..."))
 	assert.Equal(t, "short", cutCause("short"))
+}
+
+// A card the drain created (its entry expects it absent) and the old repair
+// skipped gets its creation line back, from no place; one the log has since
+// moved on is settled.
+func TestRepairSkippedRestoresACreatedCard(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.setup(0)
+	h.startMachine()
+	h.must(AddStep(sprint.AddReq{Stream: "s9", Count: 1}))
+	op := h.oldSkippedDrainOf(1)
+	res, err := h.st.ReconcileSkipped(h.ctx, op+".skip", "", false, false)
+	require.NoError(t, err)
+	require.Len(t, res.Entries, 1, "%+v", res)
+	assert.Equal(t, SkipRestore, res.Entries[0].Outcome, "%+v", res.Entries[0])
+	assert.Equal(t, "", res.Entries[0].Expected)
+	assert.True(t, res.Closed, "%+v", res)
+	h.clean("after repair --skipped")
 }
