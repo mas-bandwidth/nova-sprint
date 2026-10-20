@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/redis/go-redis/v9"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
 // Every key the sprint writes has a bound, so a store can never grow without
@@ -42,6 +44,10 @@ const (
 	// keyNoteOrder is the list of note ids the inbox still holds, oldest
 	// first: the notes hash is pruned to it.
 	keyNoteOrder = "noteorder"
+	// keyNoteSeeded is set once keyNoteOrder has been seeded from the epoch's
+	// inbox: the notes written before the bound existed are in it too, so the
+	// first trim never deletes a note the inbox still holds.
+	keyNoteSeeded = "noteseeded"
 	// keyRetire is the epoch whose keys a bounded retire pass is still
 	// removing: the next clear (or the next call) resumes it.
 	keyRetire = "retire"
@@ -61,7 +67,7 @@ const (
 // the gap and the note order are an epoch's sprint keys: teardown removes them
 // with the epoch.
 func init() {
-	sprintKeys = append(sprintKeys, keyLogGap, keyNoteOrder)
+	sprintKeys = append(sprintKeys, keyLogGap, keyNoteOrder, keyNoteSeeded)
 	machineKeys = append(machineKeys, keyRetiredThrough)
 }
 
@@ -222,7 +228,7 @@ func (r *Redis) RetireOldEpochs(ctx context.Context, current uint64) error {
 // retiredSprintKeys is every per-epoch sprint key the retire step removes.
 var retiredSprintKeys = []string{keyFence, keyGen, keyInbox, keyLog, keyNotes, keyOpen,
 	keyCursor, keyProgress, keyDone, keyQueue, keyAliases, keyAnswered,
-	keyLogIndex, keyLogIndexed, keyLogGap, keyNoteOrder}
+	keyLogIndex, keyLogIndexed, keyLogGap, keyNoteOrder, keyNoteSeeded}
 
 // retireEpoch removes one epoch's keys: the sprint's own keys by exact name,
 // and the per-card hashes by a SCAN of their epoch suffix, in UNLINK batches.
@@ -313,38 +319,23 @@ func (st *Store) pruneRetained(ctx context.Context) error {
 	return nil
 }
 
-// pruneRetained prunes the notes and the log index to the lines the streams
-// still hold, and records the gap a trim passed the cursor at.
+// pruneRetained records the gap a trim passed the cursor at and prunes the log
+// index to the lines the log still holds. The notes are pruned where they are
+// written (trimNoteOrder): a pass never reads the whole notes or open hash, so
+// its cost is bounded by the log index pages, not by the store's size.
 func (r *Redis) pruneRetained(ctx context.Context) error {
+	if err := r.seedNoteOrder(ctx); err != nil {
+		return err
+	}
 	p := r.C.Pipeline()
 	firstLog := p.XRangeN(ctx, r.key(keyLog), "-", "+", 1)
-	firstInbox := p.XRangeN(ctx, r.key(keyInbox), "-", "+", 1)
 	cur := p.Get(ctx, r.key(keyCursor))
-	order := p.LRange(ctx, r.key(keyNoteOrder), 0, -1)
 	if _, err := p.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
 		return err
 	}
 	logFirst := firstID(firstLog)
 	if logFirst != "" && cur.Val() != "" && streamIDLess(cur.Val(), logFirst) {
 		if err := r.C.Set(ctx, r.key(keyLogGap), logFirst, 0).Err(); err != nil {
-			return err
-		}
-	}
-	notes := map[string]bool{}
-	for _, id := range order.Val() {
-		notes[id] = true
-	}
-	if firstInbox != nil && len(firstInbox.Val()) > 0 && len(notes) > 0 {
-		if err := r.pruneHash(ctx, r.key(keyNotes), notes, false); err != nil {
-			return err
-		}
-		if err := r.pruneHash(ctx, r.key(keyAliases), notes, true); err != nil {
-			return err
-		}
-		if err := r.pruneHash(ctx, r.key(keyAnswered), notes, false); err != nil {
-			return err
-		}
-		if err := r.pruneHash(ctx, r.key(keyOpen), notes, true); err != nil {
 			return err
 		}
 	}
@@ -364,29 +355,138 @@ func firstID(c *redis.XMessageSliceCmd) string {
 	return ""
 }
 
-// pruneHash removes the fields of the hash whose name (valueOf false) or value
-// (valueOf true) is not in keep, in one UNLINK-free HDEL per batch.
-func (r *Redis) pruneHash(ctx context.Context, key string, keep map[string]bool, valueOf bool) error {
-	h, err := r.C.HGetAll(ctx, key).Result()
-	if errors.Is(err, redis.Nil) {
+// seedNoteOrder puts the epoch's judgments already in the inbox before the
+// first note this code writes into keyNoteOrder. Without it the first note
+// after a deploy would leave every earlier live judgment out of the order and
+// a trim would delete it. It runs once per epoch; the marker makes it
+// idempotent, and a list that is already non-empty is left alone.
+func (r *Redis) seedNoteOrder(ctx context.Context) error {
+	seeded := r.key(keyNoteSeeded)
+	if n, err := r.C.Exists(ctx, seeded).Result(); err != nil {
+		return err
+	} else if n > 0 {
 		return nil
 	}
-	if err != nil {
+	order := r.key(keyNoteOrder)
+	if n, err := r.C.LLen(ctx, order).Result(); err != nil && !errors.Is(err, redis.Nil) {
+		return err
+	} else if n > 0 {
+		// a list without its marker was written before a crash between the
+		// order and the marker: do not seed duplicates over it.
+		return r.C.Set(ctx, seeded, "1", 0).Err()
+	}
+	bound := r.retentionLines()
+	// Read the inbox in pages: each entry's note id, in insertion order.
+	var ids []string
+	after := "-"
+	for {
+		msgs, err := r.C.XRangeN(ctx, r.key(keyInbox), after, "+", retentionScanCount).Result()
+		if err != nil {
+			return err
+		}
+		for _, m := range msgs {
+			var n sprint.Note
+			if s, ok := m.Values["note"].(string); ok && json.Unmarshal([]byte(s), &n) == nil {
+				if n.Kind == sprint.Judgment || n.Kind == sprint.Acknowledged {
+					ids = append(ids, n.ID)
+				}
+			}
+		}
+		if len(msgs) < retentionScanCount {
+			break
+		}
+		after = "(" + msgs[len(msgs)-1].ID
+	}
+	if len(ids) == 0 {
+		return r.C.Set(ctx, seeded, "1", 0).Err()
+	}
+	drop := []string(nil)
+	if len(ids) > bound {
+		drop, ids = ids[:len(ids)-bound], ids[len(ids)-bound:]
+	}
+	pipe := r.C.Pipeline()
+	for start := 0; start < len(ids); start += retentionUnlinkBatch {
+		pipe.RPush(ctx, order, stringsToAny(ids[start:min(start+retentionUnlinkBatch, len(ids))])...)
+	}
+	if err := r.queueDroppedNotes(ctx, pipe, drop, nil); err != nil {
 		return err
 	}
-	var drop []string
-	for k, v := range h {
-		held := k
-		if valueOf {
-			held = v
-		}
-		if !keep[held] {
-			drop = append(drop, k)
+	pipe.Set(ctx, seeded, "1", 0)
+	if _, err := pipe.Exec(ctx); err != nil {
+		return err
+	}
+	return nil
+}
+
+// trimNoteOrder queues keyNoteOrder's trim and the deletion of the hash fields
+// of the notes the trim drops, so the notes, the aliases, the answered and the
+// open index stay bounded with the inbox. It reads the list and the dropped
+// notes before the transaction: the fence serializes commit writers.
+func (r *Redis) trimNoteOrder(ctx context.Context, p redis.Pipeliner, added []string, bound int) error {
+	order := r.key(keyNoteOrder)
+	length, err := r.C.LLen(ctx, order).Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return err
+	}
+	overflow := int(length) + len(added) - bound
+	p.LTrim(ctx, order, int64(-bound), -1)
+	if overflow <= 0 {
+		return nil
+	}
+	dropped, err := r.C.LRange(ctx, order, 0, int64(overflow-1)).Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return err
+	}
+	return r.queueDroppedNotes(ctx, p, dropped, added)
+}
+
+// queueDroppedNotes queues the removal of the note hashes of dropped ids, in
+// bounded HDEL batches. An id still being added is never removed. The notes,
+// aliases, answered and open fields go together, so none outlives the inbox.
+func (r *Redis) queueDroppedNotes(ctx context.Context, p redis.Pipeliner, dropped, added []string) error {
+	if len(dropped) == 0 {
+		return nil
+	}
+	keep := make(map[string]bool, len(added))
+	for _, id := range added {
+		keep[id] = true
+	}
+	var ids []string
+	for _, id := range dropped {
+		if !keep[id] {
+			ids = append(ids, id)
 		}
 	}
-	for start := 0; start < len(drop); start += retentionUnlinkBatch {
-		if err := r.C.HDel(ctx, key, drop[start:min(start+retentionUnlinkBatch, len(drop))]...).Err(); err != nil {
-			return err
+	if len(ids) == 0 {
+		return nil
+	}
+	bodies, err := r.C.HMGet(ctx, r.key(keyNotes), ids...).Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return err
+	}
+	for start := 0; start < len(ids); start += retentionUnlinkBatch {
+		end := min(start+retentionUnlinkBatch, len(ids))
+		fields := ids[start:end]
+		p.HDel(ctx, r.key(keyNotes), fields...)
+		p.HDel(ctx, r.key(keyAnswered), fields...)
+	}
+	for i, id := range ids {
+		if i >= len(bodies) {
+			break
+		}
+		s, ok := bodies[i].(string)
+		if !ok {
+			continue
+		}
+		var n sprint.Note
+		if json.Unmarshal([]byte(s), &n) != nil {
+			continue
+		}
+		if n.Alias != "" {
+			p.HDel(ctx, r.key(keyAliases), n.Alias)
+		}
+		for _, subj := range n.Subjects() {
+			p.HDel(ctx, r.key(keyOpen), sprint.OpenKey(id, subj))
 		}
 	}
 	return nil

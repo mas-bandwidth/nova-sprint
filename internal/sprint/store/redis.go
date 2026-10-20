@@ -701,11 +701,17 @@ func (r *Redis) Acquire(ctx context.Context, gen uint64, op OpRecord) (bool, err
 		if n, _ := strconv.ParseUint(e, 10, 64); n != r.Pinned {
 			return errFenceMoved // the sprint was cleared since the step read it
 		}
-		_, err = tx.TxPipelined(ctx, func(p redis.Pipeliner) error {
+		cmds, err := tx.TxPipelined(ctx, func(p redis.Pipeliner) error {
 			p.Set(ctx, fence, body, 0)
 			p.Set(ctx, genKey, gen+1, 0)
 			return nil
 		})
+		// An EXECABORT hides the queued command's own error, which go-redis
+		// keeps on its Cmd: return it, so an OOM names the store, not the
+		// record's size (retention.go, storeRefusal).
+		if e := unwrapExecAbort(err, cmds); e != err {
+			return e
+		}
 		return err
 	}, fence, genKey, epochKey)
 	if errors.Is(err, errFenceMoved) || errors.Is(err, redis.TxFailedErr) {
@@ -736,7 +742,7 @@ func (r *Redis) Release(ctx context.Context, op OpRecord, commit bool) error {
 			if cur != prefix {
 				return nil // empty (released) or another operation's
 			}
-			_, err = tx.TxPipelined(ctx, func(p redis.Pipeliner) error {
+			cmds, err := tx.TxPipelined(ctx, func(p redis.Pipeliner) error {
 				if commit {
 					if err := r.commit(ctx, p, op); err != nil {
 						return err
@@ -745,6 +751,9 @@ func (r *Redis) Release(ctx context.Context, op OpRecord, commit bool) error {
 				p.Del(ctx, fence)
 				return nil
 			})
+			if e := unwrapExecAbort(err, cmds); e != err {
+				return e
+			}
 			return err
 		}, fence)
 		// The fence moved while this release was prepared: another writer
@@ -846,6 +855,15 @@ func (r *Redis) commit(ctx context.Context, p redis.Pipeliner, op OpRecord) erro
 		}
 		p.HSet(ctx, r.key(keyAliases), "n", n)
 	}
+	if counted > 0 {
+		// The judgments already in the inbox were written before the bound
+		// existed: put them in the order before the first one this code adds,
+		// so the trim below drops only notes the inbox no longer holds.
+		if err := r.seedNoteOrder(ctx); err != nil {
+			return err
+		}
+	}
+	added := make([]string, 0, counted)
 	for _, n := range notes {
 		body, err := json.Marshal(n.Bound())
 		if err != nil {
@@ -860,12 +878,15 @@ func (r *Redis) commit(ctx context.Context, p redis.Pipeliner, op OpRecord) erro
 		if n.Kind == sprint.Judgment || n.Kind == sprint.Acknowledged {
 			p.HSet(ctx, r.key(keyNotes), n.ID, string(body))
 			p.RPush(ctx, r.key(keyNoteOrder), n.ID)
+			added = append(added, n.ID)
 			for _, s := range n.Subjects() {
 				p.HSet(ctx, r.key(keyOpen), sprint.OpenKey(n.ID, s), n.ID)
 			}
 		}
 	}
-	p.LTrim(ctx, r.key(keyNoteOrder), int64(-bound), -1)
+	if err := r.trimNoteOrder(ctx, p, added, bound); err != nil {
+		return err
+	}
 	for _, n := range op.Updates {
 		body, err := json.Marshal(n.Bound())
 		if err != nil {

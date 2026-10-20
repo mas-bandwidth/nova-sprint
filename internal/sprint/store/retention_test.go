@@ -2,12 +2,15 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
 
-	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
 // TestEveryStreamAndHashIsBounded: appending past the bound leaves each stream
@@ -175,4 +178,63 @@ func TestTheLogGapIsTold(t *testing.T) {
 	m.mu.Lock()
 	require.NotEmpty(t, m.log().gap, "the trim passed the cursor with no gap recorded")
 	m.mu.Unlock()
+}
+
+// TestSeedNoteOrderKeepsPreRolloutJudgments: the judgments written before the
+// bound existed are put in the order before the first note this code writes,
+// so a trim can never delete a live judgment the inbox still holds.
+func TestSeedNoteOrderKeepsPreRolloutJudgments(t *testing.T) {
+	t.Parallel()
+	r, ctx := coverRedis(t, 0)
+	n := sprint.Note{Kind: sprint.Judgment, Type: "test", ID: "old1", Alias: "j1", Primaries: []string{"s1-1"}, At: t0}
+	body, err := json.Marshal(n)
+	require.NoError(t, err)
+	require.NoError(t, r.C.XAdd(ctx, &redis.XAddArgs{Stream: r.key(keyInbox), Values: []any{"note", string(body)}}).Err())
+	require.NoError(t, r.C.HSet(ctx, r.key(keyNotes), n.ID, string(body)).Err())
+	require.NoError(t, r.C.HSet(ctx, r.key(keyOpen), sprint.OpenKey(n.ID, "s1-1"), n.ID).Err())
+
+	require.NoError(t, r.seedNoteOrder(ctx))
+	ids, err := r.C.LRange(ctx, r.key(keyNoteOrder), 0, -1).Result()
+	require.NoError(t, err)
+	require.Equal(t, []string{n.ID}, ids, "the pre-rollout judgment is not in the order")
+	require.True(t, r.C.HExists(ctx, r.key(keyNotes), n.ID).Val(), "a live judgment was dropped")
+	require.True(t, r.C.HExists(ctx, r.key(keyOpen), sprint.OpenKey(n.ID, "s1-1")).Val())
+
+	// Seeding again changes nothing (the marker), and a commit's trim keeps
+	// the judgment while the inbox holds it.
+	require.NoError(t, r.seedNoteOrder(ctx))
+	ids, err = r.C.LRange(ctx, r.key(keyNoteOrder), 0, -1).Result()
+	require.NoError(t, err)
+	require.Equal(t, []string{n.ID}, ids)
+}
+
+// TestTrimNoteOrderDropsOnlyTheOverflow: a trim past the bound removes the
+// notes, aliases, answered and open fields it drops, never a note the order
+// still holds (tla/StoreRetention.tla Bounded).
+func TestTrimNoteOrderDropsOnlyTheOverflow(t *testing.T) {
+	t.Parallel()
+	r, ctx := coverRedis(t, 0)
+	const bound = 2
+	n1 := sprint.Note{Kind: sprint.Judgment, Type: "test", ID: "n1", Alias: "j1", Primaries: []string{"s1-1"}, At: t0}
+	b1, err := json.Marshal(n1)
+	require.NoError(t, err)
+	require.NoError(t, r.C.RPush(ctx, r.key(keyNoteOrder), "n1", "n2").Err())
+	require.NoError(t, r.C.HSet(ctx, r.key(keyNotes), "n1", string(b1)).Err())
+	require.NoError(t, r.C.HSet(ctx, r.key(keyOpen), sprint.OpenKey("n1", "s1-1"), "n1").Err())
+	require.NoError(t, r.C.HSet(ctx, r.key(keyAliases), "j1", "n1").Err())
+	require.NoError(t, r.C.HSet(ctx, r.key(keyAnswered), "n1", "tester").Err())
+
+	p := r.C.Pipeline()
+	p.RPush(ctx, r.key(keyNoteOrder), "n3")
+	require.NoError(t, r.trimNoteOrder(ctx, p, []string{"n3"}, bound))
+	_, err = p.Exec(ctx)
+	require.NoError(t, err)
+
+	ids, err := r.C.LRange(ctx, r.key(keyNoteOrder), 0, -1).Result()
+	require.NoError(t, err)
+	require.Equal(t, []string{"n2", "n3"}, ids)
+	require.False(t, r.C.HExists(ctx, r.key(keyNotes), "n1").Val(), "the dropped note is still held")
+	require.False(t, r.C.HExists(ctx, r.key(keyOpen), sprint.OpenKey("n1", "s1-1")).Val())
+	require.False(t, r.C.HExists(ctx, r.key(keyAliases), "j1").Val())
+	require.False(t, r.C.HExists(ctx, r.key(keyAnswered), "n1").Val())
 }
