@@ -8694,4 +8694,85 @@ The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 
    :why "A refusal logged in the gap between accept and the next drain is misleading, though harmless"
    :release "v1.7"
    :origin "the owner, 2026-10-19")
+  ; Moved out of the sprint at the pit stop of 2026-10-20 (streams v17 and v19): one item per feature.
+  (item "provider-fault-falls-back" :group "sprint" :date "2026-10-20" :release "v1.7"
+   :title "A provider fault falls back to the next provider on the same attempt"
+   :text "A rate limit, 5xx, timeout or unfunded provider moves the card or read to the next provider in line in the same tick, spending no attempt and no reader; when every provider is cooling, one judgment per tier and a deadline."
+   :origin "sprint cards v17-provider-fault-fallback (stream v17), archived to the roadmap at the owner's word, pit stop 2026-10-20"
+   :cards 1
+   :kept (:sprint-cards "v17-provider-fault-fallback" :archive "sprint-archive-2026-10-20/v17/v17-provider-fault-fallback.md" :pushed-heads "sprint/v17-provider-fault-fallback.w5.g2.e21@d2cb7d60ebc6"))
+  (item "waits-name-their-fact" :group "sprint" :date "2026-10-20" :release "v1.7"
+   :title "A wait names its fact and resumes by itself"
+   :text "A card blocked on the environment, on a missing reader tier or on a hold naming other cards waits on a named fact with a deadline and one judgment, and resumes when the fact holds; no attempt spent."
+   :origin "sprint cards v17-blocked-on-environment-waits-for-a-fact, v17-cannot-ask-with-no-reader-for-the-tier-is-one-judgment, v17-hold-naming-cards-becomes-a-need-or-a-split-t (stream v17), archived to the roadmap at the owner's word, pit stop 2026-10-20"
+   :cards 3
+   :kept (:sprint-cards "v17-blocked-on-environment-waits-for-a-fact v17-cannot-ask-with-no-reader-for-the-tier-is-one-judgment v17-hold-naming-cards-becomes-a-need-or-a-split-t" :archive "sprint-archive-2026-10-20/v17/v17-blocked-on-environment-waits-for-a-fact.md sprint-archive-2026-10-20/v17/v17-cannot-ask-with-no-reader-for-the-tier-is-one-judgment.md sprint-archive-2026-10-20/v17/v17-hold-naming-cards-becomes-a-need-or-a-split-t.md" :pushed-heads "sprint/v17-blocked-on-environment-waits-for-a-fact.w5.g1.e21@c141fa5a7e69 sprint/v17-cannot-ask-with-no-reader-for-the-tier-is-one-judgment.w3.g1.e21@4f112941b496 sprint/v17-hold-naming-cards-becomes-a-need-or-a-split-t.w1.g1.e21@4b77e5d101e2"))
+  (item "dependency-cycles-refused" :group "sprint" :date "2026-10-20" :release "v1.7"
+   :title "Dependency cycles are refused at add"
+   :text "One graph over needs, land-after and gate-fix edges; add and brief edit refuse a cycle, naming it."
+   :origin "sprint cards v17-gate-fix-cycle-refused-at-add, v17-needs-and-land-after-one-cycle-refuser (stream v17), archived to the roadmap at the owner's word, pit stop 2026-10-20"
+   :cards 2
+   :kept (:sprint-cards "v17-gate-fix-cycle-refused-at-add v17-needs-and-land-after-one-cycle-refuser" :archive "sprint-archive-2026-10-20/v17/v17-gate-fix-cycle-refused-at-add.md sprint-archive-2026-10-20/v17/v17-needs-and-land-after-one-cycle-refuser.md" :pushed-heads "sprint/v17-gate-fix-cycle-refused-at-add.w3.g1.e21@f704fe4556cb sprint/v17-needs-and-land-after-one-cycle-refuser.w2.g1.e21@a2e857b4c5f5"))
+  (item "land-faults-spend-no-attempt" :group "sprint" :date "2026-10-20" :release "v1.7"
+   :title "A merge conflict or a red outside tip spends no attempt"
+   :text "A conflict refusal, or a base tip turned red by an outside commit, never counts against a card; a queued cure lands once the stream resumes."
+   :origin "sprint cards v17-conflict-refusal-spends-no-attempt, v17-red-outside-tip-tries-its-cure (stream v17), archived to the roadmap at the owner's word, pit stop 2026-10-20"
+   :cards 2
+   :kept (:sprint-cards "v17-conflict-refusal-spends-no-attempt v17-red-outside-tip-tries-its-cure" :archive "sprint-archive-2026-10-20/v17/v17-conflict-refusal-spends-no-attempt.md sprint-archive-2026-10-20/v17/v17-red-outside-tip-tries-its-cure.md" :pushed-heads "sprint/v17-conflict-refusal-spends-no-attempt.w2.g1.e21@c6241336f263"))
+  (item "landings-ordered-and-recorded" :group "sprint" :date "2026-10-20" :release "v1.7"
+   :title "Hot files order their landings and every pushed batch is recorded"
+   :text "Cards sharing a hot file land in one declared order, and a batch the lander pushed is always recorded as landed."
+   :origin "sprint cards v17-hot-file-orders-its-landings, v17-pushed-batch-always-records (stream v17), archived to the roadmap at the owner's word, pit stop 2026-10-20"
+   :cards 2
+   :kept (:sprint-cards "v17-hot-file-orders-its-landings v17-pushed-batch-always-records" :archive "sprint-archive-2026-10-20/v17/v17-hot-file-orders-its-landings.md sprint-archive-2026-10-20/v17/v17-pushed-batch-always-records.md" :pushed-heads "sprint/v17-pushed-batch-always-records.w2.g2.e21@64fc3b021bfa"))
+  (item "sprint-store-bounded" :group "sprint" :date "2026-10-20" :release "v1.7"
+   :title "Every sprint store key is bounded"
+   :text "Every key the sprint store writes has a size or age bound, so the store never grows without limit."
+   :origin "sprint cards v17-sprint-store-every-key-bounded (stream v17), archived to the roadmap at the owner's word, pit stop 2026-10-20"
+   :cards 1
+   :kept (:sprint-cards "v17-sprint-store-every-key-bounded" :archive "sprint-archive-2026-10-20/v17/v17-sprint-store-every-key-bounded.md" :pushed-heads "sprint/v17-sprint-store-every-key-bounded.w2.g2.e21@2bd9d1989084"))
+  (item "machine-tags" :group "sprint" :date "2026-10-20" :release "v1.9"
+   :title "Cards carry tags matched to machines that prove them"
+   :text "A card names required tags on a TAGS: line; the server reads each machine's declared and proven tags live, deals only by one eligibility rule, parks unmet cards on one judgment that resumes, and keeps no server copy; where and card show tags."
+   :origin "sprint cards v19-tags-model, v19-tags-card-line-and-registry-lint, v19-tags-server-reads-config-and-beat, v19-tags-one-eligibility-rule-every-path, v19-tags-unmet-is-one-judgment-that-resumes, v19-tags-needs-fact-parks-on-a-tag, v19-tags-no-server-copy-refuser, v19-tags-where-and-card-show-tags, v19-tags-acceptance-new-tool-tag-config-only (stream v19), archived to the roadmap at the owner's word, pit stop 2026-10-20"
+   :cards 9
+   :kept (:sprint-cards "v19-tags-model v19-tags-card-line-and-registry-lint v19-tags-server-reads-config-and-beat v19-tags-one-eligibility-rule-every-path v19-tags-unmet-is-one-judgment-that-resumes v19-tags-needs-fact-parks-on-a-tag v19-tags-no-server-copy-refuser v19-tags-where-and-card-show-tags v19-tags-acceptance-new-tool-tag-config-only" :archive "sprint-archive-2026-10-20/v19/v19-tags-model.md sprint-archive-2026-10-20/v19/v19-tags-card-line-and-registry-lint.md sprint-archive-2026-10-20/v19/v19-tags-server-reads-config-and-beat.md sprint-archive-2026-10-20/v19/v19-tags-one-eligibility-rule-every-path.md sprint-archive-2026-10-20/v19/v19-tags-unmet-is-one-judgment-that-resumes.md sprint-archive-2026-10-20/v19/v19-tags-needs-fact-parks-on-a-tag.md sprint-archive-2026-10-20/v19/v19-tags-no-server-copy-refuser.md sprint-archive-2026-10-20/v19/v19-tags-where-and-card-show-tags.md sprint-archive-2026-10-20/v19/v19-tags-acceptance-new-tool-tag-config-only.md" :pushed-heads "sprint/v19-tags-model.w2.g1.e21@dc42c5c6b363"))
+  (item "fleet-never-sits" :group "sprint" :date "2026-10-20" :release "v1.9"
+   :title "The fleet never sits idle with ready work"
+   :text "A dealt card not started redeals, an idle member names its cause, a reader that stops taking is set away, and a route making no progress is a provider fault."
+   :origin "sprint cards v19-fleet-never-sits-model, v19-fleet-dealt-not-started-redeals, v19-fleet-idle-names-its-cause, v19-fleet-reader-liveness-sets-away, v19-fleet-route-no-progress-is-a-fault (stream v19), archived to the roadmap at the owner's word, pit stop 2026-10-20"
+   :cards 5
+   :kept (:sprint-cards "v19-fleet-never-sits-model v19-fleet-dealt-not-started-redeals v19-fleet-idle-names-its-cause v19-fleet-reader-liveness-sets-away v19-fleet-route-no-progress-is-a-fault" :archive "sprint-archive-2026-10-20/v19/v19-fleet-never-sits-model.md sprint-archive-2026-10-20/v19/v19-fleet-dealt-not-started-redeals.md sprint-archive-2026-10-20/v19/v19-fleet-idle-names-its-cause.md sprint-archive-2026-10-20/v19/v19-fleet-reader-liveness-sets-away.md sprint-archive-2026-10-20/v19/v19-fleet-route-no-progress-is-a-fault.md" :pushed-heads "sprint/v19-fleet-never-sits-model.w2.g1.e21@5c7618106642"))
+  (item "cards-land-first-time" :group "sprint" :date "2026-10-20" :release "v1.9"
+   :title "Cards land first time"
+   :text "The main causes of rework are refused mechanically: finish needs the base tip, the gate is the stream's, outside paths are named, plants are proven, and shared hunks are linted."
+   :origin "sprint cards v19-firstland-finish-needs-the-base-tip, v19-firstland-gate-is-the-streams, v19-firstland-outside-paths-is-named, v19-firstland-plant-is-proven, v19-firstland-shared-hunk-lint (stream v19), archived to the roadmap at the owner's word, pit stop 2026-10-20"
+   :cards 5
+   :kept (:sprint-cards "v19-firstland-finish-needs-the-base-tip v19-firstland-gate-is-the-streams v19-firstland-outside-paths-is-named v19-firstland-plant-is-proven v19-firstland-shared-hunk-lint" :archive "sprint-archive-2026-10-20/v19/v19-firstland-finish-needs-the-base-tip.md sprint-archive-2026-10-20/v19/v19-firstland-gate-is-the-streams.md sprint-archive-2026-10-20/v19/v19-firstland-outside-paths-is-named.md sprint-archive-2026-10-20/v19/v19-firstland-plant-is-proven.md sprint-archive-2026-10-20/v19/v19-firstland-shared-hunk-lint.md" :pushed-heads "sprint/v19-firstland-shared-hunk-lint.w1.g1.e21@7c5dfc93eaf4"))
+  (item "fallout-swept-at-finish" :group "sprint" :date "2026-10-20" :release "v1.9"
+   :title "A rename's fallout is swept at finish"
+   :text "Stale references to renamed or removed names just outside PATHS are in scope and swept as a finish gate."
+   :origin "sprint cards v19-fallout-hunks-are-in-scope, v19-fallout-sweep-is-a-finish-gate (stream v19), archived to the roadmap at the owner's word, pit stop 2026-10-20"
+   :cards 2
+   :kept (:sprint-cards "v19-fallout-hunks-are-in-scope v19-fallout-sweep-is-a-finish-gate" :archive "sprint-archive-2026-10-20/v19/v19-fallout-hunks-are-in-scope.md sprint-archive-2026-10-20/v19/v19-fallout-sweep-is-a-finish-gate.md" :pushed-heads "sprint/v19-fallout-hunks-are-in-scope.w2.g2.e21@76558cb1f56b"))
+  (item "late-verdicts-never-lost" :group "sprint" :date "2026-10-20" :release "v1.9"
+   :title "A late verdict or finish is never lost"
+   :text "A read verdict or finish arriving after its card was retired late is kept, never refused."
+   :origin "sprint cards v19-late-verdict-and-finish-are-never-lost (stream v19), archived to the roadmap at the owner's word, pit stop 2026-10-20"
+   :cards 1
+   :kept (:sprint-cards "v19-late-verdict-and-finish-are-never-lost" :archive "sprint-archive-2026-10-20/v19/v19-late-verdict-and-finish-are-never-lost.md" :pushed-heads ""))
+  (item "release-train" :group "ops" :date "2026-10-20" :release "v1.9"
+   :title "Releases run on an automatic train"
+   :text "A leased loop with deadlines cuts, builds, stages, reads the latest CI attempt, adopts by tags with rollback and promotes after dev, recorded and queued, shown in where and show; no release sits idle."
+   :origin "sprint cards v19-train-model, v19-train-record-and-queue, v19-train-loop-lease-and-deadlines, v19-train-cut-build-stage, v19-train-ci-reads-the-latest-attempt, v19-train-adopt-by-tags-with-rollback, v19-train-promote-follows-dev, v19-train-where-and-show, v19-train-acceptance-the-night-of-1020 (stream v19), archived to the roadmap at the owner's word, pit stop 2026-10-20"
+   :cards 9
+   :kept (:sprint-cards "v19-train-model v19-train-record-and-queue v19-train-loop-lease-and-deadlines v19-train-cut-build-stage v19-train-ci-reads-the-latest-attempt v19-train-adopt-by-tags-with-rollback v19-train-promote-follows-dev v19-train-where-and-show v19-train-acceptance-the-night-of-1020" :archive "sprint-archive-2026-10-20/v19/v19-train-model.md sprint-archive-2026-10-20/v19/v19-train-record-and-queue.md sprint-archive-2026-10-20/v19/v19-train-loop-lease-and-deadlines.md sprint-archive-2026-10-20/v19/v19-train-cut-build-stage.md sprint-archive-2026-10-20/v19/v19-train-ci-reads-the-latest-attempt.md sprint-archive-2026-10-20/v19/v19-train-adopt-by-tags-with-rollback.md sprint-archive-2026-10-20/v19/v19-train-promote-follows-dev.md sprint-archive-2026-10-20/v19/v19-train-where-and-show.md sprint-archive-2026-10-20/v19/v19-train-acceptance-the-night-of-1020.md" :pushed-heads ""))
+
+
+  (item "cards-carry-their-roadmap-row" :group "sprint" :date "2026-10-20" :release "v1.9"
+   :title "Cards carry their roadmap row; one-command export"
+   :text "Every card names its roadmap row on a ROADMAP: line, indexed both ways in the store; nova-sprint roadmap export writes the open cards' notes into each repository's roadmap and opens one PR per repository, and a landing writes its evidence on the row."
+   :origin "the owner, 2026-10-20; no sprint card was added (the store is being dropped)"
+   :cards 1
+   :kept (:sprint-cards "v19-cards-carry-their-roadmap-row" :archive "sprint-archive-2026-10-20/v19/v19-cards-carry-their-roadmap-row.md" :pushed-heads ""))
 ))
