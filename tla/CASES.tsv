@@ -825,3 +825,15 @@ MCDealThrottleBrokenNoResume.cfg	MCDealThrottle.tla	temporal	WorkResumes	ignore-
 MCDealThrottleBrokenCutsInFlight.cfg	MCDealThrottle.tla	action	InFlightNeverCut	ignore-terminal	dealthrottle	required	-
 MCLandBoundBrokenNoMergeExempt.cfg	MCLandBound.tla	invariant	NoPathsRefusalNamesMerged	ignore-terminal	land	required	-
 MCLandBoundReachMergeOutside.cfg	MCLandBound.tla	invariant	ReachMergeOutside	ignore-terminal	land	required	-
+MCWaitFor.cfg	MCWaitFor.tla	pass	-	ignore-terminal	waitfor	required	-
+MCWaitForLive.cfg	MCWaitFor.tla	pass	-	ignore-terminal	waitfor	required	-
+MCWaitForBrokenGateFix.cfg	MCWaitFor.tla	temporal	EveryFeasibleLands	ignore-terminal	waitfor	required	-
+MCWaitForBrokenHardOnlyCycle.cfg	MCWaitFor.tla	invariant	NoWaitCycle	ignore-terminal	waitfor	required	-
+MCWaitForBrokenLandedPoisons.cfg	MCWaitFor.tla	invariant	EditRefusedOnlyForItsOwnCycle	ignore-terminal	waitfor	required	-
+MCWaitForBrokenConflictBound.cfg	MCWaitFor.tla	invariant	ConflictSpendsNoAttempt	ignore-terminal	waitfor	required	-
+MCWaitForBrokenHotLivelock.cfg	MCWaitFor.tla	temporal	EveryFeasibleLands	ignore-terminal	waitfor	required	-
+MCWaitForBrokenReportRefuses.cfg	MCWaitFor.tla	action	PushedIsRecorded	ignore-terminal	waitfor	required	-
+MCWaitForBrokenCannotAskLoop.cfg	MCWaitFor.tla	temporal	NeverSilentlyStuck	ignore-terminal	waitfor	required	-
+MCWaitForBrokenEnvHeld.cfg	MCWaitFor.tla	temporal	AutoResume	ignore-terminal	waitfor	required	-
+MCWaitForBrokenFactBlind.cfg	MCWaitFor.tla	temporal	EveryFeasibleLands	ignore-terminal	waitfor	required	-
+MCWaitForBrokenHiddenCause.cfg	MCWaitFor.tla	temporal	EveryFeasibleLands	ignore-terminal	waitfor	required	-
