@@ -6823,6 +6823,17 @@ copy may carry the rank's own new score, and any other difference breaks
 the rule that every copy has its primary's score. `check` reports a pending operation: in flight while it is younger than
 the grace, cut after it.
 
+### Nothing waits silently
+
+Every card-side wait-for edge and every judgment kind in `internal/sprint` is inventoried in `tla/WAITFOR.tsv` and modeled in `tla/WaitFor.tla` (`MCWaitFor*`, group `waitfor`).
+
+1. **The three liveness properties (`WaitFor.tla`, `MCWaitForLive.cfg`)**:
+   - `NeverSilentlyStuck`: every open card is always either enabled for a machine step or held by an open judgment with a finite due deadline (`EveryJudgmentHasADue`), and every open judgment leads to its coordinator answer, its server default, or its escalation delivery to the owner (`OwnerDeliver`).
+   - `AutoResume`: under weak fairness on machine steps and outside events alone (never on `Answer`), any wait whose underlying cause clears—a need or gate-artifact dependency landing, a reader freeing, a required `GATE-NEEDS` or environment fact appearing, or a conflict's base tip settling—ends and resumes without requiring a coordinator step.
+   - `EveryFeasibleLands`: under weak fairness on machine steps, outside events, and non-`drop` coordinator decisions, every card eventually lands (`NoWaitCycle`, `EditRefusedOnlyForItsOwnCycle`, `ConflictSpendsNoAttempt`, `PushedIsRecorded`).
+2. **The inventory (`tla/WAITFOR.tsv`)**: records one row per card-side wait-for edge (`edge`, `waiter`, `waits_on`, `code`, `ends_by`, `deadline`, `judgment`, `action`, `class`, `owed_by`), covering hard `needs`, `LAND-AFTER`, sentinel lines, gate-artifact edges, review reader waits, the landing queue, stream stops, conflict refusals, holds, environment fact waits, `GATE-NEEDS` deal paths, `DONE-WHEN` hidden-cause waits, resource-side pointers (`v17-waitfor-model-resources`), and every judgment kind constant in `internal/sprint`.
+3. **Gate enforcement (`TestWaitForInventoryNamesEveryJudgmentKind`)**: any new wait-for edge or `Kind: Judgment` constant added to `internal/sprint` must carry a corresponding row in `tla/WAITFOR.tsv`; `internal/ci/waitfor_inventory_test.go` parses `internal/sprint` with `go/parser` and fails the build naming any judgment kind missing from `tla/WAITFOR.tsv`.
+
 ## 10. Steps that touch more than one table
 
 The table layer applies one table per batch. Every mutating verb is one
