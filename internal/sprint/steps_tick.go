@@ -1917,6 +1917,19 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 func TickOverdue(s *Snapshot, r TickReq) (Plan, int) {
 	p, due := tickOverdue(s, r)
 	p.on(s)
+	// an environment wait past its deadline is one judgment (env_wait.go;
+	// tla/WaitFor.tla Overdue): the card waits on the environment, not a decision
+	for _, c := range s.Work.Column(Ready) {
+		var opens []Open
+		for _, o := range s.Open {
+			if o.Subject() == c.ID {
+				opens = append(opens, o)
+			}
+		}
+		if envWaitDue(s, c, opens, s.Now) {
+			p.Notes = append(p.Notes, envWaitJudgment(c, s.Now, r.who()))
+		}
+	}
 	defaults := TickDecisionDefaults(s, r)
 	p.Units = append(p.Units, defaults.Units...)
 	pass, passDue := TickCoordinatorPass(s, r)

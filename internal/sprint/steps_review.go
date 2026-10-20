@@ -2638,11 +2638,6 @@ func TickNeeds(s *Snapshot, r TickReq) (Plan, int) {
 			if IsSentinel(c) {
 				continue
 			}
-			// an environment wait past its deadline is one judgment (env_wait.go;
-			// tla/WaitFor.tla Overdue): the card waits on the environment, not a decision
-			if envWaitDue(s, c, opens[c.ID], s.Now) {
-				p.Notes = append(p.Notes, envWaitJudgment(c, s.Now, r.who()))
-			}
 			if blockerID, isCovered := covered[c.ID]; isCovered {
 				for _, o := range opens[c.ID] {
 					if o.Note.Type == NNeedsGone {
