@@ -844,3 +844,10 @@ MCWaitForBrokenCannotAskLoop.cfg	MCWaitFor.tla	temporal	NeverSilentlyStuck	ignor
 MCWaitForBrokenEnvHeld.cfg	MCWaitFor.tla	temporal	AutoResume	ignore-terminal	waitfor	required	-
 MCWaitForBrokenFactBlind.cfg	MCWaitFor.tla	temporal	EveryFeasibleLands	ignore-terminal	waitfor	required	-
 MCWaitForBrokenHiddenCause.cfg	MCWaitFor.tla	temporal	EveryFeasibleLands	ignore-terminal	waitfor	required	-
+MCWaitForResources.cfg	MCWaitForResources.tla	pass	-	ignore-terminal	waitforresources	required	-
+MCWaitForResourcesLive.cfg	MCWaitForResources.tla	pass	-	ignore-terminal	waitforresources	required	-
+MCWaitForResourcesBrokenHeldGate.cfg	MCWaitForResources.tla	temporal	ResourceWaitEnds	ignore-terminal	waitforresources	required	-
+MCWaitForResourcesBrokenDrainAll.cfg	MCWaitForResources.tla	temporal	ResourceWaitEnds	ignore-terminal	waitforresources	required	-
+MCWaitForResourcesBrokenNoReadDeadline.cfg	MCWaitForResources.tla	invariant	EveryResourceWaitHasADeadline	ignore-terminal	waitforresources	required	-
+MCWaitForResourcesBrokenLeaseNoExpiry.cfg	MCWaitForResources.tla	temporal	ResourceWaitEnds	ignore-terminal	waitforresources	required	-
+MCWaitForResourcesBrokenHookNoDeadline.cfg	MCWaitForResources.tla	invariant	EveryResourceWaitHasADeadline	ignore-terminal	waitforresources	required	-

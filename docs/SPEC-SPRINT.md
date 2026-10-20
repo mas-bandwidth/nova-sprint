@@ -6871,6 +6871,37 @@ Every card-side wait-for edge and every judgment kind in `internal/sprint` is in
 2. **The inventory (`tla/WAITFOR.tsv`)**: records one row per card-side wait-for edge (`edge`, `waiter`, `waits_on`, `code`, `ends_by`, `deadline`, `judgment`, `action`, `class`, `owed_by`), covering hard `needs`, `LAND-AFTER`, sentinel lines, gate-artifact edges, review reader waits, the landing queue, stream stops, conflict refusals, holds, environment fact waits, `GATE-NEEDS` deal paths, `DONE-WHEN` hidden-cause waits, resource-side pointers (`v17-waitfor-model-resources`), and every judgment kind constant in `internal/sprint`.
 3. **Gate enforcement (`TestWaitForInventoryNamesEveryJudgmentKind`)**: any new wait-for edge or `Kind: Judgment` constant added to `internal/sprint` must carry a corresponding row in `tla/WAITFOR.tsv`; `internal/ci/waitfor_inventory_test.go` parses `internal/sprint` with `go/parser` and fails the build naming any judgment kind missing from `tla/WAITFOR.tsv`.
 
+### Every resource wait is bounded
+
+The card-side model (`tla/WaitFor.tla`) assumes that a wait on a resource is
+bounded. `tla/WaitForResources.tla` (`MCWaitForResources*`, group
+`waitforresources`, inventory `tla/WAITFOR-RESOURCES.tsv`) checks that
+assumption for every resource wait read in the code: a work card on a member
+(`internal/sprint/steps_tick.go:WorkDeadline`), a read card on a reader
+(`read_cards.go:ReadCardDeadline`), a primary waiting for a reader's room
+(`readers.go:askFinders`), a card dealt to a draining or NoRoom member
+(`drain.go:drainReturns`), a friend's card (`friend_deal.go:friendDealPass`,
+`friend_deadline.go:unfinishedLimit`), a card on a route whose provider rests,
+backs off or is unfunded (`route_rest.go`, `provider_funds.go`), a bench lease
+(`lane.go:LaneHoldFor`), a merging card waiting for the lander and a land gate
+waiting for a bench (`cmd/nova-sprint/landloop.go`, which may use a held
+member's bench), a coordinator push (`tla/CoordinatorPush.tla`), and a hook
+ask.
+
+Each wait has a finite server deadline that raises a judgment, or a step that
+progresses it under fairness: `EveryResourceWaitHasADeadline` is the safety
+statement, `NoHoldWaitCycle` says no two resource holders wait on each other,
+and `ResourceWaitEnds` is the liveness statement under fairness on the machine
+steps and the clock. Five reversed witnesses reproduce shapes the sprint had:
+`heldgate` (a land gate needs an unheld bench and every member is held: the
+fleet hold that stopped every landing, mended by
+`v17-land-gate-benches-include-held-members`), `drainall` (every reader drains
+at once and the reads dealt to them are neither returned nor retired; the code
+returns them), `noreaddeadline`, `leasenoexpiry` and `hooknodeadline`. A hook
+ask to a friend runs in nova-tools, outside this repository: the model takes
+its server deadline as an assumption, and `hooknodeadline` is the witness
+that drops it.
+
 ## 10. Steps that touch more than one table
 
 The table layer applies one table per batch. Every mutating verb is one
