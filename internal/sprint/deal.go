@@ -15,6 +15,18 @@ import (
 // deal holds a card's GATE-NEEDS (GateNeeds) against these.
 const FieldFacts = "facts"
 
+// FieldDealtFacts is the member's gate facts (FieldFacts) as they stood when the deal cut
+// the work card (deal, redeal, friendDealUnit): the finish holds them against the card's
+// GATE-NEEDS (finishPlan, factBlindAtDeal), so a member that could never run the card is the
+// machine's fault, never an attempt toward the bound (tla/WaitFor.tla FinishFactBlind;
+// docs/SPEC-SPRINT.md, the gate-host rule).
+const FieldDealtFacts = "dealt_facts"
+
+// FieldDealtBy names the path that cut the work card (the tick's deal, the rework, the
+// conflict redo, the escalation, the redeal or the friend deal): the happened note a
+// fact-blind finish raises names it (finishPlan, factBlindReturned).
+const FieldDealtBy = "dealt_by"
+
 // FactWords reads a beat's --facts: a comma list of fact words (ValidID each: letters,
 // digits, _ and -, never beginning with -), trimmed, with no empty list; the error names the word refused.
 func FactWords(s string) ([]string, error) {
