@@ -122,6 +122,7 @@ the comment-only form exists only in the lock, and the lint knows nothing of it.
 - 2026-10-14 the owner: "remove the /events and /landings.json requests"
 - 2026-10-18 the owner: "I would like it if you could create a stats page showing me all the things you can do with https://pele.run for the sprint dashboard. You could put these things below the existing stuff we have at the bottom." (the Last 24 hours panel, below)
 - 2026-10-18 the owner: "Maybe we can click on a work stream by name, and this takes you to a page showing all details for that work stream, including all its cards, sankey for all cards if applicable, dependencies between cards etc etc etc." (the stream pages, below)
+- 2026-10-20 ~03:32Z the owner, of the friends panel showing a line when there is no friends table: "Please fix the sprint dashboard here: http://37.27.135.206"
 
 
 The 2026-10-12 page asks above (and those of 2026-10-12 ~00:42Z, ~00:43Z, ~00:50Z, ~01:00Z, ~01:02Z,
