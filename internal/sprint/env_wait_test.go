@@ -88,11 +88,50 @@ func TestAnEnvWaitPastItsDeadlineIsAJudgmentThatTakesAWait(t *testing.T) {
 		Failed: true, Report: dNeedsLibfuzzer}))
 	w.tick(EnvWaitFor)
 
-	w.part(TickNeeds, TickReq{})
+	w.part(TickOverdue, TickReq{})
 	notes := w.notesOf(NEnvWait)
 	require.Len(t, notes, 1, "one NEnvWait at the deadline: %v", notes)
 	assert.Contains(t, notes[0].Decisions, "wait")
 	assert.Empty(t, WaitRefusalIn(w.s, notes[0]), "the card waits on the environment, not a decision")
 	until := w.s.Now.Add(30 * time.Minute)
 	w.must(Wait(w.s, WaitReq{Note: notes[0].ID, Until: until, Who: w.s.Coordinator}))
+}
+
+// TestTheCoordinatorEnvWaitsForAFactOnAHeldCard: a card held by a judgment that refuses a
+// plain wait (NBriefWrong) and one held by a server-default hold take the coordinator's
+// wait on an environment fact: the holding judgment is closed, the hold released, and
+// the card parked on the fact with the coordinator's deadline (env_wait.go;
+// tla/WaitFor.tla FinishEnvMissing and ServerDefault; docs/SPEC-SPRINT.md section 5,
+// the fleet).
+func TestTheCoordinatorEnvWaitsForAFactOnAHeldCard(t *testing.T) {
+	t.Parallel()
+	w := fleetWorld(t, 1, 1, "m1")
+	w.note(judgment(NBriefWrong, "s1", w.s.Now, 0, "s1-1"))
+	require.Len(t, w.notesOf(NBriefWrong), 1)
+	until := w.s.Now.Add(2 * time.Hour)
+	w.must(EnvWaitOnCard(w.s, EnvWaitReq{Card: "s1-1", Facts: []string{"libfuzzer"}, Until: until, Who: w.s.Coordinator}))
+	c := w.s.Work.Card("s1-1")
+	assert.Equal(t, Ready, c.Col)
+	assert.Equal(t, "libfuzzer", c.F(FieldEnvFacts))
+	assert.Equal(t, stamp(until), c.F(FieldEnvWaitUntil))
+	for _, o := range w.s.Open {
+		assert.NotEqual(t, NBriefWrong, o.Note.Type, "the holding judgment is closed")
+	}
+	assert.Empty(t, c.F(FieldHeld), "no hold is left")
+
+	// a server-default hold, by fields, as TickDecisionDefaults writes it
+	w2 := fleetWorld(t, 1, 1, "m1")
+	h := w2.s.Work.Card("s1-1")
+	h.Fields[FieldHeld] = stamp(w2.s.Now)
+	h.Fields["held_by"] = ServerDefaultActor
+	h.Fields["held_reason"] = "unanswered"
+	h.Fields["held_judgment"] = "j-old"
+	h.Fields["decision_held_from"] = Ready
+	w2.must(EnvWaitOnCard(w2.s, EnvWaitReq{Card: "s1-1", Facts: []string{"libfuzzer", "linux"}, Until: until, Who: w2.s.Coordinator}))
+	c2 := w2.s.Work.Card("s1-1")
+	assert.Equal(t, Ready, c2.Col)
+	assert.Empty(t, c2.F(FieldHeld))
+	assert.Empty(t, c2.F("held_by"))
+	assert.Equal(t, "libfuzzer,linux", c2.F(FieldEnvFacts))
+	assert.Equal(t, stamp(until), c2.F(FieldEnvWaitUntil))
 }

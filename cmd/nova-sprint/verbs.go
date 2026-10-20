@@ -4676,9 +4676,37 @@ func (a *app) cmdWait(args []string, stdout, stderr io.Writer) int {
 	fs.IntVar(&expect, "expect", 0, "with --group: the group's size as inbox printed it; a group of another size now is refused and nothing changes")
 	dur := fs.Duration("for", 0, "review it again after this long")
 	until := fs.String("until", "", "review it again at this time (RFC3339)")
+	fact := fs.String("for-fact", "", "park this card on these fact words (comma separated), as a NEEDS-FACT finish does: the coordinator's wait on the environment, with a judgment that refuses a plain wait closed and its hold released")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "wait", err.Error())
+	}
+	if *fact != "" {
+		if *dur != 0 || group != "" || expect != 0 || len(pos) != 1 {
+			return refuse(stderr, "wait", "--for-fact takes one card and --until <RFC3339>, not --for, --group or several cards")
+		}
+		if *until == "" {
+			return refuse(stderr, "wait", "--for-fact wants --until <RFC3339>: the environment deadline")
+		}
+		at, err := time.Parse(time.RFC3339, *until)
+		if err != nil {
+			return refuse(stderr, "wait", "--until wants an RFC3339 time")
+		}
+		facts, err := sprint.FactWords(*fact)
+		if err != nil {
+			return refuse(stderr, "wait", err.Error())
+		}
+		st, err := a.store(*c)
+		if err != nil {
+			return refuse(stderr, "wait", err.Error())
+		}
+		ids, err := unalias(context.Background(), st, pos)
+		if err != nil {
+			return refuse(stderr, "wait", err.Error())
+		}
+		req := sprint.EnvWaitReq{Card: ids[0], Facts: facts, Until: at, Who: c.actor}
+		return a.runStep("wait", *c, st, store.Step{Named: true, Args: store.ArgsOf(req), Verb: "wait",
+			Load: []string{sprint.Work, sprint.Fleet}, Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.EnvWaitOnCard(s, req) }}, stdout, stderr)
 	}
 	if (*dur == 0) == (*until == "") {
 		return refuse(stderr, "wait", "wants notification ids, or --group <id> [--expect <n>], and one of --for <duration>, --until <time>")

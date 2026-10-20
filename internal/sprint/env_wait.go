@@ -147,3 +147,77 @@ func init() {
 	TickDecisions[NEnvWait] = []string{"wait", "drop", "fleet beat <member> --facts <fact>"}
 	WaitAllowedOnACard[NEnvWait] = "the card waits on the environment (a fact no member's beat carries), not on a decision: wait quiets it until the fact appears"
 }
+
+// EnvWaitReq is the coordinator's wait on a card that is held by a judgment which
+// refuses a plain wait (NBriefWrong, NBound, a server-default hold): it closes the
+// holding judgment, releases the hold and parks the card on the facts with the
+// coordinator's own deadline, as a NEEDS-FACT finish does.
+type EnvWaitReq struct {
+	Card  string
+	Facts []string
+	Until time.Time
+	Who   string
+}
+
+// EnvWaitOnCard parks a held card on an environment fact in one step: the judgments
+// that hold it from progressing are answered, its hold (a server-default one included)
+// is released, and it carries the facts and the coordinator's deadline beside
+// GATE-NEEDS, ready for the deal to resume it when a member's beat brings them.
+//
+// tla/WaitFor.tla FinishEnvMissing (the card waits on the fact, not the member),
+// AutoResumeCard; docs/SPEC-SPRINT.md section 5 (the fleet): the coordinator's wait on
+// the environment, not on a decision.
+func EnvWaitOnCard(s *Snapshot, r EnvWaitReq) Plan {
+	var p Plan
+	p.on(s)
+	p.releasing = true
+	if why := notCoordinator(s, r.Who, "wait"); why != "" {
+		p.refuse(r.Card, why)
+		return p
+	}
+	c := s.Work.Placed(r.Card)
+	switch {
+	case c == nil:
+		p.refuse(r.Card, r.Card+" is no card on the table")
+		return p
+	case IsSentinel(c):
+		p.refuse(r.Card, r.Card+" is a sentinel: a wait on a fact parks a card, not a stop")
+		return p
+	case len(r.Facts) == 0:
+		p.refuse(r.Card, "wait --for-fact wants at least one fact word")
+		return p
+	case c.Col != Ready && c.Col != Waiting:
+		p.refuse(r.Card, r.Card+" is "+c.Col+": a wait on a fact parks a ready or held card")
+		return p
+	case c.Col == Waiting && c.F("decision_held_from") == Review:
+		p.refuse(r.Card, r.Card+" is held in review: release it to its review, or wait on the review's judgment")
+		return p
+	}
+	var closes []Open
+	var notes []Note
+	for _, o := range s.Open {
+		if o.Subject() != c.ID || o.Note.Kind != Judgment {
+			continue
+		}
+		if WaitRefusalIn(s, o.Note) == "" {
+			continue
+		}
+		closes = append(closes, o)
+		notes = append(notes, acknowledged(o.Note, []Open{o}, r.Who, s.Now),
+			decided(o, fmt.Sprintf("wait %s --for-fact %s until %s", c.ID, strings.Join(r.Facts, ","), r.Until.UTC().Format(time.RFC3339)), r.Who, s.Now))
+	}
+	if !IsHeld(c) && len(closes) == 0 {
+		p.refuse(r.Card, r.Card+" is held by no judgment that refuses a plain wait: park it with a NEEDS-FACT finish, or wait on its judgment")
+		return p
+	}
+	set := map[string]string{FieldEnvFacts: strings.Join(r.Facts, ","), FieldEnvWaitUntil: stamp(r.Until)}
+	unset := []string{FieldHeld, "held_by", "held_reason", "held_judgment", "decision_held_from"}
+	e := setEntry(c, set, unset...)
+	if c.Col == Waiting {
+		e = moveEntry(c, c.Row, Ready, set, unset...)
+	}
+	u := Unit{Key: c.ID, Stream: c.Row, Changes: []Change{change(Work, e)}, Closes: closes, Notes: notes,
+		Moved: fmt.Sprintf("%s waits on %s until %s (released by %s)", c.ID, strings.Join(r.Facts, ","), r.Until.UTC().Format(time.RFC3339), r.Who)}
+	p.Units = append(p.Units, u)
+	return p
+}
