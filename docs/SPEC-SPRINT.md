@@ -2760,6 +2760,21 @@ order the cards were dealt in, so a card brought to the front of its stream by
 
 ## 5. The fleet
 
+### Blocked on an environment fact
+
+A worker that cannot run its card because its member lacks a tool writes
+`NEEDS-FACT: <fact>[,<fact>]` (the beat's fact words) and finishes HOLD. The card, not
+the member, is parked: the work card withdraws without ending its take (no redeal, no
+attempt, no bound or cap), and the primary stays ready with `env_facts` beside its
+`GATE-NEEDS` and an environment deadline (`EnvWaitFor`, 24h of running time). The deal
+holds it to the facts as it holds `GATE-NEEDS`, so it is dealt only to a member whose
+beat carries them and resumes with no coordinator step in the tick that beat lands. A
+member's own fault (`envFaulted`) still holds the member; that path is for a fault with
+no `NEEDS-FACT` line. When no member's beat names the fact by the deadline, one
+`NEnvWait` judgment names the card; its decisions are `wait`, `drop`, and
+`fleet beat <member> --facts <fact>`. The card waits on the environment, not on a
+decision, so `wait` is accepted on it.
+
 - The deal's order is the priority ladder (section 1, "Priority"): a friend's cards above
   reader, then her reads, then normal and low work in the room the reads leave, against her one
   width; the machines' ready cards in the ladder's order, stream turns within a level, so a

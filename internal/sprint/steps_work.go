@@ -1241,6 +1241,12 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 		// gateNeedsJudgment), at once, never a silent wait.
 		members, gateWhy := s.GateHostPool(c, members)
 		if len(members) == 0 {
+			// an environment wait (env_wait.go) with no brief GATE-NEEDS is never this
+			// judgment: it waits ready for the tick a member's beat carries the fact, and
+			// only its own deadline judges it (NEnvWait)
+			if len(GateNeeds(c.F("brief"))) == 0 {
+				continue
+			}
 			p.Notes = append(p.Notes, gateNeedsJudgment(c, gateWhy, r.Who, s.Now))
 			continue
 		}
@@ -2119,6 +2125,13 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		// tla/ProviderBudget.tla). A late report is the deadline's failed attempt and takes
 		// none of this.
 		if r.Failed && kind == "" && !late {
+			// A worker that cannot run the card because its member lacks a tool writes
+			// NEEDS-FACT and finishes HOLD: the card waits on the fact, the member is not
+			// held (env_wait.go; tla/WaitFor.tla FinishEnvMissing)
+			if facts := NeedsFact(r.Report); len(facts) > 0 {
+				p.Units = append(p.Units, envWaited(s, c, pr, r, facts, who))
+				continue
+			}
 			if cause := EnvFault(r.Report); cause != "" {
 				envFaulted(s, c, pr, r, cause, who, &p, envSeen)
 				continue
