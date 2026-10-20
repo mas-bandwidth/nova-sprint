@@ -46,8 +46,9 @@ var WaitRefused = map[string]string{
 	NCIRed:          "rework the card, return it, or drop it; ack it when the red is not the card's",
 	NRepairSkipped:  "look at the card and return, rework or drop it",
 	// waiting on a card that will not come
-	NBlocked:     "drop it, or ack it once its need is mended",
-	NMissingNeed: "drop it, or ack it once its need is mended",
+	NBlocked:      "drop it, or ack it once its need is mended",
+	NMissingNeed:  "drop it, or ack it once its need is mended",
+	NGateFixCycle: "split the gate fix (twin the fixing card's need into its own card), rework it with a fix, or drop it",
 	// merge stopped: a card sent back from merging
 	NReturned: "rework it, accept it, or drop it",
 	// stream stopped: every card of the stream behind the stop is held

@@ -94,22 +94,32 @@ const (
 	NFriendNotWoken = "a friend was not told of her card" // friend sync delivered it, and the bus message failed
 	NSeatTaken      = "seat TAKEN"
 
-	NReadyToAccept   = "ready to accept"    // the readers it needs said ok at its head (ReadsNeeded)
-	NReturned        = "returned to review" // sent back from merging: the coordinator decides again
-	NWorkFailed      = "work came back failed"
-	NReportJudgment  = "a friend's report needs a read"
-	NBriefDefect     = "a brief defect" // a HOLD naming the brief: re-cut it (brief_defect.go)
-	NReadBroken      = "a reader found it broken"
-	NBriefWrong      = "a card has reached its bound: the brief is wrong, not the worker" // brief_bound.go
-	NReadReturned    = "a reader returned a read"                                         // no verdict, not a read: asked again
-	NConflict        = "stream stopped: conflict on a card"
-	NRed             = "stream stopped: stream branch red"
-	NCross           = "stream stopped: needs a card of another stream first"
-	NRejected        = "stream stopped: the merge queue rejected"
-	NBaseRed         = "stream stopped: the base fails its tree gate" // the base-gate rule's third failure (rules.go)
-	NMissingBase     = "the base branch is gone"                      // a land whose base branch is missing (rebase.go)
-	NBlocked         = "a primary is blocked on something dropped"
-	NMissingNeed     = "a primary is blocked on something missing"
+	NReadyToAccept  = "ready to accept"    // the readers it needs said ok at its head (ReadsNeeded)
+	NReturned       = "returned to review" // sent back from merging: the coordinator decides again
+	NWorkFailed     = "work came back failed"
+	NReportJudgment = "a friend's report needs a read"
+	NBriefDefect    = "a brief defect" // a HOLD naming the brief: re-cut it (brief_defect.go)
+	NReadBroken     = "a reader found it broken"
+	NBriefWrong     = "a card has reached its bound: the brief is wrong, not the worker" // brief_bound.go
+	NReadReturned   = "a reader returned a read"                                         // no verdict, not a read: asked again
+	NConflict       = "stream stopped: conflict on a card"
+	NRed            = "stream stopped: stream branch red"
+	NCross          = "stream stopped: needs a card of another stream first"
+	NRejected       = "stream stopped: the merge queue rejected"
+	NBaseRed        = "stream stopped: the base fails its tree gate" // the base-gate rule's third failure (rules.go)
+	NMissingBase    = "the base branch is gone"                      // a land whose base branch is missing (rebase.go)
+	NBlocked        = "a primary is blocked on something dropped"
+	NMissingNeed    = "a primary is blocked on something missing"
+	// NBlockedBy is the happened note of a finish whose report named open cards in
+	// a BLOCKED-BY line: the cards became its needs and it waits for them
+	// (blocked_by.go; docs/SPEC-CARD-CONTRACT.md, the BLOCKED-BY line;
+	// tla/WaitFor.tla FinishHoldHiddenCause).
+	NBlockedBy = "a card waits for the cards its report named"
+	// NGateFixCycle is the judgment of a finish blocked by a card that needs it, or
+	// whose need would close a cycle: finishing the card is the other's gate fix, so
+	// the two are split or one is reworked (blocked_by.go; tla/WaitFor.tla
+	// FinishHoldGateFix and Split).
+	NGateFixCycle    = "a blocked card's blocker needs it: split the gate fix"
 	NCIRed           = "ci red"
 	NReadsExhausted  = "reads exhausted"
 	NStranded        = "stranded in review" // failed work acknowledged, or never asked, and nothing open
@@ -153,6 +163,7 @@ var Decisions = map[string][]string{
 	NBaseRed:           {"resume"},         // never wait: it holds the stream (wait_refused.go); the base-gate rule resumes it once the base is green
 	NMissingBase:       {"rebase", "drop"}, // never wait: it holds its cards (wait_refused.go)
 	NBlocked:           {"drop", "ack"},
+	NGateFixCycle:      {"split the gate fix", "rework with a fix", "drop"},
 	NReadBranchMissing: {"ack", "rework with a fix", "drop"}, // read_missing.go: ack once the branch is on origin; ask also resolves it once a branch holds the head (tla/ReadBranchMissing.tla) but is not listed, the three are pinned by read_missing_test.go
 	NMissingNeed:       {"drop", "ack"},
 	NCIRed:             {"rework with a fix", "return", "drop", "look", "ack"},

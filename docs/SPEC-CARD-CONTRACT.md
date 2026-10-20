@@ -54,6 +54,16 @@ paths, which are not add rules, and `card.Lint` adds the card checks such as the
 line-1 tier and TEST package PATHS. These boundaries keep the shared lint aligned
 without treating `nova-swarm lint --card`'s typed-header checks as admission rules.
 
+## The BLOCKED-BY line
+
+A worker who cannot finish because another card's work is missing writes a
+`BLOCKED-BY: <id>[,<id>...]` line in its HOLD or failed report, naming the open
+cards it waits for and no others. The machine reads the line at the finish
+(`internal/sprint/blocked_by.go`): a named open card the card does not need
+becomes a need and the card waits for it; a named card that needs the card, or
+whose need would close a cycle, is one gate-fix judgment naming the split; a
+name that is not an open card is ignored and the finish is judged as before.
+
 ## The RESULT-line tier
 
 A brief's RESULT line (`RESULT: <id> sha=<sha12> tier: <t>`) names the tier the card is

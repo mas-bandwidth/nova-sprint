@@ -1903,6 +1903,9 @@ type FinishReq struct {
 // members, comma separated: every card named is on one of them, each
 // finished as its own member's, in the one plan.
 func Finish(s *Snapshot, r FinishReq) Plan {
+	if p, ok := blockedByFinish(s, r); ok {
+		return Lawful(p)
+	}
 	p := finishPlan(s, r)
 	before := len(p.Refused)
 	p = Lawful(p)
