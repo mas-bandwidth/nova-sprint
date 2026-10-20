@@ -493,10 +493,9 @@ function renderFriends(d) {
   var box = $("friends"), table = d.tables.friends;
   if (!table || typeof table !== "object" || !Object.keys(table).length) {
     if (!box._empty) {
-      box._map = null; box._head = null; box.textContent = "";
-      var e = el("div", "empty");
-      e.innerHTML = "No friends table in the sprint data. This panel fills itself when <code>where --json</code> carries <code>tables.friends</code>.";
-      box.appendChild(e); box._empty = true;
+      // No friends: the panel stays empty, with no explanatory text (the owner, 2026-10-20:
+      // "I don't want to see that text in the empty friends table. just leave empty").
+      box._map = null; box._head = null; box.textContent = ""; box._empty = true;
     }
     setText($("friends-sub"), "");
     return;
