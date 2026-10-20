@@ -1736,6 +1736,7 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		// the finding and why ride on the primary too: a rework with no member up deals later
 		// (start), from the primary, and its child is told all the same
 		given := reworkGiven(s, c)
+		given[FieldDealtBy] = "the rework"
 		// the primary keeps the broken reads' own finding: the bounds compare it (AtBriefBound,
 		// AtIdenticalFindings, FindingKey), so the readers' named lines and the late reads ride
 		// on the next attempt's work card (given) and, dealt later, on the primary's why

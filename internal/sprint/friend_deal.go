@@ -723,6 +723,13 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 		if name == "" || slices.Contains(left, name) || free[name] <= 0 || !friendRestrictionAllows(seat[name], c) {
 			continue // no friend it may go to is up with room: the fleet's, or (only) it waits ready
 		}
+		// its gate's needs (docs/SPEC-SPRINT.md, the gate-host rule; tla/WaitFor.tla Deal):
+		// a friend is given the card only when the facts her beat carries satisfy every need;
+		// a card naming one waits for a member whose facts do (the machines' deal raises the
+		// NGateNeeds judgment), never a silent deal to a friend who can never run it.
+		if needs := GateNeeds(c.F("brief")); len(needs) > 0 && !memberSatisfies(seat[name].Beat.Facts, needs) {
+			continue
+		}
 		// a friend with no idle lane gives way to a machine that serves the card's tier and
 		// has one: the machine starts it at once, where a queue behind her working lanes
 		// would leave it dealt and untaken (docs/SPEC-SPRINT.md section 1,
@@ -948,6 +955,12 @@ func reclaimUnit(s *Snapshot, wc *Card, up []string, seat map[string]FriendSeat,
 	var may []string
 	for _, f := range up {
 		if lanes[f] > 0 && free[f] > 0 && !slices.Contains(left, f) && friendTakes(s, seat[f], tier) && friendRestrictionAllows(seat[f], pr) {
+			// the card's gate needs hold here too (docs/SPEC-SPRINT.md, the gate-host
+			// rule; tla/WaitFor.tla Deal): a reclaim is a deal, so a friend whose facts
+			// lack one of the card's GATE-NEEDS is never given it.
+			if needs := GateNeeds(pr.F("brief")); len(needs) > 0 && !memberSatisfies(seat[f].Beat.Facts, needs) {
+				continue
+			}
 			may = append(may, f)
 		}
 	}
@@ -967,6 +980,7 @@ func reclaimUnit(s *Snapshot, wc *Card, up []string, seat map[string]FriendSeat,
 		declared[row] = true
 	}
 	set := nextGen(wc, row, s.Now)
+	set[FieldDealtFacts], set[FieldDealtBy] = strings.Join(s.MemberFacts(row), ","), "the friend reclaim"
 	unset := []string{FieldRoute, FieldModel, FieldTokens, FieldUSD, FieldHarness, FieldDeadline, FieldFriendDeadline}
 	changes := []Change{change(Fleet, moveEntry(wc, row, Ready, set, unset...))}
 	if t := tierNowSet(pr, tier); t != nil {
@@ -1000,7 +1014,8 @@ func friendDealUnit(s *Snapshot, c *Card, card, row, _ string, set map[string]st
 	attempt := c.Int("attempt") + 1
 	now := stamp(s.Now)
 	fields := map[string]string{"kind": "work", "primary": c.ID, "stream": c.Row, "attempt": itoa(attempt), "gen": "1", "member": row,
-		"dealt": now, "first_dealt": now, "untaken_since": now}
+		"dealt": now, "first_dealt": now, "untaken_since": now,
+		FieldDealtFacts: strings.Join(s.MemberFacts(row), ","), FieldDealtBy: "the friend deal"}
 	for _, k := range []string{"fix", "finding", "why"} {
 		if v := c.F(k); v != "" {
 			fields[k] = v
@@ -1039,6 +1054,7 @@ func friendRedealUnit(s *Snapshot, c, wc *Card, row string, set map[string]strin
 	maps.Copy(prim, set)
 	set, unset := nextGen(wc, row, s.Now), []string{"withdrawn", FieldTakenBack, FieldTakenFrom,
 		FieldRoute, FieldModel, FieldTokens, FieldUSD, FieldHarness, FieldDeadline}
+	set[FieldDealtFacts], set[FieldDealtBy] = strings.Join(s.MemberFacts(row), ","), "the friend redeal"
 	if left := friendsLeft(wc); len(left) > 0 {
 		set[FieldFriendsLeft] = strings.Join(left, ",") // the friend it was taken from, kept past the take
 	}

@@ -280,7 +280,7 @@ func Redo(s *Snapshot, r RedoReq) Plan {
 		} else {
 			unset = append(unset, FieldPassedHead)
 		}
-		given := map[string]string{"why": "redo the same change on the current tip"}
+		given := map[string]string{"why": "redo the same change on the current tip", FieldDealtBy: "the conflict redo"}
 		if f := c.F("finding"); f != "" {
 			given["finding"] = f
 			set["finding"] = f
