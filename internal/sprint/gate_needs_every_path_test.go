@@ -14,6 +14,10 @@ import (
 // arm64, and only a linux member is up until the last case.
 const gateNeedsEveryPath = "tier: pro\nGATE-NEEDS: darwin,arm64\n\nThe task.\n"
 
+// gateNeedsFlashPath is the same card at the tier a dealt-ahead fleet card was drawn on,
+// so a flash friend's reclaim is refused for the facts alone, never for the tier.
+const gateNeedsFlashPath = "tier: flash\nGATE-NEEDS: darwin,arm64\n\nThe task.\n"
+
 // gateNeedsWorld is a fleet with one linux member and one darwin arm64 member, both up at
 // width 2, and one ready card that needs darwin and arm64.
 func gateNeedsWorld(t *testing.T) *world {
@@ -107,7 +111,7 @@ func TestEveryDealPathHoldsGateNeeds(t *testing.T) {
 		w := aheadWorld(t, nil)
 		ahead := w.s.Fleet.Cell("m1", Ready)[0]
 		pr := w.s.Work.Card(ahead.F("primary"))
-		pr.Fields["brief"] = gateNeedsEveryPath
+		pr.Fields["brief"] = gateNeedsFlashPath
 		amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash", Tiers: []string{"flash"}})
 		p, _, _ := friendDealPass(w.s, w.s.Work.Column(Ready), []FriendSeat{amy}, true)
 		w.must(p)
