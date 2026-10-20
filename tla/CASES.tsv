@@ -844,3 +844,7 @@ MCWaitForBrokenCannotAskLoop.cfg	MCWaitFor.tla	temporal	NeverSilentlyStuck	ignor
 MCWaitForBrokenEnvHeld.cfg	MCWaitFor.tla	temporal	AutoResume	ignore-terminal	waitfor	required	-
 MCWaitForBrokenFactBlind.cfg	MCWaitFor.tla	temporal	EveryFeasibleLands	ignore-terminal	waitfor	required	-
 MCWaitForBrokenHiddenCause.cfg	MCWaitFor.tla	temporal	EveryFeasibleLands	ignore-terminal	waitfor	required	-
+MCStoreRetention.cfg	MCStoreRetention.tla	pass	-	ignore-terminal	storeretention	required	-
+MCStoreRetentionBrokenTrimPastCursor.cfg	MCStoreRetention.tla	invariant	NoTrimPastCursor	ignore-terminal	storeretention	required	-
+MCStoreRetentionBrokenUnbounded.cfg	MCStoreRetention.tla	invariant	Bounded	ignore-terminal	storeretention	required	-
+MCStoreRetentionBrokenRetireLiveDone.cfg	MCStoreRetention.tla	invariant	ReplayAnswered	ignore-terminal	storeretention	required	-

@@ -9964,3 +9964,38 @@ runs in parallel, and the lander lands the two in order**:
   or replaced (`drop`, `relink`, `replace`), B's soft dependency on A is released or
   re-pointed so B never waits on a card off the table (`tla/SoftDependency.tla`:
   `SoftLandsInOrder`, `SoftIsOrderOnly`, `HeldNeverEmptiesBatch`, `SoftNeverBlocksDeal`, `BothLand`, `DropReleasesOrRelinks`, `BaseRecorded`, `BaseSoftOrder`).
+
+## 20. Retention: every key the store writes is bounded
+
+A store that can fill stops every write on the fleet. On 2026-10-19 the live store
+(Redis, `maxmemory 8gb`, `noeviction`) reached `used_memory 8.00G of 8.00G`; every
+write over a few KB failed with an `EXECABORT` that hid Redis's `OOM command not
+allowed` and named the record's size. The store is now bounded key by key
+(`tla/StoreRetention.tla`):
+
+- **The log and the inbox.** Every `XADD` to `sprint:log` and `sprint:inbox` carries
+  `MAXLEN ~ <bound>`. The bound is `RetentionLinesDefault`, 3,000,000 lines: at least
+  four times the largest epoch measured (sprint:log@15, 691,470 lines). The sprint's
+  `set --log-retention <lines>` writes `retention_log_lines` on the work table, and
+  the clear carries it as a working setting.
+- **The notes and the log index.** The notes hash and the log index are pruned to the
+  lines the streams still hold, in the same pass that indexes the log's tail. An index
+  entry never names a trimmed line.
+- **The cursor.** A trim that would drop a line the coordinator has not read records
+  the first line it kept in `sprint:loggap`; the coordinator is told of the gap, never
+  given an error, and no unread line is trimmed silently.
+- **Past epochs.** After a clear completes, the keys of epochs older than the previous
+  one are retired: the log, log index, inbox, notes, done, answered, aliases, open and
+  the per-card hashes. The retire is one bounded, resumable step (a `SCAN` page and an
+  `UNLINK` batch at a time), never the tick's hot path. `DoneBefore` reads only the
+  epochs still held; an operation older than them is refused by name:
+  `operation <id> is older than the store keeps; it was not run again`.
+  `log --at-epoch` and `card --at-epoch` say the epoch was retired rather than read a
+  key the retire removed.
+- **The refusal names its cause.** A step's `EXECABORT` is unwrapped to the first
+  queued command's error; Redis's OOM says `the store is full (Redis OOM: used memory
+  at maxmemory); nothing was written; the coordinator frees it or raises maxmemory`,
+  never the record's size.
+- **The doctor.** `doctor` reports each bounded key's length against its bound and the
+  past epochs still held. Over 80% of a bound is a WARN; a key its scan of the known
+  prefixes finds with no bound is a FAIL naming it.

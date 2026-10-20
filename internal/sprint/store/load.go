@@ -477,7 +477,12 @@ func (st *Store) keepLogIndex(ctx context.Context) error {
 	if last == cur {
 		return nil
 	}
-	return ix.indexLog(ctx, entries, last)
+	if err := ix.indexLog(ctx, entries, last); err != nil {
+		return err
+	}
+	// The notes and the index are pruned to the lines still held in the same
+	// pass (tla/StoreRetention.tla IndexNeverDangles).
+	return st.pruneRetained(ctx)
 }
 
 // CardLog is the log's lines about one primary (sprint.Line.About), in log
