@@ -1,4 +1,9 @@
 ----------------------------- MODULE GatesOnly -----------------------------
+\* Tags.tla is this module's successor (v1.9): a per-card TAGS: line matched against a
+\* machine's tags from its nova-config row and its live beat, with gates_only and facts
+\* one eligibility rule (tla/Tags.tla; docs/SPEC-SPRINT.md, the gate-host rule). This
+\* module stays as it is, every existing config green.
+\*
 \* A gates-only member (Glenn 2026-10-19: native Windows members, captain and titan,
 \* that take ONLY the cards whose GATE-NEEDS names windows). nova-config's machine row
 \* carries gates_only; nova-sprint fleet sync writes it onto the member's control card
