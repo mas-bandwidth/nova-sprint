@@ -412,6 +412,7 @@ one answer to each judgment (every one prints its own, filled in):
   ci red                      rework --group <id> --expect <n> --fix '<fix>' --answers <notes>
   blocked on a dropped card   drop --group <id> --expect <n> --reason '<why>' --answers <notes>
   blocked on a missing card   drop <ids> --reason '<why>' or ack <notes> --reason '<why the named missing needs can be waived>'
+  a blocked card's blocker needs it    twin <blocker> --needs <card> --instruction '<the DONE-WHEN command> green' --answers <note>, or rework <card> --fix '<fix>' --answers <note>, or drop <id> --reason '<why>' --answers <note>
   reads exhausted             ask --group <id> --expect <n> --another --answers <notes>
   repair skipped changes      card <primary>, then rework, return or drop --group <id> --expect <n> --answers <notes>
   an operation was stuck      check, then ack <note> --reason '<what you found>'
