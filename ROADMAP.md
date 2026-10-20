@@ -7,8 +7,8 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (273)
-- [Setup, release and operations](#setup-release-and-operations) (72)
+- [The sprint system](#the-sprint-system) (285)
+- [Setup, release and operations](#setup-release-and-operations) (73)
 - [Docs, models and the repository](#docs-models-and-the-repository) (25)
 - [Friend AIs](#friend-ais) (22)
 - [Moved out of the sprint on 2026-10-15: nova-local](#moved-out-of-the-sprint-on-2026-10-15-nova-local) (1)
@@ -2268,6 +2268,126 @@ Target: v1.7
 
 From: the owner, 2026-10-19
 
+### A provider fault falls back to the next provider on the same attempt
+
+A rate limit, 5xx, timeout or unfunded provider moves the card or read to the next provider in line in the same tick, spending no attempt and no reader; when every provider is cooling, one judgment per tier and a deadline.
+
+Target: v1.7
+
+From: sprint cards v17-provider-fault-fallback (stream v17), archived to the roadmap at the owner's word, pit stop 2026-10-20
+
+Replaces 1 open sprint card, each mapped to `provider-fault-falls-back`.
+
+### A wait names its fact and resumes by itself
+
+A card blocked on the environment, on a missing reader tier or on a hold naming other cards waits on a named fact with a deadline and one judgment, and resumes when the fact holds; no attempt spent.
+
+Target: v1.7
+
+From: sprint cards v17-blocked-on-environment-waits-for-a-fact, v17-cannot-ask-with-no-reader-for-the-tier-is-one-judgment, v17-hold-naming-cards-becomes-a-need-or-a-split-t (stream v17), archived to the roadmap at the owner's word, pit stop 2026-10-20
+
+Replaces 3 open sprint cards, each mapped to `waits-name-their-fact`.
+
+### Dependency cycles are refused at add
+
+One graph over needs, land-after and gate-fix edges; add and brief edit refuse a cycle, naming it.
+
+Target: v1.7
+
+From: sprint cards v17-gate-fix-cycle-refused-at-add, v17-needs-and-land-after-one-cycle-refuser (stream v17), archived to the roadmap at the owner's word, pit stop 2026-10-20
+
+Replaces 2 open sprint cards, each mapped to `dependency-cycles-refused`.
+
+### A merge conflict or a red outside tip spends no attempt
+
+A conflict refusal, or a base tip turned red by an outside commit, never counts against a card; a queued cure lands once the stream resumes.
+
+Target: v1.7
+
+From: sprint cards v17-conflict-refusal-spends-no-attempt, v17-red-outside-tip-tries-its-cure (stream v17), archived to the roadmap at the owner's word, pit stop 2026-10-20
+
+Replaces 2 open sprint cards, each mapped to `land-faults-spend-no-attempt`.
+
+### Hot files order their landings and every pushed batch is recorded
+
+Cards sharing a hot file land in one declared order, and a batch the lander pushed is always recorded as landed.
+
+Target: v1.7
+
+From: sprint cards v17-hot-file-orders-its-landings, v17-pushed-batch-always-records (stream v17), archived to the roadmap at the owner's word, pit stop 2026-10-20
+
+Replaces 2 open sprint cards, each mapped to `landings-ordered-and-recorded`.
+
+### Every sprint store key is bounded
+
+Every key the sprint store writes has a size or age bound, so the store never grows without limit.
+
+Target: v1.7
+
+From: sprint cards v17-sprint-store-every-key-bounded (stream v17), archived to the roadmap at the owner's word, pit stop 2026-10-20
+
+Replaces 1 open sprint card, each mapped to `sprint-store-bounded`.
+
+### Cards carry tags matched to machines that prove them
+
+A card names required tags on a TAGS: line; the server reads each machine's declared and proven tags live, deals only by one eligibility rule, parks unmet cards on one judgment that resumes, and keeps no server copy; where and card show tags.
+
+Target: v1.9
+
+From: sprint cards v19-tags-model, v19-tags-card-line-and-registry-lint, v19-tags-server-reads-config-and-beat, v19-tags-one-eligibility-rule-every-path, v19-tags-unmet-is-one-judgment-that-resumes, v19-tags-needs-fact-parks-on-a-tag, v19-tags-no-server-copy-refuser, v19-tags-where-and-card-show-tags, v19-tags-acceptance-new-tool-tag-config-only (stream v19), archived to the roadmap at the owner's word, pit stop 2026-10-20
+
+Replaces 9 open sprint cards, each mapped to `machine-tags`.
+
+### The fleet never sits idle with ready work
+
+A dealt card not started redeals, an idle member names its cause, a reader that stops taking is set away, and a route making no progress is a provider fault.
+
+Target: v1.9
+
+From: sprint cards v19-fleet-never-sits-model, v19-fleet-dealt-not-started-redeals, v19-fleet-idle-names-its-cause, v19-fleet-reader-liveness-sets-away, v19-fleet-route-no-progress-is-a-fault (stream v19), archived to the roadmap at the owner's word, pit stop 2026-10-20
+
+Replaces 5 open sprint cards, each mapped to `fleet-never-sits`.
+
+### Cards land first time
+
+The main causes of rework are refused mechanically: finish needs the base tip, the gate is the stream's, outside paths are named, plants are proven, and shared hunks are linted.
+
+Target: v1.9
+
+From: sprint cards v19-firstland-finish-needs-the-base-tip, v19-firstland-gate-is-the-streams, v19-firstland-outside-paths-is-named, v19-firstland-plant-is-proven, v19-firstland-shared-hunk-lint (stream v19), archived to the roadmap at the owner's word, pit stop 2026-10-20
+
+Replaces 5 open sprint cards, each mapped to `cards-land-first-time`.
+
+### A rename's fallout is swept at finish
+
+Stale references to renamed or removed names just outside PATHS are in scope and swept as a finish gate.
+
+Target: v1.9
+
+From: sprint cards v19-fallout-hunks-are-in-scope, v19-fallout-sweep-is-a-finish-gate (stream v19), archived to the roadmap at the owner's word, pit stop 2026-10-20
+
+Replaces 2 open sprint cards, each mapped to `fallout-swept-at-finish`.
+
+### A late verdict or finish is never lost
+
+A read verdict or finish arriving after its card was retired late is kept, never refused.
+
+Target: v1.9
+
+From: sprint cards v19-late-verdict-and-finish-are-never-lost (stream v19), archived to the roadmap at the owner's word, pit stop 2026-10-20
+
+Replaces 1 open sprint card, each mapped to `late-verdicts-never-lost`.
+
+### Cards carry their roadmap row; one-command export
+
+Every card names its roadmap row on a ROADMAP: line, indexed both ways in the store; nova-sprint roadmap export writes the open cards' notes into each repository's roadmap and opens one PR per repository, and a landing writes its evidence on the row.
+
+Target: v1.9
+
+From: the owner, 2026-10-20; no sprint card was added (the store is being dropped)
+
+Replaces 1 open sprint card, each mapped to `cards-carry-their-roadmap-row`.
+
 ## Setup, release and operations
 
 Setting machines up, installing and releasing safely, and the checks that keep a fleet honest.
@@ -2933,6 +3053,16 @@ Since #490 the dashboard reads the sprint only while someone is looking. On retu
 Why it waits: the page is the owner's; its idle behaviour is his to state
 
 From: the cold read of #490, 2026-10-18
+
+### Releases run on an automatic train
+
+A leased loop with deadlines cuts, builds, stages, reads the latest CI attempt, adopts by tags with rollback and promotes after dev, recorded and queued, shown in where and show; no release sits idle.
+
+Target: v1.9
+
+From: sprint cards v19-train-model, v19-train-record-and-queue, v19-train-loop-lease-and-deadlines, v19-train-cut-build-stage, v19-train-ci-reads-the-latest-attempt, v19-train-adopt-by-tags-with-rollback, v19-train-promote-follows-dev, v19-train-where-and-show, v19-train-acceptance-the-night-of-1020 (stream v19), archived to the roadmap at the owner's word, pit stop 2026-10-20
+
+Replaces 9 open sprint cards, each mapped to `release-train`.
 
 ## Docs, models and the repository
 
