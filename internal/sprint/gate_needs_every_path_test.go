@@ -103,6 +103,19 @@ func TestEveryDealPathHoldsGateNeeds(t *testing.T) {
 		w.must(p)
 		assert.Equal(t, 0, w.s.Fleet.Count(FriendRow("amy"), Ready), "the friend deal gave a GATE-NEEDS card to a friend with no facts")
 	})
+	t.Run("friend reclaim", func(t *testing.T) {
+		w := aheadWorld(t, nil)
+		ahead := w.s.Fleet.Cell("m1", Ready)[0]
+		pr := w.s.Work.Card(ahead.F("primary"))
+		pr.Fields["brief"] = gateNeedsEveryPath
+		amy := workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash", Tiers: []string{"flash"}})
+		p, _, _ := friendDealPass(w.s, w.s.Work.Column(Ready), []FriendSeat{amy}, true)
+		w.must(p)
+		for _, c := range w.s.Fleet.Cell(FriendRow("amy"), Ready) {
+			assert.NotEqual(t, ahead.F("primary"), c.F("primary"), "the friend reclaim dealt a GATE-NEEDS card to a friend with no facts")
+		}
+		assert.Equal(t, "m1", w.s.Fleet.Card(ahead.ID).Row, "the unfit friend reclaimed it")
+	})
 	t.Run("level", func(t *testing.T) {
 		w := gateNeedsWorld(t)
 		putWorkCard(w, "s1-1", "m-linux", Ready, 1, nil)

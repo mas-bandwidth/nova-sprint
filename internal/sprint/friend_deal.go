@@ -955,6 +955,12 @@ func reclaimUnit(s *Snapshot, wc *Card, up []string, seat map[string]FriendSeat,
 	var may []string
 	for _, f := range up {
 		if lanes[f] > 0 && free[f] > 0 && !slices.Contains(left, f) && friendTakes(s, seat[f], tier) && friendRestrictionAllows(seat[f], pr) {
+			// the card's gate needs hold here too (docs/SPEC-SPRINT.md, the gate-host
+			// rule; tla/WaitFor.tla Deal): a reclaim is a deal, so a friend whose facts
+			// lack one of the card's GATE-NEEDS is never given it.
+			if needs := GateNeeds(pr.F("brief")); len(needs) > 0 && !memberSatisfies(seat[f].Beat.Facts, needs) {
+				continue
+			}
 			may = append(may, f)
 		}
 	}
@@ -974,6 +980,7 @@ func reclaimUnit(s *Snapshot, wc *Card, up []string, seat map[string]FriendSeat,
 		declared[row] = true
 	}
 	set := nextGen(wc, row, s.Now)
+	set[FieldDealtFacts], set[FieldDealtBy] = strings.Join(s.MemberFacts(row), ","), "the friend reclaim"
 	unset := []string{FieldRoute, FieldModel, FieldTokens, FieldUSD, FieldHarness, FieldDeadline, FieldFriendDeadline}
 	changes := []Change{change(Fleet, moveEntry(wc, row, Ready, set, unset...))}
 	if t := tierNowSet(pr, tier); t != nil {
@@ -1047,6 +1054,7 @@ func friendRedealUnit(s *Snapshot, c, wc *Card, row string, set map[string]strin
 	maps.Copy(prim, set)
 	set, unset := nextGen(wc, row, s.Now), []string{"withdrawn", FieldTakenBack, FieldTakenFrom,
 		FieldRoute, FieldModel, FieldTokens, FieldUSD, FieldHarness, FieldDeadline}
+	set[FieldDealtFacts], set[FieldDealtBy] = strings.Join(s.MemberFacts(row), ","), "the friend redeal"
 	if left := friendsLeft(wc); len(left) > 0 {
 		set[FieldFriendsLeft] = strings.Join(left, ",") // the friend it was taken from, kept past the take
 	}
