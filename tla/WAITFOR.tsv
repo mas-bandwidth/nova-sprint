@@ -14,6 +14,7 @@ stream-stop-pushed-unreported	stream(cards)	lander(report)	internal/sprint/steps
 conflict-refusal-base	card(ready)	base(tip)	internal/sprint/redo.go:landRefused	progress	-	NConflict	BaseMoves	C	v17-hot-file-orders-its-landings
 hold-coordinator	card(waiting)	coordinator(release)	internal/sprint/steps_edit.go:Hold	coordinator	-	-	Answer	-	-
 hold-server-default	card(waiting)	coordinator(release)	internal/sprint/seat_answers.go:TickDecisionDefaults	coordinator	20m:seat_answers.go:SafeDecisionDefault	NBound	ServerDefault	F	v17-blocked-on-environment-waits-for-a-fact
+server-default-hold-owner	card(waiting)	owner(deliver)	internal/sprint/seat_answers.go:DefaultHeldDecisions	deadline	20m:judgment_exits.go:OwnerExitDue	NServerDefaultHold	OwnerDeliver	-	-
 hold-sentinel-wave	card(waiting)	sentinel(release)	internal/sprint/steps_edit.go:Hold	coordinator	-	NSentinelReached	Answer	-	-
 hold-fleet	fleet(cards)	coordinator(resume)	internal/sprint/steps_edit.go:Hold	coordinator	-	NAlarmFleet	Answer	-	-
 env-fact-wait	card(waiting)	fact(env)	internal/sprint/steps_work.go:finishPlan	progress	-	NWorkFailed	FactAppears	F	v17-blocked-on-environment-waits-for-a-fact
