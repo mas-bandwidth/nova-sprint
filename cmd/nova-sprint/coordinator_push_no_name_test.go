@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"testing"
@@ -91,12 +90,9 @@ func TestReadLaneRefusalNamesAnUndeliverableCoordinatorPush(t *testing.T) {
 	ta.step(hook.RenewEvery)
 	ta.a.coordinatorPass(context.Background())
 
-	lanes := ta.a.lanesFor(context.Background())
-	require.NotNil(t, lanes)
-	var out, errb bytes.Buffer
-	code := lanes.read.run([]string{"where"}, &out, &errb)
-	require.Equal(t, 1, code, "%s%s", out.String(), errb.String())
-	why := errb.String()
+	res := serveOne(ta.a, true, "where", "--actor", name)
+	require.Equal(t, 1, res.Code, "%s%s", res.Stdout, res.Stderr)
+	why := res.Stderr
 	assert.Contains(t, why, sprint.HookFirst)
 	assert.Contains(t, why, "the last send to it failed")
 	assert.Contains(t, why, "no known name")
