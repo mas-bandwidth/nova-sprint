@@ -125,14 +125,19 @@ func ReadStep(r sprint.ReadReq) Step {
 		// a read card on a member's row (sprint read_cards.go) is read as hers is: a name
 		// that is no reader-<m> is a fleet row
 		if _, isReader := sprint.ReaderMachine(rd); sprint.IsFriendRow(rd) || !isReader {
-			return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "read", Load: tables(sprint.Fleet, sprint.Work, sprint.Readers, sprint.Merge), Extras: sprint.NamedExtras(sprint.Fleet, r.IDs), Mirrors: true, Prices: r.Usage != "", StartsWork: r.Begin, ReportsWork: !r.Begin && !r.Return, Bars: true,
+			// a member's read card that returns a provider fault falls back on the routes
+			// (fallback.go; docs/SPEC-SPRINT.md section 5, provider fallback)
+			return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "read", Load: tables(sprint.Fleet, sprint.Work, sprint.Readers, sprint.Merge), Extras: sprint.NamedExtras(sprint.Fleet, r.IDs), Mirrors: true, Prices: r.Usage != "", StartsWork: r.Begin, ReportsWork: !r.Begin && !r.Return, Bars: true, Routes: true,
 				Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Read(s, r) }}
 		}
 	}
 	// a read that reports what it spent prices it with the routes alone, the keys a
 	// reader may read (sprint's cost.go; Step.Prices); the merge table for the streams'
-	// own attempt caps, as the finish loads it
-	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "read", Load: tables(sprint.Readers, sprint.Work, sprint.Merge), Extras: sprint.NamedExtras(sprint.Readers, r.IDs), Prices: r.Usage != "", StartsWork: r.Begin, ReportsWork: !r.Begin && !r.Return, Bars: true,
+	// own attempt caps, as the finish loads it. It loads the fleet and the routes too: a
+	// reader's provider-fault return falls back on the next route in line, the guard
+	// reading both (sprint.Read, steps_review.go; fallback.go, docs/SPEC-SPRINT.md
+	// section 5, provider fallback)
+	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "read", Load: tables(sprint.Fleet, sprint.Readers, sprint.Work, sprint.Merge), Extras: sprint.NamedExtras(sprint.Readers, r.IDs), Prices: r.Usage != "", StartsWork: r.Begin, ReportsWork: !r.Begin && !r.Return, Bars: true, Routes: true,
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Read(s, r) }}
 }
 
