@@ -188,6 +188,13 @@ func Ask(s *Snapshot, r AskReq) Plan {
 	readBranchSet := func(id string) map[string]string {
 		return map[string]string{FieldReadBranch: r.Holds[id], FieldReadBranchHead: reaskedHead[id]}
 	}
+	if s.ReadCardsOn() && r.Another && r.Instead == "" && s.Fleet != nil {
+		// one more read card when the read-card deal can deal every primary named one; a
+		// reader only the readers table holds (no member, no friend) is asked as before
+		if q, ok := askAnotherReadCard(s, r, chosen, p); ok {
+			return q
+		}
+	}
 	if s.ReadCardsOn() && !another && (answeringCannotAsk || len(reasked) > 0) {
 		only := map[string]bool{}
 		for _, c := range chosen {
@@ -216,7 +223,7 @@ func Ask(s *Snapshot, r AskReq) Plan {
 		if s.Fleet != nil && len(s.Routes) > 0 {
 			ri = routeIndexesOf(s)
 		}
-		dealt, waits := readCardsAskSelected(deal, s.Friends, ri, nil, nil, only)
+		dealt, waits := readCardsAskSelected(deal, s.Friends, ri, nil, nil, only, 0)
 		p.Rows = append(p.Rows, dealt.Rows...)
 		p.Units = append(p.Units, dealt.Units...)
 		p.Props = append(p.Props, dealt.Props...)

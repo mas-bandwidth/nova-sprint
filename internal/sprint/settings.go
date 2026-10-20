@@ -78,7 +78,7 @@ const (
 	PropFriendsTiers = "friends_tiers"
 	// PropReadsNeeded is the work table's property: how many readers' ok reads at its
 	// head every card in review needs, whatever its tier (nova-sprint set --reads): "0",
-	// "1" or "2"; absent or default, each card's own rule (ReadsNeeded). 0 asks no read:
+	// "1" to "5" (MaxReads); absent or default, each card's own rule (ReadsNeeded). 0 asks no read:
 	// a primary whose work finished LAND at its head is accepted on its own work.
 	PropReadsNeeded = "reads_needed"
 	// PropReworkPriority controls priority on the next attempt: fix (default), high or keep.
@@ -145,10 +145,10 @@ func lowBalanceUsdSetting(props map[string]string) (float64, bool) {
 }
 
 // readsWords is the counts set --reads takes (PropReadsNeeded).
-var readsWords = []string{"0", "1", "2", "3"}
+var readsWords = []string{"0", "1", "2", "3", "4", "5"}
 
 // ReadsSetting is the reads every card in review needs as the work table's properties
-// hold them (PropReadsNeeded): 0, 1, 2 or 3, and ok false while none is set (default: each
+// hold them (PropReadsNeeded): 0 to MaxReads, and ok false while none is set (default: each
 // card's own rule, ReadsNeeded).
 func ReadsSetting(props map[string]string) (n int, ok bool) {
 	v := props[PropReadsNeeded]
@@ -338,9 +338,12 @@ type SetReq struct {
 	// ReadCards turns read cards on or off (PropReadCards, read_cards.go): on, off, or
 	// default (on).
 	ReadCards string `json:",omitempty" prop:"read_cards"`
-	// Reads is the reads every card in review needs (PropReadsNeeded): 0, 1, 2, 3, or
+	// Reads is the reads every card in review needs (PropReadsNeeded): 0 to 5, or
 	// default (each card's own rule, ReadsNeeded).
 	Reads string `json:",omitempty" prop:"reads_needed"`
+	// ReadMix is the read mix (PropReadMix, read_mix.go): friends=<n>,fleet=<m>, default
+	// (ReadMixWorking) or off.
+	ReadMix string `json:",omitempty" prop:"read_mix"`
 	// ReadRoutes is the routes reserved for reads (PropReadRoutes): route names comma
 	// separated, each a route the store holds, or default for none.
 	ReadRoutes string `json:",omitempty" prop:"read_routes"`
@@ -513,17 +516,27 @@ func Set(s *Snapshot, r SetReq) Plan {
 	}
 	if r.Reads != "" {
 		if r.Reads != ReadTierDefault && !slices.Contains(readsWords, r.Reads) {
-			why = append(why, "--reads wants 0, 1, 2, 3 or "+ReadTierDefault+" (one for a flash card, two above); found "+r.Reads)
+			why = append(why, "--reads wants 0, 1, 2, 3, 4, 5 or "+ReadTierDefault+" (one for a flash card, two above); found "+r.Reads)
 		}
 		if len(r.Streams) > 0 {
 			why = append(why, "--reads is the sprint's, not a stream's: nova-sprint set --reads "+r.Reads)
 		}
 	}
+	if r.ReadMix != "" {
+		if r.ReadMix != ReadTierDefault && r.ReadMix != SwitchOff {
+			if _, bad := parseReadMix(r.ReadMix); bad != "" {
+				why = append(why, bad)
+			}
+		}
+		if len(r.Streams) > 0 {
+			why = append(why, "--read-mix is the sprint's, not a stream's: nova-sprint set --read-mix "+r.ReadMix)
+		}
+	}
 	if r.Base != "" && len(r.Streams) == 0 {
 		why = append(why, "--base is a stream's, not the sprint's: nova-sprint stream set <s> --base <branch>")
 	}
-	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Display == "" && r.Prose == "" && r.SeatAccept == "" && r.DefaultTier == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.LandingStallBound == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.ReadRoutes == "" && r.ReworkPriority == "" {
-		why = append(why, "nothing to set: --rework-priority, --read-tier, --read-cards, --reads, --read-routes, --prose, --base, --dealt-max, --go-lanes, --attempts, --friend-idle, --landing-stall-bound, --drift-commits, --drift-hours, --fleet, --friends, --fleet-tiers, --friends-tiers or an --alarm-... threshold")
+	if r.ReadTier == "" && r.DealtMax == "" && r.LandProtected == "" && r.Release == "" && r.Display == "" && r.Prose == "" && r.SeatAccept == "" && r.DefaultTier == "" && r.Base == "" && len(alarms) == 0 && r.GoLanes == "" && r.Attempts == "" && r.FriendIdle == "" && r.LandingStallBound == "" && r.DriftCommits == "" && r.DriftHours == "" && r.Fleet == "" && r.Friends == "" && len(sideTiers) == 0 && r.ReadCards == "" && r.Reads == "" && r.ReadMix == "" && r.ReadRoutes == "" && r.ReworkPriority == "" {
+		why = append(why, "nothing to set: --rework-priority, --read-tier, --read-cards, --reads, --read-mix, --read-routes, --prose, --base, --dealt-max, --go-lanes, --attempts, --friend-idle, --landing-stall-bound, --drift-commits, --drift-hours, --fleet, --friends, --fleet-tiers, --friends-tiers or an --alarm-... threshold")
 	}
 	if len(r.Streams) > 0 && r.GoLanes != "" {
 		why = append(why, "--go-lanes is the sprint's, not a stream's: nova-sprint set --go-lanes "+r.GoLanes)
@@ -686,6 +699,7 @@ func Set(s *Snapshot, r SetReq) Plan {
 		{PropFriendsTiers, sideTiers[PropFriendsTiers]},
 		{PropReadCards, r.ReadCards},
 		{PropReadsNeeded, r.Reads},
+		{PropReadMix, r.ReadMix},
 		{PropReadRoutes, r.ReadRoutes},
 		{PropReworkPriority, r.ReworkPriority},
 	}
@@ -728,6 +742,8 @@ func orDefault(v, name string) string {
 		return "default (on: the deal asks every read at once)"
 	case name == PropReadsNeeded:
 		return "default (one for a flash card, two above)"
+	case name == PropReadMix:
+		return "default (" + ReadMixWorking + ": two friends and three fleet readers on three models)"
 	case name == PropReadRoutes:
 		return "default (no route reserved for reads)"
 	}

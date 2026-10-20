@@ -657,7 +657,7 @@ func (h *dHarness) engine(a dAction, pre refmodel.State) (refused string, cutOK 
 			// clear's working defaults turn the backlog alarms on (sprint.Defaults), which the
 			// reference model does not model: they are set off again here, as the model
 			// started, so the two keep comparing the cards.
-			res, setErr := h.st.Run(h.ctx, SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, AlarmReady: sprint.AlarmOff,
+			res, setErr := h.st.Run(h.ctx, SetStep(sprint.SetReq{ReadCards: sprint.SwitchOff, ReadMix: sprint.SwitchOff, AlarmReady: sprint.AlarmOff,
 				AlarmReview: sprint.AlarmOff, AlarmMerging: sprint.AlarmOff, AlarmFleet: sprint.AlarmOff, Who: dCoordinator}))
 			require.NoError(h.t, setErr)
 			require.Empty(h.t, res.Refused)

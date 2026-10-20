@@ -169,6 +169,7 @@ var Decisions = map[string][]string{
 	NTimer:             {"ack"},                      // a timer the actor set woke it: nothing to decide
 	NStalled:           {"look at the card", "wait"}, // each stall names its own
 	NNoFrontierRoom:    {"reader add", "wait"},
+	NReadMixShort:      {"reader add", "ack", "wait"},
 	NFinishRefused:     {"look at the card", "drop"}, // the refusal's words name the cause; the count resets with the attempt
 	// a STOP debt owner that has not beaten since the STOP: acknowledged by the
 	// coordinator, who stop-returns its leases by hand, or waited for its beat.

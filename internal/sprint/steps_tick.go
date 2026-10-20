@@ -162,6 +162,7 @@ var TickDecisions = map[string][]string{
 	NMergeLate:      {"merge --stream <s>", "look", "wait"},
 	NStalled:        {"look at the card", "wait"},
 	NNoFrontierRoom: {"reader add", "wait"},
+	NReadMixShort:   {"reader add", "ack", "wait"}, // read_mix.go: the reads were dealt from the readers up
 	// the backlog alarms (alarms.go): seen, or quiet for a while
 	NAlarmReview:  {"ack", "wait"},
 	NAlarmMerging: {"ack", "wait"},
@@ -2113,7 +2114,7 @@ func condKey(typ, subject, card, what string) string {
 		NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed, NFriendSyncFailing,
 		NBaseCIRed,
 		NStopMemberDown, NStopPinWaits, NMemberIdleReaps,
-		NNoFrontierRoom,
+		NNoFrontierRoom, NReadMixShort,
 		NMirrorNeed, NMemberPegged, NGateNeeds:
 		what = ""
 	case NReadyOver:

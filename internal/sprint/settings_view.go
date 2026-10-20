@@ -114,6 +114,7 @@ func SettingsRows() []SettingRow {
 			}
 			return SwitchOff
 		}),
+		settingRow("read-mix", PropReadMix, "Snapshot.ReadMixSet", propOrDefault(PropReadMix)),
 		settingRow("read-routes", PropReadRoutes, "Snapshot.readsOnly", func(s *Snapshot) string {
 			if v := s.readRoutesProp(); v != "" {
 				return v

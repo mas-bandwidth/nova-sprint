@@ -18,7 +18,7 @@ func TestEverySetFlagHasASettingsRow(t *testing.T) {
 		"alarm-fleet", "alarm-merging", "alarm-ready", "alarm-review",
 		"base", "dealt-max", "fleet", "fleet-tiers", "friend-finish",
 		"friend-idle", "friends", "friends-tiers", "go-lanes",
-		"landing-stall-bound", "pegged-bound", "read-cards", "read-routes", "read-tier",
+		"landing-stall-bound", "pegged-bound", "read-cards", "read-mix", "read-routes", "read-tier",
 		"reads", "rework-priority",
 	}
 	rows := SettingsRows()

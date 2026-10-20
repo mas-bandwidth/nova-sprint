@@ -762,11 +762,14 @@ func readCardsAskWhy(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]st
 // cursor per read tier with the cards it deals (docs/SPEC-SPRINT.md section 1, the read-card
 // deal).
 func readCardsAskFull(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]string, full map[string][]string) (p Plan, waits map[string]string) {
-	return readCardsAskSelected(s, seats, ri, why, full, nil)
+	return readCardsAskSelected(s, seats, ri, why, full, nil, 0)
 }
 
 // readCardsAskSelected uses the same deal rule for a coordinator ask of named primaries.
-func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]string, full map[string][]string, only map[string]bool) (p Plan, waits map[string]string) {
+// extra is the reads it deals each of them past what it wants (ask --another in read-card
+// mode: one more reader; the tick and a plain ask, 0): a primary named that wants none is
+// dealt the extra too, failed work and a sentinel never.
+func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why *[]string, full map[string][]string, only map[string]bool, extra int) (p Plan, waits map[string]string) {
 	waits = map[string]string{}
 	if s == nil || s.Work == nil || s.Fleet == nil {
 		return p, waits
@@ -824,12 +827,21 @@ func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why 
 	}
 	declared := map[string]bool{}
 	done := map[string]bool{}
-	for _, pr := range readCardsWaiting(view, idx) {
+	waiting := readCardsWaiting(view, idx)
+	if extra > 0 {
+		waiting = nil
+		for _, pr := range view.Work.Column(Review) {
+			if !IsSentinel(pr) && pr.F("result") != "failed" && !readBranchMissingOpen(view, pr) {
+				waiting = append(waiting, pr)
+			}
+		}
+	}
+	for _, pr := range waiting {
 		if only != nil && !only[pr.ID] {
 			continue
 		}
 		done[pr.ID] = true
-		want := readCardsWanted(view, pr, idx)
+		want := readCardsWanted(view, pr, idx) + extra
 		attempt := readAttempt(pr)
 		worker := attemptUnit(view, pr.ID, attempt)
 		cards := idx[pr.ID]
@@ -857,42 +869,50 @@ func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why 
 		}
 		var picked []int
 		chosen := map[int]bool{}
-		for len(picked) < want {
-			// an idle lane before a busy one: a read waits in a ready queue only when
-			// every reader that may take it is busy (docs/SPEC-SPRINT.md section 1, the
-			// read-card deal)
-			hasIdle := false
-			for _, i := range may {
-				if !chosen[i] && units[i].half > 0 && units[i].idle > 0 {
-					hasIdle = true
+		// the read mix's phases (read_mix.go): its friends, then its fleet reads, then any
+		// class for the rest; with no mix, one phase of any class
+		for _, ph := range readMixPhases(view, pr, cards, want) {
+			target := min(want, len(picked)+ph.n)
+			if ph.class == readAnyClass {
+				target = want
+			}
+			for len(picked) < target {
+				// an idle lane before a busy one: a read waits in a ready queue only when
+				// every reader that may take it is busy (docs/SPEC-SPRINT.md section 1, the
+				// read-card deal)
+				hasIdle := false
+				for _, i := range may {
+					if !chosen[i] && classFits(units[i], ph.class) && roomFor(units[i], ph) && units[i].idle > 0 {
+						hasIdle = true
+						break
+					}
+				}
+				// the cheapest tier first (readTierDistance), then the persisted ring cursor
+				// (read_deal_index_<tier>) round every unit with a free lane, never the most
+				// idle and never the name: a burst of reads rolls round the free lanes of the
+				// whole fleet, a narrow member's too, never past a reader's room (the owner,
+				// 2026-10-11: "Deal logic should be using ((index++) % n) to roll around, not
+				// hitting the same fleet machine or friend each deal"; tla/WhoPreference.tla,
+				// DealFreeLanesFirst).
+				bestDistance := 2*len(capLadder) + 1
+				for _, i := range may {
+					if !chosen[i] && classFits(units[i], ph.class) && roomFor(units[i], ph) && (!hasIdle || units[i].idle > 0) {
+						bestDistance = min(bestDistance, readTierDistance(view, units[i], pr))
+					}
+				}
+				eligible := func(name string) bool {
+					i, exists := unitByName[name]
+					return exists && !chosen[i] && classFits(units[i], ph.class) && roomFor(units[i], ph) && (!hasIdle || units[i].idle > 0) && mayReadCard(view, units[i], pr, attempt, worker, cards) && readTierDistance(view, units[i], pr) == bestDistance
+				}
+				name := cursor.scan(eligible)
+				if name == "" {
 					break
 				}
+				i := unitByName[name]
+				picked = append(picked, i)
+				chosen[i] = true
+				cursor.moved(name)
 			}
-			// the cheapest tier first (readTierDistance), then the persisted ring cursor
-			// (read_deal_index_<tier>) round every unit with a free lane, never the most
-			// idle and never the name: a burst of reads rolls round the free lanes of the
-			// whole fleet, a narrow member's too, never past a reader's room (the owner,
-			// 2026-10-11: "Deal logic should be using ((index++) % n) to roll around, not
-			// hitting the same fleet machine or friend each deal"; tla/WhoPreference.tla,
-			// DealFreeLanesFirst).
-			bestDistance := 2*len(capLadder) + 1
-			for _, i := range may {
-				if !chosen[i] && units[i].half > 0 && (!hasIdle || units[i].idle > 0) {
-					bestDistance = min(bestDistance, readTierDistance(view, units[i], pr))
-				}
-			}
-			eligible := func(name string) bool {
-				i, exists := unitByName[name]
-				return exists && !chosen[i] && units[i].half > 0 && (!hasIdle || units[i].idle > 0) && mayReadCard(view, units[i], pr, attempt, worker, cards) && readTierDistance(view, units[i], pr) == bestDistance
-			}
-			name := cursor.scan(eligible)
-			if name == "" {
-				break
-			}
-			i := unitByName[name]
-			picked = append(picked, i)
-			chosen[i] = true
-			cursor.moved(name)
 		}
 		u := Unit{Key: pr.ID, Stream: pr.Row, Changes: back[pr.ID]}
 		delete(back, pr.ID)
@@ -939,6 +959,11 @@ func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why 
 		branch, start, head := attemptEnds(view, pr.ID, attempt)
 		head = cmp.Or(head, pr.F("head"))
 		var names []string
+		_, mixOn := view.ReadMixSet()
+		var used []string
+		if mixOn {
+			_, _, used = readMixCounts(view, pr, cards)
+		}
 		for k, i := range picked {
 			un := &units[i]
 			un.half--
@@ -974,7 +999,16 @@ func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why 
 				}
 			} else {
 				if ri != nil {
-					maps.Copy(fields, view.readRouteOf(ri, pr, nil))
+					// under the read mix a fleet read draws a model no fleet read of the
+					// attempt used while another serves (tla/ReadMix.tla, DistinctModelWhenServed)
+					var avoid []string
+					if mixOn {
+						avoid = view.readMixAvoid(pr, used)
+					}
+					maps.Copy(fields, view.readRouteOf(ri, pr, avoid))
+					if m := modelID(fields[FieldModel]); mixOn && m != "" && !slices.Contains(used, m) {
+						used = append(used, m)
+					}
 				} else {
 					fields[FieldTier] = view.readTierOf(pr)
 				}
@@ -1069,6 +1103,8 @@ func readCardsAskPart(s *Snapshot, r TickReq, seats []FriendSeat) (Plan, int) {
 	// notify already reads acknowledgements; do not present held waits twice.
 	view.Open = slices.DeleteFunc(slices.Clone(s.Open), ending)
 	conds = append(conds, frontierRoomCondsOfWaits(s, waits, full)...)
+	// a primary whose reads were dealt short of the read mix (read_mix.go)
+	conds = append(conds, readMixShortConds(s)...)
 	p.Closes = append(p.Closes, ended...)
 	// Eligibility is independent of free room. Record the units in the closing answer.
 	units := readUnitsOf(s, seats)
@@ -1089,7 +1125,7 @@ func readCardsAskPart(s *Snapshot, r TickReq, seats []FriendSeat) (Plan, int) {
 			}
 		}
 	}
-	due := notify(&p, &view, conds, []string{NCannotAsk, NFewReaders, NReadersBehind, NRaiseReadTier, NBrokenReadsOutrun, NReaderBreaks, NNoFrontierRoom}, r)
+	due := notify(&p, &view, conds, []string{NCannotAsk, NFewReaders, NReadersBehind, NRaiseReadTier, NBrokenReadsOutrun, NReaderBreaks, NNoFrontierRoom, NReadMixShort}, r)
 	return p, due + len(waits)
 }
 

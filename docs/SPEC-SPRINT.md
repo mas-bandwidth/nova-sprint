@@ -3658,7 +3658,7 @@ is served. `card` and `where --json --rows` show the tier it is on.
   card's own worker, and a broken coordinator read stands as a reader's broken
   read (accept refuses the head). A card in review no reader can be asked raises
   one judgment naming both remedies (reader add, wait).
-- The sprint may set the count instead (`nova-sprint set --reads <0|1|2|default>`,
+- The sprint may set the count instead (`nova-sprint set --reads <0|1|2|3|4|5|default>`,
   the work table's property `reads_needed`; the owner, 2026-10-06: "I'd like to
   waive the second read for the moment"): while it is set, every card in review
   needs that many ok reads at its head whatever its tier (`sprint.ReadsNeededIn`,
@@ -3672,6 +3672,36 @@ is served. `card` and `where --json --rows` show the tier it is on.
   landed is held to the count it was accepted on, never judged again; `default`
   goes back to each card's tier. `where` says `reads: <n>` while a count is set,
   and `where --json` carries `reads_needed`, the count or "default".
+- The read mix (`nova-sprint set --read-mix friends=<n>,fleet=<m>|default|off`, the work
+  table's property `read_mix`; the owner, 2026-10-20: "I would like to see 4 reads... 2
+  friends, 2 fleet. Any 2 friends. Any 2 fleet models (different)", then "increase reads
+  to 5"). Its working default, which a clear writes and `default` sets, is
+  `friends=2,fleet=3`; `off` takes it off, and a first epoch never cleared has none. While
+  it is on, with read cards on, every card in review needs n+m ok reads at its head (at
+  most 5; the mix's total stands for `--reads`), bounded by the readers the sprint has for
+  the card, up or not (friend seats whose roles name reader and whose tiers reach the read
+  tier, members with a reader row that serves it; never its worker, nor a reader spent at
+  the attempt unless its read stands) and never below its tier's rule, so a sprint of two
+  readers is not held for five and a reader going down or coming back never moves the
+  count. The read-card deal deals them at once: first to n distinct friends up whose roles
+  name reader, then to m distinct fleet members with a reader row (a reader of the class at
+  its room is dealt the read queued on its row rather than the read going to the other
+  class), each fleet read drawing a route of its read tier whose model (the model id's last
+  part, its provider aside) no fleet read of the attempt used, standing or ended with no
+  verdict (handed back, or late), while another such route serves. Short of a class's
+  readers up, or of a distinct model, the deal fills from any reader up who may read it,
+  never waiting for the class, and one judgment on the primary says so (reads dealt short
+  of the read mix; decisions reader add, ack, wait). A card is accepted only when as many
+  reads as it needs are ok at its head; a broken read holds it as before. A read that ends
+  with no verdict spends its reader as before (a provider failure below its cap aside), and
+  the next deal counts the classes again, so the read goes to its class first, a fleet read
+  on another model. The model is `tla/ReadMix.tla`.
+- With read cards on, `ask <card> --another` deals one more read card of the card by the
+  read-card deal's rule (the mix's classes first while it is on), never a readers-table
+  read, which the tick's take-back retired at once as "read cards". When the deal can deal
+  none of the cards named (their readers are only on the readers table), the ask is the
+  readers table's, as before; a card of several named that it can deal none is refused,
+  naming why.
 - A reader row carries the tiers it reads (`readers.tiers`, text, no fold;
   an empty cell is the default: every tier a route serves, for a fleet reader
   and for a friend's or a bud's reader alike; a store with no route has every

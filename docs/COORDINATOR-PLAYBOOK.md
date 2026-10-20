@@ -142,11 +142,14 @@ friend with friend give, and the deal fills the rest (`nova-sprint help`).
 
 **The verbs, in order.**
 
-1. Set how reads are asked. usage: `nova-sprint set [--rework-priority <fix|high|keep>] [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--alarm-review <n|off>] [--alarm-merging <n|off>] [--alarm-fleet <percent|off>] [--alarm-ready <on|off>] [--attempts <n|default>] [--friend-idle <duration|default>] [--landing-stall-bound <duration|default>] [--friend-finish <duration|default>] [--fleet-tiers <tiers|all>] [--friends-tiers <tiers|all>] [--reads <0|1|2|default>] [--read-routes <route,...|default>]`.
+1. Set how reads are asked. usage: `nova-sprint set [--rework-priority <fix|high|keep>] [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--alarm-review <n|off>] [--alarm-merging <n|off>] [--alarm-fleet <percent|off>] [--alarm-ready <on|off>] [--attempts <n|default>] [--friend-idle <duration|default>] [--landing-stall-bound <duration|default>] [--friend-finish <duration|default>] [--fleet-tiers <tiers|all>] [--friends-tiers <tiers|all>] [--reads <0|1|2|3|4|5|default>] [--read-mix <friends=n,fleet=m|default|off>] [--read-routes <route,...|default>]`.
    `nova-sprint set --read-cards on` (the default) makes the tick ask every read a card in review
    needs at once, as read cards on the fleet table, dealt to friends and to members with a reader
-   row. `nova-sprint set --reads <0|1|2|default>` sets how many ok reads at its head each card
-   needs. Spec: SPEC-SPRINT.md section 6, "A read is a consumer card"; section 11, the `set` row.
+   row. `nova-sprint set --reads <0|1|2|3|4|5|default>` sets how many ok reads at its head each card
+   needs. `nova-sprint set --read-mix friends=2,fleet=3` (the working default a clear writes; `off`
+   takes it off) deals them by class: two friends and three fleet members on distinct models,
+   filled from the readers up when a class is short. `ask
+   <card> --another` deals one more read card. Spec: SPEC-SPRINT.md section 6, "A read is a consumer card"; section 11, the `set` row.
 2. Name the readers. usage: `nova-sprint reader add <reader>... [--tiers <flash[,pro,heavy,frontier]|all|default>]`
    and usage `nova-sprint reader set <reader>... --tiers <flash[,pro,heavy,frontier]|all|default>`.
    The judgments "review has no reader" and "no frontier reader has room" are answered by
