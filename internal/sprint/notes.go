@@ -61,6 +61,11 @@ const (
 	// gate the base passes): the card was reworked at the tip and its stream landed on
 	// (landRefused, redo.go). Addressed to the coordinator; nothing to answer.
 	NLandRefused = "the landing refused a card's head: reworked at the tip"
+	// NLandedOutOfOrder is the happened note of a pushed batch recorded after a need or
+	// a LAND-AFTER target: a push is a fact, and the record follows it, naming each
+	// card and each need or target it landed before (tla/WaitFor.tla Report,
+	// PushedIsRecorded; docs/SPEC-SPRINT.md section 7).
+	NLandedOutOfOrder = "landed out of order"
 	// The coordinator held a fleet member, a reader, a friend or a stream, or released
 	// its hold (hold, unhold: hold.go), the reason in the note.
 	NHeld   = "held by the coordinator"

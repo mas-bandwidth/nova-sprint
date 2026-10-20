@@ -4504,7 +4504,13 @@ and passes the answer as a fact; the step then refuses every card, naming it and
 writes nothing, unless each is queued in the stream and merging in work, at exactly the head
 given, with that head an ancestor of the base tip. A card returned, queued again or re-cut
 between the push and the record fails the head check, and the cards that were not pushed
-are never recorded in its place. It lands exactly the named cards. The position form
+are never recorded in its place. It lands exactly the named cards. A push is a fact, and the
+record follows it: a card whose hard need (`DEPENDS-ON`) or `LAND-AFTER` target has not
+landed is not refused by the record of a push. It is recorded landed, and one happened note
+`landed out of order` names each such card and each need or target it landed before
+(tla/WaitFor.tla Report, PushedIsRecorded). Every dependency is judged before the push
+instead: MarkLanding refuses a pin whose need or `LAND-AFTER` target is not landed, leaving
+it out of the batch before anything is merged or pushed. The position form
 (`--batch n`) is the lander's selection of a batch and the selection a fact (`--red`,
 `--rejected`) is about; land's own report names its cards by id, head and attempt
 (tla/Land.tla, idguard), and `merge --landed` is the same record for a caller without
@@ -5450,7 +5456,10 @@ fetching the base, the commit must be an ancestor of `origin/<base>` at its tip,
 card's head an ancestor of the commit. Otherwise the verb is refused (exit 1), naming for
 each card what git found, and nothing is written. The step (`sprint.RecordLanded`) lands the
 cards as `merge --landed` does (section 8), all or none, merging cards of one stream only.
-Each merge card's note reads `recorded landed at <commit>: <reason>`. A card in review is
+Each merge card's note reads `recorded landed at <commit>: <reason>`. A push is a fact, the
+record follows it: `landed` never refuses for a need or a `LAND-AFTER` target, and one
+happened note `landed out of order` names each card and each need or target it landed before
+(tla/WaitFor.tla Report, PushedIsRecorded). A card in review is
 refused naming accept, because the lifecycle (section 3) has no move review -> landed. A
 dropped card is refused and stays dropped, because the lifecycle has no move from off the
 table. Recording those two waits on moves section 3 does not have (tests
