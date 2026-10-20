@@ -582,11 +582,30 @@ func (st *Store) PublishFriendStatus(ctx context.Context, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	b, err := json.Marshal(derived)
+	b, err := friendStatusWire(st, derived)
 	if err != nil {
 		return err
 	}
 	return kv.SetKey(ctx, keyFriendStatus, string(b))
+}
+
+// friendStatusWire is the friend status record as PublishFriendStatus writes it, the whole
+// roster in the table form (S1, S2, S4): a JSON object keyed by friend name, each name's
+// value the padded standard base64 of that friend's FriendStatus table wire (the variable
+// form, friendrows.schema emits no fixed form). Each value is written through the row codec,
+// so a value the table cannot hold is refused by name (FRIENDSTATUS REFUSED) before a byte
+// is written; the legacy form is never written as a fallback.
+func friendStatusWire(st *Store, derived map[string]friendStatus) ([]byte, error) {
+	c := st.presenceRows().status
+	out := make(map[string]string, len(derived))
+	for name, fs := range derived {
+		b, err := c.Write(&fs, schemaread.FormBase64)
+		if err != nil {
+			return nil, err
+		}
+		out[name] = string(b)
+	}
+	return json.Marshal(out)
 }
 
 // storedFriendStatus is the record the server wrote, by name; empty when it has written none.
