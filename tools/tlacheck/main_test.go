@@ -27,6 +27,10 @@ func checkout(t *testing.T) string {
 }
 
 // cli runs one command in process and returns its status, stdout and stderr.
+// The run verb records only the runner's platforms (linux); the tests name one,
+// so they pass the same on a Mac as on a bench.
+func init() { hostOS, hostArch = "linux", "amd64" }
+
 func cli(args ...string) (int, string, string) {
 	var out, errb bytes.Buffer
 	code := run(args, &out, &errb)

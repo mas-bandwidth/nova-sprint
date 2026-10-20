@@ -57,6 +57,10 @@ func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
 // run is the whole command: it is a function so tests drive every verb without
 // a process.
+// hostOS and hostArch are the platform a run records: this machine's, unless a
+// test names one (a unit test never reads the host).
+var hostOS, hostArch = runtime.GOOS, runtime.GOARCH
+
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprint(stderr, usage)
@@ -227,7 +231,7 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "run", err)
 	}
-	platform, err := tlc.Platform(runtime.GOOS, runtime.GOARCH)
+	platform, err := tlc.Platform(hostOS, hostArch)
 	if err != nil {
 		return refuse(stderr, "run", err)
 	}
