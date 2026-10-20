@@ -18,10 +18,11 @@
 \* start bound T goes back and is dealt to another eligible member; the member
 \* it left is suspect (dealt nothing until its next take or beat proves it
 \* takes) and never gets the card again in this window (left). This is
-\* StartDeadline. The fallback when no other member can take it re-deals it where
-\* it is, so a bound never hides a card: the card stays named "width" or
-\* "route" in `where`, or its member is deaf and the card is left to the
-\* next member that comes up.
+\* StartDeadline. The card is never re-dealt to the member it left, in this
+\* window: that member is suspect and left when the card moves to another. When
+\* no other eligible member can take it, the card goes back ready at once and
+\* its old member is suspect; NameCause then names the blocking cause ("width",
+\* "gate" or "route") in `where`, so the bound hides no card.
 \*
 \* RouteProgress. A run in flight with no progress (no token, no heartbeat)
 \* for T is ended as a provider fault of its route: the card goes back ready
@@ -46,14 +47,17 @@
 \* run as the cases MCFleetNeverSits.cfg and MCFleetNeverSitsBroken*.cfg
 \* (tla/CASES.tsv, group fleetneversits).
 \*
-\* The instance is one card, two members of width two, two routes of one tier
-\* and two readers. The one card keeps the proof small and each rule reachable. A
-\* read is held by one reader here (the code asks a read on two and the hazard is
-\* one holder that never takes); a run's route is chosen
-\* at its take from the tier's serving routes, which stands for the tier's
-\* ordered next route, and a completion resets its route's count. Route rests
-\* do not end in this bounded model, so a card with every route rested is named
-\* "route" and its work liveness is discharged by the route's absence.
+\* The instances are small: the control is one card, two members of width one,
+\* two routes of one tier and two readers at T = 1, N = 1, D = 1 and the clock's
+\* bound 2. The noprogressdeadline witness adds a second card on one member and
+\* one route: that card is still read-less when a reader is set away, so a
+\* later Deal must not hand its read to that away reader (NoAwayReaderHolds). A
+\* read is held by one reader here (the code asks a read on two and the hazard
+\* is one holder that never takes); a run's route is chosen at its take from
+\* the tier's serving routes, which stands for the tier's ordered next route,
+\* and a completion resets its route's count. Route rests do not end in this
+\* bounded model, so a card with every route rested is named "route" and its
+\* work liveness is discharged by the route's absence.
 EXTENDS Naturals, FiniteSets
 
 CONSTANTS Cards, Members, Readers, Routes,
@@ -179,7 +183,8 @@ Deal(c, m) ==
         /\ up[m] /\ m \notin suspect /\ GateOpen(c, m)
         /\ (now <= MaxTime - T \/ m \notin deaf)
         /\ Room(m) /\ AnyRoute
-        /\ (readState[c] # "none" \/ (rUp[r] /\ (now <= MaxTime - T \/ ~rDeaf[r])))
+        /\ (readState[c] # "none"
+            \/ (rUp[r] /\ ~rAway[r] /\ (now <= MaxTime - T \/ ~rDeaf[r])))
         /\ wcState' = [wcState EXCEPT ![c] = "dealt"]
         /\ wcMember' = [wcMember EXCEPT ![c] = m]
         /\ dealt' = [dealt EXCEPT ![m][c] = now]
@@ -281,32 +286,45 @@ ProgressDeadline(c) ==
                        rUp, rAway, rDeaf, left>>
 
 \* DealtStartsOrRedeals: a card dealt and not taken within T goes to another
-\* eligible member; the old one is suspect and left. When no other member can
-\* take it, it is re-dealt where it is (named) so the bound hides nothing.
-\* "redealsame" is the reversed witness that may pick the same member even when
-\* another can take it.
+\* eligible member; the old one is suspect and left, and never gets the card
+\* again in this window. When no other eligible member can take it, the card
+\* goes back ready and the old one is suspect and left; NameCause names why it
+\* waits. "redealsame" is the reversed witness that may pick the same member
+\* even when another can take it.
 StartDeadline(c) ==
     LET old == wcMember[c] IN
-        \E m2 \in Members :
+        \/ \E m2 \in Members :
             /\ "dealtnodeadline" \notin Broken
             /\ wcState[c] = "dealt"
             /\ now - dealt[old][c] >= T
             /\ up[m2] /\ GateOpen(c, m2) /\ FreeWidth(m2)
             /\ ( (m2 # old
                   /\ m2 \notin suspect /\ m2 \notin deaf /\ m2 \notin left[c])
-                 \/ (m2 = old
-                     /\ ("redealsame" \in Broken \/ NoOtherMember(c, old))) )
+                 \/ (m2 = old /\ "redealsame" \in Broken) )
             /\ wcMember' = [wcMember EXCEPT ![c] = m2]
             /\ dealt' = [dealt EXCEPT ![old][c] = 0, ![m2][c] = now]
-            /\ suspect' = IF m2 = old THEN suspect ELSE suspect \cup {old}
-            /\ left' = IF m2 = old THEN left
-                        ELSE [left EXCEPT ![c] = left[c] \cup {old}]
+            /\ suspect' = suspect \cup {old}
+            /\ left' = [left EXCEPT ![c] = left[c] \cup {old}]
             /\ cause' = [cause EXCEPT ![c] = ""]
             /\ event' = "startdeadline"
             /\ UNCHANGED <<now, up, width, running, deaf, wcState, wcRoute,
                            lastProgress, stalled, nonCompletions, rested,
                            readState, readReader, readDealtAt, lastTake, rUp,
                            rAway, rDeaf>>
+        \/ /\ "dealtnodeadline" \notin Broken
+           /\ wcState[c] = "dealt"
+           /\ now - dealt[old][c] >= T
+           /\ NoOtherMember(c, old)
+           /\ wcState' = [wcState EXCEPT ![c] = "ready"]
+           /\ dealt' = [dealt EXCEPT ![old][c] = 0]
+           /\ suspect' = suspect \cup {old}
+           /\ left' = [left EXCEPT ![c] = left[c] \cup {old}]
+           /\ cause' = [cause EXCEPT ![c] = ""]
+           /\ event' = "startdeadline"
+           /\ UNCHANGED <<now, up, width, running, deaf, wcMember, wcRoute,
+                          lastProgress, stalled, nonCompletions, rested,
+                          readState, readReader, readDealtAt, lastTake, rUp,
+                          rAway, rDeaf>>
 
 \* ReaderLiveness: a reader holding dealt reads and taking none for T is set
 \* away; all its reads are redealt to an up, live reader.
@@ -328,8 +346,11 @@ ReaderDeadline(c) ==
                            stalled, nonCompletions, rested, readState,
                            lastTake, rUp, rDeaf, left>>
 
-\* NoIdleWithWork: the server names the blocking cause per card in `where`
+\* NoIdleWithWork: the server names the blocking cause per card in `where`.
+\* "silentidle" is the reversed witness that never names it (and its tick does
+\* not wait for a name, so the clock passes D).
 NameCause(c) ==
+    /\ "silentidle" \notin Broken
     /\ wcState[c] = "ready"
     /\ FreeExists
     /\ cause[c] # CauseOf(c)

@@ -2737,8 +2737,10 @@ members that could run it are at width) — or none and the card is dealt.
 **DealtStartsOrRedeals**: a card dealt to a member and not taken within T goes
 back and is dealt to another eligible member, and the member it left is suspect
 (dealt nothing until its next take or its next beat proves it takes) and never
-gets that card again in this window; js-retain r2, dealt to hetzner1 at 23:34
-and not started fifteen minutes later while the member was idle, is the case.
+gets that card again in this window; when no other eligible member can take it,
+the card waits ready with its cause named (width, gate or route). js-retain r2,
+dealt to hetzner1 at 23:34 and not started fifteen minutes later while the
+member was idle, is the case.
 **RouteProgress**: a route whose in-flight run makes no progress (no tokens, no
 heartbeat) within T has that run failed as a provider fault of the route, its
 card retried at once on the next serving route of the tier with no attempt
@@ -2746,9 +2748,9 @@ counted, and N consecutive non-completions rest the route automatically;
 ultramarine, 132 attempts with ok=0 and failed=0 that held all four of its
 concurrent slots while reads dealt to it waited, is the case.
 **ReaderLiveness**: a reader that takes no read for T while holding dealt reads
-is set away automatically and its reads redealt to up live readers; hulk, still
-a reader while forbidden for work, whose reads sat `fleet:hulk:ready` forever,
-is the case. The model's invariants are `NoRunWithoutProgressPastT`,
+is set away automatically and its reads redealt to up live readers, and a new
+read is never dealt to a reader that is away; hulk, still a reader while
+forbidden for work, whose reads sat `fleet:hulk:ready` forever, is the case. The model's invariants are `NoRunWithoutProgressPastT`,
 `NoDealtPastT`, `NoAwayReaderHolds` and `IdleHasCause`, its liveness
 `WorkStarts`, `RunProgress` and `ReadTaken`, and each rule has a reversed
 witness (`noprogressdeadline`, `dealtnodeadline`, `deadreader`, `silentidle`,
