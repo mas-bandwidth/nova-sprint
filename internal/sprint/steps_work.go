@@ -554,14 +554,21 @@ func Add(s *Snapshot, r AddReq) Plan {
 	// (gate_fix.go; docs/SPEC-SPRINT.md section 2; tla/WaitFor.tla, the
 	// gate-artifact edge and NoWaitCycle).
 	var gateCards []GateFixCard
+	added := map[string]bool{}
 	for _, a := range in {
 		if a.gate || a.sent {
 			continue
 		}
+		added[a.id] = true
 		gateCards = append(gateCards, GateFixCard{ID: a.id, Brief: a.brief, Needs: a.needs})
 	}
-	if found := GateFixCycleCheck(s, gateCards); len(found) > 0 {
-		return refuseAll(found[0].Why)
+	// Only a cycle the add closes is one it refuses: a pair already on the
+	// table (a gate and its fixes admitted before this rule) is not the add's,
+	// and refusing it would hold every later add fleet-wide.
+	for _, found := range GateFixCycleCheck(s, gateCards) {
+		if added[found.Gate] || added[found.Fix] {
+			return refuseAll(found.Why)
+		}
 	}
 	if len(pulled) > 0 {
 		p.inserting = true

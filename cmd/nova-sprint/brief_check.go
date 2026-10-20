@@ -343,11 +343,17 @@ func (a *app) briefStoreChecks(st *store.Store, items []briefItem, stream string
 		gateCards = append(gateCards, sprint.GateFixCard{ID: it.id, Brief: it.text, Needs: it.card.Needs})
 	}
 	for _, found := range sprint.GateFixCycleCheck(snap, gateCards) {
-		file := byID[found.Fix]
+		// Only a cycle one of the directory's own briefs is a side of is this
+		// check's: a pair already on the table is not in the directory, and
+		// filing it against the first file would name a brief it is not about.
+		id, file := found.Fix, byID[found.Fix]
 		if file == "" {
-			file = items[0].file
+			id, file = found.Gate, byID[found.Gate]
 		}
-		out = append(out, briefFinding{File: file, ID: found.Fix, Check: "gate-fix-cycle", Why: found.Why, order: chkPlan})
+		if file == "" {
+			continue
+		}
+		out = append(out, briefFinding{File: file, ID: id, Check: "gate-fix-cycle", Why: found.Why, order: chkPlan})
 	}
 	// a file whose id is a card on the table is read against the edges the
 	// store holds: the file's LAND-AFTER: line and the card's soft

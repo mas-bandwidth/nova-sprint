@@ -36,7 +36,7 @@ func TestGateFixCycleRefusedAtAdd(t *testing.T) {
 
 // The same loop closed on the table: F needs G and F's DONE-WHEN runs the gate's
 // command; editing G's DONE-WHEN to that command is refused.
-func TestGateFixCycleAtBriefEdit(t *testing.T) {
+func TestGateFixCycleRefusedAtBriefEdit(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t, "reader-a", "reader-b")
 	w.s.Now = time.Unix(1000, 0).UTC()
@@ -79,6 +79,34 @@ func TestGateFixCycleSeesTransitiveNeeds(t *testing.T) {
 	require.Contains(t, why, "g")
 	require.Contains(t, why, "f2")
 	require.Contains(t, why, "tables-x-fuzz-all")
+}
+
+// An add that closes no cycle is admitted even when the table already holds
+// one: a pair a gate and its fix made before this rule (the live fuzzer gate
+// and its fixes) is not this add's, and refusing it would hold every later add
+// fleet-wide.
+func TestGateFixUnrelatedAddNotRefused(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, "reader-a", "reader-b")
+	w.s.Now = time.Unix(1000, 0).UTC()
+	gate := "RESULT: g sha=0123456789ab tier: pro\nDONE-WHEN: `make tables-x-fuzz-all`\n\nTHE TASK. Gate.\n"
+	fix := "RESULT: f sha=0123456789ab tier: pro\nDEPENDS-ON: g\nDONE-WHEN: `make tables-x-docs`\n\nTHE TASK. Fix.\n"
+	w.must(Add(w.s, AddReq{Stream: "s", Cards: []CardAdd{
+		{ID: "g", Brief: gate},
+		{ID: "f", Brief: fix, Needs: []string{"g"}},
+	}, Who: "coordinator"}))
+	// the pair is already on the table, admitted before the rule: write the
+	// gate's command into the fix's brief off the verbs, as the old table holds it
+	c := w.s.Work.Card("f")
+	require.NotNil(t, c)
+	c.Fields["brief"] = "RESULT: f sha=0123456789ab tier: pro\nDEPENDS-ON: g\nDONE-WHEN: `make tables-x-fuzz-all`\n\nTHE TASK. Fix.\n"
+	c.Rev++
+	w.s.Work.Put(c)
+	unrelated := "RESULT: u sha=0123456789ab tier: pro\nDONE-WHEN: `make tables-x-build`\n\nTHE TASK. Unrelated.\n"
+	p := Add(w.s, AddReq{Stream: "s", Cards: []CardAdd{{ID: "u", Brief: unrelated}}, Who: "coordinator"})
+	require.Empty(t, p.Refused, "an unrelated add is not the table's cycle: %v", p.Refused)
+	w.do(p)
+	require.NotNil(t, w.s.Work.Placed("u"), "the unrelated card is admitted")
 }
 
 // A dependent that runs another target is no gate-fix cycle: F waits for G and
