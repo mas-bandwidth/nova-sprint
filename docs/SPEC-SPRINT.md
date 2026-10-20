@@ -5451,7 +5451,10 @@ member is up; ci green on a primary; an operation was abandoned; a sentinel
 landed, released by the coordinator; the system started or stopped; a stream
 resumed because the card it needed landed; a route rested because its children
 ended with no result (section 5); the fleet is idle, and working again (section 14, the
-fleet is idle, addressed to the coordinator).
+fleet is idle, addressed to the coordinator). A finish whose report carries a
+`BLOCKED-BY: <id>[,<id>...]` line of open cards writes one happened note naming
+the card, the needs written and the line, and the card waits for them
+(docs/SPEC-CARD-CONTRACT.md, the BLOCKED-BY line; `internal/sprint/blocked_by.go`).
 
 **judgment**: needs the coordinator. Each names the decisions open to it.
 
@@ -5480,6 +5483,7 @@ the tick would make, no other open judgment on it).
 | a primary came back a second time for the same cause | card (stop and look) | no |
 | a primary is blocked on something dropped | drop, ack (waives the dropped need), or `relink <old> <new>` answers it when the dropped card has a twin (section 2, a card replaced by its twin); the verbs refuse to open one (add refuses a need naming a dropped card, drop refuses a needed card without `--cascade`), so it answers a stored record only | yes |
 | a primary is blocked on something missing | drop, ack (waives the named missing need) | yes |
+| a blocked card's blocker needs it (the BLOCKED-BY line names a card that needs the blocked card, or whose need would close a cycle; blocked_by.go, tla/WaitFor.tla FinishHoldGateFix and Split) | split the gate fix (`twin <blocker> --needs <card> --instruction '<the shared DONE-WHEN command> green'`), rework with a fix, drop | no |
 | a need is blocked: its dependents cannot move | rework on a higher tier, drop (or the blocker's holding decisions) | no |
 | reads exhausted | ask --another, rework, drop | no |
 | ready to accept (a primary the pump holds: its CI red at its head, its CI judgment acknowledged; one nothing holds the tick accepts, section 6) | accept, rework, drop | no |
