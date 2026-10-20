@@ -2725,6 +2725,36 @@ order the cards were dealt in, so a card brought to the front of its stream by
 
 ## 5. The fleet
 
+The fleet never sits (the owner, 2026-10-19, watching the live fleet: "The
+fleet getting stuck like this, you'll need to come up with a way to stop this
+from happening again in v1.9"). Four rules, written before the code and held by
+`tla/FleetNeverSits.tla` (the cases `MCFleetNeverSits*.cfg`, group
+`fleetneversits`; the model every v19-fleet card cites). **NoIdleWithWork**: when
+ready or dealt work exists that some up member can run, within D the busy count
+rises or the server names the blocking cause per card in `where` — route (no
+serving route of its tier), gate (no member's tags meet the card's), width (the
+members that could run it are at width) — or none and the card is dealt.
+**DealtStartsOrRedeals**: a card dealt to a member and not taken within T goes
+back and is dealt to another eligible member, and the member it left is suspect
+(dealt nothing until its next take or its next beat proves it takes) and never
+gets that card again in this window; js-retain r2, dealt to hetzner1 at 23:34
+and not started fifteen minutes later while the member was idle, is the case.
+**RouteProgress**: a route whose in-flight run makes no progress (no tokens, no
+heartbeat) within T has that run failed as a provider fault of the route, its
+card retried at once on the next serving route of the tier with no attempt
+counted, and N consecutive non-completions rest the route automatically;
+ultramarine, 132 attempts with ok=0 and failed=0 that held all four of its
+concurrent slots while reads dealt to it waited, is the case.
+**ReaderLiveness**: a reader that takes no read for T while holding dealt reads
+is set away automatically and its reads redealt to up live readers; hulk, still
+a reader while forbidden for work, whose reads sat `fleet:hulk:ready` forever,
+is the case. The model's invariants are `NoRunWithoutProgressPastT`,
+`NoDealtPastT`, `NoAwayReaderHolds` and `IdleHasCause`, its liveness
+`WorkStarts`, `RunProgress` and `ReadTaken`, and each rule has a reversed
+witness (`noprogressdeadline`, `dealtnodeadline`, `deadreader`, `silentidle`,
+`redealsame`). The three v19-fleet code cards owe the actions in the code
+(tla/COVERAGE.tsv, fleet-never-sits).
+
 - The deal's order is the priority ladder (section 1, "Priority"): a friend's cards above
   reader, then her reads, then normal and low work in the room the reads leave, against her one
   width; the machines' ready cards in the ladder's order, stream turns within a level, so a
