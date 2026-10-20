@@ -48,6 +48,27 @@ that names their gates; it raises no judgment, because no need is unmet
 (`tla/GatesOnly.tla`: GenericNeverToGatesOnly, ReadsNeverToGatesOnly, and the
 reversed witnesses nofilter, nogates and readsto).
 
+In v1.9 a card names its required **tags** on one `TAGS:` line (`GATE-NEEDS:` is
+read as its compatibility alias), and a machine's tags have exactly two live
+sources: the tags its nova-config machine row declares and the tags its member
+proves on its heartbeat by running the registry's probes. The sprint server keeps
+no copy of either: eligibility is read from the row and the live beat at the
+moment of the deal. A probed tag wins over a declared one; a declared probed tag
+whose probe fails is a coordinator judgment, never a silent loss. A tag is a row
+in nova-config's tag registry (a name, a description, a source declared or
+probed, and for a probed tag its probe); `RegistryAdd` is a new config row, so a
+new tag never needs a new nova-sprint build. A machine's exclusive tags (today's
+`gates_only`) take it out of every card naming none of them. One eligibility rule
+serves every path that puts an attempt or a read on a machine: the first deal, the
+route's pool, the next attempt, the conflict redo, the redeal of a member gone
+down or held, the level, the rebalance, a friend's deal, the member's take and a
+read. A card no up machine can take is one judgment with a deadline that closes
+by itself when a machine gains the tag; the deadline never raises a second
+judgment and never leaves a silent wait. `tla/Tags.tla` is the model
+(`tla/MCTags.cfg`; NeverPlacedWithoutTags, ExclusiveHolds, NoSilentWait,
+ProbedWins, OneJudgmentPerUnmetCard and EventuallyDealt, with a reversed witness
+for each broken rule), and every v19-tags card cites it.
+
 ## 1. The tables
 
 ```
