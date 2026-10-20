@@ -22,11 +22,19 @@ import (
 // nothing. A waived need counts as landed.
 
 // needGraph is the graph over a snapshot and the cards an add would place.
+//
+// The graph is the union of a card's named needs (waived ones out), its
+// LAND-AFTER edges and its place in line, over open cards only: a landed card,
+// a dropped card, a card off the table and a name with no card are no node and
+// need nothing. tla/WaitFor.tla WaitEdges and NoWaitCycle; docs/SPEC-SPRINT.md
+// section 4 (Order).
 type needGraph struct {
 	s *Snapshot
 	// named replaces the stored needs of a card (the add's cards and the
 	// cards in line whose needs it changes).
 	named map[string][]string
+	// soft replaces the stored LAND-AFTER of a card (the edits that rewrite it).
+	soft map[string][]string
 	// adds is the add's cards, not yet on the table, by id; addsOf by stream.
 	adds   map[string]*Card
 	addsOf map[string][]*Card
@@ -34,6 +42,10 @@ type needGraph struct {
 	// behind a sentinel inserted in front of them).
 	waits map[string]bool
 	lines map[string]*gateLine
+	// keepLanded is the tests' seam of the reversed witness "landedpoisons"
+	// (tla/WaitFor.tla WouldCycleLandedPoisons): a landed card's edges are
+	// walked when true, as the code did before this rule. No verb sets it.
+	keepLanded bool
 	// steps counts every edge the walks look at: the bound is linear.
 	steps int
 }
@@ -47,7 +59,16 @@ type gateLine struct {
 }
 
 func newNeedGraph(s *Snapshot, named map[string][]string, adds []*Card, waits map[string]bool) *needGraph {
-	g := &needGraph{s: s, named: named, adds: map[string]*Card{}, addsOf: map[string][]*Card{}, waits: waits, lines: map[string]*gateLine{}}
+	return newNeedGraphSoft(s, named, nil, adds, waits)
+}
+
+// newNeedGraphSoft is newNeedGraph with the LAND-AFTER edges an edit writes
+// (soft, by card id) over the stored ones.
+func newNeedGraphSoft(s *Snapshot, named, soft map[string][]string, adds []*Card, waits map[string]bool) *needGraph {
+	if soft == nil {
+		soft = map[string][]string{}
+	}
+	g := &needGraph{s: s, named: named, soft: soft, adds: map[string]*Card{}, addsOf: map[string][]*Card{}, waits: waits, lines: map[string]*gateLine{}}
 	for _, c := range adds {
 		g.adds[c.ID] = c
 		g.addsOf[c.Row] = append(g.addsOf[c.Row], c)
@@ -92,24 +113,51 @@ func (g *needGraph) line(stream string) *gateLine {
 	return l
 }
 
-// needs is what a card waits for: the needs it names, and its place in line
-// (a sentinel: its rank interval; a card behind a sentinel: that sentinel).
-func (g *needGraph) needs(id string) (named, place []string) {
+// open says the card is a node of the graph: placed and open, or a landed one
+// only under the tests' reversed-witness seam.
+func (g *needGraph) open(c *Card) bool {
+	return c != nil && c.Placed() && (IsOpen(c.Col) || g.keepLanded)
+}
+
+// hardNeeds is the named needs of a card (waived ones out), or the needs an
+// edit proposes for it.
+func (g *needGraph) hardNeeds(id string) []string {
 	c := g.card(id)
 	if n, ok := g.named[id]; ok {
-		named = n
-	} else if c != nil && c.Placed() && IsOpen(c.Col) {
-		// every open card's named needs, whatever its state: a dealt card that gained
-		// a need not landed keeps its edge while it works, and the tick moves it back
-		// to waiting (needsWithdrawals), so a loop through it is a cycle for every
-		// writer (needs set, a brief, sentinel set, a twin's relink, add)
-		waived := Split(c.F("waived"))
-		for _, n := range Split(c.F("needs")) {
-			if !contains(waived, n) {
-				named = append(named, n)
-			}
+		return n
+	}
+	if !g.open(c) {
+		return nil
+	}
+	waived := Split(c.F("waived"))
+	var named []string
+	for _, n := range Split(c.F("needs")) {
+		if !contains(waived, n) {
+			named = append(named, n)
 		}
 	}
+	return named
+}
+
+// softNeeds is the LAND-AFTER edges of a card, or the ones an edit proposes for
+// it; only an open card needs anything (a landed card's order is history).
+func (g *needGraph) softNeeds(id string) []string {
+	if s, ok := g.soft[id]; ok {
+		return s
+	}
+	c := g.card(id)
+	if !g.open(c) {
+		return nil
+	}
+	return SoftDepsOf(g.s, c)
+}
+
+// needs is what a card waits for: the needs it names, its LAND-AFTER edges and
+// its place in line (a sentinel: its rank interval; a card behind a sentinel:
+// that sentinel).
+func (g *needGraph) needs(id string) (named, place []string) {
+	c := g.card(id)
+	named = append(g.hardNeeds(id), g.softNeeds(id)...)
 	if !g.waiting(c) {
 		return named, nil
 	}
@@ -288,18 +336,20 @@ func (g *needGraph) sentinelsIn(loop []string) []string {
 }
 
 // tellLoop is a loop as the refusal and check print it: each edge is
-// marked -needs-> when the card names the next as a need, or -line->
-// when the edge is its place in line (behind a sentinel, or a sentinel
-// waiting on the cards before it), so the seat sees which edge is the
-// line's.
+// marked -needs-> when the card names the next as a need, -land-after-> when
+// it names it as a LAND-AFTER, or -line-> when the edge is its place in line
+// (behind a sentinel, or a sentinel waiting on the cards before it), so the
+// seat sees which edge is which.
 func (g *needGraph) tellLoop(loop []string) string {
 	var b strings.Builder
 	b.WriteString(loop[0])
 	for i := 0; i+1 < len(loop); i++ {
-		named, _ := g.needs(loop[i])
-		if contains(named, loop[i+1]) {
+		switch {
+		case contains(g.hardNeeds(loop[i]), loop[i+1]):
 			b.WriteString(" -needs-> ")
-		} else {
+		case contains(g.softNeeds(loop[i]), loop[i+1]):
+			b.WriteString(" -land-after-> ")
+		default:
 			b.WriteString(" -line-> ")
 		}
 		b.WriteString(loop[i+1])
@@ -324,17 +374,23 @@ func (g *needGraph) closes(ids []string) []string {
 	return nil
 }
 
-// Cycles is every cycle of needs on the table (a store written before add
-// walked the sentinels' needs may hold one), each as its loop from its first
-// card and the count of cards that can never be reached: the cards of the
-// cycle and every waiting card that needs one of them, through any chain.
+// Cycles is every cycle on the table (a store written before this rule may
+// hold one), each as its loop from its first card and the count of cards that
+// can never be reached: the cards of the cycle and every card that needs one
+// of them, through any chain. It walks the same union graph as the refuser --
+// needs, LAND-AFTER and sentinel lines over open cards -- so a loop written
+// before the rule is one judgment naming it, never a refusal of an edit that
+// does not pass through it. tla/WaitFor.tla NoWaitCycle and
+// EditRefusedOnlyForItsOwnCycle; docs/SPEC-SPRINT.md section 4 (Order).
 func Cycles(s *Snapshot) []CycleFound {
 	if s.Work == nil {
 		return nil
 	}
 	var roots []string
-	for _, c := range s.Work.Column(Waiting) {
-		roots = append(roots, c.ID)
+	for _, c := range s.Work.Cards() {
+		if c.Placed() && IsOpen(c.Col) {
+			roots = append(roots, c.ID)
+		}
 	}
 	sort.Strings(roots)
 	g := newNeedGraph(s, nil, nil, nil)

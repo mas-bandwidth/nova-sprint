@@ -358,58 +358,28 @@ func validateSoftDeps(s *Snapshot, id, repo, base string, hardNeeds, wants []str
 	return ""
 }
 
-// softCycleWith checks whether start participates in a cycle in the combined
-// (needs union soft_deps) graph when softOverrides and adding are applied.
+// softCycleWith is the loop through start in the union graph -- needs,
+// LAND-AFTER and sentinel lines over open cards -- when softOverrides and
+// adding are applied, or nil when start is on none. It is the same graph and
+// the same judgment as needsCycleWith (cycle.go, newNeedGraph and closes): an
+// edit is refused only for a cycle that passes through the card it adds or
+// rewrites, so a landed pair's old loop and an open loop elsewhere refuse
+// nothing here. tla/WaitFor.tla NoWaitCycle, EditRefusedOnlyForItsOwnCycle;
+// docs/SPEC-SPRINT.md section 4 (Order).
 func softCycleWith(s *Snapshot, start string, softOverrides map[string][]string, adding map[string]addingCardMeta) []string {
-	edgesOf := func(id string) []string {
-		var hard, soft []string
-		if meta, ok := adding[id]; ok {
-			hard = meta.needs
-			soft = meta.softDeps
-		} else if s != nil && s.Work != nil {
-			if c := s.Work.Placed(id); c != nil && !IsSentinel(c) {
-				hard = Split(c.F("needs"))
-				soft = SoftDepsOf(s, c)
-			}
-		}
-		if ov, ok := softOverrides[id]; ok {
-			soft = ov
-		}
-		out := make([]string, 0, len(hard)+len(soft))
-		seen := map[string]bool{}
-		for _, d := range append(slices.Clone(hard), soft...) {
-			if d != "" && !seen[d] {
-				seen[d] = true
-				out = append(out, d)
-			}
-		}
-		return out
+	named := map[string][]string{}
+	soft := map[string][]string{}
+	var adds []*Card
+	for id, meta := range adding {
+		named[id] = meta.needs
+		soft[id] = meta.softDeps
+		adds = append(adds, &Card{ID: id, Col: Waiting, Fields: map[string]string{"kind": "primary"}})
 	}
-	var path []string
-	state := map[string]int{} // 0 unvisited, 1 visiting, 2 visited
-	var dfs func(u string) []string
-	dfs = func(u string) []string {
-		state[u] = 1
-		path = append(path, u)
-		for _, v := range edgesOf(u) {
-			if state[v] == 1 {
-				idx := slices.Index(path, v)
-				if idx >= 0 {
-					return append(slices.Clone(path[idx:]), v)
-				}
-				return []string{u, v, u}
-			}
-			if state[v] == 0 {
-				if cyc := dfs(v); len(cyc) > 0 {
-					return cyc
-				}
-			}
-		}
-		path = path[:len(path)-1]
-		state[u] = 2
-		return nil
+	for id, ov := range softOverrides {
+		soft[id] = ov
 	}
-	return dfs(start)
+	g := newNeedGraphSoft(s, named, soft, adds, nil)
+	return g.closes([]string{start})
 }
 
 // WithAddSoftDeps validates LAND-AFTER: headers on cards being admitted by rs

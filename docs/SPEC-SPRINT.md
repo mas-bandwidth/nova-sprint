@@ -2758,6 +2758,19 @@ work order within a stream (`friendDealtOrder`, `FriendLaneOrder`) — never the
 order the cards were dealt in, so a card brought to the front of its stream by
 `rank --first` is the lane's next card.
 
+The wait-for graph is one graph with one refuser (`tla/WaitFor.tla`,
+`NoWaitCycle` and `EditRefusedOnlyForItsOwnCycle`). Its nodes are open cards
+only: a landed card, a dropped card, a card off the table and a name with no
+card are no node and need nothing. A card's edges are the needs it names
+(waived ones out), its LAND-AFTER edges and its place in line (a card behind a
+sentinel needs the sentinel; a sentinel needs every card of its stream before
+it). An add or an edit — a brief's DEPENDS-ON or LAND-AFTER, `needs set`, a
+relink, a sentinel's needs — is refused only for a loop that passes through a
+card it adds or rewrites, judged with the whole batch applied, and the refusal
+names that loop. The tick's cycle judgment walks the same graph, so a loop
+written before this rule is one judgment naming it, never a refusal of an
+unrelated edit.
+
 ## 5. The fleet
 
 - The deal's order is the priority ladder (section 1, "Priority"): a friend's cards above
