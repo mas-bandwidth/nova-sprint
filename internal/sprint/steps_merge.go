@@ -115,6 +115,25 @@ func landedRefusals(s *Snapshot, stream string, pins []LandedPin) []Refusal {
 	return out
 }
 
+// outOfOrderLine is one line of NLandedOutOfOrder: the card, and each hard need
+// (WaitsFor) and LAND-AFTER target (LandOrderBlocked) it landed before, given the cards
+// already recorded in the same step (landing). "" when it waited for nothing. A push is a
+// fact, the record follows it (tla/WaitFor.tla Report, PushedIsRecorded;
+// docs/SPEC-SPRINT.md section 7).
+func outOfOrderLine(s *Snapshot, c *Card, landing map[string]bool) string {
+	var parts []string
+	if needs := WaitsFor(s, c, landing); len(needs) > 0 {
+		parts = append(parts, "need "+strings.Join(needs, ", "))
+	}
+	if soft := LandOrderBlocked(s, c, landing); len(soft) > 0 {
+		parts = append(parts, "LAND-AFTER target "+strings.Join(soft, ", "))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return c.ID + " landed before its " + strings.Join(parts, "; its ")
+}
+
 // The base-gate count on a stream's control card (docs/SPEC-SPRINT.md section 8,
 // land-base-gate-stops-stream): how many landings in a row were refused on the base's tree
 // gate, the base they were refused on, and when the first was. A pass that merges, any other
@@ -393,7 +412,12 @@ func span(ids []string) string {
 // (landRefused).
 func MergeStep(s *Snapshot, r MergeReq) Plan { return Lawful(mergeStep(s, r)) }
 
-func mergeStep(s *Snapshot, r MergeReq) Plan {
+func mergeStep(s *Snapshot, r MergeReq) Plan { return mergeStepSeam(s, r, false) }
+
+// mergeStepSeam is mergeStep with the report seam: reportChecks true runs the pre-push
+// dependency check on the report of a pushed batch again, the reversed witness of
+// tla/WaitFor.tla Report (Broken = "reportrefuses"). No production caller passes true.
+func mergeStepSeam(s *Snapshot, r MergeReq, reportChecks bool) Plan {
 	var p Plan
 	p.on(s)
 	// The note is written whole into the refused card's why (landRefused) and so into a
@@ -442,9 +466,20 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 		queued = before
 	}
 	beforePriority := len(queued)
-	// tla/SoftDependency.tla SoftLandsInOrder (LandAllowed)
+	pushedReport := len(r.Landed) > 0
+	// A push is a fact, the record follows it (tla/WaitFor.tla Report, PushedIsRecorded;
+	// docs/SPEC-SPRINT.md section 7): the report of a pushed batch is never filtered by,
+	// nor refused for, a need or a LAND-AFTER target that has not landed. The mark judged
+	// them before the push (MarkLanding), and the report records what git holds, naming an
+	// unmet dependency in one happened note (NLandedOutOfOrder). The seam restores the old
+	// post-push check for its reversed witness.
 	var softWhy string
-	queued, softWhy = MergeSoftOrder(s, MergePriorityOrder(s, queued))
+	if pushedReport && !reportChecks {
+		queued = MergePriorityOrder(s, queued)
+	} else {
+		// tla/SoftDependency.tla SoftLandsInOrder (LandAllowed)
+		queued, softWhy = MergeSoftOrder(s, MergePriorityOrder(s, queued))
+	}
 	now := stamp(s.Now)
 	if len(queued) == 0 {
 		why := "nothing queued in stream " + r.Stream + "; nothing was changed"
@@ -458,7 +493,6 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 		p.refuse(r.Stream, why)
 		return p
 	}
-	pushedReport := len(r.Landed) > 0
 	if pushedReport {
 		if why := landedRefusals(s, r.Stream, r.Landed); len(why) > 0 {
 			p.Refused = append(p.Refused, why...)
@@ -494,29 +528,37 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 			}
 		}
 		if len(batch) != len(r.Cards) {
-			for _, id := range r.Cards {
-				if blocked := LandOrderBlocked(s, s.Work.Card(id), nil); len(blocked) > 0 && !LandingMarked(s, id) {
-					p.refuse(id, fmt.Sprintf("%s: soft dependency on %s not landed; nothing was changed", id, strings.Join(blocked, ", ")))
-					return p
+			if !pushedReport || reportChecks {
+				for _, id := range r.Cards {
+					if blocked := LandOrderBlocked(s, s.Work.Card(id), nil); len(blocked) > 0 && !LandingMarked(s, id) {
+						p.refuse(id, fmt.Sprintf("%s: soft dependency on %s not landed; nothing was changed", id, strings.Join(blocked, ", ")))
+						return p
+					}
 				}
 			}
 			p.refuse(r.Stream, fmt.Sprintf("the batch names %d cards and %d of them are queued in stream %s now; nothing was changed", len(r.Cards), len(batch), r.Stream))
 			return p
 		}
 	}
-	var ids []string
+	var ids, outOfOrder, outOfOrderIDs []string
 	landing := map[string]bool{}
 	for _, c := range batch {
-		if needs := WaitsFor(s, s.Work.Card(c.ID), landing); len(needs) > 0 {
-			p.refuse(c.ID, "the batch omits prerequisites "+strings.Join(needs, ", ")+"; nothing was changed; run: nova-sprint land --stream "+r.Stream)
-			return p
-		}
-		// a pushed pin's LAND-AFTER order was judged at the mark (MarkLanding); this
-		// report preserves that decision and the pushed pin order (tla/SoftDependency.tla
-		// Report, BaseRecorded and BaseSoftOrder)
-		if soft := LandOrderBlocked(s, s.Work.Card(c.ID), landing); len(soft) > 0 && !LandingMarked(s, c.ID) {
-			p.refuse(c.ID, fmt.Sprintf("%s: soft dependency on %s not landed; nothing was changed; run: nova-sprint land --stream %s", c.ID, strings.Join(soft, ", "), r.Stream))
-			return p
+		pr := s.Work.Card(c.ID)
+		if !pushedReport || reportChecks {
+			if needs := WaitsFor(s, pr, landing); len(needs) > 0 {
+				p.refuse(c.ID, "the batch omits prerequisites "+strings.Join(needs, ", ")+"; nothing was changed; run: nova-sprint land --stream "+r.Stream)
+				return p
+			}
+			// a pushed pin's LAND-AFTER order was judged at the mark (MarkLanding); this
+			// report preserves that decision and the pushed pin order (tla/SoftDependency.tla
+			// Report, BaseRecorded and BaseSoftOrder)
+			if soft := LandOrderBlocked(s, pr, landing); len(soft) > 0 && !LandingMarked(s, c.ID) {
+				p.refuse(c.ID, fmt.Sprintf("%s: soft dependency on %s not landed; nothing was changed; run: nova-sprint land --stream %s", c.ID, strings.Join(soft, ", "), r.Stream))
+				return p
+			}
+		} else if line := outOfOrderLine(s, pr, landing); line != "" {
+			outOfOrder = append(outOfOrder, line)
+			outOfOrderIDs = append(outOfOrderIDs, c.ID)
 		}
 		ids = append(ids, c.ID)
 		landing[c.ID] = true
@@ -733,6 +775,13 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 		b.Who, b.What = r.Who, "ci green"
 		last.Notes = append(last.Notes, b)
 		last.Notes = append(last.Notes, landingPush(s, r.Stream, r.Who, landingWork, r.LedgerEntries, s.Now))
+		if len(outOfOrder) > 0 {
+			// one happened note names each card and each need or target it landed before
+			// (tla/WaitFor.tla Report, PushedIsRecorded; docs/SPEC-SPRINT.md section 7)
+			o := happened(NLandedOutOfOrder, r.Stream, s.Now, outOfOrderIDs...)
+			o.Who, o.What = r.Who, strings.Join(outOfOrder, "; ")
+			last.Notes = append(last.Notes, o)
+		}
 		if ctlSet["state"] == StreamLanded {
 			l := happened(NStreamLanded, r.Stream, s.Now)
 			l.Who = r.Who

@@ -22,13 +22,14 @@ func LandingMarked(s *Snapshot, id string) bool {
 	return pr != nil && m != nil && pr.Col == Merging && m.F(FieldLandingHead) != "" && m.F(FieldLandingHead) == pr.F("head")
 }
 
-// landOrderSkipped ends the refusal MarkLanding gives a pin whose LAND-AFTER order is not
-// met at the mark (LandOrderSkipped): the one refusal that ends the batch at its pin.
+// landOrderSkipped ends the refusal MarkLanding gives a pin whose need or LAND-AFTER order
+// is not met at the mark (LandOrderSkipped): the one refusal that ends the batch at its pin.
 const landOrderSkipped = " is skipped this batch"
 
-// LandOrderSkipped says MarkLanding's refusal r is the LAND-AFTER skip (LandOrderBlocked at
-// the mark): the pins before r's were marked in the same step and are a pushable prefix.
-// Every other MarkLanding refusal writes nothing and refuses the whole batch.
+// LandOrderSkipped says MarkLanding's refusal r is the dependency skip (WaitsFor or
+// LandOrderBlocked at the mark): the pins before r's were marked in the same step and are a
+// pushable prefix. Every other MarkLanding refusal writes nothing and refuses the whole
+// batch.
 func LandOrderSkipped(r Refusal) bool { return strings.HasSuffix(r.Why, landOrderSkipped) }
 
 // MarkLanding is the lander's check and mark before the push, one step: every pinned card
@@ -37,12 +38,14 @@ func LandOrderSkipped(r Refusal) bool { return strings.HasSuffix(r.Why, landOrde
 // otherwise the whole step is refused naming the first card and why, nothing written; then
 // each new card is marked landing at its head (FieldLandingHead). tla/Land.tla Check.
 //
-// One refusal is not the whole step's: a pin whose LAND-AFTER order is not met on the store
-// as it is at the mark (LandOrderBlocked, with landing = the pins ahead of it) ends the batch
-// there, even if its head was marked by an earlier, not-yet-pushed pass. An exact head already
-// on base is reported as is. The pins before a skip are marked in this step; it and every pin
-// after it are not, and the refusal (LandOrderSkipped) names it, its targets and the skip.
-// (tla/SoftDependency.tla MarkPush, BaseRecorded and BaseSoftOrder; MCSoftDependencyBrokenCutUnguarded.cfg).
+// One refusal is not the whole step's: a pin whose hard need (WaitsFor) or LAND-AFTER target
+// (LandOrderBlocked) is not landed on the store as it is at the mark (landing = the pins
+// ahead of it) ends the batch there, even if its head was marked by an earlier,
+// not-yet-pushed pass. An exact head already on base is reported as is. The pins before a
+// skip are marked in this step; it and every pin after it are not, and the refusal
+// (LandOrderSkipped) names it, its dependencies and the skip.
+// (tla/WaitFor.tla Cut and Report; tla/SoftDependency.tla MarkPush, BaseRecorded and
+// BaseSoftOrder; MCSoftDependencyBrokenCutUnguarded.cfg).
 func MarkLanding(s *Snapshot, stream string, pins []PushedPin) Plan {
 	var p Plan
 	p.on(s)
@@ -68,6 +71,13 @@ func MarkLanding(s *Snapshot, stream string, pins []PushedPin) Plan {
 		case alreadyMarked && PushedUnreportedMatches(s, pin.ID):
 			landing[pin.ID] = true
 			continue // this exact head is already on the base; report it as pushed
+		}
+		if needs := WaitsFor(s, pr, landing); len(needs) > 0 {
+			// a hard need is judged before the push as LAND-AFTER is (tla/WaitFor.tla
+			// Cut and Report; docs/SPEC-SPRINT.md section 7): the pin and the pins after
+			// it stay queued, and the marked prefix is the pushable batch
+			p.refuse(pin.ID, "need on "+strings.Join(needs, ", ")+" not landed; "+pin.ID+landOrderSkipped)
+			break
 		}
 		if blocked := LandOrderBlocked(s, pr, landing); len(blocked) > 0 {
 			p.refuse(pin.ID, "soft dependency on "+strings.Join(blocked, ", ")+" not landed; "+pin.ID+landOrderSkipped)
