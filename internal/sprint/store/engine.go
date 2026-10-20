@@ -924,7 +924,7 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			// not advance the generation and needs its exact receipt.
 			if f, ferr := st.B.ReadFence(ctx); ferr == nil && lock == nil && f.Gen == gen && f.Pending == nil {
 				res.Op = ""
-				return refuseWhole(res, plan, fmt.Sprintf("the store did not take the step's record (%d bytes): %v; nothing was changed", recordSize(op), err))
+				return refuseWhole(res, plan, storeRefusal(op, err))
 			}
 			return res, fmt.Errorf("%w: acquiring the fence for %s: %v; run: nova-sprint repair", ErrUnknown, op.ID, err)
 		}
@@ -1159,6 +1159,13 @@ func (st *Store) callerOp(ctx context.Context, step Step, res Result) (Result, b
 	}
 	e, ok, err := st.B.DoneBefore(ctx, step.CallerOp, st.epoch)
 	if err != nil || !ok {
+		if err == nil && step.Epoch != nil && *step.Epoch < OldestRetained(st.epoch) {
+			// The op names an epoch the store retired: it is not re-run, and the
+			// refusal names why (tla/StoreRetention.tla ReplayAnswered).
+			res.Moved, res.Op, res.Notes = nil, "", 0
+			res.Refused = []sprint.Refusal{{Key: "op " + step.CallerOp, Why: retiredRefusal(step.CallerOp, st.epoch)}}
+			return res, true, nil
+		}
 		return res, err != nil, err
 	}
 	now, err := st.EpochNow(ctx)

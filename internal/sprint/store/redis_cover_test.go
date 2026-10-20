@@ -415,6 +415,17 @@ func (db *coverDB) cmdXAdd(cmd redis.Cmder, key string, rest []any) error {
 	if err != nil {
 		return err
 	}
+	// XADD key MAXLEN ~ <n> <id> field value ...: the retention bound the
+	// log's and the inbox's writes carry (retention.go)
+	max := 0
+	if len(rest) > 1 && strings.EqualFold(coverStr(rest, 0), "maxlen") {
+		i := 1
+		if coverStr(rest, i) == "~" || coverStr(rest, i) == "=" {
+			i++
+		}
+		max = int(coverInt(rest, i))
+		rest = rest[i+1:]
+	}
 	if len(rest) == 0 || (coverStr(rest, 0) != "*" && !strings.Contains(coverStr(rest, 0), "-")) {
 		return fmt.Errorf("cover redis: xadd id is not faked: %v", rest)
 	}
@@ -428,6 +439,9 @@ func (db *coverDB) cmdXAdd(cmd redis.Cmder, key string, rest []any) error {
 		vals[coverStr(rest, i)] = coverStr(rest, i+1)
 	}
 	v.stream = append(v.stream, redis.XMessage{ID: id, Values: vals})
+	if max > 0 && len(v.stream) > max {
+		v.stream = v.stream[len(v.stream)-max:]
+	}
 	return coverFill(cmd, id)
 }
 

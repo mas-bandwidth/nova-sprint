@@ -161,7 +161,16 @@ func (st *Store) Clear(ctx context.Context) (ClearResult, error) {
 	}
 	res.Held = map[string]int{"primaries": placed(old.Work, ""), "work cards": placed(old.Fleet, sprint.Ctl),
 		"read cards": placed(old.Readers, ""), "merge cards": placed(old.Merge, sprint.Ctl), "open judgments": len(old.Open)}
-	return res, st.clearReady(ctx, next, res)
+	if err := st.clearReady(ctx, next, res); err != nil {
+		return res, err
+	}
+	// Retire the epochs older than the previous one, one bounded step (never
+	// the tick's hot path; tla/StoreRetention.tla Retire). A failure is told,
+	// never hidden: the store still works, it just grows until the next clear.
+	if err := st.retireOldEpochs(ctx, res.To); err != nil {
+		return res, fmt.Errorf("clearing epoch %d: the keys of the epochs older than %d were not retired: %w", res.From, OldestRetained(res.To), err)
+	}
+	return res, nil
 }
 
 // clearReady writes the new epoch's READY record: its machine is READY (docs/SPEC-SPRINT.md

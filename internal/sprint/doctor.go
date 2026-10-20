@@ -68,6 +68,7 @@ const (
 	CheckFriends        = "friends"
 	CheckDraining       = "draining"
 	CheckGitIdentity    = "git-identity"
+	CheckStoreRetention = "store-retention"
 )
 
 // DoctorFixSafe is the checks whose remedy is idempotent and safe for a later `doctor --fix`
@@ -179,6 +180,26 @@ type DoctorInput struct {
 	// --global user.email); "" when not read. The git-identity check fails when the sprint
 	// row's git_identity email equals it.
 	HostGitEmail string
+	// Retention is the store's bounded-key report, nil when not measured. The
+	// store-retention check reads it (StoreRetentionReport).
+	Retention *StoreRetentionReport
+}
+
+// StoreRetentionKey is one bounded key's length against its bound.
+type StoreRetentionKey struct {
+	Key    string `json:"key"`
+	Length int64  `json:"length"`
+	Bound  int64  `json:"bound"`
+	Epoch  uint64 `json:"epoch"`
+}
+
+// StoreRetentionReport is what a store read found: each bounded key's length
+// against its bound, and the past epochs the store still holds.
+type StoreRetentionReport struct {
+	Keys       []StoreRetentionKey `json:"keys"`
+	PastEpochs []uint64            `json:"past_epochs,omitempty"`
+	Unbounded  []string            `json:"unbounded,omitempty"`
+	Err        string              `json:"err,omitempty"`
 }
 
 // The bounds the checks judge by.
@@ -224,6 +245,7 @@ func Doctor(in DoctorInput) []DoctorCheck {
 	out = append(out, DoctorFailedInReview(in)...)
 	out = append(out, DoctorSeat(in)...)
 	out = append(out, DoctorGitIdentity(in)...)
+	out = append(out, DoctorStoreRetention(in)...)
 	for i := range out {
 		out[i].FixSafe = out[i].Status != DoctorOK && slices.Contains(DoctorFixSafe, out[i].Check)
 	}
@@ -1497,6 +1519,44 @@ func DoctorFriends(in DoctorInput) (out []DoctorCheck) {
 	}
 	if len(out) == 0 || fine > 0 {
 		out = append(out, okCheck(area, check, "up", fmt.Sprintf("friends=%d, within width and reconciled=%d", len(seats), fine)))
+	}
+	return out
+}
+
+// DoctorStoreRetention is the store check (tla/StoreRetention.tla Bounded): each
+// bounded key's length against its bound, the past epochs the store still holds,
+// and a key with no bound. Over 80% of a bound is a WARN; a key with no bound is
+// a FAIL naming it. A report that was not measured says so and judges nothing.
+func DoctorStoreRetention(in DoctorInput) []DoctorCheck {
+	const area, check = AreaSprint, CheckStoreRetention
+	r := in.Retention
+	if r == nil {
+		return []DoctorCheck{okCheck(area, check, "bounded", "not measured")}
+	}
+	if r.Err != "" {
+		return []DoctorCheck{{Area: area, Check: check, Subject: "-", Status: DoctorWarn, Evidence: "the store's bounded keys were not read: " + r.Err, Remedy: "nova-sprint doctor"}}
+	}
+	var out []DoctorCheck
+	for _, k := range r.Unbounded {
+		out = append(out, DoctorCheck{Area: area, Check: check, Subject: k, Status: DoctorFail,
+			Evidence: "no bound was found for this key by the scan of the known prefixes", Remedy: "retention: give the key a bound (internal/sprint/store/retention.go)"})
+	}
+	for _, k := range r.Keys {
+		ev := fmt.Sprintf("%d of %d (%.0f%%)", k.Length, k.Bound, 100*float64(k.Length)/float64(k.Bound))
+		switch {
+		case k.Bound <= 0:
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: k.Key, Status: DoctorFail, Evidence: ev + ": no bound", Remedy: "nova-sprint set --log-retention <lines>"})
+		case float64(k.Length) > 0.8*float64(k.Bound):
+			out = append(out, DoctorCheck{Area: area, Check: check, Subject: k.Key, Status: DoctorWarn, Evidence: ev + ": over 80% of its bound", Remedy: "nova-sprint clear (retires past epochs), or nova-sprint set --log-retention <lines>"})
+		default:
+			out = append(out, okCheck(area, check, k.Key, ev))
+		}
+	}
+	ev := fmt.Sprintf("past_epochs=%v", r.PastEpochs)
+	if len(out) == 0 {
+		out = append(out, okCheck(area, check, "bounded", ev))
+	} else {
+		out = append(out, DoctorCheck{Area: area, Check: check, Subject: "past-epochs", Status: DoctorOK, Evidence: ev, Remedy: "-"})
 	}
 	return out
 }

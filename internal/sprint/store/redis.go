@@ -30,6 +30,8 @@ type Redis struct {
 	// as it was, not the active one.
 	Pinned uint64
 	Old    bool
+	// Retention is the log's and the inbox's bound; 0 is RetentionLinesDefault.
+	Retention int
 	// trips counts the client's round trips, once CountTrips is called
 	// (stats.go); the backend's pinned copies share it.
 	trips *atomic.Int64
@@ -802,6 +804,7 @@ func released(op OpRecord, commit bool, held string, recorded bool) bool {
 }
 
 func (r *Redis) commit(ctx context.Context, p redis.Pipeliner, op OpRecord) error {
+	bound := r.retentionLines()
 	if op.Drain > 0 {
 		p.LTrim(ctx, r.key(keyQueue), int64(op.Drain), -1)
 	}
@@ -817,7 +820,7 @@ func (r *Redis) commit(ctx context.Context, p redis.Pipeliner, op OpRecord) erro
 		if err != nil {
 			return err
 		}
-		p.XAdd(ctx, &redis.XAddArgs{Stream: r.key(keyLog), Values: []any{"line", string(body)}})
+		p.XAdd(ctx, &redis.XAddArgs{Stream: r.key(keyLog), MaxLen: int64(bound), Approx: true, Values: []any{"line", string(body)}})
 	}
 	notes := append(append([]sprint.Note{}, op.Notes...), op.Decided...)
 	// each judgment's and acknowledgement's alias is its place among the epoch's
@@ -852,15 +855,17 @@ func (r *Redis) commit(ctx context.Context, p redis.Pipeliner, op OpRecord) erro
 		if err != nil {
 			return err
 		}
-		p.XAdd(ctx, &redis.XAddArgs{Stream: r.key(keyLog), Values: []any{"line", string(lb)}})
-		p.XAdd(ctx, &redis.XAddArgs{Stream: r.key(keyInbox), Values: []any{"note", string(body)}})
+		p.XAdd(ctx, &redis.XAddArgs{Stream: r.key(keyLog), MaxLen: int64(bound), Approx: true, Values: []any{"line", string(lb)}})
+		p.XAdd(ctx, &redis.XAddArgs{Stream: r.key(keyInbox), MaxLen: int64(bound), Approx: true, Values: []any{"note", string(body)}})
 		if n.Kind == sprint.Judgment || n.Kind == sprint.Acknowledged {
 			p.HSet(ctx, r.key(keyNotes), n.ID, string(body))
+			p.RPush(ctx, r.key(keyNoteOrder), n.ID)
 			for _, s := range n.Subjects() {
 				p.HSet(ctx, r.key(keyOpen), sprint.OpenKey(n.ID, s), n.ID)
 			}
 		}
 	}
+	p.LTrim(ctx, r.key(keyNoteOrder), int64(-bound), -1)
 	for _, n := range op.Updates {
 		body, err := json.Marshal(n.Bound())
 		if err != nil {
@@ -873,7 +878,7 @@ func (r *Redis) commit(ctx context.Context, p redis.Pipeliner, op OpRecord) erro
 			return err
 		}
 		p.HSet(ctx, r.key(keyNotes), n.ID, string(body))
-		p.XAdd(ctx, &redis.XAddArgs{Stream: r.key(keyLog), Values: []any{"line", string(lb)}})
+		p.XAdd(ctx, &redis.XAddArgs{Stream: r.key(keyLog), MaxLen: int64(bound), Approx: true, Values: []any{"line", string(lb)}})
 	}
 	if len(op.Closes) > 0 {
 		p.HDel(ctx, r.key(keyOpen), op.Closes...)
@@ -959,21 +964,23 @@ func (r *Redis) Done(ctx context.Context, callerOp string) (string, bool, error)
 }
 
 // DoneBefore asks every earlier epoch's results for the caller's operation id,
-// in one pipeline.
+// in one pipeline, and only the epochs the store still holds: a clear retires
+// the epochs older than the previous one (tla/StoreRetention.tla ReplayAnswered).
 func (r *Redis) DoneBefore(ctx context.Context, callerOp string, before uint64) (uint64, bool, error) {
-	if before == 0 {
+	oldest := OldestRetained(before)
+	if before == 0 || oldest >= before {
 		return 0, false, nil
 	}
 	pipe := r.C.Pipeline()
-	cmds := make([]*redis.BoolCmd, before)
-	for e := uint64(0); e < before; e++ {
-		cmds[e] = pipe.HExists(ctx, r.Names.KeyAt(keyDone, e), callerOp)
+	cmds := make([]*redis.BoolCmd, before-oldest)
+	for e := oldest; e < before; e++ {
+		cmds[e-oldest] = pipe.HExists(ctx, r.Names.KeyAt(keyDone, e), callerOp)
 	}
 	if _, err := pipe.Exec(ctx); err != nil {
 		return 0, false, err
 	}
-	for e := before; e > 0; e-- {
-		if cmds[e-1].Val() {
+	for e := before; e > oldest; e-- {
+		if cmds[e-oldest-1].Val() {
 			return e - 1, true, nil
 		}
 	}
@@ -1254,6 +1261,13 @@ func (r *Redis) Tails(ctx context.Context) (string, string, error) {
 }
 
 func (r *Redis) LogSince(ctx context.Context, after string, max int) ([]sprint.Line, []string, error) {
+	if r.Old {
+		if through, err := r.C.Get(ctx, r.Names.Key(keyRetiredThrough)).Result(); err == nil {
+			if n, perr := strconv.ParseUint(through, 10, 64); perr == nil && r.Pinned <= n {
+				return nil, nil, fmt.Errorf("epoch %d was retired; the store keeps epoch %d and its previous one", r.Pinned, n+1)
+			}
+		}
+	}
 	return rangeSince(ctx, r.C, r.key(keyLog), after, max, func(v map[string]any) (sprint.Line, error) {
 		var l sprint.Line
 		if s, ok := v["line"].(string); ok && json.Unmarshal([]byte(s), &l) == nil {

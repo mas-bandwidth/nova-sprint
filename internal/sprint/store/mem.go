@@ -72,22 +72,29 @@ type memState struct {
 	routes    []sprint.Route             // the model tiers' routes (routes.go)
 	tiers     map[string][]string        // the tiers' route arrays (routes.go)
 	bars      Bars                       // the sprint row's nova-decide bars (routes.go)
+	// retention is the log's and the inbox's bound; 0 is RetentionLinesDefault.
+	retention int
+	// retiredFrom is the oldest epoch a retire kept; 0 before any retire, when
+	// DoneBefore still looks at every earlier epoch.
+	retiredFrom uint64
 }
 
 // memLog is one epoch's sprint keys.
 type memLog struct {
-	fence    *OpRecord
-	gen      uint64
-	done     map[string]string
-	progress map[string]time.Time
-	inbox    []memNote
-	lines    []memLine // the log
-	notes    map[string]sprint.Note
-	aliases  map[string]string // alias (j<n>) -> note id (sprint.Alias)
-	answered map[string]string // judgment id -> who answered it, as it closed
-	open     map[string]string
-	cursor   string
-	queue    []sprint.QueuedChange // the work table's queue, oldest first
+	fence     *OpRecord
+	gen       uint64
+	done      map[string]string
+	doneOrder []string // caller operation ids in the order first recorded
+	progress  map[string]time.Time
+	inbox     []memNote
+	lines     []memLine // the log
+	gap       string    // the first line kept after a trim passed the cursor
+	notes     map[string]sprint.Note
+	aliases   map[string]string // alias (j<n>) -> note id (sprint.Alias)
+	answered  map[string]string // judgment id -> who answered it, as it closed
+	open      map[string]string
+	cursor    string
+	queue     []sprint.QueuedChange // the work table's queue, oldest first
 }
 
 type memNote struct {
@@ -1165,6 +1172,9 @@ func (m *Mem) Release(_ context.Context, op OpRecord, commit bool) error {
 			l.progress[s] = op.At
 		}
 		if op.CallerOp != "" {
+			if _, had := l.done[op.CallerOp]; !had {
+				l.doneOrder = append(l.doneOrder, op.CallerOp)
+			}
 			l.done[op.CallerOp] = op.Result
 		}
 		if op.Seat != nil {
@@ -1212,6 +1222,7 @@ func (m *Mem) Release(_ context.Context, op OpRecord, commit bool) error {
 			}
 			m.kv[keyTimers] = string(rec)
 		}
+		m.trimRetainedLocked(l)
 	}
 	l.fence = nil
 	return nil
@@ -1240,7 +1251,11 @@ func (m *Mem) Done(_ context.Context, callerOp string) (string, bool, error) {
 func (m *Mem) DoneBefore(_ context.Context, callerOp string, before uint64) (uint64, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for e := before; e > 0; e-- {
+	oldest := uint64(0)
+	if m.retiredFrom > 0 {
+		oldest = OldestRetained(before)
+	}
+	for e := before; e > oldest; e-- {
 		m.touch(e - 1)
 		if l := m.logs[e-1]; l != nil {
 			if _, ok := l.done[callerOp]; ok {
@@ -1367,6 +1382,9 @@ func (m *Mem) Tails(context.Context) (string, string, error) {
 func (m *Mem) LogSince(_ context.Context, after string, max int) ([]sprint.Line, []string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.old && m.epoch < m.retiredFrom {
+		return nil, nil, fmt.Errorf("epoch %d was retired; the store keeps epoch %d and its previous one", m.epoch, m.retiredFrom)
+	}
 	l := m.log()
 	var lines []sprint.Line
 	var ids []string
