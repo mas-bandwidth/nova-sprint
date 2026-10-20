@@ -1,0 +1,12 @@
+# The workfile unit's wire-fuzz corpus (the schema conformance harness's manifest
+# format, test/conformance/README.md in the schema repository). Each instance is
+# one root table in two forms that agree: the wire file named here and the JSON
+# text beside it, <name>.json. Each wire is what the generated Save writes from
+# that JSON, which TestWorkfileTablesGolden holds byte for byte. The driver is
+# internal/workfile/workfilewire/cmd/workfile-driver.
+unit workfile schemas/workfile/landledger.schema schemas/workfile/workfile.schema
+instance tree-typical    workfile Tree          schemas/workfile/fuzz/tree-typical.bin
+instance tree-real       workfile Tree          schemas/workfile/fuzz/tree-real.bin
+instance carry-typical   workfile Carry         schemas/workfile/fuzz/carry-typical.bin
+instance ledger-typical  workfile LedgerDoc     schemas/workfile/fuzz/ledger-typical.bin
+instance entries-typical workfile LedgerEntries schemas/workfile/fuzz/entries-typical.bin

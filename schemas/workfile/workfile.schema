@@ -1,0 +1,243 @@
+// workfile.schema: nova-work's tree file (the work file tree) and the roadmap
+// carry records, as binary wire, padded standard base64 text, the schema JSON
+// text form and the hand-editable text form. Its Go is generated into
+// internal/workfile/workfilewire (go generate ./internal/workfile/workfilewire).
+// The land ledgers are in landledger.schema beside it; one directory is one unit,
+// so the two files share one package.
+//
+// The records, each the Go struct it replaces, field by field:
+//
+//   - the work file tree (internal/workfile/tree.go 24-106, written by encode.go
+//     and read by decode.go): Tree, Repo, Issue, Milestone, Comment, Reference,
+//     LinkedPR, and Counts (tree.go 131-133, the size of a tree nova-work prints);
+//   - the roadmap carry and splice records (internal/roadmap/carry.go 140-177,
+//     spliced into the file by splice.go): the item, the fix and the done note a
+//     move writes, each with its :kept pairs (nova-tools pkg/roadmap Item, Fix,
+//     Note and Pair, the structs the carry writes).
+//
+// carry.go's kept (19-47) is a []Pair, the KeptPair list; the tree reader's decoder
+// (decode.go 42-45) is the read's own state, never serialized, and has no table.
+//
+// THE FORM (schema owner rule S1, the coordinator's ruling of 2026-10-17): a
+// record is a FIXED table only where every bound it declares is a bound the code
+// enforces; otherwise it is a VARIABLE table, with open lists and unbounded text.
+// Neither the tree's encoder nor its decoder bounds a count or a length (the one
+// byte bound is the reader's whole-file bound, workfile.Limits, decode.go 16-18),
+// and the carry copies every text and every :kept pair it finds, so every list is
+// open and every text is unbounded. One record is fixed: Counts holds integers
+// only, so it declares no bound and no bound is unenforced.
+//
+// THE BOUNDS. A declared bound is one every path that reads and writes the field
+// enforces today, written as the field's range with a comment naming the rule:
+//
+//   - an issue's, a milestone's and a linked pull request's number is positive and
+//     at most 1<<31 (workfile maxNumber, encode.go 11-13, refused by decoder.num at
+//     decode.go 135 and by Encode at encode.go 62-68, 133-139 and 178-184);
+//   - a reference's number is 0 (a reference with no source) or positive and at
+//     most 1<<31 (decode.go 516-524 refNumber, encode.go 160-169);
+//   - an item's card count is never negative: pkg/roadmap reads it as 0 (absent)
+//     or positive (roadmap.go 217-227) and the carry keeps only a positive count
+//     (carry.go 107-114). Its upper bound (1<<20 on the roadmap read) is not
+//     declared, because the carry's own read (strconv.Atoi, carry.go 109) takes any
+//     positive count.
+//
+// A GitHub enumeration (State, StateReason, AuthorAssociation, LockReason, a
+// linked pull request's State) is GitHub's spelling, held as text: the encoder
+// refuses a byte outside [A-Z_] (encode.go 237-250), and the set of names is
+// GitHub's, open to a new one, so no enum is declared. Origin is one of internal or
+// external (tree.go 122-128), held as text the same way, since the tree's two
+// readers check it by name (decode.go 348-353, encode.go 108-110). A fix's status
+// is one of shipped, in-progress, planned or done (pkg/roadmap fixes.go 50-54),
+// checked by that reader, held as text.
+//
+// Where Go holds a string the table holds a *string: null and empty are two
+// values, and Go's empty string is GitHub's null. Go int is int64, the width of int
+// on the platforms the tools build for. Every field keeps its Go name in snake
+// case; the field of a roadmap record that holds its id is id.
+package workfilewire
+
+// ---------------------------------------------------------------------------
+// The work file tree (internal/workfile/tree.go).
+
+// Word is one text of a list of texts (Go []string: a tree's scope, an issue's
+// labels and assignees). The text is wrapped in a table: an unbounded text list
+// ([]string) refuses every non-empty element in the hand-editable text form at
+// the pinned compiler (the PR's Schema improvements wanted), and a wrapped text
+// reads and writes in every form.
+table Word
+{
+    text *string
+}
+
+// Tree is workfile.Tree (tree.go 24-30): the source, the organization, the time
+// the fetch began (RFC 3339 UTC, as text), the repositories of a scoped import
+// (empty is whole-organization) and every repository, sorted by name.
+table Tree
+{
+    format  *string // the tree file's format word, workfile.Format ("v1")
+    source  *string
+    org     *string
+    fetched *string
+    scope   []Word
+    repos   []Repo
+}
+
+// Repo is workfile.Repo (tree.go 34-39): owner/name, its URL, whether it is
+// archived and every issue it holds, sorted by number.
+table Repo
+{
+    name     *string
+    url      *string
+    archived bool
+    issues   []Issue
+}
+
+// Issue is workfile.Issue (tree.go 46-68).
+table Issue
+{
+    // positive, at most 1<<31: workfile maxNumber (encode.go 11-13, decode.go 135)
+    number             int64 = 1   | min = 1, max = 2147483648
+    url                *string
+    node_id            *string
+    title              *string
+    state              *string
+    state_reason       *string
+    origin             *string
+    author             *string
+    author_association *string
+    created            *string
+    updated            *string
+    closed             *string
+    locked             bool
+    lock_reason        *string
+    labels             []Word
+    assignees          []Word
+    milestone          *Milestone
+    body               *string
+    comments           []Comment
+    references         []Reference
+    linked_prs         []LinkedPR
+}
+
+// Milestone is workfile.Milestone (tree.go 71-74); a nil milestone is null.
+table Milestone
+{
+    // positive, at most 1<<31: workfile maxNumber (encode.go 133-139)
+    number int64 = 1 | min = 1, max = 2147483648
+    title  *string
+}
+
+// Comment is workfile.Comment (tree.go 77-85).
+table Comment
+{
+    id                 *string
+    url                *string
+    author             *string
+    author_association *string
+    created            *string
+    updated            *string
+    body               *string
+}
+
+// Reference is workfile.Reference (tree.go 90-98).
+table Reference
+{
+    kind *string
+    repo *string
+    // 0 for a reference with no source, else positive, at most 1<<31: refNumber
+    // (decode.go 516-524) and Encode (encode.go 160-169)
+    number     int64   | min = 0, max = 2147483648
+    url        *string
+    actor      *string
+    at         *string
+    will_close bool
+}
+
+// LinkedPR is workfile.LinkedPR (tree.go 101-106).
+table LinkedPR
+{
+    repo *string
+    // positive, at most 1<<31: workfile maxNumber (encode.go 178-184)
+    number int64 = 1 | min = 1, max = 2147483648
+    url    *string
+    state  *string
+}
+
+// Counts is workfile.Counts (tree.go 131-133), the size of a tree nova-work
+// prints. Integers only, so it declares no bound: a FIXED table.
+fixed table Counts
+{
+    repos      int64
+    issues     int64
+    comments   int64
+    references int64
+    linked_prs int64
+}
+
+// ---------------------------------------------------------------------------
+// The roadmap carry and splice records (internal/roadmap/carry.go, splice.go).
+
+// KeptPair is one field a move carried under :kept (nova-tools pkg/roadmap Pair,
+// carry.go 19-47): its key and its value, which may be empty (an empty value
+// records that the field was absent).
+table KeptPair
+{
+    key   *string
+    value *string
+}
+
+// CarryItem is the item record a move writes (carry.go 140-152, itemRecord;
+// pkg/roadmap Item): an absent optional text is empty, and a card count of 0 is
+// not written.
+table CarryItem
+{
+    id      *string
+    group   *string
+    date    *string
+    title   *string
+    text    *string
+    why     *string
+    area    *string
+    exists  *string
+    release *string
+    origin  *string
+    // never negative: pkg/roadmap reads 0 or a positive count (roadmap.go 217-227)
+    // and the carry keeps only a positive one (carry.go 107-114)
+    cards int64      | min = 0
+    kept  []KeptPair
+}
+
+// CarryFix is the fix record a move writes (carry.go 154-162, fixRecord;
+// pkg/roadmap Fix).
+table CarryFix
+{
+    id      *string
+    release *string
+    status  *string
+    title   *string
+    text    *string
+    origin  *string
+    kept    []KeptPair
+}
+
+// CarryNote is the :done note a move writes (carry.go 169-171, doneRecord;
+// pkg/roadmap Note). Release is the note's release on a scheduled note; the done
+// record the carry writes leaves it empty.
+table CarryNote
+{
+    id      *string
+    release *string
+    title   *string
+    text    *string
+    date    *string
+    kept    []KeptPair
+}
+
+// Carry is one move's records: the item, fix and done records a move writes into
+// the roadmap data (carry.go, spliced in by splice.go), one list each.
+table Carry
+{
+    items []CarryItem
+    fixes []CarryFix
+    done  []CarryNote
+}

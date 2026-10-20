@@ -1,0 +1,87 @@
+{
+  "fetched": "2026-10-15T08:00:00Z",
+  "format": "v1",
+  "org": "acme",
+  "repos": [
+    {
+      "archived": true,
+      "issues": [
+        {
+          "assignees": [
+            {
+              "text": "bob"
+            }
+          ],
+          "author": "alice",
+          "author_association": "MEMBER",
+          "body": "It crashes.\nEvery time.",
+          "closed": "",
+          "comments": [
+            {
+              "author": "bob",
+              "author_association": "COLLABORATOR",
+              "body": "Seen it; twice.\n\"Always\".",
+              "created": "2026-10-01T10:05:00Z",
+              "id": "IC_kwDO1",
+              "updated": "2026-10-01T10:06:00Z",
+              "url": "https://github.com/acme/a/issues/7#issuecomment-1"
+            }
+          ],
+          "created": "2026-10-01T10:00:00Z",
+          "labels": [
+            {
+              "text": "bug"
+            },
+            {
+              "text": "p1"
+            }
+          ],
+          "linked_prs": [
+            {
+              "number": 12,
+              "repo": "acme/b",
+              "state": "OPEN",
+              "url": "https://github.com/acme/b/pull/12"
+            }
+          ],
+          "lock_reason": "TOO_HEATED",
+          "locked": true,
+          "milestone": {
+            "number": 3,
+            "title": "v1.5"
+          },
+          "node_id": "I_kwDO7",
+          "number": 7,
+          "origin": "internal",
+          "references": [
+            {
+              "actor": "carol",
+              "at": "2026-10-02T09:00:00Z",
+              "kind": "PullRequest",
+              "number": 12,
+              "repo": "acme/b",
+              "url": "https://github.com/acme/b/pull/12",
+              "will_close": true
+            }
+          ],
+          "state": "OPEN",
+          "state_reason": "REOPENED",
+          "title": "Crash on start",
+          "updated": "2026-10-02T11:00:00Z",
+          "url": "https://github.com/acme/a/issues/7"
+        }
+      ],
+      "name": "acme/a",
+      "url": "https://github.com/acme/a"
+    }
+  ],
+  "scope": [
+    {
+      "text": "acme/a"
+    },
+    {
+      "text": "acme/b"
+    }
+  ],
+  "source": "github"
+}

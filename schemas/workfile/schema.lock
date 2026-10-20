@@ -1,0 +1,10 @@
+schema-lock 7
+package workfilewire
+
+fixed table Counts layout=0xed016939191ee6cb lineage=0xbfd49b934777c304
+    field repos id=0xf5400bf2b1f1d68a kind=5 width=8 default=0
+    field issues id=0x7c1b38ad2e75dc09 kind=5 width=8 default=0
+    field comments id=0x2ce5b7abe8cec6d7 kind=5 width=8 default=0
+    field references id=0x26d68e9da3011d4b kind=5 width=8 default=0
+    field linked_prs id=0x56ee7333a6d63714 kind=5 width=8 default=0
+    lineage wire=0xe8f419deb3e5ce3d record=40 bytes=06000000c5b7e934d2d1aaab0d28000000050000008ad6f1b1f20b40f505080000000000000009dc752ead381b7c050800000000000000d7c6cee8abb7e52c0508000000000000004b1d01a39d8ed6260508000000000000001437d6a63373ee56050800000000000000

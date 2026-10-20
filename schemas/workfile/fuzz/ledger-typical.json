@@ -1,0 +1,27 @@
+{
+  "data": "OyBldmlkZW5jZQooZXZpZGVuY2UgInYxIgogOnRpdGxlICJ0IgogOml0ZW1zCiAoKGZpeGVkICJhIiA6cmVsZWFzZSAidjEuMi4xNCIgOnRpdGxlICJhIiA6b3JpZ2luICJvIikpKQo=",
+  "lists": [
+    {
+      "bare": false,
+      "end": 102,
+      "items": [
+        {
+          "canon": "(fixed \"a\" :release \"v1.2.14\" :title \"a\" :origin \"o\")",
+          "end": 101,
+          "key": "fixed:a",
+          "off": 48
+        }
+      ],
+      "name": "items",
+      "off": 47
+    }
+  ],
+  "scalars": [
+    {
+      "canon": "\"t\"",
+      "end": 37,
+      "key": "top:title",
+      "off": 34
+    }
+  ]
+}

@@ -1,0 +1,83 @@
+// landledger.schema: the land ledgers, the records the lander reads a shared or
+// evidence s-expression ledger into for a merge (cmd/nova-sprint/landsexp.go,
+// land_ledgers.go, landledger.go and land_forms.go). One unit with
+// workfile.schema: its Go is generated into internal/workfile/workfilewire.
+//
+// The records, each the Go struct it replaces, field by field:
+//
+//   - LedgerDoc is formDoc (land_forms.go 50-54), a ledger read for a merge by
+//     form: the file's bytes, its keyed lists and its scalar values;
+//   - LedgerList is formList (land_forms.go 41-47), one keyed list: the keyword it
+//     stands under ("" for a file with no wrapping form), its byte span, whether
+//     the file is bare, and its members in file order;
+//   - LedgerForm is keyedForm (land_forms.go 34-38), one keyed member or scalar:
+//     its key, its canonical text (formString, land_ledgers.go 64-80) and its byte
+//     span in the file;
+//   - LedgerEntries is the entry map the three-way check compares
+//     (evidenceEntries, land_ledgers.go 32-61, and sexpEntries, landsexp.go
+//     299-325: each entry's key and its canonical text), in the key's sorted
+//     order, the order unionKeys walks (land_ledgers.go 166-180).
+//
+// landLedger (landledger.go 41-46) holds functions and a command line, the static
+// table of the generated ledger families; it is never serialized and has no table.
+// formEdit (land_forms.go 362-366) is one splice of the tip's text in memory, and
+// sexpData (landsexp.go 38-41) is a static map of file names; neither is serialized.
+//
+// THE FORM (schema owner rule S1, the coordinator's ruling of 2026-10-17): every
+// record holds text the code leaves open (a key, a canonical form, a file), and the
+// lander bounds no count of members, so every record is a VARIABLE table with open
+// lists and unbounded text. The one byte bound the lander enforces is its whole
+// decode bound (landDataLimits, land_ledgers.go 100: 16 MiB), a bound on the file
+// the reader is given, not on a field the read keeps (an empty side is a doc with
+// no read at all, land_forms.go 120-122); it is not declared.
+//
+// THE BOUNDS. A byte offset into the file is never negative: each is a pkg/sexp
+// form's Offset or End, which the reader takes from 0 (readFormDoc, land_forms.go 112-159,
+// where a bare file's offsets are taken back by the two bytes its wrapping added).
+// Its upper bound is the file's length, not a constant, so it is declared
+// one-sided.
+package workfilewire
+
+// LedgerForm is keyedForm (land_forms.go 34-38).
+table LedgerForm
+{
+    key   *string
+    canon *string
+    // a pkg/sexp form's offset and end, never negative (readFormDoc, land_forms.go 112-159)
+    off int64 | min = 0
+    end int64 | min = 0
+}
+
+// LedgerList is formList (land_forms.go 41-47).
+table LedgerList
+{
+    name *string
+    // the list's own parentheses, [off, end); for a bare file, the whole file
+    off   int64        | min = 0
+    end   int64        | min = 0
+    bare  bool
+    items []LedgerForm
+}
+
+// LedgerDoc is formDoc (land_forms.go 50-54).
+table LedgerDoc
+{
+    data    *bytes
+    lists   []LedgerList
+    scalars []LedgerForm
+}
+
+// LedgerEntry is one entry of the three-way check: its key ("<kind>:<id>" in an
+// evidence ledger, the keyed form's key or "top:<keyword>" in the roadmap data)
+// and its canonical text.
+table LedgerEntry
+{
+    key   *string
+    canon *string
+}
+
+// LedgerEntries is one side's entries, in the key's sorted order.
+table LedgerEntries
+{
+    entries []LedgerEntry
+}
