@@ -3139,6 +3139,46 @@ order the cards were dealt in, so a card brought to the front of its stream by
   such part scans once (`TestTheTicksCheckSettlesTheRestsOnceAtScale`, its
   `TICK-COST` lines; a scan per card was 1,969 scans and 3.82 s a check). The rest is
   the sprint's, in the store, never nova-config's: enabled stays the coordinator's (docs/SPRINT-COORDINATOR.md).
+- PROVIDER FALLBACK: one provider failing never stalls the fleet, it falls back to the
+  next route in line (the owner, 2026-10-19, after Ultramarine's 429s spent every reader and
+  stalled reviews fleet-wide for hours; `tla/ProviderFallback.tla`; `internal/sprint/fallback.go`).
+  (1) The line: per tier, the routes in line are the tier's route array in order, across
+  providers, less each route that does not serve (disabled, resting, unlaunchable, its
+  provider at its concurrency budget) and every route of a COOLING provider. A provider
+  cools while any route of it backs off from a rate limit (`RestRateBackoff`: its window
+  the provider's own words when they name one, `retry after N s`, `try again in Ns`,
+  `Retry-After: N`, capped at RateBackoffMax, else Min(60 s * 2^(k-1), 15 min)), rests for
+  5xxs or timeouts, or rests out of credit, while its own cool record
+  (`provider_cool_<provider>`, written by a read's fault and by a take's rate-limit
+  fallback) holds, or while nova-config applied it with `funded=false` (unfunded: out
+  until the owner funds it, no expiry). Cooling is per PROVIDER, not per route: every route
+  of a cooling provider leaves the line (`NoDealToCooling`).
+  (2) A provider fault never spends: a take that ends with a provider fault (class
+  `rate-limited`, `provider-5xx`, `timeout` or `out-of-credit`, read from the
+  `provider:` line) is dealt in the same step on the next route in line after the one it
+  ran on, to its own member when that member launches it, else to a member up with room
+  that does: the same work card at the same attempt, its generation moved, no take ended,
+  no redeal, no attempt and no MaxRateReturns spent, its primary left working; the fault's
+  record stays (a 429's `rate_take_<n>`, so its route backs off, and the provider's cool
+  record; a 5xx's, a timeout's or an out-of-credit refusal's `provider_take_<n>` in a free
+  return slot, so the route's 3-in-10 rest and the provider's credit rest count it as
+  before, and that rest cools the provider). A card whose return slots are all held takes
+  today's bounded return.
+  A read returned with a provider cause is asked again at once of the same reader on the
+  next route in line, never counted against that reader (no re-ask counted, not stamped
+  returned, so its reads and its ok% are untouched), and its provider cools
+  (`FaultSpendsNothing`). MaxRateReturns then bounds only the returns of a tier whose
+  every route cools.
+  (3) Only an all-cooling tier waits: when no route of the tier is in line the card (or
+  read) waits ready, never failed, with a server-computed deadline (the earliest end of its
+  providers' cooling, or one minute from now when every provider is out until funded),
+  under ONE judgment for the tier, never one per card, naming each provider and its
+  cooling: `tier <t> has no route in line: <p1> rate-limited until <t>, provider <p2> unfunded
+  (the owner's to fund)` (`WaitHasDeadline`). The wait ends by itself when any provider of the
+  tier stops cooling (`NeverLeftUnworked`).
+  (4) The deal never draws a cooling provider: the work draw, the reads' draw and the
+  check of whether a reader can read a tier all read the line of (1). A read is never asked
+  onto a provider at its concurrency budget while another route serves.
   `routes` prints `rested_until=<RFC3339>` while a route rests (`-` when not)
   (`sprint.RestsDue`, `TestRestsDueCountsTransientProviderFailuresNeverNoResults`,
   `TestANoResultNeverRestsAndA429Does`, `TestARetiredRuleRestsNoRoute`,

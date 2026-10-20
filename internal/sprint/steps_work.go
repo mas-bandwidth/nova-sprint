@@ -2154,6 +2154,17 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		}
 		switch kind {
 		case cardhdr.EndProvider:
+			if class := providerFaultClass(r.Report); class != "" && !late {
+				// a provider fault never spends: the card is dealt at once, in this step, on
+				// the next route in line, at the same attempt; only when no route of its tier
+				// is in line does it take the return below (fallback.go;
+				// tla/ProviderFallback.tla Fallback, FaultSpendsNothing; docs/SPEC-SPRINT.md
+				// section 5, provider fallback)
+				if u, ok := fallbackUnit(&p, s, c, pr, r, class); ok {
+					p.Units = append(p.Units, u)
+					continue
+				}
+			}
 			if IsRateLimited(r.Report) {
 				// a rate limit NEVER fails the card, on any route and however many times: the
 				// card is returned untouched (no take ended, no redeal, no attempt) and the
@@ -2809,7 +2820,13 @@ func rateLimitedReturned(s *Snapshot, c, pr *Card, r FinishReq, label, moved str
 		if r.Usage != "" {
 			usage = rec
 		}
-		set[FieldProviderTake+itoa(returnTakeNumber(c.Int(FieldRateReturns)+1))] = ProviderTake{Route: c.F(FieldRoute), Model: c.F(FieldModel), Member: c.Row,
+		// the first free return slot (fallback.go, freeReturnNumber): a fallback's record
+		// may hold an earlier one, and none is ever overwritten
+		n := freeReturnNumber(c)
+		if n == 0 {
+			n = returnTakeNumber(c.Int(FieldRateReturns) + 1)
+		}
+		set[FieldProviderTake+itoa(n)] = ProviderTake{Route: c.F(FieldRoute), Model: c.F(FieldModel), Member: c.Row,
 			Finished: stamp(s.Now), Usage: usage, Error: line, Taken: taken}.String()
 	}
 	prSet := map[string]string{}

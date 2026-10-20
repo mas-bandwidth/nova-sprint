@@ -58,14 +58,18 @@ func (s *Snapshot) heldFriendReader(reader string) bool {
 
 // tierRouted says a fleet reader can draw a read of tier: the store holds no route
 // (its reader runs its own), or an enabled route of the tier whose provider is funded
-// (providerFunded, unfunded.go) is in its array.
+// (providerFunded, unfunded.go) and not cooling is in its array.
 func (s *Snapshot) tierRouted(tier string) bool {
 	if len(s.Routes) == 0 {
 		return true
 	}
 	for _, name := range s.tierArray(tier) {
 		for _, r := range s.Routes {
-			if r.Name == name && r.Tier == tier && r.Enabled && s.providerFunded(r.Provider) {
+			if r.Name != name || r.Tier != tier || !r.Enabled || !s.providerFunded(r.Provider) {
+				continue
+			}
+			// the line (fallback.go, (4)): a route of a cooling provider is out of it
+			if _, cools := s.providerCooling(r.Provider); !cools {
 				return true
 			}
 		}

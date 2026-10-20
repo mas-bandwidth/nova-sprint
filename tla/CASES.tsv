@@ -844,3 +844,8 @@ MCWaitForBrokenCannotAskLoop.cfg	MCWaitFor.tla	temporal	NeverSilentlyStuck	ignor
 MCWaitForBrokenEnvHeld.cfg	MCWaitFor.tla	temporal	AutoResume	ignore-terminal	waitfor	required	-
 MCWaitForBrokenFactBlind.cfg	MCWaitFor.tla	temporal	EveryFeasibleLands	ignore-terminal	waitfor	required	-
 MCWaitForBrokenHiddenCause.cfg	MCWaitFor.tla	temporal	EveryFeasibleLands	ignore-terminal	waitfor	required	-
+MCProviderFallback.cfg	MCProviderFallback.tla	pass	-	ignore-terminal	providerfallback	required	-
+MCProviderFallbackBrokenSpend.cfg	MCProviderFallback.tla	invariant	FaultSpendsNothing	ignore-terminal	providerfallback	required	-
+MCProviderFallbackBrokenDealCooling.cfg	MCProviderFallback.tla	invariant	NoDealToCooling	ignore-terminal	providerfallback	required	-
+MCProviderFallbackBrokenNoDeadline.cfg	MCProviderFallback.tla	invariant	WaitHasDeadline	ignore-terminal	providerfallback	required	-
+MCProviderFallbackBrokenNoFallback.cfg	MCProviderFallback.tla	temporal	NeverLeftUnworked	ignore-terminal	providerfallback	required	-

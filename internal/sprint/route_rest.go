@@ -95,13 +95,14 @@ func rateBackoffs(fleet *Table) map[string]RouteRest {
 		at   time.Time
 		lim  bool
 		card string
+		line string
 	}
 	byRoute := map[string][]ev{}
 	for _, c := range fleet.Column(Ready, Working, Finished, DoneOK, DoneFailed, DoneDefect, Withdrawn) {
 		takes, _ := RateTakes(c)
 		for _, t := range takes {
 			if at, err := time.Parse(time.RFC3339, t.Finished); err == nil && t.Route != "" && t.Route != RoutePin {
-				byRoute[t.Route] = append(byRoute[t.Route], ev{at: at, lim: true, card: c.ID})
+				byRoute[t.Route] = append(byRoute[t.Route], ev{at: at, lim: true, card: c.ID, line: t.Error})
 			}
 		}
 		if okEnd(c) {
@@ -121,7 +122,7 @@ func rateBackoffs(fleet *Table) map[string]RouteRest {
 				lastOk = e.at
 			}
 		}
-		k, last := 0, time.Time{}
+		k, last, lastLine := 0, time.Time{}, ""
 		var cards []string
 		for _, e := range evs {
 			if !e.lim || !e.at.After(lastOk) {
@@ -129,7 +130,7 @@ func rateBackoffs(fleet *Table) map[string]RouteRest {
 			}
 			k++
 			if e.at.After(last) {
-				last = e.at
+				last, lastLine = e.at, e.line
 			}
 			if !slices.Contains(cards, e.card) {
 				cards = append(cards, e.card)
@@ -140,6 +141,12 @@ func rateBackoffs(fleet *Table) map[string]RouteRest {
 		}
 		slices.Sort(cards)
 		d := RateBackoff(k)
+		if ra, ok := retryAfter(lastLine); ok {
+			// the provider's own words name the window (`retry after N s`, `try again in Ns`,
+			// `Retry-After: N`): the backoff is that long, still capped (fallback.go;
+			// tla/RateBackoff.tla BackoffBounded)
+			d = ra
+		}
 		out[route] = RouteRest{Route: route, At: last, Until: last.Add(d), Cards: cards, Cause: RestRateBackoff,
 			Why: fmt.Sprintf("rate-limit backoff of %s after %d rate-limited ends since its last ok end", d, k)}
 	}
@@ -642,6 +649,9 @@ func (s *Snapshot) withRests() (*Snapshot, []RouteRest) {
 			n.rests[name] = x
 		}
 	}
+	// a provider cools per provider, never per route: its cooling holds every route of it
+	// (fallback.go, coolRests; tla/ProviderFallback.tla NoDealToCooling)
+	coolRests(s, n.rests)
 	return &n, due
 }
 

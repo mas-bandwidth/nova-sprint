@@ -823,6 +823,21 @@ func Read(s *Snapshot, r ReadReq) Plan {
 					Moved:   c.ID + " " + c.Col + " -> refused (retired: not a read, asked again elsewhere)", Notes: []Note{n}})
 				continue
 			}
+			if class := providerFaultClass(r.Reason); class != "" && pr != nil && s.Fleet != nil && len(s.Routes) > 0 {
+				// a provider fault is not a read and spends no reader: the read is asked again
+				// at once of its reader on the next route in line, its re-asks not counted
+				// (fallback.go; tla/ProviderFallback.tla Fallback, FaultSpendsNothing;
+				// docs/SPEC-SPRINT.md section 5, provider fallback)
+				if fb, ok := readFallbackSet(&p, s, c, pr, r.Reason, class); ok {
+					fb[FieldReadTake+itoa(run)] = rec
+					record(pr, readConsumer(s, c, run, "provider fault", rec))
+					n.What += "; a provider fault (" + class + "), not a read: asked again at once on " + fb[FieldRoute] + ", its reader not spent"
+					p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.F("stream"),
+						Changes: []Change{change(Readers, moveEntry(c, c.Row, Asked, fb, "begun", FieldReturned))},
+						Moved:   c.ID + " " + c.Col + " -> asked (a provider fault: fallen back to " + fb[FieldRoute] + ", its reader not spent)", Notes: []Note{n}})
+					continue
+				}
+			}
 			set := map[string]string{FieldReadTake + itoa(run): rec, FieldReasked: itoa(returns)}
 			record(pr, readConsumer(s, c, run, "returned", rec))
 			if returns > MaxReadReasks {

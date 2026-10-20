@@ -605,16 +605,20 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map
 			ri[tier].r.count += steps
 			ri[tier].moves[c.ID] = strconv.FormatUint(steps, 10)
 		}
-		set := map[string]string{FieldRoute: r.Name, FieldModel: r.Provider + "/" + r.Model, FieldTokens: tokensWord(r.Tokens), FieldUSD: r.USD, FieldHarness: r.Harness, FieldBilling: s.billingPrices(r).Billing,
-			FieldDeadline: strconv.Itoa(r.Deadline), FieldTier: tier, FieldRoutes: strings.Join(append(Split(c.F(FieldRoutes)), r.Name), ",")}
-		if !pinnedTier(c, m) {
-			set[FieldTierNow] = tier // the primary is on the tier drawn (cardTier)
-		}
-		maps.Copy(set, rateFields(s, r))
+		set := s.routeFields(c, r, tier)
 		if ri != nil {
 			s.budgets.dealt(r.Provider)
 		}
 		return set, tier, "", false
+	}
+	if cwhy, _, all, novel := s.tierCooling(tier); all && novel && len(full) == 0 {
+		// every route of the tier is out of line for its provider's cooling, a provider
+		// unfunded among them: the tier's one judgment's words, a wait with its deadline
+		// (fallback.go; tla/ProviderFallback.tla WaitHasDeadline)
+		if up, fwhy := s.tierServed(tier, rested); len(up) > 0 {
+			return nil, tier, fwhy, true
+		}
+		return nil, tier, cwhy, false
 	}
 	if len(full) > 0 {
 		// a coordinator's rework or redo is never told it waits ready: the rework or redo
@@ -641,6 +645,21 @@ func (s *Snapshot) routeOf(c, wc *Card, ri routeIndexes, member string) (set map
 	return nil, tier, why, len(up) > 0
 }
 
+// routeFields is the route fields of one deal of the primary c on the route r of tier: the
+// work card's (route, model, budget, harness, billing, deadline, tier, limits) and the
+// primary's (the routes taken, and the tier drawn unless its tier is pinned). The deal
+// (routeOf) and the fallback (fallback.go, fallbackUnit) both write them.
+func (s *Snapshot) routeFields(c *Card, r Route, tier string) map[string]string {
+	m, _ := modelOf(c)
+	set := map[string]string{FieldRoute: r.Name, FieldModel: r.Provider + "/" + r.Model, FieldTokens: tokensWord(r.Tokens), FieldUSD: r.USD, FieldHarness: r.Harness, FieldBilling: s.billingPrices(r).Billing,
+		FieldDeadline: strconv.Itoa(r.Deadline), FieldTier: tier, FieldRoutes: strings.Join(append(Split(c.F(FieldRoutes)), r.Name), ",")}
+	if !pinnedTier(c, m) {
+		set[FieldTierNow] = tier // the primary is on the tier drawn (cardTier)
+	}
+	maps.Copy(set, rateFields(s, r))
+	return set
+}
+
 // routeServed is routeOf's check: whether a route serves a deal of c to member, and why
 // none does, without the route fields. The tick's machines' pass (TickDeal) and the checks
 // that pick a member (launchersOf) and name the tier's judgment (noRoute) walk every ready
@@ -661,6 +680,17 @@ func (s *Snapshot) routeServed(c, wc *Card, member string) (tier, why string, by
 	}
 	if len(s.Routes) == 0 {
 		return "", "", false
+	}
+	if cwhy, _, all, novel := s.tierCooling(tier); all && novel {
+		// every route of the tier is out of line for its provider's cooling, and the deal's
+		// own words do not cover it (a provider unfunded, or cooled by its own record): one
+		// judgment for the tier naming each provider, never one per card, and the cards
+		// wait with its deadline (fallback.go; tla/ProviderFallback.tla WaitHasDeadline;
+		// docs/SPEC-SPRINT.md section 5, provider fallback)
+		if up, fwhy := s.tierServed(tier, nil); len(up) > 0 {
+			return tier, fwhy, true
+		}
+		return tier, cwhy, false
 	}
 	if _, _, ok, rested, unlaunchable, _ := s.drawRoute(c, wc, nil, member, tier); ok {
 		return tier, "", false
@@ -787,6 +817,13 @@ func (s *Snapshot) servedRoute(tier, member, name string, drawing bool) (Route, 
 			// route out, a check of the tier does not, so a backoff is never a judgment, as a
 			// full provider is not (a-rate-limited-refusal-never-fails-the-cardc;
 			// tla/RateBackoff.tla)
+			return Route{}, false
+		}
+		if s.providerUnfunded(r.Provider) {
+			// the line (fallback.go, (1)): an unfunded provider is out of it, for a draw and
+			// a check of the tier alike; every other cooling of a provider is settled as a
+			// rest of each of its routes (withRests), so the rest check above leaves it out
+			// (tla/ProviderFallback.tla NoDealToCooling)
 			return Route{}, false
 		}
 		if !s.Launches(member, r) {
@@ -1063,6 +1100,9 @@ func (s *Snapshot) readRoutesAllRest(pr *Card) bool {
 		return false
 	}
 	tier := s.readTierOf(pr)
+	if _, _, all := s.TierCooling(tier); all {
+		return true // no route of the read tier is in line: the read waits (fallback.go, (3))
+	}
 	served := false
 	for _, r := range s.Routes {
 		if r.Tier != tier || !r.Enabled {
@@ -1111,8 +1151,23 @@ func (s *Snapshot) readRouteOf(ri routeIndexes, pr *Card, avoid []string) map[st
 	// asks whether any served entry is left drawable, so with every route resting the
 	// walk falls back to the first of them as it did before the ask knew of rests
 	skip := slices.Clone(avoid)
+	budgets := s.budgets
+	if budgets == nil {
+		budgets = s.withBudgets().budgets
+	}
 	for _, r := range served {
 		if _, rests := s.resting(r.Name); rests {
+			skip = append(skip, r.Name)
+			continue
+		}
+		// the line (fallback.go, (1) and (4)): a read is never asked onto a route of a
+		// cooling provider, nor of one at its concurrency budget, while another serves
+		// (tla/ProviderFallback.tla NoDealToCooling)
+		if _, cools := s.providerCooling(r.Provider); cools {
+			skip = append(skip, r.Name)
+			continue
+		}
+		if isFull, _ := budgets.full(r.Provider); isFull {
 			skip = append(skip, r.Name)
 		}
 	}
@@ -1129,6 +1184,12 @@ func (s *Snapshot) readRouteOf(ri routeIndexes, pr *Card, avoid []string) map[st
 	ri[tier].r.count += steps
 	was, _ := strconv.ParseUint(ri[tier].moves[key], 10, 64)
 	ri[tier].moves[key] = strconv.FormatUint(was+steps, 10)
+	return s.readRouteFields(r, tier)
+}
+
+// readRouteFields is a read card's route fields on the route r of tier: the ask's draw
+// (readRouteOf) and a read's provider-fault fallback (fallback.go) write them.
+func (s *Snapshot) readRouteFields(r Route, tier string) map[string]string {
 	out := map[string]string{FieldRoute: r.Name, FieldModel: r.Provider + "/" + r.Model, FieldTokens: tokensWord(r.Tokens), FieldUSD: r.USD, FieldHarness: r.Harness, FieldBilling: s.billingPrices(r).Billing,
 		FieldDeadline: strconv.Itoa(r.Deadline), FieldTier: tier}
 	// a read on a limited route carries its limits too: its reader's requests take the
@@ -1151,6 +1212,11 @@ func (s *Snapshot) readRouteMissing(pr *Card) (tier, why string) {
 	// only one the friends' tiers hold (tierServed, friendTakes)
 	if s.FleetTakes(tier) && (s.tierRouted(tier) || s.ownModelReaderUp(tier)) {
 		return tier, ""
+	}
+	if cwhy, _, all := s.TierCooling(tier); all && s.FleetTakes(tier) {
+		if up, _ := s.tierServed(tier, nil); len(up) == 0 {
+			return tier, cwhy // its reads wait for a provider to stop cooling (fallback.go, (3))
+		}
 	}
 	up, why := s.tierServed(tier, nil)
 	if len(up) > 0 {
