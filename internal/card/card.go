@@ -213,6 +213,7 @@ func Checks(id, brief string, o Options) []cardgen.LintFinding {
 	if line := openDecisionLine(brief); line != 0 {
 		add(OpenDecisionCheck, line, "this brief leaves an owner decision open for the worker to pick; "+OpenDecisionRemedy)
 	}
+	out = append(out, holdOnOwnPaths(id, brief)...)
 	return out
 }
 
@@ -384,6 +385,13 @@ const (
 	OpenDecisionRemedy = "settle it first: an OWNER RULING: line quoting the decision, or a KIND: decision card the work card needs"
 )
 
+// HoldOnOwnPathsCheck is the check name of the hold-on-own-paths finding: a
+// sentence outside the RULES block and outside double quotes tells the worker to
+// HOLD on a defect in a file the brief's PATHS names, or a directory that prefixes
+// one. The brief contradicts itself: it owns the file and tells the worker to stop
+// on a defect in it (docs/SPEC-SPRINT.md, the owner's rule of 2026-10-19).
+const HoldOnOwnPathsCheck = "hold-on-own-paths"
+
 // Remedy returns the one-line remedy for a check token drawn by card lint.
 func Remedy(check string) string {
 	if check == GateHostCheck || check == ToolchainGateCheck {
@@ -415,6 +423,8 @@ func Remedy(check string) string {
 		return "do not name the author on a By: line; sign the attempt with your own name"
 	case "dropped-card":
 		return "remove reference to the dropped card; a brief stands alone and owes nothing to a dropped card"
+	case "hold-on-own-paths":
+		return "take the file out of PATHS and name the card that fixes the defect (BLOCKED-BY), or tell the worker to fix it"
 	case "model-lines":
 		return "line 1 names the card's tier and model invariants: write tier: and model invariants on line 1"
 	case "placeholder":
@@ -658,4 +668,68 @@ func wordRune(s string, i int) bool {
 	}
 	c := rune(s[i])
 	return c == '_' || unicode.IsLetter(c) || unicode.IsDigit(c)
+}
+
+// rulesHeadRE opens the RULES paragraph, the head of the held rules a member
+// appends at stage time: a contract's lines, never a task sentence.
+var rulesHeadRE = regexp.MustCompile(`^(?:#{1,6}[ \t]+)?RULES\b`)
+
+// holdOnOwnPaths is the hold-on-own-paths check: a sentence of the brief outside
+// the RULES block and outside double quotes tells the worker to HOLD on a defect
+// in a path PATHS names, or a directory that prefixes one. The path is a finding
+// on its line; name the card that fixes the defect, or tell the worker to fix it.
+func holdOnOwnPaths(id, brief string) []cardgen.LintFinding {
+	paths := headerList(brief, "PATHS")
+	if len(paths) == 0 {
+		return nil
+	}
+	var out []cardgen.LintFinding
+	for i, line := range strings.Split(brief, "\n") {
+		if rulesHeadRE.MatchString(line) {
+			break // the RULES paragraph is the contract's, never a task sentence
+		}
+		scan := unquoted(line)
+		if !hasWord(scan, "HOLD") {
+			continue
+		}
+		for _, p := range pathTokens(scan) {
+			if owned := ownPath(p, paths); owned != "" {
+				out = append(out, cardgen.LintFinding{
+					ID: id, Check: HoldOnOwnPathsCheck, Line: i + 1,
+					Excerpt: "the brief owns " + owned + " and tells the worker to HOLD on it; either take it out of PATHS and name the card that fixes it (BLOCKED-BY), or tell the worker to fix it",
+				})
+				break
+			}
+		}
+	}
+	return out
+}
+
+// pathTokens is a line's path tokens: whitespace- or comma-separated words that
+// carry a slash or end in .md, each scrubbed of trailing punctuation.
+func pathTokens(s string) []string {
+	var out []string
+	for _, tok := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || unicode.IsSpace(r) }) {
+		if !strings.Contains(tok, "/") && !strings.HasSuffix(tok, ".md") {
+			continue
+		}
+		out = append(out, strings.Trim(tok, ".,;:()[]{}'\""))
+	}
+	return out
+}
+
+// ownPath is the PATHS entry the path p names by owning it: p itself, or, when p
+// is a directory, a PATHS entry it prefixes; "" when none.
+func ownPath(p string, paths []string) string {
+	p = strings.TrimPrefix(strings.TrimSuffix(path.Clean(p), "/"), "./")
+	if p == "" || p == "." {
+		return ""
+	}
+	for _, e := range paths {
+		e = strings.TrimSuffix(strings.TrimPrefix(e, "./"), "/")
+		if e == p || strings.HasPrefix(e, p+"/") {
+			return p
+		}
+	}
+	return ""
 }
