@@ -123,9 +123,8 @@ coordinate through the same work protocol.
   <img alt="White carries the task through implementation, independent review, checks, and landing." src="brand/explainer/landed.png">
 </picture>
 
-The **runner** carries the task all the way home. Ordinary task cards
-move through stages on the dashboard automatically from waiting to ready,
-working, reviewing, merging and landed.
+**nova-sprint** carries the task all the way home. Cards move through stages 
+on the dashboard automatically from waiting to ready, working, reviewing, merging and landed.
 
 ## Give the team a plan. Go have a life.
 
