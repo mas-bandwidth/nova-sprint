@@ -1665,6 +1665,54 @@ default) and `low` (it fills only an idle lane).
   - With reads first, each finish is read while it is fresh, work in flight stays small, base
     moves in small steps, and landed per hour tracks finished per hour (Little's law).
 
+### v1.9, not yet built: the owner's sprint rulings of 2026-10-20
+
+The owner, 2026-10-20, of the speed rules in force that day: "probably just normal rules from
+now on?", and "Fully cover the smart defaults in v1.9". These are standing rules of every sprint.
+None is built yet; until each lands the coordinator applies it by hand. Each names its nova-tools
+roadmap entry (docs/roadmap.sexp, group export-v19).
+
+- **Priority.** fix > blocker > critical > reader > high > normal > low, and priority passes
+  down every dependency: a card's hard needs and sentinels deal at its priority, a lower-priority
+  LAND-AFTER never stalls the lander, an inversion is warned when written and alarmed within a
+  tick (section "Priority" above; fix-first-then-reads, priority-inherits-through-needs,
+  land-after-never-stalls-the-lander, priority-inversion-caught-at-write,
+  priority-inversion-alarm, sentinel-needs-editable, priority-report, priority-proven-in-tla).
+- **One friend read; BROKEN only for a real defect.** The default read mix is one friend read.
+  A read says BROKEN only for a DONE-WHEN item not met, a regression from base, a broken owner
+  ruling, a build break or a test that cannot fail; everything else is a note on an OK (the
+  owner: "Land shit!"; default-read-mix-one-friend, read-broken-bar). A mix may deal N reads and
+  decide on K ("we can send off 3 reads, but we need only 2"; reads-deal-n-need-k).
+- **Ready to accept is accepted by the machine**, once per card (auto-accept-ready). Harmless
+  PATHS-PROPOSED files (tests, docs, TLA cfg, records, CI comments) are approved automatically
+  (harmless-paths-auto-approved).
+- **Gate once; never chase the base tip.** Merge the base once, gate at that head, finish naming
+  the gated SHA; the lander re-merges and its CI tests the tip ("this has always been the rule";
+  gate-once-no-tip-chase). Windows gates run only for cards that change Windows code, derived
+  from PATHS (gate-needs-from-paths).
+- **The fleet takes first passes; fixes go to friends**, continuing from the last pushed head
+  ("get the fast cheap pass on the fleet, then if the fleet can't do it, then the friends finish
+  it"; fixes-go-to-friends).
+- **The two-minute rule.** Until features and bugs land, no single run over two minutes; a
+  longer run is OWED, never cut down and never a reason for BROKEN, and the sprint keeps the
+  OWED list (owner-run-budget, owed-runs-are-a-machine-list).
+- **The coordinator never edits a working card's brief to talk to it**; notes go by message.
+  A NOTE, CARRY, ROUTE, tier or PRIORITY edit, or a PATHS widening, never bounces a finish and
+  never retires a review card's reads; a bounced head is re-finished by a verb
+  (brief-note-never-bounces-a-finish, brief-edit-at-review-keeps-reads, refinish-verb).
+- **One bad merging card never stalls a stream**, a merging card's header is repaired in place,
+  and the coordinator lands a named card through the lander, never around it
+  (lander-sets-aside-an-unlandable-head, merging-card-repaired-in-place,
+  coordinator-lands-through-the-fence).
+- **Converging** means the cards landed create fewer than one new primary card each, counted
+  only over landed cards ("Look only at cards that have landed, what new work did they
+  create?"); landed per hour is shown beside it ("We should be able to do 20-30-40-50+
+  per-hour"; convergence-metric).
+- **Scope moves in one step**: defer and drop take a card from any column into its
+  repository's own roadmap with its brief and head, dependents handled, and one verb scopes the
+  sprint to a release (defer-any-card-into-its-repo-roadmap, single-card-hold-and-return,
+  scope-to-milestone-one-verb).
+
 ### gc: the system's scratch is reclaimed by a verb
 
 On 2026-10-06 the coordinator freed 314 GiB with a hand-written `clean-jobs.py` (job
