@@ -163,8 +163,12 @@ type landBatch struct {
 	Also []string `json:"also,omitempty"`
 	// Scope is each merged card's scope amendments, card:file: the files outside its PATHS
 	// the rule allows as the test, fixture or doc of the same change (sprint.ScopeAmended).
-	Scope  []string `json:"scope,omitempty"`
-	DryRun bool     `json:"dry_run,omitempty"`
+	Scope []string `json:"scope,omitempty"`
+	// Fallout is each merged card's fallout files, card:file: the files outside its PATHS
+	// whose every hunk only follows the card's own rename or deletion (sprint.LandScopeFallout;
+	// docs/SPEC-SPRINT.md section 7, the fallout sweep).
+	Fallout []string `json:"fallout,omitempty"`
+	DryRun  bool     `json:"dry_run,omitempty"`
 	// Times is how long each of the batch's steps took; nil for a batch refused before
 	// its git ran, and for a dry run.
 	Times *landTimes `json:"times,omitempty"`
@@ -206,6 +210,32 @@ type landTimes struct {
 // since adds the seconds from start to now to *to.
 func since(to *float64, start time.Time) { *to += time.Since(start).Seconds() }
 
+// falloutMark begins a fallout file's entry in Scope, which the land line and --json split
+// back into the third list (splitScope): a file scope and a fallout file are different rules.
+const falloutMark = "\x00fallout:"
+
+// splitScope is a batch's Scope split into the scope amendments and the fallout files, each
+// as card:file.
+func splitScope(entries []string) (scope, fallout []string) {
+	for _, e := range entries {
+		if strings.HasPrefix(e, falloutMark) {
+			fallout = append(fallout, strings.TrimPrefix(e, falloutMark))
+			continue
+		}
+		scope = append(scope, e)
+	}
+	return scope, fallout
+}
+
+// MarshalJSON splits Scope into Scope and Fallout for --json, so a reader of either list
+// never sees the other's marker.
+func (b landBatch) MarshalJSON() ([]byte, error) {
+	type plain landBatch
+	scope, fallout := splitScope(b.Scope)
+	b.Scope, b.Fallout = scope, fallout
+	return json.Marshal(plain(b))
+}
+
 // line is the batch's output line.
 func (b landBatch) line() string {
 	tip := b.Tip
@@ -246,8 +276,12 @@ func (b landBatch) line() string {
 			l += " judged=yes"
 		}
 	}
-	if len(b.Scope) > 0 {
-		l += " scope=" + oneline.Field(strings.Join(b.Scope, ","))
+	scope, fallout := splitScope(b.Scope)
+	if len(scope) > 0 {
+		l += " scope=" + oneline.Field(strings.Join(scope, ","))
+	}
+	if len(fallout) > 0 {
+		l += " fallout=" + oneline.Field(strings.Join(fallout, ","))
 	}
 	if b.Fact != "" {
 		l += " fact=" + b.Fact
@@ -2314,7 +2348,7 @@ func (l *lander) checkCard(ctx context.Context, dir, stream string, c landCard, 
 	}
 	// SPEC-SPRINT section 7: required validation files are inside every PATHS;
 	// ordinary scope amendments remain recorded and unrelated source stays refused.
-	amended, out := sprint.LandScope(c.paths, diff, beforePaths)
+	amended, fallout, out := sprint.LandScopeFallout(c.paths, diff, beforePaths)
 	if len(out) > 0 {
 		parts := make([]string, 0, len(out))
 		for _, f := range out {
@@ -2373,6 +2407,9 @@ func (l *lander) checkCard(ctx context.Context, dir, stream string, c landCard, 
 	if len(why) == 0 {
 		l.diffs[c.id] = diff
 		l.scope[c.id] = amended
+		for _, f := range fallout {
+			l.scope[c.id] = append(l.scope[c.id], falloutMark+f)
+		}
 		return "", "", repaired
 	}
 	if _, err := l.git(ctx, dir, "reset", "-q", "--hard", before); err != nil {
@@ -2761,6 +2798,10 @@ func (l *lander) scopeOf(merged []string) []string {
 	var out []string
 	for _, id := range merged {
 		for _, f := range l.scope[id] {
+			if strings.HasPrefix(f, falloutMark) {
+				out = append(out, falloutMark+id+":"+strings.TrimPrefix(f, falloutMark))
+				continue
+			}
 			out = append(out, id+":"+f)
 		}
 	}

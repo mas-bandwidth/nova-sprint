@@ -46,10 +46,11 @@ const (
 
 // The paths rule's acts.
 const (
-	ActTwin    = "replace by its widened twin"      // no proposed file is shared
-	ActTwinCmd = "left with its twin command"       // a proposed file is shared: a mind's, the command printed
-	pathsSaid  = "answered by rule paths: "         // the decided note's words
-	pathsCmdAt = "paths proposed, shared: a mind's" // the judgment's text when it carries the command
+	ActTwin         = "replace by its widened twin"      // no proposed file is shared
+	ActTwinCmd      = "left with its twin command"       // a proposed file is shared: a mind's, the command printed
+	ActFalloutWiden = "widen PATHS in place for fallout" // every proposed file is the card's own fallout
+	pathsSaid       = "answered by rule paths: "         // the decided note's words
+	pathsCmdAt      = "paths proposed, shared: a mind's" // the judgment's text when it carries the command
 )
 
 // FieldPathsProposed is the proposal the paths rule last answered on a primary:
@@ -132,6 +133,14 @@ func rulePaths(s *Snapshot, a *RuleAnswer) bool {
 	}
 	if len(p.New) == 0 {
 		left(a, said+": the proposal is inside its PATHS already, so the blocker is not its PATHS; a mind's, and the same brief is not dealt again")
+		return true
+	}
+	if WidensSpent(pr) == "" && falloutProposal(s, pr, p.New) {
+		// tla/Fallout.tla, Widen: a proposal whose files carry only the card's own fallout
+		// is widened in place by rule, the same id, no twin and no coordinator step
+		a.Act = ActFalloutWiden
+		a.Why = said + ": the head changes " + strings.Join(p.New, ",") + " only as the card's own change reaches them, so PATHS widens in place by rule"
+		a.paths = &p
 		return true
 	}
 	p.Shared = sharedGlobs(s, pr, p.New)
@@ -335,6 +344,56 @@ func writeTwinBrief(s *Snapshot, card string, p PathsProposal) (string, error) {
 	return file, os.WriteFile(file, []byte(p.Brief+"\n"), 0o644)
 }
 
+// widenFalloutInPlace is one card whose PATHS-PROPOSED files are all its own fallout: its brief
+// is widened in place by rule (tla/Fallout.tla, Widen) -- the same id, no twin, no coordinator
+// step -- with a CARRY: line at the held head, and its judgment closed by the paths rule's note.
+func widenFalloutInPlace(s *Snapshot, r TickReq, a RuleAnswer) Plan {
+	pr, prop := s.Work.Placed(a.Card), *a.paths
+	files := prop.New
+	carry := fmt.Sprintf("CARRY: %s attempt %d head=%s", pr.ID, prop.Attempt, prop.Head)
+	p := Brief(s, BriefReq{ID: pr.ID, Brief: SharedWidened(PathsWidened(pr.F("brief"), files, carry), files), Rules: pr.F(FieldRules), Who: r.who(), ByRule: true})
+	if len(p.Refused) > 0 {
+		return Plan{}
+	}
+	said := cutText(RuleSaid(RulePaths, pathsSaid+pr.ID+" attempt "+itoa(prop.Attempt)+" held with "+prop.Line()+": PATHS widened in place by "+strings.Join(files, ",")+", its change's fallout"), MaxCardTextBytes)
+	why := cutText(a.Why, MaxCardTextBytes)
+	fix := cutText(fmt.Sprintf("start from head %s (%s attempt %s): its change is done; PATHS now name %s; the files it proposed carry only the card's own fallout: %s",
+		pr.F("head"), pr.ID, pr.F("attempt"), strings.Join(files, ","), a.Why), MaxCardTextBytes)
+	o := a.open
+	for i := range p.Units {
+		u := &p.Units[i]
+		if u.Key != pr.ID {
+			continue
+		}
+		for j, ch := range u.Changes {
+			if ch.Table != Work || ch.Entry.ID != pr.ID {
+				continue
+			}
+			e := &u.Changes[j].Entry
+			if e.Set == nil {
+				e.Set = map[string]string{}
+			}
+			e.Set["fix"] = fix
+			e.Set[FieldNote], e.Set[FieldRuleAnswer] = said, RulePaths+": "+a.Act+" at "+stamp(s.Now)
+			e.Set[FieldPathsProposed] = prop.mark()
+			e.Set[FieldWidens] = itoa(pr.Int(FieldWidens) + 1)
+			keep := []string{"fix"}
+			if w := pr.F(FieldWho); w != "" && e.Set[FieldWho] == "" {
+				e.Set[FieldWho] = w
+				keep = append(keep, FieldWho)
+			}
+			e.Unset = slices.DeleteFunc(e.Unset, func(f string) bool { return slices.Contains(keep, f) })
+		}
+		u.Moved += "; answered by rule " + RulePaths
+		if slices.ContainsFunc(u.Closes, func(c Open) bool { return c.Note.ID == o.Note.ID }) && !answeredIn(u.Notes, o.Note.ID) {
+			u.Notes = append(u.Notes, decided(o, said, r.who(), s.Now, pr.ID))
+		}
+		u.Notes = append(u.Notes, Note{Kind: Happened, Type: NPathsWidened, Stream: pr.Row, Primaries: []string{pr.ID}, Count: 1,
+			Who: r.who(), To: s.Coordinator, At: s.Now, What: why})
+	}
+	return p
+}
+
 // TickRulePaths answers the held cards the paths rule answers: each whose proposal shares a
 // file has its brief file written and its judgment's text made the complete command, once;
 // and the first whose proposal shares none is replaced by its twin (Recut, twins inherit),
@@ -344,11 +403,17 @@ func TickRulePaths(s *Snapshot, r TickReq) (Plan, int) {
 	var p Plan
 	var twin *RuleAnswer
 	done := map[string]bool{}
-	for _, a := range acting(s, r, ActTwin, ActTwinCmd) {
+	for _, a := range acting(s, r, ActTwin, ActTwinCmd, ActFalloutWiden) {
 		if done[a.Card] || a.paths == nil {
 			continue
 		}
 		done[a.Card] = true
+		if a.Act == ActFalloutWiden {
+			q := widenFalloutInPlace(s, r, a)
+			q.Units = append(q.Units, p.Units...)
+			q.Updates = append(q.Updates, p.Updates...)
+			return q, 0
+		}
 		if a.Act == ActTwin {
 			if twin == nil {
 				twin = &a

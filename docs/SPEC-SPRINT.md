@@ -4984,10 +4984,13 @@ removes still appears anywhere in the repository (code, tests, docs, `tla/`,
 outside `PATHS` may change when every hunk in it only follows the card's own change
 (a line mapping an old name to its new one, or a line dropped because its only
 reference is a removed name); those hunks are fallout, and the lander's E12 accepts
-them outside `PATHS` as the scope amendment does. A refused finish whose remaining
-files are all fallout widens `PATHS` by rule, with no coordinator step, and the
-card's own change goes through them. A reader's pass is given only on a sweep of
-zero; `follow-up only: outside PATHS` is not a pass. The model is `tla/Fallout.tla`
+them outside `PATHS` as the scope amendment does, a third list the batch's line and
+`--json` name `fallout=<card>:<file>,...` beside `scope=`. A HOLD whose
+`PATHS-PROPOSED` files carry only fallout hunks in the held head widens `PATHS` in
+place by rule, the same id and no twin; a refused finish whose remaining files are
+all fallout widens `PATHS` by rule too, with no coordinator step, and the card's own
+change goes through them. A reader's pass is given only on a sweep of zero;
+`follow-up only: outside PATHS` is not a pass. The model is `tla/Fallout.tla`
 (group `fallout`, `MCFallout*`): `LandedHasNoStaleRefs`,
 `NonFalloutOutsidePathsNeverLands` and `ReaderNeverPassesStale`, with the reversed
 witnesses `nosweep`, `anyhunk` and `readerpasses`.
