@@ -792,3 +792,7 @@ MCGatesOnlyBrokenMoveFree.cfg	MCGatesOnly.tla	invariant	DealtOnlyWhereTheNeedIs	
 MCReadProviderReturn.cfg	MCReadProviderReturn.tla	pass	-	ignore-terminal	readproviderreturn	required	-
 MCReadProviderReturnBrokenProviderSpends.cfg	MCReadProviderReturn.tla	invariant	ProviderBelowCapIsAskable	ignore-terminal	readproviderreturn	required	-
 MCReadProviderReturnBrokenNoCap.cfg	MCReadProviderReturn.tla	invariant	ProviderReturnsBounded	ignore-terminal	readproviderreturn	required	-
+MCFallout.cfg	MCFallout.tla	pass	-	ignore-terminal	fallout	required	-
+MCFalloutBrokenNoSweep.cfg	MCFallout.tla	invariant	LandedHasNoStaleRefs	ignore-terminal	fallout	required	-
+MCFalloutBrokenAnyHunk.cfg	MCFallout.tla	invariant	NonFalloutOutsidePathsNeverLands	ignore-terminal	fallout	required	-
+MCFalloutBrokenReaderPasses.cfg	MCFallout.tla	invariant	ReaderNeverPassesStale	ignore-terminal	fallout	required	-
