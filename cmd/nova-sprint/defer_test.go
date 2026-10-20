@@ -132,3 +132,39 @@ func TestDeferByRepository(t *testing.T) {
 	require.NotNil(t, ta.primary("x1"))
 	ta.clean()
 }
+
+// testFeatureRoadmapSexp is a smallest feature-table roadmap: one area, one row.
+const testFeatureRoadmapSexp = `(:schema 1 :root "goal"
+ :page (:title "test roadmap" :roadmaps ("core"))
+ :nodes
+ ((:id "goal" :type :work-set :children ("core"))
+  (:id "core" :type :roadmap :title "Core" :text "What it is."
+   :rows (("one" "One")) :columns (("done" "done")) :cells (("one" "done" "t-one")))
+  (:id "t-one" :type :task :title "One" :state :done :evidence ("one_test.go: TestOne"))))
+`
+
+// A defer into a feature-table roadmap adds each card as an open row of its
+// Unsorted area, the whole brief kept on the row's task, and the page renders it.
+func TestDeferWritesAFeatureRoadmapAsUnsortedRows(t *testing.T) {
+	t.Parallel()
+	ta := deferApp(t)
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "docs"), 0o755))
+	path := filepath.Join(dir, "docs", "roadmap.sexp")
+	require.NoError(t, os.WriteFile(path, []byte(testFeatureRoadmapSexp), 0o644))
+
+	assert.Contains(t, ta.ok("defer --stream s1 --repo-dir "+dir+" --reason 'deferred to the roadmap' --expect 2"), "DEFER OK")
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	fs, err := roadmap.DecodeFeatures("docs/roadmap.sexp", raw)
+	require.NoError(t, err, "the defer wrote a roadmap that does not decode")
+	require.Equal(t, []string{"core", roadmap.UnsortedArea}, fs.Areas)
+	for _, id := range []string{"x2", "x3"} {
+		require.NotNil(t, fs.Nodes["card/"+id], "%s has no task", id)
+		assert.Equal(t, "todo", fs.Nodes["card/"+id].State)
+	}
+	assert.Contains(t, string(raw), "It waits on x1.", "the whole brief is kept")
+	page := roadmap.RenderFeatures(fs, "docs/roadmap.sexp", "")
+	assert.Contains(t, page, "| Defer x2 to the roadmap | ❌ |\n| Defer x3 to the roadmap | ❌ |\n| complete | 0% |\n")
+	ta.clean()
+}

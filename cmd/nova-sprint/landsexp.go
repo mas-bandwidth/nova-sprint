@@ -31,6 +31,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
+	"github.com/mas-bandwidth/nova-tools/pkg/roadmap"
 )
 
 // sexpData is the roadmap data a merge resolves, each with the decoder kind and the page
@@ -86,6 +87,9 @@ func (l *lander) stageSexpUnion(ctx context.Context, dir string, paths []string)
 			}
 			sides[i] = res.Stdout
 		}
+		if why := featureFormSide(p, sides); why != "" {
+			return nil, nil, nil, why, ""
+		}
 		merged, err := unionSexp(d.kind, p, sides[0], sides[1], sides[2])
 		if err != nil {
 			// the line merge refused a stretch: merged form by form, by fix id and release
@@ -111,6 +115,20 @@ func (l *lander) stageSexpUnion(ctx context.Context, dir string, paths []string)
 		}
 	}
 	return rest, data, pages, "", ""
+}
+
+// featureFormSide says why a conflict in the roadmap data is not merged when any
+// side of it is the feature-table form (nova-roadmap help form): that form is a
+// graph of nodes whose lists the entry merge does not know, so the lander keeps it
+// opaque and the card rebases and regenerates, as for any conflict it cannot
+// resolve. "" when every side is the card list or fixes.
+func featureFormSide(p string, sides [3][]byte) string {
+	for _, side := range sides {
+		if roadmap.IsFeatureForm(p, side) {
+			return p + " conflicts and is the feature-table form, which the lander does not merge entry by entry; rebase onto the tip and run make roadmap"
+		}
+	}
+	return ""
 }
 
 // sexpUnionNote is the card's note for data resolved at the merge, on its timeline.

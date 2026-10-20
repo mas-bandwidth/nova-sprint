@@ -74,3 +74,18 @@ func TestUnionSexpOnTheRealFixesFile(t *testing.T) {
 	assert.Contains(t, e, "fix:card-two")
 	assert.Less(t, strings.Index(string(got), `"card-one"`), strings.Index(string(got), `"card-two"`), "the tip's entry first")
 }
+
+// A conflict in feature-table roadmap data is not merged entry by entry: any side
+// in that form returns the card to rebase and regenerate, naming why; card-list
+// and fixes sides are left to the merge.
+func TestFeatureFormSideIsNotMerged(t *testing.T) {
+	t.Parallel()
+	card := []byte(`(roadmap "v1" :title "t" :text "t" :groups () :items ())`)
+	feature := []byte(testFeatureRoadmapSexp)
+	assert.Empty(t, featureFormSide("docs/roadmap.sexp", [3][]byte{card, card, card}))
+	for i := range 3 {
+		sides := [3][]byte{card, card, card}
+		sides[i] = feature
+		assert.Contains(t, featureFormSide("docs/roadmap.sexp", sides), "is the feature-table form, which the lander does not merge", "side %d", i)
+	}
+}

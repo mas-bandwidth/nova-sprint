@@ -9,7 +9,7 @@ TLC_OUT ?=
 TLC_GROUP ?=
 TLC_BUDGET ?= 110
 
-.PHONY: build vet test functional functional-gate functional-gate-rest functional-gate-deadcode functional-gate-shard release-accept help roadmap schemawire-check tlc tlc-full tlc-groups tlc-test tlc-require
+.PHONY: build vet test functional functional-gate functional-gate-rest functional-gate-deadcode functional-gate-shard release-accept help roadmap roadmap-check schemawire-check tlc tlc-full tlc-groups tlc-test tlc-require
 
 help:
 	@echo "make build       go build ./..."
@@ -21,7 +21,8 @@ help:
 	@echo "make functional-gate-deadcode  TestDeadCode alone (its deadcode leg)"
 	@echo "make functional-gate-shard  one shard of ./cmd/nova-sprint: SHARD=k SHARDS=n (its shard legs)"
 	@echo "make release-accept  the release gate: the release checks in parallel, under a minute (NOVA_SPRINT_BIN, redis-server)"
-	@echo "make roadmap     regenerate ROADMAP.md and FIXES.md from their sexp"
+	@echo "make roadmap     regenerate ROADMAP.md and FIXES.md from their sexp (nova-roadmap render)"
+	@echo "make roadmap-check  exit 1 when ROADMAP.md or FIXES.md is not what its sexp renders"
 	@echo "make schemawire-check  go generate every pkg/*wire and internal/**/*wire package, then git diff --exit-code (schemas/README.md)"
 	@echo "make tlc         run a group on a TLC bench: TLC_JAR, TLC_OUT and TLC_GROUP"
 	@echo "make tlc-full    run a manual group: TLC_JAR, TLC_OUT, TLC_GROUP and an explicit TLC_BUDGET"
@@ -95,8 +96,12 @@ release-accept:
 	GO=$(GO) NOVA_SPRINT_BIN=$(NOVA_SPRINT_BIN) sh tools/release-accept.sh
 
 roadmap:
-	$(GO) tool roadmap --file docs/roadmap.sexp --out ROADMAP.md
-	$(GO) tool roadmap --kind fixes --file docs/fixes.sexp --out FIXES.md
+	$(GO) tool nova-roadmap render
+	$(GO) tool nova-roadmap render --kind fixes
+
+roadmap-check:
+	$(GO) tool nova-roadmap check
+	$(GO) tool nova-roadmap check --kind fixes
 
 # schemawire-check is the one check of the generated wire packages
 # (schemas/README.md): a definition in schemas/<area>/ generates pkg/<area>wire/,
