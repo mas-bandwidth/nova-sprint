@@ -374,6 +374,10 @@ func SafeDecisionDefault(typ string) string {
 		return "hold with cause"
 	case NCannotAsk:
 		return "wait 30m and re-ask"
+	case NNoReaderForTier:
+		// structural: no reader freeing can serve the tier, so the owner decides
+		// (cannot_ask_tier.go; tla/WaitFor.tla OwnerDeliver)
+		return noReaderTierExit
 	default:
 		return "none"
 	}
