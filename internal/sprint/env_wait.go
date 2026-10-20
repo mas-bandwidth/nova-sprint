@@ -76,9 +76,13 @@ func envWaitDue(s *Snapshot, c *Card, open []Open, now time.Time) bool {
 	if err != nil || now.Before(until) {
 		return false
 	}
-	// dealt ready: a member whose facts carry it is about to take it, so no judgment
-	if wc := s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt"))); wc != nil && (wc.Col == Ready || wc.Col == Working) {
-		return false
+	// dealt ready: a member whose facts carry it is about to take it, so no judgment.
+	// A snapshot with no fleet table has dealt nothing (a card-only tick), so it asks
+	// the fleet nothing.
+	if s.Fleet != nil {
+		if wc := s.Fleet.Placed(WorkCardID(c.ID, c.Int("attempt"))); wc != nil && (wc.Col == Ready || wc.Col == Working) {
+			return false
+		}
 	}
 	for _, o := range open {
 		if o.Note.Type == NEnvWait {
