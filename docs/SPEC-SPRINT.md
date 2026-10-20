@@ -3729,7 +3729,19 @@ is served. `card` and `where --json --rows` show the tier it is on.
   (`sprint.ReadsStanding`, `coordinatorReadStanding`); it is refused for the
   card's own worker, and a broken coordinator read stands as a reader's broken
   read (accept refuses the head). A card in review no reader can be asked raises
-  one judgment naming both remedies (reader add, wait).
+  one judgment naming both remedies (reader add, wait). Two waits are told apart
+  (`cannot_ask_tier.go`, `TickAsk`): a **transient** wait, where some reader row
+  serves the card's read tier but is down, away or at its room, stays the
+  existing cannot ask (`cannot ask`, `fewer than two readers up`) and is re-asked
+  when a reader frees, its server default unchanged; a **structural** wait, where
+  no reader row of the roster, whatever its state, serves the tier besides the
+  reader of the member that worked the card, is one judgment per read tier
+  (`no reader for the read tier`, `NNoReaderForTier`) naming every such card. It
+  takes no re-ask default, holds its cards (`WaitRefused`), and its exit is the
+  owner's: `reader add`, `raise the read tier`, or
+  `accept --heavy --evidence <path> --reason <text>` (section 8, the deadline
+  exit). The tick closes the judgment and asks the cards in the tick a reader
+  row serving the tier appears (`noReaderForTier`, `noReaderForTierConds`).
 - The sprint may set the count instead (`nova-sprint set --reads <0|1|2|default>`,
   the work table's property `reads_needed`; the owner, 2026-10-06: "I'd like to
   waive the second read for the moment"): while it is set, every card in review

@@ -423,6 +423,7 @@ one answer to each judgment (every one prints its own, filled in):
   stranded in review          rework or drop (or ask, if never asked) --group <id> --expect <n> --answers <notes>
   review has no reader         reader add <reader>, or wait <note> --for 30m
   no frontier reader has room reader add <reader> --tiers frontier, or wait <note> --for 30m
+  no reader for the read tier reader add <reader> --tiers <tier>, or stream set <stream> --read-tier <tier>, or accept <primary> --heavy --evidence <path> --reason '<why>'  (no reader of the roster serves the tier, so freeing one cannot help; the judgment refuses wait, takes no 30m re-ask default)
   stalled                     card <primary> (HELD says what holds it), then the decision it prints, or ack <note> --reason '<why>'
   landed work scored low      add --stream <s> '<fix id>' --brief '<the finding>', then ack <note>; or ack <note> --reason '<why it stands>'
   timer                       ack <note> --reason '<what you did>'  (a timer remind set: it woke its actor, there is nothing to decide)
