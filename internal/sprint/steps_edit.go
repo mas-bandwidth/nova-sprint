@@ -148,6 +148,10 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 	// a cycle between them. It is the needs the edits write, never the text's list,
 	// so a twin the rule keeps is held to the cycle check too.
 	proposed := map[string][]string{}
+	// proposedSoft is the batch's LAND-AFTER rewrites, judged with the needs above
+	// in the same union graph (editsCycleWith): a DEPENDS-ON edit and a LAND-AFTER
+	// edit of one batch that close a loop between them are refused together.
+	proposedSoft := map[string][]string{}
 	for _, b := range cards {
 		c := s.Work.Placed(b.ID)
 		if _, twice := kept[b.ID]; twice || c == nil {
@@ -174,6 +178,9 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		kept[b.ID] = want
 		if !sameNeeds(Split(c.F("needs")), want) {
 			proposed[b.ID] = want
+		}
+		if land := BriefLandAfter(b.Brief); !sameNeeds(SoftDepsRaw(c), land) {
+			proposedSoft[b.ID] = land
 		}
 	}
 	for _, b := range cards {
@@ -378,8 +385,8 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 				continue
 			}
 		}
-		if !sameNeeds(cur, want) {
-			if why := needsCycleWith(s, c.ID, proposed); why != "" {
+		if _, softEdit := proposedSoft[c.ID]; !sameNeeds(cur, want) || softEdit {
+			if why := editsCycleWith(s, c.ID, proposed, proposedSoft); why != "" {
 				p.refuse(c.ID, why)
 				continue
 			}
@@ -1941,6 +1948,16 @@ func needsCycleWith(s *Snapshot, id string, proposed map[string][]string) string
 	if len(proposed[id]) == 0 {
 		return ""
 	}
+	return editsCycleWith(s, id, proposed, nil)
+}
+
+// editsCycleWith is needsCycleWith over the whole batch of a brief's writes,
+// its DEPENDS-ON rewrites (proposed) and its LAND-AFTER rewrites (soft) alike:
+// the graph is the union of named needs, LAND-AFTER and sentinel lines over
+// open cards (cycle.go, newNeedGraphSoft), and the only cycles refused are the
+// ones through id. tla/WaitFor.tla NoWaitCycle, EditRefusedOnlyForItsOwnCycle;
+// docs/SPEC-SPRINT.md section 4 (Order).
+func editsCycleWith(s *Snapshot, id string, proposed, soft map[string][]string) string {
 	live := func(c *Card, needs []string) []string {
 		var waived []string
 		if c != nil {
@@ -1954,15 +1971,21 @@ func needsCycleWith(s *Snapshot, id string, proposed map[string][]string) string
 		}
 		return out
 	}
-	// every other open card's stored needs are edges whatever its state
-	// (cycle.go, needGraph.needs)
+	// every other open card's stored needs and LAND-AFTER are edges whatever its
+	// state (cycle.go, needGraph.needs)
 	named := map[string][]string{}
 	waits := map[string]bool{}
 	for pid, wants := range proposed {
 		named[pid] = live(s.Work.Card(pid), wants)
 		waits[pid] = true
 	}
-	g := newNeedGraph(s, named, nil, waits)
+	softs := map[string][]string{}
+	for pid, deps := range soft {
+		if c := s.Work.Card(pid); c != nil && c.Placed() && IsOpen(c.Col) {
+			softs[pid] = deps
+		}
+	}
+	g := newNeedGraphSoft(s, named, softs, nil, waits)
 	if cycle := g.closes([]string{id}); cycle != nil {
 		return "the needs would make a cycle: " + g.tellLoop(cycle) + "; nothing was changed"
 	}
