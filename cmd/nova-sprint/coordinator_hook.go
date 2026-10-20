@@ -155,7 +155,46 @@ func (a *app) coordinatorHookWhy(ctx context.Context, name string) string {
 	if err != nil {
 		return sprint.HookUnread(name, oneline.Escape(err.Error()))
 	}
-	return sprint.CoordinatorGate(name, st)
+	why := sprint.CoordinatorGate(name, st)
+	if why != "" {
+		// the sprint push is held and unproven after a failed send to the holder:
+		// the refusal names the send's error and its remedy (the bus's no-known-name
+		// refusal names nova-config friend add <name> ..., then nova-config apply)
+		if s := a.coordSendFailure(name); s != "" {
+			why += "; " + s
+		}
+	}
+	return why
+}
+
+// coordFail is the last failed send to a coordinator's name, as the server's coordinator
+// push records it (coordinator_push.go): the gate reads it on every app, the server's and
+// each lane's, so a refusal names the failed send wherever it is judged.
+type coordFail struct {
+	failed  bool
+	sendErr string
+}
+
+// coordFailures is the server's last failed send to each coordinator name, read by every
+// app's gate (the read and dashboard lanes' included), not only the server's own. It is a
+// map keyed by the coordinator's name so the package's parallel tests, each with a name of
+// its own, never collide; a send that goes clears the name's entry, so a recovered holder's
+// gate refuses with the mere not-hooked-in line again.
+var coordFailures = struct {
+	sync.Mutex
+	m map[string]coordFail
+}{m: map[string]coordFail{}}
+
+// coordSendFailure is why the last send to name failed, "" when the server's last
+// send to it did not: the sprint push is held and unproven, and the gate's refusal
+// names the send's error so the holder can mend it.
+func (a *app) coordSendFailure(name string) string {
+	coordFailures.Lock()
+	defer coordFailures.Unlock()
+	if f, ok := coordFailures.m[name]; ok && f.failed && f.sendErr != "" {
+		return "the sprint push of " + name + " is held and unproven: the last send to it failed: " + f.sendErr
+	}
+	return ""
 }
 
 // hookedIn is why the call may not run for want of the coordinator's hook, "" when it

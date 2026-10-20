@@ -97,6 +97,7 @@ type coordPush struct {
 	recoveryFrom   string    // frozen sender of the recovery token
 	recoveryToken  string    // one transport recovery send per failed episode
 	failed         bool      // the last send to the holder failed: the sprint push is unproven
+	sendErr        string    // the last failed send to the holder's error, which the gate's refusal names
 	heldAt         time.Time // the sprint push's last renewal
 	heldWhy        string    // what the last renewal said, said again only when it changes
 	heldOK         bool      // the last renewal proved the sprint push (else it unproved it)
@@ -391,6 +392,7 @@ func (a *app) coordinatorPass(ctx context.Context) (read bool) {
 		// Ordinary delivery keys reset for a new holder or epoch; state receipts remain.
 		p.holder, p.epoch, p.told = l.holder, l.epoch, map[string]bool{}
 		p.failed, p.heldAt, p.recoveryToken, p.recoveryBefore, p.recoveryFrom = false, time.Time{}, "", time.Time{}, ""
+		p.sendErr = ""
 		p.holdFailed, p.holdNext, p.holdWait = false, time.Time{}, 0
 		p.firstSeen, p.warned, p.warnedAt = map[string]time.Time{}, nil, time.Time{}
 	}
@@ -446,8 +448,22 @@ func (a *app) coordinatorPass(ctx context.Context) (read bool) {
 			a.serveSay("COORDINATOR PUSH to=%s: %q could not be sent, sent again at the next look: %s", to, m.Subject, oneline.Escape(err.Error()))
 			if to == l.holder {
 				failed = true
+				a.coord.mu.Lock()
+				a.coord.sendErr = oneline.Escape(err.Error())
+				a.coord.mu.Unlock()
+				coordFailures.Lock()
+				coordFailures.m[l.holder] = coordFail{failed: true, sendErr: a.coord.sendErr}
+				coordFailures.Unlock()
 			}
 			return false
+		}
+		if to == l.holder && a.coord.sendErr != "" {
+			a.coord.mu.Lock()
+			a.coord.sendErr = ""
+			a.coord.mu.Unlock()
+			coordFailures.Lock()
+			delete(coordFailures.m, l.holder)
+			coordFailures.Unlock()
 		}
 		return true
 	}
