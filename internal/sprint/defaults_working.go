@@ -87,6 +87,7 @@ var workingChecks = map[string]workingCheck{
 	SettingLand:           {Check: landWorking},
 	PropReadTier:          {BySet: true},
 	PropReadRoutes:        {BySet: true},
+	PropReadMix:           {BySet: true},
 	PropDealtMax:          {BySet: true},
 	PropGoLanes:           {BySet: true},
 	PropFriendIdle:        {BySet: true},

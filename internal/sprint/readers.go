@@ -275,7 +275,8 @@ const FieldReadsNeeded = "reads_needed"
 
 // ReadsNeededIn is how many different readers' ok reads at its head the primary needs in
 // the snapshot, the count every live caller uses. In review and in merging: the sprint's
-// count while one is set (nova-sprint set --reads 0, 1 or 2, PropReadsNeeded; the owner,
+// count while one is set (nova-sprint set --reads 0 to 5, PropReadsNeeded, or the read mix's
+// total while set --read-mix is on, read_mix.go; the owner,
 // 2026-10-06: "I'd like to waive the second read for the moment"), whatever the card's
 // tier, so a card with that many ok reads at its head is accepted on the next tick after
 // the setting changes; else its tier's rule (ReadsNeeded). At 0 no read is asked, and a
@@ -294,6 +295,11 @@ func ReadsNeededIn(s *Snapshot, pr *Card) int {
 			return n
 		}
 		return ReadsNeeded(pr)
+	}
+	// the read mix's count stands for the sprint's while it is on with read cards on,
+	// bounded by the readers the card can have (read_mix.go, readMixNeed)
+	if mix, on := s.ReadMixSet(); on && s.ReadCardsOn() {
+		return readMixNeed(s, pr, mix)
 	}
 	if s != nil && s.Work != nil {
 		if v, _ := s.Work.Prop(PropReadsNeeded); slices.Contains(readsWords, v) {

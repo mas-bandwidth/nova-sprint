@@ -21,7 +21,7 @@ import (
 var awayFromDefault = sprint.SetReq{Who: "tester",
 	ReadCards: sprint.SwitchOff, Fleet: sprint.SwitchOff, Friends: sprint.SwitchOff,
 	FleetTiers: "flash", FriendsTiers: "pro", ReworkPriority: sprint.ReworkKeep,
-	ReadTier: "heavy", Reads: "3", DealtMax: "7h", GoLanes: "3",
+	ReadTier: "heavy", Reads: "3", ReadMix: sprint.SwitchOff, DealtMax: "7h", GoLanes: "3",
 	FriendIdle: "9m", LandingStallBound: "9m",
 	DriftCommits: "99", DriftHours: "99", AlarmReview: "3", AlarmMerging: "3", AlarmFleet: "70", AlarmReady: sprint.SwitchOff}
 
@@ -104,6 +104,9 @@ func TestAClearSetsEveryWorkingDefaultInTheNewEpoch(t *testing.T) {
 	assert.Equal(t, "sprint/v9", sprint.SprintBase(s), "the base is carried")
 	_, set := sprint.ReadsSetting(s.Work.Props())
 	assert.False(t, set, "reads: each card's own rule")
+	mix, on := s.ReadMixSet()
+	assert.True(t, on, "the read mix is on after a clear")
+	assert.Equal(t, sprint.ReadMixWorking, mix.String(), "at its working mix")
 	w, err := h.st.LaneWidth(h.ctx)
 	require.NoError(t, err)
 	assert.Equal(t, sprint.LaneWidthDefault, w)
