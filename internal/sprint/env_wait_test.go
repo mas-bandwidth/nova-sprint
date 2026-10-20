@@ -72,6 +72,24 @@ func TestAnEnvWaitResumesWhenABeatBringsTheFact(t *testing.T) {
 	require.NotNil(t, wc, "the parked card is dealt in the tick the beat carries the fact")
 	assert.Equal(t, Ready, wc.Col, "the parked card is dealt in the tick the beat carries the fact")
 	assert.Equal(t, "m1", wc.Row)
+
+	// the reversed witness: with the resume removed by the test-only seam the deal no
+	// longer holds the card to the fact, so the member without it takes the card (the
+	// first assertion above would fail: envWaitResumeOff)
+	w2 := fleetWorld(t, 1, 1, "m1")
+	w2.must(Deal(w2.s, DealReq{Sel: Sel{Limit: 1}}))
+	first2 := w2.s.Work.Card("s1-1").F("work")
+	w2.must(Take(w2.s, TakeReq{As: "m1", Sel: Sel{IDs: []string{first2}}, Gens: w2.gens(first2)}))
+	w2.must(Finish(w2.s, FinishReq{As: "m1", Sel: Sel{IDs: []string{first2}}, Gens: w2.gens(first2),
+		Failed: true, Report: dNeedsLibfuzzer}))
+	envWaitResumeOff.Store(w2.s.Work.Card("s1-1"))
+	t.Cleanup(func() { envWaitResumeOff.Store((*Card)(nil)) })
+	w2.part(TickPresence, TickReq{Beats: map[string]Beat{"m1": {At: w2.s.Now, Facts: []string{"linux", "go"}}}})
+	w2.part(TickDeal, TickReq{})
+	wc2 := w2.s.Fleet.Card(WorkCardID("s1-1", w2.s.Work.Card("s1-1").Int("attempt")))
+	require.NotNil(t, wc2)
+	assert.Equal(t, Ready, wc2.Col, "with the resume removed the member without the fact is dealt the parked card: the witness fails")
+	assert.Equal(t, "m1", wc2.Row)
 }
 
 // TestAnEnvWaitPastItsDeadlineIsAJudgmentThatTakesAWait: at the deadline one NEnvWait
@@ -97,13 +115,13 @@ func TestAnEnvWaitPastItsDeadlineIsAJudgmentThatTakesAWait(t *testing.T) {
 	w.must(Wait(w.s, WaitReq{Note: notes[0].ID, Until: until, Who: w.s.Coordinator}))
 }
 
-// TestTheCoordinatorEnvWaitsForAFactOnAHeldCard: a card held by a judgment that refuses a
+// TestTheCoordinatorParksAHeldCardOnAFact: a card held by a judgment that refuses a
 // plain wait (NBriefWrong) and one held by a server-default hold take the coordinator's
 // wait on an environment fact: the holding judgment is closed, the hold released, and
 // the card parked on the fact with the coordinator's deadline (env_wait.go;
 // tla/WaitFor.tla FinishEnvMissing and ServerDefault; docs/SPEC-SPRINT.md section 5,
 // the fleet).
-func TestTheCoordinatorEnvWaitsForAFactOnAHeldCard(t *testing.T) {
+func TestTheCoordinatorParksAHeldCardOnAFact(t *testing.T) {
 	t.Parallel()
 	w := fleetWorld(t, 1, 1, "m1")
 	w.note(judgment(NBriefWrong, "s1", w.s.Now, 0, "s1-1"))

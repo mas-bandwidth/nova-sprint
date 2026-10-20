@@ -639,6 +639,10 @@ func commands(g Group, first Note, prefix string, onWork func(id string) bool) [
 			add(d, cmd+"fleet up '<member>'")
 		case d == "fleet beat":
 			add(d, cmd+"fleet beat '<member>'")
+		case strings.HasPrefix(d, "fleet beat "):
+			// a beaten member whose beat carries the fact an environment wait names
+			// (env_wait.go; docs/SPEC-SPRINT.md section 5, the fleet)
+			add(d, cmd+"fleet beat '<member>' --facts '<fact>'")
 		case d == "ask --another":
 			add(d, cmd+"ask"+subj+" --another"+subjAns)
 		case strings.HasPrefix(d, "merge --stream "):

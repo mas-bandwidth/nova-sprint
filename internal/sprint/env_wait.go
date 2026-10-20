@@ -3,6 +3,7 @@ package sprint
 import (
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -30,6 +31,13 @@ const (
 	// NEnvWaited is the happened note of a finish that parked its card on a fact.
 	NEnvWaited = "a card parked on an environment fact: its member lacks the tool"
 )
+
+// envWaitResumeOff is the test-only seam of the reversed witness
+// (TestAnEnvWaitResumesWhenABeatBringsTheFact): the card it names is not held to its
+// environment facts by the deal, as the deal was before this card. Nil (always, outside
+// that test) resumes none, and it is keyed by the card, so no other test's card is
+// touched.
+var envWaitResumeOff atomic.Value
 
 // NeedsFact reads a finish report's NEEDS-FACT line: the fact words a worker says its
 // member lacks, or nil when the report names none. A malformed word is dropped: a

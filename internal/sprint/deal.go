@@ -129,9 +129,11 @@ func cardNeeds(c *Card) []string {
 		return nil
 	}
 	needs := GateNeeds(c.F("brief"))
-	for _, f := range EnvFacts(c) {
-		if !slices.Contains(needs, f) {
-			needs = append(needs, f)
+	if off, _ := envWaitResumeOff.Load().(*Card); off != c {
+		for _, f := range EnvFacts(c) {
+			if !slices.Contains(needs, f) {
+				needs = append(needs, f)
+			}
 		}
 	}
 	return needs
