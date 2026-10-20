@@ -267,8 +267,9 @@
 \*     (SameRefusalHalts fails, MCLandBound).
 \*   "capaccepted" judges a refused merging card at the attempt cap
 \*     (AcceptedNeverCapJudged fails).
-\*   "conflictwrong" marks a conflict-only bound the brief's defect and offers
-\*     no carry (ConflictBoundCarries fails, MCLandBoundConflictCarry).
+\*   "conflictwrong" bounds a conflict-only refusal, marks it the brief's
+\*     defect and offers no carry (ConflictNeverBounds fails,
+\*     MCLandBoundConflictCarry).
 \*   "staletip" deals a card pending a forward-merge recheck (NoDealAgainstStaleTip
 \*     fails; MCLandBrokenStaleTip, its reversed witness).
 \*
@@ -313,12 +314,15 @@
 \* allconf: every refusal since the brief changed was one; a "paths" refusal is not). The way stays one
 \* class for the same-finding test, as before (the model halts a little earlier than
 \* the code, which compares the whole finding), so MaxAttempts is unchanged.
-\* A bound whose two same refusals were both conflicts is a conflict bound
-\* (cbound): the base moved under a correct head, so the judgment offers
-\* rework --carry first and never says the brief is wrong (carryoff, wrongmark;
-\* ConflictBoundCarries). Every other bound (paths, checks, gate, the cap)
-\* keeps the brief-wrong mark. The carry itself (review to ready from the last
-\* head, the bound reset) is the rework verb's, held by the engine's tests.
+\* A conflict-only refusal (a merge conflict with the advanced base and nothing
+\* else) is never a bound (ConflictNeverBounds): the base moved under a correct
+\* head, so the card is reworked at its tip however often it is refused, the
+\* refusal spends no attempt, and no judgment says the brief is wrong (cbound,
+\* carryoff, wrongmark stay empty). Every other bound (paths, checks, gate, the
+\* cap) keeps the brief-wrong mark. Broken "conflictwrong" is the reversed
+\* witness: the old bound marked the conflict the brief's defect and offered no
+\* carry. The carry itself (review to ready from the last head, the bound reset)
+\* is the rework verb's, held by the engine's tests.
 \*
 \* WHAT IS NOT MODELLED. The check (--check), the red and rejected facts:
 \* those refusals are the lander going idle with the store unchanged. With
@@ -631,19 +635,24 @@ RefuseWays(c) ==
   \E w \in {"paths", "other"}, F \in SUBSET (IF Broken = "nomergeexempt" THEN Files \ paths[c] ELSE Files \ (paths[c] \cup merged[c])), isconf \in BOOLEAN :
     /\ (w = "paths") = (F # {})
     /\ (w = "paths") => ~isconf
+    /\ (isconf => (Broken = "conflictwrong" \/ ~cleared[c])) \* a conflict-only refusal is possible at a head not yet
+                                  \* reworked at the tip, so the loop settles
     /\ named' = IF w = "paths" THEN [named EXCEPT ![c] = F] ELSE named
     /\ LET same == w \in prevw[c]
            capped == att[c] - bat[c] >= Cap
            spent == w = "paths" /\ widens[c] >= MaxWidens /\ Broken # "nowidencap"
-           atBound == (capped /\ Broken = "capaccepted") \/ spent \/ (same /\ Broken # "nosamefinding")
-           \* a conflict-only bound: the same refusal twice, and both a merge conflict with the
-           \* advanced base (sprint.AtBriefBound's Conflict; the head is right, the base moved)
-           conflictOnly == isconf /\ same /\ allconf[c] /\ Broken # "nosamefinding"
+           \* a conflict-only refusal: the same refusal twice, and both a merge conflict with
+           \* the advanced base. It is never a bound (sprint.AtBriefBound; the head is right,
+           \* the base moved), but "conflictwrong" reproduces the old bound.
+           conflictOnly == isconf /\ same /\ allconf[c]
+           repeatBound == (Broken = "conflictwrong" /\ isconf)
+                          \/ (same /\ Broken # "nosamefinding" /\ (Broken = "conflictwrong" \/ ~conflictOnly))
            carries == conflictOnly /\ Broken # "conflictwrong"
-       IN IF atBound
+       IN IF (capped /\ Broken = "capaccepted") \/ spent \/ repeatBound
           THEN /\ review' = review \cup {c}
                \* the card's latest bound, and what its judgment said
-               /\ cbound' = IF conflictOnly THEN cbound \cup {c} ELSE cbound \ {c}
+               /\ cbound' = IF conflictOnly \/ (Broken = "conflictwrong" /\ isconf)
+                                THEN cbound \cup {c} ELSE cbound \ {c}
                /\ carryoff' = IF carries THEN carryoff \cup {c} ELSE carryoff \ {c}
                /\ wrongmark' = IF carries THEN wrongmark \ {c} ELSE wrongmark \cup {c}
                /\ capJudged' = (capJudged \/ (capped /\ ~spent /\ ~(same /\ Broken # "nosamefinding")))
@@ -651,11 +660,19 @@ RefuseWays(c) ==
                /\ UNCHANGED <<bat, prevw, prevat, allconf, widens, paths, merged, fm, cleared, twice>>
           ELSE /\ capJudged' = capJudged
                /\ UNCHANGED <<cbound, carryoff, wrongmark>>
-               /\ twice' = (twice \/ same)
+               /\ twice' = (twice \/ (same /\ ~conflictOnly))
                /\ UNCHANGED <<merged, fm>>
                /\ IF w = "other"
                   THEN \E cl \in IF Clearable(c, paths[c]) THEN BOOLEAN ELSE {FALSE} :
-                         /\ NextAttempt(c, cl)
+                         /\ IF isconf
+                            THEN \* the base moved under a correct head: reworked at the tip,
+                                 \* spending no attempt (att unchanged; tla/WaitFor.tla
+                                 \* ConflictSpendsNoAttempt), and the tip's merge clears it
+                                 /\ att' = att /\ ready' = ready \cup {c}
+                                 /\ carried' = IF Broken = "nocarry" THEN carried ELSE carried \cup {lref}
+                                 /\ cleared' = [cleared EXCEPT ![c] = TRUE]
+                                 /\ UNCHANGED review
+                            ELSE NextAttempt(c, cl)
                          /\ allconf' = [allconf EXCEPT ![c] = @ /\ isconf]
                          /\ prevw' = [prevw EXCEPT ![c] = @ \cup {w}] /\ prevat' = [prevat EXCEPT ![c] = att[c]]
                          /\ UNCHANGED <<bat, widens, paths>>
@@ -949,11 +966,12 @@ ReportHoldsTheEpoch == ~stalerec
 Recovers == <>[](stop = "none" => \A c \in Range(queue) : Current(c) \notin base)
 
 \* A step of the lander takes a card off the queue only landed, reworked at
-\* its next attempt with the refused head carried, or into review at its bound.
+\* its next attempt with the refused head carried (a conflict-only refusal
+\* spends no attempt, so att stands), or into review at its bound.
 LeavesMergeRightly ==
   [][Land => \A c \in Range(queue) \ Range(queue') :
          \/ Current(c) \in landed'
-         \/ c \in ready' /\ att'[c] = att[c] + 1
+         \/ c \in ready' /\ (att'[c] = att[c] + 1 \/ att'[c] = att[c])
          \/ c \in review' /\ (WaysOn \/ att[c] = MaxAttempts)
     ]_vars
 
@@ -966,14 +984,16 @@ AcceptedNeverCapJudged == ~capJudged
 \* reworks, widens and redos stops at MaxAttempts.
 AttemptsBounded == \A c \in Cards : att[c] <= MaxAttempts
 
-\* The same refusal at two attempts of one brief is never reworked again.
+\* The same refusal at two attempts of one brief is never reworked again (a conflict-only
+\* refusal is no bound: the base moved under a correct head, ConflictNeverBounds).
 SameRefusalHalts == ~twice
 
-\* A bound whose two same refusals were both a merge conflict with the advanced base offers
-\* rework --carry and never marks the brief wrong or a brief defect (sprint.BriefBound
-\* Conflict, its Remedy, its String; the brief-defect rule's mark is the brief's alone).
-\* Broken "conflictwrong" marks it wrong and offers no carry (MCLandBoundBrokenConflictIsBriefDefect).
-ConflictBoundCarries == cbound \subseteq carryoff /\ cbound \cap wrongmark = {}
+\* A conflict-only refusal (a merge conflict with the advanced base and nothing else) is
+\* never a bound: the base moved under a correct head, so it is reworked at the tip, spends
+\* no attempt, and raises no judgment (sprint.landRefused, sprint.AtBriefBound; the
+\* brief-defect rule's mark is the brief's alone). Broken "conflictwrong" bounds it and
+\* marks it the brief's defect (MCLandBoundBrokenConflictIsBriefDefect).
+ConflictNeverBounds == cbound = {}
 
 \* A card whose head never clears never lands.
 NeverRightNeverLands == \A c \in Cards : Current(c) \in landed => cleared[c]
@@ -997,7 +1017,9 @@ NoPathsRefusalNamesMerged == \A c \in Cards : named[c] \cap merged[c] = {}
 \* so the exemption does not refuse the hand edits the card still makes.
 ReachMergeOutside == ~(\E c \in review : fm.regneed[c] \ (paths[c] \cup merged[c]) # {})
 
-CarriedHead == \A c \in ready : <<c, att[c] - 1>> \in carried
+\* A reworked card carries the head the landing refused: the attempt before its next one,
+\* or, for a conflict-only refusal that spends no attempt, the same attempt's head.
+CarriedHead == \A c \in ready : <<c, att[c] - 1>> \in carried \/ <<c, att[c]>> \in carried
 
 \* No card is dealt against a tip older than the base's recorded forward-merge
 \* tip: every card in the merge queue has been rechecked at or past its

@@ -64,13 +64,20 @@ func LedgerConflict(paths []string) bool {
 // review with the bound's judgment (NBriefWrong; tla/Land.tla Refuse). Every way but
 // RefusedPaths keeps the refused head
 // (FieldLandRefusedHead), which is then never offered to accept again (reviewJudgment). A
-// conflict only in the shared ledgers (LedgerConflict) is never at the brief's bound: it is
-// reworked at the tip, clean of any brief-defect mark. state, ctlSet and notes are the merge
-// step's for the stream.
+// merge conflict with the advanced base and nothing else (RefusedConflict, in the shared
+// ledgers or not) is never at the brief's bound: it is reworked at the tip, clean of any
+// brief-defect mark, its conflicting paths kept on the card (FieldConflictPaths) and its
+// attempts counted out of the cap (FieldConflictRefusals; tla/Land.tla, THE BOUND,
+// ConflictNeverBounds). state, ctlSet and notes are the merge step's for the stream.
 func landRefused(s *Snapshot, r MergeReq, way, state string, ctl *Card, ctlSet map[string]string, notes []Note, pr, m *Card) Unit {
 	id, attempt, now := pr.ID, pr.F("attempt"), stamp(s.Now)
 	refusal := "the landing refused attempt " + attempt + "'s head: " + orDash(r.Note)
 	u := Unit{Key: id, Stream: r.Stream}
+	// A merge conflict with the advanced base and nothing else (ledger or not) says the base
+	// moved under a correct head: it is never the brief's bound, and it is reworked at the tip
+	// again and again (tla/Land.tla, THE BOUND, ConflictNeverBounds; tla/WaitFor.tla,
+	// ConflictSpendsNoAttempt).
+	conflictOnly := way == RefusedConflict
 	// the stream after the card leaves: merging while it has cards to land, else waiting
 	if s.Merge.Count(r.Stream, Queued)+s.Merge.Count(r.Stream, Stuck) == 1 {
 		if state == StreamWaiting {
@@ -86,6 +93,15 @@ func landRefused(s *Snapshot, r MergeReq, way, state string, ctl *Card, ctlSet m
 	u.Notes = notes
 	u.Changes = append(u.Changes, change(Merge, moveEntry(m, r.Stream, Returned, nil, "need_card", "need_stream")))
 	set := map[string]string{"returns": itoa(pr.Int("returns") + 1), "return_reason": "conflict", FieldReturnedAttempt: attempt}
+	if conflictOnly {
+		// the paths stay on the card for the hot-file order that reads them, and the attempt is
+		// one the cap counts out: a conflict refusal spends no attempt toward max_attempts
+		// (FieldConflictRefusals, AttemptsSince; tla/WaitFor.tla, ConflictSpendsNoAttempt)
+		set[FieldConflictRefusals] = conflictRefusalAt(pr, pr.Int("attempt"))
+		if len(r.ConflictPaths) > 0 {
+			set[FieldConflictPaths] = cutText(strings.Join(r.ConflictPaths, ","), MaxProviderErrorBytes)
+		}
+	}
 	var unsetFor []string
 	if pr.F(FieldReturnedFor) != "" {
 		unsetFor = append(unsetFor, FieldReturnedFor) // a refusal holds it, whatever returned it before
@@ -122,10 +138,12 @@ func landRefused(s *Snapshot, r MergeReq, way, state string, ctl *Card, ctlSet m
 	// AcceptedNeverCapJudged): the coordinator's accept admits it to merge, and only a repeated
 	// refusal (the same finding twice: bb.Finding != "") or exhausted widenings bound it.
 	bound := ""
-	if bb, ok := AtBriefBound(pr, finding, s.AttemptsCap(pr.Row)); ok && !ledger && bb.Finding != "" {
-		bound = bb.Why()
-	} else if spent := WidensSpent(pr); way == RefusedPaths && spent != "" {
-		bound = spent
+	if !conflictOnly {
+		if bb, ok := AtBriefBound(pr, finding, s.AttemptsCap(pr.Row)); ok && !ledger && bb.Finding != "" {
+			bound = bb.Why()
+		} else if spent := WidensSpent(pr); way == RefusedPaths && spent != "" {
+			bound = spent
+		}
 	}
 	if bound != "" {
 		j := judgment(NBriefWrong, r.Stream, s.Now, 0, id) // its decisions alone: it is the repeat
@@ -165,9 +183,9 @@ func landRefused(s *Snapshot, r MergeReq, way, state string, ctl *Card, ctlSet m
 	// it is no passed head (FieldPassedHead): the landing refused it, so an attempt that finds
 	// nothing new at it has not answered the fix
 	unset := []string{"readers", "result", FieldFindingReader, FieldPassedHead}
-	if ledger {
-		// a brief-defect mark a ledger conflict left (the v1.2.x loop marked these) is
-		// no brief defect: the card is reworked at the tip clean of it
+	if conflictOnly {
+		// a brief-defect mark a conflict left (the v1.2.x loop marked these) is no brief
+		// defect: the card is reworked at the tip clean of it
 		unset = append(unset, FieldBriefDefect)
 	}
 	u.Changes = append(u.Changes, change(Work, moveEntry(pr, r.Stream, Ready, set, unset...)))

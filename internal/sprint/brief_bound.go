@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 // The brief's bound (docs/SPEC-SPRINT.md, "The brief is wrong, not the worker"; the owner,
@@ -63,6 +64,52 @@ const FieldBriefAttempt = "brief_attempt"
 // cap+1 without a decision in between. A rule's act never writes it (the actor is told apart
 // by ReworkCard.Rule and BriefReq.ByRule).
 const FieldDecidedAttempt = "decided_attempt"
+
+// FieldConflictRefusals is the primary's attempts at which the landing refused its head for a
+// merge conflict with the advanced base and nothing else, in order ("1,3"): the attempts the
+// conflict refusal reworked at the tip. A conflict spends no attempt toward max_attempts
+// (AttemptsSince counts these out; tla/WaitFor.tla, ConflictSpendsNoAttempt), and a
+// coordinator decision clears those before it as FieldDecidedAttempt clears the count
+// (conflictRefusalsSince). tla/Land.tla, THE BOUND, ConflictNeverBounds.
+const FieldConflictRefusals = "conflict_refusals"
+
+// conflictWitness is the tests' seam of the reversed witness (ConflictSpendsNoAttempt): the
+// one card whose conflict-only refusals the cap counts again, as it did before v1.7. Empty
+// outside that test; keyed by the card, so no other test's card is touched.
+var conflictWitness atomic.Value
+
+// conflictRefusalsSince is how many conflict-only refusals the primary had in the window the
+// coordinator's last decision opened: the conflicts before it belong to the window the
+// decision closed, so the decision clears them as it clears FieldDecidedAttempt. A refusal at
+// the decided attempt itself is in the window: the accept of that attempt comes first.
+func conflictRefusalsSince(c *Card) int {
+	if w, _ := conflictWitness.Load().(string); w != "" && w == c.ID {
+		return 0
+	}
+	decided := c.Int(FieldDecidedAttempt)
+	n := 0
+	for _, at := range strings.Split(c.F(FieldConflictRefusals), ",") {
+		if v, err := strconv.Atoi(strings.TrimSpace(at)); err == nil && v >= decided {
+			n++
+		}
+	}
+	return n
+}
+
+// conflictRefusalAt is the primary's list of conflict-only refusals with attempt at added,
+// the refusals before the coordinator's last decision dropped (a decision clears them).
+func conflictRefusalAt(c *Card, at int) string {
+	decided := c.Int(FieldDecidedAttempt)
+	var kept []string
+	for _, v := range strings.Split(c.F(FieldConflictRefusals), ",") {
+		n, err := strconv.Atoi(strings.TrimSpace(v))
+		if err == nil && n >= decided && n != at {
+			kept = append(kept, itoa(n))
+		}
+	}
+	kept = append(kept, itoa(at))
+	return strings.Join(kept, ",")
+}
 
 // FieldFindings is the primary's list of what each attempt sent back found, one line an
 // attempt ("attempt <n>: <the finding's first sentence>"), appended by Rework and cut to
@@ -371,6 +418,12 @@ func AtBriefBound(c *Card, finding string, cap int) (BriefBound, bool) {
 	if prev != "" && prevAt == 0 {
 		prevAt = attempt - 1
 	}
+	// a conflict-only refusal is never a bound: the base moved under a correct head, so the
+	// card is reworked at the tip however often it is refused (tla/Land.tla, THE BOUND,
+	// ConflictNeverBounds; tla/WaitFor.tla, ConflictSpendsNoAttempt)
+	if conflictFinding(finding) && onlyConflicts(c, briefAt, attempt) {
+		return BriefBound{}, false
+	}
 	if prev != "" && prevAt > briefAt && prevAt < attempt && SameFinding(prev, finding) {
 		return BriefBound{ID: c.ID, Attempts: [2]int{prevAt, attempt}, Finding: firstSentence(prev), Conflict: conflictFinding(prev) && onlyConflicts(c, briefAt, attempt)}, true
 	}
@@ -427,12 +480,14 @@ func harnessEnds(c *Card) int {
 }
 
 // AttemptsSince is the attempts the primary has run since the coordinator last decided on
-// it: its attempt less FieldDecidedAttempt (0 when no decision was made). Every attempt
+// it: its attempt less FieldDecidedAttempt (0 when no decision was made), less the
+// conflict-only refusals among them (FieldConflictRefusals; a merge conflict with the advanced
+// base spends no attempt, tla/WaitFor.tla, ConflictSpendsNoAttempt). Every other attempt
 // counts, whatever ended it; a redeal of one attempt (a new generation of the same work
 // card, bounded by MaxRedeals on its own) is that one attempt. tla/SprintRules.tla
 // NoAttemptPastCapWithoutDecision.
 func AttemptsSince(c *Card) int {
-	return max(0, c.Int("attempt")-c.Int(FieldDecidedAttempt))
+	return max(0, c.Int("attempt")-c.Int(FieldDecidedAttempt)-conflictRefusalsSince(c))
 }
 
 // AtAttemptCap is whether the primary has run its cap's attempts since the coordinator last

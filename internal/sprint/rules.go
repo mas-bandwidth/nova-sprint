@@ -71,7 +71,9 @@ const (
 	// is moving; a stamp from before the card's take is another holder's and counts as none.
 	FieldProgress = "progress"
 	// FieldConflictKind and FieldConflictPaths are a conflict stop's facts on the stream's
-	// control card, as the lander reported them (MergeReq).
+	// control card, as the lander reported them (MergeReq); the paths a conflict-only refusal
+	// reworks at the tip also stay on the primary (landRefused), the record the hot-file order
+	// reads.
 	FieldConflictKind  = "conflict_kind"
 	FieldConflictPaths = "conflict_paths"
 )
