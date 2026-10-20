@@ -31,6 +31,23 @@ the facts it had.
 The coordinator machine (the Studio) is never dealt a card whose
 `GATE-NEEDS:` it cannot meet and is never named as a gate host.
 
+Every path that places a work card on a member takes that member from the
+same pool: the tick's deal, a rule's or the coordinator's rework, the conflict
+redo, continue's next attempt, a twin's, the friend deal, the level, the
+rebalance, the redeal off a member gone down or held, and the escalation.
+None places a card on a member whose facts do not satisfy the card's
+`GATE-NEEDS:`; a path with no such member leaves the card ready and the
+`NGateNeeds` judgment (or the friends' deal) says why
+(`tla/WaitFor.tla` Deal, `tla/GateFacts.tla` Move).
+
+A deal records the member's facts on the work card (`dealt_facts`). A failed
+or HOLD finish from a member whose facts at the deal did not cover the card's
+`GATE-NEEDS:` is the machine's fault, never the card's: it spends no attempt
+toward the brief's bound or the cap, keeps no finding, and the same attempt is
+dealt again only where the facts are. One happened note names the path that
+dealt it (`tla/WaitFor.tla` FinishFactBlind). This is the safety net: a path
+that missed the pool later cannot burn a card to its bound.
+
 ## 1. The tables
 
 ```

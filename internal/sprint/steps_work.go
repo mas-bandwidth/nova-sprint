@@ -1350,7 +1350,7 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 			p.refuse(c.ID, why)
 			continue
 		}
-		u, why := deal(s, c, c.F("fix"), m, q, ri, nil, map[string]string{"finding": c.F("finding"), "why": c.F("why")})
+		u, why := deal(s, c, c.F("fix"), m, q, ri, nil, map[string]string{"finding": c.F("finding"), "why": c.F("why"), FieldDealtBy: "the tick's deal"})
 		if why != "" {
 			p.refuse(c.ID, why)
 			continue
@@ -1380,7 +1380,8 @@ func deal(s *Snapshot, c *Card, fix, m string, q map[string]int, ri routeIndexes
 	}
 	q[m]++
 	fields := map[string]string{"kind": "work", "primary": c.ID, "stream": c.Row, "attempt": itoa(attempt), "gen": "1", "member": m,
-		"dealt": stamp(s.Now), "first_dealt": stamp(s.Now), "untaken_since": stamp(s.Now)}
+		"dealt": stamp(s.Now), "first_dealt": stamp(s.Now), "untaken_since": stamp(s.Now),
+		FieldDealtFacts: strings.Join(s.MemberFacts(m), ",")}
 	if fix != "" {
 		fields["fix"] = fix
 	}
@@ -1428,7 +1429,7 @@ func deal(s *Snapshot, c *Card, fix, m string, q map[string]int, ri routeIndexes
 func escalate(s *Snapshot, c, prev *Card, tier, why, m string, q map[string]int, ri routeIndexes) (Unit, string) {
 	from, _ := CardTiers(c)
 	set := map[string]string{FieldTierNow: tier}
-	given := map[string]string{"finding": c.F("finding"), "why": fmt.Sprintf("escalated from %s to %s: %s", from, tier, why)}
+	given := map[string]string{"finding": c.F("finding"), "why": fmt.Sprintf("escalated from %s to %s: %s", from, tier, why), FieldDealtBy: "the escalation"}
 	u, refused := deal(s, withField(c, FieldTierNow, tier), c.F("fix"), m, q, ri, set, given)
 	if refused != "" {
 		return Unit{}, refused
@@ -1454,6 +1455,7 @@ func redeal(s *Snapshot, c, wc *Card, m string, q map[string]int, ri routeIndexe
 	}
 	q[m]++
 	set := nextGen(wc, m, s.Now)
+	set[FieldDealtFacts], set[FieldDealtBy] = strings.Join(s.MemberFacts(m), ","), "the redeal"
 	if wc.F(FieldTakeEnded) != "" {
 		set["redeals"] = itoa(wc.Int("redeals") + 1)
 	}
@@ -2080,6 +2082,15 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		}
 		pr := s.Work.Placed(c.F("primary"))
 		late := c.Col == DoneFailed || c.Col == Finished // a late report for the attempt a deadline failed (lateFinish)
+		// A failed (or HOLD) finish on a member whose facts at the deal did not cover the
+		// card's GATE-NEEDS is the machine's fault, never the card's: no attempt counts
+		// toward the bound or the cap, no finding is kept, and the same attempt is dealt
+		// again only where the facts are (tla/WaitFor.tla FinishFactBlind; docs/SPEC-SPRINT.md,
+		// the gate-host rule). One happened note names the path that dealt it.
+		if r.Failed && !late && !IsFriendRow(c.Row) && factBlindGuard(pr, c) {
+			p.Units = append(p.Units, factBlindReturned(s, c, pr, who, r.Report))
+			continue
+		}
 		// how a failed finish is routed: by the reason line's prefix, or by the take's
 		// attempt decision at or above its class's bar on the card (decide.go, finishKind)
 		kind, class, used := "", "", false
@@ -2705,6 +2716,45 @@ func stagingRefused(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 		change(Fleet, moveEntry(c, c.Row, Withdrawn, set, "taken", "dealt")),
 		change(Work, moveEntry(pr, pr.Row, Ready, prSet, "work")),
 	}, Notes: notes, Moved: fmt.Sprintf("%s working -> withdrawn gen=%d, %s refused it at staging; %s working -> ready", c.ID, c.Int("gen")+1, c.Row, pr.ID)}
+}
+
+// factBlindAtDeal says the member that finished the attempt lacked a need of the card's
+// GATE-NEEDS when the deal cut the work card (FieldDealtFacts): the machine could never have
+// run it, so its failed finish spends no attempt (tla/WaitFor.tla FinishFactBlind).
+// factBlindGuard is the test-only seam for the reversed witness: setting it to false is
+// the model's factblind case, a finish that spends the attempt anyway.
+var factBlindGuard = factBlindAtDeal
+
+func factBlindAtDeal(pr, wc *Card) bool {
+	needs := GateNeeds(pr.F("brief"))
+	if len(needs) == 0 {
+		return false
+	}
+	return !memberSatisfies(Split(wc.F(FieldDealtFacts)), needs)
+}
+
+// factBlindReturned ends an attempt dealt to a member whose facts lacked its GATE-NEEDS
+// without spending it: the work card is withdrawn (the same attempt, no FieldTakeEnded, so
+// no redeal is charged) and the primary waits ready at that attempt, its failure count and
+// findings untouched; the next deal narrows the fleet by GateHostPool, so the member is not
+// dealt it again while it lacks the facts. The one happened note names the path that dealt
+// it (FieldDealtBy; tla/WaitFor.tla FinishFactBlind; docs/SPEC-SPRINT.md, the gate-host rule).
+func factBlindReturned(s *Snapshot, c, pr *Card, who, report string) Unit {
+	set := nextGen(c, "", s.Now)
+	set["withdrawn"] = stamp(s.Now)
+	set[FieldProviderError] = "the member's facts at the deal did not carry the card's GATE-NEEDS"
+	by := c.F(FieldDealtBy)
+	if by == "" {
+		by = "the deal"
+	}
+	n := happened(NGateNeeds, pr.Row, s.Now, pr.ID)
+	n.Who, n.Card, n.Attempt = who, c.ID, pr.Int("attempt")
+	n.What = fmt.Sprintf("attempt %d was dealt by %s to %s, whose facts (%s) do not carry the card's GATE-NEEDS (%s): the finish spends no attempt and keeps no finding; %s",
+		pr.Int("attempt"), by, c.Row, orDash(c.F(FieldDealtFacts)), strings.Join(GateNeeds(pr.F("brief")), ", "), cutText(report, MaxCardTextBytes))
+	return Unit{Key: c.ID, Stream: pr.Row, Changes: []Change{
+		change(Fleet, moveEntry(c, c.Row, Withdrawn, set, "taken", "dealt")),
+		change(Work, moveEntry(pr, pr.Row, Ready, nil, "work", "result")),
+	}, Moved: fmt.Sprintf("%s working -> withdrawn (the member's facts lack its GATE-NEEDS: no attempt spent); %s working -> ready", c.ID, pr.ID), Notes: []Note{n}}
 }
 
 // rateLimitedReturned is the no-spend path of a take the provider rate limited
