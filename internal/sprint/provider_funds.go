@@ -61,6 +61,10 @@ var causeRE = regexp.MustCompile(`\bclass=(\S+) status=(\S+) msg=(.*)$`)
 // trimmed; "" for any other take.
 func refusal(line string) string {
 	m := causeRE.FindStringSubmatch(strings.TrimSpace(line))
+	if m != nil && m[1] == classRateLimited && rateLimitFlips(m[3]) {
+		// the reversed witness only (unfunded.go): a rate limit let through as credit
+		return strings.Replace(strings.TrimSpace(line), "class="+classRateLimited, "class="+RestCredit, 1)
+	}
 	if m == nil || (m[1] != RestCredit && m[1] != RestAuth) {
 		return ""
 	}
@@ -314,6 +318,14 @@ func providerConds(s *Snapshot) (conds []cond, stop string) {
 		b := balances[p]
 		h := byProvider[p]
 		switch {
+		case h != nil && h.rest.Cause == RestCredit && s.rowUnfunded(p):
+			// the machine flipped its row unfunded (unfunded.go): funding is the owner's alone,
+			// so the judgment names the owner's verbs, never a wake or the balance poll
+			routes := strings.Join(slices.Sorted(slices.Values(h.routes)), ", ")
+			conds = append(conds, cond{typ: NProviderFunds, stream: ProviderSubject(p), streamLevel: true,
+				decisions: []string{"ack", "wait"},
+				what: fmt.Sprintf("provider %s is out of funds (balance %s) and was flipped unfunded in nova-config: funding is the owner's; its routes %s are dealt nothing while its row says funded=false (%s); %s, then nova-sprint funded %s --reason <the payment> as the owner ends the sprint's rest; nova-sprint where --json shows the balance",
+					p, b.Said(), routes, h.rest.Why, OwnerFundsRemedy(p, ""), p)})
 		case h != nil && h.rest.Cause == RestCredit:
 			routes := strings.Join(slices.Sorted(slices.Values(h.routes)), ", ")
 			conds = append(conds, cond{typ: NProviderFunds, stream: ProviderSubject(p), streamLevel: true,

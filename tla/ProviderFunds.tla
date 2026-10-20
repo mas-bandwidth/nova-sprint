@@ -8,6 +8,9 @@
 \* normalized to none by the source reader and cannot be created by these actions.
 \* A timed coordinator's rest the clock ends (RouteRest's ExpireProvider) sets
 \* the same mark as Wake (Until = the end), so Wake stands for both ends here.
+\* The flip of a provider's nova-config row to unfunded on a refusal for credit, and
+\* the owner's refund (only the owner sets funded=true again), are modelled in
+\* ProviderFunding.tla (internal/sprint/unfunded.go, cmd/nova-sprint/unfunded_flip.go).
 EXTENDS Naturals, Sequences, FiniteSets
 CONSTANTS Routes, W, After, Broken
 VARIABLES rest1, own1, win1, low1, redeal1, returns1, judged1,

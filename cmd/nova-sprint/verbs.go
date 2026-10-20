@@ -155,7 +155,7 @@ func init() {
 		{"set", "[--rework-priority <fix|high|keep>] [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--alarm-review <n|off>] [--alarm-merging <n|off>] [--alarm-fleet <percent|off>] [--alarm-ready <on|off>] [--attempts <n|default>] [--friend-idle <duration|default>] [--seat-silent-to <bus name|default>] [--landing-stall-bound <duration|default>] [--friend-finish <duration|default>] [--fleet-tiers <tiers|all>] [--friends-tiers <tiers|all>] [--reads <0|1|2|default>]", "set --read-tier pro", (*app).cmdSet},
 		{"promoted", "--sha <merge sha> [--answers <note>]", "promoted --sha 0123abc", (*app).cmdPromoted},
 		{"merge-window open", "--for <duration> --reason <text>", "merge-window open --for 10m --reason 'the release merges by hand'", (*app).cmdMergeWindowOpen},
-		{"funded", "<provider> --reason <text>", "funded opencode --reason 'paid $100 in the console'", (*app).cmdFunded},
+		{"funded", "<provider> --reason <text>", "funded opencode --reason 'paid $100 in the console' --actor glenn", (*app).cmdFunded},
 		{"cost reconcile", "[--dry-run] [--json]", "cost reconcile", (*app).cmdCostReconcile},
 		{"cost reprice", "[--route <r>]... [--since <RFC3339>] [--dry-run] [--json]", "cost reprice --since 2026-10-01T00:00:00Z --dry-run", (*app).cmdCostReprice},
 		{"ci", "<id>... (--red | --green) --epoch <n> [--head <h>] [--run <id>] [--source <s>] [--note <text>]", "ci s1-3 --red --run 812 --source ci --epoch 0", (*app).cmdCI},
@@ -4453,9 +4453,13 @@ func (a *app) cmdPromoted(args []string, stdout, stderr io.Writer) int {
 	return a.runStep("promoted", *c, st, store.PromotedStep(sprint.PromotedReq{Sha: *sha, Answers: answers(*ans), Returned: sprint.Split(*returned), Who: c.actor}), stdout, stderr)
 }
 
-// cmdFunded is the coordinator's word that a provider was paid: its rest of its funds ends
-// now (sprint.Funded; nova-tools#5199), for a provider whose balance no poll can read as for
-// any; the balance poll ends it by itself when it reads enough again.
+// cmdFunded is the OWNER's word that a provider was paid: its rest of its funds ends now in
+// the sprint's store (sprint.OwnerFunded, sprint.Funded; nova-tools#5199), for a provider
+// whose balance no poll can read as for any. It is the owner's alone (sprint.NotOwnerFunds:
+// the coordinator and the machine are refused) and never writes nova-config: the owner funds
+// the row first (nova-config provider set <p> --funded true, then nova-config apply --kind
+// provider). The balance poll ends a funds rest by itself only while the row says
+// funded=true (internal/sprint/unfunded.go; tla/ProviderFunding.tla OnlyOwnerFunds).
 func (a *app) cmdFunded(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("funded")
 	reason := fs.String("reason", "", "the payment made, in a few words (required)")
@@ -4467,7 +4471,14 @@ func (a *app) cmdFunded(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "funded", err.Error())
 	}
-	return a.runStep("funded", *c, st, store.FundedStep(sprint.FundedReq{Provider: pos[0], Reason: *reason, Who: c.actor}), stdout, stderr)
+	owner, err := a.owner(context.Background(), st)
+	if err != nil {
+		return a.readFailed("funded", err, stderr)
+	}
+	req := sprint.FundedReq{Provider: pos[0], Reason: *reason, Who: c.actor}
+	step := store.FundedStep(req)
+	step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.OwnerFunded(s, req, owner) }
+	return a.runStep("funded", *c, st, step, stdout, stderr)
 }
 
 // cmdStreamSet writes the read tier or release of the streams named (sprint.Set), over the

@@ -112,7 +112,7 @@ var verbEffect = map[string]string{
 	"ack":      "local write: closes the named notifications, nothing to be done, with the reason, in the sprint's store; --dry-run writes nothing",
 	"ask":      "local write: asks a reader for each named primary (one more with --another, another in place with --instead) in the sprint's store; --dry-run writes nothing",
 	"ci":       "local write: records the CI run's result, red or green, on each named primary in the sprint's store; --dry-run writes nothing",
-	"funded":   "local write: ends the provider's rest of its funds in the sprint's store, with the reason; --dry-run writes nothing",
+	"funded":   "local write: the owner's alone (the coordinator and the machine are refused): ends the provider's rest of its funds in the sprint's store, with the reason; never writes nova-config (the owner funds the row: nova-config provider set <p> --funded true, then nova-config apply --kind provider); --dry-run writes nothing",
 	"move":     "local write: moves the named cards to the stream, in line where --before, --after or --score says, in the sprint's store; --dry-run writes nothing",
 	"priority": "local write: with a level, sets it on the named cards or the stream in the sprint's store; with none, prints the levels and writes nothing; --dry-run writes nothing",
 	"redo":     "local write: merge conflicts only (a card merging whose merge stuck, or a stream stopped on a conflict); for any other card, rework; --dry-run writes nothing",

@@ -588,8 +588,12 @@ hour of its spend, until the balance is over it. One judgment of the provider sa
 payment is the owner's`). `where --json` carries the `providers` table (balance, spend an hour,
 state) and `routes` each route's `balance=`. When every provider is out of credit, the tick
 stops the system (`machine: STOPPED (every provider is out of credit)`) and `start` is refused
-until one is paid; a provider low on funds never stops it. `funded <provider> --reason <text>`
-says one was paid. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), "A provider out of funds".
+until one is paid; a provider low on funds never stops it. A take refused for credit flips
+the provider's nova-config row to funded=false automatically (the run loop, as the machine,
+once per provider; a 429, a 5xx or a timeout never does), and the deal then draws none of its
+routes. `funded <provider> --reason <text>` says one was paid, and is the OWNER's alone: the
+owner funds the row first (`nova-config provider set <p> --funded true --actor <owner>`, then
+`nova-config apply --kind provider`); the coordinator and the machine are refused, and `routes wake` refuses an unfunded provider. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), "A provider out of funds".
 
 ### Answered by rule
 
