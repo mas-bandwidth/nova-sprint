@@ -9794,8 +9794,23 @@ payloads and retry tokens persist through server restart and are epoch-scoped.
 | --- | --- |
 | Card reached its bound; brief wrong at the attempt cap | Hold a Ready primary whose work card was withdrawn in place (it stays Ready, dealt to no one); park any other Ready primary, and a Review primary, in Waiting; each with its bound judgment, cause and saved prior state. Release restores that exact state; a Review primary keeps its head, attempt and read records. An existing hold is never overwritten. A withdrawn primary is never moved to Waiting, since rule 2 holds it ready or waiting on an unlanded need, and a sentinel insert never pulls it, so an insert never meets a held Ready card (2026-10-17; `tla/SprintTables.tla` Rule2Withdrawn and HeldReadyIsWithdrawn, reversed witnesses `parkmoves` and `parkinplaceall`). |
 | Cannot ask / no eligible reader | Wait 30 minutes, then re-evaluate the existing reader condition. The normal ask pass may proceed sooner if an eligible reader becomes available. |
-| Every other kind, including member held with no cause, acceptance, merge and drop decisions | `none`; keep open and escalate to the owner. |
+| Every other kind, including member held with no cause, acceptance, merge and drop decisions | `owner`: keep it open and deliver it to the owner at twice its deadline, and again each owner window while it stays open; the machine moves no card and writes no default. |
 | Sprint done | Terminal exemption: no decision deadline and no server default. |
+
+The one table is `JudgmentExits` (`internal/sprint/judgment_exits.go`), by kind:
+
+| Judgment kind | Exit at its deadline |
+| --- | --- |
+| `NBound`, `NBriefWrong` | `hold with cause`: the guarded park or hold-in-place above. |
+| `NCannotAsk` | `wait 30m and re-ask`: wait thirty minutes, then re-evaluate the reader condition. |
+| `NAdoptFailed`, `NAlarmFleet`, `NAlarmMerging`, `NAlarmReady`, `NAlarmReview`, `NAllOutOfCredit`, `NBaseCIRed`, `NBaseRed`, `NBlocked`, `NBriefDefect`, `NBrokenReadsOutrun`, `NCIRed`, `NConflict`, `NCoordinatorBehind`, `NCostGap`, `NCross`, `NDeadBase`, `NDevBehind`, `NDriftAhead`, `NDriftBaseRed`, `NDriftCardBase`, `NDriftServer`, `NFewReaders`, `NFilesAlarm`, `NFinishRefused`, `NFirstTimeUnderTarget`, `NFleetFailure`, `NFriendEmpty`, `NFriendIdle`, `NFriendSyncFailing`, `NGateNeeds`, `NHarnessFault`, `NHoldNoCause`, `NInvariant`, `NLanderFails`, `NLanderRefuses`, `NLandingStall`, `NMemberEnvFault`, `NMemberIdleReaps`, `NMemberPegged`, `NMergeLate`, `NMirrorNeed`, `NMissingBase`, `NMissingNeed`, `NNeedBlocked`, `NNeedsGone`, `NNoFrontierRoom`, `NNoMember`, `NNoRoute`, `NOpStuck`, `NOverdue`, `NOverloaded`, `NPinIgnored`, `NProviderFunds`, `NProviderKey`, `NProviderLow`, `NRaiseReadTier`, `NReadBranchMissing`, `NReadBroken`, `NReadLate`, `NReaderBreaks`, `NReadersBehind`, `NReadsExhausted`, `NReadyOver`, `NReadyToAccept`, `NRed`, `NRejected`, `NRemindFailed`, `NRepairSkipped`, `NReportJudgment`, `NReturned`, `NReviewNoReader`, `NScoredLow`, `NSentinelReached`, `NSprintDone`, `NStalled`, `NStarving`, `NStatus`, `NStopDebtBeat`, `NStopMemberDown`, `NStopPinWaits`, `NStranded`, `NStreamStale`, `NTimer`, `NWorkFailed`, `NWorkLate` | `owner`: the existing owner delivery (`DecisionBatch`'s `owner` lane, `cmd/nova-sprint` `decisionPass`) at twice its deadline, and again each `OwnerWindow` (30 minutes) while it stays open. A server-default hold reaches the owner after its second re-raise unanswered. |
+
+A new judgment kind needs an entry in `JudgmentExits`; there is no silent
+`none`. `TestEveryJudgmentKindHasADeadlineExit` (`internal/sprint/judgment_exits_test.go`)
+fails naming any kind of `TickDecisions`, `WaitRefused` or `WaitAllowedOnACard`
+without one, and its reversed witness hides one kind's entry to prove the
+failure names it. No exit authorizes a terminal act: no entry drops, accepts,
+merges, lands or edits a brief (`TestNoExitAuthorizesATerminalAct`).
 
 The deadline is the existing running-time interval (normally ten minutes), or the
 explicit review interval set by wait. A safe default is recorded with
