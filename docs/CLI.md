@@ -170,6 +170,7 @@ nova-sprint stream archive <stream>...
 nova-sprint stream unarchive <stream>...
 nova-sprint ci <id>... (--red | --green) --epoch <n> [--head <h>] [--run <id>] [--source <s>] [--note <text>]
 nova-sprint wait <note> (--for <duration> | --until <RFC3339>)
+nova-sprint wait <card> --for-fact <fact>[,<fact>] --until <RFC3339>   # the coordinator parks a card held by a judgment that refuses a plain wait (NBriefWrong, NBound, a server-default hold) on an environment fact: it closes that judgment, releases the hold and parks the card as a NEEDS-FACT finish does, with this deadline; a fact that is not a fact word is refused
 nova-sprint ack <note>... --reason <text>
 nova-sprint answer [--dry-run] [--bar <p>] [--every <duration>] [--timeout <duration>] [--backend jev|fixed] [--answers <file>] [--record <file>]
 # answer --every <d> is the coordinator seat's loop (60s): between passes it blocks on the inbox stream from the last note it has seen (XREAD BLOCK on the inbox), so a judgment committed there ends the wait and the next pass runs at once; a quiet inbox runs a pass at --every, the backstop that catches a lost push. The cursor is the inbox's tail as the wait woke, read before the pass, so a note committed during a pass ends the next wait at once and none is skipped. A backend that cannot block, a twin, and a loop through the sprint's server (NOVA_SPRINT_SERVER) wait --every on the clock between passes, as before
