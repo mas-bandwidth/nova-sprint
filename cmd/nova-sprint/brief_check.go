@@ -327,7 +327,33 @@ func (a *app) briefStoreChecks(st *store.Store, items []briefItem, stream string
 		}
 	}
 	for _, ref := range step.Plan(snap).Refused {
+		// a gate-fix cycle is its own finding below, with both ids; the plan's
+		// refusal of the same pair is not said twice
+		if strings.HasPrefix(ref.Why, "gate-fix cycle:") {
+			continue
+		}
 		out = append(out, briefFinding{File: byID[ref.Key], ID: ref.Key, Check: "plan", Why: ref.Why, order: chkPlan})
+	}
+	// a directory holding both briefs of a gate-fix cycle: the gate G's DONE-WHEN
+	// and its dependent F's DONE-WHEN or TEST run the same command (gate_fix.go;
+	// docs/SPEC-SPRINT.md section 2; tla/WaitFor.tla, the gate-artifact edge and
+	// NoWaitCycle)
+	gateCards := make([]sprint.GateFixCard, 0, len(items))
+	for _, it := range items {
+		gateCards = append(gateCards, sprint.GateFixCard{ID: it.id, Brief: it.text, Needs: it.card.Needs})
+	}
+	for _, found := range sprint.GateFixCycleCheck(snap, gateCards) {
+		// Only a cycle one of the directory's own briefs is a side of is this
+		// check's: a pair already on the table is not in the directory, and
+		// filing it against the first file would name a brief it is not about.
+		id, file := found.Fix, byID[found.Fix]
+		if file == "" {
+			id, file = found.Gate, byID[found.Gate]
+		}
+		if file == "" {
+			continue
+		}
+		out = append(out, briefFinding{File: file, ID: id, Check: "gate-fix-cycle", Why: found.Why, order: chkPlan})
 	}
 	// a file whose id is a card on the table is read against the edges the
 	// store holds: the file's LAND-AFTER: line and the card's soft

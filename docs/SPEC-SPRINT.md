@@ -1743,6 +1743,22 @@ checks). A card with no `MERGE-OF:` line is checked exactly as before, with no g
 added; the key is read from the header alone (`swarm.CardHeaderValue`,
 `pkg/swarm/lintheader.go`).
 
+**A gate artifact is not a need its fix can wait on.** A card G whose brief's
+`DONE-WHEN:` runs a command, and a card F that needs G, directly or through
+other open cards, whose `DONE-WHEN:` or `TEST:` runs the same command, are
+refused together when added and at a `brief` edit that writes a `DONE-WHEN:`,
+`TEST:` or `DEPENDS-ON:` line; `brief check` names the same pair as the finding
+`gate-fix-cycle`. G cannot be done before F's work and F waits for G, so neither
+can finish. Commands are compared by key: `make`'s target words (arguments that
+are neither `VAR=value` nor a flag), `go test`'s package paths and `-run`
+pattern, and, for any other command, its words with whitespace collapsed. The
+refusal names both ids, the key and the split: `split G: land its infrastructure
+with <command> allowed red (its DONE-WHEN says so), and turn it green in a card
+that needs F: run: nova-sprint twin G --needs F --instruction 'make <command>
+green'` (`gate_fix.go`; `tla/WaitFor.tla`, the gate-artifact edge and
+`NoWaitCycle`; `tla/WAITFOR.tsv`'s gate-artifact row). `brief check` lists the
+finding as `gate-fix-cycle` beside its other findings.
+
 **Rules by reference** (the owner, 2026-10-02: "Rules by reference: the member injects
 fleet/child-rules.txt once; the card does not carry it; a per-repo rules file for second
 repos."; nova-tools#5174 rule 6). A brief is the card's own text; the primary's field `rules`
