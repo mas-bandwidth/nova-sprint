@@ -52,10 +52,7 @@ message. A broken LAND costs a full read and rework cycle.
 
 ## 5. Check before you finish
 
-13. Fetch BASE again. If it moved, read what changed, merge, and re-run every gate whose inputs
-    changed. A gate whose inputs did not change may stand on source equivalence. Then the report
-    lists the SHA it ran at, the final SHA, the files that changed between them, and why the
-    gate's inputs are the same.
+13. Never chase the base tip. Merge BASE once (step 7), gate at that merged head, and finish, naming the SHA you gated at. The lander re-merges and its CI tests the real tip. Re-merge only if the lander refuses on a conflict.
 14. Check every claim in the report against the raw receipts: counts, transports, address
     families, case names, skips. Anything you did not run yourself is labelled as reported by the
     worker or the owner, never as verified.
