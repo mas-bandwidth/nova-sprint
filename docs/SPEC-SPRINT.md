@@ -1635,6 +1635,36 @@ default) and `low` (it fills only an idle lane).
   or that names none while the store holds routes, is never asked a pro read (the owner,
   2026-10-06, "I'm ok with flash readers on fleet but not pro"); a row naming pro is; a
   friend's reader naming none reads every tier (section 6; `TestFleetReadersReadOnlyTheirTiers`).
+- **v1.9, not yet built: fix first, then reads (fix-first-then-reads).** The owner, 2026-10-20:
+  "reads are a priority, and they are above all work, except critical and higher", and later
+  the same day, "fix is the highest priority of all". The ladder becomes fix > blocker >
+  critical > reader > high > normal > low: a ready `fix` card deals before `blocker` work, and
+  a `reader` read deals before `high` work and after `critical` and `blocker` work. Until it is
+  built, the ladder above (`fix` between `critical` and `high`, `reader` between `high` and
+  `normal`) is what the code does. Done when this section and the ladder in the code say so, a
+  test shows a ready `fix` card dealt before `blocker` work, a test shows a `reader` read dealt
+  before `high` work and after `critical` work, and tla/SprintPriority.tla models the whole
+  order (nova-tools roadmap, fix-first-then-reads).
+- **Fix first.** A fix is the card closest to landed. Its work is done and paid for, usually
+  already read, and only a repair stands between it and base. Every minute it waits, its head
+  goes stale (re-merge, conflicts, re-deal; on 2026-10-20
+  rocketnet-example-ack-receipts-debug-assert failed its landing twice on conflict while it
+  waited), its worker's and reader's context goes cold, and any card or red base it blocks
+  holds up everything behind it. Finishing nearly-finished work drains the pipe fastest.
+- **Reads are the drain.** The design reason reads rank above all other work except `critical`
+  and `blocker`:
+  - A read is the drain of the pipe. Finished work is worth nothing until it is read and
+    landed, so a read outranks starting new work.
+  - When reads queue behind work, every new deal adds to review instead of emptying it, and
+    work in flight grows: 16 cards sat in review on 2026-10-20.
+  - While a card waits, base moves on and its head goes stale: re-merges, conflicts,
+    re-deals and bounced finishes, all of which happened on 2026-10-20.
+  - A late BROKEN verdict arrives after the worker has moved on, so rework pays to rebuild
+    context, often in a fresh attempt.
+  - The board misleads: working grows while landed stays flat, which reads as treading water.
+  - With reads first, each finish is read while it is fresh, work in flight stays small, base
+    moves in small steps, and landed per hour tracks finished per hour (Little's law).
+
 ### gc: the system's scratch is reclaimed by a verb
 
 On 2026-10-06 the coordinator freed 314 GiB with a hand-written `clean-jobs.py` (job
