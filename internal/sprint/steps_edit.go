@@ -176,12 +176,37 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 			proposed[b.ID] = want
 		}
 	}
+	// The brief edits that write a DONE-WHEN, TEST or DEPENDS-ON, judged together
+	// as the needs are: a gate whose command a card that needs it also runs is a
+	// cycle (gate_fix.go; docs/SPEC-SPRINT.md section 2; tla/WaitFor.tla, the
+	// gate-artifact edge and NoWaitCycle).
+	gateEdits := map[string]GateFixCard{}
+	for _, b := range cards {
+		c := s.Work.Placed(b.ID)
+		if c == nil || IsSentinel(c) {
+			continue
+		}
+		want, ok := kept[b.ID]
+		if !ok {
+			continue
+		}
+		if sameNeeds(Split(c.F("needs")), want) && sameGateFixCommands(c.F("brief"), b.Brief) {
+			continue
+		}
+		gateEdits[b.ID] = GateFixCard{ID: b.ID, Brief: b.Brief, Needs: want}
+	}
 	for _, b := range cards {
 		if seen[b.ID] {
 			p.refuse(b.ID, b.ID+" is named twice; nothing was changed")
 			continue
 		}
 		c := s.Work.Placed(b.ID)
+		if _, edited := gateEdits[b.ID]; edited {
+			if why := gateFixEditWhy(s, gateEdits, b.ID); why != "" {
+				p.refuse(b.ID, why)
+				continue
+			}
+		}
 		if c != nil && !IsSentinel(c) && (c.Col == Working || (c.Col == Review && c.F("result") != "failed" && !r.ByRule)) &&
 			scopeWidenedOnly(c.F("brief"), b.Brief) && b.Rules == c.F(FieldRules) &&
 			(r.Tier == "" || r.Tier == c.F(FieldTier)) && sameNeeds(Split(c.F("needs")), kept[b.ID]) {

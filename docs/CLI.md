@@ -742,7 +742,12 @@ A `brief check` file whose id is a card on the table is also read against the ca
 dependencies: a `LAND-AFTER:` line that would change what the store holds is one `land-after`
 finding naming both lists and the verb that writes each side, `nova-sprint brief <id> --brief-file <path>` the file's and `nova-sprint needs set <id> --land-after <ids>` the
 store's. An equal list, an id that is no card, and a sentinel report nothing, and the check
-still writes nothing.
+still writes nothing. A directory holding both briefs of a gate-fix cycle (a gate card's
+`DONE-WHEN:` and a card that needs it whose `DONE-WHEN:` or `TEST:` runs the same command)
+is one `gate-fix-cycle` finding naming both ids and the command key, with the split that
+lands the gate red and turns it green in a twin that needs the fix; add and `brief` refuse
+the same pair (`gate_fix.go`; [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md) section 2; tla/WaitFor.tla,
+the gate-artifact edge and `NoWaitCycle`).
 
 `add --partial`, with `--brief-dir` or a repeated `--brief-file`, runs every check over every
 brief and admits what passes instead of refusing the whole call. Every brief the checks find a
