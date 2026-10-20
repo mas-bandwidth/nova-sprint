@@ -20,3 +20,4 @@
 2026-10-14 8406540edb5a77369941935117fc581f6564654b9fde9575e776539d4a61f636 "remove the /events and /landings.json requests"
 2026-10-18 05679c6653fa15f0cd7eb75a7e68676b4a4b4bf411a03516be9c05531995e68f "I would like it if you could create a stats page showing me all the things you can do with https://pele.run for the sprint dashboard. You could put these things below the existing stuff we have at the bottom."
 2026-10-18 bf09f3c30cf2c3e54fb4d19beaad0171f02f55270582065df01e41beebb08b5e "Maybe we can click on a work stream by name, and this takes you to a page showing all details for that work stream, including all its cards, sankey for all cards if applicable, dependencies between cards etc etc etc."
+2026-10-20 2a7a7f62fda8dd1a13512586d1db36fd69c2a989086e2bc0ef72e4fad04e789d "Please fix the sprint dashboard here: http://37.27.135.206"

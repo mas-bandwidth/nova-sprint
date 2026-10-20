@@ -39,7 +39,7 @@ import (
 // TestThePageAboveTheChartsIsUnchanged).
 const (
 	pageIndexSHA256 = "19310c144b3278d4efbb2079c60c37e065e952ccc938d7dd4739106ba10ac0a2"
-	pageAppSHA256   = "8abaa9055145bc574c3c4162b7e1b0e47292021ad776860b1dda3f63afec61e4"
+	pageAppSHA256   = "fc5e4d035e9e7ca8a5be340b44aa192ca9c133850b9833af1a34fa97b4b26391"
 
 	liveTile192 = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"
 	liveTile384 = "8d534cd3563dd5073b4193c6a91c87c29ad7dae05a41a3d824441b11d9107809"
