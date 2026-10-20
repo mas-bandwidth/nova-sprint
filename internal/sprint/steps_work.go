@@ -549,6 +549,20 @@ func Add(s *Snapshot, r AddReq) Plan {
 	if cycle := g.closes(append(roots, changed...)); cycle != nil {
 		return refuseAll("the needs would make a cycle: " + g.tellLoop(cycle) + "; nothing is written")
 	}
+	// A gate card and a fix that needs it cannot share a DONE-WHEN command: the
+	// gate cannot be done before the fix's work, and the fix waits for the gate
+	// (gate_fix.go; docs/SPEC-SPRINT.md section 2; tla/WaitFor.tla, the
+	// gate-artifact edge and NoWaitCycle).
+	var gateCards []GateFixCard
+	for _, a := range in {
+		if a.gate || a.sent {
+			continue
+		}
+		gateCards = append(gateCards, GateFixCard{ID: a.id, Brief: a.brief, Needs: a.needs})
+	}
+	if found := GateFixCycleCheck(s, gateCards); len(found) > 0 {
+		return refuseAll(found[0].Why)
+	}
 	if len(pulled) > 0 {
 		p.inserting = true
 	}
