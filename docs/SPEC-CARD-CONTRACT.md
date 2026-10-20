@@ -15,6 +15,14 @@ silently waited for. The brief lint refuses a brief that tells the worker
 to ssh to a named host or run its gate "on hetzner2"; such a brief must
 name the gate's needs on `GATE-NEEDS:` instead.
 
+A worker that cannot run its card because the member lacks a tool writes
+`NEEDS-FACT: <fact>[,<fact>]` in its report and finishes HOLD. The fact words are the
+words the member's beat carries (`fleet beat --facts`, `FactWords`). The finish parks
+the card on the fact, never the member: the card returns to ready held to those facts
+beside `GATE-NEEDS`, its attempt counts toward no bound or cap, and the deal resumes it
+in the tick a member's beat carries them. A fact no member's beat names waits to its
+environment deadline (24h of running time), then is one judgment that takes `wait`.
+
 Two cards that name the same file in their `PATHS:` lines are refused at admission
 unless one of two forms admits them. The lander merges a ledger entry by entry, so two
 cards writing the same ledger do not collide; and a card that needs another lands after

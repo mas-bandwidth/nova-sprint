@@ -101,10 +101,33 @@ func (s *Snapshot) GateHostPool(c *Card, ms []string) (out []string, why string)
 	if c == nil {
 		return ms, ""
 	}
-	needs := GateNeeds(c.F("brief"))
+	needs := cardNeeds(c)
 	if len(needs) == 0 {
 		return ms, ""
 	}
+	return s.gateHostPoolFacts(c, ms, needs)
+}
+
+// cardNeeds is every fact a card is held to: its brief's GATE-NEEDS and the environment
+// facts a missing-tool HOLD parked it on (EnvFacts, env_wait.go), never a brief edit.
+//
+// tla/WaitFor.tla env-fact-wait; docs/SPEC-SPRINT.md section 5 (the fleet).
+func cardNeeds(c *Card) []string {
+	if c == nil {
+		return nil
+	}
+	needs := GateNeeds(c.F("brief"))
+	for _, f := range EnvFacts(c) {
+		if !slices.Contains(needs, f) {
+			needs = append(needs, f)
+		}
+	}
+	return needs
+}
+
+// gateHostPoolFacts narrows ms to the members whose facts satisfy every need, and says
+// why when none does.
+func (s *Snapshot) gateHostPoolFacts(c *Card, ms, needs []string) (out []string, why string) {
 	for _, m := range ms {
 		if memberSatisfies(s.MemberFacts(m), needs) {
 			out = append(out, m)
@@ -129,7 +152,7 @@ func gateNeedsNow(s *Snapshot, c *Card, up []string) string {
 	if len(pool) == 0 {
 		return ""
 	}
-	_, why := s.GateHostPool(c, pool)
+	_, why := s.gateHostPoolFacts(c, pool, GateNeeds(c.F("brief")))
 	return why
 }
 
