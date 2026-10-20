@@ -371,7 +371,10 @@ const NDecisionDelivery = "decision escalation delivery"
 const ServerDefaultActor = "server-default"
 
 func SafeDecisionDefault(typ string) string {
-	if exit, ok := JudgmentExits[typ]; ok {
+	if len(MissingJudgmentExits([]string{typ}, nil)) > 0 {
+		return "none" // no entry: never a silent answer, the test names the kind
+	}
+	if exit := JudgmentExits[typ]; ExitIsSafe(exit) {
 		return exit
 	}
 	return "none"

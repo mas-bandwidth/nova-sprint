@@ -9860,7 +9860,7 @@ A new judgment kind needs an entry in `JudgmentExits`; there is no silent
 fails naming any kind of `TickDecisions`, `WaitRefused` or `WaitAllowedOnACard`
 without one, and its reversed witness hides one kind's entry to prove the
 failure names it. No exit authorizes a terminal act: no entry drops, accepts,
-merges, lands or edits a brief (`TestNoExitAuthorizesATerminalAct`).
+merges, lands or edits a brief (`TestDeadlineExitNoExitAuthorizesATerminalAct`).
 
 The deadline is the existing running-time interval (normally ten minutes), or the
 explicit review interval set by wait. A safe default is recorded with

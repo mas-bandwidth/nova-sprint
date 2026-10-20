@@ -61,7 +61,7 @@ func TestEveryJudgmentKindHasADeadlineExit(t *testing.T) {
 // A stream stop unanswered past twice its deadline reaches the owner by the existing owner
 // delivery, once, and again each owner window while it stays open. tla/WaitFor.tla
 // OwnerDeliver; tla/DecisionsOwed.tla OwnerDue; docs/SPEC-SPRINT.md section 8.
-func TestAStreamStopUnansweredReachesTheOwner(t *testing.T) {
+func TestDeadlineExitAStreamStopUnansweredReachesTheOwner(t *testing.T) {
 	t.Parallel()
 	now := time.Unix(1000, 0).UTC()
 	n := sprint.Note{ID: "judgment-conflict", Kind: sprint.Judgment, Type: sprint.NConflict,
@@ -78,7 +78,7 @@ func TestAStreamStopUnansweredReachesTheOwner(t *testing.T) {
 
 // A server-default hold still open after its second re-raise unanswered reaches the owner:
 // not before, and once at and after that point. tla/WaitFor.tla OwnerDeliver.
-func TestAHeldByDefaultCardIsDeliveredToTheOwner(t *testing.T) {
+func TestDeadlineExitAHeldByDefaultCardIsDeliveredToTheOwner(t *testing.T) {
 	t.Parallel()
 	r := newHoldRig(t, 1, 0)
 	r.must(store.NoteStep("fixture bound", sprint.Note{Kind: sprint.Judgment, Type: sprint.NBound,
@@ -103,7 +103,7 @@ func TestAHeldByDefaultCardIsDeliveredToTheOwner(t *testing.T) {
 
 // No exit authorizes a terminal act: no exit drops, accepts, merges, lands or edits a
 // brief. tla/DecisionsOwed.tla DefaultIsSafe; docs/SPEC-SPRINT.md section 8.
-func TestNoExitAuthorizesATerminalAct(t *testing.T) {
+func TestDeadlineExitNoExitAuthorizesATerminalAct(t *testing.T) {
 	t.Parallel()
 	for kind, exit := range sprint.JudgmentExits {
 		require.True(t, sprint.ExitIsSafe(exit), "%s: %q must be a safe exit", kind, exit)
