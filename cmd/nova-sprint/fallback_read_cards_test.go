@@ -57,18 +57,32 @@ func TestProviderFallbackReadCardFinishesOnTheNextRoute(t *testing.T) {
 	ta.ok("take --as " + rc.Row + " --limit 1")
 	ta.ok("read --as " + rc.Row + " --return " + rc.ID + " --reason 'no verdict: provider: class=rate-limited status=429 msg=Too many requests' --epoch 0")
 
+	// the read step holds no tier array (Step.Prices): it writes the provider's cooling and
+	// leaves the read to the coordinator, whose tick deals it again on the next route in
+	// line (readRouteOf), with no re-ask counted and no reader spent. The re-dealt read is
+	// a new generation (.g1), which the card view does not list: the member's queue names it.
+	ta.ok("tick")
+	ta.ok("take --as " + rc.Row + " --limit 1")
+	var q struct {
+		Cards []struct {
+			ID     string         `json:"id"`
+			Packet *sprint.Packet `json:"packet"`
+		} `json:"cards"`
+	}
+	ta.json("queue --as "+rc.Row, &q)
+	var again struct {
+		ID     string
+		Packet *sprint.Packet
+	}
+	for _, c := range q.Cards {
+		if c.Packet != nil && c.Packet.Kind == "read" && c.Packet.Primary == "s1-1" {
+			again.ID, again.Packet = c.ID, c.Packet
+		}
+	}
+	require.NotNil(t, again.Packet, "the read is asked again on a route")
+	assert.NotEqual(t, first, again.Packet.Route, "re-asked on the next route in line")
+	ta.ok("read --as " + rc.Row + " --ok " + again.ID + " --epoch 0 --usage 'input=1000 cache_read=0 cache_write=0 output=100 model=" + again.Packet.Model + "'")
+	ta.ok("tick")
 	ta.json("card s1-1", &card)
-	require.Len(t, card.Reads, 1)
-	rc = card.Reads[0]
-	assert.Equal(t, sprint.Working, rc.Col, "the same read card, ready to finish")
-	assert.NotEqual(t, first, rc.F(sprint.FieldRoute), "re-asked on the next route in line")
-	assert.Empty(t, rc.F(sprint.FieldReasked), "no re-ask counted: the reader is not spent")
-	assert.Empty(t, rc.F(sprint.FieldReturned), "not a returned read")
-
-	ta.ok("read --as " + rc.Row + " --ok " + rc.ID + " --epoch 0 --usage 'input=1000 cache_read=0 cache_write=0 output=100 model=" + rc.F(sprint.FieldModel) + "'")
-	ta.json("card s1-1", &card)
-	require.Len(t, card.Reads, 1)
-	assert.Equal(t, "ok", card.Reads[0].F("verdict"), "the read finishes on the next provider")
-	assert.NotEqual(t, first, card.Reads[0].F(sprint.FieldRoute))
-	assert.Empty(t, card.Reads[0].F(sprint.FieldReasked), "the reader was never spent")
+	assert.Equal(t, sprint.Merging, card.Column, "the read finishes on the next provider and the card moves on")
 }

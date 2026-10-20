@@ -851,17 +851,20 @@ func readCardVerb(s *Snapshot, r ReadReq, row, name string) Plan {
 				p.Units = append(p.Units, readEnvExitUnit(s, c, pr, r, ended, code, name))
 				continue
 			}
-			if class := providerFaultClass(r.Reason); class != "" && !IsFriendRow(row) && s.Fleet != nil && len(s.Routes) > 0 {
-				// a provider fault is not a read and spends no reader: the read card stays on
-				// its row, re-asked at once on the next route in line (fallback.go,
-				// readFallbackSet; tla/ProviderFallback.tla Fallback, FaultSpendsNothing;
+			if class := providerFaultClass(r.Reason); class != "" && !IsFriendRow(row) && s.Fleet != nil && c.F(FieldRoute) != "" {
+				// a provider fault is not a read and spends no reader: the provider cools and
+				// the read card is retired unspent, never counted (spentBy leaves its
+				// retired_by out), so the read-card deal asks the read again on the next route
+				// in line. The read step prices with Step.Prices and holds no tier array, so
+				// it cannot draw that route itself: the coordinator's ask/tick (Routes loaded)
+				// draws it via readRouteOf, which leaves the faulted provider out
+				// (fallback.go; tla/ProviderFallback.tla Fallback, FaultSpendsNothing;
 				// docs/SPEC-SPRINT.md section 5, provider fallback)
-				if fb, ok := readFallbackSet(&p, s, c, pr, r.Reason, class); ok {
-					unset := []string{"begun", "verdict", "finding", "usage", "returned", "reason", "retired", "retired_by"}
-					p.Units = append(p.Units, Unit{Key: pr.ID, Stream: pr.Row, Changes: []Change{change(Fleet, moveEntry(c, c.Row, Working, fb, unset...))},
-						Moved: c.ID + " " + c.Col + " -> working (a provider fault: fallen back to " + fb[FieldRoute] + ", its reader not spent)"})
-					continue
-				}
+				providerFaultCools(&p, s, c, class, r.Reason)
+				set := map[string]string{"retired": stamp(s.Now), "retired_by": RetiredByProviderFault, "reason": cutText(r.Reason, MaxCardTextBytes)}
+				p.Units = append(p.Units, Unit{Key: pr.ID, Stream: pr.Row, Changes: []Change{change(Fleet, removeEntry(c, set))},
+					Moved: c.ID + " " + c.Col + " -> provider fault (" + class + "): its provider cools, the read is asked again on the next route in line, its reader not spent"})
+				continue
 			}
 			set := map[string]string{"retired": stamp(s.Now), "retired_by": RetiredByReturned, "reason": cutText(r.Reason, MaxCardTextBytes)}
 			if r.Usage != "" {

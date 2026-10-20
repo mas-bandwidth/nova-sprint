@@ -3164,11 +3164,14 @@ order the cards were dealt in, so a card brought to the front of its stream by
   return slot, so the route's 3-in-10 rest and the provider's credit rest count it as
   before, and that rest cools the provider). A card whose return slots are all held takes
   today's bounded return.
-  A read returned with a provider cause is asked again at once of the same reader on the
-  next route in line, never counted against that reader (no re-ask counted, not stamped
-  returned, so its reads and its ok% are untouched), and its provider cools
-  (`FaultSpendsNothing`). MaxRateReturns then bounds only the returns of a tier whose
-  every route cools.
+  A read returned with a provider cause is never counted against that reader (no re-ask
+  counted, so its reads and its ok% are untouched) and its provider cools
+  (`FaultSpendsNothing`). The member's read step prices with the routes alone
+  (`Step.Prices`) and may read no tier array, so it never draws the next route from
+  name-order: it writes the provider's cooling and leaves the read asked, unspent and
+  unrouted, and the coordinator's ask/tick (routes loaded) re-asks it via `readRouteOf` on
+  the next route in line, of the same reader when it can run that route, else another.
+  MaxRateReturns then bounds only the returns of a tier whose every route cools.
   (3) Only an all-cooling tier waits: when no route of the tier is in line the card (or
   read) waits ready, never failed, with a server-computed deadline (the earliest end of its
   providers' cooling, or one minute from now when every provider is out until funded),

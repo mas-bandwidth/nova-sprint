@@ -50,6 +50,11 @@ const FallbackRecheck = time.Minute
 // coolUnfunded is the cooling of a provider nova-config applied with funded=false.
 const coolUnfunded = "unfunded"
 
+// RetiredByProviderFault is the retired_by of a read card a provider fault ended in a read
+// step that holds no tier array: the read is not a return of its reader (it is not in
+// spentBy), so the read-card deal may ask it again on the next route in line.
+const RetiredByProviderFault = "provider-fault"
+
 // coolWords opens the words of a provider's own cool record (coolWrite), and of the rest
 // withRests settles on each route of a cooling provider from it.
 const coolWords = "cooling of"
@@ -605,18 +610,34 @@ func fallbackUnit(p *Plan, s *Snapshot, c, pr *Card, r FinishReq, class string) 
 }
 
 // readFallbackSet is (2) for a read: the read card c, returned with a provider fault of
-// class, is asked again at once of its own reader on the next route in line of its tier
-// after the route it ran on (nextInLine, the faulted provider out), never counted as a
-// return of its reader (no FieldReasked, no FieldReturned: the reader is not spent and its
-// ok% is not touched), and the provider's cooling is written in the plan (coolWrite, or
-// creditRestWrite for out of credit). ok is false when no route of the tier is in line: the
-// caller keeps today's return. tla/ProviderFallback.tla Fallback, FaultSpendsNothing.
+// class, cools its provider (providerFaultCools) and, when this snapshot knows the tier's
+// array, is asked again at once of its own reader on the next route in line after the
+// route it ran on (nextInLine, the faulted provider out), never counted as a return of its
+// reader (no FieldReasked: the reader is not spent and its ok% is not touched). ok is false
+// when this snapshot holds no tier array (the member's read step, which prices with
+// Step.Prices) or no route of the tier is in line: the caller leaves the read asked,
+// unspent and unrouted, and the coordinator's ask/tick re-asks it via readRouteOf on the
+// next route in line. tla/ProviderFallback.tla Fallback, FaultSpendsNothing; docs/
+// SPEC-SPRINT.md section 5, provider fallback.
 func readFallbackSet(p *Plan, s *Snapshot, c, pr *Card, reason, class string) (map[string]string, bool) {
 	if pr == nil || c.F(FieldRoute) == "" || c.F(FieldRoute) == RoutePin {
 		return nil, false
 	}
+	// (2) The provider cools whether or not this snapshot knows the tier's line: the
+	// cooling is the record the coordinator's draw reads, and it is the read's provider's,
+	// never its route's (ProviderFallback.tla ProviderFault, NoDealToCooling).
+	providerFaultCools(p, s, c, class, reason)
 	faulted := faultProvider(s, c)
 	tier := cmpOr(c.F(FieldTier), s.readTierOf(pr))
+	// The member's read step prices with Step.Prices and holds no tier array (a worker's
+	// role reads routes and route:*, never tier:*), so tierArray would fall back to every
+	// enabled route in NAME order, not the tier's line. Draw nothing here: the caller
+	// leaves the read asked, unspent and unrouted, and the coordinator's ask/tick (Routes
+	// loaded) re-asks it via readRouteOf on the next route in line (the faulted provider
+	// now cooling). The tests' snapshots hold the tier's array and take the route here.
+	if len(s.Tiers[tier]) == 0 {
+		return nil, false
+	}
 	// a member's read card is re-asked of the same member first, when it can run the next
 	// route; a reader's read, on the readers table, has no member to check (row "")
 	reader := ""
@@ -629,13 +650,25 @@ func readFallbackSet(p *Plan, s *Snapshot, c, pr *Card, reason, class string) (m
 	if !ok {
 		return nil, false
 	}
-	switch class {
-	case RestCredit:
-		creditRestWrite(p, s, faulted, reason, c.ID)
-	default:
-		coolWrite(p, s, faulted, class, reason, c.ID)
-	}
 	set := ss.readRouteFields(r, tier)
 	set["asked"] = stamp(s.Now)
 	return set, true
+}
+
+// providerFaultCools writes the cooling (1) of the provider a read or a take faulted, once
+// per provider per plan: the provider's own cool record (coolWrite) for a rate limit, a
+// 5xx or a timeout, and its out-of-credit rest for a 402 (creditRestWrite). It is the
+// record every draw reads to leave the provider out of line (providerCooling), so a fault
+// cools the provider even when the step that saw it cannot draw the next route
+// (ProviderFallback.tla ProviderFault, Avail).
+func providerFaultCools(p *Plan, s *Snapshot, c *Card, class, reason string) {
+	provider := faultProvider(s, c)
+	if provider == "" {
+		return
+	}
+	if class == RestCredit {
+		creditRestWrite(p, s, provider, reason, c.ID)
+		return
+	}
+	coolWrite(p, s, provider, class, reason, c.ID)
 }

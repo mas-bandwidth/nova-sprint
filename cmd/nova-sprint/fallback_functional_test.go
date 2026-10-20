@@ -229,9 +229,10 @@ func TestProviderFallbackReadCardsFunctional(t *testing.T) {
 			var q struct {
 				Epoch uint64 `json:"epoch"`
 				Cards []struct {
-					ID      string `json:"id"`
-					Primary string `json:"primary"`
-					Gen     int    `json:"gen"`
+					ID      string         `json:"id"`
+					Primary string         `json:"primary"`
+					Gen     int            `json:"gen"`
+					Packet  *sprint.Packet `json:"packet"`
 				} `json:"cards"`
 			}
 			require.NoError(t, json.Unmarshal([]byte(run("queue", "--as", m, "--json")), &q))
@@ -241,21 +242,15 @@ func TestProviderFallbackReadCardsFunctional(t *testing.T) {
 			epoch := strconv.FormatUint(q.Epoch, 10)
 			run("take", "--as", m, "--limit", "100", "--epoch", epoch)
 			for _, c := range q.Cards {
-				v := cardOf(c.Primary)
-				route, read := "", false
-				for _, wc := range v.Work {
-					if wc.ID == c.ID {
-						route = wc.F(sprint.FieldRoute)
-					}
-				}
-				for _, rc := range v.Reads {
-					if rc.ID == c.ID {
-						route, read = rc.F(sprint.FieldRoute), true
-					}
+				// a re-dealt read is a new generation (.g1), which the card view does not
+				// list: the packet the member is handed names its route and model
+				kind, route, model := "", "", ""
+				if c.Packet != nil {
+					kind, route, model = c.Packet.Kind, c.Packet.Route, c.Packet.Model
 				}
 				at := c.ID + "@" + strconv.Itoa(c.Gen)
 				if route == "flash-a" {
-					if read {
+					if kind == "read" {
 						readFaults++
 						run("read", "--as", m, "--return", c.ID, "--reason", read429, "--epoch", "0")
 						continue
@@ -264,14 +259,7 @@ func TestProviderFallbackReadCardsFunctional(t *testing.T) {
 					run("finish", "--as", m, at, "--epoch", epoch, "--failed", "--report", limit429)
 					continue
 				}
-				if read {
-					model := ""
-					v = cardOf(c.Primary)
-					for _, rc := range v.Reads {
-						if rc.ID == c.ID {
-							route, model = rc.F(sprint.FieldRoute), rc.F(sprint.FieldModel)
-						}
-					}
+				if kind == "read" {
 					run("read", "--as", m, "--ok", c.ID, "--epoch", "0", "--usage", "input=1000 cache_read=0 cache_write=0 output=100 model="+model)
 					continue
 				}
