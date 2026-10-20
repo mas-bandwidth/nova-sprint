@@ -1980,25 +1980,31 @@ only a verb the judgment prints, and the carry decision is no verb it chooses
 (`sprint.DecisionCarry`, `decide.VerbOf`), so it cannot rework such a card
 (`TestTheAnswerPathCannotReworkACardAtTheBriefBound`), and the plain verb refuses it besides.
 
-*A merge conflict is the base's bound, not the brief's* (the coordinator, 2026-10-15, after
-three v13-blockers cards were marked brief-defect when each landing was refused only for a
-merge conflict with the advanced base, and each was re-cut by hand though the brief was
-right). Two attempts since the brief ended on the same landing finding, and it is the
-conflict refusal (`sprint.LandRefusedConflict`, "the landing refused its head: conflict":
-the head does not merge because the base moved under it), is a conflict bound
-(`BriefBound.Conflict`, raised in the landing refusal, `sprint.AtBriefBound`). Its head is
-right, so it is worded as the base's, never the brief's: `<id>: the landing refused its head twice only for a merge conflict with the advanced base (attempts <n> and <m>): the brief is not the cause`, and its remedy offers `rework --carry` first (carry the head,
-merge the current base, rerun the gates), then brief, then drop. The brief-defect rule may
-still stamp the card; `rework --carry` is taken for it all the same
-(`sprint.IsConflictBound`, `reworkWhyCarry`: the card in review whose landing refused its
-current head, returned for a conflict at its attempt, with the conflict finding of the
-attempt before), writes the `CARRY:` line, resets the bound and opens the next attempt from
-its last pushed head, clean of the mark. The gate, checks and paths refusals twice, and the
-attempt cap, keep the bound and the wording above (the head itself is wrong), and a card
-marked a brief defect for them is refused `rework --carry` as before. A conflict only in the
-shared ledgers is never at the bound at all. `tla/Land.tla`, THE BOUND, `ConflictBoundCarries`
-(`MCLandBoundConflictCarry`; reversed witness `MCLandBoundBrokenConflictIsBriefDefect`);
-`TestAMergeConflictIsNotABriefDefect`, `TestAMergeConflictBoundTakesReworkCarryOnARealStore`.
+*A merge conflict is never the brief's bound* (the owner, 2026-10-19: "This tendency to
+deadlock is concerning. Please fix these deadlocks in v1.7."; after a landing was refused
+twice on 2026-10-19 only for a merge conflict on a file other cards of its stream had
+re-pinned, and the card was held for a brief defect the brief did not have). A landing
+refused for a merge conflict with the advanced base and nothing else
+(`sprint.RefusedConflict`, `sprint.LandRefusedConflict`, "the landing refused its head:
+conflict": the head does not merge because the base moved under it) is never at the brief's
+bound, whether the conflict is in the shared ledgers or not, and whether two refusals repeat
+the same finding or the attempt cap is reached: there is no `NBriefWrong`, no bound judgment,
+no brief-defect mark and no server-default hold. The refusing merge step reworks the card at
+the tip in that same step (`sprint.landRefused`), carrying the refused head, and keeps the
+conflicting paths on the card (`conflict_paths`, the lander's `--conflict-path`, which
+`v17-hot-file-orders-its-landings` reads). The refusal spends no attempt toward
+`max_attempts`: the conflict attempts are kept on the card (`conflict_refusals`) and
+`AttemptsSince` counts them out, so a card can be refused for the base moving under it as
+often as the base moves; a coordinator decision clears those before it as it clears
+`decided_attempt`. The gate, checks and paths refusals twice, and the attempt cap of the
+other attempts, keep the bound and the wording above (the head itself is wrong), and a card
+marked a brief defect for them is refused `rework --carry` as before; a card an older version
+left in review at a conflict bound is still taken by `rework --carry`
+(`sprint.IsConflictBound`, `reworkWhyCarry`). `tla/Land.tla`, THE BOUND,
+`ConflictNeverBounds` (`MCLandBoundConflictCarry`; reversed witness
+`MCLandBoundBrokenConflictIsBriefDefect`); `tla/WaitFor.tla`, `ConflictSpendsNoAttempt`;
+`TestAConflictRefusalIsReworkedAtTheTipWithNoAttemptSpent`,
+`TestTwoConflictRefusalsAreNeverABriefDefect`, `TestAConflictThenAGateRedStillBounds`.
 
 **Rework --carry** (the seat, 2026-10-11 23:15Z: a bound judgment offered only
 `brief --group --dir` and `drop`, so the seat dumped each brief, added a `CARRIED FROM:` line

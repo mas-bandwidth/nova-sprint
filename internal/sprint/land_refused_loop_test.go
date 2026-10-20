@@ -41,10 +41,11 @@ func (r *conflictRig) openOn(typ, id string) []sprint.Open {
 	return out
 }
 
-// A head the landing refused is never offered to accept again: at the brief's bound the card
-// goes back to review with the bound's judgment alone (brief and drop), and no later step
-// raises "ready to accept" on that head, which an accept would queue for the lander to refuse
-// again. Red before the fix: the merge step raised ready to accept beside the bound.
+// A head the landing refused is never offered to accept again: a conflict-only refusal
+// reworks the card at the tip in the refusing step and keeps the refused head carried
+// (tla/Land.tla, ConflictNeverBounds; tla/WaitFor.tla, ConflictSpendsNoAttempt), so no later
+// step raises "ready to accept" on that head, which an accept would queue for the lander to
+// refuse again. Red before the fix: the merge step raised ready to accept beside the bound.
 func TestAConflictReturnNeverOffersTheRefusedHeadToAccept(t *testing.T) {
 	t.Parallel()
 	r := newConflictRig(t)
@@ -58,10 +59,10 @@ func TestAConflictReturnNeverOffersTheRefusedHeadToAccept(t *testing.T) {
 	r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1", Note: why(refusedHeads[1]), ConflictKind: "file", ConflictPaths: []string{"internal/x.go"}}))
 
 	pr := r.snap().Work.Card("s1-1")
-	require.Equal(t, sprint.Review, pr.Col, "at its bound: back in review")
-	assert.Equal(t, refusedHeads[1], pr.F(sprint.FieldLandRefusedHead), "the refused head is kept")
+	require.Equal(t, sprint.Ready, pr.Col, "reworked at the tip, never the bound")
+	assert.Equal(t, refusedHeads[1], pr.F(sprint.FieldLandRefusedHead), "the refused head is kept (carried)")
 	assert.True(t, sprint.LandRefusedAtHead(pr))
-	require.Len(t, r.openOn(sprint.NBriefWrong, "s1-1"), 1, "the bound's judgment")
+	assert.Empty(t, r.openOn(sprint.NBriefWrong, "s1-1"), "no bound judgment")
 	assert.Empty(t, r.openOn(sprint.NReadyToAccept, "s1-1"), "the refused head is not offered to accept")
 
 	// the machine's later steps (the tick, its rules and its acks) offer it no accept either
@@ -69,7 +70,7 @@ func TestAConflictReturnNeverOffersTheRefusedHeadToAccept(t *testing.T) {
 		r.tick()
 	}
 	assert.Empty(t, r.openOn(sprint.NReadyToAccept, "s1-1"), "no step offers the refused head to accept")
-	r.clean("refused head in review")
+	r.clean("refused head carried at the tip")
 }
 
 // A conflict only in the shared ledgers (here FIXES.md and docs/fixes.sexp, as the lander of
@@ -105,19 +106,21 @@ func TestALedgerOnlyConflictIsNeverABriefDefect(t *testing.T) {
 	r.clean("ledger conflicts")
 }
 
-// The recovery of a card the v1.2.x loop left marked a brief defect: accepted again (accept
+// The recovery of a card an older version left marked a brief defect: accepted again (accept
 // is not refused on the mark), and refused again on the ledgers alone, it is reworked at the
-// tip with the mark cleared, never stopped at the bound a second time.
+// tip with the mark cleared, never stopped at the bound a second time. v1.7 never bounds a
+// conflict (tla/Land.tla, ConflictNeverBounds), so the mark is built here by the gate bound
+// the rule still keeps, the same card field the old loop left behind.
 func TestALedgerConflictClearsTheLoopsBriefDefectMark(t *testing.T) {
 	t.Parallel()
 	r := newConflictRig(t)
-	why := func(head string) string {
-		return "the head " + head + " of s1-1 does not merge: CONFLICT (content): Merge conflict in internal/x.go"
+	gateWhy := func(head string) string {
+		return "the head " + head + " of s1-1 fails the tree gate: go vet ./...: exit status 1"
 	}
-	// the old loop's state: two refusals the same way, the bound's judgment, the rule's mark
+	// the old loop's state: a brief-defect mark and the bound's judgment on the card
 	for _, head := range refusedHeads[:2] {
 		r.toMergingAt("s1-1", head)
-		r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1", Note: why(head), ConflictKind: "file", ConflictPaths: []string{"internal/x.go"}}))
+		r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1", Note: gateWhy(head)}))
 	}
 	r.tick()
 	pr := r.snap().Work.Card("s1-1")

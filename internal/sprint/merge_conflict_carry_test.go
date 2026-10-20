@@ -1,6 +1,7 @@
 package sprint_test
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -11,14 +12,16 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 )
 
-// A landing refused twice ONLY for a merge conflict with the advanced base is the base's
-// bound, not the brief's (tla/Land.tla, THE BOUND, ConflictBoundCarries): the head is right
-// and the base moved under it, so the judgment says so, offers rework --carry first, and the
-// card is never held as a brief defect against rework --carry. The gate, checks and paths
-// refusals twice keep today's bound: the head itself is wrong, the brief is wrong, and
-// rework --carry is refused for the card the brief-defect rule marked.
-// Incident of 2026-10-15: three v13-blockers cards were marked brief-defect after two
-// conflict refusals and each was re-cut by hand.
+// A landing refused ONLY for a merge conflict with the advanced base is never the brief's
+// bound (tla/Land.tla, THE BOUND, ConflictNeverBounds; tla/WaitFor.tla,
+// ConflictSpendsNoAttempt): the head is right and the base moved under it, so the refusing
+// step reworks the card at the tip, keeps the conflicting paths on it, spends no attempt and
+// never marks it a brief defect. The gate, checks and paths refusals twice keep the bound:
+// the head itself is wrong, the brief is wrong, and rework --carry is refused for the card
+// the brief-defect rule marked.
+// Incidents: 2026-10-15 three v13-blockers cards were marked brief-defect after two conflict
+// refusals; 2026-10-19 a landing was refused twice only for a merge conflict and the card was
+// held against a brief that did not have the defect.
 func TestAMergeConflictIsNotABriefDefect(t *testing.T) {
 	t.Parallel()
 	conflict := func(n int) store.Step {
@@ -29,8 +32,8 @@ func TestAMergeConflictIsNotABriefDefect(t *testing.T) {
 		return store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1",
 			Note: "the head h" + string(rune('0'+n)) + " of s1-1 fails the tree gate: go vet ./...: exit status 1"})
 	}
-	// twice drives s1-1 to two refusals the same way and returns the rig with the card in
-	// review under the bound's judgment, the rule's tick run
+	// twice drives s1-1 to two non-conflict refusals the same way and returns the rig with
+	// the card in review under the bound's judgment, the rule's tick run
 	twice := func(t *testing.T, refuse func(int) store.Step) (*conflictRig, string) {
 		t.Helper()
 		r := newConflictRig(t)
@@ -50,22 +53,22 @@ func TestAMergeConflictIsNotABriefDefect(t *testing.T) {
 		return sprint.Rework(r.snap(), sprint.ReworkReq{Sel: sprint.Sel{IDs: []string{"s1-1"}}, Carry: true, Fix: "the base moved: merge it and rerun the gates"})
 	}
 
-	t.Run("a conflict twice is the base's", func(t *testing.T) {
+	t.Run("a conflict twice is never the bound", func(t *testing.T) {
 		t.Parallel()
-		r, what := twice(t, conflict)
-		assert.NotContains(t, what, "the brief is wrong", "the base moved; the brief is not the cause")
-		assert.Contains(t, what, "s1-1: the landing refused its head twice only for a merge conflict with the advanced base (attempts 1 and 2): the brief is not the cause")
-		carryAt, briefAt, dropAt := strings.Index(what, "nova-sprint rework s1-1 --carry --fix <text>"), strings.Index(what, "nova-sprint brief s1-1 --brief-file <path>"), strings.Index(what, "nova-sprint drop s1-1 --reason '<why>'")
-		require.GreaterOrEqual(t, carryAt, 0, "the remedy offers rework --carry: %s", what)
-		assert.Less(t, carryAt, briefAt, "rework --carry first, then brief")
-		assert.Less(t, briefAt, dropAt, "then drop")
-		for _, o := range r.open(sprint.NBriefWrong) {
-			assert.NotContains(t, o.Note.What, "the brief is wrong", "the judgment never says the brief is wrong")
+		r := newConflictRig(t)
+		for i, head := range refusedHeads[:2] {
+			r.toMergingAt("s1-1", head)
+			r.must(conflict(i + 1))
+			pr := r.snap().Work.Card("s1-1")
+			require.Equal(t, sprint.Ready, pr.Col, "refusal %d: reworked at the tip, never the bound", i+1)
+			assert.Equal(t, "internal/x.go", pr.F(sprint.FieldConflictPaths), "refusal %d: the conflicting path stays on the card", i+1)
+			assert.Equal(t, strconv.Itoa(i+1), pr.F(sprint.FieldConflictRefusals), "refusal %d: the conflict is on the card", i+1)
+			assert.Empty(t, r.open(sprint.NBriefWrong), "refusal %d: no bound judgment", i+1)
 		}
-		// rework --carry is taken for it, whether or not a rule stamped the card
-		p := carry(r)
-		assert.Empty(t, p.Refused, "rework --carry is taken: %+v", p.Refused)
-		assert.Len(t, p.Units, 1, "and moves the card")
+		r.tick() // the brief-defect rule answers any judgment: there is none to mark
+		pr := r.snap().Work.Card("s1-1")
+		assert.Empty(t, pr.F(sprint.FieldBriefDefect), "never a brief defect")
+		assert.NotEqual(t, sprint.Review, pr.Col, "never at the bound")
 	})
 
 	t.Run("a gate twice is the brief's", func(t *testing.T) {

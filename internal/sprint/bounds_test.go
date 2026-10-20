@@ -43,6 +43,21 @@ func TestAttemptsSinceCountsEveryAttemptSinceTheDecision(t *testing.T) {
 	require.Equal(t, 0, AttemptsSince(&Card{Fields: map[string]string{}}), "a card never dealt")
 }
 
+// TestConflictRefusalWitnessCountsTheAttemptAgain is the reversed witness of
+// ConflictSpendsNoAttempt (tla/WaitFor.tla; sprint.AttemptsSince): the rule counts a
+// conflict-only refusal out of the cap, and with the test seam counting it again the same
+// card is one attempt further toward max_attempts. Without the rule the first assertion
+// (one, not two) fails, as the seam does here.
+func TestConflictRefusalWitnessCountsTheAttemptAgain(t *testing.T) {
+	t.Parallel()
+	c := &Card{ID: "conflict-witness", Fields: map[string]string{
+		"attempt": "2", FieldConflictRefusals: "1"}}
+	require.Equal(t, 1, AttemptsSince(c), "the rule: the conflict refusal spends no attempt")
+	conflictWitness.Store("conflict-witness")
+	t.Cleanup(func() { conflictWitness.Store("") })
+	require.Equal(t, 2, AttemptsSince(c), "the reversed witness: counted again, the attempt is spent")
+}
+
 // TestFourNonRunningAttemptsRaiseLaneBroken pins that four attempts that all ended
 // without a worker report raise "the lane is broken, not the brief", naming the
 // fault, not the brief bound.

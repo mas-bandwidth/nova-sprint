@@ -184,15 +184,17 @@ func TestAnAcceptedCardThatLandsCleanLands(t *testing.T) {
 	assert.Empty(t, r.openOnCard(sprint.NBriefWrong, "s1-1"), "no brief defect judgment")
 }
 
-// Oscillating refusals on the same brief halt at the brief bound (tla/Land.tla:
+// Oscillating non-conflict refusals on the same brief halt at the brief bound (tla/Land.tla:
 // other -> paths (no widen) -> other; sprint.AtBriefBound): an accepted card tracks
-// the cumulative set of refusal findings on the current brief, halting on any repeat.
+// the cumulative set of refusal findings on the current brief, halting on any repeat. A
+// conflict-only refusal never bounds, so the repeated refusal here is the tree gate
+// (ConflictNeverBounds).
 // Red at BASE: attempt 3 was reworked to ready instead of halting at the brief bound.
 func TestAcceptedCardHaltsOnOscillatingRefusals(t *testing.T) {
 	t.Parallel()
 	r := newConflictRig(t)
-	fileWhy := func(head string) string {
-		return "the head " + head + " of s1-1 does not merge: CONFLICT (content): Merge conflict in internal/x.go"
+	gateWhy := func(head string) string {
+		return "the head " + head + " of s1-1 fails the tree gate: go vet ./...: exit status 1"
 	}
 	pathsWhy := func(head string) string {
 		return "the head " + head + " of s1-1 fails the lander's checks: it changes files outside its PATHS (E12): outside/y.go"
@@ -203,9 +205,9 @@ func TestAcceptedCardHaltsOnOscillatingRefusals(t *testing.T) {
 		strings.Repeat("c3", 20),
 	}
 
-	// Attempt 1: Merging card refused by file conflict (RefusedConflict, way "other") -> reworked to Ready.
+	// Attempt 1: Merging card refused by the tree gate (way "other") -> reworked to Ready.
 	r.toMergingAt("s1-1", heads[0])
-	r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1", Note: fileWhy(heads[0]), ConflictKind: "file", ConflictPaths: []string{"internal/x.go"}}))
+	r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1", Note: gateWhy(heads[0])}))
 	require.Equal(t, sprint.Ready, r.snap().Work.Card("s1-1").Col, "attempt 1 refusal reworks it to ready")
 
 	// Attempt 2: Merging card refused by files outside PATHS (RefusedPaths, not adjacent so no widen).
@@ -221,11 +223,11 @@ func TestAcceptedCardHaltsOnOscillatingRefusals(t *testing.T) {
 	require.Contains(t, []string{sprint.Ready, sprint.Working}, r.snap().Work.Card("s1-1").Col, "redo inside paths reworks it")
 	require.Equal(t, 3, r.snap().Work.Card("s1-1").Int("attempt"), "attempt 3")
 
-	// Attempt 3: Merging card refused by file conflict again (repeats refusal from attempt 1).
+	// Attempt 3: Merging card refused by the tree gate again (repeats refusal from attempt 1).
 
 	// Under cumulative refusal set semantics, this repeats an earlier refusal on the current brief -> halts at brief bound!
 	r.toMergingAt("s1-1", heads[2])
-	r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1", Note: fileWhy(heads[2]), ConflictKind: "file", ConflictPaths: []string{"internal/x.go"}}))
+	r.must(store.MergeStep(sprint.MergeReq{Stream: "s1", Batch: 1, Conflict: "s1-1", Note: gateWhy(heads[2])}))
 	pr := r.snap().Work.Card("s1-1")
 	require.Equal(t, sprint.Review, pr.Col, "attempt 3 repeating refusal halts at brief bound: review")
 	open := r.openOnCard(sprint.NBriefWrong, "s1-1")
