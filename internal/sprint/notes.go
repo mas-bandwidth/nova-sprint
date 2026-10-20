@@ -159,6 +159,9 @@ var Decisions = map[string][]string{
 	NReadsExhausted:    {"ask another reader", "rework", "drop"},
 	NStranded:          {"ask", "rework", "drop"},
 	NReviewNoReader:    {"reader add", "wait"},
+	// structural: no reader of the roster serves the tier (cannot_ask_tier.go); the
+	// judgment itself offers accept with the owner's heavy evidence
+	NNoReaderForTier: {"reader add", "raise the read tier", "accept"},
 	NRepairSkipped:     {"look at the card", "return", "drop", "rework", "ack"},
 	NOpStuck:           {"check", "ack"},
 	NOverdue:           {"act"},

@@ -29,6 +29,8 @@ var WaitRefused = map[string]string{
 	// in review with nothing outstanding
 	NReadyToAccept:  "accept it, rework it, or drop it",
 	NReadsExhausted: "ask another reader, rework it, or drop it",
+	// no reader of the roster serves its read tier: a freeing reader cannot help
+	NNoReaderForTier: "add a reader of its tier, raise the read tier, or accept it on the owner's heavy read with the evidence (cannot_ask_tier.go; docs/SPEC-SPRINT.md section 6)",
 	NStranded:       "ask, rework it, or drop it",
 	// at its bound, or its brief wrong: a mind's, at once
 	NBound:       "rework it on a higher tier, or drop it",

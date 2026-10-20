@@ -1515,6 +1515,7 @@ func TickAsk(s *Snapshot, r TickReq) (Plan, int) {
 		return "asked, or its work failed"
 	}
 	few := false // a primary waits for more readers than are up
+	structural := map[string][]string{} // read tier -> primaries no reader of the roster serves
 	// the ask's placement, rehearsed on the same rooms and round (Ask:
 	// askPicks, the finder first, then round.pickByRoom from the ask's index,
 	// each read placed taken off its reader's room): a primary that lacks as
@@ -1546,7 +1547,14 @@ func TickAsk(s *Snapshot, r TickReq) (Plan, int) {
 		want := ReadsWanted(s, c)
 		free := s.freeReaders(c, attempt)
 		returned := len(returnedInTier(s, c, attempt))
+		tier, structuralWait := s.noReaderForTier(c)
 		switch {
+		case structuralWait:
+			// no reader of the roster serves the tier besides its own worker: no
+			// reader freeing can help, so this is the tier's judgment, not a re-ask
+			// (cannot_ask_tier.go; tla/WaitFor.tla Read/ServerDefault;
+			// docs/SPEC-SPRINT.md section 6, The readers)
+			structural[tier] = append(structural[tier], c.ID)
 		case !enoughReadersUp(s, c):
 			// an absent reader is never asked: the sprint's one judgment says so
 			few = true
@@ -1599,6 +1607,9 @@ func TickAsk(s *Snapshot, r TickReq) (Plan, int) {
 	conds = append(conds, raiseReadTierConds(s)...)
 	// broken reads outrunning ok reads, and a reader breaking nearly everything (reads_window.go)
 	conds = append(conds, readsWindowConds(s, r)...)
+	// a read tier no reader of the roster serves: one judgment per tier, its exit
+	// the owner's (cannot_ask_tier.go; tla/WaitFor.tla OwnerDeliver)
+	conds = append(conds, noReaderForTierConds(structural)...)
 	if len(ids) > 0 {
 		p = Ask(s, AskReq{Sel: Sel{Only: ids}, Who: r.who()})
 	}
@@ -1618,7 +1629,7 @@ func TickAsk(s *Snapshot, r TickReq) (Plan, int) {
 	}
 	conds = append(conds, cannotAskCond(s, refused)...)
 	p.Refused = nil
-	due += notify(&p, s, conds, []string{NCannotAsk, NFewReaders, NReviewNoReader, NReadersBehind, NRaiseReadTier, NBrokenReadsOutrun, NReaderBreaks}, r)
+	due += notify(&p, s, conds, []string{NCannotAsk, NFewReaders, NReviewNoReader, NReadersBehind, NRaiseReadTier, NBrokenReadsOutrun, NReaderBreaks, NNoReaderForTier}, r)
 	// Ask already closes a dealt primary's judgment inside its unit.
 	p.Closes = slices.DeleteFunc(p.Closes, func(o Open) bool {
 		return slices.ContainsFunc(p.Units, func(u Unit) bool { return slices.ContainsFunc(u.Closes, func(c Open) bool { return c.Key == o.Key }) })
@@ -2111,7 +2122,7 @@ type cond struct {
 // stays one condition, so they are keyed by their type and subject only.
 func condKey(typ, subject, card, what string) string {
 	switch typ {
-	case NNoMember, NAdoptFailed, NCannotAsk, NNoRoute, NFewReaders, NReviewNoReader, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NStarving, NOverloaded, NReadersBehind, NDevBehind, NRaiseReadTier,
+	case NNoMember, NAdoptFailed, NCannotAsk, NNoRoute, NFewReaders, NReviewNoReader, NNoReaderForTier, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NStarving, NOverloaded, NReadersBehind, NDevBehind, NRaiseReadTier,
 		NBrokenReadsOutrun, NReaderBreaks,
 		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFilesAlarm, NFriendIdle,
 		NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed, NFriendSyncFailing,
@@ -2298,9 +2309,9 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 			if !open[k] {
 				fresh = append(fresh, sub)
 			}
-			if n, ok := judged[k]; ok && (c.typ == NWorkLate || c.typ == NReadLate || c.typ == NFewReaders || c.typ == NStarving || c.typ == NOverloaded || c.typ == NFilesAlarm || c.typ == NReadersBehind || c.typ == NDevBehind || c.typ == NBrokenReadsOutrun || c.typ == NReaderBreaks || c.typ == NFriendSyncFailing || c.typ == NNoFrontierRoom || c.typ == NReadyOver || c.typ == NReviewNoReader || c.typ == NGateNeeds || slices.Contains(StopTypes, c.typ)) {
+			if n, ok := judged[k]; ok && (c.typ == NWorkLate || c.typ == NReadLate || c.typ == NFewReaders || c.typ == NStarving || c.typ == NOverloaded || c.typ == NFilesAlarm || c.typ == NReadersBehind || c.typ == NDevBehind || c.typ == NBrokenReadsOutrun || c.typ == NReaderBreaks || c.typ == NFriendSyncFailing || c.typ == NNoFrontierRoom || c.typ == NReadyOver || c.typ == NReviewNoReader || c.typ == NNoReaderForTier || c.typ == NGateNeeds || slices.Contains(StopTypes, c.typ)) {
 				var primaries []string
-				if c.typ == NNoFrontierRoom || c.typ == NReadyOver || c.typ == NReviewNoReader {
+				if c.typ == NNoFrontierRoom || c.typ == NReadyOver || c.typ == NReviewNoReader || c.typ == NNoReaderForTier {
 					primaries = c.primaries // the cards it names, rewritten in place as they join or leave the cause
 				}
 				update(n, c.what, c.decisions, primaries) // the latest facts, in place
