@@ -52,7 +52,7 @@
    :text "Cards moved out of the sprint on 2026-10-15 when Glenn said: \"move the schema cards out to the roadmap. We will continue them only after we have rocketnet in the bag.\" One item per card with its pushed heads and any head not on origin.")
   (group "export-v15-schema-tables" :title "Moved out of the sprint on 2026-10-18: v15-schema-tables, target v1.7"
    :text "The open cards of sprint stream v15-schema-tables, moved out of the sprint when Glenn promoted v1.5.x to v1.6.0 and sent the rest of v1.5 to v1.7 (2026-10-17 late evening EDT), one item per card. Landed cards of the stream are in git and are not listed. Each item names its card, its tier, its base branch, its column, its needs, every pushed head and branch, and any head or working branch not on origin.")
-  (group "export-v19" :title "Moved out of the sprint on 2026-10-18: v19, target v1.9"
+  (group "export-v19" :title "Moved out of the sprint on 2026-10-18: v19, target v1.11 (Glenn 2026-10-21: v1.9 is built around coordinator-session lessons)"
    :text "The open cards of sprint stream v19, moved out of the sprint when Glenn said v19 and v111 live in roadmaps only (2026-10-18), one item per card. Each item keeps the card's whole brief under :kept :brief, with its column, tier, base and needs; none had a pushed head.")
   (group "export-v111" :title "Moved out of the sprint on 2026-10-18: v111, target v1.11"
    :text "The open cards of sprint stream v111, moved out of the sprint when Glenn said v19 and v111 live in roadmaps only (2026-10-18), one item per card. Each item keeps the card's whole brief under :kept :brief, with its column, tier, base and needs; none had a pushed head."))
@@ -2043,7 +2043,7 @@
     security read before it ships. First check whether today's public snapshot already carries
     private repositories' cards; if it does, filtering them out comes first."
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "Glenn 2026-10-18: \"How easy would be to extend the dashboard so that if I logged in (via my google cloud account glenn@mas-bandwidth.com) I was authenticated and could see private stuff?\" then \"let's not do it now, add to future roadmap.\"")
   (item "friend-per-tier-model-choice" :group "friends"
    :title "Each friend's model per tier is decided and recorded"
@@ -4351,13 +4351,13 @@
    :text "Since #490 the dashboard reads the sprint only while someone is looking. On return after more than an hour idle, sampleLanded has no samples inside its one-hour window and the page's own tile (internal/sprintdash/pageview.go, under the page lock) stays blank until ten minutes of new samples span MinSpan; /api/sprint and the pull routes carry the gap (trimWindow keeps the newest sample before the hour as the base). Changing the page's tile needs the owner's exact words (the page lock); the SPEC-SPRINT-DASHBOARD.md section Freshness, once per second, end to end is the owner's locked text and says nothing about the idle case. Target v1.7, with the owner's word."
    :why "the page is the owner's; its idle behaviour is his to state"
    :origin "the cold read of #490, 2026-10-18")
-  ; Moved out of the sprint on 2026-10-18: v19, target v1.9
+  ; Moved out of the sprint on 2026-10-18: v19, target v1.11 (moved from v1.9 by Glenn 2026-10-21)
   (item "v19-route-reads-only" :group "sprint" :area "nova-config"
    :title "A route can be marked reads-only"
    :text "A route can be marked reads-only, so it takes read cards and never work cards. Today a route belongs to one tier and is shared by work and reads (tier set --routes adds it to work dealing too), so a model good for reading but weak at code, such as Ultramarine 1 Flash, cannot be tried on reads alone. Proposal: a reads_only flag on the route row that the work deal skips and the read ask honours, with a route per tier where the tier has none (frontier has no tier row today)."
    :why "Glenn 2026-10-18: run Ultramarine 1 Flash on reads at every tier; blocker 3 of the trial, no reads-only route placement."
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "the owner, Glenn, 2026-10-18")
 
   (item "v19-friend-row-hands-out-one-worker-brief-per-card" :group "friends" :area "nova-sprint"
@@ -4365,14 +4365,14 @@
    :text "Independent cards and merges always run in parallel, one worker per card, yet the coordinator kept batching several taken cards into one serial worker, at least 10 times in a month. The sprint already deals one card at a time; the serial queue comes from the coordinator's brief-writing step. Proposal: when a friend row takes cards, the machine itself writes one ready-to-run worker brief per taken card, carrying the card id, the gen, the epoch, the take and finish commands, the carried head, and the bench choice by load. A verb, `nova-sprint friend jobs <friend>`, lists them one per line for the coordinator's monitor to launch one worker per line, so no batching step is left for the coordinator to get wrong. Plus a check that flags a coordinator child holding more than one working card on the row, unless the cards are dependent or HOLD-only. Tests run on the in-memory twin with time as an argument."
    :why "Glenn 2026-10-18, on the coordinator batching taken cards into one worker for a month: \"How can you remember it? Or build it into the machine?\" His standing rule, told for a month: independent cards and merges always run in parallel, one worker per card."
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "the owner, Glenn, 2026-10-18")
   (item "v17-take-batches-model" :group "export-v19" :area "nova-sprint"
    :title "v17-take-batches-model"
    :text "Model in TLA+ (tla/TakeBatch.tla) a take by id of several cards as one batch in deal order. Column ready, tier heavy, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v17-take-batches-model (stream v19, column ready, tier heavy, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-17 (for v1.7): `nova-sprint take` with several ids refuses a card under the strict deal (reads, then fixes, then new work) whenever a read or a fix ahead of it is named in the same call, so the coordinator takes cards one at a time in a loop; a take of several ids is to app"
    :kept (:sprint-card "v17-take-batches-model" :sprint-stream "v19" :sprint-column "ready" :tier "heavy" :sprint-base "sprint/v19" :needs "" :pushed-head "" :pushed-branch "" :brief "RESULT: v17-take-batches-model sha=<sha12> tier: heavy
 REPO: mas-bandwidth/nova-sprint
@@ -4442,7 +4442,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "A take by id of several cards takes them as one batch in deal order instead of refusing a card under the strict deal. Column ready, tier pro, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v17-take-batches-code (stream v19, column ready, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-17 (for v1.7): `nova-sprint take` with several ids refuses a card under the strict deal (reads, then fixes, then new work) whenever a read or a fix ahead of it is named in the same call, so the coordinator takes cards one at a time in a loop; a take of several ids is to app"
    :kept (:sprint-card "v17-take-batches-code" :sprint-stream "v19" :sprint-column "ready" :tier "pro" :sprint-base "sprint/v19" :needs "" :pushed-head "" :pushed-branch "" :brief "RESULT: v17-take-batches-code sha=<sha12> tier: pro
 REPO: mas-bandwidth/nova-sprint
@@ -4511,7 +4511,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "BriefEdit gains a Refusal: a brief header naming BASE or WHO ambiguously is refused rather than rewritten wrongly. Column waiting, tier pro, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v19-brief-transform-refuses-an-ambiguous-header (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 1: an edit verb refuses instead of corrupting: a verb that rewrites a brief or a file changes exactly the region it names, or refuses. Read on nova-sprint sprint"
    :kept (:sprint-card "v19-brief-transform-refuses-an-ambiguous-header" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-brief-transform-refuses-an-ambiguous-header sha=<sha12> tier: pro
 REPO: mas-bandwidth/nova-sprint
@@ -4573,7 +4573,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "stream set --base rewrites only the header's BASE line of each brief, and refuses an ambiguous header, all or none. Column waiting, tier pro, base sprint/v19, needs v19-brief-transform-refuses-an-ambiguous-header. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v19-stream-set-base-edits-only-the-header-base (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 1: an edit verb refuses instead of corrupting: a verb that rewrites a brief or a file changes exactly the region it names, or refuses. Read on nova-sprint sprint"
    :kept (:sprint-card "v19-stream-set-base-edits-only-the-header-base" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-brief-transform-refuses-an-ambiguous-header" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-stream-set-base-edits-only-the-header-base sha=<sha12> tier: pro
 REPO: mas-bandwidth/nova-sprint
@@ -4635,7 +4635,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "widen edits only the brief header's PATHS line, never a prose line. Column waiting, tier pro, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v19-widen-edits-only-the-header-paths (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 1: an edit verb refuses instead of corrupting: a verb that rewrites a brief or a file changes exactly the region it names, or refuses. Read on nova-sprint sprint"
    :kept (:sprint-card "v19-widen-edits-only-the-header-paths" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-widen-edits-only-the-header-paths sha=<sha12> tier: pro
 REPO: mas-bandwidth/nova-sprint
@@ -4697,7 +4697,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "A keyed-table merge at landing resolves the table header as it resolves a row, keeping the side that changed it, refusing when both changed it differently. Column waiting, tier pro, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v19-land-keyed-table-keeps-the-changed-header (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 1: an edit verb refuses instead of corrupting: a verb that rewrites a brief or a file changes exactly the region it names, or refuses. Read on nova-sprint sprint"
    :kept (:sprint-card "v19-land-keyed-table-keeps-the-changed-header" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-land-keyed-table-keeps-the-changed-header sha=<sha12> tier: pro
 REPO: mas-bandwidth/nova-sprint
@@ -4759,7 +4759,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "Model and spec: an ok finish whose head touches files outside the brief's PATHS is refused, naming them. Column waiting, tier heavy, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v19-finish-scope-design (stream v19, column waiting, tier heavy, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 2: finish computes the files a head touches (git diff BASE...head) and checks them against PATHS, NEW and SHARED, refusing at once and naming the files, instead "
    :kept (:sprint-card "v19-finish-scope-design" :sprint-stream "v19" :sprint-column "waiting" :tier "heavy" :sprint-base "sprint/v19" :needs "" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-finish-scope-design sha=<sha12> tier: heavy
 REPO: mas-bandwidth/nova-sprint
@@ -4831,7 +4831,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "A finishDiff seam on the app that yields a head's diff against its base, so finish can check scope without real git in unit tests. Column waiting, tier pro, base sprint/v19, needs v19-finish-scope-design. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v19-finish-scope-diff-seam (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 2: finish computes the files a head touches (git diff BASE...head) and checks them against PATHS, NEW and SHARED, refusing at once and naming the files, instead "
    :kept (:sprint-card "v19-finish-scope-diff-seam" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-finish-scope-design" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-finish-scope-diff-seam sha=<sha12> tier: pro
 REPO: mas-bandwidth/nova-sprint
@@ -4893,7 +4893,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "finish refuses an ok finish whose head changes files outside the brief's PATHS, naming each file. Column waiting, tier pro, base sprint/v19, needs v19-finish-scope-design,v19-finish-scope-diff-seam. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v19-finish-scope-refuses-outside-files (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 2: finish computes the files a head touches (git diff BASE...head) and checks them against PATHS, NEW and SHARED, refusing at once and naming the files, instead "
    :kept (:sprint-card "v19-finish-scope-refuses-outside-files" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-finish-scope-design,v19-finish-scope-diff-seam" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-finish-scope-refuses-outside-files sha=<sha12> tier: pro
 REPO: mas-bandwidth/nova-sprint
@@ -4955,7 +4955,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "Help and spec words for finish's PATHS scope refusal, and how to ask for more paths with PATHS-PROPOSED. Column waiting, tier pro, base sprint/v19, needs v19-finish-scope-refuses-outside-files. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v19-finish-scope-docs (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 2: finish computes the files a head touches (git diff BASE...head) and checks them against PATHS, NEW and SHARED, refusing at once and naming the files, instead "
    :kept (:sprint-card "v19-finish-scope-docs" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-finish-scope-refuses-outside-files" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-finish-scope-docs sha=<sha12> tier: pro
 REPO: mas-bandwidth/nova-sprint
@@ -5017,7 +5017,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "card <id> prints one review block per card: head, branch, PR link, gate lines and the latest read's verdict. Column waiting, tier pro, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v19-card-review-block (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 3: one review view per card: diff stat, touched files against PATHS, the gate lines of the report, the read verdict and the pull request link. Read on nova-sprin"
    :kept (:sprint-card "v19-card-review-block" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-card-review-block sha=<sha12> tier: pro
 REPO: mas-bandwidth/nova-sprint
@@ -5079,7 +5079,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "The review block adds the diff stat and each touched file scored inside, by rule, amended or outside PATHS. Column waiting, tier pro, base sprint/v19, needs v19-card-review-block,v19-finish-scope-diff-seam. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v19-card-review-diff-against-paths (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 3: one review view per card: diff stat, touched files against PATHS, the gate lines of the report, the read verdict and the pull request link. Cards v19-card-rev"
    :kept (:sprint-card "v19-card-review-diff-against-paths" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-card-review-block,v19-finish-scope-diff-seam" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-card-review-diff-against-paths sha=<sha12> tier: pro
 REPO: mas-bandwidth/nova-sprint
@@ -5141,7 +5141,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "card <id> --json carries the review block, with its docs. Column waiting, tier pro, base sprint/v19, needs v19-card-review-diff-against-paths. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v19-card-review-json-and-docs (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 3: one review view per card: diff stat, touched files against PATHS, the gate lines of the report, the read verdict and the pull request link. Cards v19-card-rev"
    :kept (:sprint-card "v19-card-review-json-and-docs" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-card-review-diff-against-paths" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-card-review-json-and-docs sha=<sha12> tier: pro
 REPO: mas-bandwidth/nova-sprint
@@ -5203,7 +5203,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "Model and spec: landed cards replayed as an evaluation set for model routes. Column waiting, tier heavy, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v19-route-eval-design (stream v19, column waiting, tier heavy, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 4: landed cards are an evaluation set for model routes: replay a landed card's brief at its BASE on a chosen route, score it against its own DONE-WHEN and a cold"
    :kept (:sprint-card "v19-route-eval-design" :sprint-stream "v19" :sprint-column "waiting" :tier "heavy" :sprint-base "sprint/v19" :needs "" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-route-eval-design sha=<sha12> tier: heavy
 REPO: mas-bandwidth/nova-sprint
@@ -5275,7 +5275,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "Build eval cards that replay a landed card's brief on a chosen route and model from its first parent. Column waiting, tier pro, base sprint/v19, needs v19-route-eval-design. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v19-route-eval-replay-runner (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 4: landed cards are an evaluation set for model routes: replay a landed card's brief at its BASE on a chosen route, score it against its own DONE-WHEN and a cold"
    :kept (:sprint-card "v19-route-eval-replay-runner" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-route-eval-design" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-route-eval-replay-runner sha=<sha12> tier: pro
 REPO: mas-bandwidth/nova-sprint
@@ -5337,7 +5337,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "Score each eval run from its read report: DONE-WHEN pass or fail and a five-mark rubric, unscored never a pass. Column waiting, tier pro, base sprint/v19, needs v19-route-eval-design. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v19-route-eval-scorer (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 4: landed cards are an evaluation set for model routes: replay a landed card's brief at its BASE on a chosen route, score it against its own DONE-WHEN and a cold"
    :kept (:sprint-card "v19-route-eval-scorer" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-route-eval-design" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-route-eval-scorer sha=<sha12> tier: pro
 REPO: mas-bandwidth/nova-sprint
@@ -5399,7 +5399,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "Report eval scores per route and model and advise the highest tier each model passes. Column waiting, tier pro, base sprint/v19, needs v19-route-eval-scorer. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v19-route-eval-report (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 4: landed cards are an evaluation set for model routes: replay a landed card's brief at its BASE on a chosen route, score it against its own DONE-WHEN and a cold"
    :kept (:sprint-card "v19-route-eval-report" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-route-eval-scorer" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-route-eval-report sha=<sha12> tier: pro
 REPO: mas-bandwidth/nova-sprint
@@ -5461,7 +5461,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "Model and spec: one live status record per friend card (working, testing, blocked, waiting, with a note). Column waiting, tier heavy, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v19-friend-card-status-design (stream v19, column waiting, tier heavy, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator "
    :kept (:sprint-card "v19-friend-card-status-design" :sprint-stream "v19" :sprint-column "waiting" :tier "heavy" :sprint-base "sprint/v19" :needs "" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-friend-card-status-design sha=<sha12> tier: heavy
 REPO: mas-bandwidth/nova-sprint
@@ -5532,7 +5532,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "The store keeps a friend's live status and note on the card through progress. Column waiting, tier pro, base sprint/v19, needs v19-friend-card-status-design. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v19-friend-card-status-record (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator "
    :kept (:sprint-card "v19-friend-card-status-record" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-friend-card-status-design" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-friend-card-status-record sha=<sha12> tier: pro
 REPO: mas-bandwidth/nova-sprint
@@ -5594,7 +5594,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "The friend's STATUS.md in its outbox is read and written to the card's status record. Column waiting, tier pro, base sprint/v19, needs v19-friend-card-status-record. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v19-friend-card-status-from-the-outbox (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator "
    :kept (:sprint-card "v19-friend-card-status-from-the-outbox" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-friend-card-status-record" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-friend-card-status-from-the-outbox sha=<sha12> tier: pro
 REPO: mas-bandwidth/nova-sprint
@@ -5656,7 +5656,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "The coordinator's views show each friend card's live status, its age and note. Column waiting, tier pro, base sprint/v19, needs v19-friend-card-status-record. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v19-friend-card-status-shown-to-the-coordinator (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator "
    :kept (:sprint-card "v19-friend-card-status-shown-to-the-coordinator" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-friend-card-status-record" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-friend-card-status-shown-to-the-coordinator sha=<sha12> tier: pro
 REPO: mas-bandwidth/nova-sprint
@@ -5718,7 +5718,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "A friend status Act raises exactly one coordinator judgment per distinct ask. Column waiting, tier pro, base sprint/v19, needs v19-friend-card-status-record. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v19-friend-card-status-act-raises-one-judgment (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator "
    :kept (:sprint-card "v19-friend-card-status-act-raises-one-judgment" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-friend-card-status-record" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-friend-card-status-act-raises-one-judgment sha=<sha12> tier: pro
 REPO: mas-bandwidth/nova-sprint
@@ -5780,7 +5780,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "Friend briefs tell the friend to keep STATUS.md current and to use Act only when the coordinator must do something. Column waiting, tier pro, base sprint/v19, needs v19-friend-card-status-from-the-outbox,v19-friend-card-status-act-raises-one-judgment. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v19-friend-card-status-instructions (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator "
    :kept (:sprint-card "v19-friend-card-status-instructions" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "v19-friend-card-status-from-the-outbox,v19-friend-card-status-act-raises-one-judgment" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-friend-card-status-instructions sha=<sha12> tier: pro
 REPO: mas-bandwidth/nova-sprint
@@ -5843,7 +5843,7 @@ Schema-table bounds: a bound is declared only if every writer and reader path en
    :text "The sprint server levels friend cards across lanes itself, once every minute, as the level verb does. Column waiting, tier pro, base sprint/v19. The whole brief is kept under :kept :brief. No pushed head recorded."
    :why "Glenn 2026-10-18: \"Please remove v19 and v111 from this sprint. They live in roadmaps only.\""
    :date "2026-10-18"
-   :release "v1.9"
+   :release "v1.11"
    :origin "sprint card v19-friend-level-every-minute (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): \"friend levelling should be built into the machine! once every minute!\" Friend levelling is the sprint server's own work, once every minute, with the moves nova-sprint friend level makes, and each move says why."
    :kept (:sprint-card "v19-friend-level-every-minute" :sprint-stream "v19" :sprint-column "waiting" :tier "pro" :sprint-base "sprint/v19" :needs "" :pushed-head "" :pushed-branch "" :brief "RESULT: v19-friend-level-every-minute sha=<sha12> tier: pro
 REPO: mas-bandwidth/nova-sprint
