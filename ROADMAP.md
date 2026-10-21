@@ -17,7 +17,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 - [Moved out of the sprint on 2026-10-15: target v1.5](#moved-out-of-the-sprint-on-2026-10-15-target-v15) (6)
 - [Resume after the rocketnet milestone](#resume-after-the-rocketnet-milestone) (7)
 - [Moved out of the sprint on 2026-10-18: v15-schema-tables, target v1.7](#moved-out-of-the-sprint-on-2026-10-18-v15-schema-tables-target-v17) (199)
-- [Moved out of the sprint on 2026-10-18: v19, target v1.9](#moved-out-of-the-sprint-on-2026-10-18-v19-target-v19) (24)
+- [Moved out of the sprint on 2026-10-18: v19, target v1.11 (Glenn 2026-10-21: v1.9 is built around coordinator-session lessons)](#moved-out-of-the-sprint-on-2026-10-18-v19-target-v111-glenn-2026-10-21-v19-is-built-around-coordinator-session-lessons) (24)
 - [Moved out of the sprint on 2026-10-18: v111, target v1.11](#moved-out-of-the-sprint-on-2026-10-18-v111-target-v111) (3)
 
 ## Lessons from Prime Agent's rewrite
@@ -1858,7 +1858,7 @@ A route can be marked reads-only, so it takes read cards and never work cards. T
 
 Why it waits: Glenn 2026-10-18: run Ultramarine 1 Flash on reads at every tier; blocker 3 of the trial, no reads-only route placement.
 
-Target: v1.9
+Target: v1.11
 
 From: the owner, Glenn, 2026-10-18
 
@@ -2504,7 +2504,7 @@ From: issue #2556
 
 The public dashboard on hetzner2 (Caddy serving static files at 37.27.135.206, refreshed by the dashboard puller) stays as it is for everyone; a signed-in allowlisted Google account (glenn@mas-bandwidth.com first) also sees the private projects' streams and roadmaps. Needs a DNS name for HTTPS (Google refuses bare-IP redirects), an OAuth client the owner creates in the Google Cloud console with its secret placed on the box by the owner, and the owner's allowlist. Sketch: oauth2-proxy behind Caddy on /private/ only; the puller writes a private snapshot to a directory Caddy never serves directly; the page loads it only when signed in. Tests: private data never lands in the public directory; the private path refuses an unsigned request. A security read before it ships. First check whether today's public snapshot already carries private repositories' cards; if it does, filtering them out comes first.
 
-Target: v1.9
+Target: v1.11
 
 From: Glenn 2026-10-18: "How easy would be to extend the dashboard so that if I logged in (via my google cloud account glenn@mas-bandwidth.com) I was authenticated and could see private stuff?" then "let's not do it now, add to future roadmap."
 
@@ -3348,7 +3348,7 @@ Independent cards and merges always run in parallel, one worker per card, yet th
 
 Why it waits: Glenn 2026-10-18, on the coordinator batching taken cards into one worker for a month: "How can you remember it? Or build it into the machine?" His standing rule, told for a month: independent cards and merges always run in parallel, one worker per card.
 
-Target: v1.9
+Target: v1.11
 
 From: the owner, Glenn, 2026-10-18
 
@@ -5632,7 +5632,7 @@ Target: v1.7
 
 From: sprint card l1-pong-retire-legacy (stream v15-schema-tables, column working, tier flash, base sprint/v15-schema-tables), moved out of the sprint 2026-10-18
 
-## Moved out of the sprint on 2026-10-18: v19, target v1.9
+## Moved out of the sprint on 2026-10-18: v19, target v1.11 (Glenn 2026-10-21: v1.9 is built around coordinator-session lessons)
 
 The open cards of sprint stream v19, moved out of the sprint when Glenn said v19 and v111 live in roadmaps only (2026-10-18), one item per card. Each item keeps the card's whole brief under :kept :brief, with its column, tier, base and needs; none had a pushed head.
 
@@ -5642,7 +5642,7 @@ Model in TLA+ (tla/TakeBatch.tla) a take by id of several cards as one batch in 
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v17-take-batches-model (stream v19, column ready, tier heavy, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-17 (for v1.7): `nova-sprint take` with several ids refuses a card under the strict deal (reads, then fixes, then new work) whenever a read or a fix ahead of it is named in the same call, so the coordinator takes cards one at a time in a loop; a take of several ids is to app
 
@@ -5652,7 +5652,7 @@ A take by id of several cards takes them as one batch in deal order instead of r
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v17-take-batches-code (stream v19, column ready, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-17 (for v1.7): `nova-sprint take` with several ids refuses a card under the strict deal (reads, then fixes, then new work) whenever a read or a fix ahead of it is named in the same call, so the coordinator takes cards one at a time in a loop; a take of several ids is to app
 
@@ -5662,7 +5662,7 @@ BriefEdit gains a Refusal: a brief header naming BASE or WHO ambiguously is refu
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v19-brief-transform-refuses-an-ambiguous-header (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 1: an edit verb refuses instead of corrupting: a verb that rewrites a brief or a file changes exactly the region it names, or refuses. Read on nova-sprint sprint
 
@@ -5672,7 +5672,7 @@ stream set --base rewrites only the header's BASE line of each brief, and refuse
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v19-stream-set-base-edits-only-the-header-base (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 1: an edit verb refuses instead of corrupting: a verb that rewrites a brief or a file changes exactly the region it names, or refuses. Read on nova-sprint sprint
 
@@ -5682,7 +5682,7 @@ widen edits only the brief header's PATHS line, never a prose line. Column waiti
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v19-widen-edits-only-the-header-paths (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 1: an edit verb refuses instead of corrupting: a verb that rewrites a brief or a file changes exactly the region it names, or refuses. Read on nova-sprint sprint
 
@@ -5692,7 +5692,7 @@ A keyed-table merge at landing resolves the table header as it resolves a row, k
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v19-land-keyed-table-keeps-the-changed-header (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 1: an edit verb refuses instead of corrupting: a verb that rewrites a brief or a file changes exactly the region it names, or refuses. Read on nova-sprint sprint
 
@@ -5702,7 +5702,7 @@ Model and spec: an ok finish whose head touches files outside the brief's PATHS 
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v19-finish-scope-design (stream v19, column waiting, tier heavy, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 2: finish computes the files a head touches (git diff BASE...head) and checks them against PATHS, NEW and SHARED, refusing at once and naming the files, instead
 
@@ -5712,7 +5712,7 @@ A finishDiff seam on the app that yields a head's diff against its base, so fini
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v19-finish-scope-diff-seam (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 2: finish computes the files a head touches (git diff BASE...head) and checks them against PATHS, NEW and SHARED, refusing at once and naming the files, instead
 
@@ -5722,7 +5722,7 @@ finish refuses an ok finish whose head changes files outside the brief's PATHS, 
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v19-finish-scope-refuses-outside-files (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 2: finish computes the files a head touches (git diff BASE...head) and checks them against PATHS, NEW and SHARED, refusing at once and naming the files, instead
 
@@ -5732,7 +5732,7 @@ Help and spec words for finish's PATHS scope refusal, and how to ask for more pa
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v19-finish-scope-docs (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 2: finish computes the files a head touches (git diff BASE...head) and checks them against PATHS, NEW and SHARED, refusing at once and naming the files, instead
 
@@ -5742,7 +5742,7 @@ card <id> prints one review block per card: head, branch, PR link, gate lines an
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v19-card-review-block (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 3: one review view per card: diff stat, touched files against PATHS, the gate lines of the report, the read verdict and the pull request link. Read on nova-sprin
 
@@ -5752,7 +5752,7 @@ The review block adds the diff stat and each touched file scored inside, by rule
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v19-card-review-diff-against-paths (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 3: one review view per card: diff stat, touched files against PATHS, the gate lines of the report, the read verdict and the pull request link. Cards v19-card-rev
 
@@ -5762,7 +5762,7 @@ card <id> --json carries the review block, with its docs. Column waiting, tier p
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v19-card-review-json-and-docs (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 3: one review view per card: diff stat, touched files against PATHS, the gate lines of the report, the read verdict and the pull request link. Cards v19-card-rev
 
@@ -5772,7 +5772,7 @@ Model and spec: landed cards replayed as an evaluation set for model routes. Col
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v19-route-eval-design (stream v19, column waiting, tier heavy, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 4: landed cards are an evaluation set for model routes: replay a landed card's brief at its BASE on a chosen route, score it against its own DONE-WHEN and a cold
 
@@ -5782,7 +5782,7 @@ Build eval cards that replay a landed card's brief on a chosen route and model f
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v19-route-eval-replay-runner (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 4: landed cards are an evaluation set for model routes: replay a landed card's brief at its BASE on a chosen route, score it against its own DONE-WHEN and a cold
 
@@ -5792,7 +5792,7 @@ Score each eval run from its read report: DONE-WHEN pass or fail and a five-mark
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v19-route-eval-scorer (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 4: landed cards are an evaluation set for model routes: replay a landed card's brief at its BASE on a chosen route, score it against its own DONE-WHEN and a cold
 
@@ -5802,7 +5802,7 @@ Report eval scores per route and model and advise the highest tier each model pa
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v19-route-eval-report (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 4: landed cards are an evaluation set for model routes: replay a landed card's brief at its BASE on a chosen route, score it against its own DONE-WHEN and a cold
 
@@ -5812,7 +5812,7 @@ Model and spec: one live status record per friend card (working, testing, blocke
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v19-friend-card-status-design (stream v19, column waiting, tier heavy, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator
 
@@ -5822,7 +5822,7 @@ The store keeps a friend's live status and note on the card through progress. Co
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v19-friend-card-status-record (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator
 
@@ -5832,7 +5832,7 @@ The friend's STATUS.md in its outbox is read and written to the card's status re
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v19-friend-card-status-from-the-outbox (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator
 
@@ -5842,7 +5842,7 @@ The coordinator's views show each friend card's live status, its age and note. C
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v19-friend-card-status-shown-to-the-coordinator (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator
 
@@ -5852,7 +5852,7 @@ A friend status Act raises exactly one coordinator judgment per distinct ask. Co
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v19-friend-card-status-act-raises-one-judgment (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator
 
@@ -5862,7 +5862,7 @@ Friend briefs tell the friend to keep STATUS.md current and to use Act only when
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v19-friend-card-status-instructions (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): cards from what we learned from Paper Instruments' Feather (paperinstruments.com/feather), lesson 5: one live record per friend card: the friend updates a single per-card status record the coordinator reads, so a bus message is sent only when the coordinator
 
@@ -5872,7 +5872,7 @@ The sprint server levels friend cards across lanes itself, once every minute, as
 
 Why it waits: Glenn 2026-10-18: "Please remove v19 and v111 from this sprint. They live in roadmaps only."
 
-Target: v1.9
+Target: v1.11
 
 From: sprint card v19-friend-level-every-minute (stream v19, column waiting, tier pro, base sprint/v19), moved out of the sprint 2026-10-18; card source: the owner, Glenn, 2026-10-18 (for v1.9): "friend levelling should be built into the machine! once every minute!" Friend levelling is the sprint server's own work, once every minute, with the moves nova-sprint friend level makes, and each move says why.
 
