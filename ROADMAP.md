@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (273)
+- [The sprint system](#the-sprint-system) (274)
 - [Setup, release and operations](#setup-release-and-operations) (72)
 - [Docs, models and the repository](#docs-models-and-the-repository) (25)
 - [Friend AIs](#friend-ais) (22)
@@ -2267,6 +2267,16 @@ Why it waits: A refusal logged in the gap between accept and the next drain is m
 Target: v1.7
 
 From: the owner, 2026-10-19
+
+### Landing and stitching run continuously and in parallel per area, never one card at a time and never left to the end
+
+Observed 2026-10-21: the sprint left ~3,960 schema branches and streams hundreds of commits apart (dart 1,328 behind main), virtualgo with ~200 unlanded branches, moo's layers 3-5 only on sprint/moo; a live session then consolidated virtualgo, moo and schema's Go core in hours with parallel per-area land lanes (land/<lane> from main, merge the stream, resolve against the spec, one coordinator merging in order). Glenn: "nothing says the merging or coordination and stitching together has to be done one card at a time, in fact, the intent that it is not!" Proposal: (1) a standing integration worker per area folds that area's gated cards onto main continuously, in batches of whatever is ready, gate once on the batch; no card waits on a stream branch. (2) A hard drift limit: no stream more than N commits or H hours from main; past it the sprint stops dealing new cards into that stream and deals an integrate-this-stream card at frontier tier instead (mechanical, like the other gates). (3) The landing rules become sprint law: main's newer decisions win; carry the stream's intent onto main, never revert main to fit; one version of each thing. (4) Superseded detection as a tool: contained / same patch-id / identical tree / squash-landed classify most branches mechanically (the 2026-10-21 scripts), only the remainder go to a worker; attempt branches are deleted once their card's landing decision is made. (5) Core-first fan-out is generated: when a core change lands with a spec delta (schema's Go core), the sprint deals one adopt-the-spec-delta card per dependent lane. (6) Main stays green: a cross-lane merge order, a TLA+ model of the landing train with reversed witnesses (a lane landing red, a stream past its drift limit, a card that never reaches main). Per the v1.9 method these become owner-dictated situation-to-expectation cases locked as tests, e.g. a stream 200 commits behind main: no new cards dealt to it; an integrate card appears.
+
+Why it waits: Cards that never reach main are not progress; the 2026-10-21 cleanup cost a day and showed parallel per-area landing works
+
+Target: v1.9
+
+From: the owner, 2026-10-21
 
 ## Setup, release and operations
 
