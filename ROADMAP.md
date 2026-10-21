@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (275)
+- [The sprint system](#the-sprint-system) (287)
 - [Setup, release and operations](#setup-release-and-operations) (72)
 - [Docs, models and the repository](#docs-models-and-the-repository) (25)
 - [Friend AIs](#friend-ais) (22)
@@ -2283,6 +2283,126 @@ From: the owner, 2026-10-21
 Observed 2026-10-21: a live coordinator session working through child agents landed virtualgo, moo and schema's Go core in hours, where the sprint had scattered ~3,960 schema branches. Glenn: "we want to do both ... improve sprint with lessons learned from outside it." Companion to continuous-parallel-landing. (1) GOAL CARDS: a card may carry an outcome and an area (land stream X onto main; make port Y pass the spec delta; make the stone tink audible) and the worker plans its own steps inside fixed rails (drift limit, gates, landing law, one version of each thing), instead of only pre-cut cards with fixed PATHS. (2) LIVE STEERING: a ruling channel per card: the owner's new direction (e.g. portable first; time not counts) reaches running cards as an append-only note over the bus within a minute, recorded once and pushed to every affected card, without bouncing the card the way a brief edit does today. (3) CONTEXT PACKS: each card gets a generated pack of the owner's relevant rulings, spec deltas and neighbouring lanes' state, refreshed when they change, instead of only what the card writer typed. (4) PROPORTIONATE REVIEW: one cold read or a strong-model spot check of the claims that matter (hashes, CI, file lists, determinism) for most cards; full multi-reader reads only for high-blast changes; landing evidence (CI, TLC, hash re-pins with reasons) counts as part of the read. (5) Keep the sprint's strengths that sessions lack: model tiers, fleet scheduling with per-machine widths, durable leases surviving crashes, dashboards. As v1.9 behaviour these become owner-dictated situation-to-expectation cases locked as tests, e.g. the owner issues a ruling while 3 cards in that area are working: each receives it within a minute and none is bounced.
 
 Why it waits: Goal-shaped work, live steering and lean review made the session fast; the sprint should have them without losing its durability and cheap tiers
+
+Target: v1.9
+
+From: the owner, 2026-10-21
+
+### L0: the owner's situation-to-expectation cases for v1.9, locked as tests
+
+Before any code: 20-30 cases dictated by the owner, each a situation and the sprint's expected behaviour, written as executable tests that fail today. Seed list from 2026-10-21 for the owner to correct: a stream 200 commits behind main gets no new cards and an integrate card appears; a gated card reaches main within one landing cycle; two lanes touching one file land in a stated order and main stays green; a branch whose content is already on main is classified superseded without a worker; the owner issues a ruling while 3 cards in its area work: each receives it within a minute and none bounces; a goal card ends with a per-branch LANDED/SUPERSEDED/PARTIAL/NEEDS-OWNER report; a core spec delta lands and one adopt card per dependent lane is dealt; a low-blast card lands on one cold read; a high-blast card (public repo, wire/spec, security) gets the full read; an OS hang mid-sprint loses no card; no machine is driven past its width. SOURCE: Glenn 2026-10-21: "Please break up v1.9 into more cards, according to the work we have just talked about. Build it up from the lowest layer to the highest so the sprint is as effective, nay more effective, than how we work here from roadmap." Umbrella items: continuous-parallel-landing, goal-cards-live-steering-context-packs. Each layer is secured (modelled with reversed witnesses, tested incl. every refusal, used for real work, documented, locked with the owner) before the layer above starts.
+
+Why it waits: v1.9 is built layer by layer from the foundation so the sprint lands at least as fast as the 2026-10-21 coordinator session
+
+Target: v1.9
+
+From: the owner, 2026-10-21
+
+### L1: TLA+ model of the landing train, drift limit and ruling channel
+
+Model the state the v1.9 layers own: per-area integration lanes, the landing order, main's colour, stream drift, goal-card lifecycle, the ruling channel's delivery and acknowledgement, and crash/restart. Invariants from L0's cases: main never goes red from a landing; no gated card is lost or left off main past the drift limit; a ruling reaches every affected running card exactly once and never bounces it; a superseded decision is never applied to content not on main. Reversed witnesses for each (a lane landing red, a stream past its limit still dealt, a ruling lost, a card bounced by a ruling). TLC on a Linux bench; counterexamples checked by hand. Every later layer cites this model. SOURCE: Glenn 2026-10-21: "Please break up v1.9 into more cards, according to the work we have just talked about. Build it up from the lowest layer to the highest so the sprint is as effective, nay more effective, than how we work here from roadmap." Umbrella items: continuous-parallel-landing, goal-cards-live-steering-context-packs. Each layer is secured (modelled with reversed witnesses, tested incl. every refusal, used for real work, documented, locked with the owner) before the layer above starts.
+
+Why it waits: v1.9 is built layer by layer from the foundation so the sprint lands at least as fast as the 2026-10-21 coordinator session
+
+Target: v1.9
+
+From: the owner, 2026-10-21
+
+### L2: branch facts tool: contained, same patch-id, identical tree, squash-landed
+
+A nova-sprint verb that classifies every branch against main mechanically (the 2026-10-21 landing scripts: merge-tree tree equality, git cherry/patch-id, squash detection by merged-PR head and by diff equality) and reports LANDED/CONTAINED/SUPERSEDED/OPEN with evidence, plus attempt-branch grouping by card. It deletes attempt branches once their card's landing decision is recorded (dry run first, literal refs only). Only OPEN branches reach a worker. SOURCE: Glenn 2026-10-21: "Please break up v1.9 into more cards, according to the work we have just talked about. Build it up from the lowest layer to the highest so the sprint is as effective, nay more effective, than how we work here from roadmap." Umbrella items: continuous-parallel-landing, goal-cards-live-steering-context-packs. Each layer is secured (modelled with reversed witnesses, tested incl. every refusal, used for real work, documented, locked with the owner) before the layer above starts.
+
+Why it waits: v1.9 is built layer by layer from the foundation so the sprint lands at least as fast as the 2026-10-21 coordinator session
+
+Target: v1.9
+
+From: the owner, 2026-10-21
+
+### L3: the landing law as code: main's newer decisions win, carry intent, one version
+
+Encode the 2026-10-21 landing rules as checks the lander runs, not prose: a landing that reverts a newer main change is refused; a landing that leaves two versions of one thing (two copies of a runtime, table, list or tool; a v1 and a v2; two names or defaults for one parameter) is refused with the duplicate named; every re-pinned hash or golden in a landing carries its stated cause. Gate once on the batch; never chase the base tip. SOURCE: Glenn 2026-10-21: "Please break up v1.9 into more cards, according to the work we have just talked about. Build it up from the lowest layer to the highest so the sprint is as effective, nay more effective, than how we work here from roadmap." Umbrella items: continuous-parallel-landing, goal-cards-live-steering-context-packs. Each layer is secured (modelled with reversed witnesses, tested incl. every refusal, used for real work, documented, locked with the owner) before the layer above starts.
+
+Why it waits: v1.9 is built layer by layer from the foundation so the sprint lands at least as fast as the 2026-10-21 coordinator session
+
+Target: v1.9
+
+From: the owner, 2026-10-21
+
+### L4: standing integration lanes per area, landing continuously in batches
+
+A standing integration worker per area folds that area's gated cards onto main continuously, in batches of whatever is ready, gate once on the batch, merging in a stated cross-lane order so main stays green (L1's model). No card waits on a stream branch. Lanes merge their own green, read landings (the coordinator is not the bottleneck) and report after. SOURCE: Glenn 2026-10-21: "Please break up v1.9 into more cards, according to the work we have just talked about. Build it up from the lowest layer to the highest so the sprint is as effective, nay more effective, than how we work here from roadmap." Umbrella items: continuous-parallel-landing, goal-cards-live-steering-context-packs. Each layer is secured (modelled with reversed witnesses, tested incl. every refusal, used for real work, documented, locked with the owner) before the layer above starts.
+
+Why it waits: v1.9 is built layer by layer from the foundation so the sprint lands at least as fast as the 2026-10-21 coordinator session
+
+Target: v1.9
+
+From: the owner, 2026-10-21
+
+### L5: the drift limit gate
+
+No stream more than N commits or H hours from main (N and H per area, set by the owner). Past the limit the sprint deals no new cards into that stream and deals an integrate-this-stream card at frontier tier instead. Mechanical, like every other gate; shown on the dashboard. SOURCE: Glenn 2026-10-21: "Please break up v1.9 into more cards, according to the work we have just talked about. Build it up from the lowest layer to the highest so the sprint is as effective, nay more effective, than how we work here from roadmap." Umbrella items: continuous-parallel-landing, goal-cards-live-steering-context-packs. Each layer is secured (modelled with reversed witnesses, tested incl. every refusal, used for real work, documented, locked with the owner) before the layer above starts.
+
+Why it waits: v1.9 is built layer by layer from the foundation so the sprint lands at least as fast as the 2026-10-21 coordinator session
+
+Target: v1.9
+
+From: the owner, 2026-10-21
+
+### L6: goal cards with an outcome, an area and rails
+
+A card may carry an outcome and an area (land stream X onto main; make port Y pass spec delta Z; make the stone tink audible) and the worker plans its own steps inside fixed rails (L3's law, L5's drift limit, the gates, one version of each thing). It ends with the standard report: verdict line, branch/head/PR, a decision per branch (LANDED/SUPERSEDED/PARTIAL/NEEDS-OWNER with reason), checks, one-version unifications, owner questions. Pre-cut PATHS cards stay for volume work. SOURCE: Glenn 2026-10-21: "Please break up v1.9 into more cards, according to the work we have just talked about. Build it up from the lowest layer to the highest so the sprint is as effective, nay more effective, than how we work here from roadmap." Umbrella items: continuous-parallel-landing, goal-cards-live-steering-context-packs. Each layer is secured (modelled with reversed witnesses, tested incl. every refusal, used for real work, documented, locked with the owner) before the layer above starts.
+
+Why it waits: v1.9 is built layer by layer from the foundation so the sprint lands at least as fast as the 2026-10-21 coordinator session
+
+Target: v1.9
+
+From: the owner, 2026-10-21
+
+### L7: rulings store and context packs
+
+Every owner ruling is recorded once, dated, verbatim, scoped to areas and repos (never a paraphrase). Each card gets a generated context pack: the rulings for its area, the current spec deltas, neighbouring lanes' state and open PRs, refreshed when any of them change, so a card starts from what the owner has decided rather than only what the card writer typed. SOURCE: Glenn 2026-10-21: "Please break up v1.9 into more cards, according to the work we have just talked about. Build it up from the lowest layer to the highest so the sprint is as effective, nay more effective, than how we work here from roadmap." Umbrella items: continuous-parallel-landing, goal-cards-live-steering-context-packs. Each layer is secured (modelled with reversed witnesses, tested incl. every refusal, used for real work, documented, locked with the owner) before the layer above starts.
+
+Why it waits: v1.9 is built layer by layer from the foundation so the sprint lands at least as fast as the 2026-10-21 coordinator session
+
+Target: v1.9
+
+From: the owner, 2026-10-21
+
+### L8: live steering: a ruling reaches running cards without bouncing them
+
+A new ruling in a card's area is pushed to every running card in that area as an append-only note over the bus within a minute, and the card acknowledges it; the brief is not edited, so nothing bounces. A retraction is a ruling too. Delivery and acknowledgement are modelled in L1 and counted on the dashboard. SOURCE: Glenn 2026-10-21: "Please break up v1.9 into more cards, according to the work we have just talked about. Build it up from the lowest layer to the highest so the sprint is as effective, nay more effective, than how we work here from roadmap." Umbrella items: continuous-parallel-landing, goal-cards-live-steering-context-packs. Each layer is secured (modelled with reversed witnesses, tested incl. every refusal, used for real work, documented, locked with the owner) before the layer above starts.
+
+Why it waits: v1.9 is built layer by layer from the foundation so the sprint lands at least as fast as the 2026-10-21 coordinator session
+
+Target: v1.9
+
+From: the owner, 2026-10-21
+
+### L9: core-first fan-out generated from a landed spec delta
+
+When a core change lands with a spec delta (schema's Go core, 2026-10-21), the sprint deals one adopt-the-spec-delta card per dependent lane (each language), each carrying the delta's rules and the tests that prove them, instead of a coordinator writing them by hand. SOURCE: Glenn 2026-10-21: "Please break up v1.9 into more cards, according to the work we have just talked about. Build it up from the lowest layer to the highest so the sprint is as effective, nay more effective, than how we work here from roadmap." Umbrella items: continuous-parallel-landing, goal-cards-live-steering-context-packs. Each layer is secured (modelled with reversed witnesses, tested incl. every refusal, used for real work, documented, locked with the owner) before the layer above starts.
+
+Why it waits: v1.9 is built layer by layer from the foundation so the sprint lands at least as fast as the 2026-10-21 coordinator session
+
+Target: v1.9
+
+From: the owner, 2026-10-21
+
+### L10: proportionate review
+
+Most cards land on one cold read or a strong-model spot check of the claims that matter (hashes, CI, file lists, determinism), with landing evidence (CI, TLC, re-pin reasons) counted as part of the read; full multi-reader reads only for high-blast changes (public repos, wire/spec, security, identity). The tier rule is mechanical and visible on the card. SOURCE: Glenn 2026-10-21: "Please break up v1.9 into more cards, according to the work we have just talked about. Build it up from the lowest layer to the highest so the sprint is as effective, nay more effective, than how we work here from roadmap." Umbrella items: continuous-parallel-landing, goal-cards-live-steering-context-packs. Each layer is secured (modelled with reversed witnesses, tested incl. every refusal, used for real work, documented, locked with the owner) before the layer above starts.
+
+Why it waits: v1.9 is built layer by layer from the foundation so the sprint lands at least as fast as the 2026-10-21 coordinator session
+
+Target: v1.9
+
+From: the owner, 2026-10-21
+
+### L11: effectiveness measured against the 2026-10-21 session
+
+The bar Glenn set: "as effective, nay more effective, than how we work here". Measure on the dashboard: card-to-main time, stream drift, landings per hour, ruling-to-running-card latency, tokens and machine time per landed change, main's red minutes. Baseline: the 2026-10-21 coordinator session (virtualgo, moo and schema's Go core consolidated in hours with 19 child agents). v1.9 is done when the sprint beats it on landed changes per hour and per token, with main green. SOURCE: Glenn 2026-10-21: "Please break up v1.9 into more cards, according to the work we have just talked about. Build it up from the lowest layer to the highest so the sprint is as effective, nay more effective, than how we work here from roadmap." Umbrella items: continuous-parallel-landing, goal-cards-live-steering-context-packs. Each layer is secured (modelled with reversed witnesses, tested incl. every refusal, used for real work, documented, locked with the owner) before the layer above starts.
+
+Why it waits: v1.9 is built layer by layer from the foundation so the sprint lands at least as fast as the 2026-10-21 coordinator session
 
 Target: v1.9
 
