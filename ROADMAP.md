@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (274)
+- [The sprint system](#the-sprint-system) (275)
 - [Setup, release and operations](#setup-release-and-operations) (72)
 - [Docs, models and the repository](#docs-models-and-the-repository) (25)
 - [Friend AIs](#friend-ais) (22)
@@ -2273,6 +2273,16 @@ From: the owner, 2026-10-19
 Observed 2026-10-21: the sprint left ~3,960 schema branches and streams hundreds of commits apart (dart 1,328 behind main), virtualgo with ~200 unlanded branches, moo's layers 3-5 only on sprint/moo; a live session then consolidated virtualgo, moo and schema's Go core in hours with parallel per-area land lanes (land/<lane> from main, merge the stream, resolve against the spec, one coordinator merging in order). Glenn: "nothing says the merging or coordination and stitching together has to be done one card at a time, in fact, the intent that it is not!" Proposal: (1) a standing integration worker per area folds that area's gated cards onto main continuously, in batches of whatever is ready, gate once on the batch; no card waits on a stream branch. (2) A hard drift limit: no stream more than N commits or H hours from main; past it the sprint stops dealing new cards into that stream and deals an integrate-this-stream card at frontier tier instead (mechanical, like the other gates). (3) The landing rules become sprint law: main's newer decisions win; carry the stream's intent onto main, never revert main to fit; one version of each thing. (4) Superseded detection as a tool: contained / same patch-id / identical tree / squash-landed classify most branches mechanically (the 2026-10-21 scripts), only the remainder go to a worker; attempt branches are deleted once their card's landing decision is made. (5) Core-first fan-out is generated: when a core change lands with a spec delta (schema's Go core), the sprint deals one adopt-the-spec-delta card per dependent lane. (6) Main stays green: a cross-lane merge order, a TLA+ model of the landing train with reversed witnesses (a lane landing red, a stream past its drift limit, a card that never reaches main). Per the v1.9 method these become owner-dictated situation-to-expectation cases locked as tests, e.g. a stream 200 commits behind main: no new cards dealt to it; an integrate card appears.
 
 Why it waits: Cards that never reach main are not progress; the 2026-10-21 cleanup cost a day and showed parallel per-area landing works
+
+Target: v1.9
+
+From: the owner, 2026-10-21
+
+### Goal cards, live steering, context packs and proportionate review: what the sprint learns from coordinator sessions
+
+Observed 2026-10-21: a live coordinator session working through child agents landed virtualgo, moo and schema's Go core in hours, where the sprint had scattered ~3,960 schema branches. Glenn: "we want to do both ... improve sprint with lessons learned from outside it." Companion to continuous-parallel-landing. (1) GOAL CARDS: a card may carry an outcome and an area (land stream X onto main; make port Y pass the spec delta; make the stone tink audible) and the worker plans its own steps inside fixed rails (drift limit, gates, landing law, one version of each thing), instead of only pre-cut cards with fixed PATHS. (2) LIVE STEERING: a ruling channel per card: the owner's new direction (e.g. portable first; time not counts) reaches running cards as an append-only note over the bus within a minute, recorded once and pushed to every affected card, without bouncing the card the way a brief edit does today. (3) CONTEXT PACKS: each card gets a generated pack of the owner's relevant rulings, spec deltas and neighbouring lanes' state, refreshed when they change, instead of only what the card writer typed. (4) PROPORTIONATE REVIEW: one cold read or a strong-model spot check of the claims that matter (hashes, CI, file lists, determinism) for most cards; full multi-reader reads only for high-blast changes; landing evidence (CI, TLC, hash re-pins with reasons) counts as part of the read. (5) Keep the sprint's strengths that sessions lack: model tiers, fleet scheduling with per-machine widths, durable leases surviving crashes, dashboards. As v1.9 behaviour these become owner-dictated situation-to-expectation cases locked as tests, e.g. the owner issues a ruling while 3 cards in that area are working: each receives it within a minute and none is bounced.
+
+Why it waits: Goal-shaped work, live steering and lean review made the session fast; the sprint should have them without losing its durability and cheap tiers
 
 Target: v1.9
 
