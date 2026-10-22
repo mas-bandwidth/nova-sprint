@@ -11,11 +11,13 @@ import (
 )
 
 // TestTheFunctionalJobIsAMatrixOfRestAndShards pins .github/workflows/ci.yml:
-// the functional job is a matrix with a rest leg, a deadcode leg and SHARDS
-// shard legs, each k leg running make functional-gate-shard SHARD=k SHARDS=3,
-// the rest leg make functional-gate-rest and the deadcode leg make
-// functional-gate-deadcode, and the SHARDS value matching the number of shard
-// legs.
+// the functional job is a matrix with a rest leg, one deadcode leg per GOOS
+// the dead code rule measures and SHARDS shard legs, each k leg running make
+// functional-gate-shard SHARD=k SHARDS=3, the rest leg make
+// functional-gate-rest and each deadcode-<goos> leg make
+// functional-gate-deadcode-shard, whose shards the deadcode-ledger job joins
+// with make functional-gate-deadcode-ledger, and the SHARDS value matching the
+// number of shard legs.
 func TestTheFunctionalJobIsAMatrixOfRestAndShards(t *testing.T) {
 	b, err := os.ReadFile("../../.github/workflows/ci.yml")
 	require.NoError(t, err)
@@ -36,8 +38,23 @@ func TestTheFunctionalJobIsAMatrixOfRestAndShards(t *testing.T) {
 	require.NotEmpty(t, shardLegs, "the matrix has no shard legs")
 
 	require.Contains(t, body, "make functional-gate-rest", "the rest leg does not run make functional-gate-rest")
-	require.Contains(t, legs, "deadcode", "the matrix has no deadcode leg")
-	require.Contains(t, body, "deadcode) make functional-gate-deadcode", "the deadcode leg does not run make functional-gate-deadcode")
+	// the dead code rule runs as one leg per GOOS it measures (dead_code_shard_test.go),
+	// each writing its shard, and the deadcode-ledger job joins them
+	require.NotContains(t, legs, "deadcode", "the dead code rule runs as one whole leg; it is split by GOOS")
+	for _, goos := range deadCodeGOOS {
+		leg := "deadcode-" + goos
+		require.Contains(t, legs, leg, "the matrix has no %s leg", leg)
+		require.Contains(t, body,
+			leg+`) make functional-gate-deadcode-shard DEADCODE_GOOS=`+goos+` DEADCODE_OUT="${RUNNER_TEMP}/deadcode/`+goos+`.json" ;;`,
+			"the %s leg does not write its shard with make functional-gate-deadcode-shard", leg)
+	}
+	require.Contains(t, body, "name: deadcode-${{ matrix.leg }}", "the deadcode legs do not upload their shards")
+	ledger := jobs["deadcode-ledger"]
+	require.NotEmpty(t, ledger, "ci.yml has no deadcode-ledger job to join the GOOS shards")
+	require.Contains(t, ledger, "needs: functional", "the deadcode-ledger job does not wait for the functional legs")
+	require.Contains(t, ledger, "!cancelled()", "the deadcode-ledger job is skipped when another leg fails")
+	require.Contains(t, ledger, "pattern: deadcode-*", "the deadcode-ledger job does not download the shards")
+	require.Contains(t, ledger, "make functional-gate-deadcode-ledger DEADCODE_FROM=", "the deadcode-ledger job does not run make functional-gate-deadcode-ledger")
 	require.Contains(t, body, "make functional-gate-shard", "the shard legs do not run make functional-gate-shard")
 	for _, leg := range shardLegs {
 		k := strings.TrimSuffix(leg, "/3")
@@ -56,7 +73,7 @@ func TestTheFunctionalJobIsAMatrixOfRestAndShards(t *testing.T) {
 func TestTheFunctionalJobEveryLegCarriesTheTwoMinuteTimeout(t *testing.T) {
 	makefile, err := os.ReadFile("../../Makefile")
 	require.NoError(t, err)
-	for _, target := range []string{"functional-gate-rest", "functional-gate-deadcode", "functional-gate-shard"} {
+	for _, target := range []string{"functional-gate-rest", "functional-gate-deadcode", "functional-gate-deadcode-shard", "functional-gate-deadcode-ledger", "functional-gate-shard"} {
 		recipe := makeRecipes(t, string(makefile), target)
 		require.NotEmpty(t, recipe, "target %q has no recipe", target)
 		require.Contains(t, recipe, "-timeout 120s", "target %q does not bound at -timeout 120s", target)
@@ -87,8 +104,9 @@ func TestTheFunctionalJobRestLegExcludesCmdNovaSprint(t *testing.T) {
 }
 
 // TestTheDeadCodeRuleRunsInExactlyOneLeg pins the split: the rest leg skips
-// TestDeadCode and only TestDeadCode, and the deadcode leg runs it and only it,
-// in its package, so the rule is neither run twice nor dropped.
+// TestDeadCode and only TestDeadCode, and the deadcode targets (the whole run,
+// each GOOS shard and the ledger join) run it and only it, in its package, so
+// the rule is neither run twice nor dropped.
 func TestTheDeadCodeRuleRunsInExactlyOneLeg(t *testing.T) {
 	makefile, err := os.ReadFile("../../Makefile")
 	require.NoError(t, err)
@@ -101,6 +119,16 @@ func TestTheDeadCodeRuleRunsInExactlyOneLeg(t *testing.T) {
 	require.Contains(t, dead, "-run '$(DEAD_CODE_TEST)' ./internal/ci/", "the deadcode leg does not run TestDeadCode in ./internal/ci/")
 	require.Contains(t, dead, "-tags functional", "the deadcode leg drops the functional tag TestDeadCode is built under")
 	require.Contains(t, dead, "NOVA_CI=1", "the deadcode leg drops NOVA_CI=1")
+	for _, target := range []string{"functional-gate-deadcode-shard", "functional-gate-deadcode-ledger"} {
+		recipe := makeRecipes(t, text, target)
+		require.Contains(t, recipe, "-run '$(DEAD_CODE_TEST)' ./internal/ci/", "%s does not run TestDeadCode in ./internal/ci/", target)
+		require.Contains(t, recipe, "-tags functional", "%s drops the functional tag TestDeadCode is built under", target)
+		require.Contains(t, recipe, "NOVA_CI=1", "%s drops NOVA_CI=1", target)
+	}
+	require.Contains(t, makeRecipes(t, text, "functional-gate-deadcode-shard"), "NOVA_DEADCODE_GOOS=\"$(DEADCODE_GOOS)\" NOVA_DEADCODE_OUT=\"$(DEADCODE_OUT)\"",
+		"the shard target does not pass its GOOS and output file")
+	require.Contains(t, makeRecipes(t, text, "functional-gate-deadcode-ledger"), "NOVA_DEADCODE_FROM=\"$(DEADCODE_FROM)\"",
+		"the ledger target does not pass the shard directory")
 }
 
 // matrixLegs returns the matrix's leg values of a job body.
