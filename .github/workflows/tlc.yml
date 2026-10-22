@@ -5,6 +5,14 @@
 # digest every tla/RUNS.tsv record names -- and downloaded from the tlaplus
 # v1.7.4 release. The jobs never write tla/RUNS.tsv: records still land
 # through cards, from a bench.
+#
+# A pull request runs its stale groups under the 110-second budget in five
+# minutes. The nightly (schedule and workflow_dispatch) is exempt from the
+# two-minute rule (Glenn, 2026-10-21: "nightly runs are ALL exempt from the 2
+# minute rule!"): it runs every required group with make tlc-full and a real
+# budget. Under the 110-second budget a four-core runner ran out of time inside
+# twelve groups every night from 2026-10-17 (runs 39544741003, 39723025612),
+# each case after the budget recorded FAIL in 0.000 s.
 name: TLC
 
 on:
@@ -59,7 +67,8 @@ jobs:
     # an empty list ends the workflow green: no groups means no matrix
     if: ${{ needs.groups.outputs.groups != '[]' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # a pull request's five minutes; the nightly's TLC_BUDGET (1800 s) and setup
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 5 || 40 }}
     strategy:
       fail-fast: false
       max-parallel: 4
@@ -78,7 +87,9 @@ jobs:
           "${JAVA_HOME_21_X64}/bin/java" -version
       - name: tlc ${{ matrix.group }}
         # download the pinned jar, refuse it unless it matches
-        # tla/tla2tools.sha256, then run the group with the 110-second budget
+        # tla/tla2tools.sha256, then run the group: a pull request with the
+        # 110-second budget, the nightly with make tlc-full, a 1800-second
+        # budget and two cases at once (half the runner's four CPUs)
         run: |
           set -euo pipefail
           jar="${RUNNER_TEMP}/tla2tools.jar"
@@ -90,11 +101,20 @@ jobs:
             echo "tla2tools.jar digest mismatch: want ${want}, got ${got}" >&2
             exit 2
           fi
-          make tlc \
-            TLC_JAR="${jar}" \
-            TLC_GROUP="${{ matrix.group }}" \
-            TLC_OUT="${RUNNER_TEMP}/tlc-${{ matrix.group }}" \
-            TLC_BUDGET=110
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            make tlc \
+              TLC_JAR="${jar}" \
+              TLC_GROUP="${{ matrix.group }}" \
+              TLC_OUT="${RUNNER_TEMP}/tlc-${{ matrix.group }}" \
+              TLC_BUDGET=110
+          else
+            make tlc-full \
+              TLC_JAR="${jar}" \
+              TLC_GROUP="${{ matrix.group }}" \
+              TLC_OUT="${RUNNER_TEMP}/tlc-${{ matrix.group }}" \
+              TLC_BUDGET=1800 \
+              TLC_PARALLEL=2
+          fi
       - uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         if: ${{ always() }}
         with:

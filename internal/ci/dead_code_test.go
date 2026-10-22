@@ -46,11 +46,18 @@ const (
 	deadCodeModule        = "github.com/mas-bandwidth/nova-sprint/"
 )
 
-// deadCodeGOOS are the operating systems measured; deadCodeTagSets are the build
-// tag sets the module's files use ("" is no tags).
-var (
-	deadCodeGOOS    = []string{"linux", "darwin", "windows"}
-	deadCodeTagSets = []string{"", "functional", "functional,slow", "slow", "swarmtest", "perf"}
+// deadCodeGOOS (dead_code_shard_test.go) are the operating systems measured;
+// deadCodeTagSets are the build tag sets the module's files use ("" is no tags).
+var deadCodeTagSets = []string{"", "functional", "functional,slow", "slow", "swarmtest", "perf"}
+
+// The GOOS shards (dead_code_shard_test.go): NOVA_DEADCODE_GOOS measures one GOOS
+// and writes its shard to NOVA_DEADCODE_OUT without judging the ledger;
+// NOVA_DEADCODE_FROM names a directory of <goos>.json shards, one per GOOS, whose
+// union is judged in place of a measurement. Neither set measures every GOOS.
+const (
+	deadCodeShardEnv    = "NOVA_DEADCODE_GOOS"
+	deadCodeShardOutEnv = "NOVA_DEADCODE_OUT"
+	deadCodeFromEnv     = "NOVA_DEADCODE_FROM"
 )
 
 type deadcodePackage struct {
@@ -192,8 +199,8 @@ func deadFuncs(t *testing.T, ctx context.Context, bin, root, goos, tags string, 
 	}
 }
 
-// measureDeadCode returns, per package, the sorted names of functions dead under
-// every tag set for at least one GOOS.
+// measureDeadCode returns the "<package> <func>" keys of the functions dead under
+// every tag set for at least one of gooses.
 //
 // The GOOS-by-tag-set runs are independent, so they run at once, bounded by
 // deadCodeParallel: serially they took longer than the functional tier's
@@ -203,7 +210,7 @@ func deadFuncs(t *testing.T, ctx context.Context, bin, root, goos, tags string, 
 // run's final, successful call was over exactly the roots the cascade carries,
 // the cascade's call is that same command, and otherwise the set is run again,
 // in order, over the cascade's roots.
-func measureDeadCode(t *testing.T, ctx context.Context, root string) map[string][]string {
+func measureDeadCode(t *testing.T, ctx context.Context, root string, gooses []string) map[string]bool {
 	t.Helper()
 	bin := deadcodeBinary(t, ctx, root)
 
@@ -212,16 +219,16 @@ func measureDeadCode(t *testing.T, ctx context.Context, root string) map[string]
 		kept []deadCodeRoot
 		err  error
 	}
-	allRoots := make([][]deadCodeRoot, len(deadCodeGOOS))
-	for g, goos := range deadCodeGOOS {
+	allRoots := make([][]deadCodeRoot, len(gooses))
+	for g, goos := range gooses {
 		roots, err := deadCodeRoots(ctx, root, goos)
 		require.NoError(t, err)
 		allRoots[g] = roots
 	}
-	runs := make([][]deadRun, len(deadCodeGOOS))
+	runs := make([][]deadRun, len(gooses))
 	sem := make(chan struct{}, deadCodeParallel())
 	var wg sync.WaitGroup
-	for g, goos := range deadCodeGOOS {
+	for g, goos := range gooses {
 		runs[g] = make([]deadRun, len(deadCodeTagSets))
 		for i, tags := range deadCodeTagSets {
 			wg.Add(1)
@@ -237,7 +244,7 @@ func measureDeadCode(t *testing.T, ctx context.Context, root string) map[string]
 	wg.Wait()
 
 	union := map[string]bool{}
-	for g, goos := range deadCodeGOOS {
+	for g, goos := range gooses {
 		all := allRoots[g]
 		roots := all
 		var every map[string]bool
@@ -261,15 +268,7 @@ func measureDeadCode(t *testing.T, ctx context.Context, root string) map[string]
 			}
 		}
 	}
-	byPkg := map[string][]string{}
-	for k := range union {
-		pkg, name, _ := strings.Cut(k, " ")
-		byPkg[pkg] = append(byPkg[pkg], name)
-	}
-	for _, names := range byPkg {
-		sort.Strings(names)
-	}
-	return byPkg
+	return union
 }
 
 // deadCodeParallel bounds the deadcode runs in flight. Each run loads and
@@ -449,7 +448,37 @@ func TestDeadCode(t *testing.T) {
 	ledger, err := parseDeadCodeLedger(string(raw))
 	require.NoError(t, err, "parsing %s", deadCodeLedgerPath)
 
-	measured := measureDeadCode(t, ctx, root)
+	shard, out, from := os.Getenv(deadCodeShardEnv), os.Getenv(deadCodeShardOutEnv), os.Getenv(deadCodeFromEnv)
+	var dead map[string]bool
+	switch {
+	case shard != "" && from != "":
+		require.Failf(t, "dead code shards", "%s and %s are exclusive: a leg measures one GOOS or joins the shards", deadCodeShardEnv, deadCodeFromEnv)
+	case shard != "":
+		require.Contains(t, deadCodeGOOS, shard, "%s=%s is not a GOOS the rule measures", deadCodeShardEnv, shard)
+		require.NotEmpty(t, out, "%s needs %s, the shard file", deadCodeShardEnv, deadCodeShardOutEnv)
+		raw, err := encodeDeadCodeShard(shard, measureDeadCode(t, ctx, root, []string{shard}))
+		require.NoError(t, err)
+		require.NoError(t, os.MkdirAll(filepath.Dir(out), 0o755))
+		require.NoError(t, os.WriteFile(out, raw, 0o644))
+		fmt.Printf("dead code: GOOS=%s shard written to %s; the ledger is judged on the union of every GOOS's shard (%s)\n", shard, out, deadCodeFromEnv)
+		return
+	case from != "":
+		files := map[string][]byte{}
+		entries, err := os.ReadDir(from)
+		require.NoError(t, err, "reading the dead code shards in %s", from)
+		for _, e := range entries {
+			if goos, ok := strings.CutSuffix(e.Name(), ".json"); ok && !e.IsDir() {
+				raw, err := os.ReadFile(filepath.Join(from, e.Name()))
+				require.NoError(t, err)
+				files[goos] = raw
+			}
+		}
+		dead, err = unionDeadCodeShards(files)
+		require.NoError(t, err)
+	default:
+		dead = measureDeadCode(t, ctx, root, deadCodeGOOS)
+	}
+	measured := deadByPackage(dead)
 	update := os.Getenv(deadCodeUpdateEnv) == "1"
 	problems, next := checkDeadCodeLedger(ledger, measured, update)
 	if update {

@@ -9,7 +9,7 @@ TLC_OUT ?=
 TLC_GROUP ?=
 TLC_BUDGET ?= 110
 
-.PHONY: build vet test functional functional-gate functional-gate-rest functional-gate-deadcode functional-gate-shard release-accept help roadmap schemawire-check tlc tlc-full tlc-groups tlc-test tlc-require
+.PHONY: build vet test functional functional-gate functional-gate-rest functional-gate-deadcode functional-gate-deadcode-shard functional-gate-deadcode-ledger functional-gate-shard release-accept help roadmap schemawire-check tlc tlc-full tlc-groups tlc-test tlc-require
 
 help:
 	@echo "make build       go build ./..."
@@ -18,7 +18,9 @@ help:
 	@echo "make functional  go test -tags functional -count=1 ./... (needs redis-server on PATH)"
 	@echo "make functional-gate  the tier as CI runs it: NOVA_CI=1 and a 2-minute bound per package"
 	@echo "make functional-gate-rest  the tier without ./cmd/nova-sprint and TestDeadCode (its rest leg)"
-	@echo "make functional-gate-deadcode  TestDeadCode alone (its deadcode leg)"
+	@echo "make functional-gate-deadcode  TestDeadCode alone, every GOOS (a whole local run)"
+	@echo "make functional-gate-deadcode-shard  TestDeadCode for one GOOS: DEADCODE_GOOS, DEADCODE_OUT (its deadcode-<goos> legs)"
+	@echo "make functional-gate-deadcode-ledger  the GOOS shards in DEADCODE_FROM held to the ledger (its deadcode-ledger job)"
 	@echo "make functional-gate-shard  one shard of ./cmd/nova-sprint: SHARD=k SHARDS=n (its shard legs)"
 	@echo "make release-accept  the release gate: the release checks in parallel, under a minute (NOVA_SPRINT_BIN, redis-server)"
 	@echo "make roadmap     regenerate ROADMAP.md and FIXES.md from their sexp"
@@ -77,6 +79,21 @@ functional-gate-rest:
 
 functional-gate-deadcode:
 	$(NO_AUTO_MAINTENANCE) NOVA_CI=1 $(GO) test -tags functional -count=1 -timeout 120s -run '$(DEAD_CODE_TEST)' ./internal/ci/
+
+# CI splits the dead code rule by GOOS: whole, its 18 deadcode runs took 100-120 s
+# of the two minutes on a four-core runner and timed out (runs 39466958320,
+# 39488248860, 39645540672). functional-gate-deadcode-shard measures one GOOS
+# (DEADCODE_GOOS) and writes its shard to DEADCODE_OUT; functional-gate-deadcode-ledger
+# unions the shards in DEADCODE_FROM (one <goos>.json per GOOS, every one required)
+# and holds the union to the ledger, the same comparison as the whole run.
+functional-gate-deadcode-shard:
+	@test -n "$(DEADCODE_GOOS)" || { echo "make functional-gate-deadcode-shard needs DEADCODE_GOOS" >&2; exit 2; }
+	@test -n "$(DEADCODE_OUT)" || { echo "make functional-gate-deadcode-shard needs DEADCODE_OUT (the shard file)" >&2; exit 2; }
+	$(NO_AUTO_MAINTENANCE) NOVA_CI=1 NOVA_DEADCODE_GOOS="$(DEADCODE_GOOS)" NOVA_DEADCODE_OUT="$(DEADCODE_OUT)" $(GO) test -tags functional -count=1 -timeout 120s -run '$(DEAD_CODE_TEST)' ./internal/ci/
+
+functional-gate-deadcode-ledger:
+	@test -n "$(DEADCODE_FROM)" || { echo "make functional-gate-deadcode-ledger needs DEADCODE_FROM (the shard directory)" >&2; exit 2; }
+	$(NO_AUTO_MAINTENANCE) NOVA_CI=1 NOVA_DEADCODE_FROM="$(DEADCODE_FROM)" $(GO) test -tags functional -count=1 -timeout 120s -run '$(DEAD_CODE_TEST)' ./internal/ci/
 
 # functional-gate-shard runs one shard of ./cmd/nova-sprint's functional package:
 # SHARD names the shard (1..SHARDS) and SHARDS the number of them; both are

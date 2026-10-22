@@ -80,8 +80,12 @@ jobs:
   # ubuntu-latest: redis-server is installed as the store the tests spawn their
   # own throwaway servers from, a missing redis-server fails closed under
   # NOVA_CI=1, and each package is bounded at two minutes by make functional-gate.
-  # The deadcode leg runs TestDeadCode alone (Makefile, DEAD_CODE_TEST): beside the
-  # rest leg's packages it did not finish inside the two minutes.
+  # The dead code rule (TestDeadCode, Makefile DEAD_CODE_TEST) runs as one leg per
+  # GOOS it measures: run whole in one leg, its 18 whole-program deadcode runs took
+  # 100-120 s of the two minutes on this four-core runner and timed out at 2m0s
+  # (runs 39466958320, 39488248860, 39645540672). Each deadcode-<goos> leg writes its
+  # GOOS's shard and the deadcode-ledger job below holds their union to the ledger,
+  # the same comparison as the whole run (internal/ci/dead_code_shard_test.go).
   functional:
     if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
@@ -91,23 +95,59 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        leg: [rest, deadcode, "1/3", "2/3", "3/3"]
+        leg: [rest, deadcode-linux, deadcode-darwin, deadcode-windows, "1/3", "2/3", "3/3"]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
       - name: redis-server
+        # the dead code legs start no store
+        if: ${{ !startsWith(matrix.leg, 'deadcode-') }}
         run: sudo apt-get update && sudo apt-get install -y redis-server
       - name: functional tier
         run: |
           case "${{ matrix.leg }}" in
             rest) make functional-gate-rest ;;
-            deadcode) make functional-gate-deadcode ;;
+            deadcode-linux) make functional-gate-deadcode-shard DEADCODE_GOOS=linux DEADCODE_OUT="${RUNNER_TEMP}/deadcode/linux.json" ;;
+            deadcode-darwin) make functional-gate-deadcode-shard DEADCODE_GOOS=darwin DEADCODE_OUT="${RUNNER_TEMP}/deadcode/darwin.json" ;;
+            deadcode-windows) make functional-gate-deadcode-shard DEADCODE_GOOS=windows DEADCODE_OUT="${RUNNER_TEMP}/deadcode/windows.json" ;;
             1/3) make functional-gate-shard SHARD=1 SHARDS=3 ;;
             2/3) make functional-gate-shard SHARD=2 SHARDS=3 ;;
             3/3) make functional-gate-shard SHARD=3 SHARDS=3 ;;
+            *) echo "unknown leg ${{ matrix.leg }}" >&2; exit 2 ;;
           esac
+      - name: dead code shard
+        if: ${{ startsWith(matrix.leg, 'deadcode-') }}
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: deadcode-${{ matrix.leg }}
+          path: ${{ runner.temp }}/deadcode
+          if-no-files-found: error
+          retention-days: 1
+
+  # deadcode-ledger joins the deadcode-<goos> legs' shards and holds their union to
+  # the shrink-only ledger (internal/ci/testdata/dead_code_allowlist.txt). It runs
+  # whatever the other legs did, and a missing shard is a failure, never a pass.
+  deadcode-ledger:
+    needs: functional
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GIT_CONFIG_PARAMETERS: "'maintenance.auto'='false'"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: deadcode-*
+          path: ${{ runner.temp }}/deadcode
+          merge-multiple: true
+      - name: dead code ledger
+        run: make functional-gate-deadcode-ledger DEADCODE_FROM="${RUNNER_TEMP}/deadcode"
 
   # tick-gate is the wall-clock gate the split moved out of nova-tools'
   # certification.yml: the dirty tick drive against a real store, every tick
