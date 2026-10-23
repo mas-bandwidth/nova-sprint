@@ -32,8 +32,8 @@ var playbookUsageRe = regexp.MustCompile("usage:?\\s+`(nova-sprint [^`]+)`")
 
 // playbookForeignVerbs is the verbs of nova-tools' tools the playbook names
 // beyond foreignVerbs (the runbook's list), read from each tool's help in
-// nova-tools v1.3/comms on 2026-10-16. nova-work is built here
-// (cmd/nova-work) and is listed for the same check.
+// nova-tools v1.3/comms on 2026-10-16; nova-work's verb is read from
+// nova-tools' cmd/nova-work, where it moved from this repository.
 var playbookForeignVerbs = map[string]map[string]bool{
 	"nova-friend": {"lanes": true, "resume": true},
 	"nova-doctor": {"run": true},

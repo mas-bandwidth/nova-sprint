@@ -757,48 +757,7 @@ LINT OK file=./cards/finding-cmd-nova-bus-main.md
 
 ## nova-work
 
-Run by `cmd/nova-work/firstrun_test.go` against a recorded conversation with
-GitHub (`internal/workgh/testdata/reliable`: one public repository of twenty
-issues, read at fifteen a page), so no network is used and no process is
-started. `$ORG` and `$REPO` are yours: the test stands them for the recording's
-organization and repository, and the counts below are that repository's. `gh=`
-names the gh a run used; yours is the gh on your PATH, and here it is `./gh`,
-where the test says it found one, while every call is answered from the
-recording. The `sha256` is the tree file's, and the tree records the instant it
-was fetched, so it differs on every real run; the test passes a fixed time in
-so the value below reproduces. `./tree.lisp` is a file in a directory of the
-test's own. The usage banner's `example:` block is this same sitting, line for
-line.
-
-Requires: a gh login that can read the repository (`gh auth status`); import
-(the dry run too) and verify read GitHub through gh and write nothing there.
-
-### First run
-
-```text
-$ nova-work import --org $ORG --repo $ORG/$REPO --page-size 15 --dry-run
-IMPORT OK org=$ORG out=- repos=1 issues=20 comments=74 references=4 linked_prs=2 bytes=65241 sha256=4c73aa56b83994be50a4ea6da3bf8fb72735b1051d5c74ea320a60e6709dc938 calls=3 points=3 rest=0 seconds=0.0 gh=./gh dry_run=true
-IMPORT PLAN repos=1 issues=20 est_calls=3 max_calls=1500 page_size=15
-IMPORT REPO repo=$ORG/$REPO issues=20 comments=74 references=4 linked_prs=2 calls=2
-IMPORT NOTE the dry run read GitHub as the import does (calls=3, read-only) and wrote nothing
-
-$ nova-work import --org $ORG --repo $ORG/$REPO --page-size 15 --out ./tree.lisp
-IMPORT OK org=$ORG out=./tree.lisp repos=1 issues=20 comments=74 references=4 linked_prs=2 bytes=65241 sha256=4c73aa56b83994be50a4ea6da3bf8fb72735b1051d5c74ea320a60e6709dc938 calls=3 points=3 rest=0 seconds=0.0 gh=./gh
-IMPORT PLAN repos=1 issues=20 est_calls=3 max_calls=1500 page_size=15
-IMPORT REPO repo=$ORG/$REPO issues=20 comments=74 references=4 linked_prs=2 calls=2
-
-$ nova-work verify --tree ./tree.lisp --repo $ORG/$REPO --page-size 15
-VERIFY OK tree=./tree.lisp sha256=4c73aa56b83994be50a4ea6da3bf8fb72735b1051d5c74ea320a60e6709dc938 repos=1 issues=20 comments=74 calls=3 points=3 rest=0 seconds=0.0 differences=0 missing=0 extra=0 drift=0 gh=./gh
-```
-
-The dry run is not offline: it reads GitHub exactly as the import does (every
-issue, read-only, the same calls) and writes nothing, and its last line says so.
-`est_calls` is the calls the import will spend, checked against `max_calls`
-before any issue is read, and `out=-` says no file was written. The import
-prints the same plan, one `IMPORT REPO` per repository, and the `sha256` of the
-file it wrote; verify names the same `sha256`, and when the two differ it says
-`VERIFY FAILED` with one `VERIFY MISSING`, `EXTRA` or `DRIFT` line per difference.
-`differences=0` is the proof the tree holds what GitHub holds.
+nova-work moved to nova-tools; its first-run transcript lives in [mas-bandwidth/nova-tools](https://github.com/mas-bandwidth/nova-tools/blob/main/docs/TESTS.md#nova-work).
 
 ## Judgments that hold a card (v1.2.14, PR #111)
 
