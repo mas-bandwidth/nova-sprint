@@ -244,10 +244,14 @@ HeldReportNamed(d) ==
 \* a debt entry whose card the reconcile returned off the table
 Gone(d) == GoneCard(d.id)
 
-\* a card with no live lease loses its record while STOPPED (Vanish): a debt
-\* carried from a cleared epoch names a card the new epoch has no record of
+\* a card a debt names, with no live lease, loses its record while STOPPED
+\* (Vanish): a debt carried from a cleared epoch (the clear advances only with no
+\* live lease) names a card the new epoch has no record of. The code settles it
+\* only for a debt captured in an earlier epoch (stopGone: m.StartedIn is not the
+\* epoch read), so a card removed out of band in its STOP's epoch stays owned.
 Vanish(c) ==
     /\ mach = "stop"
+    /\ \E d \in debt : d.id = c
     /\ ~LiveLease(c)
     /\ ~NoRecord(c)
     /\ child[c] = 0

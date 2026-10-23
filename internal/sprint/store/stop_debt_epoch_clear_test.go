@@ -10,8 +10,9 @@ import (
 // TestStopDebtNamingGoneCardsSettlesAtStart is the 2026-10-23 deadlock: after a clear the
 // machine record held STOP debt naming cards with no record in the new epoch, and START,
 // stop-return and clear all refused for good. Clear now empties the debt with the cards it
-// removes, and START settles (and says) a debt whose card has no record; a card that exists
-// and is unreturned still holds START refused. tla/StopReturn.tla GoneNeverBlocksStart
+// removes, and START settles (and says) a debt captured in an earlier epoch whose card has no
+// record; a card that exists and is unreturned, or one removed in its STOP's own epoch, still
+// holds START refused. tla/StopReturn.tla GoneNeverBlocksStart
 func TestStopDebtNamingGoneCardsSettlesAtStart(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t)
@@ -68,9 +69,14 @@ func TestStopDebtNamingGoneCardsSettlesAtStart(t *testing.T) {
 	h.must(TakeStep(sprint.TakeReq{As: wc.Row, Sel: sprint.Sel{IDs: []string{wc.ID}}, Gens: map[string]int{wc.ID: 1}}))
 	_, stopped, _, err = h.st.SetMachine(h.ctx, false)
 	require.NoError(t, err)
-	stopped.StopDebt = append(stopped.StopDebt, gone...)
-	require.NoError(t, h.st.putMachine(h.ctx, stopped))
+	require.Len(t, stopped.StopDebt, 1)
 	_, _, _, err = h.st.SetMachine(h.ctx, true)
 	require.ErrorContains(t, err, "1 STOP-owned work/read jobs lack same-owner cancellation receipts")
 	require.ErrorContains(t, err, wc.ID+"@1")
+	// and a card removed with no record in the epoch of its own STOP stays owned
+	// (TestStartPassesAStopDebtWhoseJobLeftTheTable "fleet job removed without a receipt")
+	stopped.StopDebt = append(stopped.StopDebt, gone...)
+	require.NoError(t, h.st.putMachine(h.ctx, stopped))
+	_, _, _, err = h.st.SetMachine(h.ctx, true)
+	require.ErrorContains(t, err, "3 STOP-owned work/read jobs lack same-owner cancellation receipts")
 }

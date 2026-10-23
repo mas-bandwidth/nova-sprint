@@ -237,7 +237,7 @@ func unsettledStopDebt(m Machine, s *sprint.Snapshot, beats map[string]sprint.Be
 			retired = append(retired, key)
 			continue
 		}
-		if stopGone(s, d) {
+		if stopGone(m, s, d) {
 			// no record of the card in this epoch (its card left with a cleared epoch, or was
 			// removed out of band): nothing can run it or return it, so the entry is settled
 			// and said (tla/StopReturn.tla GoneNeverBlocksStart, "nogone")
@@ -380,7 +380,7 @@ func (st *Store) settleStopDebtByBeat(ctx context.Context) error {
 	var settle []StopLease
 	var reported []string
 	for _, d := range m.StopDebt {
-		if stopGone(s, d) {
+		if stopGone(m, s, d) {
 			// no record of the card in this epoch: START settles it (stopGone), and a
 			// stop-return of it would only be refused
 			continue

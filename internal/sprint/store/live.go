@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
@@ -124,14 +125,19 @@ func stopRetired(s *sprint.Snapshot, d StopLease) bool {
 // record in the epoch (stopGone), "settled-gone <row>:<id>@<gen>".
 const SettledGonePrefix = "settled-gone "
 
-// stopGone says a STOP debt entry's card has no record at all in the snapshot's epoch, placed
-// or not: s must carry each entry's own record (stopDebtExtras), as START's read does. Such a
-// debt names a card that left with a cleared epoch (2026-10-23: two debts from epoch 0 held
-// START, stop-return and clear refused in epoch 1 for good); nothing can run, move or return
-// a card with no record, so the entry is settled. A card that exists and is unreturned stays
-// owned (stopOwned): the safe side. tla/StopReturn.tla GoneNeverBlocksStart
-func stopGone(s *sprint.Snapshot, d StopLease) bool {
+// stopGone says a STOP debt entry of m names a card with no record at all in the snapshot's
+// epoch, placed or not, and m's debt was captured in an earlier epoch (the STOP's epoch,
+// m.StartedIn, is not the snapshot's): its card left with a cleared epoch. s must carry each
+// entry's own record (stopDebtExtras), as START's read does. 2026-10-23: two debts from epoch
+// 0 held START, stop-return and clear refused in epoch 1 for good; nothing can run, move or
+// return a card with no record, so the entry is settled. A card that exists and is
+// unreturned stays owned (stopOwned), and so does a card removed out of band in the epoch
+// of its STOP: the safe side. tla/StopReturn.tla Vanish, GoneNeverBlocksStart
+func stopGone(m Machine, s *sprint.Snapshot, d StopLease) bool {
 	if s == nil || d.Table != sprint.Fleet && d.Table != sprint.Readers {
+		return false
+	}
+	if m.StartedIn == "" || m.StartedIn == strconv.FormatUint(s.Epoch, 10) {
 		return false
 	}
 	t := s.T(d.Table)
