@@ -252,8 +252,9 @@ Gone(d) == GoneCard(d.id)
 Vanish(c) ==
     /\ mach = "stop"
     /\ \E d \in debt : d.id = c
-    /\ ~LiveLease(c)
-    /\ ~NoRecord(c)
+    \* a returned card (one the reconcile retired off the table is GoneCard,
+    \* settled by its kept receipt): the only non-live column a debt's card holds
+    /\ col[c] = Idle(c)
     /\ child[c] = 0
     /\ c \notin held
     /\ col' = [col EXCEPT ![c] = "none"]
