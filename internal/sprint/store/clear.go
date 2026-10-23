@@ -609,11 +609,19 @@ func (st *Store) advanceClear(ctx context.Context, at time.Time) (bool, error) {
 			continue
 		}
 		before, _, err := st.Machine(ctx)
+		var stopped Machine
 		if err == nil {
-			_, _, _, err = st.machineRecord(ctx, before, s, false, st.Actor, "", time.Time{}, lock.ID)
+			stopped, _, _, err = st.machineRecord(ctx, before, s, false, st.Actor, "", time.Time{}, lock.ID)
 		}
 		if err == nil && len(activeStopLeases(s)) > 0 {
 			err = errors.New("clear stopped new live work/read leases before its advance; cancel and stop-return them, then run clear again")
+		}
+		if err == nil && len(stopped.StopDebt) > 0 {
+			// no lease is live, so every debt entry left is returned; the advance removes
+			// every card it names, so the debt goes with them and never names a card the new
+			// epoch has no record of (tla/StopReturn.tla ClearAdvance debt' = {}; 2026-10-23)
+			stopped.StopDebt = nil
+			err = st.B.GuardedMachine(ctx, st.restoreGuard(false), lock.ID, stopped, st.Names.View())
 		}
 		advanced := false
 		if err == nil {

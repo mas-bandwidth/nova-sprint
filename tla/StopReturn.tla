@@ -93,6 +93,11 @@
 (*                 placed cells, so a card the reconcile returned off the  *)
 (*                 table, its receipt on the kept record, is owned and     *)
 (*                 holds START refused with nothing able to settle it      *)
+(*                 (GoneNeverBlocksStart fails);                           *)
+(*  "nogone"          - the code before 2026-10-23: a debt whose card has  *)
+(*                 no record in the epoch (Vanish: it left with a cleared  *)
+(*                 epoch) is owned, and nothing can return a card with no  *)
+(*                 record, so START refuses for good                       *)
 (*                 (GoneNeverBlocksStart fails).                           *)
 (*                                                                         *)
 (* Clear (docs/SPEC-SPRINT.md section 13, the blank-slate clear): clear   *)
@@ -100,6 +105,13 @@
 (* lease is still live and, once none is, advances to a blank epoch: every *)
 (* card idle at generation 1, no debt, no cancelled child remembered, no   *)
 (* beat or beaten owner carried.                                           *)
+(*                                                                         *)
+(* Vanish (2026-10-23): a card with no live lease loses its record (col    *)
+(* "none": a debt carried from a cleared epoch names a card the new epoch  *)
+(* has no record of). START settles a debt whose card has no record        *)
+(* (stopGone, said "settled-gone"); only a card with no live lease can be  *)
+(* without a record (clear advances with none live, the debt guard refuses *)
+(* every removal of an owned card), so no live child is crossed.           *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets
 
@@ -135,10 +147,13 @@ LiveLease(c) == col[c] = Active(c)
 \* table carries it; its record is kept, with its fields
 GoneCard(c) == col[c] = "gone"
 
+\* the card has no record at all in the epoch (Vanish)
+NoRecord(c) == col[c] = "none"
+
 TypeOK ==
     /\ mach \in {"run", "stop"}
     /\ row \in [Cards -> Owners]
-    /\ \A c \in Cards : col[c] \in (IF c \in Readers THEN {"asked", "reading", "gone"} ELSE {"ready", "working", "gone"})
+    /\ \A c \in Cards : col[c] \in (IF c \in Readers THEN {"asked", "reading", "gone", "none"} ELSE {"ready", "working", "gone", "none"})
     /\ gen \in [Cards -> 1..MaxGen]
     /\ sfg \in [Cards -> 0..MaxGen]
     /\ child \in [Cards -> 0..MaxGen]
@@ -185,6 +200,7 @@ ReceiptOn(d) == sfg[d.id] = d.gen /\ gen[d.id] > d.gen
 Owned(d) ==
     IF Broken \in {"byid", "nosettle"} THEN TRUE
     ELSE IF Broken = "goneblocks" /\ GoneCard(d.id) THEN TRUE
+    ELSE IF NoRecord(d.id) THEN Broken = "nogone"
     ELSE ~ReceiptOn(d)
 
 \* a debt entry owns its card (Pinned is what stopDebtMutation refuses)
@@ -227,6 +243,22 @@ HeldReportNamed(d) ==
 
 \* a debt entry whose card the reconcile returned off the table
 Gone(d) == GoneCard(d.id)
+
+\* a card a debt names, with no live lease, loses its record while STOPPED
+\* (Vanish): a debt carried from a cleared epoch (the clear advances only with no
+\* live lease) names a card the new epoch has no record of. The code settles it
+\* only for a debt captured in an earlier epoch (stopGone: m.StartedIn is not the
+\* epoch read), so a card removed out of band in its STOP's epoch stays owned.
+Vanish(c) ==
+    /\ mach = "stop"
+    /\ \E d \in debt : d.id = c
+    \* a returned card (one the reconcile retired off the table is GoneCard,
+    \* settled by its kept receipt): the only non-live column a debt's card holds
+    /\ col[c] = Idle(c)
+    /\ child[c] = 0
+    /\ c \notin held
+    /\ col' = [col EXCEPT ![c] = "none"]
+    /\ UNCHANGED <<mach, row, gen, sfg, child, debt, old, beaten, held, live, settling, stopissued, clearLive>>
 
 \* a take while RUNNING starts the owner's child at the card's generation
 Take(c) ==
@@ -444,7 +476,7 @@ ClearNeverWithALiveLease == ~clearLive
 
 Next ==
     \/ Stop \/ Start \/ Settle \/ ReadSettle \/ SettleByBeat \/ Clear
-    \/ \E c \in Cards : Return(c) \/ Retire(c)
+    \/ \E c \in Cards : Return(c) \/ Retire(c) \/ Vanish(c)
     \/ \E c \in Cards :
          IF c \in Readers THEN Read(c) \/ ReadDone(c)
          ELSE Take(c) \/ ChildFinishes(c) \/ ReportTaken(c) \/ Cancel(c)
@@ -492,7 +524,7 @@ AbsentJobSettles ==
 (* "goneblocks" is START reading placed cells only. StartOK is Start's    *)
 (* guard as a state predicate (ENABLED Start costs the harness budget).   *)
 GoneNeverBlocksStart ==
-    (mach = "stop" /\ stopissued /\ \A d \in debt : ReceiptOn(d) \/ HeldReportNamed(d))
+    (mach = "stop" /\ stopissued /\ \A d \in debt : ReceiptOn(d) \/ HeldReportNamed(d) \/ NoRecord(d.id))
         => StartOK
 
 (* With no live lease, clear is enabled from RUNNING or STOPPED: STOP     *)
