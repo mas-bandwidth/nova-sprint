@@ -120,6 +120,24 @@ func stopRetired(s *sprint.Snapshot, d StopLease) bool {
 	return c != nil && !c.Placed()
 }
 
+// SettledGonePrefix marks a START's retired entry that it settled because its card has no
+// record in the epoch (stopGone), "settled-gone <row>:<id>@<gen>".
+const SettledGonePrefix = "settled-gone "
+
+// stopGone says a STOP debt entry's card has no record at all in the snapshot's epoch, placed
+// or not: s must carry each entry's own record (stopDebtExtras), as START's read does. Such a
+// debt names a card that left with a cleared epoch (2026-10-23: two debts from epoch 0 held
+// START, stop-return and clear refused in epoch 1 for good); nothing can run, move or return
+// a card with no record, so the entry is settled. A card that exists and is unreturned stays
+// owned (stopOwned): the safe side. tla/StopReturn.tla GoneNeverBlocksStart
+func stopGone(s *sprint.Snapshot, d StopLease) bool {
+	if s == nil || d.Table != sprint.Fleet && d.Table != sprint.Readers {
+		return false
+	}
+	t := s.T(d.Table)
+	return t != nil && t.Card(d.ID) == nil
+}
+
 // owedDebt is the debt entries that still own their cards.
 func owedDebt(s *sprint.Snapshot, debt []StopLease) []StopLease {
 	var owed []StopLease

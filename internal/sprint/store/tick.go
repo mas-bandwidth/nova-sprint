@@ -469,12 +469,26 @@ func (st *Store) setMachine(ctx context.Context, running bool, who, reason strin
 	if reason != "" {
 		what = fmt.Sprintf("%s -> %s", before.StateWord(), sprint.StoppedText(who, reason, until, after.Since))
 	}
-	var said []string
+	var said, gone []string
+	retired = slices.DeleteFunc(slices.Clone(retired), func(key string) bool {
+		if rest, ok := strings.CutPrefix(key, SettledGonePrefix); ok {
+			gone = append(gone, rest)
+			return true
+		}
+		return false
+	})
+	if len(gone) > 0 {
+		// the START passed debts naming cards with no record in this epoch (stopGone)
+		g := fmt.Sprintf("%d debt(s) settled-gone: no record of the card in this epoch: %s", len(gone), strings.Join(gone, " "))
+		said = append(said, g)
+		what += "; " + g
+	}
 	if len(retired) > 0 {
 		// the START passed debts by receipts on cards the reconcile returned off the table
 		// (stopRetired; tla/StopReturn.tla Retire): said, so the operator sees what it settled
-		said = []string{fmt.Sprintf("%d debt(s) settled: job returned off the table with its STOP receipt (live-returned after the STOP): %s", len(retired), strings.Join(retired, " "))}
-		what += "; " + said[0]
+		r := fmt.Sprintf("%d debt(s) settled: job returned off the table with its STOP receipt (live-returned after the STOP): %s", len(retired), strings.Join(retired, " "))
+		said = append(said, r)
+		what += "; " + r
 	}
 	res, err = st.Run(ctx, Step{Verb: verb, Plan: func(s *sprint.Snapshot) sprint.Plan {
 		n := sprint.Note{Kind: sprint.Happened, Type: typ, Who: who, At: s.Now, What: what}
