@@ -10,7 +10,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 - [The sprint system](#the-sprint-system) (310)
 - [Setup, release and operations](#setup-release-and-operations) (72)
 - [Docs, models and the repository](#docs-models-and-the-repository) (25)
-- [Friend AIs](#friend-ais) (27)
+- [Friend AIs](#friend-ais) (28)
 - [Moved out of the sprint on 2026-10-15: nova-local](#moved-out-of-the-sprint-on-2026-10-15-nova-local) (1)
 - [Moved out of the sprint on 2026-10-15: v13-blockers](#moved-out-of-the-sprint-on-2026-10-15-v13-blockers) (19)
 - [Moved out of the sprint on 2026-10-15: v15-features](#moved-out-of-the-sprint-on-2026-10-15-v15-features) (1)
@@ -3747,6 +3747,16 @@ From: coordinator review 2026-10-24
 PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). A friend whose hook misses one challenge is marked down for 5 minutes and its cards stop flowing. The sprint retries the challenge once and raises an alarm before marking it down, and the friend harness (nova-tools) re-arms its hook watch when the watch expires.
 
 Why it waits: One missed challenge stops a friend's cards for 5 minutes with nobody told, and a harness whose watch expired never comes back by itself.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Tell a friend's worker when its attempt stops being live
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). When a friend's attempt stops being live (redealt, re-tiered off the row, given to another friend or a fleet lane, withdrawn), the machine pushes a bus message to that friend naming the attempt, the new owner and: stop and hand over your head. Companion to redeal-carries-previous-head, which tells the new owner; this tells the old one.
+
+Why it waits: On 2026-10-24 three workers on one row kept running 1 to 2 hours on cards that had moved to another friend or a fleet member (rn-client-iocp-windows-t, rn-fix-assert-iocp-packet-id, rn-fix-cfg-config-bytes), queued duplicate Windows gate jobs, and stopped only when checked by hand.
 
 Target: v1.9
 
