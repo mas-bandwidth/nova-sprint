@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/verbflag"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
@@ -219,12 +220,33 @@ func (a *app) ask(ctx context.Context, addr string, verb, rest []string) (sprint
 	if actor := a.getenv("NOVA_SPRINT_ACTOR"); actor != "" {
 		identity = []string{"--actor", actor}
 	}
-	argv := absolutePaths(slices.Concat(verb, identity, rest))
+	argv := absolutePaths(slices.Concat(verb, identity, a.configStore(verb, rest), rest))
 	res, err := send(ctx, addr, argv)
 	if err != nil {
 		return sprintwire.Result{}, err
 	}
 	return res[0], nil
+}
+
+// configStore is the --pg the server is sent for a verb that takes one and was not
+// given it: the caller's NOVA_PG_DSN, the fallback every --pg help names. The server
+// never inherits the caller's environment, so without it a verb the server runs (friend
+// stage, collect) found no config store. A DSN that carries a password is never put on
+// the wire: it is left out, as config.ResolveDSN refuses it on a flag, and the server
+// refuses the verb for want of a store.
+func (a *app) configStore(verb, rest []string) []string {
+	v := readVerb(slices.Concat(verb, rest))
+	if v.fs == nil || v.err != nil || v.fs.Lookup("pg") == nil || v.given("pg") {
+		return nil
+	}
+	dsn := a.getenv(config.EnvPG)
+	if dsn == "" {
+		return nil
+	}
+	if _, err := config.ResolveDSN(dsn, func(string) string { return "" }); err != nil {
+		return nil
+	}
+	return []string{"--pg", dsn}
 }
 
 // answer prints what the server's run of a verb printed, as it printed it.
