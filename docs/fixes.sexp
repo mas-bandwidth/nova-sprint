@@ -76,7 +76,9 @@
    (release "v1.2.25" :status "planned"
     :text "The server never holds the hook hub across its line of control, and a tick that cannot take the line is a wedged tick: the v1.2.24 hang on the first tick after start is closed.")
    (release "v1.2.26" :status "planned"
-    :text "Harness faults never vote that a brief is wrong."))
+    :text "Harness faults never vote that a brief is wrong.")
+   (release "v1.6.21" :status "planned" :date "2026-10-24"
+    :text "The server's tick raises a judgment when the fleet table drifts from nova-config (the owner, 2026-10-24: this point release, not v1.9)."))
   :items
    ((fix "read-cards-on-without-an-explicit-off" :release "v1.2.16" :status "planned"
      :title "Read cards are on by default"
