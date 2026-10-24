@@ -20,12 +20,14 @@ import (
 	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
 
-// friendStageGit is the git runner friend stage clones and configures with: a
-// function (workdir, argv) over the real git. A test replaces it with a fake
-// that records every argv and every config write, so the test can assert the
-// clone's local user.name and user.email are the friend's and that no git
-// invocation ran without them set.
-var friendStageGit = func(ctx context.Context, dir string, args ...string) (string, error) {
+// gitFn runs git with argv in a working directory and returns its combined output.
+type gitFn func(ctx context.Context, dir string, args ...string) (string, error)
+
+// runStageGit is the real git, the app's stageGit unless a test gives its own: friend
+// stage clones and configures with it. It is a field of the app and never a
+// package variable, so two parallel tests that each record friend stage's argv
+// never record each other's.
+func runStageGit(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
@@ -200,21 +202,21 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	if err := os.MkdirAll(filepath.Dir(jobDir), 0o755); err != nil {
 		return refuse(stderr, name, err.Error())
 	}
-	if _, err := friendStageGit(ctx, filepath.Dir(jobDir), "clone", "-q", repoURL, jobDir); err != nil {
+	if _, err := a.stageGit(ctx, filepath.Dir(jobDir), "clone", "-q", repoURL, jobDir); err != nil {
 		return refuse(stderr, name, "clone of "+repoURL+" into "+oneline.Field(job)+": "+oneline.Err(err))
 	}
-	if _, err := friendStageGit(ctx, jobDir, "config", "user.name", id.Name); err != nil {
+	if _, err := a.stageGit(ctx, jobDir, "config", "user.name", id.Name); err != nil {
 		return refuse(stderr, name, "setting the clone's local user.name: "+oneline.Err(err))
 	}
-	if _, err := friendStageGit(ctx, jobDir, "config", "user.email", id.Email); err != nil {
+	if _, err := a.stageGit(ctx, jobDir, "config", "user.email", id.Email); err != nil {
 		return refuse(stderr, name, "setting the clone's local user.email: "+oneline.Err(err))
 	}
 	if next != "" {
-		if _, err := friendStageGit(ctx, jobDir, "fetch", "-q", "origin", next); err != nil {
+		if _, err := a.stageGit(ctx, jobDir, "fetch", "-q", "origin", next); err != nil {
 			return refuse(stderr, name, "fetch of the NEXT head "+oneline.Escape(next)+": "+oneline.Err(err))
 		}
 	}
-	if _, err := friendStageGit(ctx, jobDir, "checkout", "-q", "-B", p.Branch, startRef); err != nil {
+	if _, err := a.stageGit(ctx, jobDir, "checkout", "-q", "-B", p.Branch, startRef); err != nil {
 		return refuse(stderr, name, "checkout of "+oneline.Field(p.Branch)+" at "+oneline.Escape(startRef)+": "+oneline.Err(err))
 	}
 
@@ -313,19 +315,19 @@ func (a *app) friendStageRead(ctx context.Context, friendName, card string, gen 
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return refuse(stderr, name, err.Error())
 	}
-	if _, err := friendStageGit(ctx, root, "clone", "-q", repoURL, jobDir); err != nil {
+	if _, err := a.stageGit(ctx, root, "clone", "-q", repoURL, jobDir); err != nil {
 		return refuse(stderr, name, "clone of "+repoURL+" into "+oneline.Field(job)+": "+oneline.Err(err))
 	}
-	if _, err := friendStageGit(ctx, jobDir, "config", "remote.origin.pushurl", friendReadNoPush); err != nil {
+	if _, err := a.stageGit(ctx, jobDir, "config", "remote.origin.pushurl", friendReadNoPush); err != nil {
 		return refuse(stderr, name, "turning pushing off in the read's clone: "+oneline.Err(err))
 	}
-	if _, err := friendStageGit(ctx, jobDir, "fetch", "-q", "origin", head); err != nil {
+	if _, err := a.stageGit(ctx, jobDir, "fetch", "-q", "origin", head); err != nil {
 		return refuse(stderr, name, "fetch of the head under read "+head+": "+oneline.Err(err))
 	}
-	if _, err := friendStageGit(ctx, jobDir, "checkout", "-q", "--detach", head); err != nil {
+	if _, err := a.stageGit(ctx, jobDir, "checkout", "-q", "--detach", head); err != nil {
 		return refuse(stderr, name, "checkout of the head under read "+head+": "+oneline.Err(err))
 	}
-	got, err := friendStageGit(ctx, jobDir, "rev-parse", "HEAD")
+	got, err := a.stageGit(ctx, jobDir, "rev-parse", "HEAD")
 	if err != nil {
 		return refuse(stderr, name, "rev-parse of the staged head: "+oneline.Err(err))
 	}

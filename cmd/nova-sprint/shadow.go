@@ -53,7 +53,7 @@ func (a *app) shadowStore(ctx context.Context, c common) (*store.Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &store.Store{B: store.ReadOnly(b), Names: names, Actor: c.actor, Now: a.now, NewID: store.NewID, Sleep: a.sleep, ByHand: a.twinOpen(c.redis)}, nil
+	return &store.Store{B: store.ReadOnly(b), Names: names, Actor: c.actor, Now: a.now, NewID: a.newID, Sleep: a.sleep, ByHand: a.twinOpen(c.redis)}, nil
 }
 
 // shadowTick is tick --shadow: the plan, printed; exit 0 when it was made, 2 when
