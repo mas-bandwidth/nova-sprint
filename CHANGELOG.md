@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.6.16 — 2026-10-24
+
+Cut from 46c3eceefcc56bace652f377e420e5fc85c901d9. 2 pull requests since v1.6.15.
+
+Recovery journeys incomplete, gate waived: v1.6.16: the friend-idle alarm counts a filed read (verdict or return) as a finish (#586), and unit tests that read no host state plus the clone lock keyed once under a symlinked land root on macOS (#585); journeys: the range touches no hook or recovery path; spend: the range changes no spend recording
+
+- TestASilentClientIsUnhookedAfterExactlyTwoAnnouncedOnce: not-run (no --journeys evidence)
+- TestNoServerOrNoAnswerIsNoEvidence: not-run (no --journeys evidence)
+- TestTheGateRefusesEveryoneWhileTheServerIsStale: not-run (no --journeys evidence)
+- TestAStaleAnswerIsDownWithAFreshServer: not-run (no --journeys evidence)
+- TestALostAnswerIsNeverToldTwice: not-run (no --journeys evidence)
+
+Spend gate waived: v1.6.16: the friend-idle alarm counts a filed read (verdict or return) as a finish (#586), and unit tests that read no host state plus the clone lock keyed once under a symlinked land root on macOS (#585); journeys: the range touches no hook or recovery path; spend: the range changes no spend recording (window 2026-10-24T00:00:00Z..2026-10-24T12:45:23Z)
+- unread: --spend-store <addr> names no sprint store, so the recorded spend cannot be read
+
+- #586 tick: a filed read counts as a finish for the friend-idle alarm
+- #585 Unit tests read no host state; one clone lock key under a symlinked land root
+
 ## v1.6.3 — 2026-10-18
 
 Cut from 69c05c67faf4699e8a760e64e40fe56d12eab206. 3 pull requests since v1.6.2.
