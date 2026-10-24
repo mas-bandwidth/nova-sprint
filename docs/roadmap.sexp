@@ -8825,4 +8825,40 @@ The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 
    :text "nova-sprint friend stage of a read card fails. For a read with no NEXT it stages an empty checkout at main (git exits 128); for a carried card it stages the carried head instead of the head under read; and it writes no JOB.md. A read stages the exact head under read, read-only, with its JOB.md."
    :why "A reader staged at the wrong head reads the wrong work, or cannot read at all, so the read returns no verdict or a wrong one."
    :release "v1.7"
+   :origin "coordinator review 2026-10-24")
+  (item "seat-check-finds-and-repairs-fleet-drift" :group "sprint" :date "2026-10-24"
+   :title "Make seat check find and repair fleet drift"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). nova-sprint seat check finds, and repairs where a repair is mechanical, each of these, naming the host and the one next command when it cannot: (a) launchd loops that keep exiting non-zero, or whose program sits on an external volume (config-apply exited 126 for days); (b) a config store rev ahead of the rev a member applied; (c) member tool versions behind the server (members on v1.6.10 against a v1.6.17 server had their beats refused); (d) members missing facts (mini-m5 was not offered macos); (e) reader rows that never beat (captain); (f) read routes with no funded model (hetzner1, hetzner2, intel); (g) bench load above the bench's cores; (h) stale winlock jobs, repaired by running captain-reap. Each finding is a case with a test on a real store, including the refusals."
+   :why "On 2026-10-24 the coordinator found every one of these by hand while cards stalled; seat check reported none of them."
+   :release "v1.9"
+   :origin "coordinator review 2026-10-24")
+  (item "stalled-friend-detector" :group "friends" :date "2026-10-24"
+   :title "Nudge a stalled friend, then take its ready cards back"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). A friend row holding ready cards with free width for more than 5 minutes gets a bus nudge naming the cards; still not taken after 15 minutes, the sprint takes them back and deals them elsewhere, and says so on the row. Times are arguments in the tests (no real clock)."
+   :why "On 2026-10-24 ready cards sat on friend rows with free width until the coordinator noticed by hand."
+   :release "v1.9"
+   :origin "coordinator review 2026-10-24")
+  (item "redeal-carries-previous-head" :group "friends" :date "2026-10-24"
+   :title "Carry the previous head into a redeal and set deadlines from GATE-NEEDS"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). When a friend card is redealt past its deadline, the new attempt carries the previous attempt's pushed head and the worker is told the new attempt id, so it finishes against the attempt it holds. Deadlines follow the card's GATE-NEEDS: a windows card waits on captain's one queue and gets 240 minutes."
+   :why "On 2026-10-24 redealt friend cards started over without the pushed head, finishes named the old attempt, and windows cards waiting on one captain queue ran past deadlines sized for a free bench."
+   :release "v1.9"
+   :origin "coordinator review 2026-10-24")
+  (item "friend-take-never-strands-pinned" :group "friends" :date "2026-10-24"
+   :title "Make friend take never strand a card that only a rebrief releases"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). friend take of a card whose WHO line pins the friend leaves it out of the deal until a rebrief. friend take either releases the pin (the card returns to the deal, or to a named friend) or refuses and names the rebrief to run; no card is left where no verb but a rebrief moves it. The give side is v1.7 item friend-take-blocks-until-rebrief."
+   :why "On 2026-10-24 cards taken back with friend take sat out of the deal until the coordinator rebriefed each one by hand."
+   :release "v1.9"
+   :origin "coordinator review 2026-10-24")
+  (item "friend-give-holds-for-named-friend" :group "friends" :date "2026-10-24"
+   :title "Make friend give hold the card for the named friend or refuse"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). friend give to a row that is full hands the card to the named friend once the row has width, held out of levelling until then, or refuses and says the row is full; the leveller never moves a given card to another friend."
+   :why "On 2026-10-24 a card given to a full row was levelled to another friend within a second, so the friend it was given to never saw it."
+   :release "v1.9"
+   :origin "coordinator review 2026-10-24")
+  (item "worker-contract-shared-bench-hygiene" :group "sprint" :date "2026-10-24"
+   :title "Put shared-bench hygiene in the worker contract"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). The card contract tells every worker on a shared bench: scripts and logs go under a path named after the card, never a common path; no pattern kill (pkill or killall by name), only the PIDs it started; every gate runs under the bench slot lock. Where it can be checked from a report or a head, check cards flags a breach."
+   :why "Benches are shared by many cards at once; on 2026-10-24 common script and log paths, pattern kills and gates outside the slot lock let one card's worker break another's."
+   :release "v1.9"
    :origin "coordinator review 2026-10-24")))
