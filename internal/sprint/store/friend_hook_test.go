@@ -100,3 +100,28 @@ func TestUnhookedReadRetirementSettlesStoppedDebt(t *testing.T) {
 	c.Row, c.Col = "", ""
 	require.Empty(t, owedDebt(s, debt), "retired unhooked read must no longer block START")
 }
+
+// The deal's seats carry the hook record's unhook time and last answer, the unhook
+// grace's clocks (sprint.FriendUnhookInGrace; tla/FriendUnhookGrace.tla), and a hooked
+// friend carries neither.
+func TestFriendSeatsCarryTheUnhookGraceClocks(t *testing.T) {
+	h := newHarness(t)
+	_, _, _, err := h.st.SyncFriends(h.ctx, []FriendSpec{{Name: "amy", Width: 1}})
+	require.NoError(t, err)
+	state := hook.Status{Name: "amy", State: hook.StateUnhooked, Unhooked: h.now.Add(-time.Minute), AnswerAt: h.now.Add(-6 * time.Minute)}
+	h.st.ReadFriendHooks = func(context.Context, ...string) ([]hook.Status, time.Time, error) {
+		return []hook.Status{state}, h.now, nil
+	}
+	seats, err := h.st.FriendSeats(h.ctx, h.now)
+	require.NoError(t, err)
+	require.Len(t, seats, 1)
+	require.True(t, seats[0].Unhooked)
+	require.True(t, seats[0].UnhookedAt.Equal(state.Unhooked))
+	require.True(t, seats[0].AnsweredAt.Equal(state.AnswerAt))
+	require.True(t, sprint.FriendUnhookInGrace(&sprint.Snapshot{Now: h.now}, seats[0]))
+	state = hook.Status{Name: "amy", State: hook.StateProven, AnswerAt: h.now}
+	seats, err = h.st.FriendSeats(h.ctx, h.now)
+	require.NoError(t, err)
+	require.False(t, seats[0].Unhooked)
+	require.True(t, seats[0].UnhookedAt.IsZero() && seats[0].AnsweredAt.IsZero())
+}

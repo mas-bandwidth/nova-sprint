@@ -200,6 +200,12 @@ type FriendSeat struct {
 	// member beat for a one-shot seat. Status Up alone is not this proof.
 	WorkerLive bool
 	Unhooked   bool // nova-hook explicitly unhooked this friend; work may be returned.
+	// UnhookedAt is when nova-hook unhooked her (hook.Status.Unhooked) and AnsweredAt when
+	// her session last answered a challenge (hook.Status.AnswerAt), zero when the record
+	// says none: the clocks of the unhook grace (FriendUnhookInGrace), inside which her
+	// working cards and reads stay on her row.
+	UnhookedAt time.Time
+	AnsweredAt time.Time
 }
 
 // FieldFriendsLeft is the friends a friend's work card has left, comma joined: each the

@@ -290,9 +290,12 @@ func LiveReturns(s *Snapshot, beats map[string]Beat, stopped bool) Plan {
 	}
 	for _, row := range s.Fleet.Rows() {
 		if f, ok := FriendOfRow(row); ok {
+			// an unhooked friend inside the unhook grace keeps her working cards and reads
+			// (FriendUnhookInGrace; tla/FriendUnhookGrace.tla NoReturnInGrace): her row is
+			// reconciled below by her own beat, as any row is
 			unhooked := false
 			for _, seat := range s.Friends {
-				if seat.Name == f && seat.Unhooked {
+				if seat.Name == f && seat.Unhooked && !FriendUnhookInGrace(s, seat) {
 					unhooked = true
 					break
 				}
