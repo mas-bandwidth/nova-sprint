@@ -422,8 +422,8 @@ func PreflightAtBase(s *Snapshot, brief, cardNeeds string, tree *BaseTree) []Pre
 	return findings
 }
 
-// NewBaseTree is a tree of these files at sha (the binding's read, git ls-tree), sorted.
-func NewBaseTree(repo, base, sha string, files []string) BaseTree {
+// BaseTreeOf is a tree of these files at sha (the binding's read, git ls-tree), sorted.
+func BaseTreeOf(repo, base, sha string, files []string) BaseTree {
 	fs := slices.Clone(files)
 	slices.Sort(fs)
 	return BaseTree{Repo: RepoName(repo), Base: base, Sha: sha, Files: fs}
@@ -443,7 +443,8 @@ func baseRedConds(waits map[string][]string, whys map[string][]string) []cond {
 
 // inheritedRedRE is a report saying its failure is BASE's: an INHERITED-RED: line, or the
 // failure said red, failing or reproduced at (or on) BASE.
-var inheritedRedRE = regexp.MustCompile(`(?im)` + negated + `(?:^\s*INHERITED-RED:|\binherited\s+red\b|\b(?:red|fails|failing|failed|reproduced|reproduces|reproducible)\s+(?:at|on)\s+(?:the\s+)?BASE\b|\balso\s+(?:fails|red|failing)\s+(?:at|on)\s+(?:the\s+)?BASE\b)`)
+// BASE is the brief's own word, in capitals: "fails at the base" in prose is no claim.
+var inheritedRedRE = regexp.MustCompile(`(?m)(?i:` + negated + `)(?:^\s*INHERITED-RED:|\b(?i:inherited\s+red)\b|\b(?i:red|fails|failing|failed|reproduced|reproduces|reproducible)\s+(?i:at|on)\s+(?i:the\s+)?BASE\b)`)
 
 // InheritedRedOf is the line of a failed finish's report that says its failure is
 // reproduced at BASE (an inherited red), "" when none does: an INHERITED-RED: <failures>

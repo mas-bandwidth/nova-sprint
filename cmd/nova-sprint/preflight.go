@@ -312,7 +312,7 @@ func (a *app) preflightTree(ctx context.Context, dir, base string) (sprint.BaseT
 	if err != nil {
 		return sprint.BaseTree{}, err
 	}
-	return sprint.NewBaseTree("", base, strings.TrimSpace(sha), strings.Split(strings.TrimSpace(out), "\n")), nil
+	return sprint.BaseTreeOf("", base, strings.TrimSpace(sha), strings.Split(strings.TrimSpace(out), "\n")), nil
 }
 
 // cmpOr is the first of a and b that is not empty.

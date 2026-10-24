@@ -248,7 +248,7 @@ func (d *dealFactsReader) readTree(ctx context.Context, b sprint.RepoBase) (*spr
 	if err != nil {
 		return nil, err
 	}
-	t := sprint.NewBaseTree(b.Repo, b.Base, sha, strings.Split(strings.TrimSpace(out), "\n"))
+	t := sprint.BaseTreeOf(b.Repo, b.Base, sha, strings.Split(strings.TrimSpace(out), "\n"))
 	return &t, nil
 }
 
