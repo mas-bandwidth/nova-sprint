@@ -354,11 +354,14 @@ func readMixPool(s *Snapshot, pr *Card) int {
 	return len(names)
 }
 
-// roomFor says the unit has room for a read of the phase: in the mix's class phases a reader
-// of the class is dealt the read at its room too, queued on its row (a read waits for a busy
-// friend rather than going to the fleet: the mix names friends), and taken back unstarted past
-// the deal bound as any read (RetiredByUnstarted); the fill and a deal with no mix keep the
-// room rule (half > 0).
+// roomFor says the unit has room for a read of the phase. A friend is dealt a read only while
+// her row has a free slot (half > 0: her width less her work and read cards, ready and
+// working), in every phase: a read never waits in the ready column of a friend whose row is at
+// its width (the owner, 2026-10-24: four reads sat an hour on a friend at 8 of 8 while 18 cards
+// waited in review; roadmap reads-never-wait-behind-a-full-row; tla/FriendReadSlot.tla,
+// ReadOnlyToAFreeSlot). A member in the mix's fleet phase is dealt the read at its room too,
+// queued on its row, and taken back unstarted past the deal bound as any read
+// (RetiredByUnstarted); the fill and a deal with no mix keep the room rule (half > 0).
 func roomFor(u readUnit, ph readPhase) bool {
-	return u.half > 0 || ph.class != readAnyClass
+	return u.half > 0 || (ph.class != readAnyClass && !u.friend)
 }

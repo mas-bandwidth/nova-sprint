@@ -783,30 +783,25 @@ func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why 
 		}
 	}
 	// the cards taken back stand no more: the wants are counted without them
-	view := s
-	if len(back) > 0 {
-		v := *s
-		v.Fleet, v.Readers = s.Fleet.Frozen(), s.Readers.Frozen()
-		for _, chs := range back {
-			for _, ch := range chs {
-				tb := v.T(ch.Table)
-				c := *tb.Card(ch.Entry.ID)
-				c.Row, c.Col = "", ""
-				c.Fields = maps.Clone(c.Fields)
-				maps.Copy(c.Fields, ch.Entry.Set) // retired_by: whether it spent its reader
-				tb.Put(&c)
-			}
-		}
-		view = &v
-	}
-	// the read's route is never a resting one (readRouteOf, s.resting): settle the
-	// routes' rests here, once for the whole ask, when the snapshot holds none, so no
-	// read scans the fleet table (docs/SPEC-SPRINT.md section 6, the reads)
-	if view.rests == nil {
-		view, _ = view.withRests()
-	}
+	view := readCardsView(s, back)
 	units := readUnitsOf(view, seats)
 	idx := fleetReadIndex(view)
+	// a read ready and unstarted on a friend's row past the start bound is levelled to
+	// another reader with a free lane (readCardsLevel): taken back here, it is dealt in this
+	// ask to a reader other than her (levelled)
+	lv, levelled := readCardsLevel(view, units, idx)
+	for key, chs := range lv {
+		if only != nil && !only[key] {
+			delete(levelled, key)
+			continue
+		}
+		back[key] = append(back[key], chs...)
+	}
+	if len(levelled) > 0 {
+		view = readCardsView(s, back)
+		units = readUnitsOf(view, seats)
+		idx = fleetReadIndex(view)
+	}
 	unitByName := make(map[string]int, len(units))
 	for i, u := range units {
 		unitByName[u.name] = i
@@ -848,6 +843,9 @@ func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why 
 		var may []int
 		resting := false
 		for i, u := range units {
+			if levelled[pr.ID][u.name] {
+				continue // levelled off her row this ask: dealt to another reader
+			}
 			r := readRefusal(view, u, pr, attempt, worker, cards)
 			if r == "" {
 				may = append(may, i)
@@ -902,7 +900,7 @@ func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why 
 				}
 				eligible := func(name string) bool {
 					i, exists := unitByName[name]
-					return exists && !chosen[i] && classFits(units[i], ph.class) && roomFor(units[i], ph) && (!hasIdle || units[i].idle > 0) && mayReadCard(view, units[i], pr, attempt, worker, cards) && readTierDistance(view, units[i], pr) == bestDistance
+					return exists && !chosen[i] && !levelled[pr.ID][name] && classFits(units[i], ph.class) && roomFor(units[i], ph) && (!hasIdle || units[i].idle > 0) && mayReadCard(view, units[i], pr, attempt, worker, cards) && readTierDistance(view, units[i], pr) == bestDistance
 				}
 				name := cursor.scan(eligible)
 				if name == "" {
@@ -1020,6 +1018,9 @@ func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why 
 			names = append(names, un.name)
 		}
 		u.Moved = pr.ID + " asked of " + strings.Join(names, ", ") + " (read cards)"
+		if from := levelled[pr.ID]; len(from) > 0 {
+			u.Moved += "; levelled from " + strings.Join(slices.Sorted(maps.Keys(from)), ", ") + " (ready and unstarted past the start bound)"
+		}
 		u.Closes = closesFor(s.Open, []string{NCannotAsk, NStranded, NStalled}, pr.ID)
 		u.Closes = append(u.Closes, closesFor(s.Acked, []string{NCannotAsk}, pr.ID)...)
 		// TickDeal applies before the ask part: preserve its eligible units in the answer.
@@ -1053,6 +1054,91 @@ func readCardsAskSelected(s *Snapshot, seats []FriendSeat, ri routeIndexes, why 
 	}
 	p.Props = append(p.Props, tops.writes(view)...)
 	return Lawful(p), waits
+}
+
+// readCardsView is the snapshot the read-card ask deals on: the cards taken back (back) stand
+// no more, each unplaced with the fields its take-back sets (retired_by: whether it spent its
+// reader), and the routes' rests settled once for the whole ask when the snapshot holds none,
+// so no read scans the fleet table (readRouteOf, s.resting; docs/SPEC-SPRINT.md section 6,
+// the reads).
+func readCardsView(s *Snapshot, back map[string][]Change) *Snapshot {
+	view := s
+	if len(back) > 0 {
+		v := *s
+		v.Fleet, v.Readers = s.Fleet.Frozen(), s.Readers.Frozen()
+		for _, chs := range back {
+			for _, ch := range chs {
+				tb := v.T(ch.Table)
+				c := *tb.Card(ch.Entry.ID)
+				c.Row, c.Col = "", ""
+				c.Fields = maps.Clone(c.Fields)
+				maps.Copy(c.Fields, ch.Entry.Set)
+				tb.Put(&c)
+			}
+		}
+		view = &v
+	}
+	if view.rests == nil {
+		view, _ = view.withRests()
+	}
+	return view
+}
+
+// readCardsLevel is the level of the reads left untaken on friends' rows (roadmap
+// reads-never-wait-behind-a-full-row; tla/FriendReadSlot.tla, LevelUntaken): a read card
+// ready on a friend's row that she has not taken (no take stamped, her beat naming it not
+// running: friendStarted; nothing in flight on it: FriendCardInFlight) for longer than the start
+// bound (FriendStartMax) since its ask, whose primary is in review at its attempt, is taken back
+// (RetiredByLevel, spending no one) when another reader up may read it (mayReadCard) and has a
+// free lane (idle > 0) not promised to an earlier read levelled here. It answers the changes by
+// primary and, by primary, the friends each read was levelled from: the ask deals the read to
+// a reader other than them. A read with no other reader free stays where it is: the deal bound
+// (RetiredByUnstarted) still takes it back. units and idx are the ask's.
+func readCardsLevel(s *Snapshot, units []readUnit, idx map[string][]*Card) (back map[string][]Change, from map[string]map[string]bool) {
+	back, from = map[string][]Change{}, map[string]map[string]bool{}
+	bound := s.FriendStartMax()
+	idle := make([]int, len(units))
+	for i, u := range units {
+		idle[i] = u.idle
+	}
+	for i, u := range units {
+		if !u.friend {
+			continue
+		}
+		ready := slices.Clone(s.Fleet.Cell(u.row, Ready))
+		SortCards(ready)
+		for _, c := range ready {
+			if !isRead(c) || c.F(FieldReadCard) == "" || FriendCardInFlight(c) != "" || friendStarted(s, u.seat, c) {
+				continue
+			}
+			if at := stampAt(c, "asked"); at.IsZero() || s.Now.Sub(at) <= bound {
+				continue
+			}
+			pr := s.Work.Placed(c.F("primary"))
+			if pr == nil || pr.Col != Review && !DecisionParkedReview(pr) || readAttempt(pr) != c.Int("attempt") {
+				continue // the take-back retires it (readCardsTakeBack)
+			}
+			attempt := readAttempt(pr)
+			worker := attemptUnit(s, pr.ID, attempt)
+			to := -1
+			for j, v := range units {
+				if j != i && idle[j] > 0 && !from[pr.ID][v.name] && mayReadCard(s, v, pr, attempt, worker, idx[pr.ID]) {
+					to = j
+					break
+				}
+			}
+			if to < 0 {
+				continue
+			}
+			idle[to]--
+			back[pr.ID] = append(back[pr.ID], change(Fleet, removeEntry(c, map[string]string{"retired": stamp(s.Now), "retired_by": RetiredByLevel})))
+			if from[pr.ID] == nil {
+				from[pr.ID] = map[string]bool{}
+			}
+			from[pr.ID][u.name] = true
+		}
+	}
+	return back, from
 }
 
 // fieldOf is the card's field, "" for no card.

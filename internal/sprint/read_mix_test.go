@@ -203,9 +203,11 @@ func TestReadMixNeedIsTheSprintsReadersNotWhoIsUp(t *testing.T) {
 	require.Equal(t, 4, ReadsNeededIn(w.s, pr), "a friend down still counts: the need never moves with who is up")
 }
 
-// TestReadMixQueuesOnABusyFriendBeforeTheFleet: a friend at her width is still dealt the
-// friends' read, queued on her row, rather than the read going to the fleet.
-func TestReadMixQueuesOnABusyFriendBeforeTheFleet(t *testing.T) {
+// TestReadMixNeverQueuesOnAFriendAtHerWidth: a friend at her width is dealt no read, not
+// even the friends' read of the mix; the fill deals it from the fleet at once (the owner,
+// 2026-10-24: four reads sat an hour in the ready column of a friend at 8 of 8; roadmap
+// reads-never-wait-behind-a-full-row; tla/FriendReadSlot.tla ReadOnlyToAFreeSlot).
+func TestReadMixNeverQueuesOnAFriendAtHerWidth(t *testing.T) {
 	t.Parallel()
 	w, seats := readMixWorld(t, "friends=1,fleet=1")
 	seats = []FriendSeat{readerSeat("alex", 1, []string{"pro"}, []string{"reader"})}
@@ -213,11 +215,6 @@ func TestReadMixQueuesOnABusyFriendBeforeTheFleet(t *testing.T) {
 	w.s.Fleet.Put(&Card{ID: "busy.w1", Row: FriendRow("alex"), Col: Working, Fields: map[string]string{"kind": "work"}})
 	dealReads(t, w, seats)
 	friends, models := mixSplit(w, "s1-1")
-	require.Equal(t, []string{FriendRow("alex")}, friends, "the busy friend is dealt the friends' read")
-	require.Len(t, models, 1)
-	for _, c := range readCardsOf(w, "s1-1") {
-		if c.Row == FriendRow("alex") {
-			require.Equal(t, Ready, c.Col, "queued, not working past her width")
-		}
-	}
+	require.Empty(t, friends, "the friend at her width is dealt no read")
+	require.Len(t, models, 2, "both reads dealt from the fleet, none waiting behind her row")
 }

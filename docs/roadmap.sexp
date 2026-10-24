@@ -8952,10 +8952,13 @@ The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 
    :why "On 2026-10-24 three workers on one row kept running 1 to 2 hours on cards that had moved to another friend or a fleet member (rn-client-iocp-windows-t, rn-fix-assert-iocp-packet-id, rn-fix-cfg-config-bytes), queued duplicate Windows gate jobs, and stopped only when checked by hand."
    :release "v1.9"
    :origin "coordinator review 2026-10-24")
-  (item "reads-never-wait-behind-a-full-row" :group "friends" :date "2026-10-24"
-   :title "Deal a read only to a reader with a free slot, and level an untaken one"
-   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). The deal hands a read only to a reader with a free slot; a ready read untaken past a short bound is levelled to another eligible reader; and friend give moves a ready read as it moves a work card (today it refuses read ids: no card <id>.r7.<friend>). Related: friend-give-holds-for-named-friend, stalled-friend-detector, fleet-reads-launch-without-route (v1.7)."
-   :why "On 2026-10-24 four reads waited in the ready column of a friend whose row was at 8 of 8, while 18 cards sat in review and nothing merged."
-   :release "v1.9"
-   :origin "coordinator review 2026-10-24")
-))
+)
+ :done
+ ((done "reads-never-wait-behind-a-full-row" :title "Deal a read only to a reader with a free slot, and level an untaken one"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). The deal hands a read only to a reader with a free slot; a ready read untaken past a short bound is levelled to another eligible reader; and friend give moves a ready read as it moves a work card (today it refuses read ids: no card <id>.r7.<friend>). Related: friend-give-holds-for-named-friend, stalled-friend-detector, fleet-reads-launch-without-route (v1.7). Done: PR #604."
+   :date "2026-10-24"
+   :kept (:item-group "friends"
+          :item-date "2026-10-24"
+          :item-why "On 2026-10-24 four reads waited in the ready column of a friend whose row was at 8 of 8, while 18 cards sat in review and nothing merged."
+          :item-release "v1.6.21"
+          :item-origin "coordinator review 2026-10-24"))))
