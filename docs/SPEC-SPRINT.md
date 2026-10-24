@@ -281,8 +281,14 @@ read is written as down by the server and is an error to the deal's own read
 up. `friend down`/`hold` records the sprint hold with its reason and expected
 return; `friend up`/`unhold` releases it. A down row uses the hook's reason;
 a held row uses sprint's hold reason. Down rows show zero working. Explicit
-unhook returns working cards and reads through the existing reconciliation;
-missing or stale reports alone never return cards. Machine presence and the
+unhook returns working cards and reads through the existing reconciliation
+once the friend is past the unhook grace (`sprint.FriendUnhookInGrace`,
+`tla/FriendUnhookGrace.tla`): while the unhook is younger than the friend-idle
+setting (`set --friend-idle`, default 20m) and her last answer to a challenge
+younger than that plus `hook.ProofTTL`, her working cards and reads stay on her
+row (her own fresh beat still reconciles them, as any row's), and a friend who
+hooks in again inside it keeps them; she is down at once all the same, dealt
+nothing. Missing or stale reports alone never return cards. Machine presence and the
 coordinator seat hook retain their own existing rules.
 
 The

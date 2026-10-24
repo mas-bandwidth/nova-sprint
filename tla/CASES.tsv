@@ -802,3 +802,8 @@ MCReadMixBrokenStrict.cfg	MCReadMix.tla	invariant	FillNeverWaits	ignore-terminal
 MCReadMixBrokenAcceptAny.cfg	MCReadMix.tla	invariant	AcceptOnlyAllOk	ignore-terminal	readmix	required	-
 MCReadMixBrokenNoPool.cfg	MCReadMix.tla	invariant	NeverStuckOnPool	ignore-terminal	readmix	required	-
 MCReadMixBrokenUpPool.cfg	MCReadMix.tla	action	NeedNeverRises	ignore-terminal	readmix	required	-
+MCFriendUnhookGrace.cfg	MCFriendUnhookGrace.tla	pass	-	ignore-terminal	friendunhookgrace	required	-
+MCFriendUnhookGraceBrokenNoGrace.cfg	MCFriendUnhookGrace.tla	invariant	NoReturnInGrace	ignore-terminal	friendunhookgrace	required	-
+MCFriendUnhookGraceBrokenUnhookClockOnly.cfg	MCFriendUnhookGrace.tla	invariant	NoStrandedPastGrace	ignore-terminal	friendunhookgrace	required	-
+MCFriendUnhookGraceReachReturn.cfg	MCFriendUnhookGrace.tla	invariant	NeverReturned	ignore-terminal	friendunhookgrace	required	-
+MCFriendUnhookGraceReachKept.cfg	MCFriendUnhookGrace.tla	invariant	NeverKeptAcrossUnhook	ignore-terminal	friendunhookgrace	required	-

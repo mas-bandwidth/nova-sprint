@@ -154,7 +154,10 @@ The model answers the nonce delivered by `nova-hook` with
 `nova-hook prove --as <name> --nonce <nonce>`. Only that hook evidence supplies
 liveness. An explicitly unhooked hook record makes the tick return the friend's
 working cards and review assignments to their deals (`sprint.LiveReturns`),
-even without a new work report. A missing or unproven hook prevents new deals;
+even without a new work report, once she is past the unhook grace
+(`sprint.FriendUnhookInGrace`: the friend-idle setting since the unhook, and
+that plus `hook.ProofTTL` since her last answer). A friend whose Monitor lapsed
+or who missed one challenge mid-turn and hooks in again inside it keeps them. A missing or unproven hook prevents new deals;
 it is not itself an explicit unhook. Sprint's hold remains separate through
 these changes. No file in her directory decides what she holds: the friend
 reconcile against her queue file is retired, and her lanes ask the server

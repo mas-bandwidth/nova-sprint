@@ -166,6 +166,11 @@ type FriendRow struct {
 	SprintHeld bool      `json:"-"`
 	Unhooked   bool      `json:"-"`
 	WorkerLive bool      `json:"-"`
+	// UnhookedAt and AnsweredAt are the hook record's unhook and last answer, the deal's
+	// own derivation alone (friendRows), never stored: the unhook grace's clocks
+	// (sprint.FriendUnhookInGrace).
+	UnhookedAt time.Time `json:"-"`
+	AnsweredAt time.Time `json:"-"`
 	// Reason and Until say why she is held or down and when she is expected
 	// back, from the sprint hold or nova-hook reason.
 	Reason string    `json:"reason,omitempty"`
@@ -451,6 +456,11 @@ type friendStatus struct {
 	At         time.Time `json:"at"`
 	// Why is the words a take refused for her names (FriendSeats); the deal's own, not stored.
 	Why string `json:"-"`
+	// UnhookedAt and AnsweredAt are the hook record's unhook time and last answer
+	// (hook.Status.Unhooked, AnswerAt): the deal's own, not stored, read by the unhook
+	// grace (sprint.FriendUnhookInGrace).
+	UnhookedAt time.Time `json:"-"`
+	AnsweredAt time.Time `json:"-"`
 }
 
 // NoFriendStatus is the evidence of a friend who shows down while the server has written no
@@ -517,6 +527,9 @@ func (st *Store) deriveFriendStatus(ctx context.Context, now time.Time, soft boo
 		}
 		fs.Status = sprint.FriendHookStatus(h, r[n].Held)
 		fs.Unhooked = h.State == hook.StateUnhooked
+		if fs.Unhooked {
+			fs.UnhookedAt, fs.AnsweredAt = h.Unhooked, h.AnswerAt
+		}
 		switch fs.Status {
 		case sprint.Held:
 			fs.Reason, fs.Until = r[n].Reason, r[n].Until
@@ -640,6 +653,7 @@ func (st *Store) friendRowsOf(ctx context.Context) ([]string, map[string]FriendR
 func (row FriendRow) withStatus(fs friendStatus) FriendRow {
 	row.Status, row.Reason, row.Until, row.Evidence = fs.Status, fs.Reason, fs.Until, fs.Evidence
 	row.WorkerLive, row.Unhooked = fs.WorkerLive, fs.Unhooked
+	row.UnhookedAt, row.AnsweredAt = fs.UnhookedAt, fs.AnsweredAt
 	return row
 }
 
@@ -737,6 +751,7 @@ func (st *Store) FriendSeats(ctx context.Context, now time.Time) ([]sprint.Frien
 		seats[i].Beat = sprint.Beat{At: r.Beat, Friend: r.Report, Load: r.Load}
 		seats[i].Evidence, seats[i].Current = r.Evidence, currentBuild
 		seats[i].Unhooked = r.Unhooked
+		seats[i].UnhookedAt, seats[i].AnsweredAt = r.UnhookedAt, r.AnsweredAt
 		seats[i].WorkerLive = r.WorkerLive
 		seats[i].Held = r.SprintHeld
 		seats[i].Session = r.Session
