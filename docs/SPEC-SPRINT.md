@@ -1641,6 +1641,84 @@ default) and `low` (it fills only an idle lane).
   or that names none while the store holds routes, is never asked a pro read (the owner,
   2026-10-06, "I'm ok with flash readers on fleet but not pro"); a row naming pro is; a
   friend's reader naming none reads every tier (section 6; `TestFleetReadersReadOnlyTheirTiers`).
+- **v1.9, not yet built: fix first, then reads (fix-first-then-reads).** The owner, 2026-10-20:
+  "reads are a priority, and they are above all work, except critical and higher", and later
+  the same day, "fix is the highest priority of all". The ladder becomes fix > blocker >
+  critical > reader > high > normal > low: a ready `fix` card deals before `blocker` work, and
+  a `reader` read deals before `high` work and after `critical` and `blocker` work. Until it is
+  built, the ladder above (`fix` between `critical` and `high`, `reader` between `high` and
+  `normal`) is what the code does. Done when this section and the ladder in the code say so, a
+  test shows a ready `fix` card dealt before `blocker` work, a test shows a `reader` read dealt
+  before `high` work and after `critical` work, and tla/SprintPriority.tla models the whole
+  order (nova-tools roadmap, fix-first-then-reads).
+- **Fix first.** A fix is the card closest to landed. Its work is done and paid for, usually
+  already read, and only a repair stands between it and base. Every minute it waits, its head
+  goes stale (re-merge, conflicts, re-deal; on 2026-10-20
+  rocketnet-example-ack-receipts-debug-assert failed its landing twice on conflict while it
+  waited), its worker's and reader's context goes cold, and any card or red base it blocks
+  holds up everything behind it. Finishing nearly-finished work drains the pipe fastest.
+- **Reads are the drain.** The design reason reads rank above all other work except `critical`
+  and `blocker`:
+  - A read is the drain of the pipe. Finished work is worth nothing until it is read and
+    landed, so a read outranks starting new work.
+  - When reads queue behind work, every new deal adds to review instead of emptying it, and
+    work in flight grows: 16 cards sat in review on 2026-10-20.
+  - While a card waits, base moves on and its head goes stale: re-merges, conflicts,
+    re-deals and bounced finishes, all of which happened on 2026-10-20.
+  - A late BROKEN verdict arrives after the worker has moved on, so rework pays to rebuild
+    context, often in a fresh attempt.
+  - The board misleads: working grows while landed stays flat, which reads as treading water.
+  - With reads first, each finish is read while it is fresh, work in flight stays small, base
+    moves in small steps, and landed per hour tracks finished per hour (Little's law).
+
+### v1.9, not yet built: the owner's sprint rulings of 2026-10-20
+
+The owner, 2026-10-20, of the speed rules in force that day: "probably just normal rules from
+now on?", and "Fully cover the smart defaults in v1.9". These are standing rules of every sprint.
+None is built yet; until each lands the coordinator applies it by hand. Each names its nova-tools
+roadmap entry (docs/roadmap.sexp, group export-v19).
+
+- **Priority.** fix > blocker > critical > reader > high > normal > low, and priority passes
+  down every dependency: a card's hard needs and sentinels deal at its priority, a lower-priority
+  LAND-AFTER never stalls the lander, an inversion is warned when written and alarmed within a
+  tick (section "Priority" above; fix-first-then-reads, priority-inherits-through-needs,
+  land-after-never-stalls-the-lander, priority-inversion-caught-at-write,
+  priority-inversion-alarm, sentinel-needs-editable, priority-report, priority-proven-in-tla).
+- **One friend read; BROKEN only for a real defect.** The default read mix is one friend read.
+  A read says BROKEN only for a DONE-WHEN item not met, a regression from base, a broken owner
+  ruling, a build break or a test that cannot fail; everything else is a note on an OK (the
+  owner: "Land shit!"; default-read-mix-one-friend, read-broken-bar). A mix may deal N reads and
+  decide on K ("we can send off 3 reads, but we need only 2"; reads-deal-n-need-k).
+- **Ready to accept is accepted by the machine**, once per card (auto-accept-ready). Harmless
+  PATHS-PROPOSED files (tests, docs, TLA cfg, records, CI comments) are approved automatically
+  (harmless-paths-auto-approved).
+- **Gate once; never chase the base tip.** Merge the base once, gate at that head, finish naming
+  the gated SHA; the lander re-merges and its CI tests the tip ("this has always been the rule";
+  gate-once-no-tip-chase). Windows gates run only for cards that change Windows code, derived
+  from PATHS (gate-needs-from-paths).
+- **The fleet takes first passes; fixes go to friends**, continuing from the last pushed head
+  ("get the fast cheap pass on the fleet, then if the fleet can't do it, then the friends finish
+  it"; fixes-go-to-friends).
+- **The two-minute rule.** Until features and bugs land, no single run over two minutes; a
+  longer run is OWED, never cut down and never a reason for BROKEN, and the sprint keeps the
+  OWED list (owner-run-budget, owed-runs-are-a-machine-list).
+- **The coordinator never edits a working card's brief to talk to it**; notes go by message.
+  A NOTE, CARRY, ROUTE, tier or PRIORITY edit, or a PATHS widening, never bounces a finish and
+  never retires a review card's reads; a bounced head is re-finished by a verb
+  (brief-note-never-bounces-a-finish, brief-edit-at-review-keeps-reads, refinish-verb).
+- **One bad merging card never stalls a stream**, a merging card's header is repaired in place,
+  and the coordinator lands a named card through the lander, never around it
+  (lander-sets-aside-an-unlandable-head, merging-card-repaired-in-place,
+  coordinator-lands-through-the-fence).
+- **Converging** means the cards landed create fewer than one new primary card each, counted
+  only over landed cards ("Look only at cards that have landed, what new work did they
+  create?"); landed per hour is shown beside it ("We should be able to do 20-30-40-50+
+  per-hour"; convergence-metric).
+- **Scope moves in one step**: defer and drop take a card from any column into its
+  repository's own roadmap with its brief and head, dependents handled, and one verb scopes the
+  sprint to a release (defer-any-card-into-its-repo-roadmap, single-card-hold-and-return,
+  scope-to-milestone-one-verb).
+
 ### gc: the system's scratch is reclaimed by a verb
 
 On 2026-10-06 the coordinator freed 314 GiB with a hand-written `clean-jobs.py` (job
