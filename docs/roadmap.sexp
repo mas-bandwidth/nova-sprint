@@ -8777,4 +8777,39 @@ The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 
    :text "The bar Glenn set: \"as effective, nay more effective, than how we work here\". Measure on the dashboard: card-to-main time, stream drift, landings per hour, ruling-to-running-card latency, tokens and machine time per landed change, main's red minutes. Baseline: the 2026-10-21 coordinator session (virtualgo, moo and schema's Go core consolidated in hours with 19 child agents). v1.9 is done when the sprint beats it on landed changes per hour and per token, with main green. SOURCE: Glenn 2026-10-21: \"Please break up v1.9 into more cards, according to the work we have just talked about. Build it up from the lowest layer to the highest so the sprint is as effective, nay more effective, than how we work here from roadmap.\" Umbrella items: continuous-parallel-landing, goal-cards-live-steering-context-packs. Each layer is secured (modelled with reversed witnesses, tested incl. every refusal, used for real work, documented, locked with the owner) before the layer above starts."
    :why "v1.9 is built layer by layer from the foundation so the sprint lands at least as fast as the 2026-10-21 coordinator session"
    :release "v1.9"
-   :origin "the owner, 2026-10-21")))
+   :origin "the owner, 2026-10-21")
+  (item "finish-refuses-hold-verdict" :group "sprint" :date "2026-10-24"
+   :title "A plain finish whose report's verdict is not LAND or done is refused"
+   :text "Target v1.7. A finish whose report's verdict line is HOLD or not-done is recorded ok and sent to a reader; on one row 17 of 53 failed attempts were HOLD reports recorded ok. finish without --failed refuses a report whose verdict line is not LAND or done, naming the line, and collect applies the same rule to a friend's REPORT.md."
+   :why "A cross-row review of 82 failed work attempts found the same classes on every row."
+   :origin "coordinator review 2026-10-24")
+  (item "broken-read-needs-defect-class" :group "sprint" :date "2026-10-24"
+   :title "A broken read must name a defect class"
+   :text "Target v1.7. A broken read whose finding names no defect is accepted and reworks the card. read --broken requires a defect class (DONE-WHEN unmet, PATHS, ledger, banned word, name, gate evidence, behaviour) beside the finding, and refuses without one."
+   :why "A cross-row review of 82 failed work attempts found the same classes on every row."
+   :origin "coordinator review 2026-10-24")
+  (item "broken-read-does-not-outvote-oks" :group "sprint" :date "2026-10-24"
+   :title "One broken read no longer outvotes several ok reads"
+   :text "Target v1.7. One broken read outvotes several ok reads at the same head, including a stale read against PATHS that were already amended in place. A broken read whose finding is answered by the card's current brief (amended PATHS or DONE-WHEN) is retired as stale, and a single broken read against several oks asks one more read instead of reworking."
+   :why "A cross-row review of 82 failed work attempts found the same classes on every row."
+   :origin "coordinator review 2026-10-24")
+  (item "fleet-reads-launch-without-route" :group "sprint" :date "2026-10-24"
+   :title "Fleet reads never launch without a route"
+   :text "Target v1.7. Fleet read cards launch with no route and return no verdict, again and again for the same card. The deal refuses a read to a member with no route for the card's tier, and a read that returns with no verdict for want of a route is not dealt to that member again until its route is set."
+   :why "A cross-row review of 82 failed work attempts found the same classes on every row."
+   :origin "coordinator review 2026-10-24")
+  (item "widen-in-place-redeals-same-head" :group "sprint" :date "2026-10-24"
+   :title "Widening PATHS or DONE-WHEN in place does not re-deal the same head"
+   :text "Target v1.7. Widening a card's PATHS or DONE-WHEN in place re-deals the work and re-reads the same unchanged head. An in-place widening that the current head already meets sends that head to review once at the new brief, without a new work attempt; a head a reader already found broken is never resent unchanged."
+   :why "A cross-row review of 82 failed work attempts found the same classes on every row."
+   :origin "coordinator review 2026-10-24")
+  (item "friend-take-blocks-until-rebrief" :group "sprint" :date "2026-10-24"
+   :title "Cards taken back with friend take return to the deal"
+   :text "Target v1.7. Cards taken back with friend take are excluded from the deal and from friend give until they are rebriefed. A card taken back goes to any other friend or member with room at once, and friend give can hand it to a named friend without a rebrief."
+   :why "A cross-row review of 82 failed work attempts found the same classes on every row."
+   :origin "coordinator review 2026-10-24")
+  (item "staged-job-dir-carries-another-card" :group "sprint" :date "2026-10-24"
+   :title "A staged job directory never carries another card's RESULT.md or HEAD"
+   :text "Target v1.7. A staged job directory can carry another card's RESULT.md and HEAD (seen at 2dc17c32), so a worker can finish one card with another's report or head. Staging starts from a clean directory, checks that the staged HEAD is the card's BASE or carried head, and refuses a directory holding a report file for another card."
+   :why "A cross-row review of 82 failed work attempts found the same classes on every row."
+   :origin "coordinator review 2026-10-24")))

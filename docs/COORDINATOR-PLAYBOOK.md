@@ -517,10 +517,12 @@ claim LAND: the self-check".
    `nova-sprint brief <id> (--brief <text> | --brief-file <path>) [--rules <file>] [--answers <note>] | --dir <dir> [--rules <file>] | --group <id> [--expect <n>] (--brief-file <path> | --dir <dir>) [--answers <note>] | <id> --widen [--repo-dir <clone>] | <id> --tier <flash|pro|heavy|frontier> | <selector> (--set-base <branch> | --drop-who | --tier <t>)... [--dry-run]`.
    Run `nova-sprint brief <card> --brief-file <path>`, then answer the bound judgment with
    `nova-sprint rework <card> --carry --fix <text> --answers <id>` (section 4, steps 3 and 4).
+   A card that fails the same way twice gets its brief fixed here, never a third attempt.
    The example: a DONE-WHEN item that asks for a run recorded "at the head under review", when
-   recording the run adds a commit. Every attempt moves the head it records, so no attempt can
-   meet it; the rebrief names the head the run was taken at instead. Spec: SPEC-SPRINT.md section
-   11, the `brief` row.
+   recording the run adds a commit, or a Windows or macOS step that takes longer than main takes
+   to move. Either way the head moves under the step, so no attempt can meet it. The rebrief
+   states the order: merge main once, push, run every step at that head, and never merge again
+   (the lander re-merges). Spec: SPEC-SPRINT.md section 11, the `brief` row.
 6. Keep shared-bench load under the core count. Workers queue on the fleet's slot lock for build
    and test load, and never pick the "least loaded" bench all at once, because they all pick the
    same one. Put the slot lock in every brief's RULES, and find a bench running above its core
