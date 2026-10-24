@@ -71,8 +71,7 @@ func TestAFriendReadCardIsStagedAtTheHeadUnderRead(t *testing.T) {
 	}
 
 	var calls [][]string
-	prevGit := friendStageGit
-	friendStageGit = func(_ context.Context, _ string, args ...string) (string, error) {
+	ta.a.stageGit = func(_ context.Context, _ string, args ...string) (string, error) {
 		calls = append(calls, args)
 		switch args[0] {
 		case "clone":
@@ -82,7 +81,6 @@ func TestAFriendReadCardIsStagedAtTheHeadUnderRead(t *testing.T) {
 		}
 		return "", nil
 	}
-	defer func() { friendStageGit = prevGit }()
 
 	jobs := filepath.Join(root, "amy-working", "jobs")
 	out := ta.ok(fmt.Sprintf("friend stage %s@1 --as friend.amy --dir %s", id, jobs))

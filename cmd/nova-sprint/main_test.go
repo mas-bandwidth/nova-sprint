@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -27,6 +29,14 @@ import (
 )
 
 var t0 = time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+
+// testIDs is the operation id counter of every test app in the process: an id is
+// u<n>, never the clock, the pid or random bytes (store.NewID). One counter for
+// the process, not one per app, because tests share a store between two apps;
+// zero-padded so the ids sort in the order they were made.
+var testIDs atomic.Int64
+
+func testNewID() string { return fmt.Sprintf("u%012d", testIDs.Add(1)) }
 
 // testApp is the command over an in-memory store, its clock stepped by hand.
 type testApp struct {
@@ -76,6 +86,14 @@ func newTestApp(t *testing.T) *testApp {
 	ta.a.cardCheckGate = false
 	ta.a.checkTree = func(context.Context, swarm.CardBase) sprint.AdmissionTree {
 		return sprint.AdmissionTree{Missing: "no base tree is read in a unit test"}
+	}
+	// an operation id is a counter, never the clock: a unit test reads no real time, and
+	// an id the clock made could spell a secret's shape in a backup
+	ta.a.newID = testNewID
+	// friend stage runs no git in a unit test: a test that stages gives its own recorder
+	ta.a.stageGit = func(_ context.Context, _ string, args ...string) (string, error) {
+		t.Errorf("friend stage ran git %v with no recorder given", args)
+		return "", errors.New("no git in a unit test")
 	}
 	// run's wait on a quiet log steps the clock by the time it may take
 	ta.m.LogWait = func(d time.Duration) { ta.a.sleep(d) }

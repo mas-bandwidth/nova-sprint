@@ -109,7 +109,13 @@ type app struct {
 	// friend's daemon with it when it delivers her a card): tests give a recorder
 	// and open no socket.
 	bus busSendFn
-	loc *time.Location // the zone times print in: nil is the machine's local zone
+	// stageGit is the git friend stage clones and configures with (runStageGit): tests
+	// give a recorder and run no git.
+	stageGit gitFn
+	// newID is every store's operation id family (store.NewID: the clock, the pid
+	// and random bytes): tests give a counter, so an id is the same on every run.
+	newID func() string
+	loc   *time.Location // the zone times print in: nil is the machine's local zone
 	// notify is how an interrupt reaches a command that runs until it is
 	// interrupted (where --watch): the context it returns is done at one.
 	notify func(ctx context.Context) (context.Context, context.CancelFunc)
@@ -398,7 +404,7 @@ func (l *controlLine) LockCtx(ctx context.Context) error {
 }
 
 func newApp(getenv func(string) string) *app {
-	a := &app{getenv: getenv, now: time.Now, sleep: time.Sleep, after: time.After, exit: os.Exit, quietEvery: store.QuietEvery, conns: map[string]*redisconn.Conn{}, cached: map[string]store.Backend{}, meter: hostload.Local(), notify: interruptContext, screen: screenSize}
+	a := &app{getenv: getenv, now: time.Now, sleep: time.Sleep, after: time.After, exit: os.Exit, quietEvery: store.QuietEvery, stageGit: runStageGit, newID: store.NewID, conns: map[string]*redisconn.Conn{}, cached: map[string]store.Backend{}, meter: hostload.Local(), notify: interruptContext, screen: screenSize}
 	a.backend = a.redisBackend
 	a.inventory = a.readInventory
 	a.friends = a.readFriends
@@ -744,7 +750,7 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 		return nil, err
 	}
 	// a twin is ticked by hand: no machine runs between its commands (twin.go)
-	st := &store.Store{B: b, Names: names, Actor: c.actor, Now: a.now, NewID: store.NewID, Sleep: a.sleep, CheckTwin: a.checkTwin, ByHand: a.twinOpen(c.redis)}
+	st := &store.Store{B: b, Names: names, Actor: c.actor, Now: a.now, NewID: a.newID, Sleep: a.sleep, CheckTwin: a.checkTwin, ByHand: a.twinOpen(c.redis)}
 	st.ReadFriendHooks = a.readFriendHooks
 	if st.ReadFriendHooks == nil {
 		st.ReadFriendHooks = func(ctx context.Context, names ...string) ([]hook.Status, time.Time, error) {

@@ -216,7 +216,7 @@ func (a *app) loadCheckExport(ctx context.Context, verbName, fromPath string, st
 }
 
 func (a *app) loadExportMem(ctx context.Context, verbName string, m *store.Mem, baseDir string, rs ruleSet, stderr io.Writer) (*sprint.Snapshot, string, ruleSet, int) {
-	st := &store.Store{B: m, Names: sprint.Names{}, Actor: "coordinator", Now: a.now, NewID: store.NewID}
+	st := &store.Store{B: m, Names: sprint.Names{}, Actor: "coordinator", Now: a.now, NewID: a.newID}
 	var err error
 	if st, err = st.Pinned(ctx); err != nil {
 		return nil, "", ruleSet{}, a.readFailed(verbName, err, stderr)

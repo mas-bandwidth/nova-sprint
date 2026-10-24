@@ -49,8 +49,7 @@ func TestAFriendCardIsStagedByAVerb(t *testing.T) {
 		dir  string
 		args []string
 	}
-	prev := friendStageGit
-	friendStageGit = func(_ context.Context, dir string, args ...string) (string, error) {
+	ta.a.stageGit = func(_ context.Context, dir string, args ...string) (string, error) {
 		calls = append(calls, struct {
 			dir  string
 			args []string
@@ -60,7 +59,6 @@ func TestAFriendCardIsStagedByAVerb(t *testing.T) {
 		}
 		return "", nil
 	}
-	defer func() { friendStageGit = prev }()
 
 	jobs := filepath.Join(root, "amy-working", "jobs")
 	out := ta.ok(fmt.Sprintf("friend stage s1-1.w1@1 --as friend.amy --dir %s", jobs))
