@@ -106,7 +106,10 @@ func TestLiveShowsWhatIsInstalled(t *testing.T) {
 	t.Cleanup(func() { liveRunnerOf.Delete(a) })
 
 	var out, errs bytes.Buffer
-	require.Equal(t, 0, runInto(a, []string{"live", "--json", "--dashboard", link, "--agents-dir", agents}, &out, &errs), errs.String())
+	// an empty daemons directory of its own: the host's /Library/LaunchDaemons is never read
+	daemons := filepath.Join(home, "daemons")
+	require.NoError(t, os.MkdirAll(daemons, 0o755))
+	require.Equal(t, 0, runInto(a, []string{"live", "--json", "--dashboard", link, "--agents-dir", agents, "--daemons-dir", daemons}, &out, &errs), errs.String())
 	var m liveManifest
 	require.NoError(t, json.Unmarshal(out.Bytes(), &m))
 	assert.Contains(t, ran, bin+"/nova-redis fn check --addr s:1 --user coordinator --password-env PW", "the library is read by the installed nova-redis, as the seat logs in")

@@ -19,7 +19,10 @@ import (
 // gcApp is an app whose home, AI root and land root are temp directories, on a fixed clock.
 func gcApp(t *testing.T) (a *app, home, ai string, now time.Time) {
 	t.Helper()
-	base := t.TempDir()
+	// gc prints the paths its walk resolves, so the base is resolved before any join
+	// (a temp directory is under a symlink on macOS: /var is /private/var).
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
 	home, ai = filepath.Join(base, "home"), filepath.Join(base, "ai")
 	land := filepath.Join(base, "land")
 	for _, d := range []string{home, ai, land} {

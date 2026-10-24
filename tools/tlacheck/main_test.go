@@ -26,10 +26,19 @@ func checkout(t *testing.T) string {
 	return root
 }
 
-// cli runs one command in process and returns its status, stdout and stderr.
+// bench is the host the tests run on: a linux bench, the machine the runner
+// records, whatever machine the test itself runs on.
+var bench = host{"linux", "amd64"}
+
+// cli runs one command in process on a bench and returns its status, stdout and stderr.
 func cli(args ...string) (int, string, string) {
+	return cliOn(bench, args...)
+}
+
+// cliOn runs one command in process on the host on.
+func cliOn(on host, args ...string) (int, string, string) {
 	var out, errb bytes.Buffer
-	code := run(args, &out, &errb)
+	code := run(invocation{args, on}, &out, &errb)
 	return code, out.String(), errb.String()
 }
 
@@ -154,6 +163,29 @@ func TestRunWithoutJavaRefusesAndStartsNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, tlc.RunsFile)); !os.IsNotExist(err) {
 		t.Fatalf("run started when java was absent (records written)")
+	}
+}
+
+// TestRunOnAHostTheRunnerDoesNotRecordRefusesAndStartsNothing: run on a Mac
+// exits 2 naming the platform and writes no records: TLC runs on a linux bench.
+func TestRunOnAHostTheRunnerDoesNotRecordRefusesAndStartsNothing(t *testing.T) {
+	t.Parallel()
+	root, _, _ := plan(t)
+	dir := t.TempDir()
+	jar := filepath.Join(t.TempDir(), "tlc.jar")
+	if err := os.WriteFile(jar, []byte("jar"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, _, errs := cliOn(host{"darwin", "arm64"}, "run", "--root", root, "--dir", dir, "--group", "tiny",
+		"--jar", jar, "--java", fakeJava(t))
+	if code != exitRefused {
+		t.Fatalf("run exited %d, want %d: %s", code, exitRefused, errs)
+	}
+	if !strings.Contains(errs, `platform "darwin-arm64" is not one the runner records`) {
+		t.Fatalf("run did not name the platform: %s", errs)
+	}
+	if _, err := os.Stat(filepath.Join(dir, tlc.RunsFile)); !os.IsNotExist(err) {
+		t.Fatalf("run started on a host the runner does not record (records written)")
 	}
 }
 

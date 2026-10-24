@@ -53,11 +53,25 @@ const (
 	exitRefused = 2
 )
 
-func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
+func main() {
+	os.Exit(run(invocation{os.Args[1:], host{runtime.GOOS, runtime.GOARCH}}, os.Stdout, os.Stderr))
+}
+
+// host is the machine the command runs on, as Go names it: run records it as the
+// platform of every case, and refuses one the runner does not record.
+type host struct{ goos, goarch string }
+
+// invocation is a command line and the host it runs on: the host is an input, so a test
+// says which machine it is and its result never depends on the machine it runs on.
+type invocation struct {
+	line []string
+	on   host
+}
 
 // run is the whole command: it is a function so tests drive every verb without
 // a process.
-func run(args []string, stdout, stderr io.Writer) int {
+func run(a invocation, stdout, stderr io.Writer) int {
+	args := a.line
 	if len(args) == 0 {
 		fmt.Fprint(stderr, usage)
 		return exitRefused
@@ -71,7 +85,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "inputs":
 		return cmdInputs(args[1:], stdout, stderr)
 	case "run":
-		return cmdRun(args[1:], stdout, stderr)
+		return cmdRun(args[1:], a.on, stdout, stderr)
 	case "merge":
 		return cmdMerge(args[1:], stdout, stderr)
 	default:
@@ -173,7 +187,7 @@ func cmdInputs(args []string, stdout, stderr io.Writer) int {
 }
 
 // cmdRun applies the README.md width rule to the independently runnable cases.
-func cmdRun(args []string, stdout, stderr io.Writer) int {
+func cmdRun(args []string, on host, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	root := fs.String("root", ".", "checkout root; the models are <root>/tla")
@@ -227,7 +241,7 @@ func cmdRun(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "run", err)
 	}
-	platform, err := tlc.Platform(runtime.GOOS, runtime.GOARCH)
+	platform, err := tlc.Platform(on.goos, on.goarch)
 	if err != nil {
 		return refuse(stderr, "run", err)
 	}

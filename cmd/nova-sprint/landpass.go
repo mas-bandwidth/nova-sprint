@@ -135,16 +135,37 @@ func (l *lander) locks() *landShared {
 func (l *lander) fetchKey(ctx context.Context, dir string) string {
 	out, err := l.git(ctx, dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if err != nil {
-		return dir
+		return resolvedDir(dir)
 	}
 	if out = strings.TrimSpace(out); out != "" {
 		// a normal clone's common git dir is <clone>/.git: its parent is the clone directory,
 		// the same key a not-yet-made clone falls back to
 		if parent := filepath.Dir(out); parent != "." && parent != string(filepath.Separator) {
-			return parent
+			return resolvedDir(parent)
 		}
 	}
-	return dir
+	return resolvedDir(dir)
+}
+
+// resolvedDir is dir with its symlinks resolved, so one directory is one key however it is
+// spelled and whatever of it exists yet: git names the common git dir resolved, and a land
+// root under a symlink (macOS's /var is /private/var) would otherwise key a clone on one
+// spelling before its .git exists and on another after. The deepest ancestor that exists is
+// resolved and the names below it are kept, so the key is the same before clone() makes the
+// land root and the clone directory as after (land.go, clone). A dir no ancestor of which
+// resolves is left as it is.
+func resolvedDir(dir string) string {
+	dir = filepath.Clean(dir)
+	var rest []string
+	for p := dir; ; p = filepath.Dir(p) {
+		if real, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(append([]string{real}, rest...)...)
+		}
+		if filepath.Dir(p) == p {
+			return dir
+		}
+		rest = append([]string{filepath.Base(p)}, rest...)
+	}
 }
 
 // fetchLock is the clone's own fetch lock: fetches and worktree writes of one clone stay

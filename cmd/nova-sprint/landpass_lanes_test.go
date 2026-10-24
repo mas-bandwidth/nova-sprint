@@ -266,14 +266,19 @@ func TestTwoBasesOfOneRepoShareTheClonesCreationLock(t *testing.T) {
 	l := &lander{a: r.a}
 	l.locks()
 	ctx := context.Background()
-	root, err := r.a.landRoot()
+	// the land root is reached through a symlink, as a temp directory is on macOS (/var is
+	// /private/var): git names the made clone's common dir resolved, so a key that is not
+	// resolved before .git exists differs from the one after, on every platform
+	realRoot, err := filepath.EvalSymlinks(t.TempDir())
 	require.NoError(t, err)
-	require.NoError(t, os.MkdirAll(root, 0o755))
+	root := filepath.Join(t.TempDir(), "land")
+	require.NoError(t, os.Symlink(realRoot, root))
+	r.a.landRoot = func() (string, error) { return root, nil }
 	dir := filepath.Join(root, repoDirName(r.remote))
 	// the first lane is inside git clone: it holds the destination directory's lock, the
 	// key before .git exists, and git clone has just made .git there
 	mu := l.locks().fetchLock(l.fetchKey(ctx, dir))
-	require.Equal(t, dir, l.fetchKey(ctx, dir), "a not-yet-made clone keys on its destination directory")
+	require.Equal(t, filepath.Join(realRoot, repoDirName(r.remote)), l.fetchKey(ctx, dir), "a not-yet-made clone keys on its destination directory, resolved")
 	mu.Lock()
 	r.git("", "clone", "-q", r.remote, dir)
 	// the second lane of the same repository (another base) calls clone: it must wait for
@@ -320,4 +325,24 @@ func TestARefusedBatchOnOneBaseDoesNotStopAnotherBasesLane(t *testing.T) {
 	assert.Contains(t, errs, "ids=b fact=conflict")
 	assert.Equal(t, map[string]string{"a": "landed/merged", "b": "ready/returned"}, r.places("a", "b"))
 	r.clean()
+}
+
+// TestAClonesKeyIsOneKeyBeforeAndAfterItsLandRootIsMade: resolvedDir names a clone
+// directory under a symlinked land root the same while neither the root nor the clone
+// exists, after clone() makes the root, and after git makes the clone, so the lane that
+// makes the root and the lane that finds it made take one lock (land.go, clone).
+func TestAClonesKeyIsOneKeyBeforeAndAfterItsLandRootIsMade(t *testing.T) {
+	t.Parallel()
+	real, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	link := filepath.Join(t.TempDir(), "link")
+	require.NoError(t, os.Symlink(real, link))
+	dir := filepath.Join(link, "land", "repo")
+	want := filepath.Join(real, "land", "repo")
+	assert.Equal(t, want, resolvedDir(dir), "neither the land root nor the clone is made")
+	require.NoError(t, os.MkdirAll(filepath.Dir(dir), 0o755))
+	assert.Equal(t, want, resolvedDir(dir), "the land root is made, the clone is not")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	assert.Equal(t, want, resolvedDir(dir), "the clone is made")
+	assert.Equal(t, "relative/never/made", resolvedDir(filepath.Join("relative", "never", "made")), "a dir no ancestor of which resolves is left as it is")
 }
