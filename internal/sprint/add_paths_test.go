@@ -285,3 +285,34 @@ func TestAdmissionCtestHasNoPackageButStillHoldsPaths(t *testing.T) {
 	missing := strings.Replace(brief, "PATHS: src/main.cpp", "PATHS: src/missing.cpp", 1)
 	assert.NotEmpty(t, PathsAdmission(missing, tree), "the named source path still must exist")
 }
+
+// A model PATHS names moves with its configs: 2026-10-24, workers whose PATHS named
+// tla/<M>.tla alone could not edit the tla/MC<M>*.cfg files the model change needed. A config
+// is the longest module's its name begins with, so MCSprintTablesBroken.cfg is SprintTables',
+// never Sprint's. The tree is in memory: no git, no clock.
+func TestAdmissionRefusesAModelWithoutItsConfigs(t *testing.T) {
+	t.Parallel()
+	files := []string{
+		"tla/Sprint.tla", "tla/MCSprint.cfg",
+		"tla/SprintTables.tla", "tla/MCSprintTables.tla", "tla/MCSprintTables.cfg", "tla/MCSprintTablesBrokenBounce.cfg",
+		"tla/Other.tla", "README",
+	}
+	tree := AdmissionTree{Files: files, At: "abcdefabcdef (main)", Hold: func(string) ([]string, error) { return nil, nil }}
+	brief := func(paths string) string {
+		return "RESULT: c sha=0123456789ab tier: pro\nREPO: mas-bandwidth/nova-tools\nBASE: main\nPATHS: " + paths + "\n\nTHE TASK. change the model.\n"
+	}
+	got := PathsAdmission(brief("tla/SprintTables.tla"), tree)
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0], "tla/MCSprintTables.cfg, tla/MCSprintTablesBrokenBounce.cfg")
+	assert.NotContains(t, got[0], "tla/MCSprint.cfg", "Sprint's config is not SprintTables'")
+
+	got = PathsAdmission(brief("tla/Sprint.tla"), tree)
+	require.Len(t, got, 1)
+	assert.Contains(t, got[0], "tla/MCSprint.cfg")
+	assert.NotContains(t, got[0], "MCSprintTables", "SprintTables' configs are not Sprint's")
+
+	assert.Empty(t, PathsAdmission(brief("tla/SprintTables.tla,tla/MCSprintTables.cfg,tla/MCSprintTablesBrokenBounce.cfg"), tree), "named one by one")
+	assert.Empty(t, PathsAdmission(brief("tla/SprintTables.tla,tla/MCSprintTables*.cfg"), tree), "named by a glob")
+	assert.Empty(t, PathsAdmission(brief("tla/Other.tla"), tree), "a model with no config")
+	assert.Empty(t, PathsAdmission(brief("tla/*.tla,tla/*.cfg"), tree), "a glob of models names no single model")
+}

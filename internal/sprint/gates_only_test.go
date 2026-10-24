@@ -165,3 +165,31 @@ func TestAClearCarriesGatesOnly(t *testing.T) {
 	require.NotNil(t, fields, "the clear makes m-a's control card again: %+v", p.Units)
 	assert.Equal(t, "windows", fields[FieldGatesOnly])
 }
+
+// TestAMacosCardIsDealtToTheDarwinMember: 2026-10-24, every card whose GATE-NEEDS said macos
+// raised "no member up satisfies GATE-NEEDS macos" beside mini-m5 (gates_only darwin, facts
+// darwin,arm64,go,java) beating at width 16: the deal compared words, and the gates-only
+// filter dropped the member before the judgment could name it. The need, the gate and the
+// fact are read in one vocabulary (swarm.GateFact), so macos is darwin.
+func TestAMacosCardIsDealtToTheDarwinMember(t *testing.T) {
+	t.Parallel()
+	w := fleetWorld(t, 1, 16, "mini", "m-b")
+	w.s.MemberCtl("mini").Fields[FieldFacts] = "darwin,arm64,go,java"
+	w.s.MemberCtl("mini").Fields[FieldGatesOnly] = "darwin"
+	w.s.MemberCtl("m-b").Fields[FieldFacts] = "linux,amd64,go"
+	for _, need := range []string{"macos", "macOS", "darwin", "macos, arm64", "osx, aarch64"} {
+		w.s.Work.Card("s1-1").Fields["brief"] = "tier: pro\nGATE-NEEDS: " + need + "\n\nThe task.\n"
+		pool, why := w.s.GateHostPool(w.s.Work.Card("s1-1"), []string{"mini", "m-b"})
+		assert.Equal(t, []string{"mini"}, pool, "GATE-NEEDS %s", need)
+		assert.Empty(t, why, "GATE-NEEDS %s raises no judgment", need)
+	}
+	w.s.Work.Card("s1-1").Fields["brief"] = "tier: pro\nGATE-NEEDS: macos\n\nThe task.\n"
+	p, _ := TickDeal(w.s, TickReq{})
+	for _, n := range p.Notes {
+		assert.NotEqual(t, NGateNeeds, n.Type, "the darwin member is up: no gate judgment")
+	}
+	w.must(p)
+	wc := w.s.Fleet.Card("s1-1.w1")
+	require.NotNil(t, wc, "the macos card is dealt")
+	assert.Equal(t, "mini", wc.Row)
+}
