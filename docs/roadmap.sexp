@@ -8819,4 +8819,10 @@ The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 
    :text "A staged job directory can carry another card's RESULT.md and HEAD, so a worker can finish one card with another's report or head. Staging starts from a clean directory, checks that the staged HEAD is the card's BASE or carried head, and refuses a directory holding a report file for another card."
    :why "A finish built on another card's report or head is wrong in a way no reader of the brief expects, and wastes the attempt."
    :release "v1.7"
+   :origin "coordinator review 2026-10-24")
+  (item "friend-stage-read-stages-head-under-read" :group "sprint" :date "2026-10-24"
+   :title "friend stage of a read card stages the exact head under read, read-only"
+   :text "nova-sprint friend stage of a read card fails. For a read with no NEXT it stages an empty checkout at main (git exits 128); for a carried card it stages the carried head instead of the head under read; and it writes no JOB.md. A read stages the exact head under read, read-only, with its JOB.md."
+   :why "A reader staged at the wrong head reads the wrong work, or cannot read at all, so the read returns no verdict or a wrong one."
+   :release "v1.7"
    :origin "coordinator review 2026-10-24")))

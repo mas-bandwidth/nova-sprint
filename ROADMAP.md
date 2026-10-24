@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (294)
+- [The sprint system](#the-sprint-system) (295)
 - [Setup, release and operations](#setup-release-and-operations) (72)
 - [Docs, models and the repository](#docs-models-and-the-repository) (25)
 - [Friend AIs](#friend-ais) (22)
@@ -2473,6 +2473,16 @@ From: coordinator review 2026-10-24
 A staged job directory can carry another card's RESULT.md and HEAD, so a worker can finish one card with another's report or head. Staging starts from a clean directory, checks that the staged HEAD is the card's BASE or carried head, and refuses a directory holding a report file for another card.
 
 Why it waits: A finish built on another card's report or head is wrong in a way no reader of the brief expects, and wastes the attempt.
+
+Target: v1.7
+
+From: coordinator review 2026-10-24
+
+### friend stage of a read card stages the exact head under read, read-only
+
+nova-sprint friend stage of a read card fails. For a read with no NEXT it stages an empty checkout at main (git exits 128); for a carried card it stages the carried head instead of the head under read; and it writes no JOB.md. A read stages the exact head under read, read-only, with its JOB.md.
+
+Why it waits: A reader staged at the wrong head reads the wrong work, or cannot read at all, so the read returns no verdict or a wrong one.
 
 Target: v1.7
 
