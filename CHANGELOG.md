@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.6.17 — 2026-10-24
+
+Cut from d1197ace5c72159966d81a90e170e6cd70f57c56. 2 pull requests since v1.6.16.
+
+Recovery journeys incomplete, gate waived: v1.6.17: the attempt cap's judgment never spins raise -> answer -> raise, and rework takes a ready card at its cap (#588); journeys: the range touches no hook or recovery path; spend: the range changes no spend recording
+
+- TestASilentClientIsUnhookedAfterExactlyTwoAnnouncedOnce: not-run (no --journeys evidence)
+- TestNoServerOrNoAnswerIsNoEvidence: not-run (no --journeys evidence)
+- TestTheGateRefusesEveryoneWhileTheServerIsStale: not-run (no --journeys evidence)
+- TestAStaleAnswerIsDownWithAFreshServer: not-run (no --journeys evidence)
+- TestALostAnswerIsNeverToldTwice: not-run (no --journeys evidence)
+
+Spend gate waived: v1.6.17: the attempt cap's judgment never spins raise -> answer -> raise, and rework takes a ready card at its cap (#588); journeys: the range touches no hook or recovery path; spend: the range changes no spend recording (window 2026-10-24T00:00:00Z..2026-10-24T14:46:58Z)
+- unread: --spend-store <addr> names no sprint store, so the recorded spend cannot be read
+
+- #587 changelog: v1.6.16
+- #588 tick: the attempt cap's judgment never spins raise -> answer -> raise
+
 ## v1.6.16 — 2026-10-24
 
 Cut from 46c3eceefcc56bace652f377e420e5fc85c901d9. 2 pull requests since v1.6.15.
