@@ -186,6 +186,24 @@ refuses a card not dealt to the named friend, and a friend whose nova-config row
 has no `git_identity` field. A second stage of the same card@gen, branch and
 head is idempotent and prints the `JOB.md` path.
 
+A read card (`<primary>.r<attempt>.<reader>`) dealt to her is staged by the same
+verb at the exact head under read: the primary attempt's head the read judges
+(the read card's head), never the primary's NEXT or CARRY head and never BASE.
+The clone fetches that commit, checks it out detached, checks `git rev-parse
+HEAD` prints it, and turns pushing off in the clone: a read changes, commits and
+pushes nothing. It sets no git identity, so it reads no config store and needs
+no `--pg` or config password; it reads only the sprint store the friend already
+reaches. Its `JOB.md` names `CARD`, `GEN`, `KIND: read`, `PRIMARY`, `ATTEMPT`,
+`BRANCH` (the work branch), `BASE`, `HEAD` (the head under read), `PATHS`, and
+the read verbs that return the verdict:
+
+```
+READ-OK: nova-sprint read --as friend.<name> --ok <read>@<gen> --epoch <n> --finding '<what you checked, and the tests you ran>'
+READ-BROKEN: nova-sprint read --as friend.<name> --broken <read>@<gen> --epoch <n> --finding '<file:line, and what to change>'
+```
+
+A read whose card has no full head under read is refused, nothing staged.
+
 A clone left inside `inbox/<job>/`, beside its brief (the layout before this
 line), is found there too.
 
