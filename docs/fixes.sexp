@@ -3494,8 +3494,8 @@
   (fix "config-drift-alarm" :release "v1.6.21" :status "done"
    :title "Check fleet sync each tick and raise a judgment on config drift"
    :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). The server runs fleet sync --check each tick and raises a judgment when a member's applied config differs from nova-config, naming the members and the fields, so a changed width is never left to a hand-run fleet sync. Related: seat-check-finds-and-repairs-fleet-drift (b), the config store rev ahead of the applied rev. Done: PR #603."
-   :origin "coordinator review 2026-10-24"
    :kept (:item-group "sprint"
           :item-date "2026-10-24"
           :item-why "On 2026-10-24 widths changed in nova-config at 19:15Z were never applied, and 5 benches ran at width 8 against a configured 4 for an hour."
-          :item-release "v1.9"))))
+          :item-release "v1.9")
+   :origin "coordinator review 2026-10-24")))
