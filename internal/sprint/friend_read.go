@@ -434,7 +434,9 @@ func friendReadAskOf(s *Snapshot, seats []FriendSeat, dir string, cards []*Card)
 				continue
 			}
 			eligible = true
-			if free[f.Name] > 0 {
+			// a read goes only to a friend with a free lane: never queued ready behind a
+			// row at its width (roadmap reads-never-wait-behind-a-full-row)
+			if free[f.Name] > 0 && lanes[f.Name] > 0 {
 				withRoom = append(withRoom, f.Name)
 			}
 		}

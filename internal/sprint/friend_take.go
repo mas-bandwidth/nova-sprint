@@ -348,7 +348,22 @@ func FriendGive(s *Snapshot, r FriendGiveReq) Plan {
 	seat, haveSeat := friendSeatOf(s, r.Friend)
 	declared := false
 	seen := map[string]bool{}
+	var idx map[string][]*Card
+	given, tops := map[string]int{}, readGenTops{}
 	for _, id := range r.IDs {
+		if c := s.Fleet.Card(id); isRead(c) {
+			// a read card named: moved to her row as a work card is handed (friend_give_read.go)
+			if seen[c.F("primary")] {
+				p.refuse(id, fmt.Sprintf("%s: a read of %s is given already in this give", id, c.F("primary")))
+				continue
+			}
+			seen[c.F("primary")] = true
+			if idx == nil {
+				idx = fleetReadIndex(s)
+			}
+			friendGiveRead(&p, s, r, c, seat, haveSeat, idx, given, tops, &declared)
+			continue
+		}
 		pr := s.Work.Placed(id)
 		if c := s.Fleet.Placed(id); pr == nil && c != nil && c.F("kind") == "work" {
 			pr = s.Work.Placed(c.F("primary"))
@@ -412,5 +427,6 @@ func FriendGive(s *Snapshot, r FriendGiveReq) Plan {
 			p.Said = append(p.Said, pr.ID+": handed to "+r.Friend)
 		}
 	}
+	p.Props = append(p.Props, tops.writes(s)...)
 	return p
 }
