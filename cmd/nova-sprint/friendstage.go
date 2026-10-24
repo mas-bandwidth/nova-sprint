@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-tools/pkg/member"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
+	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
 
 // friendStageGit is the git runner friend stage clones and configures with: a
@@ -31,7 +33,7 @@ var friendStageGit = func(ctx context.Context, dir string, args ...string) (stri
 }
 
 // friendStageWords is what friend stage says on -h.
-const friendStageWords = "friend stage <card>@<gen> --as friend.<name> [--dir <jobs dir>] stages a friend's dealt card in one step: it clones the card's REPO into <jobs dir>/<card>.w<N> at the card's NEXT head when one is carried, else at BASE, creates the delivered branch (the branch the bus message FRIEND-CARD DELIVERED carries), sets the friend's git identity in the clone's local config (the friend's nova-config row git_identity= field when it names one, else the sprint row's git_identity; the OK line says which, identity=friend or identity=sprint), and writes JOB.md naming the exact finish command. It refuses a card not dealt to the named friend, and refuses when neither identity parses as Name <email> (it never falls back to the machine's global git config). A second run on an already staged directory refuses unless it is the same card@gen, branch and head, and then prints the JOB.md path and exits 0.\n"
+const friendStageWords = "friend stage <card>@<gen> --as friend.<name> [--dir <jobs dir>] stages a friend's dealt card in one step: it clones the card's REPO into <jobs dir>/<card>.w<N> at the card's NEXT head when one is carried, else at BASE, creates the delivered branch (the branch the bus message FRIEND-CARD DELIVERED carries), sets the friend's git identity in the clone's local config (the friend's nova-config row git_identity= field when it names one, else the sprint row's git_identity; the OK line says which, identity=friend or identity=sprint), and writes JOB.md naming the exact finish command. A read card (<primary>.r<attempt>.<reader>) is staged at the exact head under read (the primary attempt's head the read judges, never its NEXT or CARRY head nor BASE), checked out detached and checked with rev-parse, with pushing turned off in the clone; it sets no git identity and reads no config store (only the sprint store), and its JOB.md names the head, BRANCH, BASE, PATHS and the read verbs, READ-OK and READ-BROKEN (nova-sprint read --as friend.<name> --ok|--broken <read>@<gen> --epoch <n> --finding ...); a read with no full head under read is refused. It refuses a card not dealt to the named friend, and refuses when neither identity parses as Name <email> (it never falls back to the machine's global git config). A second run on an already staged directory refuses unless it is the same card@gen, branch and head, and then prints the JOB.md path and exits 0.\n"
 
 // splitFriendCardGen parses --as friend.<name> and a <card>@<gen> operand.
 // splitFriendCardGen returns the friend name, the card id, the generation, and
@@ -65,7 +67,7 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup(name)
 	as := fs.String("as", "", "the friend to stage as, friend.<name>")
 	dir := fs.String("dir", "", "the jobs directory the staged job is cloned under (else HOME/<friend>-working/jobs)")
-	pg := fs.String("pg", "", "the config store, Postgres postgres://user@host:port/db with no password (else NOVA_PG_DSN), as nova-config takes it")
+	pg := fs.String("pg", "", "the config store a work card's friend git identity is read from, Postgres postgres://user@host:port/db with no password (else NOVA_PG_DSN), as nova-config takes it; a read card reads none")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, name, err.Error())
@@ -91,7 +93,7 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	}
 	var work *sprint.Card
 	for _, cc := range cards {
-		if cc.ID == card && cc.Int("gen") == gen {
+		if cc.ID == card && max(1, cc.Int("gen")) == gen { // a record written before generations is gen 1
 			work = cc
 			break
 		}
@@ -104,6 +106,11 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 		return a.readFailed(name, err, stderr)
 	}
 	p := pk[0]
+	if p.Kind == "read" {
+		// a read is staged at the head under read, read-only, and commits nothing: it
+		// needs no git identity, so no config store (friendStageRead)
+		return a.friendStageRead(ctx, friendName, card, gen, p, work, *dir, stdout, stderr)
+	}
 
 	// (3) the friend's own git identity, from her nova-config row when it names one, else the
 	// sprint row's git_identity (v1.4.5: the friend kind has no git_identity field yet, so a
@@ -164,13 +171,9 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 		startRef = base.Ref
 	}
 	job := friendJobOf(p)
-	root := *dir
-	if root == "" {
-		home := a.getenv("HOME")
-		if home == "" {
-			return refuse(stderr, name, "wants --dir <jobs dir>, the jobs directory (HOME is not set)")
-		}
-		root = filepath.Join(home, friendName+"-working", friend.JobsDir)
+	root, ok := a.friendJobsRoot(friendName, *dir)
+	if !ok {
+		return refuse(stderr, name, "wants --dir <jobs dir>, the jobs directory (HOME is not set)")
 	}
 	jobDir := filepath.Join(root, job)
 
@@ -232,6 +235,114 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	a.outcome, a.changed = "accepted", "yes"
 	return 0
 }
+
+// friendJobsRoot is the jobs directory a friend's job is staged under: --dir when
+// given, else HOME/<friend>-working/jobs; false when neither can be had.
+func (a *app) friendJobsRoot(friendName, dir string) (string, bool) {
+	if dir != "" {
+		return dir, true
+	}
+	home := a.getenv("HOME")
+	if home == "" {
+		return "", false
+	}
+	return filepath.Join(home, friendName+"-working", friend.JobsDir), true
+}
+
+// friendStageRead stages a read card dealt to a friend: it clones the primary's REPO
+// into <jobs dir>/<job>, fetches the exact head under read (the primary attempt's head
+// the read judges, the read card's head; never the primary's NEXT or CARRY head, which
+// is where a later attempt would start, and never BASE), checks it out detached, checks
+// that HEAD is that commit, turns pushing off in the clone (a read changes, commits and
+// pushes nothing), and writes JOB.md naming the head, the BASE, the PATHS and the read
+// verbs that return the verdict. It reads only the sprint store the friend already
+// reaches: a read commits nothing, so it sets no git identity and reads no config store.
+func (a *app) friendStageRead(ctx context.Context, friendName, card string, gen int, p sprint.Packet, rc *sprint.Card, dir string, stdout, stderr io.Writer) int {
+	const name = "friend stage"
+	base := swarm.ReadCardBase([]byte(p.Brief))
+	repoURL := swarm.CardRepoURL(base.Repo)
+	if repoURL == "" {
+		return refuse(stderr, name, fmt.Sprintf("read %s's card %s names no REPO: line to clone", oneline.Field(card), oneline.Field(p.Primary)))
+	}
+	head := cmp.Or(p.Head, rc.F("head"))
+	if !typedrec.IsFullSha(head) {
+		return refuseState(stderr, name, fmt.Sprintf("read %s names no full head under read (head %s); nothing was staged", oneline.Field(card), oneline.Escape(cmp.Or(head, "-"))))
+	}
+	workBranch := cmp.Or(p.WorkBranch, rc.F("branch"), "-")
+	baseField := cmp.Or(p.WorkBase, base.Ref, base.Sha, "-")
+	paths := strings.Join(swarm.CardPaths([]byte(p.Brief)), ", ")
+	if paths == "" {
+		paths = "none"
+	}
+	job := friendJobOf(p)
+	root, ok := a.friendJobsRoot(friendName, dir)
+	if !ok {
+		return refuse(stderr, name, "wants --dir <jobs dir>, the jobs directory (HOME is not set)")
+	}
+	jobDir := filepath.Join(root, job)
+	jobPath := filepath.Join(jobDir, friend.JobFile)
+
+	// an already staged directory: the same read at the same gen and head is idempotent
+	if old, err := os.ReadFile(jobPath); err == nil {
+		s := string(old)
+		if strings.Contains(s, "CARD: "+card+"\n") && strings.Contains(s, "GEN: "+strconv.Itoa(gen)+"\n") && strings.Contains(s, "HEAD: "+head+"\n") {
+			fmt.Fprintln(stdout, jobPath)
+			a.outcome, a.changed = "accepted", "no"
+			return 0
+		}
+		return refuseState(stderr, name, fmt.Sprintf("the job %s is already staged as another card or head; nothing was written", oneline.Field(job)))
+	} else if !os.IsNotExist(err) {
+		return refuse(stderr, name, "the staged JOB.md cannot be read: "+oneline.Err(err))
+	}
+
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return refuse(stderr, name, err.Error())
+	}
+	if _, err := friendStageGit(ctx, root, "clone", "-q", repoURL, jobDir); err != nil {
+		return refuse(stderr, name, "clone of "+repoURL+" into "+oneline.Field(job)+": "+oneline.Err(err))
+	}
+	if _, err := friendStageGit(ctx, jobDir, "config", "remote.origin.pushurl", friendReadNoPush); err != nil {
+		return refuse(stderr, name, "turning pushing off in the read's clone: "+oneline.Err(err))
+	}
+	if _, err := friendStageGit(ctx, jobDir, "fetch", "-q", "origin", head); err != nil {
+		return refuse(stderr, name, "fetch of the head under read "+head+": "+oneline.Err(err))
+	}
+	if _, err := friendStageGit(ctx, jobDir, "checkout", "-q", "--detach", head); err != nil {
+		return refuse(stderr, name, "checkout of the head under read "+head+": "+oneline.Err(err))
+	}
+	got, err := friendStageGit(ctx, jobDir, "rev-parse", "HEAD")
+	if err != nil {
+		return refuse(stderr, name, "rev-parse of the staged head: "+oneline.Err(err))
+	}
+	if strings.TrimSpace(got) != head {
+		return refuse(stderr, name, fmt.Sprintf("the staged checkout is at %s, not the head under read %s", oneline.Escape(strings.TrimSpace(got)), head))
+	}
+
+	// JOB.md: the read, the head under read, its base and paths, and the read verbs
+	read := fmt.Sprintf("nova-sprint read --as %s %%s %s@%d --epoch %d --finding %%s", sprint.FriendRow(friendName), card, gen, p.Epoch)
+	jobmd := "CARD: " + card + "\n" +
+		"GEN: " + strconv.Itoa(gen) + "\n" +
+		"KIND: read\n" +
+		"PRIMARY: " + p.Primary + "\n" +
+		"ATTEMPT: " + strconv.Itoa(p.Attempt) + "\n" +
+		"BRANCH: " + workBranch + "\n" +
+		"BASE: " + baseField + "\n" +
+		"HEAD: " + head + "\n" +
+		"PATHS: " + paths + "\n" +
+		"READ-ONLY: the checkout is detached at HEAD and pushing is off; change, commit and push nothing\n" +
+		"READ-OK: " + fmt.Sprintf(read, "--ok", "'<what you checked, and the tests you ran>'") + "\n" +
+		"READ-BROKEN: " + fmt.Sprintf(read, "--broken", "'<file:line, and what to change>'") + "\n"
+	if err := os.WriteFile(jobPath, []byte(jobmd), 0o644); err != nil {
+		return refuse(stderr, name, "writing JOB.md: "+oneline.Err(err))
+	}
+	fmt.Fprintf(stdout, "FRIEND-STAGE OK friend=%s card=%s gen=%d kind=read head=%s job=%s jobmd=%s\n", friendName, card, gen, head, oneline.Field(job), jobPath)
+	a.outcome, a.changed = "accepted", "yes"
+	return 0
+}
+
+// friendReadNoPush is the push URL a read's clone is given: no remote, so a push from
+// the read fails instead of reaching origin.
+const friendReadNoPush = "no-push://a-read-pushes-nothing"
 
 // refuseState is refuse for a refusal of the world's state, not of the words
 // typed (a card not on her row, a friend with no identity on record): exit 1,
