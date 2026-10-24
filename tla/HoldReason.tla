@@ -25,6 +25,8 @@
 (*            of 2026-10-13), "cause" (a hold with no reason, its cause   *)
 (*            ended), or "other" (a reasoned hold ended otherwise: the    *)
 (*            flip).                                                      *)
+(*   ticked   the last step was the tick: the judgment rules are read at  *)
+(*            its end, where the code raises and closes them.             *)
 (*                                                                       *)
 (* Broken (the reversed witnesses):                                       *)
 (*  "syncrehold"     the sync holds a held member again, down, its reason *)
@@ -38,9 +40,9 @@ EXTENDS Naturals
 
 CONSTANTS Broken
 
-VARIABLES hold, status, beats, ended, noCause, downJ, how
+VARIABLES hold, status, beats, ended, noCause, downJ, how, ticked
 
-vars == <<hold, status, beats, ended, noCause, downJ, how>>
+vars == <<hold, status, beats, ended, noCause, downJ, how, ticked>>
 
 TypeOK ==
     /\ hold \in {"none", "reason", "bare"}
@@ -50,26 +52,27 @@ TypeOK ==
     /\ noCause \in BOOLEAN
     /\ downJ \in BOOLEAN
     /\ how \in {"none", "unhold", "beat", "cause", "other"}
+    /\ ticked \in BOOLEAN
 
 Init ==
     /\ hold = "none" /\ status = "down" /\ beats \in BOOLEAN
-    /\ ended = FALSE /\ noCause = FALSE /\ downJ = FALSE /\ how = "none"
+    /\ ended = FALSE /\ noCause = FALSE /\ downJ = FALSE /\ how = "none" /\ ticked = FALSE
 
 \* the coordinator's fleet hold, with or without a reason; its cause judgment open
 Hold(r) ==
     /\ hold = "none"
     /\ hold' = r /\ status' = "held" /\ ended' = FALSE /\ how' = "none"
-    /\ UNCHANGED <<beats, noCause, downJ>>
+    /\ UNCHANGED <<beats, noCause, downJ>> /\ ticked' = FALSE
 
 Unhold ==
     /\ hold # "none"
     /\ hold' = "none" /\ how' = "unhold"
     /\ status' = IF beats THEN "up" ELSE "down"
-    /\ UNCHANGED <<beats, ended, noCause, downJ>>
+    /\ UNCHANGED <<beats, ended, noCause, downJ>> /\ ticked' = FALSE
 
 \* the member's loop starts or stops; the cause judgment is answered
-Beat == beats' = ~beats /\ UNCHANGED <<hold, status, ended, noCause, downJ, how>>
-CauseEnds == hold # "none" /\ ~ended /\ ended' = TRUE /\ UNCHANGED <<hold, status, beats, noCause, downJ, how>>
+Beat == beats' = ~beats /\ UNCHANGED <<hold, status, ended, noCause, downJ, how>> /\ ticked' = FALSE
+CauseEnds == hold # "none" /\ ~ended /\ ended' = TRUE /\ UNCHANGED <<hold, status, beats, noCause, downJ, how>> /\ ticked' = FALSE
 
 \* the fleet sync, for a member the inventory does not want: it holds a member not
 \* held; a held member is held already and is left (FleetDrift)
@@ -79,7 +82,7 @@ Sync ==
          ELSE IF Broken = "syncrehold"
            THEN status' = "down" /\ hold' = "bare"  \* status down, the reason wiped
            ELSE UNCHANGED <<status, hold>>
-    /\ UNCHANGED <<beats, ended, noCause, downJ, how>>
+    /\ UNCHANGED <<beats, ended, noCause, downJ, how>> /\ ticked' = FALSE
 
 \* the tick: the cause's end releases only a member that beats (or a hold with no reason);
 \* the no-cause report is of a hold with no reason; the down stop is of a member not held
@@ -95,7 +98,7 @@ Tick ==
                      ELSE "other"
            /\ noCause' = (hold' = "bare" \/ (Broken = "reasonreported" /\ hold' = "reason"))
            /\ downJ' = (hold' = "none" /\ status' = "down")
-    /\ UNCHANGED <<beats, ended>>
+    /\ UNCHANGED <<beats, ended>> /\ ticked' = TRUE
 
 Next == Hold("reason") \/ Hold("bare") \/ Unhold \/ Beat \/ CauseEnds \/ Sync \/ Tick
 
@@ -107,13 +110,13 @@ Spec == Init /\ [][Next]_vars
 SyncKeepsHold == hold # "none" => status = "held"
 
 \* A hold's reason counts as its cause: never reported as a hold with no cause.
-ReasonIsCause == noCause => hold = "bare"
+ReasonIsCause == ticked => (noCause => hold = "bare")
 
 \* A hold ends by unhold, or by its cause's end while the member beats (released up):
 \* never by anything else, so a member that never beats never flips held -> down.
 ReasonedHoldEndsByUnhold == how # "other"
 
 \* A held member raises no down judgment.
-HeldRaisesNoDown == downJ => hold = "none"
+HeldRaisesNoDown == ticked => (downJ => hold = "none")
 
 =============================================================================
