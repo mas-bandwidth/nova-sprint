@@ -153,7 +153,10 @@ func FleetDrift(s *Snapshot, want []SyncMember, machines []string) []Drift {
 			out = append(out, Drift{Member: name, Kind: DriftRemove})
 		case gone && s.Fleet.Count(name, Ready)+s.Fleet.Count(name, Working)+memberKeeps(s, name) == 0:
 			out = append(out, Drift{Member: name, Kind: DriftRemove})
-		case ctl.F("held") == "" || ctl.F("status") != Down:
+		case ctl.F("held") == "" || ctl.F("status") != Down && ctl.F("status") != Held:
+			// a member held already (status held, as presence derives it) is held: the sync's
+			// hold again would set it down and wipe a person's reason, every sync (2026-10-24,
+			// space, studio, hulk and captain flipping held -> down)
 			out = append(out, Drift{Member: name, Kind: DriftHold})
 		}
 	}

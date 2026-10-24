@@ -81,3 +81,28 @@ func TestPreflightReportsCollisionsAndDroppedNeeds(t *testing.T) {
 	require.Contains(t, out, "PREFLIGHT FAIL briefs=4 failed=3", "the summary: %s", out)
 	require.Equal(t, before, ta.applies(), "preflight is read-only")
 }
+
+// The case of 2026-10-24 (rn-client-gso-linux-b): a brief whose DEPENDS-ON parent is on the
+// table and not landed, beside "Needs: none", is a defect the preflight names, as the deal's
+// own check does (sprint.PreflightAtBase); the same brief naming the parent in Needs: passes.
+func TestPreflightNamesANeedsNoneBesideAnUnlandedParent(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	const test = "./cmd/nova-sprint TestTheCommandDrivesAStreamToLanded"
+	parent := writePreflightBrief(t, t.TempDir(), "parent", "the parent (s1) tier: flash", "src/parent.go, cmd/nova-sprint/parent_test.go", "", test)
+	ta.ok("add --one --stream s1 parent --brief-file " + parent)
+
+	dir := t.TempDir()
+	child := preflightText("the child (s1)", "src/child.go, cmd/nova-sprint/child_test.go", "parent", test)
+	child = strings.Replace(child, "TEST: ", "Needs: none\nTEST: ", 1)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "child.md"), []byte(child), 0o600))
+	code, out, errs := ta.do("preflight --brief-dir " + dir)
+	require.Equal(t, 1, code, "a Needs: none beside an unlanded parent passed: %s%s", out, errs)
+	require.Contains(t, out, `PREFLIGHT child FAIL DEPENDS-ON: DEPENDS-ON not landed and not in Needs ("Needs: none" beside a non-empty DEPENDS-ON): parent (ready)`, out)
+
+	fixed := strings.Replace(child, "Needs: none", "Needs: parent", 1)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "child.md"), []byte(fixed), 0o600))
+	code, out, errs = ta.do("preflight --brief-dir " + dir)
+	require.Equal(t, 0, code, "the parent named in Needs: is no defect: %s%s", out, errs)
+}

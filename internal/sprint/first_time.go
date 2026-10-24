@@ -150,11 +150,18 @@ func FirstTimeLanded(c *Card) bool {
 	if !FirstTimeCounted(c) || !c.Placed() || c.Col != Landed || c.F("outcome") == "dropped" {
 		return false
 	}
-	if c.Int("attempt") > 1 || c.Int(FieldAttempts) > 1 {
+	// an attempt that failed on a red inherited from BASE is BASE's (deal_base.go): the
+	// card's first attempt is the first one that was not
+	inherited := inheritedAttempts(c)
+	own := func(att int) int { return att - inheritedBefore(c, att) }
+	if own(c.Int("attempt")) > 1 || c.Int(FieldAttempts)-len(inherited) > 1 {
 		return false
 	}
 	for att, r := range ranAttempts(c) {
-		if att > 1 || !r.ran {
+		if slices.Contains(inherited, att) {
+			continue
+		}
+		if own(att) > 1 || !r.ran {
 			return false
 		}
 	}
@@ -172,7 +179,10 @@ func FirstTimeLanded(c *Card) bool {
 		return false
 	}
 	for _, con := range CardCostOf(c).Consumers {
-		if (con.Kind == "work" || con.Kind == "") && (con.Attempt > 1 || con.Take > 0) {
+		if (con.Kind == "work" || con.Kind == "") && slices.Contains(inherited, con.Attempt) {
+			continue
+		}
+		if (con.Kind == "work" || con.Kind == "") && (own(con.Attempt) > 1 || con.Take > 0) {
 			return false
 		}
 		if con.Kind == "read" && con.End == "broken" {
@@ -234,6 +244,9 @@ func cardAttemptFailures(s *Snapshot, c *Card) []string {
 	if s != nil && s.Fleet != nil {
 		maxAtt := max(1, c.Int("attempt"), c.Int(FieldAttempts))
 		for att := 1; att <= maxAtt; att++ {
+			if slices.Contains(inheritedAttempts(c), att) {
+				continue // BASE's red, not the card's failure (deal_base.go)
+			}
 			wc := s.Fleet.Card(WorkCardID(c.ID, att))
 			if wc == nil {
 				continue

@@ -1196,7 +1196,14 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 	if st.BaseCI != nil {
 		baseCI = st.BaseCI()
 	}
-	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(snap.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm, Machines: machines, BaseCI: baseCI}
+	// the deal's preconditions on BASE (sprint.BaseRedWhy, BriefPreflightWhy; deal_base.go):
+	// the binding's last read of each ready card's BASE, never a read on the tick's path
+	var baseTrees []sprint.BaseTree
+	if st.DealFacts != nil {
+		ci, trees := st.DealFacts(sprint.DealBases(snap))
+		baseCI, baseTrees = append(baseCI, ci...), trees
+	}
+	req := sprint.TickReq{Who: sprint.MachineActor, Stopped: m.StoppedBetween, Beats: beats, Started: m.FirstStart(snap.Cleared), AnswerRules: st.AnswerRules, IdleAlarm: st.IdleAlarm, Machines: machines, BaseCI: baseCI, BaseTrees: baseTrees}
 	// the first read as it was: the twin it came from moves on with every
 	// part's writes, and with any other writer in this process
 	first := *snap

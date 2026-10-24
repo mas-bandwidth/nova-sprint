@@ -479,6 +479,15 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 	if a.twinOpen(c.redis) {
 		return refuse(stderr, "run", twinMachine)
 	}
+	// the deal's preconditions on BASE (dealfacts.go): the ticks ask, the reader reads
+	// beside them, never on the tick's path
+	if a.dealFactsOn {
+		facts := a.newServerDealFacts()
+		st.DealFacts = func(bases []sprint.RepoBase) ([]sprint.BaseCIFacts, []sprint.BaseTree) {
+			return facts.facts(a.now(), bases)
+		}
+		go a.dealFactsLoop(context.Background(), facts)
+	}
 	// the locked shape: a store missing a column this build writes is refused
 	// before any key is read, port bound or loop begun, so a build never starts
 	// on a table it would write a missing column to (internal/sprint/TABLES.lock,

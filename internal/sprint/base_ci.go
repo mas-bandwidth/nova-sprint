@@ -30,6 +30,9 @@ type BaseCIFacts struct {
 	Red      bool     // any concluded failure or timed_out at Tip
 	FirstRed string   // the oldest red commit since the last green one
 	Failed   []string // the failing check names of FirstRed
+	// TipFailed is the failing checks at Tip with the platforms each runs on: the deal's
+	// main-green precondition holds a card whose GATE-NEEDS names one (deal_base.go).
+	TipFailed []BaseCheck
 }
 
 // TickBaseCI is the tick's red-base judgment, planned in the deadlines part on

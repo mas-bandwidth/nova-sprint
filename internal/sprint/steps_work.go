@@ -2215,6 +2215,14 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		if defect != "" {
 			into = DoneDefect
 		}
+		// A failure reproduced at BASE (an inherited red, deal_base.go) is BASE's, never the
+		// card's: no failure is counted, toward no bound and no first-time stat; the primary
+		// goes back to ready below, and the main-green precondition holds its next attempt
+		// until BASE is green. A fix-red card's red at BASE is its own work.
+		inherited := ""
+		if r.Failed && kind == "" && !passed && defect == "" && !late && !isFixRed(pr) {
+			inherited = InheritedRedOf(r.Report)
+		}
 		if late {
 			// a late report finishes the attempt the deadline already failed (DoneFailed): it
 			// stays failed, never a fresh finish waiting on a reader's verdict
@@ -2283,7 +2291,9 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		}
 		identical := false
 		harnessAt := ""
-		if r.Failed && !passed && defect == "" {
+		if inherited != "" {
+			set[FieldLastFinish] = pr.F("attempt") + ":inherited"
+		} else if r.Failed && !passed && defect == "" {
 			set["failed"] = itoa(pr.Int("failed") + 1)
 			if late {
 				set["failed"] = pr.F("failed") // the attempt failed once: its late HOLD is the same failure
@@ -2363,6 +2373,29 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			}
 			u.Changes = append(u.Changes, change(Work, moveEntry(pr, pr.Row, to, set, "head", "result", "readers", FieldPassedHead, FieldWaitsAfter, FieldFailure, FieldFailureAt, FieldFailureTier, FieldFailureBound, FieldBriefDefect)))
 			u.Moved = fmt.Sprintf("%s working -> done %s; %s working -> %s; %s", c.ID, result, pr.ID, to, why)
+			if !late {
+				friendNext(s, c, &u, p.Units)
+			}
+			p.Units = append(p.Units, u)
+			continue
+		}
+		if inherited != "" {
+			// an inherited red (deal_base.go): back to ready with no failure recorded, the
+			// attempt marked inherited so no bound and no first-time stat counts it
+			set[FieldInheritedAttempts] = strings.Join(append(Split(pr.F(FieldInheritedAttempts)), itoa(attempt)), ",")
+			why := "attempt " + itoa(attempt) + " failed on a red inherited from BASE (not counted): " + inherited
+			set["why"] = cutText(why, MaxCardTextBytes)
+			delete(set, "head")
+			delete(set, "result")
+			to := Ready
+			if len(after) > 0 {
+				to = Waiting
+			}
+			u.Changes = append(u.Changes, change(Work, moveEntry(pr, pr.Row, to, set, append([]string{"head", "result", "readers", FieldPassedHead, FieldWaitsAfter}, ruleAnswerConsumed(pr, set)...)...)))
+			u.Moved = fmt.Sprintf("%s working -> done %s; %s working -> %s (%s)", c.ID, result, pr.ID, to, why)
+			n := happened(NInheritedRed, pr.Row, s.Now, pr.ID)
+			n.Who, n.Attempt, n.Card, n.What = who, attempt, c.ID, cutText(why, MaxCardTextBytes)
+			u.Notes = append(u.Notes, n)
 			if !late {
 				friendNext(s, c, &u, p.Units)
 			}
@@ -3519,7 +3552,9 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 		// later hold says them again, and a hold with neither clears both
 		if r.Reason != "" {
 			set[FieldHeldReason] = r.Reason
-		} else if ctl.F(FieldHeldBy) != HeldByProbe {
+		} else if ctl.F(FieldHeldBy) != HeldByProbe && !(r.HeldBy != "" && HeldWithReason(ctl)) {
+			// a machine's hold (the sync's) never clears a person's reason: the person's
+			// hold stands until it is unheld
 			unset = append(unset, FieldHeldReason)
 		}
 		if r.Finish {

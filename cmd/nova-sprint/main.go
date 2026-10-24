@@ -57,6 +57,9 @@ var version string
 
 func main() {
 	a := newApp(os.Getenv)
+	// the run loop reads each ready card's BASE from the forge and git (dealfacts.go); a
+	// test's app never does
+	a.dealFactsOn = true
 	if seatEnvironmentNeeded(os.Args[1:]) {
 		if err := a.loadSeatEnvironment(); err != nil {
 			path, pathErr := a.seatEnvironmentPath()
@@ -168,6 +171,9 @@ type app struct {
 	// scoreBackend, when set (a test), is the backend land scores landed diffs through
 	// (landscore.go); nil is Jev with the key JEV_API_KEY holds.
 	scoreBackend decide.Backend
+	// dealFactsOn says the run loop reads each ready card's BASE (dealfacts.go): main's app
+	// alone, so no test's run reads the forge.
+	dealFactsOn bool
 	// gitEnv is the environment land's git and check run in: nil is the
 	// caller's, untouched (a test gives git an identity and no global config).
 	gitEnv []string

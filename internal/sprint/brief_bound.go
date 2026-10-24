@@ -432,7 +432,8 @@ func harnessEnds(c *Card) int {
 // card, bounded by MaxRedeals on its own) is that one attempt. tla/SprintRules.tla
 // NoAttemptPastCapWithoutDecision.
 func AttemptsSince(c *Card) int {
-	return max(0, c.Int("attempt")-c.Int(FieldDecidedAttempt))
+	// an attempt that failed on a red inherited from BASE is BASE's, never counted (deal_base.go)
+	return max(0, c.Int("attempt")-c.Int(FieldDecidedAttempt)-inheritedSince(c, c.Int(FieldDecidedAttempt)))
 }
 
 // AtAttemptCap is whether the primary has run its cap's attempts since the coordinator last

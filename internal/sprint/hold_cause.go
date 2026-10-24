@@ -243,6 +243,15 @@ func causeEnded(s *Snapshot, member string, ctl *Card) string {
 	}
 }
 
+// HeldWithReason says the member is held by a person (the coordinator's fleet hold, which
+// records who made it) with a reason (2026-10-24): the reason counts as the hold's cause,
+// so it is never reported as a hold with no cause, and the hold stays until it is unheld
+// (a cause's end releases only a member that beats; holdCauseClear). A machine's hold
+// (sync, probe, fault, environment, adopt, idle reap) records no who and is its own.
+func HeldWithReason(ctl *Card) bool {
+	return ctl != nil && ctl.F("held") != "" && ctl.F(FieldHeldWho) != "" && strings.TrimSpace(ctl.F(FieldHeldReason)) != ""
+}
+
 // holdFields is every field of a member's hold: a release unsets them all.
 var holdFields = []string{"held", FieldHeldBy, FieldHeldReason, FieldHeldFinish, FieldHeldCause, FieldHeldCauseNote,
 	FieldHeldCauseType, FieldHeldCauseSubject, FieldHeldWho, FieldIdleReapRoutes}
@@ -283,6 +292,14 @@ func holdCauseClear(s *Snapshot, r TickReq, p *Plan) {
 		if how == "" {
 			continue
 		}
+		beats := r.Beats != nil && r.Beats[m].Alive(s.Now)
+		if HeldWithReason(ctl) && !beats {
+			// a coordinator's hold with a reason stays held until it is unheld: a member that
+			// does not beat (a reserved or Windows-only machine with no member loop by design)
+			// is never released down by its cause's end, so it never flips held -> down and
+			// raises no down judgment (2026-10-24: space, studio, hulk and captain)
+			continue
+		}
 		cause := ctl.F(FieldHeldCause)
 		set := map[string]string{"since": stamp(s.Now), "status": Down}
 		state := "down until it beats"
@@ -313,7 +330,7 @@ func holdNoCauseConds(s *Snapshot, r TickReq) []cond {
 	var out []cond
 	for _, m := range s.Members() {
 		ctl := s.MemberCtl(m)
-		if ctl == nil || ctl.F("held") == "" || causeLive(ctl.F(FieldHeldCause)) {
+		if ctl == nil || ctl.F("held") == "" || causeLive(ctl.F(FieldHeldCause)) || HeldWithReason(ctl) {
 			continue
 		}
 		cause := "no cause"

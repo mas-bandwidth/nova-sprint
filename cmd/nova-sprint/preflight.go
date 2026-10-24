@@ -239,10 +239,26 @@ func (a *app) preflightCheck(ctx context.Context, st *store.Store, cards []prefl
 				add("TEST", fmt.Sprintf("%s is not at %s in %s", tl.Name, base, repoDir))
 			}
 		}
+		baseOK := true
 		if repoDir != "" && p.base != "" {
 			if _, err := a.preflightGit(ctx, repoDir, "rev-parse", "--verify", "--quiet", p.base+"^{commit}"); err != nil {
 				add("BASE", fmt.Sprintf("%s is not in %s", p.base, repoDir))
+				baseOK = false
 			}
+		}
+		// the deal's own check against BASE (sprint.PreflightAtBase, deal_base.go): PATHS
+		// not under NEW and START at BASE's tree in --repo-dir, and every DEPENDS-ON parent
+		// on the table landed or named by Needs: (a "Needs: none" beside it is a defect)
+		var tree *sprint.BaseTree
+		if repoDir != "" && baseOK {
+			if t, err := a.preflightTree(ctx, repoDir, p.base); err == nil {
+				tree = &t
+			} else {
+				add("BASE", fmt.Sprintf("the tree of %s in %s could not be read: %s", cmpOr(p.base, "HEAD"), repoDir, oneline.Err(err)))
+			}
+		}
+		for _, f := range sprint.PreflightAtBase(snap, p.brief, "", tree) {
+			add(f.Key, f.Why)
 		}
 		if len(findings) > 0 {
 			failed++
@@ -282,6 +298,29 @@ func preflightLive(snap *sprint.Snapshot) []preflightCard {
 // so a broad `docs/*.md` overlaps a file below it that the glob matches.
 func preflightOverlap(a, b string) bool {
 	return a == b || hygiene.MatchGlob(a, b) || hygiene.MatchGlob(b, a)
+}
+
+// preflightTree is BASE's tree in the clone: every file path at base (HEAD when the
+// brief names none), as the deal's binding reads it.
+func (a *app) preflightTree(ctx context.Context, dir, base string) (sprint.BaseTree, error) {
+	at := cmpOr(base, "HEAD")
+	sha, err := a.preflightGit(ctx, dir, "rev-parse", "--verify", "--quiet", at+"^{commit}")
+	if err != nil {
+		return sprint.BaseTree{}, err
+	}
+	out, err := a.preflightGit(ctx, dir, "ls-tree", "-r", "--name-only", "--full-tree", strings.TrimSpace(sha))
+	if err != nil {
+		return sprint.BaseTree{}, err
+	}
+	return sprint.NewBaseTree("", base, strings.TrimSpace(sha), strings.Split(strings.TrimSpace(out), "\n")), nil
+}
+
+// cmpOr is the first of a and b that is not empty.
+func cmpOr(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
 }
 
 // preflightGit runs one git in the repository --repo-dir names.

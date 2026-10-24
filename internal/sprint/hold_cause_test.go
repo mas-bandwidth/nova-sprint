@@ -84,8 +84,13 @@ func TestADoctorCauseIsRefusedAndACarriedOneEndsOnlyByUnhold(t *testing.T) {
 			require.NotEmpty(t, w.s.MemberCtl("m1").F("held"), "the tick ended a hold on a doctor cause")
 		}
 		require.Empty(t, w.notesOf(NHoldReleased), "a doctor cause was released by the tick")
+		// its reason counts as its cause (2026-10-24, hold_reason_stays_test.go): no report
+		require.Empty(t, w.notesOf(NHoldNoCause), "a hold with a reason was reported as cause-less")
+		w.s.MemberCtl("m1").Fields[FieldHeldReason] = ""
+		w.tick(time.Minute)
+		w.part(TickDeal, beats)
 		reports := w.notesOf(NHoldNoCause)
-		require.Len(t, reports, 1, "a hold on a doctor cause was silent past two hours")
+		require.Len(t, reports, 1, "a hold on a doctor cause with no reason was silent past two hours")
 		assert.Contains(t, reports[0].What, "with no live cause (doctor:member-env is none in v1.2.x: unhold ends it)")
 
 		// unhold ends it, and leaves no cause behind

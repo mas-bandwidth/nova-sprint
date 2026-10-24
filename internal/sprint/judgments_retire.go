@@ -34,7 +34,7 @@ const MovedOnPrefix = "answered by the card's move: "
 
 // retiresWithCards are the stream-level judgments the tick keeps on the cards
 // they name: each retires once every card it names has left the table.
-var retiresWithCards = []string{NNoRoute, NStarving}
+var retiresWithCards = []string{NNoRoute, NStarving, NBaseRedWait}
 
 // aboutTheLanding are the judgments about a landed card by design: its landing
 // is their cause, not their end. NInvariant is the check's own, closed when its

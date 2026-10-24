@@ -162,13 +162,15 @@ func TestAnIdleReapOnARouteNoOneServesSinceHoldsNoMember(t *testing.T) {
 }
 
 // A hold the coordinator made with no cause is reported to the seat every two hours,
-// never silently: one judgment a period, the old one closed as the new one opens.
+// never silently: one judgment a period, the old one closed as the new one opens. A hold
+// with a reason is not cause-less (the reason counts as its cause, 2026-10-24;
+// hold_reason_stays_test.go), so this hold names none.
 func TestACauseLessHoldIsReportedEveryTwoHours(t *testing.T) {
 	t.Parallel()
 	forEpochs(t, func(t *testing.T, epoch uint64) {
 		w := setup(t, 1)
 		w.s.Epoch = epoch
-		w.must(FleetStep(w.s, FleetReq{Op: "hold", Member: "m1", Who: "rowan", Reason: "looking at it", Finish: true}))
+		w.must(FleetStep(w.s, FleetReq{Op: "hold", Member: "m1", Who: "rowan", Finish: true}))
 		const typ = "a member is held with no cause"
 		beats := TickReq{Beats: freshBeats(w, "m2")}
 

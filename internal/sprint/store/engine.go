@@ -90,6 +90,12 @@ type Store struct {
 	// the binding read, passed into the tick's TickReq. nil passes none, and no
 	// red-base judgment is raised or closed.
 	BaseCI func() []sprint.BaseCIFacts
+	// DealFacts, when set (run), is the tick's read of each ready card's BASE for the deal's
+	// preconditions (sprint.DealBases, deal_base.go): its CI facts and its tree, as the
+	// binding last read them off the tick's path. It never blocks: it answers from what it
+	// holds and reads the bases asked for after. nil reads none, and the deal holds nothing
+	// to BASE.
+	DealFacts func(bases []sprint.RepoBase) ([]sprint.BaseCIFacts, []sprint.BaseTree)
 	// Inventory, when set (run and tick), is the tick's read of the machine records
 	// nova-config names (the same config read as fleet sync; sprint.TickRetireAbsent,
 	// fleet_retire.go): the names, and whether the read answered. A read that fails or

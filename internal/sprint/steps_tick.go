@@ -230,6 +230,10 @@ type TickReq struct {
 	// part keeps one judgment per red (Repo, Base), once per red stretch. nil is none
 	// read, and no red-base judgment is raised or closed.
 	BaseCI []BaseCIFacts
+	// BaseTrees is each ready card's BASE tree at its tip, read by the binding off the
+	// tick's path (deal_base.go): the deal checks a brief's PATHS and START against it. nil
+	// is none read, and no path is checked.
+	BaseTrees []BaseTree
 	// Machines is every machine record the inventory (nova-config) names, read by the
 	// binding with the tick (the same config read as fleet sync; fleet_retire.go): the
 	// retire part takes a fleet row whose record is absent off the table. nil or empty
@@ -877,11 +881,15 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		if _, ok := AtAttemptCap(c, capOf(c.Row)); ok {
 			continue // at its attempt cap: offered to no friend until the coordinator decides (brief_bound.go)
 		}
+		if BaseRedWhy(c, r) != "" || BriefPreflightWhy(s, c, r) != "" {
+			continue // its BASE is red on its platforms, or its brief fails at BASE: the fleet loop below judges it (deal_base.go)
+		}
 		offer = append(offer, c)
 	}
 	// the ladder (priority.go, reads_priority.go): the cards above reader, then the friends'
 	// reads, asked and placed in this plan, then normal and low work in the room they leave
 	fp, seats, dealt, dealtWorking := friendDealByLadder(s, dealOrder(s, offer), r.Friends)
+	baseWaits, baseWhys := map[string][]string{}, map[string][]string{}
 	friendPlaced := map[string]bool{}
 	for _, u := range fp.Units {
 		friendPlaced[u.Key] = true
@@ -912,6 +920,22 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 				n.Who, n.Attempt, n.What, n.Marked = r.who(), c.Int("attempt"), bb.Why(), true
 				capNotes = append(capNotes, n)
 			}
+			continue
+		}
+		// the deal's preconditions on BASE (deal_base.go; tla/DealBase.tla), judged before the
+		// friend skip so a card pinned to a friend is never held silently: a brief that fails
+		// against BASE is a brief defect, one judgment a card, and a BASE red on the card's
+		// platforms holds it ready, its attempt unspent, under the BASE's one judgment; the
+		// tick that reads both clear deals it (the friends' offer above skipped it)
+		if why := BriefPreflightWhy(s, c, r); why != "" {
+			conds = append(conds, cond{typ: NBriefPreflight, stream: c.Row, primaries: []string{c.ID}, what: why})
+			continue
+		}
+		if why := BaseRedWhy(c, r); why != "" {
+			repo, base := cardBase(c)
+			sub := BaseSubject(repo, base)
+			baseWaits[sub] = append(baseWaits[sub], c.ID)
+			baseWhys[sub] = append(baseWhys[sub], c.ID+": "+why)
 			continue
 		}
 		if friendPlaced[c.ID] || OnlyFriend(c) && !PinReleased(s, c, r.Friends) {
@@ -1046,6 +1070,8 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		conds = append(conds, cond{typ: NNoRoute, stream: TierSubject(tier), streamLevel: true, primaries: unserved[tier],
 			what: what})
 	}
+	// the cards a red BASE holds: one judgment per BASE, naming each card and why (deal_base.go)
+	conds = append(conds, baseRedConds(baseWaits, baseWhys)...)
 	// one judgment per provider while its routes rest for its funds or its key, never one
 	// per card (provider_funds.go)
 	pc, stop := providerConds(s)
@@ -1180,7 +1206,7 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	p.Units = append(p.Units, needsWithdrawals(s, r.who())...)
 	restWrites(&p, s, rests, r.who())
 	p.Notes = append(p.Notes, capNotes...)
-	due += notify(&p, s, conds, []string{NNoMember, NStarving, NOverloaded, NAdoptFailed, NDevBehind, NBound, NNoRoute, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NFriendSyncFailing, NMirrorNeed, NHoldNoCause, NMemberIdleReaps, NGateNeeds}, r)
+	due += notify(&p, s, conds, []string{NNoMember, NStarving, NOverloaded, NAdoptFailed, NDevBehind, NBound, NNoRoute, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NFriendSyncFailing, NMirrorNeed, NHoldNoCause, NMemberIdleReaps, NGateNeeds, NBaseRedWait, NBriefPreflight}, r)
 	// a fault hold the machine placed clears itself here, beside the deal that
 	// gives the healthy member its (probe) card (faultClear): a person's hold
 	// is never lifted by it.
@@ -2115,7 +2141,8 @@ func condKey(typ, subject, card, what string) string {
 		NBaseCIRed,
 		NStopMemberDown, NStopPinWaits, NMemberIdleReaps,
 		NNoFrontierRoom, NReadMixShort,
-		NMirrorNeed, NMemberPegged, NGateNeeds:
+		NMirrorNeed, NMemberPegged, NGateNeeds,
+		NBaseRedWait, NBriefPreflight:
 		what = ""
 	case NReadyOver:
 		// one judgment per (reason, tier): the reason is the stable cause, so
@@ -2295,9 +2322,9 @@ func notify(p *Plan, s *Snapshot, conds []cond, types []string, r TickReq) int {
 			if !open[k] {
 				fresh = append(fresh, sub)
 			}
-			if n, ok := judged[k]; ok && (c.typ == NWorkLate || c.typ == NReadLate || c.typ == NFewReaders || c.typ == NStarving || c.typ == NOverloaded || c.typ == NFilesAlarm || c.typ == NReadersBehind || c.typ == NDevBehind || c.typ == NBrokenReadsOutrun || c.typ == NReaderBreaks || c.typ == NFriendSyncFailing || c.typ == NNoFrontierRoom || c.typ == NReadyOver || c.typ == NReviewNoReader || c.typ == NGateNeeds || slices.Contains(StopTypes, c.typ)) {
+			if n, ok := judged[k]; ok && (c.typ == NWorkLate || c.typ == NReadLate || c.typ == NFewReaders || c.typ == NStarving || c.typ == NOverloaded || c.typ == NFilesAlarm || c.typ == NReadersBehind || c.typ == NDevBehind || c.typ == NBrokenReadsOutrun || c.typ == NReaderBreaks || c.typ == NFriendSyncFailing || c.typ == NNoFrontierRoom || c.typ == NReadyOver || c.typ == NReviewNoReader || c.typ == NGateNeeds || c.typ == NBaseRedWait || c.typ == NBriefPreflight || slices.Contains(StopTypes, c.typ)) {
 				var primaries []string
-				if c.typ == NNoFrontierRoom || c.typ == NReadyOver || c.typ == NReviewNoReader {
+				if c.typ == NNoFrontierRoom || c.typ == NReadyOver || c.typ == NReviewNoReader || c.typ == NBaseRedWait {
 					primaries = c.primaries // the cards it names, rewritten in place as they join or leave the cause
 				}
 				update(n, c.what, c.decisions, primaries) // the latest facts, in place

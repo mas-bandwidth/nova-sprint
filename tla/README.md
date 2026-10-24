@@ -40,6 +40,8 @@ changing scheduling, handoffs, recovery, or the work-tree design.
 | `WorkImport` | Issue import and the specified work-tree modes. |
 | `RoadmapEntry` | An entry of a repository's roadmap and fixes files under nova-work roadmap: add, remove, pull, note, done, and Save's four writes (destination data, destination page, source data, source page), with scheduled notes whose `:release` is unchecked. |
 | `GateRing` | The land stage's gate bench ring: the hashed start slot, the per-pass skip record, a refusal stepping to the next slot, and the local fallback refused as a remote-bench unavailability. |
+| `DealBase` | The deal's preconditions on BASE: no attempt dealt while BASE is red on the card's GATE-NEEDS platforms or its brief fails against BASE, the card held under a judgment naming why and dealt in the first tick BASE is green, and an inherited red counted toward no bound. |
+| `HoldReason` | A coordinator's hold with a reason stays held until unheld: the sync never holds a held member again, the reason counts as its cause, and a cause's end releases only a member that beats. |
 | `ProviderFunds` (over `RouteRest`) | A provider's refusal rest and its end mark, the low, funds and key judgments, the all-out stop with the friend exception, and the coordinator's START. |
 
 The `.tla` files define the models. `MC*.tla` and `.cfg` files provide bounded
