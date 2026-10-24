@@ -8,6 +8,7 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -170,44 +171,16 @@ func (a *app) cmdFleetSync(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "%s %s: the config holds no machine row, and syncing to none would hold every member down; is this the fleet's config? run: nova-config machine list; nothing was changed\n", prog, name)
 		return exitCannotRead
 	}
-	// a row with no width has the default, half the cores its machine's beat
-	// reports (sprint.WidthOfCores); the sync writes the number it resolves
-	var defaults []string
-	for _, w := range ws {
-		if w.Default {
-			defaults = append(defaults, w.Machine)
-		}
-	}
-	beats := map[string]sprint.Beat{}
-	if len(defaults) > 0 {
-		if beats, err = st.Beats(ctx, defaults); err != nil {
-			fmt.Fprintf(stderr, "%s %s: the beats of the machines with the default width cannot be read: %s; nothing was changed; run: %s %s --check\n", prog, name, oneline.Escape(err.Error()), prog, name)
-			return exitCannotRead
-		}
-	}
-	var want []sprint.SyncMember
-	var machines, names []string
-	waiting := []string{}
-	for _, w := range ws {
-		machines = append(machines, w.Machine)
-		width := w.Width
-		if w.Default {
-			if width = sprint.WidthOfCores(beats[w.Machine].Cores); width == 0 {
-				waiting = append(waiting, fmt.Sprintf("%s has the default width, half its cores, and no beat has reported its cores yet; it joins the fleet at the sync after it beats (nova-sprint fleet beat %s on the machine)", w.Machine, w.Machine))
-				continue
-			}
-		}
-		if w.Member() {
-			want = append(want, sprint.SyncMember{Name: w.Machine, Width: width, GatesOnly: w.GatesOnly})
-			names = append(names, w.Machine)
-		}
+	want, machines, names, waiting, err := syncWant(ctx, st, ws)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s %s: the beats of the machines with the default width cannot be read: %s; nothing was changed; run: %s %s --check\n", prog, name, oneline.Escape(err.Error()), prog, name)
+		return exitCannotRead
 	}
 	for _, l := range waiting {
 		if !c.json {
 			fmt.Fprintf(stdout, "NOTE %s\n", oneline.Escape(l))
 		}
 	}
-	sort.Slice(want, func(i, j int) bool { return want[i].Name < want[j].Name })
 	if problems := sprint.SyncProblems(want); len(problems) > 0 {
 		if c.json {
 			rep := syncReport{Verb: name, Check: *check, Members: len(want), Drift: []syncDrift{}, Held: []string{}, Holding: []string{}, Waiting: waiting, Moved: []string{}, Refused: []string{}}
@@ -295,6 +268,83 @@ func (a *app) cmdFleetSync(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	return code
+}
+
+// syncWant is what fleet sync syncs the fleet table to, from the inventory's machine
+// rows: want, the members at their widths, sorted by name; machines, every machine
+// row; names, the members' names in the inventory's order; and waiting, a line for
+// each machine with the default width whose cores no beat has reported yet (not a
+// member until one does). A row with no width has the default, half the cores its
+// machine's beat reports (sprint.WidthOfCores); the sync writes the number it
+// resolves. It is the one plan fleet sync and the tick's config-drift check share
+// (configWant): err is the beats' read alone.
+func syncWant(ctx context.Context, st *store.Store, ws []config.MachineWidth) (want []sprint.SyncMember, machines, names, waiting []string, err error) {
+	var defaults []string
+	for _, w := range ws {
+		if w.Default {
+			defaults = append(defaults, w.Machine)
+		}
+	}
+	beats := map[string]sprint.Beat{}
+	if len(defaults) > 0 {
+		if beats, err = st.Beats(ctx, defaults); err != nil {
+			return nil, nil, nil, nil, err
+		}
+	}
+	waiting = []string{}
+	for _, w := range ws {
+		machines = append(machines, w.Machine)
+		width := w.Width
+		if w.Default {
+			if width = sprint.WidthOfCores(beats[w.Machine].Cores); width == 0 {
+				waiting = append(waiting, fmt.Sprintf("%s has the default width, half its cores, and no beat has reported its cores yet; it joins the fleet at the sync after it beats (nova-sprint fleet beat %s on the machine)", w.Machine, w.Machine))
+				continue
+			}
+		}
+		if w.Member() {
+			want = append(want, sprint.SyncMember{Name: w.Machine, Width: width, GatesOnly: w.GatesOnly})
+			names = append(names, w.Machine)
+		}
+	}
+	sort.Slice(want, func(i, j int) bool { return want[i].Name < want[j].Name })
+	return want, machines, names, waiting, nil
+}
+
+// configDriftEvery is how often the tick reads nova-config for its config-drift
+// check (configWant): at most every few minutes, never every tick.
+const configDriftEvery = 3 * time.Minute
+
+// configWant is the tick's read of what fleet sync would sync to (store.Store.ConfigWant,
+// sprint.TickConfigDrift): the inventory and the plan fleet sync --check reads
+// (a.inventory, syncWant), at most every configDriftEvery by the app's clock. A read
+// not due, a config store that does not answer or holds no machine row, a beats read
+// that fails, or a plan the sync would refuse (sprint.SyncProblems) is ok false: the
+// judgment is neither raised nor closed (never act on a missing read). It applies
+// nothing: the sync is the coordinator's, nova-sprint fleet sync.
+func (a *app) configWant(st *store.Store) func(context.Context) ([]sprint.SyncMember, []string, bool) {
+	var mu sync.Mutex
+	var last time.Time
+	return func(ctx context.Context) ([]sprint.SyncMember, []string, bool) {
+		mu.Lock()
+		defer mu.Unlock()
+		if a.inventory == nil {
+			return nil, nil, false
+		}
+		now := a.now()
+		if !last.IsZero() && now.Sub(last) < configDriftEvery {
+			return nil, nil, false
+		}
+		last = now
+		ws, err := a.inventory(ctx, "")
+		if err != nil || len(ws) == 0 {
+			return nil, nil, false
+		}
+		want, machines, _, _, err := syncWant(ctx, st, ws)
+		if err != nil || len(sprint.SyncProblems(want)) > 0 {
+			return nil, nil, false
+		}
+		return want, machines, true
+	}
 }
 
 // afterSync deletes the row of every member that is not a member of the

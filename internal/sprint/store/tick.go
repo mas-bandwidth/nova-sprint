@@ -1214,6 +1214,14 @@ func (st *Store) tick(ctx context.Context, m Machine, last Heartbeat, res *TickR
 	if req.Friends, err = pinned.friendSeats(ctx, &first, now); err != nil {
 		return last, err
 	}
+	// the fleet table against nova-config: the drift fleet sync --check reports, planned
+	// on the tick's first read from the binding's read of the inventory (ConfigWant,
+	// sprint.TickConfigDrift). No read this tick leaves it nil: never act on a missing read.
+	if st.ConfigWant != nil {
+		if want, ms, ok := st.ConfigWant(ctx); ok {
+			req.ConfigDrift = &sprint.ConfigDriftFacts{Drift: sprint.FleetDrift(&first, want, ms)}
+		}
+	}
 	t := &tickRun{st: st, ctx: ctx, res: res, req: req, at: at, runSeq: m.RunSeq, snap: &first, queues: map[string]int{}, twin: twin, readers: first.ReaderStates, noRoom: first.NoRoom}
 	defer func() { res.RouteTrips = t.routes.Trips }()
 	updates := st.Updates

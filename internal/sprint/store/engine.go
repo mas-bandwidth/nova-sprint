@@ -95,6 +95,14 @@ type Store struct {
 	// fleet_retire.go): the names, and whether the read answered. A read that fails or
 	// holds no row retires nothing (never act on a missing read). nil retires nothing.
 	Inventory func(ctx context.Context) (machines []string, ok bool)
+	// ConfigWant, when set (run and tick), is the tick's read of what fleet sync would
+	// sync the fleet table to (the same read and plan as fleet sync --check: want, and
+	// every machine row the inventory names; cmd/nova-sprint fleetsync.go): the tick
+	// plans sprint.FleetDrift on its first read and the deadlines part keeps one
+	// config-drift judgment per drift set (sprint.TickConfigDrift, config_drift.go).
+	// ok false is no read this tick (not due, or the config store did not answer), and
+	// the judgment is neither raised nor closed. nil reads nothing.
+	ConfigWant func(ctx context.Context) (want []sprint.SyncMember, machines []string, ok bool)
 	// Stats is what the store's reads cost (stats.go); nil is made on the
 	// first tick. Its pinned copies share it.
 	Stats *Stats
