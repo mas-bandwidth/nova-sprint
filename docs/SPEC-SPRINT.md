@@ -5808,6 +5808,25 @@ follow-up card has the binding read the facts beside the ticks (never in one: a 
 holds a tick), with the test's `ReadDrift` (internal/sprint export_test.go) moved in as its
 reader, and record the whole-tree gate's last run at the base.
 
+### The fleet table against nova-config
+
+On 2026-10-24 widths changed in nova-config at 19:15Z were never applied, and five benches
+ran at width 8 against a configured 4 for an hour: only a hand-run `nova-sprint fleet sync`
+applies the inventory, and nothing said one was owed. So the server's tick checks it. The
+binding (`run` and `tick`, cmd/nova-sprint fleetsync.go `configWant`) reads what fleet sync
+would sync to by the sync's own read and plan (`syncWant`, the inventory through the config
+store, the default widths from the beats), at most every three minutes by the server's clock;
+the tick plans `sprint.FleetDrift`, the drift `fleet sync --check` prints, on its first read
+(`TickReq.ConfigDrift`), and the deadlines part (internal/sprint config_drift.go,
+`TickConfigDrift`) keeps one judgment of **the fleet table differs from nova-config** per drift
+set: stream level with no stream, as the drift alarms are, keyed by its type and its line, so a
+changed set closes the old judgment and raises a new one. It names each member and field, as
+`fleet sync --check` does, and the one command that applies them, `nova-sprint fleet sync`;
+its decisions are `act` and `wait`. A read that finds no drift closes it. A tick with no read
+(not due, a config store that does not answer or holds no machine row, a beats read that fails,
+or a plan the sync would refuse) neither raises nor closes it: never act on a missing read. The
+tick applies nothing; the sync stays the coordinator's.
+
 ### The base's CI after a landing
 
 On 2026-10-11 the base was red for eight landings and nothing told the seat: the lander's

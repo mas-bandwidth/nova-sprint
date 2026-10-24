@@ -671,7 +671,7 @@ func TestTickKeptList(t *testing.T) {
 	keeps := []string{NBound, NCannotAsk, NFewReaders, NReviewNoReader, NNoMember, NStarving, NOverloaded, NAdoptFailed, NReadersBehind, NDevBehind, NRaiseReadTier, NNoRoute, NGateNeeds, NReadyOver, NProviderFunds, NProviderLow, NProviderKey, NAllOutOfCredit, NInvariant, NWorkLate, NReadLate, NMergeLate, NStalled, NNoFrontierRoom, NReadMixShort, NRemindFailed,
 		NAlarmReview, NAlarmMerging, NAlarmReady, NAlarmFleet, NFilesAlarm, NFriendIdle, NCoordinatorBehind, NFriendEmpty, NPinIgnored,
 		NDriftAhead, NDriftCardBase, NDriftServer, NDriftBaseRed, NStatus, NBrokenReadsOutrun, NReaderBreaks, NFriendSyncFailing,
-		NBaseCIRed, NMirrorNeed, NMemberPegged,
+		NBaseCIRed, NConfigDrift, NMirrorNeed, NMemberPegged,
 		NStopMemberDown, NStopPinWaits, NNeedsGone, NHoldNoCause, NMemberIdleReaps}
 	got := []string{NRemindFailed}
 	for typ := range TickDecisions {

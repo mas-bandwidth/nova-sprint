@@ -181,6 +181,8 @@ var TickDecisions = map[string][]string{
 	NDriftBaseRed:  {"act", "wait"},
 	// the base's CI after a landing (base_ci.go): the same, mended, or quiet a while
 	NBaseCIRed: {"act", "wait"},
+	// the fleet table against nova-config (config_drift.go): applied by a sync, or quiet a while
+	NConfigDrift: {"act", "wait"},
 	// a repository lacks a bench mirror on some members (mirror_need.go): the
 	// fleet's mirror refresh serves it
 	NMirrorNeed: {"fleet up <m>", "wait"},
@@ -230,6 +232,12 @@ type TickReq struct {
 	// part keeps one judgment per red (Repo, Base), once per red stretch. nil is none
 	// read, and no red-base judgment is raised or closed.
 	BaseCI []BaseCIFacts
+	// ConfigDrift is the fleet table against nova-config, the drift fleet sync --check
+	// reports, planned on the tick's first read from what the binding read of the
+	// inventory (config_drift.go): the deadlines part keeps one judgment per drift set.
+	// nil is none read this tick (not due, or the config store did not answer), and the
+	// judgment is neither raised nor closed.
+	ConfigDrift *ConfigDriftFacts
 	// Machines is every machine record the inventory (nova-config) names, read by the
 	// binding with the tick (the same config read as fleet sync; fleet_retire.go): the
 	// retire part takes a fleet row whose record is absent off the table. nil or empty
@@ -1883,6 +1891,9 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 	// the base's CI after a landing, on a plan of its own the same way (base_ci.go)
 	b, baseCIDue := TickBaseCI(s, r)
 	p.Notes, p.Closes, p.Updates = append(p.Notes, b.Notes...), append(p.Closes, b.Closes...), append(p.Updates, b.Updates...)
+	// the fleet table against nova-config, on a plan of its own the same way (config_drift.go)
+	cd, configDue := TickConfigDrift(s, r)
+	p.Notes, p.Closes, p.Updates = append(p.Notes, cd.Notes...), append(p.Closes, cd.Closes...), append(p.Updates, cd.Updates...)
 	// the landing-stall alarm (judgments.go), on a plan of its own the same way:
 	// raised once at the tick end while cards wait in review or merging and no
 	// card has landed for the bound, re-raised each bound, and cleared on the
@@ -1896,7 +1907,7 @@ func TickDeadlines(s *Snapshot, r TickReq) (Plan, int) {
 	ft, ftDue := TickFirstTime(s, r)
 	p.Notes, p.Closes, p.Updates, p.Props = append(p.Notes, ft.Notes...), append(p.Closes, ft.Closes...), append(p.Updates, ft.Updates...), append(p.Props, ft.Props...)
 	p.Units = append(p.Units, ft.Units...)
-	return p, due + readyDue + alarmsDue + driftDue + baseCIDue + stallDue + ftDue
+	return p, due + readyDue + alarmsDue + driftDue + baseCIDue + configDue + stallDue + ftDue
 }
 
 // TickOverdue marks each open judgment overdue once, when it passes its due

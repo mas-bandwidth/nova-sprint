@@ -8958,9 +8958,4 @@ The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 
    :why "On 2026-10-24 four reads waited in the ready column of a friend whose row was at 8 of 8, while 18 cards sat in review and nothing merged."
    :release "v1.9"
    :origin "coordinator review 2026-10-24")
-  (item "config-drift-alarm" :group "sprint" :date "2026-10-24"
-   :title "Check fleet sync each tick and raise a judgment on config drift"
-   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). The server runs fleet sync --check each tick and raises a judgment when a member's applied config differs from nova-config, naming the members and the fields, so a changed width is never left to a hand-run fleet sync. Related: seat-check-finds-and-repairs-fleet-drift (b), the config store rev ahead of the applied rev."
-   :why "On 2026-10-24 widths changed in nova-config at 19:15Z were never applied, and 5 benches ran at width 8 against a configured 4 for an hour."
-   :release "v1.9"
-   :origin "coordinator review 2026-10-24")))
+))

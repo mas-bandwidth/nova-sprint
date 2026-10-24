@@ -76,7 +76,9 @@
    (release "v1.2.25" :status "planned"
     :text "The server never holds the hook hub across its line of control, and a tick that cannot take the line is a wedged tick: the v1.2.24 hang on the first tick after start is closed.")
    (release "v1.2.26" :status "planned"
-    :text "Harness faults never vote that a brief is wrong."))
+    :text "Harness faults never vote that a brief is wrong.")
+   (release "v1.6.21" :status "planned" :date "2026-10-24"
+    :text "The server's tick raises a judgment when the fleet table drifts from nova-config (the owner, 2026-10-24: this point release, not v1.9)."))
   :items
    ((fix "read-cards-on-without-an-explicit-off" :release "v1.2.16" :status "planned"
      :title "Read cards are on by default"
@@ -3488,4 +3490,12 @@
     (fix "a-harness-fault-never-counts-toward-the-brief-defect-bound" :release "v1.2.26" :status "planned"
      :title "A harness fault never counts toward the brief-defect bound"
      :text "The brief-defect rule (rules.go ruleBrief) and the attempt-cap judgment's wording (brief_bound.go, 'the brief is wrong, not the worker') treated every attempt since the coordinator's last decision as a vote that the brief is wrong, so idle reaps, push refusals and deadlines with no output marked cards brief defects and rework --carry was refused. Each attempt's end is now classified once by a pure function next to the rule (classifyEnd: EndHarness for an attempt recorded ran=false in ran_attempts, EndBrief for a report naming a brief defect, EndWorker otherwise), reusing the existing attempt record. max_attempts still counts every attempt, but only worker and brief ends are votes: a card that reached the cap with more harness ends than worker or brief ends is worded 'harness fault, N attempts (H ended on the harness, V on a worker's report): the brief is not the cause', offered rework --carry or drop, and is never marked a brief defect. A cap reached mostly on worker ends (as many or more votes than harness ends) is still marked, so the existing max_attempts pins hold; the same-finding-twice and the lander's same-refusal-twice bounds are marked as before. TestAHarnessFaultNeverCountsTowardTheBriefDefectBound pins: harness ends after a decision reach the cap worded as the harness's with rework --carry accepted; one not-done and two harness ends in one window are not a brief defect; two worker ends with the same finding are still marked; a lander refusal of the same way twice is still marked; a harness end then an ok take raises nothing. No real time, sockets or services."
-     :origin "the card a-harness-fault-never-counts-toward-the-brief-defect-bound (stream sprint-v1224), from the 2026-10-13 stress run: fixed-cs-t12-plans-versions-6 and main-report-schema-new-leg-2 pushed by hand after harness faults were counted as brief votes; first pass by Emma on sprint/a-harness-fault-never-counts-toward-the-brief-defect-bound.w1.g1.e20")))
+     :origin "the card a-harness-fault-never-counts-toward-the-brief-defect-bound (stream sprint-v1224), from the 2026-10-13 stress run: fixed-cs-t12-plans-versions-6 and main-report-schema-new-leg-2 pushed by hand after harness faults were counted as brief votes; first pass by Emma on sprint/a-harness-fault-never-counts-toward-the-brief-defect-bound.w1.g1.e20")
+  (fix "config-drift-alarm" :release "v1.6.21" :status "done"
+   :title "Check fleet sync each tick and raise a judgment on config drift"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). The server runs fleet sync --check each tick and raises a judgment when a member's applied config differs from nova-config, naming the members and the fields, so a changed width is never left to a hand-run fleet sync. Related: seat-check-finds-and-repairs-fleet-drift (b), the config store rev ahead of the applied rev. Done: PR #603."
+   :kept (:item-group "sprint"
+          :item-date "2026-10-24"
+          :item-why "On 2026-10-24 widths changed in nova-config at 19:15Z were never applied, and 5 benches ran at width 8 against a configured 4 for an hour."
+          :item-release "v1.9")
+   :origin "coordinator review 2026-10-24")))
