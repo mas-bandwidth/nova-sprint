@@ -41,3 +41,25 @@ func TestAFriendsCardBriefed240MinutesIsNotRedealtAtTwoHours(t *testing.T) {
 		assert.Equal(t, DeadlineUnfinished, unfinishedLimit(w.s, w.s.Fleet.Card("s1-1.w1")))
 	})
 }
+
+// BriefDeadline reads the brief's DEADLINE: line, or the template's Deadline: line up to its
+// semicolon, as the brief lint reads a deadline value; the template's placeholder is none.
+func TestBriefDeadlineReadsTheBriefsOwnDeadline(t *testing.T) {
+	t.Parallel()
+	for brief, want := range map[string]time.Duration{
+		"tier: pro\nDEADLINE: 240m\n\nTHE TASK.":           240 * time.Minute,
+		"tier: pro\nDEADLINE: 2700\n":                      2700 * time.Second,
+		"tier: pro\nDEADLINE: 4h\n":                        4 * time.Hour,
+		"tier: pro\nDEADLINE: finish within 180 minutes\n": 180 * time.Minute,
+		"tier: pro\nDeadline: finish within 240 minutes; the judgment of a card that runs past it is the coordinator's\n": 240 * time.Minute,
+	} {
+		assert.Equal(t, want, BriefDeadline(brief), brief)
+	}
+	for _, brief := range []string{
+		"tier: pro\n\nTHE TASK.",
+		"tier: pro\nDeadline: finish within <n> minutes; the judgment of a card that runs past it is the coordinator's\n",
+		"tier: pro\nDEADLINE: soon\n",
+	} {
+		assert.Zero(t, BriefDeadline(brief), brief)
+	}
+}

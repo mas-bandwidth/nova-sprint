@@ -1,10 +1,12 @@
-package swarm
+package sprint
 
 import (
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
 // A BRIEF'S BUILD COMMANDS RUN AT -j4 OR LESS.
@@ -42,8 +44,8 @@ func NormalizeBuildJobs(line string) string {
 
 // LintBuildJobs holds a brief to the build-jobs rule (above): one finding per line naming a
 // build parallelism above BuildJobsMax or one computed from the machine; none else.
-func LintBuildJobs(raw []byte) []CardHeaderFinding {
-	var out []CardHeaderFinding
+func LintBuildJobs(raw []byte) []swarm.CardHeaderFinding {
+	var out []swarm.CardHeaderFinding
 	for i, line := range strings.Split(string(raw), "\n") {
 		for _, m := range BuildJobsRE.FindAllStringSubmatch(line, -1) {
 			v := m[2]
@@ -55,9 +57,18 @@ func LintBuildJobs(raw []byte) []CardHeaderFinding {
 			if err != nil {
 				why = fmt.Sprintf("names build parallelism %s, computed from the machine", strings.TrimSpace(strings.TrimPrefix(m[0], m[1])))
 			}
-			out = append(out, CardHeaderFinding{Check: BuildJobsCheck, Line: i + 1, Excerpt: why + "; the benches are shared, so a build runs at -j4 or less"})
+			out = append(out, swarm.CardHeaderFinding{Check: BuildJobsCheck, Line: i + 1, Excerpt: why + "; the benches are shared, so a build runs at -j4 or less"})
 			break
 		}
 	}
 	return out
+}
+
+// LintRemedy is what a brief lint check of this package wants (pkg/swarm is a frozen copy of
+// nova-tools', so its remedy table cannot name a check made here); "" for any other check.
+func LintRemedy(check string) string {
+	if check == BuildJobsCheck {
+		return BuildJobsRemedy
+	}
+	return ""
 }

@@ -2163,6 +2163,15 @@ func friendOwnRules(brief string) bool {
 // model lines: it returns the model-line why ("" when the lines read) and the
 // lint findings. The single-brief and many-brief paths both call it, so one
 // brief is held the same however it is given.
+// briefLintRemedy is what a lint check wants: the child rules' remedy (swarm.ChildRemedy), else
+// a check of this repository's own (sprint.LintRemedy).
+func briefLintRemedy(rules []swarm.ChildRule, check string) string {
+	if r := swarm.ChildRemedy(rules, check); r != "" {
+		return r
+	}
+	return sprint.LintRemedy(check)
+}
+
 func lintBriefReads(brief string, rs ruleSet) (modelWhy string, findings []swarm.CardHeaderFinding) {
 	if _, why := cardhdr.ReadModel(brief); why != "" {
 		return why, nil
@@ -2193,8 +2202,8 @@ func lintBriefReads(brief string, rs ruleSet) (modelWhy string, findings []swarm
 	findings = append(findings, swarm.LintHeaderStranded([]byte(brief))...)
 	// a card that changes the dashboard page quotes the owner asking for it (swarm.LintDashboardAsk)
 	findings = append(findings, swarm.LintDashboardAsk([]byte(brief))...)
-	// a build command runs at -j4 or less on the shared benches (swarm.LintBuildJobs)
-	findings = append(findings, swarm.LintBuildJobs([]byte(brief))...)
+	// a build command runs at -j4 or less on the shared benches (sprint.LintBuildJobs)
+	findings = append(findings, sprint.LintBuildJobs([]byte(brief))...)
 	return "", findings
 }
 
@@ -2260,7 +2269,7 @@ func lintBriefFiles(verbName string, cards []sprint.CardAdd, rs ruleSet, max int
 	}
 	for _, x := range printed {
 		fmt.Fprintf(stderr, "LINT DRIFT brief %s: %s: %d: %s remedy=%s\n", oneline.Field(x.file), oneline.Field(x.f.Check), x.f.Line,
-			oneline.Escape(oneline.Cap(x.f.Excerpt, oneline.TailBytes)), oneline.Escape(swarm.ChildRemedy(x.rules, x.f.Check)))
+			oneline.Escape(oneline.Cap(x.f.Excerpt, oneline.TailBytes)), oneline.Escape(briefLintRemedy(x.rules, x.f.Check)))
 	}
 	if more {
 		fmt.Fprintf(stderr, "LINT MORE brief findings=%d remedy=%s --max 0\n", len(all), verbName)
@@ -2407,7 +2416,7 @@ func lintBrief(verbName, brief string, rs ruleSet, max int, stderr io.Writer) in
 	}
 	for _, f := range printed {
 		fmt.Fprintf(stderr, "LINT DRIFT brief %s: %d: %s remedy=%s\n", oneline.Field(f.Check), f.Line,
-			oneline.Escape(oneline.Cap(f.Excerpt, oneline.TailBytes)), oneline.Escape(swarm.ChildRemedy(cardRules(brief, rs).rules, f.Check)))
+			oneline.Escape(oneline.Cap(f.Excerpt, oneline.TailBytes)), oneline.Escape(briefLintRemedy(cardRules(brief, rs).rules, f.Check)))
 	}
 	if more {
 		fmt.Fprintf(stderr, "LINT MORE brief findings=%d remedy=%s --max 0\n", len(findings), verbName)

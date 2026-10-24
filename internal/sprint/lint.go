@@ -4,7 +4,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-sprint/internal/gatefact"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
@@ -24,7 +24,7 @@ var gateNeedsCache sync.Map // brief string -> []string
 
 // GateNeeds reads a brief's GATE-NEEDS header: the needs, comma-separated and
 // trimmed, with "none" and "-" dropped, each read as the fact a beat carries
-// (swarm.GateFact: macos is darwin); nil when the brief names none.
+// (gatefact.GateFact: macos is darwin); nil when the brief names none.
 func GateNeeds(brief string) []string {
 	if v, ok := gateNeedsCache.Load(brief); ok {
 		return v.([]string)
@@ -39,7 +39,7 @@ func GateNeeds(brief string) []string {
 				}
 			}
 			if len(words) > 0 {
-				out = swarm.GateFacts(words)
+				out = gatefact.GateFacts(words)
 			}
 			break
 		}

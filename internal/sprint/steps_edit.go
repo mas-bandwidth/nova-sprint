@@ -855,7 +855,7 @@ var operationalHeaders = []string{"CARRY:", "RESUME:", "ROUTE NOTE:", "NOTE:", "
 
 // stripOperationalLines is text's lines less its operational header lines (counted by
 // header, so a removal is seen), every other line with its build parallelism read as one
-// (swarm.NormalizeBuildJobs: a -j16 to -j4 change alone is operational).
+// (NormalizeBuildJobs: a -j16 to -j4 change alone is operational).
 func stripOperationalLines(text string) ([]string, map[string]int) {
 	var body []string
 	counts := make(map[string]int)
@@ -868,7 +868,7 @@ func stripOperationalLines(text string) ([]string, map[string]int) {
 			}
 		}
 		if key == "" {
-			body = append(body, swarm.NormalizeBuildJobs(line))
+			body = append(body, NormalizeBuildJobs(line))
 		} else {
 			counts[key]++
 		}

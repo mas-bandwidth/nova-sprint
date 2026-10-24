@@ -1,4 +1,4 @@
-package swarm
+package sprint
 
 import (
 	"testing"
@@ -21,7 +21,7 @@ func TestABriefBuildsAtFourJobsOrLess(t *testing.T) {
 	for _, line := range []string{"STEP 2. make -j4", "make -j 2 && ctest -j4", "make -j", "java -jar /opt/tla/tla2tools.jar", "go test -p 4 ./...", "see PR-j16-notes"} {
 		assert.Empty(t, LintBuildJobs([]byte("tier: pro\n\nTHE TASK.\n"+line+"\n")), line)
 	}
-	assert.Equal(t, BuildJobsRemedy, ChildRemedy(nil, BuildJobsCheck), "the check names its remedy")
+	assert.Equal(t, BuildJobsRemedy, LintRemedy(BuildJobsCheck), "the check names its remedy")
 }
 
 // NormalizeBuildJobs reads every -jN as one, so a -jN change alone is an operational edit.

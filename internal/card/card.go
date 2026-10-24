@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
+	"github.com/mas-bandwidth/nova-sprint/internal/gatefact"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardtree"
@@ -256,14 +257,14 @@ var toolchainRunOnRE = regexp.MustCompile(`\b(runs?|built|measured|benched)\s+on
 var toolchainOrRE = regexp.MustCompile(`\s+or\s+`)
 
 // toolchainGateFacts is the brief's GATE-NEEDS line, each word read as the fact a beat
-// carries (swarm.GateFact: macos is darwin, as the deal reads it), with the facts each one
+// carries (gatefact.GateFact: macos is darwin, as the deal reads it), with the facts each one
 // implies.
 func toolchainGateFacts(brief string) map[string]bool {
 	facts := map[string]bool{}
 	for line := range strings.SplitSeq(brief, "\n") {
 		if k, v, ok := cardhdr.KeyValue(line); ok && k == "GATE-NEEDS" {
 			for _, f := range strings.FieldsFunc(strings.ToLower(v), func(r rune) bool { return r == ',' || unicode.IsSpace(r) }) {
-				f = swarm.GateFact(f)
+				f = gatefact.GateFact(f)
 				facts[f] = true
 				for _, g := range toolchainImplies[f] {
 					facts[g] = true

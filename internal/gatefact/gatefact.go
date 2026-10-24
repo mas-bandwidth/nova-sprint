@@ -1,9 +1,9 @@
-package swarm
+// Package gatefact is the one vocabulary of gate facts: the words a brief's GATE-NEEDS, a
+// member's beat and its gates_only name a machine by.
+package gatefact
 
 import "strings"
 
-// ONE VOCABULARY FOR GATE FACTS.
-//
 // A member's beat carries its facts as Go names its machine (darwin, arm64, amd64), and a
 // brief's GATE-NEEDS line is written by a person, who says macos. On 2026-10-24 every card
 // whose GATE-NEEDS said macos raised "no member up satisfies GATE-NEEDS macos" while the

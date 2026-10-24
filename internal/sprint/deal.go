@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	"github.com/mas-bandwidth/nova-sprint/internal/gatefact"
 )
 
 // FieldFacts is a fleet member's control card field: the gate facts its machine carries,
@@ -18,7 +18,7 @@ import (
 const FieldFacts = "facts"
 
 // FactWords reads a beat's --facts: a comma list of fact words (ValidID each: letters,
-// digits, _ and -, never beginning with -), trimmed, each read as the fact it names (swarm.GateFact:
+// digits, _ and -, never beginning with -), trimmed, each read as the fact it names (gatefact.GateFact:
 // macos is darwin), with no empty list; the error names the word refused.
 func FactWords(s string) ([]string, error) {
 	out := Split(s)
@@ -30,7 +30,7 @@ func FactWords(s string) ([]string, error) {
 			return nil, fmt.Errorf("--facts wants fact words (letters, digits, _ and -), found %q", f)
 		}
 	}
-	return swarm.GateFacts(out), nil
+	return gatefact.GateFacts(out), nil
 }
 
 // MemberFacts reads a member's gate facts from its control card (FieldFacts), Split into
@@ -39,7 +39,7 @@ func (s *Snapshot) MemberFacts(member string) []string {
 	if s == nil {
 		return nil
 	}
-	return swarm.GateFacts(Split(s.MemberCtl(member).F(FieldFacts)))
+	return gatefact.GateFacts(Split(s.MemberCtl(member).F(FieldFacts)))
 }
 
 // factsPlan writes each member's gate facts, as its fresh beat carries them (fleet beat

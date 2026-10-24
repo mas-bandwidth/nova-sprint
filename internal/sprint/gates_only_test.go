@@ -170,7 +170,7 @@ func TestAClearCarriesGatesOnly(t *testing.T) {
 // raised "no member up satisfies GATE-NEEDS macos" beside mini-m5 (gates_only darwin, facts
 // darwin,arm64,go,java) beating at width 16: the deal compared words, and the gates-only
 // filter dropped the member before the judgment could name it. The need, the gate and the
-// fact are read in one vocabulary (swarm.GateFact), so macos is darwin.
+// fact are read in one vocabulary (gatefact.GateFact), so macos is darwin.
 func TestAMacosCardIsDealtToTheDarwinMember(t *testing.T) {
 	t.Parallel()
 	w := fleetWorld(t, 1, 16, "mini", "m-b")
