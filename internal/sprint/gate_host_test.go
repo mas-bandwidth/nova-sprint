@@ -156,8 +156,12 @@ func TestGateNeedsWhyNamesTheNeedNoMemberCarries(t *testing.T) {
 	f.Put(&Card{ID: CtlID("m-a"), Row: "m-a", Col: Ctl, Fields: map[string]string{"kind": "member", "status": Up, FieldFacts: "linux,amd64,tla"}})
 	f.Put(&Card{ID: CtlID("m-b"), Row: "m-b", Col: Ctl, Fields: map[string]string{"kind": "member", "status": Up, FieldFacts: "darwin,arm64"}})
 	s := &Snapshot{Now: t0, Fleet: f}
-	_, why := s.GateHostPool(&Card{ID: "c", Fields: map[string]string{"brief": "CARD: c\nGATE-NEEDS: linux, x86-64\n"}}, []string{"m-a", "m-b"})
-	assert.Contains(t, why, "GATE-NEEDS x86-64 (", "the need no member carries")
+	_, why := s.GateHostPool(&Card{ID: "c", Fields: map[string]string{"brief": "CARD: c\nGATE-NEEDS: linux, avx512f\n"}}, []string{"m-a", "m-b"})
+	assert.Contains(t, why, "GATE-NEEDS avx512f (", "the need no member carries")
+	// x86-64 is amd64 (gatefact.GateFact): m-a carries it, so linux, x86-64 is satisfied
+	pool, why := s.GateHostPool(&Card{ID: "c", Fields: map[string]string{"brief": "CARD: c\nGATE-NEEDS: linux, x86-64\n"}}, []string{"m-a", "m-b"})
+	assert.Equal(t, []string{"m-a"}, pool)
+	assert.Empty(t, why)
 	_, why = s.GateHostPool(&Card{ID: "c", Fields: map[string]string{"brief": "CARD: c\nGATE-NEEDS: tla, arm64\n"}}, []string{"m-a", "m-b"})
 	assert.Contains(t, why, "GATE-NEEDS tla, arm64 together (", "each need carried by some member, all by none")
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -30,7 +31,8 @@ func init() {
 // card lint add uses, reads every DEPENDS-ON as a card of the table or of the
 // directory and none dropped, the PATHS against a ready, working or review
 // card's PATHS and another brief's, the TEST against a test git grep finds at
-// BASE in --repo-dir, and BASE in --repo-dir. It prints a table, PREFLIGHT OK or
+// BASE in --repo-dir, BASE in --repo-dir, and there a model PATHS names with its configs
+// (sprint.TLAConfigsOmitted). It prints a table, PREFLIGHT OK or
 // PREFLIGHT FAIL with the count, and writes nothing.
 func (a *app) cmdPreflight(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("preflight")
@@ -242,6 +244,17 @@ func (a *app) preflightCheck(ctx context.Context, st *store.Store, cards []prefl
 		if repoDir != "" && p.base != "" {
 			if _, err := a.preflightGit(ctx, repoDir, "rev-parse", "--verify", "--quiet", p.base+"^{commit}"); err != nil {
 				add("BASE", fmt.Sprintf("%s is not in %s", p.base, repoDir))
+			} else if slices.ContainsFunc(p.paths, func(e string) bool { return strings.HasPrefix(e, "tla/") }) {
+				// a model PATHS names moves with its configs at BASE (sprint.TLAConfigsOmitted,
+				// the check add and brief hold through PathsAdmission)
+				list, err := a.preflightGit(ctx, repoDir, "ls-tree", "-r", "--name-only", "-z", "--end-of-options", p.base)
+				if err != nil {
+					add("PATHS", fmt.Sprintf("the tree at %s in %s cannot be listed: %v", p.base, repoDir, err))
+				} else {
+					for _, miss := range sprint.TLAConfigsOmitted(p.paths, strings.FieldsFunc(list, func(r rune) bool { return r == 0 })) {
+						add("PATHS", miss)
+					}
+				}
 			}
 		}
 		if len(findings) > 0 {

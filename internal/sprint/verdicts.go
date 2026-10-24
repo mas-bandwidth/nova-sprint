@@ -3,6 +3,8 @@ package sprint
 import (
 	"fmt"
 	"strings"
+
+	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
 
 // The fleet's and the friends' ok% is the readers' (docs/SPEC-SPRINT.md section 1;
@@ -114,11 +116,21 @@ func TickVerdicts(s *Snapshot, _ TickReq) (Plan, int) {
 // friends table counts it, at its next generation, so her late report finishes nothing;
 // its primary goes back to ready, and the next deal (FriendDeal) deals its next attempt
 // to a friend up with room. Up to TickMaxMoves a tick; the rest are due.
+//
+// An attempt whose holder stamped progress inside RuleProgressWindow (progressOf) is alive
+// and moving, and is not redealt: on 2026-10-24 the redeal took cards from friends whose
+// workers had posted progress minutes before, and threw their work away. The attempt it
+// does redeal keeps the head its holder last said it pushed (progress --head), which the
+// next attempt starts from and its JOB.md names as carried (PushedHead, BaseOf).
+// tla/FriendRedealProgress.tla, Tick.
 func TickFriendRedeal(s *Snapshot, r TickReq) (Plan, int) {
 	var p Plan
 	due := 0
 	for _, wc := range s.Fleet.Column(Ready, Working) {
 		if !friendLate(s, r, wc) {
+			continue
+		}
+		if _, _, recent := progressOf(s, wc); recent && wc.Col == Working {
 			continue
 		}
 		if len(p.Units) >= TickMaxMoves {
@@ -129,6 +141,9 @@ func TickFriendRedeal(s *Snapshot, r TickReq) (Plan, int) {
 		set := nextGen(wc, "", s.Now)
 		set[Redealt] = stamp(s.Now)
 		what := fmt.Sprintf("%s %s at %s, %s past %s: redealt", wc.ID, field, wc.F(field), word, limit)
+		if h := wc.F(FieldProgressHead); typedrec.IsFullSha(h) {
+			what += "; its pushed head " + h + " is carried to the next attempt"
+		}
 		u := Unit{Key: wc.ID, Stream: wc.F("stream"), Changes: []Change{change(Fleet, moveEntry(wc, wc.Row, Redealt, set))},
 			Moved: fmt.Sprintf("%s %s -> redealt gen=%d, past its deadline", wc.ID, wc.Col, wc.Int("gen")+1)}
 		if pr := s.Work.Placed(wc.F("primary")); pr != nil && pr.Col == Working && pr.F("work") == wc.ID {

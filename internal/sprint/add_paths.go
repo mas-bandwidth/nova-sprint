@@ -98,6 +98,7 @@ func PathsAdmission(brief string, tree AdmissionTree) []string {
 			out = append(out, admitExistLine(e, at, near))
 		}
 	}
+	out = append(out, TLAConfigsOmitted(paths, tree.Files)...)
 	seen := map[string]bool{}
 	for _, id := range idents {
 		key := id.kind + " " + id.name
@@ -391,4 +392,56 @@ func pathParts(a, b string) (common, unmatched int) {
 		i++
 	}
 	return i, len(as) - i + len(bs) - i
+}
+
+// TLAConfigsOmitted is a miss line for each model PATHS names (tla/<M>.tla) whose model
+// configs at the base (tla/MC<M>*.cfg, each the config of the longest module its name
+// begins with: MCSprintTablesBroken.cfg is SprintTables', not Sprint's) PATHS does not
+// cover. A model change moves its configs with it (a constant renamed, an invariant added,
+// a reversed witness's Broken value), and on 2026-10-24 workers whose PATHS named the model
+// alone could not touch the configs the change needed. nova-sprint add and brief hold it
+// through PathsAdmission; preflight --repo-dir holds it at BASE.
+func TLAConfigsOmitted(paths, files []string) []string {
+	modules := map[string]bool{}
+	for _, f := range files {
+		if strings.HasPrefix(f, "tla/") && strings.HasSuffix(f, ".tla") && !strings.Contains(f[len("tla/"):], "/") {
+			modules[strings.TrimSuffix(f[len("tla/"):], ".tla")] = true
+		}
+	}
+	// ownerOf is the module the config tla/MC<rest>.cfg belongs to: the longest module
+	// rest begins with
+	ownerOf := func(rest string) string {
+		for n := len(rest); n > 0; n-- {
+			if modules[rest[:n]] {
+				return rest[:n]
+			}
+		}
+		return ""
+	}
+	var out []string
+	for _, e := range paths {
+		c := admitClean(e)
+		if strings.ContainsAny(c, "*?[") || !strings.HasPrefix(c, "tla/") || !strings.HasSuffix(c, ".tla") {
+			continue
+		}
+		m := strings.TrimSuffix(strings.TrimPrefix(c, "tla/"), ".tla")
+		if strings.Contains(m, "/") || !modules[m] {
+			continue
+		}
+		var missing []string
+		for _, f := range files {
+			name, ok := strings.CutPrefix(f, "tla/MC")
+			if !ok || !strings.HasSuffix(name, ".cfg") || strings.Contains(name, "/") {
+				continue
+			}
+			if ownerOf(strings.TrimSuffix(name, ".cfg")) != m || admitAnyCovered(paths, []string{f}) {
+				continue
+			}
+			missing = append(missing, f)
+		}
+		if len(missing) > 0 {
+			out = append(out, fmt.Sprintf("PATHS names %s but not its model configs %s: a model change moves its configs, so name them (or tla/MC%s*.cfg)", c, strings.Join(missing, ", "), m))
+		}
+	}
+	return out
 }

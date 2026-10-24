@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
 
 // Answered by rule (docs/SPEC-SPRINT.md section 8; the owner, 2026-10-04, at 1:36 PM: "I want
@@ -70,6 +71,10 @@ const (
 	// ProgressEvery while the child or the turn prints. The late rule's sign that a late card
 	// is moving; a stamp from before the card's take is another holder's and counts as none.
 	FieldProgress = "progress"
+	// FieldProgressHead is the commit the holder last said, with its progress stamp
+	// (progress --head), it has pushed to its branch: an attempt redealt before it finishes
+	// carries it, so the next attempt starts from that work (PushedHead), never from BASE.
+	FieldProgressHead = "progress_head"
 	// FieldConflictKind and FieldConflictPaths are a conflict stop's facts on the stream's
 	// control card, as the lander reported them (MergeReq).
 	FieldConflictKind  = "conflict_kind"
@@ -495,10 +500,7 @@ func ruleLate(s *Snapshot, r TickReq, a *RuleAnswer) {
 	_ = field
 	ownFor, ok := r.running(s.Now, wc.F(own))
 	mine := own != "" && ok && ownFor > limit
-	progressAt := stampAt(wc, FieldProgress)
-	// a stamp before the take is another holder's: this holder has stamped none
-	stamped := !progressAt.IsZero() && !progressAt.Before(stampAt(wc, "taken"))
-	progress := stamped && s.Now.Sub(progressAt) <= RuleProgressWindow
+	progressAt, stamped, progress := progressOf(s, wc)
 	waited := wc.F(FieldRuleWaited) != "" && wc.F(FieldRuleWaited) == wc.F("gen")
 	switch {
 	case wc.Col == Working && progress && !waited:
@@ -522,6 +524,16 @@ func ruleLate(s *Snapshot, r TickReq, a *RuleAnswer) {
 		a.Act, a.until = ActHold, s.Now.Add(rest)
 		a.Why = fmt.Sprintf("%s has held it %s of its own %s: held until %s", wc.Row, ownFor.Round(time.Second), limit, stamp(a.until))
 	}
+}
+
+// progressOf is wc's last progress stamp, whether its holder stamped it (a stamp before the
+// take is another holder's: this holder has stamped none), and whether it is recent, inside
+// RuleProgressWindow: the one reading of a live, moving attempt the late rule and the
+// friend redeal (TickFriendRedeal) share (tla/FriendRedealProgress.tla, Fresh).
+func progressOf(s *Snapshot, wc *Card) (at time.Time, stamped, recent bool) {
+	at = stampAt(wc, FieldProgress)
+	stamped = !at.IsZero() && !at.Before(stampAt(wc, "taken"))
+	return at, stamped, stamped && s.Now.Sub(at) <= RuleProgressWindow
 }
 
 func stampOrEmpty(t time.Time) string {
@@ -1134,6 +1146,9 @@ type ProgressReq struct {
 	// Lane is the lane of As stamping (--lane): a card another lane of the row holds is
 	// refused, and the stamp is the lane heard from (lane_hold.go); 0 names none.
 	Lane int
+	// Head is the full commit the holder has pushed to the card's branch (--head), kept
+	// as FieldProgressHead; "" keeps the one before.
+	Head string
 }
 
 // Progress stamps FieldProgress, at the server's time, on each named work card its holder
@@ -1146,6 +1161,10 @@ func Progress(s *Snapshot, r ProgressReq) Plan {
 	var p Plan
 	if r.As == "" || len(r.Sel.IDs) == 0 {
 		p.refuse("progress", "a progress stamp names its holder and its cards: progress --as <worker> <card>[@<gen>]...")
+		return p
+	}
+	if r.Head != "" && !typedrec.IsFullSha(r.Head) {
+		p.refuse("progress", "--head names the full 40-hex commit pushed to the card's branch, not "+cutText(r.Head, 80))
 		return p
 	}
 	for _, id := range r.Sel.IDs {
@@ -1168,6 +1187,9 @@ func Progress(s *Snapshot, r ProgressReq) Plan {
 			continue
 		}
 		set := map[string]string{FieldProgress: stamp(s.Now)}
+		if r.Head != "" {
+			set[FieldProgressHead] = r.Head
+		}
 		if r.Lane > 0 && c.F(FieldLane) != "" {
 			set[FieldLaneAt] = stamp(s.Now) // the lane heard from (laneGoneUnits)
 		}

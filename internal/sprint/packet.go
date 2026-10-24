@@ -210,10 +210,19 @@ func BaseOf(attempts []*Card) Base {
 // PushedHead is an attempt's recorded full commit head. A failed result may still have pushed
 // work before failing; outcome is not evidence that the push did not happen. Placeholders,
 // incomplete records, in-flight attempts, and superseded brief heads have no
-// eligible pushed head. Superseded SHAs remain on the work record for audit.
+// eligible pushed head. Superseded SHAs remain on the work record for audit. An attempt
+// redealt unfinished (TickFriendRedeal) has no finish head, and its pushed head is the one
+// its holder last said with its progress (FieldProgressHead): the work carried to the next
+// attempt (tla/FriendRedealProgress.tla, CarriedHeadKept).
 func PushedHead(w *Card) string {
-	if w.F("head_superseded") != "true" && typedrec.IsFullSha(w.F("head")) {
+	if w.F("head_superseded") == "true" {
+		return ""
+	}
+	if typedrec.IsFullSha(w.F("head")) {
 		return w.F("head")
+	}
+	if w.Col == Redealt && typedrec.IsFullSha(w.F(FieldProgressHead)) {
+		return w.F(FieldProgressHead)
 	}
 	return ""
 }

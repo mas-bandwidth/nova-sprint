@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
+	"github.com/mas-bandwidth/nova-sprint/internal/gatefact"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardtree"
@@ -230,7 +231,7 @@ var toolchainTerms = []struct {
 	fact string
 }{
 	{toolchainTerm(`linux`), "linux"},
-	{toolchainTerm(`darwin`), "darwin"},
+	{toolchainTerm(`darwin|macos|mac os|osx`), "darwin"},
 	{toolchainTerm(`avx2`), "avx2"},
 	{toolchainTerm(`avx512\w*`), "avx512f"},
 	{toolchainTerm(`neon|arm64|aarch64|apple silicon`), "arm64"},
@@ -255,13 +256,15 @@ var toolchainRunOnRE = regexp.MustCompile(`\b(runs?|built|measured|benched)\s+on
 // ... or an Apple silicon bench" is satisfied by either.
 var toolchainOrRE = regexp.MustCompile(`\s+or\s+`)
 
-// toolchainGateFacts is the brief's GATE-NEEDS line, lowercased, with the facts each one
+// toolchainGateFacts is the brief's GATE-NEEDS line, each word read as the fact a beat
+// carries (gatefact.GateFact: macos is darwin, as the deal reads it), with the facts each one
 // implies.
 func toolchainGateFacts(brief string) map[string]bool {
 	facts := map[string]bool{}
 	for line := range strings.SplitSeq(brief, "\n") {
 		if k, v, ok := cardhdr.KeyValue(line); ok && k == "GATE-NEEDS" {
 			for _, f := range strings.FieldsFunc(strings.ToLower(v), func(r rune) bool { return r == ',' || unicode.IsSpace(r) }) {
+				f = gatefact.GateFact(f)
 				facts[f] = true
 				for _, g := range toolchainImplies[f] {
 					facts[g] = true
