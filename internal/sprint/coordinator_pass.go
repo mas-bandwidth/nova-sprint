@@ -156,13 +156,15 @@ func TickCoordinatorPass(s *Snapshot, r TickReq) (Plan, int) {
 
 // idleConds is one condition for each friend not held holding working cards whose last
 // working-to-done finish, or her oldest working card's take when that is later, is older
-// than the friend-finish window, in running time. Only her work cards count: a read is
-// not card work.
+// than the friend-finish window, in running time. A read she closed counts as a finish: a
+// verdict (read --ok / --broken, or her outbox report) or a return (read --return), so a
+// friend filing reads steadily is not idle (friendReadFinishes).
 func idleConds(s *Snapshot, r TickReq) []cond {
 	if s.Fleet == nil {
 		return nil
 	}
 	window := s.FriendFinishAfter()
+	reads := friendReadFinishes(s)
 	var out []cond
 	for _, row := range s.Fleet.Rows() {
 		f, ok := FriendOfRow(row)
@@ -178,6 +180,9 @@ func idleConds(s *Snapshot, r TickReq) []cond {
 			if t := stampAt(c, "finished"); t.After(last) {
 				last = t
 			}
+		}
+		if t := reads[f]; t.After(last) {
+			last = t
 		}
 		var ids []string
 		for _, c := range working {
@@ -205,12 +210,40 @@ func idleConds(s *Snapshot, r TickReq) []cond {
 		finish := "no finish yet"
 		if !last.IsZero() {
 			lastAge, _ := r.running(s.Now, stamp(last))
-			finish = snapshotFriendPronouns(s, f).Sprintf("{their} last finish %s ago (at %s)", lastAge.Round(time.Second), stamp(last))
+			finish = snapshotFriendPronouns(s, f).Sprintf("{their} last finish or read %s ago (at %s)", lastAge.Round(time.Second), stamp(last))
 		}
 		out = append(out, cond{typ: NFriendIdle, primaries: []string{row},
 			what: snapshotFriendPronouns(s, f).Sprintf("friend %s holds %d working (%s) and finished none in %s: %s; check in on {them}: nova-friend reach --as <coordinator> --to %s",
 				f, len(ids), Preview(ids, ", "), window, finish, f),
 			decisions: []string{"nova-friend reach --as <coordinator> --to " + f, "friend take " + f + " --all-unstarted", "friend down " + f + " --reason idle", "ack", "wait"}})
+	}
+	return out
+}
+
+// friendReadFinishes is, by friend, when she last closed a read: the latest of her verdicts
+// on the reads ledger (reads_window.go) and of the retired stamps of the read cards she
+// closed with a verdict or a return (retired_by read or returned) still kept on the fleet
+// table. The ledger is bounded and shared, so the kept cards cover a verdict it has dropped.
+func friendReadFinishes(s *Snapshot) map[string]time.Time {
+	out := map[string]time.Time{}
+	note := func(name string, t time.Time) {
+		if name != "" && t.After(out[name]) {
+			out[name] = t
+		}
+	}
+	for _, v := range readsLedger(s) {
+		if name, ok := FriendOfRow(v.Reader); ok {
+			note(name, v.At)
+		}
+	}
+	for _, c := range s.Fleet.Cards() {
+		if c.Placed() || c.F("kind") != "read" || (c.Row != "" && !IsFriendRow(c.Row)) {
+			continue
+		}
+		if by := c.F("retired_by"); by != "read" && by != RetiredByReturned {
+			continue
+		}
+		note(c.F("reader"), stampAt(c, "retired"))
 	}
 	return out
 }
