@@ -2052,6 +2052,13 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			p.refuse(c.ID, why)
 			continue
 		}
+		// a plain finish whose report's verdict line says HOLD or not done is refused: it
+		// would be recorded ok and read broken (finish_verdict.go, notDoneFinishWhy;
+		// tla/FinishVerdict.tla, NoHoldFinishedOk)
+		if why := notDoneFinishWhy(c.ID, r); why != "" {
+			p.refuse(c.ID, why)
+			continue
+		}
 		chosen = append(chosen, c)
 	}
 	if r.Decided != "" && len(chosen) > 1 {

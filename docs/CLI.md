@@ -68,6 +68,7 @@ nova-sprint goal drop <name>
 nova-sprint take --as <member> [<card>@<gen>...] [--epoch <n>] [--limit <n>]
 nova-sprint finish --as <member> <card>@<gen>... --epoch <n> (--head <commit> | --failed) [--report <text>] [--exit <n>] [--harness <text>] [--usage <text>]
 # finish ends where the card's needs field says (review, or waiting for a need not landed); a finish the lifecycle refuses is counted on the work card, and the sixth refusal of an attempt raises one judgment, its id printed as JUDGMENT raised <id> <type>
+# a plain finish (no --failed) whose --report has a verdict line of HOLD or not done (Verdict: HOLD, verdict not-done, Verdict: not done, NOT DONE; any case) is refused, naming the line: finish it with --failed and the same --report (docs/SPEC-SPRINT.md section 2, "A plain finish with a HOLD verdict is refused")
 nova-sprint progress --as <worker> <card>[@<gen>]... --epoch <n>
 nova-sprint ask [<id>... | --group <id> [--expect <n>]] [--stream <s>] [--limit <n>] [--another] [--answers <note>]
 # ask --answers closes cannot ask when it deals a read; the tick closes it as soon as an up reader may read, even at room
