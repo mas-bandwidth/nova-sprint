@@ -475,3 +475,67 @@ chose.
 
 **Not by hand.** Do not poll `where` in a sleep loop; the hook, `inbox --wait` and `watch --wake`
 push to you. Do not keep a reminder in your head when `remind` keeps it in the store.
+
+## 11. Worker quality: first-time LAND rate
+
+**Situation.** A row's LANDs keep coming back broken from its readers. Each broken LAND spends a
+full read and a rework, so a row with a low first-time LAND rate costs more than an idle one. The
+workers' side of this section is the self-check in [CHECKLIST.md](../CHECKLIST.md), "Before you
+claim LAND: the self-check".
+
+**The verbs, in order.**
+
+1. Read each row's ok rate. usage: `nova-sprint where [--watch] [--every <duration>] [--all] [--json [--cards] [--rows] [--dashboard] [--archived] [--stale <duration>] [--at-epoch <n>]: includes landedSeries] [--release [<name>]]`.
+   Run `nova-sprint where --all`. The `ok%` column of the fleet and friends tables is ok over ok
+   and failed: the row's work attempts with a final verdict, as the readers' verdicts moved them.
+   Reads never move it (a reader's completed reads count in its `done`, not its `ok%`), and a work
+   report that names a brief defect counts in neither. Compare each row with the first-time LAND
+   rate you hold its stream to. Spec: SPEC-SPRINT.md section 1, "The tables" (done and ok%).
+2. When a row falls under the stream's target, classify its failed attempts by cause. usage:
+   `nova-sprint log [--card <id>] [--stream <s>] [--member <m>] [--since <10m|RFC3339>] [--at-epoch <n>]`
+   and usage `nova-sprint card <id> [--brief | --fields] [--at-epoch <n>] | (--all | --stream <s>) --json: every card, one JSON object a line`.
+   Run `nova-sprint log --member <m>` for the row (a friend's row is `friend.<name>`), then
+   `nova-sprint card <card> --fields` for each failed card, and read the readers' findings on its
+   read cards. Put each failure under one cause: an unmet DONE-WHEN item, a file outside PATHS or
+   a committed report file, a duplicate key in a TSV ledger after a merge, a banned word or a name
+   in a committed line, a not-done report finished as LAND, a red taken on an overloaded bench, or
+   a wrong brief (step 5). Spec: SPEC-SPRINT.md section 17, "The log".
+3. Tell the friend the cause and the exact fix, on the bus. Run
+   `nova-bus send --to <friend> --subject <s> --stdin` with one line per failed card,
+   `<card>: <cause>. Fix: <the exact change>.`, then the self-check section of CHECKLIST.md whole.
+   The bus is the one channel to a friend; a message is sent to be acted on (`nova-bus help send`).
+4. Answer a friend's stalled reads. usage: `nova-sprint reads --review [--stream <s>] [--json]`
+   shows who holds each read and for how long. A read past its deadline is returned, not waited
+   on: the reader's verb is usage
+   `nova-sprint read --as <reader> (--begin | --ok | --broken) [<card>[@<gen>]...] --epoch <n> [--max <n>] [--finding <text>] [--usage <text>] | --as <reader> --return <card> --reason <text> --epoch <n> [--usage <text>]`,
+   as `nova-sprint read --as <reader> --return <card> --reason <why> --epoch <n>`, and the next
+   tick asks it of another reader. The seat's verb, when the friend is not starting what she
+   holds, is usage `nova-sprint friend take <friend> (<id>... [--working] | --all-unstarted) [--dry-run] [--reason <text>]`:
+   run `nova-sprint friend take <friend> --all-unstarted --dry-run --reason <why>`, then without
+   `--dry-run`. It never takes a card she has started (`nova-sprint help friend take`).
+5. Rebrief a card that reaches its bound because the brief is wrong. usage:
+   `nova-sprint brief <id> (--brief <text> | --brief-file <path>) [--rules <file>] [--answers <note>] | --dir <dir> [--rules <file>] | --group <id> [--expect <n>] (--brief-file <path> | --dir <dir>) [--answers <note>] | <id> --widen [--repo-dir <clone>] | <id> --tier <flash|pro|heavy|frontier> | <selector> (--set-base <branch> | --drop-who | --tier <t>)... [--dry-run]`.
+   Run `nova-sprint brief <card> --brief-file <path>`, then answer the bound judgment with
+   `nova-sprint rework <card> --carry --fix <text> --answers <id>` (section 4, steps 3 and 4).
+   A card that fails the same way twice gets its brief fixed here, never a third attempt.
+   The example: a DONE-WHEN item that asks for a run recorded "at the head under review", when
+   recording the run adds a commit, or a Windows or macOS step that takes longer than main takes
+   to move. Either way the head moves under the step, so no attempt can meet it. The rebrief
+   states the order: merge main once, push, run every step at that head, and never merge again
+   (the lander re-merges). Spec: SPEC-SPRINT.md section 11, the `brief` row.
+6. Keep shared-bench load under the core count. Workers queue on the fleet's shared-bench slot
+   lock (one `-j4` job per 4 cores) for build and test load, and never pick the "least loaded" bench all at once, because they all pick the
+   same one. Put the slot lock in every brief's RULES, and find a bench running above its core
+   count with `nova-sprint doctor --area fleet`; quiet it with usage
+   `nova-sprint fleet quiet <member> (--for <duration> | --until <RFC3339>) --reason <text> | <member> --end [--dry-run]`
+   (section 7, step 3). A timing or functional red reported from an overloaded bench is not
+   evidence against the card.
+
+**Success looks like.** Each row's `ok%` climbs back to its stream's target over its next attempts,
+every failed card has one bus line naming its cause and its fix, no read sits past its deadline,
+and a card at its bound for a wrong brief runs again under the new brief with the same id.
+
+**Not by hand.** Do not fix a friend's failed LAND on her branch, which no reader has read; rework
+it with her finding. Do not count reads into a row's rate: `where` computes ok% and reads never
+move it. Do not drop and add again a card whose brief is wrong; `brief` edits it in place. Do not
+assign benches to workers by hand; the slot lock queues them.

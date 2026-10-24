@@ -72,3 +72,55 @@ message. A broken LAND costs a full read and rework cycle.
     Read the reply: a REFUSED or stale finish is not a finish. A finish is not a landing.
 18. Keep the receipts. Clean your scratch directory only after the evidence is saved, and only by
     an absolute path under your own card-named scratch directory.
+
+## Before you claim LAND: the self-check
+
+Mandatory before any finish that claims LAND or done. It turns steps 3 to 17 into commands. Run
+every item in the job directory, at the head you will finish with, and put each item's evidence
+line in the report. Where the card's BASE is not `main`, read it for `main` below. The coordinator
+sends this section to a row whose LANDs keep coming back broken from its readers
+([the coordinator's playbook](docs/COORDINATOR-PLAYBOOK.md), "Worker quality: first-time LAND
+rate").
+
+1. **Merge, never rebase.** `git fetch origin main && git merge origin/main`. If main moved, run
+   the gate again at the merged head.
+2. **Gate evidence at the reported SHA.** After any merge or commit, run every gate step again at
+   the SHA you report, and paste that output. Evidence taken at a parent or an earlier head does
+   not count. Never send again an unchanged head that a reader already found broken.
+3. **PATHS.** `git diff --name-only $(git merge-base origin/main HEAD) HEAD` lists only files on
+   the brief's PATHS and NEW lines. Never commit a report file: no RESULT.md, REPORT.md, JOB.md,
+   PROPOSED.patch or any other report. A file you truly need outside PATHS goes on a
+   `PATHS-PROPOSED: <file>` line in the report, and the finish is HOLD, with `--failed`.
+4. **Ledger keys after the merge.** `tla/RUNS.tsv`, `tla/CASES.tsv` and `tla/COVERAGE.tsv` each
+   name every key exactly once after merging main: `cut -f1 tla/RUNS.tsv | sort | uniq -d` prints
+   nothing, and the same for the other two. A merge that keeps both sides of a row leaves a
+   duplicate key.
+5. **Banned words.** `git diff $(git merge-base origin/main HEAD) HEAD | grep -E '^\+' | grep -iE 'peer|snapshot'`
+   prints nothing. It matches inside words too (plurals, `PeerID`), and it covers every added
+   line, string literals and comments included, not only identifiers. Never disguise a banned word to get past the check: no character arrays, string
+   splitting, concatenation, escapes or spelling games. Rename the thing.
+6. **No names.** No person's name, card id, fleet host name or internal note in any committed
+   file, file name, title or cite line. Keep a file `<names>` with one pattern a line: each of
+   the fleet's host names and each person's name. Then
+   `git diff $(git merge-base origin/main HEAD) HEAD | grep -E '^\+' | grep -iEf <names>`
+   prints nothing you added. Citing a path that already exists on main is not adding a name; a new
+   file name, title or prose line that carries one is.
+7. **DONE-WHEN.** Copy every DONE-WHEN item into the report, each with the command you ran and its
+   output line as evidence. For a test that must fail at BASE, show it failing at BASE and passing
+   at the head. An item you did not meet, or could not run, is unmet.
+8. **Public headers, citations and coverage.** A change that touches a public header builds with
+   clang `-Weverything` and runs the repository's public-header check (its documented check
+   script). A citation or coverage card names every gap with its file.
+9. **Bench load.** Build and test load on a shared bench goes through the fleet's shared-bench
+   slot lock (one `-j4` job per 4 cores), never straight onto the bench and never onto whichever
+   bench looks least loaded, because every worker picks the same one. A timing or functional red
+   taken while the bench ran above its core count is not evidence until it is run again under the
+   slot lock.
+10. **Verdict, and a finish that matches it.** LAND only when items 1 to 9 all hold. Anything
+    unmet, anything not run, and an empty head (no change against main) is HOLD. A report whose
+    verdict is HOLD or not-done, or that names any unmet item, always finishes with `--failed`,
+    never a plain finish; this one mistake is the largest single cause of failed attempts on
+    every row: `nova-sprint finish --as <you> <job>@<gen> --epoch <n> --failed --report ...`, or
+    `Verdict: HOLD` on the first line of a friend's REPORT.md. A plain finish on an unmet head is
+    the failure that costs most: a reader finds it, the attempt is spent, and it counts against
+    your row's ok%.

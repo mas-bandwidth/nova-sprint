@@ -8777,4 +8777,52 @@ The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 
    :text "The bar Glenn set: \"as effective, nay more effective, than how we work here\". Measure on the dashboard: card-to-main time, stream drift, landings per hour, ruling-to-running-card latency, tokens and machine time per landed change, main's red minutes. Baseline: the 2026-10-21 coordinator session (virtualgo, moo and schema's Go core consolidated in hours with 19 child agents). v1.9 is done when the sprint beats it on landed changes per hour and per token, with main green. SOURCE: Glenn 2026-10-21: \"Please break up v1.9 into more cards, according to the work we have just talked about. Build it up from the lowest layer to the highest so the sprint is as effective, nay more effective, than how we work here from roadmap.\" Umbrella items: continuous-parallel-landing, goal-cards-live-steering-context-packs. Each layer is secured (modelled with reversed witnesses, tested incl. every refusal, used for real work, documented, locked with the owner) before the layer above starts."
    :why "v1.9 is built layer by layer from the foundation so the sprint lands at least as fast as the 2026-10-21 coordinator session"
    :release "v1.9"
-   :origin "the owner, 2026-10-21")))
+   :origin "the owner, 2026-10-21")
+  (item "finish-refuses-hold-verdict" :group "sprint" :date "2026-10-24"
+   :title "A plain finish whose report's verdict is not LAND or done is refused"
+   :text "nova-sprint finish without --failed records the attempt ok and sends it to a reader even when its --report text's verdict line is HOLD or not-done. finish refuses a plain finish whose report's verdict line is anything but LAND or done, naming the line and the --failed finish to run instead."
+   :why "On one row 17 of 53 failed attempts were HOLD reports finished plain: each spent a read to learn what the report already said."
+   :release "v1.7"
+   :origin "coordinator review 2026-10-24")
+  (item "broken-read-needs-defect-class" :group "sprint" :date "2026-10-24"
+   :title "A broken read must name a defect class"
+   :text "A broken read whose finding names no defect is accepted and reworks the card. read --broken requires a defect class (DONE-WHEN unmet, PATHS, ledger, banned word, name, gate evidence, behaviour) beside the finding, and refuses without one."
+   :why "A rework from a finding with no defect gives the worker nothing to fix, and the failure cannot be classified when a row's ok% falls."
+   :release "v1.7"
+   :origin "coordinator review 2026-10-24")
+  (item "broken-read-does-not-outvote-oks" :group "sprint" :date "2026-10-24"
+   :title "One broken read no longer outvotes several ok reads"
+   :text "One broken read outvotes several ok reads at the same head, including a stale read against PATHS that were already amended in place. A broken read whose finding is answered by the card's current brief (amended PATHS or DONE-WHEN) is retired as stale, and a single broken read against several oks asks one more read instead of reworking."
+   :why "Good heads were reworked on one stale or lone finding, spending a full attempt and its reads on work that was already right."
+   :release "v1.7"
+   :origin "coordinator review 2026-10-24")
+  (item "fleet-reads-launch-without-route" :group "sprint" :date "2026-10-24"
+   :title "Fleet reads never launch without a route"
+   :text "Fleet read cards launch with no route and return no verdict, again and again for the same card. The deal refuses a read to a member with no route for the card's tier, and a read that returns with no verdict for want of a route is not dealt to that member again until its route is set."
+   :why "Reads that cannot run hold cards in review past their deadlines and stall the row's landings."
+   :release "v1.7"
+   :origin "coordinator review 2026-10-24")
+  (item "widen-in-place-redeals-same-head" :group "sprint" :date "2026-10-24"
+   :title "Widening PATHS or DONE-WHEN in place does not re-deal the same head"
+   :text "Widening a card's PATHS or DONE-WHEN in place re-deals the work and re-reads the same unchanged head. An in-place widening that the current head already meets sends that head to review once at the new brief, without a new work attempt; a head a reader already found broken is never resent unchanged."
+   :why "A widening meant to unblock a card spends another work attempt and its reads on a head that has not changed."
+   :release "v1.7"
+   :origin "coordinator review 2026-10-24")
+  (item "friend-take-blocks-until-rebrief" :group "sprint" :date "2026-10-24"
+   :title "A pinned card taken back with friend take can be given again without a rebrief"
+   :text "A card whose WHO line pins one friend, taken back from that friend with friend take, waits out of the deal, as friend take's help says, but friend give did not hand it back either, so only a rebrief moved it. friend give hands a taken-back pinned card to the pinned friend, or to another named friend, without a rebrief, and the inbox names each pinned card that waits."
+   :why "Pinned cards taken back sat out of the deal until the seat noticed them and rebriefed each one by hand."
+   :release "v1.7"
+   :origin "coordinator review 2026-10-24")
+  (item "staged-job-dir-carries-another-card" :group "sprint" :date "2026-10-24"
+   :title "A staged job directory never carries another card's RESULT.md or HEAD"
+   :text "A staged job directory can carry another card's RESULT.md and HEAD, so a worker can finish one card with another's report or head. Staging starts from a clean directory, checks that the staged HEAD is the card's BASE or carried head, and refuses a directory holding a report file for another card."
+   :why "A finish built on another card's report or head is wrong in a way no reader of the brief expects, and wastes the attempt."
+   :release "v1.7"
+   :origin "coordinator review 2026-10-24")
+  (item "friend-stage-read-stages-head-under-read" :group "sprint" :date "2026-10-24"
+   :title "friend stage of a read card stages the exact head under read, read-only"
+   :text "nova-sprint friend stage of a read card fails. For a read with no NEXT it stages an empty checkout at main (git exits 128); for a carried card it stages the carried head instead of the head under read; and it writes no JOB.md. A read stages the exact head under read, read-only, with its JOB.md."
+   :why "A reader staged at the wrong head reads the wrong work, or cannot read at all, so the read returns no verdict or a wrong one."
+   :release "v1.7"
+   :origin "coordinator review 2026-10-24")))
