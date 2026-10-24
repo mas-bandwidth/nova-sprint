@@ -808,3 +808,7 @@ MCFriendUnhookGraceBrokenNoGrace.cfg	MCFriendUnhookGrace.tla	invariant	NoReturnI
 MCFriendUnhookGraceBrokenUnhookClockOnly.cfg	MCFriendUnhookGrace.tla	invariant	NoStrandedPastGrace	ignore-terminal	friendunhookgrace	required	-
 MCFriendUnhookGraceReachReturn.cfg	MCFriendUnhookGrace.tla	invariant	NeverReturned	ignore-terminal	friendunhookgrace	required	-
 MCFriendUnhookGraceReachKept.cfg	MCFriendUnhookGrace.tla	invariant	NeverKeptAcrossUnhook	ignore-terminal	friendunhookgrace	required	-
+MCFriendRedealProgress.cfg	MCFriendRedealProgress.tla	pass	-	ignore-terminal	friendredealprogress	required	-
+MCFriendRedealProgressBrokenIgnoreProgress.cfg	MCFriendRedealProgress.tla	invariant	NoRedealWhileProgressing	ignore-terminal	friendredealprogress	required	-
+MCFriendRedealProgressBrokenNeverRedeal.cfg	MCFriendRedealProgress.tla	invariant	StaleIsRedealt	ignore-terminal	friendredealprogress	required	-
+MCFriendRedealProgressBrokenDropCarry.cfg	MCFriendRedealProgress.tla	invariant	CarriedHeadKept	ignore-terminal	friendredealprogress	required	-

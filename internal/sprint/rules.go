@@ -529,7 +529,7 @@ func ruleLate(s *Snapshot, r TickReq, a *RuleAnswer) {
 // progressOf is wc's last progress stamp, whether its holder stamped it (a stamp before the
 // take is another holder's: this holder has stamped none), and whether it is recent, inside
 // RuleProgressWindow: the one reading of a live, moving attempt the late rule and the
-// friend redeal (TickFriendRedeal) share.
+// friend redeal (TickFriendRedeal) share (tla/FriendRedealProgress.tla, Fresh).
 func progressOf(s *Snapshot, wc *Card) (at time.Time, stamped, recent bool) {
 	at = stampAt(wc, FieldProgress)
 	stamped = !at.IsZero() && !at.Before(stampAt(wc, "taken"))
