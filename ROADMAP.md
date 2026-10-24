@@ -2410,57 +2410,71 @@ From: the owner, 2026-10-21
 
 ### A plain finish whose report's verdict is not LAND or done is refused
 
-Target v1.7. A finish whose report's verdict line is HOLD or not-done is recorded ok and sent to a reader; on one row 17 of 53 failed attempts were HOLD reports recorded ok. finish without --failed refuses a report whose verdict line is not LAND or done, naming the line, and collect applies the same rule to a friend's REPORT.md.
+nova-sprint finish without --failed records the attempt ok and sends it to a reader even when its --report text's verdict line is HOLD or not-done. finish refuses a plain finish whose report's verdict line is anything but LAND or done, naming the line and the --failed finish to run instead.
 
-Why it waits: A cross-row review of 82 failed work attempts found the same classes on every row.
+Why it waits: On one row 17 of 53 failed attempts were HOLD reports finished plain: each spent a read to learn what the report already said.
+
+Target: v1.7
 
 From: coordinator review 2026-10-24
 
 ### A broken read must name a defect class
 
-Target v1.7. A broken read whose finding names no defect is accepted and reworks the card. read --broken requires a defect class (DONE-WHEN unmet, PATHS, ledger, banned word, name, gate evidence, behaviour) beside the finding, and refuses without one.
+A broken read whose finding names no defect is accepted and reworks the card. read --broken requires a defect class (DONE-WHEN unmet, PATHS, ledger, banned word, name, gate evidence, behaviour) beside the finding, and refuses without one.
 
-Why it waits: A cross-row review of 82 failed work attempts found the same classes on every row.
+Why it waits: A rework from a finding with no defect gives the worker nothing to fix, and the failure cannot be classified when a row's ok% falls.
+
+Target: v1.7
 
 From: coordinator review 2026-10-24
 
 ### One broken read no longer outvotes several ok reads
 
-Target v1.7. One broken read outvotes several ok reads at the same head, including a stale read against PATHS that were already amended in place. A broken read whose finding is answered by the card's current brief (amended PATHS or DONE-WHEN) is retired as stale, and a single broken read against several oks asks one more read instead of reworking.
+One broken read outvotes several ok reads at the same head, including a stale read against PATHS that were already amended in place. A broken read whose finding is answered by the card's current brief (amended PATHS or DONE-WHEN) is retired as stale, and a single broken read against several oks asks one more read instead of reworking.
 
-Why it waits: A cross-row review of 82 failed work attempts found the same classes on every row.
+Why it waits: Good heads were reworked on one stale or lone finding, spending a full attempt and its reads on work that was already right.
+
+Target: v1.7
 
 From: coordinator review 2026-10-24
 
 ### Fleet reads never launch without a route
 
-Target v1.7. Fleet read cards launch with no route and return no verdict, again and again for the same card. The deal refuses a read to a member with no route for the card's tier, and a read that returns with no verdict for want of a route is not dealt to that member again until its route is set.
+Fleet read cards launch with no route and return no verdict, again and again for the same card. The deal refuses a read to a member with no route for the card's tier, and a read that returns with no verdict for want of a route is not dealt to that member again until its route is set.
 
-Why it waits: A cross-row review of 82 failed work attempts found the same classes on every row.
+Why it waits: Reads that cannot run hold cards in review past their deadlines and stall the row's landings.
+
+Target: v1.7
 
 From: coordinator review 2026-10-24
 
 ### Widening PATHS or DONE-WHEN in place does not re-deal the same head
 
-Target v1.7. Widening a card's PATHS or DONE-WHEN in place re-deals the work and re-reads the same unchanged head. An in-place widening that the current head already meets sends that head to review once at the new brief, without a new work attempt; a head a reader already found broken is never resent unchanged.
+Widening a card's PATHS or DONE-WHEN in place re-deals the work and re-reads the same unchanged head. An in-place widening that the current head already meets sends that head to review once at the new brief, without a new work attempt; a head a reader already found broken is never resent unchanged.
 
-Why it waits: A cross-row review of 82 failed work attempts found the same classes on every row.
+Why it waits: A widening meant to unblock a card spends another work attempt and its reads on a head that has not changed.
+
+Target: v1.7
 
 From: coordinator review 2026-10-24
 
-### Cards taken back with friend take return to the deal
+### A pinned card taken back with friend take can be given again without a rebrief
 
-Target v1.7. Cards taken back with friend take are excluded from the deal and from friend give until they are rebriefed. A card taken back goes to any other friend or member with room at once, and friend give can hand it to a named friend without a rebrief.
+A card whose WHO line pins one friend, taken back from that friend with friend take, waits out of the deal, as friend take's help says, but friend give did not hand it back either, so only a rebrief moved it. friend give hands a taken-back pinned card to the pinned friend, or to another named friend, without a rebrief, and the inbox names each pinned card that waits.
 
-Why it waits: A cross-row review of 82 failed work attempts found the same classes on every row.
+Why it waits: Pinned cards taken back sat out of the deal until the seat noticed them and rebriefed each one by hand.
+
+Target: v1.7
 
 From: coordinator review 2026-10-24
 
 ### A staged job directory never carries another card's RESULT.md or HEAD
 
-Target v1.7. A staged job directory can carry another card's RESULT.md and HEAD (seen at 2dc17c32), so a worker can finish one card with another's report or head. Staging starts from a clean directory, checks that the staged HEAD is the card's BASE or carried head, and refuses a directory holding a report file for another card.
+A staged job directory can carry another card's RESULT.md and HEAD, so a worker can finish one card with another's report or head. Staging starts from a clean directory, checks that the staged HEAD is the card's BASE or carried head, and refuses a directory holding a report file for another card.
 
-Why it waits: A cross-row review of 82 failed work attempts found the same classes on every row.
+Why it waits: A finish built on another card's report or head is wrong in a way no reader of the brief expects, and wastes the attempt.
+
+Target: v1.7
 
 From: coordinator review 2026-10-24
 

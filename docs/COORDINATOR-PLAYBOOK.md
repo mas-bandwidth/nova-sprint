@@ -523,8 +523,8 @@ claim LAND: the self-check".
    to move. Either way the head moves under the step, so no attempt can meet it. The rebrief
    states the order: merge main once, push, run every step at that head, and never merge again
    (the lander re-merges). Spec: SPEC-SPRINT.md section 11, the `brief` row.
-6. Keep shared-bench load under the core count. Workers queue on the fleet's slot lock for build
-   and test load, and never pick the "least loaded" bench all at once, because they all pick the
+6. Keep shared-bench load under the core count. Workers queue on the fleet's shared-bench slot
+   lock (one `-j4` job per 4 cores) for build and test load, and never pick the "least loaded" bench all at once, because they all pick the
    same one. Put the slot lock in every brief's RULES, and find a bench running above its core
    count with `nova-sprint doctor --area fleet`; quiet it with usage
    `nova-sprint fleet quiet <member> (--for <duration> | --until <RFC3339>) --reason <text> | <member> --end [--dry-run]`

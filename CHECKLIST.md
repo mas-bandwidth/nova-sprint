@@ -95,13 +95,14 @@ rate").
    name every key exactly once after merging main: `cut -f1 tla/RUNS.tsv | sort | uniq -d` prints
    nothing, and the same for the other two. A merge that keeps both sides of a row leaves a
    duplicate key.
-5. **Banned words.** `git diff $(git merge-base origin/main HEAD) HEAD | grep -E '^\+' | grep -iwE 'peer|snapshot'`
-   prints nothing. The check covers every added line, string literals and comments included, not
-   only identifiers. Never disguise a banned word to get past the check: no character arrays, string
+5. **Banned words.** `git diff $(git merge-base origin/main HEAD) HEAD | grep -E '^\+' | grep -iE 'peer|snapshot'`
+   prints nothing. It matches inside words too (plurals, `PeerID`), and it covers every added
+   line, string literals and comments included, not only identifiers. Never disguise a banned word to get past the check: no character arrays, string
    splitting, concatenation, escapes or spelling games. Rename the thing.
 6. **No names.** No person's name, card id, fleet host name or internal note in any committed
-   file, file name, title or cite line:
-   `git diff $(git merge-base origin/main HEAD) HEAD | grep -E '^\+' | grep -iE '<the fleet's host names and people's names, joined by |>'`
+   file, file name, title or cite line. Keep a file `<names>` with one pattern a line: each of
+   the fleet's host names and each person's name. Then
+   `git diff $(git merge-base origin/main HEAD) HEAD | grep -E '^\+' | grep -iEf <names>`
    prints nothing you added. Citing a path that already exists on main is not adding a name; a new
    file name, title or prose line that carries one is.
 7. **DONE-WHEN.** Copy every DONE-WHEN item into the report, each with the command you ran and its
@@ -110,11 +111,11 @@ rate").
 8. **Public headers, citations and coverage.** A change that touches a public header builds with
    clang `-Weverything` and runs the repository's public-header check (its documented check
    script). A citation or coverage card names every gap with its file.
-9. **Bench load.** Build and test load on a shared bench goes through the fleet's slot lock
-   (`~/bin/benchslot -- <cmd>`), never straight onto the bench and never onto whichever bench
-   looks least loaded, because every worker picks the same one. A timing or functional red taken
-   while the bench ran above its core count is not evidence until it is run again under the slot
-   lock.
+9. **Bench load.** Build and test load on a shared bench goes through the fleet's shared-bench
+   slot lock (one `-j4` job per 4 cores), never straight onto the bench and never onto whichever
+   bench looks least loaded, because every worker picks the same one. A timing or functional red
+   taken while the bench ran above its core count is not evidence until it is run again under the
+   slot lock.
 10. **Verdict, and a finish that matches it.** LAND only when items 1 to 9 all hold. Anything
     unmet, anything not run, and an empty head (no change against main) is HOLD. A report whose
     verdict is HOLD or not-done, or that names any unmet item, always finishes with `--failed`,
