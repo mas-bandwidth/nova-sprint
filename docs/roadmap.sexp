@@ -8861,4 +8861,34 @@ The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 
    :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). The card contract tells every worker on a shared bench: scripts and logs go under a path named after the card, never a common path; no pattern kill (pkill or killall by name), only the PIDs it started; every gate runs under the bench slot lock. Where it can be checked from a report or a head, check cards flags a breach."
    :why "Benches are shared by many cards at once; on 2026-10-24 common script and log paths, pattern kills and gates outside the slot lock let one card's worker break another's."
    :release "v1.9"
+   :origin "coordinator review 2026-10-24")
+  (item "land-retries-at-tip" :group "sprint" :date "2026-10-24"
+   :title "Land a read-LAND head onto the moved tip without a new attempt"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). When a head a reader passed as LAND does not merge at the tip only because the base moved, the lander merges (or rebases) the head onto the tip itself when that merge is clean, re-runs the card's gate on the merged head, and lands it with no new work attempt. Only a real conflict goes back as rework, naming the conflicting files. Related, narrower: generated-ledger-merge-conflicts (v1.5, ledgers only)."
+   :why "First-time land rate is 65% against a 90% target, and the top failure is a head read LAND that then does not merge at the tip."
+   :release "v1.9"
+   :origin "coordinator review 2026-10-24")
+  (item "gate-job-dedupe-per-head" :group "sprint" :date "2026-10-24"
+   :title "Run one gate job per card and head on the Windows gate host"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). The single Windows gate host keeps one gate job per (card, head): a later attempt with the same head reuses the queued or finished job instead of queueing a duplicate, and the stranded jobs of retired attempts are reaped. Deadlines for windows cards are in redeal-carries-previous-head."
+   :why "Duplicate gate jobs for the same head and stranded jobs of retired attempts fill the one Windows queue, so every windows card waits behind work already done or no longer wanted."
+   :release "v1.9"
+   :origin "coordinator review 2026-10-24")
+  (item "read-needs-proof-in-tree" :group "sprint" :date "2026-10-24"
+   :title "Refuse a finish whose DONE-WHEN proof run is not in the head"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). A work card whose DONE-WHEN names a proof run (a 1000-client run, a soak) is refused at finish unless the run's artifact or report path is in the head, and the refusal names the missing path; a reader no longer has to find it."
+   :why "On 2026-10-24 a reader sent rn-lan-1000-proof-b back for \"proof run is not in the tree, gate not in the head\", spending a read and an attempt on what finish could have refused."
+   :release "v1.9"
+   :origin "coordinator review 2026-10-24")
+  (item "hook-keepalive-before-down" :group "friends" :date "2026-10-24"
+   :title "Retry a missed hook challenge and alarm before marking a friend down"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). A friend whose hook misses one challenge is marked down for 5 minutes and its cards stop flowing. The sprint retries the challenge once and raises an alarm before marking it down, and the friend harness (nova-tools) re-arms its hook watch when the watch expires."
+   :why "One missed challenge stops a friend's cards for 5 minutes with nobody told, and a harness whose watch expired never comes back by itself."
+   :release "v1.9"
+   :origin "coordinator review 2026-10-24")
+  (item "seat-check-verifies-referenced-helpers" :group "sprint" :date "2026-10-24"
+   :title "Make seat check verify every program the fleet's configs name"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). Seat check verifies that every program named by ~/.gitconfig credential helpers, launchd and systemd loop argv, and the fleet loops exists and is executable on internal disk, and reports each loop's real last exit with its time, so a stale non-zero exit is not read as live. Extends seat-check-finds-and-repairs-fleet-drift, which covers loops that keep exiting non-zero and programs on an external volume."
+   :why "On 2026-10-24 a moved-aside credential helper and loops on /Volumes failing with exit 126 went unnoticed."
+   :release "v1.9"
    :origin "coordinator review 2026-10-24")))

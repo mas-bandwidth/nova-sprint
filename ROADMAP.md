@@ -7,10 +7,10 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (297)
+- [The sprint system](#the-sprint-system) (301)
 - [Setup, release and operations](#setup-release-and-operations) (72)
 - [Docs, models and the repository](#docs-models-and-the-repository) (25)
-- [Friend AIs](#friend-ais) (26)
+- [Friend AIs](#friend-ais) (27)
 - [Moved out of the sprint on 2026-10-15: nova-local](#moved-out-of-the-sprint-on-2026-10-15-nova-local) (1)
 - [Moved out of the sprint on 2026-10-15: v13-blockers](#moved-out-of-the-sprint-on-2026-10-15-v13-blockers) (19)
 - [Moved out of the sprint on 2026-10-15: v15-features](#moved-out-of-the-sprint-on-2026-10-15-v15-features) (1)
@@ -2508,6 +2508,46 @@ Target: v1.9
 
 From: coordinator review 2026-10-24
 
+### Land a read-LAND head onto the moved tip without a new attempt
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). When a head a reader passed as LAND does not merge at the tip only because the base moved, the lander merges (or rebases) the head onto the tip itself when that merge is clean, re-runs the card's gate on the merged head, and lands it with no new work attempt. Only a real conflict goes back as rework, naming the conflicting files. Related, narrower: generated-ledger-merge-conflicts (v1.5, ledgers only).
+
+Why it waits: First-time land rate is 65% against a 90% target, and the top failure is a head read LAND that then does not merge at the tip.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Run one gate job per card and head on the Windows gate host
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). The single Windows gate host keeps one gate job per (card, head): a later attempt with the same head reuses the queued or finished job instead of queueing a duplicate, and the stranded jobs of retired attempts are reaped. Deadlines for windows cards are in redeal-carries-previous-head.
+
+Why it waits: Duplicate gate jobs for the same head and stranded jobs of retired attempts fill the one Windows queue, so every windows card waits behind work already done or no longer wanted.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Refuse a finish whose DONE-WHEN proof run is not in the head
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). A work card whose DONE-WHEN names a proof run (a 1000-client run, a soak) is refused at finish unless the run's artifact or report path is in the head, and the refusal names the missing path; a reader no longer has to find it.
+
+Why it waits: On 2026-10-24 a reader sent rn-lan-1000-proof-b back for "proof run is not in the tree, gate not in the head", spending a read and an attempt on what finish could have refused.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Make seat check verify every program the fleet's configs name
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). Seat check verifies that every program named by ~/.gitconfig credential helpers, launchd and systemd loop argv, and the fleet loops exists and is executable on internal disk, and reports each loop's real last exit with its time, so a stale non-zero exit is not read as live. Extends seat-check-finds-and-repairs-fleet-drift, which covers loops that keep exiting non-zero and programs on an external volume.
+
+Why it waits: On 2026-10-24 a moved-aside credential helper and loops on /Volumes failing with exit 126 went unnoticed.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
 ## Setup, release and operations
 
 Setting machines up, installing and releasing safely, and the checks that keep a fleet honest.
@@ -3607,6 +3647,16 @@ From: coordinator review 2026-10-24
 PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). friend give to a row that is full hands the card to the named friend once the row has width, held out of levelling until then, or refuses and says the row is full; the leveller never moves a given card to another friend.
 
 Why it waits: On 2026-10-24 a card given to a full row was levelled to another friend within a second, so the friend it was given to never saw it.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Retry a missed hook challenge and alarm before marking a friend down
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). A friend whose hook misses one challenge is marked down for 5 minutes and its cards stop flowing. The sprint retries the challenge once and raises an alarm before marking it down, and the friend harness (nova-tools) re-arms its hook watch when the watch expires.
+
+Why it waits: One missed challenge stops a friend's cards for 5 minutes with nobody told, and a harness whose watch expired never comes back by itself.
 
 Target: v1.9
 
