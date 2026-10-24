@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (311)
+- [The sprint system](#the-sprint-system) (310)
 - [Setup, release and operations](#setup-release-and-operations) (72)
 - [Docs, models and the repository](#docs-models-and-the-repository) (25)
 - [Friend AIs](#friend-ais) (29)
@@ -2633,16 +2633,6 @@ From: coordinator review 2026-10-24
 PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). A read of a head identical to, or merging cleanly onto, a head already read LAND inherits that read; only the changed files are re-read. Related: widen-in-place-redeals-same-head (v1.7), v19-l10-proportionate-review, gate-evidence-keyed-by-head. Data from 2026-10-24: 557 attempts for 127 landed cards (about 4.4 per landed card), first-time land 51%, the top 20 cards took 6 to 13 attempts, fleet lanes failed 35 to 45%.
 
 Why it waits: Unchanged or trivially rebased heads are read again in full, spending reads and holding cards in review.
-
-Target: v1.9
-
-From: coordinator review 2026-10-24
-
-### Check fleet sync each tick and raise a judgment on config drift
-
-PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). The server runs fleet sync --check each tick and raises a judgment when a member's applied config differs from nova-config, naming the members and the fields, so a changed width is never left to a hand-run fleet sync. Related: seat-check-finds-and-repairs-fleet-drift (b), the config store rev ahead of the applied rev.
-
-Why it waits: On 2026-10-24 widths changed in nova-config at 19:15Z were never applied, and 5 benches ran at width 8 against a configured 4 for an hour.
 
 Target: v1.9
 
