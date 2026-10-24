@@ -3742,15 +3742,15 @@ Target: v1.9
 
 From: coordinator review 2026-10-24
 
-### Retry a missed hook challenge and alarm before marking a friend down
+### Re-arm a friend harness's hook watch when the watch expires
 
-PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). A friend whose hook misses one challenge is marked down for 5 minutes and its cards stop flowing. The sprint retries the challenge once and raises an alarm before marking it down, and the friend harness (nova-tools) re-arms its hook watch when the watch expires.
+The friend harness (nova-tools) re-arms its hook watch when the watch expires, so a harness whose watch lapsed comes back by itself. Split from hook-keepalive-before-down, whose heartbeat half (one last-chance challenge before a down) shipped in v1.6.21 through nova-tools PR #6091.
 
-Why it waits: One missed challenge stops a friend's cards for 5 minutes with nobody told, and a harness whose watch expired never comes back by itself.
+Why it waits: A harness whose watch expired never comes back by itself.
 
 Target: v1.9
 
-From: coordinator review 2026-10-24
+From: coordinator review 2026-10-24; split from hook-keepalive-before-down
 
 ### Tell a friend's worker when its attempt stops being live
 

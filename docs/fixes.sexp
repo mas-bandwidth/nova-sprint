@@ -78,7 +78,7 @@
    (release "v1.2.26" :status "planned"
     :text "Harness faults never vote that a brief is wrong.")
    (release "v1.6.21" :status "planned" :date "2026-10-24"
-    :text "The server's tick raises a judgment when the fleet table drifts from nova-config (the owner, 2026-10-24: this point release, not v1.9)."))
+    :text "The server's tick raises a judgment when the fleet table drifts from nova-config (the owner, 2026-10-24: this point release, not v1.9). A friend's first silent missed hook challenge is a last chance, not a down (nova-hook, nova-tools PR #6091)."))
   :items
    ((fix "read-cards-on-without-an-explicit-off" :release "v1.2.16" :status "planned"
      :title "Read cards are on by default"
@@ -3497,5 +3497,13 @@
    :kept (:item-group "sprint"
           :item-date "2026-10-24"
           :item-why "On 2026-10-24 widths changed in nova-config at 19:15Z were never applied, and 5 benches ran at width 8 against a configured 4 for an hour."
+          :item-release "v1.9")
+   :origin "coordinator review 2026-10-24")
+  (fix "hook-keepalive-before-down" :release "v1.6.21" :status "done"
+   :title "Retry a missed hook challenge before marking a friend down"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"; the owner: small fixes ship in point releases). A friend whose hook missed one challenge was marked down and her cards stopped flowing: one friend went proven to down three times on 2026-10-24, each after exactly one miss (no answer in 5m0s (1 challenges missed)), and was back within minutes. The down is nova-hook's heartbeat pass (nova-tools hook/redis.go beatLua), so the fix is there: a name that is not the coordinator and still holds its bus lease is not unhooked at its first silent miss; the same pass sets a fresh challenge at once (a new nonce, a full answer window), records it as last_chance and says last_chance=true on the server's challenge line, and only a silent miss of that last chance unhooks it, so a friend goes down after two misses in a row, the reason counting both. A name with no lease and the coordinator are unhooked at the first silent miss as before. Model: nova-tools tla/HookLastChance.tla (NoDownWithoutLastChance, LastChanceAfterAMiss, GoneIsEventuallyDown; reversed witnesses onemiss and always). Unit tests on a fake clock, no sockets. The harness half (re-arm an expired hook watch) is split out as harness-rearms-expired-hook-watch. Done: nova-tools PR #6091; it takes effect when nova-hook serve runs a nova-tools build with it."
+   :kept (:item-group "friends"
+          :item-date "2026-10-24"
+          :item-why "One missed challenge stops a friend's cards for 5 minutes with nobody told, and a harness whose watch expired never comes back by itself."
           :item-release "v1.9")
    :origin "coordinator review 2026-10-24")))
