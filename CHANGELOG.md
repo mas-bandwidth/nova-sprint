@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.6.20 — 2026-10-24
+
+Cut from 87272ff001e3b2103df0c429c292b447dbbb160a. 5 pull requests since v1.6.19.
+
+Recovery journeys incomplete, gate waived: v1.6.20: a taken card runs its brief's DEADLINE plus 15 minutes before it is late, with no redeal while it is progressing (#599, #600); operational brief edits keep the head, the gatefact vocabulary lets macos cards reach mini-m5, and the brief lint catches MC cfgs and -j above 4 (#600); playbooks and roadmap (#596, #597); journeys: the range touches no hook or recovery path; spend: the range changes no spend recording
+
+- TestASilentClientIsUnhookedAfterExactlyTwoAnnouncedOnce: not-run (no --journeys evidence)
+- TestNoServerOrNoAnswerIsNoEvidence: not-run (no --journeys evidence)
+- TestTheGateRefusesEveryoneWhileTheServerIsStale: not-run (no --journeys evidence)
+- TestAStaleAnswerIsDownWithAFreshServer: not-run (no --journeys evidence)
+- TestALostAnswerIsNeverToldTwice: not-run (no --journeys evidence)
+
+Spend gate waived: v1.6.20: a taken card runs its brief's DEADLINE plus 15 minutes before it is late, with no redeal while it is progressing (#599, #600); operational brief edits keep the head, the gatefact vocabulary lets macos cards reach mini-m5, and the brief lint catches MC cfgs and -j above 4 (#600); playbooks and roadmap (#596, #597); journeys: the range touches no hook or recovery path; spend: the range changes no spend recording (window 2026-10-24T00:00:00Z..2026-10-24T20:34:46Z)
+- unread: --spend-store <addr> names no sprint store, so the recorded spend cannot be read
+
+- #597 playbooks: lock the 2026-10-24 coordinator and worker lessons
+- #599 deadline: a card taken runs its brief's DEADLINE plus 15 minutes before it is late
+- #598 changelog: v1.6.19
+- #600 sprint: four failures of 2026-10-24 made impossible to repeat
+- #596 roadmap: second batch of critical v1.9 items (2026-10-24 coordinator review)
+
 ## v1.6.19 — 2026-10-24
 
 Cut from c33d8335e3239b6519a6e1b663f13c352db29afa. 6 pull requests since v1.6.18.
