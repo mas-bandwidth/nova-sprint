@@ -7,7 +7,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (301)
+- [The sprint system](#the-sprint-system) (310)
 - [Setup, release and operations](#setup-release-and-operations) (72)
 - [Docs, models and the repository](#docs-models-and-the-repository) (25)
 - [Friend AIs](#friend-ais) (27)
@@ -1786,11 +1786,11 @@ From: the cold reader of nova-sprint #436, 2026-10-16
 
 ### A no-progress attempt escalates the card's tier
 
-Overnight at least four cards (java-ledgers, java-tables-soak, elixir-porting-register, java-accessor) were redealt at pro after a HOLD read, and the new pro attempt left every file the reader named unchanged, or touched only comments; each was read and held again, up to four times. When a read HOLDs and the next attempt's diff touches none of the files and lines the previous read named, the next deal raises the card's tier one step (pro to heavy) and notes why. A unit test with no real time drives the hold, the no-progress attempt and the raised deal, and the TLA+ model of the attempts gains the escalation with a reversed witness that redeals at the same tier.
+Overnight at least four cards (java-ledgers, java-tables-soak, elixir-porting-register, java-accessor) were redealt at pro after a HOLD read, and the new pro attempt left every file the reader named unchanged, or touched only comments; each was read and held again, up to four times. When a read HOLDs and the next attempt's diff touches none of the files and lines the previous read named, the next deal raises the card's tier one step (pro to heavy) and notes why. A unit test with no real time drives the hold, the no-progress attempt and the raised deal, and the TLA+ model of the attempts gains the escalation with a reversed witness that redeals at the same tier. PRIORITY: critical, retargeted from v1.5 to v1.9 (Glenn 2026-10-24: card these as critical for v1.9; coordinator review 2026-10-24, item tier-escalates-after-failure). Widened: any rework after a failed attempt goes to the next tier up (flash to pro to heavy), not the same tier; cheap tiers are first tries, not retries. Same rule as promote-up-tier-escalation and sprint-cost-rules (after v1.4). Data from 2026-10-24: 557 attempts for 127 landed cards, first-time land 51%, fleet lanes failed 35 to 45%.
 
 Why it waits: A new escalation rule in the deal.
 
-Target: v1.5
+Target: v1.9
 
 From: Rowan, 2026-10-16, from the overnight fix column
 
@@ -2543,6 +2543,96 @@ From: coordinator review 2026-10-24
 PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). Seat check verifies that every program named by ~/.gitconfig credential helpers, launchd and systemd loop argv, and the fleet loops exists and is executable on internal disk, and reports each loop's real last exit with its time, so a stale non-zero exit is not read as live. Extends seat-check-finds-and-repairs-fleet-drift, which covers loops that keep exiting non-zero and programs on an external volume.
 
 Why it waits: On 2026-10-24 a moved-aside credential helper and loops on /Volumes failing with exit 126 went unnoticed.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Run the repo's whole-tree checks on the merged tip before landing
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). A landing runs the repository's whole-tree checks on the merged tip (global TLA+ coverage, tlacheck groups --stale, and every required CI check), not only the card's gate, and refuses naming the failing check. Related: v19-l3-landing-law (gate once on the batch), land-retries-at-tip.
+
+Why it waits: On 2026-10-24 commit 607411ba landed on the card's gate alone and broke rocketnet's global TLA+ coverage for every later card.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Raise one repair card when several attempts report the same failure at BASE
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). When two or more attempts report the same failure as pre-existing at BASE, the machine raises one judgment, opens one repair card at top priority, and tells every affected worker to name that card and not touch the failure.
+
+Why it waits: On 2026-10-24 each friend that hit the same broken BASE asked the coordinator separately, and the repair waited on the coordinator noticing the pattern.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Serve the worker rules from nova-sprint help worker and stamp them into every JOB.md
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). The rules workers keep asking about are served by nova-sprint help worker and stamped into every JOB.md: the load guard is the bench slot only; -j4; after a redeal or an editorial brief edit, finish with the carried head; no reruns on an unchanged head; one gate job per head. A new worker model reads them from the tool, not from the coordinator's bus replies. Related: sprint-spec-fix-worker-playbook (the worker playbook document).
+
+Why it waits: On 2026-10-24 the coordinator answered the same worker questions over the bus again and again, once per new worker model.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Store gate evidence keyed by card and head, and never rerun it
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). The machine stores each gate result (which gate, which host, pass or fail, report path) keyed by (card, head sha). Any later attempt, redeal or read of the same head sees it and does not rerun the gate; a read verifies the stored evidence instead of rebuilding. gate-job-dedupe-per-head is this rule for the Windows gate queue. Data from 2026-10-24: 557 attempts for 127 landed cards (about 4.4 per landed card), first-time land 51%, the top 20 cards took 6 to 13 attempts, fleet lanes failed 35 to 45%.
+
+Why it waits: Finished gates are rerun on unchanged heads by redeals and reads, which is a large part of the 4.4 attempts per landed card.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Keep every attempt's report, gate packet and branch when it is retired
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). RESULT.md, the gate packet and the pushed branch of every attempt are kept in the store when the attempt is retired, redealt, re-tiered or its brief replaced, and nova-sprint card lists them, so a new owner starts from them. Extends redeal-carries-previous-head (which carries the pushed head) to the report and gate evidence. Data from 2026-10-24: 557 attempts for 127 landed cards (about 4.4 per landed card), first-time land 51%, the top 20 cards took 6 to 13 attempts, fleet lanes failed 35 to 45%.
+
+Why it waits: Retired attempts lose their reports and evidence, so a redeal or re-tier redoes finished work.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Stop redealing at 3 failed attempts and ask for a re-cut
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). At a set number of failed attempts (3) a card is not redealt: it raises one judgment carrying the repeating cause drawn from its reports and read findings, for a re-cut or a split. Builds on the v1.2.15 fix a-card-runs-at-most-max-attempts-between-coordinator-decisions (the cap counted between coordinator decisions, 4 by default). Data from 2026-10-24: 557 attempts for 127 landed cards (about 4.4 per landed card), first-time land 51%, the top 20 cards took 6 to 13 attempts, fleet lanes failed 35 to 45%.
+
+Why it waits: The top 20 cards took 6 to 13 attempts each, repeating the same failure instead of being re-cut.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Widen PATHS in place from a PATHS-PROPOSED hold, keeping the head and the attempt
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). A HOLD carrying PATHS-PROPOSED raises a judgment whose one command widens PATHS in place keeping the head, and the worker keeps its attempt; a scope widen never costs a new attempt. Related: the v1.2.15 fix a-paths-proposed-line-reaches-the-seat-whole, and widen-in-place-redeals-same-head (v1.7).
+
+Why it waits: A scope widen today spends a whole new attempt on a head that was already right.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Finish a single-host platform card with its platform job queued
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). A card gated on the single Windows or macOS host finishes its source and Linux evidence with the platform job queued, and one validation step lands it or returns it when the job reports, so no worker waits out a 240-minute deadline. Related: redeal-carries-previous-head (deadlines from GATE-NEEDS), gate-job-dedupe-per-head.
+
+Why it waits: Workers on windows and macOS cards hold an attempt open for hours waiting on one host's queue.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Let a read of an already-read head inherit that read
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). A read of a head identical to, or merging cleanly onto, a head already read LAND inherits that read; only the changed files are re-read. Related: widen-in-place-redeals-same-head (v1.7), v19-l10-proportionate-review, gate-evidence-keyed-by-head. Data from 2026-10-24: 557 attempts for 127 landed cards (about 4.4 per landed card), first-time land 51%, the top 20 cards took 6 to 13 attempts, fleet lanes failed 35 to 45%.
+
+Why it waits: Unchanged or trivially rebased heads are read again in full, spending reads and holding cards in review.
 
 Target: v1.9
 

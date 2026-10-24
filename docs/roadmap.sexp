@@ -2475,9 +2475,9 @@
    :origin "the coordinator, 2026-10-16")
   (item "no-progress-attempt-escalates-tier" :group "sprint" :date "2026-10-16"
    :title "A no-progress attempt escalates the card's tier"
-   :text "Overnight at least four cards (java-ledgers, java-tables-soak, elixir-porting-register, java-accessor) were redealt at pro after a HOLD read, and the new pro attempt left every file the reader named unchanged, or touched only comments; each was read and held again, up to four times. When a read HOLDs and the next attempt's diff touches none of the files and lines the previous read named, the next deal raises the card's tier one step (pro to heavy) and notes why. A unit test with no real time drives the hold, the no-progress attempt and the raised deal, and the TLA+ model of the attempts gains the escalation with a reversed witness that redeals at the same tier."
+   :text "Overnight at least four cards (java-ledgers, java-tables-soak, elixir-porting-register, java-accessor) were redealt at pro after a HOLD read, and the new pro attempt left every file the reader named unchanged, or touched only comments; each was read and held again, up to four times. When a read HOLDs and the next attempt's diff touches none of the files and lines the previous read named, the next deal raises the card's tier one step (pro to heavy) and notes why. A unit test with no real time drives the hold, the no-progress attempt and the raised deal, and the TLA+ model of the attempts gains the escalation with a reversed witness that redeals at the same tier. PRIORITY: critical, retargeted from v1.5 to v1.9 (Glenn 2026-10-24: card these as critical for v1.9; coordinator review 2026-10-24, item tier-escalates-after-failure). Widened: any rework after a failed attempt goes to the next tier up (flash to pro to heavy), not the same tier; cheap tiers are first tries, not retries. Same rule as promote-up-tier-escalation and sprint-cost-rules (after v1.4). Data from 2026-10-24: 557 attempts for 127 landed cards, first-time land 51%, fleet lanes failed 35 to 45%."
    :why "A new escalation rule in the deal."
-   :release "v1.5"
+   :release "v1.9"
    :origin "Rowan, 2026-10-16, from the overnight fix column")
   (item "friend-row-git-identity" :group "friends" :date "2026-10-16"
    :title "A friend's own git identity on her nova-config row"
@@ -8890,5 +8890,59 @@ The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 
    :title "Make seat check verify every program the fleet's configs name"
    :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). Seat check verifies that every program named by ~/.gitconfig credential helpers, launchd and systemd loop argv, and the fleet loops exists and is executable on internal disk, and reports each loop's real last exit with its time, so a stale non-zero exit is not read as live. Extends seat-check-finds-and-repairs-fleet-drift, which covers loops that keep exiting non-zero and programs on an external volume."
    :why "On 2026-10-24 a moved-aside credential helper and loops on /Volumes failing with exit 126 went unnoticed."
+   :release "v1.9"
+   :origin "coordinator review 2026-10-24")
+  (item "land-runs-repo-wide-checks" :group "sprint" :date "2026-10-24"
+   :title "Run the repo's whole-tree checks on the merged tip before landing"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). A landing runs the repository's whole-tree checks on the merged tip (global TLA+ coverage, tlacheck groups --stale, and every required CI check), not only the card's gate, and refuses naming the failing check. Related: v19-l3-landing-law (gate once on the batch), land-retries-at-tip."
+   :why "On 2026-10-24 commit 607411ba landed on the card's gate alone and broke rocketnet's global TLA+ coverage for every later card."
+   :release "v1.9"
+   :origin "coordinator review 2026-10-24")
+  (item "base-break-detector" :group "sprint" :date "2026-10-24"
+   :title "Raise one repair card when several attempts report the same failure at BASE"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). When two or more attempts report the same failure as pre-existing at BASE, the machine raises one judgment, opens one repair card at top priority, and tells every affected worker to name that card and not touch the failure."
+   :why "On 2026-10-24 each friend that hit the same broken BASE asked the coordinator separately, and the repair waited on the coordinator noticing the pattern."
+   :release "v1.9"
+   :origin "coordinator review 2026-10-24")
+  (item "canonical-worker-rules-in-tool" :group "sprint" :date "2026-10-24"
+   :title "Serve the worker rules from nova-sprint help worker and stamp them into every JOB.md"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). The rules workers keep asking about are served by nova-sprint help worker and stamped into every JOB.md: the load guard is the bench slot only; -j4; after a redeal or an editorial brief edit, finish with the carried head; no reruns on an unchanged head; one gate job per head. A new worker model reads them from the tool, not from the coordinator's bus replies. Related: sprint-spec-fix-worker-playbook (the worker playbook document)."
+   :why "On 2026-10-24 the coordinator answered the same worker questions over the bus again and again, once per new worker model."
+   :release "v1.9"
+   :origin "coordinator review 2026-10-24")
+  (item "gate-evidence-keyed-by-head" :group "sprint" :date "2026-10-24"
+   :title "Store gate evidence keyed by card and head, and never rerun it"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). The machine stores each gate result (which gate, which host, pass or fail, report path) keyed by (card, head sha). Any later attempt, redeal or read of the same head sees it and does not rerun the gate; a read verifies the stored evidence instead of rebuilding. gate-job-dedupe-per-head is this rule for the Windows gate queue. Data from 2026-10-24: 557 attempts for 127 landed cards (about 4.4 per landed card), first-time land 51%, the top 20 cards took 6 to 13 attempts, fleet lanes failed 35 to 45%."
+   :why "Finished gates are rerun on unchanged heads by redeals and reads, which is a large part of the 4.4 attempts per landed card."
+   :release "v1.9"
+   :origin "coordinator review 2026-10-24")
+  (item "result-archive-survives-retire" :group "sprint" :date "2026-10-24"
+   :title "Keep every attempt's report, gate packet and branch when it is retired"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). RESULT.md, the gate packet and the pushed branch of every attempt are kept in the store when the attempt is retired, redealt, re-tiered or its brief replaced, and nova-sprint card lists them, so a new owner starts from them. Extends redeal-carries-previous-head (which carries the pushed head) to the report and gate evidence. Data from 2026-10-24: 557 attempts for 127 landed cards (about 4.4 per landed card), first-time land 51%, the top 20 cards took 6 to 13 attempts, fleet lanes failed 35 to 45%."
+   :why "Retired attempts lose their reports and evidence, so a redeal or re-tier redoes finished work."
+   :release "v1.9"
+   :origin "coordinator review 2026-10-24")
+  (item "attempt-budget-recut" :group "sprint" :date "2026-10-24"
+   :title "Stop redealing at 3 failed attempts and ask for a re-cut"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). At a set number of failed attempts (3) a card is not redealt: it raises one judgment carrying the repeating cause drawn from its reports and read findings, for a re-cut or a split. Builds on the v1.2.15 fix a-card-runs-at-most-max-attempts-between-coordinator-decisions (the cap counted between coordinator decisions, 4 by default). Data from 2026-10-24: 557 attempts for 127 landed cards (about 4.4 per landed card), first-time land 51%, the top 20 cards took 6 to 13 attempts, fleet lanes failed 35 to 45%."
+   :why "The top 20 cards took 6 to 13 attempts each, repeating the same failure instead of being re-cut."
+   :release "v1.9"
+   :origin "coordinator review 2026-10-24")
+  (item "paths-proposed-fast-path" :group "sprint" :date "2026-10-24"
+   :title "Widen PATHS in place from a PATHS-PROPOSED hold, keeping the head and the attempt"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). A HOLD carrying PATHS-PROPOSED raises a judgment whose one command widens PATHS in place keeping the head, and the worker keeps its attempt; a scope widen never costs a new attempt. Related: the v1.2.15 fix a-paths-proposed-line-reaches-the-seat-whole, and widen-in-place-redeals-same-head (v1.7)."
+   :why "A scope widen today spends a whole new attempt on a head that was already right."
+   :release "v1.9"
+   :origin "coordinator review 2026-10-24")
+  (item "platform-validation-batch" :group "sprint" :date "2026-10-24"
+   :title "Finish a single-host platform card with its platform job queued"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). A card gated on the single Windows or macOS host finishes its source and Linux evidence with the platform job queued, and one validation step lands it or returns it when the job reports, so no worker waits out a 240-minute deadline. Related: redeal-carries-previous-head (deadlines from GATE-NEEDS), gate-job-dedupe-per-head."
+   :why "Workers on windows and macOS cards hold an attempt open for hours waiting on one host's queue."
+   :release "v1.9"
+   :origin "coordinator review 2026-10-24")
+  (item "reread-inherits-read" :group "sprint" :date "2026-10-24"
+   :title "Let a read of an already-read head inherit that read"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). A read of a head identical to, or merging cleanly onto, a head already read LAND inherits that read; only the changed files are re-read. Related: widen-in-place-redeals-same-head (v1.7), v19-l10-proportionate-review, gate-evidence-keyed-by-head. Data from 2026-10-24: 557 attempts for 127 landed cards (about 4.4 per landed card), first-time land 51%, the top 20 cards took 6 to 13 attempts, fleet lanes failed 35 to 45%."
+   :why "Unchanged or trivially rebased heads are read again in full, spending reads and holding cards in review."
    :release "v1.9"
    :origin "coordinator review 2026-10-24")))
