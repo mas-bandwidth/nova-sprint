@@ -8951,4 +8951,16 @@ The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 
    :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). When a friend's attempt stops being live (redealt, re-tiered off the row, given to another friend or a fleet lane, withdrawn), the machine pushes a bus message to that friend naming the attempt, the new owner and: stop and hand over your head. Companion to redeal-carries-previous-head, which tells the new owner; this tells the old one."
    :why "On 2026-10-24 three workers on one row kept running 1 to 2 hours on cards that had moved to another friend or a fleet member (rn-client-iocp-windows-t, rn-fix-assert-iocp-packet-id, rn-fix-cfg-config-bytes), queued duplicate Windows gate jobs, and stopped only when checked by hand."
    :release "v1.9"
+   :origin "coordinator review 2026-10-24")
+  (item "reads-never-wait-behind-a-full-row" :group "friends" :date "2026-10-24"
+   :title "Deal a read only to a reader with a free slot, and level an untaken one"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). The deal hands a read only to a reader with a free slot; a ready read untaken past a short bound is levelled to another eligible reader; and friend give moves a ready read as it moves a work card (today it refuses read ids: no card <id>.r7.<friend>). Related: friend-give-holds-for-named-friend, stalled-friend-detector, fleet-reads-launch-without-route (v1.7)."
+   :why "On 2026-10-24 four reads waited in the ready column of a friend whose row was at 8 of 8, while 18 cards sat in review and nothing merged."
+   :release "v1.9"
+   :origin "coordinator review 2026-10-24")
+  (item "config-drift-alarm" :group "sprint" :date "2026-10-24"
+   :title "Check fleet sync each tick and raise a judgment on config drift"
+   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). The server runs fleet sync --check each tick and raises a judgment when a member's applied config differs from nova-config, naming the members and the fields, so a changed width is never left to a hand-run fleet sync. Related: seat-check-finds-and-repairs-fleet-drift (b), the config store rev ahead of the applied rev."
+   :why "On 2026-10-24 widths changed in nova-config at 19:15Z were never applied, and 5 benches ran at width 8 against a configured 4 for an hour."
+   :release "v1.9"
    :origin "coordinator review 2026-10-24")))

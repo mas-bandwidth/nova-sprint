@@ -7,10 +7,10 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (310)
+- [The sprint system](#the-sprint-system) (311)
 - [Setup, release and operations](#setup-release-and-operations) (72)
 - [Docs, models and the repository](#docs-models-and-the-repository) (25)
-- [Friend AIs](#friend-ais) (28)
+- [Friend AIs](#friend-ais) (29)
 - [Moved out of the sprint on 2026-10-15: nova-local](#moved-out-of-the-sprint-on-2026-10-15-nova-local) (1)
 - [Moved out of the sprint on 2026-10-15: v13-blockers](#moved-out-of-the-sprint-on-2026-10-15-v13-blockers) (19)
 - [Moved out of the sprint on 2026-10-15: v15-features](#moved-out-of-the-sprint-on-2026-10-15-v15-features) (1)
@@ -2638,6 +2638,16 @@ Target: v1.9
 
 From: coordinator review 2026-10-24
 
+### Check fleet sync each tick and raise a judgment on config drift
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). The server runs fleet sync --check each tick and raises a judgment when a member's applied config differs from nova-config, naming the members and the fields, so a changed width is never left to a hand-run fleet sync. Related: seat-check-finds-and-repairs-fleet-drift (b), the config store rev ahead of the applied rev.
+
+Why it waits: On 2026-10-24 widths changed in nova-config at 19:15Z were never applied, and 5 benches ran at width 8 against a configured 4 for an hour.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
 ## Setup, release and operations
 
 Setting machines up, installing and releasing safely, and the checks that keep a fleet honest.
@@ -3757,6 +3767,16 @@ From: coordinator review 2026-10-24
 PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). When a friend's attempt stops being live (redealt, re-tiered off the row, given to another friend or a fleet lane, withdrawn), the machine pushes a bus message to that friend naming the attempt, the new owner and: stop and hand over your head. Companion to redeal-carries-previous-head, which tells the new owner; this tells the old one.
 
 Why it waits: On 2026-10-24 three workers on one row kept running 1 to 2 hours on cards that had moved to another friend or a fleet member (rn-client-iocp-windows-t, rn-fix-assert-iocp-packet-id, rn-fix-cfg-config-bytes), queued duplicate Windows gate jobs, and stopped only when checked by hand.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Deal a read only to a reader with a free slot, and level an untaken one
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). The deal hands a read only to a reader with a free slot; a ready read untaken past a short bound is levelled to another eligible reader; and friend give moves a ready read as it moves a work card (today it refuses read ids: no card <id>.r7.<friend>). Related: friend-give-holds-for-named-friend, stalled-friend-detector, fleet-reads-launch-without-route (v1.7).
+
+Why it waits: On 2026-10-24 four reads waited in the ready column of a friend whose row was at 8 of 8, while 18 cards sat in review and nothing merged.
 
 Target: v1.9
 
