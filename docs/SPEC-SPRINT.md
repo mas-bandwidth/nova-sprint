@@ -4726,6 +4726,7 @@ What each of the lander's checks does with a head:
 |---|---|
 | files outside PATHS (E12) | refuses; a `*_test.go`, a file under `testdata/`, `tla/RUNS.tsv`, `tla/CASES.tsv`, `internal/docs/catalog.go` and an `AGENTS.md` map are inside every PATHS (`sprint.LandScope`) |
 | a rename outside PATHS (E12) | refuses |
+| a report file (`RESULT.md`, `JOB.md`) added or modified at the repository root | refuses, one line per file: `it adds or modifies <file> at the repository root: report files live in the job dir only`; a deletion (the fix), a rename away, and a report file below the root land (`rootReportFiles`, cmd/nova-sprint/land_report_files.go; rocketnet main carried a card's `RESULT.md` from 3bb8e5f1 and every staged checkout began with its `Head:` line, 2026-10-24) |
 | a stranded sentence fragment (E4) | refuses |
 | an unmatched backquote in a Markdown or text file (E4) | repairs; refuses only when ambiguous, naming the line; not read on a prose path |
 | an unmatched backquote in a Go comment (E4) | refuses; not read on a prose path |

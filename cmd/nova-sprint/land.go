@@ -78,7 +78,8 @@ Landing, the coordinator's: an external delivery (git pushes the base) and a sto
     before it and is reported as merge --conflict, a red check as --red, a
     second rejected push as --rejected. Each head merged is checked first, by
     script and no model: a head whose diff changes a file outside its brief's
-    PATHS, or leaves a stranded sentence fragment or an unmatched backquote in
+    PATHS, adds or modifies RESULT.md or JOB.md at the repository root (report
+    files live in the job dir only), or leaves a stranded sentence fragment or an unmatched backquote in
     prose, ends the batch as a head in conflict does. Tests, testdata, tla/RUNS.tsv and
     tla/CASES.tsv, the docs catalog and AGENTS.md maps are inside every PATHS. A card that adds a directory
     owns its catalog row and the AGENTS.md maps; a conflict only in those maps, or
@@ -2328,6 +2329,10 @@ func (l *lander) checkCard(ctx context.Context, dir, stream string, c landCard, 
 		}
 		why = append(why, "it changes files outside its PATHS (E12): "+strings.Join(parts, ", "))
 	}
+	// A report file (RESULT.md, JOB.md) at the repository's root is the job directory's,
+	// never the repository's: one landed poisons every checkout staged from the base after
+	// it (land_report_files.go; docs/SPEC-SPRINT.md section 7, the lander's checks).
+	why = append(why, reportFileRefusal(diff)...)
 	for _, f := range diffcheck.Fragments(diff) {
 		// a document's backquotes are the repair's to judge, a prose file's no one's
 		if strings.Contains(f.Why, "code span unmatched") && (sprint.DocFile(f.File) || sprint.DocProse(prose, f.File)) {
