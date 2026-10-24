@@ -514,8 +514,10 @@ func (l *lander) resolveRecords(ctx context.Context, dir string, paths []string)
 // dedupeMerge removes a row that came twice from each append-only record the merge at
 // HEAD changed (git's merge=union keeps both sides' rows), amending the merge commit.
 // before is the tip the merge was made on; c is the card being merged.
-// If an append-only record is missing a base row or a side removed a row, or if a keyed
-// table has a duplicate config, the merge is refused (card conflict returned).
+// A config that tla/RUNS.tsv holds twice after the union keeps the record measured on the
+// merged inputs (landruns.go, keepCurrentRuns). If an append-only record is missing a base
+// row or a side removed a row, or if a keyed table still has a duplicate config, the merge
+// is refused (card conflict returned).
 // The removal check is held against the merge base whether or not that base is the tip
 // itself: a card landing on the tip it was cut from (merge-base(before, head) == before)
 // is no exception, since a row it deletes is no append either (docs/SPEC-SPRINT.md
@@ -537,6 +539,26 @@ func (l *lander) dedupeMerge(ctx context.Context, dir, before string, c landCard
 			continue
 		}
 		path := filepath.Join(dir, filepath.FromSlash(p))
+		if p == runsFile {
+			if b, err := os.ReadFile(path); err == nil {
+				out, kept, rerr := resolveDoubledRuns(dir, b)
+				if rerr != nil {
+					l.conflictKind = "file"
+					l.conflictPaths = []string{p}
+					return nil, "the head " + c.head + " of " + c.id + " does not merge: " + rerr.Error(), ""
+				}
+				if len(kept) > 0 {
+					if err := os.WriteFile(path, out, 0o644); err != nil {
+						return nil, "", "the resolved " + p + " could not be written: " + err.Error()
+					}
+					if _, err := l.git(ctx, dir, "add", "--", p); err != nil {
+						return nil, "", "the resolved " + p + " could not be staged: " + firstLine("", err)
+					}
+					fixed = append(fixed, p)
+					lines = append(lines, "record "+p+": kept the record measured on the merged inputs for "+strings.Join(kept, ", "))
+				}
+			}
+		}
 		if isKeyedTable(p) {
 			b, err := os.ReadFile(path)
 			if err != nil {
