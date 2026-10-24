@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.6.19 — 2026-10-24
+
+Cut from c33d8335e3239b6519a6e1b663f13c352db29afa. 6 pull requests since v1.6.18.
+
+Recovery journeys incomplete, gate waived: v1.6.19: finish refuses a plain finish whose report says HOLD or not done (#593), friend stage stages a read card's exact head read-only (#592), the lander refuses a head that adds or modifies RESULT.md or JOB.md at the root (#595); journeys: the range touches no hook or recovery path; spend: the range changes no spend recording
+
+- TestASilentClientIsUnhookedAfterExactlyTwoAnnouncedOnce: not-run (no --journeys evidence)
+- TestNoServerOrNoAnswerIsNoEvidence: not-run (no --journeys evidence)
+- TestTheGateRefusesEveryoneWhileTheServerIsStale: not-run (no --journeys evidence)
+- TestAStaleAnswerIsDownWithAFreshServer: not-run (no --journeys evidence)
+- TestALostAnswerIsNeverToldTwice: not-run (no --journeys evidence)
+
+Spend gate waived: v1.6.19: finish refuses a plain finish whose report says HOLD or not done (#593), friend stage stages a read card's exact head read-only (#592), the lander refuses a head that adds or modifies RESULT.md or JOB.md at the root (#595); journeys: the range touches no hook or recovery path; spend: the range changes no spend recording (window 2026-10-24T00:00:00Z..2026-10-24T19:56:55Z)
+- unread: --spend-store <addr> names no sprint store, so the recorded spend cannot be read
+
+- #591 roadmap: critical v1.9 items from the 2026-10-24 coordinator review
+- #590 changelog: v1.6.18
+- #592 friend stage: a read card stages the exact head under read, read-only
+- #593 finish: refuse a plain finish whose report's verdict says HOLD or not done
+- #595 land: refuse a head that adds or modifies RESULT.md or JOB.md at the root
+  - members: #569
+- #594 changelog: v1.6.18
+
 ## v1.6.18 — 2026-10-24
 
 Cut from 15b6a6b52f8910538619f4ecdbf7968d81d770b3. 3 pull requests since v1.6.17.
