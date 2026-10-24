@@ -17,6 +17,7 @@ changing scheduling, handoffs, recovery, or the work-tree design.
 | [DirtyTick](README-DirtyTick.md) | How a tick drains queues and moves work between tables. |
 | `DirtyTickRead` | Reader handoffs within the tick. |
 | `ReadsByRoom`, `ReaderTiers`, `ReadCards`, `AskReadIDs` | Where a read is asked, on which tier, how a read card is loaded, and why AskStep must include ended Fleet read-card records when minting a replacement ID. |
+| `FriendReadSlot` | A read dealt only to a free slot, a read left untaken on a friend's row past the start bound levelled to another reader, and friend give of a read card, never to its author. |
 | `RouteIndex`, `RouteRest` | Route selection, its counters, and resting a route. |
 | `NoRoom` | A member's no-room word (the disk floor) and its drain (its binary replaced), the deal and fleet verbs that give such a member nothing, the return of what a draining member was dealt and has not taken, and the ask that asks a held or draining machine's reader nothing. |
 | `RetireAbsent` | The tick retires a fleet row whose machine record is gone from the inventory (a rename), drains it while it still holds cards, and retires nothing on a failed config read. |
