@@ -237,3 +237,28 @@ func recordLines(raw []byte) map[string]int {
 	}
 	return out
 }
+
+// CaseFingerprints is the fingerprint of a case at the tree dir under the runner its records
+// are held to (recordsRunner: the tree's own pkg/tlc, else its pinned nova-tools revision,
+// else the built-in one), the input_sha256 a current record of the case names. The lander
+// reads it to keep, of two records a union merge of tla/RUNS.tsv left for one config, the
+// one measured on the merged tree (cmd/nova-sprint/landruns.go).
+func CaseFingerprints(dir string) (func(config string) (string, error), error) {
+	tla := filepath.Join(dir, "tla")
+	plan, err := os.ReadFile(filepath.Join(tla, tlc.CasesFile))
+	if err != nil {
+		return nil, err
+	}
+	runner, _, fix, err := recordsRunner(dir, pinnedRunnerFiles)
+	if err != nil {
+		return nil, err
+	}
+	if fix != nil {
+		return nil, fmt.Errorf("%s:%d %s", fix.File, fix.Line, fix.What)
+	}
+	src := tlc.Source{TLADir: tla, Plan: plan, Runner: runner.files}
+	return func(config string) (string, error) {
+		fp, _, err := src.Fingerprint(config)
+		return fp, err
+	}, nil
+}
