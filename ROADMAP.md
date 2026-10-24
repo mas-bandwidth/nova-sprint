@@ -7,10 +7,10 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
-- [The sprint system](#the-sprint-system) (297)
+- [The sprint system](#the-sprint-system) (311)
 - [Setup, release and operations](#setup-release-and-operations) (72)
 - [Docs, models and the repository](#docs-models-and-the-repository) (25)
-- [Friend AIs](#friend-ais) (26)
+- [Friend AIs](#friend-ais) (29)
 - [Moved out of the sprint on 2026-10-15: nova-local](#moved-out-of-the-sprint-on-2026-10-15-nova-local) (1)
 - [Moved out of the sprint on 2026-10-15: v13-blockers](#moved-out-of-the-sprint-on-2026-10-15-v13-blockers) (19)
 - [Moved out of the sprint on 2026-10-15: v15-features](#moved-out-of-the-sprint-on-2026-10-15-v15-features) (1)
@@ -1786,11 +1786,11 @@ From: the cold reader of nova-sprint #436, 2026-10-16
 
 ### A no-progress attempt escalates the card's tier
 
-Overnight at least four cards (java-ledgers, java-tables-soak, elixir-porting-register, java-accessor) were redealt at pro after a HOLD read, and the new pro attempt left every file the reader named unchanged, or touched only comments; each was read and held again, up to four times. When a read HOLDs and the next attempt's diff touches none of the files and lines the previous read named, the next deal raises the card's tier one step (pro to heavy) and notes why. A unit test with no real time drives the hold, the no-progress attempt and the raised deal, and the TLA+ model of the attempts gains the escalation with a reversed witness that redeals at the same tier.
+Overnight at least four cards (java-ledgers, java-tables-soak, elixir-porting-register, java-accessor) were redealt at pro after a HOLD read, and the new pro attempt left every file the reader named unchanged, or touched only comments; each was read and held again, up to four times. When a read HOLDs and the next attempt's diff touches none of the files and lines the previous read named, the next deal raises the card's tier one step (pro to heavy) and notes why. A unit test with no real time drives the hold, the no-progress attempt and the raised deal, and the TLA+ model of the attempts gains the escalation with a reversed witness that redeals at the same tier. PRIORITY: critical, retargeted from v1.5 to v1.9 (Glenn 2026-10-24: card these as critical for v1.9; coordinator review 2026-10-24, item tier-escalates-after-failure). Widened: any rework after a failed attempt goes to the next tier up (flash to pro to heavy), not the same tier; cheap tiers are first tries, not retries. Same rule as promote-up-tier-escalation and sprint-cost-rules (after v1.4). Data from 2026-10-24: 557 attempts for 127 landed cards, first-time land 51%, fleet lanes failed 35 to 45%.
 
 Why it waits: A new escalation rule in the deal.
 
-Target: v1.5
+Target: v1.9
 
 From: Rowan, 2026-10-16, from the overnight fix column
 
@@ -2503,6 +2503,146 @@ From: coordinator review 2026-10-24
 PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). The card contract tells every worker on a shared bench: scripts and logs go under a path named after the card, never a common path; no pattern kill (pkill or killall by name), only the PIDs it started; every gate runs under the bench slot lock. Where it can be checked from a report or a head, check cards flags a breach.
 
 Why it waits: Benches are shared by many cards at once; on 2026-10-24 common script and log paths, pattern kills and gates outside the slot lock let one card's worker break another's.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Land a read-LAND head onto the moved tip without a new attempt
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). When a head a reader passed as LAND does not merge at the tip only because the base moved, the lander merges (or rebases) the head onto the tip itself when that merge is clean, re-runs the card's gate on the merged head, and lands it with no new work attempt. Only a real conflict goes back as rework, naming the conflicting files. Related, narrower: generated-ledger-merge-conflicts (v1.5, ledgers only).
+
+Why it waits: First-time land rate is 65% against a 90% target, and the top failure is a head read LAND that then does not merge at the tip.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Run one gate job per card and head on the Windows gate host
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). The single Windows gate host keeps one gate job per (card, head): a later attempt with the same head reuses the queued or finished job instead of queueing a duplicate, and the stranded jobs of retired attempts are reaped. Deadlines for windows cards are in redeal-carries-previous-head.
+
+Why it waits: Duplicate gate jobs for the same head and stranded jobs of retired attempts fill the one Windows queue, so every windows card waits behind work already done or no longer wanted.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Refuse a finish whose DONE-WHEN proof run is not in the head
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). A work card whose DONE-WHEN names a proof run (a 1000-client run, a soak) is refused at finish unless the run's artifact or report path is in the head, and the refusal names the missing path; a reader no longer has to find it.
+
+Why it waits: On 2026-10-24 a reader sent rn-lan-1000-proof-b back for "proof run is not in the tree, gate not in the head", spending a read and an attempt on what finish could have refused.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Make seat check verify every program the fleet's configs name
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). Seat check verifies that every program named by ~/.gitconfig credential helpers, launchd and systemd loop argv, and the fleet loops exists and is executable on internal disk, and reports each loop's real last exit with its time, so a stale non-zero exit is not read as live. Extends seat-check-finds-and-repairs-fleet-drift, which covers loops that keep exiting non-zero and programs on an external volume.
+
+Why it waits: On 2026-10-24 a moved-aside credential helper and loops on /Volumes failing with exit 126 went unnoticed.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Run the repo's whole-tree checks on the merged tip before landing
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). A landing runs the repository's whole-tree checks on the merged tip (global TLA+ coverage, tlacheck groups --stale, and every required CI check), not only the card's gate, and refuses naming the failing check. Related: v19-l3-landing-law (gate once on the batch), land-retries-at-tip.
+
+Why it waits: On 2026-10-24 commit 607411ba landed on the card's gate alone and broke rocketnet's global TLA+ coverage for every later card.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Raise one repair card when several attempts report the same failure at BASE
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). When two or more attempts report the same failure as pre-existing at BASE, the machine raises one judgment, opens one repair card at top priority, and tells every affected worker to name that card and not touch the failure.
+
+Why it waits: On 2026-10-24 each friend that hit the same broken BASE asked the coordinator separately, and the repair waited on the coordinator noticing the pattern.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Serve the worker rules from nova-sprint help worker and stamp them into every JOB.md
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). The rules workers keep asking about are served by nova-sprint help worker and stamped into every JOB.md: the load guard is the bench slot only; -j4; after a redeal or an editorial brief edit, finish with the carried head; no reruns on an unchanged head; one gate job per head. A new worker model reads them from the tool, not from the coordinator's bus replies. Related: sprint-spec-fix-worker-playbook (the worker playbook document).
+
+Why it waits: On 2026-10-24 the coordinator answered the same worker questions over the bus again and again, once per new worker model.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Store gate evidence keyed by card and head, and never rerun it
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). The machine stores each gate result (which gate, which host, pass or fail, report path) keyed by (card, head sha). Any later attempt, redeal or read of the same head sees it and does not rerun the gate; a read verifies the stored evidence instead of rebuilding. gate-job-dedupe-per-head is this rule for the Windows gate queue. Data from 2026-10-24: 557 attempts for 127 landed cards (about 4.4 per landed card), first-time land 51%, the top 20 cards took 6 to 13 attempts, fleet lanes failed 35 to 45%.
+
+Why it waits: Finished gates are rerun on unchanged heads by redeals and reads, which is a large part of the 4.4 attempts per landed card.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Keep every attempt's report, gate packet and branch when it is retired
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). RESULT.md, the gate packet and the pushed branch of every attempt are kept in the store when the attempt is retired, redealt, re-tiered or its brief replaced, and nova-sprint card lists them, so a new owner starts from them. Extends redeal-carries-previous-head (which carries the pushed head) to the report and gate evidence. Data from 2026-10-24: 557 attempts for 127 landed cards (about 4.4 per landed card), first-time land 51%, the top 20 cards took 6 to 13 attempts, fleet lanes failed 35 to 45%.
+
+Why it waits: Retired attempts lose their reports and evidence, so a redeal or re-tier redoes finished work.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Stop redealing at 3 failed attempts and ask for a re-cut
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). At a set number of failed attempts (3) a card is not redealt: it raises one judgment carrying the repeating cause drawn from its reports and read findings, for a re-cut or a split. Builds on the v1.2.15 fix a-card-runs-at-most-max-attempts-between-coordinator-decisions (the cap counted between coordinator decisions, 4 by default). Data from 2026-10-24: 557 attempts for 127 landed cards (about 4.4 per landed card), first-time land 51%, the top 20 cards took 6 to 13 attempts, fleet lanes failed 35 to 45%.
+
+Why it waits: The top 20 cards took 6 to 13 attempts each, repeating the same failure instead of being re-cut.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Widen PATHS in place from a PATHS-PROPOSED hold, keeping the head and the attempt
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). A HOLD carrying PATHS-PROPOSED raises a judgment whose one command widens PATHS in place keeping the head, and the worker keeps its attempt; a scope widen never costs a new attempt. Related: the v1.2.15 fix a-paths-proposed-line-reaches-the-seat-whole, and widen-in-place-redeals-same-head (v1.7).
+
+Why it waits: A scope widen today spends a whole new attempt on a head that was already right.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Finish a single-host platform card with its platform job queued
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). A card gated on the single Windows or macOS host finishes its source and Linux evidence with the platform job queued, and one validation step lands it or returns it when the job reports, so no worker waits out a 240-minute deadline. Related: redeal-carries-previous-head (deadlines from GATE-NEEDS), gate-job-dedupe-per-head.
+
+Why it waits: Workers on windows and macOS cards hold an attempt open for hours waiting on one host's queue.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Let a read of an already-read head inherit that read
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). A read of a head identical to, or merging cleanly onto, a head already read LAND inherits that read; only the changed files are re-read. Related: widen-in-place-redeals-same-head (v1.7), v19-l10-proportionate-review, gate-evidence-keyed-by-head. Data from 2026-10-24: 557 attempts for 127 landed cards (about 4.4 per landed card), first-time land 51%, the top 20 cards took 6 to 13 attempts, fleet lanes failed 35 to 45%.
+
+Why it waits: Unchanged or trivially rebased heads are read again in full, spending reads and holding cards in review.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Check fleet sync each tick and raise a judgment on config drift
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). The server runs fleet sync --check each tick and raises a judgment when a member's applied config differs from nova-config, naming the members and the fields, so a changed width is never left to a hand-run fleet sync. Related: seat-check-finds-and-repairs-fleet-drift (b), the config store rev ahead of the applied rev.
+
+Why it waits: On 2026-10-24 widths changed in nova-config at 19:15Z were never applied, and 5 benches ran at width 8 against a configured 4 for an hour.
 
 Target: v1.9
 
@@ -3607,6 +3747,36 @@ From: coordinator review 2026-10-24
 PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). friend give to a row that is full hands the card to the named friend once the row has width, held out of levelling until then, or refuses and says the row is full; the leveller never moves a given card to another friend.
 
 Why it waits: On 2026-10-24 a card given to a full row was levelled to another friend within a second, so the friend it was given to never saw it.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Retry a missed hook challenge and alarm before marking a friend down
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). A friend whose hook misses one challenge is marked down for 5 minutes and its cards stop flowing. The sprint retries the challenge once and raises an alarm before marking it down, and the friend harness (nova-tools) re-arms its hook watch when the watch expires.
+
+Why it waits: One missed challenge stops a friend's cards for 5 minutes with nobody told, and a harness whose watch expired never comes back by itself.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Tell a friend's worker when its attempt stops being live
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). When a friend's attempt stops being live (redealt, re-tiered off the row, given to another friend or a fleet lane, withdrawn), the machine pushes a bus message to that friend naming the attempt, the new owner and: stop and hand over your head. Companion to redeal-carries-previous-head, which tells the new owner; this tells the old one.
+
+Why it waits: On 2026-10-24 three workers on one row kept running 1 to 2 hours on cards that had moved to another friend or a fleet member (rn-client-iocp-windows-t, rn-fix-assert-iocp-packet-id, rn-fix-cfg-config-bytes), queued duplicate Windows gate jobs, and stopped only when checked by hand.
+
+Target: v1.9
+
+From: coordinator review 2026-10-24
+
+### Deal a read only to a reader with a free slot, and level an untaken one
+
+PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). The deal hands a read only to a reader with a free slot; a ready read untaken past a short bound is levelled to another eligible reader; and friend give moves a ready read as it moves a work card (today it refuses read ids: no card <id>.r7.<friend>). Related: friend-give-holds-for-named-friend, stalled-friend-detector, fleet-reads-launch-without-route (v1.7).
+
+Why it waits: On 2026-10-24 four reads waited in the ready column of a friend whose row was at 8 of 8, while 18 cards sat in review and nothing merged.
 
 Target: v1.9
 
