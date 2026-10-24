@@ -19,9 +19,6 @@ import (
 // the base CI judgment's are: no module of its own.
 const NConfigDrift = "the fleet table differs from nova-config"
 
-// ConfigDriftSubject is the config-drift judgment's subject: one per sprint.
-const ConfigDriftSubject = "nova-config"
-
 // ConfigDriftFacts is the tick's comparison of the fleet table with nova-config:
 // the drift fleet sync --check reports (FleetDrift), planned on the tick's first
 // read. Empty Drift is a read that found none, and closes the judgment.
@@ -36,15 +33,16 @@ func ConfigDriftLine(drift []Drift) string {
 	for _, d := range drift {
 		lines = append(lines, d.Kind+": "+d.Line())
 	}
-	return fmt.Sprintf("the fleet table differs from nova-config in %d places and nothing applies it until a sync runs: %s; run: nova-sprint fleet sync",
+	return fmt.Sprintf("the fleet table differs from nova-config (drift=%d), and nothing applies it until a sync runs: %s; run: nova-sprint fleet sync",
 		len(drift), strings.Join(lines, "; "))
 }
 
 // TickConfigDrift is the tick's config-drift judgment, planned in the deadlines
 // part on the facts the binding read (TickReq.ConfigDrift): one judgment per drift
-// set, keyed by its type, its subject and its line, so a changed set closes the
-// judgment of the old set and raises one of the new; closed when a read finds no
-// drift. A tick that read nothing (nil: not due, or the config store did not
+// set, about the whole sprint as the drift alarms are (stream level, no stream: it
+// names no card, so the check never retires it as an orphan), keyed by its type
+// and its line, so a changed set closes the judgment of the old set and raises one
+// of the new; closed when a read finds no drift. A tick that read nothing (nil: not due, or the config store did not
 // answer) keeps an open judgment, and a wait on it, as they are: no read is never
 // a clear.
 func TickConfigDrift(s *Snapshot, r TickReq) (Plan, int) {
@@ -52,12 +50,12 @@ func TickConfigDrift(s *Snapshot, r TickReq) (Plan, int) {
 	var conds []cond
 	if f := r.ConfigDrift; f != nil {
 		if len(f.Drift) > 0 {
-			conds = append(conds, cond{typ: NConfigDrift, primaries: []string{ConfigDriftSubject}, decisions: TickDecisions[NConfigDrift], what: ConfigDriftLine(f.Drift)})
+			conds = append(conds, cond{typ: NConfigDrift, streamLevel: true, decisions: TickDecisions[NConfigDrift], what: ConfigDriftLine(f.Drift)})
 		}
 	} else {
 		carry := func(o Open) {
 			// held as it stands: the same key, so notify neither writes nor closes it
-			conds = append(conds, cond{typ: NConfigDrift, primaries: []string{o.Subject()}, what: o.Note.What})
+			conds = append(conds, cond{typ: NConfigDrift, streamLevel: true, what: o.Note.What})
 		}
 		for _, o := range s.Open {
 			if o.Note.Kind == Judgment && o.Note.Type == NConfigDrift {

@@ -51,6 +51,10 @@ func TestTheTickRaisesConfigDriftAndAppliesNothing(t *testing.T) {
 		require.Contains(t, what, want, "the judgment lacks %q: %s", want, what)
 	}
 	require.NotContains(t, what, "m2", "the judgment names a member that does not differ: %s", what)
+	ta.ok("tick")
+	again := ta.openConfigDrift()
+	require.Len(t, again, 1, "the judgment did not stand while the drift does")
+	require.Equal(t, open[0].Note.ID, again[0].Note.ID, "the standing judgment was replaced")
 	require.Equal(t, "4", ta.fleetRows()["m1"]["width"], "the tick applied the drift")
 
 	ta.ok("fleet sync")
@@ -74,14 +78,7 @@ func TestTheTickKeepsConfigDriftWhenTheConfigCannotBeRead(t *testing.T) {
 	require.Len(t, ta.openConfigDrift(), 1, "the drift raised no judgment")
 
 	inv.fail = errors.New("postgres at 127.0.0.1: connection refused")
-	out := ta.ok("tick")
-	if len(ta.openConfigDrift()) != 1 {
-		notes, _, _ := ta.m.NotesSince(context.Background(), "", 100000)
-		for _, n := range notes {
-			t.Logf("NOTE %+v", n)
-		}
-		t.Logf("TICK %s", out)
-	}
+	ta.ok("tick")
 	require.Len(t, ta.openConfigDrift(), 1, "a failed read closed the judgment")
 	inv.fail = nil
 	inv.remove("m1")

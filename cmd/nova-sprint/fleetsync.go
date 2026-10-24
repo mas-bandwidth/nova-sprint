@@ -32,7 +32,9 @@ import (
 // member removed in this epoch whose machine row comes back is placed again before
 // the step (store.RejoinMembers) and released by it. A sync after a sync writes
 // nothing and says so. The sync's plan is checked against the drift it reports
-// (FleetDrift). The removal is the one move fleet down does not make; no model
+// (FleetDrift). The server's tick checks the same drift by the same read and
+// plan (configWant, syncWant; sprint.TickConfigDrift) and raises a judgment
+// naming this verb; it applies nothing. The removal is the one move fleet down does not make; no model
 // holds it: the sprint's models are not the design (tla/README.md, the owner's
 // ruling of 2026-10-01), and the twin-store tests here and in internal/sprint hold it.
 

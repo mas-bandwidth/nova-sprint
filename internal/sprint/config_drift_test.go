@@ -29,7 +29,7 @@ func (r *alarmRig) configDriftOpen() (note sprint.Note, open bool) {
 			continue
 		}
 		require.False(r.t, open, "more than one open config-drift judgment")
-		require.Equal(r.t, sprint.ConfigDriftSubject, o.Subject())
+		require.True(r.t, o.Note.StreamLevel, "the judgment names no card")
 		note, open = o.Note, true
 	}
 	return note, open
