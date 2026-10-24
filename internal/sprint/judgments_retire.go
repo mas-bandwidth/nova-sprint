@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -165,7 +166,7 @@ func StillRaised(s *Snapshot, n Note, c *Card) bool {
 // move would answer in the same plan would be raised again by it, with nothing changed between.
 func raisesAgain(p *Plan, typ, id string) bool {
 	for _, x := range p.Notes {
-		if x.Kind == Judgment && x.Type == typ && len(x.Primaries) > 0 && x.Primaries[0] == id {
+		if x.Kind == Judgment && x.Type == typ && slices.Contains(x.Subjects(), id) {
 			return true
 		}
 	}

@@ -1,6 +1,7 @@
 package sprint_test
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -30,7 +31,7 @@ func (r *conflictRig) capJudgmentsRaised(id string) []sprint.Note {
 	require.NoError(r.t, err)
 	var out []sprint.Note
 	for _, n := range all {
-		if n.Kind == sprint.Judgment && n.Type == sprint.NBriefWrong && len(n.Primaries) > 0 && n.Primaries[0] == id {
+		if n.Kind == sprint.Judgment && n.Type == sprint.NBriefWrong && slices.Contains(n.Subjects(), id) {
 			out = append(out, n)
 		}
 	}
