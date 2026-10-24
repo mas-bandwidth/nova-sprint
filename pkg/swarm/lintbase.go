@@ -734,6 +734,27 @@ var (
 	deadlineMinRE  = regexp.MustCompile(`(?i)^(?:finish within[ \t]+)?([0-9]+)[ \t]*(?:m|min|mins|minutes?)\.?$`)
 )
 
+// BriefDeadline is the deadline a brief names, in seconds: its first DEADLINE: line, or the
+// template's `Deadline: finish within <n> minutes; ...` line (the value up to its first
+// semicolon), read by deadlineSeconds as the deadline-p95 check reads it; false when it
+// names none, or none deadlineSeconds reads (the template's own `<n>` placeholder).
+func BriefDeadline(brief string) (int, bool) {
+	for line := range strings.SplitSeq(brief, "\n") {
+		v, ok := strings.CutPrefix(line, "DEADLINE:")
+		if !ok {
+			v, ok = strings.CutPrefix(line, "Deadline:")
+		}
+		if !ok {
+			continue
+		}
+		v, _, _ = strings.Cut(v, ";")
+		if n, ok := deadlineSeconds(v); ok && n > 0 {
+			return n, true
+		}
+	}
+	return 0, false
+}
+
 // deadlineSeconds reads `2700`, `2700s`, `45m` or `finish within 45 minutes`.
 func deadlineSeconds(v string) (int, bool) {
 	v = strings.TrimSpace(v)

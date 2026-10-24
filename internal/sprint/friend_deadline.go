@@ -6,7 +6,10 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
 // A friend's card's deadline by friend (docs/SPEC-SPRINT.md section 1, a friend's card's
@@ -57,13 +60,50 @@ func friendDeadline(s *Snapshot, name string) (set map[string]string, unset []st
 	return map[string]string{FieldFriendDeadline: itoa(Deadline(median, n, int(DeadlineUnfinished/time.Second)))}, nil
 }
 
+// BriefDeadlineMargin is the time past the brief's own deadline a card taken may run
+// unfinished before it is late: room for the report and the push after the child stops.
+const BriefDeadlineMargin = 15 * time.Minute
+
 // unfinishedLimit is how long a work card taken may run unfinished: its friend's deadline
-// when it carries one (FieldFriendDeadline), else DeadlineUnfinished.
-func unfinishedLimit(c *Card) time.Duration {
+// when it carries one (FieldFriendDeadline), else DeadlineUnfinished, and never less than
+// its brief's own deadline plus BriefDeadlineMargin (briefDeadline). Before 2026-10-24 the
+// brief's DEADLINE was never read here, so a card briefed 180 or 240 minutes (a Windows
+// queue, a long proof) was redealt at exactly 2h0m0s with its work in flight.
+func unfinishedLimit(s *Snapshot, c *Card) time.Duration {
+	limit := DeadlineUnfinished
 	if d := c.Int(FieldFriendDeadline); d > 0 {
-		return time.Duration(d) * time.Second
+		limit = time.Duration(d) * time.Second
 	}
-	return DeadlineUnfinished
+	if d := briefDeadline(s, c); d > 0 {
+		limit = max(limit, d+BriefDeadlineMargin)
+	}
+	return limit
+}
+
+// briefDeadlineCache memoizes swarm.BriefDeadline by brief, as gateNeedsCache does GateNeeds:
+// the tick reads every working card's limit.
+var briefDeadlineCache sync.Map // brief string -> time.Duration
+
+// briefDeadline is the deadline the brief of the work card's primary names
+// (swarm.BriefDeadline), 0 when it names none or the primary is not on the table.
+func briefDeadline(s *Snapshot, c *Card) time.Duration {
+	if s == nil || s.Work == nil || c == nil {
+		return 0
+	}
+	pr := s.Work.Placed(c.F("primary"))
+	if pr == nil {
+		return 0
+	}
+	brief := pr.F("brief")
+	if v, ok := briefDeadlineCache.Load(brief); ok {
+		return v.(time.Duration)
+	}
+	var d time.Duration
+	if n, ok := swarm.BriefDeadline(brief); ok {
+		d = time.Duration(n) * time.Second
+	}
+	briefDeadlineCache.Store(brief, d)
+	return d
 }
 
 // friendTaken is the fields of a friend's card going into working on her row now: taken
@@ -149,7 +189,7 @@ func LiveLane(s *Snapshot, r TickReq, c *Card) (LaneRun, bool) {
 	// the card's clock is WorkDeadline's: from its first take, else its deal
 	field, _, _, _ := WorkDeadline(s, c)
 	ran, ok := r.running(s.Now, c.F(field))
-	limit := unfinishedLimit(c)
+	limit := unfinishedLimit(s, c)
 	if !ok || ran >= limit {
 		return LaneRun{}, false
 	}
