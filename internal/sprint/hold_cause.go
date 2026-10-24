@@ -248,6 +248,7 @@ func causeEnded(s *Snapshot, member string, ctl *Card) string {
 // so it is never reported as a hold with no cause, and the hold stays until it is unheld
 // (a cause's end releases only a member that beats; holdCauseClear). A machine's hold
 // (sync, probe, fault, environment, adopt, idle reap) records no who and is its own.
+// tla/HoldReason.tla SyncKeepsHold, ReasonIsCause, ReasonedHoldEndsByUnhold.
 func HeldWithReason(ctl *Card) bool {
 	return ctl != nil && ctl.F("held") != "" && ctl.F(FieldHeldWho) != "" && strings.TrimSpace(ctl.F(FieldHeldReason)) != ""
 }
