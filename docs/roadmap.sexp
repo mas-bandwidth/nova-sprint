@@ -8880,12 +8880,12 @@ The report starts with `Verdict: LAND|HOLD` on line 1 and `Head: <sha>` on line 
    :why "On 2026-10-24 a reader sent rn-lan-1000-proof-b back for \"proof run is not in the tree, gate not in the head\", spending a read and an attempt on what finish could have refused."
    :release "v1.9"
    :origin "coordinator review 2026-10-24")
-  (item "hook-keepalive-before-down" :group "friends" :date "2026-10-24"
-   :title "Retry a missed hook challenge and alarm before marking a friend down"
-   :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). A friend whose hook misses one challenge is marked down for 5 minutes and its cards stop flowing. The sprint retries the challenge once and raises an alarm before marking it down, and the friend harness (nova-tools) re-arms its hook watch when the watch expires."
-   :why "One missed challenge stops a friend's cards for 5 minutes with nobody told, and a harness whose watch expired never comes back by itself."
+  (item "harness-rearms-expired-hook-watch" :group "friends" :date "2026-10-24"
+   :title "Re-arm a friend harness's hook watch when the watch expires"
+   :text "The friend harness (nova-tools) re-arms its hook watch when the watch expires, so a harness whose watch lapsed comes back by itself. Split from hook-keepalive-before-down, whose heartbeat half (one last-chance challenge before a down) shipped in v1.6.21 through nova-tools PR #6091."
+   :why "A harness whose watch expired never comes back by itself."
    :release "v1.9"
-   :origin "coordinator review 2026-10-24")
+   :origin "coordinator review 2026-10-24; split from hook-keepalive-before-down")
   (item "seat-check-verifies-referenced-helpers" :group "sprint" :date "2026-10-24"
    :title "Make seat check verify every program the fleet's configs name"
    :text "PRIORITY: critical (Glenn 2026-10-24: \"card these as critical for v1.9\"). Seat check verifies that every program named by ~/.gitconfig credential helpers, launchd and systemd loop argv, and the fleet loops exists and is executable on internal disk, and reports each loop's real last exit with its time, so a stale non-zero exit is not read as live. Extends seat-check-finds-and-repairs-fleet-drift, which covers loops that keep exiting non-zero and programs on an external volume."
