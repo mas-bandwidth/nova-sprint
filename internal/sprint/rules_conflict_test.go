@@ -39,7 +39,13 @@ var conflictRouteSeconds = 600
 
 func newConflictRig(t *testing.T) *conflictRig {
 	t.Helper()
-	r := &conflictRig{t: t, m: store.NewMem(), ctx: context.Background(), now: holdT0}
+	return newConflictRigAt(t, holdT0)
+}
+
+// newConflictRigAt is newConflictRig with its clock starting at t0.
+func newConflictRigAt(t *testing.T, t0 time.Time) *conflictRig {
+	t.Helper()
+	r := &conflictRig{t: t, m: store.NewMem(), ctx: context.Background(), now: t0}
 	n := 0
 	r.st = &store.Store{B: r.m, Names: sprint.Names{Prefix: "t-"}, Actor: "coordinator", AnswerRules: true,
 		Now:   func() time.Time { r.mu.Lock(); defer r.mu.Unlock(); return r.now },

@@ -777,6 +777,7 @@ MCGateFacts.cfg	MCGateFacts.tla	pass	-	ignore-terminal	gatefacts	required	-
 MCGateFactsBrokenNoWriter.cfg	MCGateFacts.tla	temporal	CardDealt	ignore-terminal	gatefacts	required	-
 MCGateFactsBrokenOnChange.cfg	MCGateFacts.tla	temporal	CardDealt	ignore-terminal	gatefacts	required	-
 MCJudgmentRetireBrokenStoppedStays.cfg	MCJudgmentRetire.tla	invariant	NoOrphanAfterRetire	ignore-terminal	judgment-retire	required	-
+MCJudgmentRetireBrokenCapSpin.cfg	MCJudgmentRetire.tla	invariant	NoSpinAfterTick	ignore-terminal	judgment-retire	required	-
 MCRepairLog.cfg	MCRepairLog.tla	pass	-	ignore-terminal	repair-log	required	-
 MCRepairLogBrokenSkipApplied.cfg	MCRepairLog.tla	invariant	AppliedHasLine	ignore-terminal	repair-log	required	-
 MCRepairLogReconcileSkipApplied.cfg	MCRepairLog.tla	pass	-	ignore-terminal	repair-log	required	-

@@ -8,6 +8,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
+	"github.com/mas-bandwidth/nova-tools/pkg/member"
 	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 )
 
@@ -1308,7 +1309,9 @@ func init() {
 
 // carriedHead is a card's latest pushed head among its dealt attempts: the attempt it is the
 // head of and the full sha, 0 and "" when no attempt pushed one (BaseOf over the card's work
-// cards). It is what rework --carry records in the brief's CARRY: line.
+// cards). It is what rework --carry records in the brief's CARRY: line. A card whose heads were
+// superseded by a widen in place (widen.go: the head moved into the brief's CARRY: line) carries
+// that line's head, as the next attempt's packet stages from it (packet.go, member.CarryOf).
 func carriedHead(s *Snapshot, c *Card) (int, string) {
 	var b Base
 	for n := 1; n <= c.Int("attempt"); n++ {
@@ -1318,6 +1321,11 @@ func carriedHead(s *Snapshot, c *Card) (int, string) {
 		}
 		if h := PushedHead(wc); h != "" && n > b.Attempt {
 			b = Base{Attempt: n, Head: h}
+		}
+	}
+	if b.Head == "" {
+		if cr, ok := member.CarryOf(c.F("brief")); ok && cr.Card == c.ID && cr.Head != "" {
+			return cr.Attempt, cr.Head
 		}
 	}
 	return b.Attempt, b.Head

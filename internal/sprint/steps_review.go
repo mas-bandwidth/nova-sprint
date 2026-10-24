@@ -1564,9 +1564,20 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 	// a primary in review, or one at its redeal bound (ready, its work card
 	// withdrawn and dealt no more): rework is its next attempt
 	pool := s.Work.Column(Review)
+	// or ready at its attempt cap (AtAttemptCap: a rule's widen sent it to ready at the cap,
+	// and the deal holds it for the coordinator): the seat's rework is the decision its cap's
+	// judgment asks for, --carry its first (Decisions[NBriefWrong]); a rule's is refused below.
+	// Red at v1.6.16: "not review (it is ready)", the judgment's own suggestion refused.
+	readyAtCap := func(c *Card) bool {
+		if !c.Placed() || c.Col != Ready || r.PerCard[c.ID].Rule != "" {
+			return false
+		}
+		_, ok := AtAttemptCap(c, s.AttemptsCap(c.Row))
+		return ok
+	}
 	for _, c := range s.Work.Column(Ready) {
 		// or at its environment-exit cap (AtEnvExitBound): its bound judgment's answer
-		if AtRedealBound(s, c) != nil || AtEnvExitBound(s, c) != nil {
+		if AtRedealBound(s, c) != nil || AtEnvExitBound(s, c) != nil || readyAtCap(c) {
 			pool = append(pool, c)
 		}
 	}
@@ -1574,7 +1585,7 @@ func Rework(s *Snapshot, r ReworkReq) Plan {
 		if c.Placed() && c.Col == Merging {
 			return "merging: return it first: nova-sprint return " + c.ID
 		}
-		if AtRedealBound(s, c) != nil || AtEnvExitBound(s, c) != nil {
+		if AtRedealBound(s, c) != nil || AtEnvExitBound(s, c) != nil || readyAtCap(c) {
 			return ""
 		}
 		if r.Carry {

@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -118,6 +119,16 @@ func movedOn(s *Snapshot, n Note, id string) string {
 			return id + " was re-briefed"
 		}
 	case NBriefWrong:
+		// a card still at its attempt cap has not moved past a bound judgment, whatever its
+		// brief_attempt says: a rule's widen edits the brief in place at the same attempt and
+		// decides nothing (FieldDecidedAttempt stands), so the deal raises the cap's judgment
+		// again the next tick. Taking that edit for the card's move answered it with nothing
+		// changed, and the tick spun raise -> answer -> raise once a second (v1.6.16,
+		// 2026-10-24, rn-examples-macos-windows, 600 rounds). Only a decision, or the card
+		// leaving the table, moves it (tla/JudgmentRetire.tla, NoSpinAfterTick).
+		if StillRaised(s, n, c) {
+			return ""
+		}
 		if at := c.Int(FieldBriefAttempt); at > 0 && at >= n.Attempt {
 			return fmt.Sprintf("%s was re-briefed at attempt %d", id, at)
 		}
@@ -130,6 +141,36 @@ func movedOn(s *Snapshot, n Note, id string) string {
 		}
 	}
 	return ""
+}
+
+// StillRaised says the condition that raises the judgment n on the placed card c still holds,
+// so the tick would raise it again at once: such a judgment is never answered by the card's
+// move (movedOn), whatever else about the card changed, for the answer would change nothing and
+// the next tick would raise it again (raise -> answer -> raise, tla/JudgmentRetire.tla,
+// NoSpinAfterTick). The attempt cap's judgment (NBriefWrong) is raised again while the card is
+// at its cap (AtAttemptCap, the deal's own test, steps_tick.go). false for a judgment whose
+// condition is not one the tick raises again on its own.
+func StillRaised(s *Snapshot, n Note, c *Card) bool {
+	if c == nil || !c.Placed() {
+		return false
+	}
+	switch n.Type {
+	case NBriefWrong:
+		_, at := AtAttemptCap(c, s.AttemptsCap(c.Row))
+		return at
+	}
+	return false
+}
+
+// raisesAgain says the plan raises a judgment of the type on the card: a judgment the card's
+// move would answer in the same plan would be raised again by it, with nothing changed between.
+func raisesAgain(p *Plan, typ, id string) bool {
+	for _, x := range p.Notes {
+		if x.Kind == Judgment && x.Type == typ && slices.Contains(x.Subjects(), id) {
+			return true
+		}
+	}
+	return false
 }
 
 // outlived is the card's-move event when every subject of a judgment has left the
@@ -200,7 +241,9 @@ func RetireJudgments(s *Snapshot, p *Plan, who string) {
 			for _, id := range cards {
 				e := offTable(s, id)
 				if e == "" {
-					if e = movedOn(s, n, id); e == "" {
+					// a judgment this same plan raises again on the card is not outlived by
+					// the card's move: answering it would change nothing (NoSpinAfterTick)
+					if e = movedOn(s, n, id); e == "" || raisesAgain(p, n.Type, id) {
 						es = nil
 						break
 					}
