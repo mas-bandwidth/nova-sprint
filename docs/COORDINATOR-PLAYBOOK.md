@@ -222,10 +222,20 @@ bound, or a brief that is wrong.
      correction is never a twin. A working card takes a semantic edit only with
      `--replace-in-flight`.
    - Add `--keep-head` to keep the in-flight or held head eligible for review. Without it, a
-     finish made under the old brief returns for a fresh attempt.
+     finish made under the old brief returns for a fresh attempt. A brief edit to a working card
+     always says `--keep-head` unless the head must be thrown away, and an editorial edit
+     (DEADLINE, `-j`, a NOTE) is `nova-sprint brief <card> --keep-head --brief-file <path>`.
+   - Never apply `--replace-in-flight` to more than one card in a script: each one throws a
+     working head away.
    - `nova-sprint brief <card> --widen` widens the card's PATHS by the PATHS-PROPOSED line of its
      latest report and writes a CARRY: line naming that attempt's pushed head.
    - `nova-sprint brief <card> --tier <t>` re-tiers the card in place.
+   - After a redeal or a re-tier of a card whose earlier attempt pushed a gated head, add a NOTE
+     naming the carried head (sha and branch) and "finish with it, rerun only if merging main
+     changed a PATHS file".
+   - A card whose GATE-NEEDS names a host only a friend row reaches (macOS on mini-m5, XDP on
+     hulk) is re-tiered to a tier that row serves and given to that row with usage
+     `nova-sprint friend give <friend> <id>... [--reason <text>]`.
 
    Spec: SPEC-SPRINT.md section 11, the `brief` row; section 2, "recut-widen-r.w1".
 5. Continue partial work. usage: `nova-sprint continue <card> [--note <text>] [--tier <flash|pro|heavy|frontier>] [--carry <branch|sha>] [--answers <judgment>] [--dry-run]`.
@@ -285,6 +295,9 @@ and "v11-base-red-auto-resume-now".
    For a stream the rule left stopped, run
    `nova-sprint resume --stream <s> --did '<the base is green again>' --answers <id>`, the line the
    inbox prints for "the base fails its gate".
+5. Route a card-level red once. A failure two workers reproduce at BASE gets one repair card
+   (step 2), and every worker is told to name it "pre-existing at BASE" in the report and not
+   touch it.
 
 **Success looks like.** One judgment for the base, not one per stream. The fix lands first, and
 the streams resume by rule when the tip is green.
@@ -375,6 +388,10 @@ model answers a challenge (`nova-hook help`).
    `nova-sprint gc --dry-run`, then without `--dry-run`. gc never touches a path under no known
    scratch root, and never a clone with work that is nowhere else. Spec: SPEC-SPRINT.md section
    1, "gc: the system's scratch is reclaimed by a verb".
+7. Before moving or deleting a tool binary, grep git config, the launchd and systemd units and
+   the loops' config for its path. A unit that still names it fails on its next start.
+8. Mend a damaged bench mirror (staging says "object file ... is empty") by cloning the mirror
+   again on that bench. Never patch its objects by hand.
 
 **Success looks like.** `fleet sync --check` exits 0, `doctor` reports no fleet FAIL, and every hold
 names a cause.
@@ -524,7 +541,7 @@ claim LAND: the self-check".
    states the order: merge main once, push, run every step at that head, and never merge again
    (the lander re-merges). Spec: SPEC-SPRINT.md section 11, the `brief` row.
 6. Keep shared-bench load under the core count. Workers queue on the fleet's shared-bench slot
-   lock (one `-j4` job per 4 cores) for build and test load, and never pick the "least loaded" bench all at once, because they all pick the
+   lock (`~/bin/benchslot -- <cmd>`, one `-j4` job per 4 cores) for build and test load, and never pick the "least loaded" bench all at once, because they all pick the
    same one. Put the slot lock in every brief's RULES, and find a bench running above its core
    count with `nova-sprint doctor --area fleet`; quiet it with usage
    `nova-sprint fleet quiet <member> (--for <duration> | --until <RFC3339>) --reason <text> | <member> --end [--dry-run]`

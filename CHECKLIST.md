@@ -33,7 +33,8 @@ message. A broken LAND costs a full read and rework cycle.
 8. Run every DONE-WHEN command at the exact head you will finish, in a **Debug** build, on a bench
    the card allows. Release-only green does not count. For each run, record the command, any
    environment overrides, the full SHA, the platform and toolchain, the exit status and the
-   duration.
+   duration. A gate on captain is one job per (card, head): a later attempt with the same head
+   reuses that job, and never queues another.
 9. None of these is a pass: a run that was queued, cancelled, timed out, interrupted, has no exit
    status, or only compiled; a test that prints SKIPPED and exits 0; a case that never ran. An XDP,
    BPF or root case passes only inside a vng guest you booted, with the guest's `uname -r` quoted.
@@ -69,7 +70,9 @@ message. A broken LAND costs a full read and rework cycle.
     unresolved, scope is unapproved, or evidence is unknown. Name the reason on the first lines.
 17. Push your own branch and check that the remote SHA matches. Then
     `nova-sprint finish --as <you> <job>@<gen> --epoch <n> --branch <b> --head <sha> --report ...`.
-    Read the reply: a REFUSED or stale finish is not a finish. A finish is not a landing.
+    Read the reply: a REFUSED or stale finish is not a finish. A finish is not a landing. A
+    finish refused "brief replaced" after an editorial edit to the brief is answered by taking
+    the next attempt and finishing with the same head, citing the saved gate packet; no reruns.
 18. Keep the receipts. Clean your scratch directory only after the evidence is saved, and only by
     an absolute path under your own card-named scratch directory.
 
@@ -113,7 +116,9 @@ rate").
    script). A citation or coverage card names every gap with its file.
 9. **Bench load.** Build and test load on a shared bench goes through the fleet's shared-bench
    slot lock (one `-j4` job per 4 cores), never straight onto the bench and never onto whichever
-   bench looks least loaded, because every worker picks the same one. A timing or functional red
+   bench looks least loaded, because every worker picks the same one. On Linux the load guard is
+   benchslot only: every build and test runs as `~/bin/benchslot -- <cmd>` with `-j4` at most. A
+   granted slot means run: never stop on the load average, and never bypass the slot. A timing or functional red
    taken while the bench ran above its core count is not evidence until it is run again under the
    slot lock.
 10. **Verdict, and a finish that matches it.** LAND only when items 1 to 9 all hold. Anything
