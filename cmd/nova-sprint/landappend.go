@@ -515,7 +515,9 @@ func (l *lander) resolveRecords(ctx context.Context, dir string, paths []string)
 // HEAD changed (git's merge=union keeps both sides' rows), amending the merge commit.
 // before is the tip the merge was made on; c is the card being merged.
 // A config that tla/RUNS.tsv holds twice after the union keeps the record measured on the
-// merged inputs (landruns.go, keepCurrentRuns). If an append-only record is missing a base
+// merged inputs (landruns.go, keepCurrentRuns); a key another keyed table (tla/COVERAGE.tsv,
+// tla/CASES.tsv) holds twice keeps the row of the side that changed it against the merge base
+// (landdoubled.go, keepOneDoubledKey). If an append-only record is missing a base
 // row or a side removed a row, or if a keyed table still has a duplicate config, the merge
 // is refused (card conflict returned).
 // The removal check is held against the merge base whether or not that base is the tip
@@ -556,6 +558,32 @@ func (l *lander) dedupeMerge(ctx context.Context, dir, before string, c landCard
 					}
 					fixed = append(fixed, p)
 					lines = append(lines, "record "+p+": kept the record measured on the merged inputs for "+strings.Join(kept, ", "))
+				}
+			}
+		} else if isKeyedTable(p) {
+			if b, err := os.ReadFile(path); err == nil {
+				show := func(rev string) []byte {
+					if rev == "" {
+						return nil
+					}
+					out, _ := l.git(ctx, dir, "show", rev+":"+p)
+					return []byte(out)
+				}
+				out, kept, rerr := keepOneDoubledKey(p, b, show(mb), show(before), show(c.head))
+				if rerr != nil {
+					l.conflictKind = "file"
+					l.conflictPaths = []string{p}
+					return nil, "the head " + c.head + " of " + c.id + " does not merge: " + rerr.Error(), ""
+				}
+				if len(kept) > 0 {
+					if err := os.WriteFile(path, out, 0o644); err != nil {
+						return nil, "", "the resolved " + p + " could not be written: " + err.Error()
+					}
+					if _, err := l.git(ctx, dir, "add", "--", p); err != nil {
+						return nil, "", "the resolved " + p + " could not be staged: " + firstLine("", err)
+					}
+					fixed = append(fixed, p)
+					lines = append(lines, "record "+p+": kept one row, the side that changed it, for "+strings.Join(kept, ", "))
 				}
 			}
 		}
