@@ -3,9 +3,12 @@ package sprint
 import (
 	"fmt"
 	"maps"
+	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -57,13 +60,87 @@ func friendDeadline(s *Snapshot, name string) (set map[string]string, unset []st
 	return map[string]string{FieldFriendDeadline: itoa(Deadline(median, n, int(DeadlineUnfinished/time.Second)))}, nil
 }
 
+// BriefDeadlineMargin is the time past the brief's own deadline a card taken may run
+// unfinished before it is late: room for the report and the push after the child stops.
+const BriefDeadlineMargin = 15 * time.Minute
+
 // unfinishedLimit is how long a work card taken may run unfinished: its friend's deadline
-// when it carries one (FieldFriendDeadline), else DeadlineUnfinished.
-func unfinishedLimit(c *Card) time.Duration {
+// when it carries one (FieldFriendDeadline), else DeadlineUnfinished, and never less than
+// its brief's own deadline plus BriefDeadlineMargin (briefDeadline, BriefDeadline). Before 2026-10-24 the
+// brief's DEADLINE was never read here, so a card briefed 180 or 240 minutes (a Windows
+// queue, a long proof) was redealt at exactly 2h0m0s with its work in flight.
+func unfinishedLimit(s *Snapshot, c *Card) time.Duration {
+	limit := DeadlineUnfinished
 	if d := c.Int(FieldFriendDeadline); d > 0 {
-		return time.Duration(d) * time.Second
+		limit = time.Duration(d) * time.Second
 	}
-	return DeadlineUnfinished
+	if d := briefDeadline(s, c); d > 0 {
+		limit = max(limit, d+BriefDeadlineMargin)
+	}
+	return limit
+}
+
+// briefDeadlineCache memoizes BriefDeadline by brief, as gateNeedsCache does GateNeeds:
+// the tick reads every working card's limit.
+var briefDeadlineCache sync.Map // brief string -> time.Duration
+
+// briefDeadline is the deadline the brief of the work card's primary names
+// (BriefDeadline), 0 when it names none or the primary is not on the table.
+func briefDeadline(s *Snapshot, c *Card) time.Duration {
+	if s == nil || s.Work == nil || c == nil {
+		return 0
+	}
+	pr := s.Work.Placed(c.F("primary"))
+	if pr == nil {
+		return 0
+	}
+	brief := pr.F("brief")
+	if v, ok := briefDeadlineCache.Load(brief); ok {
+		return v.(time.Duration)
+	}
+	d := BriefDeadline(brief)
+	briefDeadlineCache.Store(brief, d)
+	return d
+}
+
+// briefDeadlineRE is a deadline value as the brief lint (nova-tools swarm deadlineSeconds,
+// cardhdr ReadClass) reads one: `finish within <n> <unit>` or a bare `<n> [unit]`, the unit
+// seconds when none is named.
+var briefDeadlineRE = regexp.MustCompile(`(?i)^(?:finish within\s+)?(\d+)\s*(seconds?|secs?|s|minutes?|mins?|m|hours?|h)?\.?$`)
+
+// BriefDeadline is the deadline a brief names: its first DEADLINE: line, or the template's
+// `Deadline: finish within <n> minutes; ...` line (the value up to its first semicolon); 0
+// when it names none this reads (the template's own <n> placeholder is none).
+func BriefDeadline(brief string) time.Duration {
+	for line := range strings.SplitSeq(brief, "\n") {
+		v, ok := strings.CutPrefix(line, "DEADLINE:")
+		if !ok {
+			v, ok = strings.CutPrefix(line, "Deadline:")
+		}
+		if !ok {
+			continue
+		}
+		v, _, _ = strings.Cut(v, ";")
+		m := briefDeadlineRE.FindStringSubmatch(strings.TrimSpace(v))
+		if m == nil {
+			continue
+		}
+		n, err := strconv.Atoi(m[1])
+		if err != nil || n <= 0 {
+			continue
+		}
+		unit := time.Second
+		if m[2] != "" {
+			switch strings.ToLower(m[2])[0] {
+			case 'm':
+				unit = time.Minute
+			case 'h':
+				unit = time.Hour
+			}
+		}
+		return time.Duration(n) * unit
+	}
+	return 0
 }
 
 // friendTaken is the fields of a friend's card going into working on her row now: taken
@@ -149,7 +226,7 @@ func LiveLane(s *Snapshot, r TickReq, c *Card) (LaneRun, bool) {
 	// the card's clock is WorkDeadline's: from its first take, else its deal
 	field, _, _, _ := WorkDeadline(s, c)
 	ran, ok := r.running(s.Now, c.F(field))
-	limit := unfinishedLimit(c)
+	limit := unfinishedLimit(s, c)
 	if !ok || ran >= limit {
 		return LaneRun{}, false
 	}

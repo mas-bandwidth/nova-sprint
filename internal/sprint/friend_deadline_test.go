@@ -20,7 +20,7 @@ func TestAFriendsCardsDeadlineIsThreeTimesHerMedianWall(t *testing.T) {
 	_, n := FriendMedianWall(w.s, "amy")
 	require.Zero(t, n)
 	assert.Empty(t, w.s.Fleet.Card("s1-1.w1").F(FieldFriendDeadline), "no ok attempt yet: the fleet's")
-	assert.Equal(t, DeadlineUnfinished, unfinishedLimit(w.s.Fleet.Card("s1-1.w1")))
+	assert.Equal(t, DeadlineUnfinished, unfinishedLimit(w.s, w.s.Fleet.Card("s1-1.w1")))
 
 	// she reports s1-1 after 60 minutes, s1-2 after 70, s1-3 after 80, each collected ten
 	// minutes later: her median run wall is 70 minutes, never the collection's
@@ -39,7 +39,7 @@ func TestAFriendsCardsDeadlineIsThreeTimesHerMedianWall(t *testing.T) {
 	// attempt before it: the fleet's); taken back and dealt to her again, it takes hers
 	wc := w.s.Fleet.Card("s1-4.w1")
 	require.Equal(t, Working, wc.Col)
-	assert.Equal(t, DeadlineUnfinished, unfinishedLimit(wc))
+	assert.Equal(t, DeadlineUnfinished, unfinishedLimit(w.s, wc))
 	w.must(FriendTake(w.s, FriendTakeReq{Friend: "amy", IDs: []string{"s1-4"}, Hold: true}))
 	dealStarted(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 3, Status: Up, Class: "flash,pro"}))
 	wc = w.s.Fleet.Card("s1-4.w1")
