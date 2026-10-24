@@ -74,7 +74,14 @@ func TestTheTickKeepsConfigDriftWhenTheConfigCannotBeRead(t *testing.T) {
 	require.Len(t, ta.openConfigDrift(), 1, "the drift raised no judgment")
 
 	inv.fail = errors.New("postgres at 127.0.0.1: connection refused")
-	ta.ok("tick")
+	out := ta.ok("tick")
+	if len(ta.openConfigDrift()) != 1 {
+		notes, _, _ := ta.m.NotesSince(context.Background(), "", 100000)
+		for _, n := range notes {
+			t.Logf("NOTE %+v", n)
+		}
+		t.Logf("TICK %s", out)
+	}
 	require.Len(t, ta.openConfigDrift(), 1, "a failed read closed the judgment")
 	inv.fail = nil
 	inv.remove("m1")
