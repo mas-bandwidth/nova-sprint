@@ -2193,6 +2193,8 @@ func lintBriefReads(brief string, rs ruleSet) (modelWhy string, findings []swarm
 	findings = append(findings, swarm.LintHeaderStranded([]byte(brief))...)
 	// a card that changes the dashboard page quotes the owner asking for it (swarm.LintDashboardAsk)
 	findings = append(findings, swarm.LintDashboardAsk([]byte(brief))...)
+	// a build command runs at -j4 or less on the shared benches (swarm.LintBuildJobs)
+	findings = append(findings, swarm.LintBuildJobs([]byte(brief))...)
 	return "", findings
 }
 
@@ -2872,6 +2874,7 @@ func (a *app) cmdProgress(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("progress")
 	as := fs.String("as", "", "the fleet member or friend that holds the cards: only the holder stamps a card's progress")
 	lane := fs.Int("lane", 0, "the lane of the holder stamping (take --lane gave it the card): a card another lane of its row holds is refused, and the stamp is its lane heard from")
+	head := fs.String("head", "", "the full commit the holder has pushed to the card's branch so far: an attempt redealt before it finishes carries it, and the next attempt starts from it (its JOB.md names it CARRIED)")
 	words, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "progress", err.Error())
@@ -2888,7 +2891,7 @@ func (a *app) cmdProgress(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "progress", err.Error())
 	}
-	return a.runStep("progress", *c, st, store.ProgressStep(sprint.ProgressReq{Sel: sprint.Sel{IDs: ids}, As: *as, Gens: gens, Lane: *lane, Who: *as}), stdout, stderr)
+	return a.runStep("progress", *c, st, store.ProgressStep(sprint.ProgressReq{Sel: sprint.Sel{IDs: ids}, As: *as, Gens: gens, Lane: *lane, Head: *head, Who: *as}), stdout, stderr)
 }
 
 func (a *app) cmdAsk(args []string, stdout, stderr io.Writer) int {
@@ -3201,12 +3204,12 @@ func (a *app) cmdCardWithSoftDeps(args []string, stdout, stderr io.Writer) int {
 // owner, 2026-10-06: "We gotta stop doing this twin shit. it's waste.").
 func (a *app) cmdBrief(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("brief")
-	brief := fs.String("brief", "", fmt.Sprintf("the new brief: a child's whole brief, at most %d KiB, held to the card lint as add holds one (--rules, else the file init --rules recorded, else the built-in general rules) and to the same PATHS check at the BASE tip (a literal path must exist, a glob must match a file, and every func, type or verb STOP or START names with a file must be inside a PATHS file; a CARRY: head= brief, such as --widen writes, skips the existence check) and refused, exit 2, nothing written, when it fails; a primary waiting, ready or in review takes one in place, on a STOPPED machine or a RUNNING one (there applied at its next tick), keeping its id: one an attempt was dealt for opens its next attempt, staged from its last pushed head, its bound reset; a card merging or landed keeps its brief; a working card requires --replace-in-flight for semantic edits (not needed for operational notes or scope-widening edits); one that differs in its DEPENDS-ON: line alone is taken in any state (working requires --replace-in-flight), the machine running or the card dealt; the edit records the needs its DEPENDS-ON: line names, and a ready card that gains a need not landed moves to waiting until it lands, so the deal never runs it before its need (a card dealt or working keeps its attempt, and the new needs apply from its next deal)", cardlimits.MaxBriefBytes>>10))
+	brief := fs.String("brief", "", fmt.Sprintf("the new brief: a child's whole brief, at most %d KiB, held to the card lint as add holds one (--rules, else the file init --rules recorded, else the built-in general rules) and to the same PATHS check at the BASE tip (a literal path must exist, a glob must match a file, and every func, type or verb STOP or START names with a file must be inside a PATHS file; a CARRY: head= brief, such as --widen writes, skips the existence check) and refused, exit 2, nothing written, when it fails; a primary waiting, ready or in review takes one in place, on a STOPPED machine or a RUNNING one (there applied at its next tick), keeping its id: one an attempt was dealt for opens its next attempt, staged from its last pushed head, its bound reset; a card merging or landed keeps its brief; a working card requires --replace-in-flight for semantic edits (not needed for operational edits: CARRY, RESUME, ROUTE NOTE, NOTE or DEADLINE lines or a build's -jN, nor for scope-widening edits); one that differs in its DEPENDS-ON: line alone is taken in any state (working requires --replace-in-flight), the machine running or the card dealt; the edit records the needs its DEPENDS-ON: line names, and a ready card that gains a need not landed moves to waiting until it lands, so the deal never runs it before its need (a card dealt or working keeps its attempt, and the new needs apply from its next deal)", cardlimits.MaxBriefBytes>>10))
 	briefFile := fs.String("brief-file", "", "the new brief, read from this file: its bytes as they are, its one trailing newline cut; not with --brief")
 	dir := fs.String("dir", "", "a directory of new briefs: one per *.md file, the card its base name without .md, each read and held as --brief-file's; one bad file refuses the whole call, nothing written; not with an id, --brief or --brief-file; with --group, one file for each member of the group and no other")
 	rules := fs.String("rules", "", "the child rules file the brief is held to (default: the file init --rules recorded, else the built-in general rules)")
 	tier := fs.String("tier", "", "re-tier the card instead of replacing its brief: the tier ("+cardhdr.RouteList+") every later deal and read of the card draws its route from, kept on the card as rework --tier keeps it (it pins the card, never escalated past it); taken on a RUNNING machine and for a card dealt, where it applies to the next attempt; with --brief or --brief-file, the tier the edit sets, over the card's recorded tier and the text's line 1")
-	replaceInFlight := fs.Bool("replace-in-flight", false, "replace a working attempt's semantic brief (not needed for operational notes or scope-widening edits to PATHS, NEW, SHARED or START (read)); its old head returns for a fresh attempt")
+	replaceInFlight := fs.Bool("replace-in-flight", false, "replace a working attempt's semantic brief (not needed for operational edits, which keep the head: CARRY, RESUME, ROUTE NOTE, NOTE or DEADLINE/Deadline lines, or a build's -jN, or for scope-widening edits to PATHS, NEW, SHARED or START (read)); its old head returns for a fresh attempt, and the edit says how many heads it returned")
 	keepHead := fs.Bool("keep-head", false, "keep the in-flight or held head eligible for review after replacing the brief; otherwise an old-brief finish returns for a fresh attempt")
 	needsFromBrief := fs.Bool("needs-from-brief", false, "the brief edit's needs are the text's DEPENDS-ON whole (its admission-time list), over the rule that the card's needs are the truth and a text only adds new ones: the escape hatch when the coordinator means to re-derive them")
 	reason := fs.String("reason", "", "when --tier is given: why the card is this tier, recorded with the pin")

@@ -136,6 +136,10 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 		cards = []BriefCard{{ID: r.ID, Brief: r.Brief, Rules: r.Rules, Needs: r.Needs}}
 	}
 	seen, orphans := map[string]bool{}, map[string]bool{}
+	// the working cards whose in-flight head this edit returns (--replace-in-flight without
+	// --keep-head): said once, counted, after the edits, so a batch never returns heads
+	// silently (2026-10-24: 36 heads came back "brief replaced" with no word at the edit)
+	var returned []string
 	// the needs each edit writes: the card's, not the text's (docs/SPEC-SPRINT.md, the
 	// needs): the text's DEPENDS-ON is the admission-time list, so a need a relink
 	// re-pointed stays its twin and a need the text drops stays, unless
@@ -209,8 +213,11 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 				continue
 			}
 			if !r.ReplaceInFlight {
-				p.refuse(b.ID, fmt.Sprintf("%s is working attempt %d: changing more than CARRY, RESUME or ROUTE NOTE requires --replace-in-flight; nothing was changed", b.ID, c.Int("attempt")))
+				p.refuse(b.ID, fmt.Sprintf("%s is working attempt %d: changing more than CARRY, RESUME, ROUTE NOTE, NOTE, the deadline or a build's -jN requires --replace-in-flight; nothing was changed", b.ID, c.Int("attempt")))
 				continue
+			}
+			if !r.KeepHead {
+				returned = append(returned, b.ID)
 			}
 		}
 		// Outside working, a DEPENDS-ON-only edit retains its existing needs path.
@@ -421,8 +428,25 @@ func Brief(s *Snapshot, r BriefReq) Plan {
 	if len(orphans) > 0 {
 		settle(&p, s, r.Who, orphans, nil)
 	}
+	if len(returned) > 0 && len(p.Refused) == 0 {
+		p.Said = append(p.Said, returnedHeadsSaid(returned))
+	}
 	answered(&p, s, r.Answers, r.Who)
 	return Lawful(p)
+}
+
+// returnedHeadsSaid is the line --replace-in-flight says for the working cards whose
+// in-flight heads it returned: how many, which, and what keeps them.
+func returnedHeadsSaid(ids []string) string {
+	shown := ids
+	if len(shown) > 8 {
+		shown = shown[:8]
+	}
+	list := strings.Join(shown, ",")
+	if len(ids) > len(shown) {
+		list += fmt.Sprintf(",... (%d more)", len(ids)-len(shown))
+	}
+	return fmt.Sprintf("--replace-in-flight returned %d in-flight head(s) for a fresh attempt: each finish under the old brief comes back \"brief replaced\" (%s); --keep-head keeps them, and an edit of only notes, the deadline or -jN needs neither flag", len(ids), list)
 }
 
 // briefKept is why a primary keeps its brief: "" for a primary waiting, ready, in review, or working,
@@ -821,19 +845,30 @@ func briefChange(old, brief string) string {
 	return cutText(strings.Join(out, " | "), 1024)
 }
 
+// operationalHeaders are the column-zero lines a brief edit may add or change on a working
+// card without touching its task: the carry and resume notes, a route note, a NOTE, and the
+// deadline (DEADLINE: or the template's Deadline: line). On 2026-10-24 a batch edit of 36
+// working cards changed only -j16 to -j4 and DEADLINE 120 to 240, and with
+// --replace-in-flight every finish came back "brief replaced": an operational edit was
+// read as a new task.
+var operationalHeaders = []string{"CARRY:", "RESUME:", "ROUTE NOTE:", "NOTE:", "DEADLINE:", "Deadline:"}
+
+// stripOperationalLines is text's lines less its operational header lines (counted by
+// header, so a removal is seen), every other line with its build parallelism read as one
+// (swarm.NormalizeBuildJobs: a -j16 to -j4 change alone is operational).
 func stripOperationalLines(text string) ([]string, map[string]int) {
 	var body []string
 	counts := make(map[string]int)
 	for _, line := range strings.Split(strings.TrimSuffix(text, "\n"), "\n") {
 		key := ""
-		for _, candidate := range []string{"CARRY:", "RESUME:", "ROUTE NOTE:"} {
+		for _, candidate := range operationalHeaders {
 			if strings.HasPrefix(line, candidate) {
 				key = candidate
 				break
 			}
 		}
 		if key == "" {
-			body = append(body, line)
+			body = append(body, swarm.NormalizeBuildJobs(line))
 		} else {
 			counts[key]++
 		}

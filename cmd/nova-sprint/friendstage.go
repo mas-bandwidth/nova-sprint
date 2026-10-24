@@ -228,12 +228,27 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 		"HEAD: " + startRef + "\n" +
 		"FINISH: " + finish + "\n" +
 		"FINISH-FAILED: " + finish + " --failed\n"
+	if next != "" {
+		// the work an earlier attempt pushed, which this one starts from: a finished
+		// attempt's head, or one redealt unfinished with the head its progress named
+		// (sprint.PushedHead), or the brief's CARRY line
+		jobmd += friendStageCarried(p.BaseAttempt, next)
+	}
 	if err := os.WriteFile(filepath.Join(jobDir, friend.JobFile), []byte(jobmd), 0o644); err != nil {
 		return refuse(stderr, name, "writing JOB.md: "+oneline.Err(err))
 	}
 	fmt.Fprintf(stdout, "FRIEND-STAGE OK friend=%s card=%s gen=%d branch=%s job=%s jobmd=%s identity=%s\n", friendName, card, gen, p.Branch, oneline.Field(job), filepath.Join(jobDir, friend.JobFile), identityFrom)
 	a.outcome, a.changed = "accepted", "yes"
 	return 0
+}
+
+// friendStageCarried is JOB.md's CARRIED line: the attempt whose pushed head the job starts
+// from, and that head; the worker continues that work, never starts again from BASE.
+func friendStageCarried(attempt int, head string) string {
+	if attempt > 0 {
+		return fmt.Sprintf("CARRIED: attempt %d head %s (its pushed work: continue it, never start again from BASE)\n", attempt, head)
+	}
+	return "CARRIED: head " + head + " (its pushed work: continue it, never start again from BASE)\n"
 }
 
 // friendJobsRoot is the jobs directory a friend's job is staged under: --dir when

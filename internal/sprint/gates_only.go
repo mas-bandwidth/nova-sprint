@@ -3,6 +3,8 @@ package sprint
 import (
 	"slices"
 	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 )
 
 // FieldGatesOnly is a fleet member's control card field: the gate words, comma separated,
@@ -13,12 +15,13 @@ import (
 const FieldGatesOnly = "gates_only"
 
 // MemberGatesOnly reads a member's gates from its control card (FieldGatesOnly), Split into
-// its comma list; nil when the member has no control card or names none.
+// its comma list, each read as the fact it names (swarm.GateFact), as GateNeeds reads a
+// brief's needs; nil when the member has no control card or names none.
 func (s *Snapshot) MemberGatesOnly(member string) []string {
 	if s == nil {
 		return nil
 	}
-	return Split(s.MemberCtl(member).F(FieldGatesOnly))
+	return swarm.GateFacts(Split(s.MemberCtl(member).F(FieldGatesOnly)))
 }
 
 // gatesOnlyAdmits says a member with these gates may be dealt a card with these GATE-NEEDS:
