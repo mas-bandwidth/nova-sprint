@@ -139,7 +139,8 @@ Init ==
   /\ gateOpen = FALSE
   /\ running = TRUE
   /\ retired = FALSE
-  /\ cap = <<FALSE, FALSE, FALSE, FALSE, FALSE>>
+  /\ capAt = FALSE /\ reBriefed = FALSE /\ capOpen = FALSE
+  /\ idle = FALSE /\ spun = FALSE
 
 \* Raise a judgment on a card that is currently on the work table.
 Raise(j, c) ==
