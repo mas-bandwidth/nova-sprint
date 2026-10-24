@@ -122,7 +122,7 @@ func TickVerdicts(s *Snapshot, _ TickReq) (Plan, int) {
 // workers had posted progress minutes before, and threw their work away. The attempt it
 // does redeal keeps the head its holder last said it pushed (progress --head), which the
 // next attempt starts from and its JOB.md names as carried (PushedHead, BaseOf).
-// tla/FriendRedealProgress.tla, Redeal.
+// tla/FriendRedealProgress.tla, Tick.
 func TickFriendRedeal(s *Snapshot, r TickReq) (Plan, int) {
 	var p Plan
 	due := 0
