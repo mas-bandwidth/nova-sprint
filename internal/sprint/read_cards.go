@@ -1084,21 +1084,11 @@ func readCardsView(s *Snapshot, back map[string][]Change) *Snapshot {
 	return view
 }
 
-// readUntakenSince is when a read card on a friend's row began to wait untaken: its ask, or
-// its return to ready since (untaken_since), the later.
-func readUntakenSince(c *Card) time.Time {
-	at := stampAt(c, "asked")
-	if t := stampAt(c, "untaken_since"); t.After(at) {
-		at = t
-	}
-	return at
-}
-
 // readCardsLevel is the level of the reads left untaken on friends' rows (roadmap
 // reads-never-wait-behind-a-full-row; tla/FriendReadSlot.tla, LevelUntaken): a read card
 // ready on a friend's row that she has not taken (no take stamped, her beat naming it not
-// running: friendStarted) for longer than the start bound (FriendStartMax) since it began to
-// wait (readUntakenSince), whose primary is in review at its attempt, is taken back
+// running: friendStarted; nothing in flight on it: FriendCardInFlight) for longer than the start
+// bound (FriendStartMax) since its ask, whose primary is in review at its attempt, is taken back
 // (RetiredByLevel, spending no one) when another reader up may read it (mayReadCard) and has a
 // free lane (idle > 0) not promised to an earlier read levelled here. It answers the changes by
 // primary and, by primary, the friends each read was levelled from: the ask deals the read to
@@ -1118,10 +1108,10 @@ func readCardsLevel(s *Snapshot, units []readUnit, idx map[string][]*Card) (back
 		ready := slices.Clone(s.Fleet.Cell(u.row, Ready))
 		SortCards(ready)
 		for _, c := range ready {
-			if !isRead(c) || c.F(FieldReadCard) == "" || c.F("taken") != "" || friendStarted(s, u.seat, c) {
+			if !isRead(c) || c.F(FieldReadCard) == "" || FriendCardInFlight(c) != "" || friendStarted(s, u.seat, c) {
 				continue
 			}
-			if at := readUntakenSince(c); at.IsZero() || s.Now.Sub(at) <= bound {
+			if at := stampAt(c, "asked"); at.IsZero() || s.Now.Sub(at) <= bound {
 				continue
 			}
 			pr := s.Work.Placed(c.F("primary"))

@@ -5,7 +5,7 @@ import "fmt"
 // friend give of a read card (roadmap reads-never-wait-behind-a-full-row; the coordinator,
 // 2026-10-24: four reads dealt to a friend whose row was at its width sat in her ready column
 // for an hour, and friend give refused their ids, "no card <primary>.r7.<friend>"). A read card
-// named, open and not begun, moves to the friend named as a work card is handed: the card is
+// named, ready and not begun (FriendCardInFlight), moves to the friend named as a work card is handed: the card is
 // retired (RetiredByCoordinator, spending no one: its reader may be dealt it again) and the
 // friend's read card of the attempt is cut on her row, working, in one unit. The friend must be
 // a reader up, at or above the read's tier, not its own author (the worker of the attempt: a
@@ -29,8 +29,12 @@ func friendGiveRead(p *Plan, s *Snapshot, r FriendGiveReq, c *Card, seat FriendS
 	case c.F("reader") == r.Friend || c.Row == row:
 		p.refuse(c.ID, fmt.Sprintf("%s is friend %s's already", c.ID, r.Friend))
 		return
-	case c.F("taken") != "" || c.F(FieldProgress) != "" || readerRunsIt(s, c):
-		p.refuse(c.ID, fmt.Sprintf("%s has begun with %s: it finishes there (friend take --working takes it back first)", c.ID, orDash(c.F("reader"))))
+	case FriendCardInFlight(c) != "" || readerRunsIt(s, c):
+		why := FriendCardInFlight(c)
+		if why == "" {
+			why = "its reader's beat names it running"
+		}
+		p.refuse(c.ID, fmt.Sprintf("%s has begun with %s (%s): it finishes there (friend take --working takes it back first)", c.ID, orDash(c.F("reader")), why))
 		return
 	case pr == nil || pr.Col != Review && !DecisionParkedReview(pr) || readAttempt(pr) != attempt:
 		p.refuse(c.ID, fmt.Sprintf("%s reads %s at attempt %d, which is not in review at it: the take-back retires it", c.ID, c.F("primary"), attempt))
