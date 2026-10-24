@@ -2503,6 +2503,30 @@ deal, one finish, one push, one pull request, its reads; dependencies stay at th
   <brief> --remainder <id> --from <n> --land <pushed sha>` prints it; the coordinator adds it and
   the deal deals it as any card. A member adds no card: `add` is the coordinator's.
 
+### A plain finish with a HOLD verdict is refused
+
+A plain finish (`finish <card>@<gen> --head <sha> --report <text>`, no `--failed`) records
+the work ok and sends its primary to review. A report whose own verdict line says the work is
+not done is no ok finish: recorded ok, a reader reads it broken and the attempt is wasted (a
+cross-row review of 2026-10-24 found 17 of one row's 53 failed attempts were exactly this). So
+a plain finish whose `--report` carries such a verdict line is refused, nothing moves, and the
+refusal names the line and the fix: `the report's verdict line <line> says the work is not
+done, and a plain finish records it ok: finish <card> with --failed and the same --report`.
+The refusal is a finish the lifecycle refused, so it counts toward `FinishRefusalBound` like
+any other (`finish_refusals`, `NFinishRefused`).
+
+The verdict line is the report's first line that, with markdown bullets, headings and emphasis
+trimmed and a member's `pushed=<sha> to <branch>: ` prefix dropped, begins with the word
+`verdict` and a colon or a space, or is the verdict alone. Case is ignored. `Verdict: HOLD`,
+`verdict not-done`, `Verdict: not done`, `NOT DONE` and `notdone` are refused; `Verdict:
+LAND`, `Verdict: done`, `verdict ok`, a report with no verdict line, and prose (`hold on`,
+`not done yet`, a verdict word mid-line) finish as before. Only the first verdict line counts.
+`--failed` with the same report finishes the card failed as before
+(`internal/sprint/finish_verdict.go`, `NotDoneVerdictLine`; `TestAPlainFinishOfAHoldReportIsRefusedNamingTheFix`;
+`tla/FinishVerdict.tla`, `NoHoldFinishedOk`, reversed witness `MCFinishVerdictBrokenAcceptsHold`).
+A friend's report is read by friend sync and collect, which finish a HOLD, FAIL or any verdict
+not LAND `--failed` already (section 1, a friend's counts; `collectReport`).
+
 ### recut-widen-r.w1: a HOLD's PATHS-PROPOSED line widens the card in place
 
 A card held for PATHS too narrow is widened by the tool, not by hand, and in place (the
@@ -4702,6 +4726,7 @@ What each of the lander's checks does with a head:
 |---|---|
 | files outside PATHS (E12) | refuses; a `*_test.go`, a file under `testdata/`, `tla/RUNS.tsv`, `tla/CASES.tsv`, `internal/docs/catalog.go` and an `AGENTS.md` map are inside every PATHS (`sprint.LandScope`) |
 | a rename outside PATHS (E12) | refuses |
+| a report file (`RESULT.md`, `JOB.md`) added or modified at the repository root | refuses, one line per file: `it adds or modifies <file> at the repository root: report files live in the job dir only`; a deletion (the fix), a rename away, and a report file below the root land (`rootReportFiles`, cmd/nova-sprint/land_report_files.go; rocketnet main carried a card's `RESULT.md` from 3bb8e5f1 and every staged checkout began with its `Head:` line, 2026-10-24) |
 | a stranded sentence fragment (E4) | refuses |
 | an unmatched backquote in a Markdown or text file (E4) | repairs; refuses only when ambiguous, naming the line; not read on a prose path |
 | an unmatched backquote in a Go comment (E4) | refuses; not read on a prose path |

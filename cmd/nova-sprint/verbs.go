@@ -2820,7 +2820,7 @@ func (a *app) cmdFinish(args []string, stdout, stderr io.Writer) int {
 	as := fs.String("as", "", "the fleet member finishing its cards; several, comma separated, each finishing its own named cards in one step")
 	failed := fs.Bool("failed", false, "the work failed (default: ok); a card named by id whose attempt a deadline failed already, with no later attempt started, is finished by this report, LAND or HOLD, rather than refused")
 	head := fs.String("head", "", "the commit the work finished at, the head land merges (default: the card's id, for a run with no git: land refuses a head that is not a commit id)")
-	report := fs.String("report", "", "the worker's report")
+	report := fs.String("report", "", "the worker's report; a plain finish (no --failed) whose report's first verdict line says HOLD or not done (Verdict: HOLD, verdict not-done, Verdict: not done, NOT DONE; any case) is refused, naming the line: finish it with --failed and the same report")
 	exit := fs.Int("exit", 0, "the child's exit code, as the member read it (0: a clean end or unknown); a failed finish whose exit is 134 or 137, or whose report is a no-result at any exit, is an environment exit: recorded ended=environment exit=<n>, the card back in ready at the same attempt; at 134 or 137 no attempt or redeal is spent, and a no-result at another exit is still an ended take (redeal counted) (docs/SPEC-SPRINT.md, \"An environment exit\")")
 	harness := fs.String("harness", "", "the child's harness output, so an environment exit keeps the last 40 lines of it on the card and its primary (the cause a reader reads)")
 	branch := fs.String("branch", "", "the branch the work is on (its packet names the one to use)")
