@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.6.18 — 2026-10-24
+
+Cut from 15b6a6b52f8910538619f4ecdbf7968d81d770b3. 3 pull requests since v1.6.17.
+
+Recovery journeys incomplete, gate waived: v1.6.18: the first published release since v1.6.10, carrying v1.6.11-v1.6.17 (stop debt on a gone card, keyed TLA+ tables kept once on a union merge, the unhook grace, NOVA_PG_DSN for forwarded verbs, the friend-idle alarm counting reads, the attempt cap's judgment never spinning) plus the coordinator playbook's pre-LAND self-check (#590); journeys: the range since v1.6.17 touches no hook or recovery path; spend: the range changes no spend recording
+
+- TestASilentClientIsUnhookedAfterExactlyTwoAnnouncedOnce: not-run (no --journeys evidence)
+- TestNoServerOrNoAnswerIsNoEvidence: not-run (no --journeys evidence)
+- TestTheGateRefusesEveryoneWhileTheServerIsStale: not-run (no --journeys evidence)
+- TestAStaleAnswerIsDownWithAFreshServer: not-run (no --journeys evidence)
+- TestALostAnswerIsNeverToldTwice: not-run (no --journeys evidence)
+
+Spend gate waived: v1.6.18: the first published release since v1.6.10, carrying v1.6.11-v1.6.17 (stop debt on a gone card, keyed TLA+ tables kept once on a union merge, the unhook grace, NOVA_PG_DSN for forwarded verbs, the friend-idle alarm counting reads, the attempt cap's judgment never spinning) plus the coordinator playbook's pre-LAND self-check (#590); journeys: the range since v1.6.17 touches no hook or recovery path; spend: the range changes no spend recording (window 2026-10-24T00:00:00Z..2026-10-24T19:34:34Z)
+- unread: --spend-store <addr> names no sprint store, so the recorded spend cannot be read
+
+- #588 changelog: v1.6.17
+- #589 changelog: v1.6.17
+- #590 playbooks: pre-LAND self-check for workers, first-time LAND rate for the seat
+
 ## v1.6.17 — 2026-10-24
 
 Cut from d1197ace5c72159966d81a90e170e6cd70f57c56. 2 pull requests since v1.6.16.
