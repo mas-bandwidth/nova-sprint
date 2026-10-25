@@ -207,6 +207,13 @@ before repeating the attempt. Ask what was actually edited, pushed and tested: p
 work, but recover an untouched queue after the friend confirms it never started. Set width from
 demonstrated simultaneous execution capacity, not from how many cards the row auto-took.
 
+Improve throughput by finding the actual bottleneck in implementation, gates, review or landing,
+then prioritize critical-path unblockers and work nearest acceptance. Remove false hard dependencies
+while preserving real interface, file, safety and release ordering; reduce preventable rework with
+clear briefs and early review of tricky changes. Allocate benches without oversubscription, reuse valid
+exact-head gates, and raise width only for runnable independent work backed by real worker and gate
+capacity. Judge the result by accepted, landed work, never by assignment counts or claims of activity.
+
 When the repair is in a coordination tool, first trace the current command, state transition,
 truth source and every consumer. Fix its wiring or consolidate the existing path; do not answer a
 comfort problem with a second command, queue, daemon, recovery path or source of truth. Add a new
