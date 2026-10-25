@@ -207,6 +207,13 @@ before repeating the attempt. Ask what was actually edited, pushed and tested: p
 work, but recover an untouched queue after the friend confirms it never started. Set width from
 demonstrated simultaneous execution capacity, not from how many cards the row auto-took.
 
+When the repair is in a coordination tool, first trace the current command, state transition,
+truth source and every consumer. Fix its wiring or consolidate the existing path; do not answer a
+comfort problem with a second command, queue, daemon, recovery path or source of truth. Add a new
+mechanism only when the existing ones demonstrably cannot express the required behavior. Remove
+proven dead code only after consumer and supported-platform/build proof, and have independent
+review check specifically for an equivalent mechanism or duplicate path before landing the fix.
+
 High OK means correct work accepted on the first attempt by independent review with its required
 evidence. Never improve that result by suppressing failures, weakening gates, rewriting a verdict,
 resetting statistics, shrinking the denominator, or counting queued work, local unadmitted results
