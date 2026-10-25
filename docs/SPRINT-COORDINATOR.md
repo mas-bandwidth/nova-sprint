@@ -36,6 +36,13 @@ coordinator hook and its epoch; do not hook the same name again with `--role fri
 Check fresh daemon and row status, then observe a current card's automatic take,
 work and finish when work is available. No card means execution is unobserved,
 even if the row is up.
+The same startup pass accounts for every other configured friend expected to work:
+compare `nova-config friend list --json`, `nova-sprint where`,
+`nova-hook friends --json` and `nova-friend check --as <coordinator> <friend>`. Repair down or broken
+friends through the reach ladder below; if the cause is old tooling, use the
+supported update path on her host, then verify the installed version, fresh
+hook proof, daemon, row and actual card progress. Name intentional holds and
+unresolved blockers rather than treating historical green status as readiness.
 
 Before `start`, run `nova-sprint check cards` and resolve every finding. The
 check includes file overlaps: when one stream produces files another needs,

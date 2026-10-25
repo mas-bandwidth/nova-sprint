@@ -78,37 +78,57 @@ the checks the verb runs, and leaves no record in the log.
    With no card available, report the worker ready but execution not yet observed. Spec:
    [FRIENDS.md](FRIENDS.md), "Friend availability" and "A sprint card"; nova-tools
    SPEC-FRIEND.md, "The loop".
-3. See what changed. usage: `nova-sprint view coordinator [--all] [--since <cursor>] [--needs] [--json]`.
+3. Account for every friend expected to work this sprint. Read the configured rows with
+   `nova-config friend list --json` (using the seat's config-store wrapper in
+   SPRINT-COORDINATOR-SEAT.md) and the current sprint rows with `nova-sprint where`;
+   compare each eligible, unheld name with `nova-hook friends --json` and
+   `nova-friend check --as <coordinator> <friend>`. A configured row or old report is
+   not proof that its model is hooked in. For a down, broken or silent friend, follow
+   section 6's check and reach ladder, fix the actual hook, delivery, daemon or model
+   route fault, and have **that friend** answer a fresh challenge. When tooling is the
+   cause, check installed versions on her host with `nova-hook version` and
+   `nova-friend version`; compare with the supported release using
+   `nova-update status --file <manifest>`. Plan with
+   `nova-update apply --file <manifest> <name> --dry-run`, then use the supported
+   apply or release/adopt verb rather than copying binaries by hand. Recheck the
+   installed version, hook proof, daemon, row and a current card's take, work and
+   finish after an upgrade. Record an
+   intentional hold or an unresolved blocker by name; green hook presence alone is
+   not worker execution. Spec: section 6 below; nova-tools SPEC-FRIEND.md,
+   "A friend's status" and "Reach".
+4. See what changed. usage: `nova-sprint view coordinator [--all] [--since <cursor>] [--needs] [--json]`.
    Run `nova-sprint view coordinator`, keep the cursor it prints, and next time run
    `nova-sprint view coordinator --since <cursor>`. The second run leaves out every item the
    earlier view showed that has not changed (it counts them as same) and counts the ones that
    stand no more (gone). Spec: SPEC-SPRINT.md section 11, "Role views".
-4. Read the inbox. usage: `nova-sprint inbox [--open <group>] [--read] [--wait [--timeout <duration>] [--push <dir>]] [--deadline <duration>] [--stale <duration>] [--json]`.
+5. Read the inbox. usage: `nova-sprint inbox [--open <group>] [--read] [--wait [--timeout <duration>] [--push <dir>]] [--deadline <duration>] [--stale <duration>] [--json]`.
    Run `nova-sprint inbox`, then `nova-sprint inbox --open <id>` for every member of a group.
    `nova-sprint inbox --wait` blocks until a judgment, or a note to the coordinator, that was not
    in the inbox when the wait began, or until the machine stops. Spec: SPEC-SPRINT.md section 8,
    "Push, not poll".
-5. Check the units. usage: `nova-sprint units --check [--dir <dir>]`. Exit 1 names each unit that
+6. Check the units. usage: `nova-sprint units --check [--dir <dir>]`. Exit 1 names each unit that
    is missing or different, with the verb that installs it, for example usage
    `nova-sprint install <server|member|friend-sync|table> [--dir <dir>] [--log <file>] [--dry-run] (each kind's own flags are listed by install <kind> -h)`.
    Spec: SPEC-SPRINT.md section 14, "The system"; SPRINT-COORDINATOR.md section 1.
-6. Run the doctors. usage: `nova-sprint doctor [--all] [--area <group>] [--preflight <candidate>] [--json]`.
+7. Run the doctors. usage: `nova-sprint doctor [--all] [--area <group>] [--preflight <candidate>] [--json]`.
    `nova-sprint doctor --all` runs nova-doctor and the sprint doctor in parallel, prints both
    reports, and writes nothing. Each definition-of-done fault is one line with its evidence.
    Spec: SPEC-SPRINT.md section 8, "No silent stops"; nova-tools SPEC-DOCTOR.md.
-7. Check the seat. usage: `nova-sprint seat check`. It checks the server, store, loop, beats,
+8. Check the seat. usage: `nova-sprint seat check`. It checks the server, store, loop, beats,
    readers, dashboard, installed versions and merge queue, and writes nothing. Spec:
    SPEC-SPRINT.md section 11, "The seat check".
 
 **Success looks like.** `nova-hook status --as <me>` says the coordinator is proven (exit 0),
 and a fresh `nova-friend status` says the coordinator's **own** daemon is up and available;
-`friend cards` and `where` show the same live row and configured width. With a card available,
-its current take, work and finish prove worker execution; a quiet row proves only readiness.
+`friend cards` and `where` show the same live row and configured width. Every eligible friend
+is freshly proven and ready to work, or has a named hold or blocker being repaired. With a
+card available, its current take, work and finish prove worker execution; a quiet row proves
+only readiness.
 `units --check` exits 0, `doctor --all` reports no FAIL, `seat check` is clean, and every open
 judgment is answered or waiting on a decision you have named.
 
 **Not by hand.** Do not prove a challenge from a script: only the model answers a challenge, and
-no daemon, loop or script may call prove (`nova-hook help`). Do not write a unit file (step 5
+no daemon, loop or script may call prove (`nova-hook help`). Do not write a unit file (step 6
 names the verb). Do not start a server to look at the store (SPRINT-COORDINATOR.md section 1).
 
 ## 2. Running a friend row, the coordinator's own included
