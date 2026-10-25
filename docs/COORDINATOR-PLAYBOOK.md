@@ -65,41 +65,58 @@ the checks the verb runs, and leaves no record in the log.
    refused with `You must hook in first`. Spec: SPEC-SPRINT.md section 11, "The hook";
    SPRINT-COORDINATOR-SEAT.md, "The hook under a Monitor"; nova-tools SPEC-HOOK.md, "Roles and
    pushes".
-2. See what changed. usage: `nova-sprint view coordinator [--all] [--since <cursor>] [--needs] [--json]`.
+2. Bring up your own worker row, not only the coordinator seat. Follow section 2 for the
+   coordinator's friend row and `nova-friend` daemon before calling session start complete.
+   The daemon joins the existing **coordinator** hook role and epoch and holds its work push;
+   `nova-hook hook --as <me> --role friend` under the same name would replace the role and clear
+   the coordinator proof. Check a fresh `nova-friend status --as <me> --dir <d>`,
+   `nova-sprint friend cards <me> --json` and `nova-sprint where`: the daemon must be up,
+   its status age current, the hook proven, and the row up with its configured width.
+   A past report or an old up status is not current worker evidence. When a card is available,
+   verify the daemon takes it, works it, and reports a finish through the normal sprint path;
+   a lane that refuses its configured model route is not execution-ready even if the row is up.
+   With no card available, report the worker ready but execution not yet observed. Spec:
+   [FRIENDS.md](FRIENDS.md), "Friend availability" and "A sprint card"; nova-tools
+   SPEC-FRIEND.md, "The loop".
+3. See what changed. usage: `nova-sprint view coordinator [--all] [--since <cursor>] [--needs] [--json]`.
    Run `nova-sprint view coordinator`, keep the cursor it prints, and next time run
    `nova-sprint view coordinator --since <cursor>`. The second run leaves out every item the
    earlier view showed that has not changed (it counts them as same) and counts the ones that
    stand no more (gone). Spec: SPEC-SPRINT.md section 11, "Role views".
-3. Read the inbox. usage: `nova-sprint inbox [--open <group>] [--read] [--wait [--timeout <duration>] [--push <dir>]] [--deadline <duration>] [--stale <duration>] [--json]`.
+4. Read the inbox. usage: `nova-sprint inbox [--open <group>] [--read] [--wait [--timeout <duration>] [--push <dir>]] [--deadline <duration>] [--stale <duration>] [--json]`.
    Run `nova-sprint inbox`, then `nova-sprint inbox --open <id>` for every member of a group.
    `nova-sprint inbox --wait` blocks until a judgment, or a note to the coordinator, that was not
    in the inbox when the wait began, or until the machine stops. Spec: SPEC-SPRINT.md section 8,
    "Push, not poll".
-4. Check the units. usage: `nova-sprint units --check [--dir <dir>]`. Exit 1 names each unit that
+5. Check the units. usage: `nova-sprint units --check [--dir <dir>]`. Exit 1 names each unit that
    is missing or different, with the verb that installs it, for example usage
    `nova-sprint install <server|member|friend-sync|table> [--dir <dir>] [--log <file>] [--dry-run] (each kind's own flags are listed by install <kind> -h)`.
    Spec: SPEC-SPRINT.md section 14, "The system"; SPRINT-COORDINATOR.md section 1.
-5. Run the doctors. usage: `nova-sprint doctor [--all] [--area <group>] [--preflight <candidate>] [--json]`.
+6. Run the doctors. usage: `nova-sprint doctor [--all] [--area <group>] [--preflight <candidate>] [--json]`.
    `nova-sprint doctor --all` runs nova-doctor and the sprint doctor in parallel, prints both
    reports, and writes nothing. Each definition-of-done fault is one line with its evidence.
    Spec: SPEC-SPRINT.md section 8, "No silent stops"; nova-tools SPEC-DOCTOR.md.
-6. Check the seat. usage: `nova-sprint seat check`. It checks the server, store, loop, beats,
+7. Check the seat. usage: `nova-sprint seat check`. It checks the server, store, loop, beats,
    readers, dashboard, installed versions and merge queue, and writes nothing. Spec:
    SPEC-SPRINT.md section 11, "The seat check".
 
-**Success looks like.** `nova-hook status --as <me>` says proven (exit 0). `units --check` exits
-0, `doctor --all` reports no FAIL, `seat check` is clean, and every open judgment is answered or
-waiting on a decision you have named.
+**Success looks like.** `nova-hook status --as <me>` says the coordinator is proven (exit 0),
+and a fresh `nova-friend status` says the coordinator's **own** daemon is up and available;
+`friend cards` and `where` show the same live row and configured width. With a card available,
+its current take, work and finish prove worker execution; a quiet row proves only readiness.
+`units --check` exits 0, `doctor --all` reports no FAIL, `seat check` is clean, and every open
+judgment is answered or waiting on a decision you have named.
 
 **Not by hand.** Do not prove a challenge from a script: only the model answers a challenge, and
-no daemon, loop or script may call prove (`nova-hook help`). Do not write a unit file (step 4
+no daemon, loop or script may call prove (`nova-hook help`). Do not write a unit file (step 5
 names the verb). Do not start a server to look at the store (SPRINT-COORDINATOR.md section 1).
 
 ## 2. Running a friend row, the coordinator's own included
 
 **Situation.** A friend should work cards, and the coordinator's own row is a friend row like any
 other. The row lives in nova-config, nova-friend's daemon runs its lanes, and the sprint deals to
-it.
+it. For the coordinator's own row, keep the one coordinator hook from section 1: the daemon
+joins that hook instead of installing a second friend-role hook.
 
 **The verbs, in order.**
 
@@ -127,8 +144,11 @@ it.
 6. Confirm the row in the sprint. usage: `nova-sprint friend cards <friend> [--json]`, and
    `nova-sprint where` draws the friends table. Spec: SPEC-SPRINT.md section 1.
 
-**Success looks like.** `nova-friend status` says `daemon=up` with the hook proven and
-`status=up`. `where` shows the row up with cards working, and finishes arrive without you.
+**Success looks like.** A fresh `nova-friend status` says `daemon=up`, a current `status_age`,
+the hook proven and `status=up`; `friend cards` and `where` show the row up at its configured
+width. When work is ready, observe a current card taken and working, then its report and
+finish through the normal sync/collect path. A row with no cards is ready, but has not yet
+proved execution in this session.
 
 **Not by hand.** Never run a hand take loop: `take --as friend.<name>` is the friend's lane's take
 (`nova-sprint help`), and the daemon makes it. Do not finish a friend's card from her REPORT.md by

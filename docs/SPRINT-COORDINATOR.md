@@ -28,6 +28,14 @@ For live coordination, hook in with nova-hook before other coordinator verbs:
 `HOOK CHALLENGE` it prints with `nova-hook prove`; two missed in a row unhook
 you. The sprint's server sends every judgment and note for the coordinator to
 your name on the bus, and nova-hook puts each one into your session.
+The coordinator also works through her own friend row: complete
+[playbook section 1](COORDINATOR-PLAYBOOK.md#1-session-start)'s worker check and
+[section 2](COORDINATOR-PLAYBOOK.md#2-running-a-friend-row-the-coordinators-own-included)
+before calling the session ready. Her `nova-friend` daemon joins the existing
+coordinator hook and its epoch; do not hook the same name again with `--role friend`.
+Check fresh daemon and row status, then observe a current card's automatic take,
+work and finish when work is available. No card means execution is unobserved,
+even if the row is up.
 
 Before `start`, run `nova-sprint check cards` and resolve every finding. The
 check includes file overlaps: when one stream produces files another needs,
