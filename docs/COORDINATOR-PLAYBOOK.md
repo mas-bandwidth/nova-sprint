@@ -185,6 +185,33 @@ a **working** card is an assignment, not proof its model ran; a fresh daemon lan
 an accepted report/finish are execution evidence. A stale status file, old outbox report or
 past FRIEND BACK message proves none of those current facts.
 
+### Coach for first-pass acceptance
+
+The coordinator owns the work path, not only the row. Before raising width or blaming a
+friend for a silent card, verify the installed tools and help, intended model and applied
+route, authorized credential/config presence without exposing secrets, hook and delivery,
+staged current card, and admitted bench or lane. Then observe an actual worker turn. Width is
+a ceiling and an automatic take is an assignment; neither proves delivery, staging or model
+execution.
+
+For a friend's first card, or when attempts repeat, coach one representative card end to end:
+the current brief and exact head, allowed paths, baseline red, implementation, relevant gates,
+raw commands and exit statuses, report/finish submission, and independent review. Give small,
+specific corrections and have the friend demonstrate the corrected path; do not paste the
+whole checklist into every card.
+
+When work is failed, returned or stuck, inspect its current report and evidence and classify the
+cause as tool/version, access/credential/route, delivery/staging, brief/scope/dependency,
+gate/base/harness, report/finish lifecycle, or source. Repair recurring system and brief causes
+before repeating the attempt. Ask what was actually edited, pushed and tested: preserve active
+work, but recover an untouched queue after the friend confirms it never started. Set width from
+demonstrated simultaneous execution capacity, not from how many cards the row auto-took.
+
+High OK means correct work accepted on the first attempt by independent review with its required
+evidence. Never improve that result by suppressing failures, weakening gates, rewriting a verdict,
+resetting statistics, shrinking the denominator, or counting queued work, local unadmitted results
+or a push as accepted work.
+
 **Not by hand.** Never run a hand take loop: `take --as friend.<name>` is the friend's lane's take
 (`nova-sprint help`), and the daemon makes it. Do not finish a friend's card from her REPORT.md by
 hand, because `nova-sprint collect` does that (section 6 below). Do not hand-edit the plist; run

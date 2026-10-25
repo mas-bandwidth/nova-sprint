@@ -28,6 +28,8 @@ For a friend work card, use its delivered `BRIEF.md` and the staged `jobs/<job>/
 
 Before editing, inspect the base and run the required gate once to establish any pre-existing red. Then implement and run the brief's meaningful gates on the assigned bench or slot. For Go work, use the allocated Linux bench, not the coordinator's desktop; take and give an explicit shared lane when the brief requires one (`nova-sprint lane take`, `nova-sprint lane give`). Never rerun an unchanged head merely to get another result. Use a controlled test clock, not real time, sockets or network, where the brief calls for deterministic unit tests. Do a cold read of the final diff, check `git diff --check`, and record which checks ran, their host and result.
 
+When blocked or coached, give the coordinator one compact evidence statement: whether the card was merely auto-taken, delivered, staged or actually executed; current branch/head and whether any edits exist; the exact refusal or failing command and exit status; gates already run; and the next help needed. Say explicitly when an auto-taken card never reached a worker, or when a result exists only locally and has not been admitted or accepted. Preserve active work, identify untouched cards that can be recovered, then demonstrate the corrected path through one accepted finish rather than treating configured width as running capacity.
+
 ## 3. Finish work or report a stop
 
 Commit, push the **assigned** branch, and verify its remote tip equals the
