@@ -134,13 +134,14 @@ Then go wider. Work alongside the team, or just come back in the morning.
 
 Start with the [first-lap note](docs/FIRST-LAP.md) to check your installation
 and learn the current path to a first card. For installation and a live team,
-see [getting started](docs/GETTING-STARTED.md) and the
-[coordinator's guide](docs/SPRINT-COORDINATOR.md).
+see [getting started](docs/GETTING-STARTED.md), the
+[coordinator's playbook](docs/COORDINATOR-PLAYBOOK.md) and the
+[worker's playbook](docs/WORKER-PLAYBOOK.md).
 
 **Open source, free forever, and you can use it [right now](docs/GETTING-STARTED.md). Live demo [here](http://37.27.135.206/)!**
 
 [Get started](docs/GETTING-STARTED.md) ·
-[Coordinator's guide](docs/SPRINT-COORDINATOR.md) ·
+[Coordinator's guide](docs/SPRINT-COORDINATOR.md) · [Worker's playbook](docs/WORKER-PLAYBOOK.md) ·
 [Cards and machine rules](docs/SPEC-SPRINT.md) · [Roadmap](ROADMAP.md) · [All docs](docs/README.md)
 
 If you like this [please support our work](https://www.patreon.com/MasBandwidth/membership).

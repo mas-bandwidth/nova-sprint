@@ -9,9 +9,10 @@ package main
 // because their FlagSets live in nova-tools.
 var foreignVerbs = map[string]map[string]bool{
 	"nova-swarm":   {"lint": true, "template": true, "disk-guard": true, "member": true, "mirror": true, "install": true},
-	"nova-friend":  {"check": true, "reach": true, "pong": true, "status": true, "install": true, "run": true},
-	"nova-hook":    {"hook": true, "prove": true, "unhook": true, "friends": true, "status": true, "serve": true},
+	"nova-friend":  {"check": true, "reach": true, "pong": true, "status": true, "install": true, "run": true, "version": true},
+	"nova-hook":    {"hook": true, "prove": true, "unhook": true, "friends": true, "status": true, "serve": true, "version": true},
 	"nova-config":  {"machine": true, "friend": true, "loop": true, "apply": true, "route": true, "provider": true, "migrate": true, "sprint": true, "tier": true},
+	"nova-update":  {"status": true, "apply": true, "release": true, "version": true},
 	"nova-bus":     {"log": true, "peek": true, "send": true, "recv": true},
 	"nova-secrets": {"exec": true},
 }

@@ -2,6 +2,10 @@
 
 Start with one AI friend and one small task. You can add more friends,
 different models and harnesses, or a fleet of swarm workers as your team grows.
+If you will coordinate, follow the [coordinator playbook](COORDINATOR-PLAYBOOK.md)
+after the first lap. If you will work cards, follow the
+[worker playbook](WORKER-PLAYBOOK.md). Both paths use the exact help installed
+with your binaries for commands.
 
 ## Have a look
 
@@ -15,13 +19,15 @@ nova-sprint runs alongside [Nova Tools](https://github.com/mas-bandwidth/nova-to
 nova-sprint depends on Nova Tools: the `github.com/mas-bandwidth/nova-tools`
 requirement in the sprint repository's [`go.mod`](../go.mod) names the minimum
 compatible Nova Tools version. Nova Tools supplies friends
-(`nova-friend`), the message bus (`nova-bus`), workers (`nova-swarm`) and configuration commands
+(`nova-friend`), presence and delivery (`nova-hook`), the message bus (`nova-bus`), workers (`nova-swarm`) and configuration commands
 (`nova-config`). Installing nova-sprint alone does not install these tools.
 
 With Go 1.26.6 or newer, run:
 
 ```sh
 go install github.com/mas-bandwidth/nova-tools/cmd/nova-friend@latest
+go install github.com/mas-bandwidth/nova-tools/cmd/nova-hook@latest
+go install github.com/mas-bandwidth/nova-tools/cmd/nova-update@latest
 go install github.com/mas-bandwidth/nova-tools/cmd/nova-bus@latest
 go install github.com/mas-bandwidth/nova-tools/cmd/nova-config@latest
 go install github.com/mas-bandwidth/nova-tools/cmd/nova-swarm@latest
@@ -31,7 +37,7 @@ nova-sprint help
 
 Make sure your Go binary directory is on `PATH`, ahead of any older Nova
 installation. These commands download and build the named releases.
-Check an existing installation with `nova-friend version`, `nova-bus version`,
+Check an existing installation with `nova-friend version`, `nova-hook version`, `nova-update version`, `nova-bus version`,
 `nova-swarm version`, `nova-config version` and `nova-sprint version`.
 
 These commands install the latest published versions. If you pin versions,
@@ -56,6 +62,9 @@ walks one card through a local twin. A live team also needs a sprint server, a R
 a separate bus Redis store for hook communication, PostgreSQL for durable fleet
 configuration through `nova-config`, configured workers and reviewers, and
 model credentials.
+The [coordinator playbook](COORDINATOR-PLAYBOOK.md) checks the seat and every
+eligible friend at session start; the [worker playbook](WORKER-PLAYBOOK.md)
+guides a friend through a current card and recovery.
 Use Tailscale when machines communicate across networks, and Ansible to
 provision and maintain the fleet consistently. The
 [Nova Tools README](https://github.com/mas-bandwidth/nova-tools#readme)

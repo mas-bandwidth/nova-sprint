@@ -75,6 +75,10 @@ the checks the verb runs, and leaves no record in the log.
    A past report or an old up status is not current worker evidence. When a card is available,
    verify the daemon takes it, works it, and reports a finish through the normal sprint path;
    a lane that refuses its configured model route is not execution-ready even if the row is up.
+   For Codex lanes, `nova-sprint routes --json` must show one enabled subscription
+   route admitted by the applied array for the card's tier; a configured route
+   excluded by that array cannot launch a model (nova-tools SPEC-FRIEND.md,
+   "One-shot lanes").
    With no card available, report the worker ready but execution not yet observed. Spec:
    [FRIENDS.md](FRIENDS.md), "Friend availability" and "A sprint card"; nova-tools
    SPEC-FRIEND.md, "The loop".
@@ -85,7 +89,10 @@ the checks the verb runs, and leaves no record in the log.
    `nova-friend check --as <coordinator> <friend>`. A configured row or old report is
    not proof that its model is hooked in. For a down, broken or silent friend, follow
    section 6's check and reach ladder, fix the actual hook, delivery, daemon or model
-   route fault, and have **that friend** answer a fresh challenge. When tooling is the
+   route fault, and have **that friend** answer a fresh challenge. Compare configured
+   width, ready cards, cards waiting on dependencies and actually running lanes as
+   separate facts; inspect `nova-sprint card <card>` for a dependency wait and
+   `nova-friend status --as <friend> --dir <d>` for a refusal. When tooling is the
    cause, check installed versions on her host with `nova-hook version` and
    `nova-friend version`; compare with the supported release using
    `nova-update status --file <manifest>`. Plan with
@@ -123,7 +130,8 @@ and a fresh `nova-friend status` says the coordinator's **own** daemon is up and
 `friend cards` and `where` show the same live row and configured width. Every eligible friend
 is freshly proven and ready to work, or has a named hold or blocker being repaired. With a
 card available, its current take, work and finish prove worker execution; a quiet row proves
-only readiness.
+only readiness. A failed/HOLD finish proves the lane ran and reported; it does not prove
+the card's work succeeded or that a pushed head is ready to land.
 `units --check` exits 0, `doctor --all` reports no FAIL, `seat check` is clean, and every open
 judgment is answered or waiting on a decision you have named.
 
@@ -168,7 +176,14 @@ joins that hook instead of installing a second friend-role hook.
 the hook proven and `status=up`; `friend cards` and `where` show the row up at its configured
 width. When work is ready, observe a current card taken and working, then its report and
 finish through the normal sync/collect path. A row with no cards is ready, but has not yet
-proved execution in this session.
+proved execution in this session. A failed/HOLD finish demonstrates the reporting path,
+not successful card delivery.
+
+Read the evidence separately: configured **width** is capacity; a **ready** card is eligible
+to take; a **waiting** card needs a dependency or hold resolved (`nova-sprint card <card>`);
+a **working** card is an assignment, not proof its model ran; a fresh daemon lane turn and
+an accepted report/finish are execution evidence. A stale status file, old outbox report or
+past FRIEND BACK message proves none of those current facts.
 
 **Not by hand.** Never run a hand take loop: `take --as friend.<name>` is the friend's lane's take
 (`nova-sprint help`), and the daemon makes it. Do not finish a friend's card from her REPORT.md by
