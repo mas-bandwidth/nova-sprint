@@ -113,6 +113,42 @@ func TestLandingStallClearsOnTheNextLanding(t *testing.T) {
 	assert.Empty(t, since, "the episode is cleared")
 }
 
+// Ack may arrive after the landing but before the next tick. The same existing
+// landing-stall condition that the tick would clear makes that standing judgment
+// outlived; while the condition still holds, its empty decision list remains a
+// refusal rather than becoming a general-purpose ack escape.
+func TestLandingStallCanBeAckedOnlyAfterItClears(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 4)
+	stallCard(w, "s1-1", Review)
+	w.s.Work.SetProp(PropLastLanding, stamp(w.s.Now.Add(-2*time.Minute)))
+	p, _ := TickLandingStall(w.s, TickReq{})
+	w.must(p)
+	stall, ok := openJudgmentOf(w.s, NLandingStall)
+	require.True(t, ok)
+
+	p = Ack(w.s, AckReq{Notes: []string{stall.Note.ID}, Reason: "seen", Who: w.s.Coordinator})
+	require.Len(t, p.Refused, 1, "the standing stall still needs the tick's condition to clear: %+v", p)
+	require.Empty(t, p.Units)
+
+	w.s.Work.SetProp(PropLandRefusal, "s1-1: a different landing refusal")
+	w.tick(2 * LandingStallBound)
+	p = Ack(w.s, AckReq{Notes: []string{stall.Note.ID}, Reason: "seen", Who: w.s.Coordinator})
+	require.Len(t, p.Refused, 1, "a changed active cause needs the tick to replace its judgment: %+v", p)
+	require.Empty(t, p.Units)
+	_, open := openJudgmentOf(w.s, NLandingStall)
+	require.True(t, open, "ack cleared an active stall before its replacement was raised")
+
+	w.tick(time.Minute)
+	w.s.Work.SetProp(PropLastLanding, stamp(w.s.Now))
+	p = w.do(Ack(w.s, AckReq{Notes: []string{stall.Note.ID}, Reason: "the landing resolved it", Who: w.s.Coordinator}))
+	require.Empty(t, p.Refused, "ack after the landing: %+v", p)
+	require.Len(t, p.Units, 1)
+	_, open = openJudgmentOf(w.s, NLandingStall)
+	assert.False(t, open, "the resolved stall judgment stayed open")
+	assert.Contains(t, p.Units[0].Notes[0].What, MovedOnPrefix+"landing stall cleared")
+}
+
 func TestNoStallWithNothingWaiting(t *testing.T) {
 	t.Parallel()
 	w := setup(t, 4)

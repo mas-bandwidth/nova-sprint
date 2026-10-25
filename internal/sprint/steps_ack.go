@@ -62,6 +62,26 @@ func Ack(s *Snapshot, r AckReq) Plan {
 		moved := ""
 		if !contains(n.Decisions, "ack") && !contains(n.Decisions, "keep") { // keep (readtier.go) is an ack by another name
 			ev, ok := outlived(s, n, entries)
+			// A landing-stall judgment is the sprint's, not a card's, so outlived
+			// cannot answer it. Once the existing landing-stall tick says this
+			// exact judgment is clear, an ack before that tick writes may record
+			// the same resolution instead of refusing on its empty decisions.
+			if !ok && n.Type == NLandingStall {
+				cleared, _ := tickLandingStall(s, TickReq{Who: r.Who})
+				replaced := false
+				for _, next := range cleared.Notes {
+					if next.Kind == Judgment && next.Type == NLandingStall {
+						replaced = true
+						break
+					}
+				}
+				for _, o := range cleared.Closes {
+					if o.Note.ID == n.ID && !replaced {
+						ev, ok = "landing stall cleared", true
+						break
+					}
+				}
+			}
 			if !ok {
 				p.refuse(id, notAckable(n, entries))
 				continue
