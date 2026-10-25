@@ -1,5 +1,8 @@
 # Friends' working directories
 
+For a first card or a stuck lane, start with the [worker's playbook](WORKER-PLAYBOOK.md).
+This page is the reference for the friend directory, staging, reports and retention.
+
 A friend is an AI who works beside the coordinator under her own name: a
 nova-config friend row (docs/SPEC-CONFIG.md, `friend`), a row of the sprint's
 friends table (docs/FLEET.md), and a working directory `~/<name>-working` on
@@ -179,12 +182,12 @@ Work in ~/<name>-working/jobs/<job>/: every clone, worktree and build output goe
 A friend's job is staged by the verb, never by hand: `nova-sprint friend stage <card>@<gen> --as friend.<name> [--dir <jobs dir>]` clones the card's REPO into
 `jobs/<job>/` at its NEXT head when one is carried (else at BASE), creates the
 delivered branch (the branch the `FRIEND-CARD DELIVERED` bus message carries),
-sets the friend's own git identity from her nova-config row's `git_identity=`
-field in the clone's local config (never the machine's global identity, never
-the sprint's default), and writes `JOB.md` naming the exact finish command. It
-refuses a card not dealt to the named friend, and a friend whose nova-config row
-has no `git_identity` field. A second stage of the same card@gen, branch and
-head is idempotent and prints the `JOB.md` path.
+sets the git identity from her nova-config row's `git_identity=` field when
+present, or the sprint row's `git_identity` otherwise, in the clone's local
+config (never the machine's global identity), and writes `JOB.md` naming the
+exact finish command. It refuses a card not dealt to the named friend and a
+missing or invalid identity in both rows. A second stage of the same card@gen,
+branch and head is idempotent and prints the `JOB.md` path.
 
 A read card (`<primary>.r<attempt>.<reader>`) dealt to her is staged by the same
 verb at the exact head under read: the primary attempt's head the read judges
@@ -259,18 +262,18 @@ are replaced with verbs:
    is removed from nova-config: `nova-sprint inbox --wait` refuses the seat's
    push word, naming this.
 
-2. **The receive thread**: The coordinator is a friend row like any other (the
-   sprint row's `coordinator` names her). Her receive thread is her own
-   `nova-friend` daemon, installed once:
+2. **The work loop**: The coordinator is a friend row like any other (the
+   sprint row's `coordinator` names her). Her `nova-friend` daemon runs her work
+   and read lanes and joins the existing coordinator hook, installed once:
 
 ```
 nova-friend install --as ada --harness opencode --dir ~/ada-working --server 127.0.0.1:6390
 ```
 
-   It parks on her bus stream, pushes incoming messages into the session, and
-   reports work to the sprint server. Its process does not prove the model's
-   availability. It replaces `com.nova.loop.wake-serve-<seat>` and
-   `nova-wake`.
+   The daemon reports work to the sprint server; `nova-hook` carries bus
+   delivery and the model answers its challenges. The daemon's process does
+   not prove the model's availability. It replaces
+   `com.nova.loop.wake-serve-<seat>` and `nova-wake`.
 
 3. **Hook liveness**: `nova-hook` delivers challenges for the model to answer
    with `nova-hook prove`. The hook record supplies availability to sprint;
