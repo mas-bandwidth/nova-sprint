@@ -68,8 +68,15 @@ func Ack(s *Snapshot, r AckReq) Plan {
 			// the same resolution instead of refusing on its empty decisions.
 			if !ok && n.Type == NLandingStall {
 				cleared, _ := tickLandingStall(s, TickReq{Who: r.Who})
+				replaced := false
+				for _, next := range cleared.Notes {
+					if next.Kind == Judgment && next.Type == NLandingStall {
+						replaced = true
+						break
+					}
+				}
 				for _, o := range cleared.Closes {
-					if o.Note.ID == n.ID {
+					if o.Note.ID == n.ID && !replaced {
 						ev, ok = "landing stall cleared", true
 						break
 					}

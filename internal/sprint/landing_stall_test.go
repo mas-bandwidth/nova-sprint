@@ -131,12 +131,20 @@ func TestLandingStallCanBeAckedOnlyAfterItClears(t *testing.T) {
 	require.Len(t, p.Refused, 1, "the standing stall still needs the tick's condition to clear: %+v", p)
 	require.Empty(t, p.Units)
 
+	w.s.Work.SetProp(PropLandRefusal, "s1-1: a different landing refusal")
+	w.tick(2 * LandingStallBound)
+	p = Ack(w.s, AckReq{Notes: []string{stall.Note.ID}, Reason: "seen", Who: w.s.Coordinator})
+	require.Len(t, p.Refused, 1, "a changed active cause needs the tick to replace its judgment: %+v", p)
+	require.Empty(t, p.Units)
+	_, open := openJudgmentOf(w.s, NLandingStall)
+	require.True(t, open, "ack cleared an active stall before its replacement was raised")
+
 	w.tick(time.Minute)
 	w.s.Work.SetProp(PropLastLanding, stamp(w.s.Now))
 	p = w.do(Ack(w.s, AckReq{Notes: []string{stall.Note.ID}, Reason: "the landing resolved it", Who: w.s.Coordinator}))
 	require.Empty(t, p.Refused, "ack after the landing: %+v", p)
 	require.Len(t, p.Units, 1)
-	_, open := openJudgmentOf(w.s, NLandingStall)
+	_, open = openJudgmentOf(w.s, NLandingStall)
 	assert.False(t, open, "the resolved stall judgment stayed open")
 	assert.Contains(t, p.Units[0].Notes[0].What, MovedOnPrefix+"landing stall cleared")
 }
