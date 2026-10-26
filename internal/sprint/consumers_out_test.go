@@ -46,6 +46,33 @@ func TestConsumersOutWorkingCardWithNoAttempt(t *testing.T) {
 	require.Equal(t, []string{"s1-1"}, quietSubjects(ConsumersOut(s)))
 }
 
+// A work card on a friend's row has a consumer only when that exact seat is up
+// and carries the authoritative worker proof used by the deal and Check. An up
+// presence record without WorkerLive is not execution.
+func TestConsumersOutFriendWorkerEvidence(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		friends []FriendSeat
+		want    []string
+	}{
+		{"up without a live worker", []FriendSeat{{Name: "amy", Status: Up, WorkerLive: false}}, []string{"s1-1"}},
+		{"up with a live worker", []FriendSeat{{Name: "amy", Status: Up, WorkerLive: true}}, nil},
+		{"absent", nil, []string{"s1-1"}},
+		{"down", []FriendSeat{{Name: "amy", Status: Down, WorkerLive: false}}, []string{"s1-1"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := consumersOutSnap(
+				[]*Card{{ID: "s1-1", Row: "s1", Col: Working, Fields: map[string]string{"work": "s1-1.w1"}}},
+				[]*Card{{ID: "s1-1.w1", Row: FriendRow("amy"), Col: Working, Fields: map[string]string{"gen": "1"}}},
+				nil,
+			)
+			s.Friends = tc.friends
+			require.Equal(t, tc.want, quietSubjects(ConsumersOut(s)))
+		})
+	}
+}
+
 // A review card whose reads are all for other cards has a missing consumer:
 // the readers table holds cards, but none is a read out for this card.
 func TestConsumersOutReviewCardWhoseReadsAreAllForOtherCards(t *testing.T) {
