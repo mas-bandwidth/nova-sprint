@@ -68,27 +68,27 @@ func workingConsumerOut(s *Snapshot, c *Card) (LaneQuiet, bool) {
 		return LaneQuiet{Type: "consumers-out", Subject: c.ID, Why: "its attempt is " + wc.Col}, true
 	}
 	if name, ok := FriendOfRow(wc.Row); ok {
-		// held by a friend: the friend must be up (her row, never a machine's)
-		if !friendUp(s, name) {
-			return LaneQuiet{Type: "consumers-out", Subject: c.ID, Why: "friend " + name + " is down"}, true
+		// Held by a friend: the row needs both the authoritative up state and
+		// the worker proof the deal and Check require. Presence alone is not a
+		// live work consumer.
+		for _, f := range s.Friends {
+			if f.Name != name {
+				continue
+			}
+			if f.Status != Up {
+				return LaneQuiet{Type: "consumers-out", Subject: c.ID, Why: "friend " + name + " is down"}, true
+			}
+			if !friendWorkerLive(s, f) {
+				return LaneQuiet{Type: "consumers-out", Subject: c.ID, Why: "friend " + name + " has no live worker"}, true
+			}
+			return LaneQuiet{}, false
 		}
-		return LaneQuiet{}, false
+		return LaneQuiet{Type: "consumers-out", Subject: c.ID, Why: "friend " + name + " is down"}, true
 	}
 	if s.MemberCtl(wc.Row).F("status") != Up {
 		return LaneQuiet{Type: "consumers-out", Subject: c.ID, Why: "member " + wc.Row + " is down"}, true
 	}
 	return LaneQuiet{}, false
-}
-
-// friendUp says the friend is up among the tick's friend seats: a card on her
-// row is held by her only while she is up.
-func friendUp(s *Snapshot, name string) bool {
-	for _, f := range s.Friends {
-		if f.Name == name {
-			return f.Status == Up
-		}
-	}
-	return false
 }
 
 // reviewConsumerOut is the one quiet of a review primary with no read out for

@@ -8573,7 +8573,13 @@ copy it keeps: a caller within one second (`dashFloor`) of the start of the last
 handed that compute's answer, taking no lock; any other computes once, one at a time, on an app
 and a lock of its own, and a caller that arrives while a compute runs waits for it and shares
 its answer. Only an answer that succeeded is kept. It is counted as a read on the `SERVE` line
-(`read-lane=`). On a twin file it takes the line like every verb. `queue` records a reader's beat, `fleet beat` can write
+(`read-lane=`). On a twin file it takes the line like every verb. A served `friend stage`
+(`friend stage <card>@<gen> --as friend.<name>`) runs on the stage lane: it takes the line only
+for a short pre-stage assignment snapshot (the card, generation, assigned friend on `ready` or
+`working`, branch and start head), releases the line while it reads config, creates directories,
+runs `git clone`, `config`, `fetch` and `checkout`, and writes a task-local temporary stage file,
+then reacquires the line to verify the assignment snapshot still matches before atomically
+publishing `JOB.md` (a cancelled caller or changed assignment publishes no `JOB.md` and refuses). `queue` records a reader's beat, `fleet beat` can write
 the fleet table and `inbox --read` moves the coordinator's cursor: each takes the line. A batch
 waits for the line only while its caller waits for the answer: a caller that has gone (its
 request ended: a client's deadline, a dropped connection) has the verbs of its batch not yet run

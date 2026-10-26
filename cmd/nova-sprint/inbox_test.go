@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"regexp"
 	"strconv"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 )
 
 // inboxGroups is the inbox as a program reads it.
@@ -480,4 +482,179 @@ func TestHelpShowsTheWorkedExample(t *testing.T) {
 	require.Equal(t, "usage: nova-sprint inbox "+syntax, first, "help inbox: %s", out)
 	require.NotContains(t, first, "[flags]", "help inbox usage line went back to the placeholder: %s", first)
 	require.Contains(t, out, "--open <string>", "help inbox")
+}
+
+func TestInboxOpenRendersOnlySelectedGroup(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.ok("init --readers reader-a,reader-b --members m1:4")
+	ta.ok("add --stream s1 --count 2")
+	ta.ok("add --stream s2 --count 1 --one")
+	ta.ok("add --stream s3 --count 1 --one")
+	ta.deal(4)
+	ta.failOnce("m1", "s1-1.w1@1", "s1 failed report")
+	ta.failOnce("m1", "s1-2.w1@1", "s1 failed report")
+	ta.a.sleep(time.Second)
+	ta.ok("take --as m1 s2-1.w1@1")
+	ta.ok("finish --as m1 s2-1.w1@1")
+	ta.ok("ask")
+	ta.a.sleep(time.Second)
+	ta.ok("read --as reader-a --broken --finding 'line 3: s2 broken finding' s2-1.r1.reader-a")
+
+	st, err := ta.a.store(common{redis: "mem:0", actor: "coordinator"})
+	require.NoError(t, err)
+	_, err = st.Run(context.Background(), store.Step{
+		Verb: "seed-blocked",
+		Plan: func(*sprint.Snapshot) sprint.Plan {
+			return sprint.Plan{Notes: []sprint.Note{{
+				ID:        "blocked-s3-1",
+				Kind:      sprint.Judgment,
+				Type:      sprint.NBlocked,
+				Stream:    "s3",
+				At:        ta.a.now(),
+				Primaries: []string{"s3-1"},
+				Needs:     []string{"s0-1", "s0-2"},
+				What:      "dropped: s0-1, s0-2",
+				Decisions: sprint.Decisions[sprint.NBlocked],
+			}}}
+		},
+	})
+	require.NoError(t, err)
+
+	g1 := ta.group(sprint.NWorkFailed, "s1")
+	g2 := ta.group(sprint.NReadBroken, "s2")
+	g3 := ta.group(sprint.NBlocked, "s3")
+	hap := ta.group(sprint.NWorkOK, "s2")
+
+	type inboxPayload struct {
+		Groups      []sprint.Group  `json:"groups"`
+		Judgments   []inboxJudgment `json:"judgments"`
+		Happened    []inboxHappened `json:"happened"`
+		Open        []string        `json:"open"`
+		Needs       []string        `json:"needs"`
+		Done        bool            `json:"done"`
+		Last        string          `json:"last"`
+		Cursor      string          `json:"cursor"`
+		Machine     string          `json:"machine"`
+		Coordinator string          `json:"coordinator"`
+	}
+
+	// Ordinary inbox output (text and JSON) renders all groups unchanged.
+	fullText := ta.ok("inbox")
+	require.Contains(t, fullText, "JUDGMENT "+g1.ID)
+	require.Contains(t, fullText, "JUDGMENT "+g2.ID)
+	require.Contains(t, fullText, "JUDGMENT "+g3.ID)
+	require.Contains(t, fullText, "HAPPENED "+hap.ID)
+	require.Contains(t, fullText, "INBOX OK judgments=3 happened=2 cursor=-\n")
+
+	var fullJSON inboxPayload
+	ta.json("inbox", &fullJSON)
+	require.Len(t, fullJSON.Groups, 5)
+	require.Len(t, fullJSON.Judgments, 3)
+	require.Len(t, fullJSON.Happened, 2)
+	require.NotEmpty(t, fullJSON.Last)
+	require.Empty(t, fullJSON.Cursor)
+	require.Equal(t, "coordinator", fullJSON.Coordinator)
+	require.NotEmpty(t, fullJSON.Machine)
+
+	// Opening g1 (by ID and by alias) renders only g1 in text and JSON.
+	for _, selector := range []string{g1.ID, g1.Alias} {
+		openText := ta.ok("inbox --open " + selector)
+		require.Contains(t, openText, "JUDGMENT "+g1.ID)
+		require.Contains(t, openText, "stream=s1  size=2")
+		require.Contains(t, openText, "  s1 failed report\n")
+		require.Contains(t, openText, "  rework with a fix:\n    nova-sprint rework --group "+g1.ID+" --expect 2 --answers "+strings.Join(g1.Notes, ",")+"\n")
+		require.Contains(t, openText, "\n  s1-1\n  s1-2\n")
+		require.Contains(t, openText, "  notes: "+strings.Join(g1.Notes, " ")+"\n")
+		require.Contains(t, openText, "INBOX OK judgments=1 happened=0 cursor=-\n")
+		require.Contains(t, openText, fullJSON.Machine+"\n")
+		for _, absent := range []string{g2.ID, "stream=s2", "s2-1", "line 3: s2 broken finding", g3.ID, "stream=s3", "s3-1", "s0-1", hap.ID, "HAPPENED "} {
+			require.NotContains(t, openText, absent, "selector %s leaked unselected content %q:\n%s", selector, absent, openText)
+		}
+
+		rawJSON := ta.ok("inbox --open " + selector + " --json")
+		for _, absent := range []string{g2.ID, "s2-1", "line 3: s2 broken finding", g3.ID, "s3-1", "s0-1", hap.ID} {
+			require.NotContains(t, rawJSON, absent, "selector %s --json leaked unselected content %q:\n%s", selector, absent, rawJSON)
+		}
+		var openJSON inboxPayload
+		ta.json("inbox --open "+selector, &openJSON)
+		require.Len(t, openJSON.Groups, 1)
+		require.Equal(t, g1.ID, openJSON.Groups[0].ID)
+		require.Equal(t, g1.Commands, openJSON.Groups[0].Commands)
+		require.Equal(t, g1.Notes, openJSON.Groups[0].Notes)
+		require.Len(t, openJSON.Judgments, 1)
+		require.Equal(t, g1.ID, openJSON.Judgments[0].ID)
+		require.Equal(t, []string{"s1-1", "s1-2"}, openJSON.Judgments[0].Cards)
+		require.Equal(t, g1.Notes, openJSON.Judgments[0].Notes)
+		require.Len(t, openJSON.Judgments[0].Answers, len(g1.Commands))
+		require.Empty(t, openJSON.Happened)
+		require.Equal(t, []string{"s1-1", "s1-2"}, openJSON.Open)
+		require.Empty(t, openJSON.Needs)
+		require.Equal(t, fullJSON.Done, openJSON.Done)
+		require.Equal(t, fullJSON.Last, openJSON.Last)
+		require.Equal(t, fullJSON.Cursor, openJSON.Cursor)
+		require.Equal(t, fullJSON.Machine, openJSON.Machine)
+		require.Equal(t, fullJSON.Coordinator, openJSON.Coordinator)
+	}
+
+	// Opening g3 preserves its complete Needs, Members, Commands, and Notes while omitting g1, g2, and hap.
+	openG3Text := ta.ok("inbox --open " + g3.ID)
+	require.Contains(t, openG3Text, "JUDGMENT "+g3.ID)
+	require.Contains(t, openG3Text, "  dropped: s0-1, s0-2\n")
+	require.Contains(t, openG3Text, "\n  s3-1\n  NEEDS s0-1\n  NEEDS s0-2\n  notes: "+strings.Join(g3.Notes, " ")+"\n")
+	require.Contains(t, openG3Text, "INBOX OK judgments=1 happened=0 cursor=-\n")
+	for _, absent := range []string{g1.ID, "s1-1", g2.ID, "s2-1", hap.ID, "HAPPENED "} {
+		require.NotContains(t, openG3Text, absent)
+	}
+
+	var openG3JSON inboxPayload
+	ta.json("inbox --open "+g3.ID, &openG3JSON)
+	require.Len(t, openG3JSON.Groups, 1)
+	require.Equal(t, g3.ID, openG3JSON.Groups[0].ID)
+	require.Len(t, openG3JSON.Judgments, 1)
+	require.Equal(t, g3.ID, openG3JSON.Judgments[0].ID)
+	require.Equal(t, []string{"s3-1"}, openG3JSON.Judgments[0].Cards)
+	require.Empty(t, openG3JSON.Happened)
+	require.Equal(t, []string{"s3-1"}, openG3JSON.Open)
+	require.Equal(t, []string{"s0-1", "s0-2"}, openG3JSON.Needs)
+
+	// Opening a happened group renders only that happened group in text and JSON.
+	openHapText := ta.ok("inbox --open " + hap.ID)
+	require.Contains(t, openHapText, "HAPPENED "+hap.ID)
+	require.Contains(t, openHapText, "\n  s2-1\n  notes: "+strings.Join(hap.Notes, " ")+"\n")
+	require.Contains(t, openHapText, "INBOX OK judgments=0 happened=1 cursor=-\n")
+	for _, absent := range []string{"JUDGMENT ", g1.ID, g2.ID, g3.ID} {
+		require.NotContains(t, openHapText, absent)
+	}
+
+	var openHapJSON inboxPayload
+	ta.json("inbox --open "+hap.ID, &openHapJSON)
+	require.Len(t, openHapJSON.Groups, 1)
+	require.Equal(t, hap.ID, openHapJSON.Groups[0].ID)
+	require.Empty(t, openHapJSON.Judgments)
+	require.Len(t, openHapJSON.Happened, 1)
+	require.Equal(t, hap.ID, openHapJSON.Happened[0].ID)
+	require.Equal(t, []string{"s2-1"}, openHapJSON.Happened[0].Cards)
+	require.Equal(t, []string{"s2-1"}, openHapJSON.Open)
+
+	// Missing group ID still refuses in both text and JSON without moving the cursor.
+	for _, cmd := range []string{"inbox --open no-such-group", "inbox --open no-such-group --json", "inbox --open no-such-group --read"} {
+		code, out, errs := ta.do(cmd)
+		require.Equal(t, 1, code, "%s: %s%s", cmd, out, errs)
+		require.Empty(t, out)
+		require.Contains(t, errs, "nova-sprint inbox: no group no-such-group now;")
+	}
+
+	// --read with --open preserves global cursor advance to v.Last and leaves open judgments intact.
+	readText := ta.ok("inbox --open " + g1.ID + " --read")
+	require.Contains(t, readText, "JUDGMENT "+g1.ID)
+	require.NotContains(t, readText, g2.ID)
+	require.NotContains(t, readText, g3.ID)
+	require.NotContains(t, readText, hap.ID)
+
+	var afterRead inboxPayload
+	ta.json("inbox", &afterRead)
+	require.Equal(t, fullJSON.Last, afterRead.Cursor, "--read advances the global cursor to v.Last")
+	require.Len(t, afterRead.Judgments, 3, "open judgments remain open after --read")
+	require.Empty(t, afterRead.Happened, "happened entries before the cursor are not shown again")
 }

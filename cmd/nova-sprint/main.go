@@ -115,6 +115,11 @@ type app struct {
 	// stageMkdir makes the jobs root through the same bounded child runner as
 	// stageGit: tests give an in-process filesystem twin and spawn no process.
 	stageMkdir mkdirFn
+	// stageLine, when set on a served stage lane app (servelanes.go friendStage), is
+	// the server's control line (app.serial), taken only for friend stage's short
+	// pre-stage assignment snapshot and post-stage revalidation before JOB.md is
+	// published, never across config reads, mkdir or git (friendstage.go).
+	stageLine *controlLine
 	// runCtx is the served request's context while its line-held verb runs. The
 	// control line serializes its set, use and clear; a command typed here has none.
 	runCtx context.Context
