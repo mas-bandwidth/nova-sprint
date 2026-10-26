@@ -33,6 +33,7 @@ const (
 	CheckStaleFix          = "stale-fix"          // 8: no card at priority fix with no failed attempt this epoch
 	CheckStaleHead         = "stale-head"         // a pushed head from an attempt before the current brief
 	CheckLint              = "lint"               // 9: every brief passes the card lint
+	CheckTLARecords        = "tla-records"        // a TLA+ model edit refreshes and merges its run records
 	CheckBriefSize         = "brief-size"         // 16: every brief within the store's bound and the drain's
 	CheckSentinelWide      = "sentinel-wide"      // sentinel waits on producers sharing no PATHS/NEW glob with consumer
 	CheckSentinelConsumers = "sentinel-consumers" // missing consumer from sentinel CONSUMERS line
@@ -50,6 +51,7 @@ var CheckKinds = []string{
 	CheckStaleFix,
 	CheckStaleHead,
 	CheckLint,
+	CheckTLARecords,
 	CheckBriefSize,
 	CheckSentinelWide,
 	CheckSentinelConsumers,
@@ -185,6 +187,7 @@ func CheckCards(s *Snapshot, in CardCheckIn) []CardFinding {
 	out = append(out, c.staleFix()...)
 	out = append(out, c.staleHead()...)
 	out = append(out, c.lint()...)
+	out = append(out, c.tlaRecords()...)
 	out = append(out, c.briefSize()...)
 	out = append(out, c.sentinelWide()...)
 	out = append(out, c.sentinelConsumers()...)
@@ -261,12 +264,105 @@ func (c *cardCheck) needs() []CardFinding {
 // pathsOf is a brief's PATHS entries as written: commas or blanks between them; none and -
 // name no file.
 func pathsOf(brief string) []string {
-	value, _ := swarm.CardHeaderValue([]byte(brief), "PATHS")
 	var out []string
-	for _, p := range strings.FieldsFunc(value, func(r rune) bool { return r == ',' || unicode.IsSpace(r) }) {
+	for _, p := range typedHeaderPaths(brief, "PATHS") {
 		if p = admitClean(p); p != "" && p != "none" && p != "-" {
 			out = append(out, p)
 		}
+	}
+	return out
+}
+
+// typedHeaderPaths is the one reading of a brief's typed path headers. It does
+// not infer paths from prose. Consumers may then apply their own path-marker
+// normalization, as pathsOf does for admission markers.
+func typedHeaderPaths(brief, key string) []string {
+	value, _ := swarm.CardHeaderValue([]byte(brief), key)
+	return strings.FieldsFunc(value, func(r rune) bool { return r == ',' || unicode.IsSpace(r) })
+}
+
+// TLARecordsFile is the TLC records every model's runs are measured into.
+const TLARecordsFile = "tla/RUNS.tsv"
+
+// TLARecordsRemedy is the one remedy used by admission, brief check and the
+// pre-start card check when a model edit cannot refresh its run records.
+const TLARecordsRemedy = "a model edit refreshes the TLC records, or the records class test calls them stale on the base: name " + TLARecordsFile + " in PATHS and add a STEP that runs the changed groups on a Linux bench, then tlacheck merge --keep " + TLARecordsFile + ", as tla/README.md says (\"Refreshing the records after a model edit\")"
+
+// tlaMergeKeepRE is a command that merges runs onto the kept records: tlacheck
+// merge with --keep (/tmp/tlacheck merge --root . --keep tla/RUNS.tsv).
+var tlaMergeKeepRE = regexp.MustCompile(`\btlacheck\s+merge\b[^\n]*\s--keep\b`)
+
+// TLARecordsDefectOf is the one typed model/records policy. Models are the
+// PATHS or NEW entries that cover tla/*.tla; reasons is empty when the brief
+// covers the run ledger and a typed STEP runs tlacheck merge --keep. Admission,
+// brief check and CheckCards all call this function, so none can drift into a
+// second path or STEP parser.
+func TLARecordsDefectOf(brief string) (models, reasons []string) {
+	var paths []string
+	for _, key := range []string{"PATHS", "NEW"} {
+		for _, p := range typedHeaderPaths(brief, key) {
+			if p != "none" && p != "-" {
+				paths = append(paths, p)
+			}
+		}
+	}
+	records := false
+	for _, p := range paths {
+		if tlaModelPath(p) {
+			models = append(models, p)
+		}
+		records = records || diffcheck.Covers(p, TLARecordsFile)
+	}
+	if len(models) == 0 {
+		return nil, nil
+	}
+	if !records {
+		reasons = append(reasons, "does not cover "+TLARecordsFile)
+	}
+	if !tlaRecordsStep(brief) {
+		reasons = append(reasons, "names no STEP that runs tlacheck merge --keep")
+	}
+	return models, reasons
+}
+
+// tlaModelPath says a typed path names a TLA+ model: a .tla file under tla/,
+// a matching glob, or the directory itself.
+func tlaModelPath(entry string) bool {
+	e := strings.TrimSuffix(strings.TrimPrefix(entry, "./"), "/")
+	return strings.HasPrefix(e, "tla/") && strings.HasSuffix(e, ".tla") || diffcheck.Covers(entry, "tla/Model.tla")
+}
+
+// tlaRecordsStep says a STEP block names tlacheck merge --keep. A STEP ends at
+// the next blank line, matching the existing admission contract.
+func tlaRecordsStep(brief string) bool {
+	in := false
+	for _, line := range strings.Split(brief, "\n") {
+		t := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(t, "STEP"):
+			in = true
+		case t == "":
+			in = false
+		}
+		if in && tlaMergeKeepRE.MatchString(t) {
+			return true
+		}
+	}
+	return false
+}
+
+// tlaRecords is the structured pre-start contradiction for an open card whose
+// model edit cannot refresh its required run ledger.
+func (c *cardCheck) tlaRecords() []CardFinding {
+	var out []CardFinding
+	for _, card := range c.open {
+		models, reasons := TLARecordsDefectOf(card.F("brief"))
+		if len(reasons) == 0 {
+			continue
+		}
+		out = append(out, refusing(CheckTLARecords, card.ID,
+			"edits the TLA+ model "+strings.Join(models, ",")+" and "+strings.Join(reasons, " and "),
+			TLARecordsRemedy))
 	}
 	return out
 }
