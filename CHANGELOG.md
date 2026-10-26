@@ -1,5 +1,73 @@
 # Changelog
 
+## v1.6.25 — 2026-10-26
+
+Cut from 0c86b4982d53d809590d51cdf3f70cd517fb7079. 1 pull request since v1.6.24.
+
+SHA256SUMS digest: aff575437b402d17dc26959d7153d4fd1b81d121e19b2e90de8829e0d969d621
+
+Adopt this release with `--expect-sums aff575437b402d17dc26959d7153d4fd1b81d121e19b2e90de8829e0d969d621`.
+
+Recovery journeys incomplete, gate waived: v1.6.25 bounds friend-stage directory creation through the existing process runner; it changes neither hook recovery nor spend recording
+
+- TestASilentClientIsUnhookedAfterExactlyTwoAnnouncedOnce: not-run (no --journeys evidence)
+- TestNoServerOrNoAnswerIsNoEvidence: not-run (no --journeys evidence)
+- TestTheGateRefusesEveryoneWhileTheServerIsStale: not-run (no --journeys evidence)
+- TestAStaleAnswerIsDownWithAFreshServer: not-run (no --journeys evidence)
+- TestALostAnswerIsNeverToldTwice: not-run (no --journeys evidence)
+
+Spend gate waived: v1.6.25 bounds friend-stage directory creation through the existing process runner; it changes neither hook recovery nor spend recording (window 2026-10-26T00:00:00Z..2026-10-26T02:14:44Z)
+- unread: --spend-store <addr> names no sprint store, so the recorded spend cannot be read
+
+- #614 Bound friend stage directory creation
+
+## v1.6.24 — 2026-10-26
+
+Cut from 226e30d362b4c28c87ee936bcdf0be134515dd4b. 0 pull requests since v1.6.23.
+
+SHA256SUMS digest: e32955da2dacc0d547cbf901b47262500a7eb75e4d4c705cb10f33b1e4029fdf
+
+Adopt this release with `--expect-sums e32955da2dacc0d547cbf901b47262500a7eb75e4d4c705cb10f33b1e4029fdf`.
+
+Recovery journeys incomplete, gate waived: v1.6.24 corrects release provenance for the unchanged local-plan and bounded-stage source; it changes neither hook recovery nor spend recording
+
+- TestASilentClientIsUnhookedAfterExactlyTwoAnnouncedOnce: not-run (no --journeys evidence)
+- TestNoServerOrNoAnswerIsNoEvidence: not-run (no --journeys evidence)
+- TestTheGateRefusesEveryoneWhileTheServerIsStale: not-run (no --journeys evidence)
+- TestAStaleAnswerIsDownWithAFreshServer: not-run (no --journeys evidence)
+- TestALostAnswerIsNeverToldTwice: not-run (no --journeys evidence)
+
+Spend gate waived: v1.6.24 corrects release provenance for the unchanged local-plan and bounded-stage source; it changes neither hook recovery nor spend recording (window 2026-10-26T00:00:00Z..2026-10-26T01:42:23Z)
+- unread: --spend-store <addr> names no sprint store, so the recorded spend cannot be read
+
+- no pull request merged since the previous tag
+
+## v1.6.23 — 2026-10-26
+
+Cut from 226e30d362b4c28c87ee936bcdf0be134515dd4b. 2 pull requests since v1.6.22.
+
+The v1.6.23 artifacts did not carry Go VCS revision metadata. The supported
+adopt shadow gate rejected them, and they were never installed; v1.6.24
+republishes the unchanged source with complete provenance.
+
+SHA256SUMS digest: 2027e521777e18450de2892b1c35b609b19122edef20ab75119d7c321175a524
+
+Adopt this release with `--expect-sums 2027e521777e18450de2892b1c35b609b19122edef20ab75119d7c321175a524`.
+
+Recovery journeys incomplete, gate waived: v1.6.23 changes only local plan routing and bounded friend staging; it changes neither hook recovery nor spend recording
+
+- TestASilentClientIsUnhookedAfterExactlyTwoAnnouncedOnce: not-run (no --journeys evidence)
+- TestNoServerOrNoAnswerIsNoEvidence: not-run (no --journeys evidence)
+- TestTheGateRefusesEveryoneWhileTheServerIsStale: not-run (no --journeys evidence)
+- TestAStaleAnswerIsDownWithAFreshServer: not-run (no --journeys evidence)
+- TestALostAnswerIsNeverToldTwice: not-run (no --journeys evidence)
+
+Spend gate waived: v1.6.23 changes only local plan routing and bounded friend staging; it changes neither hook recovery nor spend recording (window 2026-10-26T00:00:00Z..2026-10-26T01:28:20Z)
+- unread: --spend-store <addr> names no sprint store, so the recorded spend cannot be read
+
+- #612 changelog: v1.6.22
+- #613 Bound served staging and keep plan review local
+
 ## v1.6.22 — 2026-10-26
 
 Cut from d78582f9639d624377d505e812b9be3cef0b66fd. 2 pull requests since v1.6.21.
