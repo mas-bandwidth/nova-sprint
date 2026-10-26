@@ -2572,6 +2572,7 @@ func (a *app) cmdInbox(args []string, stdout, stderr io.Writer) int {
 		return a.readFailed("inbox", err, stderr)
 	}
 	var opened *sprint.Group
+	groups := v.Groups
 	if *open != "" {
 		g, ok := sprint.FindGroup(v.Groups, *open)
 		if !ok {
@@ -2579,6 +2580,7 @@ func (a *app) cmdInbox(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		opened = &g
+		groups = []sprint.Group{g}
 	}
 	if *read && v.Last != "" {
 		if err := st.B.SetCursor(ctx, v.Last); err != nil {
@@ -2586,7 +2588,6 @@ func (a *app) cmdInbox(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 	if c.json {
-		groups := v.Groups
 		if groups == nil {
 			groups = []sprint.Group{}
 		}
@@ -2616,7 +2617,7 @@ func (a *app) cmdInbox(args []string, stdout, stderr io.Writer) int {
 	}
 	now := a.now()
 	judg, other := 0, 0
-	for _, g := range v.Groups {
+	for _, g := range groups {
 		if g.Kind == sprint.Judgment {
 			judg++
 		} else {
