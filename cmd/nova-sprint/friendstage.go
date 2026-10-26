@@ -124,8 +124,7 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, name, err.Error())
 	}
 	c.orActor(friendName) // a worker's verb is its worker's: no --actor is needed
-	st, err := a.store(*c)
-	if err != nil {
+	if _, err := a.store(*c); err != nil {
 		return refuse(stderr, name, err.Error())
 	}
 	ctx := a.runCtx
@@ -135,30 +134,16 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	ctx, cancel := context.WithTimeout(ctx, swarm.DefaultStageTimeout)
 	defer cancel()
 
-	// (1) the card must be on friend.<name>'s row at that generation, ready or working
-	cards, err := st.ReadCells(ctx, sprint.Fleet, sprint.FriendRow(friendName), sprint.Ready, sprint.Working)
-	if err != nil {
-		return a.readFailed(name, err, stderr)
+	// (1) take only a short assignment snapshot under the global control line: the card
+	// must be on friend.<name>'s row at that generation, ready or working
+	snap, code, ok := a.takeFriendStageSnap(ctx, *c, friendName, card, gen, true, stderr)
+	if !ok {
+		return code
 	}
-	var work *sprint.Card
-	for _, cc := range cards {
-		if cc.ID == card && max(1, cc.Int("gen")) == gen { // a record written before generations is gen 1
-			work = cc
-			break
-		}
-	}
-	if work == nil {
-		return refuseState(stderr, name, fmt.Sprintf("card %s at gen %d is not dealt to friend %s (ready or working)", oneline.Field(card), gen, friendName))
-	}
-	pk, err := st.Packets(ctx, []*sprint.Card{work})
-	if err != nil {
-		return a.readFailed(name, err, stderr)
-	}
-	p := pk[0]
-	if p.Kind == "read" {
+	if snap.kind == "read" {
 		// a read is staged at the head under read, read-only, and commits nothing: it
 		// needs no git identity, so no config store (friendStageRead)
-		return a.friendStageRead(ctx, friendName, card, gen, p, work, *dir, stdout, stderr)
+		return a.friendStageRead(ctx, *c, snap, *dir, stdout, stderr)
 	}
 
 	// (3) the friend's own git identity, from her nova-config row when it names one, else the
@@ -182,66 +167,54 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 		return refuseState(stderr, name, fmt.Sprintf("friend %s's nova-config row names git_identity %s, which is not 'Name <email>'; fix the row before staging", friendName, strconv.Quote(git)))
 	}
 	if !ok {
-		sprintID, err := st.GitIdentity(ctx)
-		if err != nil {
-			return a.readFailed(name, err, stderr)
+		if snap.sprintIDErr != nil {
+			return a.readFailed(name, snap.sprintIDErr, stderr)
 		}
-		if id, ok = config.ParseGitIdentity(sprintID); !ok {
-			return refuseState(stderr, name, fmt.Sprintf("the nova-config row of friend %s names no git_identity and the sprint row's git_identity %s is not 'Name <email>', so staging would fall back to the machine's global git config; %s", friendName, strconv.Quote(sprintID), identityRemedy))
+		if id, ok = config.ParseGitIdentity(snap.sprintID); !ok {
+			return refuseState(stderr, name, fmt.Sprintf("the nova-config row of friend %s names no git_identity and the sprint row's git_identity %s is not 'Name <email>', so staging would fall back to the machine's global git config; %s", friendName, strconv.Quote(snap.sprintID), identityRemedy))
 		}
 		identityFrom = "sprint"
 	}
 
 	// (2) the delivered branch is the one the bus message FRIEND-CARD DELIVERED
 	// carries (friendcards.go): reuse p.Branch, never compute a second one
-	base := swarm.ReadCardBase([]byte(p.Brief))
-	repoURL := swarm.CardRepoURL(base.Repo)
-	if repoURL == "" {
+	if snap.repoURL == "" {
 		return refuse(stderr, name, fmt.Sprintf("card %s names no REPO: line to clone", oneline.Field(card)))
 	}
-	baseField := base.Sha
-	if baseField == "" {
-		baseField = base.Ref
-	}
-	// the NEXT head: the packet's, else the CARRY line a widened card's brief
-	// holds (the same rule friendServerBrief reads it by)
-	next := p.BaseHead
-	if next == "" {
-		if c, ok := member.CarryOf(p.Brief); ok {
-			next = c.Head
-		}
-	}
-	startRef := ""
-	if next != "" {
-		startRef = next
-	} else if base.Sha != "" {
-		startRef = base.Sha
-	} else {
-		startRef = base.Ref
-	}
-	job := friendJobOf(p)
 	root, ok := a.friendJobsRoot(friendName, *dir)
 	if !ok {
 		return refuse(stderr, name, "wants --dir <jobs dir>, the jobs directory (HOME is not set)")
 	}
-	jobDir := filepath.Join(root, job)
+	jobDir := filepath.Join(root, snap.job)
+	jobPath := filepath.Join(jobDir, friend.JobFile)
 
 	// (5) an already staged directory
-	if _, err := os.Lstat(filepath.Join(jobDir, friend.JobFile)); err == nil {
-		old, err := os.ReadFile(filepath.Join(jobDir, friend.JobFile))
+	if _, err := os.Lstat(jobPath); err == nil {
+		old, err := os.ReadFile(jobPath)
 		if err != nil {
 			return refuse(stderr, name, "the staged JOB.md cannot be read: "+oneline.Err(err))
 		}
 		s := string(old)
 		if strings.Contains(s, "CARD: "+card+"\n") && strings.Contains(s, "GEN: "+strconv.Itoa(gen)+"\n") &&
-			strings.Contains(s, "BRANCH: "+p.Branch+"\n") && strings.Contains(s, "HEAD: "+startRef+"\n") {
-			fmt.Fprintln(stdout, filepath.Join(jobDir, friend.JobFile))
+			strings.Contains(s, "BRANCH: "+snap.branch+"\n") && strings.Contains(s, "HEAD: "+snap.startHead+"\n") {
+			if code, ok := a.revalidateFriendStageSnap(ctx, *c, snap, stderr); !ok {
+				return code
+			}
+			fmt.Fprintln(stdout, jobPath)
 			a.outcome, a.changed = "accepted", "no"
 			return 0
 		}
-		return refuseState(stderr, name, fmt.Sprintf("the job %s is already staged as another card, branch or head; nothing was written", oneline.Field(job)))
+		return refuseState(stderr, name, fmt.Sprintf("the job %s is already staged as another card, branch or head; nothing was written", oneline.Field(snap.job)))
 	} else if !os.IsNotExist(err) {
 		return refuse(stderr, name, err.Error())
+	}
+
+	_, statErr := os.Lstat(jobDir)
+	createdJobDir := os.IsNotExist(statErr)
+	cleanupUnstagedDir := func() {
+		if createdJobDir {
+			_ = os.RemoveAll(jobDir)
+		}
 	}
 
 	// the clone, then the identity in the clone's local config before any other
@@ -249,44 +222,221 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	if err := a.stageMkdir(ctx, filepath.Dir(jobDir)); err != nil {
 		return refuse(stderr, name, err.Error())
 	}
-	if _, err := a.stageGit(ctx, filepath.Dir(jobDir), "clone", "-q", repoURL, jobDir); err != nil {
-		return refuse(stderr, name, "clone of "+repoURL+" into "+oneline.Field(job)+": "+oneline.Err(err))
+	if _, err := a.stageGit(ctx, filepath.Dir(jobDir), "clone", "-q", snap.repoURL, jobDir); err != nil {
+		cleanupUnstagedDir()
+		return refuse(stderr, name, "clone of "+snap.repoURL+" into "+oneline.Field(snap.job)+": "+oneline.Err(err))
 	}
 	if _, err := a.stageGit(ctx, jobDir, "config", "user.name", id.Name); err != nil {
+		cleanupUnstagedDir()
 		return refuse(stderr, name, "setting the clone's local user.name: "+oneline.Err(err))
 	}
 	if _, err := a.stageGit(ctx, jobDir, "config", "user.email", id.Email); err != nil {
+		cleanupUnstagedDir()
 		return refuse(stderr, name, "setting the clone's local user.email: "+oneline.Err(err))
 	}
-	if next != "" {
-		if _, err := a.stageGit(ctx, jobDir, "fetch", "-q", "origin", next); err != nil {
-			return refuse(stderr, name, "fetch of the NEXT head "+oneline.Escape(next)+": "+oneline.Err(err))
+	if snap.next != "" {
+		if _, err := a.stageGit(ctx, jobDir, "fetch", "-q", "origin", snap.next); err != nil {
+			cleanupUnstagedDir()
+			return refuse(stderr, name, "fetch of the NEXT head "+oneline.Escape(snap.next)+": "+oneline.Err(err))
 		}
 	}
-	if _, err := a.stageGit(ctx, jobDir, "checkout", "-q", "-B", p.Branch, startRef); err != nil {
-		return refuse(stderr, name, "checkout of "+oneline.Field(p.Branch)+" at "+oneline.Escape(startRef)+": "+oneline.Err(err))
+	if _, err := a.stageGit(ctx, jobDir, "checkout", "-q", "-B", snap.branch, snap.startHead); err != nil {
+		cleanupUnstagedDir()
+		return refuse(stderr, name, "checkout of "+oneline.Field(snap.branch)+" at "+oneline.Escape(snap.startHead)+": "+oneline.Err(err))
 	}
 
 	// (4) JOB.md: the card id and gen, the branch, the base, the head it
 	// started from, and the exact finish command (and its --failed form)
-	finish := fmt.Sprintf("nova-sprint finish --as friend.%s %s@%d --epoch %d --head %s --branch %s --base %s", friendName, card, gen, p.Epoch, startRef, p.Branch, baseField)
+	finish := fmt.Sprintf("nova-sprint finish --as friend.%s %s@%d --epoch %d --head %s --branch %s --base %s", friendName, card, gen, snap.epoch, snap.startHead, snap.branch, snap.baseField)
 	jobmd := "CARD: " + card + "\n" +
 		"GEN: " + strconv.Itoa(gen) + "\n" +
-		"BRANCH: " + p.Branch + "\n" +
-		"BASE: " + baseField + "\n" +
-		"HEAD: " + startRef + "\n" +
+		"BRANCH: " + snap.branch + "\n" +
+		"BASE: " + snap.baseField + "\n" +
+		"HEAD: " + snap.startHead + "\n" +
 		"FINISH: " + finish + "\n" +
 		"FINISH-FAILED: " + finish + " --failed\n"
-	if next != "" {
+	if snap.next != "" {
 		// the work an earlier attempt pushed, which this one starts from: a finished
 		// attempt's head, or one redealt unfinished with the head its progress named
 		// (sprint.PushedHead), or the brief's CARRY line
-		jobmd += friendStageCarried(p.BaseAttempt, next)
+		jobmd += friendStageCarried(snap.baseAttempt, snap.next)
 	}
-	if err := os.WriteFile(filepath.Join(jobDir, friend.JobFile), []byte(jobmd), 0o644); err != nil {
+	okLine := fmt.Sprintf("FRIEND-STAGE OK friend=%s card=%s gen=%d branch=%s job=%s jobmd=%s identity=%s\n", friendName, card, gen, snap.branch, oneline.Field(snap.job), jobPath, identityFrom)
+	return a.publishFriendStage(ctx, *c, snap, jobDir, jobPath, createdJobDir, jobmd, okLine, stdout, stderr)
+}
+
+// friendStageSnap is the short assignment snapshot friend stage takes under the
+// global control line before staging and compares against when reacquiring the
+// line before JOB.md is published.
+type friendStageSnap struct {
+	friendName  string
+	card        string
+	gen         int
+	kind        string
+	branch      string
+	startHead   string
+	baseField   string
+	next        string
+	repoURL     string
+	paths       string
+	job         string
+	epoch       uint64
+	baseAttempt int
+	primary     string
+	attempt     int
+	sprintID    string
+	sprintIDErr error
+}
+
+func (a *app) lockStageLine(ctx context.Context) error {
+	if a.stageLine == nil {
+		return ctx.Err()
+	}
+	return a.stageLine.LockCtx(ctx)
+}
+
+func (a *app) unlockStageLine() {
+	if a.stageLine != nil {
+		a.stageLine.Unlock()
+	}
+}
+
+func (a *app) takeFriendStageSnap(ctx context.Context, c common, friendName, card string, gen int, wantSprintID bool, stderr io.Writer) (friendStageSnap, int, bool) {
+	const name = "friend stage"
+	if err := a.lockStageLine(ctx); err != nil {
+		return friendStageSnap{}, refuse(stderr, name, err.Error()), false
+	}
+	defer a.unlockStageLine()
+	return a.readFriendStageSnapLocked(ctx, c, friendName, card, gen, wantSprintID, stderr)
+}
+
+func (a *app) readFriendStageSnapLocked(ctx context.Context, c common, friendName, card string, gen int, wantSprintID bool, stderr io.Writer) (friendStageSnap, int, bool) {
+	const name = "friend stage"
+	st, err := a.store(c)
+	if err != nil {
+		return friendStageSnap{}, refuse(stderr, name, err.Error()), false
+	}
+	cards, err := st.ReadCells(ctx, sprint.Fleet, sprint.FriendRow(friendName), sprint.Ready, sprint.Working)
+	if err != nil {
+		return friendStageSnap{}, a.readFailed(name, err, stderr), false
+	}
+	var work *sprint.Card
+	for _, cc := range cards {
+		if cc.ID == card && max(1, cc.Int("gen")) == gen { // a record written before generations is gen 1
+			work = cc
+			break
+		}
+	}
+	if work == nil {
+		return friendStageSnap{}, refuseState(stderr, name, fmt.Sprintf("card %s at gen %d is not dealt to friend %s (ready or working)", oneline.Field(card), gen, friendName)), false
+	}
+	pk, err := st.Packets(ctx, []*sprint.Card{work})
+	if err != nil {
+		return friendStageSnap{}, a.readFailed(name, err, stderr), false
+	}
+	p := pk[0]
+	base := swarm.ReadCardBase([]byte(p.Brief))
+	snap := friendStageSnap{
+		friendName: friendName,
+		card:       card,
+		gen:        gen,
+		kind:       p.Kind,
+		repoURL:    swarm.CardRepoURL(base.Repo),
+		job:        friendJobOf(p),
+		epoch:      p.Epoch,
+	}
+	if p.Kind == "read" {
+		snap.primary = p.Primary
+		snap.attempt = p.Attempt
+		snap.startHead = cmp.Or(p.Head, work.F("head"))
+		snap.branch = cmp.Or(p.WorkBranch, work.F("branch"), "-")
+		snap.baseField = cmp.Or(p.WorkBase, base.Ref, base.Sha, "-")
+		paths := strings.Join(swarm.CardPaths([]byte(p.Brief)), ", ")
+		if paths == "" {
+			paths = "none"
+		}
+		snap.paths = paths
+		return snap, 0, true
+	}
+	snap.branch = p.Branch
+	snap.baseAttempt = p.BaseAttempt
+	baseField := base.Sha
+	if baseField == "" {
+		baseField = base.Ref
+	}
+	snap.baseField = baseField
+	next := p.BaseHead
+	if next == "" {
+		if carry, ok := member.CarryOf(p.Brief); ok {
+			next = carry.Head
+		}
+	}
+	snap.next = next
+	switch {
+	case next != "":
+		snap.startHead = next
+	case base.Sha != "":
+		snap.startHead = base.Sha
+	default:
+		snap.startHead = base.Ref
+	}
+	if wantSprintID {
+		snap.sprintID, snap.sprintIDErr = st.GitIdentity(ctx)
+	}
+	return snap, 0, true
+}
+
+func (a *app) revalidateFriendStageSnap(ctx context.Context, c common, snap friendStageSnap, stderr io.Writer) (int, bool) {
+	const name = "friend stage"
+	if err := a.lockStageLine(ctx); err != nil {
+		return refuse(stderr, name, err.Error()), false
+	}
+	defer a.unlockStageLine()
+	return a.revalidateFriendStageSnapLocked(ctx, c, snap, stderr)
+}
+
+func (a *app) revalidateFriendStageSnapLocked(ctx context.Context, c common, snap friendStageSnap, stderr io.Writer) (int, bool) {
+	const name = "friend stage"
+	cur, code, ok := a.readFriendStageSnapLocked(ctx, c, snap.friendName, snap.card, snap.gen, false, stderr)
+	if !ok {
+		return code, false
+	}
+	if cur.kind != snap.kind || cur.branch != snap.branch || cur.startHead != snap.startHead {
+		return refuseState(stderr, name, fmt.Sprintf("card %s at gen %d on friend %s changed while staging (branch %s -> %s, head %s -> %s); nothing was staged",
+			oneline.Field(snap.card), snap.gen, snap.friendName, oneline.Escape(snap.branch), oneline.Escape(cur.branch), oneline.Escape(snap.startHead), oneline.Escape(cur.startHead))), false
+	}
+	return 0, true
+}
+
+func (a *app) publishFriendStage(ctx context.Context, c common, snap friendStageSnap, jobDir, jobPath string, createdJobDir bool, jobmd, okLine string, stdout, stderr io.Writer) int {
+	const name = "friend stage"
+	tmpPath := filepath.Join(jobDir, "."+friend.JobFile+".stage")
+	cleanup := func() {
+		_ = os.Remove(tmpPath)
+		if createdJobDir {
+			if _, err := os.Lstat(jobPath); os.IsNotExist(err) {
+				_ = os.RemoveAll(jobDir)
+			}
+		}
+	}
+	if err := os.WriteFile(tmpPath, []byte(jobmd), 0o644); err != nil {
+		cleanup()
 		return refuse(stderr, name, "writing JOB.md: "+oneline.Err(err))
 	}
-	fmt.Fprintf(stdout, "FRIEND-STAGE OK friend=%s card=%s gen=%d branch=%s job=%s jobmd=%s identity=%s\n", friendName, card, gen, p.Branch, oneline.Field(job), filepath.Join(jobDir, friend.JobFile), identityFrom)
+	if err := a.lockStageLine(ctx); err != nil {
+		cleanup()
+		return refuse(stderr, name, err.Error())
+	}
+	defer a.unlockStageLine()
+	if code, ok := a.revalidateFriendStageSnapLocked(ctx, c, snap, stderr); !ok {
+		cleanup()
+		return code
+	}
+	if err := os.Rename(tmpPath, jobPath); err != nil {
+		cleanup()
+		return refuse(stderr, name, "writing JOB.md: "+oneline.Err(err))
+	}
+	fmt.Fprint(stdout, okLine)
 	a.outcome, a.changed = "accepted", "yes"
 	return 0
 }
@@ -321,87 +471,91 @@ func (a *app) friendJobsRoot(friendName, dir string) (string, bool) {
 // pushes nothing), and writes JOB.md naming the head, the BASE, the PATHS and the read
 // verbs that return the verdict. It reads only the sprint store the friend already
 // reaches: a read commits nothing, so it sets no git identity and reads no config store.
-func (a *app) friendStageRead(ctx context.Context, friendName, card string, gen int, p sprint.Packet, rc *sprint.Card, dir string, stdout, stderr io.Writer) int {
+func (a *app) friendStageRead(ctx context.Context, c common, snap friendStageSnap, dir string, stdout, stderr io.Writer) int {
 	const name = "friend stage"
-	base := swarm.ReadCardBase([]byte(p.Brief))
-	repoURL := swarm.CardRepoURL(base.Repo)
-	if repoURL == "" {
-		return refuse(stderr, name, fmt.Sprintf("read %s's card %s names no REPO: line to clone", oneline.Field(card), oneline.Field(p.Primary)))
+	if snap.repoURL == "" {
+		return refuse(stderr, name, fmt.Sprintf("read %s's card %s names no REPO: line to clone", oneline.Field(snap.card), oneline.Field(snap.primary)))
 	}
-	head := cmp.Or(p.Head, rc.F("head"))
+	head := snap.startHead
 	if !typedrec.IsFullSha(head) {
-		return refuseState(stderr, name, fmt.Sprintf("read %s names no full head under read (head %s); nothing was staged", oneline.Field(card), oneline.Escape(cmp.Or(head, "-"))))
+		return refuseState(stderr, name, fmt.Sprintf("read %s names no full head under read (head %s); nothing was staged", oneline.Field(snap.card), oneline.Escape(cmp.Or(head, "-"))))
 	}
-	workBranch := cmp.Or(p.WorkBranch, rc.F("branch"), "-")
-	baseField := cmp.Or(p.WorkBase, base.Ref, base.Sha, "-")
-	paths := strings.Join(swarm.CardPaths([]byte(p.Brief)), ", ")
-	if paths == "" {
-		paths = "none"
-	}
-	job := friendJobOf(p)
-	root, ok := a.friendJobsRoot(friendName, dir)
+	root, ok := a.friendJobsRoot(snap.friendName, dir)
 	if !ok {
 		return refuse(stderr, name, "wants --dir <jobs dir>, the jobs directory (HOME is not set)")
 	}
-	jobDir := filepath.Join(root, job)
+	jobDir := filepath.Join(root, snap.job)
 	jobPath := filepath.Join(jobDir, friend.JobFile)
 
 	// an already staged directory: the same read at the same gen and head is idempotent
 	if old, err := os.ReadFile(jobPath); err == nil {
 		s := string(old)
-		if strings.Contains(s, "CARD: "+card+"\n") && strings.Contains(s, "GEN: "+strconv.Itoa(gen)+"\n") && strings.Contains(s, "HEAD: "+head+"\n") {
+		if strings.Contains(s, "CARD: "+snap.card+"\n") && strings.Contains(s, "GEN: "+strconv.Itoa(snap.gen)+"\n") && strings.Contains(s, "HEAD: "+head+"\n") {
+			if code, ok := a.revalidateFriendStageSnap(ctx, c, snap, stderr); !ok {
+				return code
+			}
 			fmt.Fprintln(stdout, jobPath)
 			a.outcome, a.changed = "accepted", "no"
 			return 0
 		}
-		return refuseState(stderr, name, fmt.Sprintf("the job %s is already staged as another card or head; nothing was written", oneline.Field(job)))
+		return refuseState(stderr, name, fmt.Sprintf("the job %s is already staged as another card or head; nothing was written", oneline.Field(snap.job)))
 	} else if !os.IsNotExist(err) {
 		return refuse(stderr, name, "the staged JOB.md cannot be read: "+oneline.Err(err))
+	}
+
+	_, statErr := os.Lstat(jobDir)
+	createdJobDir := os.IsNotExist(statErr)
+	cleanupUnstagedDir := func() {
+		if createdJobDir {
+			_ = os.RemoveAll(jobDir)
+		}
 	}
 
 	if err := a.stageMkdir(ctx, root); err != nil {
 		return refuse(stderr, name, err.Error())
 	}
-	if _, err := a.stageGit(ctx, root, "clone", "-q", repoURL, jobDir); err != nil {
-		return refuse(stderr, name, "clone of "+repoURL+" into "+oneline.Field(job)+": "+oneline.Err(err))
+	if _, err := a.stageGit(ctx, root, "clone", "-q", snap.repoURL, jobDir); err != nil {
+		cleanupUnstagedDir()
+		return refuse(stderr, name, "clone of "+snap.repoURL+" into "+oneline.Field(snap.job)+": "+oneline.Err(err))
 	}
 	if _, err := a.stageGit(ctx, jobDir, "config", "remote.origin.pushurl", friendReadNoPush); err != nil {
+		cleanupUnstagedDir()
 		return refuse(stderr, name, "turning pushing off in the read's clone: "+oneline.Err(err))
 	}
 	if _, err := a.stageGit(ctx, jobDir, "fetch", "-q", "origin", head); err != nil {
+		cleanupUnstagedDir()
 		return refuse(stderr, name, "fetch of the head under read "+head+": "+oneline.Err(err))
 	}
 	if _, err := a.stageGit(ctx, jobDir, "checkout", "-q", "--detach", head); err != nil {
+		cleanupUnstagedDir()
 		return refuse(stderr, name, "checkout of the head under read "+head+": "+oneline.Err(err))
 	}
 	got, err := a.stageGit(ctx, jobDir, "rev-parse", "HEAD")
 	if err != nil {
+		cleanupUnstagedDir()
 		return refuse(stderr, name, "rev-parse of the staged head: "+oneline.Err(err))
 	}
 	if strings.TrimSpace(got) != head {
+		cleanupUnstagedDir()
 		return refuse(stderr, name, fmt.Sprintf("the staged checkout is at %s, not the head under read %s", oneline.Escape(strings.TrimSpace(got)), head))
 	}
 
 	// JOB.md: the read, the head under read, its base and paths, and the read verbs
-	read := fmt.Sprintf("nova-sprint read --as %s %%s %s@%d --epoch %d --finding %%s", sprint.FriendRow(friendName), card, gen, p.Epoch)
-	jobmd := "CARD: " + card + "\n" +
-		"GEN: " + strconv.Itoa(gen) + "\n" +
+	read := fmt.Sprintf("nova-sprint read --as %s %%s %s@%d --epoch %d --finding %%s", sprint.FriendRow(snap.friendName), snap.card, snap.gen, snap.epoch)
+	jobmd := "CARD: " + snap.card + "\n" +
+		"GEN: " + strconv.Itoa(snap.gen) + "\n" +
 		"KIND: read\n" +
-		"PRIMARY: " + p.Primary + "\n" +
-		"ATTEMPT: " + strconv.Itoa(p.Attempt) + "\n" +
-		"BRANCH: " + workBranch + "\n" +
-		"BASE: " + baseField + "\n" +
+		"PRIMARY: " + snap.primary + "\n" +
+		"ATTEMPT: " + strconv.Itoa(snap.attempt) + "\n" +
+		"BRANCH: " + snap.branch + "\n" +
+		"BASE: " + snap.baseField + "\n" +
 		"HEAD: " + head + "\n" +
-		"PATHS: " + paths + "\n" +
+		"PATHS: " + snap.paths + "\n" +
 		"READ-ONLY: the checkout is detached at HEAD and pushing is off; change, commit and push nothing\n" +
 		"READ-OK: " + fmt.Sprintf(read, "--ok", "'<what you checked, and the tests you ran>'") + "\n" +
 		"READ-BROKEN: " + fmt.Sprintf(read, "--broken", "'<file:line, and what to change>'") + "\n"
-	if err := os.WriteFile(jobPath, []byte(jobmd), 0o644); err != nil {
-		return refuse(stderr, name, "writing JOB.md: "+oneline.Err(err))
-	}
-	fmt.Fprintf(stdout, "FRIEND-STAGE OK friend=%s card=%s gen=%d kind=read head=%s job=%s jobmd=%s\n", friendName, card, gen, head, oneline.Field(job), jobPath)
-	a.outcome, a.changed = "accepted", "yes"
-	return 0
+	okLine := fmt.Sprintf("FRIEND-STAGE OK friend=%s card=%s gen=%d kind=read head=%s job=%s jobmd=%s\n", snap.friendName, snap.card, snap.gen, head, oneline.Field(snap.job), jobPath)
+	return a.publishFriendStage(ctx, c, snap, jobDir, jobPath, createdJobDir, jobmd, okLine, stdout, stderr)
 }
 
 // friendReadNoPush is the push URL a read's clone is given: no remote, so a push from
