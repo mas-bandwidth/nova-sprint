@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
 // log prints every line of the epoch in local time, filtered by card,
@@ -107,6 +109,38 @@ func TestCardTellsTheStory(t *testing.T) {
 	for _, not := range []string{"work came back ok", "the fix this attempt was given", "score"} {
 		assert.NotContains(t, out, not, "the story of a landed card says %q", not)
 	}
+}
+
+// A repeat judgment's "stop and look" command opens the very card being
+// viewed, so the card's now: omits it; the judgment, its other commands and
+// the inbox's stop-and-look stay.
+func TestCardViewOmitsItsRepeatStopAndLookCommand(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.a.loc = time.UTC
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	ta.ok("add --stream s1 --count 1 --one --brief-file " + writeBrief(t, "handle the empty case"))
+	ta.deal(1)
+	ta.failOnce("m1", "s1-1.w1@1", "the tests went red")
+	ta.ok("rework s1-1 --fix 'check the nil slice too'")
+	ta.deal(1)
+	ta.failOnce("m1", "s1-1.w2@1", "the tests went red again")
+	out := ta.ok("card s1-1")
+	now, _, _ := strings.Cut(out, "\nbrief:")
+	require.Contains(t, now, "waits on your judgment: work came back failed", "the card keeps the judgment:\n%s", out)
+	require.Contains(t, now, "rework with a fix: nova-sprint rework", "the card keeps its other commands:\n%s", out)
+	assert.NotContains(t, now, sprint.RepeatDecision, "the card recommends opening itself:\n%s", out)
+	assert.NotContains(t, now, "nova-sprint card s1-1", "the card recommends opening itself:\n%s", out)
+	g := ta.group(sprint.NWorkFailed, "s1")
+	var look *sprint.Command
+	for i := range g.Commands {
+		if g.Commands[i].Decision == sprint.RepeatDecision {
+			look = &g.Commands[i]
+		}
+	}
+	require.NotNil(t, look, "the inbox lost stop and look: %+v", g.Commands)
+	assert.Contains(t, look.Lines, "nova-sprint card s1-1", "the inbox lost stop and look: %+v", look)
+	assert.Contains(t, ta.ok("inbox"), "stop and look:\n    nova-sprint card s1-1", "the inbox lost stop and look")
 }
 
 // The worker's packet: take hands the brief, this attempt's fix, the notes,
