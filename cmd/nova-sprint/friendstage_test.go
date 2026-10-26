@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -229,4 +230,84 @@ func TestServedFriendStageStopsWithItsRequest(t *testing.T) {
 	assert.Nil(t, ta.a.runCtx, "the completed served verb keeps no request context")
 	require.True(t, ta.a.serial.TryLock(), "the cancelled friend stage released the control line")
 	ta.a.serial.Unlock()
+}
+
+// A jobs-root mkdir is bounded by the served request before Git starts. The live
+// failure this guards was a mkdir syscall that held the sole control line for
+// minutes; the Git cancellation test above could not reach it because no Git
+// child existed yet.
+func TestServedFriendStageStopsWhileMakingTheJobsDirectory(t *testing.T) {
+	t.Parallel()
+	ta, cfg := friendApp(t, "amy")
+	_, err := cfg.Delete(context.Background(), config.KindFriend, "amy", "t")
+	require.NoError(t, err)
+	_, err = cfg.Insert(context.Background(), config.KindFriend, config.Row{
+		Name: "amy", Fields: map[string]string{"tiers": "flash", "git_identity": "Amy Author <amy@example.com>"},
+	}, "t")
+	require.NoError(t, err)
+	ta.a.tip = tipIs(t, landHead)
+	root := t.TempDir()
+	ta.ok("friend sync --root " + root)
+	ta.beatUp("amy")
+	briefs := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(briefs, "s1-1.md"), []byte(passingBrief("s1-1: a friend's card\nREPO: mas-bandwidth/nova-tools\nBASE: sprint/s1\nWHO: friend amy")), 0o644))
+	ta.ok("add --stream s1 --brief-dir " + briefs)
+	ta.ok("start")
+	ta.ok("tick")
+
+	started := make(chan context.Context, 1)
+	ta.a.stageMkdir = func(ctx context.Context, _ string) error {
+		started <- ctx
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	ta.a.stageGit = func(context.Context, string, ...string) (string, error) {
+		t.Fatal("Git started before the jobs directory was made")
+		return "", nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan sprintwire.Response, 1)
+	ta.a.serveAddr = "mem:0"
+	go func() {
+		done <- ta.a.serveCtx(ctx, sprintwire.Request{Verbs: [][]string{{"friend", "stage", "s1-1.w1@1", "--as", "friend.amy", "--dir", filepath.Join(root, "missing-jobs")}}}, true)
+	}()
+	var mkdirCtx context.Context
+	select {
+	case mkdirCtx = <-started:
+	case res := <-done:
+		t.Fatalf("friend stage ended before making its jobs directory: %+v", res.Results)
+	case <-t.Context().Done():
+		t.Fatal("friend stage did not reach the jobs-directory step")
+	}
+	_, ok := mkdirCtx.Deadline()
+	require.True(t, ok, "friend stage's jobs-directory child has the hard staging deadline")
+	cancel()
+
+	select {
+	case res := <-done:
+		require.Len(t, res.Results, 1)
+		assert.NotEqual(t, 0, res.Results[0].Code)
+		assert.Contains(t, res.Results[0].Stderr, "context canceled")
+	case <-t.Context().Done():
+		t.Fatal("the cancelled jobs-directory step kept the control line")
+	}
+	assert.Nil(t, ta.a.runCtx, "the completed served verb keeps no request context")
+	require.True(t, ta.a.serial.TryLock(), "the cancelled jobs-directory step released the control line")
+	ta.a.serial.Unlock()
+}
+
+func TestStageMkdirCommandKeepsThePathOutOfShellText(t *testing.T) {
+	t.Parallel()
+	path := `C:\jobs\雪 & b 'quoted'`
+	name, args, stdin := stageMkdirCommand("windows", path)
+	assert.Equal(t, "powershell.exe", name)
+	assert.Equal(t, []string{"-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "[IO.Directory]::CreateDirectory([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([Console]::In.ReadToEnd()))) > $null"}, args)
+	decoded, err := base64.StdEncoding.DecodeString(stdin)
+	require.NoError(t, err)
+	assert.Equal(t, path, string(decoded), "Windows' code page never decodes the path")
+
+	name, args, stdin = stageMkdirCommand("linux", path)
+	assert.Equal(t, "mkdir", name)
+	assert.Equal(t, []string{"-p", "--", path}, args)
+	assert.Empty(t, stdin)
 }

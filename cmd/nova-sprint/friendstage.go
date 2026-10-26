@@ -3,10 +3,12 @@ package main
 import (
 	"cmp"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -23,6 +25,11 @@ import (
 // gitFn runs git with argv in a working directory and returns its combined output.
 type gitFn func(ctx context.Context, dir string, args ...string) (string, error)
 
+// mkdirFn makes a directory tree for friend stage. The production function runs
+// out of process, so a filesystem call that stops answering can be cancelled with
+// the served request instead of holding the server's control line indefinitely.
+type mkdirFn func(ctx context.Context, dir string) error
+
 // runStageGit is the real git, the app's stageGit unless a test gives its own: friend
 // stage clones and configures with it. It is a field of the app and never a
 // package variable, so two parallel tests that each record friend stage's argv
@@ -36,6 +43,37 @@ func runStageGit(ctx context.Context, dir string, args ...string) (string, error
 		return out, fmt.Errorf("git exited with status %d", exit)
 	}
 	return out, nil
+}
+
+// runStageMkdir uses the same process-group and WaitDelay runner as stage's Git
+// calls. A filesystem mkdir can itself stop in the kernel before Git starts; it
+// therefore belongs inside the same request bound, not in the server process.
+func runStageMkdir(ctx context.Context, dir string) error {
+	name, args, stdin := stageMkdirCommand(runtime.GOOS, dir)
+	out, exit, err := toolfriend.RealExec(ctx, "", name, args, stdin)
+	if err != nil {
+		return fmt.Errorf("mkdir -p %s: %w", oneline.Field(dir), err)
+	}
+	if exit != 0 {
+		if why := strings.TrimSpace(out); why != "" {
+			return fmt.Errorf("mkdir -p %s exited with status %d: %s", oneline.Field(dir), exit, oneline.Escape(why))
+		}
+		return fmt.Errorf("mkdir -p %s exited with status %d", oneline.Field(dir), exit)
+	}
+	return nil
+}
+
+// stageMkdirCommand is one direct program with the path in its own argv element,
+// never shell text. Windows' mkdir is a cmd.exe builtin, not an executable; its
+// standard PowerShell creates the directory through .NET and reads base64 of
+// the UTF-8 path from stdin (Windows PowerShell joins words after -Command into
+// code, and its console input encoding is the active code page, not UTF-8).
+// Unix uses the ordinary mkdir program.
+func stageMkdirCommand(goos, dir string) (string, []string, string) {
+	if goos == "windows" {
+		return "powershell.exe", []string{"-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "[IO.Directory]::CreateDirectory([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String([Console]::In.ReadToEnd()))) > $null"}, base64.StdEncoding.EncodeToString([]byte(dir))
+	}
+	return "mkdir", []string{"-p", "--", dir}, ""
 }
 
 // friendStageWords is what friend stage says on -h.
@@ -208,7 +246,7 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 
 	// the clone, then the identity in the clone's local config before any other
 	// git invocation can see a global identity
-	if err := os.MkdirAll(filepath.Dir(jobDir), 0o755); err != nil {
+	if err := a.stageMkdir(ctx, filepath.Dir(jobDir)); err != nil {
 		return refuse(stderr, name, err.Error())
 	}
 	if _, err := a.stageGit(ctx, filepath.Dir(jobDir), "clone", "-q", repoURL, jobDir); err != nil {
@@ -321,7 +359,7 @@ func (a *app) friendStageRead(ctx context.Context, friendName, card string, gen 
 		return refuse(stderr, name, "the staged JOB.md cannot be read: "+oneline.Err(err))
 	}
 
-	if err := os.MkdirAll(root, 0o755); err != nil {
+	if err := a.stageMkdir(ctx, root); err != nil {
 		return refuse(stderr, name, err.Error())
 	}
 	if _, err := a.stageGit(ctx, root, "clone", "-q", repoURL, jobDir); err != nil {

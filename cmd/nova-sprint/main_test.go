@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -95,6 +96,7 @@ func newTestApp(t *testing.T) *testApp {
 		t.Errorf("friend stage ran git %v with no recorder given", args)
 		return "", errors.New("no git in a unit test")
 	}
+	ta.a.stageMkdir = func(_ context.Context, dir string) error { return os.MkdirAll(dir, 0o755) }
 	// run's wait on a quiet log steps the clock by the time it may take
 	ta.m.LogWait = func(d time.Duration) { ta.a.sleep(d) }
 	ta.a.meter = hostload.Source{NCPU: 4, Load1: func() (float64, bool) { return 1, true }}
