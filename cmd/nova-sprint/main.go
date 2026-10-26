@@ -112,6 +112,9 @@ type app struct {
 	// stageGit is the git friend stage clones and configures with (runStageGit): tests
 	// give a recorder and run no git.
 	stageGit gitFn
+	// stageMkdir makes the jobs root through the same bounded child runner as
+	// stageGit: tests give an in-process filesystem twin and spawn no process.
+	stageMkdir mkdirFn
 	// runCtx is the served request's context while its line-held verb runs. The
 	// control line serializes its set, use and clear; a command typed here has none.
 	runCtx context.Context
@@ -407,7 +410,7 @@ func (l *controlLine) LockCtx(ctx context.Context) error {
 }
 
 func newApp(getenv func(string) string) *app {
-	a := &app{getenv: getenv, now: time.Now, sleep: time.Sleep, after: time.After, exit: os.Exit, quietEvery: store.QuietEvery, stageGit: runStageGit, newID: store.NewID, conns: map[string]*redisconn.Conn{}, cached: map[string]store.Backend{}, meter: hostload.Local(), notify: interruptContext, screen: screenSize}
+	a := &app{getenv: getenv, now: time.Now, sleep: time.Sleep, after: time.After, exit: os.Exit, quietEvery: store.QuietEvery, stageGit: runStageGit, stageMkdir: runStageMkdir, newID: store.NewID, conns: map[string]*redisconn.Conn{}, cached: map[string]store.Backend{}, meter: hostload.Local(), notify: interruptContext, screen: screenSize}
 	a.backend = a.redisBackend
 	a.inventory = a.readInventory
 	a.friends = a.readFriends
