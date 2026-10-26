@@ -53,6 +53,11 @@ import (
 //     and in order with the takes and finishes before it. On 2026-10-17 nine idle benches
 //     beating every 3 s put ~180 such beats a minute on the line, none changing a word
 //     (tla/ServerLanes.tla, ChangeHoldsTheLine);
+//   - a friend's stage (`friend stage <card>@<gen> --as friend.<name>`) runs its
+//     config read, mkdir, git clone/fetch/checkout and task-local JOB preparation on the
+//     stage lane off the line, taking the line only for the short pre-stage assignment
+//     snapshot and the short post-stage revalidation before atomically publishing JOB.md
+//     (friendStage; friendstage.go);
 //   - every other verb (take, finish, read, queue, which records a reader's beat, a
 //     member's beat that changes its word, and every coordinator's write) waits for the
 //     line as before, and the line waits for its caller: a batch whose caller has gone is
@@ -121,6 +126,9 @@ type serveLanes struct {
 	read *app
 	// dash is the dashboard lane (dashWhere).
 	dash dashLane
+	// stage serializes served friend stage calls on their own lane so repository,
+	// config and filesystem work stays off the server's control line (friendStage).
+	stage serialLock
 }
 
 // dashLane is the dashboard's read lane: the last copy and the lock one compute at a time
@@ -327,6 +335,32 @@ func (l *serveLanes) readVerbRun(ctx context.Context, args []string) sprintwire.
 	var stdout, stderr bytes.Buffer
 	code := l.read.run(args, &stdout, &stderr)
 	return sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String(), Outcome: l.read.outcome, Changed: l.read.changed}
+}
+
+// friendStage runs a served friend stage off the server's control line: it serializes
+// stage operations on l.stage, uses its own laneApp, and passes the server's control line
+// as stageLine so cmdFriendStage takes a.serial only for the short pre-stage assignment
+// snapshot and the short post-stage revalidation before publishing JOB.md.
+func (l *serveLanes) friendStage(ctx context.Context, a *app, argv, args []string, actorNotice string) sprintwire.Result {
+	if err := l.stage.LockCtx(ctx); err != nil {
+		return goneResult(argv)
+	}
+	defer l.stage.Unlock()
+	r := l.laneApp()
+	r.friends = a.friends
+	r.stageGit = a.stageGit
+	r.stageMkdir = a.stageMkdir
+	r.getenv = a.getenv
+	r.home = a.home
+	r.stageLine = &a.serial
+	r.runCtx = ctx
+	var stdout, stderr bytes.Buffer
+	if actorNotice != "" {
+		fmt.Fprintln(&stderr, actorNotice)
+	}
+	code := r.run(args, &stdout, &stderr)
+	r.runCtx = nil
+	return sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String(), Outcome: r.outcome, Changed: r.changed}
 }
 
 // dashWhere is the dashboard's read on the dashboard lane (tla/ServerLanes.tla,

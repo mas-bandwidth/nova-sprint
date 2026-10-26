@@ -311,3 +311,266 @@ func TestStageMkdirCommandKeepsThePathOutOfShellText(t *testing.T) {
 	assert.Equal(t, []string{"-p", "--", path}, args)
 	assert.Empty(t, stdin)
 }
+
+// A served friend stage takes the server's control line only for the short
+// pre-stage assignment snapshot and post-stage revalidation before publishing
+// JOB.md. While its clone blocks longer than a tick, a tick and representative
+// hook/coordinator writes complete on the control line without waiting; when the
+// clone releases, staging completes once and a rerun is idempotent while
+// preserving dirty/advanced work. If the caller times out or the card's
+// assignment changes during the clone, all lane and control-line locks are
+// released and no stale JOB.md is published.
+func TestServedFriendStageBlockedCloneLeavesTickAndWritesLive(t *testing.T) {
+	t.Parallel()
+	ta, cfg := friendApp(t, "amy", "bob")
+	for _, f := range []struct{ name, id string }{
+		{"amy", "Amy Author <amy@example.com>"},
+		{"bob", "Bob Builder <bob@example.com>"},
+	} {
+		_, err := cfg.Delete(context.Background(), config.KindFriend, f.name, "t")
+		require.NoError(t, err)
+		_, err = cfg.Insert(context.Background(), config.KindFriend, config.Row{
+			Name: f.name, Fields: map[string]string{"tiers": "flash", "git_identity": f.id},
+		}, "t")
+		require.NoError(t, err)
+	}
+	ta.a.tip = tipIs(t, landHead)
+	ta.ok("init --readers reader-a,reader-b --members m1")
+	root := t.TempDir()
+	ta.ok("friend sync --root " + root)
+	ta.beatUp("amy")
+	ta.beatUp("bob")
+
+	briefs := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(briefs, "s1-1.md"), []byte(passingBrief("s1-1: a friend's card\nREPO: mas-bandwidth/nova-tools\nBASE: sprint/s1\nWHO: friend amy")), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(briefs, "s1-2.md"), []byte(passingBrief("s1-2: a second friend's card\nREPO: mas-bandwidth/nova-tools\nBASE: sprint/s1\nWHO: friend bob")), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(briefs, "s1-3.md"), []byte(passingBrief("s1-3: a member's card\nREPO: mas-bandwidth/nova-tools\nBASE: sprint/s1")), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(briefs, "s1-4.md"), []byte(passingBrief("s1-4: a third friend's card\nREPO: mas-bandwidth/nova-tools\nBASE: sprint/s1\nWHO: friend bob")), 0o644))
+	ta.ok("add --stream s1 --brief-dir " + briefs)
+	ta.ok("start")
+	ta.ok("tick")
+
+	ta.a.serveAddr = "mem:0"
+	jobsAmy := filepath.Join(root, "amy-working", "jobs")
+	jobsBob := filepath.Join(root, "bob-working", "jobs")
+
+	// (1) Blocked clone longer than a tick leaves tick and hook/coordinator writes live.
+	cloneStarted := make(chan context.Context, 1)
+	releaseClone := make(chan struct{})
+	cloneCount := 0
+	ta.a.stageGit = func(ctx context.Context, _ string, args ...string) (string, error) {
+		if args[0] == "clone" {
+			cloneCount++
+			target := args[len(args)-1]
+			require.NoError(t, os.MkdirAll(target, 0o755))
+			cloneStarted <- ctx
+			select {
+			case <-releaseClone:
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		}
+		return "", nil
+	}
+
+	stageDone := make(chan sprintwire.Response, 1)
+	go func() {
+		stageDone <- ta.a.serveCtx(context.Background(), sprintwire.Request{
+			Verbs: [][]string{{"friend", "stage", "s1-1.w1@1", "--as", "friend.amy", "--dir", jobsAmy}},
+		}, true)
+	}()
+
+	var gitCtx context.Context
+	select {
+	case gitCtx = <-cloneStarted:
+	case res := <-stageDone:
+		t.Fatalf("friend stage ended before clone blocked: %+v", res.Results)
+	case <-t.Context().Done():
+		t.Fatal("friend stage did not reach clone")
+	}
+	_, hasDeadline := gitCtx.Deadline()
+	require.True(t, hasDeadline, "served friend stage preserves the hard staging deadline")
+
+	// While clone is blocked, app.serial is free and JOB.md is not yet published.
+	require.True(t, ta.a.serial.TryLock(), "control line must not be held while friend stage clones")
+	ta.a.serial.Unlock()
+	_, err := os.Lstat(filepath.Join(jobsAmy, "s1-1.w1", "JOB.md"))
+	require.True(t, os.IsNotExist(err), "JOB.md must not exist before post-stage revalidation")
+
+	// Advance past a tick and run both a tick on the control line and a served
+	// hook/worker write while the clone stays blocked.
+	ta.a.serial.waiting = func() {
+		t.Error("a tick or write waited for the control line while friend stage was cloning")
+	}
+	ta.step(ta.a.quietEvery + 1)
+	_, err = ta.a.serial.TickLockCtx(t.Context())
+	require.NoError(t, err)
+	ta.ok("tick")
+	ta.a.serial.Unlock()
+
+	beatRes := ta.a.serveCtx(t.Context(), sprintwire.Request{
+		Verbs: [][]string{{"friend", "beat", "amy", "--running", "s1-1.w1"}},
+	}, false)
+	require.Len(t, beatRes.Results, 1)
+	require.Equal(t, 0, beatRes.Results[0].Code, "%s", beatRes.Results[0].Stderr)
+
+	takeRes := ta.a.serveCtx(t.Context(), sprintwire.Request{
+		Verbs: [][]string{{"take", "--as", "m1", "--epoch", "0", "--max", "1"}},
+	}, false)
+	require.Len(t, takeRes.Results, 1)
+	require.Equal(t, 0, takeRes.Results[0].Code, "%s", takeRes.Results[0].Stderr)
+	assert.Equal(t, "accepted", takeRes.Results[0].Outcome)
+
+	coordRes := ta.a.serveCtx(t.Context(), sprintwire.Request{
+		Verbs: [][]string{{"inbox", "--read", "--actor", "coordinator"}},
+	}, true)
+	require.Len(t, coordRes.Results, 1)
+	require.Equal(t, 0, coordRes.Results[0].Code, "%s", coordRes.Results[0].Stderr)
+	ta.a.serial.waiting = nil
+
+	// Release the blocked clone and prove staging completes once.
+	close(releaseClone)
+	res := <-stageDone
+	require.Len(t, res.Results, 1)
+	require.Equal(t, 0, res.Results[0].Code, "%s", res.Results[0].Stderr)
+	assert.Equal(t, "accepted", res.Results[0].Outcome)
+	assert.Equal(t, "yes", res.Results[0].Changed)
+	assert.Contains(t, res.Results[0].Stdout, "FRIEND-STAGE OK friend=amy card=s1-1.w1 gen=1")
+	assert.Equal(t, 1, cloneCount)
+
+	jobPathAmy := filepath.Join(jobsAmy, "s1-1.w1", "JOB.md")
+	jobBytes, err := os.ReadFile(jobPathAmy)
+	require.NoError(t, err)
+	assert.Contains(t, string(jobBytes), "CARD: s1-1.w1\n")
+
+	// Same-card same-generation rerun is idempotent and preserves dirty work.
+	dirtyFile := filepath.Join(jobsAmy, "s1-1.w1", "dirty.txt")
+	require.NoError(t, os.WriteFile(dirtyFile, []byte("in-progress work\n"), 0o644))
+	rerunRes := ta.a.serveCtx(t.Context(), sprintwire.Request{
+		Verbs: [][]string{{"friend", "stage", "s1-1.w1@1", "--as", "friend.amy", "--dir", jobsAmy}},
+	}, true)
+	require.Len(t, rerunRes.Results, 1)
+	require.Equal(t, 0, rerunRes.Results[0].Code, "%s", rerunRes.Results[0].Stderr)
+	assert.Equal(t, "accepted", rerunRes.Results[0].Outcome)
+	assert.Equal(t, "no", rerunRes.Results[0].Changed)
+	assert.Equal(t, 1, cloneCount, "idempotent rerun must not clone again")
+	dirtyAfter, err := os.ReadFile(dirtyFile)
+	require.NoError(t, err)
+	assert.Equal(t, "in-progress work\n", string(dirtyAfter))
+
+	// (2) Negative control: an assignment change while the clone is blocked
+	// cannot publish a stale JOB.md and reports the precise refusal.
+	cloneStarted = make(chan context.Context, 1)
+	releaseClone = make(chan struct{})
+	ta.a.stageGit = func(ctx context.Context, _ string, args ...string) (string, error) {
+		if args[0] == "clone" {
+			target := args[len(args)-1]
+			require.NoError(t, os.MkdirAll(target, 0o755))
+			cloneStarted <- ctx
+			select {
+			case <-releaseClone:
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		}
+		return "", nil
+	}
+
+	go func() {
+		stageDone <- ta.a.serveCtx(context.Background(), sprintwire.Request{
+			Verbs: [][]string{{"friend", "stage", "s1-2.w1@1", "--as", "friend.bob", "--dir", jobsBob}},
+		}, true)
+	}()
+	select {
+	case <-cloneStarted:
+	case res := <-stageDone:
+		t.Fatalf("bob friend stage ended before clone blocked: %+v", res.Results)
+	case <-t.Context().Done():
+		t.Fatal("bob friend stage did not reach clone")
+	}
+
+	// While bob's clone is in flight, bob takes and finishes (--failed) the card on
+	// the control line so s1-2.w1@1 is no longer ready or working on friend.bob.
+	finishRes := ta.a.serveCtx(t.Context(), sprintwire.Request{
+		Verbs: [][]string{
+			{"take", "--as", "friend.bob", "--epoch", "0", "--max", "1"},
+			{"finish", "--as", "friend.bob", "s1-2.w1@1", "--epoch", "0", "--head", "sprint/s1", "--branch", "sprint/s1-2.w1.g1.e0", "--base", "sprint/s1", "--failed", "--report", "aborted"},
+		},
+	}, false)
+	require.Len(t, finishRes.Results, 2)
+	require.Equal(t, 0, finishRes.Results[0].Code, "%s", finishRes.Results[0].Stderr)
+	require.Equal(t, 0, finishRes.Results[1].Code, "%s", finishRes.Results[1].Stderr)
+
+	close(releaseClone)
+	staleRes := <-stageDone
+	require.Len(t, staleRes.Results, 1)
+	assert.Equal(t, 1, staleRes.Results[0].Code)
+	assert.Equal(t, "refused", staleRes.Results[0].Outcome)
+	assert.Contains(t, staleRes.Results[0].Stderr, "card s1-2.w1 at gen 1 is not dealt to friend bob (ready or working)")
+	_, err = os.Lstat(filepath.Join(jobsBob, "s1-2.w1", "JOB.md"))
+	assert.True(t, os.IsNotExist(err), "stale stage after assignment change must not publish JOB.md")
+
+	// (3) Negative control: a timeout / cancellation during the blocked clone
+	// releases all lane and control-line locks and publishes no JOB.md.
+	cloneStarted = make(chan context.Context, 1)
+	ta.a.stageGit = func(ctx context.Context, _ string, args ...string) (string, error) {
+		if args[0] == "clone" {
+			target := args[len(args)-1]
+			require.NoError(t, os.MkdirAll(target, 0o755))
+			cloneStarted <- ctx
+			<-ctx.Done()
+			return "", ctx.Err()
+		}
+		return "", nil
+	}
+	timeoutCtx, cancelTimeout := context.WithCancel(context.Background())
+	go func() {
+		stageDone <- ta.a.serveCtx(timeoutCtx, sprintwire.Request{
+			Verbs: [][]string{{"friend", "stage", "s1-4.w1@1", "--as", "friend.bob", "--dir", jobsBob}},
+		}, true)
+	}()
+	select {
+	case <-cloneStarted:
+	case res := <-stageDone:
+		t.Fatalf("s1-4 friend stage ended before clone blocked: %+v", res.Results)
+	case <-t.Context().Done():
+		t.Fatal("s1-4 friend stage did not reach clone")
+	}
+	cancelTimeout()
+	timedOutRes := <-stageDone
+	require.Len(t, timedOutRes.Results, 1)
+	assert.NotEqual(t, 0, timedOutRes.Results[0].Code)
+	assert.Contains(t, timedOutRes.Results[0].Stderr, "context canceled")
+	_, err = os.Lstat(filepath.Join(jobsBob, "s1-4.w1", "JOB.md"))
+	assert.True(t, os.IsNotExist(err), "cancelled stage must not publish JOB.md")
+	require.True(t, ta.a.serial.TryLock(), "cancelled stage released control line")
+	ta.a.serial.Unlock()
+	require.NotNil(t, ta.a.lanes)
+	require.True(t, ta.a.lanes.stage.TryLock(), "cancelled stage released stage lane lock")
+	ta.a.lanes.stage.Unlock()
+
+	// After the cancelled clone cleaned up its unstaged directory and released all
+	// locks, a subsequent stage of s1-4.w1@1 succeeds cleanly.
+	ta.a.stageGit = func(_ context.Context, _ string, args ...string) (string, error) {
+		if args[0] == "clone" {
+			require.NoError(t, os.MkdirAll(args[len(args)-1], 0o755))
+		}
+		return "", nil
+	}
+	retryRes := ta.a.serveCtx(t.Context(), sprintwire.Request{
+		Verbs: [][]string{{"friend", "stage", "s1-4.w1@1", "--as", "friend.bob", "--dir", jobsBob}},
+	}, true)
+	require.Len(t, retryRes.Results, 1)
+	require.Equal(t, 0, retryRes.Results[0].Code, "%s", retryRes.Results[0].Stderr)
+	assert.Equal(t, "accepted", retryRes.Results[0].Outcome)
+	assert.Equal(t, "yes", retryRes.Results[0].Changed)
+
+	// A mismatched existing JOB.md (wrong head/branch) is still refused.
+	require.NoError(t, os.WriteFile(filepath.Join(jobsBob, "s1-4.w1", "JOB.md"), []byte("CARD: s1-4.w1\nGEN: 1\nBRANCH: sprint/other\nHEAD: sprint/s1\n"), 0o644))
+	mismatchRes := ta.a.serveCtx(t.Context(), sprintwire.Request{
+		Verbs: [][]string{{"friend", "stage", "s1-4.w1@1", "--as", "friend.bob", "--dir", jobsBob}},
+	}, true)
+	require.Len(t, mismatchRes.Results, 1)
+	assert.Equal(t, 1, mismatchRes.Results[0].Code)
+	assert.Contains(t, mismatchRes.Results[0].Stderr, "already staged as another card, branch or head; nothing was written")
+}
