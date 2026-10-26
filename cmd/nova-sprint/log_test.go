@@ -1,14 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
 // log prints every line of the epoch in local time, filtered by card,
@@ -199,4 +199,172 @@ func TestWhereHidesTheMergeTablesSince(t *testing.T) {
 	block := tableOf(out, "merge")
 	require.NotEmpty(t, block, "no merge table:\n%s", out)
 	require.NotContains(t, block, "since", "where shows since:\n%s", out)
+}
+
+// log filters matching entries first in their existing order, then caps the
+// result at --max (default 20, --max 0 for all) before text and JSON rendering,
+// while preserving the unfiltered log count, the MORE hint with the active
+// filters, and the distinct --wait-tick response.
+func TestLogHonorsMaxAfterFiltering(t *testing.T) {
+	t.Parallel()
+	ta := newTestApp(t)
+	ta.a.loc = time.UTC
+	ta.ok("init --readers reader-a,reader-b --members m1,m2")
+
+	// Before adding s2's 21 cards, add 5 cards to s1 and advance the clock so
+	// unfiltered entries precede the filtered matches and --since / --stream /
+	// --card / --member filters must run before --max caps the output.
+	for i := 1; i <= 5; i++ {
+		ta.ok(fmt.Sprintf("add --stream s1 --count 1 --one --brief-file %s", writeBrief(t, fmt.Sprintf("early s1 card %d", i))))
+	}
+	ta.mu.Lock()
+	ta.now = ta.now.Add(20 * time.Minute)
+	ta.mu.Unlock()
+
+	for i := 1; i <= 21; i++ {
+		ta.ok(fmt.Sprintf("add --stream s2 --count 1 --one --brief-file %s", writeBrief(t, fmt.Sprintf("s2 card %d", i))))
+	}
+
+	var all struct {
+		Lines []sprint.Line `json:"lines"`
+		Shown int           `json:"shown"`
+		Total int           `json:"total"`
+		More  bool          `json:"more"`
+	}
+	ta.json("log --max 0", &all)
+	unfilteredTotal := len(all.Lines)
+	require.Greater(t, unfilteredTotal, 21, "unfiltered log must include init and s1 entries")
+	require.Equal(t, unfilteredTotal, all.Shown)
+	require.Equal(t, unfilteredTotal, all.Total)
+	require.False(t, all.More)
+
+	// 1. 21 matches / default 20, with --stream s2 filtering out earlier s1 entries first.
+	out := ta.ok("log --stream s2")
+	assert.NotContains(t, out, "s2-1 added to s2 by coordinator", "default cap of 20 should keep the 20 latest in order and omit the 1st")
+	for i := 2; i <= 21; i++ {
+		assert.Contains(t, out, fmt.Sprintf("s2-%d added to s2 by coordinator", i), "default cap should include s2-%d", i)
+	}
+	assert.NotContains(t, out, "s1-1 added to s1", "stream filter should exclude s1")
+	assert.Contains(t, out, "MORE kind=log shown=20 total=21 run: nova-sprint log --stream s2 --max 0\n")
+	assert.Contains(t, out, fmt.Sprintf("LOG OK lines=20 of=%d\n", unfilteredTotal))
+	assert.Less(t, strings.Index(out, "s2-2 added to s2"), strings.Index(out, "s2-21 added to s2"), "existing order preserved")
+
+	var jDefault struct {
+		Lines []sprint.Line `json:"lines"`
+		Shown int           `json:"shown"`
+		Total int           `json:"total"`
+		More  bool          `json:"more"`
+	}
+	ta.json("log --stream s2", &jDefault)
+	require.Len(t, jDefault.Lines, 20)
+	assert.Equal(t, 20, jDefault.Shown)
+	assert.Equal(t, 21, jDefault.Total)
+	assert.True(t, jDefault.More)
+	assert.Equal(t, "s2-2", jDefault.Lines[0].Card)
+	assert.Equal(t, "s2-21", jDefault.Lines[19].Card)
+
+	// 2. Explicit --max 1.
+	out = ta.ok("log --stream s2 --max 1")
+	assert.Contains(t, out, "s2-21 added to s2 by coordinator")
+	assert.NotContains(t, out, "s2-20 added to s2 by coordinator")
+	assert.Contains(t, out, "MORE kind=log shown=1 total=21 run: nova-sprint log --stream s2 --max 0\n")
+	assert.Contains(t, out, fmt.Sprintf("LOG OK lines=1 of=%d\n", unfilteredTotal))
+
+	var jMax1 struct {
+		Lines []sprint.Line `json:"lines"`
+		Shown int           `json:"shown"`
+		Total int           `json:"total"`
+		More  bool          `json:"more"`
+	}
+	ta.json("log --stream s2 --max 1", &jMax1)
+	require.Len(t, jMax1.Lines, 1)
+	assert.Equal(t, 1, jMax1.Shown)
+	assert.Equal(t, 21, jMax1.Total)
+	assert.True(t, jMax1.More)
+	assert.Equal(t, "s2-21", jMax1.Lines[0].Card)
+
+	// 3. Unlimited --max 0.
+	out = ta.ok("log --stream s2 --max 0")
+	assert.Contains(t, out, "s2-1 added to s2 by coordinator")
+	assert.Contains(t, out, "s2-21 added to s2 by coordinator")
+	assert.NotContains(t, out, "MORE kind=log")
+	assert.Contains(t, out, fmt.Sprintf("LOG OK lines=21 of=%d\n", unfilteredTotal))
+
+	var jMax0 struct {
+		Lines []sprint.Line `json:"lines"`
+		Shown int           `json:"shown"`
+		Total int           `json:"total"`
+		More  bool          `json:"more"`
+	}
+	ta.json("log --stream s2 --max 0", &jMax0)
+	require.Len(t, jMax0.Lines, 21)
+	assert.Equal(t, 21, jMax0.Shown)
+	assert.Equal(t, 21, jMax0.Total)
+	assert.False(t, jMax0.More)
+	assert.Equal(t, "s2-1", jMax0.Lines[0].Card)
+	assert.Equal(t, "s2-21", jMax0.Lines[20].Card)
+
+	// 4. Filters before cap: --since, --card, --member, and --at-epoch.
+	// --since 5m excludes the early init and s1 entries (20m ago) and matches the 22 recent entries (ctl-s2 + 21 s2 cards).
+	out = ta.ok("log --since 5m --max 1")
+	assert.Contains(t, out, "s2-21 added to s2 by coordinator")
+	assert.NotContains(t, out, "s1-1 added to s1")
+	assert.Contains(t, out, "MORE kind=log shown=1 total=22 run: nova-sprint log --since 5m --max 0\n")
+
+	// Deal and take on m1 so --card and --member match s1-1's entries (even though
+	// 21 s2 cards were added after s1-1, proving --card and --member filter before --max caps).
+	ta.deal(1)
+	ta.ok("take --as m1 s1-1.w1@1")
+	ta.ok("finish --as m1 s1-1.w1@1 --failed --report 'red'")
+
+	out = ta.ok("log --card s1-1 --member m1 --max 1")
+	assert.Contains(t, out, "m1")
+	assert.Contains(t, out, "MORE kind=log shown=1 total=")
+	assert.Contains(t, out, "run: nova-sprint log --card s1-1 --member m1 --max 0\n")
+
+	// Also verify --stream s1 with --max 1 returns s1's match even though 21+ s2 entries lie in the unfiltered log.
+	out = ta.ok("log --stream s1 --max 1")
+	assert.Contains(t, out, "judgment: work came back failed: red")
+	assert.NotContains(t, out, "s2-")
+	assert.Contains(t, out, "MORE kind=log shown=1 total=11 run: nova-sprint log --stream s1 --max 0\n")
+
+	// Clear epoch 0 so --at-epoch 0 reads the earlier epoch with --max 1.
+	ta.ok("clear --confirm sprint")
+	out = ta.ok("log --stream s2 --at-epoch 0 --max 1")
+	assert.Contains(t, out, "s2-21 added to s2 by coordinator")
+	assert.Contains(t, out, "MORE kind=log shown=1 total=")
+	assert.Contains(t, out, "run: nova-sprint log --stream s2 --at-epoch 0 --max 0\n")
+
+	// 5. Empty results (in the fresh epoch 1 after clear).
+	out = ta.ok("log --stream no-such-stream")
+	assert.NotContains(t, out, "MORE kind=log")
+	assert.Contains(t, out, "LOG OK lines=0 of=")
+
+	var jEmpty struct {
+		Lines []sprint.Line `json:"lines"`
+		Shown int           `json:"shown"`
+		Total int           `json:"total"`
+		More  bool          `json:"more"`
+	}
+	ta.json("log --stream no-such-stream", &jEmpty)
+	require.NotNil(t, jEmpty.Lines, "empty JSON lines should be [] not null")
+	assert.Empty(t, jEmpty.Lines)
+	assert.Equal(t, 0, jEmpty.Shown)
+	assert.Equal(t, 0, jEmpty.Total)
+	assert.False(t, jEmpty.More)
+
+	// 6. --wait-tick special response remains {"cursor": ..., "woke": ...} without lines/shown/total/more.
+	ta.a.serveAddr = "mem:0"
+	rawWait := ta.ok("log --wait-tick 0s --json")
+	assert.Contains(t, rawWait, `"cursor":`)
+	assert.Contains(t, rawWait, `"woke":false`)
+	assert.NotContains(t, rawWait, `"lines"`)
+	assert.NotContains(t, rawWait, `"shown"`)
+	assert.NotContains(t, rawWait, `"total"`)
+	assert.NotContains(t, rawWait, `"more"`)
+
+	// Help text in `nova-sprint help` explains log's cap instead of saying log does not cap yet.
+	helpOut := ta.ok("help")
+	assert.Contains(t, helpOut, "log caps matching entries after")
+	assert.NotContains(t, helpOut, "log does not cap yet")
 }
