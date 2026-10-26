@@ -11,6 +11,63 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestFriendReadReportUsesTheCurrentFinding(t *testing.T) {
+	t.Parallel()
+	for _, tt := range []struct {
+		name, report, finding, why string
+	}{
+		{
+			name:    "card metadata precedes finding",
+			report:  "Verdict: HOLD\nHead: abcdef\nCard: l1-defs-ack-beat-hook-stamp-2.r2.stella\nFinding: pkg/hookwire/ack.go:22 omits the required row\n",
+			finding: "Finding: pkg/hookwire/ack.go:22 omits the required row",
+		},
+		{
+			name:    "repaired earlier finding precedes current finding",
+			report:  "Verdict: HOLD\nEarlier finding in js_reflect.go:44 is FIXED.\nFinding: internal/ci/shard.go:91 still accepts the wrong count\n",
+			finding: "Finding: internal/ci/shard.go:91 still accepts the wrong count",
+		},
+		{
+			name:    "finding label above a bullet",
+			report:  "Verdict: HOLD\nCard: older.r1.stella\nFinding:\n\n- `docs/ALGORITHM.md:158` still names the retired rule\n\nBinding: docs/other.md\n",
+			finding: "- `docs/ALGORITHM.md:158` still names the retired rule",
+		},
+		{
+			name:   "explicit finding must itself name a defect",
+			report: "Verdict: HOLD\nCard: l1-defs-ack-beat-hook-stamp-2.r2.stella\nFinding: please revisit this\n",
+			why:    "a HOLD closes a read broken only when a finding names a file, a line or a rule",
+		},
+		{
+			name:   "empty finding does not borrow a later binding",
+			report: "Verdict: HOLD\nFinding:\n\nBinding: docs/other.md:12\n",
+			why:    "a HOLD closes a read broken only when a finding names a file, a line or a rule",
+		},
+		{
+			name:    "legacy bare finding remains valid after metadata",
+			report:  "Verdict: HOLD\nCard: old-read.r1.stella\nmain.go:12 drops the error\n",
+			finding: "main.go:12 drops the error",
+		},
+		{
+			name:    "legacy bare finding remains valid without metadata",
+			report:  "Verdict: HOLD\nRULE: the branch is absent from origin\n",
+			finding: "RULE: the branch is absent from origin",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			verdict, finding, why := ParseFriendReadReport(tt.report)
+			if tt.why != "" {
+				require.Empty(t, verdict)
+				require.Empty(t, finding)
+				require.Equal(t, tt.why, why)
+				return
+			}
+			require.Equal(t, "broken", verdict)
+			require.Equal(t, tt.finding, finding)
+			require.Empty(t, why)
+		})
+	}
+}
+
 // TestAFrontierCardsReadIsAskedAsAFriendCard pins the tick: a frontier card
 // in review, and a heavy card whose read tier is frontier, is asked of a
 // frontier friend. A friend at or above the read tier with room is asked
@@ -214,16 +271,19 @@ func TestAFrontierCardsReadIsAskedAsAFriendCard(t *testing.T) {
 		putReview(w, "s1-1", body, 2, 1, primHead)
 		askReaders(t, w, workerSeatFixtures([]FriendSeat{frontierSeat("amy", 2, Up, t.TempDir())}))
 		id := ReadCardID("s1-1", 2, "amy")
-		w.must(FriendReadCloseChecked(w.s, "amy", "s1-1", "", "Verdict: HOLD\nmain.go is wrong\n", nil))
+		finding := "Finding: main.go:12 drops the error"
+		report := "Verdict: HOLD\nCard: " + id + "\n" + finding + "\n"
+		w.must(FriendReadCloseChecked(w.s, "amy", "s1-1", "", report, nil))
 		rc := w.s.Fleet.Card(id)
 		require.False(t, rc.Placed())
 		require.Equal(t, "broken", rc.F("verdict"))
-		require.Contains(t, rc.F("finding"), "main.go")
+		require.Equal(t, finding, rc.F("finding"))
 		require.NotEqual(t, Broken, rc.Col)
 		require.Nil(t, w.s.Readers.Card(id))
 		ns := w.notesOf(NReadBroken)
 		require.Len(t, ns, 1)
-		require.Contains(t, ns[0].What, "main.go")
+		require.Contains(t, ns[0].What, finding)
+		require.NotContains(t, ns[0].What, "Card: "+id)
 		require.Equal(t, "amy", ns[0].Who)
 	})
 }
