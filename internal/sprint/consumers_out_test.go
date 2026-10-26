@@ -56,10 +56,10 @@ func TestConsumersOutFriendWorkerEvidence(t *testing.T) {
 		friends []FriendSeat
 		want    []string
 	}{
-		{"up without a live worker", []FriendSeat{{Name: "amy", Status: Up}}, []string{"s1-1"}},
+		{"up without a live worker", []FriendSeat{{Name: "amy", Status: Up, WorkerLive: false}}, []string{"s1-1"}},
 		{"up with a live worker", []FriendSeat{{Name: "amy", Status: Up, WorkerLive: true}}, nil},
 		{"absent", nil, []string{"s1-1"}},
-		{"down", []FriendSeat{{Name: "amy", Status: Down}}, []string{"s1-1"}},
+		{"down", []FriendSeat{{Name: "amy", Status: Down, WorkerLive: false}}, []string{"s1-1"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := consumersOutSnap(
