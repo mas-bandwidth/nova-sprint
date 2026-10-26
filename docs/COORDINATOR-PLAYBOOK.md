@@ -49,6 +49,44 @@ the checks the verb runs, and leaves no record in the log.
    `rm -rf`. `take`, `finish`, `read`, `fleet beat`, `friend beat`, `lane take` and `lane give`
    are the workers' verbs, never the seat's (`nova-sprint help`).
 
+## Ongoing custody: prove the work is moving
+
+This is part of every situation below, including the coordinator's own friend row; it is not a
+new polling loop. Maintain one durable next action for each active or waiting card: the owner,
+the action, and the exact blocker when another action cannot start.
+
+1. Prove execution per card. `up`, assigned, staged, delivered and a successful ping prove
+   readiness or custody, not execution. For each active card, challenge the executor for its
+   current card generation, source head, function or file being inspected, command PID when one
+   is running, and raw log path; cross-check those facts against the card, process and log. A
+   message delivered to a completed child or session does not start a turn: explicitly follow up
+   or restart it, then observe a new source or gate action for that card and generation. Never say
+   every executor is busy without this per-card check.
+2. Keep custody before redistributing it. Read the current owner, generation, staged checkout,
+   progress, pushed or carried head, local edits and completed gates before taking a card back.
+   Preserve recoverable edits and exact-head evidence. If a ready card is on a down or unqualified
+   row, redistribute it immediately to a verified qualified executor and verify both the canonical
+   transition and that executor's actual first action. Do not redeal an active owner merely for a
+   quiet interval; classify the concrete stall first.
+3. Check the brief as well as the worker. Run the existing brief/card checks and read every active
+   brief semantically for writable scope, required gates and ledgers, dependencies, oracle and
+   negative controls, and finish evidence. A syntactically clean brief may still forbid a file or
+   gate its own result requires. Fix such a brief in place before another attempt; a real design
+   decision remains HOLD rather than guessed implementation work.
+4. Inspect every waiting card's effective wait, not only its raw JSON `needs` field. Include named
+   needs, positional sentinel waits and holds; inspect `LAND-AFTER` separately because it orders
+   landing and must not keep otherwise eligible work from starting. Distinguish a true prerequisite
+   from a stale or over-broad serialization, an exhausted attempt, or a brief defect. Remove only
+   an unjustified constraint, preserving heads and evidence; otherwise record the precise remaining
+   reason, including a customer, design, hardware or external decision that cannot be waived.
+5. Separate evidence levels. Source CLEAR is not execution of a required gate. Reuse a gate only
+   as the raw result of its original tested head. A new head may credit it only for an explicitly
+   reviewed unchanged scope together with the required delta verification; never relabel the old
+   result as a new-head or full-gate pass, and never waive a required gate. Require the brief's
+   portable evidence and oracle controls before finish, then verify the canonical finish,
+   independent read and landing rather than stopping at a report or push. Proactively rework the
+   actual bottleneck while preserving valid work and evidence.
+
 ## 1. Session start
 
 **Situation.** You take the seat: a new session, or the same session after a wrap-around.
