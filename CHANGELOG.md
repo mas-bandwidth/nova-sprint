@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.6.22 — 2026-10-26
+
+Cut from d78582f9639d624377d505e812b9be3cef0b66fd. 2 pull requests since v1.6.21.
+
+Recovery journeys incomplete, gate waived: v1.6.22 only closes a stale lander-refusal judgment atomically with a successful landing and records the prior release changelog; it does not change hook recovery or spend recording; exact-head release acceptance passed 81/81
+
+- TestASilentClientIsUnhookedAfterExactlyTwoAnnouncedOnce: not-run (no --journeys evidence)
+- TestNoServerOrNoAnswerIsNoEvidence: not-run (no --journeys evidence)
+- TestTheGateRefusesEveryoneWhileTheServerIsStale: not-run (no --journeys evidence)
+- TestAStaleAnswerIsDownWithAFreshServer: not-run (no --journeys evidence)
+- TestALostAnswerIsNeverToldTwice: not-run (no --journeys evidence)
+
+Spend gate waived: v1.6.22 only closes a stale lander-refusal judgment atomically with a successful landing and records the prior release changelog; it does not change hook recovery or spend recording; exact-head release acceptance passed 81/81 (window 2026-10-25T00:00:00Z..2026-10-26T00:23:10Z)
+- unread: --spend-store <addr> names no sprint store, so the recorded spend cannot be read
+
+- #610 changelog: v1.6.21
+- #611 fix: close obsolete lander refusal on landing
+
 ## v1.6.21 — 2026-10-25
 
 Cut from 371db8462c2c606a553fd663ae2234b7bebb80f9. 6 pull requests since v1.6.20.
