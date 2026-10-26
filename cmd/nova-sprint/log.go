@@ -15,8 +15,9 @@ import (
 
 // cmdLog prints the epoch's log: every change of every card and every
 // notification, in the order written, filtered by card, stream, member and
-// time. The inbox's cursor never hides a line. A brief given on a line is
-// said by its size and the card that shows it, not printed (--json has it).
+// time and capped by --max (default 20; 0 is all). The inbox's cursor never
+// hides a line. A brief given on a line is said by its size and the card that
+// shows it, not printed (--json has it).
 func (a *app) cmdLog(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("log")
 	waitTick := fs.Duration("wait-tick", 0, "with --json: wait for a tick-end note after --after; zero samples the notes-stream cursor")
@@ -71,13 +72,21 @@ func (a *app) cmdLog(args []string, stdout, stderr io.Writer) int {
 			out = append(out, l)
 		}
 	}
+	total := len(out)
+	if c.max > 0 && len(out) > c.max {
+		out = out[len(out)-c.max:]
+	}
+	more := len(out) < total
 	if c.json {
 		if out == nil {
 			out = []sprint.Line{}
 		}
 		b, _ := json.Marshal(struct {
 			Lines []sprint.Line `json:"lines"`
-		}{out})
+			Shown int           `json:"shown"`
+			Total int           `json:"total"`
+			More  bool          `json:"more"`
+		}{out, len(out), total, more})
 		fmt.Fprintln(stdout, string(b))
 		return 0
 	}
@@ -117,8 +126,29 @@ func (a *app) cmdLog(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stdout, "    brief: %d bytes, shown by nova-sprint card %s\n", len(brief), oneline.Field(l.Card))
 		}
 	}
+	if more {
+		fmt.Fprintf(stdout, "MORE kind=log shown=%d total=%d run: %s\n", len(out), total, logMoreCmd(*card, *stream, *member, *since, *atEpoch))
+	}
 	fmt.Fprintf(stdout, "LOG OK lines=%d of=%d\n", len(out), len(lines))
 	return 0
+}
+
+func logMoreCmd(card, stream, member, since string, atEpoch int64) string {
+	cmd := "nova-sprint log"
+	for _, f := range [][2]string{
+		{"--card", card},
+		{"--stream", stream},
+		{"--member", member},
+		{"--since", since},
+	} {
+		if f[1] != "" {
+			cmd += " " + f[0] + " " + oneline.Field(f[1])
+		}
+	}
+	if atEpoch >= 0 {
+		cmd += fmt.Sprintf(" --at-epoch %d", atEpoch)
+	}
+	return cmd + " --max 0"
 }
 
 // logLine is one line as the log and a card's timeline print it: the local
