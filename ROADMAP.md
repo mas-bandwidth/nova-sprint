@@ -4,13 +4,19 @@
 
 This is the nova-sprint, nova-card and nova-work work after the point releases. The release plan (the owner, 2026-10-11) replaces the ladder of 2026-10-09. The v1.2.x point releases come first and are cut in turn: v1.2.10 (being cut), v1.2.11 small fixes, v1.2.12 tests and models only, v1.2.13 contraction (fewer lines, no behaviour change), v1.2.14 the next small fixes; FIXES.md holds each one's scope and fixes, and an item below whose target is a v1.2.x release is waiting for its card. The aim is v1.2.x working pretty well, so it is the reference for intended behaviour: v1.3, unstable, is the re-architecture (the client/server conversion, then each layer secured from the bottom), built by the sprint running on v1.2.x and checked against it, rather than a blind rewrite; like getting a compiler self-hosting, then using it to build a better compiler. v1.4 is the stable release of v1.3, architecturally correct top to bottom. Point releases continue until only architectural items are open: an area stops taking point fixes when a fix there is the same problem in another form, or would be its third, and each v1.3 architectural item names the point fixes it replaces. Friend work is dogfooded within the week, once more friends are online: friends alone, then friends and fleet together, each friend bug a point-release card. These items were the sprint half of nova-tools' roadmap and moved here with the split, with the sprint's docs and models; nova-tools' ROADMAP.md holds the rest. Point-release work is in FIXES.md, not here. Each item says what it is and why it waits. Where the code already has part of an item, the item says what exists and covers only the gap.
 
+## Done
+
+Decided and in place. Recorded so the items that measure them have their starting point.
+
+- **Deal a read only to a reader with a free slot, and level an untaken one** (2026-10-24). PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). The deal hands a read only to a reader with a free slot; a ready read untaken past a short bound is levelled to another eligible reader; and friend give moves a ready read as it moves a work card (today it refuses read ids: no card <id>.r7.<friend>). Related: friend-give-holds-for-named-friend, stalled-friend-detector, fleet-reads-launch-without-route (v1.7). Done: PR #604.
+
 ## Contents
 
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
 - [The sprint system](#the-sprint-system) (310)
 - [Setup, release and operations](#setup-release-and-operations) (72)
 - [Docs, models and the repository](#docs-models-and-the-repository) (25)
-- [Friend AIs](#friend-ais) (29)
+- [Friend AIs](#friend-ais) (28)
 - [Moved out of the sprint on 2026-10-15: nova-local](#moved-out-of-the-sprint-on-2026-10-15-nova-local) (1)
 - [Moved out of the sprint on 2026-10-15: v13-blockers](#moved-out-of-the-sprint-on-2026-10-15-v13-blockers) (19)
 - [Moved out of the sprint on 2026-10-15: v15-features](#moved-out-of-the-sprint-on-2026-10-15-v15-features) (1)
@@ -3757,16 +3763,6 @@ From: coordinator review 2026-10-24
 PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). When a friend's attempt stops being live (redealt, re-tiered off the row, given to another friend or a fleet lane, withdrawn), the machine pushes a bus message to that friend naming the attempt, the new owner and: stop and hand over your head. Companion to redeal-carries-previous-head, which tells the new owner; this tells the old one.
 
 Why it waits: On 2026-10-24 three workers on one row kept running 1 to 2 hours on cards that had moved to another friend or a fleet member (rn-client-iocp-windows-t, rn-fix-assert-iocp-packet-id, rn-fix-cfg-config-bytes), queued duplicate Windows gate jobs, and stopped only when checked by hand.
-
-Target: v1.9
-
-From: coordinator review 2026-10-24
-
-### Deal a read only to a reader with a free slot, and level an untaken one
-
-PRIORITY: critical (Glenn 2026-10-24: "card these as critical for v1.9"). The deal hands a read only to a reader with a free slot; a ready read untaken past a short bound is levelled to another eligible reader; and friend give moves a ready read as it moves a work card (today it refuses read ids: no card <id>.r7.<friend>). Related: friend-give-holds-for-named-friend, stalled-friend-detector, fleet-reads-launch-without-route (v1.7).
-
-Why it waits: On 2026-10-24 four reads waited in the ready column of a friend whose row was at 8 of 8, while 18 cards sat in review and nothing merged.
 
 Target: v1.9
 
