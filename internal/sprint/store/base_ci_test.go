@@ -50,3 +50,40 @@ func TestTheStorePassesTheBaseCIFactsToTheTick(t *testing.T) {
 	h2.machine()
 	require.Empty(t, h2.openOf(sprint.NBaseCIRed), "with BaseCI nil the tick raised a judgment")
 }
+
+// The red-base judgment names a repository and base, not a card: a second tick
+// keeps it open (the orphan check and the retire pass leave it be) and raises no
+// broken-invariant judgment about it.
+func TestTheBaseCIJudgmentSurvivesASecondTick(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	h.startMachine()
+	h.st.BaseCI = func() []sprint.BaseCIFacts {
+		return []sprint.BaseCIFacts{{
+			Repo:     "mas-bandwidth/nova-tools",
+			Base:     "main",
+			Tip:      "1111111111111111111111111111111111111111",
+			Red:      true,
+			FirstRed: "2222222222222222222222222222222222222222",
+			Failed:   []string{"internal/ci TestHarnessWatchIsWired"},
+		}}
+	}
+	h.machine()
+	first := h.openOf(sprint.NBaseCIRed)
+	require.Len(t, first, 1, "the first tick raised the judgment: %+v", first)
+	require.Empty(t, h.openOf(sprint.NInvariant), "the first tick raised a broken invariant")
+
+	h.machine()
+	second := h.openOf(sprint.NBaseCIRed)
+	require.Len(t, second, 1, "the second tick kept the judgment open: %+v", second)
+	require.Equal(t, first[0].Note.ID, second[0].Note.ID, "the same judgment, not retired and raised again")
+	require.Empty(t, h.openOf(sprint.NInvariant), "the second tick raised a broken invariant: %+v", h.openOf(sprint.NInvariant))
+
+	// with no facts this tick, the judgment is carried, still with no invariant
+	h.st.BaseCI = func() []sprint.BaseCIFacts { return nil }
+	h.machine()
+	third := h.openOf(sprint.NBaseCIRed)
+	require.Len(t, third, 1, "a tick with no facts kept the judgment: %+v", third)
+	require.Equal(t, first[0].Note.ID, third[0].Note.ID, "the same judgment")
+	require.Empty(t, h.openOf(sprint.NInvariant), "the third tick raised a broken invariant: %+v", h.openOf(sprint.NInvariant))
+}
