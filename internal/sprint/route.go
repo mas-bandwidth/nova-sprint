@@ -396,6 +396,10 @@ func (s *Snapshot) TierNotLive(tier string) (reasons []string, ok bool) {
 	}
 	var out []string
 	for _, name := range arr {
+		if p, unfunded := s.routeUnfunded(name); unfunded {
+			out = append(out, name+": "+UnfundedWhy(p))
+			continue
+		}
 		rest, ok := s.resting(name)
 		if !ok || !rest.Resting(s.Now) {
 			return nil, false
@@ -772,6 +776,12 @@ func (s *Snapshot) servedRoute(tier, member, name string, drawing bool) (Route, 
 		if r.Name != name || r.Tier != tier || !r.Enabled {
 			continue
 		}
+		if !s.providerFunded(r.Provider) {
+			// an unfunded provider's route is left out as a resting one is, though it stays
+			// enabled: funded is the one true source (unfunded.go; tla/ProviderFunding.tla
+			// NoDealToUnfunded)
+			return Route{}, false
+		}
 		if rest, ok := s.resting(r.Name); ok && (drawing || rest.Cause != RestRateBackoff) {
 			// a rate-limit backoff is a stall, never an unserved tier: the draw leaves the
 			// route out, a check of the tier does not, so a backoff is never a judgment, as a
@@ -851,6 +861,10 @@ func (s *Snapshot) enabledRoute(tier, name string) bool {
 func (s *Snapshot) unservedWhy(tier, member string, drawing bool) (rested, unlaunchable, full []string) {
 	for _, r := range s.Routes {
 		if r.Tier != tier || !r.Enabled {
+			continue
+		}
+		if !s.providerFunded(r.Provider) {
+			rested = append(rested, r.Name+": "+UnfundedWhy(r.Provider))
 			continue
 		}
 		if rest, ok := s.resting(r.Name); ok {
@@ -1054,7 +1068,9 @@ func (s *Snapshot) readRoutesAllRest(pr *Card) bool {
 		if r.Tier != tier || !r.Enabled {
 			continue
 		}
-		if _, rests := s.resting(r.Name); !rests {
+		// an unfunded provider's route serves no read, as a resting one does not
+		// (unfunded.go, providerFunded)
+		if _, rests := s.resting(r.Name); !rests && s.providerFunded(r.Provider) {
 			return false
 		}
 		served = true
@@ -1084,7 +1100,9 @@ func (s *Snapshot) readRouteOf(ri routeIndexes, pr *Card, avoid []string) map[st
 	}
 	served := make([]Route, 0, len(s.Routes))
 	for _, r := range s.Routes {
-		if r.Tier == tier && r.Enabled {
+		// an unfunded provider's route is never drawn, not even as the fallback of a tier
+		// whose every route rests (unfunded.go; tla/ProviderFunding.tla NoDealToUnfunded)
+		if r.Tier == tier && r.Enabled && s.providerFunded(r.Provider) {
 			served = append(served, r)
 		}
 	}

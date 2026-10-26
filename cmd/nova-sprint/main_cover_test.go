@@ -170,7 +170,7 @@ func TestMainCoverLibraryMatchesAcceptsTheEmbeddedLibraryAndRefusesTheRest(t *te
 			name:    "the store holds none: refused, naming the load",
 			reply:   "*0\r\n",
 			refused: true,
-			holds:   []string{"holds no " + fn.Library + " function library", "nova-redis fn load --addr 127.0.0.1:6379"},
+			holds:   []string{"holds no " + fn.Library + " function library", "nova-redis fn load --redis 127.0.0.1:6379"},
 		},
 		{
 			name:    "the store holds another build's: refused, naming both sums",

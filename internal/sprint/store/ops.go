@@ -95,6 +95,7 @@ func (st *Store) check(ctx context.Context, reads int, streams bool) (CheckRepor
 		if err != nil {
 			return rep, nil, err
 		}
+		s.Self = st.Self
 		s.Friends, err = st.FriendSeats(ctx, s.Now)
 		if err != nil {
 			return rep, nil, err

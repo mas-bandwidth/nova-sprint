@@ -92,6 +92,9 @@ func cardRemedy(c *sprint.Card) string {
 	}
 	switch c.Col {
 	case sprint.Waiting, sprint.Ready:
+		if sprint.IsHeld(c) {
+			return "nova-sprint release " + c.ID + " --reason '<why>' (it was added held), or nova-sprint drop " + c.ID + " --reason '<why>'"
+		}
 		return "nova-sprint brief " + c.ID + " --brief-file <path> (change its task), or nova-sprint drop " + c.ID + " --reason '<why>'"
 	case sprint.Working:
 		return "nova-sprint card " + c.ID + " (its attempt is running: once it finishes (review), accept, rework or drop it), or now: nova-sprint drop " + c.ID + " --reason '<why>'"

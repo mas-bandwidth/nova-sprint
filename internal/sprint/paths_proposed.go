@@ -259,16 +259,18 @@ func PathsTwinID(s *Snapshot, c *Card) string {
 	return ""
 }
 
-// WidenBrief is brief with every PATHS: line widened by globs and, with carry, its CARRY:
+// WidenBrief is brief's header PATHS: line widened by globs and, with carry, its CARRY:
 // line (PathsWidened, the read-broken rule's), and a PATHS: line after line 1 holding just
-// globs when it has none.
+// globs when its header has none (TestAWidenChangesOnlyTheHeaderScopeLines: lines below the
+// header are prose).
 func WidenBrief(brief string, globs []string, carry string) string {
-	for _, l := range strings.Split(brief, "\n") {
-		if k, _, ok := cardhdr.KeyValue(strings.TrimSpace(l)); ok && k == cardhdr.KeyPaths {
+	lines := strings.Split(brief, "\n")
+	end := headerEnd(lines)
+	for i := 1; i < end; i++ {
+		if k, _, ok := cardhdr.KeyValue(lines[i]); ok && k == cardhdr.KeyPaths {
 			return PathsWidened(brief, globs, carry)
 		}
 	}
-	lines := strings.Split(brief, "\n")
 	lines = slices.Insert(lines, min(1, len(lines)), cardhdr.KeyPaths+": "+strings.Join(globs, ","))
 	return PathsWidened(strings.Join(lines, "\n"), nil, carry)
 }

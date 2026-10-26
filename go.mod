@@ -9,7 +9,7 @@ tool (
 
 require (
 	github.com/jackc/pgx/v5 v5.11.0
-	github.com/mas-bandwidth/nova-tools v1.5.2
+	github.com/mas-bandwidth/nova-tools v1.6.2-0.20261018232008-3fe6fe6d4d69
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/stretchr/testify v1.12.1
 	go.uber.org/goleak v1.3.0
@@ -30,7 +30,7 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/sync v0.23.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/sys v0.48.0
 	golang.org/x/telemetry v0.0.0-20260908163034-4bcc4b2ee518 // indirect
 	golang.org/x/text v0.40.0 // indirect
 )

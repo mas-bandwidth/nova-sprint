@@ -29,6 +29,15 @@ A repository's own catalog names more ledgers with a `LEDGERS` line in its `AGEN
 `nova.sexp`, read at staging by `cardgen.CatalogLedgers(repoDir)` and passed to
 `cardgen.LedgerInPaths`; absent, the built-in set stands.
 
+A repository can also declare its shared registry files in `.nova/always-allowed` at the
+repository root, one repository-relative path or glob per line (`#` comments and blank
+lines ignored), naming the files that are always inside every card's PATHS as the built-in
+set is. The lander reads it at the base, never at the card's head, so a card that edits it
+gets no exemption from its own edit, and the registry file is not itself always-allowed; the
+built-in set still stands beside it. `cardgen.SharedRegistries(repoDir)` reads it and
+`cardgen.ParseSharedRegistries` parses its bytes; `cardgen.AlwaysInPaths` holds its entries
+inside every PATHS beside the built-in set (docs/SPEC-SPRINT.md section 7).
+
 ## The merge rule
 
 A merge stopped only on ledgers is resolved, not refused:

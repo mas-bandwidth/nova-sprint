@@ -324,6 +324,7 @@ type lander struct {
 	epoch         uint64              // the epoch land read: every report is fenced to it
 	diffs         map[string]string   // each card's merge diff, as checkCard read it, for its score
 	scope         map[string][]string // each card's scope amendments, as checkCard allowed them (sprint.ScopeAmended)
+	mergeOf       map[string]string   // each forward-merge card's exemption note, as checkCard resolved it (sprint.MergeOf)
 	prose         map[string][]string // each stream's prose globs (sprint.StreamProse), whose backquotes checkCard does not read
 	toScore       []scoreJob          // the landed batches, scored after the whole pass (landscore.go)
 	// toCost is the red gates' decide calls, each split over its batch's cards, written on
@@ -538,7 +539,7 @@ func (a *app) land(args []string, stdout, stderr io.Writer, gate **hookGateError
 	if a.baseGateFails == nil {
 		a.baseGateFails = map[string]*baseGateFail{}
 	}
-	l := &lander{a: a, c: *c, st: st, repoDir: *repoDir, base: *base, check: *check, dry: *dry, twin: a.twinOpen(c.redis), epoch: st.PinnedEpoch(), diffs: map[string]string{}, scope: map[string][]string{}, prose: map[string][]string{},
+	l := &lander{a: a, c: *c, st: st, repoDir: *repoDir, base: *base, check: *check, dry: *dry, twin: a.twinOpen(c.redis), epoch: st.PinnedEpoch(), diffs: map[string]string{}, scope: map[string][]string{}, mergeOf: map[string]string{}, prose: map[string][]string{},
 		baseGateCache: a.baseGateCache, baseGateFails: a.baseGateFails, cureTried: map[string]bool{}, parallel: *parallel}
 	l.locks()
 	defer l.release()
@@ -835,11 +836,12 @@ func (l *lander) dryGateBatch(b *landBatch) bool {
 	return true
 }
 
-// dryGate is the dry run's tree gate, which runs nothing: the bench the loop would send
-// the batch's gate to (the first slot of the batch's stream on the ring over gateHosts,
-// benchRing), or, when another member is configured and none may gate, the loop's refusal
-// (benchGateUnavailableWhy). Both are empty for a clone with no gate (no go.mod and no
-// CMakeLists.txt, treeGate) and when the gate would run here. No ssh and no git.
+// dryGate is the dry run's tree gate, which runs nothing: the bench the land would send
+// the batch's gate to (gateBenches, the route runTreeGate takes: the first slot of the
+// batch's stream on the ring over the gate benches, benchRing), or, when another member is
+// configured and none may gate, the land's refusal (benchGateUnavailableWhy). Both are
+// empty for a clone with no gate (no go.mod and no CMakeLists.txt, treeGate) and when the
+// gate would run here, as a direct land's does. No ssh and no git.
 func (l *lander) dryGate(dir string) (host, why string) {
 	if dir != "" {
 		_, gerr := os.Stat(filepath.Join(dir, "go.mod"))
@@ -848,7 +850,7 @@ func (l *lander) dryGate(dir string) (host, why string) {
 			return "", ""
 		}
 	}
-	hosts, remote := l.gateHosts(context.Background())
+	hosts, _, remote := l.gateBenches(context.Background())
 	if len(hosts) > 0 {
 		return benchRing(l.gateKey, hosts)[0], ""
 	}
@@ -1467,9 +1469,12 @@ func (l *lander) hidePushed(s *sprint.Snapshot, order []string) {
 // (sprint.MarkLanding), or is refused naming the card and its count, nothing pushed. From
 // the mark on, through the push, the report and a crash between them, the tick never sends
 // the card back to review (tla/Land.tla Check, PushedNeverSentBack, NoLandWithoutReads).
-func (l *lander) markLanding(stream string, pins []landCard) string {
+// It returns how many pins, from the first, are marked and may be pushed: all of them, or,
+// when the one refusal is the LAND-AFTER skip at pin k (sprint.LandOrderSkipped), k, with
+// that refusal; 0 with the refusal for every other (tla/SoftDependency.tla MarkPush).
+func (l *lander) markLanding(stream string, pins []landCard) (int, string) {
 	if l == nil || l.dry || l.st == nil || l.a == nil || len(pins) == 0 {
-		return ""
+		return len(pins), ""
 	}
 	marked := make([]sprint.PushedPin, len(pins))
 	for i, c := range pins {
@@ -1490,12 +1495,22 @@ func (l *lander) markLanding(stream string, pins []landCard) string {
 	defer l.a.serial.Unlock()
 	res, err := l.st.Run(context.Background(), step)
 	if err != nil {
-		return "the landing could not be marked before the push: " + oneline.Err(err) + "; nothing pushed"
+		return 0, "the landing could not be marked before the push: " + oneline.Err(err) + "; nothing pushed"
 	}
 	if len(res.Refused) > 0 {
-		return stepWhy(res, nil)
+		// only the LAND-AFTER skip ends the batch at its pin, the pins before it marked in
+		// this step (sprint.LandOrderSkipped); every other refusal (not queued, head moved,
+		// re-pointed, reads short) wrote nothing and refuses the whole batch, nothing pushed
+		if r := res.Refused[0]; len(res.Refused) == 1 && sprint.LandOrderSkipped(r) {
+			for i, pin := range pins {
+				if r.Key == pin.id {
+					return i, stepWhy(res, nil)
+				}
+			}
+		}
+		return 0, stepWhy(res, nil)
 	}
-	return ""
+	return len(pins), ""
 }
 
 func (l *lander) markPushed(stream, sha string, pins []landCard) error {
@@ -2356,9 +2371,48 @@ func (l *lander) checkCard(ctx context.Context, dir, stream string, c landCard, 
 	if tracked != "" {
 		beforePaths = strings.Split(tracked, "\n")
 	}
+	// The repository's shared registry (.nova/always-allowed) is read at the base, never
+	// at the head, so a card that edits it gets no exemption from its own edit, and the
+	// registry file is not itself always-allowed (cardgen.SharedRegistries;
+	// docs/SPEC-LANDING.md, docs/SPEC-SPRINT.md section 7). The base's bytes are read
+	// from git and handed to the same reader a checkout would use.
+	var registries []string
+	if data, err := l.git(ctx, dir, "show", before+":.nova/always-allowed"); err == nil {
+		if tmp, terr := os.MkdirTemp("", "nova-always-allowed-"); terr == nil {
+			defer os.RemoveAll(tmp)
+			if os.MkdirAll(filepath.Join(tmp, ".nova"), 0o755) == nil &&
+				os.WriteFile(filepath.Join(tmp, ".nova", "always-allowed"), []byte(data), 0o644) == nil {
+				registries = cardgen.SharedRegistries(tmp)
+			}
+		}
+	}
+	// SPEC-SPRINT section 7: a forward-merge card (a MERGE-OF line) resolves the
+	// merged parent and exempts every changed file that arrived unchanged through the
+	// merge (sprint.MergeOf); the rest still need PATHS exactly as today. When the
+	// branch cannot be resolved the refusal says why and nothing is exempt.
+	var exempt []string
+	mergeOfCard := false
+	if br, ok := swarm.CardHeaderValue([]byte(c.brief), "MERGE-OF"); ok && strings.TrimSpace(br) != "" {
+		mergeOfCard = true
+		br = strings.TrimSpace(br)
+		res, merr := sprint.MergeOf(dir, func(args ...string) (string, error) { return l.git(ctx, dir, args...) }, before, after, br)
+		if merr != nil {
+			why = append(why, "merge-of unresolved ("+br+"): "+merr.Error())
+		} else if res != nil {
+			exempt = res.Exempt
+			l.mergeOf[c.id] = fmt.Sprintf("merge-of=%s@%s exempt=%d", br, shortSha(res.Parent), len(exempt))
+		}
+	}
 	// SPEC-SPRINT section 7: required validation files are inside every PATHS;
 	// ordinary scope amendments remain recorded and unrelated source stays refused.
-	amended, out := sprint.LandScope(c.paths, diff, beforePaths)
+	// A card with no MERGE-OF line is checked exactly as today, through LandScope
+	// with no git call added (rule 5); only a forward-merge card uses the exemption.
+	var amended, out []string
+	if mergeOfCard {
+		amended, out = sprint.LandScopeMergeOf(c.paths, diff, beforePaths, exempt, registries...)
+	} else {
+		amended, out = sprint.LandScope(c.paths, diff, beforePaths, registries...)
+	}
 	if len(out) > 0 {
 		parts := make([]string, 0, len(out))
 		for _, f := range out {
@@ -2464,9 +2518,14 @@ func (l *lander) runCheck(ctx context.Context, dir string) (why, out string) {
 	if l.check == "" {
 		return "", ""
 	}
-	b := subproc.Prepare(ctx, landCheckBudget, "sh", "-c", l.check)
+	argv := gateArgv(l.check)
+	b := subproc.Prepare(ctx, landCheckBudget, argv[0], argv[1:]...)
 	defer b.Cancel()
-	b.Cmd.Dir, b.Cmd.Env = dir, l.a.gitEnv
+	env := l.a.gitEnv
+	if env == nil {
+		env = os.Environ()
+	}
+	b.Cmd.Dir, b.Cmd.Env = dir, gateChildEnv(env)
 	raw, err := b.Cmd.CombinedOutput()
 	if err = b.Wrap("check "+l.check, err); err != nil {
 		return "the check " + l.check + " failed: " + oneline.Err(err) + checkTail(string(raw)), string(raw)
@@ -2735,7 +2794,10 @@ func (l *lander) git(ctx context.Context, dir string, args ...string) (string, e
 	res, err := gitrun.Run(ctx, gitrun.Options{C: dir, Env: l.gitEnv(), OwnRepo: dir != ""}, args...)
 	if err != nil {
 		words := strings.TrimSpace(string(res.Stderr) + "\n" + string(res.Stdout))
-		return "", fmt.Errorf("git %s: %w: %s", args[0], err, words)
+		if slices.Contains(args, "-z") {
+			return string(res.Stdout), fmt.Errorf("git %s: %w: %s", args[0], err, words)
+		}
+		return strings.TrimSpace(string(res.Stdout)), fmt.Errorf("git %s: %w: %s", args[0], err, words)
 	}
 	if slices.Contains(args, "-z") {
 		return string(res.Stdout), nil
@@ -2765,7 +2827,7 @@ func (l *lander) gitEnv() []string {
 	if env == nil {
 		env = os.Environ()
 	}
-	return withMachineGitIdentity(env, l.identity)
+	return withMachineGitIdentity(gateChildEnv(env), l.identity)
 }
 
 // firstLine is a failure's words on one line: the error's, else out's.
@@ -2806,6 +2868,9 @@ func (l *lander) scopeOf(merged []string) []string {
 	for _, id := range merged {
 		for _, f := range l.scope[id] {
 			out = append(out, id+":"+f)
+		}
+		if n := l.mergeOf[id]; n != "" {
+			out = append(out, id+":"+n)
 		}
 	}
 	return out

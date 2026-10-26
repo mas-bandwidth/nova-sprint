@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
@@ -113,6 +114,24 @@ func ruleReadBroken(s *Snapshot, a *RuleAnswer) {
 		left(a, spent)
 		return
 	}
+	// a sibling read of the same attempt that is begun and whose lease is live at the sprint's
+	// now still owes its verdict: reworking now would retire it, its finding lost, so the rule
+	// waits for the latest such lease to expire or report. An asked read not yet begun, a read
+	// of another attempt and a read whose lease has lapsed never hold it (time is s.Now, never
+	// time.Now()).
+	if siblings := liveReadSiblings(s, pr); len(siblings) > 0 {
+		ids, until := make([]string, 0, len(siblings)), time.Time{}
+		for _, rc := range siblings {
+			ids = append(ids, rc.ID)
+			if exp := ReadLeaseExpires(rc); exp.After(until) {
+				until = exp
+			}
+		}
+		a.Card, a.Act, a.until = pr.ID, ActWaitReads, until
+		a.Why = fmt.Sprintf("a reader found attempt %s broken: waiting for read %s, begun and its lease live until %s; the fix carries every broken finding once it reports or its lease expires",
+			pr.F("attempt"), strings.Join(ids, ","), stamp(until))
+		return
+	}
 	// below the cap: a finding outside PATHS under the widen cap widens the brief in place (a
 	// machine's act: the attempt cap's count stands, BriefReq.ByRule); a finding inside PATHS
 	// is reworked with the finding as the fix, the same-finding bound outweighed by the broken
@@ -128,6 +147,18 @@ func ruleReadBroken(s *Snapshot, a *RuleAnswer) {
 	a.Act = ActRework
 	a.Why = fmt.Sprintf("a reader found attempt %s broken: its finding is the fix, on the same tier", pr.F("attempt"))
 	a.set = map[string]string{FieldNote: cutText(RuleSaid(RuleReadBroken, a.Act+": "+a.Why), MaxCardTextBytes)}
+}
+
+// liveReadSiblings is the primary's reads of its attempt that are begun (Reading) and whose
+// lease is live at the sprint's now, in readers-table order.
+func liveReadSiblings(s *Snapshot, pr *Card) []*Card {
+	var out []*Card
+	for _, rc := range s.Readers.Of(pr.ID) {
+		if rc.Col == Reading && rc.Int("attempt") == pr.Int("attempt") && ReadLeaseLive(rc, s.Now) {
+			out = append(out, rc)
+		}
+	}
+	return out
 }
 
 // findingFileRE is a repository path a finding names: a relative path of two or more parts.
@@ -174,23 +205,41 @@ func FilesOutsidePaths(brief, finding string) []string {
 	return out
 }
 
-// PathsWidened is brief with files added to every PATHS: line, each once, the old first, and
-// carry (when given) as its CARRY: line (member.CarryLine's shape), in place of one in its
-// header or after line 1.
+// PathsWidened is brief with files added to its header's one PATHS: line, each once, the old
+// first, and carry (when given) as its header CARRY: line (member.CarryLine's shape), in place
+// of one there or after line 1. Lines below the header are prose, never read or written; a
+// header naming PATHS or SHARED twice is returned unchanged for its caller to refuse
+// (TestAWidenChangesOnlyTheHeaderScopeLines).
 func PathsWidened(brief string, files []string, carry string) string {
 	lines := strings.Split(brief, "\n")
-	carried := carry == ""
-	for i, l := range lines {
-		t := strings.TrimSpace(l)
-		if k, v, ok := cardhdr.KeyValue(t); ok && k == cardhdr.KeyPaths {
-			var globs []string
-			for _, g := range append(strings.Split(v, ","), files...) {
-				if g = strings.TrimSpace(g); g != "" && g != "none" && !slices.Contains(globs, g) {
-					globs = append(globs, g)
-				}
+	if headerRepeatsScope(lines) {
+		return brief
+	}
+	end := headerEnd(lines)
+	start := 1
+	if len(lines) == 1 {
+		start = 0 // a bare scope line is scopeListWidened's (steps_edit.go), not a brief
+	}
+	var at []int
+	for i := start; i < end; i++ {
+		if k, _, ok := cardhdr.KeyValue(lines[i]); ok && k == cardhdr.KeyPaths {
+			at = append(at, i)
+		}
+	}
+	for _, i := range at {
+		l := lines[i]
+		k, v, _ := cardhdr.KeyValue(l)
+		var globs []string
+		for _, g := range append(strings.Split(v, ","), files...) {
+			if g = strings.TrimSpace(g); g != "" && g != "none" && !slices.Contains(globs, g) {
+				globs = append(globs, g)
 			}
-			lines[i] = l[:len(l)-len(strings.TrimLeft(l, " \t"))] + k + ": " + strings.Join(globs, ",")
-		} else if strings.HasPrefix(t, "CARRY:") && !carried {
+		}
+		lines[i] = l[:len(l)-len(strings.TrimLeft(l, " \t"))] + k + ": " + strings.Join(globs, ",")
+	}
+	carried := carry == ""
+	for i := 1; i < end; i++ {
+		if k, _, ok := cardhdr.KeyValue(lines[i]); ok && k == "CARRY" && !carried {
 			lines[i], carried = carry, true
 		}
 	}
@@ -207,16 +256,29 @@ func PathsWidened(brief string, files []string, carry string) string {
 // counted from it; the finding its fix, its judgment answered by the decided note. One card a
 // tick. A brief edit refused leaves the judgment open, the coordinator's.
 func TickRuleWidenRead(s *Snapshot, r TickReq) (Plan, int) {
+	var updates []Note
 	for _, a := range acting(s, r, ActWidenRead) {
 		pr := s.Work.Placed(a.Card)
 		carry := ""
 		if head := pr.F("head"); typedrec.IsFullSha(head) {
 			carry = fmt.Sprintf("CARRY: %s attempt %d head=%s", pr.ID, pr.Int("attempt"), head)
 		}
-		p := Brief(s, BriefReq{ID: pr.ID, Brief: PathsWidened(pr.F("brief"), a.files, carry), Rules: pr.F(FieldRules), Who: r.who(), ByRule: true})
+		widened := PathsWidened(pr.F("brief"), a.files, carry)
+		if widened == pr.F("brief") {
+			// a header naming PATHS twice is not widened: leave the judgment open, the words
+			// on it (widen.go, TestAWidenChangesOnlyTheHeaderScopeLines)
+			n := a.open.Note
+			if why := "the header names PATHS twice; widen by hand"; !strings.HasPrefix(n.What, why) {
+				n.What = why + ": " + n.What
+				updates = append(updates, n)
+			}
+			continue
+		}
+		p := Brief(s, BriefReq{ID: pr.ID, Brief: widened, Rules: pr.F(FieldRules), Who: r.who(), ByRule: true})
 		if len(p.Refused) > 0 {
 			continue
 		}
+		p.Updates = append(p.Updates, updates...)
 		said := cutText(RuleSaid(a.Rule, a.Act+": "+a.Why), MaxCardTextBytes)
 		for i := range p.Units {
 			u := &p.Units[i]
@@ -264,5 +326,5 @@ func TickRuleWidenRead(s *Snapshot, r TickReq) (Plan, int) {
 		}
 		return p, 0
 	}
-	return Plan{}, 0
+	return Plan{Updates: updates}, 0
 }

@@ -27,6 +27,7 @@ func holdGateSnapshot(state map[string]string) *sprint.Snapshot {
 			fields["status"] = sprint.Up
 		case "coord":
 			fields[sprint.FieldHeld] = "2026-01-01T00:00:00Z"
+			fields[sprint.FieldHeldGate] = "2026-01-01T00:00:00Z"
 		case "ret": // the coordinator took it down with fleet down (hold --return)
 			fields[sprint.FieldHeld] = "2026-01-01T00:00:00Z"
 			fields[sprint.FieldHeldReturn] = "2026-01-01T00:00:00Z"
@@ -46,7 +47,7 @@ func holdGateSnapshot(state map[string]string) *sprint.Snapshot {
 func noGateViolations(vs []sprint.Violation) []sprint.Violation {
 	var out []sprint.Violation
 	for _, v := range vs {
-		if strings.Contains(v.Detail, "no member can run a land gate") {
+		if strings.Contains(v.Detail, "no member the land loop can use") {
 			out = append(out, v)
 		}
 	}
@@ -64,7 +65,7 @@ func TestCheckFlagsMergingCardsWithNoGateBench(t *testing.T) {
 	held := holdGateSnapshot(map[string]string{"m1": "ret", "m2": "ret"})
 	vs := noGateViolations(sprint.Check(held, nil))
 	require.Len(t, vs, 1, "check does not name it: %v", sprint.Check(held, nil))
-	assert.Contains(t, vs[0].Detail, "stream s1 has 1 merging card(s) and no member can run a land gate: nova-sprint fleet unhold <member>")
+	assert.Contains(t, vs[0].Detail, "stream s1 has 1 merging card(s) and no member the land loop can use: nova-sprint fleet unhold <member>")
 
 	up := holdGateSnapshot(map[string]string{"m1": "up", "m2": "coord"})
 	assert.Empty(t, noGateViolations(sprint.Check(up, nil)), "one member up leaves a gate bench: %v", sprint.Check(up, nil))
@@ -127,6 +128,31 @@ func TestAPlantThatRemovesTheLastGateBenchGuardGoesRed(t *testing.T) {
 	assert.Contains(t, p.Refused[0].Why, "holding m2 leaves no gate bench")
 	assert.Equal(t, "m2", p.Refused[0].Key, "it names the last member that could run a gate")
 
-	p = sprint.HoldNames(s, sprint.HoldReq{Names: []string{"m2"}, Reason: "r", NoLastGateGuard: true})
+	sprint.DisableLastGateGuard(t)
+	p = sprint.HoldNames(s, sprint.HoldReq{Names: []string{"m2"}, Reason: "r"})
 	assert.Empty(t, p.Refused, "with the guard removed the hold succeeds, which TestHoldRefusesTheLastGateBench forbids")
+}
+
+// TestAFleetDownOfTheLastGateBenchIsRefused applies the last-gate guard to
+// --return holds (fleet down): the common way a machine is taken out of service is
+// held to the guard like any other hold, and --force-last still overrides it.
+func TestAFleetDownOfTheLastGateBenchIsRefused(t *testing.T) {
+	t.Parallel()
+	s := holdGateSnapshot(map[string]string{"m1": "ret", "m2": "up"})
+	p := sprint.HoldNames(s, sprint.HoldReq{Names: []string{"m2"}, Reason: "r", Return: true})
+	require.Len(t, p.Refused, 1, "fleet down of the remaining gate bench must be refused: %+v", p)
+	assert.Contains(t, p.Refused[0].Why, "holding m2 leaves no gate bench")
+	assert.Contains(t, p.Refused[0].Why, "--force-last")
+	assert.Contains(t, p.Refused[0].Why, "pass it on hold or fleet down")
+
+	p = sprint.HoldNames(s, sprint.HoldReq{Names: []string{"m2"}, Reason: "r", Return: true, ForceLast: true})
+	require.Empty(t, p.Refused, "force-last permits the fleet-down hold: %+v", p.Refused)
+	var line string
+	for _, n := range p.Notes {
+		if strings.Contains(n.What, "member m2 held") {
+			line = n.What
+		}
+	}
+	require.NotEmpty(t, line, "the fleet-down hold's note names m2: %+v", p.Notes)
+	assert.True(t, strings.HasSuffix(line, "--force-last: no gate bench left"), line)
 }

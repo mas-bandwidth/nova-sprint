@@ -1412,8 +1412,10 @@ DecisionReleaseStep ==
 \* (GenerationStep). Enabled in the instances DecisionParkStep is. The
 \* reversed witness "reworkkeepshold" leaves parkState "held", so HeldNeverWorks
 \* fails: the primary works while still held. Only Rework's deal-at-once branch
-\* is modelled (not its no-member-up branch back to ready, nor ClearReads): the
-\* model admits more than the code, never less.
+\* is modelled: the code's no-member-up branch (reworkAnswersHold with
+\* e.Move == nil, lifecycle.go), which leaves the primary in place in ready, is
+\* not modelled (nor is ClearReads), so the model admits less than the code
+\* there.
 ReworkHeldInPlace ==
   /\ Cardinality(Card) <= 2
   /\ Free /\ parkState = "held" /\ InPlace(ParkCard)
@@ -1476,6 +1478,21 @@ Next == \/ (((LegacyNext /\ GenerationStep) \/ Brief \/ OperationalEdit) /\ Park
 
 NoOldBriefHeadInReview ==
   \A c \in Card : state[c] = "review" => (headGeneration[c] = briefGeneration[c] \/ keptHead[c])
+
+\* A failed finish keeps the head it pushed (steps_work.go finishPlan, card
+\* v17-failed-finish-records-its-head): Finish does not tell an ok finish from
+\* a failed (HOLD) one, and either one that ends the attempt in review records
+\* that attempt's head (GenerationStep: headGeneration' = attemptGeneration on
+\* working -> review). So a card in review carries the head of its last
+\* attempt, never an older one, unless a brief edit kept the head explicitly;
+\* a rework and brief --widen start from it. The finishes that end the take
+\* with nothing pushed (takeEnded, envExited, stagingRefused,
+\* needsStopReturned) leave working for ready or waiting, not review, and
+\* record no head. Stronger than NoOldBriefHeadInReview, which reads the brief
+\* generation: this one reads the attempt's.
+FailedFinishRecordsHead ==
+  \A c \in Card :
+    state[c] = "review" => headGeneration[c] = attemptGeneration[c] \/ keptHead[c]
 
 CrashNext ==
   \/ Next

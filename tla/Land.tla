@@ -18,6 +18,15 @@
 \*   epoch     the store's epoch (a clear moves it and empties the tables)
 \*   base      the heads the remote base holds
 \*   tip       the remote base's tip, a counter: every change to the base moves it
+\*   baseTip   the base tip the store has recorded (the durable (repo, base) tip,
+\*             FieldForwardMerge/base_landed_tip): a forward-merge moves it to
+\*             the merge commit, a plain outside commit does not
+\*   fmtip     each card's newest recorded forward-merge tip (FieldForwardMerge;
+\*             0 while none)
+\*   fmchecked the tip each card was last rechecked at (FieldForwardMergeChecked;
+\*             0 while none). A card is pending while fmtip > fmchecked.
+\*   merges    the forward-merges the store logged, each naming the merged
+\*             branch and the tip it moved the base to (NBaseForwardMerged)
 \*   lphase    the lander's step: idle, read, built, checked, pushed
 \*             (reportfirst: idle, read, built, reported)
 \*   lq        the queue as the lander read it, as heads (pinned)
@@ -106,7 +115,13 @@
 \* lander's calls), OtherLand (another lander lands the queue's head,
 \* correctly), Clear (the epoch moves, the store's tables empty), MoveBase
 \* (another commit on the base), Crash (the lander stops at any step), Resume
-\* (a mind resumes a stream the lander's own failure stopped). The machine's:
+\* (a mind resumes a stream the lander's own failure stopped). ForwardMerge is
+\* the coordinator's recorded forward-merge of the base (rebase
+\* --record-forward-merge, RecordForwardMerge): the remote tip moves to the
+\* merge, the store records it (baseTip, merges) and every card not already
+\* merging is marked pending at the new tip. Recheck is its second step
+\* (RecheckForwardMerge): it clears one card's pending mark after the
+\* coordinator reran its behind and brief-at-base checks. The machine's:
 \* ShortBack (below) and OfferAccept (its ready to accept on a card in review,
 \* v1.2.6: never at the head the landing refused).
 \*
@@ -124,6 +139,15 @@
 \*   NeverStoppedByOwn: the stream is never stopped by a refusal of its own
 \*     card's head.
 \*   CarriedHead: a reworked card's next attempt carries the head refused.
+\*   NoDealAgainstStaleTip: no card is dealt (accepted into the merge queue)
+\*     while it is pending a forward-merge recheck. When the base takes a
+\*     recorded forward-merge the store marks every waiting, ready and review
+\*     card at the new tip (fmtip, FieldForwardMerge); the accept refuses a
+\*     card whose recheck has not reached that tip (steps_work.go dealPlan,
+\*     FieldForwardMergeChecked), and Recheck clears one card at a time
+\*     (RecheckForwardMerge) only after its behind count and brief-at-base
+\*     checks pass. Broken "staletip" lets the accept deal a pending card;
+\*     MCLandBrokenStaleTip is the reversed witness that finds the stale deal.
 \*   NoLandWithoutReads (v1.2.6): the lander pushes no head with fewer ok
 \*     reads than it needed when its landing was marked. The accept takes a
 \*     card only with its reads; the setting may rise after (SetReads: set
@@ -154,6 +178,11 @@
 \*   NeverHeldBack: repair never sends back to review a card a change is queued
 \*     for (check.go Rule6Merging s.Held): the card is the owner's while that
 \*     change waits. Broken "repairheld" drops the guard and the rule fails.
+\*   NoPathsRefusalNamesMerged: an E12 refusal of a forward-merge card never
+\*     names a file that arrived unchanged through its MERGE-OF merge
+\*     (sprint.MergeOf, docs/SPEC-SPRINT.md section 7): the refusal draws its
+\*     files from Files \ (paths[c] \cup merged[c]). Broken "nomergeexempt"
+\*     draws from Files \ paths[c] alone and the rule fails.
 \*   NoSentinelInQueue: no sentinel is ever in the merge queue (a sentinel is
 \*     released straight to landed by the coordinator, never merged), so
 \*     Repair's sentinel guard (IsSentinel) is not constant-TRUE by assumption.
@@ -228,6 +257,8 @@
 \*     a card a change is queued for (NeverHeldBack fails).
 \*   "offerrefused" offers to accept a card at the head the landing refused
 \*     (NoOfferAtRefusedHead fails: Accept, Rework, Read, Build, Refuse).
+\*   "nomergeexempt" refuses a forward-merge card with the merged files not
+\*     exempt (the E12 of before this rule); NoPathsRefusalNamesMerged fails.
 \*   "norepair" removes the repair verb's return of a short merging card to
 \*     review (ReachRepair, the reversed witness, holds: nothing repairs).
 \*   "nowidencap" widens with no cap, as the E12 branch did before
@@ -238,6 +269,8 @@
 \*     (AcceptedNeverCapJudged fails).
 \*   "conflictwrong" marks a conflict-only bound the brief's defect and offers
 \*     no carry (ConflictBoundCarries fails, MCLandBoundConflictCarry).
+\*   "staletip" deals a card pending a forward-merge recheck (NoDealAgainstStaleTip
+\*     fails; MCLandBrokenStaleTip, its reversed witness).
 \*
 \* THE BOUND (WaysOn; off in every instance but MCLandBound, where the
 \* definitions below are replaced). sprint.landRefused answers a refusal of
@@ -251,6 +284,11 @@
 \*             resets it
 \*   paths     the files outside its first PATHS that widenings added
 \*   regneed   the regression's files outside the first PATHS (chosen at Init)
+\*   merged    the files that arrive unchanged through the card's MERGE-OF
+\*             merge (sprint.MergeOf; chosen at Init, empty for a card with
+\*             no MERGE-OF); a "paths" refusal never names one
+\*   named     the files the card's last "paths" refusal named (empty until
+\*             one), so NoPathsRefusalNamesMerged can speak of the refusal
 \*   cleared   the card's head no longer fails: chosen at each new attempt,
 \*             TRUE only when regneed is empty or the PATHS meet it (meeting it
 \*             is necessary, not sufficient)
@@ -300,6 +338,11 @@ Cap == MaxAttempts
 MaxWidens == 0
 Files == {}
 
+\* ForwardMerge is off unless an instance replaces it (MCLandForwardMerge): the
+\* control instances stay the size they were, and the forward-merge instance
+\* takes the action and its reversed witness.
+ForwardMergeOn == FALSE
+
 \* The cards the repair verb (and the tick, in the code) leave to the lander or
 \* its owner, never review, as check.go Rule6Merging skips them: a sentinel
 \* (IsSentinel: kind "sentinel") is released straight to landed by the
@@ -316,8 +359,8 @@ VARIABLES queue, att, landed, epoch, base, tip,
           lref, lkind, ready, review, stop, carried, ownstop,
           oks, need, reread, shortland, lcheckneed, markneed,
           rhead, offer, repairback,
-          bat, prevw, prevat, allconf, widens, paths, regneed, cleared, twice,
-          cbound, carryoff, wrongmark,
+          bat, prevw, prevat, allconf, widens, paths, merged, named, fm,
+          cleared, twice, cbound, carryoff, wrongmark,
           capJudged
 
 reads == <<oks, need, reread, markneed>>
@@ -326,14 +369,14 @@ store == <<queue, att, landed, epoch, ready, review, stop, oks, need, reread, ma
 remote == <<base, tip>>
 lander == <<lphase, lq, lbatch, lep, lrep, ltip, tries, lref, lkind, lcheckneed>>
 ghosts == <<badcaller, stalepush, stalerec, lpushed, carried, ownstop, shortland, repairback, capJudged>>
-bound == <<bat, prevw, prevat, allconf, widens, paths, regneed, cleared, twice, cbound, carryoff, wrongmark>>
+bound == <<bat, prevw, prevat, allconf, widens, paths, merged, named, fm, cleared, twice, cbound, carryoff, wrongmark>>
 vars == <<queue, att, landed, epoch, base, tip, lphase, lq, lbatch, lep, lrep, ltip, tries,
           events, badcaller, stalepush, stalerec, lpushed,
           lref, lkind, ready, review, stop, carried, ownstop,
           oks, need, reread, shortland, lcheckneed, markneed,
           rhead, offer, repairback,
-          bat, prevw, prevat, allconf, widens, paths, regneed, cleared, twice,
-          cbound, carryoff, wrongmark,
+          bat, prevw, prevat, allconf, widens, paths, merged, named, fm,
+          cleared, twice, cbound, carryoff, wrongmark,
           capJudged>>
 
 Heads == Cards \X (1..(MaxAttempts + 2))
@@ -342,6 +385,10 @@ Range(s) == {s[i] : i \in 1..Len(s)}
 
 \* A card's current head in the store.
 Current(c) == <<c, att[c]>>
+
+\* A card is pending while the newest recorded forward-merge tip is past the
+\* tip it was last rechecked at (FieldForwardMerge # FieldForwardMergeChecked).
+Pending(c) == fm.fmtip[c] > fm.fmchecked[c]
 
 \* The queue as heads, and a sequence of heads as ids.
 QHeads == [i \in 1..Len(queue) |-> Current(queue[i])]
@@ -409,8 +456,18 @@ TypeOK ==
   /\ allconf \in [Cards -> BOOLEAN]
   /\ cbound \subseteq Cards /\ carryoff \subseteq Cards /\ wrongmark \subseteq Cards
   /\ widens \in [Cards -> Nat]
-  /\ paths \in [Cards -> SUBSET Files] /\ regneed \in [Cards -> SUBSET Files]
+  /\ paths \in [Cards -> SUBSET Files]
+  /\ merged \in [Cards -> SUBSET Files] /\ named \in [Cards -> SUBSET Files]
   /\ cleared \in [Cards -> BOOLEAN] /\ twice \in BOOLEAN
+  \* fm carries the regression's files (regneed) beside the recorded base tip,
+  \* the per-card forward-merge marks and the merge log (it is one state
+  \* variable, with the bound's part, so the model stays within TLC's variable
+  \* count).
+  /\ fm \in [regneed : [Cards -> SUBSET Files],
+             baseTip : Nat,
+             fmtip : [Cards -> Nat],
+             fmchecked : [Cards -> Nat],
+             merges : SUBSET [from : {"schema-go"}, tip : Nat]]
 
 Init ==
   /\ queue = <<>> /\ att = [c \in Cards |-> IF Broken = "capaccepted" THEN 4 ELSE 1] /\ landed = {} /\ epoch = 0
@@ -425,7 +482,14 @@ Init ==
   /\ repairback = FALSE
   /\ bat = [c \in Cards |-> 0] /\ prevw = [c \in Cards |-> {}] /\ prevat = [c \in Cards |-> 0] /\ allconf = [c \in Cards |-> TRUE]
   /\ widens = [c \in Cards |-> 0] /\ paths = [c \in Cards |-> {}]
-  /\ regneed \in [Cards -> SUBSET Files] /\ cleared = [c \in Cards |-> FALSE] /\ twice = FALSE
+  /\ fm \in [regneed : [Cards -> SUBSET Files],
+             baseTip : {0},
+             fmtip : {[c \in Cards |-> 0]},
+             fmchecked : {[c \in Cards |-> 0]},
+             merges : {{}}]
+  /\ merged \in [Cards -> SUBSET Files]
+  /\ named = [c \in Cards |-> {}]
+  /\ cleared = [c \in Cards |-> FALSE] /\ twice = FALSE
   /\ cbound = {} /\ carryoff = {} /\ wrongmark = {}
 
 \* ---- the lander (land.go) ----
@@ -545,7 +609,7 @@ Report ==
 \* The regression can clear at a new attempt only when it needs nothing outside
 \* the first PATHS or the PATHS now meet what it needs: necessary, not
 \* sufficient, so the clear is chosen.
-Clearable(c, p) == regneed[c] = {} \/ p \cap regneed[c] # {}
+Clearable(c, p) == fm.regneed[c] = {} \/ p \cap fm.regneed[c] # {}
 
 \* The card's next attempt: counted, the refused head carried, ready, and its
 \* head cleared or not (cl, chosen by the caller).
@@ -558,10 +622,16 @@ NextAttempt(c, cl) ==
 \* landRefused with the bound on: the way w of the refusal (the lander names
 \* the files F outside PATHS for "paths"), the brief's bound first for both
 \* ways, then the rework ("other"), the widen in place or the redo ("paths").
+\* E12's forward-merge exemption (sprint.MergeOf, docs/SPEC-SPRINT.md section
+\* 7) draws F from Files \ (paths[c] \cup merged[c]): a file that arrived
+\* unchanged through the merge is never the card's own change and is never
+\* named. Broken "nomergeexempt" draws from Files \ paths[c] alone, the
+\* refusal of a forward-merge card as it was before the exemption.
 RefuseWays(c) ==
-  \E w \in {"paths", "other"}, F \in SUBSET (Files \ paths[c]), isconf \in BOOLEAN :
+  \E w \in {"paths", "other"}, F \in SUBSET (IF Broken = "nomergeexempt" THEN Files \ paths[c] ELSE Files \ (paths[c] \cup merged[c])), isconf \in BOOLEAN :
     /\ (w = "paths") = (F # {})
     /\ (w = "paths") => ~isconf
+    /\ named' = IF w = "paths" THEN [named EXCEPT ![c] = F] ELSE named
     /\ LET same == w \in prevw[c]
            capped == att[c] - bat[c] >= Cap
            spent == w = "paths" /\ widens[c] >= MaxWidens /\ Broken # "nowidencap"
@@ -578,11 +648,11 @@ RefuseWays(c) ==
                /\ wrongmark' = IF carries THEN wrongmark \ {c} ELSE wrongmark \cup {c}
                /\ capJudged' = (capJudged \/ (capped /\ ~spent /\ ~(same /\ Broken # "nosamefinding")))
                /\ UNCHANGED <<att, ready, carried>>
-               /\ UNCHANGED <<bat, prevw, prevat, allconf, widens, paths, regneed, cleared, twice>>
+               /\ UNCHANGED <<bat, prevw, prevat, allconf, widens, paths, merged, fm, cleared, twice>>
           ELSE /\ capJudged' = capJudged
                /\ UNCHANGED <<cbound, carryoff, wrongmark>>
                /\ twice' = (twice \/ same)
-               /\ UNCHANGED regneed
+               /\ UNCHANGED <<merged, fm>>
                /\ IF w = "other"
                   THEN \E cl \in IF Clearable(c, paths[c]) THEN BOOLEAN ELSE {FALSE} :
                          /\ NextAttempt(c, cl)
@@ -667,6 +737,9 @@ Accept ==
   \E c \in Cards, i \in 1..(Len(queue) + 1) :
     /\ c \notin Range(queue) /\ Current(c) \notin landed
     /\ c \notin Sentinels
+    \* the deal guard: a card pending a forward-merge recheck is not dealt
+    \* (steps_work.go dealPlan; Broken "staletip" skips it, NoDealAgainstStaleTip)
+    /\ Broken = "staletip" \/ ~Pending(c)
     /\ oks[c] >= need
     /\ queue' = SubSeq(queue, 1, i - 1) \o <<c>> \o SubSeq(queue, i, Len(queue))
     /\ ready' = ready \ {c} /\ review' = review \ {c} /\ reread' = reread \ {c}
@@ -734,6 +807,40 @@ ReadOk ==
 MoveBase ==
   /\ tip' = tip + 1
   /\ UNCHANGED store /\ UNCHANGED base /\ UNCHANGED lander /\ UNCHANGED shortland /\ UNCHANGED bound
+
+\* ForwardMerge: the coordinator records a verified forward-merge of the base
+\* (cmd/nova-sprint rebase --record-forward-merge, sprint.RecordForwardMerge).
+\* The remote tip moves to the merge commit, the store records it as the base's
+\* durable tip and logs the merge (its branch and tip), and every card not
+\* already in the merge queue (waiting, ready, review) is marked pending at the
+\* new tip. A card already merging keeps its mark: it was dealt before this
+\* merge, and the rule concerns the cards dealt after it.
+ForwardMerge ==
+  /\ ForwardMergeOn /\ events < MaxEvents
+  /\ events' = events + 1
+  /\ tip' = tip + 1
+  /\ fm' = [fm EXCEPT
+              !.baseTip = tip',
+              !.fmtip = [c \in Cards |->
+                           IF c \notin Range(queue) /\ c \notin Sentinels /\ Current(c) \notin landed
+                           THEN tip' ELSE fm.fmtip[c]],
+              !.merges = fm.merges \cup {[from |-> "schema-go", tip |-> tip']}]
+  /\ UNCHANGED store /\ UNCHANGED base
+  /\ UNCHANGED lander /\ UNCHANGED shortland
+  /\ UNCHANGED <<badcaller, stalepush, stalerec, lpushed, carried, ownstop, repairback, capJudged>>
+  /\ UNCHANGED <<bat, prevw, prevat, allconf, widens, paths, merged, named, cleared, twice, cbound, carryoff, wrongmark>>
+
+\* Recheck: the coordinator's forward-merge recheck clears one card's pending
+\* mark at the tip it was marked for (RecheckForwardMerge), after the behind
+\* count and brief-at-base checks passed. It changes no other state.
+Recheck ==
+  /\ \E c \in Cards :
+       /\ Pending(c)
+       /\ fm' = [fm EXCEPT !.fmchecked = [fm.fmchecked EXCEPT ![c] = fm.fmtip[c]]]
+  /\ UNCHANGED store /\ UNCHANGED remote
+  /\ UNCHANGED lander /\ UNCHANGED events
+  /\ UNCHANGED ghosts
+  /\ UNCHANGED <<bat, prevw, prevat, allconf, widens, paths, merged, named, cleared, twice, cbound, carryoff, wrongmark>>
 
 Crash ==
   /\ lphase # "idle"
@@ -810,11 +917,14 @@ Redeal ==
   /\ WaysOn
   /\ \E c \in ready :
        /\ c \notin Range(queue)
+       \* a pending card is rechecked before the machine redeals it
+       /\ Broken = "staletip" \/ ~Pending(c)
        /\ queue' = Append(queue, c) /\ ready' = ready \ {c}
   /\ UNCHANGED <<att, landed, epoch, review, stop>> /\ UNCHANGED reads /\ UNCHANGED offers /\ UNCHANGED remote /\ UNCHANGED lander
   /\ UNCHANGED events /\ UNCHANGED ghosts /\ UNCHANGED bound
 
 Next == Land \/ ShortBack \/ OfferAccept \/ Repair \/ Redeal \/ Outside
+        \/ ForwardMerge \/ Recheck
 
 Spec == Init /\ [][Next]_vars
 
@@ -876,7 +986,25 @@ Settles == <>[](stop = "none" => queue = <<>> /\ ready = {})
 \* reachable through the widened PATHS).
 ReachWidenLands == ~(\E c \in Cards : widens[c] > 0 /\ Current(c) \in landed)
 
+\* E12 never names a file that arrived unchanged through a forward-merge card's
+\* MERGE-OF merge (sprint.MergeOf, docs/SPEC-SPRINT.md section 7): a "paths"
+\* refusal's files are drawn from Files \ (paths[c] \cup merged[c]). Broken
+\* "nomergeexempt" drops merged from that subtraction and the rule fails.
+NoPathsRefusalNamesMerged == \A c \in Cards : named[c] \cap merged[c] = {}
+
+\* Reversed witness: a card whose regression needs a file outside both its
+\* PATHS and its merged set is still refused (it reaches review at its bound),
+\* so the exemption does not refuse the hand edits the card still makes.
+ReachMergeOutside == ~(\E c \in review : fm.regneed[c] \ (paths[c] \cup merged[c]) # {})
+
 CarriedHead == \A c \in ready : <<c, att[c] - 1>> \in carried
+
+\* No card is dealt against a tip older than the base's recorded forward-merge
+\* tip: every card in the merge queue has been rechecked at or past its
+\* pending mark (steps_work.go dealPlan, FieldForwardMergeChecked; the deal
+\* refuses a pending card). Broken "staletip" deals one: MCLandBrokenStaleTip
+\* is the reversed witness that finds it.
+NoDealAgainstStaleTip == \A c \in Range(queue) : ~Pending(c)
 
 \* v1.2.6: the lander pushes no head short of the reads it needed when it
 \* checked the batch, and another lander lands none short of them.

@@ -28,6 +28,7 @@ func init() { verbClasses["continue"] = classCoordinator }
 // REPO: line, refused without one); a sha is taken as given and must be 40 hex.
 func (a *app) cmdContinue(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("continue")
+	fs.BoolVar(&c.dry, "dry-run", false, "print the new brief's header and the judgments it would answer, and write nothing")
 	note := fs.String("note", "", "the continue note appended to the brief, with the UTC time")
 	tier := fs.String("tier", "", "the tier to re-pin ("+cardhdr.RouteList+")")
 	carry := fs.String("carry", "", "the branch or sha to carry: a branch is resolved to its head; a sha must be 40 hex")

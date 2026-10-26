@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -22,11 +23,13 @@ const duplicateThreshold = 0.20
 
 // dupCard is what the duplicate check reads from one brief.
 type dupCard struct {
-	ID     string
-	Repo   string
-	Paths  []string
-	Shared []string
-	Tokens map[string]bool
+	ID           string
+	Repo         string
+	GeneratedSet string
+	Paths        []string
+	Shared       []string
+	Tokens       map[string]bool
+	Follows      map[string]bool
 }
 
 // dupWordRE is a word of a card's id or task paragraph: a letter, then at
@@ -52,9 +55,12 @@ var dupStop = map[string]bool{
 func dupCardOf(id, brief string) dupCard {
 	raw := []byte(brief)
 	base := swarm.ReadCardBase(raw)
-	c := dupCard{ID: id, Repo: base.Named, Paths: swarm.CardPaths(raw), Shared: dupHeaderGlobs(brief, "SHARED"), Tokens: map[string]bool{}}
+	c := dupCard{ID: id, Repo: base.Named, Paths: swarm.CardPaths(raw), Shared: dupHeaderGlobs(brief, "SHARED"), Tokens: map[string]bool{}, Follows: dupFollows(brief)}
 	if c.Repo == "" {
 		c.Repo = base.Repo
+	}
+	if sets := dupHeaderGlobs(brief, "GENERATED-SET"); len(sets) == 1 {
+		c.GeneratedSet = sets[0]
 	}
 	text := id + " " + dupTaskParagraph(brief)
 	for _, w := range dupWordRE.FindAllString(strings.ToLower(text), -1) {
@@ -63,6 +69,19 @@ func dupCardOf(id, brief string) dupCard {
 		}
 	}
 	return c
+}
+
+// dupFollows is the earlier cards a brief names as a follow-up: its DEPENDS-ON:
+// (or Needs:) line and its LAND-AFTER: line.
+func dupFollows(brief string) map[string]bool {
+	out := map[string]bool{}
+	for _, id := range briefNeeds(brief) {
+		out[id] = true
+	}
+	for _, id := range sprint.BriefLandAfter(brief) {
+		out[id] = true
+	}
+	return out
 }
 
 // dupHeaderGlobs is the files one header line of a brief names (SHARED:), split
@@ -141,14 +160,12 @@ func probableDuplicate(a, b dupCard) (dupFinding, bool) {
 	if a.Repo == "" || a.Repo != b.Repo {
 		return dupFinding{}, false
 	}
+	aPaths, bPaths := dupPathsWithoutLedgers(a, b), dupPathsWithoutLedgers(b, a)
 	var files []string
 	seen := map[string]bool{}
-	for _, pa := range a.Paths {
-		for _, pb := range b.Paths {
+	for _, pa := range aPaths {
+		for _, pb := range bPaths {
 			if !preflightOverlap(pa, pb) {
-				continue
-			}
-			if dupShared(a, pa) || dupShared(a, pb) || dupShared(b, pa) || dupShared(b, pb) {
 				continue
 			}
 			if !seen[pa] {
@@ -175,6 +192,50 @@ func probableDuplicate(a, b dupCard) (dupFinding, bool) {
 		shared = shared[:8]
 	}
 	return dupFinding{Of: b.ID, Score: score, Files: files, Shared: shared}, true
+}
+
+// dupLedger says the path is a ledger file, no evidence that two cards are one
+// change: a file on either card's SHARED: line, a .tsv under a tla directory, a
+// .tsv, .csv or .ledger under a testdata directory, or a lander-owned roadmap
+// ledger (ROADMAP.md at the root, docs/roadmap.sexp, and any .sexp under
+// docs/roadmap-evidence/). Many unrelated cards append to these.
+func dupLedger(c, other dupCard, path string) bool {
+	if dupShared(c, path) || dupShared(other, path) {
+		return true
+	}
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext == ".tsv" && dupUnderDir(path, "tla") {
+		return true
+	}
+	if dupUnderDir(path, "testdata") && (ext == ".tsv" || ext == ".csv" || ext == ".ledger") {
+		return true
+	}
+	if path == "ROADMAP.md" || path == "docs/roadmap.sexp" {
+		return true
+	}
+	return ext == ".sexp" && dupUnderDir(path, "roadmap-evidence")
+}
+
+// dupUnderDir says a slash-separated path has dir as one of its directories.
+func dupUnderDir(path, dir string) bool {
+	for _, part := range strings.Split(filepath.ToSlash(path), "/") {
+		if part == dir {
+			return true
+		}
+	}
+	return false
+}
+
+// dupPathsWithoutLedgers is the card's PATHS less every ledger it or the other
+// card names.
+func dupPathsWithoutLedgers(c, other dupCard) []string {
+	out := make([]string, 0, len(c.Paths))
+	for _, p := range c.Paths {
+		if !dupLedger(c, other, p) {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // dupShared says the card lists the path, or a glob naming it, on its SHARED: line.
@@ -221,6 +282,9 @@ func dupCommon(a, b map[string]bool) []string {
 func duplicatesRefused(c dupCard, open []dupCard, notDup map[string]string) []dupFinding {
 	var out []dupFinding
 	for _, o := range open {
+		if c.GeneratedSet != "" && c.GeneratedSet == o.GeneratedSet {
+			continue
+		}
 		if notDup[o.ID] != "" {
 			continue
 		}
@@ -271,16 +335,33 @@ func parseNotDup(vals []string) (map[string]string, error) {
 
 // dupHeld is the cards of a wave a probable duplicate holds back, with the
 // finding that held each; the reason map is the overrides used by the cards
-// that were admitted.
+// that were admitted. In wave order, a card is compared with the open cards and
+// with every earlier card of the wave not already held: a probable duplicate of
+// an earlier one is held with the same DUPLICATE words, unless its brief names
+// that earlier card in DEPENDS-ON or LAND-AFTER (a follow-up) or
+// --not-a-duplicate-of names it. The first of two duplicates is admitted.
 func dupHeld(cards []dupCard, open []dupCard, notDup map[string]string) (held map[string]dupFinding, reasons map[string]string) {
 	held, reasons = map[string]dupFinding{}, map[string]string{}
+	var admitted []dupCard
 	for _, c := range cards {
 		all := duplicatesRefused(c, open, nil)
 		left := duplicatesRefused(c, open, notDup)
+		for _, earlier := range admitted {
+			if c.GeneratedSet != "" && c.GeneratedSet == earlier.GeneratedSet {
+				continue
+			}
+			if c.Follows[earlier.ID] || notDup[earlier.ID] != "" {
+				continue
+			}
+			if f, ok := probableDuplicate(c, earlier); ok {
+				left = append(left, f)
+			}
+		}
 		if len(left) > 0 {
 			held[c.ID] = left[0]
 			continue
 		}
+		admitted = append(admitted, c)
 		var used []string
 		for _, f := range all {
 			if notDup[f.Of] != "" {
@@ -306,6 +387,30 @@ func dupPrint(stdout io.Writer, held map[string]dupFinding) {
 		f := held[id]
 		fmt.Fprintf(stdout, "DUPLICATE %s: %s; run: nova-sprint add ... --not-a-duplicate-of %s=<reason>\n", id, f.String(), f.Of)
 	}
+}
+
+// dupHoldNeeds holds every card that needs a held duplicate, transitively, and
+// names each of them in one HELD line.
+func dupHoldNeeds(cards []sprint.CardAdd, held map[string]dupFinding, stdout io.Writer) map[string]dupFinding {
+	heldAll := make(map[string]string, len(held))
+	for id := range held {
+		heldAll[id] = ""
+	}
+	heldNeed := map[string]string{}
+	heldClosure(cards, heldAll, heldNeed)
+	out := make(map[string]dupFinding, len(heldAll))
+	for id, f := range held {
+		out[id] = f
+	}
+	for _, cd := range cards {
+		n := heldNeed[cd.ID]
+		if n == "" {
+			continue
+		}
+		out[cd.ID] = dupFinding{}
+		fmt.Fprintf(stdout, "HELD %s: needs %s, held as a probable duplicate\n", cd.ID, n)
+	}
+	return out
 }
 
 // dupNoteStep records each admitted card's --not-a-duplicate-of reason on its
@@ -341,15 +446,18 @@ func dupNoteStep(step store.Step, reasons map[string]string) store.Step {
 // dupHold is the duplicate check of the add form that names its cards by id: it
 // holds back every brief with a probable duplicate and leaves the rest of the
 // wave in rs, one write. It prints one DUPLICATE line per held card and returns
-// exit 1 when every real card of the wave was held.
+// exit 1 when every real card of the wave was held, 0 when the rest of the wave
+// is written (the add then exits with the write's code).
 func dupHold(a *app, rs []sprint.AddReq, st *store.Store, notDup map[string]string, stdout, stderr io.Writer) (map[string]dupFinding, map[string]string, int) {
 	var wave []dupCard
+	var closure []sprint.CardAdd
 	for _, r := range rs {
 		if r.Count > 0 || r.Sentinel || len(r.IDs) == 0 {
 			continue
 		}
 		for _, id := range r.IDs {
 			wave = append(wave, dupCardOf(id, r.Brief))
+			closure = append(closure, sprint.CardAdd{ID: id, Brief: r.Brief, Needs: r.Needs})
 		}
 	}
 	if len(wave) == 0 {
@@ -364,6 +472,7 @@ func dupHold(a *app, rs []sprint.AddReq, st *store.Store, notDup map[string]stri
 		return nil, reasons, 0
 	}
 	dupPrint(stdout, held)
+	held = dupHoldNeeds(closure, held, stdout)
 	kept := 0
 	for i := range rs {
 		if rs[i].Count > 0 || rs[i].Sentinel {
@@ -389,7 +498,10 @@ func dupHold(a *app, rs []sprint.AddReq, st *store.Store, notDup map[string]stri
 
 // dupHoldMany is the duplicate check of the many-brief add form: it holds back
 // every brief with a probable duplicate, prints one DUPLICATE line per held
-// card, and leaves the filtering of the wave to its caller.
+// card, and leaves the filtering of the wave to its caller. A duplicate scan
+// that succeeds returns 0, and the caller writes the rest of the wave and exits
+// with the write's code, exiting 1 only when every real card was held; a scan
+// error returns its exit code.
 func dupHoldMany(a *app, cards []sprint.CardAdd, st *store.Store, notDup map[string]string, stdout, stderr io.Writer) (map[string]dupFinding, map[string]string, int) {
 	var wave []dupCard
 	for _, cd := range cards {
@@ -408,6 +520,7 @@ func dupHoldMany(a *app, cards []sprint.CardAdd, st *store.Store, notDup map[str
 	held, reasons := dupHeld(wave, dupOpenCards(snap), notDup)
 	if len(held) > 0 {
 		dupPrint(stdout, held)
+		held = dupHoldNeeds(cards, held, stdout)
 	}
 	return held, reasons, 0
 }

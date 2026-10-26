@@ -44,8 +44,9 @@ for routing, restart and hook-display limits.
 
 ```
 nova-sprint init [--readers <a,b,...>] [--members <m1[:<width>],m2,...>] [--coordinator <name>] [--rules <file>]
-nova-sprint add --stream <s> (<id>... | --count <n> | --sentinel <id> | --brief-dir <dir> | --brief-file <f1> --brief-file <f2>...: a card per file, its id the file's name without .md) [--partial] [--needs <a,b>] [--before <id> | --after <id> | --score <n>] [--brief <text> | --brief-file <path>: once, the brief of the cards named] [--rules <file>] [--replaces <old-id>[,<old-id>]] [--not-a-duplicate-of <card>=<reason>]...
-# add and preflight name a probable duplicate (same REPO:, an overlapping PATHS glob neither lists as SHARED:, and a word overlap at or above 0.20, measured 0.273 on the timestamp fixtures and 0.095 on the two v17 landgo.go fixtures); add holds that brief back and admits the rest of the wave, one DUPLICATE line and exit 1, unless --not-a-duplicate-of <card>=<reason> admits it and records the reason on its admission note (a reason is required; preflight prints the DUPLICATE finding)
+# init refuses a --coordinator name the bus store answers is no known name (nova-config's friend and machine rows), naming `nova-config friend add <name> --width 1 --tiers flash --as <you>` then `nova-config apply`; a bus that cannot be read leaves init as it is today with one NOTE
+nova-sprint add --stream <s> (<id>... | --count <n> | --sentinel <id> | --brief-dir <dir> | --brief-file <f1> --brief-file <f2>...: a card per file, its id the file's name without .md) [--partial] [--apply-fix] [--needs <a,b>] [--before <id> | --after <id> | --score <n>] [--brief <text> | --brief-file <path>: once, the brief of the cards named] [--rules <file>] [--replaces <old-id>[,<old-id>]] [--not-a-duplicate-of <card>=<reason>]...
+# add and preflight name a probable duplicate (same REPO:, an overlapping PATHS glob neither lists as SHARED:, and a word overlap at or above 0.20, measured 0.273 on the timestamp fixtures and 0.095 on the two v17 landgo.go fixtures); add compares a wave in order, so a brief is also measured against every earlier card of the wave not already held (the first of two duplicates is admitted, and a later card that names the earlier one in DEPENDS-ON: or LAND-AFTER: is a follow-up), holds that brief back and admits the rest of the wave, one DUPLICATE line each; the add exits with the write's code (0 when it wrote the rest), and exits 1 only when every real card of the wave was held, unless --not-a-duplicate-of <card>=<reason> admits it and records the reason on its admission note (a reason is required; preflight prints the DUPLICATE finding); `brief check` runs the same check over the briefs it holds, against the open cards, one `duplicate` finding per held brief with add's words, and takes no `--not-a-duplicate-of` (its remedy names the flag add takes)
 # add refuses an unresolved need (v1.2.17): absent ("needs <id>, which is no primary on the table or in this add"), dropped ("needs <id>, which was <outcome>"), unknown stream ("needs <id> (unknown stream): <id>'s stream <s> has no control card in this epoch") and held ("needs <id> (held): <id> is held by judgment <j> (<type>, open <age>) until it is decided; decide it: nova-sprint rework <id> --fix <text> or nova-sprint drop <id> --reason <text> ..."); an add of more than one card (--brief-dir, many briefs, --count) with one is refused whole, naming every card and need, nothing written; brief check names the same through add's plan
 nova-sprint quack --streams <a,b,...> --count <n> --repo <clone url> [--tiers <t,...>] [--base <branch>]
 nova-sprint release (<sentinel>... | <selector> [--dry-run]) --reason <text> [--answers <note>]
@@ -67,7 +68,7 @@ nova-sprint goal set <name> [--file <path>] [--to file:<path>]
 nova-sprint goal show [<name>]
 nova-sprint goal drop <name>
 nova-sprint take --as <member> [<card>@<gen>...] [--epoch <n>] [--limit <n>]
-nova-sprint finish --as <member> <card>@<gen>... --epoch <n> (--head <commit> | --failed) [--report <text>] [--exit <n>] [--harness <text>] [--usage <text>]
+nova-sprint finish --as <member> <card>@<gen>... --epoch <n> (--head <commit> | --failed [--head <commit>]) [--report <text>] [--exit <n>] [--harness <text>] [--usage <text>]
 # finish ends where the card's needs field says (review, or waiting for a need not landed); a finish the lifecycle refuses is counted on the work card, and the sixth refusal of an attempt raises one judgment, its id printed as JUDGMENT raised <id> <type>
 nova-sprint progress --as <worker> <card>[@<gen>]... --epoch <n>
 nova-sprint ask [<id>... | --group <id> [--expect <n>]] [--stream <s>] [--limit <n>] [--another] [--answers <note>]
@@ -103,9 +104,12 @@ nova-sprint merge --stream <s> [--batch <n>] [--conflict <id> [--conflict-kind f
 # a merge with no fact flag and no --landed is the twin's; on a real store use land, or record a pushed landing with --landed <id>@<head> --repo <dir> --base-ref <ref>
 nova-sprint land [--stream <s>...] [--repo-dir <clone>] [--base <branch>] [--check <command>] [--dry-run]   # a gate runs on a member up or held by the coordinator without --return (a hold is a deal control; fleet down, hold --return, writes held_return and runs no gate); --dry-run names that bench (bench=<member>) or refuses the batch as the loop would, running nothing
 nova-sprint rebase --from <branch> --to <branch> [--repo-dir <clone>] [--dry-run]
+nova-sprint rebase --record-forward-merge --repo <owner/name> --repo-dir <clone> --from <source> --to <base> --sha <full-merge-commit> --reason <text> [--dry-run]
+# Records a verified manual base merge, marks its waiting/ready/review cards pending before rerunning brief-at-base and behind checks, then clears pending only for the fenced checked cards. A failed check leaves them blocked. --dry-run verifies merge identity and previews the affected cards but skips checks and writes.
 nova-sprint stream set <stream>... [--read-tier <flash|pro|heavy|default>] [--land-protected <owner/name,...|any|default>] [--release <name>] [--prose <glob,...|default>] [--seat-accept <on|off>] [--default-tier <flash|pro|heavy|default>] [--attempts <n|default>] [--base <branch>] [--reason <text>] [--answers <notes>]
 nova-sprint settings [--json]   # every setting with its value and default; `set` with no flags prints the same
-nova-sprint set [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--friend-idle <duration|default>] [--seat-silent-to <bus name|default>] [--friend-finish <duration|default>] [--fleet <on|off>] [--friends <on|off>] [--fleet-tiers <flash,pro,heavy,frontier|all>] [--friends-tiers <flash,pro,heavy,frontier|all>] [--reads <0|1|2|3|default>]
+nova-sprint set [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--friend-idle <duration|default>] [--seat-silent-to <bus name|default>] [--friend-finish <duration|default>] [--fleet <on|off>] [--friends <on|off>] [--fleet-tiers <flash,pro,heavy,frontier|all>] [--friends-tiers <flash,pro,heavy,frontier|all>] [--reads <0|1|2|3|default>] [--land-backlog-bound <n|off|default>] [--review-backlog-bound <n|off|default>]
+# --land-backlog-bound and --review-backlog-bound are the deal throttle (off by default): while more primaries than the bound are merging, or in review, the tick's deal starts no new work attempt; reads, fix-level cards and next attempts still deal, nothing working is cut, and where shows one throttle line
 nova-sprint resume --stream <s> [--did <text>] [--answers <note>]
 
 A card waits for its own tier: no cross-tier dealing. The `set --unserved-tier-falls-to` fallback is retired.
@@ -114,15 +118,27 @@ nova-sprint demo load <backup.xz part>... [--sha256 <hex>] [--dir <dir>] [--xz <
 nova-sprint demo stop [--dir <dir>]
 nova-sprint fleet beat <member> [--stop-returns <n>] [--no-room <why>] [--draining] [--live <set>] [--facts <list>] --load <percent> [--dry-run]
 nova-sprint fleet up <member> [--width <n>]
-nova-sprint fleet down <member>
+nova-sprint fleet down <member> [--force-last]
+nova-sprint lane take go --machine <m|auto> --as <worker> [--wait <duration>] [--dry-run] [--needs <a,b>]
+nova-sprint lane give go --machine <m|auto> --as <worker> [--dry-run]
 nova-sprint hold <name>... --reason <text> [--return] [--force-last]
 
 A member that is up keeps taken cards and finishes them, including with `--return`; that
 flag hands back only its dealt, untaken cards. A member that is down also returns its dead
-working cards. `fleet down <member>` follows the same rule. A hold that would leave no
-member able to run a land gate is refused, exit 2, naming the member: every landing would
-be refused until one is unheld. `--force-last` holds it anyway and the log line ends
-`--force-last: no gate bench left`.
+working cards. `fleet down <member>` follows the same rule. A hold or fleet down that would
+leave no bench the land loop can use (the members up or held by the coordinator without
+`--return`, minus this machine and any host the check refuses) is refused, exit 2, naming
+the member: every landing would be refused until one is unheld. `--force-last` on either
+verb holds it anyway and the log line ends `--force-last: no gate bench left`.
+
+`--machine auto` asks the server to pick an allowed bench by committed load / slots;
+a successful take prints its lease deadline and the give command. Take again within
+20m to renew it. A full fleet prints its retry time and full benches, exits 1, and
+asks the caller to retry then. `--needs <a,b>` names the gate facts the bench must
+carry, the same words as a `GATE-NEEDS` line (for example `linux,tla`): the pick keeps
+to benches whose member facts meet every need, and when none does the WAIT names the
+need and the facts the benches carry. No `--needs` is the pick as it was.
+`--wait` and `--dry-run` are refused with `auto`.
 
 nova-sprint fleet sync [--check] [--pg <dsn>]
 nova-sprint fleet level
@@ -144,7 +160,7 @@ nova-sprint friend cards <friend> [--json]
 nova-sprint friend take <friend> (<id>... [--working] | --all-unstarted) [--dry-run] [--reason <text>]
 nova-sprint friend give <friend> <id>... [--reason <text>]   # hands a ready card to her at its next attempt, from no friend too: its current work card Done (a brief-replaced bounce) or absent; refused when that work card is live (Ready or Working on a row), a hard pin names another friend (nova-sprint unpin), or her tiers, restriction or the card's needs refuse it; a friend not up is no refusal, the card waits on her row
  nova-sprint friend level
-  nova-sprint friend stage <card>@<gen> --as friend.<name> [--bench <host>] [--dir <jobs dir>]   # clones the friend's dealt card into jobs/<job>/ at its NEXT head or BASE, creates the delivered branch, sets her own git identity in the clone's local config (the friend's nova-config row git_identity= when it names one, else the sprint row's git_identity; identity=friend or identity=sprint; when nova-config cannot be read the sprint row's is used), writes JOB.md (naming the finish command, and BENCH: <host>, or BENCH: local without --bench) naming the finish command; with --bench every git step and the JOB.md write run on that fleet member over ssh (jobs default ~/<friend>-jobs; the host must be a fleet member), and a friend can run it through the sprint server as `friend stage <card>@<gen> --as friend.<name> --bench <host> [--dir <d>]`; refuses a card not on her row or a friend with no git_identity
+  nova-sprint friend stage <card>@<gen> --as friend.<name> [--bench <host>] [--dir <jobs dir>]   # clones the friend's dealt card into jobs/<job>/ at its NEXT head or BASE, creates the delivered branch, sets her own git identity in the clone's local config (the friend's nova-config row git_identity= when it names one, else the sprint row's git_identity; identity=friend or identity=sprint; when nova-config cannot be read the stage is refused), writes JOB.md naming the finish command and BENCH, and runs every git step and JOB.md write on --bench over ssh. A bench host must be a fleet member. A friend can run it through the sprint server as friend stage <card>@<gen> --as friend.<name> --bench <host> [--dir <d>]; server --dir must name the friend's bench job root (~/<friend>-jobs or $HOME/<friend>-jobs) or a directory beneath it. The stage gives up after 10m, including store acquisition, and names the bound and host on expiry; every ssh uses -o BatchMode=yes -o ConnectTimeout=10. Without --bench it runs locally and JOB.md says BENCH: local; refuses a card not on her row or a friend with no git_identity
  nova-sprint reader add <reader>... [--tiers <flash[,pro,heavy,frontier]|all|default>]   # a bare fleet member name (m1) names its member reader reader-m1; READER-ADD prints member-reader=<yes|no> per row and writes the row up
 nova-sprint reader set <reader>... --tiers <flash[,pro,heavy,frontier]|all|default>   # a bare member name is prefixed too; an empty tiers cell (default) reads every tier a route serves
 nova-sprint reader away <reader>...
@@ -195,6 +211,7 @@ nova-sprint doctor [--all] [--area <group>] [--preflight <candidate>] [--json]
 # `doctor --all` runs `nova-doctor run` alongside the sprint doctor, then prints both named reports and preserves each exit and stderr; `--json` wraps both child reports, statuses and stderr in one object. `--area` scopes the sprint checks. `--preflight` remains the candidate-binary gate and cannot be combined with `--all`.
 nova-sprint stats tidy (--friends | --fleet | --routes | --streams | --all)... --reason <text> [--dry-run]
 nova-sprint play [--simulation] [--seed <n>] [--every <duration>] [--broken <p>] [--fail <p>] [--stuck <p>] [--cross <p>] [--down <p>] [--up <p>] [--red <p>] [--flap <p>] [--batch <n>] [--hold] [--silent <member>@<from>+<for>]... [--ticks <n>]
+# play drives the outside actors (take, finish, read, merge) on a twin store, where its bare merge stands in for land; it reports a member's read cards when reads are dealt as cards and the readers table's asks when --read-cards is off, so every stream lands. A real store refuses the bare merge, so play is for a twin.
 nova-sprint clear --confirm sprint
 nova-sprint teardown --confirm sprint
 ```
@@ -395,6 +412,8 @@ state (`backup: reads (review ... > working ...)`) while there is one
 
 `nova-sprint seat login --store <secrets dir> --as <seat> --key <keyfile> --secret <NAME> --user <redis user> --redis <addr>` records the store login in `~/.config/nova-sprint/login.json` (or under `$XDG_CONFIG_HOME`), mode 0600: the address, the user and where the password is in nova-secrets, never the password, and only once the secret resolves. After it, `nova-sprint <verb>` typed bare reaches that store as that user, the password read in the verb's own process through nova-secrets' checks, with no `nova-secrets exec` wrapper; `--redis`, `NOVA_SPRINT_REDIS`/`NOVA_REDIS_ADDR` and `NOVA_SPRINT_REDIS_USER` still win. `seat login --check` prints `SEAT LOGIN file=… redis=… user=… … resolves=yes|no` (exit 1 on no), the password never shown; `seat logout` removes the record. A recorded secret that does not resolve is refused naming the file and the remedy, never dialed without a password. `nova-sprint run --keys <NAME,...>` records the decision key and each provider key in `keys.json` beside that login (names only, never a value) and the run process reads each one from the seat; a name that cannot be read refuses at start, naming the name. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-seats-store-login) and [SPEC-SECRETS.md](https://github.com/mas-bandwidth/nova-tools/blob/main/docs/SPEC-SECRETS.md) ("A tool's store login").
 
+No store secret is ever in argv or a long-running process's environment. Beside the seat login, `NOVA_SPRINT_REDIS_PASSWORD_FILE=<absolute path>` names a file holding the password for `NOVA_SPRINT_REDIS_USER` (refused, naming the path and `chmod 600`, unless a regular file of this user's with no group or other bits), and on macOS `NOVA_SPRINT_REDIS_PASSWORD_KEYCHAIN=<service>` reads that service's generic password for the user through `/usr/bin/security`; each is read once per process. At startup every password variable (the one `NOVA_SPRINT_REDIS_PASSWORD_ENV` names, `NOVA_REDIS_BENCH_PASSWORD`, `NOVA_REDIS_COORDINATOR_PASSWORD`, any `NOVA_*_PASSWORD`) is read in and unset, so no child inherits it; a long-running verb (`run`, `dashboard`, `watch`, `wait`, `play`, any `--watch`, `--wait` or `--every`) that removed one re-execs itself once so the kernel's copy of its environment holds none, the values handed across on the pipe `NOVA_SPRINT_SECRET_FD` numbers. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#no-store-secret-in-argv-or-a-running-processs-environment).
+
 For a live sprint, the coordinator hooks in with nova-hook ([SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#the-hook)): `nova-hook hook --as <seat> --role coordinator` under a Monitor, each `HOOK CHALLENGE` answered with `nova-hook prove`. Until the seat's nova-hook record is proven as the coordinator (its bus push, which nova-hook holds, and its sprint push, which the sprint's server holds while it runs and reaches the bus), every non-exempt verb the seat's holder runs (the caller is `--actor` or `NOVA_SPRINT_ACTOR`; a worker verb's `--as` never takes the holder past it) fails with one line that starts `You must hook in first: ` and goes on to the breadcrumb: what is not live and the exact nova-hook commands. The server sends every judgment and note for the coordinator to the seat's name on the bus. Exempt: `run`, `tick` (not `tick --answer-rules`), `server switch`, `seat install`, `selftest land`, help and version. A record that cannot be read refuses (fail closed).
 
 `nova-sprint seat install --server <host:port> --config-seat <name> --config-dsn <dsn> --config-password-env <NAME>` records the sprint's server in `seat.json` beside that login and writes the nova-config seat profile, the row `<name>\t<dsn>\t<NAME>` of `~/.config/nova-config/seats.tsv`. After it, `nova-sprint seat check` measures the recorded server when `NOVA_SPRINT_SERVER` is not set and prints `MACHINERY config OK seat=<name> …` (or DOWN with the remedy), and `nova-config <verb> --seat <name>` (or `NOVA_SEAT`) reaches the config store with no `nova-secrets exec`: the password is read in process from the store login's nova-secrets seat under `<NAME>` when that variable is not set and `NOVA_PG_PASSWORD_ENV` is not given (`NOVA_PG_PASSWORD_ENV` given still wins). The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md#handing-over-the-seat) and [SPEC-CONFIG.md](https://github.com/mas-bandwidth/nova-tools/blob/main/docs/SPEC-CONFIG.md#connecting).
@@ -570,8 +589,12 @@ hour of its spend, until the balance is over it. One judgment of the provider sa
 payment is the owner's`). `where --json` carries the `providers` table (balance, spend an hour,
 state) and `routes` each route's `balance=`. When every provider is out of credit, the tick
 stops the system (`machine: STOPPED (every provider is out of credit)`) and `start` is refused
-until one is paid; a provider low on funds never stops it. `funded <provider> --reason <text>`
-says one was paid. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), "A provider out of funds".
+until one is paid; a provider low on funds never stops it. A take refused for credit flips
+the provider's nova-config row to funded=false automatically (the run loop, as the machine,
+once per provider; a 429, a 5xx or a timeout never does), and the deal then draws none of its
+routes. `funded <provider> --reason <text>` says one was paid, and is the OWNER's alone: the
+owner funds the row first (`nova-config provider set <p> --funded true --actor <owner>`, then
+`nova-config apply --kind provider`); the coordinator and the machine are refused, and `routes wake` refuses an unfunded provider. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), "A provider out of funds".
 
 ### Answered by rule
 
@@ -715,13 +738,22 @@ the remedy that pins the line 1 tier (`nova-sprint brief c --tier <t> --reason <
 a file naming the recorded tier, a card with no recorded tier, an id that is no card and
 a sentinel report nothing.
 
+A `brief check` file whose id is a card on the table is also read against the card's soft
+dependencies: a `LAND-AFTER:` line that would change what the store holds is one `land-after`
+finding naming both lists and the verb that writes each side, `nova-sprint brief <id> --brief-file <path>` the file's and `nova-sprint needs set <id> --land-after <ids>` the
+store's. An equal list, an id that is no card, and a sentinel report nothing, and the check
+still writes nothing.
+
 `add --partial`, with `--brief-dir` or a repeated `--brief-file`, runs every check over every
 brief and admits what passes instead of refusing the whole call. Every brief the checks find a
 fault in is held back, and so is every card that needs a held card through its `Needs:` or
 `DEPENDS-ON:` line or `--needs`, transitively. The add step's own plan is then run over the
 rest, and a card its refusal list names is held back the same way, with the cards that need it,
 the write planned again without them; the rounds are bounded by the number of cards, and
-nothing is written for a held card. It prints one `HELD <id>: <its first finding or refusal>`
+nothing is written for a held card. A brief that is a probable duplicate of an open card is
+held back with the same finding add gives it, and so is every card that needs it;
+`--not-a-duplicate-of <card>=<reason>` admits it and records the reason on its admission
+note, as it does for add. It prints one `HELD <id>: <its first finding or refusal>`
 or `HELD <id>: needs <other>, held back` line per held card, then the add's own closing line for
 what it admitted, and exits 0 when every card was admitted, 1 when some were held and the rest
 written, and 2 when none could be admitted, or for a usage refusal: `--partial` is refused with
@@ -1080,9 +1112,9 @@ A `wait` on `cannot ask` quiets its reader condition until the requested review
 time; if no reader becomes eligible, that time raises one reminder. Eligibility
 still closes the wait earlier. The wait does not block an eligible read.
 
-`nova-sprint where` begins with `DECISIONS OWED n, oldest <age>; server-defaults applied this hour n; delivery faults n`. A delivery fault means an escalation still
+`nova-sprint where` begins with `DECISIONS OWED n, oldest <age>; server-defaults applied this hour n; delivery faults n; held by server-default n`. A delivery fault means an escalation still
 needs a successful bus receipt; it is not proof that the coordinator or owner saw
-anything. The server folds overdue decisions to the coordinator once per changed set. When
+anything. The held-by-server-default count is the cards the safe default parked, not a coordinator's hold (SPEC-SPRINT.md, "Decisions owed", DecisionsOwed). The server folds overdue decisions to the coordinator once per changed set. When
 the owner lane has the same recipient and set, that one notice serves both lanes;
 otherwise the owner lane keeps its 30-minute delivery cadence, including changed
 sets. Failed or ambiguous sends retry, including a renewed token after expiry. Safe defaults

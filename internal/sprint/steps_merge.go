@@ -109,7 +109,7 @@ func landedRefusals(s *Snapshot, stream string, pins []LandedPin) []Refusal {
 		}
 		seen[pin.ID] = true
 		if why != "" {
-			out = append(out, Refusal{pin.ID, why})
+			out = append(out, Refusal{Key: pin.ID, Why: why})
 		}
 	}
 	return out
@@ -458,7 +458,8 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 		p.refuse(r.Stream, why)
 		return p
 	}
-	if len(r.Landed) > 0 {
+	pushedReport := len(r.Landed) > 0
+	if pushedReport {
 		if why := landedRefusals(s, r.Stream, r.Landed); len(why) > 0 {
 			p.Refused = append(p.Refused, why...)
 			return p
@@ -476,14 +477,25 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 	if len(r.Cards) > 0 {
 		// the batch by name: every named card queued here, in the queue's order
 		batch = nil
-		for _, c := range queued {
-			if contains(r.Cards, c.ID) {
-				batch = append(batch, c)
+		if pushedReport {
+			for _, id := range r.Cards {
+				for _, c := range queued {
+					if c.ID == id {
+						batch = append(batch, c)
+						break
+					}
+				}
+			}
+		} else {
+			for _, c := range queued {
+				if contains(r.Cards, c.ID) {
+					batch = append(batch, c)
+				}
 			}
 		}
 		if len(batch) != len(r.Cards) {
 			for _, id := range r.Cards {
-				if blocked := LandOrderBlocked(s, s.Work.Card(id), nil); len(blocked) > 0 {
+				if blocked := LandOrderBlocked(s, s.Work.Card(id), nil); len(blocked) > 0 && !LandingMarked(s, id) {
 					p.refuse(id, fmt.Sprintf("%s: soft dependency on %s not landed; nothing was changed", id, strings.Join(blocked, ", ")))
 					return p
 				}
@@ -499,7 +511,10 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 			p.refuse(c.ID, "the batch omits prerequisites "+strings.Join(needs, ", ")+"; nothing was changed; run: nova-sprint land --stream "+r.Stream)
 			return p
 		}
-		if soft := LandOrderBlocked(s, s.Work.Card(c.ID), landing); len(soft) > 0 {
+		// a pushed pin's LAND-AFTER order was judged at the mark (MarkLanding); this
+		// report preserves that decision and the pushed pin order (tla/SoftDependency.tla
+		// Report, BaseRecorded and BaseSoftOrder)
+		if soft := LandOrderBlocked(s, s.Work.Card(c.ID), landing); len(soft) > 0 && !LandingMarked(s, c.ID) {
 			p.refuse(c.ID, fmt.Sprintf("%s: soft dependency on %s not landed; nothing was changed; run: nova-sprint land --stream %s", c.ID, strings.Join(soft, ", "), r.Stream))
 			return p
 		}

@@ -97,6 +97,7 @@ type coordPush struct {
 	recoveryFrom   string    // frozen sender of the recovery token
 	recoveryToken  string    // one transport recovery send per failed episode
 	failed         bool      // the last send to the holder failed: the sprint push is unproven
+	sendErr        string    // the last failed send to the holder's error, which the gate's refusal names
 	heldAt         time.Time // the sprint push's last renewal
 	heldWhy        string    // what the last renewal said, said again only when it changes
 	heldOK         bool      // the last renewal proved the sprint push (else it unproved it)
@@ -391,6 +392,7 @@ func (a *app) coordinatorPass(ctx context.Context) (read bool) {
 		// Ordinary delivery keys reset for a new holder or epoch; state receipts remain.
 		p.holder, p.epoch, p.told = l.holder, l.epoch, map[string]bool{}
 		p.failed, p.heldAt, p.recoveryToken, p.recoveryBefore, p.recoveryFrom = false, time.Time{}, "", time.Time{}, ""
+		p.sendErr = ""
 		p.holdFailed, p.holdNext, p.holdWait = false, time.Time{}, 0
 		p.firstSeen, p.warned, p.warnedAt = map[string]time.Time{}, nil, time.Time{}
 	}
@@ -446,8 +448,22 @@ func (a *app) coordinatorPass(ctx context.Context) (read bool) {
 			a.serveSay("COORDINATOR PUSH to=%s: %q could not be sent, sent again at the next look: %s", to, m.Subject, oneline.Escape(err.Error()))
 			if to == l.holder {
 				failed = true
+				a.coord.mu.Lock()
+				a.coord.sendErr = oneline.Escape(err.Error())
+				a.coord.mu.Unlock()
+				coordFailures.Lock()
+				coordFailures.m[l.holder] = coordFail{failed: true, sendErr: a.coord.sendErr}
+				coordFailures.Unlock()
 			}
 			return false
+		}
+		if to == l.holder && a.coord.sendErr != "" {
+			a.coord.mu.Lock()
+			a.coord.sendErr = ""
+			a.coord.mu.Unlock()
+			coordFailures.Lock()
+			delete(coordFailures.m, l.holder)
+			coordFailures.Unlock()
 		}
 		return true
 	}
@@ -1324,66 +1340,7 @@ func (a *app) decisionSend(ctx context.Context, lane string, job sprint.Note, lo
 				return err
 			}
 			_, err = st.Run(ctx, store.Step{Verb: "decision escalation receipt", Actor: sprint.MachineActor, Epoch: &epoch, Plan: func(s *sprint.Snapshot) sprint.Plan {
-				var p sprint.Plan
-				for _, o := range s.Acked {
-					n := o.Note
-					if n.ID != job.ID || n.DecisionDelivery == nil || n.DecisionDelivery.Token != d.Token {
-						continue
-					}
-					next := *n.DecisionDelivery
-					var ownerReports []string
-					foldOwner := false
-					if lane == "coordinator" && d.To == receiptTo {
-						all := append(append([]sprint.Open{}, s.Open...), s.Acked...)
-						ownerSet, _, reports := sprint.DecisionBatch(s.Now, all, sprint.DefaultHeldDecisions(s), "owner", machine.StoppedBetween, s)
-						ownerReports = reports
-						ownerPending := false
-						for _, pending := range s.Acked {
-							pd := pending.Note.DecisionDelivery
-							if pending.Note.Type == sprint.NDecisionDelivery && pd != nil && pd.Lane == "owner" && pd.SentAt.IsZero() {
-								ownerPending = true
-								break
-							}
-						}
-						foldOwner = ownerSet == d.Set && !ownerPending
-						fold.foldOwner = foldOwner
-						fold.ownerReports = append([]string(nil), reports...)
-					}
-					next.Fault = fault
-					if fault == "" {
-						next.SentAt = s.Now
-						if next.UnknownReceipts > 0 {
-							next.Fault = fmt.Sprintf("%d earlier receipt(s) unknown; latest renewed notice accepted; duplicate identifiable by judgment IDs", next.UnknownReceipts)
-						}
-					}
-					if next.Fault == n.DecisionDelivery.Fault && next.SentAt.Equal(n.DecisionDelivery.SentAt) {
-						return p
-					}
-					n.DecisionDelivery = &next
-					n.What = next.Fault + "; judgment IDs=" + strings.ReplaceAll(next.Set, "\x00", ",")
-					p.Updates = append(p.Updates, n)
-					receiptApplied = true
-					if fault == "" {
-						for _, r := range s.Acked {
-							coordinatorReport := lane == "coordinator" && slices.Contains(d.Reports, r.Note.ID)
-							ownerReport := lane == "owner" && slices.Contains(d.Reports, r.Note.ID) ||
-								lane == "coordinator" && foldOwner && slices.Contains(ownerReports, r.Note.ID)
-							if !coordinatorReport && !ownerReport {
-								continue
-							}
-							report := r.Note
-							if coordinatorReport {
-								report.DefaultCoordinatorTold = true
-							}
-							if ownerReport {
-								report.DefaultOwnerTold = true
-							}
-							p.Updates = append(p.Updates, report)
-						}
-					}
-					break
-				}
-				return p
+				return decisionReceiptPlan(s, lane, job, d, receiptTo, fault, machine.StoppedBetween, &fold, &receiptApplied)
 			}})
 			return err
 		})
@@ -1415,6 +1372,79 @@ func (a *app) decisionSend(ctx context.Context, lane string, job sprint.Note, lo
 		a.serveSay("DECISIONS OWED: %s delivery pending (%s; said once until it changes): %s", lane, when, fault)
 	}
 	return fold
+}
+
+// decisionReceiptPlan is the receipt step's Plan: it records the delivery's receipt on the
+// note job names, and for a coordinator receipt whose recipient is still the same, folds the
+// owner lane's set into the coordinator's notice (the owner lane's next prepare copies the
+// receipt). The engine calls a step's Plan once per attempt, so the captured state this plan
+// assigns is reset at the top of every call: a call that does not assign a field (a later
+// attempt on a changed world) must leave it at its value before the step, never at an earlier
+// attempt's.
+func decisionReceiptPlan(s *sprint.Snapshot, lane string, job sprint.Note, d sprint.DecisionDelivery, receiptTo, fault string, stopped func(time.Time, time.Time) time.Duration, fold *decisionFold, receiptApplied *bool) sprint.Plan {
+	fold.foldOwner = false
+	fold.ownerReports = nil
+	*receiptApplied = false
+	var p sprint.Plan
+	for _, o := range s.Acked {
+		n := o.Note
+		if n.ID != job.ID || n.DecisionDelivery == nil || n.DecisionDelivery.Token != d.Token {
+			continue
+		}
+		next := *n.DecisionDelivery
+		var ownerReports []string
+		foldOwner := false
+		if lane == "coordinator" && d.To == receiptTo {
+			all := append(append([]sprint.Open{}, s.Open...), s.Acked...)
+			ownerSet, _, reports := sprint.DecisionBatch(s.Now, all, sprint.DefaultHeldDecisions(s), "owner", stopped, s)
+			ownerReports = reports
+			ownerPending := false
+			for _, pending := range s.Acked {
+				pd := pending.Note.DecisionDelivery
+				if pending.Note.Type == sprint.NDecisionDelivery && pd != nil && pd.Lane == "owner" && pd.SentAt.IsZero() {
+					ownerPending = true
+					break
+				}
+			}
+			foldOwner = ownerSet == d.Set && !ownerPending
+			fold.foldOwner = foldOwner
+			fold.ownerReports = append([]string(nil), reports...)
+		}
+		next.Fault = fault
+		if fault == "" {
+			next.SentAt = s.Now
+			if next.UnknownReceipts > 0 {
+				next.Fault = fmt.Sprintf("%d earlier receipt(s) unknown; latest renewed notice accepted; duplicate identifiable by judgment IDs", next.UnknownReceipts)
+			}
+		}
+		if next.Fault == n.DecisionDelivery.Fault && next.SentAt.Equal(n.DecisionDelivery.SentAt) {
+			return p
+		}
+		n.DecisionDelivery = &next
+		n.What = next.Fault + "; judgment IDs=" + strings.ReplaceAll(next.Set, "\x00", ",")
+		p.Updates = append(p.Updates, n)
+		*receiptApplied = true
+		if fault == "" {
+			for _, r := range s.Acked {
+				coordinatorReport := lane == "coordinator" && slices.Contains(d.Reports, r.Note.ID)
+				ownerReport := lane == "owner" && slices.Contains(d.Reports, r.Note.ID) ||
+					lane == "coordinator" && foldOwner && slices.Contains(ownerReports, r.Note.ID)
+				if !coordinatorReport && !ownerReport {
+					continue
+				}
+				report := r.Note
+				if coordinatorReport {
+					report.DefaultCoordinatorTold = true
+				}
+				if ownerReport {
+					report.DefaultOwnerTold = true
+				}
+				p.Updates = append(p.Updates, report)
+			}
+		}
+		break
+	}
+	return p
 }
 
 // busMessageWent says the bus refused a send because the message already went under

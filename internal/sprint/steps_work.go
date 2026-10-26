@@ -16,6 +16,7 @@ import (
 
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 	"github.com/mas-bandwidth/nova-tools/pkg/decide"
+	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
 
 // The steps that move primaries through the work table and the fleet: add,
@@ -1171,6 +1172,11 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 		if why := inState(c, Ready); why != "" {
 			return why
 		}
+		if tip := c.F(FieldForwardMerge); tip != "" && c.F(FieldForwardMergeChecked) != tip {
+			// tla/Land.tla NoDealAgainstStaleTip models this pending-card guard;
+			// MCLandBrokenStaleTip is the reversed witness that finds the stale deal.
+			return c.ID + " was not rechecked after its base forward-merged to " + tip + ": its behind count and brief-at-base checks must pass before it is dealt"
+		}
 		// a card that carries a hold is dealt by no path: it moves only by the coordinator's
 		// release, so one that reached ready while held (a needs change before the hold was
 		// guarded) waits here (tla/Holds.tla DealH, reversed witness "dealheld")
@@ -1344,7 +1350,7 @@ func dealPlan(s *Snapshot, r DealReq, rr *round, ri routeIndexes) (Plan, roundMo
 			p.refuse(c.ID, why)
 			continue
 		}
-		u, why := deal(s, c, c.F("fix"), m, q, ri, nil, map[string]string{"finding": c.F("finding"), "why": c.F("why")})
+		u, why := deal(s, c, c.F("fix"), m, q, ri, nil, map[string]string{"finding": c.F("finding"), "why": c.F("why"), FieldDealtBy: "the tick's deal"})
 		if why != "" {
 			p.refuse(c.ID, why)
 			continue
@@ -1374,7 +1380,8 @@ func deal(s *Snapshot, c *Card, fix, m string, q map[string]int, ri routeIndexes
 	}
 	q[m]++
 	fields := map[string]string{"kind": "work", "primary": c.ID, "stream": c.Row, "attempt": itoa(attempt), "gen": "1", "member": m,
-		"dealt": stamp(s.Now), "first_dealt": stamp(s.Now), "untaken_since": stamp(s.Now)}
+		"dealt": stamp(s.Now), "first_dealt": stamp(s.Now), "untaken_since": stamp(s.Now),
+		FieldDealtFacts: strings.Join(s.MemberFacts(m), ",")}
 	if fix != "" {
 		fields["fix"] = fix
 	}
@@ -1422,7 +1429,7 @@ func deal(s *Snapshot, c *Card, fix, m string, q map[string]int, ri routeIndexes
 func escalate(s *Snapshot, c, prev *Card, tier, why, m string, q map[string]int, ri routeIndexes) (Unit, string) {
 	from, _ := CardTiers(c)
 	set := map[string]string{FieldTierNow: tier}
-	given := map[string]string{"finding": c.F("finding"), "why": fmt.Sprintf("escalated from %s to %s: %s", from, tier, why)}
+	given := map[string]string{"finding": c.F("finding"), "why": fmt.Sprintf("escalated from %s to %s: %s", from, tier, why), FieldDealtBy: "the escalation"}
 	u, refused := deal(s, withField(c, FieldTierNow, tier), c.F("fix"), m, q, ri, set, given)
 	if refused != "" {
 		return Unit{}, refused
@@ -1448,6 +1455,7 @@ func redeal(s *Snapshot, c, wc *Card, m string, q map[string]int, ri routeIndexe
 	}
 	q[m]++
 	set := nextGen(wc, m, s.Now)
+	set[FieldDealtFacts], set[FieldDealtBy] = strings.Join(s.MemberFacts(m), ","), "the redeal"
 	if wc.F(FieldTakeEnded) != "" {
 		set["redeals"] = itoa(wc.Int("redeals") + 1)
 	}
@@ -2074,6 +2082,15 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 		}
 		pr := s.Work.Placed(c.F("primary"))
 		late := c.Col == DoneFailed || c.Col == Finished // a late report for the attempt a deadline failed (lateFinish)
+		// A failed (or HOLD) finish on a member whose facts at the deal did not cover the
+		// card's GATE-NEEDS is the machine's fault, never the card's: no attempt counts
+		// toward the bound or the cap, no finding is kept, and the same attempt is dealt
+		// again only where the facts are (tla/WaitFor.tla FinishFactBlind; docs/SPEC-SPRINT.md,
+		// the gate-host rule). One happened note names the path that dealt it.
+		if r.Failed && !late && !IsFriendRow(c.Row) && factBlindGuard(pr, c) {
+			p.Units = append(p.Units, factBlindReturned(s, c, pr, who, r.Report))
+			continue
+		}
 		// how a failed finish is routed: by the reason line's prefix, or by the take's
 		// attempt decision at or above its class's bar on the card (decide.go, finishKind)
 		kind, class, used := "", "", false
@@ -2176,6 +2193,16 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 			continue
 		case cardhdr.EndStaging:
 			p.Units = append(p.Units, stagingRefused(s, c, pr, r))
+			continue
+		}
+		// A failed finish can keep the commit it pushed. Its only non-SHA value is
+		// the existing no-push default: this work card's id. Refuse every other
+		// invalid head here, after the routes above that end the take with nothing
+		// pushed and record no head (so a JOB.md's older FINISH-FAILED line, whose
+		// --head is the staged branch, is still routed), and before the head is
+		// written, so neither the primary nor a later widen can carry it.
+		if r.Failed && r.Head != "" && r.Head != c.ID && !typedrec.IsFullSha(r.Head) {
+			p.refuse(c.ID, "a failed finish --head must be a full commit SHA (only the card id default may be non-SHA); nothing was changed")
 			continue
 		}
 		head := r.Head
@@ -2689,6 +2716,45 @@ func stagingRefused(s *Snapshot, c, pr *Card, r FinishReq) Unit {
 		change(Fleet, moveEntry(c, c.Row, Withdrawn, set, "taken", "dealt")),
 		change(Work, moveEntry(pr, pr.Row, Ready, prSet, "work")),
 	}, Notes: notes, Moved: fmt.Sprintf("%s working -> withdrawn gen=%d, %s refused it at staging; %s working -> ready", c.ID, c.Int("gen")+1, c.Row, pr.ID)}
+}
+
+// factBlindAtDeal says the member that finished the attempt lacked a need of the card's
+// GATE-NEEDS when the deal cut the work card (FieldDealtFacts): the machine could never have
+// run it, so its failed finish spends no attempt (tla/WaitFor.tla FinishFactBlind).
+// factBlindGuard is the test-only seam for the reversed witness: setting it to false is
+// the model's factblind case, a finish that spends the attempt anyway.
+var factBlindGuard = factBlindAtDeal
+
+func factBlindAtDeal(pr, wc *Card) bool {
+	needs := GateNeeds(pr.F("brief"))
+	if len(needs) == 0 {
+		return false
+	}
+	return !memberSatisfies(Split(wc.F(FieldDealtFacts)), needs)
+}
+
+// factBlindReturned ends an attempt dealt to a member whose facts lacked its GATE-NEEDS
+// without spending it: the work card is withdrawn (the same attempt, no FieldTakeEnded, so
+// no redeal is charged) and the primary waits ready at that attempt, its failure count and
+// findings untouched; the next deal narrows the fleet by GateHostPool, so the member is not
+// dealt it again while it lacks the facts. The one happened note names the path that dealt
+// it (FieldDealtBy; tla/WaitFor.tla FinishFactBlind; docs/SPEC-SPRINT.md, the gate-host rule).
+func factBlindReturned(s *Snapshot, c, pr *Card, who, report string) Unit {
+	set := nextGen(c, "", s.Now)
+	set["withdrawn"] = stamp(s.Now)
+	set[FieldProviderError] = "the member's facts at the deal did not carry the card's GATE-NEEDS"
+	by := c.F(FieldDealtBy)
+	if by == "" {
+		by = "the deal"
+	}
+	n := happened(NGateNeeds, pr.Row, s.Now, pr.ID)
+	n.Who, n.Card, n.Attempt = who, c.ID, pr.Int("attempt")
+	n.What = fmt.Sprintf("attempt %d was dealt by %s to %s, whose facts (%s) do not carry the card's GATE-NEEDS (%s): the finish spends no attempt and keeps no finding; %s",
+		pr.Int("attempt"), by, c.Row, orDash(c.F(FieldDealtFacts)), strings.Join(GateNeeds(pr.F("brief")), ", "), cutText(report, MaxCardTextBytes))
+	return Unit{Key: c.ID, Stream: pr.Row, Changes: []Change{
+		change(Fleet, moveEntry(c, c.Row, Withdrawn, set, "taken", "dealt")),
+		change(Work, moveEntry(pr, pr.Row, Ready, nil, "work", "result")),
+	}, Moved: fmt.Sprintf("%s working -> withdrawn (the member's facts lack its GATE-NEEDS: no attempt spent); %s working -> ready", c.ID, pr.ID), Notes: []Note{n}}
 }
 
 // rateLimitedReturned is the no-spend path of a take the provider rate limited
@@ -3351,7 +3417,7 @@ func fleetStepPlan(s *Snapshot, r FleetReq, rr *round, moves roundMoves) Plan {
 			// (tla/ProviderBudget.tla, FleetUpRefusesUncleared).
 			if r.Op == "release" && ctl.F("held") != "" && !envCleared {
 				unset = append(unset, holdFields...)
-				unset = append(unset, FieldHeldReturn)
+				unset = append(unset, FieldHeldReturn, FieldHeldGate)
 				if !comeUp {
 					line = r.Member + " released, down until it beats"
 				}
@@ -3544,14 +3610,19 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 			unset = append(unset, FieldHeldFinish)
 		}
 		// a coordinator's hold with --return (fleet down) takes the member out of service:
-		// it runs no land gate (hold.go gateCapable). The mark carries the hold's held
-		// stamp (HeldToReturn), and a coordinator's hold without --return clears it; a
-		// machine's hold (held_by: the sync's retire re-holding a member already held)
-		// leaves the mark as it is
-		if held := cmp.Or(set["held"], ctl.F("held")); r.Return && r.HeldBy == "" && held != "" {
-			set[FieldHeldReturn] = held
-		} else if r.HeldBy == "" {
-			unset = append(unset, FieldHeldReturn)
+		// it runs no land gate (hold.go gateCapable). Its held_return carries the hold's
+		// held stamp (HeldToReturn); a coordinator's hold without --return carries held_gate
+		// instead (HeldToGate), the mark that the member may run gates, and clears
+		// held_return. A machine's hold (held_by: the sync's retire re-holding a member
+		// already held) leaves both marks as they are
+		if held := cmp.Or(set["held"], ctl.F("held")); r.HeldBy == "" && held != "" {
+			if r.Return {
+				set[FieldHeldReturn] = held
+				unset = append(unset, FieldHeldGate)
+			} else {
+				set[FieldHeldGate] = held
+				unset = append(unset, FieldHeldReturn)
+			}
 		}
 		// what ends the hold, and who made a coordinator's (hold_cause.go): a later hold
 		// names them again, and one that names no cause leaves none behind, so its
@@ -3608,7 +3679,20 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 			// member at its width takes no more.
 			// a bench card goes to a member of its bench alone: with none of it up it is
 			// withdrawn, and waits ready for its bench (bench_deal.go)
-			if m := rr.nextFree(onlyBench(without(without(up, StagingRefusers(c)), notLaunching(s, up, c)), benchOfWork(s, c)), q, lanes, widths, ""); m != "" {
+			// its gate's needs (the gate-host rule): the redeal gives it only to a
+			// member whose facts satisfy every need, and when none remains it raises
+			// the judgment as the deal does instead of dealing it
+			cands := onlyBench(without(without(up, StagingRefusers(c)), notLaunching(s, up, c)), benchOfWork(s, c))
+			host := c
+			if pr := s.Work.Placed(c.F("primary")); pr != nil {
+				host = pr
+			}
+			cands, gateWhy := s.GateHostPool(host, cands)
+			m := ""
+			if len(cands) > 0 {
+				m = rr.nextFree(cands, q, lanes, widths, "")
+			}
+			if m != "" {
 				rr.moved(m)
 				moves[c.ID] = m
 				q[m]++
@@ -3620,6 +3704,9 @@ func downPlan(s *Snapshot, r FleetReq, up []string, rr *round, moves roundMoves,
 				p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.F("stream"), Changes: []Change{change(Fleet, moveEntry(c, m, Ready, set, "taken"))},
 					Moved: fmt.Sprintf("%s %s:%s -> %s:ready gen=%d; %s down", c.ID, c.Row, c.Col, m, c.Int("gen")+1, r.Member)})
 				continue
+			}
+			if gateWhy != "" {
+				p.Notes = append(p.Notes, gateNeedsJudgment(c, gateWhy, r.Who, s.Now))
 			}
 		}
 		withdrew++
@@ -3772,7 +3859,13 @@ func levelWith(s *Snapshot, p *Plan, up []string, rr *round, moves roundMoves, h
 			// a bench card is never moved off its bench: the members its BENCH line does not
 			// name are avoided as a member that refused it at staging is (bench_deal.go)
 			// nor a member that cannot launch its route (notLaunching: fault 10)
-			to = target(rr, up, n, held, lanes, long, append(append(StagingRefusers(q[i]), notBench(up, benchOfWork(s, q[i]))...), notLaunching(s, up, q[i])...))
+			host := q[i]
+			if pr := s.Work.Placed(q[i].F("primary")); pr != nil {
+				host = pr
+			}
+			gateAdm, _ := s.GateHostPool(host, up)
+			avoid := append(append(append(StagingRefusers(q[i]), notBench(up, benchOfWork(s, q[i]))...), notLaunching(s, up, q[i])...), without(up, gateAdm)...)
+			to = target(rr, up, n, held, lanes, long, avoid)
 		}
 		if to == "" {
 			// no card of this source has a target: a less-over source may still

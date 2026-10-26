@@ -145,7 +145,7 @@ func (a *app) cmdHoldKind(verb, kind string, release bool, args []string, stdout
 		fmt.Fprintf(stdout, "%s DRY-RUN names=%s return=%t; nothing was written\n", strings.ToUpper(name), strings.Join(pos, ","), ret)
 		return 0
 	}
-	req := sprint.HoldReq{Names: pos, Release: release, Return: ret, Kind: kind, Reason: *reason, Who: c.actor, ForceLast: forceLast}
+	req := sprint.HoldReq{Names: pos, Release: release, Return: ret, Kind: kind, Reason: *reason, Who: c.actor, ForceLast: forceLast, Self: a.machineName()}
 	if req.Cause = strings.TrimSpace(*cause); req.Cause != "" {
 		if _, doctor := sprint.DoctorCause(req.Cause); doctor {
 			// no doctor cause in v1.2.x (hold_cause.go, DoctorCauseDeferred)
@@ -209,7 +209,7 @@ func (a *app) runHold(verbName, stepVerb string, c common, st *store.Store, r sp
 	// the last-gate guard is the verb's refuse form: exit 2, the refusal's line on
 	// stderr, nothing written
 	for _, r := range res.Refused {
-		if strings.Contains(r.Why, "leaves no gate bench") {
+		if r.Code == sprint.RefusedLastGate {
 			return refuse(stderr, verbName, r.Key+": "+r.Why)
 		}
 	}
@@ -217,9 +217,11 @@ func (a *app) runHold(verbName, stepVerb string, c common, st *store.Store, r sp
 }
 
 // cmdFleetDown is fleet down <member>, hold <member> --return in the old words (one
-// release): the member's unfinished work, ready and working, dealt round the fleet now.
+// release): the member's unfinished work, ready and working, dealt round the fleet now;
+// --force-last opts into leaving no gate bench, as it does on hold.
 func (a *app) cmdFleetDown(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup("fleet down")
+	forceLast := fs.Bool("force-last", false, "hold the last member that can run a land gate anyway: every landing will be refused until one is unheld, and the note says no gate bench is left")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, "fleet down", err.Error())
@@ -231,7 +233,7 @@ func (a *app) cmdFleetDown(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "fleet down", err.Error())
 	}
-	return a.runHold("fleet down", "fleet hold", *c, st, sprint.HoldReq{Names: pos, Kind: sprint.HoldMember, Return: true, Who: c.actor}, nil, stdout, stderr)
+	return a.runHold("fleet down", "fleet hold", *c, st, sprint.HoldReq{Names: pos, Kind: sprint.HoldMember, Return: true, ForceLast: *forceLast, Who: c.actor, Self: a.machineName()}, nil, stdout, stderr)
 }
 
 // oldHoldWords is what fleet down, reader away and reader up say on -h: the hold verb

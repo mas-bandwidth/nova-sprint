@@ -33,6 +33,7 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -51,11 +52,45 @@ import (
 // the tree's own packages, or one update run (a build and two tests of one package).
 const landGoBudget = 15 * time.Minute
 
-// landGateRunBudget bounds one tree-gate run on a bench (2026-10-17: a run sat
-// 14 minutes on vision; CI's own bound is two minutes, so five is generous). A
-// run past it is the bench's fault, never the tree's (tla/GateRing.tla (read)
+// landGateRunBudget bounds one tree-gate run on a bench: the v1.6.3 bound, kept
+// until gate-run walls are measured per repository from the land log (2026-10-17:
+// a run sat 14 minutes on vision; that is one sample, not a measurement). A run
+// past it is the bench's fault, never the tree's (tla/GateRing.tla (read)
 // AskRefused).
-const landGateRunBudget = 5 * time.Minute
+const landGateRunBudget = 15 * time.Minute
+
+// landGateNice is the priority every gate exec runs at: a gate run is never niced
+// down, because landing is the highest priority in the sprint (the owner, 2026-10-18;
+// standard row R-PRIORITY.2). The card work it competes with on a bench runs at a
+// higher nice number, so the OS gives the gate the CPU first.
+const landGateNice = 0
+
+// niceArgv is argv started at the gate's level, named explicitly even at 0 so the tell
+// is on the command line. A value below 0 would need root and is not used.
+func niceArgv(argv []string) []string {
+	out := make([]string, 0, 3+len(argv))
+	out = append(out, "nice", "-n", strconv.Itoa(landGateNice))
+	return append(out, argv...)
+}
+
+// gateArgv is the argv any gate exec runs a shell script at (the bench's tree gate and
+// the lander's own --check): `nice -n <landGateNice> sh -c <script>`.
+func gateArgv(script string) []string { return niceArgv([]string{"sh", "-c", script}) }
+
+// cloneGoArgv is a go run's command line in the clone, started at the gate's level
+// (goRun). goRun checks the run's own program for the gofmt branch before wrapping.
+func cloneGoArgv(run []string) []string { return niceArgv(run) }
+
+// benchRun is bench.Run, a test's seam for the argv the bench is given.
+var benchRun = bench.Run
+
+// subprocPrepare is subproc.Prepare, a test's seam for the command line a go run in
+// the clone is given (goRun).
+var subprocPrepare = subproc.Prepare
+
+// gateRunBudgetOverride is a test's seam for one gate run's budget; the zero value
+// means landGateRunBudget (gateOn).
+var gateRunBudgetOverride time.Duration
 
 const benchGateUnavailableWhy = "the configured remote bench did not run the tree gate; restore a bench and run land again"
 
@@ -68,8 +103,11 @@ var treeTests = []string{"internal/docs", "internal/ci"}
 // cache every run of this process shares (goCache), and set (NAME=value each); its combined
 // output.
 func (l *lander) goRun(ctx context.Context, dir string, run []string, set ...string) (string, error) {
-	b := subproc.Prepare(ctx, landGoBudget, run[0], run[1:]...)
+	gofmtRun := len(run) > 0 && run[0] == "gofmt"
+	run = cloneGoArgv(run)
+	b := subprocPrepare(ctx, landGoBudget, run[0], run[1:]...)
 	defer b.Cancel()
+	gateGroupCmd(b.Cmd)
 	var env []string
 	if l.a != nil {
 		env = l.a.gitEnv
@@ -77,11 +115,19 @@ func (l *lander) goRun(ctx context.Context, dir string, run []string, set ...str
 	if env == nil {
 		env = os.Environ()
 	}
+	env = gateChildEnv(env)
 	with := []string{readonlyGoFlags(env)}
 	if cache := l.goCache(ctx, env); cache != "" {
 		with = append(with, "GOCACHE="+cache)
 	}
 	b.Cmd.Dir, b.Cmd.Env = dir, withEnv(env, append(with, set...)...)
+	if gofmtRun {
+		var stdout, stderr bytes.Buffer
+		b.Cmd.Stdout, b.Cmd.Stderr = &stdout, &stderr
+		err := b.Cmd.Run()
+		out := gofmtOutput(stdout.String(), stderr.String(), err)
+		return out, b.Wrap(strings.Join(run, " "), err)
+	}
 	out, err := b.Cmd.CombinedOutput()
 	return string(out), b.Wrap(strings.Join(run, " "), err)
 }
@@ -92,6 +138,7 @@ func (l *lander) goRun(ctx context.Context, dir string, run []string, set ...str
 // cache where its go env names one, asked once a process), else a cache under the land
 // root (<root>/cache/go-build, the swarm's own name for it). "" when none can be named.
 func (l *lander) goCache(ctx context.Context, env []string) string {
+	env = gateChildEnv(env)
 	for _, e := range env {
 		if v, ok := strings.CutPrefix(e, "GOCACHE="); ok && v != "" {
 			return v
@@ -729,7 +776,11 @@ func (l *lander) ringGate(ctx context.Context, hosts []string, dir string, runs 
 func (l *lander) gateOn(ctx context.Context, host, dir string, runs [][]string, tests bool, st *bench.MirrorStage) (why string, ran bool, refused *bench.StageError) {
 	defer l.giveGateLane(host)
 	l.stage("gate", "bench "+host+" held by "+l.laneWho()+" ("+l.gateWhose()+"): "+strings.Join(runs[0], " "))
-	budget := time.Duration(len(runs)) * landGateRunBudget
+	runBudget := gateRunBudgetOverride
+	if runBudget == 0 {
+		runBudget = landGateRunBudget
+	}
+	budget := time.Duration(len(runs)) * runBudget
 	gctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	start := l.clock()
@@ -738,12 +789,15 @@ func (l *lander) gateOn(ctx context.Context, host, dir string, runs [][]string, 
 	if errors.As(err, &refused) {
 		return "", false, refused
 	}
-	if ctx.Err() == nil && (errors.Is(err, context.DeadlineExceeded) || errors.Is(gctx.Err(), context.DeadlineExceeded)) {
-		refused := &bench.StageError{Host: host, Step: "the gate run", Wall: wall, Tail: "no answer within " + budget.String()}
-		l.copySaid(refused.Error())
-		return "", false, refused
-	}
 	if err != nil || code == bench.NoAnswer {
+		// A run that did not answer, with the budget past (or the run itself on its
+		// deadline) and the caller not cancelling, is the bench's fault: the ring steps
+		// on. A run that answered, even as the deadline fired, is the run's answer.
+		if ctx.Err() == nil && (errors.Is(err, context.DeadlineExceeded) || errors.Is(gctx.Err(), context.DeadlineExceeded)) {
+			refused := &bench.StageError{Host: host, Step: "the gate run", Wall: wall, Tail: "no answer within " + budget.String()}
+			l.copySaid(refused.Error())
+			return "", false, refused
+		}
 		return "", false, nil
 	}
 	l.ranOnBench(host, wall)
@@ -1171,11 +1225,11 @@ func (l *lander) gateBenches(ctx context.Context) (hosts []string, inLoop, remot
 }
 
 // gateHosts is the gate's host choice, which the loop (gateBenches) and the dry run
-// (dryGate) share: the fleet members that may run a gate (Snapshot.GateMembers: up, or
-// held by the coordinator; a hold is a deal control, not a gate one) other than this
-// machine that bench.CheckHost accepts, in the fleet's order. A down member is left out;
-// one that cannot be reached is passed over by the ring (ringGate). remote says another
-// fleet member is configured, even when it is down or the fleet could not be read.
+// (dryGate) share: the benches the land loop can use (Snapshot.LandBenches: GateMembers,
+// up or held by the coordinator, other than this machine and any host bench.CheckHost
+// refuses), in the fleet's order. A down member is left out; one that cannot be reached
+// is passed over by the ring (ringGate). remote says another fleet member is configured,
+// even when it is down or the fleet could not be read.
 // tla/DirtyTick.tla LandGate (MCDirtyTickGateHeld.cfg, MCDirtyTickBrokenGateUpOnly.cfg).
 func (l *lander) gateHosts(ctx context.Context) (hosts []string, remote bool) {
 	if l == nil || l.a == nil || l.st == nil {
@@ -1194,13 +1248,7 @@ func (l *lander) gateHosts(ctx context.Context) (hosts []string, remote bool) {
 			break
 		}
 	}
-	for _, m := range s.GateMembers() {
-		if self != "" && strings.EqualFold(m, self) {
-			continue
-		}
-		if bench.CheckHost(m) != nil {
-			continue
-		}
+	for _, m := range s.LandBenches(self) {
 		hosts = append(hosts, m)
 	}
 	return hosts, remote
@@ -1349,10 +1397,10 @@ func (l *lander) runOnBench(ctx context.Context, host, dir string, runs [][]stri
 		return "", 0, fmt.Errorf("no mirror stage for %s: the gate runs here", dir)
 	}
 	var buf bytes.Buffer
-	res, err := bench.Run(ctx, bench.Exec{}, bench.Options{
+	res, err := benchRun(ctx, bench.Exec{}, bench.Options{
 		Hosts:  []string{host},
 		Stage:  st,
-		Argv:   []string{"sh", "-c", gateScript(runs)},
+		Argv:   gateArgv(gateScript(runs)),
 		Stdout: &buf,
 		Stderr: &buf,
 		Now:    l.clock,

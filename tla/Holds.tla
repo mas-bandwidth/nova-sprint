@@ -59,7 +59,8 @@
 (* coordinator's (steps_sentinel.go:299-404): a sentinel's waits must    *)
 (* each be under way (notUnderWay:409-438), the unmet waits are waived   *)
 (* (:369-382), and a held card has its hold cleared (releaseHeld:        *)
-(* 442-450). CutRelease is the cut sentinel's self-release               *)
+(* 470-489), in place when it is working: a working card may carry the   *)
+(* server default's hold. CutRelease is the cut sentinel's self-release  *)
 (* (sentinel.go:51-103): it names needs, is reached, waits on nothing    *)
 (* and its stream is not held; it never waives. SentinelSet replaces a   *)
 (* waiting sentinel's needs (steps_sentinel.go:475-570): here plain ->   *)
@@ -89,6 +90,11 @@
 (*                     breaks NeedsSet, since only a broken move leaves a *)
 (*                     held card ready for the deal to see: the deal's    *)
 (*                     guard is the second of two.                        *)
+(* Broken (the release witness):                                        *)
+(*  "releasemovesworking" - ReleaseHeld sends a working card held by the  *)
+(*                     server default to ready instead of clearing the    *)
+(*                     hold in place and leaving it working.              *)
+(*                     ReleaseKeepsAWorkingCardWorking fails.             *)
 (***************************************************************************)
 EXTENDS Naturals, FiniteSets
 
@@ -362,13 +368,16 @@ CardTypeOK ==
   /\ cardStreamHeld \in BOOLEAN
 
 CardInit ==
-  /\ cardCol = [c \in Cards |-> "waiting"]
+  \* h is held by the server default, from waiting or from working (a working
+  \* card may carry the hold: releaseHeld, steps_sentinel.go)
+  /\ cardCol \in { [c \in Cards |-> "waiting"],
+                   [c \in Cards |-> IF c = "h" THEN "working" ELSE "waiting"] }
   /\ cardHeld = [c \in Cards |-> c = "h"]
   /\ cardNeeds \in { [c \in Cards |-> {}],
                      [c \in Cards |-> IF c = "S" THEN {"a"} ELSE {}] }
   /\ cardWaived = [c \in Cards |-> {}]
   /\ cardReached = [c \in Cards |-> FALSE]
-  /\ cardTaken = [c \in Cards |-> FALSE]
+  /\ cardTaken = [c \in Cards |-> c = "h" /\ cardCol[c] = "working"]
   /\ cardReleasedBy = [c \in Cards |-> "none"]
   /\ cardStreamHeld = FALSE
 
@@ -474,13 +483,18 @@ ReleaseSentinel(actor) ==
   /\ UNCHANGED <<cardHeld, cardNeeds, cardReached, cardTaken, cardStreamHeld>>
 
 \* the coordinator clears a held card's hold, and it is ready when it waits
-\* for nothing else (releaseHeld, steps_sentinel.go:442-450); a held card that
-\* is ready already (only a broken move leaves one) has its hold cleared and
-\* stays ready
+\* for nothing else (releaseHeld, steps_sentinel.go:470-489). A working card
+\* held by the server default is released in place and stays working; a held
+\* card that is ready already (only a broken move leaves one) has its hold
+\* cleared and stays ready. The "releasemovesworking" witness sends the
+\* working card to ready, which no release of the code does.
 ReleaseHeld(actor) ==
-  /\ cardCol["h"] \in {"waiting", "ready"} /\ cardHeld["h"]
+  /\ cardCol["h"] \in {"waiting", "ready", "working"} /\ cardHeld["h"]
   /\ cardHeld' = [cardHeld EXCEPT !["h"] = FALSE]
-  /\ cardCol' = [cardCol EXCEPT !["h"] = IF cardCol["h"] = "ready" \/ WaitsFor("h") = {} THEN "ready" ELSE "waiting"]
+  /\ cardCol' = [cardCol EXCEPT !["h"] =
+        IF cardCol["h"] = "working"
+        THEN IF Broken = "releasemovesworking" THEN "ready" ELSE "working"
+        ELSE IF cardCol["h"] = "ready" \/ WaitsFor("h") = {} THEN "ready" ELSE "waiting"]
   /\ cardReleasedBy' = [cardReleasedBy EXCEPT !["h"] = actor]
   /\ UNCHANGED <<cardNeeds, cardWaived, cardReached, cardTaken, cardStreamHeld>>
 
@@ -557,13 +571,23 @@ CardNext ==
   \/ DealA \/ TakeA \/ LandCardA
   \/ DealH \/ NeedsSetH
 
-\* a held primary stays waiting until the coordinator's release clears its
-\* hold (steps_work.go:895, held.go:53-64)
-HeldMovesOnlyByRelease == \A c \in Cards : cardHeld[c] => cardCol[c] = "waiting"
+\* a held primary stays waiting, or working if it was working when the server
+\* default's hold was placed, until the coordinator's release clears its hold
+\* (steps_work.go:895, held.go:53-64; releaseHeld, steps_sentinel.go:470-489)
+HeldMovesOnlyByRelease == \A c \in Cards : cardHeld[c] => cardCol[c] \in {"waiting", "working"}
 
-\* the deal never takes a card that carries a hold: a held card is never
-\* working (steps_work.go dealPlan, the ready closure)
-NoHeldCardDealt == \A c \in Cards : cardHeld[c] => cardCol[c] /= "working"
+\* the deal never takes a card that carries a hold: a held card is not working
+\* unless its work was already taken when the hold was placed, as a working
+\* card held by the server default is (steps_work.go dealPlan, the ready
+\* closure; releaseHeld, steps_sentinel.go:470-489)
+NoHeldCardDealt == \A c \in Cards : cardHeld[c] => (cardCol[c] /= "working" \/ cardTaken[c])
+
+\* a release of a working card held by the server default never changes its
+\* column: releaseHeld clears the hold in place (steps_sentinel.go:470-489).
+\* The "releasemovesworking" witness sends it to ready and fails this.
+ReleaseKeepsAWorkingCardWorking ==
+  [][(cardHeld["h"] /\ cardCol["h"] = "working" /\ ~cardHeld'["h"])
+      => cardCol'["h"] = "working"]_cardVars
 
 \* no worker releases: the release verb is the coordinator's alone
 \* (steps_sentinel.go:316-320); the machine's own cut release is "machine"

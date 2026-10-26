@@ -447,6 +447,9 @@ func cardsWaitingFor(s *Snapshot, f FriendSeat, seats map[string]FriendSeat) []i
 			if pr == nil || IsSentinel(pr) || IsHeld(pr) || StreamHeld(s, pr.Row) || len(Bench(pr)) > 0 {
 				continue
 			}
+			if h, _ := s.throttleHolds(pr); h {
+				continue // the deal throttle holds it (deal_throttle.go): no friend could be dealt it now
+			}
 			if !friendCouldTake(s, f, pr, nil) {
 				continue
 			}

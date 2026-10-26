@@ -15,7 +15,7 @@ import (
 // docs/SPEC-CARD-CONTRACT.md): the files a change must touch to keep the tree green are
 // inside every card's PATHS. The owner, 2026-10-06: "Can we stop this whole 'test
 // outside of paths' thing. It's wasteful."
-const AlwaysInPathsRule = "Files a change must touch to keep the tree green are always inside PATHS, whatever the brief names: every *_test.go, every file under a testdata/ directory, tla/RUNS.tsv, tla/CASES.tsv and tla/COVERAGE.tsv, internal/docs/catalog.go, and every AGENTS.md map; any other file outside PATHS is still out of scope."
+const AlwaysInPathsRule = "Files a change must touch to keep the tree green are always inside PATHS, whatever the brief names: every test file (*_test.*, *.test.*, test_*, or under a tests/ or __tests__/ directory), every file under a testdata/ directory, tla/RUNS.tsv, tla/CASES.tsv and tla/COVERAGE.tsv, internal/docs/catalog.go, and every AGENTS.md map; any other file outside PATHS is still out of scope."
 
 // alwaysInPathsFiles are the single files AlwaysInPathsRule names.
 var alwaysInPathsFiles = []string{"tla/RUNS.tsv", "tla/CASES.tsv", "internal/docs/catalog.go"}
@@ -33,6 +33,43 @@ var ledgerInPathsFiles = []string{
 // docs/roadmap-evidence/fixed-<leg>.sexp file (docs/SPEC-LANDING.md).
 func EvidenceLedger(p string) bool {
 	return strings.HasPrefix(p, "docs/roadmap-evidence/") && strings.HasSuffix(p, ".sexp")
+}
+
+// sharedRegistriesFile is a repository's own shared registry: one repository-relative
+// path or glob per line, naming files that are always inside every card's PATHS as the
+// built-in set is (docs/SPEC-LANDING.md, docs/SPEC-SPRINT.md section 7).
+const sharedRegistriesFile = ".nova/always-allowed"
+
+// SharedRegistries reads a repository's shared registry at repoDir: a .nova/always-allowed
+// file, one repository-relative path or glob per line, '#' comments and blank lines
+// ignored (ParseSharedRegistries). It returns the entries in file order; nil when the file
+// is absent, and then the built-in set stands (docs/SPEC-LANDING.md, docs/SPEC-SPRINT.md
+// section 7).
+func SharedRegistries(repoDir string) []string {
+	data, err := os.ReadFile(filepath.Join(repoDir, sharedRegistriesFile))
+	if err != nil {
+		return nil
+	}
+	return ParseSharedRegistries(data)
+}
+
+// ParseSharedRegistries is the pure parser for a shared registry's bytes: one
+// repository-relative path or glob per line (the same syntax PATHS takes), '#' comments
+// and blank lines ignored. An entry that climbs out of the repository with .., or an
+// absolute path, is dropped.
+func ParseSharedRegistries(data []byte) []string {
+	var out []string
+	for _, line := range strings.Split(string(data), "\n") {
+		entry := strings.TrimSpace(line)
+		if entry == "" || strings.HasPrefix(entry, "#") {
+			continue
+		}
+		if clean := path.Clean(entry); clean == ".." || strings.HasPrefix(clean, "../") || strings.HasPrefix(clean, "/") {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
 }
 
 // CatalogLedgers reads a repository's own catalog at repoDir: a LEDGERS line in its
@@ -91,17 +128,32 @@ func LedgerInPaths(p string, catalog ...string) bool {
 	return diffcheck.Ledger(p) || diffcheck.AgentsMap(p)
 }
 
-// AlwaysInPaths says p is a file AlwaysInPathsRule puts inside every card's PATHS: a Go
-// test file, a file under a testdata directory at any depth, one of the TLA+ ledgers,
-// the docs catalog, an AGENTS.md map, or a shared or evidence ledger (LedgerInPaths).
-// p is a path relative to the repository root.
-func AlwaysInPaths(p string) bool {
+// AlwaysInPaths says p is a file AlwaysInPathsRule puts inside every card's PATHS: a
+// test file in any language (IsTestFile), a file under a testdata directory at any depth, one of the TLA+ ledgers,
+// the docs catalog, an AGENTS.md map, a shared or evidence ledger (LedgerInPaths), or a
+// file a repository's own shared registry names (.nova/always-allowed, SharedRegistries;
+// docs/SPEC-LANDING.md, docs/SPEC-SPRINT.md section 7), which stands beside the built-in
+// set. p is a path relative to the repository root. registries is the repository's shared
+// registry; absent (nil), the built-in set stands. The registry file itself is never
+// always-allowed, even when an entry names it.
+func AlwaysInPaths(p string, registries ...string) bool {
 	p = strings.TrimPrefix(path.Clean(p), "./")
 	switch {
-	case p == "." || p == "" || strings.HasPrefix(p, "../") || strings.HasPrefix(p, "/"):
+	case p == "." || p == "" || p == sharedRegistriesFile || strings.HasPrefix(p, "../") || strings.HasPrefix(p, "/"):
 		return false
-	case strings.HasSuffix(p, "_test.go"), path.Base(p) == "AGENTS.md", slices.Contains(alwaysInPathsFiles, p), LedgerInPaths(p):
+	case IsTestFile(p), path.Base(p) == "AGENTS.md", slices.Contains(alwaysInPathsFiles, p), LedgerInPaths(p), matchesRegistry(p, registries):
 		return true
 	}
 	return slices.Contains(strings.Split(path.Dir(p), "/"), "testdata")
+}
+
+// matchesRegistry says p matches one of a repository's shared registry entries: a literal
+// path or a glob in the same syntax PATHS takes (diffcheck.Covers).
+func matchesRegistry(p string, registries []string) bool {
+	for _, e := range registries {
+		if diffcheck.Covers(e, p) {
+			return true
+		}
+	}
+	return false
 }

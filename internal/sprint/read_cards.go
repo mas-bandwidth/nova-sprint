@@ -11,6 +11,13 @@ import (
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 )
 
+// tickCountReadGenOf and tickCountReadNextGen count calls of readGenOf and readNextGen
+// (tick_memo_complexity_test.go).
+var (
+	tickCountReadGenOf   int64
+	tickCountReadNextGen int64
+)
+
 // A read is a consumer card (docs/SPEC-SPRINT.md section 6, "A read is a consumer card";
 // the owner, 2026-10-06: "reads need to become a type of card"; "send out multiple consumer
 // cards in ||"; "Just remove the complexity. just deal it."). The sprint's read_cards
@@ -145,7 +152,75 @@ const (
 	// for LiveGrace (LiveReturns): no child of its member runs it. The machine takes it back
 	// to the read deal, spending nothing of the reader's and marking no failure.
 	RetiredByLost = "lost"
+	// RetiredByRework is a read card a rework retired with the attempt it replaced (Rework,
+	// steps_review.go). Its reader's verdict, reported after it, is a late read: recorded on
+	// the primary and carried to the next attempt, never refused and never a standing read
+	// (lateReadOf, friend_read.go; tla/ReadCards.tla LateClose, NoFindingLost).
+	RetiredByRework = "rework"
 )
+
+// The fields a late read writes on its primary (lateReadUnit, friend_read.go):
+// FieldLateReads is the late reads' lines not yet carried by a rework, each "late read by
+// <reader> of attempt <n> at <head12>: <verdict>: <finding>", which the next rework carries
+// into its attempt's finding (reworkGiven) and clears; FieldLateReadCards is every read card
+// recorded late, so the same report twice is one record. tla/ReadCards.tla LateClose,
+// NoFindingLost.
+const (
+	FieldLateReads     = "late_reads"
+	FieldLateReadCards = "late_read_cards"
+)
+
+// reworkWaitsForReads says a rule's rework of the primary waits for its other reads: a read
+// of its attempt found it broken, and another read card of that attempt is still open (ready
+// or working) within its own deadline, the one readCardsTakeBack holds it to: a working read
+// ReadCardDeadline from its start (a friend's read asked the old way, FriendReadDeadline), a
+// ready one the deal bound (DealtMax) from its ask. Then
+// the primary stays in review, the broken read's finding stands, and the rework runs when
+// the other read reports, is retired (returned, late, away), or passes its deadline; it
+// carries every finding of the attempt's reads (reworkGiven). The clock is the snapshot's
+// (s.Now): a read with no stamp to hold it to is never waited for, so no wait is forever.
+// With one read (--reads 1) there is no other read, and a broken read reworks at once.
+// tla/ReadCards.tla Rework (its wait), ReadDeadline, NoFindingLost, BugReworkAtFirstBroken.
+func reworkWaitsForReads(s *Snapshot, pr *Card) bool {
+	if s == nil || s.Fleet == nil || pr == nil || pr.Col != Review {
+		return false
+	}
+	if _, broken := readCardsStanding(s, pr, nil); !broken {
+		return false
+	}
+	return len(readsWaitedFor(s, pr)) > 0
+}
+
+// readsWaitedFor is the primary's open read cards at its attempt that a rework waits for:
+// each within its own deadline (reworkWaitsForReads).
+func readsWaitedFor(s *Snapshot, pr *Card) []*Card {
+	var out []*Card
+	attempt := readAttempt(pr)
+	for _, rc := range openFriendReads(s, pr.ID) {
+		if max(rc.Int("attempt"), 1) != attempt {
+			continue
+		}
+		var until time.Time
+		switch rc.Col {
+		case Working:
+			deadline := ReadCardDeadline
+			if rc.F(FieldReadCard) == "" {
+				deadline = FriendReadDeadline // a friend's read asked the old way (friendReadAsk)
+			}
+			if start := readStart(rc); !start.IsZero() {
+				until = start.Add(deadline)
+			}
+		case Ready:
+			if asked := stampAt(rc, "asked"); !asked.IsZero() {
+				until = asked.Add(s.DealtMax())
+			}
+		}
+		if !until.IsZero() && s.Now.Before(until) {
+			out = append(out, rc)
+		}
+	}
+	return out
+}
 
 // isRead says the card is a read card.
 func isRead(c *Card) bool { return c != nil && c.F("kind") == "read" }
@@ -237,7 +312,9 @@ type readUnit struct {
 	row    string // the fleet row
 	friend bool
 	seat   FriendSeat
-	half   int // free room, in half slots: twice its room less twice its work and its reads
+	half   int // free room the ask may fill: a member's in half slots (twice its room less
+	// twice its work and its reads), a friend's her room less her work and her reads
+	// (readUnitsOf), so a friend at width still queues reads while her room has space
 	// idle is its free lanes, in half slots: twice its width less twice its work cards and
 	// its read cards, ready and working (rowLoad): a lane promised to a queued card is not
 	// free (the owner, 2026-10-11: "cards only may accrue per-fleet or friend, if there are
@@ -265,11 +342,14 @@ func readUnitsOf(s *Snapshot, seats []FriendSeat) []readUnit {
 		_, width := friendRoom(g)
 		row := FriendRow(f.Name)
 		work, reads := rowLoad(s, row)
-		// a friend's read counts against her width as a work card does
-		// (friendLiveLanes, friendFreeLanes): her free lanes are what the read ask
-		// may fill, so no read is dealt to a friend at her width
+		// The owner's rule (2026-10-18): width bounds what a friend works at once,
+		// never what is queued in her ready queue; her queue is bounded by her room,
+		// DealAhead times her width, ready and working together. A read card is a card
+		// like any other, so her half (what the ask may fill) is her free room and her
+		// idle stays her free lanes (friendFreeLanes), so the ask still prefers a
+		// friend with an idle lane.
 		free := friendFreeLanes(width, work, reads)
-		out = append(out, readUnit{name: f.Name, row: row, friend: true, seat: f, half: free, idle: free})
+		out = append(out, readUnit{name: f.Name, row: row, friend: true, seat: f, half: max(DealAhead*width-(work+reads), 0), idle: free})
 	}
 	for _, m := range notQuiet(s, s.UpMembers()) { // a member quiet, under its floor or draining reads nothing (drain.go)
 		if !memberReads(s, m) {
@@ -352,11 +432,14 @@ func readSpender(cards []*Card) *Card {
 // 0 for the plain id, n for its .g<n> generation, -1 for another card. The plain identity
 // is generation 0; each take-back the read index holds is a further generation.
 func readGenOf(id, base string) int {
+	tickCount(&tickCountReadGenOf)
 	id = CardID(id)
 	if id == base {
 		return 0
 	}
-	if strings.HasPrefix(id, base+".g") {
+	// The ".g" is checked in place, not built as base+".g" for HasPrefix: this scan
+	// runs once per fleet card per tick, and that key was the concatstrings hotspot.
+	if len(id) > len(base)+1 && id[:len(base)] == base && id[len(base)] == '.' && id[len(base)+1] == 'g' {
 		if n, err := strconv.Atoi(id[len(base)+2:]); err == nil && n >= 1 {
 			return n
 		}
@@ -388,6 +471,7 @@ func ReadCardGenIDs(primary string, attempt int, reader string, gen ...int) []st
 // (the owner, 2026-10-06: "I don't want any serial reads again"; a read machine-taken-back
 // spends no reader, spentBy). tla/ReadCards.tla Deal.
 func readNextGen(cards []*Card, primary string, attempt int, reader string) int {
+	tickCount(&tickCountReadNextGen)
 	base := ReadCardID(primary, attempt, reader)
 	next := 0
 	for _, c := range cards {
@@ -396,6 +480,71 @@ func readNextGen(cards []*Card, primary string, attempt int, reader string) int 
 		}
 	}
 	return next
+}
+
+// readCardBase is the plain read identity an id belongs to: ReadCardID(primary, attempt,
+// reader) with any ".g<n>" generation stripped, "" when id is not a read card identity
+// (it has no primary.r<attempt>.<reader> shape).
+func readCardBase(id string) string {
+	i := strings.LastIndex(id, ".r")
+	if i < 0 {
+		return ""
+	}
+	j := i + 2
+	k := j
+	for k < len(id) && id[k] >= '0' && id[k] <= '9' {
+		k++
+	}
+	if k == j || k >= len(id) || id[k] != '.' {
+		return ""
+	}
+	if g := strings.LastIndex(id, ".g"); g > j {
+		if _, err := strconv.Atoi(id[g+2:]); err == nil {
+			return id[:g]
+		}
+	}
+	return id
+}
+
+// readCardIndex builds and memoizes the read cards' generations by base identity once per
+// snapshot: readIndex maps a read base to the highest generation any fleet card holds for
+// it, readIndexPlaced to the highest among placed records. It is the same result the scan
+// in readNextGen would find, computed in one pass over the fleet. Reset where the snapshot
+// is copied with a changed Fleet (newHeld). tla/ReadCards.tla Deal.
+func (s *Snapshot) readCardIndex() (map[string]int, map[string]int) {
+	if s.readIndex != nil {
+		return s.readIndex, s.readIndexPlaced
+	}
+	byBase := map[string]int{}
+	byBasePlaced := map[string]int{}
+	for _, c := range s.Fleet.Cards() {
+		base := readCardBase(c.ID)
+		if base == "" {
+			continue
+		}
+		g := readGenOf(c.ID, base)
+		if cur, ok := byBase[base]; !ok || g > cur {
+			byBase[base] = g
+		}
+		if c.Placed() {
+			if cur, ok := byBasePlaced[base]; !ok || g > cur {
+				byBasePlaced[base] = g
+			}
+		}
+	}
+	s.readIndex = byBase
+	s.readIndexPlaced = byBasePlaced
+	return byBase, byBasePlaced
+}
+
+// readNextGenFor is readNextGen's result for the base identity, from the snapshot's memoized
+// read-card index: the generation after the highest held, 0 when none is held.
+func (s *Snapshot) readNextGenFor(base string) int {
+	byBase, _ := s.readCardIndex()
+	if g, ok := byBase[base]; ok {
+		return g + 1
+	}
+	return 0
 }
 
 // readCardIDFor is the id of the reader's next read card of the attempt: the generation
@@ -450,6 +599,9 @@ func ReadCardExtras(s *Snapshot) []string {
 	var out []string
 	for _, c := range s.Work.Column(Review) {
 		attempt := readAttempt(c)
+		// the read top is the primary's, not the reader's: settle its key once per
+		// primary rather than once per fleet row
+		top := readGenTop(s, c.ID, attempt)
 		for _, row := range s.Fleet.Rows() {
 			name, ok := FriendOfRow(row)
 			if !ok {
@@ -461,8 +613,8 @@ func ReadCardExtras(s *Snapshot) []string {
 			// the identities the store must read are those the read index holds and the
 			// generation after the highest of them, the one readCardIDFor deals next: no
 			// reader is ever refused "no id", however often its read was taken back
-			next := readNextGen(s.Fleet.Cards(), c.ID, attempt, name)
-			for _, id := range ReadCardGenIDs(c.ID, attempt, name, readGenBound(next, readGenTop(s, c.ID, attempt))+1) {
+			next := s.readNextGenFor(ReadCardID(c.ID, attempt, name))
+			for _, id := range ReadCardGenIDs(c.ID, attempt, name, readGenBound(next, top)+1) {
 				if s.Fleet.Placed(id) == nil {
 					out = append(out, id)
 				}

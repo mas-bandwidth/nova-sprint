@@ -363,20 +363,21 @@ func pinReleaseRecorded(s *Snapshot, id string) bool {
 
 // Decision defaults are deliberately narrower than the existing automatic answer
 // rules. tla/DecisionsOwed.tla DefaultIsSafe: this table cannot authorize a terminal
-// action or a brief change. Unknown and newly introduced kinds declare none.
+// action or a brief change. The one table is JudgmentExits (judgment_exits.go): a safe
+// server default for three kinds, the owner delivery for every other kind; a kind with no
+// entry is a test failure, never a silent "none".
 const NServerDefault = "server applied a safe decision default"
 const NDecisionDelivery = "decision escalation delivery"
 const ServerDefaultActor = "server-default"
 
 func SafeDecisionDefault(typ string) string {
-	switch typ {
-	case NBound, NBriefWrong:
-		return "hold with cause"
-	case NCannotAsk:
-		return "wait 30m and re-ask"
-	default:
-		return "none"
+	if len(MissingJudgmentExits([]string{typ}, nil)) > 0 {
+		return "none" // no entry: never a silent answer, the test names the kind
 	}
+	if exit := JudgmentExits[typ]; ExitIsSafe(exit) {
+		return exit
+	}
+	return "none"
 }
 
 // DecisionDelivery is a durable folded-message obligation. A prepared payload and
@@ -446,7 +447,7 @@ func TickDecisionDefaults(s *Snapshot, r TickReq) Plan {
 		reason := fmt.Sprintf("%s: %s; unanswered at twice its deadline", n.ID, n.What)
 		report := Note{Kind: Acknowledged, Type: NServerDefault, SprintLevel: true, Who: ServerDefaultActor, At: s.Now, Answers: n.ID, What: SafeDecisionDefault(n.Type) + ": " + reason}
 		switch SafeDecisionDefault(n.Type) {
-		case "hold with cause":
+		case ExitHoldWithCause:
 			if s.Work == nil || n.StreamLevel || n.SprintLevel {
 				continue
 			}
@@ -483,7 +484,7 @@ func TickDecisionDefaults(s *Snapshot, r TickReq) Plan {
 			u.Notes = []Note{ack, report}
 			u.Moved = "server-default: " + report.What
 			p.Units = append(p.Units, u)
-		case "wait 30m and re-ask":
+		case ExitWaitReAsk:
 			// Reuse wait's acknowledged condition; normal TickAsk retries eligibility,
 			// and its review time reopens the condition if no reader became eligible.
 			q := Wait(s, WaitReq{Note: n.ID, Until: s.Now.Add(30 * time.Minute), Who: s.Coordinator})
@@ -498,6 +499,13 @@ func TickDecisionDefaults(s *Snapshot, r TickReq) Plan {
 				q.Units[i].Moved = "server-default: " + report.What
 			}
 			p.Units = append(p.Units, q.Units...)
+		case ExitOwner:
+			// Never answered by the machine: the existing owner delivery (DecisionBatch's
+			// "owner" lane, cmd/nova-sprint decisionPass) carries it at twice its deadline
+			// and again each OwnerWindow while it stays open (OwnerExitDue). The tick
+			// moves no card and writes no default.
+			// tla/WaitFor.tla OwnerDeliver; tla/DecisionsOwed.tla observe/ownerDue;
+			// docs/SPEC-SPRINT.md section 8.
 		}
 	}
 	return p
@@ -511,14 +519,20 @@ type DecisionSummary struct {
 	DefaultsHour   int           `json:"defaults_hour"`
 	DeliveryFaults int           `json:"delivery_faults"`
 	ReceiptUnknown int           `json:"receipt_unknown"`
+	HeldByDefault  int           `json:"held_by_default"`
 	ReceiptHistory []string      `json:"receipt_history,omitempty"`
 }
 
 func DecisionsOwed(now time.Time, all []Open, held []Note, stopped func(time.Time, time.Time) time.Duration) DecisionSummary {
+	var out DecisionSummary
+	heldSeen := map[string]bool{}
 	for _, n := range held {
+		if !heldSeen[n.ID] {
+			heldSeen[n.ID] = true
+			out.HeldByDefault++
+		}
 		all = append(all, Open{Note: n})
 	}
-	var out DecisionSummary
 	seen := map[string]bool{}
 	for _, o := range all {
 		n := o.Note
@@ -547,7 +561,7 @@ func DecisionsOwed(now time.Time, all []Open, held []Note, stopped func(time.Tim
 	return out
 }
 func (d DecisionSummary) Line() string {
-	return fmt.Sprintf("DECISIONS OWED %d, oldest %s; server-defaults applied this hour %d; delivery faults %d; earlier receipts unknown %d", d.Count, d.Oldest.Truncate(time.Second), d.DefaultsHour, d.DeliveryFaults, d.ReceiptUnknown)
+	return fmt.Sprintf("DECISIONS OWED %d, oldest %s; server-defaults applied this hour %d; delivery faults %d; earlier receipts unknown %d; held by server-default %d", d.Count, d.Oldest.Truncate(time.Second), d.DefaultsHour, d.DeliveryFaults, d.ReceiptUnknown, d.HeldByDefault)
 }
 
 // DecisionBatch folds by stable note identity, never by changing ages. A default
@@ -557,6 +571,12 @@ func DecisionBatch(now time.Time, all []Open, held []Note, lane string, stopped 
 	notes := map[string]Note{}
 	subjects := map[string][]string{}
 	for _, n := range held {
+		// A server-default hold reaches the owner after its second re-raise unanswered
+		// (OwnerExitDue, judgment_exits.go); the coordinator lane keeps it from the start.
+		// tla/WaitFor.tla OwnerDeliver.
+		if lane == "owner" && !OwnerExitDue(now, n, stopped) {
+			continue
+		}
 		notes[n.ID] = n
 		subjects[n.ID] = n.Subjects() // Derived from live held cards, never an old open note.
 	}
@@ -714,7 +734,7 @@ func DefaultHeldDecisions(s *Snapshot) []Note {
 			continue
 		}
 		at, _ := time.Parse(time.RFC3339, c.F(FieldHeld))
-		out = append(out, Note{ID: "server-default-held:" + c.ID, Kind: Judgment, Type: "server-default hold", Primaries: []string{c.ID}, At: at, Answers: c.F("held_judgment"), What: fmt.Sprintf("%s remains parked by server-default for judgment %s: %s; release after review", c.ID, c.F("held_judgment"), c.F("held_reason"))})
+		out = append(out, Note{ID: "server-default-held:" + c.ID, Kind: Judgment, Type: NServerDefaultHold, Primaries: []string{c.ID}, At: at, Answers: c.F("held_judgment"), What: fmt.Sprintf("%s remains parked by server-default for judgment %s: %s; release after review", c.ID, c.F("held_judgment"), c.F("held_reason"))})
 	}
 	return out
 }

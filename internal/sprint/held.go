@@ -235,6 +235,11 @@ var heldParts = []TickPartFn{TickLevel, TickLevelReads, TickResolve, TickResume,
 func newHeld(h HeldState, now time.Time) *held {
 	s := *h.Snap
 	s.Now, s.rests = now, nil
+	// the tick memos describe the snapshot's Work and Fleet as they were: this copy sets a
+	// new Now and may move cards (the rule asks what the next tick does), so the Blockers and
+	// read-card-index memos are stale and must be reset (tickBlockers, readCardIndex).
+	s.blockersSet, s.blockersMemo, s.blockersWorkPuts = false, nil, 0
+	s.readIndex, s.readIndexPlaced = nil, nil
 	// the resting routes, settled once at this clock: the rule asks noRoute of every
 	// ready primary (judgment), each a map read (route_rest.go)
 	sp, _ := s.withRests()
@@ -630,6 +635,11 @@ func (c *held) waits(pr *Card) (why, root string, ok bool) {
 		}
 		return strings.Join(held, "; "), "", true
 	case Ready:
+		// a new work card the deal throttle holds while landing backs up waits on the
+		// throttle, never stalled (deal_throttle.go; tla/DealThrottle.tla WorkResumes)
+		if h, why := s.throttleHolds(pr); h {
+			return why, "", true
+		}
 		if OnlyFriend(pr) && !PinReleased(s, pr, s.Friends) {
 			// the one hard pin (WHO: only friend <name>) waits for her up below her room,
 			// DealAhead times her width (friendDealPass), whose beats and widths are the friends'

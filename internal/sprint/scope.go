@@ -4,6 +4,8 @@ import (
 	"path"
 	"slices"
 	"strings"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/cardgen"
 )
 
 // The scope amendment (docs/SPEC-SPRINT.md section 7, the lander's checks): a worker
@@ -18,7 +20,7 @@ import (
 // rest, each in the order given. changed is every file the diff changes. A file is of
 // the same change when the change also changes a file of its own (in PATHS, not in
 // outside) and the file is one of:
-//   - a Go test file (_test.go) in the directory of one of those files: the package's test;
+//   - a test file (cardgen.IsTestFile, in any language) in the directory of one of those files: the package's test;
 //   - a file under the testdata directory of one of those directories: its fixture or golden;
 //   - a Markdown file under docs/, or in the directory of one of those files: its doc.
 //
@@ -44,8 +46,8 @@ func ScopeAmended(changed, outside []string) (amended, refused []string) {
 func sameChange(f string, dirs map[string]bool) bool {
 	dir := path.Dir(f)
 	switch {
-	case strings.HasSuffix(f, "_test.go"):
-		return dirs[dir]
+	case cardgen.IsTestFile(f) && dirs[dir]:
+		return true
 	case strings.HasSuffix(f, ".md") && (strings.HasPrefix(f, "docs/") || dirs[dir]):
 		return true
 	}

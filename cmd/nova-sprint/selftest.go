@@ -135,6 +135,15 @@ func (a *app) selftestEnv(d string) []string {
 	)
 }
 
+// selftestApp is the app one of the selftest's verbs runs: it reads the
+// given environment and keeps the clones of its landings under the fresh
+// directory, which the selftest removes, never under the caller's cache.
+func selftestApp(d string, e map[string]string) *app {
+	ia := newApp(func(k string) string { return e[k] })
+	ia.landRoot = func() (string, error) { return filepath.Join(d, "land"), nil }
+	return ia
+}
+
 // selftestFlow runs the card's flow of the help's walkthrough (twin.go
 // realSteps), in process, on a twin file in d: a bare origin.git standing for
 // the forge and a clone work whose base commit holds the go module, then init
@@ -186,7 +195,7 @@ func (a *app) selftestFlow(d string, env []string) (land time.Duration, landed i
 	twin := "mem:" + filepath.Join(d, "sprint.twin")
 	verb := func(args ...string) (code int, out, errs string) {
 		e := map[string]string{"NOVA_SPRINT_REDIS": twin, "NOVA_SPRINT_ACTOR": "boss"}
-		ia := newApp(func(k string) string { return e[k] })
+		ia := selftestApp(d, e)
 		ia.gitEnv = env
 		// The full check reads applied declarations even on a learning twin.
 		// Seed only this throwaway twin; never the caller's configured backend.

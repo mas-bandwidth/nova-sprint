@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"io"
 	"strings"
 	"time"
@@ -77,5 +78,14 @@ func (a *app) cmdRoutesWake(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, name, err.Error())
 	}
-	return a.runStep(name, *c, st, store.RouteWakeStep(sprint.RouteWakeReq{Target: pos[0], Reason: *reason, Who: c.actor}), stdout, stderr)
+	owner, err := a.owner(context.Background(), st)
+	if err != nil {
+		return a.readFailed(name, err, stderr)
+	}
+	// a provider whose row says funded=false is the owner's to fund: no wake serves it
+	// (sprint.WakeRoutesFunded; tla/ProviderFunding.tla NoEnableOnUnfunded)
+	req := sprint.RouteWakeReq{Target: pos[0], Reason: *reason, Who: c.actor}
+	step := store.RouteWakeStep(req)
+	step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.WakeRoutesFunded(s, req, owner) }
+	return a.runStep(name, *c, st, step, stdout, stderr)
 }

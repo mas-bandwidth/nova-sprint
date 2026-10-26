@@ -850,11 +850,15 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	capOf := s.AttemptsCapOf()
 	unserved, whyOf := map[string][]string{}, map[string]string{}
 	up := s.UpMembers()
+	// the throttle (deal_throttle.go; tla/DealThrottle.tla): while merging or review is
+	// above its backlog bound, no new work attempt is offered to a friend or dealt to a
+	// machine; reads, fixes and next attempts are, and nothing working is touched
+	readyCol := throttledOut(s, s.Work.Column(Ready))
 	// Friends first: every ready card a friend may take, except a held stream
 	// (dealt nowhere) and a bench card (bench_deal.go keeps it for its bench).
 	// A hard pin that no friend takes stays out of the fleet below.
 	var offer []*Card
-	for _, c := range s.Work.Column(Ready) {
+	for _, c := range readyCol {
 		if StreamHeld(s, c.Row) || IsSentinel(c) {
 			continue
 		}
@@ -885,7 +889,7 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 	for _, u := range fp.Units {
 		friendPlaced[u.Key] = true
 	}
-	for _, c := range s.Work.Column(Ready) {
+	for _, c := range readyCol {
 		if StreamHeld(s, c.Row) {
 			continue // its stream is held (hold.go): dealt to no machine and no friend until unhold
 		}
@@ -2080,7 +2084,7 @@ func quietedByBlocker(s *Snapshot, n Note) bool {
 	}
 	if contains(NeedHoldingKinds, n.Type) {
 		cards := cardsHeldBy(n)
-		for _, b := range Blockers(s) {
+		for _, b := range s.tickBlockers() {
 			if contains(cards, b.ID) && len(b.Dependents) > 0 {
 				return true
 			}

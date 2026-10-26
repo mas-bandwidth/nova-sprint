@@ -9,6 +9,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -363,6 +364,17 @@ func cmdGenerate(args []string, stdout, stderr io.Writer) int {
 	if dup := cardgen.DuplicateID(plan.Cards); dup != "" {
 		return refuse(stderr, "generate", fmt.Sprintf("card %s is planned twice (a --tool named twice?); a card is its file %s.md and a second one would overwrite it", dup, dup))
 	}
+	// One stable identity for this generated set, independent of where --out is
+	// written. Different plans or bases get different identities; copies retain it.
+	setSpec := struct {
+		Repo, Base, Sha string
+		Cards           []cardgen.Card
+	}{h.Repo, h.Base, h.Sha, plan.Cards}
+	setBytes, err := json.Marshal(setSpec)
+	if err != nil {
+		return refuse(stderr, "generate", "cannot identify generated set: "+err.Error())
+	}
+	generatedSet := fmt.Sprintf("%x", sha256.Sum256(setBytes))
 	// render, lint, and check the paths against the checkout: nothing is written while
 	// one brief is red
 	briefs := make([]string, len(plan.Cards))
@@ -381,7 +393,7 @@ func cmdGenerate(args []string, stdout, stderr io.Writer) int {
 			c.Tier = cardhdr.RouteHeavy
 			heavy++
 		}
-		briefs[i] = cardgen.Render(h, *c)
+		briefs[i] = strings.Replace(cardgen.Render(h, *c), "\nSTOP:", "\nGENERATED-SET: "+generatedSet+"\nSTOP:", 1)
 		if _, _, why := sprint.ModelTier(briefs[i]); model && why != "" {
 			fmt.Fprintln(stdout, oneline.Escape(cardgen.LintFinding{ID: c.ID, Check: "model-tier", Line: 1, Excerpt: why + "; or generate without --tier " + *tier}.String()))
 			red++

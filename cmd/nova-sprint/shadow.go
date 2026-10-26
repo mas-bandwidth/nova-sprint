@@ -142,7 +142,9 @@ func (w *capped) Write(p []byte) (int, error) {
 // runShadow runs `<binary> tick --shadow --json` against the store, under the
 // deadline (0: none): the plan it printed, and how long its process took; an
 // error names why the candidate is refused (it exited non-zero, panicked,
-// missed the deadline, or printed no plan).
+// missed the deadline, or printed no plan). An environment login's password,
+// which the startup scrub took out of this process's environment, reaches the
+// candidate through a 0600 file (childStoreEnv), never its environment or argv.
 func runShadow(ctx context.Context, binary, redis string, deadline time.Duration) (store.ShadowPlan, time.Duration, error) {
 	if deadline > 0 {
 		var cancel context.CancelFunc
@@ -153,13 +155,18 @@ func runShadow(ctx context.Context, binary, redis string, deadline time.Duration
 	if redis != "" {
 		args = append(args, "--redis", redis)
 	}
+	env, done, err := childStoreEnv(os.Environ(), processHeld, "")
+	if err != nil {
+		return store.ShadowPlan{}, 0, fmt.Errorf("did not run: %v", err)
+	}
+	defer done()
 	cmd := exec.CommandContext(ctx, binary, args...)
-	cmd.Env = os.Environ()
+	cmd.Env = env
 	cmd.WaitDelay = time.Second
 	var out, errs = &capped{n: shadowOutCap}, &capped{n: shadowOutCap}
 	cmd.Stdout, cmd.Stderr = out, errs
 	began := time.Now()
-	err := cmd.Run()
+	err = cmd.Run()
 	wall := time.Since(began)
 	if deadline > 0 && errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return store.ShadowPlan{}, wall, fmt.Errorf("missed the tick deadline %s: killed after %s", deadline, wall.Round(time.Millisecond))

@@ -56,7 +56,15 @@ const prog = "nova-sprint"
 var version string
 
 func main() {
-	a := newApp(os.Getenv)
+	// the startup scrub first: no store password stays in this process's environment,
+	// nor in a long-running verb's kernel copy of it (secret_scrub.go; docs/SPEC-SPRINT.md,
+	// "The seat's store login")
+	getenv, err := startupScrub(os.Args[1:])
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "nova-sprint: %s\n", oneline.Escape(err.Error()))
+		os.Exit(2)
+	}
+	a := newApp(getenv)
 	if seatEnvironmentNeeded(os.Args[1:]) {
 		if err := a.loadSeatEnvironment(); err != nil {
 			path, pathErr := a.seatEnvironmentPath()
@@ -327,7 +335,13 @@ type app struct {
 	// getenv its password is read through, in place of a Redis dialed.
 	loginFile   func() (string, error)
 	loginSecret func(secrets.Login) (secrets.Secret, error)
-	dialStore   func(ctx context.Context, addr string, o redisconn.Options, getenv func(string) string, names sprint.Names) (store.Backend, error)
+	// The store password's file or keychain source (secret_source.go): sourceRead is its
+	// value once read, so the source is read once per process, and keychain, when set (a
+	// test), reads the keychain in place of /usr/bin/security.
+	sourceMu   sync.Mutex
+	sourceRead secrets.Secret
+	keychain   func(service, account string) (secrets.Secret, error)
+	dialStore  func(ctx context.Context, addr string, o redisconn.Options, getenv func(string) string, names sprint.Names) (store.Backend, error)
 	// shadow says this process is running `tick --shadow`, the adopt's
 	// pre-window shadow tick: its store open tolerates a library the window's
 	// fn load will replace (libraryCheck, tla/Adopt.tla PreCheck).
@@ -541,9 +555,9 @@ func libraryMatches(ctx context.Context, c *redis.Client, addr string) error {
 	}
 	switch {
 	case !found:
-		return fmt.Errorf("the store at %s holds no %s function library; run: nova-redis fn load --addr %s", addr, fn.Library, addr)
+		return fmt.Errorf("the store at %s holds no %s function library; run: nova-redis fn load --redis %s", addr, fn.Library, addr)
 	case librarySum(code) != librarySum(source):
-		return fmt.Errorf("the store at %s holds %s library %s, and this build is %s (their code: %s and %s); run: nova-redis fn load --addr %s", addr, fn.Library, fn.Sum(code), fn.Sum(source), librarySum(code), librarySum(source), addr)
+		return fmt.Errorf("the store at %s holds %s library %s, and this build is %s (their code: %s and %s); run: nova-redis fn load --redis %s", addr, fn.Library, fn.Sum(code), fn.Sum(source), librarySum(code), librarySum(source), addr)
 	}
 	return nil
 }
@@ -561,7 +575,7 @@ func libraryShadow(ctx context.Context, c *redis.Client, addr string) (note stri
 	}
 	switch {
 	case !found:
-		return "", fmt.Errorf("the store at %s holds no %s function library; run: nova-redis fn load --addr %s", addr, fn.Library, addr)
+		return "", fmt.Errorf("the store at %s holds no %s function library; run: nova-redis fn load --redis %s", addr, fn.Library, addr)
 	case librarySum(code) != librarySum(source):
 		return "library differs: loaded in the window", nil
 	}
@@ -745,6 +759,7 @@ func (a *app) storeCtx(ctx context.Context, c common) (*store.Store, error) {
 	}
 	// a twin is ticked by hand: no machine runs between its commands (twin.go)
 	st := &store.Store{B: b, Names: names, Actor: c.actor, Now: a.now, NewID: store.NewID, Sleep: a.sleep, CheckTwin: a.checkTwin, ByHand: a.twinOpen(c.redis)}
+	st.SetSelf(a.machineName())
 	st.ReadFriendHooks = a.readFriendHooks
 	if st.ReadFriendHooks == nil {
 		st.ReadFriendHooks = func(ctx context.Context, names ...string) ([]hook.Status, time.Time, error) {

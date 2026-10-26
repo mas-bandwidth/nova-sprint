@@ -48,7 +48,7 @@ func TestAMisspelledFlagNamesTheNearestAndTheVerbsFlags(t *testing.T) {
 	ta := newTestApp(t)
 	code, _, errs := ta.do("add --strem s1 --count 1 --one")
 	assert.Equal(t, 2, code)
-	assert.Equal(t, "nova-sprint add REFUSED: unknown flag --strem; the flags of add are --actor, --after, --allow-personal-base, --before, --brief, --brief-dir, --brief-file, --brief-op, --brief-usage, --count, --decide-record, --epoch, --held, --json, --land-protected, --max and 13 more; did you mean --stream?; run: nova-sprint help add\n", errs)
+	assert.Equal(t, "nova-sprint add REFUSED: unknown flag --strem; the flags of add are --actor, --after, --allow-personal-base, --apply-fix, --before, --brief, --brief-dir, --brief-file, --brief-op, --brief-usage, --count, --decide-record, --epoch, --held, --json, --land-protected and 14 more; did you mean --stream?; run: nova-sprint help add\n", errs)
 	assert.Contains(t, errs, "; run: nova-sprint help add\n")
 	assert.NotContains(t, errs, "provided but not defined")
 	code, _, errs = ta.do("fleet up m1 --wdth 3")
@@ -240,7 +240,7 @@ func TestTheHelpSaysWhereTheRestIsAndFinishNamesItsHead(t *testing.T) {
 	t.Parallel()
 	first := strings.Join(strings.SplitN(banner(), "\n", 16)[:15], "\n")
 	assert.Contains(t, first, "nova-sprint help <verb>")
-	assert.Contains(t, banner(), "  nova-sprint finish --as <member> <card>@<gen>... --epoch <n> (--head <commit> | --failed)")
+	assert.Contains(t, banner(), "  nova-sprint finish --as <member> <card>@<gen>... --epoch <n> (--head <commit> | --failed [--head <commit>])")
 	assert.Contains(t, banner(), "\n  nova-sprint land --stream s1 --check 'make test'\n", "the coordinator's day lands with land")
 	assert.NotContains(t, banner(), "\n\nmachine has no ETA", "the ETA paragraph is one paragraph")
 }

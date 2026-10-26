@@ -23,6 +23,7 @@ type addPartialReq struct {
 	score         string
 	before, after string
 	held          bool
+	notDup        map[string]string
 	decideRecord  string
 	briefOps      []string
 	replaces      []string
@@ -74,6 +75,30 @@ func (a *app) cmdAddPartial(q addPartialReq, stdout, stderr io.Writer) int {
 		if _, ok := held[id]; !ok {
 			held[id] = f.Why
 		}
+	}
+	// a brief that probable-duplicates an open card is held back as add holds
+	// it, against the open cards of one read; the override add's flag takes is
+	// honoured the same way, and its reason recorded on the card's note below
+	var dupReasons map[string]string
+	var wave []dupCard
+	for _, cd := range q.cards {
+		if cd.Sentinel || cd.Brief == "" {
+			continue
+		}
+		wave = append(wave, dupCardOf(cd.ID, cd.Brief))
+	}
+	if len(wave) > 0 {
+		snap, err := st.Load(context.Background(), []string{sprint.Work}, nil)
+		if err != nil {
+			return refuse(stderr, "add", "the store did not answer the duplicate check: "+err.Error())
+		}
+		dupHeldMap, reasons := dupHeld(wave, dupOpenCards(snap), q.notDup)
+		for id, f := range dupHeldMap {
+			if _, ok := held[id]; !ok {
+				held[id] = f.String()
+			}
+		}
+		dupReasons = reasons
 	}
 	heldClosure(q.cards, held, heldNeed)
 
@@ -137,7 +162,7 @@ func (a *app) cmdAddPartial(q addPartialReq, stdout, stderr io.Writer) int {
 	q.c.addStream = q.stream
 	q.c.addBefore = q.before
 	printHeld(q.cards, held, heldNeed, stdout)
-	code = a.runStep("add", *q.c, st, promotionGuard(store.AddStep(r), []sprint.AddReq{r}, ""), stdout, stderr)
+	code = a.runStep("add", *q.c, st, dupNoteStep(promotionGuard(store.AddStep(r), []sprint.AddReq{r}, ""), dupReasons), stdout, stderr)
 	if code == 0 && len(held) > 0 {
 		return 1
 	}
@@ -221,5 +246,14 @@ func (a *app) partialFindings(st *store.Store, items []briefItem, stream string,
 	if err != nil {
 		return nil, err
 	}
-	return append(findings, storeFindings...), nil
+	// cmdAddPartial applies the duplicate check with its per-card overrides
+	// after collecting findings. Do not let brief check's override-free finding
+	// hold a card before that partial-specific check can admit it.
+	for _, finding := range storeFindings {
+		if finding.Check == "duplicate" {
+			continue
+		}
+		findings = append(findings, finding)
+	}
+	return findings, nil
 }

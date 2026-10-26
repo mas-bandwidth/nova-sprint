@@ -12,6 +12,7 @@ import (
 	"maps"
 	"net"
 	"net/http"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -252,6 +253,7 @@ func friendStageServed(argv []string) (as string, why string) {
 		return "", "a friend's stage sent to the server names one card as <card>@<gen>, found " + oneline.Escape(rest[0])
 	}
 	seen := map[string]bool{}
+	var dir string
 	for i := 1; i < len(rest); i++ {
 		w := rest[i]
 		if !strings.HasPrefix(w, "-") {
@@ -289,6 +291,7 @@ func friendStageServed(argv []string) (as string, why string) {
 			if val == "" {
 				return "", "a friend's stage sent to the server's --dir names a directory"
 			}
+			dir = val
 		}
 	}
 	if !seen["as"] {
@@ -297,7 +300,51 @@ func friendStageServed(argv []string) (as string, why string) {
 	if !seen["bench"] {
 		return "", "a friend's stage sent to the server's --bench <host> is required"
 	}
+	if seen["dir"] && !servedFriendDirOK(dir, as) {
+		return "", fmt.Sprintf("a friend's stage sent to the server writes only under ~/%s-jobs on the bench; found %s", oneline.Escape(as), oneline.Escape(dir))
+	}
 	return as, ""
+}
+
+// servedFriendDirOK says --dir names the friend's job root on the bench or a
+// directory beneath it: ~/<friend>-jobs, $HOME/<friend>-jobs, or either
+// followed by /<more>, where <friend> is the --as name. A busy caller must not
+// choose where the server writes on a fleet machine, so anything else is
+// refused.
+func servedFriendDirOK(dir, friend string) bool {
+	for _, root := range []string{"~/" + friend + "-jobs", "$HOME/" + friend + "-jobs"} {
+		if dir == root {
+			return true
+		}
+		if strings.HasPrefix(dir, root+"/") {
+			return servedMoreOK(strings.TrimPrefix(dir, root+"/"))
+		}
+	}
+	return false
+}
+
+// servedMoreOK is the part of a served friend stage --dir after the job root:
+// after path.Clean it has no `..` element, no empty element and no character
+// outside letters, digits, . _ - and /.
+func servedMoreOK(more string) bool {
+	if more == "" {
+		return false
+	}
+	c := path.Clean(more)
+	for _, el := range strings.Split(c, "/") {
+		if el == "" || el == "." || el == ".." {
+			return false
+		}
+	}
+	for _, r := range c {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '.' || r == '_' || r == '-' || r == '/':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // flagWord is the value the words give the flag name (--name v, --name=v, one dash or

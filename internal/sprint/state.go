@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/mas-bandwidth/nova-tools/pkg/bench"
 )
 
 // Card is one member of a table as observed: its place (empty when the record
@@ -518,6 +520,11 @@ type Snapshot struct {
 	// answer. Actor is who runs the step (a request's Who, when it names
 	// none).
 	Coordinator, Actor string
+	// Self is the machine the land loop runs on (a fleet member): rule 11 and
+	// the last-gate guard count the benches the land loop can use
+	// (LandBenches), which leave this machine and any host the check refuses
+	// out. "" is none, and every gate-capable member is a bench.
+	Self string
 	// SeatGeneration is the seat's generation as read with the coordinator
 	// (seat.go): FirstSeatGeneration until the seat first moves.
 	SeatGeneration              uint64
@@ -619,6 +626,22 @@ type Snapshot struct {
 	// refusals is the staging refusals a dealing step reads once (withRests sets it,
 	// stagingRefusalsOnce fills it): nil is none, and each ask derives them again.
 	refusals *refusalMemo
+	// blockersMemo is Blockers(s) settled once per snapshot (tickBlockers): a tick asks
+	// quietedByBlocker for every overdue judgment and each would walk the whole work table,
+	// so the first ask computes it and the rest read the memo. Blockers is a pure function
+	// of the snapshot, so the memo is safe. A snapshot copied with a changed Work or Fleet
+	// must reset it (newHeld): the memo would otherwise describe tables it no longer holds.
+	// tla/NeedsBlocked.tla BlockedDependentsCovered.
+	blockersSet      bool
+	blockersMemo     []Blocker
+	blockersWorkPuts uint64
+	// readIndex and readIndexPlaced are the read cards' generations indexed once per
+	// snapshot by base read identity (readCardIndex): the highest generation held for each
+	// base, and the highest among placed records, so ReadCardExtras' readNextGen reads are
+	// map lookups instead of a scan of every fleet card per primary per reader. Reset with
+	// a changed Fleet (newHeld). tla/ReadCards.tla Deal.
+	readIndex       map[string]int
+	readIndexPlaced map[string]int
 }
 
 // T is the loaded table by logical name.
@@ -668,18 +691,43 @@ func (s *Snapshot) UpMembers() []string {
 
 // GateMembers is the fleet members that may run a land gate, in row order: those whose
 // status is up, and those the coordinator holds with no --return (held, with no held_by,
-// no fault_since and no held_return; gateCapable). A member down and not held, one held
-// by a machine mark (fault, sync, probe, adopt: any held_by), and one the coordinator
-// took down with fleet down (hold --return, HeldToReturn) are left out. A hold is a deal control and a
-// gate is not a card, so this is not the deal filter: that is UpMembers
+// no fault_since and held_gate equal to held; gateCapable). A member down and not held,
+// one held by a machine mark (fault, sync, probe, adopt: any held_by), one the
+// coordinator took down with fleet down (hold --return, which clears held_gate), and one
+// whose hold carries no held_gate (a v1.6 hold) are left out. A hold is a deal control
+// and a gate is not a card, so this is not the deal filter: that is UpMembers
 // (tla/DirtyTick.tla NeverDealtToDraining). tla/DirtyTick.tla LandGate and
-// HeldMayGateNeverDealt (MCDirtyTickGateHeld.cfg, MCDirtyTickBrokenGateUpOnly.cfg).
+// HeldMayGateNeverDealt (MCDirtyTickGateHeld.cfg, MCDirtyTickGateUpgrade.cfg,
+// MCDirtyTickBrokenGateUpOnly.cfg, MCDirtyTickBrokenGateUnmarked.cfg).
 func (s *Snapshot) GateMembers() []string {
 	var out []string
 	for _, m := range s.Members() {
 		if gateCapable(s.MemberCtl(m)) {
 			out = append(out, m)
 		}
+	}
+	return out
+}
+
+// LandBenches is the fleet members the land loop can run a gate on now, in
+// row order: GateMembers (up, or held by the coordinator with no --return)
+// without self (strings.EqualFold; an empty self drops nothing) and without any
+// name bench.CheckHost refuses. This is what landgo.go gateHosts builds its
+// hosts from, so the hold guard (hold.go) and rule 11 (check.go) count the same
+// benches the land loop actually uses: a member that is the server's own machine
+// or that the host check refuses is a bench to neither, so a hold that would
+// leave only the server's machine gate-capable is refused and rule 11 fires.
+// tla/DirtyTick.tla LandGate, with the land loop's host choice (gateHosts).
+func (s *Snapshot) LandBenches(self string) []string {
+	var out []string
+	for _, m := range s.GateMembers() {
+		if self != "" && strings.EqualFold(m, self) {
+			continue
+		}
+		if bench.CheckHost(m) != nil {
+			continue
+		}
+		out = append(out, m)
 	}
 	return out
 }

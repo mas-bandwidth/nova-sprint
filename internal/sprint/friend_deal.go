@@ -589,8 +589,12 @@ func streamTurnsBy(cards []*Card, streamOf func(*Card) string, r *round) []*Card
 // every member up, stays with the machines' deal and its judgment; one at its redeal bound
 // below its ceiling is offered at the tier it escalates to (escalating), as the machines
 // would escalate it, and a friend's deal of it is a new attempt on that tier, the bound
-// attempt retired (friendEscalateUnit). A friend at or over her room is never
-// dealt. In batch and one-shot mode alike (docs/SPEC-SPRINT.md section 1, "A friend's
+// attempt retired (friendEscalateUnit). Width bounds what a friend WORKS at once, never
+// what is QUEUED in her ready queue: a friend at her width still takes every ready card
+// into her queue, bounded so ready+working = DealAhead times her width (the owner,
+// 2026-10-18: "My dude, ready cards, go to friend ready queues, even if friends are full.
+// That's what the ready queues are FOR per-friend and per-fleet machine."; tla/FriendReadyTake.tla
+// NoUndealtWhileRoom). In batch and one-shot mode alike (docs/SPEC-SPRINT.md section 1, "A friend's
 // card"), a friend's room is DealAhead times her width and her lanes are her width. A lane of hers is idle while no card on her row
 // holds it, started or not.
 // Each is its next attempt's work card, created on the friend's row at generation 1, ready
@@ -620,18 +624,18 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 		if friendDealable(s, f) {
 			room, width := friendRoom(f)
 			work, reads := rowLoad(s, FriendRow(f.Name))
-			// the one count: her width less her live lanes (work cards plus read
-			// cards, ready and working), never below zero. Once a read holds a lane
-			// it counts against her width as a work card does, so the deal never
-			// deals a read or a work card to a friend whose live lanes are at her
-			// width (docs/SPEC-SPRINT.md section 1, a friend's card; takeOne counts
-			// the same cells). A row with no reads keeps its work queue,
-			// DealAhead times her width.
-			if s.ReadCardsOn() && reads > 0 {
-				free[f.Name] = friendFreeLanes(width, work, reads)
-			} else {
-				free[f.Name] = room - work - reads
-			}
+			// her free room is always her room less what she holds (ready and
+			// working, work and reads together): width bounds what she WORKS at
+			// once, never what is QUEUED in her ready queue, so a friend at her
+			// width still takes every ready card into her queue (the owner,
+			// 2026-10-18: "My dude, ready cards, go to friend ready queues, even
+			// if friends are full. That's what the ready queues are FOR per-friend
+			// and per-fleet machine."). Her queue is bounded: ready+working =
+			// DealAhead times her width (docs/SPEC-SPRINT.md section 1, a friend's
+			// card). Her idle lanes (friendFreeLanes) stay the chooser's first
+			// order, and keep ordering the choice (preferredFriend). The model is
+			// tla/FriendReadyTake.tla NoUndealtWhileRoom.
+			free[f.Name] = room - work - reads
 			// a lane is idle while no card on her row holds it, started or not
 			lanes[f.Name] = friendFreeLanes(width, work, reads)
 			seat[f.Name] = f
@@ -718,6 +722,13 @@ func friendDealPass(s *Snapshot, cards []*Card, seats []FriendSeat, reclaim bool
 		}
 		if name == "" || slices.Contains(left, name) || free[name] <= 0 || !friendRestrictionAllows(seat[name], c) {
 			continue // no friend it may go to is up with room: the fleet's, or (only) it waits ready
+		}
+		// its gate's needs (docs/SPEC-SPRINT.md, the gate-host rule; tla/WaitFor.tla Deal):
+		// a friend is given the card only when the facts her beat carries satisfy every need;
+		// a card naming one waits for a member whose facts do (the machines' deal raises the
+		// NGateNeeds judgment), never a silent deal to a friend who can never run it.
+		if needs := GateNeeds(c.F("brief")); len(needs) > 0 && !memberSatisfies(seat[name].Beat.Facts, needs) {
+			continue
 		}
 		// a friend with no idle lane gives way to a machine that serves the card's tier and
 		// has one: the machine starts it at once, where a queue behind her working lanes
@@ -944,6 +955,12 @@ func reclaimUnit(s *Snapshot, wc *Card, up []string, seat map[string]FriendSeat,
 	var may []string
 	for _, f := range up {
 		if lanes[f] > 0 && free[f] > 0 && !slices.Contains(left, f) && friendTakes(s, seat[f], tier) && friendRestrictionAllows(seat[f], pr) {
+			// the card's gate needs hold here too (docs/SPEC-SPRINT.md, the gate-host
+			// rule; tla/WaitFor.tla Deal): a reclaim is a deal, so a friend whose facts
+			// lack one of the card's GATE-NEEDS is never given it.
+			if needs := GateNeeds(pr.F("brief")); len(needs) > 0 && !memberSatisfies(seat[f].Beat.Facts, needs) {
+				continue
+			}
 			may = append(may, f)
 		}
 	}
@@ -963,6 +980,7 @@ func reclaimUnit(s *Snapshot, wc *Card, up []string, seat map[string]FriendSeat,
 		declared[row] = true
 	}
 	set := nextGen(wc, row, s.Now)
+	set[FieldDealtFacts], set[FieldDealtBy] = strings.Join(s.MemberFacts(row), ","), "the friend reclaim"
 	unset := []string{FieldRoute, FieldModel, FieldTokens, FieldUSD, FieldHarness, FieldDeadline, FieldFriendDeadline}
 	changes := []Change{change(Fleet, moveEntry(wc, row, Ready, set, unset...))}
 	if t := tierNowSet(pr, tier); t != nil {
@@ -996,7 +1014,8 @@ func friendDealUnit(s *Snapshot, c *Card, card, row, _ string, set map[string]st
 	attempt := c.Int("attempt") + 1
 	now := stamp(s.Now)
 	fields := map[string]string{"kind": "work", "primary": c.ID, "stream": c.Row, "attempt": itoa(attempt), "gen": "1", "member": row,
-		"dealt": now, "first_dealt": now, "untaken_since": now}
+		"dealt": now, "first_dealt": now, "untaken_since": now,
+		FieldDealtFacts: strings.Join(s.MemberFacts(row), ","), FieldDealtBy: "the friend deal"}
 	for _, k := range []string{"fix", "finding", "why"} {
 		if v := c.F(k); v != "" {
 			fields[k] = v
@@ -1035,6 +1054,7 @@ func friendRedealUnit(s *Snapshot, c, wc *Card, row string, set map[string]strin
 	maps.Copy(prim, set)
 	set, unset := nextGen(wc, row, s.Now), []string{"withdrawn", FieldTakenBack, FieldTakenFrom,
 		FieldRoute, FieldModel, FieldTokens, FieldUSD, FieldHarness, FieldDeadline}
+	set[FieldDealtFacts], set[FieldDealtBy] = strings.Join(s.MemberFacts(row), ","), "the friend redeal"
 	if left := friendsLeft(wc); len(left) > 0 {
 		set[FieldFriendsLeft] = strings.Join(left, ",") // the friend it was taken from, kept past the take
 	}

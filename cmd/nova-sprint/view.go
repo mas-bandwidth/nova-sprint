@@ -925,7 +925,7 @@ func workerNext(v workerView, c *sprint.Card, p sprint.Packet) string {
 	case v.Kind == "friend":
 		return "start " + c.ID + ": its brief is " + v.Cards[0].Brief
 	case c.Col == sprint.Working:
-		return "nova-sprint finish --as " + v.As + " " + at + " (--head <commit> | --failed) --report '<what was done>'"
+		return "nova-sprint finish --as " + v.As + " " + at + " (--head <commit> | --failed [--head <commit>]) --report '<what was done>'"
 	}
 	return "nova-sprint take --as " + v.As + " " + at
 }

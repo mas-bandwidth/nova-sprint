@@ -247,6 +247,9 @@ func rebalanceTo(s *Snapshot, units []*rebalanceUnit, g *rebalanceUnit, pr, wc *
 			}
 			d = top - want
 		} else {
+			if _, why := s.GateHostPool(pr, []string{u.name}); why != "" {
+				continue // a member whose facts do not carry the card's GATE-NEEDS (the gate-host rule)
+			}
 			if !s.FleetTakes(tier) || slices.Contains(StagingRefusers(wc), u.name) {
 				continue
 			}

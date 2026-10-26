@@ -29,14 +29,19 @@ const (
 // FieldHeldReason is a held member's or stream's control card's reason for its hold,
 // and FieldHeldFinish marks a member's hold that lets its working cards finish (hold
 // with no --return): the rebalance's sweep leaves those cards where they are.
+// FieldHeldGate marks a coordinator's hold made without --return (held_by empty): the
+// member may run a land gate (gateCapable). It carries the hold's own held stamp, so a
+// value left behind by a release that does not unset it never marks a later hold
+// (HeldToGate); a hold with no held_gate (one a v1.6 build wrote) runs none.
 // FieldHeldReturn records a coordinator's hold made with --return (fleet down): the
-// operator took the member out of service, so it runs no land gate (gateCapable). It
-// carries the hold's own held stamp, so a value left behind by a release that does not
-// unset it never marks a later hold (HeldToReturn). held_finish cannot say this: a
-// fleet down on an up member lets its working cards finish too.
+// operator took the member out of service. It carries the hold's own held stamp
+// (HeldToReturn); it still marks fleet down and is written exactly as it was, but it no
+// longer decides the gate (held_gate does). held_finish cannot say this: a fleet down
+// on an up member lets its working cards finish too.
 const (
 	FieldHeldReason = "held_reason"
 	FieldHeldFinish = "held_finish"
+	FieldHeldGate   = "held_gate"
 	FieldHeldReturn = "held_return"
 )
 
@@ -95,10 +100,10 @@ type HoldReq struct {
 	// ForceLast holds the last member that can run a land gate anyway: the hold passes
 	// and its note says no gate bench is left (--force-last).
 	ForceLast bool `json:",omitempty"`
-	// NoLastGateGuard is the tests' seam: the last-gate guard reads it off (true) to
-	// show the guard a plant removed would be caught by its own test. It is never set
-	// by a verb.
-	NoLastGateGuard bool `json:"-"`
+	// Self is the machine the land loop runs on (a fleet member): the last-gate
+	// guard counts the benches the land loop can use (LandBenches), which leave
+	// this machine out, so holding the last one left is refused. "" is none.
+	Self string `json:"-"`
 	// Cause, with a member's hold, is what ends it (hold_cause.go): a judgment as the
 	// coordinator named it (j<n>, or its id), with CauseNote the id it named (a
 	// doctor:<check> cause is refused: DoctorCauseDeferred). The tick ends the hold in the
@@ -171,15 +176,15 @@ func HoldTargets(s *Snapshot, r HoldReq) ([]HoldTarget, []Refusal) {
 		}
 		switch {
 		case r.Kind != "" && !slices.Contains(kinds, r.Kind):
-			refused = append(refused, Refusal{n, "no " + holdKindWords[r.Kind] + " " + n + holdElsewhere(n, kinds, r.Release)})
+			refused = append(refused, Refusal{Key: n, Why: "no " + holdKindWords[r.Kind] + " " + n + holdElsewhere(n, kinds, r.Release)})
 		case r.Kind != "":
 			out = append(out, HoldTarget{Name: n, Kind: r.Kind})
 		case len(kinds) == 0:
-			refused = append(refused, Refusal{n, "names no fleet member, reader, friend or stream of this sprint: nova-sprint where --all shows them"})
+			refused = append(refused, Refusal{Key: n, Why: "names no fleet member, reader, friend or stream of this sprint: nova-sprint where --all shows them"})
 		case len(kinds) == 1:
 			out = append(out, HoldTarget{Name: n, Kind: kinds[0]})
 		default:
-			refused = append(refused, Refusal{n, "names a " + strings.Join(kinds, " and a ") + ": a hold names one; rename one of them"})
+			refused = append(refused, Refusal{Key: n, Why: "names a " + strings.Join(kinds, " and a ") + ": a hold names one; rename one of them"})
 		}
 	}
 	return out, refused
@@ -208,13 +213,17 @@ func holdElsewhere(n string, kinds []string, release bool) string {
 }
 
 // gateCapable says a member can run a land gate now: it is up, or held by the coordinator
-// with no --return (a hold is a deal control, and a gate is not a card). A member a
-// machine holds (held_by or fault_since) is no bench, and neither is one the coordinator
-// took down with fleet down (hold --return, HeldToReturn): the operator took it out of
-// service. Snapshot.GateMembers (the land gate's benches) and check.go rule 11 count
-// the benches by it, and this guard counts the members a hold does not name by it (it
-// still counts a named member as gone, and never refuses a --return). tla/DirtyTick.tla LandGate (MCDirtyTickGateHeld.cfg; the reversed witness
-// MCDirtyTickBrokenGateReturned.cfg gates a returned member).
+// with a held_gate and no --return (a hold is a deal control, and a gate is not a card).
+// A member a machine holds (held_by or fault_since) is no bench, and neither is one the
+// coordinator took down with fleet down (hold --return, which clears held_gate), nor one
+// whose hold carries no held_gate (a v1.6 hold): a held member is a bench only when its
+// hold says so. Snapshot.GateMembers (the land gate's benches) and its LandBenches (those
+// gates the land loop uses, minus the server's own machine and any host check refuses) and
+// check.go rule 11 count the benches by it, and this guard counts the members a hold does
+// not name by LandBenches (it still counts a named member as gone; a --return hold, fleet
+// down, is held to the guard like any other). tla/DirtyTick.tla UnmarkedHoldNeverGates,
+// LandGate (MCDirtyTickGateHeld.cfg, MCDirtyTickGateUpgrade.cfg; the reversed witness
+// MCDirtyTickBrokenGateUnmarked.cfg gates an unmarked held member).
 func gateCapable(ctl *Card) bool {
 	if ctl == nil {
 		return false
@@ -222,7 +231,14 @@ func gateCapable(ctl *Card) bool {
 	if ctl.F("status") == Up {
 		return true
 	}
-	return ctl.F(FieldHeld) != "" && ctl.F(FieldHeldBy) == "" && ctl.F(FieldFaultSince) == "" && !HeldToReturn(ctl)
+	return ctl.F(FieldHeld) != "" && ctl.F(FieldHeldBy) == "" && ctl.F(FieldFaultSince) == "" && HeldToGate(ctl)
+}
+
+// HeldToGate says a member's hold is a coordinator's hold that may run a land gate: its
+// held_gate carries the hold's own held stamp (FieldHeldGate). A hold with no held_gate
+// (one a v1.6 build wrote) runs none.
+func HeldToGate(ctl *Card) bool {
+	return ctl != nil && ctl.F(FieldHeld) != "" && ctl.F(FieldHeldGate) == ctl.F(FieldHeld)
 }
 
 // HeldToReturn says a member's hold is a coordinator's hold made with --return (fleet
@@ -231,10 +247,16 @@ func HeldToReturn(ctl *Card) bool {
 	return ctl != nil && ctl.F(FieldHeld) != "" && ctl.F(FieldHeldReturn) == ctl.F(FieldHeld)
 }
 
+// lastGateGuardOff is the tests' seam: the last-gate guard reads it (true) to show the
+// guard a plant removed would be caught by its own test. Only export_test.go sets it,
+// and only the plant test, which resets it; no verb and no request carries it.
+var lastGateGuardOff bool
+
 // lastGateRefusal is the guard's refusal when a hold would leave no gate bench: the
-// member being held, and the consequence with the override that holds it anyway.
+// member being held, the consequence with the override that holds it anyway, and the
+// code the verb reads (RefusedLastGate).
 func lastGateRefusal(member string) Refusal {
-	return Refusal{member, "holding " + member + " leaves no gate bench: every landing will be refused until one is unheld; --force-last holds it anyway"}
+	return Refusal{Key: member, Why: "holding " + member + " leaves no gate bench: every landing will be refused until one is unheld; --force-last holds it anyway; pass it on hold or fleet down", Code: RefusedLastGate}
 }
 
 // HoldNames is hold and unhold as one step (docs/SPEC-SPRINT.md section 11): every name
@@ -247,10 +269,10 @@ func lastGateRefusal(member string) Refusal {
 func HoldNames(s *Snapshot, r HoldReq) Plan {
 	targets, refused := HoldTargets(s, r)
 	if len(r.Names) == 0 {
-		refused = append(refused, Refusal{"hold", "names nothing: name a fleet member, a reader, a friend or a stream"})
+		refused = append(refused, Refusal{Key: "hold", Why: "names nothing: name a fleet member, a reader, a friend or a stream"})
 	}
 	if why := holdCauseWhy(s, r, targets); len(refused) == 0 && why != "" {
-		refused = append(refused, Refusal{"hold", why})
+		refused = append(refused, Refusal{Key: "hold", Why: why})
 	}
 	if len(refused) > 0 {
 		return Plan{Refused: refused}
@@ -265,20 +287,26 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 			keep[t.Name] = true
 		}
 	}
-	// A hold that would leave no member able to run a land gate is refused before any
-	// plan is built: every landing would be refused until one is unheld. It fires only
-	// when at least one member is outside the hold (a hold naming every member is a
-	// deliberate full-fleet action) and every such member is already no bench. The
-	// members named here count as gone; release, a member already unable to run a gate,
-	// and the old --return maintenance path (fleet down) are never refused. A fleet of
-	// one member is never refused (its only member is its routine maintenance hold, a
-	// long-standing flow). --force-last records the override on the note instead.
+	// A hold that would leave no bench the land loop can use is refused before any plan
+	// is built: every landing would be refused until one is unheld. The benches are the
+	// hold the land loop runs on (Snapshot.LandBenches: up or held by the coordinator
+	// with no --return, the server's own machine and any host check refuses left out), so
+	// a fleet whose only gate-capable member is the server's own machine still has no
+	// usable bench. It fires only when at least one member is outside the hold (a hold
+	// naming every member is a deliberate full-fleet action) and every such member is
+	// already no bench to the land loop. The members named here count as gone; release and
+	// a member already unable to run a gate are never refused. A --return hold (fleet
+	// down) is held to the guard like any other, since it is the usual way a machine is
+	// taken out of service. A fleet of one member is never refused (its only member is
+	// its routine maintenance hold, a long-standing flow). --force-last records the
+	// override on the note instead.
 	forceLast := false
-	if len(members) > 0 && !r.Release && !r.Return && !r.NoLastGateGuard && len(s.Members()) >= 2 {
+	if len(members) > 0 && !r.Release && !lastGateGuardOff && len(s.Members()) >= 2 {
 		named := map[string]bool{}
 		for _, m := range members {
 			named[m] = true
 		}
+		benches := s.LandBenches(r.Self)
 		capable, last := 0, ""
 		unnamed := 0
 		for _, m := range s.Members() {
@@ -286,12 +314,12 @@ func HoldNames(s *Snapshot, r HoldReq) Plan {
 				continue
 			}
 			unnamed++
-			if gateCapable(s.MemberCtl(m)) {
+			if slices.Contains(benches, m) {
 				capable++
 			}
 		}
 		for _, m := range members {
-			if gateCapable(s.MemberCtl(m)) {
+			if slices.Contains(benches, m) {
 				last = m
 			}
 		}
