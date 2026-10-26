@@ -26,6 +26,13 @@ The daemon normally takes cards and renews their lanes. Do not start a competing
 
 For a friend work card, use its delivered `BRIEF.md` and the staged `jobs/<job>/JOB.md`. If staging is needed, `nova-sprint friend stage <card>@<gen> --as friend.<name>` creates the checkout and names the exact finish command; it is idempotent for the same card, generation, branch and head ([FRIENDS.md](FRIENDS.md#where-a-jobs-work-lives)). Do not clone into the inbox or invent a branch. Use the current `CARD`, `GEN`, `EPOCH`, `BASE`, `NEXT`/`CARRY`, `PATHS`, `NEW`, and `SHARED` in the packet. Work only in allowed paths; propose a needed scope change to the coordinator rather than touching it. Keep checkout, worktree and build output in `jobs/<job>/`, and secrets out of source, reports, process listings and logs.
 
+If staging refuses because config-store connection parameters are missing, obtain the project's
+existing wrapper or configured DSN/secret-environment path from the coordinator and retry the
+same card and generation. Do not create a login or credential, take the card again, or make a
+replacement branch. Report execution as begun only after staging names `JOB.md` and the exact
+head and you have performed the first brief, source or gate action; a delivered, taken or working
+row by itself is not that proof.
+
 Before editing, inspect the base and run the required gate once to establish any pre-existing red. Then implement and run the brief's meaningful gates on the assigned bench or slot. For Go work, use the allocated Linux bench, not the coordinator's desktop; take and give an explicit shared lane when the brief requires one (`nova-sprint lane take`, `nova-sprint lane give`). Never rerun an unchanged head merely to get another result. Use a controlled test clock, not real time, sockets or network, where the brief calls for deterministic unit tests. Do a cold read of the final diff, check `git diff --check`, and record which checks ran, their host and result.
 
 When blocked or coached, give the coordinator one compact evidence statement: whether the card was merely auto-taken, delivered, staged or actually executed; current branch/head and whether any edits exist; the exact refusal or failing command and exit status; gates already run; and the next help needed. Say explicitly when an auto-taken card never reached a worker, or when a result exists only locally and has not been admitted or accepted. Preserve active work, identify untouched cards that can be recovered, then demonstrate the corrected path through one accepted finish rather than treating configured width as running capacity.
