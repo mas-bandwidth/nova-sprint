@@ -194,6 +194,14 @@ staged current card, and admitted bench or lane. Then observe an actual worker t
 a ceiling and an automatic take is an assignment; neither proves delivery, staging or model
 execution.
 
+Keep the first execution proof in three separate receipts: a current worker turn or lane is tied
+to the current card and generation; staging succeeds and names `JOB.md` plus the exact source
+head; and the worker reports her first brief, source or gate action. A `WHO` edit, delivery notice,
+ready-to-working transition or take is metadata and ownership evidence, not execution. When
+staging refuses because configured connection parameters are absent, coach the friend to use the
+project's existing config-store wrapper or configured DSN/secret environment and retry the same
+card and generation; do not create a login, credential, branch or second take to get past setup.
+
 For a friend's first card, or when attempts repeat, coach one representative card end to end:
 the current brief and exact head, allowed paths, baseline red, implementation, relevant gates,
 raw commands and exit statuses, report/finish submission, and independent review. Give small,
@@ -206,6 +214,14 @@ gate/base/harness, report/finish lifecycle, or source. Repair recurring system a
 before repeating the attempt. Ask what was actually edited, pushed and tested: preserve active
 work, but recover an untouched queue after the friend confirms it never started. Set width from
 demonstrated simultaneous execution capacity, not from how many cards the row auto-took.
+
+Before returning or withdrawing a card for another friend, read its current owner, generation,
+stage state, local edits and pushed evidence. Change stale `WHO` eligibility before releasing the
+current row so the next automatic deal cannot send it straight back to the obsolete owner. If the
+current state refuses that ordering, stop and resolve the refusal rather than return into stale
+eligibility. Preserve a pushed head through the existing `CARRY`/`continue` path, then verify the
+new card, generation, branch and head before telling the replacement worker to start. The handoff
+metadata is not the replacement worker's execution proof.
 
 Improve throughput by finding the actual bottleneck in implementation, gates, review or landing,
 then prioritize critical-path unblockers and work nearest acceptance. Remove false hard dependencies
