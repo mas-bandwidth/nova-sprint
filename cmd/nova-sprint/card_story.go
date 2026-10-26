@@ -403,6 +403,9 @@ func (a *app) nowLines(v store.CardInfo, held *sprint.Hold) []string {
 	for _, o := range v.Open {
 		out = append(out, fmt.Sprintf("waits on your judgment: %s (%s)", o.Note.Type, o.Note.ID))
 		for _, c := range sprint.NoteCommands(o.Note, []string{p.ID}) {
+			if c.Decision == sprint.RepeatDecision {
+				continue
+			}
 			for _, line := range c.Lines {
 				out = append(out, "  "+c.Decision+": "+line)
 			}
