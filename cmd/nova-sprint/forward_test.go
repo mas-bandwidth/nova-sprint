@@ -104,6 +104,24 @@ func TestWhatTheCoordinatorRunsItself(t *testing.T) {
 	assert.Empty(t, sent, "a verb's help is printed here")
 }
 
+// add --plan reads the plan directory on the coordinator's machine. A named
+// server must not make that read happen in the server process, whose filesystem
+// may not contain the caller's path and whose control line must not wait on it.
+func TestAddPlanRunsWhereItIsTyped(t *testing.T) {
+	t.Parallel()
+	r := newServerRig(t, twoLanes()...)
+	var sent [][]string
+	boss := coordinatorAt(t, r, "boss", &sent)
+	dir := t.TempDir()
+	writeHeaderBrief(t, dir, "q1", "-", "internal/x.go internal/q1.go")
+	writeHeaderBrief(t, dir, "q2", "-", "internal/q2.go internal/x.go")
+
+	code, out, errs := boss("add", "--plan", dir)
+	require.Equal(t, 0, code, "%s%s", out, errs)
+	assert.Contains(t, out, "internal/x.go  q1,q2  not-ledger  no-edge\n")
+	assert.Empty(t, sent, "the local plan directory was not sent to the server")
+}
+
 // The reads go to the server too, and print here byte for byte what they print run on
 // the store itself: the same exit code, stdout and stderr.
 func TestAReadThroughTheServerIsTheReadItself(t *testing.T) {

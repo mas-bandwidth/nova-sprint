@@ -112,6 +112,9 @@ type app struct {
 	// stageGit is the git friend stage clones and configures with (runStageGit): tests
 	// give a recorder and run no git.
 	stageGit gitFn
+	// runCtx is the served request's context while its line-held verb runs. The
+	// control line serializes its set, use and clear; a command typed here has none.
+	runCtx context.Context
 	// newID is every store's operation id family (store.NewID: the clock, the pid
 	// and random bytes): tests give a counter, so an id is the same on every run.
 	newID func() string

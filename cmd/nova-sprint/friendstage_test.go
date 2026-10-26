@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
+	"github.com/mas-bandwidth/nova-tools/pkg/sprintwire"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -49,7 +50,9 @@ func TestAFriendCardIsStagedByAVerb(t *testing.T) {
 		dir  string
 		args []string
 	}
-	ta.a.stageGit = func(_ context.Context, dir string, args ...string) (string, error) {
+	ta.a.stageGit = func(ctx context.Context, dir string, args ...string) (string, error) {
+		_, bounded := ctx.Deadline()
+		assert.True(t, bounded, "a locally typed friend stage is bounded too")
 		calls = append(calls, struct {
 			dir  string
 			args []string
@@ -163,4 +166,67 @@ func TestAFriendCardIsStagedByAVerb(t *testing.T) {
 		}
 	}
 	assert.Equal(t, sprintID.Email, email, "the clone commits as the sprint row's identity, never the host's global one")
+}
+
+// A served friend stage carries its caller's context into every git call. If
+// the caller goes away, the bounded staging runner stops and the server releases
+// its one control line instead of leaving later verbs behind a stuck clone.
+func TestServedFriendStageStopsWithItsRequest(t *testing.T) {
+	t.Parallel()
+	ta, cfg := friendApp(t, "amy")
+	_, err := cfg.Delete(context.Background(), config.KindFriend, "amy", "t")
+	require.NoError(t, err)
+	_, err = cfg.Insert(context.Background(), config.KindFriend, config.Row{
+		Name: "amy", Fields: map[string]string{"tiers": "flash", "git_identity": "Amy Author <amy@example.com>"},
+	}, "t")
+	require.NoError(t, err)
+	ta.a.tip = tipIs(t, landHead)
+	root := t.TempDir()
+	ta.ok("friend sync --root " + root)
+	ta.beatUp("amy")
+	briefs := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(briefs, "s1-1.md"), []byte(passingBrief("s1-1: a friend's card\nREPO: mas-bandwidth/nova-tools\nBASE: sprint/s1\nWHO: friend amy")), 0o644))
+	ta.ok("add --stream s1 --brief-dir " + briefs)
+	ta.ok("start")
+	ta.ok("tick")
+
+	started := make(chan context.Context, 1)
+	ta.a.stageGit = func(ctx context.Context, _ string, args ...string) (string, error) {
+		if args[0] != "clone" {
+			t.Fatalf("git %v ran after the clone was stopped", args)
+		}
+		started <- ctx
+		<-ctx.Done()
+		return "", ctx.Err()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan sprintwire.Response, 1)
+	jobs := filepath.Join(root, "amy-working", "jobs")
+	ta.a.serveAddr = "mem:0"
+	go func() {
+		done <- ta.a.serveCtx(ctx, sprintwire.Request{Verbs: [][]string{{"friend", "stage", "s1-1.w1@1", "--as", "friend.amy", "--dir", jobs}}}, true)
+	}()
+	var gitCtx context.Context
+	select {
+	case gitCtx = <-started:
+	case res := <-done:
+		t.Fatalf("friend stage ended before starting git: %+v", res.Results)
+	case <-t.Context().Done():
+		t.Fatal("friend stage did not reach git")
+	}
+	_, ok := gitCtx.Deadline()
+	require.True(t, ok, "friend stage has its hard staging deadline")
+	cancel()
+
+	select {
+	case res := <-done:
+		require.Len(t, res.Results, 1)
+		assert.NotEqual(t, 0, res.Results[0].Code)
+		assert.Contains(t, res.Results[0].Stderr, "context canceled")
+	case <-t.Context().Done():
+		t.Fatal("the cancelled friend stage kept the control line")
+	}
+	assert.Nil(t, ta.a.runCtx, "the completed served verb keeps no request context")
+	require.True(t, ta.a.serial.TryLock(), "the cancelled friend stage released the control line")
+	ta.a.serial.Unlock()
 }
