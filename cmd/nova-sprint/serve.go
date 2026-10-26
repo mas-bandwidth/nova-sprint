@@ -408,7 +408,9 @@ func (a *app) serveCtx(ctx context.Context, req sprintwire.Request, local bool) 
 		if actorNotice != "" {
 			fmt.Fprintln(&stderr, actorNotice)
 		}
+		a.runCtx = ctx
 		code := a.run(args, &stdout, &stderr)
+		a.runCtx = nil
 		out.Results[i] = sprintwire.Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String(), Outcome: a.outcome, Changed: a.changed}
 		a.logRefused(argv, as, code, stderr.String())
 

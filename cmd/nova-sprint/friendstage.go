@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-sprint/pkg/friend"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
+	toolfriend "github.com/mas-bandwidth/nova-tools/pkg/friend"
 	"github.com/mas-bandwidth/nova-tools/pkg/member"
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
@@ -28,10 +28,14 @@ type gitFn func(ctx context.Context, dir string, args ...string) (string, error)
 // package variable, so two parallel tests that each record friend stage's argv
 // never record each other's.
 func runStageGit(ctx context.Context, dir string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	return string(out), err
+	out, exit, err := toolfriend.RealExec(ctx, dir, "git", args, "")
+	if err != nil {
+		return out, err
+	}
+	if exit != 0 {
+		return out, fmt.Errorf("git exited with status %d", exit)
+	}
+	return out, nil
 }
 
 // friendStageWords is what friend stage says on -h.
@@ -86,7 +90,12 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, name, err.Error())
 	}
-	ctx := context.Background()
+	ctx := a.runCtx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, swarm.DefaultStageTimeout)
+	defer cancel()
 
 	// (1) the card must be on friend.<name>'s row at that generation, ready or working
 	cards, err := st.ReadCells(ctx, sprint.Fleet, sprint.FriendRow(friendName), sprint.Ready, sprint.Working)

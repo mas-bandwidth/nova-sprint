@@ -119,15 +119,17 @@ func (v verbArgs) given(name string) (yes bool) {
 }
 
 // unserved is why the server does not run the verb sent from this machine, "" when it
-// does: any verb of the command but the ones no one is served (notServed), one that
-// waits for the sprint to move (waits), and one naming a store (the server's is the
-// store).
+// does: any verb of the command but the ones no one is served (notServed), a local
+// filesystem plan review, one that waits for the sprint to move (waits), and one
+// naming a store (the server's is the store).
 func (v verbArgs) unserved() string {
 	switch {
 	case v.words == 0:
 		return "not a verb of nova-sprint; run: nova-sprint help"
 	case slices.Contains(notServed, v.name):
 		return v.name + " is not run by the server; run it by itself"
+	case v.name == "add" && v.given("plan"):
+		return "add --plan reads a local plan directory and is run where it is typed"
 	case v.given("redis"):
 		return "--redis is not given to the server: its store is the sprint's"
 	case waits[v.name] != "" && v.given(waits[v.name]) && !slices.Contains([]string{"false", "0s"}, v.fs.Lookup(waits[v.name]).Value.String()):
