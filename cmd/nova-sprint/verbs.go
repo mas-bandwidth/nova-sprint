@@ -20,7 +20,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
 
@@ -35,7 +34,6 @@ import (
 	"github.com/mas-bandwidth/nova-tools/pkg/cardlimits"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardtree"
 	"github.com/mas-bandwidth/nova-tools/pkg/decide"
-	"github.com/mas-bandwidth/nova-tools/pkg/diffcheck"
 	"github.com/mas-bandwidth/nova-tools/pkg/gitrun"
 	"github.com/mas-bandwidth/nova-tools/pkg/harness"
 	"github.com/mas-bandwidth/nova-tools/pkg/nsprint/verbflag"
@@ -1973,19 +1971,6 @@ func sharedPaths(cards []sprint.CardAdd) string {
 	return cardgen.RefuseOverlaps(planRows(cards))
 }
 
-// headerPaths is the files a brief's typed header line names (PATHS:, SHARED:),
-// commas or blanks between them; none and - name no file.
-func headerPaths(brief, key string) []string {
-	value, _ := swarm.CardHeaderValue([]byte(brief), key)
-	var out []string
-	for _, p := range strings.FieldsFunc(value, func(r rune) bool { return r == ',' || unicode.IsSpace(r) }) {
-		if p != "none" && p != "-" {
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
 // holdTlaRecords refuses a brief that edits a TLA+ model and does not refresh the TLC
 // records (docs/SPEC-SPRINT.md section 11, add-tla-edit-refreshes-records-b.w1): its
 // PATHS: or NEW: header lines cover a tla/*.tla model, and either cover no tla/RUNS.tsv
@@ -1996,25 +1981,7 @@ func headerPaths(brief, key string) []string {
 func holdTlaRecords(verbName string, stderr io.Writer, briefs ...briefCheck) int {
 	var red []string
 	for _, b := range briefs {
-		paths := append(headerPaths(b.brief, "PATHS"), headerPaths(b.brief, "NEW")...)
-		var models []string
-		records := false
-		for _, p := range paths {
-			if namesModel(p) {
-				models = append(models, p)
-			}
-			records = records || pathCovers(p, tlaRecordsFile)
-		}
-		if len(models) == 0 {
-			continue
-		}
-		var why []string
-		if !records {
-			why = append(why, "does not cover "+tlaRecordsFile)
-		}
-		if !stepsMergeRecords(b.brief) {
-			why = append(why, "names no STEP that runs tlacheck merge --keep")
-		}
+		models, why := sprint.TLARecordsDefectOf(b.brief)
 		if len(why) == 0 {
 			continue
 		}
@@ -2027,48 +1994,7 @@ func holdTlaRecords(verbName string, stderr io.Writer, briefs ...briefCheck) int
 	if len(red) == 0 {
 		return 0
 	}
-	return refuse(stderr, verbName, strings.Join(red, "; ")+"; a model edit refreshes the TLC records, or the records class test calls them stale on the base: name "+tlaRecordsFile+" in PATHS and add a STEP that runs the changed groups on a Linux bench, then tlacheck merge --keep "+tlaRecordsFile+", as tla/README.md says (\"Refreshing the records after a model edit\"); nothing was written")
-}
-
-// tlaRecordsFile is the TLC records every model's runs are measured into.
-const tlaRecordsFile = "tla/RUNS.tsv"
-
-// namesModel says a PATHS entry names a TLA+ model of tla/: a .tla file under it, a
-// glob of them (tla/*.tla), or tla/ itself or a glob over it (tla/**, tla/*).
-func namesModel(entry string) bool {
-	e := strings.TrimSuffix(strings.TrimPrefix(entry, "./"), "/")
-	return strings.HasPrefix(e, "tla/") && strings.HasSuffix(e, ".tla") || pathCovers(entry, "tla/Model.tla")
-}
-
-// pathCovers says a PATHS entry covers the file (diffcheck.Covers, the one reading of an
-// entry the lander's E12 check, the admission check and the card lint share): the file
-// itself, a directory over it (tla, tla/), a tree glob over it (tla/**, tla/...) or a
-// glob that matches it (tla/*).
-func pathCovers(entry, file string) bool {
-	return diffcheck.Covers(entry, file)
-}
-
-// tlaMergeKeepRE is a command that merges runs onto the kept records: tlacheck merge
-// with --keep (/tmp/tlacheck merge --root . --keep tla/RUNS.tsv, tla/README.md).
-var tlaMergeKeepRE = regexp.MustCompile(`\btlacheck\s+merge\b[^\n]*\s--keep\b`)
-
-// stepsMergeRecords says some STEP of the brief names tlacheck merge --keep: a STEP is
-// a line that begins STEP and the lines under it up to the next blank line.
-func stepsMergeRecords(brief string) bool {
-	in := false
-	for _, line := range strings.Split(brief, "\n") {
-		t := strings.TrimSpace(line)
-		switch {
-		case strings.HasPrefix(t, "STEP"):
-			in = true
-		case t == "":
-			in = false
-		}
-		if in && tlaMergeKeepRE.MatchString(t) {
-			return true
-		}
-	}
-	return false
+	return refuse(stderr, verbName, strings.Join(red, "; ")+"; "+sprint.TLARecordsRemedy+"; nothing was written")
 }
 
 // uniquify keeps the first of each id, in order: a need named by a brief and
