@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.6.21 — 2026-10-25
+
+Cut from 371db8462c2c606a553fd663ae2234b7bebb80f9. 6 pull requests since v1.6.20.
+
+Recovery journeys incomplete, gate waived: v1.6.21 changes sprint landing-stall acknowledgment and coordinator playbook only; it does not change hook recovery or spend recording; exact-head release acceptance passed 81/81
+
+- TestASilentClientIsUnhookedAfterExactlyTwoAnnouncedOnce: not-run (no --journeys evidence)
+- TestNoServerOrNoAnswerIsNoEvidence: not-run (no --journeys evidence)
+- TestTheGateRefusesEveryoneWhileTheServerIsStale: not-run (no --journeys evidence)
+- TestAStaleAnswerIsDownWithAFreshServer: not-run (no --journeys evidence)
+- TestALostAnswerIsNeverToldTwice: not-run (no --journeys evidence)
+
+Spend gate waived: v1.6.21 changes sprint landing-stall acknowledgment and coordinator playbook only; it does not change hook recovery or spend recording; exact-head release acceptance passed 81/81 (window 2026-10-24T00:00:00Z..2026-10-25T23:46:17Z)
+- unread: --spend-store <addr> names no sprint store, so the recorded spend cannot be read
+
+- #601 changelog: v1.6.20
+- #602 test: two flaky unit tests, a shared git stub and clock-made op ids
+- #603 tick: raise a judgment when the fleet table drifts from nova-config (config-drift-alarm)
+- #607 docs: make coordinator and worker playbooks actionable
+- #608 fix: acknowledge cleared landing stalls
+- #609 docs: coach throughput at the real bottleneck
+
 ## v1.6.20 — 2026-10-24
 
 Cut from 87272ff001e3b2103df0c429c292b447dbbb160a. 5 pull requests since v1.6.19.
