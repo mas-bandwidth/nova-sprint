@@ -299,6 +299,31 @@ func TestMergeWritesTheLandingStallFacts(t *testing.T) {
 	assert.Contains(t, got[0].What, "attempts 3")
 }
 
+// A landing proves that the lander got past a refusal that stood before it. The
+// merge closes that refusal atomically, so a still-open landing-stall alarm does
+// not keep reporting the obsolete cause while it waits for its own tick close.
+func TestMergeClosesTheStandingLanderRefusalBeforeTheStallTick(t *testing.T) {
+	t.Parallel()
+	w := setup(t, 1)
+	accepted(w, "s1-1")
+	w.s.Work.SetProp(PropLandingStallSince, landingStamp(w.s.Now))
+	w.s.Work.SetProp(PropLandingStallSaid, landingStamp(w.s.Now))
+	w.must(Plan{Notes: []Note{
+		{Kind: Judgment, Type: NLanderRefuses, What: "code=paths: an old refusal", Who: "rowan", To: "coordinator", At: w.s.Now, SprintLevel: true, Decisions: LandRefusalDecisions},
+		{Kind: Judgment, Type: NLandingStall, What: "the active landing stall", Who: "tick", To: "coordinator", At: w.s.Now, SprintLevel: true},
+	}})
+	w.tick(time.Second)
+	w.must(MergeStep(w.s, MergeReq{Stream: "s1", Batch: 1}))
+
+	assert.Empty(t, LandRefusalStanding(w.s), "the successful landing closes its obsolete refusal")
+	_, open := openJudgmentOf(w.s, NLandingStall)
+	assert.True(t, open, "the merge does not suppress the active stall itself")
+	p, _ := TickLandingStall(w.s, TickReq{})
+	w.must(p)
+	_, open = openJudgmentOf(w.s, NLandingStall)
+	assert.False(t, open, "the stall's existing tick closes it after the landing")
+}
+
 // The merge step records the lander's last refusal (docs/SPEC-SPRINT.md, the
 // judgments section): the card and the reason, for the stall judgment's
 // breakdown.

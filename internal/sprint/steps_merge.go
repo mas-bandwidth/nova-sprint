@@ -728,6 +728,10 @@ func mergeStep(s *Snapshot, r MergeReq) Plan {
 		// measures from here and orders it against its episode's start.
 		was, had := s.Work.Prop(PropLastLanding)
 		p.Props = append(p.Props, PropWrite{Table: Work, Name: PropLastLanding, Value: landingStamp(s.Now), Was: was, WasAbsent: !had})
+		// This successful landing has passed the lander's standing refusal. Close
+		// its durable judgment in the landing step itself, rather than leaving the
+		// stale cause visible until the run loop's next beat does the same close.
+		p.Closes = append(p.Closes, LandRefusalClose(s).Closes...)
 		lands := map[string]bool{}
 		for _, id := range landed {
 			lands[id] = true
