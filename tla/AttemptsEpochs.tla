@@ -32,10 +32,10 @@
 \* The design, Broken = {}:
 \*   PinStep   a step pins the store to the sprint's current epoch (every
 \*             command builds its store pinned; a step whose epoch moved
-\*             re-pins, engine.go:555-562).
+\*             re-pins, engine.go Run's repin).
 \*   WriteStep the writer's step writes its card into the streams table at the
 \*             epoch it pinned, and is refused as stale when the sprint has
-\*             left that epoch (engine.go:566-575): it writes nothing.
+\*             left that epoch (engine.go Run's held-epoch refusal): it writes nothing.
 \*   Clear     two clears race on the CAS (AdvanceEpoch, clear.go:96): each
 \*             reads the epoch it will advance from (ClearRead), the winner
 \*             advances by one and settles the restore in the same step
@@ -129,7 +129,7 @@ Init ==
     /\ accepted = {}
 
 \* a step pins the store to the sprint's current epoch (a re-pin of a moved
-\* step, engine.go:555-562; every command pins before it acts)
+\* step, engine.go Run's repin; every command pins before it acts)
 PinStep ==
     /\ pinned # epoch
     /\ pinned' = epoch
@@ -137,7 +137,7 @@ PinStep ==
                   attempt, gen, redeals, card, takeEnded, launched, launches, accepted>>
 
 \* the writer's step writes its card at the epoch it pinned; a step whose
-\* epoch moved is refused as stale and writes nothing (engine.go:566-575)
+\* epoch moved is refused as stale and writes nothing (engine.go Run's held-epoch refusal)
 WriteStep ==
     /\ "noepochcheck" \in Broken \/ pinned = epoch
     /\ Card \notin streams[epoch]

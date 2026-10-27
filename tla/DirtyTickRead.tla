@@ -21,7 +21,7 @@
 \*                generation a tick part records when it begins (tick.go's
 \*                TickRunSeq) and must still hold to commit (engine.go's
 \*                StaleRun refusal, a Halts step's alone)
-\*   stopRevoked  a run's STOP has committed (engine.go:597-608): a StartsWork
+\*   stopRevoked  a run's STOP has committed (engine.go Run's STOP fences): a StartsWork
 \*                or ReportsWork part is refused, and a RequiresStopped part
 \*                is refused while it is not; the tick part (kind "plain")
 \*                halts on its first read of a STOPPED machine instead
@@ -36,7 +36,7 @@
 \*   queued       the work table's queue length: a step other than the pump
 \*                queues its work-table changes while the machine runs; a
 \*                STOPPED machine's queue is drained before any step
-\*                (engine.go:609-626): a worker part's own drain in Close
+\*                (engine.go Run's STOPPED drain): a worker part's own drain in Close
 \*                (MustDrain), another step's in Drain.
 \*
 \* THE TICK'S TWIN.
@@ -65,7 +65,7 @@
 \*   vepoch       the epoch the part's store is pinned to: the sprint's epoch
 \*                at its first read (Run's st.pin), kept apart from vheld. A
 \*                step whose vheld is not vepoch is refused at that read
-\*                (engine.go:566); past it, vepoch never moves for a part that
+\*                (engine.go Run's held-epoch refusal); past it, vepoch never moves for a part that
 \*                holds an epoch.
 \*   "idle"  -> Begin: the view's exchange (the fence first: a pending
 \*              operation waits; the shapes: each table's revision, and the
@@ -75,9 +75,9 @@
 \*              whose shapes are at another epoch than the one the part is
 \*              pinned to (errCleared, pipeline_load.go / twin.go) is, for a
 \*              part that holds no epoch, the epoch repin: it adopts the epoch
-\*              the sprint is at and reads again (engine.go:555-562, repin,
+\*              the sprint is at and reads again (engine.go Run: the repin,
 \*              continue); and for a part that holds one, the refusal: it
-\*              writes nothing and the part is done (engine.go:566-575,
+\*              writes nothing and the part is done (engine.go Run: the held-epoch refusal,
 \*              ClearedError). Otherwise a later read of a part in flight goes
 \*              on.
 \*   "view"  -> CatchUp(t): a table whose revision moved since the twin's is
@@ -94,8 +94,8 @@
 \*              refuses it as stale (clear.go: the old epoch is frozen from the
 \*              advance; tla/AttemptsEpochs.tla OldEpochWritesNothing): it
 \*              writes nothing and the part is done. Else a fence on its kind
-\*              (engine.go:597-608) or, for a tick part, the run it began
-\*              under moving (engine.go:582-590, StaleRun) refuses it, writing
+\*              (engine.go Run's STOP fences) or, for a tick part, the run it began
+\*              under moving (engine.go Run's run check, StaleRun) refuses it, writing
 \*              nothing; else
 \*              it commits at the generation its view read (the Acquire), its
 \*              receipt applied to the twin (the record, and the table's
@@ -214,10 +214,10 @@ Free == pend = "none" \/ (locked /\ pend = "t")
 \* (vheld, step.Epoch): a tick part holds its tick's (&t.at), a worker part the
 \* one its caller named or none, and either may be one a clear has already
 \* left. A step that holds an epoch other than the one its store is pinned to
-\* is refused at that read, writing nothing (engine.go:566, *step.Epoch !=
+\* is refused at that read, writing nothing (engine.go Run's held-epoch refusal, *step.Epoch !=
 \* snap.Epoch; "held" drops this comparison alone). A later read whose shapes
 \* are at another epoch repins a part that holds none (it reads again) and
-\* refuses one that holds one (errCleared, engine.go:555-575). "epoch" drops
+\* refuses one that holds one (errCleared, engine.go Run's repin and held-epoch refusal). "epoch" drops
 \* the repin and the errCleared refusal.
 Begin ==
   /\ pc = "idle" /\ parts < MaxParts /\ Free
@@ -281,7 +281,7 @@ ReadWhole ==
         ELSE /\ pc' = "idle" /\ UNCHANGED <<tv, trec, trev>>
   /\ UNCHANGED <<gen, pend, rec, rev, log, running, runseq, stopRevoked, epoch, queued, tg, vgen, vrunseq, vrev, first, began, parts, pkind, vpinned, vheld, vepoch, wn, dn, wt, wk, wv, locked, lost, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
 
-\* A fence on the part's kind refuses it (engine.go:597-608): a StartsWork or
+\* A fence on the part's kind refuses it (engine.go Run's STOP fences): a StartsWork or
 \* ReportsWork part once StopRevoked, a RequiresStopped part while it is not.
 \* "startsafterstop" drops the StartsWork fence.
 KindRefused ==
@@ -290,7 +290,7 @@ KindRefused ==
   \/ (pkind = "require" /\ ~stopRevoked)
 
 \* A worker part its kind's fence lets on, reading a STOPPED machine whose
-\* queue holds changes, drains the queue before it plans (engine.go:609-626:
+\* queue holds changes, drains the queue before it plans (engine.go Run's STOPPED drain:
 \* the fences first, then fence.Queued > 0 && !step.Pump && !fence.Running,
 \* DrainStep run under the fence, and the part reads again). "nodrain" drops
 \* the drain: the part plans on the queued view.
@@ -312,8 +312,8 @@ Close ==
 
 \* The part's write. A clear since its read leaves the write at an epoch the
 \* sprint has left, and the table layer refuses it as stale, writing nothing
-\* (the part is done). Then a fence on its kind (engine.go:597-608) and, for a
-\* tick part, the run it began under (engine.go:582-590, StaleRun) refuse it,
+\* (the part is done). Then a fence on its kind (engine.go Run's STOP fences) and, for a
+\* tick part, the run it began under (engine.go Run's run check, StaleRun) refuse it,
 \* else it commits
 \* at the generation its view read, else it is lost. "epoch" drops the stale
 \* refusal; "startsafterstop" drops the StartsWork fence; "runseq" drops the
@@ -445,14 +445,14 @@ Clear ==
   /\ UNCHANGED <<gen, pend, rec, rev, log, running, runseq, stopRevoked, queued, tv, tg, trec, trev, pc, pkind, vpinned, vheld, vepoch, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
 
 \* A step other than the pump queues its work-table change while the machine
-\* runs (engine.go:609: fence.Queued). Queued is the length of that queue.
+\* runs (engine.go Run: fence.Queued). Queued is the length of that queue.
 Queue ==
   /\ running /\ queued < MaxQ
   /\ queued' = queued + 1
   /\ UNCHANGED <<gen, pend, rec, rev, log, running, runseq, stopRevoked, epoch, tv, tg, trec, trev, pc, pkind, vpinned, vheld, vepoch, vgen, vrunseq, vrev, first, began, parts, wn, dn, wt, wk, wv, locked, lost, stale, wroteOldEpoch, wroteAfterStop, wroteOffHeld, wroteOverQueue>>
 
 \* A STOPPED machine has no next tick: the queue it left is drained before any
-\* step (engine.go:609-626): here another step's drain, under the fence (the
+\* step (engine.go Run's STOPPED drain): here another step's drain, under the fence (the
 \* part's own drain is in Close).
 Drain ==
   /\ ~running /\ queued > 0 /\ pend = "none"
@@ -512,7 +512,7 @@ TwinNotAhead == \A t \in Tables : trev[t] <= rev[t]
 \* No tick part commits under a runseq other than the one current at its
 \* commit: a part that began before STOP then START reads the new generation
 \* but is refused (StaleRun), never committed. A worker part has no run check
-\* (engine.go:582 is a Halts step's): its fences are its kind's.
+\* (engine.go Run's run check is a Halts step's): its fences are its kind's.
 NoStaleRunCommit == ~stale
 
 \* No part writes at an epoch other than the one its store is pinned to: a
