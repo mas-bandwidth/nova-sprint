@@ -199,18 +199,18 @@ this repo (unverified where it lives).
 |---|---|---|
 | G1 | assumed from the table layer (SprintEvents.tla:10-20) | GAP here (L0) |
 | G2 | DirtyTickRead `ViewIsSnapshot` (:492), `TwinIsTheStore` | covered |
-| G3 | DirtyTickRead Acquire (MCDirtyTickReadAcquire.cfg), `LockedApplyNotLost` (:497) | covered |
-| G4 | none; SprintTables treats a step as one action | GAP |
-| G5 | none | GAP |
-| G6 | none (SprintEvents `ReplayNoop` :1930 is key delivery, not caller ops) | GAP |
-| G7 | none | GAP |
+| G3 | DirtyTickRead Acquire (MCDirtyTickReadAcquire.cfg), `LockedApplyNotLost` (:497); StoreFence `FenceOneHolder` | covered |
+| G4 | StoreFence `CommittedWhole`, `NoPartialOutsideFence`, `NoApplyWithoutCommit` (witness releaseanyop) | covered |
+| G5 | StoreFence `OkMeansCommitted`: a release that finds the fence moved writes nothing and its writer's operation is committed | covered |
+| G6 | StoreFence `ReplayMatches`, `CallerCommitsOnce` (witness replayignoresargs) | covered |
+| G7 | StoreFence `CallerCommitsOnce` (witness rerunoldepoch) | covered |
 | G8 | AttemptsEpochs `SuffixUnique` (cards' suffixes, not op ids) | partial |
 | G9 | DirtyTickRead `HeldEpochIsTheWrite`, `OldEpochPartWritesNothing`; AttemptsEpochs `OldEpochWritesNothing` | covered |
 | G10 | AttemptsEpochs `EpochMonotone` (PROPERTY); ClearDefaults `FinishOnlyWhatIsOwed`, `EpochZeroNeverOwed` | covered |
 | G11 | AttemptsEpochs `Restore`; ClearDefaults `MembersRestored` | covered |
 | G12 | ClearDefaults `RerunKeepsEpochWrites`, `MembersRestored` (EditRow, DeleteRow) | covered |
 | G13 | SprintTables Crash/Repair, `NoCardLostOrTwice` (MCSprintTablesCrash.cfg); RepairLog `AppliedHasLine`, `LineOnlyIfApplied`, `ProbeSparesEntries` | covered |
-| G14 | none; COVERAGE `pending-fenced-op` missing | GAP |
+| G14 | StoreFence `AbandonedAppliedNothing`, with and without the timing assumption (witnesses abandonapplied, repairnosend) | covered |
 | G15 | none here (receipt replay assumed) | GAP |
 | G16 | DirtyTickRead (display writes move rev outside the fence); RepairLog whole resend | partial |
 | G17 | none | GAP |
