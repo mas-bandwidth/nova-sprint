@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.6.27 — 2026-10-27
+
+Cut from 4172720ae0acd02a60fd3391efbd33593f31abe5. 3 pull requests since v1.6.26.
+
+SHA256SUMS digest: a90bb7da56949bce137327882609e33b05c01e0383b2777dacc2af11f398860f
+
+Adopt this release with `--expect-sums a90bb7da56949bce137327882609e33b05c01e0383b2777dacc2af11f398860f`.
+
+Recovery journeys incomplete, gate waived: v1.6.27 is the unified release: nova-tools and nova-sprint cut together at one version again; it changes neither hook recovery nor spend recording
+
+- TestASilentClientIsUnhookedAfterExactlyTwoAnnouncedOnce: not-run (no --journeys evidence)
+- TestNoServerOrNoAnswerIsNoEvidence: not-run (no --journeys evidence)
+- TestTheGateRefusesEveryoneWhileTheServerIsStale: not-run (no --journeys evidence)
+- TestAStaleAnswerIsDownWithAFreshServer: not-run (no --journeys evidence)
+- TestALostAnswerIsNeverToldTwice: not-run (no --journeys evidence)
+
+Spend gate waived: v1.6.27 is the unified release: nova-tools and nova-sprint cut together at one version again; it changes neither hook recovery nor spend recording (window 2026-10-27T00:00:00Z..2026-10-27T18:39:55Z)
+- unread: --spend-store <addr> names no sprint store, so the recorded spend cannot be read
+
+- #623 changelog: v1.6.26
+- #624 roadmap: the rewrite splits into an immaculate engine and Starlark policy
+- #626 roadmap: the old roadmap moves aside; the new plan is the roadmap
+
 ## v1.6.26 — 2026-10-27
 
 Cut from 351d3364aebcfa59481039b5c986476d5be335a8. 7 pull requests since v1.6.25.
