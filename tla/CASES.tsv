@@ -814,3 +814,9 @@ MCFriendRedealProgress.cfg	MCFriendRedealProgress.tla	pass	-	ignore-terminal	fri
 MCFriendRedealProgressBrokenIgnoreProgress.cfg	MCFriendRedealProgress.tla	invariant	NoRedealWhileProgressing	ignore-terminal	friendredealprogress	required	-
 MCFriendRedealProgressBrokenNeverRedeal.cfg	MCFriendRedealProgress.tla	invariant	StaleIsRedealt	ignore-terminal	friendredealprogress	required	-
 MCFriendRedealProgressBrokenDropCarry.cfg	MCFriendRedealProgress.tla	invariant	CarriedHeadKept	ignore-terminal	friendredealprogress	required	-
+MCStoreFence.cfg	MCStoreFence.tla	pass	-	ignore-terminal	storefence	required	-
+MCStoreFenceBrokenReplayIgnoresArgs.cfg	MCStoreFence.tla	invariant	ReplayMatches	ignore-terminal	storefence	required	-
+MCStoreFenceBrokenRerunOldEpoch.cfg	MCStoreFence.tla	invariant	CallerCommitsOnce	ignore-terminal	storefence	required	-
+MCStoreFenceBrokenReleaseAnyOp.cfg	MCStoreFence.tla	invariant	NoPartialOutsideFence	ignore-terminal	storefence	required	-
+MCStoreFenceBrokenAbandonApplied.cfg	MCStoreFence.tla	invariant	AbandonedAppliedNothing	ignore-terminal	storefence	required	-
+MCStoreFenceLateWriter.cfg	MCStoreFence.tla	invariant	AbandonedAppliedNothing	ignore-terminal	storefence	required	-
