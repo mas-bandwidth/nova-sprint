@@ -366,24 +366,6 @@ func (st *Store) membersRestored(ctx context.Context) (bool, error) {
 // DeleteRow, RerunKeepsEpochWrites).
 var ErrRestorePending = errors.New("the clear of this epoch has not restored its members and readers yet")
 
-// RestorePending says the sprint's epoch is owed its step (EpochState.DefaultsOwed) and its
-// restore's marker is absent: the members and the readers are not restored yet.
-func (st *Store) RestorePending(ctx context.Context) (bool, error) {
-	pinned, err := st.pin(ctx)
-	if err != nil {
-		return false, err
-	}
-	es, err := pinned.EpochNow(ctx)
-	if err != nil {
-		return false, err
-	}
-	if es.N != pinned.epoch || !es.DefaultsOwed {
-		return false, nil
-	}
-	done, err := pinned.membersRestored(ctx)
-	return !done, err
-}
-
 // guardedRows is a verb's row writes at the epoch it pins, in one exchange with the check
 // that the epoch's restore is not pending and that the sprint is still at that epoch
 // (Backend.GuardedRows): the check and the write can never see two epochs or two phases.

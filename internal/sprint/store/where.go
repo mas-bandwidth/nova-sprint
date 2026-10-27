@@ -409,9 +409,8 @@ type StoreRTTRecord struct {
 }
 
 // MeasureStoreRTT times one round trip to the store by the injected clock (the
-// read of the record itself) and records it from the time it began
-// (RecordStoreRTT); it returns the round trip. A store without the KV records
-// measures nothing.
+// read of the record itself) and records it from the time it began; it
+// returns the round trip. A store without the KV records measures nothing.
 func (st *Store) MeasureStoreRTT(ctx context.Context) (time.Duration, error) {
 	kv, err := st.kv()
 	if err != nil {
@@ -424,19 +423,6 @@ func (st *Store) MeasureStoreRTT(ctx context.Context) (time.Duration, error) {
 		return d, err
 	}
 	return d, st.keepStoreRTT(ctx, kv, readStoreRTT(v, ok), t0, d)
-}
-
-// RecordStoreRTT records one store round trip d that began at the store's now.
-func (st *Store) RecordStoreRTT(ctx context.Context, d time.Duration) error {
-	kv, err := st.kv()
-	if err != nil {
-		return err
-	}
-	v, ok, err := kv.GetKey(ctx, keyStoreRTT)
-	if err != nil {
-		return err
-	}
-	return st.keepStoreRTT(ctx, kv, readStoreRTT(v, ok), st.now(), d)
 }
 
 // keepStoreRTT adds the sample (at, d) to r, drops the samples older than

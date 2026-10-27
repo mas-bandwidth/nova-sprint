@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
 // noFriend is the refusal of a name the roster lacks; FriendNames is every
@@ -53,7 +55,7 @@ func TestFriendsCoverUnknownFriendIsRefusedAndWritesNothing(t *testing.T) {
 		do   func(*testing.T, *Store, context.Context) error
 	}{
 		{"friend beat", func(t *testing.T, st *Store, ctx context.Context) error {
-			_, err := st.FriendBeat(ctx, "zed")
+			_, err := st.FriendBeatReport(ctx, "zed", sprint.FriendReport{}, nil)
 			return err
 		}},
 		{"friend down", func(t *testing.T, st *Store, ctx context.Context) error {

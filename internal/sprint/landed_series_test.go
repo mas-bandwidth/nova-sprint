@@ -176,7 +176,7 @@ func (r *landedRig) beatMachines() {
 func (r *landedRig) beat() {
 	r.t.Helper()
 	r.beatMachines()
-	_, err := r.st.FriendBeat(r.ctx, "amy")
+	_, err := r.st.FriendBeatReport(r.ctx, "amy", sprint.FriendReport{}, nil)
 	require.NoError(r.t, err)
 	// her beat is no evidence: a wake ping her session answered makes her up
 	err = setFriendHook(r.st, "amy", sprint.Up)

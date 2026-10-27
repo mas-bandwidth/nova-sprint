@@ -80,7 +80,7 @@ func (r *holdRig) beat() {
 		require.NoError(r.t, err)
 	}
 	for _, f := range []string{"amy", "bob"} {
-		_, err := r.st.FriendBeat(r.ctx, f)
+		_, err := r.st.FriendBeatReport(r.ctx, f, sprint.FriendReport{}, nil)
 		require.NoError(r.t, err)
 		err = setFriendHook(r.st, f, sprint.Up)
 		require.NoError(r.t, err)

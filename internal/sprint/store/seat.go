@@ -185,12 +185,6 @@ type expiringKV interface {
 	SetKeyFor(ctx context.Context, name, value string, ttl time.Duration) error
 }
 
-// SetServerActor records the actor the run loop runs as, at the clock's
-// reading, and nothing of its landing or its process.
-func (st *Store) SetServerActor(ctx context.Context, actor string) error {
-	return st.SetServer(ctx, ServerRecord{Actor: actor})
-}
-
 // SetServer writes the server's record r, its At the clock's reading: the
 // server's report of itself, which seat, handover and land read. It writes
 // nothing else, and never the coordinator key.
@@ -229,16 +223,6 @@ func (st *Store) Server(ctx context.Context) (ServerRecord, bool, error) {
 		return ServerRecord{}, false, nil
 	}
 	return r, true, nil
-}
-
-// SeatAndServer reads the seat's record and the server's heartbeat in one
-// exchange where the store reads many keys in one (getKeys): where --json
-// carries both under a fixed round-trip budget, so the server's record must not
-// cost a trip of its own. Its answers are exactly Seat's (the seat moved) and
-// Server's (the server is fresh, no older than ServerTTL).
-func (st *Store) SeatAndServer(ctx context.Context) (sprint.SeatChange, bool, ServerRecord, bool, error) {
-	seat, moved, server, fresh, _, err := st.SeatServerCoordinator(ctx)
-	return seat, moved, server, fresh, err
 }
 
 // SeatServerCoordinator reads the seat, server and coordinator keys in one

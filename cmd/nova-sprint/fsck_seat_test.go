@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 )
 
 // fsck's seat-agreement through the command (docs/SPEC-SPRINT.md, "Handing
@@ -25,7 +26,7 @@ func TestFsckNamesTheFourSeatValues(t *testing.T) {
 	st, err := ta.a.store(common{redis: "mem:0", actor: "stella"})
 	require.NoError(t, err)
 	ctx := context.Background()
-	require.NoError(t, st.SetServerActor(ctx, "stella"))
+	require.NoError(t, st.SetServer(ctx, store.ServerRecord{Actor: "stella"}))
 	require.NoError(t, ta.m.SetCoordinator(ctx, "stella"))
 
 	var asked []string
@@ -68,7 +69,7 @@ func TestFsckNamesTheFourSeatValues(t *testing.T) {
 	assert.Contains(t, errs, "fsck seat FAILED: the nova-config sprint row was not read: no route", errs)
 
 	ta.ok("seat --repair --reason 'the restart wrote its actor' --actor rowan")
-	require.NoError(t, st.SetServerActor(ctx, "rowan"))
+	require.NoError(t, st.SetServer(ctx, store.ServerRecord{Actor: "rowan"}))
 	code, out, errs = fsck(row("rowan", nil))
 	assert.Equal(t, 0, code, errs)
 	assert.Equal(t, "FSCK OK check=seat-agreement key=rowan record=rowan server=rowan config=rowan\n", out)

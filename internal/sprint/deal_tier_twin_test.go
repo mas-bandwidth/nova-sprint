@@ -39,7 +39,7 @@ func TestADealtPacketAlwaysNamesItsTier(t *testing.T) {
 		{ID: "f1-3", Brief: friend(" tier: pro", "only friend fay")},
 	}}))
 	r.must(store.BriefStep(sprint.BriefReq{ID: "s1-3", Tier: "pro", Who: "coordinator"}))
-	_, err = r.st.FriendBeat(r.ctx, "fay")
+	_, err = r.st.FriendBeatReport(r.ctx, "fay", sprint.FriendReport{}, nil)
 	require.NoError(t, err)
 	err = setFriendHook(r.st, "fay", sprint.Up)
 	require.NoError(t, err)

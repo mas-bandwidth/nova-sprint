@@ -82,21 +82,6 @@ func readStops(raw string, ok bool) (StopsRecord, bool) {
 	return r, true
 }
 
-// StopsKept is the stops record the tick last wrote, when it is of the pinned epoch; false
-// when there is none (before the first tick, after a clear, or a store that keeps no records).
-func (st *Store) StopsKept(ctx context.Context) (StopsRecord, bool, error) {
-	kv, err := st.kv()
-	if err != nil {
-		return StopsRecord{}, false, nil
-	}
-	v, ok, err := kv.GetKey(ctx, keyStops)
-	if err != nil {
-		return StopsRecord{}, false, err
-	}
-	r, ok := readStops(v, ok)
-	return r, ok && r.Epoch == st.epoch, nil
-}
-
 // StopsNow is the stops record counted now from a fresh read of the sprint, as the tick
 // counts it (the members' beats, the friends' seats, the machine's STOPPED spans): what
 // `nova-sprint doctor` lists, whether or not the machine ticks.
