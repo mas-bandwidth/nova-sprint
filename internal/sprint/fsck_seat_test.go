@@ -37,7 +37,7 @@ func TestFsckFindsTheSeatKeyAgainstTheRecord(t *testing.T) {
 		Take: true, ApprovedBy: "glenn", Owner: "glenn"}))
 	require.NoError(t, err)
 	require.Empty(t, res.Refused)
-	require.NoError(t, st.SetServerActor(ctx, "stella"))
+	require.NoError(t, st.SetServer(ctx, store.ServerRecord{Actor: "stella"}))
 	require.NoError(t, m.SetCoordinator(ctx, "stella")) // the restart's write of the old build
 
 	fsck := func(config sprint.ConfigCoordinator) (sprint.SeatAgreement, error) {
@@ -69,7 +69,7 @@ func TestFsckFindsTheSeatKeyAgainstTheRecord(t *testing.T) {
 	require.Empty(t, why)
 	_, err = st.Run(ctx, step)
 	require.NoError(t, err)
-	require.NoError(t, st.SetServerActor(ctx, "rowan"))
+	require.NoError(t, st.SetServer(ctx, store.ServerRecord{Actor: "rowan"}))
 	f, err = fsck(row("rowan"))
 	require.NoError(t, err)
 	assert.Empty(t, f.Drift, "four equal values are clean")

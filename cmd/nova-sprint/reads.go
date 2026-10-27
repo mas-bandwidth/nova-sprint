@@ -1372,7 +1372,7 @@ func (a *app) whereOf(ctx context.Context, st *store.Store, stale time.Duration,
 	// the seat's record and the server's heartbeat, read in one exchange so the
 	// server's own version does not cost where --json a round trip of its own:
 	// the version and commit it runs, when it started and when it last wrote,
-	// fresh (no older than its TTL) or absent (store.SeatAndServer, ServerRecord)
+	// fresh (no older than its TTL) or absent (store.SeatServerCoordinator, ServerRecord)
 	seat, moved, serverRec, serverOK, coordinator, err := st.SeatServerCoordinator(ctx)
 	if err != nil {
 		return whereView{}, "", err

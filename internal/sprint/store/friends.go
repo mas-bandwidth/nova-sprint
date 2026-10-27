@@ -296,17 +296,11 @@ func (st *Store) SyncFriends(ctx context.Context, specs []FriendSpec) (added, re
 	return added, removed, updated, nil
 }
 
-// FriendBeat writes one beat of the friend at the store's clock, to the
-// second, reporting nothing more; a friend the roster lacks is refused and
-// nothing is written.
-func (st *Store) FriendBeat(ctx context.Context, friend string) (sprint.Beat, error) {
-	return st.FriendBeatReport(ctx, friend, sprint.FriendReport{}, nil)
-}
-
-// FriendBeatReport is FriendBeat with what her machinery reports of her work
-// (sprint.FriendReport: the cards she is running, which friend take and friend
-// down keep with her, and her own counts) and her load (nil: none), kept on the
-// beat until the next replaces it.
+// FriendBeatReport writes one beat of the friend at the store's clock, to the
+// second, with what her machinery reports of her work (sprint.FriendReport: the
+// cards she is running, which friend take and friend down keep with her, and
+// her own counts) and her load (nil: none), kept on the beat until the next
+// replaces it; a friend the roster lacks is refused and nothing is written.
 func (st *Store) FriendBeatReport(ctx context.Context, friend string, rep sprint.FriendReport, load *float64) (sprint.Beat, error) {
 	b, err := st.FriendBeatLive(ctx, friend, rep, load, nil)
 	return b, err

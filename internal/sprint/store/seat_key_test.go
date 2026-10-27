@@ -32,7 +32,7 @@ func TestServerStartLeavesTheSeatKeyAndSeatRepairRestoresIt(t *testing.T) {
 	// the server starts as stella: its record, init as its unit runs it, start, a tick
 	srv := *h.st
 	srv.Actor = "stella"
-	require.NoError(t, srv.SetServerActor(h.ctx, srv.Actor))
+	require.NoError(t, srv.SetServer(h.ctx, ServerRecord{Actor: srv.Actor}))
 	name, err := srv.InitSeat(h.ctx, srv.Actor)
 	require.NoError(t, err)
 	assert.Equal(t, "rowan", name, "init writes the key from the record, not its actor")
@@ -98,7 +98,7 @@ func TestServerStartLeavesTheSeatKeyAndSeatRepairRestoresIt(t *testing.T) {
 	assert.Contains(t, why, "as the record does", "nothing to repair")
 
 	// the server's actor changed in its unit and restarted: no drift
-	require.NoError(t, srv.SetServerActor(h.ctx, "rowan"))
+	require.NoError(t, srv.SetServer(h.ctx, ServerRecord{Actor: "rowan"}))
 	s, err = h.st.SeatCheck(h.ctx)
 	require.NoError(t, err)
 	assert.Empty(t, s.Drift)
@@ -131,7 +131,7 @@ func TestServerRecordCarriesLandingAndProcess(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "stella", actor)
 
-	require.NoError(t, h.st.SetServerActor(h.ctx, "rowan"))
+	require.NoError(t, h.st.SetServer(h.ctx, ServerRecord{Actor: "rowan"}))
 	got, ok, err = h.st.Server(h.ctx)
 	require.NoError(t, err)
 	require.True(t, ok)

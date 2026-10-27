@@ -251,15 +251,6 @@ func (m Machine) StoppedBetween(from, to time.Time) time.Duration {
 	return sprint.StoppedBetween(m.Spans, from, to)
 }
 
-// StoppedTotal is the total time the machine has been STOPPED, until now.
-func (m Machine) StoppedTotal(now time.Time) time.Duration {
-	d := m.StoppedFor
-	if n := len(m.Spans); n > 0 && m.Spans[n-1].To.IsZero() && now.After(m.Spans[n-1].From) {
-		d += now.Sub(m.Spans[n-1].From)
-	}
-	return d
-}
-
 // ViewState is the state text the sprint's stored view shows as its summary
 // line for the machine (docs/SPEC-SPRINT.md section 1): STOPPED alone, with
 // no counts, percent or ETA, while the machine is STOPPED (no record is

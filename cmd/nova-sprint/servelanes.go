@@ -31,7 +31,7 @@ import (
 // or the lander is doing when it does not need the line:
 //
 //   - a friend's beat (`friend beat <friend>`, a worker's verb) writes one key outside
-//     every table (the friend's beat record; store.FriendBeat: the roster read, the record
+//     every table (the friend's beat record; store.FriendBeatReport: the roster read, the record
 //     written): it runs on the beat lane, beside the line and beside every other beat,
 //     never waiting for a tick, a batch or another beat;
 //   - a read (where, card, log, check, routes, stats, needs, goal show, handover, and

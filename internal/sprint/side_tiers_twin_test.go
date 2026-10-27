@@ -67,7 +67,7 @@ func TestFriendsTiersLimitWhatFriendsTake(t *testing.T) {
 	r := newHoldRig(t, 0, 0)
 	_, _, _, err := r.st.SyncFriends(r.ctx, []store.FriendSpec{{Name: "amy", Width: 2, Class: "pro"}, {Name: "bob", Width: 2, Class: "pro"}, {Name: "fay", Width: 2, Class: "flash,pro"}})
 	require.NoError(t, err)
-	_, err = r.st.FriendBeat(r.ctx, "fay")
+	_, err = r.st.FriendBeatReport(r.ctx, "fay", sprint.FriendReport{}, nil)
 	require.NoError(t, err)
 	err = setFriendHook(r.st, "fay", sprint.Up)
 	require.NoError(t, err)

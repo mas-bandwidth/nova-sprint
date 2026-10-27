@@ -1,6 +1,7 @@
 package sprint_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -32,7 +33,7 @@ func (r *holdRig) tickBeating(d time.Duration, members ...string) {
 		require.NoError(r.t, err)
 	}
 	for _, f := range []string{"amy", "bob"} {
-		_, err := r.st.FriendBeat(r.ctx, f)
+		_, err := r.st.FriendBeatReport(r.ctx, f, sprint.FriendReport{}, nil)
 		require.NoError(r.t, err)
 		err = setFriendHook(r.st, f, sprint.Up)
 		require.NoError(r.t, err)
@@ -86,7 +87,7 @@ func (r *holdRig) countNotes(kind, typ, word string) int {
 // keptStop is the stop of the kind on the subject in the stops record the tick wrote.
 func (r *holdRig) keptStop(kind, subject string) (sprint.Stop, bool) {
 	r.t.Helper()
-	rec, ok, err := r.st.StopsKept(r.ctx)
+	rec, ok, err := stopsKept(r.ctx, r.st)
 	require.NoError(r.t, err)
 	require.True(r.t, ok, "the tick keeps the stops record")
 	for _, x := range rec.Stops {
@@ -128,12 +129,12 @@ func TestAMemberDownTheCoordinatorDidNotHoldIsRaisedAgainUntilItIsHeld(t *testin
 	// stops record are as they were, neither rewritten every tick (one tick first: the record
 	// is counted from a tick's first read, which the judgment raised above changes once)
 	r.tickBeating(5*time.Second, "m1")
-	rec0, _, err := r.st.StopsKept(r.ctx)
+	rec0, _, err := stopsKept(r.ctx, r.st)
 	require.NoError(t, err)
 	r.tickBeating(5*time.Second, "m1")
 	r.tickBeating(5*time.Second, "m1")
 	assert.Equal(t, j.What, r.openNote(sprint.NStopMemberDown, "m2").What, "the text changes only when the stop does")
-	rec1, _, err := r.st.StopsKept(r.ctx)
+	rec1, _, err := stopsKept(r.ctx, r.st)
 	require.NoError(t, err)
 	assert.Equal(t, rec0.At, rec1.At, "the stops record is not written again while nothing changed")
 
@@ -328,7 +329,7 @@ func TestJudgmentsLateOnTheCoordinatorArePushedAndEscalatePastAWait(t *testing.T
 	// and the record (counted from the next tick's first read) carries what waits on the
 	// seat, with the level
 	r.tickBeating(time.Second, "m1", "m2")
-	rec, ok, err := r.st.StopsKept(r.ctx)
+	rec, ok, err := stopsKept(r.ctx, r.st)
 	require.NoError(t, err)
 	require.True(t, ok)
 	assert.GreaterOrEqual(t, rec.Seat.Judgments, 1)
@@ -344,4 +345,11 @@ func kinds(stops []sprint.Stop) []string {
 		out = append(out, x.Kind+" "+x.Subject)
 	}
 	return out
+}
+
+// stopsKept is the stops record the tick last wrote at the pinned epoch, as where
+// reads it (WhereFacts); false when there is none.
+func stopsKept(ctx context.Context, st *store.Store) (store.StopsRecord, bool, error) {
+	f, err := st.WhereFacts(ctx, 0)
+	return f.Stops, f.HasStops, err
 }

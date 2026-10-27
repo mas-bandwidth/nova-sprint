@@ -11,7 +11,7 @@ import (
 // The fsck check seat-agreement (docs/SPEC-SPRINT.md, "Handing over the seat",
 // fsck-seat-agreement-r.w2): four values name the same coordinator, the store's
 // coordinator key, the seat record's holder, the actor the running server was
-// started with (its record, store.SetServerActor) and the nova-config sprint
+// started with (its record, store.SetServer) and the nova-config sprint
 // row's coordinator. They split when a server's unit kept an old actor across a
 // handover, and when the config row kept an old coordinator that an apply then
 // wrote. The check names each split and the line that fixes it; it fixes none.
