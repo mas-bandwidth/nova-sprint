@@ -6,6 +6,7 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 
 ## Contents
 
+- [The layered rewrite: secure each layer from the bottom](#the-layered-rewrite-secure-each-layer-from-the-bottom) (7)
 - [Lessons from Prime Agent's rewrite](#lessons-from-prime-agents-rewrite) (3)
 - [The sprint system](#the-sprint-system) (310)
 - [Setup, release and operations](#setup-release-and-operations) (72)
@@ -19,6 +20,64 @@ This is the nova-sprint, nova-card and nova-work work after the point releases. 
 - [Moved out of the sprint on 2026-10-18: v15-schema-tables, target v1.7](#moved-out-of-the-sprint-on-2026-10-18-v15-schema-tables-target-v17) (199)
 - [Moved out of the sprint on 2026-10-18: v19, target v1.11 (Glenn 2026-10-21: v1.9 is built around coordinator-session lessons)](#moved-out-of-the-sprint-on-2026-10-18-v19-target-v111-glenn-2026-10-21-v19-is-built-around-coordinator-session-lessons) (24)
 - [Moved out of the sprint on 2026-10-18: v111, target v1.11](#moved-out-of-the-sprint-on-2026-10-18-v111-target-v111) (3)
+
+## The layered rewrite: secure each layer from the bottom
+
+nova-sprint is far too large for what it is: at main 16b1c740 (2026-10-26) about 196k hand-written lines of Go, 223k of tests and 400k generated, with the CLI (cmd/nova-sprint, about 115k lines with tests) as heavy as the engine and steps functions of 400 to 600 lines. At heart it is a card dealer: a queue of cards with needs, dealt to workers, tracked through reads, CI and landing, refusing what breaks the rules. The rewrite secures one layer at a time, bottom up, each to the bar (modelled with reversed witnesses, tested on a real store including every refusal, a second reader's probes green, used for real work, documented, then locked with Glenn) before anything above it starts. Special cases become invariants of the model or are deleted. The new layer runs beside the old and replays real event logs (internal/sprintreplay) until both agree, so the fleet never stops dealing. Until then, a change to nova-sprint deletes more than it adds. Layer 1 starts 2026-10-26 in small parts; layers 2 to 7 follow rocketnet M1. Source: Glenn, 2026-10-26: "I also agree it is very large for what it actually is."; "write the layered rewrite into the nova-sprint roadmap, sequenced after rocketnet M1"; "Start with the first layer securing tonight. Work in small parts."
+
+### Layer 1: the store
+
+Cards, rows and the event log on nova tables. The generated wire code is already sound; the layer to secure is the engine and tick above it. Small parts, each landed before the next: write the layer's contract (what it owns, what it guarantees, every refusal); map the contract to the TLA+ modules and name the gaps; model the gaps with reversed witnesses; test every guarantee and refusal on a real store; split and shrink the engine and tick to the contract; a second reader's probes; lock with Glenn.
+
+Already in the code: internal/sprint/store (about 64k lines with tests), store/engine.go 2,750 lines, store/tick.go 2,379 lines, store/mem.go 1,573 lines; 155 TLA+ modules under tla/, with coverage in tla/COVERAGE.tsv.
+
+Why it waits: Started 2026-10-26 (Glenn: "Start with the first layer securing tonight.").
+
+### Layer 2: the card machine
+
+The states and transitions of one card (add, take, finish, read, land, hold, retire) as one module, model first, with the reference model as the oracle.
+
+Already in the code: tla/CardMachine.tla and internal/sprint/refmodel (about 10k lines).
+
+Why it waits: Waits for layer 1 and rocketnet M1.
+
+### Layer 3: the steps
+
+The pure functions from snapshot and request to plan or refusal, split along the card machine's transitions; no function longer than a screen.
+
+Already in the code: internal/sprint/steps_*.go; steps_work.go alone is 4,322 lines with functions of 494 and 593 lines.
+
+Why it waits: Waits for layer 2.
+
+### Layer 4: the coordinator
+
+Dealing order, needs, sentinels, epochs and the tick, as policy over the steps.
+
+Why it waits: Waits for layer 3.
+
+### Layer 5: the edges
+
+Friends and members, CI receipts, reads and reviews, landing to git: each a separate adapter with a narrow contract, faked in unit tests.
+
+Already in the code: pkg/friend, internal/ci, cmd/nova-sprint/reads.go, cmd/nova-sprint/land.go.
+
+Why it waits: Waits for layer 4.
+
+### Layer 6: the CLI
+
+Thin verbs: parse, call a step, print. Target under 10k lines from about 115k.
+
+Already in the code: cmd/nova-sprint/verbs.go is 4,930 lines with 140 functions.
+
+Why it waits: Waits for layer 5.
+
+### Layer 7: dashboard and replay
+
+Read-only views over the store; they never decide.
+
+Already in the code: internal/sprintdash, internal/sprintreplay.
+
+Why it waits: Waits for layer 6.
 
 ## Lessons from Prime Agent's rewrite
 
