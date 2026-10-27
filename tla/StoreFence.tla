@@ -77,8 +77,11 @@ EXTENDS Naturals, FiniteSets
 \* Nonce FALSE is the code: an operation id is OpFamily(caller op, epoch)-attempt.
 \* Nonce TRUE is the proposed fix: the id also carries its writer's nonce, so two
 \* writers serving one caller op never share an id.
+\* Revive TRUE lets a write make a refused first manifest apply again (a member
+\* deleted after a MEMBEREXISTS refusal); FALSE keeps a refused expectation refused
+\* until its writer plans again.
 CONSTANTS Writer, Caller, Arg, Manifests, MaxTries, MaxEpoch, MaxStray, Timely, Broken,
-          Nonce, None
+          Nonce, Revive, None
 
 NonceSet == IF Nonce THEN Writer ELSE {None}
 Ids == Caller \X (1..MaxEpoch) \X (1..MaxTries) \X NonceSet
@@ -138,8 +141,12 @@ HoldsId(id) == fence # None /\ fence.id = id
 Tell(w, k, id, a) == said' = [said EXCEPT ![w] = [kind |-> k, id |-> id, a |-> a]]
 Receipt(f) == [c |-> f.c, a |-> f.a, e |-> f.e, id |-> f.id]
 \* When plan p's manifest applies, whether every other plan's first manifest still
-\* applies is left open.
-OthersOpen(p) == \E e \in [Writer -> BOOLEAN] : e[p] = exp[p] /\ exp' = e
+\* applies is left open; a refused one stays refused unless Revive.
+OthersOpen(p) ==
+  \E e \in [Writer -> BOOLEAN] :
+    /\ e[p] = exp[p]
+    /\ \A x \in Writer : (~Revive /\ ~exp[x]) => ~e[x]
+    /\ exp' = e
 
 \* A caller asks writer w to run operation c with arguments a.
 Start(w, c, a) ==
@@ -260,7 +267,7 @@ Age ==
 Stray ==
   /\ strays < MaxStray
   /\ strays' = strays + 1
-  /\ \E w \in Writer : exp' = [exp EXCEPT ![w] = ~@]
+  /\ \E w \in Writer : (exp[w] \/ Revive) /\ exp' = [exp EXCEPT ![w] = ~@]
   /\ UNCHANGED <<gen, epoch, fence, appliedBy, done, commits, abandoned,
                  pc, req, rgen, repoch, cur, next, tries, said>>
 
