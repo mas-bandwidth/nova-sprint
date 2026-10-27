@@ -28,7 +28,21 @@
     hand-written lines of Go, 223k of tests and 400k generated, with the CLI (cmd/nova-sprint, about
     115k lines with tests) as heavy as the engine and steps functions of 400 to 600 lines. At heart it
     is a card dealer: a queue of cards with needs, dealt to workers, tracked through reads, CI and
-    landing, refusing what breaks the rules. The rewrite secures one layer at a time, bottom up, each
+    landing, refusing what breaks the rules. The rewrite splits it in two, with one interface between
+    (Glenn, 2026-10-27). The engine is Go, fixed, modelled in TLA+ and locked: the store, the card
+    machine, the steps (each one legal move with its refusals, checking a move and never choosing
+    one) and the edges. The policy is changed during a sprint without a new binary: data tables for
+    what is only numbers and lists, and Starlark scripts for logic. The interface is the snapshot
+    policy may see and the decisions it may ask for; the script proposes and the engine disposes,
+    every decision passing the same refusals as a verb, so a bad script makes poor choices but never
+    breaks an invariant, and the models treat policy as any choice. The test of which side code
+    belongs on: if being wrong can corrupt the sprint (two writers, a lost landing, a card in two
+    states) it is engine; if being wrong only makes the sprint slow, costly or badly ordered it is
+    policy. The separation is what keeps the engine clean, and the engine is held to an immaculate
+    bar (Glenn, 2026-10-27: \"I want our part that is not starlark to be immaculate\"; \"We create a
+    tight engine here now.\"): small, every line earning its place, no special case, every guarantee
+    modelled and every refusal tested; whatever cannot meet that is policy, and goes to Starlark or
+    data rather than into the engine. The rewrite secures one layer at a time, bottom up, each
     to the bar (modelled with reversed witnesses, tested on a real store including every refusal, a
     second reader's probes green, used for real work, documented, then locked with Glenn) before
     anything above it starts. Special cases become invariants of the model or are deleted. Every
@@ -38,10 +52,11 @@
     is split until it is not; where a layer's new form must run beside the old, it replays real
     event logs (internal/sprintreplay) until both agree, so the fleet never stops dealing. Until
     then, a change to nova-sprint deletes more than it adds.
-    Layer 1 starts 2026-10-26 in small parts; layers 2 to 7 follow rocketnet M1. Source: Glenn,
+    Layer 1 starts 2026-10-26 in small parts; layers 2 to 7 follow rocketnet M1, and the interface
+    is drafted while layers 1 to 3 are secured, since layer 3's shape depends on it. Source: Glenn,
     2026-10-26: \"I also agree it is very large for what it actually is.\"; \"write the layered
     rewrite into the nova-sprint roadmap, sequenced after rocketnet M1\"; \"Start with the first layer
-    securing tonight. Work in small parts.\"; 2026-10-27: \"once we have secured layers, actually use and adopt the fixed stuff soon, so we are not off doing large changes without actually verifying them\"")
+    securing tonight. Work in small parts.\"; 2026-10-27: \"once we have secured layers, actually use and adopt the fixed stuff soon, so we are not off doing large changes without actually verifying them\"; \"It feels like we should have some separation from the \\\"engine\\\" part of the sprint, the hardcore bits that are fixed, and the more flexible scripted or data-driven part where we can express business logic etc.\"; \"OK approved. go starlark\"")
   (group "lessons"
    :title "Lessons from Prime Agent's rewrite"
    :text "Prime Intellect's write-up of rewriting Prime Agent with AI workers
@@ -101,35 +116,61 @@
    :why "Waits for layer 1 and rocketnet M1."
    :date "2026-10-26")
   (item "rewrite-l3-steps" :group "layered-rewrite" :area "nova-sprint"
-   :title "Layer 3: the steps"
-   :text "The pure functions from snapshot and request to plan or refusal, split along the card
-    machine's transitions; no function longer than a screen."
+   :title "Layer 3: the steps, the engine's vocabulary"
+   :text "Engine. One step per legal move (deal, take, finish, read, land, hold, stop), each a pure
+    function from snapshot and request to plan or refusal, split along the card machine's
+    transitions; no function longer than a screen. A step checks a move and never chooses one: the
+    choosing moves to policy."
    :exists "internal/sprint/steps_*.go; steps_work.go alone is 4,322 lines with functions of 494
-    and 593 lines."
-   :why "Waits for layer 2."
+    and 593 lines, much of it policy (dealing order, tier and route choice) inside the moves."
+   :why "Waits for layer 2 and the interface."
    :date "2026-10-26")
-  (item "rewrite-l4-coordinator" :group "layered-rewrite" :area "nova-sprint"
-   :title "Layer 4: the coordinator"
-   :text "Dealing order, needs, sentinels, epochs and the tick, as policy over the steps."
-   :why "Waits for layer 3."
-   :date "2026-10-26")
-  (item "rewrite-l5-edges" :group "layered-rewrite" :area "nova-sprint"
-   :title "Layer 5: the edges"
-   :text "Friends and members, CI receipts, reads and reviews, landing to git: each a separate adapter
+  (item "rewrite-l4-edges" :group "layered-rewrite" :area "nova-sprint"
+   :title "Layer 4: the edges"
+   :text "Engine. Git and landing, CI receipts, friends' hooks and the bus: each a separate adapter
     with a narrow contract, faked in unit tests."
    :exists "pkg/friend, internal/ci, cmd/nova-sprint/reads.go, cmd/nova-sprint/land.go."
-   :why "Waits for layer 4."
-   :date "2026-10-26")
-  (item "rewrite-l6-cli" :group "layered-rewrite" :area "nova-sprint"
-   :title "Layer 6: the CLI"
-   :text "Thin verbs: parse, call a step, print. Target under 10k lines from about 115k."
-   :exists "cmd/nova-sprint/verbs.go is 4,930 lines with 140 functions."
+   :why "Waits for layer 3."
+   :date "2026-10-27")
+  (item "rewrite-interface" :group "layered-rewrite" :area "nova-sprint"
+   :title "The interface: snapshot and decisions"
+   :text "Between engine and policy. The snapshot policy may see, a typed and versioned schema; and
+    the decisions it may ask for, each mapping onto one step (deal card X to row Y at tier Z, raise a
+    judgment, stop a stream, route a rework). The TLA+ models take policy as any choice of these
+    decisions, so every invariant holds for every script. Drafted while layers 1 to 3 are secured,
+    as docs/layers/INTERFACE.md, and settled with Glenn before layer 3 is cut to it."
+   :why "Drafted alongside layers 1 to 3."
+   :date "2026-10-27")
+  (item "rewrite-l5-policy-data" :group "layered-rewrite" :area "nova-sprint"
+   :title "Layer 5: policy data"
+   :text "Policy. What is only numbers or lists, in one versioned policy table in the store: tiers,
+    routes, widths, deadlines, thresholds, read mix, costs. Changed by a coordinator verb that checks
+    the table and replays it against recent real snapshots (internal/sprintreplay) before it takes
+    effect; every decision records the version that made it; rollback is one verb."
+   :exists "Spread over nova-config rows and the set and stream set knobs (set --read-tier,
+    --fleet-tiers, --deal-order and others)."
+   :why "Waits for the interface."
+   :date "2026-10-27")
+  (item "rewrite-l6-policy-scripts" :group "layered-rewrite" :area "nova-sprint"
+   :title "Layer 6: policy scripts in Starlark"
+   :text "Policy. The logic (deal order, when to raise a judgment, when to stop a stream, rework
+    routing) as Starlark (go.starlark.net) functions from snapshot to decisions: deterministic and
+    hermetic (no file, network, clock or randomness unless passed in), with a step bound per tick, so
+    a decision replays exactly. Scripts live in the store, versioned, set only from the coordinator
+    seat and never from card or brief text; a new version replays against recent snapshots and is
+    refused on any error or bound hit; a failure at tick time falls back to the last good version.
+    Policy has its own unit tests, snapshot in and decisions out. A tracer bullet may come first:
+    the deal order alone in Starlark behind a flag, run on the live sprint, then stop and name what
+    it showed."
    :why "Waits for layer 5."
-   :date "2026-10-26")
-  (item "rewrite-l7-readers" :group "layered-rewrite" :area "nova-sprint"
-   :title "Layer 7: dashboard and replay"
-   :text "Read-only views over the store; they never decide."
-   :exists "internal/sprintdash, internal/sprintreplay."
+   :date "2026-10-27")
+  (item "rewrite-l7-cli-and-readers" :group "layered-rewrite" :area "nova-sprint"
+   :title "Layer 7: the CLI, the dashboard and replay"
+   :text "Thin verbs that parse, call a step and print, target under 10k lines from about 115k; a
+    policy change goes through the same checked path (set, replay, refuse or adopt, roll back).
+    Dashboard and replay are read-only views over the store; they never decide."
+   :exists "cmd/nova-sprint/verbs.go is 4,930 lines with 140 functions; internal/sprintdash,
+    internal/sprintreplay."
    :why "Waits for layer 6."
    :date "2026-10-26")
   ; Lessons from Prime Agent's rewrite
