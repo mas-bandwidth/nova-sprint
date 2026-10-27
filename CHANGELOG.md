@@ -1,5 +1,32 @@
 # Changelog
 
+## v1.6.26 — 2026-10-27
+
+Cut from 351d3364aebcfa59481039b5c986476d5be335a8. 7 pull requests since v1.6.25.
+
+SHA256SUMS digest: 6feeae731e9b7d4db41a69a72e4ee9fdce539a4179ba57c8e47cd9707805bc56
+
+Adopt this release with `--expect-sums 6feeae731e9b7d4db41a69a72e4ee9fdce539a4179ba57c8e47cd9707805bc56`.
+
+Recovery journeys incomplete, gate waived: v1.6.26 is layer 1 part 1 of the layered rewrite (dead store exports removed, no behaviour change), model citation fixes, and the sprint's landed fixes since v1.6.25; it changes neither hook recovery nor spend recording
+
+- TestASilentClientIsUnhookedAfterExactlyTwoAnnouncedOnce: not-run (no --journeys evidence)
+- TestNoServerOrNoAnswerIsNoEvidence: not-run (no --journeys evidence)
+- TestTheGateRefusesEveryoneWhileTheServerIsStale: not-run (no --journeys evidence)
+- TestAStaleAnswerIsDownWithAFreshServer: not-run (no --journeys evidence)
+- TestALostAnswerIsNeverToldTwice: not-run (no --journeys evidence)
+
+Spend gate waived: v1.6.26 is layer 1 part 1 of the layered rewrite (dead store exports removed, no behaviour change), model citation fixes, and the sprint's landed fixes since v1.6.25; it changes neither hook recovery nor spend recording (window 2026-10-26T00:00:00Z..2026-10-27T11:22:15Z)
+- unread: --spend-store <addr> names no sprint store, so the recorded spend cannot be read
+
+- #615 changelog: v1.6.23-v1.6.25
+- #616 docs: prove worker execution before counting it
+- #617 docs: make coordinator custody continuous
+- #619 roadmap: the layered rewrite, layer 1 starts 2026-10-26
+- #620 store: layer 1 part 1, the dead exports out of production
+- #621 roadmap: adopt each secured part at once
+- #622 tla: cite engine.go by Store.Run's parts, not line numbers
+
 ## v1.6.25 — 2026-10-26
 
 Cut from 0c86b4982d53d809590d51cdf3f70cd517fb7079. 1 pull request since v1.6.24.
