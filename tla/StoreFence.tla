@@ -24,22 +24,31 @@
 \*               are one action here: a fenced read finishes or waits out a
 \*               pending operation first (engine.go fencedStep, G2), so it reads
 \*               only an empty fence.
-\*   Repair      engine.go Store.finishOp: an operation whose first manifest
-\*               applied is finished and committed; one whose first manifest has
-\*               not applied stays open within the grace and is abandoned past it
-\*               (abandonment: a release that records no caller result, G14).
+\*   Repair      engine.go Store.finishOp: the repairer sends the pending
+\*               operation's manifests itself. One whose first manifest applies
+\*               (now or earlier) is finished and committed; one whose first
+\*               manifest is refused on state stays open within the grace and is
+\*               abandoned past it (abandonment: a release that records no caller
+\*               result, G14).
+\*   Stray       a table write outside the fence (a guarded row write, G12): the
+\*               one thing that can refuse a first manifest planned under the
+\*               fence. Bounded by MaxStray.
 \*   Clear       the epoch advances only while the fence is empty (G10).
 \*
 \* Manifests are counted, not written out: applied[id] is how many of the
-\* operation's manifests the tables hold, and rev is the table revision a first
-\* manifest is checked against. Each writer serves one request (a caller's
-\* operation id and its arguments) over at most MaxTries attempts, each attempt a
-\* fresh operation id.
+\* operation's manifests the tables hold, and rev is the table revision. A first
+\* manifest applies only at the revision its operation was planned at (fence.r);
+\* later manifests are sent at a fresh revision (resendFresh, G16). Revisions only
+\* grow, so an expectation of absence that becomes true again (a row created and
+\* deleted) is not modelled. Each writer serves one request (a caller's operation
+\* id and its arguments) over at most MaxTries attempts, each a fresh operation id.
 \*
-\* Timely is the timing assumption the code relies on: a writer holding the fence
-\* either finishes within the grace or is dead, so an operation is aged only when
-\* its writer is dead. With Timely FALSE a live writer may act after its operation
-\* was abandoned (MCStoreFenceLateWriter.cfg).
+\* Timely says a writer holding the fence either finishes within the grace or is
+\* dead, so an operation is aged only when its writer is dead. MCStoreFence.cfg
+\* assumes it; MCStoreFenceLateWriter.cfg drops it (a live writer slower than the
+\* grace) and every invariant still holds: the repairer applies a first manifest
+\* that can apply, so it abandons only one the store refuses, and the late
+\* writer's own send of it is refused the same way.
 \*
 \* Broken names a reversed witness (one config each):
 \*   "replayignoresargs" replay without comparing arguments: breaks ReplayMatches
@@ -48,22 +57,25 @@
 \*                       NoPartialOutsideFence
 \*   "abandonapplied"    repair abandons an aged operation even when its first
 \*                       manifest applied: breaks AbandonedAppliedNothing
+\*   "repairnosend"      repair abandons an aged operation without sending its
+\*                       first manifest (with Timely FALSE): breaks
+\*                       AbandonedAppliedNothing, the late writer applying it
 
 EXTENDS Naturals, FiniteSets
 
 \* None is a model value: an empty fence, slot or answer, unequal to every record.
-CONSTANTS Writer, Caller, Arg, Manifests, MaxTries, MaxEpoch, Timely, Broken, None
+CONSTANTS Writer, Caller, Arg, Manifests, MaxTries, MaxEpoch, MaxStray, Timely, Broken, None
 
 Ids == Writer \X (1..MaxTries)
 Kinds == {"ok", "replay", "conflict", "refused", "lost"}
 
 VARIABLES gen, epoch, fence, applied, rev, done, committed, abandoned,
-          pc, req, rgen, repoch, rrev, cur, tries, said
+          pc, req, rgen, repoch, rrev, cur, tries, said, strays
 
 vars == <<gen, epoch, fence, applied, rev, done, committed, abandoned,
-          pc, req, rgen, repoch, rrev, cur, tries, said>>
+          pc, req, rgen, repoch, rrev, cur, tries, said, strays>>
 
-Fences == [id : Ids, c : Caller, a : Arg, e : 1..MaxEpoch, aged : BOOLEAN]
+Fences == [id : Ids, c : Caller, a : Arg, e : 1..MaxEpoch, r : Nat, aged : BOOLEAN]
 Receipts == [c : Caller, a : Arg, e : 1..MaxEpoch, id : Ids]
 
 TypeOK ==
@@ -80,6 +92,7 @@ TypeOK ==
   /\ cur \in [Writer -> Ids \cup {None}]
   /\ tries \in [Writer -> 0..MaxTries]
   /\ said \in [Writer -> [kind : Kinds, id : Ids \cup {None}, a : Arg \cup {None}] \cup {None}]
+  /\ strays \in 0..MaxStray
 
 Init ==
   /\ gen = 0
@@ -98,11 +111,13 @@ Init ==
   /\ cur = [w \in Writer |-> None]
   /\ tries = [w \in Writer |-> 0]
   /\ said = [w \in Writer |-> None]
+  /\ strays = 0
 
 DoneNow(c) == {d \in done : d.c = c /\ d.e = epoch}
 DoneBefore(c) == {d \in done : d.c = c /\ d.e < epoch}
 Holds(w) == fence # None /\ fence.id = cur[w]
 Tell(w, k, id, a) == said' = [said EXCEPT ![w] = [kind |-> k, id |-> id, a |-> a]]
+Receipt(f) == [c |-> f.c, a |-> f.a, e |-> f.e, id |-> f.id]
 
 \* A caller asks writer w to run operation c with arguments a.
 Start(w, c, a) ==
@@ -110,7 +125,7 @@ Start(w, c, a) ==
   /\ pc' = [pc EXCEPT ![w] = "check"]
   /\ req' = [req EXCEPT ![w] = [c |-> c, a |-> a]]
   /\ UNCHANGED <<gen, epoch, fence, applied, rev, done, committed, abandoned,
-                 rgen, repoch, rrev, cur, tries, said>>
+                 rgen, repoch, rrev, cur, tries, said, strays>>
 
 \* The fenced read and the caller-op check (Store.callerOp).
 Check(w) ==
@@ -138,25 +153,26 @@ Check(w) ==
           /\ pc' = [pc EXCEPT ![w] = "read"]
           /\ UNCHANGED said
   /\ UNCHANGED <<gen, epoch, fence, applied, rev, done, committed, abandoned,
-                 req, cur, tries>>
+                 req, cur, tries, strays>>
 
-\* Redis.Acquire: a fresh operation id each attempt.
+\* Redis.Acquire: a fresh operation id each attempt, planned at the revision read.
 Acquire(w) ==
   /\ pc[w] = "read"
   /\ tries' = [tries EXCEPT ![w] = @ + 1]
   /\ LET id == <<w, tries[w] + 1>> IN
      IF fence = None /\ gen = rgen[w] /\ epoch = repoch[w]
-     THEN /\ fence' = [id |-> id, c |-> req[w].c, a |-> req[w].a, e |-> epoch, aged |-> FALSE]
+     THEN /\ fence' = [id |-> id, c |-> req[w].c, a |-> req[w].a, e |-> epoch,
+                       r |-> rrev[w], aged |-> FALSE]
           /\ gen' = gen + 1
           /\ cur' = [cur EXCEPT ![w] = id]
           /\ pc' = [pc EXCEPT ![w] = "held"]
      ELSE /\ pc' = [pc EXCEPT ![w] = "check"]
           /\ UNCHANGED <<fence, gen, cur>>
   /\ UNCHANGED <<epoch, applied, rev, done, committed, abandoned, req, rgen, repoch,
-                 rrev, said>>
+                 rrev, said, strays>>
 
-\* Store.apply: the next manifest. Under Timely a writer acts only while the
-\* fence holds its operation.
+\* Store.apply: the writer's next manifest, with no check of the fence. Under Timely
+\* a writer acts only while the fence holds its operation.
 Send(w) ==
   /\ pc[w] = "held"
   /\ applied[cur[w]] < Manifests
@@ -171,7 +187,7 @@ Send(w) ==
           /\ rev' = rev + 1
           /\ UNCHANGED <<fence, pc, cur>>
   /\ UNCHANGED <<gen, epoch, done, committed, abandoned, req, rgen, repoch, rrev,
-                 tries, said>>
+                 tries, said, strays>>
 
 \* Redis.Release(op, true) after the last manifest; the writer tells its caller ok.
 Commit(w) ==
@@ -179,7 +195,7 @@ Commit(w) ==
   /\ applied[cur[w]] = Manifests
   /\ IF Holds(w)
      THEN /\ fence' = None
-          /\ done' = done \cup {[c |-> fence.c, a |-> fence.a, e |-> fence.e, id |-> fence.id]}
+          /\ done' = done \cup {Receipt(fence)}
           /\ committed' = committed \cup {cur[w]}
      ELSE \* the fence moved: nothing is written, and the release is success
           /\ fence' = IF Broken = "releaseanyop" THEN None ELSE fence
@@ -187,14 +203,14 @@ Commit(w) ==
   /\ Tell(w, "ok", cur[w], req[w].a)
   /\ pc' = [pc EXCEPT ![w] = "out"]
   /\ UNCHANGED <<gen, epoch, applied, rev, abandoned, req, rgen, repoch, rrev, cur,
-                 tries>>
+                 tries, strays>>
 
 \* A writer stops at any point; the fence keeps what it held.
 Crash(w) ==
   /\ pc[w] \in {"check", "read", "held"}
   /\ pc' = [pc EXCEPT ![w] = "dead"]
   /\ UNCHANGED <<gen, epoch, fence, applied, rev, done, committed, abandoned,
-                 req, rgen, repoch, rrev, cur, tries, said>>
+                 req, rgen, repoch, rrev, cur, tries, said, strays>>
 
 \* The grace passes over the pending operation.
 Age ==
@@ -203,24 +219,35 @@ Age ==
   /\ Timely => pc[fence.id[1]] = "dead"
   /\ fence' = [fence EXCEPT !.aged = TRUE]
   /\ UNCHANGED <<gen, epoch, applied, rev, done, committed, abandoned,
+                 pc, req, rgen, repoch, rrev, cur, tries, said, strays>>
+
+\* A table write outside the fence (a guarded row write).
+Stray ==
+  /\ strays < MaxStray
+  /\ strays' = strays + 1
+  /\ rev' = rev + 1
+  /\ UNCHANGED <<gen, epoch, fence, applied, done, committed, abandoned,
                  pc, req, rgen, repoch, rrev, cur, tries, said>>
 
-\* Store.finishOp, run by repair or by the next fenced read.
+\* Store.finishOp, run by repair or by the next fenced read: the repairer sends the
+\* manifests itself; it commits an operation whose first manifest applied or now
+\* applies, and abandons, past the grace, one whose first manifest is refused.
 Repair ==
   /\ fence # None
-  /\ LET f == fence IN
-     IF applied[f.id] > 0 /\ ~(f.aged /\ Broken = "abandonapplied")
+  /\ LET f == fence
+         firstApplies == applied[f.id] > 0 \/ (rev = f.r /\ Broken # "repairnosend")
+     IN IF firstApplies /\ ~(f.aged /\ Broken = "abandonapplied")
      THEN /\ applied' = [applied EXCEPT ![f.id] = Manifests]
           /\ rev' = rev + (Manifests - applied[f.id])
           /\ fence' = None
-          /\ done' = done \cup {[c |-> f.c, a |-> f.a, e |-> f.e, id |-> f.id]}
+          /\ done' = done \cup {Receipt(f)}
           /\ committed' = committed \cup {f.id}
           /\ UNCHANGED abandoned
      ELSE /\ f.aged
           /\ fence' = None
           /\ abandoned' = abandoned \cup {f.id}
           /\ UNCHANGED <<applied, rev, done, committed>>
-  /\ UNCHANGED <<gen, epoch, pc, req, rgen, repoch, rrev, cur, tries, said>>
+  /\ UNCHANGED <<gen, epoch, pc, req, rgen, repoch, rrev, cur, tries, said, strays>>
 
 \* A clear advances the epoch, only while the fence is empty.
 Clear ==
@@ -228,12 +255,13 @@ Clear ==
   /\ fence = None
   /\ epoch' = epoch + 1
   /\ UNCHANGED <<gen, fence, applied, rev, done, committed, abandoned,
-                 pc, req, rgen, repoch, rrev, cur, tries, said>>
+                 pc, req, rgen, repoch, rrev, cur, tries, said, strays>>
 
 Next ==
   \/ \E w \in Writer, c \in Caller, a \in Arg : Start(w, c, a)
   \/ \E w \in Writer : Check(w) \/ Acquire(w) \/ Send(w) \/ Commit(w) \/ Crash(w)
   \/ Age
+  \/ Stray
   \/ Repair
   \/ Clear
 
@@ -267,7 +295,7 @@ ReplayMatches ==
 CallerCommitsOnce ==
   \A c \in Caller : Cardinality({id \in committed : req[id[1]].c = c}) <= 1
 
-\* G3: the generation counts the acquires; no two operations hold one generation.
+\* G3: no two live writers hold the fence's operation.
 FenceOneHolder ==
   fence # None => Cardinality({w \in Writer : pc[w] = "held" /\ cur[w] = fence.id}) <= 1
 

@@ -819,4 +819,5 @@ MCStoreFenceBrokenReplayIgnoresArgs.cfg	MCStoreFence.tla	invariant	ReplayMatches
 MCStoreFenceBrokenRerunOldEpoch.cfg	MCStoreFence.tla	invariant	CallerCommitsOnce	ignore-terminal	storefence	required	-
 MCStoreFenceBrokenReleaseAnyOp.cfg	MCStoreFence.tla	invariant	NoPartialOutsideFence	ignore-terminal	storefence	required	-
 MCStoreFenceBrokenAbandonApplied.cfg	MCStoreFence.tla	invariant	AbandonedAppliedNothing	ignore-terminal	storefence	required	-
-MCStoreFenceLateWriter.cfg	MCStoreFence.tla	invariant	AbandonedAppliedNothing	ignore-terminal	storefence	required	-
+MCStoreFenceLateWriter.cfg	MCStoreFence.tla	pass	-	ignore-terminal	storefence	required	-
+MCStoreFenceBrokenRepairNoSend.cfg	MCStoreFence.tla	invariant	AbandonedAppliedNothing	ignore-terminal	storefence	required	-
