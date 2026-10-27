@@ -51,9 +51,9 @@
 
 EXTENDS Naturals, FiniteSets
 
-CONSTANTS Writer, Caller, Arg, Manifests, MaxTries, MaxEpoch, Timely, Broken
+\* None is a model value: an empty fence, slot or answer, unequal to every record.
+CONSTANTS Writer, Caller, Arg, Manifests, MaxTries, MaxEpoch, Timely, Broken, None
 
-None == "none"
 Ids == Writer \X (1..MaxTries)
 Kinds == {"ok", "replay", "conflict", "refused", "lost"}
 
