@@ -822,3 +822,4 @@ MCStoreFenceBrokenAbandonApplied.cfg	MCStoreFence.tla	invariant	AbandonedApplied
 MCStoreFenceLateWriter.cfg	MCStoreFence.tla	pass	-	ignore-terminal	storefence	required	-
 MCStoreFenceBrokenRepairNoSend.cfg	MCStoreFence.tla	invariant	AbandonedAppliedNothing	ignore-terminal	storefence	required	-
 MCStoreFenceBrokenAcquireNoGen.cfg	MCStoreFence.tla	invariant	CallerCommitsOnce	ignore-terminal	storefence	required	-
+MCStoreFenceSharedOpIds.cfg	MCStoreFence.tla	invariant	NoPartialOutsideFence	ignore-terminal	storefence	required	-

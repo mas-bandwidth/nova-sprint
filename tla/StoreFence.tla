@@ -74,9 +74,14 @@
 EXTENDS Naturals, FiniteSets
 
 \* None is a model value: an empty fence, slot or answer, unequal to every record.
-CONSTANTS Writer, Caller, Arg, Manifests, MaxTries, MaxEpoch, MaxStray, Timely, Broken, None
+\* Nonce FALSE is the code: an operation id is OpFamily(caller op, epoch)-attempt.
+\* Nonce TRUE is the proposed fix: the id also carries its writer's nonce, so two
+\* writers serving one caller op never share an id.
+CONSTANTS Writer, Caller, Arg, Manifests, MaxTries, MaxEpoch, MaxStray, Timely, Broken,
+          Nonce, None
 
-Ids == Caller \X (1..MaxEpoch) \X (1..MaxTries)
+NonceSet == IF Nonce THEN Writer ELSE {None}
+Ids == Caller \X (1..MaxEpoch) \X (1..MaxTries) \X NonceSet
 Mids == Ids \X (0..(Manifests - 1))
 Kinds == {"ok", "replay", "conflict", "refused", "lost"}
 
@@ -177,7 +182,7 @@ Check(w) ==
 Acquire(w) ==
   /\ pc[w] = "read"
   /\ tries' = [tries EXCEPT ![w] = @ + 1]
-  /\ LET id == <<req[w].c, epoch, tries[w] + 1>> IN
+  /\ LET id == <<req[w].c, epoch, tries[w] + 1, IF Nonce THEN w ELSE None>> IN
      IF fence = None /\ (gen = rgen[w] \/ Broken = "acquirenogen") /\ epoch = repoch[w]
      THEN /\ fence' = [id |-> id, c |-> req[w].c, a |-> req[w].a, e |-> epoch,
                        plan |-> w, aged |-> FALSE]
