@@ -9,7 +9,7 @@ The plan from 2026-10-27. nova-sprint is rebuilt as a tight engine and a policy 
 - [The layered rewrite: an immaculate engine and Starlark policy](#the-layered-rewrite-an-immaculate-engine-and-starlark-policy) (8)
 - [Layer 1, the store: the parts in order](#layer-1-the-store-the-parts-in-order) (11)
 - [Holes the fence model found in the store](#holes-the-fence-model-found-in-the-store) (2)
-- [Releases](#releases) (2)
+- [Releases](#releases) (3)
 - [Small fixes found on the way](#small-fixes-found-on-the-way) (3)
 
 ## The layered rewrite: an immaculate engine and Starlark policy
@@ -174,11 +174,17 @@ Every release cuts nova-tools and nova-sprint together at one version (Glenn, 20
 
 ### v1.6.27: nova-tools and nova-sprint together again
 
-The first release cut together since the split at v1.6.13: one combined build (the nova-tools tools and the nova-sprint tools at v1.6.27 on the four Unix platforms; nova-tools alone on windows-amd64, since nova-sprint does not build there), both tags cut together, installed on the studio and adopted across the fleet.
+The first release cut together since the split at v1.6.13: one combined build (the nova-tools tools and the nova-sprint tools at v1.6.27 on the four Unix platforms; nova-tools alone on windows-amd64, since nova-sprint does not build there), both tags cut together.
 
-Already in the code: Built on hetzner1 2026-10-27; the nova-sprint cut dry-runs clean.
+Already in the code: Cut 2026-10-27: nova-sprint v1.6.27 at 4172720a and nova-tools v1.6.27 at 6697d8c0, both published. Installed on the studio (all 25 tools; the sprint server, friend-sync, dashboards, hook-serve and the launchd hook clients restarted); the new server dealt a card at 14:52 and johnny finished one at 14:56. The red nightly test that held the cut was fixed in nova-tools #6093.
 
-Why it waits: nova-tools main is red: TestASendIsNotRetriedWhenTheStoreStalls (pkg/bus/timeout_test.go) failed in the nightly soak; it is a timing test, to be given an injected clock and landed before the cut.
+Why it waits: Done.
+
+### v1.6.27 on every machine
+
+The fleet benches still run older tools: adopt v1.6.27 on each through the fleet play (nova-sprint adopt or nova-update release adopt), Windows members taking the nova-tools tools alone, then check each member's version, its hook and one card's take, work and finish on it. The friends' own hooks running inside their sessions take v1.6.27 when those sessions next restart.
+
+Why it waits: Next; the studio runs v1.6.27 since 2026-10-27.
 
 ### nova-sprint builds for Windows
 
