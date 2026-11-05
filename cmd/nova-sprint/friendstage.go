@@ -45,8 +45,18 @@ func runStageGit(ctx context.Context, dir string, args ...string) (string, error
 	return out, nil
 }
 
+// stageCheckout creates branch at head in the fresh clone. A head that is a full sha is
+// used as is; a name resolves to origin/<name> when the clone holds that remote-tracking
+// ref (a fresh clone has no local branch of a card's BASE, only origin/<BASE>), else to
+// the local name.
 func stageCheckout(ctx context.Context, git func(context.Context, string, ...string) (string, error), dir, branch, head string) error {
-	_, err := git(ctx, dir, "checkout", "-q", "-B", branch, head)
+	ref := head
+	if !typedrec.IsFullSha(head) {
+		if _, err := git(ctx, dir, "rev-parse", "--verify", "-q", "refs/remotes/origin/"+head); err == nil {
+			ref = "origin/" + head
+		}
+	}
+	_, err := git(ctx, dir, "checkout", "-q", "-B", branch, ref)
 	return err
 }
 
