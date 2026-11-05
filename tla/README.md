@@ -63,7 +63,7 @@ counterexamples and measured results intact when improving their explanation.
 ## Run checks on a Linux bench
 
 TLC runs only on a bench. The runner is `tools/tlacheck` in this tree: build it
-with `go build -o /tmp/tlacheck ./tools/tlacheck`, or run it with
+with `go build -o "${TMPDIR:-/tmp}/tlacheck" ./tools/tlacheck` (inside a sandbox wall /tmp is refused; TMPDIR is the job's scratch), or run it with
 `go run ./tools/tlacheck`. The Makefile wraps it:
 
 - `make tlc TLC_JAR=<jar> TLC_OUT=<dir> TLC_GROUP=<group>` runs one group,

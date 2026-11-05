@@ -90,7 +90,7 @@ func CheckRunner(root string) error {
 		}
 	}
 	if len(differ) > 0 {
-		return fmt.Errorf("this tlacheck was built from other runner files than the ones under %s (%s differ); build tlacheck from this tree: go build -o /tmp/tlacheck ./tools/tlacheck", root, strings.Join(differ, ", "))
+		return fmt.Errorf("this tlacheck was built from other runner files than the ones under %s (%s differ); build tlacheck from this tree: go build -o \"${TMPDIR:-/tmp}/tlacheck\" ./tools/tlacheck", root, strings.Join(differ, ", "))
 	}
 	return nil
 }
