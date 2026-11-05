@@ -13,10 +13,9 @@ import (
 // work turns from working to done.", and the same morning, on a friends table that showed a
 // friend working 8 of 8 while she had started none: "it should just happen mechanically").
 // The deal places a friend's card ready on her row, whatever her lanes (friendDealUnit); it
-// moves to working on her start receipt, her beat naming it running (the tick's
-// friendStartUnits: FriendSeat.Running, friendStarted) or friend sync reading her job begun
-// (FriendStart), which stamps its deadline then and its generation started
-// (friendStartSet). A card working on her row with no start of hers goes back ready
+// moves to working on her start: her own take (by lane or not), or her beat naming it running
+// (the tick's friendStartUnits: FriendSeat.Running, friendStarted), which stamps its deadline
+// then and its generation started (friendStartSet). A card working on her row with no start of hers goes back ready
 // (friendUnstartedWorking). A card dealt and not started within the start bound
 // (FriendStartMax), while she runs no job, is levelled to an eligible friend with an idle
 // lane, never back to her (friendUnstartedLevel), one line each.
@@ -42,7 +41,7 @@ func (s *Snapshot) FriendStartMax() time.Duration {
 }
 
 // FieldStarted is the generation of a friend's work card she has started, set by her start
-// receipt (friendStartSet: her beat, friend sync, or her own take, by lane or not) and by
+// (friendStartSet: her own take, by lane or not, or her beat) and by
 // nothing else: a card working on her row whose FieldStarted is not its generation was moved
 // there by no start of hers (her finish's next, a take-back's next), and the tick puts it
 // back ready (friendUnstartedWorking).
@@ -97,8 +96,8 @@ func friendStartUnits(s *Snapshot, seats []FriendSeat) (units []Unit, started ma
 // start (her own take is: takeOne, laneSet). One she has started by the tick's own read (friendStarted: her beat names it
 // running, or its progress stamp) is stamped started now, its deadline from now; any other
 // goes back ready on her row, untaken, its deadline unset and its start bound from now
-// (untaken_since), one line each, and friend sync's start receipt (FriendStart) or her beat
-// moves it to working again when she begins it.
+// (untaken_since), one line each, and her take or her beat moves it to working again when
+// she begins it.
 func friendUnstartedWorking(s *Snapshot, seats []FriendSeat) (units []Unit) {
 	for _, f := range seats {
 		row := FriendRow(f.Name)
@@ -129,7 +128,7 @@ func friendUnstartedWorking(s *Snapshot, seats []FriendSeat) (units []Unit) {
 // (friendStarted, nor named in skip: a card the tick moved already) and that was dealt to her,
 // or put back ready on her row, more than the start bound ago in running time (since, the
 // tick's clock), while she runs no job (her beat names none, and no card she started is
-// working on her row) and her daemon has seen no write of hers within the bound (Active), to another friend up with an idle lane (her width less the cards on
+// working on her row) and her beat reports no write of hers within the bound (Active), to another friend up with an idle lane (her width less the cards on
 // her row, ready and working, and those this tick places there: placed) below her room,
 // whose tiers hold its tier, whose work restriction holds its primary's stream and KIND
 // (friendRestrictionAllows), that it has not left, and who is not herself stuck so; the
@@ -156,7 +155,7 @@ func friendUnstartedLevel(s *Snapshot, seats []FriendSeat, since func(string) (t
 			continue // she is running a job: her beat names one, or a card she started is working
 		}
 		if !f.Active.IsZero() && s.Now.Sub(f.Active) < bound {
-			continue // her daemon saw a write of hers within the bound: at work on a start not yet read
+			continue // her beat reports a write of hers within the bound: at work on a start not yet read
 		}
 		for _, c := range s.Fleet.Cell(FriendRow(n), Ready) {
 			pr := s.Work.Placed(c.F("primary"))

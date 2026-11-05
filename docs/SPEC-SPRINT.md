@@ -5866,24 +5866,23 @@ number on the row, and the exact verbs; its decisions are `ack` and `wait`. Its 
 - a friend come up: `friend <f> is up (was <word>) at <time>, transition <n>, on
   <evidence>; bring her up in four steps: ` and the four steps in order, each ending
   `(done)` when the system already did it or `(to do)` with the verb to run:
-  `1 update: her daemon runs <build>, the current build is <build>` (done when her
-  daemon's build, `friend beat --build`, and the server's own carry the same twelve hex of
+  `1 update: her tools run <build>, the current build is <build>` (done when the
+  build her beat reports, `friend beat --build`, and the server's own carry the same twelve hex of
   a revision, or are the same release tag; an unstamped `devel` build, or none, is never the
-  same: `: an unstamped build cannot be compared`; when not done, `; run: nova-update, then
-  launchctl kickstart -k gui/$(id -u)/com.nova.friend-<f>`); `2 check nova-hook: <the
+  same: `: an unstamped build cannot be compared`; when not done, `; run: nova-update on her
+  machine, then start her session again`); `2 check nova-hook: <the
   hook record's evidence>` (done when she is up or held); `3 snap to present: her
-  daemon sent the present on its start at <time>` (done when `friend beat --present` is at
+  session was sent the present on its start at <time>` (done when `friend beat --present` is at
   or after `--started`; else the `nova-bus send --to <f> --subject present --body
   "PRESENT <time>: ..."` line to send it by hand); `4 into the sprint: <held|not held>,
   evidence <evidence>, <a take at <time>|no take within 10m0s; run: nova-sprint where, and
   nova-hook hook --as <f> --role friend>` (done when she is not held and a
   card on her row was taken within `TakeWithin`, 10 minutes). A new start of
-  her tools while she is up is the same four steps under `friend <f>'s daemon started again
+  her tools while she is up is the same four steps under `friend <f>'s session started again
   at <time> (its start before: <time>), she is up, at <time>, transition <n>`.
 - a friend to `down`: `friend <f> is down (was <word>) at <time>, transition <n>: <the
   evidence she lacks>`, then her last beat and its age (or `it has never beaten`), and the
-  wake line: `wake her: nova-hook hook --as <f> --role friend; if her daemon is gone, on her
-  machine: launchctl kickstart -k gui/$(id -u)/com.nova.friend-<f>; or hold her: nova-sprint
+  wake line: `wake her: nova-hook hook --as <f> --role friend; or hold her: nova-sprint
   hold <f> --reason <text>`.
 - a friend to `held`: `friend <f> is held (was <word>) at <time>, transition <n>: the
   coordinator's hold (<why>); her started cards finish, the rest went back to ready;

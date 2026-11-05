@@ -175,9 +175,9 @@ func TestAFriendComingUpPushesTheFourStepsToTheSeat(t *testing.T) {
 	assert.Equal(t, sprint.Judgment, n.Kind, "a judgment, pushed to the seat inbox as every judgment is")
 	at := r.st.Now().UTC().Format(time.RFC3339)
 	assert.Equal(t, "friend amy is up (was down) at "+at+", transition 1, on nova-hook proven; bring them up in four steps: "+
-		"1 update: their daemon runs "+current+", the current build is "+current+": an unstamped build cannot be compared; run: nova-update, then launchctl kickstart -k gui/$(id -u)/com.nova.friend-amy (to do); "+
+		"1 update: their tools run "+current+", the current build is "+current+": an unstamped build cannot be compared; run: nova-update on their machine, then start their session again (to do); "+
 		"2 check nova-hook: nova-hook proven (done); "+
-		"3 snap to present: their daemon sent the present on its start at "+start.Format(time.RFC3339)+" (done); "+
+		"3 snap to present: their session was sent the present on its start at "+start.Format(time.RFC3339)+" (done); "+
 		"4 into the sprint: not held, evidence nova-hook proven, no take within 10m0s; run: nova-sprint where, and nova-hook hook --as amy --role friend (to do)",
 		n.What)
 	assert.Equal(t, []string{"ack", "wait"}, n.Decisions, "the verbs are in the text; ack or wait answers it")
@@ -195,8 +195,8 @@ func TestAFriendComingUpPushesTheFourStepsToTheSeat(t *testing.T) {
 	r2.tick(0)
 	notes = r2.statusNotes(row)
 	require.Len(t, notes, 1)
-	assert.Contains(t, notes[0].What, "1 update: their daemon runs 2030-01-01T00:00:00Z-0123456789ab, the current build is "+current)
-	assert.Contains(t, notes[0].What, "3 snap to present: their daemon sent no present since its start; run: nova-bus send --to amy")
+	assert.Contains(t, notes[0].What, "1 update: their tools run 2030-01-01T00:00:00Z-0123456789ab, the current build is "+current)
+	assert.Contains(t, notes[0].What, "3 snap to present: their session was sent no present since its start; run: nova-bus send --to amy")
 }
 
 func TestStatusJudgmentUsesConfiguredFriendPronouns(t *testing.T) {
@@ -204,11 +204,11 @@ func TestStatusJudgmentUsesConfiguredFriendPronouns(t *testing.T) {
 	for _, tc := range []struct {
 		set, bring, possessive string
 	}{
-		{"she/her", "bring her up", "her daemon"},
-		{"he/him", "bring him up", "his daemon"},
-		{"they/them", "bring them up", "their daemon"},
-		{"", "bring them up", "their daemon"},
-		{"unknown", "bring them up", "their daemon"},
+		{"she/her", "bring her up", "her"},
+		{"he/him", "bring him up", "his"},
+		{"they/them", "bring them up", "their"},
+		{"", "bring them up", "their"},
+		{"unknown", "bring them up", "their"},
 	} {
 		t.Run(tc.set, func(t *testing.T) {
 			r := newTransitionRigWithPronouns(t, tc.set)
@@ -219,8 +219,8 @@ func TestStatusJudgmentUsesConfiguredFriendPronouns(t *testing.T) {
 			notes := r.statusNotes(row)
 			require.Len(t, notes, 1)
 			assert.Contains(t, notes[0].What, tc.bring)
-			assert.Contains(t, notes[0].What, "update: "+tc.possessive+" runs")
-			assert.Contains(t, notes[0].What, "snap to present: "+tc.possessive+" sent")
+			assert.Contains(t, notes[0].What, "update: "+tc.possessive+" tools run")
+			assert.Contains(t, notes[0].What, "snap to present: "+tc.possessive+" session was sent")
 		})
 	}
 }
@@ -394,7 +394,7 @@ func TestARestartDoesNotReplayTransitions(t *testing.T) {
 	notes = r.statusNotes(row)
 	require.Len(t, notes, 1)
 	assert.Equal(t, first, notes[0].ID, "the open judgment replaced")
-	assert.Contains(t, notes[0].What, "friend amy's daemon started again at "+again.UTC().Format(time.RFC3339))
+	assert.Contains(t, notes[0].What, "friend amy's session started again at "+again.UTC().Format(time.RFC3339))
 	assert.Contains(t, notes[0].What, "transition 2")
 	judgments, changes = r.pushes(row)
 	assert.Equal(t, 1, judgments)
