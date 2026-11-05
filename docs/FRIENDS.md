@@ -115,7 +115,7 @@ its argv:
 nova-config loop add friend-sync --machine bench-a --argv '["/usr/bin/env","NOVA_PG_PASSWORD_ENV=NOVA_PG_CONFIG_PASSWORD","NOVA_SPRINT_REDIS=127.0.0.1:6380","NOVA_SPRINT_REDIS_USER=coordinator","NOVA_SPRINT_REDIS_PASSWORD_ENV=NOVA_REDIS_COORDINATOR_PASSWORD","NOVA_BUS_REDIS=127.0.0.1:6381","nova-sprint","friend","sync","--every","15s","--pg","postgres://nova_config@127.0.0.1:5432/nova"]' --seat bench --keys NOVA_PG_CONFIG_PASSWORD,NOVA_REDIS_COORDINATOR_PASSWORD --keepalive true --as ada
 ```
 
-Its log is the loop's, `~/nova-bench/loops/friend-sync.log`. It replaces the
+Its log is the loop's, `~/nova-bench/loops/friend-sync.log`. A row written before v1.6.30 may pass `--root`; the flag is retired (friend sync writes no friend's directory), accepted and ignored with a NOTE on each start, and is dropped from the row with `nova-config loop set <row> --argv '[...]'` (the same argv without `--root <dir>`). It replaces the
 hand-written launch agent `com.nova.friend-sync`, a zsh `while` loop around
 `friend sync` that read the seat with `where --json | jq`: once the row is
 applied and its unit runs, that agent is retired, unloaded and its plist

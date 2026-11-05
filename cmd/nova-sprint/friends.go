@@ -131,12 +131,19 @@ func (a *app) cmdFriendSync(args []string, stdout, stderr io.Writer) int {
 	fs, c := a.verbSetup(name)
 	pg := fs.String("pg", "", "the config store, Postgres postgres://user@host:port/db with no password (else NOVA_PG_DSN; the password from the variable NOVA_PG_PASSWORD_ENV names), as nova-config takes it")
 	every := fs.Duration("every", 0, "sync now and again each time this passes, until interrupted, as the sprint's coordinator seat when no --actor is given, read again each pass (default: once); friend sync install --every <d> runs it as this machine's service and friend sync uninstall removes it (-h of each), or the friend sync loop row runs it (docs/FRIENDS.md)")
+	// --root is retired with the friend delivery (2026-11-05): friend sync reads and writes no
+	// friend's directory. It is accepted and ignored, said once, so a loop row or a unit that
+	// still passes it keeps syncing after the adopt and is fixed by dropping it from the row.
+	root := fs.String("root", "", "retired: friend sync writes no friend's directory; accepted and ignored so a loop row that still passes it keeps running (drop it from the row: nova-config loop set <row> --argv ...)")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, name, err.Error())
 	}
 	if len(pos) > 0 {
 		return refuse(stderr, name, "takes no words, found "+oneline.Escape(pos[0]))
+	}
+	if *root != "" {
+		fmt.Fprintf(stderr, "%s %s: NOTE --root is retired and ignored (friend sync writes no friend's directory); drop it from the loop row\n", prog, name)
 	}
 	if *every < 0 {
 		return refuse(stderr, name, "--every wants a duration above zero, or none for one pass, got "+every.String()+"; run: nova-sprint friend sync --every 15s")
