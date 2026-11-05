@@ -88,15 +88,25 @@ Ids == Caller \X (1..MaxEpoch) \X (1..MaxTries) \X NonceSet
 Mids == Ids \X (0..(Manifests - 1))
 Kinds == {"ok", "replay", "conflict", "refused", "lost"}
 
+\* Rows is the two tables' rows a stream remove takes off: one row on each table,
+\* both or neither. Every operation here is a remover carrying the rows in its
+\* fence record (OpRecord.RowDels), so a crash leaves the intent durable for
+\* Repair.
+Rows == {1, 2}
+NoRows == {r \in Rows : FALSE}
+Dels(w) == Rows
+
 VARIABLES gen, epoch, fence, appliedBy, exp, done, commits, abandoned,
-          pc, req, rgen, repoch, cur, next, tries, said, strays
+          pc, req, rgen, repoch, cur, next, tries, said, strays, rows, rowDels
 
 vars == <<gen, epoch, fence, appliedBy, exp, done, commits, abandoned,
-          pc, req, rgen, repoch, cur, next, tries, said, strays>>
+          pc, req, rgen, repoch, cur, next, tries, said, strays, rows, rowDels>>
 
-Fences == [id : Ids, c : Caller, a : Arg, e : 1..MaxEpoch, plan : Writer, aged : BOOLEAN]
+Fences == [id : Ids, c : Caller, a : Arg, e : 1..MaxEpoch, plan : Writer, aged : BOOLEAN,
+           dels : SUBSET Rows]
 Receipts == [c : Caller, a : Arg, e : 1..MaxEpoch, id : Ids]
-Commits == [c : Caller, id : Ids, plan : Writer]
+Commits == [c : Caller, id : Ids, plan : Writer, dels : SUBSET Rows]
+RowDel == [id : Ids, rows : SUBSET Rows, held : BOOLEAN]
 
 TypeOK ==
   /\ gen \in Nat
@@ -114,6 +124,8 @@ TypeOK ==
   /\ tries \in [Writer -> 0..MaxTries]
   /\ said \in [Writer -> [kind : Kinds, id : Ids \cup {None}, a : Arg \cup {None}] \cup {None}]
   /\ strays \in 0..MaxStray
+  /\ rows \in SUBSET Rows
+  /\ rowDels \subseteq RowDel
 
 Init ==
   /\ gen = 0
@@ -133,6 +145,8 @@ Init ==
   /\ tries = [w \in Writer |-> 0]
   /\ said = [w \in Writer |-> None]
   /\ strays = 0
+  /\ rows = Rows
+  /\ rowDels = {}
 
 DoneNow(c) == {d \in done : d.c = c /\ d.e = epoch}
 DoneBefore(c) == {d \in done : d.c = c /\ d.e < epoch}
@@ -154,7 +168,7 @@ Start(w, c, a) ==
   /\ pc' = [pc EXCEPT ![w] = "check"]
   /\ req' = [req EXCEPT ![w] = [c |-> c, a |-> a]]
   /\ UNCHANGED <<gen, epoch, fence, appliedBy, exp, done, commits, abandoned,
-                 rgen, repoch, cur, next, tries, said, strays>>
+                 rgen, repoch, cur, next, tries, said, strays, rows, rowDels>>
 
 \* The fenced read and the caller-op check (Store.callerOp); a new plan.
 Check(w) ==
@@ -183,7 +197,7 @@ Check(w) ==
           /\ pc' = [pc EXCEPT ![w] = "read"]
           /\ UNCHANGED said
   /\ UNCHANGED <<gen, epoch, fence, appliedBy, done, commits, abandoned,
-                 req, cur, tries, strays>>
+                 req, cur, tries, strays, rows, rowDels>>
 
 \* Redis.Acquire, the id OpFamily(caller op, epoch)-attempt.
 Acquire(w) ==
@@ -192,14 +206,14 @@ Acquire(w) ==
   /\ LET id == <<req[w].c, epoch, tries[w] + 1, IF Nonce THEN w ELSE None>> IN
      IF fence = None /\ (gen = rgen[w] \/ Broken = "acquirenogen") /\ epoch = repoch[w]
      THEN /\ fence' = [id |-> id, c |-> req[w].c, a |-> req[w].a, e |-> epoch,
-                       plan |-> w, aged |-> FALSE]
+                       plan |-> w, aged |-> FALSE, dels |-> Dels(w)]
           /\ gen' = gen + 1
           /\ cur' = [cur EXCEPT ![w] = id]
           /\ pc' = [pc EXCEPT ![w] = "held"]
      ELSE /\ pc' = [pc EXCEPT ![w] = "check"]
           /\ UNCHANGED <<fence, gen, cur>>
   /\ UNCHANGED <<epoch, appliedBy, exp, done, commits, abandoned, req, rgen, repoch,
-                 next, said, strays>>
+                 next, said, strays, rows, rowDels>>
 
 \* Store.apply: the writer's next manifest, with no check of the fence.
 Send(w) ==
@@ -229,7 +243,8 @@ Send(w) ==
           /\ next' = [next EXCEPT ![w] = @ + 1]
           /\ OthersOpen(w)
           /\ UNCHANGED <<fence, pc, cur, said>>
-  /\ UNCHANGED <<gen, epoch, done, commits, abandoned, req, rgen, repoch, tries, strays>>
+  /\ UNCHANGED <<gen, epoch, done, commits, abandoned, req, rgen, repoch, tries, strays,
+                 rows, rowDels>>
 
 \* Redis.Release(op, true) after the last manifest; the writer tells its caller ok.
 Commit(w) ==
@@ -237,10 +252,16 @@ Commit(w) ==
   /\ next[w] = Manifests
   /\ IF HoldsId(cur[w])
      THEN /\ fence' = None
+          /\ rows' = rows \ Dels(w)
+          /\ rowDels' = rowDels \cup {[id |-> cur[w], rows |-> Dels(w) \ rows, held |-> TRUE]}
           /\ done' = done \cup {[c |-> req[w].c, a |-> req[w].a, e |-> cur[w][2], id |-> cur[w]]}
-          /\ commits' = commits \cup {[c |-> req[w].c, id |-> cur[w], plan |-> w]}
+          /\ commits' = commits \cup {[c |-> req[w].c, id |-> cur[w], plan |-> w, dels |-> Dels(w)]}
      ELSE \* no operation with this id in the fence: nothing written, success
           /\ fence' = IF Broken = "releaseanyop" THEN None ELSE fence
+          /\ IF Broken = "rowdelanyowner"
+             THEN /\ rows' = rows \ Dels(w)
+                  /\ rowDels' = rowDels \cup {[id |-> cur[w], rows |-> Dels(w) \ rows, held |-> FALSE]}
+             ELSE /\ UNCHANGED <<rows, rowDels>>
           /\ UNCHANGED <<done, commits>>
   /\ Tell(w, "ok", cur[w], req[w].a)
   /\ pc' = [pc EXCEPT ![w] = "out"]
@@ -252,7 +273,7 @@ Crash(w) ==
   /\ pc[w] \in {"check", "read", "held"}
   /\ pc' = [pc EXCEPT ![w] = "dead"]
   /\ UNCHANGED <<gen, epoch, fence, appliedBy, exp, done, commits, abandoned,
-                 req, rgen, repoch, cur, next, tries, said, strays>>
+                 req, rgen, repoch, cur, next, tries, said, strays, rows, rowDels>>
 
 \* The grace passes over the pending operation.
 Age ==
@@ -261,7 +282,7 @@ Age ==
   /\ Timely => pc[fence.plan] = "dead"
   /\ fence' = [fence EXCEPT !.aged = TRUE]
   /\ UNCHANGED <<gen, epoch, appliedBy, exp, done, commits, abandoned,
-                 pc, req, rgen, repoch, cur, next, tries, said, strays>>
+                 pc, req, rgen, repoch, cur, next, tries, said, strays, rows, rowDels>>
 
 \* A table write outside the fence: it breaks or restores one plan's first manifest.
 Stray ==
@@ -269,7 +290,7 @@ Stray ==
   /\ strays' = strays + 1
   /\ \E w \in Writer : (exp[w] \/ Revive) /\ exp' = [exp EXCEPT ![w] = ~@]
   /\ UNCHANGED <<gen, epoch, fence, appliedBy, done, commits, abandoned,
-                 pc, req, rgen, repoch, cur, next, tries, said>>
+                 pc, req, rgen, repoch, cur, next, tries, said, rows, rowDels>>
 
 \* Store.finishOp, run by repair or by the next fenced read, on the fence's record.
 Repair ==
@@ -277,20 +298,25 @@ Repair ==
   /\ LET f == fence
          firstApplies == appliedBy[<<f.id, 0>>] # None \/ (exp[f.plan] /\ Broken # "repairnosend")
      IN IF firstApplies /\ ~(f.aged /\ Broken = "abandonapplied")
-        THEN \* finish: every manifest the table layer lacks, from the record's plan
+        THEN \* finish: every manifest the table layer lacks, from the record's plan,
+             \* and the operation's durable row deletes, both or neither
              /\ appliedBy' = [m \in Mids |-> IF m[1] = f.id /\ appliedBy[m] = None
                                               THEN f.plan ELSE appliedBy[m]]
              /\ OthersOpen(f.plan)
              /\ fence' = None
+             /\ rows' = IF Broken = "repairnodels" THEN rows ELSE rows \ f.dels
+             /\ rowDels' = IF Broken = "repairnodels"
+                            THEN rowDels
+                            ELSE rowDels \cup {[id |-> f.id, rows |-> f.dels \ rows, held |-> TRUE]}
              /\ done' = done \cup {Receipt(f)}
-             /\ commits' = commits \cup {[c |-> f.c, id |-> f.id, plan |-> f.plan]}
+             /\ commits' = commits \cup {[c |-> f.c, id |-> f.id, plan |-> f.plan, dels |-> f.dels]}
              /\ UNCHANGED abandoned
         ELSE \* the first manifest refused: on a bound or rule at once, on state
              \* only past the grace
              /\ \E kind \in {"rule", "state"} : kind = "rule" \/ f.aged
              /\ fence' = None
              /\ abandoned' = abandoned \cup {<<f.id, f.plan>>}
-             /\ UNCHANGED <<appliedBy, exp, done, commits>>
+             /\ UNCHANGED <<appliedBy, exp, done, commits, rows, rowDels>>
   /\ UNCHANGED <<gen, epoch, pc, req, rgen, repoch, cur, next, tries, said, strays>>
 
 \* A clear advances the epoch, only while the fence is empty.
@@ -299,13 +325,41 @@ Clear ==
   /\ fence = None
   /\ epoch' = epoch + 1
   /\ UNCHANGED <<gen, fence, appliedBy, exp, done, commits, abandoned,
-                 pc, req, rgen, repoch, cur, next, tries, said, strays>>
+                 pc, req, rgen, repoch, cur, next, tries, said, strays, rows, rowDels>>
+
+\* A stream that came back after its removal: a write outside the fence adds its
+\* rows again (an AddStep). Only the late-remove cases let this happen.
+RowsBack ==
+  /\ Broken \in {"lateadd", "rowdelanyowner"}
+  /\ rows # Rows
+  /\ rows' = Rows
+  /\ UNCHANGED <<gen, epoch, fence, appliedBy, exp, done, commits, abandoned,
+                 pc, req, rgen, repoch, cur, next, tries, said, strays, rowDels>>
+
+\* A writer that crashed before its commit runs its release late, after a repair
+\* or another writer finished the operation and the stream came back. The row
+\* deletes are guarded by the operation the fence holds: with the guard they write
+\* nothing; Broken "rowdelanyowner" drops the guard and takes the rows again.
+LateRelease(w) ==
+  /\ Broken \in {"lateadd", "rowdelanyowner"}
+  /\ pc[w] = "dead"
+  /\ cur[w] # None
+  /\ ~HoldsId(cur[w])
+  /\ IF Broken = "rowdelanyowner"
+     THEN /\ rows' = rows \ Dels(w)
+          /\ rowDels' = rowDels \cup {[id |-> cur[w], rows |-> Dels(w) \ rows, held |-> FALSE]}
+     ELSE /\ UNCHANGED <<rows, rowDels>>
+  /\ Tell(w, "ok", cur[w], req[w].a)
+  /\ UNCHANGED <<gen, epoch, fence, appliedBy, exp, done, commits, abandoned,
+                 pc, req, rgen, repoch, cur, next, tries, strays>>
 
 Next ==
   \/ \E w \in Writer, c \in Caller, a \in Arg : Start(w, c, a)
   \/ \E w \in Writer : Check(w) \/ Acquire(w) \/ Send(w) \/ Commit(w) \/ Crash(w)
+  \/ \E w \in Writer : LateRelease(w)
   \/ Age
   \/ Stray
+  \/ RowsBack
   \/ Repair
   \/ Clear
 
@@ -333,10 +387,19 @@ NoApplyWithoutCommit ==
 \* G14: an abandoned plan applied nothing.
 AbandonedAppliedNothing == \A x \in abandoned : x[2] \notin AppliedPlans(x[1])
 
+\* G13/G4: every row delete was made by the operation the fence then held: the
+\* owner check and the row deletes are one step, so a late remover whose fence is
+\* gone writes nothing.
+RowDelHeldFence == \A x \in rowDels : x.held
+
+\* G13: a finished operation's row deletes are off the tables (unless the model
+\* lets a later write add them again).
+CommittedRowsGone == \A x \in commits : x.dels \cap rows = {}
+
 \* G5: a writer that tells its caller ok had its own plan committed.
 OkMeansCommitted ==
   \A w \in Writer : (said[w] # None /\ said[w].kind = "ok") =>
-    [c |-> req[w].c, id |-> said[w].id, plan |-> w] \in commits
+    [c |-> req[w].c, id |-> said[w].id, plan |-> w, dels |-> Dels(w)] \in commits
 
 \* G6: a replay is of a committed operation with the caller's own arguments.
 ReplayMatches ==

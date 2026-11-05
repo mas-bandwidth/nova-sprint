@@ -172,7 +172,14 @@ Stream remove is no longer one of them: it is one store step (`store.StreamRemov
 the fence (`OpRecord.RowDels`, deleted at the operation's release, finished by `Repair` when
 cut). Its row delete names the operation (`RestoreGuard.Owner` in the guarded exchange; the
 fence check `Release` already makes in Mem), so a writer whose operation another finished
-cannot take off a stream that came back after it.
+cannot take off a stream that came back after it. Redis treats that guard's
+`GuardNotOwner` as the G5 no-op success (the fence no longer holds the operation,
+so the deletes write nothing), as Mem already did. `tla/StoreFence.tla` now
+carries the operation's row deletes and their owner check: `MCStoreFenceRowDels.cfg`
+holds them with a crash and `Repair`, `MCStoreFenceLateRemove.cfg` adds a stream
+back before a late release, and `MCStoreFenceBrokenRowDelOwner.cfg` /
+`MCStoreFenceBrokenRepairNoDels.cfg` are the reversed witnesses for the guard and
+for a repair that leaves the rows.
 
 **Dead: no caller outside tests (8):** `Store.SeatAndServer` seat.go:239 (no caller at all, a
 comment only at cmd/nova-sprint/reads.go:1375), `Store.RestorePending` clear.go:371,
@@ -241,7 +248,7 @@ against Redis (redis_sprint_functional_test.go, redis_functional_test.go).
 | G2 | store_test.go:286 `TestD1APendingOperationIsFinishedFirst`, :373 | functional :73 |
 | G3 | store_test.go:373; redis_sprint_functional_test.go:914 `TestRedisTheFenceRefusesWhatItShould` | yes |
 | G4 | store_test.go:319 `TestD1NotificationsAtTheCommitOnly` | no |
-| G5 | redis_sprint_functional_test.go:914 (second release); redis_functional_test.go:109 | yes |
+| G5 | stream_remove_step_test.go `TestRedisReleaseOfAnUnheldRemovalIsANoOp`; redis_sprint_functional_test.go:914 (second release); redis_functional_test.go:109 | fake client; yes |
 | G6 | callerop_test.go:13, :64; store_test.go:492 | redis_sprint_functional_test.go:417 |
 | G7 | clear_ids_test.go:13 | no |
 | G8 | clear_ids_test.go:49 | no |
@@ -249,7 +256,7 @@ against Redis (redis_sprint_functional_test.go, redis_functional_test.go).
 | G10 | clear_start_fence_test.go, ready_clear_race_test.go, redis_cover_test.go (AdvanceEpoch) | fake client |
 | G11 | clear_owed_test.go (unverified which test) | no |
 | G12 | redis_guarded_rows_test.go:18; clear_restore_guard_test.go:19; clear_concurrent_test.go:96, :103 | fake client |
-| G13 | store_test.go:414; repair_test.go:128, :227 | redis_sprint_functional_test.go:295, :370 |
+| G13 | stream_remove_step_test.go `TestStreamRemoveIsOneFencedOperation`; store_test.go:414; repair_test.go:128, :227 | redis_sprint_functional_test.go:295, :370 |
 | G14 | store_test.go:450; bounds_test.go:210; engine_cover_test.go:63 | no |
 | G15 | store_test.go:608; engine_cover_test.go, finished_op_test.go | redis_functional_test.go (ErrUnknown) |
 | G16 | store_test.go:394 | no |
