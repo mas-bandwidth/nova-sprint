@@ -874,7 +874,7 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			res.Attempts--
 			continue
 		}
-		if len(op.Manifests) == 0 && len(op.Notes)+len(op.Decided)+len(op.Closes)+len(op.Updates)+len(op.Queue)+op.Drain == 0 && len(op.CloseTimers) == 0 && op.Timers == nil {
+		if len(op.Manifests) == 0 && len(plan.RowDels) == 0 && len(op.Notes)+len(op.Decided)+len(op.Closes)+len(op.Updates)+len(op.Queue)+op.Drain == 0 && len(op.CloseTimers) == 0 && op.Timers == nil {
 			res.Moved = nil
 			return st.after(ctx, step, res)
 		}
@@ -966,6 +966,15 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 				return refuseWhole(res, plan, bound.Error())
 			}
 			continue
+		}
+		// The rows the step takes off go inside its operation: the rows of
+		// every table it deletes are taken off in one exchange, so a crash
+		// leaves them all or none (G1, G13).
+		if len(plan.RowDels) > 0 {
+			if err := st.deleteRows(ctx, op.ID, plan.RowDels); err != nil {
+				res.Pending = op.ID
+				return res, err
+			}
 		}
 		if err := st.B.Release(ctx, op, true); err != nil {
 			if rec, confirmed := st.committed(ctx, step, op); confirmed {
@@ -1239,6 +1248,32 @@ func (st *Store) addRows(ctx context.Context, rows []sprint.RowAdd) error {
 				return err
 			}
 		}
+	}
+	return nil
+}
+
+// deleteRows takes the operation's rows off the tables it deletes, in one
+// exchange: the rows of two tables go together or not at all, so a stream
+// is on both tables or on neither (the row delete of the table layer, guarded
+// on the epoch's restore state: a verb's rows are written while the restore
+// is not pending).
+func (st *Store) deleteRows(ctx context.Context, id string, dels []sprint.RowDel) error {
+	writes := make([]RowWrite, 0, len(dels))
+	for _, d := range dels {
+		if len(d.Rows) == 0 {
+			continue
+		}
+		writes = append(writes, RowWrite{Op: "del", Table: st.Names.Table(d.Table), Rows: d.Rows})
+	}
+	if len(writes) == 0 {
+		return nil
+	}
+	o, err := st.B.GuardedRows(ctx, verbGuard(st.Names.Table(sprint.Fleet)), writes)
+	if err != nil {
+		return fmt.Errorf("%w: deleting the rows of %s: %v; run: nova-sprint repair", ErrUnknown, id, err)
+	}
+	if o != GuardApplied {
+		return fmt.Errorf("%w: deleting the rows of %s: the epoch's restore is pending; run: nova-sprint repair", ErrUnknown, id)
 	}
 	return nil
 }
