@@ -1102,119 +1102,155 @@ func (m *Mem) Acquire(_ context.Context, gen uint64, op OpRecord) (bool, error) 
 func (m *Mem) Release(_ context.Context, op OpRecord, commit bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	l := m.log()
 	m.Calls["release"]++
 	if err := m.fail("release"); err != nil {
 		return err
 	}
+	l := m.log()
 	if l.fence == nil || l.fence.ID != op.ID {
 		return nil
 	}
-	if commit {
-		if op.Drain > 0 {
-			l.queue = append([]sprint.QueuedChange(nil), l.queue[min(op.Drain, len(l.queue)):]...)
-		}
-		l.queue = append(l.queue, op.Queue...)
-		for _, line := range op.Log {
-			m.seq++
-			l.lines = append(l.lines, memLine{fmt.Sprintf("%d-0", m.seq), line})
-		}
-		for _, n := range append(append([]sprint.Note{}, op.Notes...), op.Decided...) {
-			// every subject stays open; only the note's listing is bounded
-			subjects := n.Subjects()
-			n = n.Bound()
-			if n.Kind == sprint.Judgment || n.Kind == sprint.Acknowledged {
-				// the note's alias: its place among the epoch's, under the fence (sprint.Alias)
-				if l.aliases == nil {
-					l.aliases = map[string]string{} // a log loaded from a file written before aliases
-				}
-				n.Alias = sprint.Alias(len(l.aliases) + 1)
-				l.aliases[n.Alias] = n.ID
+	if !commit {
+		l.fence = nil
+		return nil
+	}
+
+	// Build the commit against private copies. Redis prepares every command
+	// before EXEC; Mem must likewise publish all of the commit or none of it.
+	state := &memState{logs: maps.Clone(m.logs), kv: maps.Clone(m.kv), seq: m.seq}
+	state.logs[m.epoch] = cloneMemLog(l)
+	work := &Mem{memState: state, epoch: m.epoch, old: m.old}
+	l = state.logs[m.epoch]
+	if op.Drain > 0 {
+		l.queue = append([]sprint.QueuedChange(nil), l.queue[min(op.Drain, len(l.queue)):]...)
+	}
+	l.queue = append(l.queue, op.Queue...)
+	for _, line := range op.Log {
+		work.seq++
+		l.lines = append(l.lines, memLine{fmt.Sprintf("%d-0", work.seq), line})
+	}
+	for _, n := range append(append([]sprint.Note{}, op.Notes...), op.Decided...) {
+		// every subject stays open; only the note's listing is bounded
+		subjects := n.Subjects()
+		n = n.Bound()
+		if n.Kind == sprint.Judgment || n.Kind == sprint.Acknowledged {
+			// the note's alias: its place among the epoch's, under the fence (sprint.Alias)
+			if l.aliases == nil {
+				l.aliases = map[string]string{} // a log loaded from a file written before aliases
 			}
-			m.seq++
-			l.lines = append(l.lines, memLine{fmt.Sprintf("%d-0", m.seq), sprint.NoteLine(n, op.ID)})
-			m.seq++
-			l.inbox = append(l.inbox, memNote{fmt.Sprintf("%d-0", m.seq), n})
-			if n.Kind == sprint.Judgment || n.Kind == sprint.Acknowledged {
-				l.notes[n.ID] = n
-				for _, s := range subjects {
-					l.open[sprint.OpenKey(n.ID, s)] = n.ID
-				}
-			}
+			n.Alias = sprint.Alias(len(l.aliases) + 1)
+			l.aliases[n.Alias] = n.ID
 		}
-		for _, n := range op.Updates {
-			n = n.Bound()
+		work.seq++
+		l.lines = append(l.lines, memLine{fmt.Sprintf("%d-0", work.seq), sprint.NoteLine(n, op.ID)})
+		work.seq++
+		l.inbox = append(l.inbox, memNote{fmt.Sprintf("%d-0", work.seq), n})
+		if n.Kind == sprint.Judgment || n.Kind == sprint.Acknowledged {
 			l.notes[n.ID] = n
-			line := sprint.NoteLine(n, op.ID)
-			line.Verb = "updated"
-			m.seq++
-			l.lines = append(l.lines, memLine{fmt.Sprintf("%d-0", m.seq), line})
-		}
-		for _, k := range op.Closes {
-			delete(l.open, k)
-		}
-		if l.answered == nil {
-			l.answered = map[string]string{}
-		}
-		maps.Copy(l.answered, answeredBy(op))
-		m.wakeLog()
-		if op.Stuck != "" {
-			delete(m.kv, keyStuck)
-		}
-		for _, s := range op.Streams {
-			l.progress[s] = op.At
-		}
-		if op.CallerOp != "" {
-			l.done[op.CallerOp] = op.Result
-		}
-		if op.Seat != nil {
-			rec, err := seatRecord(op.Seat)
-			if err != nil {
-				return err
+			for _, s := range subjects {
+				l.open[sprint.OpenKey(n.ID, s)] = n.ID
 			}
-			if m.kv == nil {
-				m.kv = map[string]string{}
-			}
-			m.kv[keyCoordinator], m.kv[keySeat] = op.Seat.Holder, rec
-		}
-		if len(op.CloseTimers) > 0 {
-			if m.kv == nil {
-				m.kv = map[string]string{}
-			}
-			if raw := m.kv[keyTimers]; raw != "" {
-				var ts sprint.Timers
-				if err := json.Unmarshal([]byte(raw), &ts); err == nil {
-					closing := map[string]bool{}
-					for _, id := range op.CloseTimers {
-						closing[id] = true
-					}
-					var rem []sprint.Timer
-					for _, tm := range ts.Open {
-						if !closing[tm.ID] {
-							rem = append(rem, tm)
-						}
-					}
-					ts.Open = rem
-					rec, err := json.Marshal(ts)
-					if err != nil {
-						return err
-					}
-					m.kv[keyTimers] = string(rec)
-				}
-			}
-		} else if op.Timers != nil {
-			rec, err := json.Marshal(op.Timers)
-			if err != nil {
-				return err
-			}
-			if m.kv == nil {
-				m.kv = map[string]string{}
-			}
-			m.kv[keyTimers] = string(rec)
 		}
 	}
+	for _, n := range op.Updates {
+		n = n.Bound()
+		l.notes[n.ID] = n
+		line := sprint.NoteLine(n, op.ID)
+		line.Verb = "updated"
+		work.seq++
+		l.lines = append(l.lines, memLine{fmt.Sprintf("%d-0", work.seq), line})
+	}
+	for _, k := range op.Closes {
+		delete(l.open, k)
+	}
+	if l.answered == nil {
+		l.answered = map[string]string{}
+	}
+	maps.Copy(l.answered, answeredBy(op))
+	if op.Stuck != "" {
+		delete(work.kv, keyStuck)
+	}
+	for _, s := range op.Streams {
+		l.progress[s] = op.At
+	}
+	if op.CallerOp != "" {
+		l.done[op.CallerOp] = op.Result
+	}
+	if op.Seat != nil {
+		rec, err := seatRecord(op.Seat)
+		if err != nil {
+			return err
+		}
+		if work.kv == nil {
+			work.kv = map[string]string{}
+		}
+		work.kv[keyCoordinator], work.kv[keySeat] = op.Seat.Holder, rec
+	}
+	if len(op.CloseTimers) > 0 {
+		if work.kv == nil {
+			work.kv = map[string]string{}
+		}
+		if raw := work.kv[keyTimers]; raw != "" {
+			var ts sprint.Timers
+			if err := json.Unmarshal([]byte(raw), &ts); err == nil {
+				closing := map[string]bool{}
+				for _, id := range op.CloseTimers {
+					closing[id] = true
+				}
+				var rem []sprint.Timer
+				for _, tm := range ts.Open {
+					if !closing[tm.ID] {
+						rem = append(rem, tm)
+					}
+				}
+				ts.Open = rem
+				rec, err := json.Marshal(ts)
+				if err != nil {
+					return err
+				}
+				work.kv[keyTimers] = string(rec)
+			}
+		}
+	} else if op.Timers != nil {
+		rec, err := json.Marshal(op.Timers)
+		if err != nil {
+			return err
+		}
+		if work.kv == nil {
+			work.kv = map[string]string{}
+		}
+		work.kv[keyTimers] = string(rec)
+	}
+	// Fail is a deterministic test seam: like Redis refusing its prepared
+	// transaction, this error must leave the published state untouched.
+	if err := m.fail("commit"); err != nil {
+		return err
+	}
 	l.fence = nil
+	m.logs, m.kv, m.seq = work.logs, work.kv, work.seq
+	m.wakeLog()
 	return nil
+}
+
+func cloneMemLog(src *memLog) *memLog {
+	if src == nil {
+		return &memLog{}
+	}
+	out := *src
+	if src.fence != nil {
+		fence := *src.fence
+		out.fence = &fence
+	}
+	out.done = maps.Clone(src.done)
+	out.progress = maps.Clone(src.progress)
+	out.inbox = append([]memNote(nil), src.inbox...)
+	out.lines = append([]memLine(nil), src.lines...)
+	out.notes = maps.Clone(src.notes)
+	out.aliases = maps.Clone(src.aliases)
+	out.answered = maps.Clone(src.answered)
+	out.open = maps.Clone(src.open)
+	out.queue = append([]sprint.QueuedChange(nil), src.queue...)
+	return &out
 }
 
 // QueueRead is the pinned epoch's work-table queue.
