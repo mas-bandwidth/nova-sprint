@@ -155,6 +155,58 @@ func TestRedisReleaseOfAnUnheldRemovalIsANoOp(t *testing.T) {
 	})
 }
 
+// TestMemReleaseOfAnUnheldRemovalIsANoOp: G5 on Mem. The owner check and the
+// two row deletes are one step under Mem's lock, so a release whose fence no
+// longer holds the operation writes no row and succeeds, as on Redis.
+func TestMemReleaseOfAnUnheldRemovalIsANoOp(t *testing.T) {
+	t.Parallel()
+	late := OpRecord{ID: "op1", Verb: "stream remove", RowPrefix: "t-",
+		RowDels: []sprint.RowDel{{Table: sprint.Work, Rows: []string{"s1"}}}}
+	t.Run("another operation holds the fence", func(t *testing.T) {
+		t.Parallel()
+		h := newHarness(t)
+		h.stream("s1")
+		fence, err := h.m.ReadFence(h.ctx)
+		require.NoError(t, err)
+		ok, err := h.m.Acquire(h.ctx, fence.Gen, OpRecord{ID: "op9", Verb: "tick"})
+		require.NoError(t, err)
+		require.True(t, ok, "the other operation takes the fence")
+		require.NoError(t, h.st.B.Release(h.ctx, late, true), "a release of an unheld operation is success")
+		held, err := h.m.ReadFence(h.ctx)
+		require.NoError(t, err)
+		require.NotNil(t, held.Pending, "the fence is not emptied")
+		require.Equal(t, "op9", held.Pending.ID, "the other operation keeps the fence")
+		requireMemRow(t, h, "t-work", "s1", true)
+		requireMemRow(t, h, "t-merge", "s1", true)
+	})
+	t.Run("the fence is empty", func(t *testing.T) {
+		t.Parallel()
+		h := newHarness(t)
+		h.stream("s1")
+		require.NoError(t, h.st.B.Release(h.ctx, late, true), "a release of an unheld operation is success")
+		requireMemRow(t, h, "t-work", "s1", true)
+		requireMemRow(t, h, "t-merge", "s1", true)
+	})
+}
+
+// requireMemRow says a row is on or off a Mem table, read without a fenced
+// store read that would finish a pending operation.
+func requireMemRow(t *testing.T, h *harness, table, row string, want bool) {
+	t.Helper()
+	h.m.mu.Lock()
+	defer h.m.mu.Unlock()
+	tb, err := h.m.table(table)
+	require.NoError(t, err)
+	has := false
+	for _, r := range tb.at(h.m.active(tb)).rows {
+		if r == row {
+			has = true
+			break
+		}
+	}
+	require.Equal(t, want, has, "%s row %s", table, row)
+}
+
 // Row deletes are ordinary plan data; Run must not need constructor side
 // effects or a synthetic close-timer write to notice this operation.
 func TestRowOnlyPlanRunsWithoutTimerOrBackendCarrier(t *testing.T) {
