@@ -95,6 +95,23 @@ func (f *failAfterCommit) Shapes(ctx context.Context, tables []string) ([]ntable
 	return f.Backend.Shapes(ctx, tables)
 }
 
+// failApply is a backend that does not answer the apply of one operation id:
+// a pending operation whose manifest the store does not confirm cannot
+// finish (R26).
+type failApply struct {
+	Backend
+	op string
+}
+
+func (f failApply) Unwrap() Backend { return f.Backend }
+
+func (f failApply) Apply(ctx context.Context, m ntable.BatchManifest) (ntable.Receipt, error) {
+	if m.OperationID == f.op {
+		return ntable.Receipt{}, ErrUnknown
+	}
+	return f.Backend.Apply(ctx, m)
+}
+
 // epochMover moves the sprint's epoch hash while a watch holds it: the watch's
 // transaction is refused, as it is when a clear advances the epoch (R33).
 type epochMover struct {
@@ -168,18 +185,32 @@ func TestRefusalsLateOnRedis(t *testing.T) {
 	t.Run("R26_pending_past_the_grace", func(t *testing.T) {
 		t.Parallel()
 		h, _ := liveHarness(t)
-		// a cut operation: its first manifest names a table that is not there,
-		// so it can never finish
+		h.setup(1)
+		s := h.snap()
+		ctl := s.Merge.Card(sprint.CtlID("s1"))
+		p1 := s.Work.Card("s1-1")
+		guard := func(c *sprint.Card) *ntable.MemberExpect {
+			return &ntable.MemberExpect{Revision: fmt.Sprint(c.Rev), Place: &ntable.PlaceExpect{Row: c.Row, Col: c.Col}}
+		}
+		// A cut operation: its first manifest applies, and its second is never
+		// confirmed, so it stays open past its grace.
 		op := OpRecord{ID: "deal-cut", Verb: "deal", At: h.now.Add(-2 * time.Minute),
-			Manifests: []ntable.BatchManifest{{Schema: 1, Table: h.st.Names.Table("gone"), Epoch: "0",
-				ExpectedTableRevision: "0", OperationID: "deal-cut-1", Actor: h.st.Actor,
-				Members: []ntable.BatchMemberEntry{}}}}
+			Manifests: []ntable.BatchManifest{
+				{Schema: 1, Table: h.st.Names.Table(sprint.Merge), Epoch: "0",
+					ExpectedTableRevision: fmt.Sprint(s.Merge.Revision), OperationID: "deal-cut-1", Actor: h.st.Actor,
+					Members: []ntable.BatchMemberEntry{{ID: ctl.ID, Expect: guard(ctl), Set: map[string]string{"probe": "1"}}}},
+				{Schema: 1, Table: h.st.Names.Table(sprint.Work), Epoch: "0",
+					ExpectedTableRevision: fmt.Sprint(s.Work.Revision), OperationID: "deal-cut-2", Actor: h.st.Actor,
+					Members: []ntable.BatchMemberEntry{{ID: p1.ID, Expect: guard(p1), Set: map[string]string{"probe": "1"}}}},
+			}}
 		f, err := h.st.B.ReadFence(h.ctx)
 		require.NoError(t, err, "R26 read fence: %v", err)
 		ok, err := h.st.B.Acquire(h.ctx, f.Gen, op)
 		require.NoError(t, err, "R26 acquire: %v", err)
 		require.True(t, ok, "R26 acquire: the operation is not in the fence")
-		_, err = h.st.Run(h.ctx, FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m9"}))
+		st := *h.st
+		st.B = failApply{Backend: h.st.B, op: "deal-cut-2"}
+		_, err = st.Run(h.ctx, FleetStep(sprint.FleetReq{Op: "up", Probe: sprint.EnvProbePassed, Member: "m9"}))
 		var pe *PendingError
 		require.ErrorAs(t, err, &pe, "R26: %v", err)
 		require.Equal(t, "deal-cut", pe.Op, "R26: %v", err)
