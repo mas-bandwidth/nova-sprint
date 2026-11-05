@@ -162,13 +162,14 @@ hiding in `addRows` (1229-1240), the tick deal's read-card `MEMBEREXISTS` drop i
 (1887-1958), and `sprint.Lawful` re-judging inside repair (`rejudge`, 2423). `Store` itself
 carries 34 field declarations, among them tick and friend callbacks (engine.go:63-150).
 
-**Store logic living above the store:** `cmd/nova-sprint/verbs.go:4351-4371` (stream remove)
-plans on an unfenced `Load` and calls `st.B.RowsDel` on two tables outside any operation: no
-fence, no generation check, not atomic across the two tables. `verbs.go:1338` calls
+**Store logic living above the store:** `cmd/nova-sprint/verbs.go:1338` calls
 `st.B.RowsAdd` directly; `reads.go:2586` `st.B.SetCursor`. 19 CLI files reach through `st.B`
 (mostly reads: `Coordinator` 21, `Shapes` 6, `OpenNotes` 6). The id/epoch encoding the store
 relies on (`StoredID`, `OpFamily`, `IDEpoch`) and the queue (`QueueOf`, `Drain`, `WithQueue`)
 live in `internal/sprint` (schema.go:190-205, queue.go:44-284).
+Stream remove is no longer one of them: it is one store step (`store.StreamRemoveStep`,
+`sprint.StreamRemove`), and its rows of the two tables go in the step's one operation, inside
+the fence.
 
 **Dead: no caller outside tests (8):** `Store.SeatAndServer` seat.go:239 (no caller at all, a
 comment only at cmd/nova-sprint/reads.go:1375), `Store.RestorePending` clear.go:371,
