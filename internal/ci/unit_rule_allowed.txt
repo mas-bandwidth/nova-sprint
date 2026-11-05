@@ -34,7 +34,6 @@ cmd/nova-sprint/tick_gate_test.go
 cmd/nova-sprint/where_cost_perf_test.go
 internal/sprint/store/machine_twoloops_test.go
 internal/sprint/store/tick_ask_test.go
-internal/sprint/store/waitlog_test.go
 pkg/ratebudget/ratebudget_test.go
 pkg/ratebudget/twin_test.go
 pkg/swarm/stage_test.go
