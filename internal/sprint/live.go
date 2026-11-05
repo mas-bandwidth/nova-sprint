@@ -192,12 +192,17 @@ func (r rowLive) names(c *Card) (LiveEntry, bool) {
 }
 
 // RowBeat is the beat that is a fleet row's evidence: a member's its beat; a friend row's is
-// her own beat record (kept by her name, Store.fleetBeats), which carries no live set (a
-// friend's beat never did after 2026-11-05: she runs her own loop), so her working cell is
-// her working cards, counted as a member's without a live set is (LiveCountKeys).
+// her own beat record (kept by her name, Store.fleetBeats) with any live set cut. A friend
+// runs her own loop and has no live set (from 2026-11-05), but a beat record written
+// before then may still carry one, and it has no TTL: read as it is, an old set would
+// count her cards stale and her working 0 (and the tick would return them) until her next
+// beat overwrote it. So her working cell is her working cards, counted as a member's
+// without a live set is (LiveCountKeys).
 func RowBeat(beats map[string]Beat, row string) Beat {
 	if f, ok := FriendOfRow(row); ok {
-		return beats[f]
+		b := beats[f]
+		b.Live, b.LiveKnown, b.LiveSince, b.LiveSeen = nil, false, time.Time{}, nil
+		return b
 	}
 	return beats[row]
 }
