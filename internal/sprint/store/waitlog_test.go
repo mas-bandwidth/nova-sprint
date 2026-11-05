@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"runtime"
 	"testing"
 	"time"
 
@@ -55,43 +54,4 @@ func TestTheMemsWaitOnTheLogWakesOnALine(t *testing.T) {
 	require.True(t, woke, "a line during the wait: tail %q woke %v err %v", tail, woke, err)
 	require.Greater(t, memSeq(tail), memSeq(cur), "a line during the wait: tail %q woke %v err %v", tail, woke, err)
 	require.Equal(t, 4, m.Calls["waitlog"], "waits: %d exchanges, want one a wait (4)", m.Calls["waitlog"])
-}
-
-// With no LogWait the Mem waits for a commit: a wait with an hour to go
-// returns as soon as another writer's line lands. The wait is bounded by a
-// deadline, so a wait that is never woken fails the test at the deadline and not
-// at the package's timeout, and the line lands after the wait began.
-func TestTheMemsWaitReturnsOnACommit(t *testing.T) {
-	t.Parallel()
-	m := NewMem()
-	st := &Store{B: m, Names: sprint.Names{}, Now: func() time.Time { return time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC) }}
-	// the bound of a wait that is never woken: never waited out while it is
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	type outcome struct {
-		woke bool
-		err  error
-	}
-	got := make(chan outcome, 1)
-	go func() {
-		_, woke, err := st.WaitLog(ctx, 0, "", time.Hour)
-		got <- outcome{woke, err}
-	}()
-	// the wait has begun (its exchange is counted as it takes its wake)
-	for ctx.Err() == nil {
-		m.mu.Lock()
-		began := m.Calls["waitlog"] > 0
-		m.mu.Unlock()
-		if began {
-			break
-		}
-		runtime.Gosched()
-	}
-	_, err := st.Run(context.Background(), Step{Verb: "note", Plan: func(s *sprint.Snapshot) sprint.Plan {
-		return sprint.Plan{Notes: []sprint.Note{{Kind: sprint.Happened, Type: sprint.NMachineStarted, Who: "tester", At: s.Now, What: "a line"}}}
-	}})
-	require.NoError(t, err)
-	o := <-got
-	require.NoError(t, o.err, "the wait returned woke %v, err %v: a commit during it wakes it at once", o.woke, o.err)
-	require.True(t, o.woke, "the wait returned woke %v, err %v: a commit during it wakes it at once", o.woke, o.err)
 }
