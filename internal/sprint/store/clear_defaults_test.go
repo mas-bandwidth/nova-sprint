@@ -27,7 +27,8 @@ var awayFromDefault = sprint.SetReq{Who: "tester",
 
 var awayProps = map[string]string{sprint.PropReadyMax: "9m", sprint.PropLowBalanceUsd: "50", sprint.PropFriendFinish: "9m",
 	sprint.PropPeggedBound: "9m", sprint.PropFriendStartMax: "9m", sprint.PropIdentical: "5",
-	sprint.PropSprintBase: "sprint/v9", sprint.PropTwinBriefs: "/srv/twins", sprint.PropReadRoutes: "pro-x"}
+	sprint.PropSprintBase: "sprint/v9", sprint.PropTwinBriefs: "/srv/twins", sprint.PropReadRoutes: "pro-x",
+	sprint.PropFlapLimit: "9", sprint.PropFlapWindow: "9m"}
 
 // writeProps writes props on the work table at the harness's epoch, as a set would.
 func writeProps(h *harness, st *Store, props map[string]string, op string) {

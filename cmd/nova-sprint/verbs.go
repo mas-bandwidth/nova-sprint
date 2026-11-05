@@ -413,6 +413,7 @@ one answer to each judgment (every one prints its own, filled in):
   blocked on a dropped card   drop --group <id> --expect <n> --reason '<why>' --answers <notes>
   blocked on a missing card   drop <ids> --reason '<why>' or ack <notes> --reason '<why the named missing needs can be waived>'
   reads exhausted             ask --group <id> --expect <n> --another --answers <notes>
+  a card flapped: blocked     card <primary> (its flaps by kind and the last), mend the cause, then unblock <primary> --reason '<what was fixed>' (to waiting), or brief it again, or drop it
   repair skipped changes      card <primary>, then rework, return or drop --group <id> --expect <n> --answers <notes>
   an operation was stuck      check, then ack <note> --reason '<what you found>'
   a repeat: stop and look     card <primary>

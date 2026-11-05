@@ -29,7 +29,9 @@ const minSamplesWithMoves = 10
 // (a card moves only onto a free lane; tla/Level.tla NeverOffAFreeLane (lands with #127)), so
 // it moves nothing on the walks. Each step is still compared on every sample
 // it is run on.
-var noFloor = map[string]bool{refmodel.DutyLevelReads: true, refmodel.DutyLevel: true}
+// The block moves a primary only past more than five flaps in thirty minutes (sprint.TickBlock),
+// which the walks never reach; internal/sprint/blocked_test.go holds it.
+var noFloor = map[string]bool{refmodel.DutyLevelReads: true, refmodel.DutyLevel: true, refmodel.DutyBlock: true}
 
 // floorOf is the fewest samples with moves the step must have.
 func floorOf(step string) int {

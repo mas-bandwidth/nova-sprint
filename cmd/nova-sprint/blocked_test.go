@@ -56,13 +56,13 @@ func TestACardEndingOnTheEnvironmentIsBlockedThenDealtAgainAfterUnblock(t *testi
 		require.NotEqual(t, sprint.Blocked, col, "at the limit after %d: %s", i+1, out)
 	}
 	out := envExit()
-	assert.Contains(t, out, "s1-1 ready -> blocked (2 flaps in 1h0m0s: no-verdict=2)")
+	assert.Contains(t, out, "s1-1 working -> blocked (2 flaps in 1h0m0s: no-verdict=2)")
 	col, work := card()
 	require.Equal(t, sprint.Blocked, col)
 	assert.Empty(t, work)
 
 	blocked := ta.ok("blocked")
-	assert.Contains(t, blocked, "BLOCKED s1-1 stream=s1 from=ready flaps=2 no-verdict=2")
+	assert.Contains(t, blocked, "BLOCKED s1-1 stream=s1 from=working flaps=2 no-verdict=2")
 	assert.Contains(t, blocked, "BLOCKED OK cards=1")
 	ta.step(time.Hour)
 	ta.ok("tick")

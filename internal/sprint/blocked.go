@@ -2,6 +2,7 @@ package sprint
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"strconv"
@@ -205,13 +206,20 @@ func recordFlaps(s *Snapshot, p Plan) Plan {
 			}
 			to := c.Col
 			if e.Move != nil {
+				if e.Move.Row != c.Row {
+					continue // dealt to another member: no flap of this card
+				}
 				to = e.Move.Col
 			}
 			if e.Remove {
 				to = "retired"
 			}
 			out := c.Col == Ready || c.Col == Working || c.Col == Asked || c.Col == Reading
-			back := to == "retired" || to == Withdrawn || to == Redealt || c.Col == Working && to == Ready || e.Set[FieldReturned] != ""
+			// a withdrawal is the card's flap when its take ended (FieldTakeEnded) or ended on
+			// the environment; one for the member down, a held stream or a resting route with
+			// the card untaken is the fleet's, never the card's; a provider failure is the provider's (its redeal bound counts it)
+			withdrawn := to == Withdrawn && (e.Set[FieldTakeEnded] != "" || e.Set[FieldEnvExitHistory] != "") && !providerEnded(e.Set)
+			back := to == "retired" || withdrawn || to == Redealt || c.Col == Working && to == Ready || e.Set[FieldReturned] != ""
 			if !out || !back || field("verdict") != "" || field("result") != "" || slices.Contains(flapExcluded, field("retired_by")) {
 				continue
 			}
@@ -230,6 +238,19 @@ func recordFlaps(s *Snapshot, p Plan) Plan {
 			}
 		}
 	}
+	// a plan that answers a primary's bound (NBound) clears its flaps: the bound was the
+	// coordinator's look the block would ask for, and the attempt cap bounds what follows
+	reset := map[string]bool{}
+	for i, u := range p.Units {
+		for _, o := range append(slices.Clone(u.Closes), p.Closes...) {
+			if pr := s.Work.Placed(o.Subject()); o.Note.Type == NBound && pr != nil && !gone[pr.ID] && (pr.F(FieldFlaps) != "" || add[pr.ID] != nil) {
+				reset[pr.ID], add[pr.ID] = true, []string{}
+				if _, ok := last[pr.ID]; !ok {
+					last[pr.ID] = i
+				}
+			}
+		}
+	}
 	for primary, lines := range add {
 		pr := s.Work.Placed(primary)
 		if pr == nil {
@@ -243,12 +264,25 @@ func recordFlaps(s *Snapshot, p Plan) Plan {
 				}
 			}
 		}
+		if ui < 0 && reset[primary] && pr.F(FieldFlaps) == "" {
+			continue
+		}
 		if ui < 0 {
 			ui = last[primary]
 			p.Units[ui].Changes = append(p.Units[ui].Changes, change(Work, setEntry(pr, nil)))
 			ci = len(p.Units[ui].Changes) - 1
 		}
 		ch := &p.Units[ui].Changes[ci]
+		if reset[primary] {
+			if _, had := ch.Entry.Set[FieldFlaps]; had {
+				ch.Entry.Set = maps.Clone(ch.Entry.Set)
+				delete(ch.Entry.Set, FieldFlaps)
+			}
+			if pr.F(FieldFlaps) != "" && !slices.Contains(ch.Entry.Unset, FieldFlaps) {
+				ch.Entry.Unset = append(slices.Clone(ch.Entry.Unset), FieldFlaps)
+			}
+			continue
+		}
 		all := append(strings.Split(pr.F(FieldFlaps), "\n"), strings.Split(ch.Entry.Set[FieldFlaps], "\n")...)
 		value := strings.Join(pruneFlaps(append(all, lines...), now, window), "\n")
 		set := make(map[string]string, len(ch.Entry.Set)+1)
@@ -264,8 +298,9 @@ func recordFlaps(s *Snapshot, p Plan) Plan {
 	return p
 }
 
-// PartBlock is the work pump's block part, after the drain and before the resolve
-// and the deal: a flapping card is dealt nothing more in the tick it is caught.
+// PartBlock is the work pump's block part, its last: after the deal and the accept, so a
+// bound those raise in the tick is open first (awaitsCoordinator), and the block withdraws
+// what the deal placed for a card it catches.
 const PartBlock = "block"
 
 // WithFlapSettings adds set --flap-limit and --flap-window to a set step's plan, as
@@ -321,7 +356,7 @@ func TickBlock(s *Snapshot, r TickReq) (Plan, int) {
 	p.blocking = true
 	limit, window := s.FlapLimit(), s.FlapWindow()
 	for _, c := range s.Work.Column(Ready, Working, Review) {
-		if IsSentinel(c) || IsHeld(c) {
+		if IsSentinel(c) || IsHeld(c) || awaitsCoordinator(s, c.ID) {
 			continue
 		}
 		if f := FlapsOf(c, s.Now, window); f.Total > limit {
@@ -329,6 +364,28 @@ func TickBlock(s *Snapshot, r TickReq) (Plan, int) {
 		}
 	}
 	return Lawful(p), 0
+}
+
+// providerEnded is whether a withdrawal's fields record a provider's failure or refusal
+// (provider_take_<n>, rate_take_<n>, provider_error).
+func providerEnded(set map[string]string) bool {
+	for k := range set {
+		if k == FieldProviderError || strings.HasPrefix(k, FieldProviderTake) || strings.HasPrefix(k, FieldRateTake) {
+			return true
+		}
+	}
+	return false
+}
+
+// awaitsCoordinator is whether a judgment that holds the card (WaitRefused) is open on the
+// primary: a bound already reached is the coordinator's, and the block adds nothing to it.
+func awaitsCoordinator(s *Snapshot, id string) bool {
+	for _, o := range s.Open {
+		if _, holds := WaitRefused[o.Note.Type]; holds && o.Note.Kind == Judgment && o.Subject() == id {
+			return true
+		}
+	}
+	return false
 }
 
 // blockUnit blocks one primary: its work card withdrawn on its row (its attempt kept,
