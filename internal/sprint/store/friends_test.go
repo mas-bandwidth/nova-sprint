@@ -208,3 +208,31 @@ func TestAFriendRowHookedAsCoordinatorIsDealtAWorkCardAndAnUnhookedOneIsNot(t *t
 		})
 	}
 }
+
+// A roster entry stored before 2026-11-05 may still carry the one-shot fields (mode,
+// config_dir, session, token_cap, token_cap_set). They need no migration: the roster is
+// read by json.Unmarshal into friendEntry, which has none of them, so the row reads as it
+// would without them, and the next write of the roster (friend sync, friend up or down,
+// hold) is the struct marshalled, so they are gone from the record from then on.
+func TestAStoredRosterWithTheOneShotFieldsReadsAndDropsThem(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t)
+	kv, err := h.st.rootKV()
+	require.NoError(t, err)
+	old := `{"amy":{"width":2,"mode":"one-shot","config_dir":"/x","session":"one-shot","token_cap":500,"token_cap_set":true,"pronouns":"she/her"}}`
+	require.NoError(t, kv.SetKey(h.ctx, keyFriends, old))
+	rows, err := h.st.FriendRows(h.ctx, h.now)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "amy", rows[0].Name)
+	assert.Equal(t, 2, rows[0].Width)
+	assert.Equal(t, "she/her", rows[0].Pronouns)
+	require.NoError(t, h.st.SetFriendHeld(h.ctx, "amy", true, "c", "", time.Time{}, 0))
+	raw, ok, err := kv.GetKey(h.ctx, keyFriends)
+	require.NoError(t, err)
+	require.True(t, ok)
+	for _, gone := range []string{"mode", "config_dir", "session", "token_cap"} {
+		assert.NotContains(t, raw, `"`+gone, "the next write drops %s", gone)
+	}
+	assert.Contains(t, raw, `"pronouns":"she/her"`)
+}

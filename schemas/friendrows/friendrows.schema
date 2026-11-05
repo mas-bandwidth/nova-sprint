@@ -48,21 +48,11 @@ table FriendEntry
     // her tiers, sorted and comma joined. json "class": class is a reserved
     // word.
     tier_class *string | json = "class"
-    // "batch" or "one-shot"; empty is batch. SyncFriends stores it unchecked.
-    mode *string
     // comma-separated globs.
     streams *string
     kinds *string
-    // an absolute path when set.
-    config_dir *string
     // the row's pronouns, stored unchecked by SyncFriends.
     pronouns *string
-    // "one-shot" or empty for a live session, stored unchecked.
-    session *string
-    // FriendTokenCap: a negative text is not a cap; an explicit 0 is no cap.
-    // The roster states no floor and no ceiling.
-    token_cap int64
-    token_cap_set bool
     // comma joined.
     roles *string
     // metered, plan, both or subscription; empty means subscription. Stored
