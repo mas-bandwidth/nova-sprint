@@ -296,15 +296,15 @@ type OpRecord struct {
 	// RowDels are the rows the operation takes off the tables: they are
 	// deleted with the manifests, in one exchange, so the rows of two
 	// tables go together or not at all.
-	RowDels []sprint.RowDel `json:"row_dels,omitempty"`
-	Notes     []sprint.Note          `json:"notes,omitempty"`   // happened and judgment, ids assigned
-	Decided   []sprint.Note          `json:"decided,omitempty"` // answers to open judgments
-	Log       []sprint.Line          `json:"log,omitempty"`     // the log's move lines of the step's changes
-	Updates   []sprint.Note          `json:"updates,omitempty"` // open judgments rewritten in place
-	Closes    []string               `json:"closes,omitempty"`  // open keys the step closes
-	Streams   []string               `json:"streams,omitempty"` // streams whose progress it is
-	CallerOp  string                 `json:"caller_op,omitempty"`
-	Result    string                 `json:"result,omitempty"` // the result, recorded under CallerOp
+	RowDels  []sprint.RowDel `json:"row_dels,omitempty"`
+	Notes    []sprint.Note   `json:"notes,omitempty"`   // happened and judgment, ids assigned
+	Decided  []sprint.Note   `json:"decided,omitempty"` // answers to open judgments
+	Log      []sprint.Line   `json:"log,omitempty"`     // the log's move lines of the step's changes
+	Updates  []sprint.Note   `json:"updates,omitempty"` // open judgments rewritten in place
+	Closes   []string        `json:"closes,omitempty"`  // open keys the step closes
+	Streams  []string        `json:"streams,omitempty"` // streams whose progress it is
+	CallerOp string          `json:"caller_op,omitempty"`
+	Result   string          `json:"result,omitempty"` // the result, recorded under CallerOp
 	// Stuck is the stuck operation this one reports (its judgment is among
 	// Notes): its commit deletes the stuck record.
 	Stuck string `json:"stuck,omitempty"`
