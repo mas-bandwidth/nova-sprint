@@ -1141,6 +1141,15 @@ func TickDeal(s *Snapshot, r TickReq) (Plan, int) {
 		p.Rows = append(p.Rows, rt.Rows...)
 		p.Units = append(p.Units, rt.Units...)
 		p.Props = append(p.Props, rt.Props...)
+		// a friend down past the grace frees the cards she took and never started, so the
+		// deal gives them to someone up (friendDownReturn; tla/FriendUnhookGrace.tla DownReturn)
+		busy := maps.Clone(returned)
+		for _, u := range fp.Units {
+			busy[u.Key] = true
+		}
+		dr, down := friendDownReturn(s, seats, func(at string) (time.Duration, bool) { return r.running(s.Now, at) }, busy)
+		p.Units = append(p.Units, dr.Units...)
+		maps.Copy(returned, down)
 		// the friends level after the deal, every tick and on the tick a friend comes up, so
 		// an idle lane is filled and a backlog evens itself without the coordinator, at most
 		// FriendLevelPerTick cards a tick (docs/SPEC-SPRINT.md section 1,
