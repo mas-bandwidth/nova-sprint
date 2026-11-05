@@ -299,6 +299,30 @@ func readMixNeed(s *Snapshot, pr *Card, mix ReadMix) int {
 	return max(floor, min(mix.Total(), readMixPool(s, pr)))
 }
 
+// mergingMixNeed is readMixNeed for a merging card, ok false for any other card or one with
+// no count recorded: the pool's bound is the count its accept recorded (FieldReadsNeeded,
+// which the accept always writes), never the pool recounted. readMixPool reads friend seats,
+// reader states and routes, which the lander's load does not carry, and it moves between
+// ticks as reads are dealt and taken back, so recounted past the accept it gave the tick's
+// ShortReadsBack and the lander's readsWhy another count than the accept's: on 2026-11-05 a
+// card accepted on two reads was sent back "from 2 of the 3 ok reads it needs" and accepted
+// again, every tick. The mix's total lowered, or the tier's rule raised (a pinned tier),
+// still moves it (the floor and the total bound it as at the accept): a merging card enters
+// and stays in merging only on the count the land condition checks (tla/ReadMix.tla
+// MergingHasLandReads; docs/SPEC-SPRINT.md section 6, the read mix: "a reader going down or
+// coming back never moves the count").
+func mergingMixNeed(pr *Card, mix ReadMix) (int, bool) {
+	if pr.Col != Merging {
+		return 0, false
+	}
+	rec, err := strconv.Atoi(pr.F(FieldReadsNeeded))
+	if err != nil || rec < 0 {
+		return 0, false
+	}
+	floor := min(ReadsNeeded(pr), mix.Total())
+	return max(floor, min(mix.Total(), rec)), true
+}
+
 // readMixPool is how many different readers the sprint has for the primary at its attempt,
 // up or not, so the count never moves with a reader going down or quiet and a card accepted
 // is never sent back for a reader who came back (ShortReadsBack): every friend seat whose

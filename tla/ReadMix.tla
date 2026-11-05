@@ -25,6 +25,16 @@
 \*                sprint with fewer readers holds every card: NeverStuckOnPool
 \*   "uppool"     the pool counts the readers up (the first cut of the code), so a reader
 \*                coming back raises the need of a card already accepted: NeedNeverRises
+\*   "landpool"   a merging card's need is the pool recounted on the lander's snapshot, which
+\*                carries no reader states and so counts the Held readers too, instead of the
+\*                count its accept recorded (rec): a card accepted on two reads is refused for
+\*                a third, and the tick sends it back and accepts it again, every tick (the
+\*                flap of 2026-11-05): MergingHasLandReads
+\*
+\* Held is the readers the accept's snapshot knows cannot read the card (a reader row held or
+\* retired, a friend held): never dealt it, and out of the pool. rec is the count the accept
+\* recorded (FieldReadsNeeded); a merging card is held to it (internal/sprint/read_mix.go
+\* mergingMixNeed), bounded by Floor and the total as at the accept.
 \*
 \* The need is bounded by the pool (internal/sprint/read_mix.go readMixNeed, readMixPool):
 \* the readers the sprint has for it, up or not, not yet spent at the attempt, and the readers
@@ -35,16 +45,16 @@
 
 EXTENDS Naturals, FiniteSets
 
-CONSTANTS Friends, Fleet, Models, NF, NM, Floor, Broken
+CONSTANTS Friends, Fleet, Models, NF, NM, Floor, Held, Broken
 
-ASSUME NF + NM \in 1..5 /\ Floor \in 1..(NF + NM)
+ASSUME NF + NM \in 1..5 /\ Floor \in 1..(NF + NM) /\ Held \subseteq Friends \cup Fleet
 
 Readers == Friends \cup Fleet
 Need == NF + NM
 
-VARIABLES st, model, up, served, accepted, skip, waste
+VARIABLES st, model, up, served, accepted, skip, waste, rec
 
-vars == <<st, model, up, served, accepted, skip, waste>>
+vars == <<st, model, up, served, accepted, skip, waste, rec>>
 
 Standing(S) == {r \in S : st[r] \in {"open", "ok"}}
 FWant == IF NF > Cardinality(Standing(Friends)) THEN NF - Cardinality(Standing(Friends)) ELSE 0
@@ -54,13 +64,18 @@ Broke == \E r \in Readers : st[r] = "broken"
 \* a reader may be dealt the read: up and never dealt it (open, ok, broken and no verdict all
 \* spend it at the attempt)
 \* (a fleet reader only while some route of the tier serves: readRefusal's ReadRoutesRest)
-Eligible(S) == {r \in S : r \in up /\ st[r] = "none" /\ (r \in Fleet => served # {})}
+Eligible(S) == {r \in S : r \in up /\ r \notin Held /\ st[r] = "none" /\ (r \in Fleet => served # {})}
 
 Pool == IF Broken = "uppool"
           THEN Cardinality(Eligible(Readers) \cup Standing(Readers))
-          ELSE Cardinality({r \in Readers : st[r] = "none"} \cup Standing(Readers))
-EffNeed == IF Broken = "nopool" THEN Need
-           ELSE IF Pool >= Need THEN Need ELSE IF Pool >= Floor THEN Pool ELSE Floor
+          ELSE Cardinality({r \in Readers \ Held : st[r] = "none"} \cup Standing(Readers))
+\* the need a pool of p readers gives: the total, bounded by p, never below Floor
+NeedOf(p) == IF p >= Need THEN Need ELSE IF p >= Floor THEN p ELSE Floor
+EffNeed == IF Broken = "nopool" THEN Need ELSE NeedOf(Pool)
+\* the lander's snapshot: no reader states, so the Held readers count in its pool
+LandPool == Cardinality({r \in Readers : st[r] = "none"} \cup Standing(Readers))
+\* the need the land condition checks on a merging card: the count its accept recorded
+LandNeed == IF Broken = "landpool" THEN NeedOf(LandPool) ELSE NeedOf(rec)
 Want == IF Broke \/ accepted THEN 0
         ELSE IF EffNeed > Cardinality(Standing(Readers)) THEN EffNeed - Cardinality(Standing(Readers)) ELSE 0
 
@@ -89,6 +104,7 @@ Init ==
     /\ accepted = FALSE
     /\ skip = FALSE
     /\ waste = FALSE
+    /\ rec = 0
 
 DealFriend(r) ==
     /\ Want > 0
@@ -96,7 +112,7 @@ DealFriend(r) ==
     /\ ClassOK(r)
     /\ st' = [st EXCEPT ![r] = "open"]
     /\ skip' = (skip \/ (FWant = 0 /\ ((MWant > 0 /\ Eligible(Fleet) # {}))))
-    /\ UNCHANGED <<model, up, served, accepted, waste>>
+    /\ UNCHANGED <<model, up, served, accepted, waste, rec>>
 
 DealFleet(r, m) ==
     /\ Want > 0
@@ -107,14 +123,14 @@ DealFleet(r, m) ==
     /\ model' = [model EXCEPT ![r] = m]
     /\ skip' = (skip \/ (FWant > 0 /\ Eligible(Friends) # {}))
     /\ waste' = (waste \/ (m \in TrueUsed /\ served \ TrueUsed # {}))
-    /\ UNCHANGED <<up, served, accepted>>
+    /\ UNCHANGED <<up, served, accepted, rec>>
 
 Deal == (\E r \in Friends : DealFriend(r)) \/ (\E r \in Fleet, m \in Models : DealFleet(r, m))
 
 Finish(r, v) ==
     /\ st[r] = "open"
     /\ st' = [st EXCEPT ![r] = v]
-    /\ UNCHANGED <<model, up, served, accepted, skip, waste>>
+    /\ UNCHANGED <<model, up, served, accepted, skip, waste, rec>>
 
 OkCount == Cardinality({r \in Readers : st[r] = "ok"})
 
@@ -124,15 +140,16 @@ Accept ==
          THEN Cardinality(Standing(Readers)) >= Need
          ELSE OkCount >= EffNeed /\ ~Broke /\ \A r \in Readers : st[r] # "open"
     /\ accepted' = TRUE
+    /\ rec' = EffNeed
     /\ UNCHANGED <<st, model, up, served, skip, waste>>
 
 Toggle(r) ==
     /\ up' = IF r \in up THEN up \ {r} ELSE up \cup {r}
-    /\ UNCHANGED <<st, model, served, accepted, skip, waste>>
+    /\ UNCHANGED <<st, model, served, accepted, skip, waste, rec>>
 
 Serve(m) ==
     /\ served' = IF m \in served THEN served \ {m} ELSE served \cup {m}
-    /\ UNCHANGED <<st, model, up, accepted, skip, waste>>
+    /\ UNCHANGED <<st, model, up, accepted, skip, waste, rec>>
 
 Next ==
     \/ Deal
@@ -148,6 +165,7 @@ TypeOK ==
     /\ model \in [Fleet -> Models \cup {"none"}]
     /\ up \subseteq Readers /\ served \subseteq Models
     /\ accepted \in BOOLEAN /\ skip \in BOOLEAN /\ waste \in BOOLEAN
+    /\ rec \in 0..5
 
 \* A card is accepted only on every read dealt ok, at least Floor of them, and no broken one
 \* (a broken read holds it).
@@ -171,11 +189,16 @@ DistinctModelWhenServed == ~waste
 \* broken, it is accepted.
 NeverStuckOnPool ==
     (~accepted /\ ~Broke /\ OkCount >= Floor
-       /\ \A r \in Readers : st[r] \notin {"none", "open"}) => ENABLED Accept
+       /\ \A r \in Readers \ Held : st[r] \notin {"none", "open"}) => ENABLED Accept
 
 \* The need never rises within the attempt (a reader coming back up never raises it), so a
 \* card accepted is never sent back for a read it lacked at its accept.
 NeedNeverRises == [][EffNeed' <= EffNeed]_vars
+
+\* A merging card has the reads the land condition requires: the accept and the lander count
+\* one number (the count the accept recorded), so no card enters merging to be refused there
+\* and sent back to review (internal/sprint/read_mix.go mergingMixNeed).
+MergingHasLandReads == accepted => OkCount >= LandNeed
 
 FillNeverWaits ==
     (Want > 0 /\ Eligible(Readers) # {}) => ENABLED Deal

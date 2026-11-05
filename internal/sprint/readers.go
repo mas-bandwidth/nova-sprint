@@ -284,7 +284,8 @@ const FieldReadsNeeded = "reads_needed"
 // card is held to the same count as a card in review: one short of it (the setting raised,
 // or its tier's rule raised by a pinned tier, after its accept) is not landed (the lander's
 // readsWhy) and goes back to review for the read it lacks (ShortReadsBack;
-// tla/Land.tla NoLandWithoutReads). Before v1.2.6 a merging card was held to the accept's
+// tla/Land.tla NoLandWithoutReads), except that under the read mix the pool's bound is the
+// one its accept recorded (mergingMixNeed). Before v1.2.6 a merging card was held to the accept's
 // FieldReadsNeeded, which the accept wrote only when it differed from the tier's rule, so a
 // card accepted on one read under the tier's rule of a flash card was held to two once its
 // tier was pinned pro, and landed on one. A landed card is never judged again: it is held
@@ -299,6 +300,9 @@ func ReadsNeededIn(s *Snapshot, pr *Card) int {
 	// the read mix's count stands for the sprint's while it is on with read cards on,
 	// bounded by the readers the card can have (read_mix.go, readMixNeed)
 	if mix, on := s.ReadMixSet(); on && s.ReadCardsOn() {
+		if n, ok := mergingMixNeed(pr, mix); ok {
+			return n
+		}
 		return readMixNeed(s, pr, mix)
 	}
 	if s != nil && s.Work != nil {
