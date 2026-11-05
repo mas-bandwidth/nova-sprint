@@ -264,11 +264,22 @@ R9 (stop_return_test.go:68), R10 (stop_return_test.go:184), R13 (clear_restore_g
 R14 (stop_return_test.go:302, :321), R15 (seat_cover_test.go), R16 (changed_twice_test.go:52),
 R18 (bounds_test.go:42, :72), R22, R23 (repair_test.go, store_test.go), R24
 (bounds_test.go:137), R25 (machine_duties_test.go), R26 (engine_cover_test.go:23, :63),
-R27 (tick_busy_test.go), R31 (clear_concurrent_test.go), R21, R32, R34, R35,
-R36 (refusals_real_b_functional_test.go). No test names: **R4, R11, R12, R17,
-R19, R20, R28, R29, R30, R33, R37** (11 GAPs; found by grepping each
+R27 (tick_busy_test.go), R31 (clear_concurrent_test.go), R21, R25, R26, R27, R28,
+R30, R32, R33, R34, R35, R36, R37 (refusals_real_b_functional_test.go). No test
+names: **R4, R11, R12, R17, R19, R20, R29** (7 GAPs; found by grepping each
 refusal's type or text in `*_test.go`, so a test asserting only `Refused` non-empty is missed).
-On a real store: R3, R6, R22, R23, R21, R32, R34, R35, R36 and the fence refusals of G3.
+On a real store: R3, R6, R22, R23, R21, R25, R26, R27, R28, R30, R31, R32, R33,
+R34, R35, R36, R37 and the fence refusals of G3.
+
+Three refusals of section 3 have no real-store subtest yet, and the reason is
+named here: **R19** (a place still owed after the retry) and **R29** (the error
+form of `refuseWhole`, no unit key to name) are reached only through a plan the
+sprint's own verbs never make (no verb plans a place; a plan that names no card
+is refused whole as an error), so a test of them writes its own plan. **R20**
+(the step's record over `MaxOpRecord`, 256 MiB) is refused by the engine before
+any write (engine.go:898-900), so the store never reaches the backend: the
+refusal is the store's own bound, the same on Mem and on Redis, and a real-store
+test of it would write 256 MiB to no store at all.
 
 House-rule flags (unit tests, no build tag, using real time or sockets):
 - machine_twoloops_test.go:31 sets `Sleep = time.Sleep` and races two goroutine tick loops on
