@@ -25,8 +25,8 @@ import (
 // a card another lane of the row holds is refused, and the lane drops the job and asks
 // again. A lane that has not been heard from within LaneGoneAfter (its take, its progress)
 // is gone, and the tick bounces its card back ready (laneGoneUnits). The model is
-// nova-tools tla/FriendLane.tla (WorkingOnlyOnTheServersSay, OneRequestApart, NoStaleStep,
-// WorkingResolves, AllDone; reversed witnesses MCFriendLaneBroken*.cfg).
+// nova-tools tla/ServerLane.tla (WorkingOnlyOnTheServersSay, OneRequestApart, NoStaleStep,
+// WorkingResolves, AllDone; reversed witnesses MCServerLaneBroken*.cfg).
 
 // FieldLane is the lane of its row that holds a working card ("1", "2", ...); FieldLaneAt is
 // when that lane was last heard from on it (its take, its progress).

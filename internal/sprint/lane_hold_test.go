@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// A friend's lanes are thin clients of the server (lane_hold.go; nova-tools tla/FriendLane.tla).
+// A friend's lanes are thin clients of the server (lane_hold.go; nova-tools tla/ServerLane.tla).
 
 var amyLanes = workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"})
 
