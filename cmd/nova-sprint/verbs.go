@@ -4347,7 +4347,7 @@ func (a *app) cmdStreamRemove(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "stream remove", err.Error())
 	}
 	ctx := context.Background()
-	res, err := st.Run(ctx, store.StreamRemoveStep(names))
+	res, err := st.Run(ctx, store.StreamRemoveStep(st, names))
 	if err != nil {
 		fmt.Fprintf(stderr, "%s stream remove: %s; run it again to finish\n", prog, oneline.Escape(err.Error()))
 		return 1

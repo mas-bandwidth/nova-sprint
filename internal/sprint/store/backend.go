@@ -11,7 +11,9 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -235,6 +237,139 @@ func (e *GuardError) Error() string {
 		return "the operation is no longer the one the fence holds"
 	}
 	return "the epoch's restore is pending"
+}
+
+// rowDelBackend carries a step's row deletes into its operation and takes them
+// off at its commit. A step whose only change is a row delete has no manifests,
+// so the backend holds the plan's rows and the operation records them when it
+// takes the fence (OpRecord.RowDels); a repair, or a release, then deletes
+// them from that record, so the rows of both tables go together or not at all
+// (G13).
+type rowDelBackend struct {
+	Backend
+	names sprint.Names
+	mu    sync.Mutex
+	dels  []sprint.RowDel
+}
+
+func (b *rowDelBackend) hold(dels []sprint.RowDel) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.dels = append([]sprint.RowDel(nil), dels...)
+}
+
+func (b *rowDelBackend) held() []sprint.RowDel {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]sprint.RowDel(nil), b.dels...)
+}
+
+// Acquire records the step's row deletes in the operation before the store
+// takes the fence: the record then holds them for repair, and the release
+// takes them off.
+func (b *rowDelBackend) Acquire(ctx context.Context, gen uint64, op OpRecord) (bool, error) {
+	if op.Verb == "stream remove" && len(op.RowDels) == 0 {
+		op.RowDels = b.held()
+	}
+	ok, err := b.Backend.Acquire(ctx, gen, op)
+	if ok && err == nil {
+		b.hold(nil)
+	}
+	return ok, err
+}
+
+// Release takes the operation's rows off before it commits: the owner check
+// and the delete are one guarded exchange, so a writer whose operation the
+// fence no longer holds writes nothing.
+func (b *rowDelBackend) Release(ctx context.Context, op OpRecord, commit bool) error {
+	if commit {
+		dels := op.RowDels
+		if len(dels) == 0 {
+			if f, err := b.Backend.ReadFence(ctx); err == nil && f.Pending != nil && f.Pending.ID == op.ID {
+				dels = f.Pending.RowDels
+			}
+		}
+		if len(dels) > 0 {
+			if err := b.deleteRows(ctx, op.ID, dels); err != nil {
+				return err
+			}
+		}
+	}
+	return b.Backend.Release(ctx, op, commit)
+}
+
+func (b *rowDelBackend) deleteRows(ctx context.Context, opID string, dels []sprint.RowDel) error {
+	writes := rowDelWrites(b.names, dels)
+	if len(writes) == 0 {
+		return nil
+	}
+	g := verbGuard(b.names.Table(sprint.Fleet))
+	g.Owner = opID
+	var o GuardOutcome
+	var err error
+	if m, ok := b.Backend.(*Mem); ok {
+		o, err = m.guardedRowsOwned(ctx, g, writes)
+	} else {
+		o, err = b.Backend.GuardedRows(ctx, g, writes)
+	}
+	if err != nil {
+		return fmt.Errorf("%w: deleting the rows of %s: %v; run: nova-sprint repair", ErrUnknown, opID, err)
+	}
+	switch o {
+	case GuardApplied:
+		return nil
+	case GuardNotOwner:
+		return fmt.Errorf("%w: deleting the rows of %s: the fence no longer holds the operation; run: nova-sprint repair", ErrUnknown, opID)
+	default:
+		return fmt.Errorf("%w: deleting the rows of %s: the epoch's restore is pending; run: nova-sprint repair", ErrUnknown, opID)
+	}
+}
+
+func rowDelWrites(names sprint.Names, dels []sprint.RowDel) []RowWrite {
+	writes := make([]RowWrite, 0, len(dels))
+	for _, d := range dels {
+		if len(d.Rows) == 0 {
+			continue
+		}
+		writes = append(writes, RowWrite{Op: "del", Table: names.Table(d.Table), Rows: d.Rows})
+	}
+	return writes
+}
+
+// guardedRowsOwned is GuardedRows with the fence's operation as a guard: the
+// restore state and the owner are read and the rows written under the one
+// lock, so a writer whose operation another finished takes nothing off. Mem
+// reads its fence under the same lock as its rows.
+func (m *Mem) guardedRowsOwned(_ context.Context, g RestoreGuard, writes []RowWrite) (GuardOutcome, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.Calls["guarded-rows"]++
+	if err := m.fail("guarded-rows"); err != nil {
+		return GuardApplied, err
+	}
+	if o := m.restoreOutcome(g); o != GuardApplied {
+		return o, nil
+	}
+	if l := m.log(); l.fence == nil || l.fence.ID != g.Owner {
+		return GuardNotOwner, nil
+	}
+	for _, w := range writes {
+		var err error
+		switch w.Op {
+		case "add":
+			err = m.rowsAddLocked(w.Table, w.Rows)
+		case "set":
+			err = m.rowSetLocked(w.Table, w.Rows[0], w.Texts)
+		case "del":
+			err = m.rowsDelLocked(w.Table, w.Rows)
+		default:
+			err = fmt.Errorf("a guarded row write %q is no row verb", w.Op)
+		}
+		if err != nil {
+			return GuardApplied, err
+		}
+	}
+	return GuardApplied, nil
 }
 
 // RowGuard is one row a conditional delete names (RowsDelIf, KeysDelIf) and the

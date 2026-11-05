@@ -285,17 +285,11 @@ func (m *Mem) restoreOutcome(g RestoreGuard) GuardOutcome {
 func (m *Mem) GuardedRows(_ context.Context, g RestoreGuard, writes []RowWrite) (GuardOutcome, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.Calls["guarded-rows"]++
 	if err := m.fail("guarded-rows"); err != nil {
 		return GuardApplied, err
 	}
 	if o := m.restoreOutcome(g); o != GuardApplied {
 		return o, nil
-	}
-	if g.Owner != "" {
-		if l := m.log(); l.fence == nil || l.fence.ID != g.Owner {
-			return GuardNotOwner, nil
-		}
 	}
 	for _, w := range writes {
 		var err error

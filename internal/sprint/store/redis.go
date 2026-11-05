@@ -739,6 +739,20 @@ func (r *Redis) Acquire(ctx context.Context, gen uint64, op OpRecord) (bool, err
 // appended, the judgments opened on every subject, the answered ones closed,
 // the streams' progress, the caller's result, and the fence emptied.
 func (r *Redis) Release(ctx context.Context, op OpRecord, commit bool) error {
+	if commit && len(op.RowDels) > 0 {
+		// The operation's rows go before its commit, in one guarded exchange
+		// that names the operation: a repair or a late remover whose fence is
+		// gone writes nothing.
+		g := verbGuard(r.Names.Table(sprint.Fleet))
+		g.Owner = op.ID
+		o, err := r.GuardedRows(ctx, g, rowDelWrites(r.Names, op.RowDels))
+		if err != nil {
+			return err
+		}
+		if o != GuardApplied {
+			return &GuardError{Outcome: o}
+		}
+	}
 	fence := r.key(keyFence)
 	// The fence holds this operation when its record begins with this
 	// operation's id (json.Marshal writes OpRecord's id first): read that
