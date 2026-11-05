@@ -169,17 +169,13 @@ relies on (`StoredID`, `OpFamily`, `IDEpoch`) and the queue (`QueueOf`, `Drain`,
 live in `internal/sprint` (schema.go:190-205, queue.go:44-284).
 Stream remove is no longer one of them: it is one store step (`store.StreamRemoveStep`,
 `sprint.StreamRemove`), and its rows of the two tables go in the step's one operation, inside
-the fence (`OpRecord.RowDels`, deleted at the operation's release, finished by `Repair` when
-cut). Its row delete names the operation (`RestoreGuard.Owner` in the guarded exchange; the
-fence check `Release` already makes in Mem), so a writer whose operation another finished
-cannot take off a stream that came back after it. Redis treats that guard's
-`GuardNotOwner` as the G5 no-op success (the fence no longer holds the operation,
-so the deletes write nothing), as Mem already did. `tla/StoreFence.tla` now
-carries the operation's row deletes and their owner check: `MCStoreFenceRowDels.cfg`
-holds them with a crash and `Repair`, `MCStoreFenceLateRemove.cfg` adds a stream
-back before a late release, and `MCStoreFenceBrokenRowDelOwner.cfg` /
-`MCStoreFenceBrokenRepairNoDels.cfg` are the reversed witnesses for the guard and
-for a repair that leaves the rows.
+the fence. The plan's row deletes ride the operation (`OpRecord.RowDels`, persisted in the
+fence record) and its release takes them off in one guarded exchange, finished by `Repair`
+when the operation was cut. The delete names the operation (`RestoreGuard.Owner`), and the
+owner check and the deletes are one exchange (Mem's owner-guarded delete under its lock;
+Redis's watched fence read before EXEC), so a writer whose operation another finished cannot
+take off a stream that came back after it. A release whose fence no longer holds the
+operation is the G5 no-op success.
 
 **Dead: no caller outside tests (8):** `Store.SeatAndServer` seat.go:239 (no caller at all, a
 comment only at cmd/nova-sprint/reads.go:1375), `Store.RestorePending` clear.go:371,
