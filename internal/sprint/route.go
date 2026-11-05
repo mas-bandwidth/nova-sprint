@@ -1170,6 +1170,22 @@ func (s *Snapshot) readRouteOf(ri routeIndexes, pr *Card, avoid []string) map[st
 		_, ok := routeByName(served, name)
 		other = other || ok && !contains(skip, name)
 	}
+	if !other && len(avoid) > 0 {
+		// every route left is avoided or resting: the avoided models lapse, never the rests,
+		// while a route that serves remains. Before, the walk lapsed both, drew a resting
+		// route, and the next tick's take-back retired the read by rest (RetiredByRest,
+		// which spends no reader), so the deal asked the read of the next member, every
+		// tick: on 2026-11-05 deterministic-desync-local's third read went round the fleet
+		// on heavy-minimaxm3-direct for 20 minutes, 3123 asks, its other heavy routes'
+		// models used by its first reads.
+		rests := skip[len(avoid):]
+		for _, name := range arr {
+			if _, ok := routeByName(served, name); ok && !contains(rests, name) {
+				skip, other = rests, true
+				break
+			}
+		}
+	}
 	at := ri[tier].r.count
 	lookup := func(name string) (Route, bool) { return routeByName(served, name) }
 	// a route reserved for reads (set --read-routes) is drawn first while one of the tier
