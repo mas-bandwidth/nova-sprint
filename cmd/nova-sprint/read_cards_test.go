@@ -8,16 +8,6 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
-// epochOf is the sprint's epoch, as where says it.
-func epochOf(t *testing.T, ta *testApp) uint64 {
-	t.Helper()
-	var w struct {
-		Epoch uint64 `json:"epoch"`
-	}
-	ta.json("where", &w)
-	return w.Epoch
-}
-
 // TestAReadAskedTheOldWayKeepsItsInboxPath pins the install with live reads (PR 5392's cold
 // read, finding 1): a friend's read asked before read cards (no read_deadline: the friends'
 // read ask's card) is delivered, queued and closed at inbox/<card id> and outbox/<card id>

@@ -1,7 +1,6 @@
 package sprint
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -237,11 +236,4 @@ func askReaders(t *testing.T, w *world, seats []FriendSeat) {
 	}
 	require.NotNil(t, fn, "the readers ask part is not installed")
 	w.part(fn, TickReq{Friends: seats})
-}
-
-func mustRead(t *testing.T, path string) []byte {
-	t.Helper()
-	b, err := os.ReadFile(path)
-	require.NoError(t, err)
-	return b
 }
