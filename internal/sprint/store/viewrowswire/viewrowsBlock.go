@@ -2269,10 +2269,6 @@ func (b *SuppressedBlock) Type() *TableBlockInfo { return &tableBlockRecords[9] 
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
 
-// table RowDel has NO block form: it is VARIABLE-LENGTH: RowDel.table_name is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
-// Its wire (§3) is unaffected — only this projection is absent, and it is
-// absent by construction rather than by refusal.
-
 // table BatchManifest has NO block form: it is VARIABLE-LENGTH: BatchManifest.logical_table is a pointer, and a pointer in the by-value closure means no fixed pitch anywhere in it (docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.

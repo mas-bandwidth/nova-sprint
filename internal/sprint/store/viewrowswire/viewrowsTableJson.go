@@ -4195,18 +4195,6 @@ func BatchMemberEntryToJsonMeasure(value *BatchMemberEntry, allocator ...TableAl
 func BatchMemberEntryToJson(value *BatchMemberEntry, buffer []byte, allocator ...TableAllocator) int64 {
 	return tableRegionToJson(unsafe.Pointer(value), BatchMemberEntryTableType(), buffer, allocator...)
 }
-func RowDelFromJson(builder *RowDelBuilder, text []byte, report *TableReport) bool {
-	if builder.Arena.Locked {
-		return false
-	}
-	return tableRegionFromJson(unsafe.Pointer(builder.GetRoot()), RowDelTableType(), &builder.Main, text, report)
-}
-func RowDelToJsonMeasure(value *RowDel, allocator ...TableAllocator) int64 {
-	return tableRegionToJson(unsafe.Pointer(value), RowDelTableType(), nil, allocator...)
-}
-func RowDelToJson(value *RowDel, buffer []byte, allocator ...TableAllocator) int64 {
-	return tableRegionToJson(unsafe.Pointer(value), RowDelTableType(), buffer, allocator...)
-}
 func BatchManifestFromJson(builder *BatchManifestBuilder, text []byte, report *TableReport) bool {
 	if builder.Arena.Locked {
 		return false

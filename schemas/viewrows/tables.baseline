@@ -178,7 +178,6 @@ table HeldRecord
     field verb id=0x673ebb0102773a20 kind=17 type=string
     field at id=0x089c4e07b545a968 kind=5
     field manifests id=0xe316d09466679195 kind=14 elem=13 type=BatchManifest array=unbounded
-    field row_dels id=0xe0d65676e13d59c6 kind=14 elem=13 type=RowDel array=unbounded
     field notes id=0x40906c71b95bdbaa kind=14 elem=13 type=Note array=unbounded
     field decided id=0x17557edef437f27f kind=14 elem=13 type=Note array=unbounded
     field log id=0x125073191daf5431 kind=14 elem=13 type=LogLine array=unbounded
@@ -508,10 +507,6 @@ table RouteStat
     field balance id=0x420234a0f998390b kind=17 type=string
     field balance_at id=0xe548666cccbba2e9 kind=17 type=string
 
-table RowDel
-    field table_name id=0x6bcb6e85b78cf363 kind=17 type=string
-    field rows id=0xa3a7061ff10a8138 kind=14 elem=13 type=Line array=unbounded
-
 table RowName
     field name id=0xc4bcadba8e631b86 kind=17 type=string
 
@@ -754,6 +749,3 @@ table WhereRecord
 ## history
 ### 2026-10-17 (UTC) — first baseline
 - baseline created over 98 tables — data written BEFORE this point is not covered by it
-
-### 2026-11-05 (UTC) — row deletes on the held operation for stream remove
-- no compatibility-affecting edits; the wire absorbs the rest

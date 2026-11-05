@@ -67,7 +67,7 @@ func init() {
 
 var tableUnitView = UnitViewInfo{Package: "viewrowswire", ProtocolId: 0x892c1f6cffaa6b74,
 	NumTypes: 0, Types: []ViewType{},
-	NumTables: 99, Tables: []ViewType{
+	NumTables: 98, Tables: []ViewType{
 		{Name: "ArchivedFleetCard", File: "viewrows.schema", Table: true, Type: &ArchivedFleetCardTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "BatchManifest", File: "viewrows.schema", Table: true, Type: &BatchManifestTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "BatchMemberEntry", File: "viewrows.schema", Table: true, Type: &BatchMemberEntryTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -133,7 +133,6 @@ var tableUnitView = UnitViewInfo{Package: "viewrowswire", ProtocolId: 0x892c1f6c
 		{Name: "Route", File: "viewrows.schema", Table: true, Type: &RouteTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "RoutePrices", File: "viewrows.schema", Table: true, Type: &RoutePricesTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "RouteStat", File: "viewrows.schema", Table: true, Type: &RouteStatTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
-		{Name: "RowDel", File: "viewrows.schema", Table: true, Type: &RowDelTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "RowName", File: "viewrows.schema", Table: true, Type: &RowNameTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "RttSample", File: "viewrows.schema", Table: true, Type: &RttSampleTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "SeatChange", File: "viewrows.schema", Table: true, Type: &SeatChangeTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},

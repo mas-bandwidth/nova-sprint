@@ -874,7 +874,7 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			res.Attempts--
 			continue
 		}
-		if len(op.Manifests) == 0 && len(op.RowDels) == 0 && len(op.Notes)+len(op.Decided)+len(op.Closes)+len(op.Updates)+len(op.Queue)+op.Drain == 0 && len(op.CloseTimers) == 0 && op.Timers == nil {
+		if len(op.Manifests) == 0 && len(plan.RowDels) == 0 && len(op.Notes)+len(op.Decided)+len(op.Closes)+len(op.Updates)+len(op.Queue)+op.Drain == 0 && len(op.CloseTimers) == 0 && op.Timers == nil {
 			res.Moved = nil
 			return st.after(ctx, step, res)
 		}
@@ -967,11 +967,11 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			}
 			continue
 		}
-		// The rows the step takes off go with its manifests, inside its
-		// operation: the rows of every table it deletes are taken off in one
-		// exchange, so a crash leaves them all or none (G1, G13).
-		if len(op.RowDels) > 0 {
-			if err := st.deleteRows(ctx, op); err != nil {
+		// The rows the step takes off go inside its operation: the rows of
+		// every table it deletes are taken off in one exchange, so a crash
+		// leaves them all or none (G1, G13).
+		if len(plan.RowDels) > 0 {
+			if err := st.deleteRows(ctx, op.ID, plan.RowDels); err != nil {
 				res.Pending = op.ID
 				return res, err
 			}
@@ -1257,9 +1257,9 @@ func (st *Store) addRows(ctx context.Context, rows []sprint.RowAdd) error {
 // is on both tables or on neither (the row delete of the table layer, guarded
 // on the epoch's restore state: a verb's rows are written while the restore
 // is not pending).
-func (st *Store) deleteRows(ctx context.Context, op OpRecord) error {
-	writes := make([]RowWrite, 0, len(op.RowDels))
-	for _, d := range op.RowDels {
+func (st *Store) deleteRows(ctx context.Context, id string, dels []sprint.RowDel) error {
+	writes := make([]RowWrite, 0, len(dels))
+	for _, d := range dels {
 		if len(d.Rows) == 0 {
 			continue
 		}
@@ -1270,10 +1270,10 @@ func (st *Store) deleteRows(ctx context.Context, op OpRecord) error {
 	}
 	o, err := st.B.GuardedRows(ctx, verbGuard(st.Names.Table(sprint.Fleet)), writes)
 	if err != nil {
-		return fmt.Errorf("%w: deleting the rows of %s: %v; run: nova-sprint repair", ErrUnknown, op.ID, err)
+		return fmt.Errorf("%w: deleting the rows of %s: %v; run: nova-sprint repair", ErrUnknown, id, err)
 	}
 	if o != GuardApplied {
-		return fmt.Errorf("%w: deleting the rows of %s: the epoch's restore is pending; run: nova-sprint repair", ErrUnknown, op.ID)
+		return fmt.Errorf("%w: deleting the rows of %s: the epoch's restore is pending; run: nova-sprint repair", ErrUnknown, id)
 	}
 	return nil
 }
@@ -1641,7 +1641,7 @@ func hasChanges(e ntable.BatchMemberEntry) bool {
 // entries, each expecting the revision the one before it leaves; then the
 // notifications and the answers.
 func (st *Store) operation(verb, actor, id string, plan sprint.Plan, snap *sprint.Snapshot) (OpRecord, error) {
-	op := OpRecord{ID: id, Verb: verb, At: snap.Now, Seat: plan.Seat, Timers: plan.Timers, CloseTimers: plan.CloseTimers, RowDels: plan.RowDels}
+	op := OpRecord{ID: id, Verb: verb, At: snap.Now, Seat: plan.Seat, Timers: plan.Timers, CloseTimers: plan.CloseTimers}
 	entries := map[string][]ntable.BatchMemberEntry{}
 	seen := map[entryKey]int{} // index+1 in entries[table]
 	cause := map[entryKey]string{}
@@ -2324,13 +2324,6 @@ func (st *Store) finishOp(ctx context.Context, op OpRecord, twins ...*Twin) (Rep
 			r.Skipped = append(r.Skipped, k.String())
 		}
 		r.Detail = fmt.Sprintf("%d entries skipped, the store refused them as recorded; judgment %s: %s", len(skips), op.ID+".skip", strings.Join(r.Skipped, "; "))
-	}
-	// the rows the operation takes off go with its manifests: an operation
-	// cut before them is finished by deleting them here.
-	if len(op.RowDels) > 0 {
-		if err := st.deleteRows(ctx, op); err != nil {
-			return RepairResult{Op: op.ID, Verb: op.Verb, Done: RepairOpen, Detail: "the rows could not be deleted: " + err.Error()}, nil
-		}
 	}
 	if err := st.B.Release(ctx, op, true); err != nil {
 		return RepairResult{Op: op.ID, Verb: op.Verb, Done: RepairOpen, Detail: "the commit was not confirmed: " + err.Error()}, nil

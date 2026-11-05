@@ -1050,11 +1050,6 @@ func allTables() []tableCase {
 				builder((*wire.RouteStatBuilder).Init, (*wire.RouteStatBuilder).GetRoot, func(b *wire.RouteStatBuilder) *wire.TableArena { return &b.Arena }, wire.RouteStatFromJson),
 				wire.RouteStatMeasure, wire.RouteStatSave, wire.RouteStatLoadMeasureReason, wire.RouteStatLoad, wire.RouteStatToJsonMeasure, wire.RouteStatToJson, wire.RouteStatTableType, nil})
 		}},
-		{"RowDel", false, func(t *testing.T, name string, samples []namedSample) {
-			runVariable(t, name, samples, varOps[wire.RowDel]{
-				builder((*wire.RowDelBuilder).Init, (*wire.RowDelBuilder).GetRoot, func(b *wire.RowDelBuilder) *wire.TableArena { return &b.Arena }, wire.RowDelFromJson),
-				wire.RowDelMeasure, wire.RowDelSave, wire.RowDelLoadMeasureReason, wire.RowDelLoad, wire.RowDelToJsonMeasure, wire.RowDelToJson, wire.RowDelTableType, nil})
-		}},
 		{"RowName", false, func(t *testing.T, name string, samples []namedSample) {
 			runVariable(t, name, samples, varOps[wire.RowName]{
 				builder((*wire.RowNameBuilder).Init, (*wire.RowNameBuilder).GetRoot, func(b *wire.RowNameBuilder) *wire.TableArena { return &b.Arena }, wire.RowNameFromJson),

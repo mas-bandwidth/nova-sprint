@@ -393,7 +393,6 @@ type HeldRecordRow struct {
 	Verb        int64   // *: signed self-relative delta, zero is null (§6.3)
 	At          int64
 	Manifests   TableList[BatchManifestRow]
-	RowDels     TableList[RowDelRow]
 	Notes       TableList[NoteRow]
 	Decided     TableList[NoteRow]
 	Log         TableList[LogLineRow]
@@ -869,13 +868,6 @@ type RouteStatRow struct {
 	RestedFor        int64 // *: signed self-relative delta, zero is null (§6.3)
 	Balance          int64 // *: signed self-relative delta, zero is null (§6.3)
 	BalanceAt        int64 // *: signed self-relative delta, zero is null (§6.3)
-}
-
-// RowDelRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type RowDelRow struct {
-	TableName int64 // *: signed self-relative delta, zero is null (§6.3)
-	Rows      TableList[LineRow]
 }
 
 // RowNameRow — a cooked record. `Row` is a CLAIMED suffix (docs/SPEC-TABLES.md
@@ -1397,28 +1389,27 @@ func init() {
 	tableCookLayoutOffset("HeartbeatRow.Fresh", unsafe.Offsetof(HeartbeatRow{}.Fresh), 112)
 	tableCookLayoutOffset("HeartbeatRow.Quiet", unsafe.Offsetof(HeartbeatRow{}.Quiet), 128)
 	tableCookLayoutOffset("HeartbeatRow.Suppressed", unsafe.Offsetof(HeartbeatRow{}.Suppressed), 144)
-	tableCookLayoutSize("HeldRecordRow", unsafe.Sizeof(HeldRecordRow{}), 240)
+	tableCookLayoutSize("HeldRecordRow", unsafe.Sizeof(HeldRecordRow{}), 224)
 	tableCookLayoutSize("HeldRecordRow alignment", unsafe.Alignof(HeldRecordRow{}), 8)
 	tableCookLayoutOffset("HeldRecordRow.Id", unsafe.Offsetof(HeldRecordRow{}.Id), 0)
 	tableCookLayoutOffset("HeldRecordRow.HeldLock", unsafe.Offsetof(HeldRecordRow{}.HeldLock), 8)
 	tableCookLayoutOffset("HeldRecordRow.Verb", unsafe.Offsetof(HeldRecordRow{}.Verb), 16)
 	tableCookLayoutOffset("HeldRecordRow.At", unsafe.Offsetof(HeldRecordRow{}.At), 24)
 	tableCookLayoutOffset("HeldRecordRow.Manifests", unsafe.Offsetof(HeldRecordRow{}.Manifests), 32)
-	tableCookLayoutOffset("HeldRecordRow.RowDels", unsafe.Offsetof(HeldRecordRow{}.RowDels), 48)
-	tableCookLayoutOffset("HeldRecordRow.Notes", unsafe.Offsetof(HeldRecordRow{}.Notes), 64)
-	tableCookLayoutOffset("HeldRecordRow.Decided", unsafe.Offsetof(HeldRecordRow{}.Decided), 80)
-	tableCookLayoutOffset("HeldRecordRow.Log", unsafe.Offsetof(HeldRecordRow{}.Log), 96)
-	tableCookLayoutOffset("HeldRecordRow.Updates", unsafe.Offsetof(HeldRecordRow{}.Updates), 112)
-	tableCookLayoutOffset("HeldRecordRow.Closes", unsafe.Offsetof(HeldRecordRow{}.Closes), 128)
-	tableCookLayoutOffset("HeldRecordRow.Streams", unsafe.Offsetof(HeldRecordRow{}.Streams), 144)
-	tableCookLayoutOffset("HeldRecordRow.CallerOp", unsafe.Offsetof(HeldRecordRow{}.CallerOp), 160)
-	tableCookLayoutOffset("HeldRecordRow.Result", unsafe.Offsetof(HeldRecordRow{}.Result), 168)
-	tableCookLayoutOffset("HeldRecordRow.Stuck", unsafe.Offsetof(HeldRecordRow{}.Stuck), 176)
-	tableCookLayoutOffset("HeldRecordRow.Queue", unsafe.Offsetof(HeldRecordRow{}.Queue), 184)
-	tableCookLayoutOffset("HeldRecordRow.Drain", unsafe.Offsetof(HeldRecordRow{}.Drain), 200)
-	tableCookLayoutOffset("HeldRecordRow.Seat", unsafe.Offsetof(HeldRecordRow{}.Seat), 208)
-	tableCookLayoutOffset("HeldRecordRow.CloseTimers", unsafe.Offsetof(HeldRecordRow{}.CloseTimers), 216)
-	tableCookLayoutOffset("HeldRecordRow.Timers", unsafe.Offsetof(HeldRecordRow{}.Timers), 232)
+	tableCookLayoutOffset("HeldRecordRow.Notes", unsafe.Offsetof(HeldRecordRow{}.Notes), 48)
+	tableCookLayoutOffset("HeldRecordRow.Decided", unsafe.Offsetof(HeldRecordRow{}.Decided), 64)
+	tableCookLayoutOffset("HeldRecordRow.Log", unsafe.Offsetof(HeldRecordRow{}.Log), 80)
+	tableCookLayoutOffset("HeldRecordRow.Updates", unsafe.Offsetof(HeldRecordRow{}.Updates), 96)
+	tableCookLayoutOffset("HeldRecordRow.Closes", unsafe.Offsetof(HeldRecordRow{}.Closes), 112)
+	tableCookLayoutOffset("HeldRecordRow.Streams", unsafe.Offsetof(HeldRecordRow{}.Streams), 128)
+	tableCookLayoutOffset("HeldRecordRow.CallerOp", unsafe.Offsetof(HeldRecordRow{}.CallerOp), 144)
+	tableCookLayoutOffset("HeldRecordRow.Result", unsafe.Offsetof(HeldRecordRow{}.Result), 152)
+	tableCookLayoutOffset("HeldRecordRow.Stuck", unsafe.Offsetof(HeldRecordRow{}.Stuck), 160)
+	tableCookLayoutOffset("HeldRecordRow.Queue", unsafe.Offsetof(HeldRecordRow{}.Queue), 168)
+	tableCookLayoutOffset("HeldRecordRow.Drain", unsafe.Offsetof(HeldRecordRow{}.Drain), 184)
+	tableCookLayoutOffset("HeldRecordRow.Seat", unsafe.Offsetof(HeldRecordRow{}.Seat), 192)
+	tableCookLayoutOffset("HeldRecordRow.CloseTimers", unsafe.Offsetof(HeldRecordRow{}.CloseTimers), 200)
+	tableCookLayoutOffset("HeldRecordRow.Timers", unsafe.Offsetof(HeldRecordRow{}.Timers), 216)
 	tableCookLayoutSize("IntListRow", unsafe.Sizeof(IntListRow{}), 16)
 	tableCookLayoutSize("IntListRow alignment", unsafe.Alignof(IntListRow{}), 8)
 	tableCookLayoutOffset("IntListRow.Pairs", unsafe.Offsetof(IntListRow{}.Pairs), 0)
@@ -1733,10 +1724,6 @@ func init() {
 	tableCookLayoutOffset("RouteStatRow.RestedFor", unsafe.Offsetof(RouteStatRow{}.RestedFor), 232)
 	tableCookLayoutOffset("RouteStatRow.Balance", unsafe.Offsetof(RouteStatRow{}.Balance), 240)
 	tableCookLayoutOffset("RouteStatRow.BalanceAt", unsafe.Offsetof(RouteStatRow{}.BalanceAt), 248)
-	tableCookLayoutSize("RowDelRow", unsafe.Sizeof(RowDelRow{}), 24)
-	tableCookLayoutSize("RowDelRow alignment", unsafe.Alignof(RowDelRow{}), 8)
-	tableCookLayoutOffset("RowDelRow.TableName", unsafe.Offsetof(RowDelRow{}.TableName), 0)
-	tableCookLayoutOffset("RowDelRow.Rows", unsafe.Offsetof(RowDelRow{}.Rows), 8)
 	tableCookLayoutSize("RowNameRow", unsafe.Sizeof(RowNameRow{}), 8)
 	tableCookLayoutSize("RowNameRow alignment", unsafe.Alignof(RowNameRow{}), 8)
 	tableCookLayoutOffset("RowNameRow.Name", unsafe.Offsetof(RowNameRow{}.Name), 0)
@@ -2001,7 +1988,7 @@ func tableCookLayoutOffset(what string, got, want uintptr) {
 // §11 fact rather than a taste: a name derived from a DECLARATION's own
 // spelling is a name a declaration can collide with, and the checker has no
 // machinery for a prefix-and-name product. One fixed name is one claim.
-var tableCookRecords = make([]TableCookInfo, 99)
+var tableCookRecords = make([]TableCookInfo, 98)
 
 // THE GRAPH IS FILLED HERE rather than in the slice's own initializer, and
 // the reason is a language fact rather than a taste: the DESCRIPTOR GRAPH is
@@ -2245,28 +2232,27 @@ func init() {
 		},
 	}
 	tableCookRecords[20] = TableCookInfo{
-		Name: "HeldRecord", Size: 240, Align: 8, NumFields: 20,
+		Name: "HeldRecord", Size: 224, Align: 8, NumFields: 19,
 		Fields: []TableCookFieldInfo{
 			{Name: "id", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 			{Name: "held_lock", Offset: 8, Size: 1, ElemSize: 1, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageBool},
 			{Name: "verb", Offset: 16, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 			{Name: "at", Offset: 24, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 			{Name: "manifests", Offset: 32, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "row_dels", Offset: 48, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "notes", Offset: 64, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "decided", Offset: 80, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "log", Offset: 96, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "updates", Offset: 112, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "closes", Offset: 128, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "streams", Offset: 144, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "caller_op", Offset: 160, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "result", Offset: 168, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "stuck", Offset: 176, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "queue", Offset: 184, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "drain", Offset: 200, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
-			{Name: "seat", Offset: 208, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "close_timers", Offset: 216, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-			{Name: "timers", Offset: 232, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "notes", Offset: 48, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "decided", Offset: 64, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "log", Offset: 80, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "updates", Offset: 96, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "closes", Offset: 112, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "streams", Offset: 128, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "caller_op", Offset: 144, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "result", Offset: 152, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "stuck", Offset: 160, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "queue", Offset: 168, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "drain", Offset: 184, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
+			{Name: "seat", Offset: 192, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
+			{Name: "close_timers", Offset: 200, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
+			{Name: "timers", Offset: 216, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 		},
 	}
 	tableCookRecords[21] = TableCookInfo{
@@ -2716,26 +2702,19 @@ func init() {
 		},
 	}
 	tableCookRecords[65] = TableCookInfo{
-		Name: "RowDel", Size: 24, Align: 8, NumFields: 2,
-		Fields: []TableCookFieldInfo{
-			{Name: "table_name", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
-			{Name: "rows", Offset: 8, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
-		},
-	}
-	tableCookRecords[66] = TableCookInfo{
 		Name: "RowName", Size: 8, Align: 8, NumFields: 1,
 		Fields: []TableCookFieldInfo{
 			{Name: "name", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 		},
 	}
-	tableCookRecords[67] = TableCookInfo{
+	tableCookRecords[66] = TableCookInfo{
 		Name: "RttSample", Size: 16, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
 			{Name: "start", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 			{Name: "us", Offset: 8, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 		},
 	}
-	tableCookRecords[68] = TableCookInfo{
+	tableCookRecords[67] = TableCookInfo{
 		Name: "SeatChange", Size: 64, Align: 8, NumFields: 8,
 		Fields: []TableCookFieldInfo{
 			{Name: "holder", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
@@ -2748,7 +2727,7 @@ func init() {
 			{Name: "reason", Offset: 56, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 		},
 	}
-	tableCookRecords[69] = TableCookInfo{
+	tableCookRecords[68] = TableCookInfo{
 		Name: "SeatWaits", Size: 48, Align: 8, NumFields: 6,
 		Fields: []TableCookFieldInfo{
 			{Name: "judgments", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
@@ -2759,7 +2738,7 @@ func init() {
 			{Name: "level", Offset: 40, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 		},
 	}
-	tableCookRecords[70] = TableCookInfo{
+	tableCookRecords[69] = TableCookInfo{
 		Name: "SentinelCounts", Size: 32, Align: 8, NumFields: 3,
 		Fields: []TableCookFieldInfo{
 			{Name: "all", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
@@ -2767,21 +2746,21 @@ func init() {
 			{Name: "by_col", Offset: 16, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[71] = TableCookInfo{
+	tableCookRecords[70] = TableCookInfo{
 		Name: "SentinelPair", Size: 40, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
 			{Name: "key", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 			{Name: "counts", Offset: 8, Size: 32, ElemSize: 32, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[72] = TableCookInfo{
+	tableCookRecords[71] = TableCookInfo{
 		Name: "Span", Size: 16, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
 			{Name: "from", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 			{Name: "to", Offset: 8, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 		},
 	}
-	tableCookRecords[73] = TableCookInfo{
+	tableCookRecords[72] = TableCookInfo{
 		Name: "StageStat", Size: 24, Align: 8, NumFields: 3,
 		Fields: []TableCookFieldInfo{
 			{Name: "median_s", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageFloat},
@@ -2789,27 +2768,27 @@ func init() {
 			{Name: "n", Offset: 16, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 		},
 	}
-	tableCookRecords[74] = TableCookInfo{
+	tableCookRecords[73] = TableCookInfo{
 		Name: "StageStatPair", Size: 32, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
 			{Name: "stage", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 			{Name: "stat", Offset: 8, Size: 24, ElemSize: 24, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[75] = TableCookInfo{
+	tableCookRecords[74] = TableCookInfo{
 		Name: "StageStats", Size: 16, Align: 8, NumFields: 1,
 		Fields: []TableCookFieldInfo{
 			{Name: "stages", Offset: 0, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[76] = TableCookInfo{
+	tableCookRecords[75] = TableCookInfo{
 		Name: "StageTimes", Size: 32, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
 			{Name: "all", Offset: 0, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 			{Name: "streams", Offset: 16, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[77] = TableCookInfo{
+	tableCookRecords[76] = TableCookInfo{
 		Name: "StatsArchive", Size: 112, Align: 8, NumFields: 10,
 		Fields: []TableCookFieldInfo{
 			{Name: "at", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
@@ -2824,7 +2803,7 @@ func init() {
 			{Name: "streams", Offset: 96, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[78] = TableCookInfo{
+	tableCookRecords[77] = TableCookInfo{
 		Name: "StatsRecord", Size: 96, Align: 8, NumFields: 9,
 		Fields: []TableCookFieldInfo{
 			{Name: "epoch", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
@@ -2838,7 +2817,7 @@ func init() {
 			{Name: "tidying", Offset: 88, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 		},
 	}
-	tableCookRecords[79] = TableCookInfo{
+	tableCookRecords[78] = TableCookInfo{
 		Name: "Stop", Size: 56, Align: 8, NumFields: 7,
 		Fields: []TableCookFieldInfo{
 			{Name: "kind", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
@@ -2850,7 +2829,7 @@ func init() {
 			{Name: "signal", Offset: 48, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 		},
 	}
-	tableCookRecords[80] = TableCookInfo{
+	tableCookRecords[79] = TableCookInfo{
 		Name: "StopLease", Size: 32, Align: 8, NumFields: 4,
 		Fields: []TableCookFieldInfo{
 			{Name: "lease_table", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
@@ -2859,7 +2838,7 @@ func init() {
 			{Name: "gen", Offset: 24, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 		},
 	}
-	tableCookRecords[81] = TableCookInfo{
+	tableCookRecords[80] = TableCookInfo{
 		Name: "StopsRecord", Size: 80, Align: 8, NumFields: 4,
 		Fields: []TableCookFieldInfo{
 			{Name: "epoch", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
@@ -2868,7 +2847,7 @@ func init() {
 			{Name: "stops", Offset: 64, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[82] = TableCookInfo{
+	tableCookRecords[81] = TableCookInfo{
 		Name: "StoreRTTRecord", Size: 40, Align: 8, NumFields: 4,
 		Fields: []TableCookFieldInfo{
 			{Name: "at", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
@@ -2877,28 +2856,28 @@ func init() {
 			{Name: "store_rtt_p99_ms", Offset: 32, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageFloat},
 		},
 	}
-	tableCookRecords[83] = TableCookInfo{
+	tableCookRecords[82] = TableCookInfo{
 		Name: "StreamBase", Size: 16, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
 			{Name: "cost", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 			{Name: "landed", Offset: 8, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 		},
 	}
-	tableCookRecords[84] = TableCookInfo{
+	tableCookRecords[83] = TableCookInfo{
 		Name: "StreamBasePair", Size: 24, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
 			{Name: "key", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 			{Name: "figures", Offset: 8, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[85] = TableCookInfo{
+	tableCookRecords[84] = TableCookInfo{
 		Name: "StreamStagesPair", Size: 24, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
 			{Name: "key", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 			{Name: "stats", Offset: 8, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[86] = TableCookInfo{
+	tableCookRecords[85] = TableCookInfo{
 		Name: "StreamTransition", Size: 40, Align: 8, NumFields: 4,
 		Fields: []TableCookFieldInfo{
 			{Name: "state", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
@@ -2907,7 +2886,7 @@ func init() {
 			{Name: "owners", Offset: 24, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[87] = TableCookInfo{
+	tableCookRecords[86] = TableCookInfo{
 		Name: "Stuck", Size: 56, Align: 8, NumFields: 7,
 		Fields: []TableCookFieldInfo{
 			{Name: "op", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
@@ -2919,7 +2898,7 @@ func init() {
 			{Name: "repaired_at", Offset: 48, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 		},
 	}
-	tableCookRecords[88] = TableCookInfo{
+	tableCookRecords[87] = TableCookInfo{
 		Name: "Suppressed", Size: 40, Align: 8, NumFields: 5,
 		Fields: []TableCookFieldInfo{
 			{Name: "epoch", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageUnsigned},
@@ -2929,14 +2908,14 @@ func init() {
 			{Name: "tier", Offset: 32, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 		},
 	}
-	tableCookRecords[89] = TableCookInfo{
+	tableCookRecords[88] = TableCookInfo{
 		Name: "TextPair", Size: 16, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
 			{Name: "key", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 			{Name: "value", Offset: 8, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 		},
 	}
-	tableCookRecords[90] = TableCookInfo{
+	tableCookRecords[89] = TableCookInfo{
 		Name: "TidyCard", Size: 32, Align: 8, NumFields: 4,
 		Fields: []TableCookFieldInfo{
 			{Name: "id", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
@@ -2945,7 +2924,7 @@ func init() {
 			{Name: "finished", Offset: 24, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 		},
 	}
-	tableCookRecords[91] = TableCookInfo{
+	tableCookRecords[90] = TableCookInfo{
 		Name: "TidyInFlight", Size: 24, Align: 8, NumFields: 3,
 		Fields: []TableCookFieldInfo{
 			{Name: "archive", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
@@ -2953,7 +2932,7 @@ func init() {
 			{Name: "mark", Offset: 16, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 		},
 	}
-	tableCookRecords[92] = TableCookInfo{
+	tableCookRecords[91] = TableCookInfo{
 		Name: "TidyResult", Size: 168, Align: 8, NumFields: 7,
 		Fields: []TableCookFieldInfo{
 			{Name: "archive", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
@@ -2965,7 +2944,7 @@ func init() {
 			{Name: "kept", Offset: 160, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 		},
 	}
-	tableCookRecords[93] = TableCookInfo{
+	tableCookRecords[92] = TableCookInfo{
 		Name: "TidyRow", Size: 56, Align: 8, NumFields: 5,
 		Fields: []TableCookFieldInfo{
 			{Name: "row", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
@@ -2975,7 +2954,7 @@ func init() {
 			{Name: "kept", Offset: 40, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[94] = TableCookInfo{
+	tableCookRecords[93] = TableCookInfo{
 		Name: "TierCosts", Size: 200, Align: 8, NumFields: 20,
 		Fields: []TableCookFieldInfo{
 			{Name: "tiers", Offset: 0, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
@@ -3000,14 +2979,14 @@ func init() {
 			{Name: "reconciles", Offset: 184, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[95] = TableCookInfo{
+	tableCookRecords[94] = TableCookInfo{
 		Name: "TierCostsPair", Size: 208, Align: 8, NumFields: 2,
 		Fields: []TableCookFieldInfo{
 			{Name: "key", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
 			{Name: "costs", Offset: 8, Size: 200, ElemSize: 200, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[96] = TableCookInfo{
+	tableCookRecords[95] = TableCookInfo{
 		Name: "Timer", Size: 48, Align: 8, NumFields: 6,
 		Fields: []TableCookFieldInfo{
 			{Name: "id", Offset: 0, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: true, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageReference},
@@ -3018,13 +2997,13 @@ func init() {
 			{Name: "set", Offset: 40, Size: 8, ElemSize: 8, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageSigned},
 		},
 	}
-	tableCookRecords[97] = TableCookInfo{
+	tableCookRecords[96] = TableCookInfo{
 		Name: "Timers", Size: 16, Align: 8, NumFields: 1,
 		Fields: []TableCookFieldInfo{
 			{Name: "open_timers", Offset: 0, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
 		},
 	}
-	tableCookRecords[98] = TableCookInfo{
+	tableCookRecords[97] = TableCookInfo{
 		Name: "WhereRecord", Size: 464, Align: 8, NumFields: 31,
 		Fields: []TableCookFieldInfo{
 			{Name: "decision_holds", Offset: 0, Size: 16, ElemSize: 16, IsArray: false, ArrayBound: 1, IsPointer: false, CountOffset: -1, PresentOffset: -1, Storage: TableCookStorageRecord},
@@ -3061,13 +3040,13 @@ func init() {
 		},
 	}
 	tableCookRecords[1].Fields[6].Record = func() *TableCookInfo { return &tableCookRecords[2] }
-	tableCookRecords[1].Fields[7].Record = func() *TableCookInfo { return &tableCookRecords[89] }
-	tableCookRecords[1].Fields[8].Record = func() *TableCookInfo { return &tableCookRecords[89] }
+	tableCookRecords[1].Fields[7].Record = func() *TableCookInfo { return &tableCookRecords[88] }
+	tableCookRecords[1].Fields[8].Record = func() *TableCookInfo { return &tableCookRecords[88] }
 	tableCookRecords[1].Fields[9].Record = func() *TableCookInfo { return &tableCookRecords[27] }
 	tableCookRecords[2].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[37] }
 	tableCookRecords[2].Fields[2].Record = func() *TableCookInfo { return &tableCookRecords[36] }
 	tableCookRecords[2].Fields[3].Record = func() *TableCookInfo { return &tableCookRecords[38] }
-	tableCookRecords[2].Fields[5].Record = func() *TableCookInfo { return &tableCookRecords[89] }
+	tableCookRecords[2].Fields[5].Record = func() *TableCookInfo { return &tableCookRecords[88] }
 	tableCookRecords[2].Fields[6].Record = func() *TableCookInfo { return &tableCookRecords[27] }
 	tableCookRecords[3].Fields[4].Record = func() *TableCookInfo { return &tableCookRecords[31] }
 	tableCookRecords[3].Fields[5].Record = func() *TableCookInfo { return &tableCookRecords[41] }
@@ -3088,19 +3067,18 @@ func init() {
 	tableCookRecords[18].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[27] }
 	tableCookRecords[19].Fields[11].Record = func() *TableCookInfo { return &tableCookRecords[27] }
 	tableCookRecords[19].Fields[12].Record = func() *TableCookInfo { return &tableCookRecords[26] }
-	tableCookRecords[19].Fields[13].Record = func() *TableCookInfo { return &tableCookRecords[88] }
+	tableCookRecords[19].Fields[13].Record = func() *TableCookInfo { return &tableCookRecords[87] }
 	tableCookRecords[20].Fields[4].Record = func() *TableCookInfo { return &tableCookRecords[1] }
-	tableCookRecords[20].Fields[5].Record = func() *TableCookInfo { return &tableCookRecords[65] }
+	tableCookRecords[20].Fields[5].Record = func() *TableCookInfo { return &tableCookRecords[43] }
 	tableCookRecords[20].Fields[6].Record = func() *TableCookInfo { return &tableCookRecords[43] }
-	tableCookRecords[20].Fields[7].Record = func() *TableCookInfo { return &tableCookRecords[43] }
-	tableCookRecords[20].Fields[8].Record = func() *TableCookInfo { return &tableCookRecords[34] }
-	tableCookRecords[20].Fields[9].Record = func() *TableCookInfo { return &tableCookRecords[43] }
+	tableCookRecords[20].Fields[7].Record = func() *TableCookInfo { return &tableCookRecords[34] }
+	tableCookRecords[20].Fields[8].Record = func() *TableCookInfo { return &tableCookRecords[43] }
+	tableCookRecords[20].Fields[9].Record = func() *TableCookInfo { return &tableCookRecords[27] }
 	tableCookRecords[20].Fields[10].Record = func() *TableCookInfo { return &tableCookRecords[27] }
-	tableCookRecords[20].Fields[11].Record = func() *TableCookInfo { return &tableCookRecords[27] }
-	tableCookRecords[20].Fields[15].Record = func() *TableCookInfo { return &tableCookRecords[47] }
-	tableCookRecords[20].Fields[17].Record = func() *TableCookInfo { return &tableCookRecords[68] }
-	tableCookRecords[20].Fields[18].Record = func() *TableCookInfo { return &tableCookRecords[27] }
-	tableCookRecords[20].Fields[19].Record = func() *TableCookInfo { return &tableCookRecords[97] }
+	tableCookRecords[20].Fields[14].Record = func() *TableCookInfo { return &tableCookRecords[47] }
+	tableCookRecords[20].Fields[16].Record = func() *TableCookInfo { return &tableCookRecords[67] }
+	tableCookRecords[20].Fields[17].Record = func() *TableCookInfo { return &tableCookRecords[27] }
+	tableCookRecords[20].Fields[18].Record = func() *TableCookInfo { return &tableCookRecords[96] }
 	tableCookRecords[21].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[23] }
 	tableCookRecords[22].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[21] }
 	tableCookRecords[28].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[27] }
@@ -3109,17 +3087,17 @@ func init() {
 	tableCookRecords[33].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[27] }
 	tableCookRecords[34].Fields[5].Record = func() *TableCookInfo { return &tableCookRecords[27] }
 	tableCookRecords[34].Fields[16].Record = func() *TableCookInfo { return &tableCookRecords[27] }
-	tableCookRecords[34].Fields[17].Record = func() *TableCookInfo { return &tableCookRecords[89] }
-	tableCookRecords[34].Fields[18].Record = func() *TableCookInfo { return &tableCookRecords[89] }
+	tableCookRecords[34].Fields[17].Record = func() *TableCookInfo { return &tableCookRecords[88] }
+	tableCookRecords[34].Fields[18].Record = func() *TableCookInfo { return &tableCookRecords[88] }
 	tableCookRecords[34].Fields[19].Record = func() *TableCookInfo { return &tableCookRecords[43] }
-	tableCookRecords[35].Fields[5].Record = func() *TableCookInfo { return &tableCookRecords[80] }
-	tableCookRecords[35].Fields[7].Record = func() *TableCookInfo { return &tableCookRecords[72] }
+	tableCookRecords[35].Fields[5].Record = func() *TableCookInfo { return &tableCookRecords[79] }
+	tableCookRecords[35].Fields[7].Record = func() *TableCookInfo { return &tableCookRecords[71] }
 	tableCookRecords[37].Fields[2].Record = func() *TableCookInfo { return &tableCookRecords[44] }
 	tableCookRecords[37].Fields[3].Record = func() *TableCookInfo { return &tableCookRecords[15] }
 	tableCookRecords[39].Fields[5].Record = func() *TableCookInfo { return &tableCookRecords[40] }
 	tableCookRecords[41].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[42] }
 	tableCookRecords[41].Fields[3].Record = func() *TableCookInfo { return &tableCookRecords[39] }
-	tableCookRecords[43].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[86] }
+	tableCookRecords[43].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[85] }
 	tableCookRecords[43].Fields[3].Record = func() *TableCookInfo { return &tableCookRecords[13] }
 	tableCookRecords[43].Fields[6].Record = func() *TableCookInfo { return &tableCookRecords[7] }
 	tableCookRecords[43].Fields[11].Record = func() *TableCookInfo { return &tableCookRecords[4] }
@@ -3138,64 +3116,63 @@ func init() {
 	tableCookRecords[57].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[56] }
 	tableCookRecords[57].Fields[4].Record = func() *TableCookInfo { return &tableCookRecords[27] }
 	tableCookRecords[59].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[58] }
-	tableCookRecords[60].Fields[7].Record = func() *TableCookInfo { return &tableCookRecords[89] }
+	tableCookRecords[60].Fields[7].Record = func() *TableCookInfo { return &tableCookRecords[88] }
 	tableCookRecords[61].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[60] }
 	tableCookRecords[62].Fields[10].Record = func() *TableCookInfo { return &tableCookRecords[63] }
 	tableCookRecords[64].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[62] }
-	tableCookRecords[65].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[27] }
-	tableCookRecords[70].Fields[2].Record = func() *TableCookInfo { return &tableCookRecords[23] }
-	tableCookRecords[71].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[70] }
-	tableCookRecords[74].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[73] }
-	tableCookRecords[75].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[74] }
-	tableCookRecords[76].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[74] }
-	tableCookRecords[76].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[85] }
-	tableCookRecords[77].Fields[4].Record = func() *TableCookInfo { return &tableCookRecords[27] }
-	tableCookRecords[77].Fields[7].Record = func() *TableCookInfo { return &tableCookRecords[93] }
-	tableCookRecords[77].Fields[8].Record = func() *TableCookInfo { return &tableCookRecords[64] }
-	tableCookRecords[77].Fields[9].Record = func() *TableCookInfo { return &tableCookRecords[84] }
-	tableCookRecords[78].Fields[4].Record = func() *TableCookInfo { return &tableCookRecords[24] }
-	tableCookRecords[78].Fields[5].Record = func() *TableCookInfo { return &tableCookRecords[84] }
-	tableCookRecords[78].Fields[6].Record = func() *TableCookInfo { return &tableCookRecords[27] }
-	tableCookRecords[78].Fields[7].Record = func() *TableCookInfo { return &tableCookRecords[56] }
-	tableCookRecords[78].Fields[8].Record = func() *TableCookInfo { return &tableCookRecords[91] }
-	tableCookRecords[81].Fields[2].Record = func() *TableCookInfo { return &tableCookRecords[69] }
-	tableCookRecords[81].Fields[3].Record = func() *TableCookInfo { return &tableCookRecords[79] }
-	tableCookRecords[82].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[67] }
-	tableCookRecords[84].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[83] }
-	tableCookRecords[85].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[75] }
-	tableCookRecords[86].Fields[3].Record = func() *TableCookInfo { return &tableCookRecords[66] }
-	tableCookRecords[92].Fields[3].Record = func() *TableCookInfo { return &tableCookRecords[27] }
-	tableCookRecords[92].Fields[4].Record = func() *TableCookInfo { return &tableCookRecords[77] }
-	tableCookRecords[93].Fields[3].Record = func() *TableCookInfo { return &tableCookRecords[90] }
-	tableCookRecords[93].Fields[4].Record = func() *TableCookInfo { return &tableCookRecords[90] }
-	tableCookRecords[94].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[23] }
-	tableCookRecords[94].Fields[2].Record = func() *TableCookInfo { return &tableCookRecords[89] }
-	tableCookRecords[94].Fields[13].Record = func() *TableCookInfo { return &tableCookRecords[50] }
-	tableCookRecords[94].Fields[16].Record = func() *TableCookInfo { return &tableCookRecords[52] }
-	tableCookRecords[94].Fields[19].Record = func() *TableCookInfo { return &tableCookRecords[9] }
-	tableCookRecords[95].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[94] }
-	tableCookRecords[97].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[96] }
-	tableCookRecords[98].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[43] }
-	tableCookRecords[98].Fields[5].Record = func() *TableCookInfo { return &tableCookRecords[23] }
-	tableCookRecords[98].Fields[7].Record = func() *TableCookInfo { return &tableCookRecords[10] }
-	tableCookRecords[98].Fields[8].Record = func() *TableCookInfo { return &tableCookRecords[27] }
-	tableCookRecords[98].Fields[9].Record = func() *TableCookInfo { return &tableCookRecords[71] }
-	tableCookRecords[98].Fields[10].Record = func() *TableCookInfo { return &tableCookRecords[23] }
-	tableCookRecords[98].Fields[11].Record = func() *TableCookInfo { return &tableCookRecords[95] }
-	tableCookRecords[98].Fields[12].Record = func() *TableCookInfo { return &tableCookRecords[8] }
-	tableCookRecords[98].Fields[13].Record = func() *TableCookInfo { return &tableCookRecords[76] }
-	tableCookRecords[98].Fields[14].Record = func() *TableCookInfo { return &tableCookRecords[23] }
-	tableCookRecords[98].Fields[16].Record = func() *TableCookInfo { return &tableCookRecords[45] }
-	tableCookRecords[98].Fields[17].Record = func() *TableCookInfo { return &tableCookRecords[89] }
-	tableCookRecords[98].Fields[18].Record = func() *TableCookInfo { return &tableCookRecords[53] }
-	tableCookRecords[98].Fields[20].Record = func() *TableCookInfo { return &tableCookRecords[22] }
-	tableCookRecords[98].Fields[21].Record = func() *TableCookInfo { return &tableCookRecords[48] }
-	tableCookRecords[98].Fields[22].Record = func() *TableCookInfo { return &tableCookRecords[22] }
-	tableCookRecords[98].Fields[23].Record = func() *TableCookInfo { return &tableCookRecords[29] }
-	tableCookRecords[98].Fields[25].Record = func() *TableCookInfo { return &tableCookRecords[25] }
-	tableCookRecords[98].Fields[27].Record = func() *TableCookInfo { return &tableCookRecords[4] }
-	tableCookRecords[98].Fields[28].Record = func() *TableCookInfo { return &tableCookRecords[0] }
-	tableCookRecords[98].Fields[29].Record = func() *TableCookInfo { return &tableCookRecords[76] }
+	tableCookRecords[69].Fields[2].Record = func() *TableCookInfo { return &tableCookRecords[23] }
+	tableCookRecords[70].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[69] }
+	tableCookRecords[73].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[72] }
+	tableCookRecords[74].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[73] }
+	tableCookRecords[75].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[73] }
+	tableCookRecords[75].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[84] }
+	tableCookRecords[76].Fields[4].Record = func() *TableCookInfo { return &tableCookRecords[27] }
+	tableCookRecords[76].Fields[7].Record = func() *TableCookInfo { return &tableCookRecords[92] }
+	tableCookRecords[76].Fields[8].Record = func() *TableCookInfo { return &tableCookRecords[64] }
+	tableCookRecords[76].Fields[9].Record = func() *TableCookInfo { return &tableCookRecords[83] }
+	tableCookRecords[77].Fields[4].Record = func() *TableCookInfo { return &tableCookRecords[24] }
+	tableCookRecords[77].Fields[5].Record = func() *TableCookInfo { return &tableCookRecords[83] }
+	tableCookRecords[77].Fields[6].Record = func() *TableCookInfo { return &tableCookRecords[27] }
+	tableCookRecords[77].Fields[7].Record = func() *TableCookInfo { return &tableCookRecords[56] }
+	tableCookRecords[77].Fields[8].Record = func() *TableCookInfo { return &tableCookRecords[90] }
+	tableCookRecords[80].Fields[2].Record = func() *TableCookInfo { return &tableCookRecords[68] }
+	tableCookRecords[80].Fields[3].Record = func() *TableCookInfo { return &tableCookRecords[78] }
+	tableCookRecords[81].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[66] }
+	tableCookRecords[83].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[82] }
+	tableCookRecords[84].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[74] }
+	tableCookRecords[85].Fields[3].Record = func() *TableCookInfo { return &tableCookRecords[65] }
+	tableCookRecords[91].Fields[3].Record = func() *TableCookInfo { return &tableCookRecords[27] }
+	tableCookRecords[91].Fields[4].Record = func() *TableCookInfo { return &tableCookRecords[76] }
+	tableCookRecords[92].Fields[3].Record = func() *TableCookInfo { return &tableCookRecords[89] }
+	tableCookRecords[92].Fields[4].Record = func() *TableCookInfo { return &tableCookRecords[89] }
+	tableCookRecords[93].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[23] }
+	tableCookRecords[93].Fields[2].Record = func() *TableCookInfo { return &tableCookRecords[88] }
+	tableCookRecords[93].Fields[13].Record = func() *TableCookInfo { return &tableCookRecords[50] }
+	tableCookRecords[93].Fields[16].Record = func() *TableCookInfo { return &tableCookRecords[52] }
+	tableCookRecords[93].Fields[19].Record = func() *TableCookInfo { return &tableCookRecords[9] }
+	tableCookRecords[94].Fields[1].Record = func() *TableCookInfo { return &tableCookRecords[93] }
+	tableCookRecords[96].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[95] }
+	tableCookRecords[97].Fields[0].Record = func() *TableCookInfo { return &tableCookRecords[43] }
+	tableCookRecords[97].Fields[5].Record = func() *TableCookInfo { return &tableCookRecords[23] }
+	tableCookRecords[97].Fields[7].Record = func() *TableCookInfo { return &tableCookRecords[10] }
+	tableCookRecords[97].Fields[8].Record = func() *TableCookInfo { return &tableCookRecords[27] }
+	tableCookRecords[97].Fields[9].Record = func() *TableCookInfo { return &tableCookRecords[70] }
+	tableCookRecords[97].Fields[10].Record = func() *TableCookInfo { return &tableCookRecords[23] }
+	tableCookRecords[97].Fields[11].Record = func() *TableCookInfo { return &tableCookRecords[94] }
+	tableCookRecords[97].Fields[12].Record = func() *TableCookInfo { return &tableCookRecords[8] }
+	tableCookRecords[97].Fields[13].Record = func() *TableCookInfo { return &tableCookRecords[75] }
+	tableCookRecords[97].Fields[14].Record = func() *TableCookInfo { return &tableCookRecords[23] }
+	tableCookRecords[97].Fields[16].Record = func() *TableCookInfo { return &tableCookRecords[45] }
+	tableCookRecords[97].Fields[17].Record = func() *TableCookInfo { return &tableCookRecords[88] }
+	tableCookRecords[97].Fields[18].Record = func() *TableCookInfo { return &tableCookRecords[53] }
+	tableCookRecords[97].Fields[20].Record = func() *TableCookInfo { return &tableCookRecords[22] }
+	tableCookRecords[97].Fields[21].Record = func() *TableCookInfo { return &tableCookRecords[48] }
+	tableCookRecords[97].Fields[22].Record = func() *TableCookInfo { return &tableCookRecords[22] }
+	tableCookRecords[97].Fields[23].Record = func() *TableCookInfo { return &tableCookRecords[29] }
+	tableCookRecords[97].Fields[25].Record = func() *TableCookInfo { return &tableCookRecords[25] }
+	tableCookRecords[97].Fields[27].Record = func() *TableCookInfo { return &tableCookRecords[4] }
+	tableCookRecords[97].Fields[28].Record = func() *TableCookInfo { return &tableCookRecords[0] }
+	tableCookRecords[97].Fields[29].Record = func() *TableCookInfo { return &tableCookRecords[75] }
 }
 
 // CardIDCook is CardID's cook: a pointer and a length, and then the root where it
@@ -3402,7 +3379,7 @@ func RowNameAt(slot *int64, arena ...*TableArena) *RowNameRow {
 
 // Type is RowName's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c RowNameCook) Type() *TableCookInfo { return &tableCookRecords[66] }
+func (c RowNameCook) Type() *TableCookInfo { return &tableCookRecords[65] }
 
 // LineCook is Line's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -3711,7 +3688,7 @@ func TextPairAt(slot *int64, arena ...*TableArena) *TextPairRow {
 
 // Type is TextPair's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c TextPairCook) Type() *TableCookInfo { return &tableCookRecords[89] }
+func (c TextPairCook) Type() *TableCookInfo { return &tableCookRecords[88] }
 
 // IntPairCook is IntPair's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -4226,7 +4203,7 @@ func StageStatAt(slot *int64, arena ...*TableArena) *StageStatRow {
 
 // Type is StageStat's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c StageStatCook) Type() *TableCookInfo { return &tableCookRecords[73] }
+func (c StageStatCook) Type() *TableCookInfo { return &tableCookRecords[72] }
 
 // StageStatPairCook is StageStatPair's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -4329,7 +4306,7 @@ func StageStatPairAt(slot *int64, arena ...*TableArena) *StageStatPairRow {
 
 // Type is StageStatPair's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c StageStatPairCook) Type() *TableCookInfo { return &tableCookRecords[74] }
+func (c StageStatPairCook) Type() *TableCookInfo { return &tableCookRecords[73] }
 
 // StageStatsCook is StageStats's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -4432,7 +4409,7 @@ func StageStatsAt(slot *int64, arena ...*TableArena) *StageStatsRow {
 
 // Type is StageStats's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c StageStatsCook) Type() *TableCookInfo { return &tableCookRecords[75] }
+func (c StageStatsCook) Type() *TableCookInfo { return &tableCookRecords[74] }
 
 // StreamStagesPairCook is StreamStagesPair's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -4535,7 +4512,7 @@ func StreamStagesPairAt(slot *int64, arena ...*TableArena) *StreamStagesPairRow 
 
 // Type is StreamStagesPair's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c StreamStagesPairCook) Type() *TableCookInfo { return &tableCookRecords[85] }
+func (c StreamStagesPairCook) Type() *TableCookInfo { return &tableCookRecords[84] }
 
 // StageTimesCook is StageTimes's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -4638,7 +4615,7 @@ func StageTimesAt(slot *int64, arena ...*TableArena) *StageTimesRow {
 
 // Type is StageTimes's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c StageTimesCook) Type() *TableCookInfo { return &tableCookRecords[76] }
+func (c StageTimesCook) Type() *TableCookInfo { return &tableCookRecords[75] }
 
 // ReadDayCook is ReadDay's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -5464,7 +5441,7 @@ func TierCostsAt(slot *int64, arena ...*TableArena) *TierCostsRow {
 
 // Type is TierCosts's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c TierCostsCook) Type() *TableCookInfo { return &tableCookRecords[94] }
+func (c TierCostsCook) Type() *TableCookInfo { return &tableCookRecords[93] }
 
 // CostCheckCook is CostCheck's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -5979,7 +5956,7 @@ func SentinelCountsAt(slot *int64, arena ...*TableArena) *SentinelCountsRow {
 
 // Type is SentinelCounts's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c SentinelCountsCook) Type() *TableCookInfo { return &tableCookRecords[70] }
+func (c SentinelCountsCook) Type() *TableCookInfo { return &tableCookRecords[69] }
 
 // PriorityCardsCook is PriorityCards's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -6391,7 +6368,7 @@ func StreamTransitionAt(slot *int64, arena ...*TableArena) *StreamTransitionRow 
 
 // Type is StreamTransition's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c StreamTransitionCook) Type() *TableCookInfo { return &tableCookRecords[86] }
+func (c StreamTransitionCook) Type() *TableCookInfo { return &tableCookRecords[85] }
 
 // DecisionDeliveryCook is DecisionDelivery's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -6805,7 +6782,7 @@ func SentinelPairAt(slot *int64, arena ...*TableArena) *SentinelPairRow {
 
 // Type is SentinelPair's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c SentinelPairCook) Type() *TableCookInfo { return &tableCookRecords[71] }
+func (c SentinelPairCook) Type() *TableCookInfo { return &tableCookRecords[70] }
 
 // TierCostsPairCook is TierCostsPair's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -6908,7 +6885,7 @@ func TierCostsPairAt(slot *int64, arena ...*TableArena) *TierCostsPairRow {
 
 // Type is TierCostsPair's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c TierCostsPairCook) Type() *TableCookInfo { return &tableCookRecords[95] }
+func (c TierCostsPairCook) Type() *TableCookInfo { return &tableCookRecords[94] }
 
 // WhereRecordCook is WhereRecord's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -7011,7 +6988,7 @@ func WhereRecordAt(slot *int64, arena ...*TableArena) *WhereRecordRow {
 
 // Type is WhereRecord's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c WhereRecordCook) Type() *TableCookInfo { return &tableCookRecords[98] }
+func (c WhereRecordCook) Type() *TableCookInfo { return &tableCookRecords[97] }
 
 // RttSampleCook is RttSample's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -7114,7 +7091,7 @@ func RttSampleAt(slot *int64, arena ...*TableArena) *RttSampleRow {
 
 // Type is RttSample's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c RttSampleCook) Type() *TableCookInfo { return &tableCookRecords[67] }
+func (c RttSampleCook) Type() *TableCookInfo { return &tableCookRecords[66] }
 
 // StoreRTTRecordCook is StoreRTTRecord's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -7217,7 +7194,7 @@ func StoreRTTRecordAt(slot *int64, arena ...*TableArena) *StoreRTTRecordRow {
 
 // Type is StoreRTTRecord's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c StoreRTTRecordCook) Type() *TableCookInfo { return &tableCookRecords[82] }
+func (c StoreRTTRecordCook) Type() *TableCookInfo { return &tableCookRecords[81] }
 
 // SeatWaitsCook is SeatWaits's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -7320,7 +7297,7 @@ func SeatWaitsAt(slot *int64, arena ...*TableArena) *SeatWaitsRow {
 
 // Type is SeatWaits's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c SeatWaitsCook) Type() *TableCookInfo { return &tableCookRecords[69] }
+func (c SeatWaitsCook) Type() *TableCookInfo { return &tableCookRecords[68] }
 
 // StopCook is Stop's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -7423,7 +7400,7 @@ func StopAt(slot *int64, arena ...*TableArena) *StopRow {
 
 // Type is Stop's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c StopCook) Type() *TableCookInfo { return &tableCookRecords[79] }
+func (c StopCook) Type() *TableCookInfo { return &tableCookRecords[78] }
 
 // StopsRecordCook is StopsRecord's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -7526,7 +7503,7 @@ func StopsRecordAt(slot *int64, arena ...*TableArena) *StopsRecordRow {
 
 // Type is StopsRecord's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c StopsRecordCook) Type() *TableCookInfo { return &tableCookRecords[81] }
+func (c StopsRecordCook) Type() *TableCookInfo { return &tableCookRecords[80] }
 
 // RefusedVerbCook is RefusedVerb's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -9689,7 +9666,7 @@ func StreamBaseAt(slot *int64, arena ...*TableArena) *StreamBaseRow {
 
 // Type is StreamBase's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c StreamBaseCook) Type() *TableCookInfo { return &tableCookRecords[83] }
+func (c StreamBaseCook) Type() *TableCookInfo { return &tableCookRecords[82] }
 
 // StreamBasePairCook is StreamBasePair's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -9792,7 +9769,7 @@ func StreamBasePairAt(slot *int64, arena ...*TableArena) *StreamBasePairRow {
 
 // Type is StreamBasePair's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c StreamBasePairCook) Type() *TableCookInfo { return &tableCookRecords[84] }
+func (c StreamBasePairCook) Type() *TableCookInfo { return &tableCookRecords[83] }
 
 // KindTimeCook is KindTime's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -9998,7 +9975,7 @@ func TidyInFlightAt(slot *int64, arena ...*TableArena) *TidyInFlightRow {
 
 // Type is TidyInFlight's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c TidyInFlightCook) Type() *TableCookInfo { return &tableCookRecords[91] }
+func (c TidyInFlightCook) Type() *TableCookInfo { return &tableCookRecords[90] }
 
 // StatsRecordCook is StatsRecord's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -10101,7 +10078,7 @@ func StatsRecordAt(slot *int64, arena ...*TableArena) *StatsRecordRow {
 
 // Type is StatsRecord's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c StatsRecordCook) Type() *TableCookInfo { return &tableCookRecords[78] }
+func (c StatsRecordCook) Type() *TableCookInfo { return &tableCookRecords[77] }
 
 // TidyCardCook is TidyCard's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -10204,7 +10181,7 @@ func TidyCardAt(slot *int64, arena ...*TableArena) *TidyCardRow {
 
 // Type is TidyCard's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c TidyCardCook) Type() *TableCookInfo { return &tableCookRecords[90] }
+func (c TidyCardCook) Type() *TableCookInfo { return &tableCookRecords[89] }
 
 // TidyRowCook is TidyRow's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -10307,7 +10284,7 @@ func TidyRowAt(slot *int64, arena ...*TableArena) *TidyRowRow {
 
 // Type is TidyRow's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c TidyRowCook) Type() *TableCookInfo { return &tableCookRecords[93] }
+func (c TidyRowCook) Type() *TableCookInfo { return &tableCookRecords[92] }
 
 // RoutePricesCook is RoutePrices's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -10719,7 +10696,7 @@ func StatsArchiveAt(slot *int64, arena ...*TableArena) *StatsArchiveRow {
 
 // Type is StatsArchive's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c StatsArchiveCook) Type() *TableCookInfo { return &tableCookRecords[77] }
+func (c StatsArchiveCook) Type() *TableCookInfo { return &tableCookRecords[76] }
 
 // TidyResultCook is TidyResult's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -10822,7 +10799,7 @@ func TidyResultAt(slot *int64, arena ...*TableArena) *TidyResultRow {
 
 // Type is TidyResult's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c TidyResultCook) Type() *TableCookInfo { return &tableCookRecords[92] }
+func (c TidyResultCook) Type() *TableCookInfo { return &tableCookRecords[91] }
 
 // StuckCook is Stuck's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -10925,7 +10902,7 @@ func StuckAt(slot *int64, arena ...*TableArena) *StuckRow {
 
 // Type is Stuck's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c StuckCook) Type() *TableCookInfo { return &tableCookRecords[87] }
+func (c StuckCook) Type() *TableCookInfo { return &tableCookRecords[86] }
 
 // LogIndexEntryCook is LogIndexEntry's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -11234,7 +11211,7 @@ func SpanAt(slot *int64, arena ...*TableArena) *SpanRow {
 
 // Type is Span's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c SpanCook) Type() *TableCookInfo { return &tableCookRecords[72] }
+func (c SpanCook) Type() *TableCookInfo { return &tableCookRecords[71] }
 
 // StopLeaseCook is StopLease's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -11337,7 +11314,7 @@ func StopLeaseAt(slot *int64, arena ...*TableArena) *StopLeaseRow {
 
 // Type is StopLease's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c StopLeaseCook) Type() *TableCookInfo { return &tableCookRecords[80] }
+func (c StopLeaseCook) Type() *TableCookInfo { return &tableCookRecords[79] }
 
 // MachineCook is Machine's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -11646,7 +11623,7 @@ func SuppressedAt(slot *int64, arena ...*TableArena) *SuppressedRow {
 
 // Type is Suppressed's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c SuppressedCook) Type() *TableCookInfo { return &tableCookRecords[88] }
+func (c SuppressedCook) Type() *TableCookInfo { return &tableCookRecords[87] }
 
 // HeartbeatCook is Heartbeat's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -12472,109 +12449,6 @@ func BatchMemberEntryAt(slot *int64, arena ...*TableArena) *BatchMemberEntryRow 
 // walk follows (docs/SPEC-TABLES.md §8).
 func (c BatchMemberEntryCook) Type() *TableCookInfo { return &tableCookRecords[2] }
 
-// RowDelCook is RowDel's cook: a pointer and a length, and then the root where it
-// lies. Opening one is a HEADER MATCH and no copy; a reference is one add
-// (docs/SPEC-TABLES.md §7).
-//
-// `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
-// functions — RowDelOpen, RowDelAt — and so does Go, because Go has free functions;
-// what is a MEMBER here is only what §11 leaves a language free to make one.
-//
-// THE MEMORY IS THE CONSUMER'S. Nothing here allocates, nothing here copies and
-// nothing here pins: the region must stay put and stay aligned for as long as
-// this handle or anything reached through it is used.
-type RowDelCook struct {
-	Region       unsafe.Pointer // the DATA part's base: the root sits at offset zero
-	RegionLength int64          // data_length, as the header framed it
-}
-
-// §7.1's constants, so a consumer reading this file has the facts and not a
-// description of them. They are METHODS because §11 leaves a language whose
-// accessors are members free to spell them that way, and a package constant
-// per table per fact would claim names §11 does not.
-func (c RowDelCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
-func (c RowDelCook) RootSize() int64        { return 24 }
-func (c RowDelCook) RootAlign() int64       { return 8 }
-
-// Root is the root record at the region's base. It is a POINTER and not a
-// copy: a cooked graph is walked by adding deltas to slot addresses.
-func (c RowDelCook) Root() *RowDelRow { return (*RowDelRow)(c.Region) }
-
-// RowDelOpen is the bool convenience for the typed Open error on the handle.
-func RowDelOpen(cook *RowDelCook, base unsafe.Pointer, length int64) bool {
-	return cook.Open(base, length) == nil
-}
-
-// Open checks the header in SPEC §7 order, bytewise until base alignment is
-// established. A successful match points at the region and allocates nothing.
-func (cook *RowDelCook) Open(base unsafe.Pointer, length int64) error {
-	*cook = RowDelCook{}
-	if base == nil {
-		return TableRefuseUnalignedBase
-	}
-	if length < 64 {
-		return TableRefuseTruncated
-	}
-	header := unsafe.Slice((*byte)(base), 64)
-	magic := binary.NativeEndian.Uint64(header)
-	if magic != TableCookMagic {
-		if magic == 0x5343484d434f4f4b {
-			return TableRefuseForeignOrder
-		}
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[16:]) != TableCookByteOrder {
-		return TableRefuseNotACook
-	}
-	if binary.NativeEndian.Uint64(header[8:]) != BuildVersion {
-		return TableRefuseWrongBuildVersion
-	}
-	if binary.NativeEndian.Uint64(header[48:]) != 0 || binary.NativeEndian.Uint64(header[56:]) != 0 {
-		return TableRefuseReservedNotZero
-	}
-	alignment := binary.NativeEndian.Uint64(header[40:])
-	if alignment < 8 || alignment > 64 || alignment&(alignment-1) != 0 || alignment%8 != 0 {
-		return TableRefuseBadAlignment
-	}
-	bytes := uint64(length)
-	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
-	dataLength := binary.NativeEndian.Uint64(header[24:])
-	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 24 {
-		return TableRefuseTruncated
-	}
-	if uint64(uintptr(base))%alignment != 0 {
-		return TableRefuseUnalignedBase
-	}
-	cook.Region = unsafe.Add(base, uintptr(dataOffset))
-	cook.RegionLength = int64(dataLength)
-	return nil
-}
-
-// RowDelAt dereferences a reference, and it is the same call in a locked region
-// and an opened cook because they are the same encoding (§6.3): the slot is
-// eight bytes, SIGNED, self-relative from the SLOT'S OWN ADDRESS, so a deref
-// needs no base pointer and no bounds test, and NULL IS A DELTA OF ZERO.
-// Nothing about this call is the cook's: it is what a region reference is, and
-// a cook is a region written verbatim.
-//
-// It takes the SLOT and not its value, because a self-relative delta means
-// nothing without the address it is relative to.
-func RowDelAt(slot *int64, arena ...*TableArena) *RowDelRow {
-	if len(arena) > 0 && arena[0] != nil {
-		return (*RowDelRow)(arena[0].At(*slot))
-	}
-	delta := *slot
-	if delta == 0 {
-		return nil
-	}
-	return (*RowDelRow)(unsafe.Add(unsafe.Pointer(slot), uintptr(delta)))
-}
-
-// Type is RowDel's cooked-record descriptor, the head of the graph a reflective
-// walk follows (docs/SPEC-TABLES.md §8).
-func (c RowDelCook) Type() *TableCookInfo { return &tableCookRecords[65] }
-
 // BatchManifestCook is BatchManifest's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
 // (docs/SPEC-TABLES.md §7).
@@ -13088,7 +12962,7 @@ func TimerAt(slot *int64, arena ...*TableArena) *TimerRow {
 
 // Type is Timer's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c TimerCook) Type() *TableCookInfo { return &tableCookRecords[96] }
+func (c TimerCook) Type() *TableCookInfo { return &tableCookRecords[95] }
 
 // TimersCook is Timers's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -13191,7 +13065,7 @@ func TimersAt(slot *int64, arena ...*TableArena) *TimersRow {
 
 // Type is Timers's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c TimersCook) Type() *TableCookInfo { return &tableCookRecords[97] }
+func (c TimersCook) Type() *TableCookInfo { return &tableCookRecords[96] }
 
 // SeatChangeCook is SeatChange's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -13294,7 +13168,7 @@ func SeatChangeAt(slot *int64, arena ...*TableArena) *SeatChangeRow {
 
 // Type is SeatChange's cooked-record descriptor, the head of the graph a reflective
 // walk follows (docs/SPEC-TABLES.md §8).
-func (c SeatChangeCook) Type() *TableCookInfo { return &tableCookRecords[68] }
+func (c SeatChangeCook) Type() *TableCookInfo { return &tableCookRecords[67] }
 
 // HeldRecordCook is HeldRecord's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -13317,7 +13191,7 @@ type HeldRecordCook struct {
 // accessors are members free to spell them that way, and a package constant
 // per table per fact would claim names §11 does not.
 func (c HeldRecordCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
-func (c HeldRecordCook) RootSize() int64        { return 240 }
+func (c HeldRecordCook) RootSize() int64        { return 224 }
 func (c HeldRecordCook) RootAlign() int64       { return 8 }
 
 // Root is the root record at the region's base. It is a POINTER and not a
@@ -13364,7 +13238,7 @@ func (cook *HeldRecordCook) Open(base unsafe.Pointer, length int64) error {
 	dataOffset := (uint64(64) + alignment - 1) &^ (alignment - 1)
 	dataLength := binary.NativeEndian.Uint64(header[24:])
 	attribution := binary.NativeEndian.Uint64(header[32:])
-	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 240 {
+	if dataOffset > bytes || dataLength > bytes-dataOffset || attribution != bytes-dataOffset-dataLength || dataLength < 224 {
 		return TableRefuseTruncated
 	}
 	if uint64(uintptr(base))%alignment != 0 {
