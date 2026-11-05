@@ -309,15 +309,15 @@ type OpRecord struct {
 	// tables go together or not at all (G13). The struct tag is "-" so
 	// HeldRecord on the view-rows wire stays unchanged; MarshalJSON and
 	// UnmarshalJSON persist row_dels in the store's fence record.
-	RowDels   []sprint.RowDel        `json:"-"`
-	Notes     []sprint.Note          `json:"notes,omitempty"`   // happened and judgment, ids assigned
-	Decided   []sprint.Note          `json:"decided,omitempty"` // answers to open judgments
-	Log       []sprint.Line          `json:"log,omitempty"`     // the log's move lines of the step's changes
-	Updates   []sprint.Note          `json:"updates,omitempty"` // open judgments rewritten in place
-	Closes    []string               `json:"closes,omitempty"`  // open keys the step closes
-	Streams   []string               `json:"streams,omitempty"` // streams whose progress it is
-	CallerOp  string                 `json:"caller_op,omitempty"`
-	Result    string                 `json:"result,omitempty"` // the result, recorded under CallerOp
+	RowDels  []sprint.RowDel `json:"-"`
+	Notes    []sprint.Note   `json:"notes,omitempty"`   // happened and judgment, ids assigned
+	Decided  []sprint.Note   `json:"decided,omitempty"` // answers to open judgments
+	Log      []sprint.Line   `json:"log,omitempty"`     // the log's move lines of the step's changes
+	Updates  []sprint.Note   `json:"updates,omitempty"` // open judgments rewritten in place
+	Closes   []string        `json:"closes,omitempty"`  // open keys the step closes
+	Streams  []string        `json:"streams,omitempty"` // streams whose progress it is
+	CallerOp string          `json:"caller_op,omitempty"`
+	Result   string          `json:"result,omitempty"` // the result, recorded under CallerOp
 	// Stuck is the stuck operation this one reports (its judgment is among
 	// Notes): its commit deletes the stuck record.
 	Stuck string `json:"stuck,omitempty"`
