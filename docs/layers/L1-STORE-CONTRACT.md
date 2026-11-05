@@ -258,16 +258,26 @@ against Redis (redis_sprint_functional_test.go, redis_functional_test.go).
 | G23 | none | GAP |
 | G24 | store_test.go:513 (Apply only); timer and partial-commit divergences untested | partial |
 
-Refusals: tested R1 (clear_ids_test.go), R2 (callerop_test.go:43), R3 (callerop_test.go:13,64),
-R5 (clear_ids_test.go:13), R6, R7 (clear_told_test.go:103), R8 (stop_return_test.go:91),
-R9 (stop_return_test.go:68), R10 (stop_return_test.go:184), R13 (clear_restore_guard_test.go:19),
-R14 (stop_return_test.go:302, :321), R15 (seat_cover_test.go), R16 (changed_twice_test.go:52),
-R18 (bounds_test.go:42, :72), R22, R23 (repair_test.go, store_test.go), R24
-(bounds_test.go:137), R25 (machine_duties_test.go), R26 (engine_cover_test.go:23, :63),
-R27 (tick_busy_test.go), R29, R30, R32 (refusals_c_test.go), R31 (clear_concurrent_test.go). No test names: **R4, R11, R12, R17,
-R19, R20, R21, R28, R33, R34, R35, R36, R37** (13 GAPs; found by grepping each
-refusal's type or text in `*_test.go`, so a test asserting only `Refused` non-empty is missed).
-On a real store: only R3, R6, R22, R23 and the fence refusals of G3.
+Refusals: tested R1 (clear_ids_test.go; Redis: `refusals_real_a_functional_test.go`, R1), R2
+(callerop_test.go:43; Redis: same, R2), R3 (callerop_test.go:13, :64; Redis:
+`redis_sprint_functional_test.go:TestRedisCallerOperationReplay`), R4 (Redis: same real-a test,
+R4), R5 (clear_ids_test.go:13; Redis: same real-a test, R5), R6 (Redis:
+`redis_sprint_functional_test.go:TestRedisALateWriterAfterAClearIsRefused`), R7
+(clear_told_test.go:103), R8 (stop_return_test.go:91; Redis: same real-a test, R8), R9
+(stop_return_test.go:68; Redis: same real-a test, R9), R10 (stop_return_test.go:184; Redis: same
+real-a test, R10), R11 (Redis: same real-a test, R11), R12 (Redis: same real-a test, R12), R13
+(clear_restore_guard_test.go:19; Redis: same real-a test, R13), R14 (stop_return_test.go:302,
+:321; Redis: same real-a test, R14), R15 (seat_cover_test.go; Redis: same real-a test, R15), R16
+(changed_twice_test.go:52; Redis: same real-a test, R16), R17 (Redis: same real-a test, R17), R18
+(bounds_test.go:42, :72; Redis: same real-a test, R18), R22, R23 (repair_test.go, store_test.go),
+R24 (bounds_test.go:137), R25 (machine_duties_test.go), R26 (engine_cover_test.go:23, :63), R27
+(tick_busy_test.go), R29, R30, R32 (refusals_c_test.go), and R31 (clear_concurrent_test.go). No
+test names: **R19, R20, R21, R28, R33, R34, R35, R36, R37** (9 GAPs; found by grepping each
+refusal's type or text in `*_test.go`, so a test asserting only `Refused` non-empty is missed). R7
+has no real-Redis test: the post-commit display-sync failure needs a Redis command failure after
+commit, and `testutil.StartRaw` has no per-command fault hook. On a real store, this card adds R1,
+R2, R4, R5, and R8–R18 except R7; the existing real tests cover R3, R6, R22, R23 and the fence
+refusals of G3.
 
 House-rule flags (unit tests, no build tag, using real time or sockets):
 - machine_twoloops_test.go:31 sets `Sleep = time.Sleep` and races two goroutine tick loops on
