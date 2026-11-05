@@ -208,17 +208,12 @@ refused (exit 3) and changes nothing.
 A friend's counts are her sprint cards' (a friend's card, below), read by
 `where` from her fleet row `friend.<name>`, never from her working directory: a
 card dealt to her is `ready` until she starts it and `working` from her start
-(a friend's card is working once she starts it, section 1), so `working` counts
-started cards only; a `Verdict: LAND` report (with its `Head:` the
-tip) finishes it done ok, a `Verdict: HOLD` or `FAIL` (or `FAILED`, `BROKEN`)
-report done failed, except one whose reason is one of the three brief defects
-(the base lacks a PATHS file, a duplicate of landed work, a decision delivered;
-a brief defect, below), which is the brief's and not hers: it finishes in her
-hidden `defect` cell, in neither done nor ok%; and a report with no verdict
-word is done failed too, never ok. A hand-written inbox job that is
-no card (an `inbox/<job>/` directory named for no card of the sprint) is
-outside the sprint and is shown nowhere in the table; the coordinator's NOW.md
-is its pointer. `ready` and `working` count her cards in those states; `width`
+(a friend's card is working once she takes it, section 1), so `working` counts
+started cards only; her `finish --head` (the head origin's tip) finishes it done
+ok, her `finish --failed` done failed, except one whose reason is one of the
+three brief defects (the base lacks a PATHS file, a duplicate of landed work, a
+decision delivered; a brief defect, below), which is the brief's and not hers:
+it finishes in her hidden `defect` cell, in neither done nor ok%. `ready` and `working` count her cards in those states; `width`
 is her width, the jobs she works at once: her nova-config friend row's `width`
 (`nova-config friend set <friend> --width <n>`, at least 1, 8 by default; the
 owner, 2026-10-02: "6/1 seems a bit wrong -- need to setup width for friends?
@@ -350,30 +345,14 @@ continues to report work and hold friends. `TestFriendHookStatus` covers the
 down/held/up mapping; `TestFriendRowsUseHookAndHoldWithoutReportInference`
 covers the store read without real time, sockets or network.
 
-**A one-shot friend is a member lane** (the owner, 2026-10-14: "just make one shot
-friends, exactly the same code that already works in the fleet, just with an extra prompt
-at the front"; the nova-tools v1.3 friend lane spec, guarantee 12). A friend
-row with `session=one-shot` (nova-config; a friend with no live session between cards) is
-worked by an ordinary member on her row, `nova-swarm member --as friend.<name> --prompt
-<identity file>`: `fleet beat friend.<name>` is accepted for her (and for no live friend's
-row, nor a row the roster lacks), her status is that beat by the fleet's one rule
-(`PresenceStatus`: up while it has missed fewer than three beat windows, held while the
-coordinator holds her, else down, `no member beat on friend.<name>`), never a hook record,
-which is not read for her; `queue --as friend.<name>` answers her roster width; and her
-cards are dealt, taken by count, progressed and finished with the member's own verbs on her
-row, so each finish is credited to her row by the server's claim. No friend lane or daemon
-serves her: `friend beat <name>` and a lane's take (`take --lane`, a take by id through the
-lane) for her row are refused, naming the member that serves it
-(`TestAOneShotFriendIsDealtAndFinishesThroughTheMemberPath`,
-`TestTheFriendLanePathIsRefusedForAOneShot`; nova-tools tla/FriendLane.tla, OneShot).
-No friend-lane machinery touches her row in the tick either: her member's working
-card is never bounced for want of a friend start, her dealt cards are never
-returned for not taking nor marked dealt-no-more, and the friends' level never
-moves a card to or from her row (the fleet's level levels her member's row);
-friend sync writes her no inbox brief, queue file or bus wake and enrols her as
-no bus name (`TestAOneShotFriendsCardStaysWorkingAcrossTicks`,
-`TestFriendSyncDeliversNothingToAOneShot`; tla/FriendDealtReturn.tla,
-OneShotWorkingStays, witness MCFriendDealtReturnBrokenBounce).
+**A friend runs her own loop; there is no one-shot mode** (the owner, 2026-11-05: "I
+don't think we need one shot as a concept."; "It's a duplication of the fleet logic,
+poorly, for friends, and we have no need for it at all."; "Let's remove one shot, lest
+we switch back to it again for no reason."). A friend takes her ready cards with
+`take --as friend.<name>`, stages each with `friend stage` and finishes it with `finish
+--as friend.<name>` (a read with `read --as friend.<name>`). No daemon, delivery mode or
+member lane stands between her and the sprint: a fleet beat naming a friend's row is
+refused (a fleet beat names a machine), and a friend's beat carries no live set.
 
 **A friend's card** (the owner, 2026-10-03: "Could we try expressing the work
 left for nova-tools-1.1.0 into cards, and doing it via the sprint, but doing
@@ -421,10 +400,7 @@ down, held from the sprint POV"; "being marked as 'stalled' should be removed").
 friend's status is `up`, `down` or `held` and nothing else (`sprint.FriendStates`). For a
 friend with a live session, the status is written by `sprint.FriendHookStatus` alone, and
 `up` and `down` come only from the nova-hook record, the one truth of whether she is
-there (nova-tools `hook`; `store.ReadFriendHooks`). The one exception is a one-shot friend
-(`session=one-shot`, a member lane, above): her status is her member's beat by the fleet's
-rule (`PresenceStatus`), the same three words, and no hook record is read for her. For a
-live session, proven with no down reason is `up`, anything else (no record, unhooked, expired, partial,
+there (nova-tools `hook`; `store.ReadFriendHooks`). For a friend, proven with no down reason is `up`, anything else (no record, unhooked, expired, partial,
 live but unproven, or a down reason) is `down`. `held` is only the coordinator's explicit
 hold (`nova-sprint friend down` or `hold`, released by `friend up` or `unhold`), and a
 held friend whose hook record is not proven reads `down`. A down or held friend is not
@@ -459,13 +435,9 @@ as a machine's lane that frees takes its next, and the next tick puts it back
 `ready` unless she has started it (working on her row means started, below);
 the next tick fills her room
 again (`TestAFriendAtWidthEightWithThirtyCardsHasSixteenDealt`: width 8 with 30
-waiting is 8 working and 8 ready, and a 17th on a landing). In one-shot mode
-(`mode: one-shot`) the system deals to her width as in batch mode: her daemon runs
-one lane per unit of width, each card a fresh run (docs/SPEC-FRIEND.md, one-shot
-lanes), and the lane a finish frees takes her next at once (the owner, 2026-10-10:
-one card at a time left a one-shot reader at width 32 idle beside 110 cards in review;
-`TestAOneShotFriendIsDealtToHerWidthAsABatchFriendIs`,
-`TestAOneShotFriendsFreedLaneTakesHerNextWhileOtherLanesRun`). For either mode, the deal (friends
+waiting is 8 working and 8 ready, and a 17th on a landing), and the lane a finish
+frees takes her next at once (`TestAFriendsFreedLaneTakesHerNextWhileOtherLanesRun`).
+The deal (friends
 first, before the machines' deal) offers every ready card to its named friend
 whose tiers hold its tier first, then to the friends up whose tiers hold its
 tier, an idle lane first,
@@ -822,33 +794,28 @@ exactly. When every such friend is at her room and no paid reader
 has room, the read waits as a machine read waits for a reader's: due, noted
 `waiting for a reader`, no judgment. With no such friend up, the system's ask
 stands, including the one judgment a read with fewer readers up than it needs
-already raises (`fewer than two readers up`). The ask writes
-`inbox/<read-card>/BRIEF.md` in her working directory when it knows it: the
+already raises (`fewer than two readers up`). The read's brief, as `friend
+cards` serves it (`sprint.FriendReadBrief`), is the
 primary's AS A READ section through the next heading, the attempt's branch
 (the work card's), its start commit and its head named separately,
 `WHO: friend <name>`, and a deadline of thirty minutes on the sprint's clock.
 A generated brief's AS A READ section (`cardgen.AsARead`) says a `By:`
 trailer is judged only for being present and true, the friend who pushed, so a
-reader never fails a head because the WHO line preferred another friend. The same section carries `cardgen.AlwaysInPathsRule`, and `sprint.FriendReadBrief` copies it, so a friend read of a generated brief holds a test, a testdata file, `tla/RUNS.tsv`, `tla/CASES.tsv`, the docs catalog or an `AGENTS.md` map inside the change; a hand-written brief with no AS A READ section hands that read no such sentence. `friend sync` writes that brief when the ask has not, and a
-`Verdict: LAND` or a `Verdict: HOLD` with a finding that names a file, a line
-or a rule in `outbox/<read>/REPORT.md` retires that read on her fleet row
-the way a reader's verdict does (`FriendReadClose`: LAND is ok, and a HOLD
-raises `a reader found it broken`). The read card is `<primary>.r<attempt>.<friend>`,
+reader never fails a head because the WHO line preferred another friend. The same section carries `cardgen.AlwaysInPathsRule`, and `sprint.FriendReadBrief` copies it, so a friend read of a generated brief holds a test, a testdata file, `tla/RUNS.tsv`, `tla/CASES.tsv`, the docs catalog or an `AGENTS.md` map inside the change; a hand-written brief with no AS A READ section hands that read no such sentence. The read card is `<primary>.r<attempt>.<friend>`,
 placed on her fleet row `friend.<name>` in working while she has a lane,
 ready behind her working cards otherwise, at generation 1 (a read asked
 before the ask wrote one is at generation 0, and is read and returned the same
-way). Its job directory is the card id at every epoch and generation
-(`inbox/<read>/`, `outbox/<read>/`, and the `job` of her `QUEUE.json`). Her packet
-says how it is returned: the outbox report, or
-`nova-sprint read --as friend.<name> (--ok | --broken) <read> --epoch <n> [--finding ...]`,
-which writes the same close as her report (`readCardVerb`): the verdict
+way). Its job directory is the card id at every epoch and generation. Her packet
+says how it is returned:
+`nova-sprint read --as friend.<name> (--ok | --broken) <read> --epoch <n> [--finding ...]`
+(`readCardVerb`): the verdict
 stored, the read retired off her row, a broken verdict's judgment raised, and
 what the read spent, when `--usage` carries it, kept on the read and recorded on
 its primary as a reader's read is (`TestAFriendReadReturnedWithUsageCarriesItsTokens`); a
 read on her row has no `--begin` and no `--return`. `queue --as friend.<name>`
 names a read with that verb, never `finish`, and `finish` of a read is refused
-with the outbox form as its remedy (`TestFriendSyncClosesAFriendRowReadFromItsOutboxReport`,
-`TestAFriendRowReadsPacketNamesTheOutboxReturn`, `TestFinishRefusesAReadWithTheOutboxRemedy`).
+with the read verb as its remedy (`TestAFriendRowReadsPacketNamesTheReadVerb`,
+`TestFinishRefusesAReadWithTheReadVerbRemedy`).
 Her retired read still stands for the tick: the tick reads it with the
 primaries in review (`tickExtras`), and accept guards it at its revision alone,
 a place being a placed card's. The readers table gains no friend
@@ -862,77 +829,23 @@ paid, and the withdrawn card stays on her row as history, raising neither rule 2
 nor a lateness (`TestAWithdrawnFriendReadIsAskedAgain`,
 `TestRuleTwoIsQuietForAWithdrawnRead`).
 
-`friend sync`, run by the coordinator's own loop where the directories are
-(each run once, at the loop's period: 15 s in the coordinator's loop), carries
-a friend's card across the inbox/outbox standard
-(docs/FRIENDS.md, a sprint card): for each card working or ready on a friend's
-row it writes `inbox/<job>/BRIEF.md` when that is not there and tells her so
-with one nova-bus message from the coordinator to her, subject `card <card>
-dealt: <the FRIEND-CARD DELIVERED line>`, the inbox path in the body (her
-daemon pushes it into her session, which the inbox file alone never does; the
-store is `NOVA_BUS_REDIS`; `NOVA_BUS_REDIS_USER` names its ACL user and
-`NOVA_BUS_REDIS_PASSWORD_ENV` names the variable holding its password, both
-independent of the sprint store's login; an unset bus user uses the default
-user); the inbox file is the record and the message a
-courtesy: a send that fails never fails the delivery, is said on sync's line
-(`FRIEND-CARD NOTE friend= card=: the bus message to her was not sent (...)`)
-and written on the card's story as one happened note, `a friend was not told
-of her card`, with the `nova-bus send` line to tell her by hand, and keeps her
-queue file, `inbox/QUEUE.json` (nova-friend's: one record per task, its
-state `queued`, `working` or `done`; her daemon's pong reports its counts),
-saying which of her cards are `working` and which `queued` (ready behind
-them), never touching a record her session marked `done` or one the sprint
-does not name (written whole by
-`internal/atomicfile`, never over a file there; a later attempt's says it starts from the current
-tip of the card's base branch on origin, never an older base, carrying the work of the last
-attempt that pushed onto it herself (`git diff origin/<base>...<head>` shows it, redone where it
-does not apply), and that the Head she reports must be on that tip: the rule a member's rework is
-staged by, docs/SPEC-CARD-CONTRACT.md, where a rework starts; `TestAFriendsReworkStartsFromTheTipOfItsBase`.
-Her daemon writes a rework's brief with the fix first, not as the `The coordinator asks:` line under
-the start: `THE ONE THING LEFT: <fix>` and `The reader found: <finding>` are the first lines after
-STATUS, then the carried head and branch, the card's STOP is the fix alone. A report's stated
-`Verdict: LAND` and `Head:` remain authoritative when its first paragraph misses words from THE ONE
-THING LEFT: the mismatch may raise one seat judgment asking for the report to be read, but never
-rewrites the verdict, fails the card, or counts against the friend's ok%; a valid LAND goes to
-review with its reported head (`TestAKeywordMissIsAJudgmentNeverAHold`). A later attempt's delivered
-`CARRY:` line names the newest full head any earlier attempt pushed, replacing any older CARRY in
-the brief (`TestAFriendsReworkStartsFromTheTipOfItsBase`, `TestARedealCarriesTheNewestPushedHead`).
-A friend has no staged commit, so nothing checks that her Head descends from that tip: the
-`ls-remote` tip check below, Head is origin's tip of her branch, is the only guard on her finish),
-`<job>` the card's id as the table layer holds it at its
-epoch (`sprint.StoredID`: the card id at epoch 0, `<card>~<epoch>` after a
-clear, so a card id a clear brings back is another job), and only the
-coordinator reaches out; once `outbox/<job>/REPORT.md` is there it finishes
-the card as the friend (`finish` at the card's generation and epoch, as
-`friend.<name>`): `Verdict: LAND` with `Head: <full sha>` is a worker's ok
-finish at origin's tip of the branch BRIEF.md names, read once by one `git
-ls-remote` of that branch in the card's `REPO:` repository (bounded at 10 s),
-and only when the tip is that Head: what is read and landed is what origin
-holds, never the report's word; the card goes to review, its reads and its
-landing as any card's. A Head that is not the tip is refused, one line naming
-both shas (`FRIEND-CARD REFUSED friend= card=: Head <head> is not origin's tip
-of <branch>, <tip>; ...`), as are a branch origin does not hold, a card with no
-`REPO:` line and a tip that cannot be read: the card is not finished (the
-deadline still judges it), and the next sync reads the report again; `Verdict: HOLD` or `FAIL` (or
-`FAILED`, `BROKEN`) is a failed finish, the judgment "work came back failed"
-carrying `friend <name> <VERDICT>: <the report's first paragraph>`, except one
-whose first paragraph names one of the three brief defects (the base lacks a
-PATHS file, a duplicate of landed work, a decision delivered; a brief defect,
-below), which is the brief's, not the worker's: it raises "a brief defect",
-never "work came back failed", and counts on the stream, never in her ok%; a LAND with
-no full sha Head, or any other verdict or none, is failed too, its report
-saying what it lacks. It collects from a friend whatever her status. It prints
-`FRIEND-CARD DELIVERED friend= card= job= branch=`, `FRIEND-CARD FINISHED
-friend= card= result=ok|failed head=: <report>`, and `FRIEND-CARD REFUSED
-friend= card=: <why>` for a finish the sprint or the tip refused, and for a card whose
-id is not a card id or whose `inbox/<job>` is a symlink or a file (checked by
-`Lstat`; nothing is written outside her working directory), and its OK line adds
-`delivered=<n> finished=<n>` when either is above zero (`--json` `delivered`,
-`finished`, `cards`). A hand-written inbox directory that is no card of the
-sprint is outside the sprint and shown nowhere in the table: `where` counts her
-cards from her fleet row into her friends row (ready, working, done ok and
-failed; working 0 while she is down), and draws no friend's row in the fleet
-table or its `--json`.
+`friend sync`, run by the coordinator's own loop (each run once, at the loop's period:
+15 s in the coordinator's loop), copies the nova-config friend rows into the friends
+table and enrols each row's name on the bus store; it delivers no card and finishes
+none. A friend's card is hers to take, stage and finish (docs/FRIENDS.md, a friend's own
+loop). Her brief's STATUS line names the branch and the finish line; a later attempt's
+says it starts from the current tip of the card's base branch on origin, never an older
+base, carrying the work of the last attempt that pushed onto it herself (`git diff
+origin/<base>...<head>` shows it, redone where it does not apply), and that the Head she
+finishes with must be on that tip: the rule a member's rework is staged by,
+docs/SPEC-CARD-CONTRACT.md, where a rework starts;
+`TestAFriendsReworkStartsFromTheTipOfItsBase`. A later attempt's `CARRY:` line names the
+newest full head any earlier attempt pushed, replacing any older CARRY in the brief
+(`TestARedealCarriesTheNewestPushedHead`). `finish --as friend.<name> --head <sha>` is
+accepted only at origin's tip of the card's branch; a failed finish whose reason names
+one of the brief defects (below) is the brief's, never hers. `where` counts her cards
+from her fleet row into her friends row (ready, working, done ok and failed; working 0
+while she is down), and draws no friend's row in the fleet table or its `--json`.
 Her row is hidden in the stored fleet table (the table layer's row hide, when
 the deal first adds it), so the stored view `sprint` does not draw it either;
 as for any hidden row, its counts stay in that table's folded footer there,
@@ -952,37 +865,9 @@ next generation (`laneGoneUnits`). The model is nova-tools `tla/FriendLaneClient
 `DeadClientReleases`, `DeadModelReleases`). `TestAFriendsTakeThenATickIsStillWorking`,
 `TestATakeUnderAFriendsBareNameIsRefusedWithTheLaneForm`.
 
-**Collect** (the coordinator's stopgap `finish-loop.py`, 92 finishes on the night of
-2026-10-05: every 30 s it finished each report of a working card, searching every
-friend's outbox, and failed each lane that ended with no report; collect-is-a-verb-and-
-the-daemons-duty.w1). `collect [<friend>...] [--dead-lanes] [--pg <dsn>] [--root <dir>]
-[--dry-run]` (the coordinator's; never run by the server) reads the work cards working
-on the named friends' rows (default every friend row of nova-config) and every friend's
-`<root>/<friend>-working/outbox/<job>/REPORT.md` (read as friend sync reads one: a
-regular file, at most 64 KiB) for their jobs; a report written ahead may sit in another
-friend's tree, and her own tree is read first (`sprint.Collect`). For each card: `LAND`
-with a full sha `Head:` finishes it as her row at that head, only when the head is
-origin's tip of the card's branch (one `git ls-remote`, as friend sync); a head that is
-not, or a branch origin does not hold, is refused on a line naming the branch and both
-shas, the card left working for the next collect. `HOLD`, `FAIL`, any other verdict and a
-`LAND` with no full sha head finish it `--failed`, the report `friend <name> <verdict>: `
-and the report's first 600 characters on one line (a `HOLD`'s head kept when it is
-origin's tip; a `PATHS-PROPOSED` line carried). A report with no `Verdict:` line, or one
-that cannot be read, is left and said. With `--dead-lanes`, a card with no report anywhere
-whose friend's runner log (`runner.log` in her working directory, else beside the
-directory it links to, never `<root>`'s own; its last 4 MiB) holds, as the job's last
-event, `END <job> ... report=no` with no `LIMIT` after its `START` (`sprint.RunnerEnded`:
-a run stopped at its usage limit is run again) is finished `--failed`, `friend <name> lane
-ended with no report: <the END line>`, so the card is dealt again. A finish taken moves
-the card off working, so a report finished once is never finished twice (a card dealt
-again is another job, `.g<gen>`). One line per card, `COLLECT <card> LAND <head>`,
-`COLLECT <card> FAILED <reason>`, `COLLECT <card> REFUSED <why>` or `COLLECT <card> LEFT
-<why>`, then `COLLECT OK friends= working= landed= failed= refused= left=`, exit 0; a
-friend not on the roster, exit 1; a config that cannot be read, exit 3. `--dry-run`
-finishes nothing and reads no tip. The nova-friend daemon keeps the same rule for her own
-tree on every sync (docs/SPEC-FRIEND.md, the daemon reads every outbox job, and its dead
-lanes), so the verb is the coordinator's hand and the daemon's duty. The model is
-`internal/friend/tla/Collect.tla`.
+**Collect, retired** (2026-11-05, with the friend daemon and its one-shot mode). The
+verb that finished a friend's working cards from her outbox reports is deleted: a friend
+finishes her own cards.
 
 **A brief defect** (the owner, 2026-10-04: "trust but VERIFY"; "I want to trust the ok%";
 "Are they actually doing the work that is shown in the friend table? Really?"). A worker's
@@ -4252,20 +4137,14 @@ reads close as `read --ok|--broken` closes them, and it leaves review only by th
   branch, the worker's report), it pushes nothing, and its end is reported with the read verb as
   the member, `read --as <m> (--ok | --broken) <card> --finding <text>` or `read --as <m>
   --return <card> --reason <text>`, never `finish`.
-- **A friend's read card is a card.** Friend sync delivers it as her work cards: inbox/<job>/
-  BRIEF.md under the job a card of hers has (`friendJobOf`: its stored id, `.g<gen>` from 2), with
-  the bus wake, and the brief is whole for a lane that has never seen the sprint
-  (`ReadCardBrief`): the STATUS line (a read: change nothing, commit nothing, push nothing; the
-  report's path), what a read is, the repository, branch, head, base and start, how to read (the
-  clone, the checkout of the head, the diff, what to judge against: the card's HOW THIS CARD IS
-  JUDGED and AS A READ, its task, STEPS, TEST, PATHS and RULES, the tests to run), how to finish
-  (outbox/<job>/REPORT.md whose first line is `Verdict: LAND` or `Verdict: HOLD`, a HOLD naming
-  each defect), and the card under review verbatim with the worker's report. A one-shot runner
-  that runs inbox/<job>/BRIEF.md and publishes outbox/<job>/REPORT.md runs it unchanged
-  (`TestAOneShotFriendRunsAReadCardFromItsBrief`). A friend's read asked before read cards (no `read_card` field) keeps its card id
-  as its job at every epoch (`Packet.read_job`), delivered, queued and closed at inbox/<card id>
-  and outbox/<card id> as it was, so installing this build delivers no live read again
-  (`TestAReadAskedTheOldWayKeepsItsInboxPath`).
+- **A friend's read card is a card.** `friend cards` serves it as her work cards, and the brief
+  is whole for a reader that has never seen the sprint (`ReadCardBrief`): the STATUS line (a read:
+  change nothing, commit nothing, push nothing; the read verb that returns it), what a read is, the
+  repository, branch, head, base and start, how to read (the clone, the checkout of the head, the
+  diff, what to judge against: the card's HOW THIS CARD IS JUDGED and AS A READ, its task, STEPS,
+  TEST, PATHS and RULES, the tests to run), how to return it (`nova-sprint read --as
+  friend.<name> (--ok | --broken) <read> --epoch <n>`, a broken read naming each defect), and the
+  card under review verbatim with the worker's report.
 - **The close.** `Verdict: LAND` (or `read --ok`) retires the card with verdict ok, `Verdict:
   HOLD` with a line naming a file, a line or a rule (or `read --broken` with its finding) retires
   it broken and raises the read-broken judgment, exactly as a readers-table read does; the usage
@@ -7006,7 +6885,6 @@ land's place; a head that is not a commit id stops the dry run where land stops,
 | routes rest | `routes rest <provider-or-route> --reason <text> [--for <duration> or --until <RFC3339>]`: the coordinator rests every route of the provider (the fleet property `provider_rest_<provider>`, cause `coordinator`) or one route (its line in `rule3_rest_<provider>`), until the time or until woken; a happened note; the coordinator's; refused whole, nothing written, with no reason, a name that is neither a route nor a provider of one, or a time not after now |
 | routes wake | `routes wake <provider-or-route> --reason <text>`: ends now the rest holding the provider (any cause, a refused take's included) and its routes' own, or one route's own while its provider serves, the reason on the rest's words; never a payment (that is `funded`); refused whole with no reason, an unknown name, nothing resting, or a route under its provider's rest |
 | friend sync | the friends table's rows made nova-config's friend rows (section 1); `--every <d>` loops as the seat each pass, and `friend sync install --every <d>` / `friend sync uninstall` put that loop in place as this machine's service ("Handing over the seat") |
-| collect | every friend's outbox report of a card working on a friend's row finished as her row, a LAND only at origin's tip, and with `--dead-lanes` a lane her runner ENDed with no report finished failed (section 1, collect): `collect [<friend>...] [--dead-lanes] [--root <dir>] [--dry-run]`; never run by the server |
 | gc | the system's scratch reclaimed on the machine it runs on, or on `--machine`'s through the fleet runner (section 1, gc): `gc [--machine <m>] [--dry-run] [--max-age <d>] [--ai-root <dir>]`; job directories of finished or absent lanes, reader checkouts of recorded findings, lander worktrees and bench directories past `--max-age`, the go caches trimmed to their cap, never a path under no known scratch root or a clone with work that is nowhere else; one line per class and `GC OK freed=<bytes> volume=<use%>`; run by `run` on every machine hourly and on a volume at 80%; never run by the server |
 | friend give | the coordinator's undo of `friend take` (section 1, a friend's card taken back): `friend give <friend> <id>... [--reason <text>]`; on each card named (a primary or its work card), ready or waiting, its current attempt's work card loses `taken_from` her row, so the next deal may deal it to her again, a hard pin taken back from her included; the marks of other friends stay. A card taken back from her is given back as above; a ready card whose current work card is Done (a brief-replaced bounce) or absent is handed to her at its next attempt (`<id>: handed to <friend>`), eligibility as the deal holds it (tier, restriction, needs, a hard pin to another friend refused naming `nova-sprint unpin`). A card not ready or waiting, one whose work card is live on a row, one taken back from another friend, and a friend not on the friends table are refused, one `REFUSED` line each, the rest given; each given says `MOVED <card> may be dealt to <friend> again (<reason>)` (default reason: given back by the coordinator) with a happened note, then `FRIEND-GIVE OK moved=<n> refused=<m>` (`FAILED`, exit 1, when any is refused) |
 | friend clean | the retention rule of the friends' working directories (docs/FRIENDS.md; ideas#833), run nightly from a loop row on the machine that holds them, never by the server and never on the store: `friend clean [--pg <dsn>] [--root <dir>] [--days <n>] [--dry-run]`. For each friend row of nova-config (as `friend sync` reads them; the coordinator is one), `<root>/<friend>-working` (`--root`, else HOME); a friend with no directory there is said and skipped. A job is `inbox/<job>/` or `jobs/<job>/`, done when `outbox/<job>/REPORT.md` is a regular file, its age that file's. Inside a done job at least `--days` old (default 3) a clone (a directory holding `.git`) is removed when `git status --porcelain` is empty, it holds no stash and no commit of `HEAD` or a local branch is missing from every remote-tracking ref (`git log HEAD --branches --not --remotes`, no network); build output (`node_modules`, `target`, `gocache`, `gocache-*`, `.gocache`, `go-build`, `wt-*`) that is no clone is removed. A clone that fails the check, or whose git fails, is dirty: listed each run, `FRIENDS-CLEAN DIRTY friend= path= age=<d>d why=`, and removed once its job is 14 days old whatever its state, its line saying `dirty=<why>`. Nothing else is touched: the brief and any text of the job, `outbox/`, every file outside `inbox/` and `jobs/`; a link is never followed; a job under `jobs/` that is itself a clone is one target, one under `inbox/` is never removed (a NOTE). Every removal is `safepath.RemoveUnderRoots` under the job's directory. The friend's one build cache, `<friend>-working/.cache/go-build`, is held under 20 GiB by the member's trim (`internal/gocache`). `--dry-run` says `WOULD-REMOVE` in place of `REMOVED` with the bytes and removes nothing. Lines `FRIENDS-CLEAN REMOVED\|WOULD-REMOVE friend= path= bytes= age=<d>d kind=clone\|build[ dirty=<why>]`, `FRIENDS-CLEAN CACHE ...`, `FRIENDS-CLEAN FRIEND <f> dir= jobs= done= freed= listed=` (or `absent`), `FRIENDS-CLEAN FAILED friend= path=: <why>`, and last `FRIENDS-CLEAN OK freed=<bytes> listed=<n>` (a dry run adds `dry-run: nothing was removed`), or `FRIENDS-CLEAN INCOMPLETE ... failed=<n>`, exit 1; a config that cannot be read or holds no friend row, exit 3, nothing removed; `--json` one object with the lines |
@@ -8302,7 +8180,7 @@ stop arrived, a restart that turned a cancelled card into a FAIL, a wake
 nudge sent while STOPPED, and a cancelled lane finishing its card.
 
 Working means a live run (v1.2.6; tla/LiveRuns.tla). A worker's beat carries
-its live set, `fleet beat --live` and `friend beat --live`: `<card>@<gen>` for
+its live set, `fleet beat --live`: `<card>@<gen>` for
 each child it runs and `<card>@<gen>:held` for each finished report it holds
 (a finish the system refused for its STOP is kept, held, and sent again at the
 same generation once it runs), or `-` for none. The beat is the evidence for

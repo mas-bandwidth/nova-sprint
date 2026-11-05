@@ -123,10 +123,9 @@ working cards. `fleet down <member>` follows the same rule.
 
 nova-sprint fleet sync [--check] [--pg <dsn>]
 nova-sprint fleet level
-nova-sprint friend sync [--pg <dsn>] [--root <dir>] [--every <duration>]
-nova-sprint friend sync install --every <duration> [--redis <addr>] [--pg <dsn>] [--root <dir>] [--dir <dir>] [--log <file>] [--dry-run]
+nova-sprint friend sync [--pg <dsn>] [--every <duration>]
+nova-sprint friend sync install --every <duration> [--redis <addr>] [--pg <dsn>] [--dir <dir>] [--log <file>] [--dry-run]
 nova-sprint friend sync uninstall [--dir <dir>] [--dry-run]
-nova-sprint collect [<friend>...] [--dead-lanes] [--pg <dsn>] [--root <dir>] [--dry-run]
 nova-sprint install server --listen <address:port> [--redis <addr>] [--land=false] [--decide <dir>] [--dir <dir>] [--log <file>] [--dry-run]
 nova-sprint install member --as <member> --server <address:port> [--harness <path>] [--root <dir>] [--pass <NAME,...>] [--swarm <path>] [--dir <dir>] [--log <file>] [--dry-run]
 nova-sprint install friend-sync (friend sync install's flags)
@@ -324,11 +323,10 @@ card it selects in one store step, prints one line per card and the total, and w
 `--dry-run` lists what would change and writes nothing (docs/SPEC-SPRINT.md, "One
 selector, one step").
 
-`friend sync` wakes a friend through the bus store at `NOVA_BUS_REDIS` after
-delivering her card. Its bus login reads `NOVA_BUS_REDIS_USER` and the password
-variable named by `NOVA_BUS_REDIS_PASSWORD_ENV`, separately from the sprint
-store's login. With no bus user it uses the default user; a failed bus send
-leaves the delivered card in her inbox and records that she was not woken.
+`friend sync` enrolls every friend row on the bus store at `NOVA_BUS_REDIS`. Its
+bus login reads `NOVA_BUS_REDIS_USER` and the password variable named by
+`NOVA_BUS_REDIS_PASSWORD_ENV`, separately from the sprint store's login. With no
+bus user it uses the default user.
 
 Every store verb takes `--redis <addr>` (else `NOVA_SPRINT_REDIS`, then
 `NOVA_REDIS_ADDR`, then the address `seat login` recorded), `--actor <name>` (else
@@ -519,8 +517,7 @@ curl -s --compressed 'http://<tailnet address>:<port>/api/view/worker?as=<name>'
 
 The sprint's server (`run --listen`) serves them read-only at `/api/view/coordinator` and
 `/api/view/worker?as=<name>`. `nova-sprint view cards --col review --by tier --json` counts the primaries by column, tier, stream or holder (also `/api/view/cards?col=review&by=tier`). `nova-sprint friend cards <friend> --json` is every card held on
-a friend's row (working, then ready) with its packet and its `BRIEF.md` as friend sync writes
-it; her nova-friend daemon reads it every loop to write her inbox, and the server serves it to
+a friend's row (working, then ready) with its packet and its brief; the server serves it to
 her as a worker's verb and at `GET /api/friend/<friend>/cards`. The contract is [SPEC-SPRINT.md](https://github.com/mas-bandwidth/nova-sprint/blob/main/docs/SPEC-SPRINT.md), section 11,
 "Role views".
 

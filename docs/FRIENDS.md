@@ -8,24 +8,28 @@ nova-config friend row (docs/SPEC-CONFIG.md, `friend`), a row of the sprint's
 friends table (docs/FLEET.md), and a working directory `~/<name>-working` on
 the machine she runs on. The coordinator is a friend row too (the sprint row's
 `coordinator` names one), and her own working directory follows the same
-standard. This page is the standard for that directory: how a job arrives, how
-it is reported, where its work lives, and how the work is removed once done.
+standard. This page is the standard for that directory: how a friend takes a
+card, how she finishes it, where its work lives, and how the work is removed
+once done.
 
-## The inbox/outbox standard
+## A friend's own loop
 
-Only the coordinator reaches out. A job is a directory:
+A friend runs her own loop, as a fleet member does, with no daemon between her
+and the sprint (the owner, 2026-11-05: "One shot was a workaround for friends
+who can't reliably run their own loops and take ready cards, and we don't run
+those sort of friends anymore."):
 
-- the coordinator delivers `inbox/<job>/`, with its `BRIEF.md`; `<job>` begins
-  with its date, `2026-10-02-cold-rating`;
-- the friend makes `outbox/<job>/` when she starts;
-- the friend writes `outbox/<job>/REPORT.md` when she is done, with a
-  `Verdict:` line (its first word HOLD, FAIL, FAILED or BROKEN is a failed job;
-  any other word, or no such line, is ok).
+1. `nova-sprint take --as friend.<name>` moves her next ready card into working
+   and marks it started;
+2. `nova-sprint friend stage <card>@<gen> --as friend.<name>` clones it into
+   `jobs/<job>/` and writes `JOB.md` with the exact finish command (below);
+3. she works it, pushes the branch the card names, and finishes it with
+   `nova-sprint finish --as friend.<name> <card>@<gen> --epoch <n>`, with
+   `--head <sha>` (origin's tip of her branch) or `--failed`. A read on her row
+   is returned with `nova-sprint read --as friend.<name>`.
 
-A job is ready while `outbox/<job>/` is absent, working while it is there
-without `REPORT.md`, and done once `REPORT.md` exists. `nova-sprint friend
-sync` reads these directories (writing in them only a sprint card's brief, below)
-into the friends table's `ready`, `working`, `done` and `ok%`.
+`nova-sprint friend cards <name> --json` lists the cards on her row with their
+briefs, and `where` counts her `ready`, `working`, `done` and `ok%`.
 
 ## Friend availability
 
@@ -43,12 +47,11 @@ A card of the sprint whose brief says `WHO: friend` or `WHO: friend <name>` is
 dealt to a friend (docs/SPEC-SPRINT.md section 1, a friend's card; the owner,
 2026-10-03: "Could we try expressing the work left for nova-tools-1.1.0 into
 cards, and doing it via the sprint, but doing parts on friends where we would
-normally do friend work."). It arrives as a job like any other:
-`inbox/<card>/BRIEF.md` (after a clear, `<card>~<epoch>`), written by
-`nova-sprint friend sync`. Its first line is the STATUS line:
+normally do friend work."). Its brief, as `friend cards` gives it, begins with
+the STATUS line:
 
 ```
-STATUS: nova-sprint card <card>, epoch <e>, attempt <n>; push your work to the branch sprint/<card>.g<gen>.e<e>; when done, write outbox/<card>/REPORT.md with Verdict: LAND|HOLD|FAIL and Head: <sha>
+STATUS: nova-sprint card <card>, epoch <e>, attempt <n>; push your work to the branch sprint/<card>.g<gen>.e<e>; when done, finish it yourself: nova-sprint finish --as friend.<name> <card>@<gen> --epoch <e> (with --failed when it failed); nova-sprint friend stage <card>@<gen> --as friend.<name> stages it and writes the exact finish command in JOB.md
 ```
 
 then the working-directory line below, a later attempt's start (the current tip
@@ -62,37 +65,14 @@ asks:`), a blank line, and the card's brief. What a friend does with it:
 1. Work in `jobs/<card>/` as for any job; commit, and push the commit to the
    branch the STATUS line names (never another: the sprint reads and lands
    origin's tip of that branch, and nothing else).
-2. Write `outbox/<card>/REPORT.md` in this form, exactly:
-
-   ```
-   Verdict: LAND
-   Head: <the full 40-character sha of the commit pushed>
-
-   <one paragraph: what changed and the gate's result>
-   ```
-
-   `LAND` is work ready for its reads and its landing; `HOLD` is work stopped
-   for the coordinator's decision, `FAIL` work that could not be done; for
-   either, `Head:` may be left out, and the first paragraph says why. The
-   first `Verdict:` and `Head:` lines are read (markdown marks around them
-   are fine); the first paragraph that is neither of them nor a heading goes
-   onto the card, cut to 1 KiB.
-
-The sync finishes the card on its next run after the report (the period of the
-loop that runs it: 15 s in the friend sync loop, below): `LAND` goes to review at
-origin's tip of the branch when that tip is the full sha `Head:` names; a Head
-that is not the tip (a commit not pushed there, or pushed to after the report)
-or a branch origin does not hold finishes nothing, and the sync says so naming
-both shas each run until the report's Head is the tip (or the card's deadline
-passes); a `LAND` with no full sha, or any other word, comes back failed saying
-what it lacks; `HOLD` and `FAIL` come back failed to the coordinator with the
-paragraph. A sprint card is not counted among the
-inbox's jobs: the friends table counts it from the sprint.
+2. Finish it with the line `JOB.md` names: `--head` with the full sha of the
+   pushed commit for work ready for its reads and its landing, or `--failed`
+   with a report that says why for work that stopped or could not be done.
+   A head that is not origin's tip of the branch is refused, naming both shas.
 
 The coordinator puts a card on a friend's row two ways: the deal fills the
 rest from the ready queue, and `nova-sprint friend give <friend> <id>` hands a
-named ready card to her at once (the same work card `friend sync` delivers),
-so the seat need not wait for the deal to draw it for whoever it chooses.
+named ready card to her at once, so the seat need not wait for the deal to draw it for whoever it chooses.
 `friend take <friend> <id>` takes a card dealt to her and not taken back to
 ready (a card she is working wants `--working` as well, and
 `--all-unstarted` never takes a working card) and marks it not to be dealt to her again; each taken card says so and
@@ -103,8 +83,7 @@ A friend pulls her own view of the sprint whenever she wants it with one curl, `
 http://<tailnet address>:<port>/friend/<name>` (the coordinator's dashboard pull port,
 `7395` by default; `/api/friend/<name>` is the same as JSON), and reads the sprint line,
 her row, and a line per card dealt to her with its state, its deadline and its branch. It
-is read-only: it changes nothing, and her inbox and outbox stay how work arrives and is
-reported.
+is read-only: it changes nothing.
 `curl -s http://<tailnet address>:<port>/team` is every friend at once, each with the
 cards she holds, so friends see what each other are on (`/api/team` as JSON).
 
@@ -116,23 +95,21 @@ and nova-sprint verbs only"; "Make the ping loop mechanical!!!!"). Each pass
 reopens the store, so it runs at the sprint's epoch then, and, given no
 `--actor`, acts as the sprint's coordinator seat as the store says it then, so
 a seat that moves takes the loop with it. A pass that changed something (a
-friend added, taken off or updated, a card delivered or finished) prints its
-lines; a pass with nothing to do prints nothing; a failing pass is said once on
+friend added, taken off or updated) prints its lines; a pass with nothing to do prints nothing; a failing pass is said once on
 stderr as `FRIEND-SYNC FAILING`, again only when what it says changes, and the
 first pass that is ok after it prints `FRIEND-SYNC OK again after <n> failing
 passes`. An interrupt ends it with 0 (`FRIEND-SYNC STOP interrupted`), and a
 binary replaced under it with 3, so its supervisor starts the new one.
 
-Every pass, cards or none, puts each friend row's name on the bus store's
+Every pass puts each friend row's name on the bus store's
 roster (the `friends` set at `NOVA_BUS_REDIS`, a Redis apart from the sprint
 store), so a row just added is a known bus name before anything is dealt her;
 a pass that added any says `FRIEND-SYNC BUS-NAMES added=<names>`, and with
 `NOVA_BUS_REDIS` unset it tells the bus nothing.
 
 It is installed as a nova-config loop row kept alive on the machine that holds
-the friends' working directories, its secrets by name from that machine's seat
-and no shell in its argv; `--root` is left out, so the friends' directories are
-under the unit's HOME:
+the sprint store, its secrets by name from that machine's seat and no shell in
+its argv:
 
 ```
 nova-config loop add friend-sync --machine bench-a --argv '["/usr/bin/env","NOVA_PG_PASSWORD_ENV=NOVA_PG_CONFIG_PASSWORD","NOVA_SPRINT_REDIS=127.0.0.1:6380","NOVA_SPRINT_REDIS_USER=coordinator","NOVA_SPRINT_REDIS_PASSWORD_ENV=NOVA_REDIS_COORDINATOR_PASSWORD","NOVA_BUS_REDIS=127.0.0.1:6381","nova-sprint","friend","sync","--every","15s","--pg","postgres://nova_config@127.0.0.1:5432/nova"]' --seat bench --keys NOVA_PG_CONFIG_PASSWORD,NOVA_REDIS_COORDINATOR_PASSWORD --keepalive true --as ada
@@ -145,43 +122,33 @@ applied and its unit runs, that agent is retired, unloaded and its plist
 removed (`launchctl bootout gui/$(id -u)/com.nova.friend-sync`, then
 `rm ~/Library/LaunchAgents/com.nova.friend-sync.plist`), so one loop syncs.
 
-### Work reporting and hook evidence
-
-`nova-sprint friend beat <friend>` carries the daemon's work report: running
-cards, queued and working counts, width, load and other work observations.
-Those fields support scheduling and reconciliation; receiving a report or
-losing reports does not establish friend availability. The model supplies
-hook proof inside its own turn.
+### Hook evidence
 
 The model answers the nonce delivered by `nova-hook` with
 `nova-hook prove --as <name> --nonce <nonce>`. Only that hook evidence supplies
 liveness. An explicitly unhooked hook record makes the tick return the friend's
-working cards and review assignments to their deals (`sprint.LiveReturns`),
-even without a new work report, once she is past the unhook grace
-(`sprint.FriendUnhookInGrace`: the friend-idle setting since the unhook, and
-that plus `hook.ProofTTL` since her last answer). A friend whose Monitor lapsed
-or who missed one challenge mid-turn and hooks in again inside it keeps them. A missing or unproven hook prevents new deals;
-it is not itself an explicit unhook. Sprint's hold remains separate through
-these changes. No file in her directory decides what she holds: the friend
-reconcile against her queue file is retired, and her lanes ask the server
-(`take --as friend.<name> --lane <n>`; nova-tools `tla/FriendLaneClient.tla`).
+working cards and review assignments to their deals once she is past the unhook
+grace (`sprint.FriendUnhookInGrace`: the friend-idle setting since the unhook,
+and that plus `hook.ProofTTL` since her last answer). A friend whose Monitor
+lapsed or who missed one challenge mid-turn and hooks in again inside it keeps
+them. A missing or unproven hook prevents new deals; it is not itself an
+explicit unhook. Sprint's hold remains separate through these changes. No file
+in her directory decides what she holds: the server does (`take --as
+friend.<name>`).
 
 ## Where a job's work lives
 
-inbox/ and outbox/ hold text: the brief, the report, the evidence. A job's
-clones, worktrees and build output live in `jobs/<job>/`, the same `<job>` as
-its inbox directory, and nowhere else; the build cache is the friend's one
-cache, `.cache/go-build`, never one per job. Every brief to a friend (and every
-brief to a coordinator's child) carries this line, with the name and the job
-filled in:
+A job's clones, worktrees and build output live in `jobs/<job>/` and nowhere
+else; the build cache is the friend's one cache, `.cache/go-build`, never one
+per job. Every brief to a friend names that cache:
 
 ```
-Work in ~/<name>-working/jobs/<job>/: every clone, worktree and build output goes inside it, GOCACHE=~/<name>-working/.cache/go-build, and the report goes to ~/<name>-working/outbox/<job>/REPORT.md.
+GOCACHE=~/<name>-working/.cache/go-build is your own build cache, warm across your cards: keep it
 ```
 
 A friend's job is staged by the verb, never by hand: `nova-sprint friend stage <card>@<gen> --as friend.<name> [--dir <jobs dir>]` clones the card's REPO into
 `jobs/<job>/` at its NEXT head when one is carried (else at BASE), creates the
-delivered branch (the branch the `FRIEND-CARD DELIVERED` bus message carries),
+card's branch (the branch its STATUS line names),
 sets the git identity from her nova-config row's `git_identity=` field when
 present, or the sprint row's `git_identity` otherwise, in the clone's local
 config (never the machine's global identity), and writes `JOB.md` naming the
@@ -206,9 +173,6 @@ READ-BROKEN: nova-sprint read --as friend.<name> --broken <read>@<gen> --epoch <
 ```
 
 A read whose card has no full head under read is refused, nothing staged.
-
-A clone left inside `inbox/<job>/`, beside its brief (the layout before this
-line), is found there too.
 
 ## Retention: `nova-sprint friend clean`
 
@@ -247,12 +211,12 @@ Its log is the loop's, `~/nova-bench/loops/friend-clean-bench-a.log`.
 
 ## The coordinator's loops
 
-A cold coordinator, AI or person, needs only `nova-sprint` and `nova-friend`
-and the install lines on this page (the owner, 2026-10-04: "no bash scripts";
+A cold coordinator, AI or person, needs only `nova-sprint`, `nova-hook` and the
+install lines on this page (the owner, 2026-10-04: "no bash scripts";
 "anything you rely on that is a bespoke tool as coordinator, that has to,
 absolutely go"; "You should have setup children so you get notified when
-nova-sprint sends messages to you."). The coordinator's three earlier scripts
-are replaced with verbs:
+nova-sprint sends messages to you."). The coordinator's earlier scripts are
+replaced with verbs:
 
 1. **The seat push loop** is retired (v1.3.6): the sprint's server sends every
    judgment and note for the coordinator to its name on the bus, and the
@@ -263,19 +227,10 @@ are replaced with verbs:
    push word, naming this.
 
 2. **The work loop**: The coordinator is a friend row like any other (the
-   sprint row's `coordinator` names her). Her `nova-friend` daemon runs her work
-   and read lanes and joins the existing coordinator hook, installed once:
-
-```
-nova-friend install --as ada --harness opencode --dir ~/ada-working --server 127.0.0.1:6390
-```
-
-   The daemon reports work to the sprint server; `nova-hook` carries bus
-   delivery and the model answers its challenges. The daemon's process does
-   not prove the model's availability. It replaces
-   `com.nova.loop.wake-serve-<seat>` and `nova-wake`.
+   sprint row's `coordinator` names her), and runs her own take loop as every
+   friend does (above), under the existing coordinator hook.
 
 3. **Hook liveness**: `nova-hook` delivers challenges for the model to answer
    with `nova-hook prove`. The hook record supplies availability to sprint;
-   background ping scripts, daemon reports and separate session-proof records
-   supply no liveness evidence. Sprint stores the scheduling hold separately.
+   background ping scripts and separate session-proof records supply no
+   liveness evidence. Sprint stores the scheduling hold separately.
