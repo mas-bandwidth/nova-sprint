@@ -1,15 +1,7 @@
 package friend
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
-	"io/fs"
-	"os"
-	"path/filepath"
 	"time"
-
-	"github.com/mas-bandwidth/nova-tools/pkg/atomicfile"
 )
 
 // The friend's files, one writer each. The state files live in the state
@@ -108,45 +100,4 @@ type Status struct {
 	// HeldFrom is where the last answer came from: friend cards, or the worker view while the
 	// server does not serve it (no brief is written from the view).
 	HeldFrom string `json:"held_from,omitempty"`
-}
-
-// DefaultStateDir is the home directory's state directory for friend,
-// ~/.nova-friend/<friend>: where a daemon from before the state moved under
-// --dir kept its files, and where one goes when its directory refuses them
-// (DaemonStateDir).
-func DefaultStateDir(home, friend string) string { return filepath.Join(home, ".nova-friend", friend) }
-
-func statusPath(stateDir string) string { return filepath.Join(stateDir, StatusFile) }
-
-// write writes v as JSON to path atomically, making the directory.
-func write(path string, v any) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	raw, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return err
-	}
-	return atomicfile.WriteFile(path, append(raw, '\n'), 0o644)
-}
-
-// read reads JSON at path into v; missing is a nil error with found false.
-func read(path string, v any) (found bool, err error) {
-	raw, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	if err := json.Unmarshal(raw, v); err != nil {
-		return true, fmt.Errorf("%s: %v", path, err)
-	}
-	return true, nil
-}
-
-// ReadStatus is what the daemon last wrote; found is false when it never has.
-func ReadStatus(stateDir string) (s Status, found bool, err error) {
-	found, err = read(statusPath(stateDir), &s)
-	return s, found, err
 }
