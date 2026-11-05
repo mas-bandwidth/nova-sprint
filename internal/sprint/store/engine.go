@@ -874,7 +874,7 @@ func (st *Store) Run(ctx context.Context, step Step) (Result, error) {
 			res.Attempts--
 			continue
 		}
-		if len(op.Manifests) == 0 && len(op.Notes)+len(op.Decided)+len(op.Closes)+len(op.Updates)+len(op.Queue)+op.Drain == 0 && len(op.CloseTimers) == 0 && op.Timers == nil {
+		if len(op.Manifests) == 0 && len(op.Notes)+len(op.Decided)+len(op.Closes)+len(op.Updates)+len(op.Queue)+op.Drain == 0 && len(op.CloseTimers) == 0 && op.Timers == nil && len(op.RowDels) == 0 {
 			res.Moved = nil
 			return st.after(ctx, step, res)
 		}
@@ -1599,6 +1599,19 @@ func hasChanges(e ntable.BatchMemberEntry) bool {
 	return e.Create != nil || e.Move != nil || e.Remove || len(e.Set) > 0 || len(e.Unset) > 0
 }
 
+// rowDelWrites is the plan's row deletes as the operation's row writes: the
+// plan names the sprint's tables, the operation the stored ones.
+func (st *Store) rowDelWrites(dels []sprint.RowDel) []RowWrite {
+	writes := make([]RowWrite, 0, len(dels))
+	for _, d := range dels {
+		if len(d.Rows) == 0 {
+			continue
+		}
+		writes = append(writes, RowWrite{Op: "del", Table: st.Names.Table(d.Table), Rows: append([]string(nil), d.Rows...)})
+	}
+	return writes
+}
+
 // operation builds the step's operation from its plan: per table, in
 // ApplyOrder, the units' entries in order (a repeated guard once, the bumps
 // of a counter card summed into one entry), split into manifests of at most
@@ -1606,7 +1619,8 @@ func hasChanges(e ntable.BatchMemberEntry) bool {
 // entries, each expecting the revision the one before it leaves; then the
 // notifications and the answers.
 func (st *Store) operation(verb, actor, id string, plan sprint.Plan, snap *sprint.Snapshot) (OpRecord, error) {
-	op := OpRecord{ID: id, Verb: verb, At: snap.Now, Seat: plan.Seat, Timers: plan.Timers, CloseTimers: plan.CloseTimers}
+	op := OpRecord{ID: id, Verb: verb, At: snap.Now, Seat: plan.Seat, Timers: plan.Timers, CloseTimers: plan.CloseTimers,
+		RowDels: st.rowDelWrites(plan.RowDels)}
 	entries := map[string][]ntable.BatchMemberEntry{}
 	seen := map[entryKey]int{} // index+1 in entries[table]
 	cause := map[entryKey]string{}
