@@ -262,10 +262,10 @@ Refusals: tested R1 (clear_ids_test.go), R2 (callerop_test.go:43), R3 (callerop_
 R5 (clear_ids_test.go:13), R6, R7 (clear_told_test.go:103), R8 (stop_return_test.go:91),
 R9 (stop_return_test.go:68), R10 (stop_return_test.go:184), R13 (clear_restore_guard_test.go:19),
 R14 (stop_return_test.go:302, :321), R15 (seat_cover_test.go), R16 (changed_twice_test.go:52),
-R18 (bounds_test.go:42, :72), R22, R23 (repair_test.go, store_test.go), R24
+R18 (bounds_test.go:42, :72), R19, R21, R28 (refusals_b_test.go), R22, R23 (repair_test.go, store_test.go), R24
 (bounds_test.go:137), R25 (machine_duties_test.go), R26 (engine_cover_test.go:23, :63),
 R27 (tick_busy_test.go), R31 (clear_concurrent_test.go). No test names: **R4, R11, R12, R17,
-R19, R20, R21, R28, R29, R30, R32, R33, R34, R35, R36, R37** (16 GAPs; found by grepping each
+R20, R29, R30, R32, R33, R34, R35, R36, R37** (13 GAPs; found by grepping each
 refusal's type or text in `*_test.go`, so a test asserting only `Refused` non-empty is missed).
 On a real store: only R3, R6, R22, R23 and the fence refusals of G3.
 
