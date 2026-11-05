@@ -364,15 +364,28 @@ func (r *Redis) restoreOutcome(ctx context.Context, tx *redis.Tx, g RestoreGuard
 	return guardOutcome(n == at, owed && !marked, g), nil
 }
 
-// GuardedRows is WATCH on the epoch hash and the marker table's properties, the restore
-// state read, then every write sent through the table layer's own row verb in one
-// MULTI/EXEC; a change of a watched key aborts the EXEC and the state is read again.
+// GuardedRows is WATCH on the epoch hash and the marker table's properties (and the fence,
+// when the guard names an owner), the restore state and the owner read, then every write
+// sent through the table layer's own row verb in one MULTI/EXEC; a change of a watched key
+// aborts the EXEC and the state is read again.
 func (r *Redis) GuardedRows(ctx context.Context, g RestoreGuard, writes []RowWrite) (GuardOutcome, error) {
 	options, err := r.optionsBody()
 	if err != nil {
 		return GuardApplied, err
 	}
 	watch := []string{r.Names.EpochKey(), ntable.PropsKeyAt(g.MarkerTable, r.Pinned)}
+	// The fence holds the guard's owner when its record begins with the
+	// operation's id (json.Marshal writes OpRecord's id first), as Release
+	// reads it: the check and the writes are one exchange.
+	prefix := ""
+	if g.Owner != "" {
+		id, err := json.Marshal(g.Owner)
+		if err != nil {
+			return GuardApplied, err
+		}
+		prefix = `{"id":` + string(id) + `,`
+		watch = append(watch, r.key(keyFence))
+	}
 	for try := 0; try < condTries; try++ {
 		out := GuardApplied
 		var cmds []redis.Cmder
@@ -384,6 +397,16 @@ func (r *Redis) GuardedRows(ctx context.Context, g RestoreGuard, writes []RowWri
 			if o != GuardApplied {
 				out = o
 				return nil
+			}
+			if prefix != "" {
+				cur, err := tx.GetRange(ctx, r.key(keyFence), 0, int64(len(prefix)-1)).Result()
+				if err != nil {
+					return err
+				}
+				if cur != prefix {
+					out = GuardNotOwner
+					return nil
+				}
 			}
 			if r.beforeExec != nil {
 				r.beforeExec()

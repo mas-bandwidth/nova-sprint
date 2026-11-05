@@ -268,6 +268,17 @@ func MergeStep(r sprint.MergeReq) Step {
 		Plan:   func(s *sprint.Snapshot) sprint.Plan { return sprint.MergeStep(s, r) }}
 }
 
+// StreamRemoveStep is the stream remove verb: the streams named that may
+// leave are taken off the work and merge tables in one operation, inside the
+// fence, so a stream is on both tables or on neither (sprint.StreamRemove).
+// The names that may not are refused by name, each on its own: a RUNNING
+// machine, a stream that holds a card, and a name that is no row of either
+// table.
+func StreamRemoveStep(streams []string) Step {
+	return Step{Verb: "stream remove", Args: ArgsOf(streams), Load: tables(sprint.Work, sprint.Merge),
+		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.StreamRemove(s, streams) }}
+}
+
 // SetStep is the coordinator's settings: the sprint's dealt bound and read tier, or
 // a stream's read tier (sprint.Set).
 func SetStep(r sprint.SetReq) Step {
