@@ -4321,10 +4321,13 @@ func (a *app) cmdStreamSet(args []string, stdout, stderr io.Writer) int {
 // cmdStreamRemove takes the named streams off the work and merge tables:
 // removing a work stream is a verb, one that succeeds only on a STOPPED
 // machine; it removes each stream's row of both tables, with the stream's
-// control card the merge row holds, the one card add made for it. Unlike the
-// all-or-none verbs, it takes off every named stream that may leave and
-// reports each name that may not: a name that is no row, a stream that holds
-// a card, and every name on a RUNNING machine are refused by name
+// control card the merge row holds, the one card add made for it. The
+// removal is one store step (store.StreamRemoveStep): it runs inside the
+// store's fence and takes the rows of both tables off in one operation, so
+// a stream is on both tables or on neither. Unlike the all-or-none verbs,
+// it takes off every named stream that may leave and reports each name that
+// may not: a name that is no row, a stream that holds a card, and every
+// name on a RUNNING machine are refused by name
 // (sprint.StreamRemoveExisting, the seat ledger v1.2.4-held-2026-10-10.md bug
 // 12, stream-remove-removes-what-exists), and the verb exits 1 only when
 // nothing was removed or a removal failed. Every open judgment and held
@@ -4344,18 +4347,23 @@ func (a *app) cmdStreamRemove(args []string, stdout, stderr io.Writer) int {
 		return refuse(stderr, "stream remove", err.Error())
 	}
 	ctx := context.Background()
-	m, _, err := st.Machine(ctx)
+	res, err := st.Run(ctx, store.StreamRemoveStep(st, names))
 	if err != nil {
-		return a.readFailed("stream remove", err, stderr)
+		fmt.Fprintf(stderr, "%s stream remove: %s; run it again to finish\n", prog, oneline.Escape(err.Error()))
+		return 1
 	}
-	s, err := st.Load(ctx, []string{sprint.Work, sprint.Merge}, nil)
-	if err != nil {
-		return a.readFailed("stream remove", err, stderr)
-	}
-	remove, refused := sprint.StreamRemoveExisting(s, m.Running(), names)
 	var whys []string
-	for _, r := range refused {
+	refused := map[string]bool{}
+	for _, r := range res.Refused {
 		whys = append(whys, r.Key+": "+r.Why)
+		refused[r.Key] = true
+	}
+	var remove []string
+	for _, n := range names {
+		if refused[n] || slices.Contains(remove, n) {
+			continue
+		}
+		remove = append(remove, n)
 	}
 	if len(remove) == 0 {
 		fmt.Fprintf(stderr, "%s stream remove: %s; run: nova-sprint help stream\n", prog, oneline.Escape(strings.Join(whys, "; ")))
@@ -4363,12 +4371,6 @@ func (a *app) cmdStreamRemove(args []string, stdout, stderr io.Writer) int {
 	}
 	if len(refused) > 0 {
 		fmt.Fprintf(stderr, "%s stream remove: not removed: %s\n", prog, oneline.Escape(strings.Join(whys, "; ")))
-	}
-	for _, t := range []string{sprint.Work, sprint.Merge} {
-		if err := st.B.RowsDel(ctx, st.Names.Table(t), remove); err != nil {
-			fmt.Fprintf(stderr, "%s stream remove: %s; run it again to finish\n", prog, oneline.Escape(err.Error()))
-			return 1
-		}
 	}
 	said, err := retireStreams(ctx, st, "stream remove", remove, "was removed (stream remove), so nothing can act on this")
 	if err != nil {

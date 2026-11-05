@@ -10,7 +10,10 @@ package store
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -93,8 +96,10 @@ type Backend interface {
 	// GuardedRows applies the row writes at the pinned epoch in one atomic exchange with
 	// a read of the epoch's restore state (the sprint's epoch, its set-defaults owed flag
 	// and its restore's marker), and only when that state is the one the guard wants: the
-	// restore's own writes while it is pending, a verb's writes while it is not. Otherwise
-	// it writes nothing and says why (tla/ClearDefaults.tla RestoreRow, RestoreSettled,
+	// restore's own writes while it is pending, a verb's writes while it is not. A guard
+	// with an Owner also requires the fence to still hold that operation in the same
+	// exchange, so a writer whose operation another finished writes nothing. Otherwise it
+	// writes nothing and says why (tla/ClearDefaults.tla RestoreRow, RestoreSettled,
 	// EditRow, DeleteRow).
 	GuardedRows(ctx context.Context, g RestoreGuard, writes []RowWrite) (GuardOutcome, error)
 	// GuardedMachine writes the record and view only at the pinned epoch, while
@@ -169,9 +174,13 @@ type Backend interface {
 // Pending true: the sprint is at the epoch, its flag names it and the marker is absent (the
 // restore's own writes). Pending false: the sprint is at the epoch and its restore is not
 // pending (a verb's writes). MarkerTable is the stored table holding the marker property.
+// Owner, when set, is the operation id the fence must still hold: a step's guarded rows
+// apply only while the step is still the one in the fence, so an operation another writer
+// finished (a repair, a release) cannot write its planned rows over newer state.
 type RestoreGuard struct {
 	Pending             bool
 	MarkerTable, Marker string
+	Owner               string
 }
 
 // RowWrite is one row write of a guarded exchange: Op "add" adds Rows, "set" writes Texts
@@ -184,7 +193,7 @@ type RowWrite struct {
 
 // GuardOutcome is what a guarded exchange found: the writes applied, or nothing written
 // because the restore is pending (a verb's writes), already done (the restore's writes),
-// or the sprint has left the pinned epoch.
+// the sprint has left the pinned epoch, or the fence no longer holds the guard's owner.
 type GuardOutcome int
 
 const (
@@ -192,6 +201,7 @@ const (
 	GuardPending
 	GuardSettled
 	GuardMoved
+	GuardNotOwner
 )
 
 // verbGuard is a verb's guard on the table that holds the restore's marker (the fleet table).
@@ -220,10 +230,146 @@ func guardOutcome(atEpoch, pending bool, g RestoreGuard) GuardOutcome {
 type GuardError struct{ Outcome GuardOutcome }
 
 func (e *GuardError) Error() string {
-	if e.Outcome == GuardMoved {
+	switch e.Outcome {
+	case GuardMoved:
 		return "the sprint left the epoch the delete pinned"
+	case GuardNotOwner:
+		return "the operation is no longer the one the fence holds"
 	}
 	return "the epoch's restore is pending"
+}
+
+// rowDelBackend carries a step's row deletes into its operation and takes them
+// off at its commit. A step whose only change is a row delete has no manifests,
+// so the backend holds the plan's rows and the operation records them when it
+// takes the fence (OpRecord.RowDels); a repair, or a release, then deletes
+// them from that record, so the rows of both tables go together or not at all
+// (G13).
+type rowDelBackend struct {
+	Backend
+	names sprint.Names
+	mu    sync.Mutex
+	dels  []sprint.RowDel
+}
+
+func (b *rowDelBackend) hold(dels []sprint.RowDel) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.dels = append([]sprint.RowDel(nil), dels...)
+}
+
+func (b *rowDelBackend) held() []sprint.RowDel {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]sprint.RowDel(nil), b.dels...)
+}
+
+// Acquire records the step's row deletes in the operation before the store
+// takes the fence: the record then holds them for repair, and the release
+// takes them off.
+func (b *rowDelBackend) Acquire(ctx context.Context, gen uint64, op OpRecord) (bool, error) {
+	if op.Verb == "stream remove" && len(op.RowDels) == 0 {
+		op.RowDels = b.held()
+	}
+	ok, err := b.Backend.Acquire(ctx, gen, op)
+	if ok && err == nil {
+		b.hold(nil)
+	}
+	return ok, err
+}
+
+// Release takes the operation's rows off before it commits: the owner check
+// and the delete are one guarded exchange, so a writer whose operation the
+// fence no longer holds writes nothing.
+func (b *rowDelBackend) Release(ctx context.Context, op OpRecord, commit bool) error {
+	if commit {
+		dels := op.RowDels
+		if len(dels) == 0 {
+			if f, err := b.Backend.ReadFence(ctx); err == nil && f.Pending != nil && f.Pending.ID == op.ID {
+				dels = f.Pending.RowDels
+			}
+		}
+		if len(dels) > 0 {
+			if err := b.deleteRows(ctx, op.ID, dels); err != nil {
+				return err
+			}
+		}
+	}
+	return b.Backend.Release(ctx, op, commit)
+}
+
+func (b *rowDelBackend) deleteRows(ctx context.Context, opID string, dels []sprint.RowDel) error {
+	writes := rowDelWrites(b.names, dels)
+	if len(writes) == 0 {
+		return nil
+	}
+	g := verbGuard(b.names.Table(sprint.Fleet))
+	g.Owner = opID
+	var o GuardOutcome
+	var err error
+	if m, ok := b.Backend.(*Mem); ok {
+		o, err = m.guardedRowsOwned(ctx, g, writes)
+	} else {
+		o, err = b.Backend.GuardedRows(ctx, g, writes)
+	}
+	if err != nil {
+		return fmt.Errorf("%w: deleting the rows of %s: %v; run: nova-sprint repair", ErrUnknown, opID, err)
+	}
+	switch o {
+	case GuardApplied:
+		return nil
+	case GuardNotOwner:
+		return fmt.Errorf("%w: deleting the rows of %s: the fence no longer holds the operation; run: nova-sprint repair", ErrUnknown, opID)
+	default:
+		return fmt.Errorf("%w: deleting the rows of %s: the epoch's restore is pending; run: nova-sprint repair", ErrUnknown, opID)
+	}
+}
+
+func rowDelWrites(names sprint.Names, dels []sprint.RowDel) []RowWrite {
+	writes := make([]RowWrite, 0, len(dels))
+	for _, d := range dels {
+		if len(d.Rows) == 0 {
+			continue
+		}
+		writes = append(writes, RowWrite{Op: "del", Table: names.Table(d.Table), Rows: d.Rows})
+	}
+	return writes
+}
+
+// guardedRowsOwned is GuardedRows with the fence's operation as a guard: the
+// restore state and the owner are read and the rows written under the one
+// lock, so a writer whose operation another finished takes nothing off. Mem
+// reads its fence under the same lock as its rows.
+func (m *Mem) guardedRowsOwned(_ context.Context, g RestoreGuard, writes []RowWrite) (GuardOutcome, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.Calls["guarded-rows"]++
+	if err := m.fail("guarded-rows"); err != nil {
+		return GuardApplied, err
+	}
+	if o := m.restoreOutcome(g); o != GuardApplied {
+		return o, nil
+	}
+	if l := m.log(); l.fence == nil || l.fence.ID != g.Owner {
+		return GuardNotOwner, nil
+	}
+	for _, w := range writes {
+		var err error
+		switch w.Op {
+		case "add":
+			err = m.rowsAddLocked(w.Table, w.Rows)
+		case "set":
+			err = m.rowSetLocked(w.Table, w.Rows[0], w.Texts)
+		case "del":
+			err = m.rowsDelLocked(w.Table, w.Rows)
+		default:
+			err = fmt.Errorf("a guarded row write %q is no row verb", w.Op)
+		}
+		if err != nil {
+			return GuardApplied, err
+		}
+	}
+	return GuardApplied, nil
 }
 
 // RowGuard is one row a conditional delete names (RowsDelIf, KeysDelIf) and the
@@ -293,14 +439,20 @@ type OpRecord struct {
 	Verb      string                 `json:"verb"`
 	At        time.Time              `json:"at"`
 	Manifests []ntable.BatchManifest `json:"manifests"`
-	Notes     []sprint.Note          `json:"notes,omitempty"`   // happened and judgment, ids assigned
-	Decided   []sprint.Note          `json:"decided,omitempty"` // answers to open judgments
-	Log       []sprint.Line          `json:"log,omitempty"`     // the log's move lines of the step's changes
-	Updates   []sprint.Note          `json:"updates,omitempty"` // open judgments rewritten in place
-	Closes    []string               `json:"closes,omitempty"`  // open keys the step closes
-	Streams   []string               `json:"streams,omitempty"` // streams whose progress it is
-	CallerOp  string                 `json:"caller_op,omitempty"`
-	Result    string                 `json:"result,omitempty"` // the result, recorded under CallerOp
+	// RowDels are the rows the operation takes off the tables: they are
+	// deleted with the manifests, in one exchange, so the rows of two
+	// tables go together or not at all (G13). The struct tag is "-" so
+	// HeldRecord on the view-rows wire stays unchanged; MarshalJSON and
+	// UnmarshalJSON persist row_dels in the store's fence record.
+	RowDels  []sprint.RowDel `json:"-"`
+	Notes    []sprint.Note   `json:"notes,omitempty"`   // happened and judgment, ids assigned
+	Decided  []sprint.Note   `json:"decided,omitempty"` // answers to open judgments
+	Log      []sprint.Line   `json:"log,omitempty"`     // the log's move lines of the step's changes
+	Updates  []sprint.Note   `json:"updates,omitempty"` // open judgments rewritten in place
+	Closes   []string        `json:"closes,omitempty"`  // open keys the step closes
+	Streams  []string        `json:"streams,omitempty"` // streams whose progress it is
+	CallerOp string          `json:"caller_op,omitempty"`
+	Result   string          `json:"result,omitempty"` // the result, recorded under CallerOp
 	// Stuck is the stuck operation this one reports (its judgment is among
 	// Notes): its commit deletes the stuck record.
 	Stuck string `json:"stuck,omitempty"`
@@ -322,6 +474,29 @@ type OpRecord struct {
 	// commit writes it, so the timers it raised are closed in the same step
 	// as their judgment.
 	Timers *sprint.Timers `json:"timers,omitempty"`
+}
+
+type opRecordAlias OpRecord
+
+type opRecordJSON struct {
+	ID string `json:"id"`
+	opRecordAlias
+	RowDels []sprint.RowDel `json:"row_dels,omitempty"`
+}
+
+func (o OpRecord) MarshalJSON() ([]byte, error) {
+	return json.Marshal(opRecordJSON{ID: o.ID, opRecordAlias: opRecordAlias(o), RowDels: o.RowDels})
+}
+
+func (o *OpRecord) UnmarshalJSON(data []byte) error {
+	var w opRecordJSON
+	if err := json.Unmarshal(data, &w); err != nil {
+		return err
+	}
+	*o = OpRecord(w.opRecordAlias)
+	o.ID = w.ID
+	o.RowDels = w.RowDels
+	return nil
 }
 
 // Tables is the stored table names of the record's manifests, in order.

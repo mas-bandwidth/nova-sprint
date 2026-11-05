@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"slices"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -266,6 +267,55 @@ func MergeStep(r sprint.MergeReq) Step {
 	return Step{Args: ArgsOf(r), Verb: "merge", Load: tables(sprint.Merge, sprint.Work, sprint.Readers, sprint.Fleet), Mirrors: true, Bars: true,
 		Extras: func(s *sprint.Snapshot) map[string][]string { return streamNoticeRecords(s, r.Stream) },
 		Plan:   func(s *sprint.Snapshot) sprint.Plan { return sprint.MergeStep(s, r) }}
+}
+
+// StreamRemoveStep is the stream remove verb: the streams named that may
+// leave are taken off the work and merge tables in one operation, inside the
+// fence, so a stream is on both tables or on neither (sprint.StreamRemove).
+// The names that may not are refused by name, each on its own: a RUNNING
+// machine, a stream that holds a card, and a name that is no row of either
+// table.
+func StreamRemoveStep(st *Store, streams []string) Step {
+	b := ensureRowDeletes(st)
+	return Step{Verb: "stream remove", Args: ArgsOf(streams), Load: tables(sprint.Work, sprint.Merge),
+		Plan: func(s *sprint.Snapshot) sprint.Plan {
+			p := sprint.StreamRemove(s, streams)
+			if len(p.RowDels) > 0 {
+				b.hold(p.RowDels)
+				// The step's only write is the row delete: it takes the
+				// operation's fence with a timer id no timer holds, whose
+				// close is a no-op, so the engine does not take an empty plan
+				// as nothing to do.
+				p.CloseTimers = []string{rowDelNoTimer}
+			}
+			return p
+		}}
+}
+
+// rowDelNoTimer is the plan's marker that its change is a row delete, not a
+// timer: no timer holds the id, so the operation's close of it writes nothing.
+const rowDelNoTimer = "stream-remove-row-delete"
+
+// ensureRowDeletes puts the row-delete carrier on the store once, keeping the
+// store's names for the stored table names.
+func ensureRowDeletes(st *Store) *rowDelBackend {
+	if b, ok := st.B.(*rowDelBackend); ok {
+		return b
+	}
+	b := &rowDelBackend{Backend: st.B, names: st.Names}
+	st.B = b
+	return b
+}
+
+// deleteOpRows takes the operation's recorded rows off, guarded by the
+// operation still holding the fence: a late remover whose operation another
+// writer finished writes nothing.
+func (st *Store) deleteOpRows(ctx context.Context, op OpRecord) error {
+	b, ok := st.B.(*rowDelBackend)
+	if !ok {
+		b = &rowDelBackend{Backend: st.B, names: st.Names}
+	}
+	return b.deleteRows(ctx, op.ID, op.RowDels)
 }
 
 // SetStep is the coordinator's settings: the sprint's dealt bound and read tier, or
