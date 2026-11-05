@@ -285,11 +285,17 @@ func (m *Mem) restoreOutcome(g RestoreGuard) GuardOutcome {
 func (m *Mem) GuardedRows(_ context.Context, g RestoreGuard, writes []RowWrite) (GuardOutcome, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.Calls["guarded-rows"]++
 	if err := m.fail("guarded-rows"); err != nil {
 		return GuardApplied, err
 	}
 	if o := m.restoreOutcome(g); o != GuardApplied {
 		return o, nil
+	}
+	if g.Owner != "" {
+		if l := m.log(); l.fence == nil || l.fence.ID != g.Owner {
+			return GuardNotOwner, nil
+		}
 	}
 	for _, w := range writes {
 		var err error
@@ -1099,7 +1105,25 @@ func (m *Mem) Acquire(_ context.Context, gen uint64, op OpRecord) (bool, error) 
 	return true, nil
 }
 
-func (m *Mem) Release(_ context.Context, op OpRecord, commit bool) error {
+func (m *Mem) Release(ctx context.Context, op OpRecord, commit bool) error {
+	// As in Redis.Release, delete the durable rows in an owner-checked
+	// exchange before committing. A crash between them leaves the fence
+	// holding the intent; repair repeats the delete before its commit.
+	if commit && len(op.RowDels) > 0 {
+		names := sprint.Names{Prefix: op.RowPrefix}
+		g := verbGuard(names.Table(sprint.Fleet))
+		g.Owner = op.ID
+		o, err := m.GuardedRows(ctx, g, rowDelWrites(names, op.RowDels))
+		if err != nil {
+			return err
+		}
+		if o == GuardNotOwner {
+			return nil
+		}
+		if o != GuardApplied {
+			return &GuardError{Outcome: o}
+		}
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.Calls["release"]++
