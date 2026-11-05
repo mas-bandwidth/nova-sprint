@@ -75,19 +75,18 @@ func adoptLastLine(s string) string {
 // each step, and a person reads it to see a half move: a process that runs a
 // binary the install has since replaced (fresh=false), a store whose function
 // library is not the build's (match=false), a dashboard link that names
-// another binary, a friend daemon whose plist names a copy.
+// another binary.
 func init() {
 	verbClasses["live"] = classRead
 	notServed = append(notServed, "live")
 	verbExit["live"] = "exit codes: 0 the manifest was read (whatever it says: a stale process or a library mismatch is a line, not a failure), 1 the installed nova-sprint or a named agents directory could not be read, 2 usage"
-	verbEffect["live"] = "inspection: reads only, writes nothing: the installed nova-sprint's version and inode, the store's function library through nova-redis fn check, the dashboard links, every com.nova.* launchd agent of this login read from the agents directory (target gui/<uid>/<label>) and from the daemons directory (target system/<label>) with launchctl print, and, on linux, the nova-loop-*.service systemd units of the user and system unit directories, each read with systemctl show and its running binary's inode from /proc/<pid>/exe; a friend daemon's last beat from nova-friend status"
+	verbEffect["live"] = "inspection: reads only, writes nothing: the installed nova-sprint's version and inode, the store's function library through nova-redis fn check, the dashboard links, every com.nova.* launchd agent of this login read from the agents directory (target gui/<uid>/<label>) and from the daemons directory (target system/<label>) with launchctl print, and, on linux, the nova-loop-*.service systemd units of the user and system unit directories, each read with systemctl show and its running binary's inode from /proc/<pid>/exe"
 }
 
 // liveManifest is what live prints with --json.
 type liveManifest struct {
 	BinDir string `json:"bin_dir"`
-	// Now is this host's clock when the manifest was read, in Unix seconds:
-	// the cutoff a beat after a reinstall must be newer than.
+	// Now is this host's clock when the manifest was read, in Unix seconds.
 	Now       int64           `json:"now_unix"`
 	Server    liveBinary      `json:"server"`
 	Library   liveLibrary     `json:"library"`
@@ -136,7 +135,7 @@ type liveAgent struct {
 	Program []string `json:"program"`
 	// Tool is the nova tool the agent runs (its last nova-* word that is not
 	// the secrets wrap), Binary the path the plist names for it, Role server
-	// for nova-sprint run, friend for nova-friend run, else agent.
+	// for nova-sprint run, else agent.
 	Tool   string `json:"tool,omitempty"`
 	Binary string `json:"binary,omitempty"`
 	Role   string `json:"role"`
@@ -168,18 +167,6 @@ type liveAgent struct {
 	ArgsTook  bool   `json:"args_took"`
 	Stale     bool   `json:"stale"`
 	Why       string `json:"why,omitempty"`
-	// Friend daemons only: the friend, its last beat and its age in seconds
-	// (-1: none read), and the nova-friend install arguments that reinstall it
-	// with the flags its plist records.
-	Friend  string `json:"friend,omitempty"`
-	Beat    string `json:"beat"`
-	BeatAge int    `json:"beat_age_s"`
-	// BeatUnix is the last beat in Unix seconds, 0 for none.
-	BeatUnix int64    `json:"beat_unix"`
-	Install  []string `json:"install,omitempty"`
-	// Lanes is a friend daemon's lanes with a card in hand (nova-friend
-	// status's lanes, n:session:card), the work a reinstall would cut.
-	Lanes int `json:"lanes"`
 	// Holds: its process is one the seat's window stops (a nova-sprint, or a
 	// nova-swarm member), whatever its plist runs first (a shell that execs it).
 	Holds bool `json:"holds"`
@@ -224,9 +211,7 @@ type liveProbe struct {
 var (
 	livePID      = regexp.MustCompile(`(?m)^\s*pid = (\d+)\s*$`)
 	liveRevision = regexp.MustCompile(`[-.]([0-9a-f]{7,40})(?:\+dirty)?$`)
-	liveBeat     = regexp.MustCompile(`\blast_beat=(\S+)`)
 	liveTool     = regexp.MustCompile(`^nova-[a-z0-9-]+$`)
-	liveLanes    = regexp.MustCompile(`\blanes=(?:"([^"]*)"|(\S+))`)
 )
 
 // read is the whole manifest. An error is only the agents directory or the
@@ -515,8 +500,6 @@ func (p liveProbe) binOf(a *liveAgent, at int) {
 	case a.Tool == "nova-sprint" && verb == "run":
 		a.Role = "server"
 		a.Listen = listenOf(a.Program[at:])
-	case a.Tool == "nova-friend" && verb == "run":
-		a.Role = "friend"
 	}
 }
 
@@ -526,7 +509,7 @@ func (p liveProbe) binOf(a *liveAgent, at int) {
 func (p liveProbe) systemdAgent(ctx context.Context, path, scope string) liveAgent {
 	unit := filepath.Base(path)
 	label := strings.TrimSuffix(unit, ".service")
-	a := liveAgent{Label: label, Plist: path, Manager: "systemd", Target: scope + "/" + label, Role: "agent", BeatAge: -1, Listen: []string{}}
+	a := liveAgent{Label: label, Plist: path, Manager: "systemd", Target: scope + "/" + label, Role: "agent", Listen: []string{}}
 	args := []string{}
 	if scope == "user" {
 		args = append(args, "--user")
@@ -551,9 +534,6 @@ func (p liveProbe) systemdAgent(ctx context.Context, path, scope string) liveAge
 	}
 	if at >= 0 {
 		p.judge(&a, at, a.Program)
-	}
-	if a.Role == "friend" {
-		p.friendOf(ctx, &a, at)
 	}
 	return a
 }
@@ -600,7 +580,7 @@ func execStartWords(s string) []string {
 // system/<label> for a daemon.
 func (p liveProbe) agent(ctx context.Context, plist, target string) liveAgent {
 	label := strings.TrimSuffix(filepath.Base(plist), ".plist")
-	a := liveAgent{Label: label, Plist: plist, Manager: "launchd", Target: target, Role: "agent", BeatAge: -1, Listen: []string{}}
+	a := liveAgent{Label: label, Plist: plist, Manager: "launchd", Target: target, Role: "agent", Listen: []string{}}
 	if b, err := os.ReadFile(plist); err == nil {
 		a.Program = friend.PlistArgs(string(b))
 		facts := plistFacts(string(b))
@@ -635,9 +615,6 @@ func (p liveProbe) agent(ctx context.Context, plist, target string) liveAgent {
 	}
 	if at >= 0 {
 		p.judge(&a, at, loadedArgs)
-	}
-	if a.Role == "friend" {
-		p.friendOf(ctx, &a, at)
 	}
 	return a
 }
@@ -735,50 +712,6 @@ func plistFacts(plist string) map[string]string {
 	}
 }
 
-// friendOf reads a friend daemon's run flags from its plist: the install
-// arguments that write the same agent from the installed nova-friend, and its
-// last beat from nova-friend status.
-func (p liveProbe) friendOf(ctx context.Context, a *liveAgent, at int) {
-	flags := a.Program[at+2:]
-	a.Install = append([]string{"install"}, flags...)
-	status := []string{"status"}
-	for i := 0; i+1 < len(flags); i++ {
-		switch flags[i] {
-		case "--as":
-			a.Friend = flags[i+1]
-			status = append(status, flags[i], flags[i+1])
-		case "--dir", "--state-dir":
-			status = append(status, flags[i], flags[i+1])
-		}
-	}
-	// the secrets wrap: nova-secrets exec --as <seat> ... --only <names> ... --
-	if at > 0 && filepath.Base(a.Program[0]) == "nova-secrets" {
-		for i := 0; i+1 < at; i++ {
-			switch a.Program[i] {
-			case "--as":
-				a.Install = append(a.Install, "--seat", a.Program[i+1])
-			case "--only":
-				a.Install = append(a.Install, "--secrets", a.Program[i+1])
-			}
-		}
-	}
-	out, _ := p.run(ctx, filepath.Join(p.binDir, "nova-friend"), status...) // ignored: status exits 1 for a daemon it finds down; its line still says the beat
-	if m := liveLanes.FindStringSubmatch(out); m != nil {
-		for _, lane := range strings.Fields(m[1] + m[2]) {
-			if parts := strings.Split(lane, ":"); len(parts) >= 3 && parts[2] != "-" {
-				a.Lanes++
-			}
-		}
-	}
-	if m := liveBeat.FindStringSubmatch(out); m != nil {
-		a.Beat = m[1]
-		if t, err := time.Parse(time.RFC3339, m[1]); err == nil {
-			a.BeatAge = int(p.now().Sub(t).Seconds())
-			a.BeatUnix = t.Unix()
-		}
-	}
-}
-
 // lines is the manifest as the lines live prints.
 func (m liveManifest) lines() []string {
 	var out []string
@@ -793,7 +726,7 @@ func (m liveManifest) lines() []string {
 	}
 	for _, a := range m.Agents {
 		head := "LIVE AGENT"
-		if a.Role == "server" || a.Role == "friend" {
+		if a.Role == "server" {
 			head = "LIVE " + strings.ToUpper(a.Role)
 		}
 		line := fmt.Sprintf("%s label=%s pid=%d", head, a.Label, a.PID)
@@ -802,9 +735,6 @@ func (m liveManifest) lines() []string {
 			if a.Why != "" {
 				line += " why=" + strconv.Quote(a.Why)
 			}
-		}
-		if a.Role == "friend" {
-			line += fmt.Sprintf(" friend=%s beat=%s beat_age_s=%d lanes=%d", a.Friend, dashed(a.Beat), a.BeatAge, a.Lanes)
 		}
 		line += " program=" + strconv.Quote(strings.Join(a.Program, " "))
 		out = append(out, line)

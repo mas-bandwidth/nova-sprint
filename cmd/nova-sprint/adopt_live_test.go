@@ -31,7 +31,7 @@ func livePlist(args ...string) string {
 // TestLiveShowsWhatIsInstalled: live reads a fake host (a home with three
 // agents, a bin directory, a dashboard link, and the commands it runs
 // answered by a fake) and says the half moves: a server whose process runs a
-// binary the install replaced, a friend daemon whose plist names a copy, a
+// binary the install replaced, a member whose plist names a copy, a
 // store library that is not the build's, a dashboard link to another binary;
 // an agent that runs no nova tool is listed and never stale.
 func TestLiveShowsWhatIsInstalled(t *testing.T) {
@@ -43,13 +43,13 @@ func TestLiveShowsWhatIsInstalled(t *testing.T) {
 	for _, d := range []string{bin, agents, copyDir, filepath.Join(home, "dash")} {
 		require.NoError(t, os.MkdirAll(d, 0o755))
 	}
-	for _, f := range []string{filepath.Join(bin, "nova-swarm"), filepath.Join(bin, "nova-sprint"), filepath.Join(bin, "nova-friend"), filepath.Join(bin, "nova-redis"), filepath.Join(copyDir, "nova-friend")} {
+	for _, f := range []string{filepath.Join(bin, "nova-swarm"), filepath.Join(bin, "nova-sprint"), filepath.Join(bin, "nova-redis"), filepath.Join(copyDir, "nova-swarm")} {
 		require.NoError(t, os.WriteFile(f, []byte(f), 0o755))
 	}
 	server := []string{filepath.Join(bin, "nova-sprint"), "run", "--listen", ":6390", "--tick-deadline", "60s"}
 	plists := map[string]string{
 		"com.nova.loop.sprint-server-a": livePlist(append([]string{filepath.Join(bin, "nova-secrets"), "exec", "--as", "seat-a", "--only", "K", "--", "/usr/bin/env", "A=B"}, server...)...),
-		"com.nova.friend-a":             livePlist(filepath.Join(copyDir, "nova-friend"), "run", "--as", "friend-a", "--harness", "opencode", "--dir", "/d", "--width", "2"),
+		"com.nova.loop.member-b":        livePlist(filepath.Join(copyDir, "nova-swarm"), "member", "--as", "m2"),
 		"com.nova.redis":                livePlist("/opt/homebrew/bin/redis-server", "/x/nova-redis.conf"),
 		// an interval agent between runs, one launchd does not hold, a disabled one
 		"com.nova.loop.guard": strings.Replace(livePlist(filepath.Join(bin, "nova-swarm"), "disk-guard"), "<key>KeepAlive</key><true/>", "<key>StartInterval</key><integer>900</integer>", 1),
@@ -66,24 +66,23 @@ func TestLiveShowsWhatIsInstalled(t *testing.T) {
 
 	now := time.Date(2026, 10, 6, 15, 0, 0, 0, time.UTC)
 	uid := os.Getuid()
-	friendIno := liveInode(t, filepath.Join(copyDir, "nova-friend"))
+	copyIno := liveInode(t, filepath.Join(copyDir, "nova-swarm"))
 	answers := map[string]string{
 		bin + "/nova-sprint version": "nova-sprint v1.2.0-dev.abcdef1 darwin/arm64 go1.27.1",
 		fmt.Sprintf("launchctl print gui/%d/com.nova.loop.sprint-server-a", uid): "state = running\n\tpid = 11\n",
-		fmt.Sprintf("launchctl print gui/%d/com.nova.friend-a", uid):             "\tpid = 12\n",
+		fmt.Sprintf("launchctl print gui/%d/com.nova.loop.member-b", uid):        "\tpid = 12\n",
 		"ps -A -o pid=,args=": strings.Join([]string{
 			"    1 /sbin/launchd",
 			"   11 " + strings.Join(server, " "),
-			"   12 " + filepath.Join(copyDir, "nova-friend") + " run --as friend-a",
+			"   12 " + filepath.Join(copyDir, "nova-swarm") + " member --as m2",
 			"   13 " + filepath.Join(bin, "nova-swarm") + " member --as m1",
 			"   14 " + filepath.Join(bin, "nova-swarm") + " disk-guard",
 			"   15 /elsewhere/nova-sprint run",
 		}, "\n"),
-		"ps -o args= -p 11":                                            strings.Join(server, " "),
-		"lsof -a -p 11 -d txt -F i":                                    "p11\nftxt\ni1\n",
-		"ps -o args= -p 12":                                            filepath.Join(copyDir, "nova-friend") + " run --as friend-a --harness opencode --dir /d --width 2",
-		"lsof -a -p 12 -d txt -F i":                                    fmt.Sprintf("p12\nftxt\ni%d\n", friendIno),
-		bin + "/nova-friend status --as friend-a --dir /d":             `STATUS OK daemon=up lanes="1:s1:card-1/1 2:s2:-" last_beat=2026-10-06T14:59:30Z`,
+		"ps -o args= -p 11":         strings.Join(server, " "),
+		"lsof -a -p 11 -d txt -F i": "p11\nftxt\ni1\n",
+		"ps -o args= -p 12":         filepath.Join(copyDir, "nova-swarm") + " member --as m2",
+		"lsof -a -p 12 -d txt -F i": fmt.Sprintf("p12\nftxt\ni%d\n", copyIno),
 		fmt.Sprintf("launchctl print gui/%d/com.nova.loop.guard", uid): "\tstate = not running\n\targuments = {\n\t\t" + bin + "/nova-swarm\n\t\tdisk-guard\n\t}\n\trun interval = 900 seconds\n",
 	}
 	var ran []string
@@ -139,21 +138,16 @@ func TestLiveShowsWhatIsInstalled(t *testing.T) {
 	assert.True(t, srv.Stale)
 	assert.Equal(t, fmt.Sprintf("gui/%d/com.nova.loop.sprint-server-a", uid), srv.Target)
 
-	fa := byLabel["com.nova.friend-a"]
-	assert.Equal(t, "friend", fa.Role)
-	assert.Equal(t, "friend-a", fa.Friend)
+	fa := byLabel["com.nova.loop.member-b"]
+	assert.Equal(t, "agent", fa.Role)
 	assert.True(t, fa.Fresh, "it runs the bytes its plist names")
 	assert.False(t, fa.Installed, "but they are a copy, not the bin directory's tool")
 	assert.True(t, fa.Stale)
-	assert.Equal(t, 30, fa.BeatAge)
-	assert.Equal(t, now.Add(-30*time.Second).Unix(), fa.BeatUnix, "the beat a cutoff is compared with")
-	assert.Equal(t, now.Unix(), m.Now, "the host's clock, a reinstall's cutoff")
-	assert.Equal(t, []string{"install", "--as", "friend-a", "--harness", "opencode", "--dir", "/d", "--width", "2"}, fa.Install)
+	assert.Equal(t, now.Unix(), m.Now, "the host's clock")
 
 	assert.True(t, srv.Loaded)
 	assert.Equal(t, "runs a binary the install replaced", srv.Why)
-	assert.Equal(t, "names a copy, not "+filepath.Join(bin, "nova-friend"), fa.Why)
-	assert.Equal(t, 1, fa.Lanes, "one lane has a card in hand")
+	assert.Equal(t, "names a copy, not "+filepath.Join(bin, "nova-swarm"), fa.Why)
 
 	guard := byLabel["com.nova.loop.guard"]
 	assert.True(t, guard.Interval)
@@ -179,7 +173,7 @@ func TestLiveShowsWhatIsInstalled(t *testing.T) {
 	}
 	assert.Equal(t, map[int]bool{11: true, 12: false, 13: true, 14: false, 15: false}, holds, "launchd is no nova tool; another directory's nova-sprint is not this build's")
 	assert.True(t, srv.Holds, "the server agent's process holds the window")
-	assert.False(t, fa.Holds)
+	assert.False(t, fa.Holds, "a copy's member is not this build's")
 
 	redis := byLabel["com.nova.redis"]
 	assert.Empty(t, redis.Tool, "a .conf named nova-* is no nova tool")
@@ -201,8 +195,7 @@ func TestLiveShowsWhatIsInstalled(t *testing.T) {
 	assert.Contains(t, text, "LIVE SERVER binary="+filepath.Join(bin, "nova-sprint"))
 	assert.Contains(t, text, "LIVE LIBRARY state=STALE loaded=aaa want=bbb match=false")
 	assert.Contains(t, text, "LIVE SERVER label=com.nova.loop.sprint-server-a pid=11 loaded=true stale=true fresh=false installed=true args_took=true")
-	assert.Contains(t, text, "LIVE FRIEND label=com.nova.friend-a pid=12 loaded=true stale=true fresh=true installed=false")
+	assert.Contains(t, text, "LIVE AGENT label=com.nova.loop.member-b pid=12 loaded=true stale=true fresh=true installed=false")
 	assert.Contains(t, text, "LIVE AGENT label=com.nova.redis pid=0 program=")
 	assert.Contains(t, text, `LIVE AGENT label=com.nova.loop.gone pid=0 loaded=false stale=true fresh=false installed=true args_took=false binary=`+filepath.Join(bin, "nova-swarm")+` why="not loaded"`)
-	assert.Contains(t, text, "lanes=1 ")
 }

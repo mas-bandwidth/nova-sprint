@@ -8944,10 +8944,7 @@ interval agent between runs, is fresh: launchd execs the path again at its next 
 `installed` when that binary is the bin directory's own tool (not a copy), `args_took` when the
 arguments launchd runs (the process's, else the loaded job's) are the plist's from the tool on,
 and `stale`, with `why`, when it is not disabled and launchd does not hold it, or it is loaded
-and not all three. A friend daemon (`nova-friend run`) also carries its last beat and its lanes
-with a card in hand (`nova-friend status`) and the `nova-friend install` arguments that write the
-same agent from the installed nova-friend; a server (`nova-sprint run`) its `--listen`
-addresses. Its `processes` are every process of the host that runs a nova tool, each marked
+and not all three. A server (`nova-sprint run`) also carries its `--listen` addresses. Its `processes` are every process of the host that runs a nova tool, each marked
 `holds` when it runs the bin directory's nova-sprint or its nova-swarm as a member (a bare name
 found on PATH, a link followed), and an agent whose process does so `holds` too. Three sources are
 read: the launchd agents directory (`--agents-dir`, else `NOVA_LAUNCH_AGENTS`, else
@@ -8964,16 +8961,14 @@ the new library. In order:
 
 1. The candidate's checks pass, before anything changes: on the coordinator machine, in the
    install play, the new build itself reads the host (its own `nova-sprint live`), plans a tick
-   on the store read-only (its own `nova-sprint server switch --dry-run`) and plans each friend
-   daemon's reinstall (its own `nova-friend install --dry-run` with the flags that daemon's
-   plist records). A refusal here leaves the host as it was. Then what a refusal restores is
+   on the store read-only (its own `nova-sprint server switch --dry-run`). A refusal here leaves the host as it was. Then what a refusal restores is
    kept: the store's library digest, and the bin directory's copy of every tool the stage
    replaces (`nova_seat_rollback_dir/bin`, emptied first, so a refusal puts back only what this
    adoption kept; the nova-redis only when its library is the one on the store, else an older
    adoption's nova-redis stays there to load the library of before and is never put back).
 2. The window opens only when the install replaces a tool (a stage file whose bytes the bin
    directory lacks) or the library on the store is not the installed build's. Every loaded nova
-   agent but the friend daemons, and every agent whose process is this bin directory's
+   agent, and every agent whose process is this bin directory's
    nova-sprint or a nova-swarm member whatever its plist runs first, is booted out (a member
    drains on the SIGTERM) and launchd is waited on to hold none of them
    (`nova_member_stop_timeout` and 30 s more).
@@ -8994,12 +8989,6 @@ the new library. In order:
    does not read, is a refusal), and the server answers on each `--listen` address.
 6. The dashboard: each `nova_seat_dashboard_links` link names the installed nova-sprint, and
    `nova_seat_dashboard_url` returns a summary.
-7. The friends, one at a time (`fleet/seat-friend.yml`): once the stale daemon's lanes have no
-   card in hand (up to its plist's `ExitTimeOut`, else `nova_seat_friend_drain` seconds), it is
-   reinstalled with the installed `nova-friend install` and the flags its plist records; the
-   host's clock read after that reinstall is its cutoff, and it must be in the manifest exactly
-   once, not stale, with a beat strictly newer than its cutoff within `nova_seat_beat_within`
-   seconds.
 
 Each step is checked before the next, a step that does not hold stopping the play with `ADOPT
 REFUSED step=<step>`. A refusal once the window opened, before anything else: stops whatever
@@ -9008,8 +8997,7 @@ the kept nova-redis and reads its digest back through `live`, compared with the 
 before the window, and bootstraps the agents the window stopped on those binaries; its refusal
 says each. The migration is the one step never undone: the migrations are not all additions
 (0008, 0011, 0017, 0019 and 0028 drop a column or delete rows), which is why nothing old runs
-while it does, and the old build restarted by a rollback runs on the migrated schema. Friend
-daemons reinstalled before a refusal keep running the new nova-friend until the next run.
+while it does, and the old build restarted by a rollback runs on the migrated schema.
 
 One `ADOPT step=<step> host=<host> before=<revision> after=<revision> ...` line per step says
 what changed. A second run of the whole sequence finds nothing to replace and nothing stale,
