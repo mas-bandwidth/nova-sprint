@@ -129,3 +129,26 @@ func (h *harness) stream(name string) {
 	require.NoError(h.t, h.m.RowsAdd(h.ctx, "t-work", []string{name}))
 	require.NoError(h.t, h.m.RowsAdd(h.ctx, "t-merge", []string{name}))
 }
+
+// TestRedisReleaseOfAnUnheldRemovalIsANoOp: G5. A release of a stream
+// remove whose fence no longer holds it writes nothing (no row delete) and
+// succeeds, as a release of any operation the fence no longer holds does.
+func TestRedisReleaseOfAnUnheldRemovalIsANoOp(t *testing.T) {
+	t.Parallel()
+	t.Run("another operation holds the fence", func(t *testing.T) {
+		t.Parallel()
+		r, ctx := coverRedis(t, 0)
+		require.NoError(t, r.C.Set(ctx, r.key(keyFence), mustJSON(t, OpRecord{ID: "op9", Verb: "tick"}), 0).Err())
+		late := OpRecord{ID: "op1", Verb: "stream remove", RowDels: []RowWrite{{Op: "del", Table: "t-work", Rows: []string{"s1"}}}}
+		require.NoError(t, r.Release(ctx, late, true), "a release of an unheld operation is success")
+		held, err := r.heldOp(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "op9", held, "the other operation keeps the fence")
+	})
+	t.Run("the fence is empty", func(t *testing.T) {
+		t.Parallel()
+		r, ctx := coverRedis(t, 0)
+		late := OpRecord{ID: "op1", Verb: "stream remove", RowDels: []RowWrite{{Op: "del", Table: "t-work", Rows: []string{"s1"}}}}
+		require.NoError(t, r.Release(ctx, late, true), "a release of an unheld operation is success")
+	})
+}

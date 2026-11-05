@@ -749,6 +749,11 @@ func (r *Redis) Release(ctx context.Context, op OpRecord, commit bool) error {
 		if err != nil {
 			return err
 		}
+		if o == GuardNotOwner {
+			// G5: the fence no longer holds this operation, so its row deletes
+			// wrote nothing and the release is already done.
+			return nil
+		}
 		if o != GuardApplied {
 			return &GuardError{Outcome: o}
 		}
