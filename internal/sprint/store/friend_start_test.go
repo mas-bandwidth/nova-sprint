@@ -10,23 +10,24 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 )
 
-// start is the friend's start receipt for the oldest n cards ready on her row, as friend sync
-// reads her jobs begun (FriendStartStep): each goes to working, its deadline from now.
+// start is the friend's own take of the oldest n cards ready on her row (take --as
+// friend.<name> by id): each goes to working, its deadline from now.
 func (h *harness) start(friend string, n int) {
 	h.t.Helper()
 	ready := h.snap().Fleet.Cell(sprint.FriendRow(friend), sprint.Ready)
 	sprint.SortCards(ready)
-	r := sprint.FriendStartReq{Friend: friend, Gens: map[string]int{}}
+	row := sprint.FriendRow(friend)
+	r := sprint.TakeReq{As: row, Gens: map[string]int{}, Who: row, LaneByID: true}
 	for _, c := range ready[:min(n, len(ready))] {
 		r.IDs, r.Gens[c.ID] = append(r.IDs, c.ID), max(c.Int("gen"), 1)
 	}
 	if len(r.IDs) > 0 {
-		h.must(FriendStartStep(r))
+		h.must(TakeStep(r))
 	}
 }
 
-// On the twin store a friend's card is dealt ready, friend sync's start receipt moves it to
-// working with its deadline from then, and her own take is a start too: the next tick keeps
+// On the twin store a friend's card is dealt ready, her own take moves it to
+// working with its deadline from then: the next tick keeps
 // it working (docs/SPEC-SPRINT.md section 1, a friend's card is
 // working once she starts it).
 func TestTwinStoreAFriendCardIsWorkingOnlyOnceSheStartsIt(t *testing.T) {

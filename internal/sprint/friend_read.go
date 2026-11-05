@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
-	"github.com/mas-bandwidth/nova-tools/pkg/typedrec"
 )
 
 // A read at any tier is asked of a friend whose class is at or above that tier
@@ -98,39 +97,6 @@ func sectionHeading(line string) bool {
 		}
 	}
 	return letter
-}
-
-// ParseFriendReadReport reads a friend's read report. LAND closes the read
-// ok. HOLD closes it broken when a line names a file, a line or a rule
-// (typedrec.NamesADefect, the rule a reader's broken read is held to).
-// why is set when the report does not close the read.
-func ParseFriendReadReport(report string) (verdict, finding, why string) {
-	word, defect := "", ""
-	for _, l := range strings.Split(report, "\n") {
-		t := strings.TrimSpace(l)
-		if word == "" {
-			if rest, ok := strings.CutPrefix(t, "Verdict:"); ok {
-				fields := strings.Fields(rest)
-				if len(fields) > 0 {
-					word = strings.ToUpper(strings.Trim(fields[0], "*_.,;:"))
-				}
-			}
-		}
-		if defect == "" && typedrec.NamesADefect(l) {
-			defect = strings.TrimSpace(l)
-		}
-	}
-	switch word {
-	case "LAND":
-		return "ok", "", ""
-	case "HOLD":
-		if defect == "" {
-			return "", "", "a HOLD closes a read broken only when a finding names a file, a line or a rule"
-		}
-		return "broken", defect, ""
-	default:
-		return "", "", "a friend's read report says Verdict: LAND or Verdict: HOLD"
-	}
 }
 
 // friendAtOrAbove says the friend may be asked a read of tier: one of her tiers
@@ -476,72 +442,10 @@ func askOneFriend(p *Plan, s *Snapshot, pr *Card, seats []FriendSeat, name, dir 
 	return nil
 }
 
-// FriendReadCloseChecked applies one friend's read report to the read card named (card, the
-// packet's own key: a re-asked read is a later identity of the plain one, ReadCardGenIDs; "" is
-// the one of her identities at the attempt that is placed), with the server's check of the
-// read's branch at its close (missing, as ReadReq.Missing): a broken report on a read whose
-// branch origin does not hold is retired with no verdict (read_missing.go). generation, when
-// given, must be the read card's live one (a stale report is refused).
-func FriendReadCloseChecked(s *Snapshot, name, primary, card, report string, missing map[string]MissingBranch, generation ...int) Plan {
-	var p Plan
-	pr := s.Work.Card(primary)
-	if pr == nil {
-		p.refuse(primary, "no such primary")
-		return p
-	}
-	attempt := pr.Int("attempt")
-	if attempt == 0 {
-		attempt = 1
-	}
-	rc := friendReadCardOf(s, name, primary, attempt, card)
-	if rc == nil {
-		p.refuse(primary, "no read asked of "+name)
-		return p
-	}
-	if len(generation) > 0 && max(generation[0], 1) != max(rc.Int("gen"), 1) {
-		p.refuse(primary, fmt.Sprintf("stale read report: generation %d is not the live one (%d)", generation[0], max(rc.Int("gen"), 1)))
-		return p
-	}
-	verdict, finding, why := ParseFriendReadReport(report)
-	if why != "" {
-		p.refuse(primary, why)
-		return p
-	}
-	if m, ok := (ReadReq{Verdict: verdict, Missing: missing}).missingBranch(rc); ok {
-		p.Units = append(p.Units, missingBranchUnit(s, Fleet, rc, pr, m, finding, "", FriendRow(name)))
-		return p
-	}
-	p.Units = append(p.Units, friendReadCloseUnit(s, name, pr, rc, verdict, finding, ""))
-	if pw, ok := windowWrite(s.Fleet, Fleet, []ReadVerdict{verdictOf(s, rc, pr, FriendRow(name), verdict, finding)}); ok {
-		p.Props = append(p.Props, pw)
-	}
-	return p
-}
-
-// friendReadCardOf is the friend's placed read card of the primary at the attempt: the one
-// named (card, one of her identities, ReadCardGenIDs), or with none named the placed one of
-// them; nil when none is placed on her row.
-func friendReadCardOf(s *Snapshot, name, primary string, attempt int, card string) *Card {
-	ids := ReadCardGenIDs(primary, attempt, name, readNextGen(s.Fleet.Cards(), primary, attempt, name)+readCardLoadWindow)
-	if card != "" {
-		if !slices.Contains(ids, card) {
-			return nil
-		}
-		ids = []string{card}
-	}
-	for _, id := range ids {
-		if rc := s.Fleet.Card(id); rc != nil && rc.Placed() && rc.Row == FriendRow(name) {
-			return rc
-		}
-	}
-	return nil
-}
-
-// friendReadCloseUnit is the one close of a friend's read card on her fleet row,
-// whether a read report (FriendReadCloseChecked) or the read verb (readCardVerb)
-// carried the verdict: the card retired with its verdict, a broken verdict's
+// friendReadCloseUnit is the one close of a friend's read card on her fleet row, the
+// read verb's (readCardVerb): the card retired with its verdict, a broken verdict's
 // judgment, and the primary's review judgment after it. usage is what the read spent, as
-// the read verb's --usage carried it ("" from a read report): kept on the card, timed
+// the read verb's --usage carried it: kept on the card, timed
 // and priced as a reader's read is (readCostRecord), and recorded on the primary in the
 // same unit (the complete cost is tracked). A verdict also persists its
 // reader/attempt/head history for the landing push (docs/SPEC-SPRINT.md, judgments).

@@ -13,8 +13,7 @@ import (
 // A friend's card is working only once she starts it (docs/SPEC-SPRINT.md section 1, a
 // friend's card is working once she starts it; the owner, 2026-10-05: "They are not working
 // unless work turns from working to done."). The deal places it ready on her row; her start
-// receipt (her beat naming it running, or friend sync reading her job begun: FriendStart)
-// moves it to working and stamps its deadline then; a card in working she never started (a
+// receipt (her beat naming it running, or her own take) moves it to working and stamps its deadline then; a card in working she never started (a
 // finish's or a take-back's next, a take) goes back ready; a card dealt and not started
 // within the start bound, while she runs no job, is levelled to an eligible friend with an
 // idle lane, never back to her.
@@ -86,23 +85,15 @@ func TestAFriendCardIsWorkingOnlyOnceTheFriendStartsIt(t *testing.T) {
 	assert.Empty(t, wc.F("untaken_since"))
 	assert.Contains(t, movedLines(p), "s1-2.w1 friend.amy:ready -> working (started: their beat names it running)")
 
-	// friend sync reads s1-3.w1's job begun: its start receipt moves it to working now
+	// her own take of s1-3.w1 is her start: it moves to working now
 	w.tick(time.Minute)
 	synced := w.s.Now
-	p = w.must(FriendStart(w.s, FriendStartReq{Friend: "amy", IDs: []string{"s1-3.w1"}, Gens: map[string]int{"s1-3.w1": 1},
-		Why: map[string]string{"s1-3.w1": "a write under jobs/s1-3 after its staging"}}))
+	rememberWorkerSeats(w.s, seats("s1-2.w1"))
+	w.must(Take(w.s, TakeReq{As: amy, Sel: Sel{IDs: []string{"s1-3.w1"}}, Gens: map[string]int{"s1-3.w1": 1}, Who: amy, LaneByID: true}))
 	wc = w.s.Fleet.Card("s1-3.w1")
 	require.Equal(t, Working, wc.Col)
-	assert.Equal(t, stamp(synced), wc.F("taken"), "its deadline runs from the start friend sync read")
+	assert.Equal(t, stamp(synced), wc.F("taken"), "its deadline runs from her take")
 	assert.Equal(t, "1", wc.F(FieldStarted))
-	assert.Contains(t, movedLines(p), "s1-3.w1 friend.amy:ready -> working (started: a write under jobs/s1-3 after its staging)")
-	// a receipt for a card she started already changes nothing; one at another generation,
-	// or for a card not on her row, is refused
-	assert.Empty(t, FriendStart(w.s, FriendStartReq{Friend: "amy", IDs: []string{"s1-3.w1"}, Gens: map[string]int{"s1-3.w1": 1}}).Units)
-	ref := FriendStart(w.s, FriendStartReq{Friend: "amy", IDs: []string{"s1-2.w1", "s1-1.w1"}, Gens: map[string]int{"s1-2.w1": 2, "s1-1.w1": 2}}).Refused
-	require.Len(t, ref, 2)
-	assert.Contains(t, ref[0].Why, "generation 1, not 2")
-	assert.Contains(t, ref[1].Why, "not on friend amy's row")
 
 	// bob's card moved to working with no start of his (as a finish's or a take-back's next
 	// moves it: friendTaken, no FieldStarted; his own take is a start and is not this): the
@@ -169,7 +160,8 @@ func TestAFriendRunningAJobKeepsHerUnstartedCards(t *testing.T) {
 	seats := workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 2, Status: Up, Class: "flash"}, {Name: "bob", Width: 1, Status: Up, Class: "flash"}})
 	w.must(func() Plan { p, _ := tickDealFixture(w.s, TickReq{Friends: seats}); return p }())
 	require.Equal(t, 2, w.s.Fleet.Count(FriendRow("amy"), Ready))
-	w.must(FriendStart(w.s, FriendStartReq{Friend: "amy", IDs: []string{"s1-1.w1"}, Gens: map[string]int{"s1-1.w1": 1}}))
+	rememberWorkerSeats(w.s, seats)
+	w.must(Take(w.s, TakeReq{As: FriendRow("amy"), Sel: Sel{IDs: []string{"s1-1.w1"}}, Gens: map[string]int{"s1-1.w1": 1}, Who: FriendRow("amy"), LaneByID: true}))
 	w.s.Now = t0.Add(FriendStartMaxDefault + time.Hour)
 	p, _ := tickDealFixture(w.s, TickReq{Friends: seats})
 	w.must(p)

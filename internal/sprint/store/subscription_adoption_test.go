@@ -1,10 +1,11 @@
 package store
 
 import (
+	"testing"
+
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestSubscriptionAppliedBillingInFakeStore(t *testing.T) {

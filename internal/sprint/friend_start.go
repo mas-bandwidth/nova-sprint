@@ -125,47 +125,6 @@ func friendUnstartedWorking(s *Snapshot, seats []FriendSeat) (units []Unit) {
 	return units
 }
 
-// FriendStartReq is friend sync's start receipt: the friend, the cards on her row she has
-// begun (by id, each at the generation sync read: Gens), and why sync reads each as begun.
-type FriendStartReq struct {
-	Friend string
-	IDs    []string
-	Gens   map[string]int
-	Why    map[string]string
-}
-
-// FriendStart is friend sync's start receipt (docs/SPEC-SPRINT.md section 1, a friend's card
-// is working once she starts it): each card named, ready on her row, goes to working, taken
-// now, its deadline from now (friendStartSet); one working on her row with no start of hers
-// (startedNow) is stamped started now, where it is. A card she started already changes
-// nothing; one not on her row, not ready or working, or at another generation is refused,
-// one refusal each. A start is her fact: her lanes and her status do not gate it.
-func FriendStart(s *Snapshot, r FriendStartReq) Plan {
-	var p Plan
-	row := FriendRow(r.Friend)
-	for _, id := range r.IDs {
-		c := s.Fleet.Placed(id)
-		switch {
-		case c == nil || c.Row != row:
-			p.refuse(id, fmt.Sprintf("%s is not on friend %s's row", id, r.Friend))
-			continue
-		case c.Col != Ready && c.Col != Working:
-			p.refuse(id, fmt.Sprintf("%s is %s on friend %s's row, not ready or working", id, c.Col, r.Friend))
-			continue
-		case r.Gens[id] != max(c.Int("gen"), 1):
-			p.refuse(id, fmt.Sprintf("%s is at generation %d, not %d: a start of another job", id, max(c.Int("gen"), 1), r.Gens[id]))
-			continue
-		case c.Col == Working && startedNow(c):
-			continue
-		}
-		set, unset := friendStartSet(s, c, r.Friend)
-		why := cmp.Or(r.Why[id], "friend sync read it begun")
-		p.Units = append(p.Units, Unit{Key: c.ID, Stream: c.F("stream"), Changes: []Change{change(Fleet, moveEntry(c, row, Working, set, unset...))},
-			Moved: fmt.Sprintf("%s %s:%s -> working (started: %s)", c.ID, row, c.Col, why)})
-	}
-	return p
-}
-
 // friendUnstartedLevel moves each card ready on an up friend's row that she has not started
 // (friendStarted, nor named in skip: a card the tick moved already) and that was dealt to her,
 // or put back ready on her row, more than the start bound ago in running time (since, the

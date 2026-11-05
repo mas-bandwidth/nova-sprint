@@ -280,8 +280,9 @@ func TestTheAskBeginsNoStepPastHalfItsTick(t *testing.T) {
 	require.Equal(t, t0.Add(200*time.Millisecond), askUntil(ctx, t0, t0), "half of the tick's deadline when that is sooner")
 }
 
-// friendRead closes a friend's read of the primary at its attempt with her
-// report, as friend sync does (cmd/nova-sprint friendcards.go).
+// friendRead closes a friend's read of the primary at its attempt with the read
+// verb: a report beginning Verdict: HOLD is a broken read whose finding is the rest,
+// any other an ok one.
 func (h *harness) friendRead(name, primary, report string) {
 	h.t.Helper()
 	at := h.st.PinnedEpoch()
@@ -289,7 +290,11 @@ func (h *harness) friendRead(name, primary, report string) {
 	h.must(Step{Verb: "read", Named: true, Mirrors: true, Load: []string{sprint.Fleet, sprint.Work},
 		Extras: sprint.NamedExtras(sprint.Fleet, []string{card}), Actor: sprint.FriendRow(name), Epoch: &at,
 		Plan: func(s *sprint.Snapshot) sprint.Plan {
-			return sprint.FriendReadCloseChecked(s, name, primary, "", report, nil)
+			r := sprint.ReadReq{Sel: sprint.Sel{IDs: []string{card}}, As: sprint.FriendRow(name), Verdict: "ok", Who: sprint.FriendRow(name)}
+			if rest, held := strings.CutPrefix(report, "Verdict: HOLD\n"); held {
+				r.Verdict, r.Finding = "broken", strings.TrimSpace(rest)
+			}
+			return sprint.Read(s, r)
 		}})
 }
 

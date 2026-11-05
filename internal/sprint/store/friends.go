@@ -682,15 +682,6 @@ func (st *Store) FriendBeatOf(ctx context.Context, friend string) (sprint.Beat, 
 	return b, nil
 }
 
-// FriendStartStep is friend sync's start receipt for one friend's cards (sprint.FriendStart;
-// docs/SPEC-SPRINT.md section 1, a friend's card is working once she starts it): each card
-// she has begun moves to working on her row, its deadline from now, or is stamped started
-// where it is working. It runs as friend sync, the coordinator's verb.
-func FriendStartStep(r sprint.FriendStartReq) Step {
-	return Step{Named: len(r.IDs) > 0, Args: ArgsOf(r), Verb: "friend sync", Load: tables(sprint.Fleet), Extras: sprint.NamedExtras(sprint.Fleet, r.IDs), StartsWork: true,
-		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.FriendStart(s, r) }}
-}
-
 // FriendHold is a friend's row as nova-hook's FRIEND UP push says it: whether the
 // sprint holds her (friend down, friend hold), why, and her width.
 type FriendHold struct {

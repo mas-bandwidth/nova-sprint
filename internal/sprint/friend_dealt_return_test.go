@@ -113,21 +113,6 @@ func TestAFriendWhoHasTakenACardHasNoneReturned(t *testing.T) {
 			},
 		},
 		{
-			name: "the sync receipt (FriendStart)",
-			run: func(t *testing.T) {
-				w := friendWorld(t, fleetBrief("flash"), fleetBrief("flash"))
-				w.s.Work.SetProp(PropDealtMax, "90s")
-				dealWith(w, friendSeat())
-				w.must(FriendStart(w.s, FriendStartReq{Friend: "amy", IDs: []string{"s1-1.w1"}, Gens: map[string]int{"s1-1.w1": 1}}))
-				require.Equal(t, Working, w.s.Fleet.Card("s1-1.w1").Col, "friend sync's start moves s1-1 to working")
-				require.Equal(t, "1", w.s.Fleet.Card("s1-1.w1").F(FieldStarted), "she started s1-1")
-
-				w.tick(2 * time.Minute)
-				dealWith(w, friendSeat())
-				require.Equal(t, Ready, w.s.Fleet.Card("s1-2.w1").Col, "the untaken s1-2 is not returned")
-			},
-		},
-		{
 			name: "a working card confirmed started by the tick (friendUnstartedWorking)",
 			run: func(t *testing.T) {
 				w := friendWorld(t, fleetBrief("flash"), fleetBrief("flash"), fleetBrief("flash"))

@@ -1,10 +1,11 @@
 package store
 
 import (
+	"testing"
+
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func (h *harness) seat() SeatState {

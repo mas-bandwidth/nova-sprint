@@ -14,55 +14,6 @@ import (
 // billing field the cost card is adding) shows the dollars charged, to the cent,
 // rounded up. Until that field is set, every friend is a subscription.
 
-// FriendUsage reads a friend card's usage out of the report her session wrote: the
-// first `usage:` line, whose in, out and cache words are cardcost's input, output
-// and cache read, or a `tokens:` line, or the tokens segment of the friend
-// machinery's `Cost:` line (nova-tools pkg/friend PublishCost). ok is
-// false when the text names none of the classes.
-func FriendUsage(text string) (cardcost.Usage, bool) {
-	for _, line := range strings.Split(text, "\n") {
-		t := strings.TrimSpace(strings.TrimLeft(line, "#*-_ \t"))
-		key, rest, ok := strings.Cut(t, ":")
-		if !ok {
-			continue
-		}
-		key = strings.ToLower(strings.TrimSpace(key))
-		switch key {
-		case "usage", "tokens":
-			return parseFriendUsageWords(rest), true
-		case "cost":
-			if i := strings.Index(rest, " tokens "); i >= 0 {
-				return parseFriendUsageWords(rest[i+len(" tokens "):]), true
-			}
-		}
-	}
-	return cardcost.NoUsage(), false
-}
-
-// parseFriendUsageWords reads a usage line's words: in, out and cache are the
-// card's own compact names for cardcost's input, output and cache read; every
-// other word is cardcost's, so the machinery's tokens line reads as itself.
-func parseFriendUsageWords(line string) cardcost.Usage {
-	words := make([]string, 0, 8)
-	for _, w := range strings.Fields(line) {
-		k, v, ok := strings.Cut(w, "=")
-		if !ok {
-			continue
-		}
-		switch k {
-		case "in":
-			words = append(words, "input="+v)
-		case "out":
-			words = append(words, "output="+v)
-		case "cache":
-			words = append(words, "cache_read="+v)
-		default:
-			words = append(words, w)
-		}
-	}
-	return cardcost.ParseUsage(strings.Join(words, " "))
-}
-
 // FriendTokensFromCards is the token total of a friend's cards: each card's usage
 // record (FieldUsage) summed over the classes the column counts, input, output,
 // cache read and cache write, never reasoning. A card with no usage record adds

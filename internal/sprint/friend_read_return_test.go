@@ -71,17 +71,6 @@ func TestReadAsFriendClosesAFriendRowRead(t *testing.T) {
 			})
 		})
 	}
-	t.Run("the same close as her outbox report", func(t *testing.T) {
-		t.Parallel()
-		a, id := friendReadAsked(t)
-		b, _ := friendReadAsked(t)
-		va := Read(a.s, ReadReq{Sel: Sel{IDs: []string{id}}, As: FriendRow("amy"), Verdict: "ok"})
-		vb := FriendReadCloseChecked(b.s, "amy", "s1-1", "", "Verdict: LAND\n", nil)
-		require.Len(t, va.Units, 1)
-		require.Len(t, vb.Units, 1)
-		require.Equal(t, vb.Units[0].Changes, va.Units[0].Changes)
-		require.Equal(t, vb.Units[0].Notes, va.Units[0].Notes)
-	})
 	t.Run("by selection", func(t *testing.T) {
 		t.Parallel()
 		w, id := friendReadAsked(t)
