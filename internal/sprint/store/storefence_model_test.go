@@ -11,37 +11,11 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/pkg/tlc"
 )
 
-// storeFenceWitnessDir holds the fence model's reversed witnesses and its two
-// failing holes: every case but the control instance. The plan and records live
-// beside the configurations so the whole suite is reproducible from tla/testdata.
-const storeFenceWitnessDir = "tla/testdata/storefence"
-
-// storeFenceWitnesses are the witness cases the fence model must keep: six
-// reversed witnesses that break one invariant each and three more cases (the
-// timing-free control, the shared-operation-id hole and the revived-refusal
-// hole) that must stay in the suite.
-var storeFenceWitnesses = []string{
-	"MCStoreFenceBrokenAbandonApplied.cfg",
-	"MCStoreFenceBrokenAcquireNoGen.cfg",
-	"MCStoreFenceBrokenReleaseAnyOp.cfg",
-	"MCStoreFenceBrokenRepairNoSend.cfg",
-	"MCStoreFenceBrokenReplayIgnoresArgs.cfg",
-	"MCStoreFenceBrokenRerunOldEpoch.cfg",
-	"MCStoreFenceLateWriter.cfg",
-	"MCStoreFenceRevivedRefusal.cfg",
-	"MCStoreFenceSharedOpIds.cfg",
-}
-
-type storeFenceCase struct {
-	expected string
-	property string
-	group    string
-}
-
-type storeFenceRun struct {
-	result   string
-	expected string
-	property string
+// storeFenceHoles are the two defects the fence model found: each stays in the
+// plan as a case that must violate its named invariant.
+var storeFenceHoles = []struct{ cfg, property string }{
+	{"MCStoreFenceSharedOpIds.cfg", "NoPartialOutsideFence"},
+	{"MCStoreFenceRevivedRefusal.cfg", "AbandonedAppliedNothing"},
 }
 
 // readStoreFenceTSV reads a tab-separated ledger by its header row; a line that
@@ -81,84 +55,9 @@ func storeFenceColumns(path string, header []string, want ...string) (map[string
 	return col, nil
 }
 
-// readStoreFenceCases reads a case plan's rows by configuration: the declared
-// outcome (expected and property) and the group.
-func readStoreFenceCases(path string) (map[string]storeFenceCase, error) {
-	header, rows, err := readStoreFenceTSV(path)
-	if err != nil {
-		return nil, err
-	}
-	col, err := storeFenceColumns(path, header, "config", "expected", "property", "group")
-	if err != nil {
-		return nil, err
-	}
-	cases := make(map[string]storeFenceCase)
-	for _, cols := range rows {
-		if len(cols) < len(header) {
-			return nil, fmt.Errorf("%s: row %q has %d fields, want %d", path, cols[0], len(cols), len(header))
-		}
-		cases[cols[col["config"]]] = storeFenceCase{
-			expected: cols[col["expected"]],
-			property: cols[col["property"]],
-			group:    cols[col["group"]],
-		}
-	}
-	return cases, nil
-}
-
-// readStoreFenceRuns reads a records file's rows by configuration: TLC's result
-// and the outcome the record was judged against.
-func readStoreFenceRuns(path string) (map[string]storeFenceRun, error) {
-	header, rows, err := readStoreFenceTSV(path)
-	if err != nil {
-		return nil, err
-	}
-	col, err := storeFenceColumns(path, header, "config", "result", "expected", "property")
-	if err != nil {
-		return nil, err
-	}
-	runs := make(map[string]storeFenceRun)
-	for _, cols := range rows {
-		if len(cols) < len(header) {
-			return nil, fmt.Errorf("%s: row %q has %d fields, want %d", path, cols[0], len(cols), len(header))
-		}
-		runs[cols[col["config"]]] = storeFenceRun{
-			result:   cols[col["result"]],
-			expected: cols[col["expected"]],
-			property: cols[col["property"]],
-		}
-	}
-	return runs, nil
-}
-
-// checkStoreFenceCases holds every configuration in cfgs to a plan row and a
-// current record that says the outcome the plan declares.
-func checkStoreFenceCases(cfgs []string, cases map[string]storeFenceCase, runs map[string]storeFenceRun, casesPath, runsPath string) error {
-	for _, cfg := range cfgs {
-		c, ok := cases[cfg]
-		if !ok {
-			return fmt.Errorf("%s: missing row for %s", casesPath, cfg)
-		}
-		if c.expected == "" || c.property == "" {
-			return fmt.Errorf("%s: %s has no declared outcome", casesPath, cfg)
-		}
-		r, ok := runs[cfg]
-		if !ok {
-			return fmt.Errorf("%s: missing row for %s", runsPath, cfg)
-		}
-		if r.result != "PASS" {
-			return fmt.Errorf("%s: %s result=%s, want PASS (the declared outcome was not reached)", runsPath, cfg, r.result)
-		}
-		if r.expected != c.expected || r.property != c.property {
-			return fmt.Errorf("%s: %s declares %s %s but its record holds %s %s", runsPath, cfg, c.expected, c.property, r.expected, r.property)
-		}
-	}
-	return nil
-}
-
-// storeFenceCfgs lists the fence configurations in dir that the test owns.
-func storeFenceCfgs(dir string) ([]string, error) {
-	entries, err := os.ReadDir(dir)
+// storeFenceCfgs lists the fence configurations in the model directory.
+func storeFenceCfgs(tlaDir string) ([]string, error) {
+	entries, err := os.ReadDir(tlaDir)
 	if err != nil {
 		return nil, err
 	}
@@ -175,11 +74,11 @@ func storeFenceCfgs(dir string) ([]string, error) {
 
 // checkStoreFenceModelRecorded is the whole record of the fence model: the
 // model, its plan and its records; every configuration's declared outcome; the
-// two failing holes kept as cases; and the COVERAGE row that names engine.go
-// and lock.go by function.
+// two failing holes kept as cases; each record's fingerprint against the
+// configuration and model it names now; and the COVERAGE row that names
+// engine.go and lock.go by function.
 func checkStoreFenceModelRecorded(root string) error {
 	tlaDir := filepath.Join(root, "tla")
-	witnessDir := filepath.Join(root, storeFenceWitnessDir)
 	for _, req := range []string{
 		"StoreFence.tla", "MCStoreFence.tla", "MCStoreFence.cfg",
 		"CASES.tsv", "RUNS.tsv", "COVERAGE.tsv",
@@ -188,67 +87,20 @@ func checkStoreFenceModelRecorded(root string) error {
 			return err
 		}
 	}
-	for _, req := range []string{"CASES.tsv", "RUNS.tsv"} {
-		if _, err := os.Stat(filepath.Join(witnessDir, req)); err != nil {
-			return err
-		}
-	}
 
-	mainCfgs, err := storeFenceCfgs(tlaDir)
+	cfgs, err := storeFenceCfgs(tlaDir)
 	if err != nil {
 		return err
 	}
-	if !slices.Contains(mainCfgs, "MCStoreFence.cfg") {
+	if !slices.Contains(cfgs, "MCStoreFence.cfg") {
 		return fmt.Errorf("tla: MCStoreFence.cfg is the model's control instance and is absent")
 	}
-	witnessCfgs, err := storeFenceCfgs(witnessDir)
-	if err != nil {
-		return err
-	}
-	for _, want := range storeFenceWitnesses {
-		if !slices.Contains(witnessCfgs, want) {
-			return fmt.Errorf("%s: %s is absent (the fence suite keeps every reversed witness and both holes)", storeFenceWitnessDir, want)
+	for _, hole := range storeFenceHoles {
+		if !slices.Contains(cfgs, hole.cfg) {
+			return fmt.Errorf("tla: %s is absent (the fence suite keeps every reversed witness and both holes)", hole.cfg)
 		}
 	}
 
-	mainCases, err := readStoreFenceCases(filepath.Join(tlaDir, "CASES.tsv"))
-	if err != nil {
-		return err
-	}
-	mainRuns, err := readStoreFenceRuns(filepath.Join(tlaDir, "RUNS.tsv"))
-	if err != nil {
-		return err
-	}
-	if err := checkStoreFenceCases(mainCfgs, mainCases, mainRuns, "tla/CASES.tsv", "tla/RUNS.tsv"); err != nil {
-		return err
-	}
-
-	witnessCases, err := readStoreFenceCases(filepath.Join(witnessDir, "CASES.tsv"))
-	if err != nil {
-		return err
-	}
-	witnessRuns, err := readStoreFenceRuns(filepath.Join(witnessDir, "RUNS.tsv"))
-	if err != nil {
-		return err
-	}
-	if err := checkStoreFenceCases(witnessCfgs, witnessCases, witnessRuns, storeFenceWitnessDir+"/CASES.tsv", storeFenceWitnessDir+"/RUNS.tsv"); err != nil {
-		return err
-	}
-
-	// The two holes the model found are cases that must fail an invariant; a
-	// case that silently starts passing would hide the defect they witness.
-	for _, hole := range []struct{ cfg, property string }{
-		{"MCStoreFenceSharedOpIds.cfg", "NoPartialOutsideFence"},
-		{"MCStoreFenceRevivedRefusal.cfg", "AbandonedAppliedNothing"},
-	} {
-		c, ok := witnessCases[hole.cfg]
-		if !ok || c.expected != "invariant" || c.property != hole.property {
-			return fmt.Errorf("%s: %s must declare invariant %s (the hole it witnesses), got %+v", storeFenceWitnessDir+"/CASES.tsv", hole.cfg, hole.property, c)
-		}
-	}
-
-	// The control instance's record must be current for this tree, not merely
-	// present: a stale record names a fingerprint the merged model no longer has.
 	cases, err := tlc.LoadCases(root)
 	if err != nil {
 		return err
@@ -261,12 +113,53 @@ func checkStoreFenceModelRecorded(root string) error {
 	if err != nil {
 		return err
 	}
-	stale, err := tlc.StaleGroups(src, cases, records)
-	if err != nil {
-		return err
+	runs := make(map[string]tlc.Record, len(records))
+	for _, r := range records {
+		runs[r.Config] = r
 	}
-	if slices.Contains(stale, "storefence") {
-		return fmt.Errorf("tla/RUNS.tsv: group storefence has stale records")
+
+	inPlan := make(map[string]tlc.Case, len(cases))
+	for _, c := range cases {
+		inPlan[c.Config] = c
+	}
+	for _, cfg := range cfgs {
+		c, ok := inPlan[cfg]
+		if !ok {
+			return fmt.Errorf("tla/CASES.tsv: missing row for %s", cfg)
+		}
+		r, ok := runs[cfg]
+		if !ok {
+			return fmt.Errorf("tla/RUNS.tsv: missing row for %s", cfg)
+		}
+		if c.Expected == "" || c.Property == "" {
+			return fmt.Errorf("tla/CASES.tsv: %s has no declared outcome", cfg)
+		}
+		if r.Result != "PASS" {
+			return fmt.Errorf("tla/RUNS.tsv: %s result=%s, want PASS (the declared outcome was not reached)", cfg, r.Result)
+		}
+		if r.Module != c.Module || r.Expected != c.Expected || r.Property != c.Property {
+			return fmt.Errorf("tla/RUNS.tsv: %s record holds %s %s %s but the plan declares %s %s %s",
+				cfg, r.Module, r.Expected, r.Property, c.Module, c.Expected, c.Property)
+		}
+		// A record is the measurement of these inputs: its fingerprint must be
+		// the one the configuration, the module and the plan row hash to now.
+		fp, files, err := src.Fingerprint(cfg)
+		if err != nil {
+			return err
+		}
+		if r.InputSHA256 != fp || r.InputFiles != files {
+			return fmt.Errorf("tla/RUNS.tsv: %s records fingerprint %s over %d files, but its inputs now hash to %s over %d",
+				cfg, r.InputSHA256, r.InputFiles, fp, files)
+		}
+	}
+
+	// The two holes the model found are cases that must fail an invariant; a
+	// case that silently starts passing would hide the defect they witness.
+	for _, hole := range storeFenceHoles {
+		c, ok := inPlan[hole.cfg]
+		if !ok || c.Expected != "invariant" || c.Property != hole.property {
+			return fmt.Errorf("tla/CASES.tsv: %s must declare invariant %s (the hole it witnesses), got %+v", hole.cfg, hole.property, c)
+		}
 	}
 
 	return checkStoreFenceCoverage(filepath.Join(tlaDir, "COVERAGE.tsv"))
@@ -314,71 +207,31 @@ func checkStoreFenceCoverage(path string) error {
 	return nil
 }
 
-// copyStoreFenceTree copies the ledgers and models the check reads into a
-// scratch root, so a negative control changes only its own copy.
+// copyStoreFenceTree copies the model directory into a scratch root, so a
+// negative control changes only its own copy.
 func copyStoreFenceTree(t *testing.T, src, dst string) {
 	t.Helper()
-	for _, rel := range []string{"tla"} {
-		if err := filepath.WalkDir(filepath.Join(src, rel), func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() {
-				if d.Name() == "testdata" && filepath.Dir(path) == filepath.Join(src, "tla") {
-					return nil
-				}
-				if filepath.Dir(path) == filepath.Join(src, "tla") && path != filepath.Join(src, "tla") {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			name := d.Name()
-			if !(strings.HasSuffix(name, ".tla") || strings.HasSuffix(name, ".cfg") || strings.HasSuffix(name, ".tsv")) {
-				return nil
-			}
-			to := filepath.Join(dst, strings.TrimPrefix(path, src+string(os.PathSeparator)))
-			if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
-				return err
-			}
-			raw, err := os.ReadFile(path)
-			if err != nil {
-				return err
-			}
-			return os.WriteFile(to, raw, 0o644)
-		}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := copyStoreFenceTreeDir(t, filepath.Join(src, storeFenceWitnessDir), filepath.Join(dst, storeFenceWitnessDir)); err != nil {
+	from := filepath.Join(src, "tla")
+	to := filepath.Join(dst, "tla")
+	if err := os.MkdirAll(to, 0o755); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func copyStoreFenceTreeDir(t *testing.T, src, dst string) error {
-	t.Helper()
-	if err := os.MkdirAll(dst, 0o755); err != nil {
-		return err
-	}
-	entries, err := os.ReadDir(src)
+	entries, err := os.ReadDir(from)
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
 	for _, e := range entries {
 		if e.IsDir() {
-			if err := copyStoreFenceTreeDir(t, filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
-				return err
-			}
 			continue
 		}
-		raw, err := os.ReadFile(filepath.Join(src, e.Name()))
+		raw, err := os.ReadFile(filepath.Join(from, e.Name()))
 		if err != nil {
-			return err
+			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dst, e.Name()), raw, 0o644); err != nil {
-			return err
+		if err := os.WriteFile(filepath.Join(to, e.Name()), raw, 0o644); err != nil {
+			t.Fatal(err)
 		}
 	}
-	return nil
 }
 
 func TestStoreFenceModelRecorded(t *testing.T) {
@@ -389,15 +242,17 @@ func TestStoreFenceModelRecorded(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 
-	// Negative controls: the check must fail when a witness case loses its row
-	// or its declared outcome, and when the fence row stops naming lock.go.
+	// Negative controls: the check must fail when a witness case loses its row,
+	// when a witness's configuration changes under its record, when a witness
+	// record did not reach its declared outcome, and when the fence row stops
+	// naming lock.go.
 	tmp := t.TempDir()
 	copyStoreFenceTree(t, root, tmp)
 	if err := checkStoreFenceModelRecorded(tmp); err != nil {
 		t.Fatalf("clean copy failed the check: %v", err)
 	}
 
-	casesPath := filepath.Join(tmp, storeFenceWitnessDir, "CASES.tsv")
+	casesPath := filepath.Join(tmp, "tla", "CASES.tsv")
 	origCases, err := os.ReadFile(casesPath)
 	if err != nil {
 		t.Fatal(err)
@@ -419,7 +274,23 @@ func TestStoreFenceModelRecorded(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runsPath := filepath.Join(tmp, storeFenceWitnessDir, "RUNS.tsv")
+	witnessCfg := filepath.Join(tmp, "tla", "MCStoreFenceBrokenAcquireNoGen.cfg")
+	origCfg, err := os.ReadFile(witnessCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changedCfg := append(append([]byte(nil), origCfg...), []byte("\n\\* changed under its record\n")...)
+	if err := os.WriteFile(witnessCfg, changedCfg, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkStoreFenceModelRecorded(tmp); err == nil {
+		t.Fatal("expected failure when a witness configuration changes under its record")
+	}
+	if err := os.WriteFile(witnessCfg, origCfg, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	runsPath := filepath.Join(tmp, "tla", "RUNS.tsv")
 	origRuns, err := os.ReadFile(runsPath)
 	if err != nil {
 		t.Fatal(err)
