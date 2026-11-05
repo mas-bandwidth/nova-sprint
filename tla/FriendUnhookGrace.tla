@@ -33,15 +33,28 @@ EXTENDS Naturals, FiniteSets
 \* Reach cases: MCFriendUnhookGraceReachReturn (NeverReturned fails: past the grace a card
 \* is returned) and MCFriendUnhookGraceReachKept (NeverKeptAcrossUnhook fails: a friend
 \* unhooked with a working card hooks in again and still has it).
+\*
+\* The down return (2026-11-05; internal/sprint/friend_down_return.go friendDownReturn): a card
+\* she took and never started ("taken": a take recorded, no start, her lane gone and the card
+\* back ready on her row) is hers only while she is up or inside DownGrace windows of her last
+\* answer (quiet, her AnsweredAt); the tick past it returns every such card to the pool. Found
+\* that morning: a friend went down holding 16 cards taken and not started for 22 minutes, and
+\* MoveReady (a card never taken) did not move them. The grace runs on both clocks, as the
+\* code's (the later of her last answer and the card's take): quiet, and tq, the windows since
+\* the card's take. Invariants
+\* NoTakenReturnInDownGrace and NoTakenStrandedPastDownGrace; reversed witnesses:
+\*   "keeptaken"   the code before: a down friend keeps them for ever (NoTakenStrandedPastDownGrace);
+\*   "nodowngrace" returned the tick she is down (NoTakenReturnInDownGrace).
 \* Not modelled: the beat's live set (LiveRuns: inside the grace her row is reconciled by
 \* her own fresh beat, as any row), the deal, the hook heartbeat's own state machine
 \* (nova-tools tla/HookBeat.tla), and an armed record that is never unhooked again.
-CONSTANTS Cards, Grace, Proof, Broken
-VARIABLES hookSt, since, quiet, alive, card, returnedInGrace, kept, ticked
-vars == <<hookSt, since, quiet, alive, card, returnedInGrace, kept, ticked>>
+CONSTANTS Cards, Grace, Proof, DownGrace, Broken
+ASSUME DownGrace \in 1..(Grace + Proof)
+VARIABLES hookSt, since, quiet, alive, card, returnedInGrace, kept, ticked, takenEarly, tq
+vars == <<hookSt, since, quiet, alive, card, returnedInGrace, kept, ticked, takenEarly, tq>>
 
 QuietCap == Grace + Proof
-CardStates == {"ready", "working", "returned", "moved", "done"}
+CardStates == {"ready", "taken", "working", "returned", "moved", "done"}
 
 TypeOK == /\ hookSt \in {"up", "armed", "unhooked"}
           /\ since \in 0..Grace
@@ -51,10 +64,13 @@ TypeOK == /\ hookSt \in {"up", "armed", "unhooked"}
           /\ returnedInGrace \in BOOLEAN
           /\ kept \in BOOLEAN
           /\ ticked \in BOOLEAN
+          /\ takenEarly \in BOOLEAN
+          /\ tq \in [Cards -> 0..DownGrace]
 
 Init == /\ hookSt = "up" /\ since = 0 /\ quiet = 0 /\ alive = TRUE
-        /\ card \in [Cards -> {"ready", "working"}]
-        /\ returnedInGrace = FALSE /\ kept = FALSE /\ ticked = FALSE
+        /\ card \in [Cards -> {"ready", "taken", "working"}]
+        /\ returnedInGrace = FALSE /\ kept = FALSE /\ ticked = FALSE /\ takenEarly = FALSE
+        /\ tq \in [Cards -> 0..DownGrace]
 
 \* the code's predicate (FriendUnhookInGrace)
 InGrace == hookSt = "unhooked" /\ since < Grace /\ quiet < QuietCap
@@ -75,8 +91,17 @@ Tick == LET s2 == IF hookSt = "unhooked" THEN IF since < Grace THEN since + 1 EL
                      ELSE IF "unhookclockonly" \in Broken THEN hookSt = "unhooked" /\ s2 < Grace
                      ELSE inGrace2
             ret == hookSt = "unhooked" /\ ~code2
+            \* the down return of the cards she took and never started (friendDownReturn)
+            t2 == [c \in Cards |-> IF tq[c] < DownGrace THEN tq[c] + 1 ELSE DownGrace]
+            downRet(c) == hookSt # "up" /\ card[c] = "taken" /\ "keeptaken" \notin Broken
+                          /\ ((q2 >= DownGrace /\ t2[c] >= DownGrace) \/ "nodowngrace" \in Broken)
+            early == {c \in Cards : downRet(c) /\ ~(q2 >= DownGrace /\ t2[c] >= DownGrace)}
         IN /\ since' = s2 /\ quiet' = q2
-           /\ card' = [c \in Cards |-> IF ret /\ card[c] = "working" THEN "returned" ELSE card[c]]
+           /\ card' = [c \in Cards |-> IF ret /\ card[c] = "working" THEN "returned"
+                                       ELSE IF downRet(c) THEN "returned"
+                                       ELSE card[c]]
+           /\ tq' = t2
+           /\ takenEarly' = (takenEarly \/ early # {})
            /\ returnedInGrace' = (returnedInGrace \/ (ret /\ inGrace2 /\ Working # {}))
            /\ ticked' = TRUE
            /\ UNCHANGED <<hookSt, alive, kept>>
@@ -87,43 +112,50 @@ Tick == LET s2 == IF hookSt = "unhooked" THEN IF since < Grace THEN since + 1 EL
 Unhook == /\ hookSt \in {"up", "armed"}
           /\ hookSt' = "unhooked" /\ since' = 0
           /\ ticked' = FALSE
-          /\ UNCHANGED <<quiet, alive, card, returnedInGrace, kept>>
+          /\ UNCHANGED <<quiet, alive, card, returnedInGrace, kept, takenEarly, tq>>
 
 \* her service hooks her in again, a model behind it or not: down until she proves
 Rearm == /\ hookSt = "unhooked"
          /\ hookSt' = "armed"
          /\ ticked' = FALSE
-         /\ UNCHANGED <<since, quiet, alive, card, returnedInGrace, kept>>
+         /\ UNCHANGED <<since, quiet, alive, card, returnedInGrace, kept, takenEarly, tq>>
 
 \* her session answers a challenge: up, and her last answer is now
 Prove == /\ alive /\ hookSt \in {"up", "armed"}
          /\ hookSt' = "up" /\ quiet' = 0
          /\ kept' = (kept \/ (hookSt = "armed" /\ Working # {}))
          /\ ticked' = FALSE
-         /\ UNCHANGED <<since, alive, card, returnedInGrace>>
+         /\ UNCHANGED <<since, alive, card, returnedInGrace, takenEarly, tq>>
 
 Die == /\ alive /\ alive' = FALSE
        /\ ticked' = FALSE
-       /\ UNCHANGED <<hookSt, since, quiet, card, returnedInGrace, kept>>
+       /\ UNCHANGED <<hookSt, since, quiet, card, returnedInGrace, kept, takenEarly, tq>>
 
 \* she starts a ready card or finishes a working one, only while up
-Start(c) == /\ hookSt = "up" /\ card[c] = "ready"
+Start(c) == /\ hookSt = "up" /\ card[c] \in {"ready", "taken"}
             /\ card' = [card EXCEPT ![c] = "working"]
             /\ ticked' = FALSE
-            /\ UNCHANGED <<hookSt, since, quiet, alive, returnedInGrace, kept>>
+            /\ UNCHANGED <<hookSt, since, quiet, alive, returnedInGrace, kept, takenEarly, tq>>
+\* she takes a ready card and never starts it: her lane is gone, and the card is back ready on
+\* her row with its take recorded (lane_hold.go laneGoneUnits keeps first_taken)
+Take(c) == /\ hookSt = "up" /\ card[c] = "ready"
+           /\ card' = [card EXCEPT ![c] = "taken"]
+           /\ tq' = [tq EXCEPT ![c] = 0]
+           /\ ticked' = FALSE
+           /\ UNCHANGED <<hookSt, since, quiet, alive, returnedInGrace, kept, takenEarly>>
 Finish(c) == /\ hookSt = "up" /\ alive /\ card[c] = "working"
              /\ card' = [card EXCEPT ![c] = "done"]
              /\ ticked' = FALSE
-             /\ UNCHANGED <<hookSt, since, quiet, alive, returnedInGrace, kept>>
+             /\ UNCHANGED <<hookSt, since, quiet, alive, returnedInGrace, kept, takenEarly, tq>>
 
 \* a ready card of a friend not up moves at once (the deal places it elsewhere)
 MoveReady(c) == /\ hookSt # "up" /\ card[c] = "ready"
                 /\ card' = [card EXCEPT ![c] = "moved"]
                 /\ ticked' = FALSE
-                /\ UNCHANGED <<hookSt, since, quiet, alive, returnedInGrace, kept>>
+                /\ UNCHANGED <<hookSt, since, quiet, alive, returnedInGrace, kept, takenEarly, tq>>
 
 Next == \/ Tick \/ Unhook \/ Rearm \/ Prove \/ Die
-        \/ \E c \in Cards : Start(c) \/ Finish(c) \/ MoveReady(c)
+        \/ \E c \in Cards : Start(c) \/ Take(c) \/ Finish(c) \/ MoveReady(c)
 
 Spec == Init /\ [][Next]_vars
 
@@ -134,6 +166,13 @@ NoReturnInGrace == ~returnedInGrace
 \* unhook the record took before the tick reads it, is the tick's to answer), no working card stays on a friend unhooked past the
 \* grace by either clock: the tick that takes her past it returns them
 NoStrandedPastGrace == (ticked /\ hookSt = "unhooked" /\ ~InGrace) => Working = {}
+
+\* no card she took and never started is returned while she is inside the down grace
+NoTakenReturnInDownGrace == ~takenEarly
+
+\* after the tick, no card she took and never started stays on a friend down past the grace
+NoTakenStrandedPastDownGrace == (ticked /\ hookSt # "up" /\ quiet >= DownGrace) =>
+                                    \A c \in Cards : card[c] = "taken" => tq[c] < DownGrace
 
 \* reach witnesses
 NeverReturned == \A c \in Cards : card[c] # "returned"

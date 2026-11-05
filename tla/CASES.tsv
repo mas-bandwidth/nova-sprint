@@ -805,11 +805,15 @@ MCReadMixBrokenStrict.cfg	MCReadMix.tla	invariant	FillNeverWaits	ignore-terminal
 MCReadMixBrokenAcceptAny.cfg	MCReadMix.tla	invariant	AcceptOnlyAllOk	ignore-terminal	readmix	required	-
 MCReadMixBrokenNoPool.cfg	MCReadMix.tla	invariant	NeverStuckOnPool	ignore-terminal	readmix	required	-
 MCReadMixBrokenUpPool.cfg	MCReadMix.tla	action	NeedNeverRises	ignore-terminal	readmix	required	-
+MCReadMixHeld.cfg	MCReadMix.tla	pass	-	ignore-terminal	readmix	required	-
+MCReadMixBrokenLandPool.cfg	MCReadMix.tla	invariant	MergingHasLandReads	ignore-terminal	readmix	required	-
 MCFriendUnhookGrace.cfg	MCFriendUnhookGrace.tla	pass	-	ignore-terminal	friendunhookgrace	required	-
 MCFriendUnhookGraceBrokenNoGrace.cfg	MCFriendUnhookGrace.tla	invariant	NoReturnInGrace	ignore-terminal	friendunhookgrace	required	-
 MCFriendUnhookGraceBrokenUnhookClockOnly.cfg	MCFriendUnhookGrace.tla	invariant	NoStrandedPastGrace	ignore-terminal	friendunhookgrace	required	-
 MCFriendUnhookGraceReachReturn.cfg	MCFriendUnhookGrace.tla	invariant	NeverReturned	ignore-terminal	friendunhookgrace	required	-
 MCFriendUnhookGraceReachKept.cfg	MCFriendUnhookGrace.tla	invariant	NeverKeptAcrossUnhook	ignore-terminal	friendunhookgrace	required	-
+MCFriendUnhookGraceBrokenKeepTaken.cfg	MCFriendUnhookGrace.tla	invariant	NoTakenStrandedPastDownGrace	ignore-terminal	friendunhookgrace	required	-
+MCFriendUnhookGraceBrokenNoDownGrace.cfg	MCFriendUnhookGrace.tla	invariant	NoTakenReturnInDownGrace	ignore-terminal	friendunhookgrace	required	-
 MCFriendRedealProgress.cfg	MCFriendRedealProgress.tla	pass	-	ignore-terminal	friendredealprogress	required	-
 MCFriendRedealProgressBrokenIgnoreProgress.cfg	MCFriendRedealProgress.tla	invariant	NoRedealWhileProgressing	ignore-terminal	friendredealprogress	required	-
 MCFriendRedealProgressBrokenNeverRedeal.cfg	MCFriendRedealProgress.tla	invariant	StaleIsRedealt	ignore-terminal	friendredealprogress	required	-
