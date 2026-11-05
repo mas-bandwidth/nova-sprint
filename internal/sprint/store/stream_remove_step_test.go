@@ -20,14 +20,14 @@ func TestStreamRemoveIsOneFencedOperation(t *testing.T) {
 		t.Parallel()
 		h := newHarness(t)
 		h.stream("s1")
-		// the crash: the exchange that takes the rows off does not answer
+		// the crash: the store does not answer after the first table's delete
 		h.m.Fail = func(point string) error {
-			if point == "guarded-rows" {
+			if point == "rowdel" {
 				return errors.New("the store did not answer")
 			}
 			return nil
 		}
-		res, err := h.st.Run(h.ctx, StreamRemoveStep(h.st, []string{"s1"}))
+		res, err := h.st.Run(h.ctx, StreamRemoveStep([]string{"s1"}))
 		require.Error(t, err, "the crash is reported")
 		require.NotEmpty(t, res.Pending, "the operation stays in the fence")
 		h.m.Fail = nil
@@ -40,12 +40,12 @@ func TestStreamRemoveIsOneFencedOperation(t *testing.T) {
 		h := newHarness(t)
 		h.stream("s1")
 		h.m.Fail = func(point string) error {
-			if point == "guarded-rows" {
+			if point == "rowdel" {
 				return errors.New("the store did not answer")
 			}
 			return nil
 		}
-		res, err := h.st.Run(h.ctx, StreamRemoveStep(h.st, []string{"s1"}))
+		res, err := h.st.Run(h.ctx, StreamRemoveStep([]string{"s1"}))
 		require.Error(t, err, "the crash is reported")
 		require.NotEmpty(t, res.Pending, "the operation stays in the fence")
 		h.m.Fail = nil
@@ -66,12 +66,10 @@ func TestStreamRemoveIsOneFencedOperation(t *testing.T) {
 		h.stream("s1")
 		fence, err := h.m.ReadFence(h.ctx)
 		require.NoError(t, err)
-		exchanges := h.m.Calls["guarded-rows"]
-		h.must(StreamRemoveStep(h.st, []string{"s1"}))
+		h.must(StreamRemoveStep([]string{"s1"}))
 		s := h.snap()
 		require.False(t, s.Work.HasRow("s1"), "the work row is off the table")
 		require.False(t, s.Merge.HasRow("s1"), "the merge row is off the table")
-		require.Equal(t, exchanges+1, h.m.Calls["guarded-rows"], "the rows of both tables went in one exchange")
 		after, err := h.m.ReadFence(h.ctx)
 		require.NoError(t, err)
 		require.Equal(t, fence.Gen+1, after.Gen, "the removal was one operation")
@@ -81,12 +79,12 @@ func TestStreamRemoveIsOneFencedOperation(t *testing.T) {
 		h := newHarness(t)
 		h.stream("s1")
 		h.m.Fail = func(point string) error {
-			if point == "guarded-rows" {
+			if point == "rowdel" {
 				return errors.New("the store did not answer")
 			}
 			return nil
 		}
-		_, err := h.st.Run(h.ctx, StreamRemoveStep(h.st, []string{"s1"}))
+		_, err := h.st.Run(h.ctx, StreamRemoveStep([]string{"s1"}))
 		require.Error(t, err)
 		h.m.Fail = nil
 		fence, err := h.m.ReadFence(h.ctx)
@@ -100,8 +98,8 @@ func TestStreamRemoveIsOneFencedOperation(t *testing.T) {
 		require.Equal(t, RepairFinished, rep[0].Done)
 		// the stream comes back before the late remover runs its delete again
 		h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 1, Brief: proBrief}))
-		err = h.st.deleteOpRows(h.ctx, held)
-		require.Error(t, err, "a delete whose operation left the fence is refused")
+		// the late remover takes the release path, not a test-only delete
+		require.NoError(t, h.st.B.Release(h.ctx, held, true))
 		s := h.snap()
 		require.True(t, s.Work.HasRow("s1"), "the stream that came back keeps its work row")
 		require.True(t, s.Merge.HasRow("s1"), "the stream that came back keeps its merge row")
@@ -112,7 +110,7 @@ func TestStreamRemoveIsOneFencedOperation(t *testing.T) {
 		h.stream("s1")
 		// a stream that holds a card is not removed
 		h.must(AddStep(sprint.AddReq{Stream: "s2", Count: 1, Brief: proBrief}))
-		res := h.run(StreamRemoveStep(h.st, []string{"s1", "s2", "zz"}))
+		res := h.run(StreamRemoveStep([]string{"s1", "s2", "zz"}))
 		require.Len(t, res.Refused, 2, "the stream that holds a card and the name that is no row are refused")
 		require.Equal(t, "s2", res.Refused[0].Key)
 		require.Equal(t, "zz", res.Refused[1].Key)
