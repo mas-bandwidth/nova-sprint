@@ -258,12 +258,19 @@ against Redis (redis_sprint_functional_test.go, redis_functional_test.go).
 | G23 | none | GAP |
 | G24 | store_test.go:513 (Apply only); timer and partial-commit divergences untested | partial |
 
-Refusals: tested R4, R11, R12, R17 (refusals_a_test.go), R1 (clear_ids_test.go), R2 (callerop_test.go:43), R3 (callerop_test.go:13,64),
-R5 (clear_ids_test.go:13), R6, R7 (clear_told_test.go:103), R8 (stop_return_test.go:91),
-R9 (stop_return_test.go:68), R10 (stop_return_test.go:184), R13 (clear_restore_guard_test.go:19),
-R14 (stop_return_test.go:302, :321), R15 (seat_cover_test.go), R16 (changed_twice_test.go:52),
-R18 (bounds_test.go:42, :72),
-R19 (refusals_b_test.go TestRefusalsBOnMem/R19; refusals_real_b_functional_test.go),
+Refusals: tested R1 (clear_ids_test.go; Redis: `refusals_real_a_functional_test.go`, R1), R2
+(callerop_test.go:43; Redis: same real-a test, R2), R3 (callerop_test.go:13, :64; Redis:
+`redis_sprint_functional_test.go:TestRedisCallerOperationReplay`), R4 (refusals_a_test.go; Redis:
+same real-a test, R4), R5 (clear_ids_test.go:13; Redis: same real-a test, R5), R6 (Redis:
+`redis_sprint_functional_test.go:TestRedisALateWriterAfterAClearIsRefused`), R7 (clear_told_test.go:103;
+Redis: same real-a test, R7), R8 (stop_return_test.go:91; Redis: same real-a test, R8), R9
+(stop_return_test.go:68; Redis: same real-a test, R9), R10 (stop_return_test.go:184; Redis: same
+real-a test, R10), R11 (refusals_a_test.go; Redis: same real-a test, R11), R12 (refusals_a_test.go;
+Redis: same real-a test, R12), R13 (clear_restore_guard_test.go:19; Redis: same real-a test, R13),
+R14 (stop_return_test.go:302, :321; Redis: same real-a test, R14), R15 (seat_cover_test.go; Redis:
+same real-a test, R15), R16 (changed_twice_test.go:52; Redis: same real-a test, R16), R17
+(refusals_a_test.go; Redis: same real-a test, R17), R18 (bounds_test.go:42, :72; Redis: same
+real-a test, R18), R19 (refusals_b_test.go TestRefusalsBOnMem/R19; refusals_real_b_functional_test.go),
 R20 (refusals_b_test.go TestRefusalsBOnMem/R20; refusals_real_b_functional_test.go),
 R21 (refusals_b_test.go TestRefusalsBOnMem/R21; refusals_real_b_functional_test.go),
 R22, R23 (repair_test.go, store_test.go),
@@ -276,8 +283,10 @@ R29, R30, R32 (refusals_c_test.go; refusals_real_b_functional_test.go),
 R31 (clear_concurrent_test.go; refusals_real_b_functional_test.go),
 R33, R34 (refusals_real_b_functional_test.go),
 R35, R36, R37 (refusals_d_test.go; refusals_real_b_functional_test.go). No test names: none (every refusal has a test).
-On a real store: R3, R6, R19, R20, R21, R22, R23, R24, R25, R26, R27, R28, R29,
-R30, R31, R32, R33, R34, R35, R36, R37 and the fence refusals of G3.
+On a real store: R1, R2, R4, R5, R7, R8, R9, R10, R11, R12, R13, R14, R15, R16, R17,
+R18 (refusals_real_a_functional_test.go, TestRefusalsEarlyOnRedis), R3, R6, R19, R20, R21,
+R22, R23, R24, R25, R26, R27, R28, R29, R30, R31, R32, R33, R34, R35, R36, R37 and the
+fence refusals of G3.
 
 House-rule flags (unit tests, no build tag, using real time or sockets):
 - machine_twoloops_test.go:31 sets `Sleep = time.Sleep` and races two goroutine tick loops on
