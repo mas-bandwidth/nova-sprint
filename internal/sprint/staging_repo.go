@@ -12,7 +12,7 @@ import (
 
 // StagingMirrorWindow is how long a member that refused a repository at staging for
 // want of a bench mirror or a credential is not dealt any card of that repository.
-const StagingMirrorWindow = time.Hour
+const StagingMirrorWindow = 10 * time.Minute
 
 // stagingMirrorMarker is how a staging take's error names the refusal this rule is
 // about: "no bench mirror for <url>". The error may carry the member's own

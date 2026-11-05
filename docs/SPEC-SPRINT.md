@@ -1813,7 +1813,7 @@ members and the reason, once, and it is dealt no more until a member that has
 not refused it is up, a rework or a drop; a refusal for want of a bench mirror
 is about the whole repository, not one card: the member cannot stage any card
 of it, so it becomes a capability, the way a harness the member cannot launch
-is one (Launches, notLaunching), and within StagingMirrorWindow (one hour) the
+is one (Launches, notLaunching), and within StagingMirrorWindow (ten minutes) the
 deal (launchersOf), the level and a down member's redeal (notLaunching) and
 routeOf when it names a member all refuse that member every card of that
 repository, with the why "<member> refused <repo> at staging at <time>: no
@@ -1832,7 +1832,7 @@ per repository, the members that lack it and when it was raised (`MirrorNeed`,
 line per repository it admits (sprint.MirrorNotice; cmd/nova-sprint/add.go), so
 the seat asks for the mirror the moment the sprint knows the repository is
 needed. The tick keeps the need while it is not served within its bound (the
-refusal's `StagingMirrorWindow`, one hour, or until a member finishes a card of
+refusal's `StagingMirrorWindow`, ten minutes, or until a member finishes a card of
 the repository ok) and raises one judgment per repository, `NMirrorNeed`, naming
 the members that lack it; the judgment's remedy is the fleet's own mirror refresh
 for that repository (`nova-swarm mirror`, the card
