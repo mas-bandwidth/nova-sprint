@@ -169,9 +169,9 @@ relies on (`StoredID`, `OpFamily`, `IDEpoch`) and the queue (`QueueOf`, `Drain`,
 live in `internal/sprint` (schema.go:190-205, queue.go:44-284).
 Stream remove is no longer one of them: it is one store step (`store.StreamRemoveStep`,
 `sprint.StreamRemove`), and its rows of the two tables go in the step's one operation, inside
-the fence. Its guarded row delete names the operation (`RestoreGuard.Owner`), and the owner
-check and the deletes are one exchange, so a writer whose operation another finished cannot
-take off a stream that came back after it.
+the fence (`OpRecord.RowDels`, finished by `Repair` when cut). Its guarded row delete names the
+operation (`RestoreGuard.Owner`), and the owner check and the deletes are one exchange, so a
+writer whose operation another finished cannot take off a stream that came back after it.
 
 **Dead: no caller outside tests (8):** `Store.SeatAndServer` seat.go:239 (no caller at all, a
 comment only at cmd/nova-sprint/reads.go:1375), `Store.RestorePending` clear.go:371,

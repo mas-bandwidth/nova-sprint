@@ -10,6 +10,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -303,6 +304,12 @@ type OpRecord struct {
 	Verb      string                 `json:"verb"`
 	At        time.Time              `json:"at"`
 	Manifests []ntable.BatchManifest `json:"manifests"`
+	// RowDels are the rows the operation takes off the tables: they are
+	// deleted with the manifests, in one exchange, so the rows of two
+	// tables go together or not at all (G13). The struct tag is "-" so
+	// HeldRecord on the view-rows wire stays unchanged; MarshalJSON and
+	// UnmarshalJSON persist row_dels in the store's fence record.
+	RowDels   []sprint.RowDel        `json:"-"`
 	Notes     []sprint.Note          `json:"notes,omitempty"`   // happened and judgment, ids assigned
 	Decided   []sprint.Note          `json:"decided,omitempty"` // answers to open judgments
 	Log       []sprint.Line          `json:"log,omitempty"`     // the log's move lines of the step's changes
@@ -332,6 +339,29 @@ type OpRecord struct {
 	// commit writes it, so the timers it raised are closed in the same step
 	// as their judgment.
 	Timers *sprint.Timers `json:"timers,omitempty"`
+}
+
+type opRecordAlias OpRecord
+
+type opRecordJSON struct {
+	ID string `json:"id"`
+	opRecordAlias
+	RowDels []sprint.RowDel `json:"row_dels,omitempty"`
+}
+
+func (o OpRecord) MarshalJSON() ([]byte, error) {
+	return json.Marshal(opRecordJSON{ID: o.ID, opRecordAlias: opRecordAlias(o), RowDels: o.RowDels})
+}
+
+func (o *OpRecord) UnmarshalJSON(data []byte) error {
+	var w opRecordJSON
+	if err := json.Unmarshal(data, &w); err != nil {
+		return err
+	}
+	*o = OpRecord(w.opRecordAlias)
+	o.ID = w.ID
+	o.RowDels = w.RowDels
+	return nil
 }
 
 // Tables is the stored table names of the record's manifests, in order.

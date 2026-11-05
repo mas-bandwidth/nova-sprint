@@ -11,8 +11,9 @@ import (
 // TestStreamRemoveIsOneFencedOperation: the stream remove verb is one store
 // step (store.StreamRemoveStep). It runs inside the store's fence and takes
 // the rows of the work and the merge table off in one operation, in one
-// exchange: a crash between the two deletes leaves both rows, and the step
-// removes both or neither.
+// exchange: a crash between the two deletes leaves both rows, repair finishes
+// the delete and leaves no rows behind, a late remover leaves a recreated
+// stream untouched, and the step removes both or neither.
 func TestStreamRemoveIsOneFencedOperation(t *testing.T) {
 	t.Parallel()
 	t.Run("a crash between the two deletes leaves both rows", func(t *testing.T) {
@@ -34,6 +35,31 @@ func TestStreamRemoveIsOneFencedOperation(t *testing.T) {
 		require.True(t, s.Work.HasRow("s1"), "the work row is still there")
 		require.True(t, s.Merge.HasRow("s1"), "the merge row is still there")
 	})
+	t.Run("repair finishes a crashed remove and leaves no rows behind", func(t *testing.T) {
+		t.Parallel()
+		h := newHarness(t)
+		h.stream("s1")
+		h.m.Fail = func(point string) error {
+			if point == "guarded-rows" {
+				return errors.New("the store did not answer")
+			}
+			return nil
+		}
+		res, err := h.st.Run(h.ctx, StreamRemoveStep([]string{"s1"}))
+		require.Error(t, err, "the crash is reported")
+		require.NotEmpty(t, res.Pending, "the operation stays in the fence")
+		h.m.Fail = nil
+		rep, err := h.st.Repair(h.ctx)
+		require.NoError(t, err)
+		require.Len(t, rep, 1)
+		require.Equal(t, RepairFinished, rep[0].Done)
+		fence, err := h.m.ReadFence(h.ctx)
+		require.NoError(t, err)
+		require.Nil(t, fence.Pending, "the fence is empty after repair")
+		s := h.snap()
+		require.False(t, s.Work.HasRow("s1"), "repair took the work row off")
+		require.False(t, s.Merge.HasRow("s1"), "repair took the merge row off")
+	})
 	t.Run("the step takes both rows off in one operation", func(t *testing.T) {
 		t.Parallel()
 		h := newHarness(t)
@@ -54,19 +80,27 @@ func TestStreamRemoveIsOneFencedOperation(t *testing.T) {
 		t.Parallel()
 		h := newHarness(t)
 		h.stream("s1")
-		dels := []sprint.RowDel{{Table: sprint.Merge, Rows: []string{"s1"}}, {Table: sprint.Work, Rows: []string{"s1"}}}
+		h.m.Fail = func(point string) error {
+			if point == "guarded-rows" {
+				return errors.New("the store did not answer")
+			}
+			return nil
+		}
+		_, err := h.st.Run(h.ctx, StreamRemoveStep([]string{"s1"}))
+		require.Error(t, err)
+		h.m.Fail = nil
 		fence, err := h.m.ReadFence(h.ctx)
 		require.NoError(t, err)
-		op := OpRecord{ID: "late-remove", Verb: "stream remove", At: h.st.Now()}
-		ok, err := h.m.Acquire(h.ctx, fence.Gen, op)
+		require.NotNil(t, fence.Pending)
+		held := *fence.Pending
+		// repair finishes the operation and releases the fence
+		rep, err := h.st.Repair(h.ctx)
 		require.NoError(t, err)
-		require.True(t, ok)
-		// the removal the operation planned runs, and another writer finishes it
-		require.NoError(t, h.st.deleteRows(h.ctx, op.ID, dels))
-		require.NoError(t, h.m.Release(h.ctx, op, false))
+		require.Len(t, rep, 1)
+		require.Equal(t, RepairFinished, rep[0].Done)
 		// the stream comes back before the late remover runs its delete again
 		h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 1, Brief: proBrief}))
-		err = h.st.deleteRows(h.ctx, op.ID, dels)
+		err = h.st.deleteRows(h.ctx, held)
 		require.Error(t, err, "a delete whose operation left the fence is refused")
 		s := h.snap()
 		require.True(t, s.Work.HasRow("s1"), "the stream that came back keeps its work row")
