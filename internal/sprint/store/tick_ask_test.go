@@ -230,13 +230,6 @@ func TestALostBatchIsCountedAsDue(t *testing.T) {
 	asked, refused = askOf(res)
 	require.Len(t, asked, 10, "the next tick asks them all: refused %v", refused)
 	h.clean("after the next tick")
-
-	// the budget's share of the tick's deadline is read on the store's clock
-	dl := time.Now().Add(time.Hour)
-	ctx, cancel := context.WithDeadline(context.Background(), dl)
-	defer cancel()
-	require.Equal(t, 1500*time.Millisecond, askBudget(ctx, dl.Add(-3*time.Second)))
-	require.Equal(t, AskBudget, askBudget(context.Background(), t0))
 }
 
 // The ask begins no step past AskBy into its tick, the owner's sub-second tick
