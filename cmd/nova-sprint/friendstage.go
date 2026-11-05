@@ -45,6 +45,21 @@ func runStageGit(ctx context.Context, dir string, args ...string) (string, error
 	return out, nil
 }
 
+// stageCheckout creates branch at head in the fresh clone. A head that is a full sha is
+// used as is; a name resolves to origin/<name> when the clone holds that remote-tracking
+// ref (a fresh clone has no local branch of a card's BASE, only origin/<BASE>), else to
+// the local name.
+func stageCheckout(ctx context.Context, git func(context.Context, string, ...string) (string, error), dir, branch, head string) error {
+	ref := head
+	if !typedrec.IsFullSha(head) {
+		if _, err := git(ctx, dir, "rev-parse", "--verify", "-q", "refs/remotes/origin/"+head); err == nil {
+			ref = "origin/" + head
+		}
+	}
+	_, err := git(ctx, dir, "checkout", "-q", "-B", branch, ref)
+	return err
+}
+
 // runStageMkdir uses the same process-group and WaitDelay runner as stage's Git
 // calls. A filesystem mkdir can itself stop in the kernel before Git starts; it
 // therefore belongs inside the same request bound, not in the server process.
@@ -240,7 +255,7 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 			return refuse(stderr, name, "fetch of the NEXT head "+oneline.Escape(snap.next)+": "+oneline.Err(err))
 		}
 	}
-	if _, err := a.stageGit(ctx, jobDir, "checkout", "-q", "-B", snap.branch, snap.startHead); err != nil {
+	if err := stageCheckout(ctx, a.stageGit, jobDir, snap.branch, snap.startHead); err != nil {
 		cleanupUnstagedDir()
 		return refuse(stderr, name, "checkout of "+oneline.Field(snap.branch)+" at "+oneline.Escape(snap.startHead)+": "+oneline.Err(err))
 	}
