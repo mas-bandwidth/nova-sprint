@@ -225,18 +225,18 @@ func (a *app) cmdFriendBeat(args []string, stdout, stderr io.Writer) int {
 func (a *app) friendBeat(ctx context.Context, args []string, open func(common) (*store.Store, error), stdout, stderr io.Writer) int {
 	const name = "friend beat"
 	fs, c := a.verbSetup(name)
-	build := fs.String("build", "", "the build the friend's daemon runs (its version line's build): a friend come up is told to update when it is not the server's")
-	started := fs.String("started", "", "when the friend's daemon started, RFC3339: its generation; a start not seen before raises a status judgment")
-	present := fs.String("present", "", "when the friend's daemon sent the friend the present on its start, RFC3339: the snap-to-present step of a friend come up")
+	build := fs.String("build", "", "the build the friend's tools run (their version line's build): a friend come up is told to update when it is not the server's")
+	started := fs.String("started", "", "when the friend's session started, RFC3339: its generation; a start not seen before raises a status judgment")
+	present := fs.String("present", "", "when the friend's session was sent the present on its start, RFC3339: the snap-to-present step of a friend come up")
 	running := fs.String("running", "", "the cards the friend is running now, comma separated (work card ids, the friend's job names or primaries): friend take and friend down leave them with the friend")
-	working := fs.String("working", "", "how many jobs the friend is working now, as the friend's daemon counts them")
-	stopReturns := fs.String("stop-returns", "", "how many stop-returns the friend's lanes still owe after the machine's stop (section 14): start waits for zero")
-	queue := fs.String("queue", "", "how many jobs the friend holds queued, as the friend's daemon counts them")
-	width := fs.String("width", "", "the friend's width as the friend's daemon has it (the deal's is the roster's: friend up --width)")
+	working := fs.String("working", "", "how many jobs the friend is working now, as she counts them (the deal counts her working cell, never this)")
+	stopReturns := fs.String("stop-returns", "", "how many stop-returns the friend still owes after the machine's stop (section 14): start waits for zero")
+	queue := fs.String("queue", "", "how many jobs the friend holds queued, as she counts them")
+	width := fs.String("width", "", "the friend's width as she has it (the deal's is the roster's: friend up --width)")
 	load := fs.String("load", "", "the friend's load as a percent, as fleet beat --load gives a machine's")
-	active := fs.String("active", "", "the newest write under the friend's working directory and outbox, as the friend's daemon found it, RFC3339: the friend's session's last activity")
-	until := fs.String("until", "", "the friend's daemon's word that the friend is down until then, RFC3339: the friend's harness at its usage limit or out of credits")
-	reason := fs.String("reason", "", "why the friend is down until --until, as the friend's daemon read it")
+	active := fs.String("active", "", "the newest write under the friend's working directory, RFC3339: the friend's session's last activity")
+	until := fs.String("until", "", "the friend's word that she is down until then, RFC3339: her harness at its usage limit or out of credits")
+	reason := fs.String("reason", "", "why the friend is down until --until")
 	friend, code := oneFriend(name, fs, args, stderr)
 	if code != 0 {
 		return code
@@ -369,8 +369,8 @@ func (a *app) friendBeat(ctx context.Context, args []string, open func(common) (
 		line += " until=" + rep.Until.Format(time.RFC3339)
 		facts["until"], facts["reason"] = rep.Until, rep.Reason
 	}
-	// the machine's word, so her daemon cancels its lanes on STOPPED and starts nothing
-	// (docs/SPEC-SPRINT.md section 14, stop cancels jobs; nova-tools pkg/friend stop.go)
+	// the machine's word, so she stops her cards on STOPPED and starts nothing
+	// (docs/SPEC-SPRINT.md section 14, stop cancels jobs)
 	if word := machineWord(ctx, st); word != "" {
 		line += " machine=" + word
 		facts["machine"] = word

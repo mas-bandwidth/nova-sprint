@@ -19,19 +19,18 @@ import (
 	"github.com/mas-bandwidth/nova-tools/pkg/oneline"
 )
 
-// A friend's held cards, as her daemon writes them (the card daemon-writes-every-taken-card3;
-// docs/SPEC-FRIEND.md, the inbox): friend cards <friend> is every card on her row (working,
-// then the ready ones dealt behind them; withdrawn ones are not hers to run) with its packet
-// and its BRIEF.md whole, rendered as friend sync renders it (friendBrief, friendReadText),
-// so the daemon writes the same file friend sync would and never waits on friend sync to
-// run. It writes nothing. A worker sends it as `friend cards <friend> [--json]`, and the
+// A friend's held cards: friend cards <friend> is every card on her row (working, then the
+// ready ones dealt behind them; withdrawn ones are not hers to run) with its packet and its
+// BRIEF.md whole (friendBrief, friendReadText). Her
+// nova-hook lane client asks it each round for the lanes she holds (nova-tools
+// tla/FriendLaneClient.tla), and she reads it to see what is hers. It writes nothing. A worker sends it as `friend cards <friend> [--json]`, and the
 // server answers it on POST as any worker's verb and on GET /api/friend/<friend>/cards.
 func init() {
 	verbClasses["friend cards"] = classRead
 }
 
 // friendCardsWords is what friend cards says on -h.
-const friendCardsWords = "friend cards lists every card held on the friend's row, working then ready, each with its job (inbox/<job>), its column, branch, tier, attempt and generation, and with --json its BRIEF.md whole as friend sync writes it, and the friend's row beside the cards (row: held, its reason, width; nova-hook's FRIEND UP push says it the pass the friend comes up): the friend's nova-friend daemon reads it every loop and writes each held card's brief that is not in the friend's inbox, and retires a job whose card left the friend's row. A card taken back from the friend (withdrawn) is not listed. It writes nothing. The server serves it to the friend on POST and on GET /api/friend/<friend>/cards.\n"
+const friendCardsWords = "friend cards lists every card held on the friend's row, working then ready, each with its job name, its column, branch, tier, attempt and generation, and with --json its BRIEF.md whole, and the friend's row beside the cards (row: held, its reason, width; nova-hook's FRIEND UP push says it the pass the friend comes up): her nova-hook lane client reads it each round for the lanes she holds, and she stages each card with friend stage. A card taken back from the friend (withdrawn) is not listed. It writes nothing. The server serves it to the friend on POST and on GET /api/friend/<friend>/cards.\n"
 
 // friendCardsOf is every card held on the friend's row with its packet and brief, in the
 // server's order: her working cards, then the ready ones dealt behind them.
