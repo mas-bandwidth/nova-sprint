@@ -104,43 +104,35 @@ the action, and the exact blocker when another action cannot start.
    SPRINT-COORDINATOR-SEAT.md, "The hook under a Monitor"; nova-tools SPEC-HOOK.md, "Roles and
    pushes".
 2. Bring up your own worker row, not only the coordinator seat. Follow section 2 for the
-   coordinator's friend row and `nova-friend` daemon before calling session start complete.
-   The daemon joins the existing **coordinator** hook role and epoch and holds its work push;
+   coordinator's friend row before calling session start complete. The coordinator's own
+   take loop runs under the existing **coordinator** hook role and epoch;
    `nova-hook hook --as <me> --role friend` under the same name would replace the role and clear
-   the coordinator proof. Check a fresh `nova-friend status --as <me> --dir <d>`,
-   `nova-sprint friend cards <me> --json` and `nova-sprint where`: the daemon must be up,
-   its status age current, the hook proven, and the row up with its configured width.
-   A past report or an old up status is not current worker evidence. When a card is available,
-   verify the daemon takes it, works it, and reports a finish through the normal sprint path;
-   a lane that refuses its configured model route is not execution-ready even if the row is up.
-   For Codex lanes, `nova-sprint routes --json` must show one enabled subscription
+   the coordinator proof. Check `nova-sprint friend cards <me> --json` and `nova-sprint where`:
+   the hook proven, and the row up with its configured width. A past finish or an old up status
+   is not current worker evidence. When a card is available, take it, work it and finish it
+   through the normal sprint path (section 2).
+   For Codex work, `nova-sprint routes --json` must show one enabled subscription
    route admitted by the applied array for the card's tier; a configured route
-   excluded by that array cannot launch a model (nova-tools SPEC-FRIEND.md,
-   "One-shot lanes").
+   excluded by that array cannot launch a model.
    With no card available, report the worker ready but execution not yet observed. Spec:
-   [FRIENDS.md](FRIENDS.md), "Friend availability" and "A sprint card"; nova-tools
-   SPEC-FRIEND.md, "The loop".
+   [FRIENDS.md](FRIENDS.md), "Friend availability" and "A sprint card".
 3. Account for every friend expected to work this sprint. Read the configured rows with
    `nova-config friend list --json` (using the seat's config-store wrapper in
    SPRINT-COORDINATOR-SEAT.md) and the current sprint rows with `nova-sprint where`;
-   compare each eligible, unheld name with `nova-hook friends --json` and
-   `nova-friend check --as <coordinator> <friend>`. A configured row or old report is
-   not proof that its model is hooked in. For a down, broken or silent friend, follow
-   section 6's check and reach ladder, fix the actual hook, delivery, daemon or model
-   route fault, and have **that friend** answer a fresh challenge. Compare configured
-   width, ready cards, cards waiting on dependencies and actually running lanes as
-   separate facts; inspect `nova-sprint card <card>` for a dependency wait and
-   `nova-friend status --as <friend> --dir <d>` for a refusal. When tooling is the
-   cause, check installed versions on her host with `nova-hook version` and
-   `nova-friend version`; compare with the supported release using
+   compare each eligible, unheld name with `nova-hook friends --json`. A configured row or
+   old finish is not proof that its model is hooked in. For a down, broken or silent friend,
+   follow section 6, fix the actual hook or model route fault, and have **that friend**
+   answer a fresh challenge. Compare configured width, ready cards, cards waiting on
+   dependencies and working cards as separate facts; inspect `nova-sprint card <card>` for a
+   dependency wait. When tooling is the cause, check installed versions on her host with
+   `nova-hook version`; compare with the supported release using
    `nova-update status --file <manifest>`. Plan with
    `nova-update apply --file <manifest> <name> --dry-run`, then use the supported
    apply or release/adopt verb rather than copying binaries by hand. Recheck the
-   installed version, hook proof, daemon, row and a current card's take, work and
+   installed version, hook proof, row and a current card's take, work and
    finish after an upgrade. Record an
    intentional hold or an unresolved blocker by name; green hook presence alone is
-   not worker execution. Spec: section 6 below; nova-tools SPEC-FRIEND.md,
-   "A friend's status" and "Reach".
+   not worker execution. Spec: section 6 below.
 4. See what changed. usage: `nova-sprint view coordinator [--all] [--since <cursor>] [--needs] [--json]`.
    Run `nova-sprint view coordinator`, keep the cursor it prints, and next time run
    `nova-sprint view coordinator --since <cursor>`. The second run leaves out every item the
@@ -163,8 +155,7 @@ the action, and the exact blocker when another action cannot start.
    readers, dashboard, installed versions and merge queue, and writes nothing. Spec:
    SPEC-SPRINT.md section 11, "The seat check".
 
-**Success looks like.** `nova-hook status --as <me>` says the coordinator is proven (exit 0),
-and a fresh `nova-friend status` says the coordinator's **own** daemon is up and available;
+**Success looks like.** `nova-hook status --as <me>` says the coordinator is proven (exit 0);
 `friend cards` and `where` show the same live row and configured width. Every eligible friend
 is freshly proven and ready to work, or has a named hold or blocker being repaired. With a
 card available, its current take, work and finish prove worker execution; a quiet row proves
@@ -174,54 +165,47 @@ the card's work succeeded or that a pushed head is ready to land.
 judgment is answered or waiting on a decision you have named.
 
 **Not by hand.** Do not prove a challenge from a script: only the model answers a challenge, and
-no daemon, loop or script may call prove (`nova-hook help`). Do not write a unit file (step 6
+no loop or script may call prove (`nova-hook help`). Do not write a unit file (step 6
 names the verb). Do not start a server to look at the store (SPRINT-COORDINATOR.md section 1).
 
 ## 2. Running a friend row, the coordinator's own included
 
 **Situation.** A friend should work cards, and the coordinator's own row is a friend row like any
-other. The row lives in nova-config, nova-friend's daemon runs its lanes, and the sprint deals to
-it. For the coordinator's own row, keep the one coordinator hook from section 1: the daemon
-joins that hook instead of installing a second friend-role hook.
+other. The row lives in nova-config, the sprint deals to it, and the friend runs her own take
+loop: she takes her ready cards, works each one and finishes it herself. For the coordinator's
+own row, keep the one coordinator hook from section 1 instead of installing a second
+friend-role hook.
 
 **The verbs, in order.**
 
 1. Set the row. usage: `nova-config <kind> set <name> --<field> <value> ... --actor <name> [--dry-run] [--json]`.
-   For a claude friend in one-shot mode, run
-   `nova-config friend set <friend> --config_dir <absolute dir> --actor <you>`. `--config_dir` is
-   the directory a claude one-shot lane runs with as `CLAUDE_CONFIG_DIR`, and nova-friend run
-   refuses a claude friend in one-shot mode without it. `--width`, `--tiers` and `--pronouns` go
-   on the same row (`nova-config friend set -h`). Spec: nova-tools SPEC-CONFIG.md, "The kinds of
-   this cut".
-2. Copy the rows into the store. usage: `nova-sprint friend sync [--pg <dsn>] [--root <dir>]`.
+   `--width`, `--tiers` and `--pronouns` go on the row (`nova-config friend set -h`). Spec:
+   nova-tools SPEC-CONFIG.md, "The kinds of this cut".
+2. Copy the rows into the store. usage: `nova-sprint friend sync [--pg <dsn>]`.
    The friend sync loop, installed with `nova-sprint install friend-sync`, does this on its own;
-   it writes each friend's width, mode and pronouns from the row. Spec: SPEC-SPRINT.md section 1,
+   it writes each friend's width and pronouns from the row. Spec: SPEC-SPRINT.md section 1,
    "The tables"; [FRIENDS.md](FRIENDS.md).
-3. Install the daemon. usage: `nova-friend install --as <me> --harness <h> --dir <d> [--session <id>] [--adapter folder --delivery-dir <watched-dir>] [--server <addr>] [--silent-stop <d>] [--broken-after <n>] [--coordinator <seat>] [--state-dir <d>] [--redis <addr>] [--config-dir <d>] [--deny-self <d,...>] [--wall-reads <d,...>] --model <provider/model> [--secrets NAME[,NAME] --seat <seat>] [--launchd-log <file>] [--dry-run]`.
-   Run it with `--dry-run` first, then without. It writes the launchd agent
-   `com.nova.friend-<me>.plist` (RunAtLoad, KeepAlive), and running it again replaces the agent.
-   A daemon whose arguments differ from the installed plist says "plist drift", and the fix is to
-   run install again. Spec: nova-tools SPEC-FRIEND.md, "The loop" and "One-shot lanes".
-4. Let launchd run the daemon. usage: `nova-friend run --as <me> --harness <h> --dir <d> [--session <id>] [--adapter folder --delivery-dir <watched-dir>] [--server <addr>] [--silent-stop <d>] [--broken-after <n>] [--coordinator <seat>] [--state-dir <d>] [--redis <addr>] [--profile <p>] [--config-dir <d>] [--deny-self <d,...>] [--wall-jobs <d,...>] [--wall-reads <d,...>] [--model <provider/model>] [--db <opencode.db>] [--lane-tiers <t,...>] [--lane-streams <p,...>] [--token-cap <n>] [--load-max <n>] [--load-width <n>] [--pause-on funds|any] [--refuse-go] [--dry-run]`.
-   This is the loop launchd runs (install writes it), so you do not start it in a shell. Its
-   lanes take work only while the friend is hooked in (`nova-friend help run`).
-5. Confirm the daemon. usage: `nova-friend status --as <me> --dir <d> [--state-dir <d>]`. It prints
-   `STATUS OK daemon=<up|down> ...` and then the friend's nova-hook record; exit 1 means no daemon.
+3. Take a card. usage: `nova-sprint take --as <member> [<card>@<gen>...] [--epoch <n>] [--max <n>] [--lane <n>]`.
+   The friend runs `nova-sprint take --as friend.<name>`: it moves her next ready card into
+   working and marks it started.
+4. Stage it. usage: `nova-sprint friend stage <card>@<gen> --as friend.<name> [--dir <jobs dir>]`.
+   It clones the card at its carried head and writes `JOB.md` with the exact finish command.
+5. Finish it. usage: `nova-sprint finish --as <member> <card>@<gen>... --epoch <n> (--head <commit> | --failed) [--report <text>] [--usage <text>] [--lane <n>]`.
+   The friend finishes as `friend.<name>`, with `--head` at origin's tip of her branch, or
+   `--failed`. A read on her row is returned with `nova-sprint read --as friend.<name>`.
 6. Confirm the row in the sprint. usage: `nova-sprint friend cards <friend> [--json]`, and
    `nova-sprint where` draws the friends table. Spec: SPEC-SPRINT.md section 1.
 
-**Success looks like.** A fresh `nova-friend status` says `daemon=up`, a current `status_age`,
-the hook proven and `status=up`; `friend cards` and `where` show the row up at its configured
-width. When work is ready, observe a current card taken and working, then its report and
-finish through the normal sync/collect path. A row with no cards is ready, but has not yet
-proved execution in this session. A failed/HOLD finish demonstrates the reporting path,
-not successful card delivery.
+**Success looks like.** The hook proven and `status=up`; `friend cards` and `where` show the
+row up at its configured width. When work is ready, observe a current card taken and working,
+then its finish. A row with no cards is ready, but has not yet proved execution in this
+session. A failed finish demonstrates the reporting path, not successful work.
 
 Read the evidence separately: configured **width** is capacity; a **ready** card is eligible
 to take; a **waiting** card needs a dependency or hold resolved (`nova-sprint card <card>`);
-a **working** card is an assignment, not proof its model ran; a fresh daemon lane turn and
-an accepted report/finish are execution evidence. A stale status file, old outbox report or
-past FRIEND BACK message proves none of those current facts.
+a **working** card is an assignment, not proof its model ran; a pushed branch and an
+accepted finish are execution evidence. A past finish or FRIEND BACK message proves none of
+those current facts.
 
 ### Coach for first-pass acceptance
 
@@ -280,11 +264,9 @@ evidence. Never improve that result by suppressing failures, weakening gates, re
 resetting statistics, shrinking the denominator, or counting queued work, local unadmitted results
 or a push as accepted work.
 
-**Not by hand.** Never run a hand take loop: `take --as friend.<name>` is the friend's lane's take
-(`nova-sprint help`), and the daemon makes it. Do not finish a friend's card from her REPORT.md by
-hand, because `nova-sprint collect` does that (section 6 below). Do not hand-edit the plist; run
-install again. Do not use `friend give` to fill a row: the seat hands a named ready card to a
-friend with friend give, and the deal fills the rest (`nova-sprint help`).
+**Not by hand.** Do not finish a friend's card for her: she finishes it with her own
+`finish --as friend.<name>`. Do not use `friend give` to fill a row: the seat hands a named
+ready card to a friend with friend give, and the deal fills the rest (`nova-sprint help`).
 
 ## 3. Reads and review
 
@@ -462,21 +444,17 @@ streams one by one while the base's judgment stands, because the rule resumes th
 silent friend's record goes down. The sprint's tick writes each friend's status from that record
 and never works it out: down whenever the hook record is down (`nova-sprint help`, "The friends").
 The heartbeat server sends the coordinator FRIEND DOWN and FRIEND BACK judgments
-(`nova-hook help hook`). The friend's daemon stops a lane turn that stays silent past
-`--silent-stop`. After the same provider refusal on `--broken-after` lane turns in a row, it marks
-the session broken and tells the seat once. On a provider failure (out of funds) it stops every
-lane and writes PAUSED (`nova-friend help run`, `nova-friend help resume`). A friend that is down
+(`nova-hook help hook`). A friend that is down
 shows working 0, and her cards stay on her row and count again when she is up
-(`nova-sprint help`). Spec: SPEC-SPRINT.md section 1, "The tables"; nova-tools SPEC-FRIEND.md,
-"Presence"; SPEC-HOOK.md, "The heartbeat".
+(`nova-sprint help`). Spec: SPEC-SPRINT.md section 1, "The tables"; nova-tools SPEC-HOOK.md,
+"The heartbeat".
 
 **The verbs, in order.**
 
-1. Look. usage: `nova-friend check [--as <coordinator>] [<friend>...] [--since <duration>] [--shown <file|->] [--harness codex --dir <d> --session <id> --adapter folder --delivery-dir <watched-dir>] [--json]`.
-   It prints a CHECK VERDICT line per friend (ok, broken, down or untrue) with the reason.
-2. Reach her. usage: `nova-friend reach --as <coordinator> --to <friend> [--step-timeout <duration>] [--from <bus|push|window>] [--harness <h>] [--dir <d>] [--session <id>] [--state-dir <d>] [--redis <addr>] [--dry-run]`.
-   It climbs the ladder (a bus message, then a push into the session, then her window) and stops
-   at the first proof. Spec: nova-tools SPEC-FRIEND.md, "Reach".
+1. Look. usage: `nova-sprint friend cards <friend> [--json]`, beside `nova-hook friends --json`:
+   her row's cards and her hook record, each a separate fact.
+2. Reach her through the bus or her session; only she answers a fresh challenge
+   (`nova-hook help hook`).
 3. Hold her row when she will not be back soon. usage: `nova-sprint hold <member|reader|friend|stream>... --reason <text> [--return] [--dry-run]`.
    The old word for this is usage `nova-sprint friend down <friend> [--reason <text>] [--until <RFC3339>]`,
    kept for one release. A held friend keeps no card: every card on her row goes back to ready,
@@ -484,26 +462,17 @@ shows working 0, and her cards stay on her row and count again when she is up
    usage `nova-sprint unhold <member|reader|friend|stream>... [--reason <text>] [--dry-run]`.
    `friend up` cannot prove the friend alive (`nova-sprint help`, "The friends"). Spec:
    SPEC-SPRINT.md section 11, the `hold` and `friend down, friend up` rows.
-4. Finish what her reports already finish. usage: `nova-sprint collect [<friend>...] [--dead-lanes] [--pg <dsn>] [--root <dir>] [--dry-run]`.
-   Run `nova-sprint collect --dry-run`, then `nova-sprint collect --dead-lanes`. collect finishes
-   every working card that a report in a friend's outbox finishes. `--dead-lanes` finishes, as
-   failed, each card with no report whose runner ENDed its job, so the card is dealt again. Spec:
-   SPEC-SPRINT.md section 1, "Collect".
-5. Settle a stop's debt. usage: `nova-sprint stop-return --as <owner-row> <card>@<gen>... --epoch <n> --reason <cancel acknowledgement> [--dry-run]`.
+4. Settle a stop's debt. usage: `nova-sprint stop-return --as <owner-row> <card>@<gen>... --epoch <n> --reason <cancel acknowledgement> [--dry-run]`.
    This answers "STOP debt: an owner has not beaten since the stop" once you have seen the
    child exit (`nova-sprint help`, "one answer to each judgment"). Spec: SPEC-SPRINT.md section
    14, "The system".
-6. On her machine, after a person deals with the provider, use usage
-   `nova-friend resume --as <me> [--dir <d>] [--state-dir <d>] [--dry-run]` to clear PAUSED, and
-   usage `nova-friend lanes --as <me> [--clear-faults] [--dir <d>] [--state-dir <d>]` to clear a
-   faulted lane. A friend a person held with `nova-sprint friend down` stays held until
-   `nova-sprint friend up` (`nova-friend help resume`).
+5. A friend a person held with `nova-sprint friend down` stays held until
+   `nova-sprint friend up`.
 
 **Success looks like.** Her cards are back in the deal or finished, the row reads down or held with
 a reason, and a FRIEND BACK note follows when she returns.
 
-**Not by hand.** Do not finish her cards by reading her outbox yourself; that was the stopgap
-`finish-loop.py`, which collect replaced (SPEC-SPRINT.md section 1, "Collect"). Do not take her
+**Not by hand.** Do not finish her cards for her. Do not take her
 cards back one by one when `hold` takes them all. Do not answer her challenge for her: only the
 model answers a challenge (`nova-hook help`).
 

@@ -45,19 +45,18 @@ func newPassRig(t *testing.T) *passRig {
 }
 
 // startFriends is each friend's start of every card dealt ready on her row: her own take
-// (take --as friend.<name>), as her daemon starts a card, so it is working only once she
+// (take --as friend.<name>), so it is working only once she
 // starts it (docs/SPEC-SPRINT.md section 1, a friend's card is working once she starts it).
 func (r *holdRig) startFriends() {
 	r.t.Helper()
 	for _, row := range r.snap().Fleet.Rows() {
 		if _, ok := sprint.FriendOfRow(row); ok {
-			name, _ := sprint.FriendOfRow(row)
-			req := sprint.FriendStartReq{Friend: name, Gens: map[string]int{}}
+			req := sprint.TakeReq{As: row, Gens: map[string]int{}, Who: row, LaneByID: true}
 			for _, c := range r.snap().Fleet.Cell(row, sprint.Ready) {
 				req.IDs, req.Gens[c.ID] = append(req.IDs, c.ID), max(c.Int("gen"), 1)
 			}
 			if len(req.IDs) > 0 {
-				r.must(store.FriendStartStep(req)) // her start receipt, as friend sync reads it
+				r.must(store.TakeStep(req)) // her own take: her start
 			}
 		}
 	}

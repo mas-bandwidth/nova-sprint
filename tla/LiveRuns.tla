@@ -9,7 +9,7 @@
 (* working card its row's live set has lacked for LiveGrace), the tick     *)
 (* (internal/sprint/store/tick.go: the reconcile runs on a STOPPED tick as *)
 (* on a running one, as one step of the one writer), the beat's live set   *)
-(* (sprint.Beat.Live: fleet beat --live, friend beat --live), the STOP     *)
+(* (sprint.Beat.Live: fleet beat --live), the STOP                         *)
 (* debt (internal/sprint/store/machine_transition.go stopOwned, engine.go  *)
 (* stopDebtMutation) and stop-return (internal/sprint/stop_return.go).     *)
 (*                                                                         *)

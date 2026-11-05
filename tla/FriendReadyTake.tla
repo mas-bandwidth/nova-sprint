@@ -7,7 +7,7 @@ EXTENDS Naturals, FiniteSets
 \* (internal/sprint/steps_work.go:1486 takeOne, friend_deal.go:586 friendDealPass,
 \* steps_work.go:2101 friendNext, friend_take.go:214 FriendReadyMax and :220
 \* friendLaneIdle, steps_tick.go:1526 TickDeadlines). One friend's
-\* row, "a", in batch or one-shot mode (the rules are one for both: one lane
+\* row, "a" (one lane
 \* per unit of width), and a stranger, "b". Cards are dealt to her row
 \* into working while a lane is free and ready behind otherwise, within her
 \* room (twice her width). Her width can rise (a lane frees with no finish).

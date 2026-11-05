@@ -15,5 +15,4 @@ const (
 
 var AllPronouns = toolsfriend.AllPronouns
 
-func ParsePronouns(s string) (Pronouns, bool) { return toolsfriend.ParsePronouns(s) }
-func PronounList() string                     { return toolsfriend.PronounList() }
+func PronounList() string { return toolsfriend.PronounList() }

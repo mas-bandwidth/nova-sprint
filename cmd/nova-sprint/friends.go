@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -28,11 +26,11 @@ import (
 // moment...)". The roster is nova-config's friend rows alone, copied into the store by
 // friend sync, which also writes each friend's width. A friend's counts are her
 // sprint cards' (the cards dealt to her fleet row friend.<name>, their states
-// and their finish verdicts), read from the fleet table by where — never from
-// her inbox/outbox directories, which are only the transport of her cards
-// (friendcards.go). A friend's nova-friend daemon beats with friend beat, and
-// nothing else does (docs/SPEC-FRIEND.md, "The beat comes from the daemon"); the
-// coordinator holds one with friend down and releases it with friend up. The
+// and their finish verdicts), read from the fleet table by where. A friend runs her
+// own loop: she takes her cards (take --as friend.<name>), works them and finishes
+// them (finish --as friend.<name>); nothing delivers or collects them (Glenn,
+// 2026-11-05). The coordinator holds one with friend down and releases it with
+// friend up. The
 // status is the server's word, written by the tick from nova-hook and the sprint hold
 // (store.PublishFriendStatus) and read where it is shown (store.FriendRows), never
 // derived there, and sorted in the fleet's order.
@@ -44,25 +42,23 @@ func friendWords() string {
 The friends: the friends table is nova-config's friend rows, copied into the
 store by friend sync (--pg, else NOVA_PG_DSN, as nova-config takes it; with
 --every <d> it syncs again each time d passes until interrupted, acting as the
-seat each pass, the friend sync loop row's verb, docs/FRIENDS.md; friend sync
+seat each pass, docs/FRIENDS.md; friend sync
 install --every <d> runs that loop as this machine's own service, a launchd agent
 or a systemd user unit, and friend sync uninstall removes it): a friend
 the store lacks is added, one nova-config no longer has is taken off with the friend's
 beat, and a friend that stays keeps the friend's hold. The same sync writes each friend's width,
 the jobs the friend works at once: the configured row's width (nova-config friend set
-<friend> --width <n>, at least 1), `+fmt.Sprint(config.DefaultFriendWidth)+` when the row names none; and the friend's delivery mode (mode:
-batch|one-shot, default batch), and configured pronouns (pronouns: `+friend.PronounList()+`;
+<friend> --width <n>, at least 1), `+fmt.Sprint(config.DefaultFriendWidth)+` when the row names none; and the friend's configured pronouns (pronouns: `+friend.PronounList()+`;
 they/them when unstated). A row whose width is below 1 is refused with nothing changed. where counts the cards: ready, working,
 width, done (ok and failed), ok% (ok over done, pooled in the footer) and
 status, all from the friend's sprint cards — the cards dealt to the friend's fleet row
-friend.<name>, their states and their finish verdicts — never from the friend's
-inbox/outbox directories (those are only the transport of the friend's cards, below).
+friend.<name>, their states and their finish verdicts.
 Liveness comes only from nova-hook, and the status is the server's word: each tick
 writes every friend's status (down whenever the hook record is down, held only when
 the hook is up and sprint holds the friend, and up otherwise) into the store, and
 where and the dashboard show that word and never work it out, so a reader with no bus
 address shows what the server wrote. A friend the server has written no status for
-shows down. friend beat carries work reports, never liveness. friend hold <friend> --reason <text> sets the sprint hold. friend up releases
+shows down. friend hold <friend> --reason <text> sets the sprint hold. friend up releases
 the sprint hold; it cannot prove the friend alive. A friend down shows
 working 0: the friend's cards stay on the friend's row and count again when the friend is up; ready
 and done are as they were. where draws the
@@ -74,29 +70,19 @@ WHO: friend <name> prefers a known friend while the friend is up with room.
 WHO: only friend <name> waits for that friend alone. Other work, including
 cards with no WHO line, goes first to subscription friends whose tiers cover
 it, then to the fleet. Among eligible friends, most free room wins and name
-breaks ties. In batch and one-shot mode alike the friend's room is twice the friend's width: the friend
-works at width and queues the rest, and a lane freed by a finish takes the next card
-at once. nova-sprint unpin <id>... --reason <text> removes an
+breaks ties. The friend's room is twice the friend's width: the friend works at width
+and the rest wait ready on the friend's row. nova-sprint unpin <id>... --reason <text> removes an
 unstarted card's stored WHO choice without editing its brief; --stream <s>
 selects a stream, and --dry-run only previews it. Work assigned to a friend
 uses the friend's fleet row friend.<name>; presence never takes it back. friend take
 takes back and marks what the friend has not started, and friend down takes back every card.
 The seat hands a named ready card to a friend with friend give; the deal fills the rest.
-friend sync writes it as <friend>-working/inbox/<job>/BRIEF.md, the job
-directory <card> at epoch 0 and <card>~<epoch> after a clear (its STATUS line
-names the card, the branch to push and the report), and finishes it from
-outbox/<job>/REPORT.md: Verdict: LAND with Head: <full sha> goes to review at
-origin's tip of that branch when the tip is that Head (one git ls-remote), and
-is refused, the card left working, when the tip is another sha (both named),
-when origin has no branch of that name, when the tip cannot be read, or when
-the card names no REPO: line; Verdict: HOLD, FAIL, FAILED or BROKEN is work
-that came back failed, but one whose first paragraph names a brief defect (the
-base lacks a PATHS file, a duplicate of landed work, a decision delivered, or
-the label "brief defect") is the brief's: it counts on the stream and in
-neither done nor ok%, and its judgment asks to re-cut the brief, never
-rework; a LAND without a full sha, an empty report and any other verdict
-finish the card failed too, each with the report's first paragraph. card
-prints who=; where counts it on that friend's row in the friends table.
+A friend runs a take loop: nova-sprint take --as friend.<name> takes the next ready
+card into working (and marks it started); friend stage <card>@<gen> --as friend.<name>
+clones it at its carried head and writes JOB.md with the exact finish command; nova-sprint
+finish --as friend.<name> <card>@<gen> --epoch <n> finishes it (--failed when it failed).
+friend cards <friend> lists the cards on the friend's row with their briefs. card prints
+who=; where counts it on that friend's row in the friends table.
 `) + "\n"
 }
 
@@ -107,7 +93,7 @@ prints who=; where counts it on that friend's row in the friends table.
 func friendVerbWords(name string) string {
 	switch name {
 	case "friend beat":
-		return "Report work, live lanes, load and row configuration. This report never determines liveness; nova-hook alone does. friend sync exits 3 if config cannot be read or holds no friend row.\n"
+		return "Report work, load and row configuration. This report never determines liveness; nova-hook alone does. friend sync exits 3 if config cannot be read or holds no friend row.\n"
 	case "friend down":
 		return "hold <friend> (friend hold <friend> --reason <text>) holds the friend in sprint. --reason <text> and --until <RFC3339> describe the hold. friend sync exits 3 if config cannot be read or holds no friend row. The dashboard shows held only while nova-hook says up; down takes precedence.\n"
 	case "friend up":
@@ -122,15 +108,6 @@ type friendsFn func(ctx context.Context, pg string) ([]config.Row, error)
 
 // readFriends is the real friendsFn: the friend rows of Postgres, by
 // config.ResolveDSN, bounded.
-// friendSession is the roster's word for a friend row's session: sprint.FriendOneShot for
-// a one-shot (a member lane on her row), "" for a live friend.
-func friendSession(r config.Row) string {
-	if config.FriendSession(r) == config.FriendSessionOneShot {
-		return sprint.FriendOneShot
-	}
-	return ""
-}
-
 func (a *app) readFriends(ctx context.Context, pg string) ([]config.Row, error) {
 	var rows []config.Row
 	err := a.withConfig(ctx, pg, func(ctx context.Context, st config.Store) error {
@@ -139,19 +116,6 @@ func (a *app) readFriends(ctx context.Context, pg string) ([]config.Row, error) 
 		return err
 	})
 	return rows, err
-}
-
-// reportValue is the value of a report's first line whose key, after any markdown marks
-// (#, *, -, _, spaces), is one of keys in any case: the rest of the line after the colon;
-// false when no line has one.
-func reportValue(report string, keys ...string) (string, bool) {
-	for _, line := range strings.Split(report, "\n") {
-		key, rest, ok := strings.Cut(strings.TrimLeft(line, "#*-_ \t"), ":")
-		if ok && slices.Contains(keys, strings.ToLower(strings.TrimSpace(key))) {
-			return strings.TrimSpace(rest), true
-		}
-	}
-	return "", false
 }
 
 func (a *app) cmdFriendSync(args []string, stdout, stderr io.Writer) int {
@@ -166,8 +130,11 @@ func (a *app) cmdFriendSync(args []string, stdout, stderr io.Writer) int {
 	}
 	fs, c := a.verbSetup(name)
 	pg := fs.String("pg", "", "the config store, Postgres postgres://user@host:port/db with no password (else NOVA_PG_DSN; the password from the variable NOVA_PG_PASSWORD_ENV names), as nova-config takes it")
-	root := fs.String("root", "", "the directory the friends' working directories are under, <root>/<friend>-working (else HOME); the sync delivers and collects each friend's sprint cards there and never writes elsewhere")
 	every := fs.Duration("every", 0, "sync now and again each time this passes, until interrupted, as the sprint's coordinator seat when no --actor is given, read again each pass (default: once); friend sync install --every <d> runs it as this machine's service and friend sync uninstall removes it (-h of each), or the friend sync loop row runs it (docs/FRIENDS.md)")
+	// --root is retired with the friend delivery (2026-11-05): friend sync reads and writes no
+	// friend's directory. It is accepted and ignored, said once, so a loop row or a unit that
+	// still passes it keeps syncing after the adopt and is fixed by dropping it from the row.
+	root := fs.String("root", "", "retired: friend sync writes no friend's directory; accepted and ignored so a loop row that still passes it keeps running (drop it from the row: nova-config loop set <row> --argv ...)")
 	pos, err := parse(fs, args)
 	if err != nil {
 		return refuse(stderr, name, err.Error())
@@ -175,20 +142,23 @@ func (a *app) cmdFriendSync(args []string, stdout, stderr io.Writer) int {
 	if len(pos) > 0 {
 		return refuse(stderr, name, "takes no words, found "+oneline.Escape(pos[0]))
 	}
+	if *root != "" {
+		fmt.Fprintf(stderr, "%s %s: NOTE --root is retired and ignored (friend sync writes no friend's directory); drop it from the loop row\n", prog, name)
+	}
 	if *every < 0 {
 		return refuse(stderr, name, "--every wants a duration above zero, or none for one pass, got "+every.String()+"; run: nova-sprint friend sync --every 15s")
 	}
 	if *every > 0 {
-		return a.friendSyncLoop(*c, *pg, *root, *every, stdout, stderr)
+		return a.friendSyncLoop(*c, *pg, *every, stdout, stderr)
 	}
-	code, _ := a.friendSyncPass(*c, *pg, *root, stdout, stderr)
+	code, _ := a.friendSyncPass(*c, *pg, stdout, stderr)
 	return code
 }
 
 // friendSyncPass is one pass of friend sync on a store it opens as c says: its exit
-// code, and whether it changed anything (a friend added, taken off or updated, a card
-// delivered or finished).
-func (a *app) friendSyncPass(c common, pg, root string, stdout, stderr io.Writer) (int, bool) {
+// code, and whether it changed anything (a friend added, taken off or updated, or a
+// friend row's name put on the bus store).
+func (a *app) friendSyncPass(c common, pg string, stdout, stderr io.Writer) (int, bool) {
 	const name = "friend sync"
 	st, err := a.store(c)
 	if err != nil {
@@ -204,15 +174,8 @@ func (a *app) friendSyncPass(c common, pg, root string, stdout, stderr io.Writer
 		fmt.Fprintf(stderr, "%s %s: the config holds no friend row, and syncing to none would take every friend off; is this the fleet's config? run: nova-config friend list; nothing was changed\n", prog, name)
 		return exitCannotRead, false
 	}
-	if root == "" {
-		root = a.getenv("HOME")
-	}
-	if root == "" {
-		return refuse(stderr, name, "wants --root <dir>, the directory the friends' working directories are under (HOME is not set)"), false
-	}
-	// the specs: the roster and each friend's width, nothing read of her
-	// working directory (the cards, below, are delivered and collected there,
-	// and where counts them from the fleet table, never from the directory)
+	// the specs: the roster and each friend's width; where counts her cards from the
+	// fleet table
 	specs := make([]store.FriendSpec, 0, len(rows))
 	for _, r := range rows {
 		n, width := r.Name, config.FriendWidth(r)
@@ -224,15 +187,12 @@ func (a *app) friendSyncPass(c common, pg, root string, stdout, stderr io.Writer
 			fmt.Fprintf(stderr, "%s %s: friend %s has width %d, and a friend's width is at least 1; run: nova-config friend set %s --width <n>; nothing was changed\n", prog, name, n, width, n)
 			return 1, false
 		}
-		specs = append(specs, store.FriendSpec{Name: n, Width: width, Class: friendClass(r), Mode: config.FriendMode(r), ConfigDir: r.Fields["config_dir"], Pronouns: config.FriendPronouns(r), Session: friendSession(r), TokenCap: config.FriendTokenCap(r), TokenCapSet: true, Roles: friendRoles(r), Billing: r.Fields["billing"], Streams: r.Fields["streams"], Kinds: r.Fields["kinds"]})
+		specs = append(specs, store.FriendSpec{Name: n, Width: width, Class: friendClass(r), Pronouns: config.FriendPronouns(r), Roles: friendRoles(r), Billing: r.Fields["billing"], Streams: r.Fields["streams"], Kinds: r.Fields["kinds"]})
 	}
 	added, removed, updated, err := st.SyncFriends(ctx, specs)
 	if err != nil {
 		return a.readFailed(name, err, stderr), false
 	}
-	// the friends' sprint cards: each one dealt to her delivered into her inbox, each one
-	// she reported on finished from her outbox (friendcards.go)
-	delivered, finished := 0, 0
 	var said []string
 	say := func(l string) {
 		said = append(said, l)
@@ -244,9 +204,6 @@ func (a *app) friendSyncPass(c common, pg, root string, stdout, stderr io.Writer
 	// added can be written to before any card is dealt her (docs/FRIENDS.md)
 	names := make([]string, 0, len(specs))
 	for _, s := range specs {
-		if s.Session == sprint.FriendOneShot {
-			continue // a one-shot is no bus name: a send to her is refused, never queued (her work travels in the card brief)
-		}
 		names = append(names, s.Name)
 	}
 	enrolled, err := a.busEnroll(ctx, names...)
@@ -256,103 +213,13 @@ func (a *app) friendSyncPass(c common, pg, root string, stdout, stderr io.Writer
 	if err != nil {
 		say("FRIEND-SYNC NOTE: the friend rows' names could not all be put on the bus store's roster (" + oneline.Escape(err.Error()) + ")")
 	}
-	for _, s := range specs {
-		if s.Session == sprint.FriendOneShot {
-			continue // no inbox, queue file, wake or start receipt is a one-shot's: her member reads the brief from the server
-		}
-		// her starts first, so a card she began is working before its report is read
-		if err := a.friendStartsOf(ctx, st, s.Name, filepath.Join(root, s.Name+"-working"), say); err != nil {
-			fmt.Fprint(stderr, friend.Pronouns(s.Pronouns).Sprintf("%s %s: the sprint cards of %s cannot be read for {their} starts: %s; the friends table is synced; run: nova-sprint friend sync\n", prog, name, s.Name, oneline.Escape(err.Error())))
-			return 1, false
-		}
-		d, f, err := a.friendCardsOf(ctx, st, s.Name, filepath.Join(root, s.Name+"-working"), say)
-		delivered, finished = delivered+d, finished+f
-		if err != nil {
-			fmt.Fprintf(stderr, "%s %s: the sprint cards of %s cannot be delivered or collected: %s; the friends table is synced; run: nova-sprint friend sync\n", prog, name, s.Name, oneline.Escape(err.Error()))
-			return 1, false
-		}
-	}
 	line := fmt.Sprintf("FRIEND-SYNC OK added=%s removed=%s updated=%s friends=%d", orDashStr(strings.Join(added, ","), "-"), orDashStr(strings.Join(removed, ","), "-"), orDashStr(strings.Join(updated, ","), "-"), len(rows))
-	if delivered+finished > 0 {
-		line += fmt.Sprintf(" delivered=%d finished=%d", delivered, finished)
-	}
-	if len(added)+len(removed)+len(updated)+delivered+finished == 0 {
+	if len(added)+len(removed)+len(updated) == 0 {
 		line += ": nothing to do, the friends table already matches the config"
 	}
 	sayOK(stdout, c.json, name, line, map[string]any{"added": orEmpty(added), "removed": orEmpty(removed), "updated": orEmpty(updated), "friends": len(rows),
-		"delivered": delivered, "finished": finished, "cards": orEmpty(said)})
-	return 0, len(added)+len(removed)+len(updated)+delivered+finished+len(enrolled) > 0
-}
-
-// friendJobWalk bounds the walk of one job's directory for her first write: a checkout of
-// this size is read whole, and a larger one up to it.
-var friendJobWalk = friend.ActivityLimits{Files: 20000, Time: 250 * time.Millisecond}
-
-// friendJobBegun is why friend sync reads her job as begun, "" while it is not: her report
-// in outbox/<job>/REPORT.md, or a write under jobs/<job> after its staging (its JOB.md, which
-// her daemon writes after the clone: friend.Stage). A job not staged is not begun.
-func friendJobBegun(dir, job string, now func() time.Time) string {
-	if fi, err := os.Lstat(filepath.Join(dir, "outbox", job, "REPORT.md")); err == nil && fi.Mode().IsRegular() {
-		return "the friend's report is in outbox/" + job
-	}
-	jobDir := filepath.Join(dir, friend.JobsDir, job)
-	staged, err := os.Lstat(filepath.Join(jobDir, friend.JobFile))
-	if err != nil || !staged.Mode().IsRegular() {
-		return ""
-	}
-	if friend.NewestWrite(os.DirFS(jobDir), []string{"."}, now, friendJobWalk).After(staged.ModTime()) {
-		return "a write under " + friend.JobsDir + "/" + job + " after its staging"
-	}
-	return ""
-}
-
-// friendStartsOf is friend sync's start receipt for one friend's cards (docs/SPEC-SPRINT.md
-// section 1, a friend's card is working once she starts it): each card on her row, ready, or
-// working with no start of hers (her finish's next or a take-back's next moved it there),
-// whose job she has begun (friendJobBegun) is started (sprint.FriendStart, by id at its
-// generation): working, its deadline from now, one line each. A start refused is said on a
-// line and read again next sync. It runs before her cards are collected, so a report on a
-// card she began and the deal held ready is read on a working card.
-func (a *app) friendStartsOf(ctx context.Context, st *store.Store, name, dir string, say func(string)) error {
-	row := sprint.FriendRow(name)
-	cards, err := st.ReadCells(ctx, sprint.Fleet, row, sprint.Ready, sprint.Working)
-	if err != nil || len(cards) == 0 {
-		return err
-	}
-	cards = slices.DeleteFunc(cards, func(c *sprint.Card) bool {
-		return c.F("kind") != "work" || c.Col == sprint.Working && c.F(sprint.FieldStarted) == strconv.Itoa(max(c.Int("gen"), 1))
-	})
-	if len(cards) == 0 {
-		return nil
-	}
-	packets, err := st.Packets(ctx, cards)
-	if err != nil {
-		return err
-	}
-	for i, p := range packets {
-		if p.Kind == "read" || !sprint.ValidCardID(p.Card) {
-			continue
-		}
-		job := friendJobOf(p)
-		why := friendJobBegun(dir, job, a.now)
-		if why == "" {
-			continue
-		}
-		c := cards[i]
-		r := sprint.FriendStartReq{Friend: name, IDs: []string{c.ID}, Gens: map[string]int{c.ID: max(c.Int("gen"), 1)}, Why: map[string]string{c.ID: why}}
-		step := store.FriendStartStep(r)
-		step.Actor, step.Epoch = st.Actor, &p.Epoch
-		res, err := st.Run(ctx, step)
-		if err != nil {
-			return err
-		}
-		if len(res.Refused) > 0 {
-			say(fmt.Sprintf("FRIEND-CARD NOTE friend=%s card=%s job=%s: begun (%s), and not started: %s; the next sync reads it again", name, c.ID, oneline.Field(job), why, oneline.Escape(res.Refused[0].Why)))
-			continue
-		}
-		say(fmt.Sprintf("FRIEND-CARD STARTED friend=%s card=%s job=%s: %s", name, c.ID, oneline.Field(job), why))
-	}
-	return nil
+		"notes": orEmpty(said)})
+	return 0, len(added)+len(removed)+len(updated)+len(enrolled) > 0
 }
 
 func (a *app) cmdFriendBeat(args []string, stdout, stderr io.Writer) int {
@@ -365,19 +232,18 @@ func (a *app) cmdFriendBeat(args []string, stdout, stderr io.Writer) int {
 func (a *app) friendBeat(ctx context.Context, args []string, open func(common) (*store.Store, error), stdout, stderr io.Writer) int {
 	const name = "friend beat"
 	fs, c := a.verbSetup(name)
-	build := fs.String("build", "", "the build the friend's daemon runs (its version line's build): a friend come up is told to update when it is not the server's")
-	started := fs.String("started", "", "when the friend's daemon started, RFC3339: its generation; a start not seen before raises a status judgment")
-	present := fs.String("present", "", "when the friend's daemon sent the friend the present on its start, RFC3339: the snap-to-present step of a friend come up")
+	build := fs.String("build", "", "the build the friend's tools run (their version line's build): a friend come up is told to update when it is not the server's")
+	started := fs.String("started", "", "when the friend's session started, RFC3339: its generation; a start not seen before raises a status judgment")
+	present := fs.String("present", "", "when the friend's session was sent the present on its start, RFC3339: the snap-to-present step of a friend come up")
 	running := fs.String("running", "", "the cards the friend is running now, comma separated (work card ids, the friend's job names or primaries): friend take and friend down leave them with the friend")
-	live := fs.String("live", "", "the friend's live set: <card>@<gen> for each lane child the friend runs and <card>@<gen>:held for each finished report the friend's outbox holds, comma separated, or "+sprint.LiveNone+" for none; the evidence for working: a card working on the friend's row that the friend's live set has not named for "+sprint.LiveGrace.String()+" goes back ready, RUNNING or STOPPED; a beat without it leaves the friend's row unreconciled")
-	working := fs.String("working", "", "how many jobs the friend is working now, as the friend's daemon counts them")
-	stopReturns := fs.String("stop-returns", "", "how many stop-returns the friend's lanes still owe after the machine's stop (section 14): start waits for zero")
-	queue := fs.String("queue", "", "how many jobs the friend holds queued, as the friend's daemon counts them")
-	width := fs.String("width", "", "the friend's width as the friend's daemon has it (the deal's is the roster's: friend up --width)")
+	working := fs.String("working", "", "how many jobs the friend is working now, as the friend counts them (the deal counts the friend's working cell, never this)")
+	stopReturns := fs.String("stop-returns", "", "how many stop-returns the friend still owes after the machine's stop (section 14): start waits for zero")
+	queue := fs.String("queue", "", "how many jobs the friend holds queued, as the friend counts them")
+	width := fs.String("width", "", "the friend's width as the friend has it (the deal's is the roster's: friend up --width)")
 	load := fs.String("load", "", "the friend's load as a percent, as fleet beat --load gives a machine's")
-	active := fs.String("active", "", "the newest write under the friend's working directory and outbox, as the friend's daemon found it, RFC3339: the friend's session's last activity")
-	until := fs.String("until", "", "the friend's daemon's word that the friend is down until then, RFC3339: the friend's harness at its usage limit or out of credits")
-	reason := fs.String("reason", "", "why the friend is down until --until, as the friend's daemon read it")
+	active := fs.String("active", "", "the newest write under the friend's working directory, RFC3339: the friend's session's last activity")
+	until := fs.String("until", "", "the friend's word that the friend is down until then, RFC3339: the friend's harness at its usage limit or out of credits")
+	reason := fs.String("reason", "", "why the friend is down until --until")
 	friend, code := oneFriend(name, fs, args, stderr)
 	if code != 0 {
 		return code
@@ -447,20 +313,12 @@ func (a *app) friendBeat(ctx context.Context, args []string, open func(common) (
 	if err != nil {
 		return refuse(stderr, name, err.Error())
 	}
-	var liveSet []string
-	if *live != "" { // the empty set is "-" (sprint.LiveNone)
-		v, err := sprint.ParseLive(*live)
-		if err != nil {
-			return refuse(stderr, name, err.Error())
-		}
-		liveSet = v
-	}
-	b, err := st.FriendBeatLive(ctx, friend, rep, given, liveSet)
+	b, err := st.FriendBeatReport(ctx, friend, rep, given)
 	if err != nil {
 		// a friend the roster lacks is a definite pre-write refusal: the store
 		// answered and nothing was written, so it is refused/no; any other error
 		// is a store that did not confirm the beat, so it is unknown
-		if store.IsNoFriend(err) || store.IsOneShot(err) {
+		if store.IsNoFriend(err) {
 			a.outcome, a.changed = "refused", "no"
 		} else {
 			a.outcome, a.changed = "unknown", "unknown"
@@ -469,31 +327,16 @@ func (a *app) friendBeat(ctx context.Context, args []string, open func(common) (
 		return 1
 	}
 	line, facts := "FRIEND-BEAT OK "+friend+" at="+b.At.Format(time.RFC3339), map[string]any{"friend": friend, "at": b.At}
-	// her row as friend sync last wrote it, so her daemon reads her mode and width from its beat
+	// her row as friend sync last wrote it: her width and pronouns
 	if spec, err := st.FriendSpecOf(ctx, friend); err == nil {
-		mode := spec.Mode
-		if mode == "" {
-			mode = config.DefaultFriendMode
-		}
-		line += fmt.Sprintf(" row_mode=%s row_width=%d", mode, spec.Width)
-		facts["row_mode"], facts["row_width"] = mode, spec.Width
+		line += fmt.Sprintf(" row_width=%d", spec.Width)
+		facts["row_width"] = spec.Width
 		pronouns := spec.Pronouns
 		if pronouns == "" {
 			pronouns = config.DefaultFriendPronouns
 		}
 		line += " row_pronouns=" + pronouns
 		facts["row_pronouns"] = pronouns
-		if spec.ConfigDir != "" {
-			line += " row_config_dir=" + spec.ConfigDir
-			facts["row_config_dir"] = spec.ConfigDir
-		}
-		// always, including 0: a missing word is the default cap, and 0 is none
-		capN := spec.TokenCap
-		if !spec.TokenCapSet {
-			capN = config.DefaultFriendTokenCap
-		}
-		line += fmt.Sprintf(" row_token_cap=%d", capN)
-		facts["row_token_cap"] = capN
 	}
 	for _, n := range []struct {
 		key string
@@ -533,8 +376,8 @@ func (a *app) friendBeat(ctx context.Context, args []string, open func(common) (
 		line += " until=" + rep.Until.Format(time.RFC3339)
 		facts["until"], facts["reason"] = rep.Until, rep.Reason
 	}
-	// the machine's word, so her daemon cancels its lanes on STOPPED and starts nothing
-	// (docs/SPEC-SPRINT.md section 14, stop cancels jobs; nova-tools pkg/friend stop.go)
+	// the machine's word, so she stops her cards on STOPPED and starts nothing
+	// (docs/SPEC-SPRINT.md section 14, stop cancels jobs)
 	if word := machineWord(ctx, st); word != "" {
 		line += " machine=" + word
 		facts["machine"] = word

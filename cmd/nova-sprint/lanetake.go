@@ -13,7 +13,7 @@ import (
 
 // laneTake is take --as <member> --lane <n>: a lane of a worker asking the server what it
 // holds, and taking its next card when it holds none (sprint.LaneTake; the model is nova-tools
-// tla/FriendLane.tla). The lane names its member and its lane and nothing else: the server
+// tla/ServerLane.tla). The lane names its member and its lane and nothing else: the server
 // picks the epoch (the one it holds now; a clear between that read and the step refuses the
 // step as stale, and the lane asks again). After the step the server's own record is read
 // and said on one line, whatever the step moved:

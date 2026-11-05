@@ -142,7 +142,7 @@ func TestResultOutcomeRefusedPaths(t *testing.T) {
 // 1), agreeing with the sibling friend cards verb.
 func TestWorkerVerbOutcomeFriendBeatRefused(t *testing.T) {
 	ta, _ := friendApp(t, "amy")
-	ta.ok("friend sync --root " + t.TempDir())
+	ta.ok("friend sync")
 	code, _, errs := ta.do("friend beat bob --json")
 	require.Equal(t, 1, code, errs)
 	require.Contains(t, errs, "no friend bob on the friends table (friends: amy)")
@@ -151,7 +151,7 @@ func TestWorkerVerbOutcomeFriendBeatRefused(t *testing.T) {
 
 	r := newServerRig(t, "nova-sprint init --readers reader-a,reader-b --members m1:2")
 	r.a.friends = friendRows("amy")
-	r.boss("nova-sprint friend sync --root " + t.TempDir())
+	r.boss("nova-sprint friend sync")
 	res := r.one("friend", "beat", "bob")
 	require.Equal(t, 1, res.Code, res.Stderr)
 	require.Contains(t, res.Stderr, "no friend bob on the friends table (friends: amy)")

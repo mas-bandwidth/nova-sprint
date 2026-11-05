@@ -1,8 +1,9 @@
 package store
 
 import (
-	"github.com/mas-bandwidth/nova-tools/pkg/redisacl"
 	"testing"
+
+	"github.com/mas-bandwidth/nova-tools/pkg/redisacl"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/stretchr/testify/assert"

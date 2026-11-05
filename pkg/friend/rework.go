@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"fmt"
 	"strings"
-	"unicode"
 )
 
 // A reworked card's brief opens with its fix (the night of 2026-10-05: lint-pkg-tlc-tbb came
@@ -36,10 +35,6 @@ const (
 // prelude line that starts with none continues the one before it.
 var preludeLabels = []string{OneThingLeft, ReaderFoundLabel, carriedLabel, checkedLabel, asksLabel, foundLabel, whyLabel, startLabel, workInLabel}
 
-// MaxFixKeyWords bounds the key words a report is grepped for: a long fix is checked by its
-// first ones.
-const MaxFixKeyWords = 8
-
 // preludeLine is one line of a brief's prelude, its continuation lines joined to it.
 type preludeLine struct{ label, text string }
 
@@ -66,27 +61,6 @@ func splitBrief(brief string) (status string, prelude []preludeLine, body string
 		prelude = append(prelude, preludeLine{label, strings.TrimPrefix(l, label)})
 	}
 	return status, prelude, body, true
-}
-
-// BriefFix is the fix a brief's prelude asks of its attempt: its THE ONE THING LEFT line, else
-// the server's 'The coordinator asks:' line, on one line; "" for a brief that asks none.
-func BriefFix(brief string) string {
-	_, prelude, _, ok := splitBrief(brief)
-	if !ok {
-		return ""
-	}
-	fix := ""
-	for _, p := range prelude {
-		switch p.label {
-		case OneThingLeft:
-			return oneLine(p.text, len(p.text))
-		case asksLabel:
-			if fix == "" {
-				fix = oneLine(p.text, len(p.text))
-			}
-		}
-	}
-	return fix
 }
 
 // ReworkedBrief is a reworked card's brief with its fix first: STATUS; THE ONE THING LEFT,
@@ -158,13 +132,9 @@ func carriedText(start, branch string) string {
 	return fmt.Sprintf("nothing carried: no attempt before this one pushed work; start %s from the tip of its base.", onto)
 }
 
-// checkedText says how a report on the fix is read.
+// checkedText says what the finish report on the fix says first.
 func checkedText(fix string) string {
-	words := FixKeyWords(fix)
-	if len(words) == 0 {
-		return "your REPORT.md says how THE ONE THING LEFT is done, first."
-	}
-	return fmt.Sprintf("your REPORT.md says how THE ONE THING LEFT is done, first; a LAND whose report does not name at least %d of its key words (%s) is a HOLD by the daemon.", keyWordsNeeded(len(words)), strings.Join(words, ", "))
+	return "your finish report says how THE ONE THING LEFT is done, first."
 }
 
 // stopIsTheFix is the card with its first STOP line the fix alone (a card with none is given
@@ -178,82 +148,4 @@ func stopIsTheFix(body, fix string) string {
 		}
 	}
 	return "STOP: " + fix + "\n" + body
-}
-
-// fixStopWords are the words of a fix that say nothing of it.
-var fixStopWords = map[string]bool{
-	"about": true, "after": true, "again": true, "also": true, "before": true, "card": true, "does": true,
-	"done": true, "each": true, "every": true, "from": true, "have": true, "into": true, "just": true,
-	"make": true, "must": true, "only": true, "should": true, "sure": true, "that": true, "them": true,
-	"then": true, "there": true, "their": true, "these": true, "they": true, "this": true, "those": true,
-	"what": true, "when": true, "where": true, "which": true, "will": true, "with": true, "without": true,
-	"your": true,
-}
-
-// FixKeyWords is what a report on fix is grepped for: its distinct words of four or more
-// letters, digits or underscores, lower case, the empty ones (fixStopWords) left out, the
-// first MaxFixKeyWords of them.
-func FixKeyWords(fix string) []string {
-	var words []string
-	seen := map[string]bool{}
-	for _, w := range strings.FieldsFunc(strings.ToLower(fix), func(r rune) bool {
-		return !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_'
-	}) {
-		if len([]rune(w)) < 4 || fixStopWords[w] || seen[w] {
-			continue
-		}
-		seen[w] = true
-		if words = append(words, w); len(words) == MaxFixKeyWords {
-			break
-		}
-	}
-	return words
-}
-
-// keyWordsNeeded is how many of n key words a report names to address its fix: half, rounded up.
-func keyWordsNeeded(n int) int { return (n + 1) / 2 }
-
-// FixAddressed says a report addresses fix: it names (case-insensitively, anywhere) at least
-// half of the fix's key words, rounded up; a fix with none is addressed. missing is the key
-// words it does not name.
-func FixAddressed(report, fix string) (missing []string, ok bool) {
-	words := FixKeyWords(fix)
-	low := strings.ToLower(report)
-	for _, w := range words {
-		if !strings.Contains(low, w) {
-			missing = append(missing, w)
-		}
-	}
-	return missing, len(words)-len(missing) >= keyWordsNeeded(len(words))
-}
-
-// UnaddressedText is the first words of the finish the holder by (the daemon, or friend sync)
-// sends for a LAND whose report does not address THE ONE THING LEFT.
-func UnaddressedText(by, fix string, missing []string) string {
-	return fmt.Sprintf("held by %s: the report says LAND and does not address THE ONE THING LEFT (%s); the key words it does not name: %s.", by, oneLine(fix, 300), strings.Join(missing, ", "))
-}
-
-// The holders of an unaddressed LAND, as UnaddressedText names them.
-const (
-	HeldByFriendSync = "friend sync"
-)
-
-// UnaddressedLand is the one fix check of a LAND, the daemon's outbox pass's and friend
-// sync's (cmd/nova-sprint, friendFinish, the finish of friend sync and
-// collect): held is UnaddressedText when report does not address the fix brief asks (BriefFix,
-// in either form), "" when it does or when brief asks none. A held LAND is finished as a
-// HOLD, its head kept.
-func UnaddressedLand(by, report, brief string) (held string) {
-	return unaddressed(by, report, BriefFix(brief))
-}
-
-// unaddressed is UnaddressedLand of a fix already read.
-func unaddressed(by, report, fix string) string {
-	if fix == "" {
-		return ""
-	}
-	if missing, ok := FixAddressed(report, fix); !ok {
-		return UnaddressedText(by, fix, missing)
-	}
-	return ""
 }

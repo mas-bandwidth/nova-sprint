@@ -41,9 +41,6 @@ ok: [seat-a] => (item=ADOPT step=server host=seat-a before=v1 after=v2 revision=
 ok: [seat-a] => (item=x) => {
     "msg": "ADOPT step=dashboard host=seat-a before=/old after=/bin/nova-sprint links=1 CHANGED"
 }
-ok: [seat-a] => (item=y) => {
-    "msg": "ADOPT step=friends host=seat-a before=v1 after=v2 reinstalled=fa CHANGED"
-}
 `
 
 // TestAdoptRunsThePlayAndRefusesAHalfMove: adopt runs the tools play for the
@@ -82,7 +79,7 @@ func TestAdoptRunsThePlayAndRefusesAHalfMove(t *testing.T) {
 		assert.Contains(t, out, "ADOPT step="+step+" host=seat-a ")
 	}
 	assert.Equal(t, 1, strings.Count(out, "ADOPT step=server "), "a loop item's line is said once")
-	assert.Contains(t, out, "ADOPT ADOPTED version=v1.2.0-dev.abc1234 hosts=seat-a steps=store,server,dashboard,friends")
+	assert.Contains(t, out, "ADOPT ADOPTED version=v1.2.0-dev.abc1234 hosts=seat-a steps=store,server,dashboard")
 
 	// --dry-run is --check; a built release directory is <out>/<version>; --limit names the host
 	dry := &fakePlay{out: playOK}
@@ -148,11 +145,11 @@ fatal: [seat-a]: FAILED! => {"changed": false, "msg": "ADOPT REFUSED step=dashbo
 	assert.Equal(t, 1, code)
 	assert.Contains(t, errs, `adopt REFUSED step=server task="server: bootstrap each from its plist"`)
 
-	// a play that ends without the friends line is a half move, refused
-	half := &fakePlay{out: strings.Split(playOK, "ok: [seat-a] => (item=y)")[0]}
+	// a play that ends without the dashboard line is a half move, refused
+	half := &fakePlay{out: strings.Split(playOK, "ok: [seat-a] => (item=x)")[0]}
 	code, _, errs = run(half, append([]string{"v1.2.0-dev.abc1234"}, base...)...)
 	assert.Equal(t, 1, code)
-	assert.Contains(t, errs, "adopt REFUSED step=friends host=seat-a: a half move")
+	assert.Contains(t, errs, "adopt REFUSED step=dashboard host=seat-a: a half move")
 
 	// no seat in the limit: nothing of the seat was adopted
 	code, _, errs = run(&fakePlay{out: "PLAY RECAP\n"}, append([]string{"v1.2.0-dev.abc1234", "--limit", "bench-b"}, base...)...)

@@ -20,7 +20,7 @@ func TestTheBlockerJudgmentGoesToTheOwnerAtOnce(t *testing.T) {
 	ta.a.bus = b.send
 
 	cfg := config.NewMem()
-	_, err := cfg.Insert(context.Background(), config.KindFriend, config.Row{Name: "amy", Fields: map[string]string{"width": "2", "tiers": "flash", "mode": "batch"}}, "t")
+	_, err := cfg.Insert(context.Background(), config.KindFriend, config.Row{Name: "amy", Fields: map[string]string{"width": "2", "tiers": "flash"}}, "t")
 	require.NoError(t, err)
 	ta.a.friends = func(ctx context.Context, _ string) ([]config.Row, error) { return cfg.List(ctx, config.KindFriend) }
 

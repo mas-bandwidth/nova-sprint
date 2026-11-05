@@ -1,12 +1,10 @@
 package sprint
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 	"github.com/stretchr/testify/require"
 )
@@ -51,7 +49,8 @@ func TestAFrontierCardsReadIsAskedAsAFriendCard(t *testing.T) {
 		require.Nil(t, w.s.Readers.Card(id))
 		require.Equal(t, Review, w.s.Work.Card("s1-1").Col)
 
-		text := string(mustRead(t, filepath.Join(dir, "inbox", id, "BRIEF.md")))
+		// the brief friend cards serves for the read (no file is written for it)
+		text := FriendReadBrief("amy", "s1-1", w.s.Work.Card("s1-1").F("brief"), rc.F("branch"), rc.F("start"), rc.F("head"), 2, t0.Add(FriendReadDeadline))
 		require.Contains(t, text, "WHO: friend amy\n")
 		require.Contains(t, text, "branch: "+branch+"\n")
 		require.Contains(t, text, "start: "+start+"\n")
@@ -117,24 +116,6 @@ func TestAFrontierCardsReadIsAskedAsAFriendCard(t *testing.T) {
 		require.Empty(t, w.notesOf(NWaitingForReader))
 	})
 
-	t.Run("one-shot mode", func(t *testing.T) {
-		t.Parallel()
-		w := newWorld(t, "reader-a", "reader-b")
-		w.readersTable() // these asks use the standalone legacy producer
-		for i, id := range []string{"s1-1", "s1-2", "s1-3"} {
-			putReview(w, id, id+": work (s1) tier: frontier\n", 1, float64(i+1), primHead)
-		}
-		seat := frontierSeat("amy", 2, Up, t.TempDir())
-		seat.Mode = config.FriendModeOneShot
-		askReaders(t, w, workerSeatFixtures([]FriendSeat{seat}))
-		// a one-shot friend reads to her width as a batch friend does (one lane per unit of
-		// width, the owner 2026-10-10): two lanes working and the third ready behind them
-		require.Equal(t, Working, w.s.Fleet.Card(ReadCardID("s1-1", 1, "amy")).Col)
-		require.Equal(t, Working, w.s.Fleet.Card(ReadCardID("s1-2", 1, "amy")).Col)
-		require.Equal(t, Ready, w.s.Fleet.Card(ReadCardID("s1-3", 1, "amy")).Col)
-		require.Empty(t, w.notesOf(NWaitingForReader))
-	})
-
 	t.Run("most free", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a", "reader-b")
@@ -180,7 +161,7 @@ func TestAFrontierCardsReadIsAskedAsAFriendCard(t *testing.T) {
 		putAttemptWork(w, "s1-1", 2, branch, workHead, "")
 		askReaders(t, w, workerSeatFixtures([]FriendSeat{frontierSeat("amy", 2, Up, t.TempDir())}))
 		id := ReadCardID("s1-1", 2, "amy")
-		w.must(FriendReadCloseChecked(w.s, "amy", "s1-1", "", "Verdict: LAND\n", nil))
+		w.must(friendReadVerb(w.s, "amy", "", "ok", "", nil))
 		rc := w.s.Fleet.Card(id)
 		require.NotNil(t, rc)
 		require.False(t, rc.Placed())
@@ -192,21 +173,6 @@ func TestAFrontierCardsReadIsAskedAsAFriendCard(t *testing.T) {
 		require.Empty(t, w.notesOf(NReadBroken))
 	})
 
-	t.Run("stale outbox generation", func(t *testing.T) {
-		t.Parallel()
-		w := newWorld(t, "reader-a", "reader-b")
-		w.readersTable() // these asks use the standalone legacy producer
-		putReview(w, "s1-1", body, 2, 1, primHead)
-		askReaders(t, w, workerSeatFixtures([]FriendSeat{frontierSeat("amy", 2, Up, t.TempDir())}))
-		rc := w.s.Fleet.Card(ReadCardID("s1-1", 2, "amy"))
-		require.NotNil(t, rc)
-		rc.Fields["gen"] = "2" // same read returned and taken after a STOP
-		late := FriendReadCloseChecked(w.s, "amy", "s1-1", "", "Verdict: LAND\n", nil, 1)
-		require.NotEmpty(t, late.Refused, "the old outbox cannot close a resumed read")
-		require.True(t, rc.Placed())
-		w.must(FriendReadCloseChecked(w.s, "amy", "s1-1", "", "Verdict: LAND\n", nil, 2))
-	})
-
 	t.Run("hold", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, "reader-a", "reader-b")
@@ -214,7 +180,7 @@ func TestAFrontierCardsReadIsAskedAsAFriendCard(t *testing.T) {
 		putReview(w, "s1-1", body, 2, 1, primHead)
 		askReaders(t, w, workerSeatFixtures([]FriendSeat{frontierSeat("amy", 2, Up, t.TempDir())}))
 		id := ReadCardID("s1-1", 2, "amy")
-		w.must(FriendReadCloseChecked(w.s, "amy", "s1-1", "", "Verdict: HOLD\nmain.go is wrong\n", nil))
+		w.must(friendReadVerb(w.s, "amy", "", "broken", "main.go is wrong", nil))
 		rc := w.s.Fleet.Card(id)
 		require.False(t, rc.Placed())
 		require.Equal(t, "broken", rc.F("verdict"))
@@ -270,11 +236,4 @@ func askReaders(t *testing.T, w *world, seats []FriendSeat) {
 	}
 	require.NotNil(t, fn, "the readers ask part is not installed")
 	w.part(fn, TickReq{Friends: seats})
-}
-
-func mustRead(t *testing.T, path string) []byte {
-	t.Helper()
-	b, err := os.ReadFile(path)
-	require.NoError(t, err)
-	return b
 }

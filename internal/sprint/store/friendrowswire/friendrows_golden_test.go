@@ -890,7 +890,7 @@ func longEntries(n int, obj map[string]any) []any {
 // the padded standard base64 and the JSON text, and each read must hold the
 // values it was given. The cases are the removed caps: Beat.samples past 11,
 // live past 512, top holders past 10, RunWord.text past 4096, reason past
-// 1024, a negative paced, token_cap, working, queue and stop_returns, billing
+// 1024, a negative paced, working, queue and stop_returns, billing
 // past 16, and every string(35) time past 35 bytes, and the texts of the
 // tables that were fixed.
 func openValues(t *testing.T, rows map[string]varRow) {
@@ -901,7 +901,7 @@ func openValues(t *testing.T, rows map[string]varRow) {
 		name string
 		in   map[string]any
 	}{
-		{"FriendEntry", map[string]any{"at": longTime, "until": longTime, "by": longText(300), "mode": longText(40), "pronouns": longText(40), "session": longText(40), "billing": longText(100), "reason": long, "token_cap": json.Number("-5"), "token_cap_set": true, "width": json.Number("-3")}},
+		{"FriendEntry", map[string]any{"at": longTime, "until": longTime, "by": longText(300), "pronouns": longText(40), "billing": longText(100), "reason": long, "width": json.Number("-3")}},
 		{"FriendStatus", map[string]any{"status": longText(40), "at": longTime, "until": longTime, "reason": long, "evidence": long}},
 		{"LoadSample", sample},
 		{"RunWord", map[string]any{"text": longText(4097)}},

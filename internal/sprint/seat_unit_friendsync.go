@@ -35,13 +35,12 @@ var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // FriendSyncUnit is the friend sync loop as a service: the binary, the period, the
 // sprint's store (Redis, an address: friend sync is never the server's), the config
-// store (PG, a DSN with no password), the friends' root (Root, else the unit's HOME),
-// the file its lines go to (launchd; systemd keeps them in its journal), and Env,
+// store (PG, a DSN with no password), the file its lines go to (launchd; systemd keeps them in its journal), and Env,
 // FriendSyncEnv's variables as they were set where it was typed, in that order.
 type FriendSyncUnit struct {
-	OS, Exe, Redis, PG, Root, Log string
-	Every                         time.Duration
-	Env                           [][2]string
+	OS, Exe, Redis, PG, Log string
+	Every                   time.Duration
+	Env                     [][2]string
 }
 
 // FriendSyncUnitFile is the unit's file name on goos, "" where there is no service
@@ -63,9 +62,6 @@ func (u FriendSyncUnit) Args() []string {
 	if u.PG != "" {
 		args = append(args, "--pg", u.PG)
 	}
-	if u.Root != "" {
-		args = append(args, "--root", u.Root)
-	}
 	return args
 }
 
@@ -82,8 +78,6 @@ func (u FriendSyncUnit) refusal() string {
 		return "the loop reads the sprint's store itself (friend sync is never the server's): --redis <addr> (or NOVA_SPRINT_REDIS)"
 	case strings.HasPrefix(u.Redis, "mem:"):
 		return "the loop syncs the sprint's store, and the in-memory twin " + u.Redis + " is this process's alone: install it for a Redis store"
-	case u.Root != "" && !filepath.IsAbs(u.Root):
-		return "the unit names the friends' root by its absolute path, not " + u.Root
 	}
 	for _, kv := range u.Env {
 		if strings.HasSuffix(kv[0], "_ENV") && !envName.MatchString(kv[1]) {

@@ -2,12 +2,13 @@ package sprint_test
 
 import (
 	"fmt"
+	"testing"
+	"time"
+
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
 	"github.com/mas-bandwidth/nova-tools/pkg/ntable"
 	"github.com/stretchr/testify/require"
-	"testing"
-	"time"
 )
 
 // The actual in-memory store, explicit time, no live transport. This regression

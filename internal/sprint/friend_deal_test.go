@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -212,42 +211,13 @@ func TestAFriendsRowIsNoMemberOfTheClearsShape(t *testing.T) {
 	assert.Equal(t, map[string]string{"m1": Up, "m2": Up}, sh.Status)
 }
 
-// A one-shot friend is dealt to her width as a batch friend is (docs/SPEC-SPRINT.md section 1,
-// "A friend's card"; the owner 2026-10-10: Freddy, one-shot at width 32, was dealt one card at a
-// time while 110 cards waited in review): her daemon runs one lane per unit of width, each card a
-// fresh run, so the deal gives her DealAhead times her width, her width working and the rest
-// ready behind, and the lane a finish frees takes her next at once.
-func TestAOneShotFriendIsDealtToHerWidthAsABatchFriendIs(t *testing.T) {
-	t.Parallel()
-	w := friendWorld(t,
-		friendBrief("only friend amy"), friendBrief("only friend amy"), friendBrief("only friend amy"), friendBrief("only friend amy"),
-		friendBrief("only friend bob"), friendBrief("only friend bob"), friendBrief("only friend bob"), friendBrief("only friend bob"),
-	)
-	seats := workerSeatFixtures([]FriendSeat{
-		{Name: "amy", Width: 2, Status: Up, Mode: config.FriendModeBatch, Class: "flash,pro"},
-		{Name: "bob", Width: 2, Status: Up, Mode: config.FriendModeOneShot, Class: "flash,pro"},
-	})
-	dealStarted(w, seats...)
-
-	amy, bob := FriendRow("amy"), FriendRow("bob")
-	assert.Equal(t, 2, w.s.Fleet.Count(amy, Working), "amy works her width")
-	assert.Equal(t, 2, w.s.Fleet.Count(amy, Ready), "amy holds 2 ready behind (batch)")
-	assert.Equal(t, 2, w.s.Fleet.Count(bob, Working), "bob works his width (one-shot lanes)")
-	assert.Equal(t, 2, w.s.Fleet.Count(bob, Ready), "bob holds 2 ready behind (one-shot, as batch)")
-
-	// bob finishes one card: the lane it frees takes his next at once, with no tick between
-	w.must(Finish(w.s, FinishReq{Sel: Sel{IDs: []string{"s1-5.w1"}}, As: bob, Gens: gensOf(w.s, "s1-5.w1"), Head: "abc", Friends: seats}))
-	assert.Equal(t, 2, w.s.Fleet.Count(bob, Working), "the freed lane took bob's next")
-	assert.Equal(t, 1, w.s.Fleet.Count(bob, Ready))
-}
-
-// A one-shot friend's lanes are independent: a finish frees its own lane, and her next is
+// A friend's lanes are independent: a finish frees its own lane, and her next is
 // taken into it at once while her other lanes still run work or a read (the owner,
 // 2026-10-10: "every friend lane refreshes independently"; the one-at-a-time gate is gone).
-func TestAOneShotFriendsFreedLaneTakesHerNextWhileOtherLanesRun(t *testing.T) {
+func TestAFriendsFreedLaneTakesHerNextWhileOtherLanesRun(t *testing.T) {
 	t.Parallel()
 	w := friendWorld(t, friendBrief("friend amy"), friendBrief("friend amy"), friendBrief("friend amy"), friendBrief("friend amy"))
-	seats := workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 2, Status: Up, Mode: config.FriendModeOneShot, Class: "flash,pro"}})
+	seats := workerSeatFixtures([]FriendSeat{{Name: "amy", Width: 2, Status: Up, Class: "flash,pro"}})
 	dealStarted(w, seats...)
 	amy := FriendRow("amy")
 	require.Equal(t, 2, w.s.Fleet.Count(amy, Working))

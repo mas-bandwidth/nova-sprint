@@ -1540,13 +1540,6 @@ func liveGen(verb string, c *Card, gens map[string]int) string {
 // tick, every member's row at once); a take by id
 // names one member.
 func Take(s *Snapshot, r TakeReq) Plan {
-	if friend, ok := FriendOfRow(r.As); ok && (r.Lane != 0 || r.LaneByID) && s.FriendIsOneShot(friend) {
-		// a one-shot friend's row is worked by a member, by count, never by a friend lane
-		// (FriendOneShot): a lane's take for it is refused, naming the member that serves it
-		var p Plan
-		p.refuse("take", OneShotLaneRefusal(friend))
-		return p
-	}
 	if r.LaneByID {
 		return NamedLaneTake(s, r)
 	}
@@ -2017,7 +2010,7 @@ func finishPlan(s *Snapshot, r FinishReq) Plan {
 	picked := pick(&p, r.Sel, all, fieldStream, func(c *Card) string {
 		if c.F("kind") == "read" {
 			// a read on a friend's row is no work: it is returned, never finished
-			return "a read, not work: finish does not return it; " + FriendReadOutboxLine(c.Row, c.ID, s.Epoch)
+			return "a read, not work: finish does not return it; " + FriendReadReturnLine(c.Row, c.ID, s.Epoch)
 		}
 		if byID {
 			if why := liveGen("finish", c, r.Gens); why != "" {

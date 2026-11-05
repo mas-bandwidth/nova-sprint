@@ -51,44 +51,6 @@ func TestFinishRefusesHeadNotOnOrigin(t *testing.T) {
 	assert.Empty(t, r.queue("m1")["working"])
 }
 
-func TestFriendCollectionRefusesHeadLookupFailure(t *testing.T) {
-	t.Parallel()
-	for _, verb := range []string{"collect", "friend sync"} {
-		t.Run(verb, func(t *testing.T) {
-			const head = "fedcba9876543210fedcba9876543210fedcba98"
-			ta, root := friendCardApp(t, "friend amy", "amy")
-			ta.a.tip = tipIs(t, head) // friendFinish's existing branch-tip check passes
-			ta.a.readHeads = func(context.Context, string, string) (map[string]string, error) {
-				return nil, errors.New("origin unavailable")
-			}
-			ta.ok("tick")
-			ta.startFriend("amy", 1)
-			outboxReport(t, root, "amy", "s1-1.w1", "Verdict: LAND\nHead: "+head+"\n\nPushed.\n")
-			out := ta.ok(verb + " --root " + root)
-			assert.Contains(t, out, "REFUSED")
-			assert.Contains(t, out, "origin unavailable")
-			assert.Contains(t, out, "retry the finish")
-			assert.NotContains(t, out, "git push")
-			var c cardView
-			ta.json("card s1-1", &c)
-			assert.Equal(t, "working", c.Primary.Col, "failed origin lookup leaves the finish with its worker")
-			ta.a.readHeads = func(context.Context, string, string) (map[string]string, error) {
-				return map[string]string{"sprint/s1-1.w1.g1.e0": head}, nil
-			}
-			accepted := ta.ok(verb + " --root " + root)
-			assert.NotContains(t, accepted, "REFUSED")
-			if verb == "collect" {
-				assert.Contains(t, accepted, "landed=1")
-			} else {
-				assert.Contains(t, accepted, "FINISHED")
-			}
-			ta.ok("tick")
-			ta.json("card s1-1", &c)
-			assert.Equal(t, "review", c.Primary.Col)
-		})
-	}
-}
-
 func TestFinishOriginValidatesSuccessfulRepositoryHeadsOnly(t *testing.T) {
 	for _, tc := range []struct {
 		name, brief, head    string

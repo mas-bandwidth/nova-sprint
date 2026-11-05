@@ -2,7 +2,7 @@
 
 The runbook for whoever holds the coordinator seat of a sprint: the one actor that answers the inbox, loads
 work, holds and releases waves, sets the fleet, lands, and installs. It assumes this file, the `help` of each
-tool it names (`nova-sprint`, `nova-config`, `nova-secrets`, `nova-swarm`, `nova-bus`, `nova-friend`,
+tool it names (`nova-sprint`, `nova-config`, `nova-secrets`, `nova-swarm`, `nova-bus`,
 `nova-update`, `nova-ci`, `tlacheck`) and [SPEC-SPRINT.md](SPEC-SPRINT.md), with `git`, `gh`, `go`, `make`, `jq`, `sops` and
 `ansible-playbook` on the PATH; where this file and a help differ, the help is right and this file is the
 defect. A change not yet in `dev` is marked "after PR N" and listed under "Open items". Notation: `<m>` a
@@ -31,17 +31,16 @@ your name on the bus, and nova-hook puts each one into your session.
 The coordinator also works through her own friend row: complete
 [playbook section 1](COORDINATOR-PLAYBOOK.md#1-session-start)'s worker check and
 [section 2](COORDINATOR-PLAYBOOK.md#2-running-a-friend-row-the-coordinators-own-included)
-before calling the session ready. Her `nova-friend` daemon joins the existing
+before calling the session ready. Her own take loop runs under the existing
 coordinator hook and its epoch; do not hook the same name again with `--role friend`.
-Check fresh daemon and row status, then observe a current card's automatic take,
-work and finish when work is available. No card means execution is unobserved,
+Check the row, then take, work and finish a current card when work is available. No card means execution is unobserved,
 even if the row is up.
 The same startup pass accounts for every other configured friend expected to work:
 compare `nova-config friend list --json`, `nova-sprint where`,
-`nova-hook friends --json` and `nova-friend check --as <coordinator> <friend>`. Repair down or broken
+`nova-hook friends --json` and `nova-sprint friend cards <friend>`. Repair down or broken
 friends through the reach ladder below; if the cause is old tooling, use the
 supported update path on her host, then verify the installed version, fresh
-hook proof, daemon, row and actual card progress. Name intentional holds and
+hook proof, row and actual card progress. Name intentional holds and
 unresolved blockers rather than treating historical green status as readiness.
 
 Before `start`, run `nova-sprint check cards` and resolve every finding. The
@@ -461,10 +460,9 @@ checks, receipts and exit codes.
 
 - The bus. `nova-bus peek --as <coordinator>` lists what waits for the coordinator; `nova-bus recv`
   takes one in, answered with `nova-bus send --re <id>` and acked.
-- Friends' outboxes. A friend works only inside its own directory: a job is delivered as
-  `~/<friend>-working/inbox/<job>/BRIEF.md` and collected from `~/<friend>-working/outbox/<job>/REPORT.md`,
-  whose `Verdict:` line holds the result. After PR 5126 `nova-sprint friend sync [--root <dir>]` reads those
-  directories into the friends table (failed when the verdict's first word is HOLD, FAIL, FAILED or BROKEN);
+- Friends' cards. A friend works only inside its own directory: it takes a ready card
+  (`nova-sprint take --as friend.<friend>`), stages it (`nova-sprint friend stage`) and finishes it
+  (`nova-sprint finish --as friend.<friend>`); `nova-sprint friend cards <friend>` lists its row.
   `friend down <friend>` holds a friend and `friend up` releases it.
 - Disk. Every per-card artifact is removed by the system itself, automatically and asynchronously; a scan
   at a random time is not a plan. `df -h <slots volume>` and `du -sh <slots dir>` read the trend. A member
@@ -527,14 +525,14 @@ R2. **A friend the hook record shows down (two missed challenges) is woken and f
 never left overnight.**
     Why: a friend slept deaf all night with work assigned to it.
     Done by: `nova-hook friends --json` (the one record of who is there; `nova-hook serve` challenges every
-    hooked friend once a minute); `nova-friend reach --as <coordinator> --to <friend>`. A cause on the owner's side (credit,
+    hooked friend once a minute); a message on the bus to the friend. A cause on the owner's side (credit,
     keys, an account) is `nova-sprint friend down <friend> --reason <text>`, so its cards move, and a note to the
     owner.
 
 R3. **Every 10 minutes the friend chain is walked, each friend to its lowest failing link: up, hears,
 delivered, started, progressing, finished, returned, balanced.**
     Why: a broken link was found by the owner, late, because nobody looked.
-    Done by: `nova-friend check --as <coordinator>`; `nova-sprint view coordinator --json`; `nova-sprint watch
+    Done by: `nova-hook friends --json`; `nova-sprint view coordinator --json`; `nova-sprint watch
     --wake --check 10m`. A problem found by hand becomes a push the same day.
 
 R4. **A friend is up or down only by the hook record and held only by the coordinator's hold; no judgment of
@@ -544,23 +542,22 @@ its work changes its state or keeps a card from it, and a returning machine is b
     ladder is retired, v1.3.6: the sprint's friend states are up, down and held, nothing else).
     Done by: `nova-hook friends --json` (up or down); `nova-sprint friend down <friend>`, `nova-sprint hold
     <friend>`, `nova-sprint friend up <friend>`, `nova-sprint unhold <friend>` (held and its release, the only
-    state the coordinator sets); `nova-friend check --as <coordinator> <friend>`; `nova-sprint fleet up <machine>`.
+    state the coordinator sets); `nova-sprint fleet up <machine>`.
 
-R5. **Friends work only in their own real working directory: jobs arrive in its inbox, results leave in its
-outbox, and a brief names no path outside it.**
+R5. **Friends work only in their own real working directory (its jobs/<job>, as friend stage makes it), and a
+brief names no path outside it.**
     Why: friends trampled each other's files, and symlinked directories broke on every move.
-    Done by: `nova-sprint friend sync --root <dir>`.
+    Done by: `nova-sprint friend stage <card>@<gen> --as friend.<name>`.
 
 R6. **An order to the coordinator (stop, conserve, sleep) is the coordinator's alone; friends change only on an
 order to all friends or to them by name.**
     Why: one order meant for the coordinator stopped the whole team.
     Done by: judgment.
 
-R7. **A silent friend is debugged by the coordinator in order: the bus, the daemon's push, then the friend's own
+R7. **A silent friend is debugged by the coordinator in order: the bus, the hook's push, then the friend's own
 window; the owner is never handed text to paste.**
     Why: the owner was left relaying messages by hand.
-    Done by: `nova-bus peek --as <coordinator>`; `nova-friend check --as <coordinator> <friend>`; `nova-friend
-    status --as <friend> --dir <dir>`.
+    Done by: `nova-bus peek --as <coordinator>`; `nova-hook friends --json`.
 
 R8. **Shared resources (machines, branches, ports, accounts) are claimed through coordinator verbs with a lease,
 never friend to friend; no friend is told to wait on another.**
@@ -1003,7 +1000,7 @@ R95. **Outcomes are reported first, in plain words, with numbers only where they
 
 R96. **A friend's or machine's state is reported only from its own beat or output, never from expectation.**
     Why: reports were wrong about presence.
-    Done by: `nova-sprint where`; `nova-friend check --as <coordinator>`.
+    Done by: `nova-sprint where`; `nova-hook friends --json`.
 
 R97. **No text, caveat or column the owner did not ask for goes on the owner's dashboard; the coordinator reads
 its own role view.**

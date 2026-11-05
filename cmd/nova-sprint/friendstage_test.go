@@ -34,7 +34,7 @@ func TestAFriendCardIsStagedByAVerb(t *testing.T) {
 
 	ta.a.tip = tipIs(t, landHead)
 	root := t.TempDir()
-	ta.ok("friend sync --root " + root)
+	ta.ok("friend sync")
 	ta.beatUp("amy")
 	ta.beatUp("bob")
 
@@ -183,7 +183,7 @@ func TestServedFriendStageStopsWithItsRequest(t *testing.T) {
 	require.NoError(t, err)
 	ta.a.tip = tipIs(t, landHead)
 	root := t.TempDir()
-	ta.ok("friend sync --root " + root)
+	ta.ok("friend sync")
 	ta.beatUp("amy")
 	briefs := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(briefs, "s1-1.md"), []byte(passingBrief("s1-1: a friend's card\nREPO: mas-bandwidth/nova-tools\nBASE: sprint/s1\nWHO: friend amy")), 0o644))
@@ -247,7 +247,7 @@ func TestServedFriendStageStopsWhileMakingTheJobsDirectory(t *testing.T) {
 	require.NoError(t, err)
 	ta.a.tip = tipIs(t, landHead)
 	root := t.TempDir()
-	ta.ok("friend sync --root " + root)
+	ta.ok("friend sync")
 	ta.beatUp("amy")
 	briefs := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(briefs, "s1-1.md"), []byte(passingBrief("s1-1: a friend's card\nREPO: mas-bandwidth/nova-tools\nBASE: sprint/s1\nWHO: friend amy")), 0o644))
@@ -337,7 +337,7 @@ func TestServedFriendStageBlockedCloneLeavesTickAndWritesLive(t *testing.T) {
 	ta.a.tip = tipIs(t, landHead)
 	ta.ok("init --readers reader-a,reader-b --members m1")
 	root := t.TempDir()
-	ta.ok("friend sync --root " + root)
+	ta.ok("friend sync")
 	ta.beatUp("amy")
 	ta.beatUp("bob")
 

@@ -42,13 +42,13 @@ func TestAFriendReadCardIsStagedAtTheHeadUnderRead(t *testing.T) {
 		return cfg.List(ctx, config.KindFriend)
 	}
 	_, err := cfg.Insert(context.Background(), config.KindFriend, config.Row{
-		Name: "amy", Fields: map[string]string{"tiers": "flash", "mode": "one-shot", "width": "1"},
+		Name: "amy", Fields: map[string]string{"tiers": "flash", "width": "1"},
 	}, "t")
 	require.NoError(t, err)
 	ta.a.tip = tipIs(t, landHead)
 	ta.ok("init --readers reader-a,reader-b --members m1:8")
 	root := t.TempDir()
-	ta.ok("friend sync --root " + root)
+	ta.ok("friend sync")
 	dir := t.TempDir()
 	brief := "s1-1: the flash card (s1) tier: flash\nREPO: mas-bandwidth/nova-tools\nBASE: sprint/s1\nCARRY: s1-1 attempt 1 head=" + carriedHead + "\n\nAS A READ\nread the flash card\n"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "s1-1.md"), []byte(passingBrief(brief)), 0o644))

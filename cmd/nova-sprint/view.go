@@ -839,7 +839,7 @@ func (a *app) workerView(ctx context.Context, st *store.Store, as string) (worke
 		wc := workerCard{ID: c.ID, P: p.Primary, St: c.Col, Att: p.Attempt, Gen: p.Gen, DL: deadline[c.ID], Br: p.Branch, J: open[p.Primary],
 			Base: cmp.Or(p.Base, swarm.ReadCardBase([]byte(p.Brief)).Ref), Paths: swarm.CardPaths([]byte(p.Brief))}
 		if v.Kind == "friend" {
-			wc.Brief = "~/" + as + "-working/inbox/" + friendJobOf(p) + "/BRIEF.md"
+			wc.Brief = "nova-sprint friend cards " + as + " --json"
 		} else {
 			wc.Brief = "nova-sprint card " + p.Primary + " --brief"
 		}
@@ -918,12 +918,12 @@ func workerNext(v workerView, c *sprint.Card, p sprint.Packet) string {
 	at := c.ID + "@" + strconv.Itoa(p.Gen) + " --epoch " + strconv.FormatUint(v.Epoch, 10)
 	switch {
 	case v.Kind == "friend" && p.Kind == "read":
-		// a read on her row is returned, never finished (sprint.FriendReadOutboxLine)
-		return "read " + c.ID + ": write ~/" + v.As + "-working/outbox/" + friendJobOf(p) + "/REPORT.md with Verdict: LAND, or Verdict: HOLD and a line naming the file:line or rule and what to change"
+		// a read on her row is returned, never finished (sprint.FriendReadReturnLine)
+		return "nova-sprint read --as " + sprint.FriendRow(v.As) + " (--ok | --broken) " + at + " --finding '<file:line, and what to change>'"
 	case v.Kind == "friend" && c.Col == sprint.Working:
-		return "finish " + c.ID + ": push to " + p.Branch + ", then write ~/" + v.As + "-working/outbox/" + friendJobOf(p) + "/REPORT.md with Verdict: LAND|HOLD|FAIL and Head: <sha>"
+		return "push to " + p.Branch + ", then nova-sprint finish --as " + sprint.FriendRow(v.As) + " " + at + " (--head <commit> | --failed) --report '<what was done>'"
 	case v.Kind == "friend":
-		return "start " + c.ID + ": its brief is " + v.Cards[0].Brief
+		return "nova-sprint take --as " + sprint.FriendRow(v.As) + " " + at + " (its brief: " + v.Cards[0].Brief + ")"
 	case c.Col == sprint.Working:
 		return "nova-sprint finish --as " + v.As + " " + at + " (--head <commit> | --failed) --report '<what was done>'"
 	}

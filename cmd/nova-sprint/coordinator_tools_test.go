@@ -19,7 +19,7 @@ import (
 // verb or a flag the tool does not carry is a line that fails the first time it
 // is run. The verbs and flags are read from nova-sprint's own verb table
 // (cmd/nova-sprint/verbs.go), and the verbs of the other tools the page names
-// (nova-swarm, nova-friend, nova-config, nova-bus, nova-secrets) from
+// (nova-swarm, nova-config, nova-bus, nova-secrets) from
 // foreignVerbs, read once from the page and the runbook.
 
 // coordinatorToolsPath is the page, relative to this package.
@@ -144,15 +144,15 @@ func TestEveryCoordinatorToolMapsToARealNovaVerb(t *testing.T) {
 	t.Run("the witnesses", func(t *testing.T) {
 		head := "| Tool | What it does | Replaced by |\n|---|---|---|\n"
 		good := head + "| `a` | x | `NOVA_SPRINT_SERVER=127.0.0.1:6390 nova-sprint where --watch --every 1s` |\n" +
-			"| `b` | x | `nova-sprint friend sync --root <d> --actor <c>` |\n" +
-			"| `c` | x | `nova-friend reach --as <c> --to <f>`, `nova-swarm disk-guard --root <d>`, `nova-bus recv --as <me> --forever --exec <cmd>` |\n" +
-			"| `d` | x | card: friend-reach-every; needs `nova-friend reach --every <d>`; PATHS: cmd/nova-friend/main.go |\n"
+			"| `b` | x | `nova-sprint friend sync --pg <d> --actor <c>` |\n" +
+			"| `c` | x | `nova-bus send --to <f> --subject <s> --body <text>`, `nova-swarm disk-guard --root <d>`, `nova-bus recv --as <me> --forever --exec <cmd>` |\n" +
+			"| `d` | x | card: member-every; needs `nova-swarm member --every <d>`; PATHS: cmd/nova-swarm/main.go |\n"
 		assert.Empty(t, checkCoordinatorTools(verbs, good), "rows that name real verbs and flags are refused")
 
 		for line, want := range map[string]string{
 			"| `a` | x | `nova-sprint fly` |":                                                        `nova-sprint has no verb "fly"`,
 			"| `a` | x | `nova-sprint where --fly` |":                                                "nova-sprint where has no flag --fly",
-			"| `a` | x | `nova-friend fly` |":                                                        `nova-friend has no verb "fly"`,
+			"| `a` | x | `nova-bus fly` |":                                                           `nova-bus has no verb "fly"`,
 			"| `a` | x | `nova-teleport go` |":                                                       "nova-teleport is a nova tool this test reads no verb table of",
 			"| `a` | x | `ns.sh where` |":                                                            "names no nova verb line and no card",
 			"| `a` | x | card: x-1; needs `nova-sprint fly` |":                                       "a card cell is",

@@ -65,6 +65,7 @@ func TestFriendcleanCoverFailFromReadError(t *testing.T) {
 	}
 	ta := newTestApp(t)
 	ta.a.friends = friendRows("ada")
+	ta.a.liveJobs = liveJobsFixture(nil)
 	root := t.TempDir()
 	w := filepath.Join(root, "ada-working")
 	require.NoError(t, os.MkdirAll(filepath.Join(w, "inbox"), 0o755))

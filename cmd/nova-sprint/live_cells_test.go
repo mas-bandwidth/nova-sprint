@@ -24,7 +24,7 @@ func TestTheWorkingCellIsTheRowsLiveRuns(t *testing.T) {
 	assert.Equal(t, map[string]any{"working": "1", "held": "1", "stale": "1"}, cells)
 	cells = map[string]any{"working": "2"}
 	liveCells(cells, rowWorking, beats, sprint.FriendRow("zhi"), now)
-	assert.Equal(t, map[string]any{"working": "0", "held": "0", "stale": "2"}, cells, "her daemon runs no lane: none of her takes is working")
+	assert.Equal(t, map[string]any{"working": "2", "held": "0", "stale": "0"}, cells, "a friend's beat record from before 2026-11-05 still carrying a live set is read without it: her working cards are working")
 	cells = map[string]any{"working": "3"}
 	liveCells(cells, nil, beats, "space", now)
 	assert.Equal(t, map[string]any{"working": "3"}, cells, "without the where record the table's count stands")
@@ -52,7 +52,5 @@ func TestTheServedFleetBeatTakesALiveSet(t *testing.T) {
 		assert.NotEmpty(t, why, "%v", bad)
 	}
 	_, _, why := workerVerb([]string{"friend", "beat", "zhi", "--live", "z@1:held"})
-	assert.Empty(t, why)
-	_, _, why = workerVerb([]string{"friend", "beat", "zhi", "--live", "z@0"})
-	assert.NotEmpty(t, why)
+	assert.NotEmpty(t, why, "a friend beat carries no live set")
 }

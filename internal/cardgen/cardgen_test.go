@@ -466,14 +466,6 @@ func TestAGeneratedCardNamesNoStaleGoCacheLine(t *testing.T) {
 	assert.False(t, strings.Contains(writes, "GOCACHE=~/"), "the friend's cache path lives in the one line, never hand-written in friendBrief")
 }
 
-// docs/FRIENDS.md: all generated briefs teach the friend report's pinned shape.
-func TestGeneratedBriefPinsTheFriendReportFirstTwoLines(t *testing.T) {
-	t.Parallel()
-	brief := Render(header, Card{ID: "shape", File: "internal/x/x.go", Paths: []string{"internal/x/x.go"}, Test: "internal/x TestX", Tier: "pro", Kind: "fix-red", Task: "Fix x."})
-	assert.Contains(t, brief, "first line exactly Verdict: LAND|HOLD|FAIL, second line exactly Head: <40-hex>")
-	assert.Contains(t, brief, "for HOLD and FAIL omit Head: and leave line 2 blank")
-}
-
 func TestTheDeadlineLineSaysTheJudgmentIsTheCoordinators(t *testing.T) {
 	t.Parallel()
 	const deadlineTail = "; the judgment of a card that runs past it is the coordinator's, so report what you have with the verdict not-done rather than push past it."

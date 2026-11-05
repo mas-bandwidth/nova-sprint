@@ -157,7 +157,7 @@ func TickCoordinatorPass(s *Snapshot, r TickReq) (Plan, int) {
 // idleConds is one condition for each friend not held holding working cards whose last
 // working-to-done finish, or her oldest working card's take when that is later, is older
 // than the friend-finish window, in running time. A read she closed counts as a finish: a
-// verdict (read --ok / --broken, or her outbox report) or a return (read --return), so a
+// verdict (read --ok / --broken) or a return (read --return), so a
 // friend filing reads steadily is not idle (friendReadFinishes).
 func idleConds(s *Snapshot, r TickReq) []cond {
 	if s.Fleet == nil {
@@ -213,9 +213,9 @@ func idleConds(s *Snapshot, r TickReq) []cond {
 			finish = snapshotFriendPronouns(s, f).Sprintf("{their} last finish or read %s ago (at %s)", lastAge.Round(time.Second), stamp(last))
 		}
 		out = append(out, cond{typ: NFriendIdle, primaries: []string{row},
-			what: snapshotFriendPronouns(s, f).Sprintf("friend %s holds %d working (%s) and finished none in %s: %s; check in on {them}: nova-friend reach --as <coordinator> --to %s",
+			what: snapshotFriendPronouns(s, f).Sprintf("friend %s holds %d working (%s) and finished none in %s: %s; check in on {them}: nova-bus send --to %s --subject <s> --body <text>",
 				f, len(ids), Preview(ids, ", "), window, finish, f),
-			decisions: []string{"nova-friend reach --as <coordinator> --to " + f, "friend take " + f + " --all-unstarted", "friend down " + f + " --reason idle", "ack", "wait"}})
+			decisions: []string{"nova-bus send --to " + f + " --subject <s> --body <text>", "friend take " + f + " --all-unstarted", "friend down " + f + " --reason idle", "ack", "wait"}})
 	}
 	return out
 }

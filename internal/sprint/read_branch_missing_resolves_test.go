@@ -23,8 +23,7 @@ func missingAttempt2World(t *testing.T) (*world, []FriendSeat, Open) {
 	dealReads(t, w, seats)
 	reads := readCardsOf(w, "s1-1")
 	require.Len(t, reads, 1, "the fixture: one attempt-2 read, amy's")
-	w.must(FriendReadCloseChecked(w.s, "amy", "s1-1", reads[0].ID, missingReport,
-		map[string]MissingBranch{reads[0].ID: {Named: "sprint/s1-1.g2.e0"}}))
+	w.must(friendReadVerb(w.s, "amy", reads[0].ID, "broken", missingFinding, map[string]MissingBranch{reads[0].ID: {Named: "sprint/s1-1.g2.e0"}}))
 	require.Equal(t, RetiredByMissingBranch, w.s.Fleet.Card(reads[0].ID).F("retired_by"))
 	js := w.openOn("s1-1")
 	require.Len(t, js, 1, "the fixture: the judgment is open")

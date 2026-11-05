@@ -38,11 +38,7 @@ func TestAHeldFriendKeepsNoReadyCards(t *testing.T) {
 	require.Empty(t, onRow(s, sprint.FriendRow("amy"), "f1", sprint.Working))
 
 	// Amy starts only one card (f1-1.w1), so she has 1 working and 2 ready (not begun).
-	r.must(store.FriendStartStep(sprint.FriendStartReq{
-		Friend: "amy",
-		IDs:    []string{"f1-1.w1"},
-		Gens:   map[string]int{"f1-1.w1": 1},
-	}))
+	r.must(store.TakeStep(sprint.TakeReq{As: sprint.FriendRow("amy"), Sel: sprint.Sel{IDs: []string{"f1-1.w1"}}, Gens: map[string]int{"f1-1.w1": 1}, Who: sprint.FriendRow("amy"), LaneByID: true}))
 
 	s = r.snap()
 	require.Equal(t, []string{"f1-1.w1"}, onRow(s, sprint.FriendRow("amy"), "f1", sprint.Working))

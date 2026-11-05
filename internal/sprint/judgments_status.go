@@ -383,11 +383,10 @@ func statusText(s *Snapshot, r TickReq, row statusRow, prev, next statusSeen, ge
 	p := snapshotFriendPronouns(s, f)
 	head := fmt.Sprintf("friend %s is %s (was %s) at %s, transition %d", f, row.word, prev.Word, at, next.N)
 	if generation {
-		head = fmt.Sprintf("friend %s's daemon started again at %s (its start before: %s); status %s at %s, transition %d",
+		head = fmt.Sprintf("friend %s's session started again at %s (its start before: %s); status %s at %s, transition %d",
 			f, stamp(next.Started), stamp(prev.Started), row.word, at, next.N)
 	}
 	wake := "nova-hook hook --as " + f + " --role friend"
-	restart := "launchctl kickstart -k gui/$(id -u)/com.nova.friend-" + f
 	switch row.word {
 	case Up:
 		steps, done := friendSteps(s, r, row)
@@ -396,7 +395,7 @@ func statusText(s *Snapshot, r TickReq, row statusRow, prev, next statusSeen, ge
 		return head + ": the coordinator's hold (" + orDash(row.friend.Why) + "); " + p.Say("{their} started cards finish, the rest went back to ready") + "; release: nova-sprint unhold " + f, true
 	}
 	what := head + ": " + orDash(row.friend.Evidence)
-	what += "; " + lastBeat(row.beat, s.Now) + "; " + p.Say("wake {them}: ") + wake + "; " + p.Say("if {their} daemon is gone, on {their} machine: ") + restart + "; " + p.Say("or hold {them}: ") + "nova-sprint hold " + f + " --reason <text>"
+	what += "; " + lastBeat(row.beat, s.Now) + "; " + p.Say("wake {them}: ") + wake + "; " + p.Say("or hold {them}: ") + "nova-sprint hold " + f + " --reason <text>"
 	return what, false
 }
 
@@ -419,29 +418,29 @@ func friendSteps(s *Snapshot, r TickReq, row statusRow) (string, bool) {
 		}
 		parts = append(parts, fmt.Sprintf("%d %s (%s)", len(parts)+1, text, word))
 	}
-	// 1. update: the daemon runs the current build
+	// 1. update: her tools run the current build (friend beat --build)
 	installed := rep.Build
 	if installed == "" {
 		installed = "a build it did not report"
 	}
 	match := BuildMatch(rep.Build, seat.Current)
-	text := p.Sprintf("update: {their} daemon runs %s, the current build is %s", installed, orDash(seat.Current))
+	text := p.Sprintf("update: {their} tools run %s, the current build is %s", installed, orDash(seat.Current))
 	if match == BuildUnknown && rep.Build != "" && seat.Current != "" {
 		text += ": an unstamped build cannot be compared"
 	}
 	if match != BuildSame {
-		text += "; run: nova-update, then launchctl kickstart -k gui/$(id -u)/com.nova.friend-" + f
+		text += p.Say("; run: nova-update on {their} machine, then start {their} session again")
 	}
 	step(text, match == BuildSame)
 	// 2. check the same authoritative hook record the dashboard reads.
 	present := !rep.Present.IsZero() && !rep.Started.IsZero() && !rep.Present.Before(rep.Started)
 	text = "check nova-hook: " + orDash(seat.Evidence)
 	step(text, seat.Status == Up || seat.Status == Held)
-	// 3. snap to present: the note the daemon sent on its start
+	// 3. snap to present: the note her session was sent on its start (friend beat --present)
 	if present {
-		text = p.Say("snap to present: {their} daemon sent the present on its start at ") + stamp(rep.Present)
+		text = p.Say("snap to present: {their} session was sent the present on its start at ") + stamp(rep.Present)
 	} else {
-		text = p.Say("snap to present: {their} daemon sent no present since its start; run: ") + presentSend(f, s.Now)
+		text = p.Say("snap to present: {their} session was sent no present since its start; run: ") + presentSend(f, s.Now)
 	}
 	step(text, present)
 	// 4. into the sprint: not held, the server's evidence, a take within TakeWithin
@@ -479,8 +478,8 @@ func flappingText(s *Snapshot, row statusRow, rec statusSeen) string {
 	} else {
 		f := row.name
 		what = snapshotFriendPronouns(s, f).Sprintf("friend %s's status is flapping at %s: status %s keeps changing for less than %s, so no transition counts; on %s; %s; "+
-			"wake {them}: nova-friend reach --as %s --to %s; or hold {them}: nova-sprint hold %s --reason <text>",
-			f, at, row.word, StatusDwell, orDash(row.friend.Evidence), lastBeat(row.beat, s.Now), coordinatorName(s), f, f)
+			"wake {them}: nova-bus send --to %s --subject <s> --body <text>; or hold {them}: nova-sprint hold %s --reason <text>",
+			f, at, row.word, StatusDwell, orDash(row.friend.Evidence), lastBeat(row.beat, s.Now), f, f)
 	}
 	return withFlaps(what, rec)
 }

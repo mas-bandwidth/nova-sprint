@@ -71,17 +71,6 @@ func TestReadAsFriendClosesAFriendRowRead(t *testing.T) {
 			})
 		})
 	}
-	t.Run("the same close as her outbox report", func(t *testing.T) {
-		t.Parallel()
-		a, id := friendReadAsked(t)
-		b, _ := friendReadAsked(t)
-		va := Read(a.s, ReadReq{Sel: Sel{IDs: []string{id}}, As: FriendRow("amy"), Verdict: "ok"})
-		vb := FriendReadCloseChecked(b.s, "amy", "s1-1", "", "Verdict: LAND\n", nil)
-		require.Len(t, va.Units, 1)
-		require.Len(t, vb.Units, 1)
-		require.Equal(t, vb.Units[0].Changes, va.Units[0].Changes)
-		require.Equal(t, vb.Units[0].Notes, va.Units[0].Notes)
-	})
 	t.Run("by selection", func(t *testing.T) {
 		t.Parallel()
 		w, id := friendReadAsked(t)
@@ -94,7 +83,7 @@ func TestReadAsFriendClosesAFriendRowRead(t *testing.T) {
 		p := Read(w.s, ReadReq{Sel: Sel{IDs: []string{id}}, As: FriendRow("amy"), Begin: true})
 		require.Empty(t, p.Units)
 		require.NotEmpty(t, p.Refused)
-		require.Contains(t, p.Refused[0].Why, "outbox/<read>/REPORT.md")
+		require.Contains(t, p.Refused[0].Why, "read --as friend.amy (--ok | --broken) <read>")
 	})
 	t.Run("another friend's read", func(t *testing.T) {
 		t.Parallel()
@@ -108,7 +97,7 @@ func TestReadAsFriendClosesAFriendRowRead(t *testing.T) {
 
 // finish on a read on a friend's row is refused with the remedy that returns it: her
 // outbox report, or the read verb; never the generation's refusal, at gen 1 or gen 0.
-func TestFinishRefusesAReadWithTheOutboxRemedy(t *testing.T) {
+func TestFinishRefusesAReadWithTheReadVerbRemedy(t *testing.T) {
 	t.Parallel()
 	for _, gen0 := range []bool{false, true} {
 		w, id := friendReadAsked(t)
@@ -120,7 +109,6 @@ func TestFinishRefusesAReadWithTheOutboxRemedy(t *testing.T) {
 		require.Len(t, p.Refused, 1)
 		why := p.Refused[0].Why
 		require.Contains(t, why, "a read, not work")
-		require.Contains(t, why, "outbox/"+id+"/REPORT.md")
 		require.Contains(t, why, "read --as friend.amy (--ok | --broken) "+id)
 		require.NotContains(t, why, "generation")
 	}

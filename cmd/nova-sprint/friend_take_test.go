@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -37,62 +36,12 @@ func takeApp(t *testing.T, n int, pushed map[string]string, friends ...string) (
 	return ta, root
 }
 
-// queueStates is a friend's queue file, card -> state.
-func queueStates(t *testing.T, root, friend string) map[string]string {
-	t.Helper()
-	b, err := os.ReadFile(filepath.Join(root, friend+"-working", "inbox", "QUEUE.json"))
-	require.NoError(t, err)
-	var q friendQueue
-	require.NoError(t, json.Unmarshal(b, &q))
-	out := map[string]string{}
-	for _, task := range q.Tasks {
-		out[task.ID] = task.State
-	}
-	return out
-}
-
-func TestFriendTakeTakesBackAnUnstartedCardAndTheTickDealsItToAnother(t *testing.T) {
-	t.Parallel()
-	ta, root := takeApp(t, 1, nil, "amy", "bob")
-	ta.ok("friend down bob")
-	ta.ok("tick")
-	var c cardView
-	ta.json("card s1-1", &c)
-	require.Equal(t, sprint.FriendRow("amy"), c.Work[0].Row)
-	ta.ok("friend sync --root " + root)
-	ta.ok("friend up bob")
-	ta.beatUp("bob")
-
-	// s1-1 is dealt to her and not taken (ready on her row): no --working is wanted
-	dry := ta.dry("friend take amy s1-1 --dry-run")
-	assert.Contains(t, dry, "FRIEND-TAKE OK DRY-RUN changes=1 props=0 refused=0; nothing was written")
-	assert.Contains(t, dry, "WOULD s1-1.w1 withdrawn gen=2")
-	out := ta.ok("friend take amy s1-1 --reason 'she is on another job'")
-	assert.NotContains(t, out, "WARNING")
-	assert.Contains(t, out, "s1-1.w1 withdrawn gen=2")
-	assert.Contains(t, out, "FRIEND-TAKE OK moved=1 refused=0")
-	ta.ok("friend sync --root " + root)
-	assert.Equal(t, "taken", queueStates(t, root, "amy")["s1-1.w1"], "her queue file says it is not hers to start")
-
-	ta.ok("tick") // the pump: its primary ready (only the pump writes the work table while it runs)
-	ta.ok("tick")
-	ta.json("card s1-1", &c)
-	require.Len(t, c.Work, 1, "the same card, no second attempt")
-	assert.Equal(t, sprint.FriendRow("bob"), c.Work[0].Row, "dealt to the other friend")
-	assert.Equal(t, "3", c.Work[0].F("gen"))
-	assert.Equal(t, sprint.Working, c.Primary.Col)
-	out = ta.ok("friend sync --root " + root)
-	assert.Contains(t, out, "FRIEND-CARD DELIVERED friend=bob card=s1-1.w1 job=s1-1.w1.g3 branch=sprint/s1-1.w1.g3.e0")
-	assert.Equal(t, "queued", queueStates(t, root, "bob")["s1-1.w1"], "ready on his row until he starts it")
-	ta.clean()
-}
-
 func TestFriendTakeRefusesAStartedCardAndAnotherFriendsCard(t *testing.T) {
 	t.Parallel()
-	ta, root := takeApp(t, 2, map[string]string{"sprint/s1-1.w1.g1.e0": landHead}, "amy", "bob")
+	ta, _ := takeApp(t, 2, map[string]string{"sprint/s1-1.w1.g1.e0": landHead}, "amy", "bob")
 	ta.ok("friend down bob")
 	ta.ok("tick")
-	ta.ok("friend sync --root " + root)
+	ta.ok("friend sync")
 
 	// Default: take what you can, refuse the rest
 	code, _, errs := ta.do("friend take amy s1-1 s1-2")
@@ -122,9 +71,9 @@ func TestFriendTakeRefusesAStartedCardAndAnotherFriendsCard(t *testing.T) {
 
 func TestFriendDownGivesBackEveryCardStartedOrNot(t *testing.T) {
 	t.Parallel()
-	ta, root := takeApp(t, 3, map[string]string{"sprint/s1-1.w1.g1.e0": landHead}, "amy")
+	ta, _ := takeApp(t, 3, map[string]string{"sprint/s1-1.w1.g1.e0": landHead}, "amy")
 	ta.ok("tick") // amy at width 8: all three on her row
-	ta.ok("friend sync --root " + root)
+	ta.ok("friend sync")
 
 	out := ta.ok("friend down amy")
 	assert.Contains(t, out, "FRIEND-DOWN OK moved=3 refused=0")
@@ -175,10 +124,10 @@ func TestTheServerRunsAFriendsBeatWithTheCardsSheIsRunning(t *testing.T) {
 // exactly the two; a working card named wants --working, and with it moves and warns.
 func TestFriendTakeAllUnstartedTakesOnlyTheCardsDealtAndNotTaken(t *testing.T) {
 	t.Parallel()
-	ta, root := takeApp(t, 5, nil, "amy")
+	ta, _ := takeApp(t, 5, nil, "amy")
 	ta.ok("friend up amy --width 3")
 	ta.ok("tick")
-	ta.ok("friend sync --root " + root)
+	ta.ok("friend sync")
 	// her lanes take three: s1-1..s1-3 working, s1-4 and s1-5 dealt and not taken
 	for i := 1; i <= 3; i++ {
 		ta.ok("take --as friend.amy s1-" + strconv.Itoa(i) + ".w1@1")

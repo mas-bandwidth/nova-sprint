@@ -88,7 +88,7 @@ func afternoonLoad(t *testing.T, lanes bool, span time.Duration) map[string]late
 		require.Equal(t, 0, runOnStore(a, addr, args, &out, &errb), "%v: %s %s", args, out.String(), errb.String())
 	}
 	do("init", "--members", "m1:4,m2:4,m3:4,m4:4", "--readers", "reader-a,reader-b")
-	do("friend", "sync", "--root", t.TempDir())
+	do("friend", "sync")
 	do("add", "--stream", "s1", "--count", "200")
 	for i := 1; i <= 4; i++ {
 		do("fleet", "beat", "m"+strconv.Itoa(i), "--load", "0")

@@ -18,14 +18,13 @@ the view you will have of your own team.
 nova-sprint runs alongside [Nova Tools](https://github.com/mas-bandwidth/nova-tools).
 nova-sprint depends on Nova Tools: the `github.com/mas-bandwidth/nova-tools`
 requirement in the sprint repository's [`go.mod`](../go.mod) names the minimum
-compatible Nova Tools version. Nova Tools supplies friends
-(`nova-friend`), presence and delivery (`nova-hook`), the message bus (`nova-bus`), workers (`nova-swarm`) and configuration commands
+compatible Nova Tools version. Nova Tools supplies
+presence and delivery (`nova-hook`), the message bus (`nova-bus`), workers (`nova-swarm`) and configuration commands
 (`nova-config`). Installing nova-sprint alone does not install these tools.
 
 With Go 1.26.6 or newer, run:
 
 ```sh
-go install github.com/mas-bandwidth/nova-tools/cmd/nova-friend@latest
 go install github.com/mas-bandwidth/nova-tools/cmd/nova-hook@latest
 go install github.com/mas-bandwidth/nova-tools/cmd/nova-update@latest
 go install github.com/mas-bandwidth/nova-tools/cmd/nova-bus@latest
@@ -37,7 +36,7 @@ nova-sprint help
 
 Make sure your Go binary directory is on `PATH`, ahead of any older Nova
 installation. These commands download and build the named releases.
-Check an existing installation with `nova-friend version`, `nova-hook version`, `nova-update version`, `nova-bus version`,
+Check an existing installation with `nova-hook version`, `nova-update version`, `nova-bus version`,
 `nova-swarm version`, `nova-config version` and `nova-sprint version`.
 
 These commands install the latest published versions. If you pin versions,

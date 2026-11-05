@@ -39,9 +39,13 @@ func TestLiveCountKeysCountsRunningHeldAndStale(t *testing.T) {
 
 func TestRowBeatIsAFriendsOwnBeat(t *testing.T) {
 	t.Parallel()
-	beats := map[string]Beat{"zhi": {LiveKnown: true}, "hetzner": {Load: 1}}
-	assert.True(t, RowBeat(beats, FriendRow("zhi")).LiveKnown)
+	at := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+	beats := map[string]Beat{"zhi": {At: at, Load: 2, LiveKnown: true, Live: []string{"a@1"}, LiveSince: at, LiveSeen: map[string]time.Time{"a@1": at}}, "hetzner": {Load: 1, LiveKnown: true}}
+	zhi := RowBeat(beats, FriendRow("zhi"))
+	assert.Equal(t, Beat{At: at, Load: 2}, zhi, "her own beat, with a live set an old record still carries cut")
+	assert.True(t, beats["zhi"].LiveKnown, "the record itself is not changed")
 	assert.Equal(t, 1.0, RowBeat(beats, "hetzner").Load)
+	assert.True(t, RowBeat(beats, "hetzner").LiveKnown, "a member keeps its live set")
 }
 
 func TestNextLiveKeepsSightingsAndTheFirstLiveBeat(t *testing.T) {

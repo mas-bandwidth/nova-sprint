@@ -13,8 +13,8 @@ import (
 )
 
 // A friend's lane asks the server what it holds and takes its next card in one verb, through
-// the server as her daemon sends it, naming her row and its lane and nothing else (lanetake.go;
-// nova-tools tla/FriendLane.tla). The faults of 2026-10-10 on a one-shot friend host: "took" logged while the
+// the server as her nova-hook lane client sends it, naming her row and its lane and nothing
+// else (lanetake.go; nova-tools tla/ServerLane.tla). The faults of 2026-10-10 on a friend host: "took" logged while the
 // server still showed the card ready (the take stamped no start of hers and the tick put it
 // back), and progress sent at epoch 0 for a job whose directory named none.
 
@@ -112,8 +112,7 @@ func laneRankApp(t *testing.T, cards ...laneCard) *testApp {
 	t.Helper()
 	ta, _ := friendApp(t, "f")
 	ta.a.tip = tipIs(t, landHead)
-	root := t.TempDir()
-	ta.ok("friend sync --root " + root)
+	ta.ok("friend sync")
 	ta.beatUp("f")
 	for _, c := range cards {
 		dir := t.TempDir()

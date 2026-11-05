@@ -28,10 +28,10 @@ func friendReadyApp(t *testing.T) (*testApp, *config.Mem, string) {
 	cfg := config.NewMem()
 	ta.a.friends = func(ctx context.Context, _ string) ([]config.Row, error) { return cfg.List(ctx, config.KindFriend) }
 	for _, f := range []string{"amy", "bob"} {
-		_, err := cfg.Insert(context.Background(), config.KindFriend, config.Row{Name: f, Fields: map[string]string{"width": "2", "tiers": "flash", "mode": "batch"}}, "t")
+		_, err := cfg.Insert(context.Background(), config.KindFriend, config.Row{Name: f, Fields: map[string]string{"width": "2", "tiers": "flash"}}, "t")
 		require.NoError(t, err)
 	}
-	ta.ok("friend sync --root " + root)
+	ta.ok("friend sync")
 	ta.ok("friend down bob")
 	ta.ok("friend beat amy")
 	ta.ok("tick")
@@ -41,7 +41,7 @@ func friendReadyApp(t *testing.T) (*testApp, *config.Mem, string) {
 	require.Equal(t, 2, f["amy"].Ready)
 	_, _, err := cfg.Update(context.Background(), config.KindFriend, "amy", map[string]string{"width": "3"}, "t")
 	require.NoError(t, err)
-	ta.ok("friend sync --root " + root)
+	ta.ok("friend sync")
 	ta.ok("friend beat amy")
 	return ta, cfg, root
 }
@@ -157,11 +157,11 @@ func TestADealTakesAFriendsReadyCardAndOneLeftReadyIsAJudgment(t *testing.T) {
 
 	// held, every card of hers is handed back, begun or not: a held friend keeps no card (the
 	// owner, 2026-10-09); the ready judgment is for a friend up whose card nobody takes
-	ta, cfg, root := friendReadyApp(t)
+	ta, cfg, _ := friendReadyApp(t)
 	ta.ok("hold amy --reason 'away'")
 	_, _, err := cfg.Update(context.Background(), config.KindFriend, "amy", map[string]string{"width": "4"}, "t")
 	require.NoError(t, err)
-	ta.ok("friend sync --root " + root)
+	ta.ok("friend sync")
 	ta.ok("tick")
 	c = freshCard(ta, "s1-3")
 	require.Equal(t, sprint.Withdrawn, c.Work[0].Col, "the hold hands her ready card back")

@@ -3,11 +3,12 @@ package store
 import (
 	"context"
 	"errors"
+	"testing"
+	"time"
+
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-tools/hook"
 	"github.com/stretchr/testify/require"
-	"testing"
-	"time"
 )
 
 func TestFriendRowsUseHookAndHoldWithoutReportInference(t *testing.T) {

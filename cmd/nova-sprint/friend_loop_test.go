@@ -239,3 +239,18 @@ func TestFriendSyncFailingPastAMinuteIsOneJudgmentThatClosesWhenAPassIsOK(t *tes
 	}
 	assert.Equal(t, 1, ta.group(sprint.NFriendSyncFailing, "").Count, "its answer stands in the inbox: closed by the tick, not the coordinator")
 }
+
+// A loop row or unit written before 2026-11-05 may still pass --root to friend sync. The flag
+// is retired and ignored, said as a NOTE, so the row keeps syncing after the adopt until it is
+// changed (docs/FRIENDS.md).
+func TestFriendSyncAcceptsTheRetiredRootAndSaysSo(t *testing.T) {
+	t.Parallel()
+	ta, _ := friendApp(t, "amy")
+	code, out, errs := ta.do("friend sync --root /home/old")
+	assert.Equal(t, 0, code, errs)
+	assert.Contains(t, out, "FRIEND-SYNC OK")
+	assert.Contains(t, errs, "NOTE --root is retired and ignored")
+	code, _, errs = ta.do("friend sync")
+	assert.Equal(t, 0, code, errs)
+	assert.NotContains(t, errs, "--root", "no NOTE without the flag")
+}

@@ -715,20 +715,18 @@ func TestAReaskedFriendReadTwiceClosesAtItsSecondGeneration(t *testing.T) {
 	t.Parallel()
 	w, seats, first := friendReadWorld(t)
 	named, holds := "sprint/s1-1.w1.g3.e0", "sprint/s1-1.w1.g1.e0"
-	w.must(FriendReadCloseChecked(w.s, "amy", "s1-1", first.ID, missingReport,
-		map[string]MissingBranch{first.ID: {Named: named, Holds: holds}}))
+	w.must(friendReadVerb(w.s, "amy", first.ID, "broken", missingFinding, map[string]MissingBranch{first.ID: {Named: named, Holds: holds}}))
 	dealReads(t, w, seats)
 	again := readCardsOf(w, "s1-1")
 	require.Len(t, again, 1, "asked again")
 	require.Equal(t, first.ID+".g1", again[0].ID)
-	w.must(FriendReadCloseChecked(w.s, "amy", "s1-1", again[0].ID, missingReport,
-		map[string]MissingBranch{again[0].ID: {Named: named, Holds: holds}}))
+	w.must(friendReadVerb(w.s, "amy", again[0].ID, "broken", missingFinding, map[string]MissingBranch{again[0].ID: {Named: named, Holds: holds}}))
 	dealReads(t, w, seats)
 	second := readCardsOf(w, "s1-1")
 	require.Len(t, second, 1, "asked again twice")
 	require.Equal(t, first.ID+".g2", second[0].ID, "the second re-ask is generation 2")
 	require.Contains(t, ReadCardExtras(w.s), first.ID+".g3", "the store must read the generation after the highest it holds")
-	w.must(FriendReadCloseChecked(w.s, "amy", "s1-1", second[0].ID, "Verdict: LAND\n", nil))
+	w.must(friendReadVerb(w.s, "amy", second[0].ID, "ok", "", nil))
 	require.Equal(t, "ok", w.s.Fleet.Card(second[0].ID).F("verdict"), "her report on .g2 closes it by its own key")
 }
 
