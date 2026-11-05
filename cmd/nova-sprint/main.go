@@ -34,6 +34,7 @@ import (
 	"github.com/mas-bandwidth/nova-sprint/docs"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint/store"
+	"github.com/mas-bandwidth/nova-sprint/internal/worker"
 	"github.com/mas-bandwidth/nova-sprint/pkg/swarm"
 	"github.com/mas-bandwidth/nova-tools/hook"
 	"github.com/mas-bandwidth/nova-tools/pkg/buildinfo"
@@ -127,6 +128,12 @@ type app struct {
 	// and random bytes): tests give a counter, so an id is the same on every run.
 	newID func() string
 	loc   *time.Location // the zone times print in: nil is the machine's local zone
+	// the worker's seams (worker.go): the wall binary ("" is nova-sandbox on PATH), the
+	// server's delivery (nil is a sprintwire client of the named server) and the passes
+	// to run before it stops (0: until stopped)
+	workerWall  string
+	workerSend  worker.Send
+	workerTicks int
 	// notify is how an interrupt reaches a command that runs until it is
 	// interrupted (where --watch): the context it returns is done at one.
 	notify func(ctx context.Context) (context.Context, context.CancelFunc)

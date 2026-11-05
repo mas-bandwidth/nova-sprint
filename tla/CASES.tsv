@@ -818,3 +818,6 @@ MCFriendRedealProgress.cfg	MCFriendRedealProgress.tla	pass	-	ignore-terminal	fri
 MCFriendRedealProgressBrokenIgnoreProgress.cfg	MCFriendRedealProgress.tla	invariant	NoRedealWhileProgressing	ignore-terminal	friendredealprogress	required	-
 MCFriendRedealProgressBrokenNeverRedeal.cfg	MCFriendRedealProgress.tla	invariant	StaleIsRedealt	ignore-terminal	friendredealprogress	required	-
 MCFriendRedealProgressBrokenDropCarry.cfg	MCFriendRedealProgress.tla	invariant	CarriedHeadKept	ignore-terminal	friendredealprogress	required	-
+MCWorker.cfg	MCWorker.tla	pass	-	ignore-terminal	worker	required	-
+MCWorkerBrokenReportStale.cfg	MCWorker.tla	invariant	NoStaleReport	ignore-terminal	worker	required	-
+MCWorkerBrokenDeadlineOk.cfg	MCWorker.tla	invariant	ExpiredNeverOk	ignore-terminal	worker	required	-
