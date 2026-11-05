@@ -77,6 +77,8 @@ func main() {
 // shared by every verb it runs (the driver runs many), its clock, and how it
 // sleeps. Tests give it a backend of their own.
 type app struct {
+	// liveJobs is friend clean's read of the friends' placed cards (nil: the sprint store)
+	liveJobs        liveJobsFn
 	readFriendHooks func(context.Context, ...string) ([]hook.Status, time.Time, error)
 	seatEnvironment *seatEnvironment
 	getenv          func(string) string

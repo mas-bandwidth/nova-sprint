@@ -29,14 +29,16 @@ import (
 // machine that holds the directories, over every friend row of nova-config (the
 // coordinator is one):
 //
-//   - a job is a directory inbox/<job>/ (the clone beside the brief, the layout before the
-//     brief's line) or jobs/<job>/ (the brief's line, docs/FRIENDS.md); it is done when
-//     outbox/<job>/REPORT.md exists (the inbox/outbox standard), its age that report's;
+//   - a job is a directory jobs/<job>/ (as friend stage makes it, docs/FRIENDS.md) or
+//     inbox/<job>/ (the layout before it) named for a card, as friend stage names it
+//     (friendJobOf: the card's stored id, .g<gen> from 2); it is done when the sprint store
+//     places no card of that id on the friend's row (ready or working: the card was
+//     finished, retired or taken back), its age the time since its JOB.md (else the
+//     directory) was last written; a directory named for no card is no job;
 //   - inside a done job at least --days old, each clone (a directory holding .git, a
 //     repository's directory or a worktree's file) with nothing uncommitted, no stash and
 //     no commit missing from every remote-tracking ref is removed, and so is build output
-//     (cleanBuildRE) that is no clone; nothing else of the job, and nothing in outbox/, is
-//     ever touched;
+//     (cleanBuildRE) that is no clone; nothing else of the job is ever touched;
 //   - a dirty clone of a done job at least --days old is listed, one line a run, and kept
 //     until the job is cleanDirtyDays old, when it is removed whatever its state, its line
 //     saying it was dirty;
@@ -44,9 +46,9 @@ import (
 //     gocache.Limit as the member holds its pool's.
 //
 // A job not done, a job younger than --days, a link, and every file outside a removed
-// directory are left as they are. Every removal is safepath.RemoveUnderRoots under the
-// job's own directory. The rule is decided by cleanJob over what the walk found; the
-// walk, git and the removal are the only I/O, and a dry run does all but the removal.
+// directory are left as they are; a store that cannot be read removes nothing. Every
+// removal is safepath.RemoveUnderRoots under the job's own directory. The store's read,
+// the walk, git and the removal are the only I/O, and a dry run does all but the removal.
 
 // cleanDays is how many days a done job's clean clones are kept: the owner's three
 // (ideas#833).
@@ -62,7 +64,9 @@ var cleanBuildRE = regexp.MustCompile(`^(node_modules|target|gocache|gocache-.+|
 
 // friendClean is one run of the rule over every friend's directory.
 type friendClean struct {
-	root  string // the directory holding each <name>-working
+	root string // the directory holding each <name>-working
+	// live is the job names of the cards the store places on the friend's row (liveJobsFn)
+	live  func(friend string) (map[string]bool, error)
 	days  int
 	dry   bool
 	now   time.Time
@@ -81,6 +85,60 @@ type cleanTarget struct {
 	clone       bool
 }
 
+// liveJobsFn opens what friend clean reads the friends' placed cards from: the sprint
+// store (storeLiveJobs); a test gives its own.
+type liveJobsFn func(ctx context.Context, c common) (func(friend string) (map[string]bool, error), error)
+
+// storeLiveJobs reads, per friend, the cards placed (ready or working) on her row in the
+// sprint store, each as the job friend stage names it without its generation (the card's
+// stored id at the store's epoch): every generation of a placed card is kept.
+func (a *app) storeLiveJobs(ctx context.Context, c common) (func(friend string) (map[string]bool, error), error) {
+	st, err := a.store(c)
+	if err != nil {
+		return nil, err
+	}
+	epoch := st.PinnedEpoch()
+	return func(friend string) (map[string]bool, error) {
+		cards, err := st.ReadCells(ctx, sprint.Fleet, sprint.FriendRow(friend), sprint.Ready, sprint.Working)
+		if err != nil {
+			return nil, err
+		}
+		live := map[string]bool{}
+		for _, cd := range cards {
+			id, _ := jobCard(sprint.StoredID(cd.ID, epoch))
+			live[id] = true
+		}
+		return live, nil
+	}, nil
+}
+
+// jobGenRE is a job name's generation suffixes (friendJobOf: .g<gen> from 2, after a
+// re-asked read's own .g<n>, ReadCardSecondID).
+var jobGenRE = regexp.MustCompile(`(\.g[0-9]+)+$`)
+
+// jobCardRE is a friend's card as friend stage names its job: a work card
+// (<primary>.w<attempt>) or a read card (<primary>.r<attempt>.<reader>), with the
+// ~<epoch> after a clear (sprint.StoredID).
+var jobCardRE = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_-]*\.(w[0-9]+|r[0-9]+\.[A-Za-z0-9_-]+)(~[0-9]+)?$`)
+
+// jobCard is the card a job directory is named for, its generation suffixes cut (every
+// generation of one card is one job to the rule), and whether the name is a friend's card
+// at all.
+func jobCard(job string) (string, bool) {
+	id := jobGenRE.ReplaceAllString(job, "")
+	return id, jobCardRE.MatchString(id)
+}
+
+// jobAge is how long ago the job was last staged: its JOB.md's time, else the directory's.
+func jobAge(now time.Time, dir string) (time.Duration, bool) {
+	for _, p := range []string{filepath.Join(dir, "JOB.md"), dir} {
+		if fi, err := os.Lstat(p); err == nil {
+			return now.Sub(fi.ModTime()), true
+		}
+	}
+	return 0, false
+}
+
 // friend clean's own exit codes, its -h's line (verbhelp.go).
 func init() {
 	verbExit["friend clean"] = "exit codes: 0 FRIENDS-CLEAN OK, 1 a removal or a read failed (FRIENDS-CLEAN FAILED names each; the summary is FRIENDS-CLEAN INCOMPLETE) or a friend row's name refused, 2 usage, 3 the config could not be read or holds no friend row"
@@ -92,7 +150,7 @@ func (a *app) cmdFriendClean(args []string, stdout, stderr io.Writer) int {
 	pg := fs.String("pg", "", "the config store whose friend rows are the roster, Postgres postgres://user@host:port/db with no password (else NOVA_PG_DSN; the password from the variable NOVA_PG_PASSWORD_ENV names), as nova-config takes it")
 	file := fs.String("file", "", "a nova-config store file in PostgreSQL's place (nova-config --file), for trying it with no database")
 	root := fs.String("root", "", "the directory holding each friend's <name>-working (else HOME, else the user's home)")
-	days := fs.Int("days", cleanDays, "a done job's clean clones and build output are removed once its REPORT.md is this many days old")
+	days := fs.Int("days", cleanDays, "a done job's clean clones and build output are removed once its JOB.md is this many days old")
 	dry := fs.Bool("dry-run", false, "print every removal and listing with the bytes it would free, and remove nothing")
 	pos, err := parse(fs, args)
 	switch {
@@ -103,7 +161,7 @@ func (a *app) cmdFriendClean(args []string, stdout, stderr io.Writer) int {
 	case *pg != "" && *file != "":
 		return refuse(stderr, name, "--pg and --file are exclusive: --file reads the friend rows from a nova-config store file in PostgreSQL's place")
 	case *days < 1:
-		return refuse(stderr, name, fmt.Sprintf("--days is at least 1, got %d: the days a done job's report is old before its clean clones go", *days))
+		return refuse(stderr, name, fmt.Sprintf("--days is at least 1, got %d: the days a done job's JOB.md is old before its clean clones go", *days))
 	}
 	if *root == "" {
 		*root = a.getenv("HOME")
@@ -138,7 +196,16 @@ func (a *app) cmdFriendClean(args []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 	}
-	cl := &friendClean{root: *root, days: *days, dry: *dry, now: a.now(),
+	open := a.liveJobs
+	if open == nil {
+		open = a.storeLiveJobs
+	}
+	live, err := open(context.Background(), *c)
+	if err != nil {
+		fmt.Fprintf(stderr, "%s %s: the sprint store cannot be read: %s; nothing was removed\n", prog, name, oneline.WithRemedy(err.Error(), "nova-sprint where"))
+		return exitCannotRead
+	}
+	cl := &friendClean{root: *root, days: *days, dry: *dry, now: a.now(), live: live,
 		cache: gocache.Bounds{Limit: gocache.Limit, Slack: gocache.Slack, Remove: math.MaxInt}}
 	for _, n := range names {
 		cl.friend(n)
@@ -198,6 +265,11 @@ func (cl *friendClean) friend(name string) {
 		cl.say("FRIENDS-CLEAN FRIEND %s dir=%s absent: no working directory on this machine", oneline.Escape(name), oneline.Escape(w))
 		return
 	}
+	live, err := cl.live(name)
+	if err != nil {
+		cl.fail(name, w, fmt.Errorf("the sprint store cannot be read: %w", err))
+		return
+	}
 	freed, listed := cl.freed, cl.listed
 	jobs, done := map[string]bool{}, map[string]bool{}
 	for _, area := range []string{"inbox", "jobs"} {
@@ -213,14 +285,18 @@ func (cl *friendClean) friend(name string) {
 			if !e.IsDir() || strings.HasPrefix(job, ".") || !safepath.NameOK(job) {
 				continue // a file (README.md), a link, a hidden or odd name: no job
 			}
+			id, isCard := jobCard(job)
+			if !isCard {
+				continue // named for no card: no job
+			}
 			jobs[job] = true
-			report, err := os.Lstat(filepath.Join(w, "outbox", job, "REPORT.md"))
-			if err != nil || !report.Mode().IsRegular() {
-				continue // not done
+			if live[id] {
+				continue // its card is placed on her row: not done
 			}
 			done[job] = true
-			if age := cl.now.Sub(report.ModTime()); age >= time.Duration(cl.days)*24*time.Hour {
-				cl.job(name, filepath.Join(w, area, job), area == "jobs", age)
+			dir := filepath.Join(w, area, job)
+			if age, ok := jobAge(cl.now, dir); ok && age >= time.Duration(cl.days)*24*time.Hour {
+				cl.job(name, dir, area == "jobs", age)
 			}
 		}
 	}

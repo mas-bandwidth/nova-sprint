@@ -182,8 +182,10 @@ slots keep (a launch that is done leaves no checkout; docs/SPEC-SWARM.md,
 "cleanup must be auto!"). `nova-sprint friend clean`, for every friend row
 (docs/SPEC-SPRINT.md, `friend clean`):
 
-1. A job is `inbox/<job>/` or `jobs/<job>/`; it is done when
-   `outbox/<job>/REPORT.md` exists, and its age is that report's.
+1. A job is `inbox/<job>/` or `jobs/<job>/`, named for its card as
+   `friend stage` names it. It is done when the sprint store holds that card
+   in none of her ready or working cells; its age is its `JOB.md`'s (else the
+   directory's). A directory named for no card is never touched.
 2. Inside a done job at least 3 days old (`--days`), a clone with nothing
    uncommitted, no stash and no commit missing from every remote-tracking ref
    is removed, and so is build output (`node_modules`, `target`, `gocache`,
@@ -201,10 +203,11 @@ slots keep (a launch that is done leaves no checkout; docs/SPEC-SWARM.md,
 removes nothing. The run ends `FRIENDS-CLEAN OK freed=<bytes> listed=<n>`.
 
 It runs from a loop row on the machine that holds the directories, once a day,
-reading the roster from the config store:
+reading the roster from the config store and her cards from the sprint
+store (a store that cannot be read removes nothing, exit 3):
 
 ```
-nova-config loop add friend-clean-bench-a --machine bench-a --argv '["/usr/bin/env","NOVA_PG_PASSWORD_ENV=NOVA_PG_CONFIG_PASSWORD","nova-sprint","friend","clean","--pg","postgres://nova_config@localhost:5432/nova"]' --seat bench --keys NOVA_PG_CONFIG_PASSWORD --every 86400 --as ada
+nova-config loop add friend-clean-bench-a --machine bench-a --argv '["/usr/bin/env","NOVA_PG_PASSWORD_ENV=NOVA_PG_CONFIG_PASSWORD","NOVA_SPRINT_REDIS=127.0.0.1:6380","NOVA_SPRINT_REDIS_USER=coordinator","NOVA_SPRINT_REDIS_PASSWORD_ENV=NOVA_REDIS_COORDINATOR_PASSWORD","nova-sprint","friend","clean","--pg","postgres://nova_config@localhost:5432/nova"]' --seat bench --keys NOVA_PG_CONFIG_PASSWORD,NOVA_REDIS_COORDINATOR_PASSWORD --every 86400 --as ada
 ```
 
 Its log is the loop's, `~/nova-bench/loops/friend-clean-bench-a.log`.

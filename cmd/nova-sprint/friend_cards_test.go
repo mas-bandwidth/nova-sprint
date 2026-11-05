@@ -54,14 +54,6 @@ func friendCardApp(t *testing.T, who string, friends ...string) (*testApp, strin
 	return ta, root
 }
 
-// outboxReport writes the friend's REPORT.md of the job.
-func outboxReport(t *testing.T, root, friend, job, report string) {
-	t.Helper()
-	dir := filepath.Join(root, friend+"-working", "outbox", job)
-	require.NoError(t, os.MkdirAll(dir, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "REPORT.md"), []byte(report), 0o644))
-}
-
 // A twin's verbs beat its machines, never a friend's row: a twin holding a friend's card
 // opens as before.
 func TestATwinBeatsNoFriendRow(t *testing.T) {

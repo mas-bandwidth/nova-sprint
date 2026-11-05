@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,8 +23,10 @@ import (
 // friend clean (friendclean.go; docs/FRIENDS.md; ideas#833, the owner 2026-10-02: "we
 // might just need the same thing for friends! eg. working directories." and "cleanup
 // must be auto!"): a done job's clean clones and build output older than three days go,
-// a dirty clone is listed and goes at fourteen days, a job not done is kept, and no text
-// is touched. The fixture is real directories and real git; the clock is the test app's.
+// a dirty clone is listed and goes at fourteen days, a job not done (its card placed on
+// the friend's row in the store) is kept, and no text is touched. The fixture is real
+// directories and real git, the store's placed cards a fake (liveJobsFixture); the clock
+// is the test app's.
 
 // cleanGit runs git for the fixture, with no global configuration and an identity.
 func cleanGit(t *testing.T, dir string, args ...string) {
@@ -49,12 +52,31 @@ func cleanOrigin(t *testing.T) (clone func(dir string)) {
 	return func(dir string) { cleanGit(t, "", "clone", "-q", origin, dir) }
 }
 
-// doneAt writes outbox/<job>/REPORT.md under w, its time age before now.
+// doneAt writes the job's JOB.md under w (jobs/<job>/, else inbox/<job>/ when that is
+// where the job is), its time age before now: the job's age.
 func doneAt(t *testing.T, w, job string, now time.Time, age time.Duration) {
 	t.Helper()
-	testkit.Tree(t, w, map[string]string{"outbox/" + job + "/REPORT.md": "Verdict: OK\n"})
-	report := filepath.Join(w, "outbox", job, "REPORT.md")
-	require.NoError(t, os.Chtimes(report, now.Add(-age), now.Add(-age)))
+	area := "jobs"
+	if !pathThere(filepath.Join(w, "jobs", job)) {
+		area = "inbox"
+	}
+	testkit.Tree(t, w, map[string]string{area + "/" + job + "/JOB.md": "CARD: " + job + "\n"})
+	jobMD := filepath.Join(w, area, job, "JOB.md")
+	require.NoError(t, os.Chtimes(jobMD, now.Add(-age), now.Add(-age)))
+}
+
+// liveJobsFixture is the store's placed cards for friend clean: the friend's jobs named
+// (stored card ids), none for any other friend.
+func liveJobsFixture(placed map[string][]string) liveJobsFn {
+	return func(context.Context, common) (func(string) (map[string]bool, error), error) {
+		return func(friend string) (map[string]bool, error) {
+			live := map[string]bool{}
+			for _, id := range placed[friend] {
+				live[id] = true
+			}
+			return live, nil
+		}, nil
+	}
 }
 
 // friendTrees is the fixture: ada's and bo's working directories under root, a job of
@@ -71,32 +93,31 @@ func newFriendTrees(t *testing.T) friendTrees {
 	t.Helper()
 	ta := newTestApp(t)
 	ta.a.friends = friendRows("ada", "bo", "cy")
+	ta.a.liveJobs = liveJobsFixture(map[string][]string{"ada": {"s1-5.w1"}})
 	now, day := ta.a.now(), 24*time.Hour
 	root := t.TempDir()
 	ada, bo := filepath.Join(root, "ada-working"), filepath.Join(root, "bo-working")
 	f := friendTrees{ta: ta, root: root}
 	clone := cleanOrigin(t)
 
-	// done, clean, old, today's layout (the clone inside the inbox job): the clone, the
-	// build output and a worktree's leftovers go; the brief, the notes and the report stay
-	j := "2026-09-20-done-clean"
+	// done, clean, old, the layout before friend stage (the clone inside the inbox job): the
+	// clone, the build output and a worktree's leftovers go; the brief and the notes stay
+	j := "s1-1.w1"
 	testkit.Tree(t, ada, map[string]string{
 		"inbox/" + j + "/BRIEF.md":            "the brief\n",
 		"inbox/" + j + "/gocache/00/x":        "cache",
 		"inbox/" + j + "/wt-agent7/notes.txt": "a worktree's leftovers",
 		"inbox/" + j + "/node_modules/a/i.js": "x",
 		"inbox/" + j + "/notes/finding.md":    "text stays",
-		"outbox/" + j + "/evidence.md":        "evidence\n",
 	})
 	clone(filepath.Join(ada, "inbox", j, "nova-tools"))
 	doneAt(t, ada, j, now, 5*day)
 	in := filepath.Join(ada, "inbox", j)
 	f.gone = append(f.gone, filepath.Join(in, "nova-tools"), filepath.Join(in, "gocache"), filepath.Join(in, "wt-agent7"), filepath.Join(in, "node_modules"))
-	f.kept = append(f.kept, filepath.Join(in, "BRIEF.md"), filepath.Join(in, "notes", "finding.md"),
-		filepath.Join(ada, "outbox", j, "REPORT.md"), filepath.Join(ada, "outbox", j, "evidence.md"))
+	f.kept = append(f.kept, filepath.Join(in, "BRIEF.md"), filepath.Join(in, "notes", "finding.md"), filepath.Join(in, "JOB.md"))
 
 	// done, clean, old, the brief's layout (jobs/<job>/): its clone and target go
-	j = "2026-09-21-jobs-layout"
+	j = "s1-2.w1"
 	clone(filepath.Join(bo, "jobs", j, "schema"))
 	testkit.Tree(t, bo, map[string]string{"inbox/" + j + "/BRIEF.md": "brief\n", "jobs/" + j + "/target/debug/x": "rust"})
 	doneAt(t, bo, j, now, 4*day)
@@ -104,7 +125,7 @@ func newFriendTrees(t *testing.T) friendTrees {
 	f.kept = append(f.kept, filepath.Join(bo, "inbox", j, "BRIEF.md"))
 
 	// done, old, an uncommitted file: listed and kept
-	j = "2026-09-22-done-dirty"
+	j = "s1-3.w1"
 	c := filepath.Join(ada, "jobs", j, "message-bus")
 	clone(c)
 	testkit.Tree(t, c, map[string]string{"wip.go": "package main\n"})
@@ -113,7 +134,7 @@ func newFriendTrees(t *testing.T) friendTrees {
 	f.kept = append(f.kept, filepath.Join(c, "wip.go"))
 
 	// done, old, a commit never pushed: listed and kept
-	j = "2026-09-23-done-unpushed"
+	j = "s1-4.w1"
 	c = filepath.Join(bo, "inbox", j, "netcode")
 	clone(c)
 	cleanGit(t, c, "commit", "-q", "--allow-empty", "-m", "local only")
@@ -121,31 +142,34 @@ func newFriendTrees(t *testing.T) friendTrees {
 	f.dirty = append(f.dirty, c)
 	f.kept = append(f.kept, filepath.Join(c, "main.go"))
 
-	// not done (outbox/<job>/ there, no REPORT.md), however old: kept
-	j = "2026-09-01-working"
+	// not done (its card placed on her row in the store), however old: kept
+	j = "s1-5.w1"
 	c = filepath.Join(ada, "inbox", j, "nova")
 	clone(c)
-	testkit.Tree(t, ada, map[string]string{"outbox/" + j + "/progress.md": "half\n", "inbox/" + j + "/gocache/x": "c"})
+	testkit.Tree(t, ada, map[string]string{"inbox/" + j + "/gocache/x": "c"})
+	doneAt(t, ada, j, now, 30*day)
 	f.kept = append(f.kept, filepath.Join(c, "main.go"), filepath.Join(ada, "inbox", j, "gocache", "x"))
 
 	// done, clean, but a day ago: kept
-	j = "2026-10-01-done-young"
+	j = "s1-6.w1"
 	c = filepath.Join(ada, "inbox", j, "rocketnet")
 	clone(c)
 	doneAt(t, ada, j, now, day)
 	f.kept = append(f.kept, filepath.Join(c, "main.go"))
 
 	// done, dirty, past fourteen days: removed whatever its state, and said so
-	j = "2026-09-10-done-dirty-old"
+	j = "s1-7.w1.g2"
 	c = filepath.Join(bo, "jobs", j, "reliable")
 	clone(c)
 	testkit.Tree(t, c, map[string]string{"forgotten.go": "package main\n"})
 	doneAt(t, bo, j, now, 15*day)
 	f.gone = append(f.gone, c)
 
-	// the friend's own files beside the jobs are no job
-	testkit.Tree(t, ada, map[string]string{"ada/memory.md": "mine\n", "inbox/README.md": "how to read the inbox\n"})
-	f.kept = append(f.kept, filepath.Join(ada, "ada", "memory.md"), filepath.Join(ada, "inbox", "README.md"))
+	// the friend's own files beside the jobs are no job, and a directory named for no card
+	// is no job either, however old
+	testkit.Tree(t, ada, map[string]string{"ada/memory.md": "mine\n", "inbox/README.md": "how to read the inbox\n", "jobs/my-notes/gocache/x": "c"})
+	doneAt(t, ada, "my-notes", now, 30*day)
+	f.kept = append(f.kept, filepath.Join(ada, "ada", "memory.md"), filepath.Join(ada, "inbox", "README.md"), filepath.Join(ada, "jobs", "my-notes", "gocache", "x"))
 	return f
 }
 
@@ -224,8 +248,8 @@ func TestFriendCleanDaysIsTheAgeOfADoneJob(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal([]byte(out), &got), out)
 	all := strings.Join(got.Lines, "\n")
-	assert.NotContains(t, all, "2026-09-20-done-clean", "a job done five days ago is young at --days 10")
-	assert.Contains(t, all, "2026-09-10-done-dirty-old", "fifteen days is past both")
+	assert.NotContains(t, all, "s1-1.w1", "a job done five days ago is young at --days 10")
+	assert.Contains(t, all, "s1-7.w1.g2", "fifteen days is past both")
 	assert.Zero(t, got.Listed)
 	assert.True(t, got.DryRun)
 	assert.Positive(t, got.Freed)
@@ -299,5 +323,20 @@ func TestFriendCleanRefusals(t *testing.T) {
 		code, _, errs := ta.do(tc.line)
 		assert.Equal(t, tc.code, code, "%s: %s", tc.line, errs)
 		assert.Contains(t, errs, tc.says, tc.line)
+	}
+}
+
+// A store that cannot be read removes nothing: done is the store's word, never a guess.
+func TestFriendCleanRefusesWithNoStore(t *testing.T) {
+	t.Parallel()
+	f := newFriendTrees(t)
+	f.ta.a.liveJobs = func(context.Context, common) (func(string) (map[string]bool, error), error) {
+		return nil, errors.New("no sprint store")
+	}
+	code, _, errs := f.run()
+	assert.Equal(t, exitCannotRead, code)
+	assert.Contains(t, errs, "the sprint store cannot be read")
+	for _, p := range f.gone {
+		assert.True(t, pathThere(p), "%s removed with no store", p)
 	}
 }

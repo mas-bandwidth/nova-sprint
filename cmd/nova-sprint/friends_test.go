@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -56,26 +54,6 @@ func friendApp(t *testing.T, friends ...string) (*testApp, *config.Mem) {
 	}
 	ta.ok("init --readers reader-a,reader-b --members m1,m2")
 	return ta, cfg
-}
-
-// jobs writes a fixture of a friend's working directory under root, the
-// inbox/outbox standard: <root>/<friend>-working/inbox/<job>/BRIEF.md for every
-// job named; outbox/<job>/ for every job in working; outbox/<job>/REPORT.md with
-// the text given for every job done. A friend not named has no directory.
-func jobs(t *testing.T, root, friend string, inbox []string, working []string, done map[string]string) {
-	t.Helper()
-	dir := filepath.Join(root, friend+"-working")
-	for _, j := range inbox {
-		require.NoError(t, os.MkdirAll(filepath.Join(dir, "inbox", j), 0o755))
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "inbox", j, "BRIEF.md"), []byte("# "+j+"\n"), 0o644))
-	}
-	for _, j := range working {
-		require.NoError(t, os.MkdirAll(filepath.Join(dir, "outbox", j), 0o755))
-	}
-	for j, report := range done {
-		require.NoError(t, os.MkdirAll(filepath.Join(dir, "outbox", j), 0o755))
-		require.NoError(t, os.WriteFile(filepath.Join(dir, "outbox", j, "REPORT.md"), []byte(report), 0o644))
-	}
 }
 
 // A friend's width is her friend row's (the owner, 2026-10-02: "6/1 seems a bit
