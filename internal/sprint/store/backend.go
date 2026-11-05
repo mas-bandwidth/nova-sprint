@@ -93,8 +93,10 @@ type Backend interface {
 	// GuardedRows applies the row writes at the pinned epoch in one atomic exchange with
 	// a read of the epoch's restore state (the sprint's epoch, its set-defaults owed flag
 	// and its restore's marker), and only when that state is the one the guard wants: the
-	// restore's own writes while it is pending, a verb's writes while it is not. Otherwise
-	// it writes nothing and says why (tla/ClearDefaults.tla RestoreRow, RestoreSettled,
+	// restore's own writes while it is pending, a verb's writes while it is not. A guard
+	// with an Owner also requires the fence to still hold that operation in the same
+	// exchange, so a writer whose operation another finished writes nothing. Otherwise it
+	// writes nothing and says why (tla/ClearDefaults.tla RestoreRow, RestoreSettled,
 	// EditRow, DeleteRow).
 	GuardedRows(ctx context.Context, g RestoreGuard, writes []RowWrite) (GuardOutcome, error)
 	// GuardedMachine writes the record and view only at the pinned epoch, while
@@ -169,9 +171,13 @@ type Backend interface {
 // Pending true: the sprint is at the epoch, its flag names it and the marker is absent (the
 // restore's own writes). Pending false: the sprint is at the epoch and its restore is not
 // pending (a verb's writes). MarkerTable is the stored table holding the marker property.
+// Owner, when set, is the operation id the fence must still hold: a step's guarded rows
+// apply only while the step is still the one in the fence, so an operation another writer
+// finished (a repair, a release) cannot write its planned rows over newer state.
 type RestoreGuard struct {
 	Pending             bool
 	MarkerTable, Marker string
+	Owner               string
 }
 
 // RowWrite is one row write of a guarded exchange: Op "add" adds Rows, "set" writes Texts
@@ -184,7 +190,7 @@ type RowWrite struct {
 
 // GuardOutcome is what a guarded exchange found: the writes applied, or nothing written
 // because the restore is pending (a verb's writes), already done (the restore's writes),
-// or the sprint has left the pinned epoch.
+// the sprint has left the pinned epoch, or the fence no longer holds the guard's owner.
 type GuardOutcome int
 
 const (
@@ -192,6 +198,7 @@ const (
 	GuardPending
 	GuardSettled
 	GuardMoved
+	GuardNotOwner
 )
 
 // verbGuard is a verb's guard on the table that holds the restore's marker (the fleet table).
@@ -220,8 +227,11 @@ func guardOutcome(atEpoch, pending bool, g RestoreGuard) GuardOutcome {
 type GuardError struct{ Outcome GuardOutcome }
 
 func (e *GuardError) Error() string {
-	if e.Outcome == GuardMoved {
+	switch e.Outcome {
+	case GuardMoved:
 		return "the sprint left the epoch the delete pinned"
+	case GuardNotOwner:
+		return "the operation is no longer the one the fence holds"
 	}
 	return "the epoch's restore is pending"
 }

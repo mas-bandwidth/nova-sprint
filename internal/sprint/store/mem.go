@@ -292,6 +292,11 @@ func (m *Mem) GuardedRows(_ context.Context, g RestoreGuard, writes []RowWrite) 
 	if o := m.restoreOutcome(g); o != GuardApplied {
 		return o, nil
 	}
+	if g.Owner != "" {
+		if l := m.log(); l.fence == nil || l.fence.ID != g.Owner {
+			return GuardNotOwner, nil
+		}
+	}
 	for _, w := range writes {
 		var err error
 		switch w.Op {

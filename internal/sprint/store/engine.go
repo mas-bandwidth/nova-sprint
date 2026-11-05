@@ -1256,7 +1256,9 @@ func (st *Store) addRows(ctx context.Context, rows []sprint.RowAdd) error {
 // exchange: the rows of two tables go together or not at all, so a stream
 // is on both tables or on neither (the row delete of the table layer, guarded
 // on the epoch's restore state: a verb's rows are written while the restore
-// is not pending).
+// is not pending). The guard also names the operation: the delete applies only
+// while the fence still holds it, so a writer another operation finished (a
+// repair, a release) cannot take off a stream that came back after it.
 func (st *Store) deleteRows(ctx context.Context, id string, dels []sprint.RowDel) error {
 	writes := make([]RowWrite, 0, len(dels))
 	for _, d := range dels {
@@ -1268,9 +1270,14 @@ func (st *Store) deleteRows(ctx context.Context, id string, dels []sprint.RowDel
 	if len(writes) == 0 {
 		return nil
 	}
-	o, err := st.B.GuardedRows(ctx, verbGuard(st.Names.Table(sprint.Fleet)), writes)
+	g := verbGuard(st.Names.Table(sprint.Fleet))
+	g.Owner = id
+	o, err := st.B.GuardedRows(ctx, g, writes)
 	if err != nil {
 		return fmt.Errorf("%w: deleting the rows of %s: %v; run: nova-sprint repair", ErrUnknown, id, err)
+	}
+	if o == GuardNotOwner {
+		return fmt.Errorf("%w: deleting the rows of %s: the fence no longer holds the operation; run: nova-sprint repair", ErrUnknown, id)
 	}
 	if o != GuardApplied {
 		return fmt.Errorf("%w: deleting the rows of %s: the epoch's restore is pending; run: nova-sprint repair", ErrUnknown, id)

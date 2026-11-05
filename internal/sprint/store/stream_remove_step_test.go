@@ -50,6 +50,28 @@ func TestStreamRemoveIsOneFencedOperation(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, fence.Gen+1, after.Gen, "the removal was one operation")
 	})
+	t.Run("a late remover leaves a stream that came back", func(t *testing.T) {
+		t.Parallel()
+		h := newHarness(t)
+		h.stream("s1")
+		dels := []sprint.RowDel{{Table: sprint.Merge, Rows: []string{"s1"}}, {Table: sprint.Work, Rows: []string{"s1"}}}
+		fence, err := h.m.ReadFence(h.ctx)
+		require.NoError(t, err)
+		op := OpRecord{ID: "late-remove", Verb: "stream remove", At: h.st.Now()}
+		ok, err := h.m.Acquire(h.ctx, fence.Gen, op)
+		require.NoError(t, err)
+		require.True(t, ok)
+		// the removal the operation planned runs, and another writer finishes it
+		require.NoError(t, h.st.deleteRows(h.ctx, op.ID, dels))
+		require.NoError(t, h.m.Release(h.ctx, op, false))
+		// the stream comes back before the late remover runs its delete again
+		h.must(AddStep(sprint.AddReq{Stream: "s1", Count: 1, Brief: proBrief}))
+		err = h.st.deleteRows(h.ctx, op.ID, dels)
+		require.Error(t, err, "a delete whose operation left the fence is refused")
+		s := h.snap()
+		require.True(t, s.Work.HasRow("s1"), "the stream that came back keeps its work row")
+		require.True(t, s.Merge.HasRow("s1"), "the stream that came back keeps its merge row")
+	})
 	t.Run("the refusals are kept", func(t *testing.T) {
 		t.Parallel()
 		h := newHarness(t)
