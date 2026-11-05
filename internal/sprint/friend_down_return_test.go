@@ -9,7 +9,7 @@ import (
 
 // A friend who goes down keeps the cards she took and never started for the grace, then the
 // tick returns them to the pool, its primary ready for someone up; a card she started (its
-// progress stamp) stays hers, and a held friend's row is left to her hold (2026-11-05: emma
+// progress stamp) stays hers, and a held friend's row is left to her hold (2026-11-05: a friend
 // went down holding 16 cards taken and not started, the roots of 60 waiting cards, for 22
 // minutes, and friend take --all-unstarted refused them, "a take is recorded on it"). The
 // clock is the world's: no real time.
@@ -22,7 +22,7 @@ func TestADownFriendReturnsTheCardsSheTookAndNeverStarted(t *testing.T) {
 		require.Equal(t, FriendRow("amy"), w.s.Fleet.Card(id).Row, "%s is dealt to amy", id)
 	}
 	// s1-1 carries a take and no start (her lane gone, its card back ready on her row, as
-	// emma's were); s1-2 she started (a progress stamp)
+	// a down friend's were on 2026-11-05); s1-2 she started (a progress stamp)
 	wc := w.s.Fleet.Card("s1-1.w1")
 	wc.Fields["first_taken"] = stamp(w.s.Now)
 	w.s.Fleet.Put(wc)

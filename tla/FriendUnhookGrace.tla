@@ -38,7 +38,7 @@ EXTENDS Naturals, FiniteSets
 \* she took and never started ("taken": a take recorded, no start, her lane gone and the card
 \* back ready on her row) is hers only while she is up or inside DownGrace windows of her last
 \* answer (quiet, her AnsweredAt); the tick past it returns every such card to the pool. Found
-\* that morning: emma went down holding 16 cards taken and not started for 22 minutes, and
+\* that morning: a friend went down holding 16 cards taken and not started for 22 minutes, and
 \* MoveReady (a card never taken) did not move them. The grace runs on both clocks, as the
 \* code's (the later of her last answer and the card's take): quiet, and tq, the windows since
 \* the card's take. Invariants

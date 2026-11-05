@@ -3697,9 +3697,11 @@ is served. `card` and `where --json --rows` show the tier it is on.
   with that many ok reads is accepted on the next tick after the setting changes.
   At 0 no read is asked and no read card is cut: a primary whose work finished
   LAND at its head is accepted on it, so a sprint with one AI, which can never be
-  read by another, still lands work. The accept records the count on the primary
-  when it differs from its tier's rule (`reads_needed`), and a card in merging or
-  landed is held to the count it was accepted on, never judged again; `default`
+  read by another, still lands work. The accept always records the count on the
+  primary (`reads_needed`). A card in merging is held to the count its accept
+  recorded, bounded by its tier's rule and the read mix's total, so a raise (the
+  setting, or its tier pinned higher) sends it back to review for the read it
+  lacks; only a landed card is never judged again, held to the count it landed on; `default`
   goes back to each card's tier. `where` says `reads: <n>` while a count is set,
   and `where --json` carries `reads_needed`, the count or "default".
 - The read mix (`nova-sprint set --read-mix friends=<n>,fleet=<m>|default|off`, the work
