@@ -30,6 +30,11 @@ func TestStreamRemoveIsOneFencedOperation(t *testing.T) {
 		res, err := h.st.Run(h.ctx, StreamRemoveStep([]string{"s1"}))
 		require.Error(t, err, "the crash is reported")
 		require.NotEmpty(t, res.Pending, "the operation stays in the fence")
+		fence, err := h.m.ReadFence(h.ctx)
+		require.NoError(t, err)
+		require.NotNil(t, fence.Pending, "the operation stays in the fence")
+		require.Equal(t, []sprint.RowDel{{Table: sprint.Merge, Rows: []string{"s1"}}, {Table: sprint.Work, Rows: []string{"s1"}}}, fence.Pending.RowDels, "the fence records the two row deletes it still owes")
+		require.Equal(t, "t-", fence.Pending.RowPrefix, "the fence records the namespace the rows are in")
 		h.m.Fail = nil
 		s := h.snap()
 		require.True(t, s.Work.HasRow("s1"), "the work row is still there")
