@@ -348,7 +348,7 @@ func repointBase(brief, base string) (string, string, bool) {
 func streamDone(s *Snapshot, stream string, landing int) bool {
 	landed := s.Work.Count(stream, Landed) + landing
 	open := 0
-	for _, st := range []State{Waiting, Ready, Working, Review, Merging} {
+	for _, st := range []State{Waiting, Ready, Working, Review, Merging, Blocked} {
 		open += s.Work.Count(stream, st)
 	}
 	return landed > 0 && open == landing

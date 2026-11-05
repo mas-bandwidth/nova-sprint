@@ -85,6 +85,7 @@ func init() {
 		{"defer", "(<id>... | --stream <s> | --repo <owner/name>) --repo-dir <dir> --reason <text> [--expect <n>]", "defer s1-9 --repo-dir ../nova-sprint --reason 'outside the ladder' --expect 1", (*app).cmdDefer},
 		{"priority", "<id>... | (<id>... | --stream <s> | (<selector> [--dry-run])) (--blocker | --critical | --fix | --high | --normal | --low) --reason <text>", "priority --state ready --critical --reason 'next point release'", (*app).cmdPriority},
 		{"unpin", "(<id>... | --stream <s>) --reason <text> [--dry-run]", "unpin s1-1 --reason available", (*app).cmdUnpin},
+		{"unblock", "<id> --reason <text> [--answers <note>] [--dry-run]", "unblock s1-9 --reason 'the staging credential is back on amd-1'", (*app).cmdUnblock},
 		{"rebase", "--from <branch> --to <branch> [--repo-dir <clone>] [--dry-run]", "rebase --from dev --to sprint/s1 --repo-dir ../name --dry-run", (*app).cmdRebase},
 		{"rank", "(<id>... | <selector> [--dry-run]) (--score <n> | --first | --before <id>) [--answers <note>]", "rank s2-3 --first", (*app).cmdRankSel},
 		{"relink", "<old-id>[,<old-id>...] <new-id> [--reason <text>]", "relink lint-pkg-cairn-t lint-pkg-cairn-tb --reason 're-cut as its twin'", (*app).cmdRelink},
@@ -150,7 +151,7 @@ func init() {
 		{"stream archive", "<stream>...", "stream archive a b c", func(a *app, args []string, o, e io.Writer) int { return a.cmdStreamArchive(true, args, o, e) }},
 		{"stream unarchive", "<stream>...", "stream unarchive a", func(a *app, args []string, o, e io.Writer) int { return a.cmdStreamArchive(false, args, o, e) }},
 		{"stream set", "<stream>... [--read-tier <flash|pro|heavy|default>] [--land-protected <owner/name,...|any|default>] [--promotion[=false]] [--release <name>] [--display <name>] [--prose <glob,...|default>] [--attempts <n|default>] [--base <branch>] [--reason <text>] [--answers <notes>]", "stream set skips --read-tier pro", (*app).cmdStreamSet},
-		{"set", "[--rework-priority <fix|high|keep>] [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--alarm-review <n|off>] [--alarm-merging <n|off>] [--alarm-fleet <percent|off>] [--alarm-ready <on|off>] [--attempts <n|default>] [--friend-idle <duration|default>] [--landing-stall-bound <duration|default>] [--friend-finish <duration|default>] [--fleet-tiers <tiers|all>] [--friends-tiers <tiers|all>] [--reads <0|1|2|3|4|5|default>] [--read-mix <friends=n,fleet=m|default|off>] [--read-routes <route,...|default>]", "set --read-tier pro", (*app).cmdSet},
+		{"set", "[--rework-priority <fix|high|keep>] [--read-tier <flash|pro|default>] [--read-cards <on|off|default>] [--dealt-max <duration|default>] [--go-lanes <n|default>] [--alarm-review <n|off>] [--alarm-merging <n|off>] [--alarm-fleet <percent|off>] [--alarm-ready <on|off>] [--attempts <n|default>] [--friend-idle <duration|default>] [--landing-stall-bound <duration|default>] [--friend-finish <duration|default>] [--fleet-tiers <tiers|all>] [--friends-tiers <tiers|all>] [--reads <0|1|2|3|4|5|default>] [--read-mix <friends=n,fleet=m|default|off>] [--read-routes <route,...|default>] [--flap-limit <n|default>] [--flap-window <duration|default>]", "set --read-tier pro", (*app).cmdSet},
 		{"promoted", "--sha <merge sha> [--answers <note>]", "promoted --sha 0123abc", (*app).cmdPromoted},
 		{"merge-window open", "--for <duration> --reason <text>", "merge-window open --for 10m --reason 'the release merges by hand'", (*app).cmdMergeWindowOpen},
 		{"funded", "<provider> --reason <text>", "funded opencode --reason 'paid $100 in the console'", (*app).cmdFunded},
@@ -167,6 +168,7 @@ func init() {
 		{"needs", "[--stream <s>] [--roots] | set <id> (--needs <a,b> | --land-after <a,b> | --clear) [--answers <note>]", "needs set s1-4 --needs s1-1", (*app).cmdNeeds},
 		{"streams", "[--repo <owner/name>] [--release <name>] [--cards]", "streams --cards", (*app).cmdStreams},
 		{"held", "[--stream <s>]", "held", (*app).cmdHeld},
+		{"blocked", "[--stream <s>]", "blocked", (*app).cmdBlocked},
 		{"sentinels", "[--stream <s>]", "sentinels", (*app).cmdSentinels},
 		{"sentinel set", "<id> --needs <a,b>", "sentinel set s1-stop --needs s1-2", (*app).cmdSentinelSet},
 		{"bases", "", "bases", (*app).cmdBases},
@@ -411,6 +413,7 @@ one answer to each judgment (every one prints its own, filled in):
   blocked on a dropped card   drop --group <id> --expect <n> --reason '<why>' --answers <notes>
   blocked on a missing card   drop <ids> --reason '<why>' or ack <notes> --reason '<why the named missing needs can be waived>'
   reads exhausted             ask --group <id> --expect <n> --another --answers <notes>
+  a card flapped: blocked     card <primary> (its flaps by kind and the last), mend the cause, then unblock <primary> --reason '<what was fixed>' (to waiting), or brief it again, or drop it
   repair skipped changes      card <primary>, then rework, return or drop --group <id> --expect <n> --answers <notes>
   an operation was stuck      check, then ack <note> --reason '<what you found>'
   a repeat: stop and look     card <primary>
@@ -4161,6 +4164,8 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	readMix := fs.String("read-mix", "", "the read mix, friends=<n>,fleet=<m> (at most 5 together; read cards on): every card in review needs n+m ok reads at its head, all dealt at once, n to distinct friends up who read, m to distinct fleet members whose reads draw routes of distinct models; short of a class or a model the deal fills from the readers up and one judgment says so (reads dealt short of the read mix); a read with no verdict is dealt again to its class first, a fleet read on another model; default is friends=2,fleet=3 (the working default a clear writes); off takes it off")
 	readRoutes := fs.String("read-routes", "", "the routes reserved for reads, comma separated route names: no work attempt is ever dealt on one, and a read of its tier draws it first, the tier's shared routes when none is served; default takes them off")
 	pegged := fs.String("pegged-bound", "", fmt.Sprintf("how long a member up with no card working may beat at %.0f%% load or more before it is a judgment to the coordinator (member-pegged, once an episode): a duration, or default (%s)", sprint.HeavyLoadPercent, sprint.PeggedBoundDefault))
+	flapLimit := fs.String("flap-limit", "", fmt.Sprintf("how many flaps (returns without progress: a dealt card back with no verdict, a merge refused, a rework) a primary may have in the flap window; one more and the tick blocks it until the coordinator unblocks or drops it: a whole number from 1, or default (%d)", sprint.FlapLimitDefault))
+	flapWindow := fs.String("flap-window", "", fmt.Sprintf("how far back a flap counts: a duration, or default (%s)", sprint.FlapWindowDefault))
 	if a.onSetFlags != nil {
 		a.onSetFlags(fs)
 	}
@@ -4175,7 +4180,7 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return refuse(stderr, "set", err.Error())
 	}
-	if *tier == "" && *dealt == "" && *lanes == "" && *review == "" && *merging == "" && *fleet == "" && *readyAlarm == "" && *attempts == "" && *idle == "" && *landingStallBound == "" && *fleetWork == "" && *friendsWork == "" && *fleetTiers == "" && *friendsTiers == "" && *finish == "" && *base == "" && *readCards == "" && *reworkPriority == "" && *reads == "" && *readMix == "" && *readRoutes == "" && *pegged == "" {
+	if *tier == "" && *dealt == "" && *lanes == "" && *review == "" && *merging == "" && *fleet == "" && *readyAlarm == "" && *attempts == "" && *idle == "" && *landingStallBound == "" && *fleetWork == "" && *friendsWork == "" && *fleetTiers == "" && *friendsTiers == "" && *finish == "" && *base == "" && *readCards == "" && *reworkPriority == "" && *reads == "" && *readMix == "" && *readRoutes == "" && *pegged == "" && *flapLimit == "" && *flapWindow == "" {
 		s, err := st.Load(context.Background(), []string{sprint.Work}, nil)
 		if err != nil {
 			return a.readFailed("set", err, stderr)
@@ -4193,6 +4198,12 @@ func (a *app) cmdSet(args []string, stdout, stderr io.Writer) int {
 	if *pegged != "" {
 		set := step.Plan
 		step.Plan = func(s *sprint.Snapshot) sprint.Plan { return sprint.WithPeggedBound(set(s), s, *pegged) }
+	}
+	if *flapLimit != "" || *flapWindow != "" {
+		set := step.Plan
+		step.Plan = func(s *sprint.Snapshot) sprint.Plan {
+			return sprint.WithFlapSettings(set(s), s, *flapLimit, *flapWindow)
+		}
 	}
 	if *base != "" {
 		set := step.Plan

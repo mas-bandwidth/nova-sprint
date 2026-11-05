@@ -114,6 +114,10 @@ type Plan struct {
 	// removing says remove built the plan: the one step that takes a landed
 	// primary off the table.
 	removing bool
+	// blocking says the tick's block part built the plan, the one step that moves a
+	// primary to blocked; unblocking says unblock did, the one that moves it out
+	// (blocked.go; tla/Blocked.tla OnlyUnblockOrDropLeaves).
+	blocking, unblocking bool
 	// rounds are the rolling indexes the plan moved and each unit's moves
 	// (roundWrites): a unit dropped after planning (LeaveQueued) moves no
 	// index, so the plan's index writes are made again from the units kept.
@@ -572,7 +576,7 @@ func otherEpochAnswer(s *Snapshot, id string, e uint64) string {
 // lifecycle (Lawful) and to one judgment per cause (OnePerCause), on the
 // state the step read.
 func Applied(s *Snapshot, p Plan) Plan {
-	return OnePerCause(s, recordConsumerTransitions(s, Lawful(p)))
+	return OnePerCause(s, recordFlaps(s, recordConsumerTransitions(s, withoutBlockedDeals(s, Lawful(p)))))
 }
 
 // OnePerCause keeps a judgment open once per card and cause: a note of a

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -23,11 +24,42 @@ func (st *Store) EnsureReaderTiers(ctx context.Context) error {
 	if !ok {
 		return nil
 	}
+	var err error
 	switch b := st.B.(type) {
 	case *Mem:
-		return b.ensureReaderTiers(name, col)
+		err = b.ensureReaderTiers(name, col, nil)
 	case *Redis:
-		return b.ensureReaderTiers(ctx, name, col)
+		err = b.ensureReaderTiers(ctx, name, col, nil)
+	}
+	if err != nil {
+		return err
+	}
+	return st.EnsureWorkBlocked(ctx)
+}
+
+// EnsureWorkBlocked adds work.blocked, after merging, to a work table created before
+// the column (internal/sprint/TABLES.lock, the Change of 2026-11-05), as EnsureReaderTiers
+// adds readers.tiers; EnsureReaderTiers calls it, so every place that migrates one
+// migrates both.
+func (st *Store) EnsureWorkBlocked(ctx context.Context) error {
+	if st == nil || st.B == nil {
+		return nil
+	}
+	name := st.Names.Table(sprint.Work)
+	col := ntable.Column{Name: sprint.Blocked}
+	for _, t := range st.Names.Definitions() {
+		if t.Name == name {
+			if i := t.Column(sprint.Blocked); i >= 0 {
+				col = t.Columns[i]
+			}
+		}
+	}
+	after := &ntable.Place{Where: "after", Ref: sprint.Merging}
+	switch b := st.B.(type) {
+	case *Mem:
+		return b.ensureReaderTiers(name, col, after)
+	case *Redis:
+		return b.ensureReaderTiers(ctx, name, col, after)
 	default:
 		return nil
 	}
@@ -49,7 +81,9 @@ func readerTiersColumn(names sprint.Names) (ntable.Column, bool) {
 	return ntable.Column{}, false
 }
 
-func (m *Mem) ensureReaderTiers(table string, col ntable.Column) error {
+// ensureReaderTiers adds col to the table when it lacks it: last, or after the column
+// at names (EnsureWorkBlocked).
+func (m *Mem) ensureReaderTiers(table string, col ntable.Column, at *ntable.Place) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	t := m.tables[table]
@@ -59,11 +93,17 @@ func (m *Mem) ensureReaderTiers(table string, col ntable.Column) error {
 	if t.def.Column(col.Name) >= 0 {
 		return nil
 	}
-	t.def.Columns = append(t.def.Columns, col)
+	i := len(t.def.Columns)
+	if at != nil {
+		if j := t.def.Column(at.Ref); j >= 0 {
+			i = j + 1
+		}
+	}
+	t.def.Columns = slices.Insert(slices.Clone(t.def.Columns), i, col)
 	return nil
 }
 
-func (r *Redis) ensureReaderTiers(ctx context.Context, table string, col ntable.Column) error {
+func (r *Redis) ensureReaderTiers(ctx context.Context, table string, col ntable.Column, at *ntable.Place) error {
 	shapes, err := r.Shapes(ctx, []string{table})
 	if err != nil {
 		if tableMissing(err) {
@@ -74,7 +114,7 @@ func (r *Redis) ensureReaderTiers(ctx context.Context, table string, col ntable.
 	if len(shapes) == 0 || shapes[0].Column(col.Name) >= 0 {
 		return nil
 	}
-	_, err = ntable.Set(ctx, r.C, table, ntable.SetOpts{ColAdd: &col}, r.writeOpts())
+	_, err = ntable.Set(ctx, r.C, table, ntable.SetOpts{ColAdd: &col, ColAt: at}, r.writeOpts())
 	return err
 }
 

@@ -29,7 +29,9 @@ var WaitRefused = map[string]string{
 	// in review with nothing outstanding
 	NReadyToAccept:  "accept it, rework it, or drop it",
 	NReadsExhausted: "ask another reader, rework it, or drop it",
-	NStranded:       "ask, rework it, or drop it",
+	// stopped because it flapped (blocked.go): it sits until the coordinator decides
+	NFlapBlocked: "unblock it once the cause is fixed (nova-sprint unblock <card> --reason <what was fixed>), brief it again, or drop it",
+	NStranded:    "ask, rework it, or drop it",
 	// at its bound, or its brief wrong: a mind's, at once
 	NBound:       "rework it on a higher tier, or drop it",
 	NBriefWrong:  "brief it again, or drop it",

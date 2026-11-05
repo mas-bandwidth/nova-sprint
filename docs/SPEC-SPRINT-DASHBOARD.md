@@ -123,6 +123,7 @@ the comment-only form exists only in the lock, and the lint knows nothing of it.
 - 2026-10-18 the owner: "I would like it if you could create a stats page showing me all the things you can do with https://pele.run for the sprint dashboard. You could put these things below the existing stuff we have at the bottom." (the Last 24 hours panel, below)
 - 2026-10-18 the owner: "Maybe we can click on a work stream by name, and this takes you to a page showing all details for that work stream, including all its cards, sankey for all cards if applicable, dependencies between cards etc etc etc." (the stream pages, below)
 - 2026-10-20 ~03:32Z the owner, of the friends panel showing a line when there is no friends table: "Please fix the sprint dashboard here: http://37.27.135.206"
+- 2026-11-05 the owner, of the blocked state (a card that flapped more than the flap limit): "blocked card is colored black"
 
 
 The 2026-10-12 page asks above (and those of 2026-10-12 ~00:42Z, ~00:43Z, ~00:50Z, ~01:00Z, ~01:02Z,
@@ -315,7 +316,7 @@ from the owner edits one line here and nothing else moves.
    A lone tile on its row spans the width with its figure centered.
 - No FLEET tile. Flash on change: LANDED only; the others never.
 
-## Progress bar: "CARDS BY STATE" with the legend (landed, merging, fix, review, working, ready, waiting) and counts;
+## Progress bar: "CARDS BY STATE" with the legend (landed, blocked, merging, fix, review, working, ready, waiting) and counts;
   one cell per card (per N cards when they would be under 4 px; no "1 cell = N" label); working cells pulse steadily
   (2 s); other cells still.
 

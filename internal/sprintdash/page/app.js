@@ -7,7 +7,7 @@
 // Left to right in the bars: done first, so the bar fills like progress. fix is the cards awaiting
 // rework, purple, between review and merging (docs/SPEC-SPRINT-DASHBOARD.md, "Fix"; the owner,
 // 2026-10-07: "between review and merging"); the view (dashboard.go) counts it on the copy.
-var STATES = ["landed", "merging", "fix", "review", "working", "ready", "waiting"];
+var STATES = ["landed", "blocked", "merging", "fix", "review", "working", "ready", "waiting"];
 // Columns of the streams table, in flow order.
 var FLOW = ["waiting", "ready", "working", "review", "fix", "merging", "landed"];
 // A Work row's children: stream, status, then FLOW's counts, then cost.
@@ -329,7 +329,7 @@ function renderStreams(d) {
   });
   sum.epoch = epoch;
   var digits = digitsOf(streamOrder(d).reduce(function (a, k) { return a + FLOW.reduce(function (b, st) { return b + int(work[k][st]); }, 0); }, 0));
-  FLOW.forEach(function (st) { sum[st] = 0; });
+  STATES.forEach(function (st) { sum[st] = 0; });
   syncRows(box, box._head, keys, function () {
     var r = { node: el("div", "row"), n: {} };
     r.name = el("div", "name"); r.nameT = el("span"); r.tag = el("span", "tag");
@@ -342,10 +342,11 @@ function renderStreams(d) {
   }, function (r, k) {
     var w = work[k], m = merge[k] || {}, s = states[k] || {}, c = {}, total = 0;
     FLOW.forEach(function (st) { c[st] = int(w[st]); total += c[st]; });
+    c.blocked = int(w.blocked); total += c.blocked; // blocked has no Work column: it is counted, and drawn black in the bar
     var ct = cents(w.cost);
     // an archived stream shown is drawn, and counted only on its archived line
     if (!arch[k]) {
-      FLOW.forEach(function (st) { sum[st] += c[st]; });
+      STATES.forEach(function (st) { sum[st] += c[st]; });
       if (ct) sum.cost += ct;
       var sc = (d.stream_costs || {})[k] || {};
       var tc = cents(sc.total_cost); if (tc) sum.totalCost += tc;
@@ -375,7 +376,7 @@ function renderStreams(d) {
   Object.keys(d.stream_costs || {}).forEach(function (k) {
     var uc = cents(d.stream_costs[k].unreconciled); if (uc) sum.unreconciled = Math.max(sum.unreconciled, uc);
   });
-  var tc = box._total._c, all = 0;
+  var tc = box._total._c, all = sum.blocked;
   FLOW.forEach(function (st, i) { all += sum[st]; if (st !== "landed") setNum(tc[2 + i], sum[st]); });
   setHTML(tc[LANDED_AT], frac(sum.landed, all, digits));
   setText(tc[COST_AT], money(sum.cost));

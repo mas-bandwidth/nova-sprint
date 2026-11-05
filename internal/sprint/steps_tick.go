@@ -325,7 +325,7 @@ const PartDrain = "drain"
 // none is ("the tick doesn't end until all dirty bits are cleared"). The
 // model is tla/DirtyTick.tla.
 var TickTables = []TableUpdate{
-	{Work, []TickPartDef{{PartDrain, nil}, {"resolve", TickResolve}, {"deal", TickDeal}, {PartRebalance, TickRebalance}, {"accept", TickAccept}}},
+	{Work, []TickPartDef{{PartDrain, nil}, {"resolve", TickResolve}, {"deal", TickDeal}, {PartRebalance, TickRebalance}, {"accept", TickAccept}, {PartBlock, TickBlock}}},
 	{Readers, []TickPartDef{{"ask", TickAsk}}},
 	{Merge, []TickPartDef{{"resume", TickResume}}},
 	{Fleet, []TickPartDef{{"presence", TickPresence}, {"verdicts", TickVerdicts}, {PartFriendRedeal, TickFriendRedeal}}},
@@ -2503,7 +2503,7 @@ const (
 // no primary waiting, ready, working, in review or merging, and at least one
 // landed or dropped. A sprint that never had a card is not done.
 func SprintDoneCounts(s *Snapshot) (landed, dropped int, done bool) {
-	for _, st := range []State{Waiting, Ready, Working, Review, Merging} {
+	for _, st := range []State{Waiting, Ready, Working, Review, Merging, Blocked} {
 		if len(s.Work.Column(st)) > 0 {
 			return 0, 0, false
 		}

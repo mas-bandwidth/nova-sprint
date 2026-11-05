@@ -147,6 +147,7 @@ func TestEveryCoordinatorVerbIsTheCoordinators(t *testing.T) {
 		"collect":   "collect",
 		"card base": "card base s1-1 main",
 		"rebase":    "rebase --from a --to b",
+		"unblock":   "unblock s1-1 --reason r",
 	}
 	for _, v := range verbs {
 		if verbClasses[v.name] != classCoordinator {

@@ -4,12 +4,12 @@ SPRINT TABLE  coordinator coordinator
 0/3 0.0% -> ETA -
 providers: none applied WARN no provider rows applied (nova-config apply --kind provider)
 
-work | waiting | ready | working | review | merging | landed | cost | unpriced | per landed
------+---------+-------+---------+--------+---------+--------+------+----------+-----------
-s1   |       0 |     0 |       2 |      0 |       1 |      0 |    - | 2        | -
-s2   |       0 |     0 |       0 |      0 |       0 |      0 |    - | -        | -
------+---------+-------+---------+--------+---------+--------+------+----------+-----------
-     |       0 |     0 |       2 |      0 |       1 |      0 |    - |          |
+work | waiting | ready | working | review | merging | blocked | landed | cost | unpriced | per landed
+-----+---------+-------+---------+--------+---------+---------+--------+------+----------+-----------
+s1   |       0 |     0 |       2 |      0 |       1 |       0 |      0 |    - | 2        | -
+s2   |       0 |     0 |       0 |      0 |       0 |       0 |      0 |    - | -        | -
+-----+---------+-------+---------+--------+---------+---------+--------+------+----------+-----------
+     |       0 |     0 |       2 |      0 |       1 |       0 |      0 |    - |          |
 
 friends | ready | working | width | done | ok%  | redealt | status | active | tokens
 --------+-------+---------+-------+------+------+---------+--------+--------+-------

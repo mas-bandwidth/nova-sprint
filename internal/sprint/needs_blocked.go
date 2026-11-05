@@ -57,7 +57,7 @@ func Blockers(s *Snapshot) []Blocker {
 	}
 	// 1. Gather all unlanded cards in table order (columns then score).
 	var unlandedCards []*Card
-	for _, st := range []State{Waiting, Ready, Working, Review, Merging} {
+	for _, st := range []State{Waiting, Ready, Working, Review, Merging, Blocked} {
 		for _, c := range s.Work.Column(st) {
 			if !IsSentinel(c) {
 				unlandedCards = append(unlandedCards, c)

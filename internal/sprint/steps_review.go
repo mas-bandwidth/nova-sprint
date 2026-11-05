@@ -1480,7 +1480,7 @@ func settle(p *Plan, s *Snapshot, who string, offQueue, offTable map[string]bool
 			}
 		}
 		open, landed := 0, s.Work.Count(st, Landed)
-		for _, x := range []State{Waiting, Ready, Working, Review, Merging} {
+		for _, x := range []State{Waiting, Ready, Working, Review, Merging, Blocked} {
 			for _, c := range s.Work.Cell(st, x) {
 				switch {
 				case lands[c.ID]:
@@ -2455,7 +2455,7 @@ func init() {
 // unlanded card's needs field (Waiting, Ready, Working, Review, Merging).
 func unlandedNeeding(s *Snapshot, id string, dropping map[string]bool) []string {
 	var out []string
-	for _, st := range []State{Waiting, Ready, Working, Review, Merging} {
+	for _, st := range []State{Waiting, Ready, Working, Review, Merging, Blocked} {
 		for _, c := range s.Work.Column(st) {
 			if dropping[c.ID] {
 				continue
@@ -2513,7 +2513,7 @@ func TickNeeds(s *Snapshot, r TickReq) (Plan, int) {
 		opens[o.Subject()] = append(opens[o.Subject()], o)
 	}
 	covered := CoveredDependents(s)
-	for _, st := range []State{Waiting, Ready, Working, Review, Merging} {
+	for _, st := range []State{Waiting, Ready, Working, Review, Merging, Blocked} {
 		for _, c := range s.Work.Column(st) {
 			if IsSentinel(c) {
 				continue
@@ -2638,7 +2638,7 @@ type DropReq struct {
 func Drop(s *Snapshot, r DropReq) Plan {
 	var p Plan
 	var all []*Card
-	for _, st := range []State{Waiting, Ready, Working, Review, Merging} {
+	for _, st := range []State{Waiting, Ready, Working, Review, Merging, Blocked} {
 		all = append(all, s.Work.Column(st)...)
 	}
 	chosen, dropping := pickedForDrop(&p, r.Sel, all, func(c *Card) string {
@@ -2654,7 +2654,7 @@ func Drop(s *Snapshot, r DropReq) Plan {
 		// (docs/SPEC-SPRINT.md section 11).
 		for grew := true; grew; {
 			grew = false
-			for _, st := range []State{Waiting, Ready, Working, Review, Merging} {
+			for _, st := range []State{Waiting, Ready, Working, Review, Merging, Blocked} {
 				for _, w := range s.Work.Column(st) {
 					if dropping[w.ID] {
 						continue

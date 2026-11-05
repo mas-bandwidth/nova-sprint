@@ -38,8 +38,8 @@ import (
 // hides that panel's .charts (the page without them is the page before them byte for byte:
 // TestThePageAboveTheChartsIsUnchanged).
 const (
-	pageIndexSHA256 = "19310c144b3278d4efbb2079c60c37e065e952ccc938d7dd4739106ba10ac0a2"
-	pageAppSHA256   = "fc5e4d035e9e7ca8a5be340b44aa192ca9c133850b9833af1a34fa97b4b26391"
+	pageIndexSHA256 = "d9be206489ccb10ba79d997909568688ae1807578dd9c4867cd67255bc75618e"
+	pageAppSHA256   = "c3c4424a4a09afe1f50852efb89b8ca9f8f5bd9bd64735a1b4f3c7063f78308f"
 
 	liveTile192 = "3b63e9101ce10848200a71aeccaf30135ff1ce684c1b49f794653bfcfa399b10"
 	liveTile384 = "8d534cd3563dd5073b4193c6a91c87c29ad7dae05a41a3d824441b11d9107809"

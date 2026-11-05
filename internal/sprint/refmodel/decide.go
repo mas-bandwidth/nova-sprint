@@ -19,6 +19,7 @@ const (
 	DutyPresence     = "presence"      // a member's status follows its beats
 	DutyVerdicts     = "verdicts"      // a finished work card's readers' verdict moves it to ok or failed
 	DutyFriendRedeal = "friend-redeal" // a friend's card past its deadline unfinished is redealt
+	DutyBlock        = "block"         // a primary that flapped past the flap limit goes to blocked (tla/Blocked.tla)
 	DutyResolve      = "resolve"       // waiting primaries whose needs landed go ready; sentinels are reached
 	DutyResume       = "resume"        // a stream stopped on another's card goes on when it landed
 	DutyDeal         = "deal"          // ready primaries are dealt to the members up
@@ -36,7 +37,7 @@ const (
 
 // dutyNames is the duties' names in the tick's order, which the canonical order
 // of moves follows. Duties lists the same names, and a test holds them equal.
-var dutyNames = []string{DutyLive, DutyLevel, DutyLevelReads, DutyResolve, DutyDeal, DutyRebalance, DutyAccept, DutyAsk, DutyResume, DutyStrangers, DutyPresence, DutyVerdicts, DutyFriendRedeal, DutyCheck, DutyDeadlines, DutyOverdue, DutyDone, DutyRemind}
+var dutyNames = []string{DutyLive, DutyLevel, DutyLevelReads, DutyResolve, DutyDeal, DutyRebalance, DutyAccept, DutyBlock, DutyAsk, DutyResume, DutyStrangers, DutyPresence, DutyVerdicts, DutyFriendRedeal, DutyCheck, DutyDeadlines, DutyOverdue, DutyDone, DutyRemind}
 
 // Duty is one duty of the tick: its name and the function that decides it.
 type Duty struct {
@@ -56,6 +57,7 @@ var Duties = []Duty{
 	{DutyDeal, DealMoves},
 	{DutyRebalance, RebalanceMoves},
 	{DutyAccept, AcceptMoves},
+	{DutyBlock, BlockMoves},
 	{DutyAsk, AskMoves},
 	{DutyResume, ResumeMoves},
 	{DutyStrangers, StrangerMoves},
@@ -111,6 +113,10 @@ func StrangerMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, Du
 // does not goes down and its unfinished work cards are dealt to the members up
 // or withdrawn.
 func PresenceMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyPresence) }
+
+// BlockMoves is every ready, working or review primary with more flaps than the flap limit
+// in the flap window moved to blocked, its deals withdrawn, with one judgment each.
+func BlockMoves(s Snapshot, now time.Time) []Move { return oneDuty(s, now, DutyBlock) }
 
 // ResolveMoves is the waiting primaries whose needs have all landed moved to
 // ready, the sentinels whose needs have landed reached, and the judgments for
@@ -212,6 +218,7 @@ func decisions() []dutyOn {
 		{DutyDeal, partOn(DutyDeal)},
 		{DutyRebalance, partOn(DutyRebalance)},
 		{DutyAccept, partOn(DutyAccept)},
+		{DutyBlock, partOn(DutyBlock)},
 		{DutyAsk, partOn(DutyAsk)},
 		{DutyResume, partOn(DutyResume)},
 		{DutyStrangers, strangersOn},

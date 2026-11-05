@@ -119,6 +119,9 @@ func renderPrimary(l Line, fromCol, toCol string, moved bool, by string) string 
 	case string(Landed):
 		return fmt.Sprintf("%s landed", id)
 	case string(Waiting):
+		if fromCol == string(Blocked) {
+			return fmt.Sprintf("%s unblocked %s: it waits to be dealt again", id, by)
+		}
 		return fmt.Sprintf("%s waits: a sentinel was put in front of it %s", id, by)
 	}
 	return renderPlain(l, by)

@@ -77,6 +77,9 @@ func inState(c *Card, want State) string {
 	if !c.Placed() {
 		return "not on the table (" + orDash(c.F("outcome")) + ")"
 	}
+	if c.Col == Blocked && want != Blocked {
+		return BlockedWhy(c.ID)
+	}
 	if c.Col != want {
 		return "not " + want + " (it is " + c.Col + ")"
 	}

@@ -192,11 +192,19 @@
 # added and the friends table's shape stands. Held by
 # TestDealerNeverDealsAFriendOutsideHerStreams and
 # TestAddAndBriefRefuseNamedFriendOutsideRestrictions.
+# Change, 2026-11-05, asked by Glenn in words: "I want there to be something that
+# automatically catches flaps, and moves them into 'blocked' card state (primary) a new
+# card state", "blocked -> waiting -> ready -> etc." and "blocked card is colored black".
+# work.blocked is the column: a count cell after merging and before landed, the
+# primaries of the stream the tick blocked for flapping (internal/sprint/blocked.go,
+# tla/Blocked.tla). The build adds it to a live store's work table itself
+# (EnsureWorkBlocked), as it adds readers.tiers. Held by TestSprintTablesAreLocked.
 work.waiting count sum shown
 work.ready count sum shown
 work.working count sum shown
 work.review count sum shown
 work.merging count sum shown
+work.blocked count sum shown
 work.landed count sum shown
 work.cost text sum shown
 readers.asked count sum shown
