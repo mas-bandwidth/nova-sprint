@@ -1033,6 +1033,15 @@ table BatchMemberEntry
     unset       []Line
 }
 
+// RowDel is the rows one table loses in an operation (sprint.RowDel): the
+// rows of every table a step deletes go in one exchange, so a stream is on
+// both tables or on neither.
+table RowDel
+{
+    table_name *string | json = "table"
+    rows       []Line
+}
+
 // BatchManifest is one atomic batch (ntable.BatchManifest) on the held
 // operation.
 table BatchManifest
@@ -1136,6 +1145,7 @@ table HeldRecord
     verb         *string
     at           int64
     manifests    []BatchManifest
+    row_dels     []RowDel
     notes        []Note
     decided      []Note
     log          []LogLine

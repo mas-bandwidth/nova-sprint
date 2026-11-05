@@ -285,6 +285,7 @@ func (m *Mem) restoreOutcome(g RestoreGuard) GuardOutcome {
 func (m *Mem) GuardedRows(_ context.Context, g RestoreGuard, writes []RowWrite) (GuardOutcome, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.Calls["guarded-rows"]++
 	if err := m.fail("guarded-rows"); err != nil {
 		return GuardApplied, err
 	}
