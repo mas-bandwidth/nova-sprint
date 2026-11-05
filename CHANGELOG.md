@@ -1,5 +1,36 @@
 # Changelog
 
+## v1.6.29 — 2026-11-05
+
+Cut from ad378318ad0a1f3dc8986285413c26208a30a338. 1 pull request since v1.6.28.
+
+What changed:
+
+- A card approved for merging now needs the same number of passing reads when it lands as it needed when it was accepted, so it no longer bounces between merging and review.
+- A read is no longer sent down a resting route while another route of the same tier is available, so the same read stops being offered to every member in turn.
+- When a friend goes down, the cards they took but never started go back to the queue after five minutes; cards they started stay with them until their deadline.
+- `friend stage` checks out a BASE branch that exists only on the remote, instead of refusing in a fresh clone.
+
+v1.6.28 was tagged with the `friend stage` fix alone and never built; v1.6.29 carries it. Security read: cold read by a separate Opus reader, 2026-11-05, two findings fixed at 47d8e8aa. Requires nova-tools v1.6.29.
+
+SHA256SUMS digest: aa8ff289e662ed56f1f6f5d8d3247040e33e270522474b3c676c81232db1dd20
+
+Adopt this release with `--expect-sums aa8ff289e662ed56f1f6f5d8d3247040e33e270522474b3c676c81232db1dd20`.
+
+Recovery journeys incomplete, gate waived: point release of sprint fixes; the journey gate needs the release installed at its own revision and this cut precedes the install, and the spend readout needs provider keys the release worker does not hold; nothing in this range changes hook recovery or spend recording
+
+- TestASilentClientIsUnhookedAfterExactlyTwoAnnouncedOnce: not-run (no --journeys evidence)
+- TestNoServerOrNoAnswerIsNoEvidence: not-run (no --journeys evidence)
+- TestTheGateRefusesEveryoneWhileTheServerIsStale: not-run (no --journeys evidence)
+- TestAStaleAnswerIsDownWithAFreshServer: not-run (no --journeys evidence)
+- TestALostAnswerIsNeverToldTwice: not-run (no --journeys evidence)
+
+Spend gate waived: point release of sprint fixes; the journey gate needs the release installed at its own revision and this cut precedes the install, and the spend readout needs provider keys the release worker does not hold; nothing in this range changes hook recovery or spend recording (window 2026-11-05T00:00:00Z..2026-11-05T17:36:22Z)
+- unread: --spend-store <addr> names no sprint store, so the recorded spend cannot be read
+
+- #630 Point fixes: accept matches land, no read carousel, down friend returns unstarted cards
+  - members: #629
+
 ## v1.6.27 — 2026-10-27
 
 Cut from 4172720ae0acd02a60fd3391efbd33593f31abe5. 3 pull requests since v1.6.26.
