@@ -1192,24 +1192,25 @@ func (m *Mem) Release(_ context.Context, op OpRecord, commit bool) error {
 		}
 		if raw := work.kv[keyTimers]; raw != "" {
 			var ts sprint.Timers
-			if err := json.Unmarshal([]byte(raw), &ts); err == nil {
-				closing := map[string]bool{}
-				for _, id := range op.CloseTimers {
-					closing[id] = true
-				}
-				var rem []sprint.Timer
-				for _, tm := range ts.Open {
-					if !closing[tm.ID] {
-						rem = append(rem, tm)
-					}
-				}
-				ts.Open = rem
-				rec, err := json.Marshal(ts)
-				if err != nil {
-					return err
-				}
-				work.kv[keyTimers] = string(rec)
+			if err := json.Unmarshal([]byte(raw), &ts); err != nil {
+				return err
 			}
+			closing := map[string]bool{}
+			for _, id := range op.CloseTimers {
+				closing[id] = true
+			}
+			var rem []sprint.Timer
+			for _, tm := range ts.Open {
+				if !closing[tm.ID] {
+					rem = append(rem, tm)
+				}
+			}
+			ts.Open = rem
+			rec, err := json.Marshal(ts)
+			if err != nil {
+				return err
+			}
+			work.kv[keyTimers] = string(rec)
 		}
 	} else if op.Timers != nil {
 		rec, err := json.Marshal(op.Timers)
