@@ -105,6 +105,8 @@ var workingChecks = map[string]workingCheck{
 	PropPeggedBound:    {BySet: true},
 	PropFriendStartMax: {},
 	PropIdentical:      {},
+	PropFlapLimit:      {},
+	PropFlapWindow:     {},
 	PropReadyMax:       {},
 	PropLowBalanceUsd:  {},
 	PropTwinBriefs:     {},

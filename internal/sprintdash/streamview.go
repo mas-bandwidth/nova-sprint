@@ -60,10 +60,10 @@ type StreamCard struct {
 }
 
 // flowColumns is the work table's columns in flow order (sprint.States, with fix).
-var flowColumns = []string{"waiting", "ready", "working", "review", "fix", "merging", "landed"}
+var flowColumns = []string{"waiting", "ready", "working", "review", "fix", "merging", "blocked", "landed"}
 
 // columnColor is each column's colour on the page (index.html, --s-*).
-var columnColor = map[string]string{"waiting": colSlate, "ready": colGrey, "working": colBlue, "review": colOrange, "fix": "#8b5cf6", "merging": colPink, "landed": colGreen}
+var columnColor = map[string]string{"waiting": colSlate, "ready": colGrey, "working": colBlue, "review": colOrange, "fix": "#8b5cf6", "merging": colPink, "blocked": "#000000", "landed": colGreen}
 
 // maxDepNodes caps the dependency chart's boxes (the stream's cards and the cards they need),
 // maxDepEdges its arrows, and maxCardRows the stream page's card table.

@@ -52,7 +52,7 @@ func NextReadTier(t string) string {
 // name (TierWord; a frontier card works on pro's routes for reads), flash with none.
 func StreamWorkTier(s *Snapshot, stream string) string {
 	work := cardhdr.RouteFlash
-	for _, col := range []State{Waiting, Ready, Working, Review, Merging} {
+	for _, col := range []State{Waiting, Ready, Working, Review, Merging, Blocked} {
 		for _, c := range s.Work.Cell(stream, col) {
 			if IsSentinel(c) {
 				continue

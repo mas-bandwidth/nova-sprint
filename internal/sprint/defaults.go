@@ -97,6 +97,8 @@ var Defaults = []Default{
 	{Name: PropDriftHours, Home: HomeProp, Value: strconv.Itoa(DriftHoursDefault), Why: "the base's oldest commit not on dev may be this old"},
 	{Name: PropLowBalanceUsd, Home: HomeProp, Value: strconv.FormatFloat(LowBalanceUsdDefault, 'f', -1, 64), Why: "a provider below five dollars is low"},
 	{Name: PropIdentical, Home: HomeProp, Value: strconv.Itoa(IdenticalDefault), Why: "two identical findings in a row stop a card"},
+	{Name: PropFlapLimit, Home: HomeProp, Value: strconv.Itoa(FlapLimitDefault), Why: "a card that flaps more than five times in the window is blocked (the owner, 2026-11-05)"},
+	{Name: PropFlapWindow, Home: HomeProp, Value: FlapWindowDefault.String(), Why: "flaps count over the last thirty minutes"},
 	// the backlog alarms: never off after a clear (the owner, 2026-10-11: "never turn off
 	// alarms or warnings"); the feed alarm is on, the threshold alarms are the coordinator's
 	// and carried, at their working threshold when never set

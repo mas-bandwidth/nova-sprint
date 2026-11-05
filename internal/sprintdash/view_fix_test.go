@@ -131,7 +131,7 @@ func TestFixPageConstants(t *testing.T) {
 	assert.Contains(t, page, ".fix { background: var(--s-fix); }")
 	assert.Contains(t, page, ".p-fix { background: var(--p-fix); }")
 	assert.Contains(t, js, `FLOW.forEach`, "Work headers and cells follow the flow order")
-	assert.Contains(t, js, `var STATES = ["landed", "merging", "fix", "review", "working", "ready", "waiting"];`)
+	assert.Contains(t, js, `var STATES = ["landed", "blocked", "merging", "fix", "review", "working", "ready", "waiting"];`)
 	assert.Contains(t, js, `var FLOW = ["waiting", "ready", "working", "review", "fix", "merging", "landed"];`)
 }
 
@@ -193,7 +193,7 @@ func TestFixPageDrawsFixBetweenReviewAndMerging(t *testing.T) {
 	}
 	require.NoError(t, json.Unmarshal(outBuf.Bytes(), &res), outBuf.String())
 
-	assert.Equal(t, []string{"landed 3", "merging 1", "fix 1", "review 0", "working 1", "ready 1", "waiting 9"}, res.Legend)
+	assert.Equal(t, []string{"landed 3", "blocked 0", "merging 1", "fix 1", "review 0", "working 1", "ready 1", "waiting 9"}, res.Legend)
 	want := []string{"landed", "landed", "landed", "merging", "fix", "working", "ready"}
 	for i := 0; i < 9; i++ {
 		want = append(want, "waiting")

@@ -48,6 +48,9 @@ func (st *Store) LockedShape(ctx context.Context) error {
 			if col.Name == sprint.ReaderTiers && def.Name == st.Names.Table(sprint.Readers) {
 				continue // the build adds tiers itself (EnsureReaderTiers)
 			}
+			if col.Name == sprint.Blocked && def.Name == st.Names.Table(sprint.Work) {
+				continue // and work.blocked (EnsureWorkBlocked)
+			}
 			if shape.Column(col.Name) >= 0 {
 				continue
 			}

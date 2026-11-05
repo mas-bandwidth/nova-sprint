@@ -203,7 +203,7 @@ func overlaps(a, b string) bool { return a == b || globNames(a, b) || globNames(
 func sharedGlobs(s *Snapshot, pr *Card, globs []string) []string {
 	var out []string
 	var others []*Card
-	for _, st := range []State{Waiting, Ready, Working, Review, Merging} {
+	for _, st := range []State{Waiting, Ready, Working, Review, Merging, Blocked} {
 		for _, c := range s.Work.Column(st) {
 			if c.ID != pr.ID && !IsSentinel(c) {
 				others = append(others, c)

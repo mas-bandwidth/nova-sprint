@@ -485,6 +485,10 @@ func (a *app) cmdRun(args []string, stdout, stderr io.Writer) int {
 	// before any key is read, port bound or loop begun, so a build never starts
 	// on a table it would write a missing column to (internal/sprint/TABLES.lock,
 	// the Change of 2026-10-06).
+	// work.blocked is the one column the build adds itself (the Change of 2026-11-05)
+	if err := st.EnsureWorkBlocked(context.Background()); err != nil {
+		return refuse(stderr, "run", "the work table's blocked column could not be added: "+err.Error()+"; this server does not start")
+	}
 	if err := st.LockedShape(context.Background()); err != nil {
 		return refuse(stderr, "run", "the store's tables lack the columns this build writes: "+err.Error()+"; this server does not start")
 	}

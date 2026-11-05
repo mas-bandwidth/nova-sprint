@@ -613,6 +613,9 @@ func commands(g Group, first Note, prefix string, onWork func(id string) bool) [
 				cmd+"add --stream "+s+" '<new id>' --brief-file '<the re-cut brief>'")...)
 		case d == "drop":
 			add(d, cmd+"drop"+subj+" --reason "+whyText+subjAns)
+		case d == "unblock":
+			// a blocked primary (blocked.go): to waiting, its flaps cleared
+			add(d, cmd+"unblock"+subj+" --reason '<what was fixed>'"+subjAns)
 		case d == "return":
 			add(d, cmd+"return"+grp+" --reason "+whyText+ans)
 		case d == "look":

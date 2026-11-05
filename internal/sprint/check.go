@@ -117,10 +117,11 @@ func Check(s *Snapshot, pending *Pending) []Violation {
 	if quiet {
 		out = append(out, diff(2, working, dealt, "work working", "fleet ready+working")...)
 		// A primary whose work card was withdrawn is ready, or waiting on an
-		// unlanded named need. A withdrawn read is history: its primary stays in
+		// unlanded named need, or blocked (its deal withdrawn on entry), or waiting after
+		// its unblock until the resolve. A withdrawn read is history: its primary stays in
 		// review and is asked again.
 		for _, c := range s.Fleet.Column(Withdrawn) {
-			if st := s.StateOf(c.F("primary")); c.F("kind") != "read" && st != Ready && !(st == Waiting && namedNeedsOpen(c.F("primary"), s)) {
+			if st := s.StateOf(c.F("primary")); c.F("kind") != "read" && st != Ready && st != Blocked && !(st == Waiting && (namedNeedsOpen(c.F("primary"), s) || justUnblocked(s, c.F("primary")))) {
 				out = append(out, Violation{2, fmt.Sprintf("%s is withdrawn and its primary %s is %s, not ready or waiting on an unlanded need", c.ID, c.F("primary"), orDash(st))})
 			}
 		}

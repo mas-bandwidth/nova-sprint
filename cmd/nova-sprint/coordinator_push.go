@@ -761,6 +761,25 @@ func coordFresh(told map[string]bool, l coordLook, now time.Time) []coordSend {
 		notes[o.Note.ID] = o.Note
 	}
 	for _, g := range l.groups {
+		if g.Type == sprint.NFlapBlocked {
+			// a block is one push of its own the moment it enters, never folded into
+			// the digest (sprint.BlockedPush; tla/Blocked.tla OneJudgmentPerEntry); the
+			// deadline lane re-reminds it while it stays open
+			for _, id := range g.Notes {
+				subject, text, ok := sprint.BlockedPush(notes[id])
+				key := "blocked\x00" + id
+				if !ok {
+					continue
+				}
+				active[key] = true
+				if told[key] {
+					continue
+				}
+				token := fmt.Sprintf("blocked:%x", sha256.Sum256([]byte(l.scope+"\x00"+strconv.FormatUint(l.epoch, 10)+"\x00"+id)))
+				transitions = append(transitions, coordSend{to: cmp.Or(g.To, l.holder), kind: bus.KindJudgment, subject: subject, text: text, keys: []string{key}, token: token})
+			}
+			continue
+		}
 		// Review and merge decisions use the existing durable decisions-owed
 		// receipt below. Do not send a second, process-memory-only reminder.
 		if g.Kind == sprint.Judgment && sprint.RepeatedDecisionType(g.Type) {

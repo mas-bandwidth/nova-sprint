@@ -341,7 +341,7 @@ func TestThePageAboveTheChartsIsUnchanged(t *testing.T) {
 	}
 	before := strings.NewReplacer(chartsPanel, "", chartsScript, "", fold, ".panel.folded > .chart-body { display: none; }").Replace(index)
 	sum := sha256.Sum256([]byte(before))
-	assert.Equal(t, "42cc23bc3aaf0804aaf7ba58cd8c15e45c73a8c730c81bf913616d121b72049b", hex.EncodeToString(sum[:]), "the page before the charts, byte for byte")
+	assert.Equal(t, "52eee8b6b1ec3373ccc9044b2209ae37e08a31928a11c65c3ada9e5b58604b36", hex.EncodeToString(sum[:]), "the page before the charts, byte for byte")
 	app, err := os.ReadFile("page/app.js")
 	require.NoError(t, err)
 	assert.Equal(t, pageAppSHA256, sha(app), "app.js is untouched")

@@ -221,6 +221,13 @@ func DropStep(r sprint.DropReq) Step {
 		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Drop(s, r) }}
 }
 
+// UnblockStep is the coordinator's unblock of a blocked primary, to waiting
+// (sprint.Unblock).
+func UnblockStep(r sprint.UnblockReq) Step {
+	return Step{Answers: r.Answers, Named: true, Args: ArgsOf(r), Verb: "unblock", Load: All,
+		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.Unblock(s, r) }}
+}
+
 // DeferStep is the coordinator deferring waiting primaries to the roadmap:
 // the verb writes their whole briefs into the roadmap data and this step drops
 // them from the store (sprint.Defer). Only a waiting primary defers.

@@ -19,7 +19,7 @@ import (
 // State is a primary's state: its column in the work table.
 type State = string
 
-// The six states. Landed is final.
+// The six states, and blocked (blocked.go). Landed is final.
 const (
 	Waiting State = "waiting"
 	Ready   State = "ready"
@@ -30,7 +30,7 @@ const (
 )
 
 // States is every state, in the work table's column order.
-var States = []State{Waiting, Ready, Working, Review, Merging, Landed}
+var States = []State{Waiting, Ready, Working, Review, Merging, Blocked, Landed}
 
 // The class of a move: mechanical moves need no decision; the coordinator's
 // moves are made only by the coordinator's verbs.
@@ -66,6 +66,10 @@ var Moves = []Move{
 	{Merging, Landed, "merge", Mechanical, "its batch, green on the stream branch, merged to the development branch"},
 	{Waiting, Landed, "release", Coordinator, "a sentinel reached, or with nothing before it, released by the coordinator (kind sentinel only)"},
 	{Ready, Waiting, "add", Mechanical, "a sentinel inserted in front of it, or its named needs now hold one not landed: a brief edit's DEPENDS-ON, needs set, or the tick's needs withdrawal and needsWaits"},
+	{Ready, Blocked, "block", Mechanical, "more flaps than the limit in the window (blocked.go TickBlock)"},
+	{Working, Blocked, "block", Mechanical, "more flaps than the limit in the window: its work card withdrawn, its attempt kept"},
+	{Review, Blocked, "block", Mechanical, "more flaps than the limit in the window: its read cards retired"},
+	{Blocked, Waiting, "unblock", Coordinator, "the coordinator's unblock with what was fixed: the resolve takes it on"},
 }
 
 // The lifecycle's rows are the moves the code makes, and the model's actions are
@@ -82,7 +86,7 @@ func Legal(from, to State) bool {
 // IsOpen says a primary in s has not landed: drop may take it off the table.
 func IsOpen(s State) bool {
 	switch s {
-	case Waiting, Ready, Working, Review, Merging:
+	case Waiting, Ready, Working, Review, Merging, Blocked:
 		return true
 	}
 	return false
@@ -282,6 +286,10 @@ func unlawful(u Unit, p *Plan) string {
 			to = e.Move.Col
 		}
 		switch {
+		case from == Blocked && to != "" && (to != Waiting || !p.unblocking):
+			return BlockedWhy(e.ID)
+		case to == Blocked && !p.blocking:
+			return "only the tick's flap check moves a primary to blocked (tla/Blocked.tla)"
 		case from == Waiting && to == Landed && (!p.releasing || !sentinel):
 			return "the lifecycle lands from waiting only a sentinel, and only by release"
 		case from == Review && to == Waiting && !decisionPark(e, p.pre, p.drained):
