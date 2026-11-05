@@ -293,6 +293,10 @@ type OpRecord struct {
 	Verb      string                 `json:"verb"`
 	At        time.Time              `json:"at"`
 	Manifests []ntable.BatchManifest `json:"manifests"`
+	// RowDels are the rows the operation takes off the tables: they are
+	// deleted with the manifests, in one exchange, so the rows of two
+	// tables go together or not at all.
+	RowDels []sprint.RowDel `json:"row_dels,omitempty"`
 	Notes     []sprint.Note          `json:"notes,omitempty"`   // happened and judgment, ids assigned
 	Decided   []sprint.Note          `json:"decided,omitempty"` // answers to open judgments
 	Log       []sprint.Line          `json:"log,omitempty"`     // the log's move lines of the step's changes

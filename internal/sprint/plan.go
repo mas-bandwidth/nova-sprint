@@ -48,6 +48,14 @@ type Refusal struct {
 // the table layer's row verb, not by a batch.
 type RowAdd struct{ Table, Row string }
 
+// RowDel is one table's rows a step takes off: the rows of the tables a step
+// deletes go together, in the step's one operation, so a stream is on both
+// tables or on neither.
+type RowDel struct {
+	Table string   `json:"table"`
+	Rows  []string `json:"rows"`
+}
+
 // PlaceAgain is a record on no cell the step puts back into a cell before its
 // manifests, as the table layer's cell add does: a batch never places a
 // removed member (a stream's control card a stream remove took off comes
@@ -62,6 +70,10 @@ type PlaceAgain struct {
 // Plan is what a step does: its units, in order, and the cards it refused.
 type Plan struct {
 	Rows []RowAdd
+	// RowDels are the rows the step takes off the tables: the rows of every
+	// table it deletes go in one operation, in one exchange, so a crash
+	// leaves them all or none.
+	RowDels []RowDel
 	// Places are the records the step puts back on a cell, after its rows and
 	// before its manifests (PlaceAgain).
 	Places  []PlaceAgain
@@ -186,6 +198,19 @@ func StreamRemoveExisting(s *Snapshot, running bool, streams []string) (remove [
 		remove = append(remove, st)
 	}
 	return remove, refused
+}
+
+// StreamRemove is the plan of the stream remove verb: the streams named
+// that may leave are taken off the work and merge tables, in one operation,
+// so a stream is on both tables or on neither; each name that may not is
+// refused by name, as StreamRemoveExisting splits them.
+func StreamRemove(s *Snapshot, streams []string) Plan {
+	remove, refused := StreamRemoveExisting(s, s.Running, streams)
+	p := Plan{Refused: refused}
+	if len(remove) > 0 {
+		p.RowDels = []RowDel{{Table: Merge, Rows: remove}, {Table: Work, Rows: remove}}
+	}
+	return p
 }
 
 // AddMarked admits an add's cards and stamps the new stream's control card with a
