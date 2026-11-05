@@ -262,12 +262,19 @@ Refusals: tested R4, R11, R12, R17 (refusals_a_test.go), R1 (clear_ids_test.go),
 R5 (clear_ids_test.go:13), R6, R7 (clear_told_test.go:103), R8 (stop_return_test.go:91),
 R9 (stop_return_test.go:68), R10 (stop_return_test.go:184), R13 (clear_restore_guard_test.go:19),
 R14 (stop_return_test.go:302, :321), R15 (seat_cover_test.go), R16 (changed_twice_test.go:52),
-R18 (bounds_test.go:42, :72), R22, R23 (repair_test.go, store_test.go), R24
-(bounds_test.go:137), R25 (machine_duties_test.go), R26 (engine_cover_test.go:23, :63),
-R27 (tick_busy_test.go), R29, R30, R32 (refusals_c_test.go), R31 (clear_concurrent_test.go),
-R35, R36, R37 (refusals_d_test.go). No test names: **R19, R20, R21, R28, R33, R34** (6 GAPs; found by grepping each
-refusal's type or text in `*_test.go`, so a test asserting only `Refused` non-empty is missed).
-On a real store: only R3, R6, R22, R23 and the fence refusals of G3.
+R18 (bounds_test.go:42, :72), R19, R20, R21 (refusals_real_b_functional_test.go),
+R22, R23 (repair_test.go, store_test.go),
+R24 (bounds_test.go:137; refusals_real_b_functional_test.go),
+R25 (machine_duties_test.go; refusals_real_b_functional_test.go),
+R26 (engine_cover_test.go:23, :63; refusals_real_b_functional_test.go),
+R27 (tick_busy_test.go; refusals_real_b_functional_test.go),
+R28 (refusals_real_b_functional_test.go),
+R29, R30, R32 (refusals_c_test.go; refusals_real_b_functional_test.go),
+R31 (clear_concurrent_test.go; refusals_real_b_functional_test.go),
+R33, R34 (refusals_real_b_functional_test.go),
+R35, R36, R37 (refusals_d_test.go; refusals_real_b_functional_test.go). No test names: none (every refusal has a test).
+On a real store: R3, R6, R19, R20, R21, R22, R23, R24, R25, R26, R27, R28, R29,
+R30, R31, R32, R33, R34, R35, R36, R37 and the fence refusals of G3.
 
 House-rule flags (unit tests, no build tag, using real time or sockets):
 - machine_twoloops_test.go:31 sets `Sleep = time.Sleep` and races two goroutine tick loops on
