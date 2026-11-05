@@ -162,13 +162,31 @@ hiding in `addRows` (1229-1240), the tick deal's read-card `MEMBEREXISTS` drop i
 (1887-1958), and `sprint.Lawful` re-judging inside repair (`rejudge`, 2423). `Store` itself
 carries 34 field declarations, among them tick and friend callbacks (engine.go:63-150).
 
-**Store logic living above the store:** `cmd/nova-sprint/verbs.go:4351-4371` (stream remove)
-plans on an unfenced `Load` and calls `st.B.RowsDel` on two tables outside any operation: no
-fence, no generation check, not atomic across the two tables. `verbs.go:1338` calls
+**Store logic living above the store:** `cmd/nova-sprint/verbs.go:1338` calls
 `st.B.RowsAdd` directly; `reads.go:2586` `st.B.SetCursor`. 19 CLI files reach through `st.B`
 (mostly reads: `Coordinator` 21, `Shapes` 6, `OpenNotes` 6). The id/epoch encoding the store
 relies on (`StoredID`, `OpFamily`, `IDEpoch`) and the queue (`QueueOf`, `Drain`, `WithQueue`)
 live in `internal/sprint` (schema.go:190-205, queue.go:44-284).
+Stream remove is no longer one of them: it is one store step (`store.StreamRemoveStep`,
+`sprint.StreamRemove`), and its rows of the two tables go in the step's one operation, inside
+the fence. The plan's row deletes ride the operation (`OpRecord.RowDels`, persisted in the
+fence record) and its release takes them off in one guarded exchange, finished by `Repair`
+when the operation was cut. The delete names the operation (`RestoreGuard.Owner`), and the
+owner check and the deletes are one exchange (Mem's owner-guarded delete under its lock;
+Redis's watched fence read before EXEC), so a writer whose operation another finished cannot
+take off a stream that came back after it. A release whose fence no longer holds the
+operation is the G5 no-op success.
+The engine copies `Plan.RowDels` directly into the record and counts row-only plans
+as operations; the step constructor neither replaces the backend nor closes a timer.
+The record also keeps the row namespace for Mem release after repair. These internal
+fields remain outside the view-rows schema, with their JSON storage handled by the record.
+`tla/StoreFence.tla` carries the durable deletes and their owner guard:
+`MCStoreFenceRowDels.cfg` checks crash/repair, `MCStoreFenceLateRemove.cfg` checks a
+stream added again before a late release, and the reversed configs
+`MCStoreFenceBrokenRowDelOwner.cfg` and `MCStoreFenceBrokenRepairNoDels.cfg` must violate
+`RowDelHeldFence` and `CommittedRowsGone`, respectively. The model abstracts the guarded
+row exchange and subsequent logical commit while the fence remains held; it does not
+claim rows and notifications are published by one backend exchange.
 
 **Dead: no caller outside tests (8):** `Store.SeatAndServer` seat.go:239 (no caller at all, a
 comment only at cmd/nova-sprint/reads.go:1375), `Store.RestorePending` clear.go:371,
@@ -237,7 +255,7 @@ against Redis (redis_sprint_functional_test.go, redis_functional_test.go).
 | G2 | store_test.go:286 `TestD1APendingOperationIsFinishedFirst`, :373 | functional :73 |
 | G3 | store_test.go:373; redis_sprint_functional_test.go:914 `TestRedisTheFenceRefusesWhatItShould` | yes |
 | G4 | store_test.go:319 `TestD1NotificationsAtTheCommitOnly` | no |
-| G5 | redis_sprint_functional_test.go:914 (second release); redis_functional_test.go:109 | yes |
+| G5 | stream_remove_step_test.go `TestRedisReleaseOfAnUnheldRemovalIsANoOp`; redis_sprint_functional_test.go:914 (second release); redis_functional_test.go:109 | fake client; yes |
 | G6 | callerop_test.go:13, :64; store_test.go:492 | redis_sprint_functional_test.go:417 |
 | G7 | clear_ids_test.go:13 | no |
 | G8 | clear_ids_test.go:49 | no |
@@ -245,7 +263,7 @@ against Redis (redis_sprint_functional_test.go, redis_functional_test.go).
 | G10 | clear_start_fence_test.go, ready_clear_race_test.go, redis_cover_test.go (AdvanceEpoch) | fake client |
 | G11 | clear_owed_test.go (unverified which test) | no |
 | G12 | redis_guarded_rows_test.go:18; clear_restore_guard_test.go:19; clear_concurrent_test.go:96, :103 | fake client |
-| G13 | store_test.go:414; repair_test.go:128, :227 | redis_sprint_functional_test.go:295, :370 |
+| G13 | stream_remove_step_test.go `TestStreamRemoveIsOneFencedOperation`; store_test.go:414; repair_test.go:128, :227 | redis_sprint_functional_test.go:295, :370 |
 | G14 | store_test.go:450; bounds_test.go:210; engine_cover_test.go:63 | no |
 | G15 | store_test.go:608; engine_cover_test.go, finished_op_test.go | redis_functional_test.go (ErrUnknown) |
 | G16 | store_test.go:394 | no |
