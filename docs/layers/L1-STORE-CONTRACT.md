@@ -262,8 +262,8 @@ Refusals: tested R1 (clear_ids_test.go; Redis: `refusals_real_a_functional_test.
 (callerop_test.go:43; Redis: same, R2), R3 (callerop_test.go:13, :64; Redis:
 `redis_sprint_functional_test.go:TestRedisCallerOperationReplay`), R4 (refusals_a_test.go; Redis:
 same real-a test, R4), R5 (clear_ids_test.go:13; Redis: same real-a test, R5), R6 (Redis:
-`redis_sprint_functional_test.go:TestRedisALateWriterAfterAClearIsRefused`), R7
-(clear_told_test.go:103), R8 (stop_return_test.go:91; Redis: same real-a test, R8), R9
+`redis_sprint_functional_test.go:TestRedisALateWriterAfterAClearIsRefused`), R7 (clear_told_test.go:103;
+Redis: same real-a test, R7), R8 (stop_return_test.go:91; Redis: same real-a test, R8), R9
 (stop_return_test.go:68; Redis: same real-a test, R9), R10 (stop_return_test.go:184; Redis: same
 real-a test, R10), R11 (refusals_a_test.go; Redis: same real-a test, R11), R12 (refusals_a_test.go;
 Redis: same real-a test, R12), R13 (clear_restore_guard_test.go:19; Redis: same real-a test, R13),
@@ -275,9 +275,9 @@ real-a test, R18), R22, R23 (repair_test.go, store_test.go), R24 (bounds_test.go
 R32 (refusals_c_test.go), and R31 (clear_concurrent_test.go). No test names: **R19, R20, R21,
 R28, R33, R34, R35, R36, R37** (9 GAPs; found by grepping each refusal's type or text in
 `*_test.go`, so a test asserting only `Refused` non-empty is missed). On a real store, this card
-adds R1, R2, R4, R5, and R8–R18; the existing real tests cover R3, R6, R22, R23 and the fence
-refusals of G3. R7 has no real-Redis test yet: its post-commit display-sync failure needs a Redis
-command error after commit, and the test had no injected client fault.
+adds R1, R2, R4, R5, and R7–R18; the existing real tests cover R3, R6, R22, R23 and the fence
+refusals of G3. The R7 test uses a test-owned Redis client hook to advance the epoch after commit
+and inject a failure in the merge-table write during display synchronization.
 
 House-rule flags (unit tests, no build tag, using real time or sockets):
 - machine_twoloops_test.go:31 sets `Sleep = time.Sleep` and races two goroutine tick loops on

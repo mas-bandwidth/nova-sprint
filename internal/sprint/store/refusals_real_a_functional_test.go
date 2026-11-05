@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
@@ -72,7 +73,26 @@ func TestRefusalsEarlyOnRedis(t *testing.T) {
 		t.Skip("covered on Redis by redis_sprint_functional_test.go: TestRedisALateWriterAfterAClearIsRefused")
 	})
 	t.Run("R7 cleared error after display sync failure", func(t *testing.T) {
-		t.Skip("the post-commit display-sync failure requires a Redis command failure after commit; testutil.StartRaw exposes no per-command fault hook, and production code must remain unchanged")
+		h := newH(t)
+		h.setup(1)
+		mergeTable := h.st.Names.Table(sprint.Merge)
+		require.NoError(t, h.st.B.(*Redis).RowsSet(h.ctx, mergeTable, map[string]map[string]string{
+			"s1": {sprint.StateCol: "stale"},
+		}))
+		clearClient := redis.NewClient(&redis.Options{Addr: c.Options().Addr})
+		t.Cleanup(func() { _ = clearClient.Close() })
+		clearer := &Store{B: &Redis{C: clearClient, Names: h.st.Names, Now: h.st.Now}, Names: h.st.Names, Actor: h.st.Actor, Now: h.st.Now}
+		hook := &failDisplaySyncHook{table: mergeTable, clear: func() error { _, err := clearer.Clear(h.ctx); return err }}
+		c.AddHook(hook)
+		_, err := h.st.Run(h.ctx, Step{Verb: "display sync probe", Load: All, Mirrors: true, Plan: func(s *sprint.Snapshot) sprint.Plan {
+			return sprint.Plan{Notes: []sprint.Note{{Kind: sprint.Happened, Type: "sync-probe", At: s.Now}}}
+		}})
+		var cleared *ClearedError
+		require.ErrorAs(t, err, &cleared)
+		require.True(t, cleared.Finished)
+		require.Equal(t, uint64(0), cleared.Held)
+		require.Equal(t, uint64(1), cleared.Now)
+		require.True(t, hook.fired, "the test did not fail SyncMirrors merge-table write")
 	})
 	t.Run("R8 stale halted run", func(t *testing.T) {
 		h := newH(t)
@@ -182,4 +202,38 @@ func TestRefusalsEarlyOnRedis(t *testing.T) {
 		require.Contains(t, res.Refused[0].Why, "field brief")
 		require.Contains(t, res.Refused[0].Why, fmt.Sprintf("over the bound of %d bytes", MaxBriefBytes))
 	})
+}
+
+// failDisplaySyncHook advances the test-owned sprint after a step commits, then
+// fails SyncMirrors merge row-set before Redis applies it.
+type failDisplaySyncHook struct {
+	table string
+	clear func() error
+	fired bool
+}
+
+func (h *failDisplaySyncHook) DialHook(next redis.DialHook) redis.DialHook { return next }
+
+func (h *failDisplaySyncHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return next
+}
+
+func (h *failDisplaySyncHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return func(ctx context.Context, cmds []redis.Cmder) error {
+		if !h.fired {
+			for _, cmd := range cmds {
+				args := cmd.Args()
+				if len(args) < 5 || !strings.EqualFold(fmt.Sprint(args[0]), "fcall") ||
+					fmt.Sprint(args[1]) != "ns_table_row_set" || fmt.Sprint(args[4]) != h.table {
+					continue
+				}
+				h.fired = true
+				if err := h.clear(); err != nil {
+					return fmt.Errorf("clear during display-sync failure: %w", err)
+				}
+				return errors.New("injected display-sync failure")
+			}
+		}
+		return next(ctx, cmds)
+	}
 }
