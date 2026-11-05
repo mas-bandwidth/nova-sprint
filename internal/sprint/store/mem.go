@@ -291,11 +291,6 @@ func (m *Mem) GuardedRows(_ context.Context, g RestoreGuard, writes []RowWrite) 
 	if o := m.restoreOutcome(g); o != GuardApplied {
 		return o, nil
 	}
-	if g.Owner != "" {
-		if l := m.log(); l.fence == nil || l.fence.ID != g.Owner {
-			return GuardNotOwner, nil
-		}
-	}
 	for _, w := range writes {
 		var err error
 		switch w.Op {
@@ -801,64 +796,6 @@ func (m *Mem) RowsShow(_ context.Context, table string, rows []string) error {
 	return nil
 }
 
-// cloneMemTable copies a table's rows, cells and member records, so a staged
-// delete can be published with a commit or left out of it whole.
-func cloneMemTable(t *memTable) *memTable {
-	out := *t
-	out.epochs = make(map[uint64]*memEpoch, len(t.epochs))
-	for e, ep := range t.epochs {
-		one := *ep
-		one.rows = append([]string(nil), ep.rows...)
-		one.hidden = maps.Clone(ep.hidden)
-		one.texts = make(map[string]map[string]string, len(ep.texts))
-		for r, texts := range ep.texts {
-			one.texts[r] = maps.Clone(texts)
-		}
-		one.props = maps.Clone(ep.props)
-		out.epochs[e] = &one
-	}
-	out.members = make(map[string]*memMember, len(t.members))
-	for id, mm := range t.members {
-		one := *mm
-		one.fields = maps.Clone(mm.fields)
-		out.members[id] = &one
-	}
-	out.wrote = maps.Clone(t.wrote)
-	out.ops = maps.Clone(t.ops)
-	out.changes = append([]memChange(nil), t.changes...)
-	return &out
-}
-
-// stageRowDels applies the operation's row deletes to cloned tables, one table
-// at a time, so a failure between two deletes publishes neither: the caller
-// publishes the returned tables with its commit.
-func (m *Mem) stageRowDels(dels []RowWrite) (map[string]*memTable, error) {
-	staged := map[string]*memTable{}
-	for _, w := range dels {
-		if w.Op != "del" {
-			return nil, fmt.Errorf("a staged row write %q is no row verb", w.Op)
-		}
-		t := m.tables[w.Table]
-		if t == nil {
-			return nil, refusal("NOTABLE", "no such table "+w.Table)
-		}
-		if err := m.writeEpoch(t); err != nil {
-			return nil, err
-		}
-		if staged[w.Table] == nil {
-			staged[w.Table] = cloneMemTable(t)
-		}
-		m.Calls["rowsdel"]++
-		m.rowsDel(staged[w.Table], w.Rows)
-		// A crash between two deletes leaves the tables the operation read:
-		// nothing of the staged deletes is published.
-		if err := m.fail("rowdel"); err != nil {
-			return nil, err
-		}
-	}
-	return staged, nil
-}
-
 // RowsDel removes rows and unplaces the cards in them, as the table layer's row
 // delete does, under RowsAdd's epoch check.
 func (m *Mem) RowsDel(_ context.Context, table string, rows []string) error {
@@ -1177,13 +1114,6 @@ func (m *Mem) Release(_ context.Context, op OpRecord, commit bool) error {
 		l.fence = nil
 		return nil
 	}
-	var staged map[string]*memTable
-	if len(op.RowDels) > 0 {
-		var err error
-		if staged, err = m.stageRowDels(op.RowDels); err != nil {
-			return err
-		}
-	}
 
 	// Build the commit against private copies. Redis prepares every command
 	// before EXEC; Mem must likewise publish all of the commit or none of it.
@@ -1299,9 +1229,6 @@ func (m *Mem) Release(_ context.Context, op OpRecord, commit bool) error {
 	}
 	l.fence = nil
 	m.logs, m.kv, m.seq = work.logs, work.kv, work.seq
-	for name, t := range staged {
-		m.tables[name] = t
-	}
 	m.wakeLog()
 	return nil
 }

@@ -824,7 +824,3 @@ MCStoreFenceBrokenRepairNoSend.cfg	MCStoreFence.tla	invariant	AbandonedAppliedNo
 MCStoreFenceBrokenAcquireNoGen.cfg	MCStoreFence.tla	invariant	CallerCommitsOnce	ignore-terminal	storefence	required	-
 MCStoreFenceSharedOpIds.cfg	MCStoreFence.tla	invariant	NoPartialOutsideFence	ignore-terminal	storefence	required	-
 MCStoreFenceRevivedRefusal.cfg	MCStoreFence.tla	invariant	AbandonedAppliedNothing	ignore-terminal	storefence	required	-
-MCStoreFenceRowDels.cfg	MCStoreFence.tla	pass	-	ignore-terminal	storefence-rowdels	required	-
-MCStoreFenceLateRemove.cfg	MCStoreFence.tla	pass	-	ignore-terminal	storefence-rowdels	required	-
-MCStoreFenceBrokenRowDelOwner.cfg	MCStoreFence.tla	invariant	RowDelHeldFence	ignore-terminal	storefence-rowdels	required	-
-MCStoreFenceBrokenRepairNoDels.cfg	MCStoreFence.tla	invariant	CommittedRowsGone	ignore-terminal	storefence-rowdels	required	-

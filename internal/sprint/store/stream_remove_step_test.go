@@ -11,7 +11,7 @@ import (
 // TestStreamRemoveIsOneFencedOperation: the stream remove verb is one store
 // step (store.StreamRemoveStep). It runs inside the store's fence and takes
 // the rows of the work and the merge table off in one operation: a crash
-// between the two deletes leaves both rows, repair finishes the delete and
+// before the exchange leaves both rows, repair finishes the delete and
 // leaves no rows behind, a late remover leaves a stream that came back
 // untouched, and the step removes both or neither.
 func TestStreamRemoveIsOneFencedOperation(t *testing.T) {
@@ -20,14 +20,14 @@ func TestStreamRemoveIsOneFencedOperation(t *testing.T) {
 		t.Parallel()
 		h := newHarness(t)
 		h.stream("s1")
-		// the crash: the store does not answer after the first table's delete
+		// the crash: the one exchange that takes the rows off does not answer
 		h.m.Fail = func(point string) error {
-			if point == "rowdel" {
+			if point == "guarded-rows" {
 				return errors.New("the store did not answer")
 			}
 			return nil
 		}
-		res, err := h.st.Run(h.ctx, StreamRemoveStep([]string{"s1"}))
+		res, err := h.st.Run(h.ctx, StreamRemoveStep(h.st, []string{"s1"}))
 		require.Error(t, err, "the crash is reported")
 		require.NotEmpty(t, res.Pending, "the operation stays in the fence")
 		h.m.Fail = nil
@@ -40,12 +40,12 @@ func TestStreamRemoveIsOneFencedOperation(t *testing.T) {
 		h := newHarness(t)
 		h.stream("s1")
 		h.m.Fail = func(point string) error {
-			if point == "rowdel" {
+			if point == "guarded-rows" {
 				return errors.New("the store did not answer")
 			}
 			return nil
 		}
-		res, err := h.st.Run(h.ctx, StreamRemoveStep([]string{"s1"}))
+		res, err := h.st.Run(h.ctx, StreamRemoveStep(h.st, []string{"s1"}))
 		require.Error(t, err, "the crash is reported")
 		require.NotEmpty(t, res.Pending, "the operation stays in the fence")
 		h.m.Fail = nil
@@ -66,10 +66,12 @@ func TestStreamRemoveIsOneFencedOperation(t *testing.T) {
 		h.stream("s1")
 		fence, err := h.m.ReadFence(h.ctx)
 		require.NoError(t, err)
-		h.must(StreamRemoveStep([]string{"s1"}))
+		exchanges := h.m.Calls["guarded-rows"]
+		h.must(StreamRemoveStep(h.st, []string{"s1"}))
 		s := h.snap()
 		require.False(t, s.Work.HasRow("s1"), "the work row is off the table")
 		require.False(t, s.Merge.HasRow("s1"), "the merge row is off the table")
+		require.Equal(t, exchanges+1, h.m.Calls["guarded-rows"], "the rows of both tables went in one exchange")
 		after, err := h.m.ReadFence(h.ctx)
 		require.NoError(t, err)
 		require.Equal(t, fence.Gen+1, after.Gen, "the removal was one operation")
@@ -79,12 +81,12 @@ func TestStreamRemoveIsOneFencedOperation(t *testing.T) {
 		h := newHarness(t)
 		h.stream("s1")
 		h.m.Fail = func(point string) error {
-			if point == "rowdel" {
+			if point == "guarded-rows" {
 				return errors.New("the store did not answer")
 			}
 			return nil
 		}
-		_, err := h.st.Run(h.ctx, StreamRemoveStep([]string{"s1"}))
+		_, err := h.st.Run(h.ctx, StreamRemoveStep(h.st, []string{"s1"}))
 		require.Error(t, err)
 		h.m.Fail = nil
 		fence, err := h.m.ReadFence(h.ctx)
@@ -110,7 +112,7 @@ func TestStreamRemoveIsOneFencedOperation(t *testing.T) {
 		h.stream("s1")
 		// a stream that holds a card is not removed
 		h.must(AddStep(sprint.AddReq{Stream: "s2", Count: 1, Brief: proBrief}))
-		res := h.run(StreamRemoveStep([]string{"s1", "s2", "zz"}))
+		res := h.run(StreamRemoveStep(h.st, []string{"s1", "s2", "zz"}))
 		require.Len(t, res.Refused, 2, "the stream that holds a card and the name that is no row are refused")
 		require.Equal(t, "s2", res.Refused[0].Key)
 		require.Equal(t, "zz", res.Refused[1].Key)
@@ -139,7 +141,7 @@ func TestRedisReleaseOfAnUnheldRemovalIsANoOp(t *testing.T) {
 		t.Parallel()
 		r, ctx := coverRedis(t, 0)
 		require.NoError(t, r.C.Set(ctx, r.key(keyFence), mustJSON(t, OpRecord{ID: "op9", Verb: "tick"}), 0).Err())
-		late := OpRecord{ID: "op1", Verb: "stream remove", RowDels: []RowWrite{{Op: "del", Table: "t-work", Rows: []string{"s1"}}}}
+		late := OpRecord{ID: "op1", Verb: "stream remove", RowDels: []sprint.RowDel{{Table: sprint.Work, Rows: []string{"s1"}}}}
 		require.NoError(t, r.Release(ctx, late, true), "a release of an unheld operation is success")
 		held, err := r.heldOp(ctx)
 		require.NoError(t, err)
@@ -148,7 +150,7 @@ func TestRedisReleaseOfAnUnheldRemovalIsANoOp(t *testing.T) {
 	t.Run("the fence is empty", func(t *testing.T) {
 		t.Parallel()
 		r, ctx := coverRedis(t, 0)
-		late := OpRecord{ID: "op1", Verb: "stream remove", RowDels: []RowWrite{{Op: "del", Table: "t-work", Rows: []string{"s1"}}}}
+		late := OpRecord{ID: "op1", Verb: "stream remove", RowDels: []sprint.RowDel{{Table: sprint.Work, Rows: []string{"s1"}}}}
 		require.NoError(t, r.Release(ctx, late, true), "a release of an unheld operation is success")
 	})
 }

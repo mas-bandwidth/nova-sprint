@@ -745,7 +745,7 @@ func (r *Redis) Release(ctx context.Context, op OpRecord, commit bool) error {
 		// gone writes nothing.
 		g := verbGuard(r.Names.Table(sprint.Fleet))
 		g.Owner = op.ID
-		o, err := r.GuardedRows(ctx, g, op.RowDels)
+		o, err := r.GuardedRows(ctx, g, rowDelWrites(r.Names, op.RowDels))
 		if err != nil {
 			return err
 		}

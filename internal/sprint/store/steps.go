@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"slices"
 
 	"github.com/mas-bandwidth/nova-sprint/internal/sprint"
@@ -274,9 +275,48 @@ func MergeStep(r sprint.MergeReq) Step {
 // The names that may not are refused by name, each on its own: a RUNNING
 // machine, a stream that holds a card, and a name that is no row of either
 // table.
-func StreamRemoveStep(streams []string) Step {
-	return Step{Verb: "stream remove", Args: ArgsOf(streams), Load: tables(sprint.Work, sprint.Merge),
-		Plan: func(s *sprint.Snapshot) sprint.Plan { return sprint.StreamRemove(s, streams) }}
+func StreamRemoveStep(st *Store, streams []string) Step {
+	b := ensureRowDeletes(st)
+	args := ArgsOf(streams)
+	return Step{Verb: "stream remove", Args: args, Load: tables(sprint.Work, sprint.Merge),
+		Plan: func(s *sprint.Snapshot) sprint.Plan {
+			p := sprint.StreamRemove(s, streams)
+			b.hold(args, p.RowDels)
+			if len(p.RowDels) > 0 {
+				// The step's only write is the row delete: it takes the
+				// operation's fence with a timer id no timer holds, whose
+				// close is a no-op, so the engine does not take an empty plan
+				// as nothing to do.
+				p.CloseTimers = []string{rowDelNoTimer}
+			}
+			return p
+		}}
+}
+
+// rowDelNoTimer is the plan's marker that its change is a row delete, not a
+// timer: no timer holds the id, so the operation's close of it writes nothing.
+const rowDelNoTimer = "stream-remove-row-delete"
+
+// ensureRowDeletes puts the row-delete carrier on the store once, keeping the
+// store's names for the stored table names.
+func ensureRowDeletes(st *Store) *rowDelBackend {
+	if b, ok := st.B.(*rowDelBackend); ok {
+		return b
+	}
+	b := &rowDelBackend{Backend: st.B, names: st.Names, state: &rowDelState{}}
+	st.B = b
+	return b
+}
+
+// deleteOpRows takes the operation's recorded rows off, guarded by the
+// operation still holding the fence: a late remover whose operation another
+// writer finished writes nothing.
+func (st *Store) deleteOpRows(ctx context.Context, op OpRecord) error {
+	b, ok := st.B.(*rowDelBackend)
+	if !ok {
+		b = &rowDelBackend{Backend: st.B, names: st.Names, state: &rowDelState{}}
+	}
+	return b.deleteRows(ctx, op.ID, op.RowDels)
 }
 
 // SetStep is the coordinator's settings: the sprint's dealt bound and read tier, or
