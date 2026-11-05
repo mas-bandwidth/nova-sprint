@@ -157,7 +157,7 @@ func TickCoordinatorPass(s *Snapshot, r TickReq) (Plan, int) {
 // idleConds is one condition for each friend not held holding working cards whose last
 // working-to-done finish, or her oldest working card's take when that is later, is older
 // than the friend-finish window, in running time. A read she closed counts as a finish: a
-// verdict (read --ok / --broken, or her outbox report) or a return (read --return), so a
+// verdict (read --ok / --broken) or a return (read --return), so a
 // friend filing reads steadily is not idle (friendReadFinishes).
 func idleConds(s *Snapshot, r TickReq) []cond {
 	if s.Fleet == nil {

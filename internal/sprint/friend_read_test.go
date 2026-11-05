@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 	"github.com/mas-bandwidth/nova-tools/pkg/cardhdr"
 	"github.com/stretchr/testify/require"
 )
@@ -51,7 +50,8 @@ func TestAFrontierCardsReadIsAskedAsAFriendCard(t *testing.T) {
 		require.Nil(t, w.s.Readers.Card(id))
 		require.Equal(t, Review, w.s.Work.Card("s1-1").Col)
 
-		text := string(mustRead(t, filepath.Join(dir, "inbox", id, "BRIEF.md")))
+		// the brief friend cards serves for the read (no file is written for it)
+		text := FriendReadBrief("amy", "s1-1", w.s.Work.Card("s1-1").F("brief"), rc.F("branch"), rc.F("start"), rc.F("head"), 2, t0.Add(FriendReadDeadline))
 		require.Contains(t, text, "WHO: friend amy\n")
 		require.Contains(t, text, "branch: "+branch+"\n")
 		require.Contains(t, text, "start: "+start+"\n")
@@ -114,24 +114,6 @@ func TestAFrontierCardsReadIsAskedAsAFriendCard(t *testing.T) {
 		// she is at her room and a paid reader has room: the third is asked of a reader
 		require.NotNil(t, placedReaderRead(w, "s1-3"))
 		require.Empty(t, w.notesOf(NFewReaders))
-		require.Empty(t, w.notesOf(NWaitingForReader))
-	})
-
-	t.Run("one-shot mode", func(t *testing.T) {
-		t.Parallel()
-		w := newWorld(t, "reader-a", "reader-b")
-		w.readersTable() // these asks use the standalone legacy producer
-		for i, id := range []string{"s1-1", "s1-2", "s1-3"} {
-			putReview(w, id, id+": work (s1) tier: frontier\n", 1, float64(i+1), primHead)
-		}
-		seat := frontierSeat("amy", 2, Up, t.TempDir())
-		seat.Mode = config.FriendModeOneShot
-		askReaders(t, w, workerSeatFixtures([]FriendSeat{seat}))
-		// a one-shot friend reads to her width as a batch friend does (one lane per unit of
-		// width, the owner 2026-10-10): two lanes working and the third ready behind them
-		require.Equal(t, Working, w.s.Fleet.Card(ReadCardID("s1-1", 1, "amy")).Col)
-		require.Equal(t, Working, w.s.Fleet.Card(ReadCardID("s1-2", 1, "amy")).Col)
-		require.Equal(t, Ready, w.s.Fleet.Card(ReadCardID("s1-3", 1, "amy")).Col)
 		require.Empty(t, w.notesOf(NWaitingForReader))
 	})
 

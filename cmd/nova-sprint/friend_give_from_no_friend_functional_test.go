@@ -35,13 +35,13 @@ func TestFriendGiveFromNoFriendOnAStore(t *testing.T) {
 	ta := newFunctionalTestApp(t, addr)
 	cfg := config.NewMem()
 	_, err := cfg.Insert(ctx, config.KindFriend, config.Row{Name: "fay", Fields: map[string]string{
-		"tiers": "flash", "roles": "builder,reader", "width": "2", "session": config.FriendSessionOneShot, "pronouns": "she/her"}}, "t")
+		"tiers": "flash", "roles": "builder,reader", "width": "2", "pronouns": "she/her"}}, "t")
 	require.NoError(t, err)
 	ta.app().friends = func(ctx context.Context, _ string) ([]config.Row, error) { return cfg.List(ctx, config.KindFriend) }
 	ta.app().tip = tipIs(t, landHead)
 
 	ta.runVerb("init", "--readers", "reader-a,reader-b", "--members", "m1,m2")
-	ta.runVerb("friend", "sync", "--root", t.TempDir())
+	ta.runVerb("friend", "sync")
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "s1-1.md"), []byte(passingBrief("s1-1: a friend's card\nREPO: mas-bandwidth/nova-tools\nWHO: friend fay")), 0o644))
 	ta.runVerb("add", "--stream", "s1", "--brief-dir", dir)

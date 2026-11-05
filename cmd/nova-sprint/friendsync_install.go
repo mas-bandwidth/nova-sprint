@@ -35,7 +35,6 @@ func (a *app) cmdFriendSyncInstall(args []string, stdout, stderr io.Writer) int 
 	fs, c := a.verbSetup(name)
 	every := fs.Duration("every", 0, "the time between the loop's passes, above zero (required); the unit runs friend sync --every with it")
 	pg := fs.String("pg", "", "the config store the loop reads, Postgres postgres://user@host:port/db with no password (else NOVA_PG_DSN); the unit names it, and the password comes from the variable NOVA_PG_PASSWORD_ENV names in the service's environment")
-	root := fs.String("root", "", "the directory the friends' working directories are under, an absolute path (default: none in the unit, so the service's HOME)")
 	dir := fs.String("dir", "", "the directory the unit is written into (default: ~/Library/LaunchAgents on macOS, ~/.config/systemd/user on Linux)")
 	logf := fs.String("log", "", "the file the loop's lines go to, macOS (default: ~/Library/Logs/nova-sprint-friend-sync.log); on Linux they are in the journal")
 	dry := fs.Bool("dry-run", false, "print the unit and where it would go, and write and load nothing")
@@ -47,7 +46,7 @@ func (a *app) cmdFriendSyncInstall(args []string, stdout, stderr io.Writer) int 
 		return refuse(stderr, name, "the loop acts as the sprint's coordinator seat each pass, so a seat that moves takes it along, and the unit names no actor: leave out --actor; nothing was written")
 	}
 	goos := a.seatOS()
-	u := sprint.FriendSyncUnit{OS: goos, Every: *every, Redis: strings.TrimSpace(c.redis), Root: *root, Log: *logf}
+	u := sprint.FriendSyncUnit{OS: goos, Every: *every, Redis: strings.TrimSpace(c.redis), Log: *logf}
 	p := *pg
 	if p == "" {
 		p = a.getenv(config.EnvPG)

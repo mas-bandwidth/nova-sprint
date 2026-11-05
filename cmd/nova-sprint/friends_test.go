@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -79,70 +78,6 @@ func jobs(t *testing.T, root, friend string, inbox []string, working []string, d
 	}
 }
 
-// The friends table has the fleet table's columns but load, from the friend's
-// sprint cards: a card dealt to her fleet row friend.<name> is working; a LAND
-// report finishes it done ok, a HOLD (or FAIL) report done failed, and a
-// REPORT.md with no verdict word is finished failed too, never ok; ready is
-// never a friend's card's state (the tick deals a card straight into working),
-// and a hand-written inbox job that is no card is shown nowhere. Width is the
-// friend row's (8 when it names none; TestFriendSyncWritesTheConfiguredWidth);
-// done and ok% are the formulas over ok and failed, and the footer sums and
-// pools them. A friend with no card shows zeros. The same cells are in where
-// --json, under the column names.
-func TestTheFriendsTableCountsTheFriendsSprintCards(t *testing.T) {
-	t.Parallel()
-	ta, _ := friendApp(t, "amy", "bob", "cat")
-	ta.a.tip = tipIs(t, landHead)
-	root := t.TempDir()
-	ta.ok("friend sync --root " + root)
-	for _, f := range []string{"amy", "bob", "cat"} {
-		ta.beatUp(f)
-	}
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "s1-1.md"), []byte(passingBrief("s1-1: a friend's card\nREPO: mas-bandwidth/nova-tools\nWHO: friend amy")), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "s1-2.md"), []byte(passingBrief("s1-2: a second friend's card\nREPO: mas-bandwidth/nova-tools\nWHO: friend amy")), 0o644))
-	ta.ok("add --stream s1 --brief-dir " + dir)
-	ta.ok("start")
-	ta.ok("tick")
-
-	// a hand-written job of amy's inbox that is no card: it is shown nowhere
-	jobs(t, root, "amy", []string{"hand"}, nil, nil)
-
-	ta.ok("friend sync --root " + root)
-	amy := func() map[string]any {
-		var w whereView
-		ta.json("where", &w)
-		return withoutRowCards(w.Tables[sprint.Friends]["amy"])
-	}
-	// dealt, not started: ready, and none working (docs/SPEC-SPRINT.md section 1, a friend's
-	// card is working once she starts it)
-	assert.Equal(t, map[string]any{"ready": "2", "working": "0", "width": "8", "done": "0", "okpct": "0.0%", "redealt": "0", "status": "up", "active": "-", "tokens": "0", "ok": "0", "failed": "0"}, amy(), "two cards dealt, neither started")
-	ta.startFriend("amy", 2)
-	assert.Equal(t, map[string]any{"ready": "0", "working": "2", "width": "8", "done": "0", "okpct": "0.0%", "redealt": "0", "status": "up", "active": "-", "tokens": "0", "ok": "0", "failed": "0"}, amy(), "two cards started, both working; the hand job is nowhere")
-
-	// amy finishes s1-1 with a LAND, its report carrying her session's usage: done ok,
-	// and the tokens column sums it (docs/SPEC-SPRINT.md, a friend's usage)
-	outboxReport(t, root, "amy", "s1-1.w1", "# s1-1\n\n**Verdict:** LAND\nHead: "+landHead+"\nusage: in=1000000 out=150000 cache=50000\n\nThe change is pushed.\n")
-	ta.ok("friend sync --root " + root)
-	// the readers' verdicts move her finished LAND to ok, where it counts done
-	ta.ok("ask --limit 100")
-	ta.ok("read --as reader-a --ok --limit 100")
-	ta.ok("read --as reader-b --ok --limit 100")
-	ta.ok("tick")
-	assert.Equal(t, map[string]any{"ready": "0", "working": "1", "width": "8", "done": "1", "okpct": "100.0%", "redealt": "0", "status": "up", "active": "-", "tokens": "1.2M", "ok": "1", "failed": "0"}, amy(), "s1-1 done ok, its usage summed, s1-2 still working")
-
-	// amy reports s1-2 with no verdict word: the worker's failed word stays finished,
-	// never ok and never failed (no reader reads it), and no usage adds none
-	outboxReport(t, root, "amy", "s1-2.w1", "# s1-2\n\nAll green, nothing more.\n")
-	ta.ok("friend sync --root " + root)
-	assert.Equal(t, map[string]any{"ready": "0", "working": "0", "width": "8", "done": "1", "okpct": "100.0%", "redealt": "0", "status": "up", "active": "-", "tokens": "1.2M", "ok": "1", "failed": "0"}, amy(), "s1-2 stays finished (its worker's failed word, no reader read it); s1-1 done ok; its tokens stay")
-
-	var w whereView
-	ta.json("where", &w)
-	assert.Equal(t, map[string]any{"ready": "0", "working": "0", "width": "8", "done": "0", "okpct": "0.0%", "redealt": "0", "status": "up", "active": "-", "tokens": "0", "ok": "0", "failed": "0"}, withoutRowCards(w.Tables[sprint.Friends]["bob"]), "bob has no card")
-	assert.Equal(t, map[string]any{"ready": "0", "working": "0", "width": "8", "done": "0", "okpct": "0.0%", "redealt": "0", "status": "up", "active": "-", "tokens": "0", "ok": "0", "failed": "0"}, withoutRowCards(w.Tables[sprint.Friends]["cat"]), "cat has no card")
-}
-
 // A friend's width is her friend row's (the owner, 2026-10-02: "6/1 seems a bit
 // wrong -- need to setup width for friends? Start at 8 for each?"): friend sync
 // writes the row's width, 8 when the row has no width field; a width changed
@@ -179,35 +114,6 @@ func TestFriendSyncWritesTheConfiguredWidth(t *testing.T) {
 	assert.Empty(t, out)
 	assert.Equal(t, "nova-sprint friend sync: friend amy has width 0, and a friend's width is at least 1; run: nova-config friend set amy --width <n>; nothing was changed\n", errs)
 	assert.Equal(t, map[string]string{"amy": "2", "cat": "3"}, width(), "nothing was written")
-}
-
-// friend sync writes only a friend's card's brief into her inbox, and reads
-// her outbox/<job>/REPORT.md to finish the card: the inbox/outbox directories
-// are the transport of her cards, never a source of the friends table's
-// counts. A hand-written inbox job that is no card is left alone and shown
-// nowhere.
-func TestFriendSyncWritesOnlyACardsBriefAndReadsItsReport(t *testing.T) {
-	t.Parallel()
-	ta, root := friendCardApp(t, "friend amy", "amy")
-	ta.ok("tick")
-	ta.startFriend("amy", 1)
-	jobs(t, root, "amy", []string{"hand"}, nil, nil) // a hand job, no card
-	hand := filepath.Join(root, "amy-working", "inbox", "hand", "BRIEF.md")
-	handText, err := os.ReadFile(hand)
-	require.NoError(t, err)
-	ta.ok("friend sync --root " + root)
-	text, err := os.ReadFile(filepath.Join(root, "amy-working", "inbox", "s1-1.w1", "BRIEF.md"))
-	require.NoError(t, err)
-	assert.Contains(t, string(text), "STATUS: nova-sprint card s1-1.w1")
-	assert.Contains(t, string(text), "WHO: friend amy")
-	gotHand, err := os.ReadFile(hand)
-	require.NoError(t, err)
-	assert.Equal(t, handText, gotHand, "the hand job's brief is untouched")
-	var w whereView
-	ta.json("where", &w)
-	assert.Equal(t, "1", w.Tables[sprint.Friends]["amy"]["working"], "the card counts; the hand job is nowhere")
-	assert.Equal(t, "0", w.Tables[sprint.Friends]["amy"]["ready"])
-	assert.Equal(t, "0", w.Tables[sprint.Friends]["amy"]["done"])
 }
 
 // friendRows is a friendsFn over friend rows of the names given, each with
@@ -387,50 +293,13 @@ func TestTheFriendVerbsRefuse(t *testing.T) {
 	assert.Equal(t, map[string]string{"amy": "down"}, ta.friendStatus(), "nothing was changed")
 }
 
-// The friends paragraph of nova-sprint help friend says what friend sync does
-// (docs/SPEC-SPRINT.md section 1, a friend's card): the job directory is the
-// card's stored id, <card> at epoch 0 and <card>~<epoch> after a clear; a
-// full-sha LAND is refused and left working when the tip differs (both shas
-// named), when origin has no branch of that name, when the tip cannot be read,
-// or when the card names no REPO: line; HOLD, FAIL, FAILED, BROKEN, a LAND
-// without a full sha, an empty report and any other verdict finish the card
-// failed with the report's first paragraph; and the friends table is drawn
-// after merge only under where --all, the default frame drawing no merge table.
-func TestFriendHelpMatchesWhatFriendSyncDoes(t *testing.T) {
-	t.Parallel()
-	var out, errb bytes.Buffer
-	code := runInto(newApp(func(string) string { return "" }), []string{"help", "friend"}, &out, &errb)
-	require.Equal(t, 0, code, errb.String())
-	help := strings.Join(strings.Fields(out.String()), " ")
-	for _, want := range []string{
-		"inbox/<job>/BRIEF.md",
-		"the job directory <card> at epoch 0 and <card>~<epoch> after a clear",
-		"outbox/<job>/REPORT.md",
-		"when the tip is another sha (both named), when origin has no branch of that name, when the tip cannot be read, or when the card names no REPO: line",
-		"Verdict: HOLD, FAIL, FAILED or BROKEN",
-		"a LAND without a full sha, an empty report and any other verdict finish the card failed too",
-		"the friends table is drawn after merge only under where --all",
-	} {
-		assert.Contains(t, help, want, "nova-sprint help friend says %q", want)
-	}
-	for _, gone := range []string{
-		"inbox/<card>/BRIEF.md",
-		"outbox/<card>/REPORT.md",
-		"is refused naming both shas",
-		"Verdict: HOLD or FAIL",
-		"friends after merge and before fleet",
-	} {
-		assert.NotContains(t, help, gone, "nova-sprint help friend no longer says %q", gone)
-	}
-}
-
 // A friend beats through the sprint's server as a member does: `friend beat
 // <friend>` and nothing more, its actor the friend.
 func TestAFriendBeatsThroughTheServer(t *testing.T) {
 	t.Parallel()
 	r := newServerRig(t, "nova-sprint init --readers reader-a,reader-b --members m1:2")
 	r.a.friends = friendRows("amy")
-	r.boss("nova-sprint friend sync --root " + t.TempDir())
+	r.boss("nova-sprint friend sync")
 	res := r.one("friend", "beat", "amy")
 	require.Equal(t, 0, res.Code, res.Stderr)
 	assert.Contains(t, res.Stdout, "FRIEND-BEAT OK amy")
@@ -449,31 +318,27 @@ func TestAFriendBeatsThroughTheServer(t *testing.T) {
 	}
 }
 
-// A friend's beat answers her row as friend sync last wrote it, her delivery
-// mode and her width, so her daemon reads her nova-config row from its beat
-// without reaching the config store; a row with no mode is batch, and a sync
-// after the row changes is what the next beat says.
-func TestAFriendsBeatAnswersHerRowsModeAndWidth(t *testing.T) {
+// A friend's beat answers her row as friend sync last wrote it, her width
+// and pronouns, and a sync after the row changes is what the next beat says.
+func TestAFriendsBeatAnswersHerRowsWidth(t *testing.T) {
 	t.Parallel()
 	r := newServerRig(t, "nova-sprint init --readers reader-a,reader-b --members m1:2")
-	mode, width := "", ""
+	width := ""
 	r.a.friends = func(context.Context, string) ([]config.Row, error) {
 		f := map[string]string{"tiers": "flash"}
-		if mode != "" {
-			f["mode"], f["width"] = mode, width
+		if width != "" {
+			f["width"] = width
 		}
 		return []config.Row{{Name: "amy", Fields: f}}, nil
 	}
-	root := t.TempDir()
-	r.boss("nova-sprint friend sync --root " + root)
+	r.boss("nova-sprint friend sync")
 	res := r.one("friend", "beat", "amy")
 	require.Equal(t, 0, res.Code, res.Stderr)
-	assert.Contains(t, res.Stdout, " row_mode=batch row_width=8")
-	assert.Contains(t, res.Stdout, " row_token_cap=6000000")
-	mode, width = "one-shot", "1"
-	r.boss("nova-sprint friend sync --root " + root)
+	assert.Contains(t, res.Stdout, " row_width=8 row_pronouns=they/them")
+	width = "1"
+	r.boss("nova-sprint friend sync")
 	res = r.one("friend", "beat", "amy")
 	require.Equal(t, 0, res.Code, res.Stderr)
-	assert.Contains(t, res.Stdout, " row_mode=one-shot row_width=1")
-	assert.Contains(t, res.Stdout, " row_token_cap=6000000")
+	assert.Contains(t, res.Stdout, " row_width=1 row_pronouns=they/them")
+	assert.NotContains(t, res.Stdout, "row_mode")
 }

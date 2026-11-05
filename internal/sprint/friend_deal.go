@@ -18,9 +18,9 @@ import (
 // where we would normally do friend work."; docs/SPEC-SPRINT.md section 1, a friend's
 // card). A brief whose header carries `WHO: friend` (any friend) or `WHO: friend <name>`
 // (cardhdr.ReadWho) is dealt by the tick to a friend instead of a machine: its work card
-// is placed on the friend's own fleet row, FriendRow(<name>), ready (friend sync delivers
-// it into her inbox) and working once she starts it (friend_start.go), within her room,
-// and is finished from her outbox by friend sync. The friend's row is a fleet row no machine
+// is placed on the friend's own fleet row, FriendRow(<name>), ready, and working once
+// she takes it (nova-sprint take --as friend.<name>), within her room, and she finishes
+// it herself (nova-sprint finish --as friend.<name>). The friend's row is a fleet row no machine
 // can be: its name holds a dot, which no member name holds (ValidID), so no fleet verb
 // names it, and the fleet's members (Members) leave it out: no presence, rebalance,
 // level, sync or deal of the machines touches it, and a friend who goes quiet keeps her
@@ -49,26 +49,6 @@ func friendHasRole(f FriendSeat, role string) bool {
 
 // friendRowPrefix begins every friend's fleet row: a dot, so no machine's name is one.
 const friendRowPrefix = "friend."
-
-// FriendOneShot is a friend seat's Session for a friend with no live session between cards
-// (nova-config friend --session one-shot): she runs as an ordinary fleet member lane on her
-// row (nova-swarm member --as friend.<name> --prompt <file>), so her status is her member's
-// beat (PresenceStatus), never a hook, and no friend lane, daemon beat or link is hers
-// (the v1.3 friend lane spec, guarantee 12; nova-tools tla/FriendLane.tla,
-// OneShot).
-const FriendOneShot = "one-shot"
-
-// OneShotLaneRefusal is the refusal of a friend lane's verb (a lane take, a daemon beat) for a
-// one-shot friend: her lanes are her member's.
-func OneShotLaneRefusal(friend string) string {
-	return "friend " + friend + " is a one-shot: no friend lane or daemon serves a one-shot, whose row is worked by a member: nova-swarm member --as " + FriendRow(friend) + " --prompt <identity file>"
-}
-
-// FriendIsOneShot says the roster's friend seat is a one-shot's (FriendOneShot).
-func (s *Snapshot) FriendIsOneShot(friend string) bool {
-	i := slices.IndexFunc(s.Friends, func(f FriendSeat) bool { return f.Name == friend })
-	return i >= 0 && s.Friends[i].Session == FriendOneShot
-}
 
 // FriendRow is the fleet row, and the member, a friend's cards are dealt to.
 func FriendRow(name string) string { return friendRowPrefix + name }
@@ -150,8 +130,7 @@ const friendCardWhy = "a friend's card (its brief says WHO: only friend, or a WH
 
 // FriendSeat is one friend as the tick deals to her: her name, her width (the jobs she
 // works at once, her friends row's), her status (nova-hook plus sprint hold: up, held or down), her
-// class (the tiers her nova-config row says she can do, sorted and comma joined), her
-// delivery mode (Mode: batch or one-shot, default batch), her tiers (config.friends
+// class (the tiers her nova-config row says she can do, sorted and comma joined), her tiers (config.friends
 // tiers: flash, frontier, pro; when given, the deal and the level read them before her
 // class: friendTiers), Dir, her working directory when the ask writes the read brief
 // itself (empty: friend sync writes it), and Running, the cards her last beat names
@@ -163,7 +142,6 @@ type FriendSeat struct {
 	Width    int
 	Status   string
 	Class    string
-	Mode     string
 	Tiers    []string
 	// Roles is her nova-config row's roles: a read card is dealt only to a friend whose
 	// roles name reader (RoleReader, read_cards.go).
@@ -192,12 +170,9 @@ type FriendSeat struct {
 	Evidence string
 	Current  string
 	Held     bool // Sprint hold, even when nova-hook says down.
-	// Session is FriendOneShot for a friend with no live session (a member lane on her row),
-	// "" for a live friend.
-	Session string
 	// WorkerLive is authoritative worker evidence at this snapshot: a healthy,
-	// proven friend, coordinator or comms hook (the name's one record), or a live
-	// member beat for a one-shot seat. Status Up alone is not this proof.
+	// proven friend, coordinator or comms hook (the name's one record). Status Up alone
+	// is not this proof.
 	WorkerLive bool
 	Unhooked   bool // nova-hook explicitly unhooked this friend; work may be returned.
 	// UnhookedAt is when nova-hook unhooked her (hook.Status.Unhooked) and AnsweredAt when
@@ -788,8 +763,8 @@ func friendDealtReturn(s *Snapshot, seats []FriendSeat, since func(string) (time
 	skip = map[string]bool{}
 	bound := s.DealtMax()
 	for _, f := range seats {
-		if f.Status != Up || f.Session == FriendOneShot {
-			continue // a one-shot's dealt cards wait for her member's take: no dealt bound, no dealt-no-more mark
+		if f.Status != Up {
+			continue
 		}
 		row := FriendRow(f.Name)
 		if friendHasTaken(s, f) {

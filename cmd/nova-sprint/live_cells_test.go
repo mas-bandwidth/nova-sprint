@@ -52,7 +52,5 @@ func TestTheServedFleetBeatTakesALiveSet(t *testing.T) {
 		assert.NotEmpty(t, why, "%v", bad)
 	}
 	_, _, why := workerVerb([]string{"friend", "beat", "zhi", "--live", "z@1:held"})
-	assert.Empty(t, why)
-	_, _, why = workerVerb([]string{"friend", "beat", "zhi", "--live", "z@0"})
-	assert.NotEmpty(t, why)
+	assert.NotEmpty(t, why, "a friend beat carries no live set")
 }

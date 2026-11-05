@@ -6,22 +6,20 @@ import (
 	"time"
 )
 
-// ReadCardBrief is the BRIEF.md of a read card delivered to a friend's inbox (inbox/<job>/,
-// the job a work card of hers would have: friend sync, friendJobOf), whole for a lane that
-// has never seen the sprint (docs/SPEC-SPRINT.md section 6, "A read is a consumer card"):
-// what a read is, the work under review (repository, branch, head, base, the attempt's start),
-// how to read it, how to finish (outbox/<job>/REPORT.md whose first line is "Verdict: LAND"
-// or "Verdict: HOLD", a HOLD naming each defect), and the card under review verbatim with the
-// worker's report. A one-shot runner that runs inbox/<job>/BRIEF.md and publishes
-// outbox/<job>/REPORT.md runs it unchanged; friend sync closes the read from that report
-// (FriendReadClose).
+// ReadCardBrief is the BRIEF.md of a read card on a friend's row (friend cards shows it; its
+// job is the one a work card of hers would have, friendJobOf), whole for a friend who has
+// never seen the sprint (docs/SPEC-SPRINT.md section 6, "A read is a consumer card"): what a
+// read is, the work under review (repository, branch, head, base, the attempt's start), how
+// to read it, how to return it (nova-sprint read --as friend.<name> --ok or --broken, a
+// broken read naming each defect), and the card under review verbatim with the worker's
+// report.
 func ReadCardBrief(name, job string, p Packet, start string, deadline time.Time) string {
 	repo, base := briefLine(p.Brief, "REPO:"), briefLine(p.Brief, "BASE:")
 	base = firstNonEmpty(p.WorkBase, base)
 	var b strings.Builder
-	fmt.Fprintf(&b, "STATUS: nova-sprint read card %s, epoch %d: a READ of attempt %d of %s; change nothing, commit nothing, push nothing; when done, write outbox/%s/REPORT.md whose first line is Verdict: LAND or Verdict: HOLD\n", p.Card, p.Epoch, p.Attempt, p.Primary, job)
+	fmt.Fprintf(&b, "STATUS: nova-sprint read card %s, epoch %d: a READ of attempt %d of %s; change nothing, commit nothing, push nothing; when done, return it with nova-sprint read --as friend.%s (--ok | --broken) %s --epoch %d\n", p.Card, p.Epoch, p.Attempt, p.Primary, name, p.Card, p.Epoch)
 	fmt.Fprintf(&b, "WHO: friend %s\n", name)
-	fmt.Fprintf(&b, "Work in ~/%[1]s-working/jobs/%[2]s/: the clone and every file of the read go inside it; the report goes to ~/%[1]s-working/outbox/%[2]s/REPORT.md.\n", name, job)
+	fmt.Fprintf(&b, "Work in ~/%[1]s-working/jobs/%[2]s/: the clone and every file of the read go inside it.\n", name, job)
 	b.WriteString("\n# This card is a READ\n\n")
 	b.WriteString("Another worker did the card quoted at the end. You judge whether its change does what that card asks, so the sprint can land it or send it back. You read; you do not fix, commit or push anything.\n")
 	b.WriteString("\n## The work under review\n\n")
@@ -51,7 +49,7 @@ func ReadCardBrief(name, job string, p Packet, start string, deadline time.Time)
 	if repo != "" {
 		clone = "git clone https://github.com/" + repo + ".git repo"
 	}
-	fmt.Fprintf(&b, "1. %s && cd repo && git fetch origin %s && git checkout --detach %s; check that git rev-parse HEAD prints %s. If that head cannot be had, write Verdict: HOLD and say so.\n", clone, orDash(p.WorkBranch), orDash(p.Head), orDash(p.Head))
+	fmt.Fprintf(&b, "1. %s && cd repo && git fetch origin %s && git checkout --detach %s; check that git rev-parse HEAD prints %s. If that head cannot be had, return it broken and say so.\n", clone, orDash(p.WorkBranch), orDash(p.Head), orDash(p.Head))
 	diff := "git diff $(git merge-base " + orDash(p.Head) + " origin/" + firstNonEmpty(base, "HEAD") + ")..." + orDash(p.Head)
 	if start != "" {
 		diff = "git diff " + start + ".." + orDash(p.Head)
@@ -61,12 +59,11 @@ func ReadCardBrief(name, job string, p Packet, start string, deadline time.Time)
 	b.WriteString("4. Run the tests the card names and the packages the change touches, where your own rules let you run them, and note each command and how it ended.\n")
 	b.WriteString("Attribution (a By: line, a Co-Authored-By trailer, the model or harness a worker names) is never a finding.\n")
 	b.WriteString("\n## How to finish\n\n")
-	fmt.Fprintf(&b, "Write outbox/%s/REPORT.md:\n", job)
-	b.WriteString("- line 1: Verdict: LAND (the work does what the card asks: land it) or Verdict: HOLD (it does not)\n")
-	fmt.Fprintf(&b, "- when your runner asks for a Head: line, give the head you read, %s\n", orDash(p.Head))
-	b.WriteString("- a HOLD names each defect on a line of its own: the file:line (or the card's STEP or RULE) the work breaks, and what to change; a HOLD that names no file, line or rule is not a read\n")
-	b.WriteString("- then the tests you ran and how they ended\n")
-	b.WriteString("Commit nothing, push nothing, open no pull request: the report is the whole of a read.\n")
+	fmt.Fprintf(&b, "- the work does what the card asks (land it): nova-sprint read --as friend.%s --ok %s --epoch %d\n", name, p.Card, p.Epoch)
+	fmt.Fprintf(&b, "- it does not: nova-sprint read --as friend.%s --broken %s --epoch %d --finding '<file:line, and what to change>', one --finding for each defect: the file:line (or the card's STEP or RULE) the work breaks, and what to change; a finding that names no file, line or rule is not a read\n", name, p.Card, p.Epoch)
+	fmt.Fprintf(&b, "- it cannot be read by you: nova-sprint read --as friend.%s --return %s --epoch %d --reason '<why>'\n", name, p.Card, p.Epoch)
+	fmt.Fprintf(&b, "- the head you read is %s; name the tests you ran and how they ended in a finding or the reason\n", orDash(p.Head))
+	b.WriteString("Commit nothing, push nothing, open no pull request: the verdict is the whole of a read.\n")
 	fmt.Fprintf(&b, "\n## The card under review: %s, attempt %d, verbatim\n\n", p.Primary, p.Attempt)
 	b.WriteString(strings.TrimRight(p.Brief, "\n") + "\n")
 	if p.Report != "" {

@@ -18,14 +18,13 @@ import (
 func TestFriendPronounsTravelFromConfigThroughSyncAndBeat(t *testing.T) {
 	t.Parallel()
 	ta, cfg := friendApp(t, "amy")
-	root := t.TempDir()
 	for _, choice := range []string{"", "he/him", "she/her", "they/them"} {
 		t.Run("pronouns="+choice, func(t *testing.T) {
 			if choice != "" {
 				_, _, err := cfg.Update(context.Background(), config.KindFriend, "amy", map[string]string{"pronouns": choice}, "test")
 				require.NoError(t, err)
 			}
-			ta.ok("friend sync --root " + root)
+			ta.ok("friend sync")
 			want := choice
 			if want == "" {
 				want = config.DefaultFriendPronouns
@@ -49,7 +48,7 @@ func TestFriendTakeSaysTheSyncedPronounsWhenTheBeatNamesARunningCard(t *testing.
 	t.Parallel()
 	for _, tc := range []struct{ set, want string }{{"she/her", "her"}, {"he/him", "his"}, {"they/them", "their"}, {"", "their"}} {
 		t.Run(tc.set, func(t *testing.T) {
-			ta, root := takeApp(t, 1, nil, "pat")
+			ta, _ := takeApp(t, 1, nil, "pat")
 			ta.ok("tick")
 			readConfig := ta.a.friends
 			ta.a.friends = func(ctx context.Context, pg string) ([]config.Row, error) {
@@ -59,7 +58,7 @@ func TestFriendTakeSaysTheSyncedPronounsWhenTheBeatNamesARunningCard(t *testing.
 				}
 				return rows, err
 			}
-			ta.ok("friend sync --root " + root)
+			ta.ok("friend sync")
 			ta.ok("friend beat pat --running s1-1.w1")
 			out := ta.ok("friend take pat --all-unstarted")
 			assert.Contains(t, out, tc.want+" beat names it running")
@@ -91,7 +90,7 @@ func TestManualFriendTakeSaysTheConfiguredPronounsWhenItFillsTheFreedLane(t *tes
 	t.Parallel()
 	for _, tc := range []struct{ set, want string }{{"she/her", "her"}, {"he/him", "his"}, {"they/them", "their"}, {"", "their"}} {
 		t.Run(tc.set, func(t *testing.T) {
-			ta, root := takeApp(t, 2, nil, "pat")
+			ta, _ := takeApp(t, 2, nil, "pat")
 			readConfig := ta.a.friends
 			ta.a.friends = func(ctx context.Context, pg string) ([]config.Row, error) {
 				rows, err := readConfig(ctx, pg)
@@ -100,7 +99,7 @@ func TestManualFriendTakeSaysTheConfiguredPronounsWhenItFillsTheFreedLane(t *tes
 				}
 				return rows, err
 			}
-			ta.ok("friend sync --root " + root)
+			ta.ok("friend sync")
 			ta.ok("tick")
 			ta.ok("take --as friend.pat s1-1.w1@1")
 			out := ta.ok("friend take pat s1-1 --working")

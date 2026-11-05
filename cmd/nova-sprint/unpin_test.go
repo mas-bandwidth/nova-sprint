@@ -38,7 +38,7 @@ func TestUnpinVerb(t *testing.T) {
 func TestUnpinKeepsTheInputBriefBytes(t *testing.T) {
 	t.Parallel()
 	ta, _ := friendApp(t, "amy")
-	ta.ok("friend sync --root " + t.TempDir())
+	ta.ok("friend sync")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "job.md")
 	before := []byte(passingBrief("job: work\nWHO: only friend amy"))

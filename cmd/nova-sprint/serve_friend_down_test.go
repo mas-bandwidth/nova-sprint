@@ -24,7 +24,7 @@ func TestTheServerTakesAFriendsDownBeat(t *testing.T) {
 	t.Parallel()
 	r := newServerRig(t, "nova-sprint init --readers reader-a,reader-b --members m1:2")
 	r.a.friends = friendRows("amy")
-	r.boss("nova-sprint friend sync --root " + t.TempDir())
+	r.boss("nova-sprint friend sync")
 	r.pong("amy")
 
 	until := r.a.now().Add(time.Hour).UTC().Truncate(time.Second).Format(time.RFC3339)

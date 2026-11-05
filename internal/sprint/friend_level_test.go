@@ -5,8 +5,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 )
 
 // friend level evens the ready queues of the friends of a class, as fleet level evens the
@@ -41,43 +39,6 @@ func TestFriendLevelEvensTheReadyQueuesOfAClass(t *testing.T) {
 	w.must(friendLevelFixture(w.s, FriendLevelReq{Seats: seats}))
 	assert.Equal(t, bob, w.s.Fleet.Card("s1-4.w1").Row)
 	assert.Equal(t, 2, w.s.Fleet.Count(bob, Ready))
-	p = friendLevelFixture(w.s, FriendLevelReq{Seats: seats})
-	assert.Empty(t, p.Units)
-}
-
-// friend level levels a one-shot friend as a batch one (docs/SPEC-SPRINT.md section 1, "A friend's
-// card"): in either mode a friend fills up to her room (DealAhead times width), her width working.
-func TestFriendLevelRespectsFriendDeliveryMode(t *testing.T) {
-	t.Parallel()
-	briefs := []string{friendBrief("friend amy")}
-	for range 6 {
-		briefs = append(briefs, friendBrief("friend"))
-	}
-	w := friendWorld(t, briefs...)
-	// amy alone up at width 2: her room of 4 is filled, s1-1 (hers by name) and s1-2 working, s1-3 and s1-4 ready
-	dealStarted(w, workerSeatFixture(FriendSeat{Name: "amy", Width: 2, Status: Up, Class: "flash", Mode: config.FriendModeBatch}))
-	amy, bob := FriendRow("amy"), FriendRow("bob")
-	require.Equal(t, 2, w.s.Fleet.Count(amy, Ready))
-	require.Equal(t, 2, w.s.Fleet.Count(amy, Working))
-
-	// bob is up in one-shot mode at width 2: his room is his width's, as a batch friend's
-	// (one lane per unit of width, the owner 2026-10-10)
-	seats := workerSeatFixtures([]FriendSeat{
-		{Name: "amy", Width: 2, Status: Up, Class: "flash", Mode: config.FriendModeBatch},
-		{Name: "bob", Width: 2, Status: Up, Class: "flash", Mode: config.FriendModeOneShot},
-	})
-
-	// amy's backlog is 4 - 2 = 2 and bob's is 0 - 2 = -2: both of amy's ready cards move
-	// to bob, ready until he starts them; amy keeps her two working
-	p := w.must(friendLevelFixture(w.s, FriendLevelReq{Seats: seats}))
-	require.Len(t, p.Units, 2)
-	assert.Equal(t, 0, w.s.Fleet.Count(bob, Working))
-	assert.Equal(t, 2, w.s.Fleet.Count(bob, Ready), "a one-shot friend is levelled to his width")
-	assert.Equal(t, 2, w.s.Fleet.Count(amy, Working))
-	assert.Equal(t, 0, w.s.Fleet.Count(amy, Ready))
-	assert.Empty(t, Check(w.s, nil))
-
-	// Running friend level again moves nothing
 	p = friendLevelFixture(w.s, FriendLevelReq{Seats: seats})
 	assert.Empty(t, p.Units)
 }

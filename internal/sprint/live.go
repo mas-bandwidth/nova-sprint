@@ -23,8 +23,8 @@ import (
 
 const (
 	// LiveGrace is how long a working card may go unnamed by its row's live set before the
-	// machine returns it: four beat windows of a member's beat (BeatDeadline), sixty of a
-	// friend's, and longer than a take's first beat takes to name it.
+	// machine returns it: four beat windows of a member's beat (BeatDeadline), and longer
+	// than a take's first beat takes to name it.
 	LiveGrace = 60 * time.Second
 	// LiveHeld marks a live-set entry whose child finished and whose report is held.
 	LiveHeld = "held"
@@ -191,8 +191,10 @@ func (r rowLive) names(c *Card) (LiveEntry, bool) {
 	return e, ok && e.Gen == max(c.Int("gen"), 1)
 }
 
-// RowBeat is the beat that is a fleet row's evidence: a friend row's is her own beat (kept
-// by her name, Store.fleetBeats), a member's its beat.
+// RowBeat is the beat that is a fleet row's evidence: a member's its beat; a friend row's is
+// her own beat record (kept by her name, Store.fleetBeats), which carries no live set (a
+// friend's beat never did after 2026-11-05: she runs her own loop), so her working cell is
+// her working cards, counted as a member's without a live set is (LiveCountKeys).
 func RowBeat(beats map[string]Beat, row string) Beat {
 	if f, ok := FriendOfRow(row); ok {
 		return beats[f]

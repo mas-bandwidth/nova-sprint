@@ -20,7 +20,7 @@ func TestManualFriendGiveUsesTheSyncedRosterTierAdmission(t *testing.T) {
 		t.Run(tier, func(t *testing.T) {
 			t.Parallel()
 			ta, _ := friendApp(t, "amy") // config's fixture row serves flash only
-			ta.ok("friend sync --root " + t.TempDir())
+			ta.ok("friend sync")
 			ta.beatUp("amy")
 			ta.ok("add --stream s1 --count 1 --one")
 			ta.ok("tier s1-1 --set " + tier + " --reason tier-admission-probe")
@@ -68,7 +68,7 @@ func TestManualFriendGiveUndoesTakeBackAfterTheCardTierChanges(t *testing.T) {
 	t.Parallel()
 	ta, _ := friendApp(t, "amy")
 	ta.a.tip = func(context.Context, string, string) (string, error) { return "", nil }
-	ta.ok("friend sync --root " + t.TempDir())
+	ta.ok("friend sync")
 	ta.beatUp("amy")
 	brief := filepath.Join(t.TempDir(), "s1-1.md")
 	require.NoError(t, os.WriteFile(brief, []byte(passingBrief("s1-1: a tier-changing undo card\nREPO: mas-bandwidth/nova-tools\nWHO: friend amy")), 0o644))

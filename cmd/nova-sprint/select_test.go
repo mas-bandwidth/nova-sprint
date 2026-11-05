@@ -17,7 +17,7 @@ import (
 func selectorApp(t *testing.T) *testApp {
 	t.Helper()
 	ta, _ := friendApp(t, "amy", "bob")
-	ta.ok("friend sync --root " + t.TempDir())
+	ta.ok("friend sync")
 	dir := t.TempDir()
 	write := func(dir, id, who string) string {
 		path := filepath.Join(dir, id+".md")

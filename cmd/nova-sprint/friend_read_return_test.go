@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -37,13 +36,13 @@ func friendReadTwin(t *testing.T, gen0 bool) (*testApp, string, string) {
 		return cfg.List(ctx, config.KindFriend)
 	}
 	_, err := cfg.Insert(context.Background(), config.KindFriend, config.Row{
-		Name: "amy", Fields: map[string]string{"tiers": "flash", "mode": "one-shot", "width": "1"},
+		Name: "amy", Fields: map[string]string{"tiers": "flash", "width": "1"},
 	}, "t")
 	require.NoError(t, err)
 	ta.a.tip = tipIs(t, landHead)
 	ta.ok("init --readers reader-a,reader-b --members m1:8")
 	root := t.TempDir()
-	ta.ok("friend sync --root " + root) // roster only: she is down, so the card is not dealt to her as work
+	ta.ok("friend sync") // roster only: she is down, so the card is not dealt to her as work
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "s1-1.md"), []byte(passingBrief("s1-1: the flash card (s1) tier: flash\nREPO: mas-bandwidth/nova-tools\n\nAS A READ\nread the flash card\n")), 0o644))
 	ta.ok("add --stream s1 --brief-dir " + dir)
@@ -88,7 +87,7 @@ func (ta *testApp) fleetCard(id string) *sprint.Card {
 // packetReadLine is the read verb the packet of the read prints, with --ok and no finding.
 func packetReadLine(t *testing.T, out string) string {
 	t.Helper()
-	m := regexp.MustCompile(`run: nova-sprint (read --as \S+ \(--ok \| --broken\) \S+ --epoch \d+)`).FindStringSubmatch(out)
+	m := regexp.MustCompile(`nova-sprint (read --as \S+ \(--ok \| --broken\) \S+ --epoch \d+)`).FindStringSubmatch(out)
 	require.Len(t, m, 2, "the packet prints the read verb that returns it:\n%s", out)
 	return strings.Replace(m[1], "(--ok | --broken)", "--ok", 1)
 }
@@ -107,14 +106,14 @@ func requireClosedOK(t *testing.T, ta *testApp, id string) {
 	require.NotEqual(t, sprint.Review, ta.primary("s1-1").Col, "her ok read moved the primary on")
 }
 
-// The packet of a read asked of a friend row names how it is returned: her outbox
-// report, or the read verb; the line it prints, run as printed, stores the verdict,
+// The packet of a read asked of a friend row names how it is returned, the read verb; the
+// line it prints, run as printed, stores the verdict,
 // retires the read and moves the primary as a reader-row return does.
-func TestAFriendRowReadsPacketNamesTheOutboxReturn(t *testing.T) {
+func TestAFriendRowReadsPacketNamesTheReadVerb(t *testing.T) {
 	t.Parallel()
 	ta, _, id := friendReadTwin(t, false)
 	out := ta.ok("queue --as friend.amy")
-	require.Contains(t, out, "report it: write outbox/"+id+"/REPORT.md")
+	require.Contains(t, out, "nova-sprint read --as friend.amy (--ok | --broken) "+id)
 	require.Contains(t, out, "PACKET "+id+" attempt=1 gen=1 ")
 	for _, l := range strings.Split(out, "\n") {
 		if strings.HasPrefix(l, "CARD "+id) {
@@ -139,39 +138,15 @@ func TestAGenZeroFriendReadIsStillReturnable(t *testing.T) {
 }
 
 // finish on a friend's read is refused with the remedy that returns it.
-func TestFinishRefusesAReadWithTheOutboxRemedy(t *testing.T) {
+func TestFinishRefusesAReadWithTheReadVerbRemedy(t *testing.T) {
 	t.Parallel()
 	for _, gen0 := range []bool{false, true} {
 		ta, _, id := friendReadTwin(t, gen0)
 		code, _, errs := ta.do("finish --as friend.amy " + id + "@1 --report done")
 		require.NotEqual(t, 0, code)
 		require.Contains(t, errs, "a read, not work")
-		require.Contains(t, errs, "outbox/"+id+"/REPORT.md")
 		require.Contains(t, errs, "read --as friend.amy (--ok | --broken) "+id)
 		require.True(t, ta.fleetCard(id).Placed(), "the refusal changed nothing")
-	}
-}
-
-// friend sync closes a friend's read, today's gen-0 shape and the live generation alike,
-// from outbox/<card id>/REPORT.md, and the next tick accepts on her ok read; her QUEUE.json
-// names that directory as the read's job.
-func TestFriendSyncClosesAFriendRowReadFromItsOutboxReport(t *testing.T) {
-	t.Parallel()
-	for _, gen0 := range []bool{true, false} {
-		ta, root, id := friendReadTwin(t, gen0)
-		out := ta.ok("friend sync --root " + root)
-		require.Contains(t, out, "FRIEND-READ DELIVERED friend=amy card="+id)
-		require.FileExists(t, filepath.Join(root, "amy-working", "inbox", id, "BRIEF.md"))
-		var q friendQueue
-		b, err := os.ReadFile(filepath.Join(root, "amy-working", filepath.FromSlash(queueFile)))
-		require.NoError(t, err)
-		require.NoError(t, json.Unmarshal(b, &q))
-		require.Len(t, q.Tasks, 1)
-		require.Equal(t, id, q.Tasks[0].Job, "the read's job is its card id, the directory its report is read from")
-		outboxReport(t, root, "amy", id, "Verdict: LAND\nHead: "+landHead+"\n")
-		out = ta.ok("friend sync --root " + root)
-		require.Contains(t, out, "FRIEND-READ finished friend=amy card="+id)
-		requireClosedOK(t, ta, id)
 	}
 }
 

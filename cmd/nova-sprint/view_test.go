@@ -310,8 +310,8 @@ func TestTheWorkerViewOfAMember(t *testing.T) {
 	assert.Equal(t, 2, code, "--as is required")
 }
 
-// A friend's view: her card's brief is the BRIEF.md friend sync writes, and next is the
-// report that finishes it.
+// A friend's view: her card's brief is read from friend cards, and next is the finish
+// verb that she runs herself.
 func TestTheWorkerViewOfAFriend(t *testing.T) {
 	t.Parallel()
 	ta, _ := friendCardApp(t, "friend amy", "amy")
@@ -321,9 +321,9 @@ func TestTheWorkerViewOfAFriend(t *testing.T) {
 	ta.json("view worker --as amy", &v)
 	assert.Equal(t, "friend", v.Kind)
 	require.Len(t, v.Cards, 1)
-	assert.Equal(t, "~/amy-working/inbox/s1-1.w1/BRIEF.md", v.Cards[0].Brief)
+	assert.Equal(t, "nova-sprint friend cards amy --json", v.Cards[0].Brief)
 	assert.Equal(t, "sprint/s1-1.w1.g1.e0", v.Cards[0].Br)
-	assert.Equal(t, "finish s1-1.w1: push to sprint/s1-1.w1.g1.e0, then write ~/amy-working/outbox/s1-1.w1/REPORT.md with Verdict: LAND|HOLD|FAIL and Head: <sha>", v.Next)
+	assert.Equal(t, "push to sprint/s1-1.w1.g1.e0, then nova-sprint finish --as friend.amy s1-1.w1@1 --epoch 0 (--head <commit> | --failed) --report '<what was done>'", v.Next)
 }
 
 // The server serves both views read-only on GET, through the handler with no socket: JSON,

@@ -4,8 +4,6 @@ import (
 	"cmp"
 	"fmt"
 	"maps"
-	"os"
-	"path/filepath"
 	"reflect"
 	"slices"
 	"strconv"
@@ -374,21 +372,12 @@ func attemptWorker(s *Snapshot, primary string, attempt int) string {
 	return ""
 }
 
-func seatDir(seats []FriendSeat, name, fallback string) string {
-	for _, f := range seats {
-		if f.Name == name && f.Dir != "" {
-			return f.Dir
-		}
-	}
-	return fallback
-}
-
 // friendReadAsk asks each read in review of a friend with room at or above its
 // read tier, the same chooser as the friend deal (preferredFriend: an idle lane,
 // then the most room, then by name), and decrements that free width as the deal
 // does (docs/SPEC-SPRINT.md, a read asked of any unit with room at or above the
-// read tier). dir is a working directory used when the seat names none; empty
-// writes no brief (friend sync writes it). A friend whose read of the attempt
+// read tier). dir is unused: the read's brief is served by friend cards, never
+// written to a directory. A friend whose read of the attempt
 // was taken back is not asked it again; another friend is. A paid reader is left
 // the read when no such friend has room. It answers too the primaries it left
 // waiting: a friend at or above the read tier is up who may read the attempt,
@@ -468,16 +457,6 @@ func askOneFriend(p *Plan, s *Snapshot, pr *Card, seats []FriendSeat, name, dir 
 		col = Working
 	}
 	branch, start, head := attemptEnds(s, pr.ID, attempt)
-	if d := seatDir(seats, name, dir); d != "" {
-		text := FriendReadBrief(name, pr.ID, pr.F("brief"), branch, start, head, attempt, s.Now.Add(FriendReadDeadline))
-		in := filepath.Join(d, "inbox", id)
-		if err := os.MkdirAll(in, 0o755); err != nil {
-			return err
-		}
-		if err := os.WriteFile(filepath.Join(in, "BRIEF.md"), []byte(text), 0o644); err != nil {
-			return err
-		}
-	}
 	row := FriendRow(name)
 	if !s.Fleet.HasRow(row) && !declared[row] {
 		p.Rows = append(p.Rows, RowAdd{Fleet, row})
@@ -559,10 +538,10 @@ func friendReadCardOf(s *Snapshot, name, primary string, attempt int, card strin
 }
 
 // friendReadCloseUnit is the one close of a friend's read card on her fleet row,
-// whether her outbox report (FriendReadClose) or the read verb (readCardVerb)
+// whether a read report (FriendReadCloseChecked) or the read verb (readCardVerb)
 // carried the verdict: the card retired with its verdict, a broken verdict's
 // judgment, and the primary's review judgment after it. usage is what the read spent, as
-// the read verb's --usage carried it ("" from her outbox report): kept on the card, timed
+// the read verb's --usage carried it ("" from a read report): kept on the card, timed
 // and priced as a reader's read is (readCostRecord), and recorded on the primary in the
 // same unit (the complete cost is tracked). A verdict also persists its
 // reader/attempt/head history for the landing push (docs/SPEC-SPRINT.md, judgments).
@@ -601,15 +580,14 @@ func friendReadCloseUnit(s *Snapshot, name string, pr, rc *Card, verdict, findin
 	return Unit{Key: pr.ID, Stream: pr.Row, Changes: changes, Moved: rc.ID + " retired " + verdict, Notes: notes}
 }
 
-// FriendReadOutboxLine is how a read on a friend's row is returned: her
-// outbox report, which friend sync reads (FriendReadClose), or the read verb
-// her packet prints, which writes the same close (readCardVerb).
-func FriendReadOutboxLine(row, id string, epoch uint64) string {
-	return fmt.Sprintf("write outbox/%s/REPORT.md in your working directory with 'Verdict: LAND', or 'Verdict: HOLD' and a line naming the file:line or rule and what to change (friend sync reads it); or run: nova-sprint read --as %s (--ok | --broken) %s --epoch %d --finding '<file:line, and what to change>'", id, row, id, epoch)
+// FriendReadReturnLine is how a read on a friend's row is returned: the read verb her packet
+// prints (readCardVerb).
+func FriendReadReturnLine(row, id string, epoch uint64) string {
+	return fmt.Sprintf("nova-sprint read --as %s (--ok | --broken) %s --epoch %d --finding '<file:line, and what to change>'", row, id, epoch)
 }
 
 // readCardVerb is the read verb on a fleet row, a friend's or a member's (read_cards.go):
-// a verdict closes its read card as her outbox report does (friendReadCloseUnit); a return
+// a verdict closes its read card (friendReadCloseUnit); a return
 // (--return, with the reason) hands it back with no verdict, retired by returned, which
 // spends the reader's read of the attempt, and the read-card deal deals it to another
 // reader. A read card has no begin: the take moves it to working.
@@ -617,7 +595,7 @@ func readCardVerb(s *Snapshot, r ReadReq, row, name string) Plan {
 	var p Plan
 	if r.Begin {
 		p.refuse("read", "a read card has no begin: the take moves it to working; report it with "+
-			"read --as "+row+" (--ok | --broken) <read> --finding <text>, hand it back with read --as "+row+" --return <read> --reason <text>, or write outbox/<read>/REPORT.md")
+			"read --as "+row+" (--ok | --broken) <read> --finding <text>, or hand it back with read --as "+row+" --return <read> --reason <text>")
 		return p
 	}
 	if s.Fleet == nil {

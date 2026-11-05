@@ -55,7 +55,7 @@ func TestATickDealsNothingToAnUnhookedFriend(t *testing.T) {
 	t.Parallel()
 	ta, _ := friendApp(t, "amy")
 	ta.a.tip = tipIs(t, landHead)
-	ta.ok("friend sync --root " + t.TempDir())
+	ta.ok("friend sync")
 	ta.ok("friend beat amy") // her daemon beats; nova-hook has no record of her
 	brief := filepath.Join(t.TempDir(), "s1-1.md")
 	require.NoError(t, os.WriteFile(brief, []byte(passingBrief("s1-1: a friend's card\nREPO: mas-bandwidth/nova-tools\nWHO: friend amy")), 0o644))

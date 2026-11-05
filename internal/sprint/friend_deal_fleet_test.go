@@ -7,8 +7,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/mas-bandwidth/nova-sprint/pkg/config"
 )
 
 // A friend with room is dealt the fleet's cards of her tier (docs/SPEC-SPRINT.md section 1,
@@ -125,7 +123,7 @@ func TestAFlashFriendWithRoomIsDealtFleetFlashCards(t *testing.T) {
 
 // One width bounds a friend's row, her reads and her work together (the owner's rule): a
 // friend at width 16 holding 10 work cards and 9 reads has no lane free and is dealt no
-// work, and a one-shot friend holding a read is dealt no work card.
+// work, and a friend holding a read is dealt no work card.
 func TestOneWidthHoldsHerWorkAndReads(t *testing.T) {
 	t.Parallel()
 	briefs := make([]string, 30)
@@ -146,16 +144,16 @@ func TestOneWidthHoldsHerWorkAndReads(t *testing.T) {
 	assert.Equal(t, 13, room-friendLoad(w.s, "amy"), "her room less work and reads")
 	assert.Equal(t, -3, width-friendLoad(w.s, "amy"), "her lanes: 16 less 19, none idle")
 
-	// the one-shot friend: her width bounds her reads and work together, as a batch friend's
+	// a friend: her width bounds her reads and work together
 	// does (one lane per unit of width): a read in one of her 4 lanes leaves 3 for work
 	w2 := friendWorld(t, fleetBrief("flash"))
 	putReads(w2, "bee", 1)
-	dealWith(w2, workerSeatFixture(FriendSeat{Name: "bee", Width: 4, Status: Up, Mode: config.FriendModeOneShot, Class: "flash", Tiers: []string{"flash"}}))
+	dealWith(w2, workerSeatFixture(FriendSeat{Name: "bee", Width: 4, Status: Up, Class: "flash", Tiers: []string{"flash"}}))
 	assert.Equal(t, 1, workOn(w2, FriendRow("bee")), "a free lane beside the read takes the work card")
 	// and at her width, a read in every lane, she is dealt no work
 	w4 := friendWorld(t, fleetBrief("flash"))
 	putReads(w4, "bee", DealAhead*4)
-	dealWith(w4, workerSeatFixture(FriendSeat{Name: "bee", Width: 4, Status: Up, Mode: config.FriendModeOneShot, Class: "flash", Tiers: []string{"flash"}}))
+	dealWith(w4, workerSeatFixture(FriendSeat{Name: "bee", Width: 4, Status: Up, Class: "flash", Tiers: []string{"flash"}}))
 	assert.Zero(t, workOn(w4, FriendRow("bee")), "her room is full of reads")
 	wc := w4.s.Fleet.Card(WorkCardID("s1-1", 1))
 	require.NotNil(t, wc)

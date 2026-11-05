@@ -112,8 +112,7 @@ func laneRankApp(t *testing.T, cards ...laneCard) *testApp {
 	t.Helper()
 	ta, _ := friendApp(t, "f")
 	ta.a.tip = tipIs(t, landHead)
-	root := t.TempDir()
-	ta.ok("friend sync --root " + root)
+	ta.ok("friend sync")
 	ta.beatUp("f")
 	for _, c := range cards {
 		dir := t.TempDir()

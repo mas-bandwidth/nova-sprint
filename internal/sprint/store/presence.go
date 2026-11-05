@@ -230,34 +230,18 @@ func (st *Store) BeatFacts(ctx context.Context, member string, given *float64, s
 	if err := kv.SetKey(ctx, beatKey(member), string(out)); err != nil {
 		return b, err
 	}
-	if sprint.IsFriendRow(member) {
-		return b, nil // a one-shot friend's row is the roster's (beatable), never a stranger
-	}
 	return b, st.noteStranger(ctx, member)
 }
 
-// beatable says whether member may beat: a machine's name, or a one-shot friend's row
-// (friend.<name>, nova-config friend --session one-shot), whose member lane beats as any
-// member does and whose status is that beat (friendRows). A live friend's row is not a
-// member and never beats here: a friend lane, not a member, serves it.
-func (st *Store) beatable(ctx context.Context, member string) error {
-	friend, isFriend := sprint.FriendOfRow(member)
-	if !isFriend {
-		if !sprint.ValidID(member) {
-			return fmt.Errorf("a member name wants letters, digits, _ and -: %s", member)
-		}
-		return nil
+// beatable says whether member may beat: a machine's name. A friend's row is never a
+// member and never beats here: she takes and finishes her own cards, and nova-hook is
+// her liveness.
+func (st *Store) beatable(_ context.Context, member string) error {
+	if friend, isFriend := sprint.FriendOfRow(member); isFriend {
+		return fmt.Errorf("friend %s's row is no member: a friend runs a take loop (nova-sprint take --as %s) and nova-hook says whether the friend is up; a fleet beat names a machine", friend, member)
 	}
-	r, _, err := st.roster(ctx)
-	if err != nil {
-		return err
-	}
-	e, ok := r[friend]
-	switch {
-	case !ok || !sprint.ValidID(friend):
-		return fmt.Errorf("no friend %s on the roster: a friend row's member beats only for a friend nova-config names (nova-sprint friend sync)", friend)
-	case e.Session != sprint.FriendOneShot:
-		return fmt.Errorf("friend %s is live: a live friend's row is served by a friend lane, never a member; a one-shot friend's member beats here (nova-config friend set %s --session one-shot)", friend, friend)
+	if !sprint.ValidID(member) {
+		return fmt.Errorf("a member name wants letters, digits, _ and -: %s", member)
 	}
 	return nil
 }

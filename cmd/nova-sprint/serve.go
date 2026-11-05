@@ -165,8 +165,8 @@ func workerVerb(argv []string) (as string, words int, why string) {
 		return argv[2], 2, ""
 	}
 	if len(argv) >= 2 && argv[0] == "friend" && argv[1] == "cards" {
-		// a friend's daemon reads the cards held on her row, each with its brief, to write
-		// them into her inbox (friendcards_verb.go): her name, --json at most, nothing more
+		// a friend reads the cards held on her row, each with its brief (friendcards_verb.go):
+		// her name, --json at most, nothing more
 		if len(argv) < 3 || len(argv) > 4 || !sprint.ValidID(argv[2]) || (len(argv) == 4 && argv[3] != "--json") {
 			return "", 0, "a friend's cards sent to the server are `friend cards <friend> [--json]` and nothing more"
 		}
@@ -195,8 +195,7 @@ func workerVerb(argv []string) (as string, words int, why string) {
 		return rest[4], 2, ""
 	}
 	// stop-return is a worker's too: a lane the machine's stop cancelled hands its card back
-	// through the server (a friend's daemon has no store of its own to send it to; 2026-10-10
-	// 21:55Z on a one-shot friend host, every stop-return refused here)
+	// through the server
 	if len(argv) == 0 || !slices.Contains([]string{"take", "finish", "progress", "read", "queue", "stop-return", "remind"}, argv[0]) {
 		return "", 0, "the server runs the workers' verbs only: take, finish, progress, read, queue, stop-return, remind, fleet beat, friend beat, friend cards, lane take, lane give, budget take, budget renew, budget release"
 	}
@@ -756,10 +755,6 @@ func (a *app) listen(addr, redis string, stdout io.Writer) error {
 // that she is down until a time and why (--until, --reason: her harness at its limit).
 var friendBeatFlags = map[string]func(string) bool{
 	"--running": runningIDs,
-	"--live": func(v string) bool {
-		_, err := sprint.ParseLive(v)
-		return err == nil
-	},
 	"--working": wholeAtLeast(0),
 	"--queue":   wholeAtLeast(0),
 	"--width":   wholeAtLeast(1),

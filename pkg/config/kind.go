@@ -26,9 +26,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mas-bandwidth/nova-tools/pkg/harness"
 	"time"
 	"unicode"
+
+	"github.com/mas-bandwidth/nova-tools/pkg/harness"
 
 	"github.com/mas-bandwidth/nova-tools/pkg/cardcost"
 	"github.com/mas-bandwidth/nova-tools/pkg/decide"
@@ -201,42 +202,6 @@ func FriendWidth(r Row) int {
 	return r.Int("width")
 }
 
-// FriendModes are how a friend's daemon (nova-friend run) hands her work:
-// batch, every waiting message as one turn of her one session; one-shot,
-// width lanes, each its own session of her, handed one card per turn and
-// waiting for that card's RESULT.md before the next (docs/SPEC-FRIEND.md,
-// one-shot lanes; the owner, 2026-10-04: "so [she] can still be wide, it's
-// just 8 [of her]").
-var FriendModes = []string{FriendModeBatch, FriendModeOneShot}
-
-// The delivery modes, and the default a row without one has.
-const (
-	FriendModeBatch   = "batch"
-	FriendModeOneShot = "one-shot"
-	DefaultFriendMode = FriendModeBatch
-)
-
-// FriendSessionWords are whether a friend has a live session between cards: live (the
-// default) or one-shot, a friend with none who runs as a member lane on her row
-// (nova-swarm member --as friend.<name> --prompt <file>). The copy of nova-tools
-// pkg/config's (docs/SPEC-CONFIG.md, friend; nova-tools migration 0045).
-var FriendSessionWords = []string{FriendSessionLive, FriendSessionOneShot}
-
-// The session words and the default a row without one has.
-const (
-	FriendSessionLive    = "live"
-	FriendSessionOneShot = "one-shot"
-	DefaultFriendSession = FriendSessionLive
-)
-
-// FriendSession is a friend row's session: its session field, live when it names none.
-func FriendSession(r Row) string {
-	if s := r.Fields["session"]; s != "" {
-		return s
-	}
-	return DefaultFriendSession
-}
-
 // FriendPronounSets are the friend row's explicit pronoun choices, matching nova-config.
 var FriendPronounSets = []string{"she/her", "he/him", "they/them"}
 
@@ -250,48 +215,15 @@ func FriendPronouns(r Row) string {
 	return DefaultFriendPronouns
 }
 
-// FriendMode is a friend row's delivery mode: its mode field,
-// DefaultFriendMode when the row has none.
-func FriendMode(r Row) string {
-	if m := r.Fields["mode"]; m != "" {
-		return m
-	}
-	return DefaultFriendMode
-}
-
-// DefaultFriendTokenCap is a friend's per-card token cap when her row names
-// none: input, cached input, output and reasoning summed, 6000000, the
-// stopgap's cap. 0 on the row is no cap, and is not this default.
-const DefaultFriendTokenCap int64 = 6_000_000
-
-// FriendTokenCap is a friend row's per-card token cap: its token_cap field,
-// DefaultFriendTokenCap when the row has none or the field is not a
-// non-negative integer. 0 is no cap.
-func FriendTokenCap(r Row) int64 {
-	s := r.Fields["token_cap"]
-	if s == "" {
-		return DefaultFriendTokenCap
-	}
-	n, err := strconv.ParseInt(s, 10, 64)
-	if err != nil || n < 0 {
-		return DefaultFriendTokenCap
-	}
-	return n
-}
-
 // checkFriend is the friend kind's Check: her width is at least 1, a friend
 // working no job at once being no friend of the sprint's (remove the row
 // instead), and nothing else bounds it: a friend's width is her one capacity
-// number, with no slots and no machine ceiling (the owner, 2026-10-13). Her
-// config_dir, when set, is an absolute path, and each stream restriction is a
-// glob the matcher reads. A width that failed its own validation is absent and
+// number, with no slots and no machine ceiling (the owner, 2026-10-13). Each
+// stream restriction is a glob the matcher reads. A width that failed its own validation is absent and
 // skipped.
 func checkFriend(r Row) error {
 	if w, ok := r.Fields["width"]; ok && w != "" && r.Int("width") < 1 {
 		return fmt.Errorf("friend %s has width %s; a friend's width is the jobs the friend works at once, at least 1: want --width <n> with n >= 1", r.Name, w)
-	}
-	if d := r.Fields["config_dir"]; d != "" && !filepath.IsAbs(d) {
-		return fmt.Errorf("friend %s has config_dir %q; CLAUDE_CONFIG_DIR is read as given, never expanded: want --config_dir <an absolute path>", r.Name, d)
 	}
 	for _, pattern := range strings.Split(r.Fields["streams"], ",") {
 		pattern = strings.TrimSpace(pattern)
@@ -558,18 +490,14 @@ var Kinds = []*Kind{
 		// rather than stored in configuration.
 		Name:  KindFriend,
 		Table: "friends",
-		Doc:   "an AI friend: the friend's width, the jobs the friend works at once and the friend's one capacity number (no slots, no ceiling), tiers, roles, delivery mode, the config directory claude lanes run with, the per-card token cap one-shot lanes hold a card at, and the optional streams and kinds restrictions on the work the friend may be dealt",
+		Doc:   "an AI friend: the friend's width, the jobs the friend works at once and the friend's one capacity number (no slots, no ceiling), tiers, roles, pronouns, and the optional streams and kinds restrictions on the work the friend may be dealt",
 		Fields: []Field{
 			{Name: "tiers", Type: TypeList, Enum: Tiers, Required: true, Help: "which tiers the friend can do: comma list of " + strings.Join(Tiers, ", ")},
 			{Name: "roles", Type: TypeList, Enum: FriendRoles, Help: "comma list of " + strings.Join(FriendRoles, ", ") + " (who coordinates is the sprint row's)"},
 			{Name: "width", Type: TypeInt, Default: strconv.Itoa(DefaultFriendWidth), Help: "the jobs the friend works at once, the width nova-sprint friend sync sets on the friends row and the friend's one capacity number (apply writes it as friend:<f>:desired slots; there is no friend slots field and no machine ceiling caps it); at least 1, " + strconv.Itoa(DefaultFriendWidth) + " by default"},
-			{Name: "mode", Type: TypeEnum, Enum: FriendModes, Default: DefaultFriendMode, Help: "how the friend's daemon hands the friend work: batch (the default: every waiting message in one turn) or one-shot (width lanes, each its own session, handed one card per turn)"},
-			{Name: "config_dir", Type: TypeText, Nullable: true, Help: "the absolute directory a claude one-shot lane runs with as CLAUDE_CONFIG_DIR, the friend's account login and settings; unset (the default, or --config_dir '') for any other harness; nova-friend run refuses a claude friend in one-shot mode without it"},
-			{Name: "token_cap", Type: TypeInt, Default: strconv.FormatInt(DefaultFriendTokenCap, 10), Help: "tokens one card may spend (input, cached input, output and reasoning summed) before a one-shot lane stops its own run and holds the card; " + strconv.FormatInt(DefaultFriendTokenCap, 10) + " by default, and 0 is no cap"},
 			{Name: "streams", Type: TypeText, Help: "optional comma-separated glob patterns over stream names this friend may be dealt work on; empty means any stream"},
 			{Name: "kinds", Type: TypeNames, Help: "optional comma-separated card KIND values this friend may be dealt; empty means any kind"},
 			{Name: "pronouns", Type: TypeEnum, Enum: FriendPronounSets, Default: DefaultFriendPronouns, Help: "the friend's explicit pronouns: " + strings.Join(FriendPronounSets, ", ") + "; they/them when unstated"},
-			{Name: "session", Type: TypeEnum, Enum: FriendSessionWords, Default: DefaultFriendSession, Help: "whether the friend has a live session between cards: live (the default) or one-shot (no session: a member lane on the friend row, nova-swarm member --as friend.<name> --prompt <identity file>)"},
 		},
 		Check: checkFriend,
 		ApplyOrder: func(r Row) int {

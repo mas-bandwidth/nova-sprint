@@ -55,7 +55,7 @@ func TestBasesListsEveryBaseInUseAndAddRefusesAPersonalOne(t *testing.T) {
 
 	// a personal base: refused, naming the base and the flag, nothing written; taken with it
 	r.a.friends = friendRows("ada")
-	r.ok("friend sync --root " + t.TempDir())
+	r.ok("friend sync")
 	r.ok("init --owner owner") // the owner init records, beside the coordinator and the friends
 	for _, base := range []string{"coordinator/x", "owner/x", "ada/x"} {
 		code, _, errs := r.do("add --stream s5 p --one --brief-file " + brief("p", base))

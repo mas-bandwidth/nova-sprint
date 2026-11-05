@@ -21,7 +21,7 @@ import (
 func TestAddAcceptsAFriendCardThatCarriesItsOwnRules(t *testing.T) {
 	t.Parallel()
 	ta, _ := friendApp(t, "amy")
-	ta.ok("friend sync --root " + t.TempDir())
+	ta.ok("friend sync")
 	add := func(name, brief string) (int, string) {
 		t.Helper()
 		dir := t.TempDir()
