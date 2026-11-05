@@ -30,7 +30,7 @@ func init() {
 }
 
 // friendCardsWords is what friend cards says on -h.
-const friendCardsWords = "friend cards lists every card held on the friend's row, working then ready, each with its job name, its column, branch, tier, attempt and generation, and with --json its BRIEF.md whole, and the friend's row beside the cards (row: held, its reason, width; nova-hook's FRIEND UP push says it the pass the friend comes up): her nova-hook lane client reads it each round for the lanes she holds, and she stages each card with friend stage. A card taken back from the friend (withdrawn) is not listed. It writes nothing. The server serves it to the friend on POST and on GET /api/friend/<friend>/cards.\n"
+const friendCardsWords = "friend cards lists every card held on the friend's row, working then ready, each with its job name, its column, branch, tier, attempt and generation, and with --json its BRIEF.md whole, and the friend's row beside the cards (row: held, its reason, width; nova-hook's FRIEND UP push says it the pass the friend comes up): the friend's nova-hook lane client reads it each round for the lanes the friend holds, and the friend stages each card with friend stage. A card taken back from the friend (withdrawn) is not listed. It writes nothing. The server serves it to the friend on POST and on GET /api/friend/<friend>/cards.\n"
 
 // friendCardsOf is every card held on the friend's row with its packet and brief, in the
 // server's order: her working cards, then the ready ones dealt behind them.

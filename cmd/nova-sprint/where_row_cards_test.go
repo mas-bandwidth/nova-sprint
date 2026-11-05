@@ -68,3 +68,12 @@ func TestTheDashboardRowsSayHowManyAreReads(t *testing.T) {
 	}
 	require.Equal(t, sprint.ReadCardCounts{Working: 1}, v.ReadCards)
 }
+
+// withoutRowCards is a row of tables without its card counts (sprint.RowCardFields), for a
+// test of its other cells.
+func withoutRowCards(row map[string]any) map[string]any {
+	for _, k := range sprint.RowCardFields {
+		delete(row, k)
+	}
+	return row
+}
