@@ -45,6 +45,11 @@ func runStageGit(ctx context.Context, dir string, args ...string) (string, error
 	return out, nil
 }
 
+func stageCheckout(ctx context.Context, git func(context.Context, string, ...string) (string, error), dir, branch, head string) error {
+	_, err := git(ctx, dir, "checkout", "-q", "-B", branch, head)
+	return err
+}
+
 // runStageMkdir uses the same process-group and WaitDelay runner as stage's Git
 // calls. A filesystem mkdir can itself stop in the kernel before Git starts; it
 // therefore belongs inside the same request bound, not in the server process.
@@ -240,7 +245,7 @@ func (a *app) cmdFriendStage(args []string, stdout, stderr io.Writer) int {
 			return refuse(stderr, name, "fetch of the NEXT head "+oneline.Escape(snap.next)+": "+oneline.Err(err))
 		}
 	}
-	if _, err := a.stageGit(ctx, jobDir, "checkout", "-q", "-B", snap.branch, snap.startHead); err != nil {
+	if err := stageCheckout(ctx, a.stageGit, jobDir, snap.branch, snap.startHead); err != nil {
 		cleanupUnstagedDir()
 		return refuse(stderr, name, "checkout of "+oneline.Field(snap.branch)+" at "+oneline.Escape(snap.startHead)+": "+oneline.Err(err))
 	}
