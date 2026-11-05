@@ -2,7 +2,6 @@ package sprint
 
 import (
 	"fmt"
-	"maps"
 	"regexp"
 	"slices"
 	"strconv"
@@ -238,19 +237,6 @@ func recordFlaps(s *Snapshot, p Plan) Plan {
 			}
 		}
 	}
-	// a plan that answers a primary's bound (NBound) clears its flaps: the bound was the
-	// coordinator's look the block would ask for, and the attempt cap bounds what follows
-	reset := map[string]bool{}
-	for i, u := range p.Units {
-		for _, o := range append(slices.Clone(u.Closes), p.Closes...) {
-			if pr := s.Work.Placed(o.Subject()); o.Note.Type == NBound && pr != nil && !gone[pr.ID] && (pr.F(FieldFlaps) != "" || add[pr.ID] != nil) {
-				reset[pr.ID], add[pr.ID] = true, []string{}
-				if _, ok := last[pr.ID]; !ok {
-					last[pr.ID] = i
-				}
-			}
-		}
-	}
 	for primary, lines := range add {
 		pr := s.Work.Placed(primary)
 		if pr == nil {
@@ -264,25 +250,12 @@ func recordFlaps(s *Snapshot, p Plan) Plan {
 				}
 			}
 		}
-		if ui < 0 && reset[primary] && pr.F(FieldFlaps) == "" {
-			continue
-		}
 		if ui < 0 {
 			ui = last[primary]
 			p.Units[ui].Changes = append(p.Units[ui].Changes, change(Work, setEntry(pr, nil)))
 			ci = len(p.Units[ui].Changes) - 1
 		}
 		ch := &p.Units[ui].Changes[ci]
-		if reset[primary] {
-			if _, had := ch.Entry.Set[FieldFlaps]; had {
-				ch.Entry.Set = maps.Clone(ch.Entry.Set)
-				delete(ch.Entry.Set, FieldFlaps)
-			}
-			if pr.F(FieldFlaps) != "" && !slices.Contains(ch.Entry.Unset, FieldFlaps) {
-				ch.Entry.Unset = append(slices.Clone(ch.Entry.Unset), FieldFlaps)
-			}
-			continue
-		}
 		all := append(strings.Split(pr.F(FieldFlaps), "\n"), strings.Split(ch.Entry.Set[FieldFlaps], "\n")...)
 		value := strings.Join(pruneFlaps(append(all, lines...), now, window), "\n")
 		set := make(map[string]string, len(ch.Entry.Set)+1)
