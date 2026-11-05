@@ -479,8 +479,8 @@ func flappingText(s *Snapshot, row statusRow, rec statusSeen) string {
 	} else {
 		f := row.name
 		what = snapshotFriendPronouns(s, f).Sprintf("friend %s's status is flapping at %s: status %s keeps changing for less than %s, so no transition counts; on %s; %s; "+
-			"wake {them}: nova-friend reach --as %s --to %s; or hold {them}: nova-sprint hold %s --reason <text>",
-			f, at, row.word, StatusDwell, orDash(row.friend.Evidence), lastBeat(row.beat, s.Now), coordinatorName(s), f, f)
+			"wake {them}: nova-bus send --to %s --subject <s> --body <text>; or hold {them}: nova-sprint hold %s --reason <text>",
+			f, at, row.word, StatusDwell, orDash(row.friend.Evidence), lastBeat(row.beat, s.Now), f, f)
 	}
 	return withFlaps(what, rec)
 }

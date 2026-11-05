@@ -35,7 +35,6 @@ var playbookUsageRe = regexp.MustCompile("usage:?\\s+`(nova-sprint [^`]+)`")
 // nova-tools v1.3/comms on 2026-10-16. nova-work is built here
 // (cmd/nova-work) and is listed for the same check.
 var playbookForeignVerbs = map[string]map[string]bool{
-	"nova-friend": {"lanes": true, "resume": true},
 	"nova-doctor": {"run": true},
 	"nova-update": {"release": true},
 	"nova-work":   {"roadmap": true},
@@ -157,14 +156,14 @@ func TestThePlaybookNamesOnlyRealVerbsAndUsageLines(t *testing.T) {
 
 	t.Run("the witnesses", func(t *testing.T) {
 		good := "usage: `nova-sprint inbox [--open <group>] [--read] [--wait [--timeout <duration>] [--push <dir>]] [--deadline <duration>] [--stale <duration>] [--json]`\n" +
-			"run `nova-sprint view coordinator --needs`, `nova-sprint brief <card> --keep-head --brief-file <f>`, `nova-friend lanes --as <me> --clear-faults`, `nova-sprint help playbook`\n"
+			"run `nova-sprint view coordinator --needs`, `nova-sprint brief <card> --keep-head --brief-file <f>`, `nova-bus recv --as <me> --forever --exec <cmd>`, `nova-sprint help playbook`\n"
 		assert.Empty(t, checkPlaybook(table, b, good), "real usage lines and verbs are refused")
 
 		for text, want := range map[string]string{
 			"usage: `nova-sprint inbox [--fly]`":                    "usage line not in nova-sprint help",
 			"usage: `nova-sprint where`\n`nova-sprint fly`":         `nova-sprint has no verb "fly"`,
 			"usage: `nova-sprint where`\n`nova-sprint where --fly`": "nova-sprint where has no flag --fly",
-			"usage: `nova-sprint where`\n`nova-friend fly`":         `nova-friend has no verb "fly"`,
+			"usage: `nova-sprint where`\n`nova-bus fly`":            `nova-bus has no verb "fly"`,
 			"usage: `nova-sprint where`\n`nova-doctor fly`":         "nova-doctor has no verb fly",
 			"no usage line at all":                                  "quotes no nova-sprint usage line",
 		} {

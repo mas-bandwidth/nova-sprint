@@ -280,14 +280,14 @@ func TestEveryCoordinatorRuleNamesVerbsThatExist(t *testing.T) {
 		}
 		head := "# x\n\n" + rulesSection + "\n\n"
 		good := head + rule(1, "`nova-sprint fleet level`, `nova-sprint set --friend-finish 30m`.") +
-			rule(2, "`nova-sprint where --watch`; `nova-friend reach --as <c> --to <f>`.") +
+			rule(2, "`nova-sprint where --watch`; `nova-bus send --to <f> --subject <s> --body <text>`.") +
 			rule(3, "judgment: the seat decides.")
 		assert.Empty(t, checkCoordRules(verbs, good), "rules that name real verbs and flags are refused")
 
 		for done, want := range map[string]string{
 			"`nova-sprint fly`":         `nova-sprint has no verb "fly"`,
 			"`nova-sprint set --fly 1`": "nova-sprint set has no flag --fly",
-			"`nova-friend fly`":         `nova-friend has no verb "fly"`,
+			"`nova-bus fly`":            `nova-bus has no verb "fly"`,
 			"`nova-teleport go`":        "nova-teleport is a nova tool this test reads no verb table of",
 			"`ns.sh where`":             "names no nova verb line or setting",
 			"":                          "wants a Done by: line",

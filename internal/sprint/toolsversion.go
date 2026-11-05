@@ -21,9 +21,9 @@ import (
 // install from.
 const NovaToolsModule = "github.com/mas-bandwidth/nova-tools"
 
-// NovaToolsBinaries are the nova-tools commands nova-sprint calls: the friends, the
-// bus and the config store, in the order they are checked.
-var NovaToolsBinaries = []string{"nova-friend", "nova-bus", "nova-config"}
+// NovaToolsBinaries are the nova-tools commands nova-sprint calls: the bus and the
+// config store, in the order they are checked.
+var NovaToolsBinaries = []string{"nova-bus", "nova-config"}
 
 // NovaToolsRequired is the nova-tools version this executable was built against:
 // go.mod's requirement as the build recorded it (debug.ReadBuildInfo). ok is false when

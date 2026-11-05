@@ -122,16 +122,16 @@ func TestCalledVerbsReadsADocCommandBlock(t *testing.T) {
 	}
 }
 
-// TestCalledVerbsRefusesTheMotivatingFriendCall exercises the lander's own table
-// (registeredVerbs, what land.go wires in): nova-friend registers no acceptance at the
-// recorded head, so the motivating line is refused through the real wiring, not a
-// synthetic callback.
-func TestCalledVerbsRefusesTheMotivatingFriendCall(t *testing.T) {
-	got := calledVerbs(friendFixtureDiff, registeredVerbs)
+// TestCalledVerbsRefusesAnUnknownVerbThroughTheLandersTable exercises the lander's own
+// table (registeredVerbs, what land.go wires in): the motivating line's shape with a tool
+// that is still built (nova-swarm registers no acceptance), so the line is refused through
+// the real wiring, not a synthetic callback.
+func TestCalledVerbsRefusesAnUnknownVerbThroughTheLandersTable(t *testing.T) {
+	got := calledVerbs(strings.Replace(friendFixtureDiff, "nova-friend acceptance", "nova-swarm acceptance", 1), registeredVerbs)
 	if len(got) != 1 {
 		t.Fatalf("calledVerbs = %+v, want one finding through registeredVerbs", got)
 	}
-	if !strings.Contains(got[0].Why, "acceptance") || !strings.Contains(got[0].Why, "reach") {
-		t.Fatalf("finding names not acceptance and nova-friend's known verbs: %s", got[0].Why)
+	if !strings.Contains(got[0].Why, "acceptance") || !strings.Contains(got[0].Why, "disk-guard") {
+		t.Fatalf("finding names not acceptance and nova-swarm's known verbs: %s", got[0].Why)
 	}
 }

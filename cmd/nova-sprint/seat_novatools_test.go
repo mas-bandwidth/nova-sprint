@@ -53,18 +53,18 @@ func TestSeatCheckRefusesWithoutTheRequiredNovaTools(t *testing.T) {
 		return ta.do("seat check")
 	}
 
-	t.Run("no nova-friend on PATH refuses naming the install command", func(t *testing.T) {
+	t.Run("no nova-config on PATH refuses naming the install command", func(t *testing.T) {
 		t.Parallel()
 		v := allNovaTools(req)
-		delete(v, "nova-friend")
+		delete(v, "nova-config")
 		code, out, errOut := seat(t, v)
 		assert.Equal(t, 1, code)
 		assert.Empty(t, out, "a refused seat check measures nothing")
 		lines := strings.Split(strings.TrimSpace(errOut), "\n")
 		require.Len(t, lines, 1, "one line, the one binary missing: %q", errOut)
-		assert.Contains(t, lines[0], "nova-friend not found on PATH")
+		assert.Contains(t, lines[0], "nova-config not found on PATH")
 		assert.Contains(t, lines[0], req+" required")
-		assert.Contains(t, lines[0], "go install github.com/mas-bandwidth/nova-tools/cmd/nova-friend@"+req)
+		assert.Contains(t, lines[0], "go install github.com/mas-bandwidth/nova-tools/cmd/nova-config@"+req)
 	})
 
 	t.Run("an older nova-bus refuses naming both versions", func(t *testing.T) {
