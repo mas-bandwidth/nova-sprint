@@ -98,7 +98,9 @@ hand wrote it. "The trick is that we have more in context vs. cards that
 are one off": a card runs in a fresh context that sees only its brief, so
 it cannot know how the card beside it named things; the stitch is done in
 a long session with the whole result in context, which a card never has.
-Width without memory, then memory without width. What the sprint owes that pass is to make it cheap: per
+"It's a trade off, holistic vs. cold work. Cold work is faster, then we pass
+over it afterwards holistically." Width without memory, then memory without
+width. What the sprint owes that pass is to make it cheap: per
 stream, the diff since its base, which model wrote each card, and every
 reader's findings, available in one place when the stream lands (layer 6).
 
