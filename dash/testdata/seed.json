@@ -1,20 +1,21 @@
 {
   "attemptAt": "2026-01-01T00:00:00Z",
-  "build": "83ab040bce5e",
+  "build": "50add03585c9",
   "data": {
     "all": 1,
     "at": "2026-01-01T00:00:00Z",
-    "build": "83ab040bce5e",
+    "build": "50add03585c9",
+    "done": false,
     "epoch": 1,
     "landed": 0,
     "ok": true,
-    "server_version": "v2-dev",
+    "server_version": "dev",
     "stream_costs": {
       "alpha": {}
     },
     "streams": [
       {
-        "State": "",
+        "State": "waiting",
         "Stream": "alpha"
       }
     ],
@@ -59,11 +60,11 @@
     }
   },
   "dataAgeSeconds": 0,
-  "error": "",
+  "error": null,
   "fetchedAt": "2026-01-01T00:00:00Z",
   "minInterval": 1,
   "ok": true,
-  "readSeconds": null,
-  "throughput": null,
-  "throughputMinutes": null
+  "readSeconds": 0,
+  "throughput": 0,
+  "throughputMinutes": 0
 }

@@ -35,7 +35,12 @@ type fleetRow struct {
 	OKPct    *float64 `json:"okpct"`
 }
 type streamLine struct{ Stream, State string }
+
+// Version is set at build time with -ldflags -X.
+var Version = "dev"
+
 type envelope struct {
+	Done          bool                          `json:"done"`
 	Build         string                        `json:"build"`
 	ServerVersion string                        `json:"server_version"`
 	Landed        int                           `json:"landed"`
@@ -71,7 +76,7 @@ func mapSnapshot(s store.Snapshot, at time.Time) envelope {
 		work[n] = &workRow{ByTier: map[string]float64{}}
 		costs[n] = map[string]float64{}
 		merge[n] = map[string]int{}
-		state := ""
+		state := "waiting"
 		if v.Held {
 			state = "held"
 		}
@@ -97,18 +102,31 @@ func mapSnapshot(s store.Snapshot, at time.Time) envelope {
 			}
 		}
 	}
+	setStreamStates(streams, work)
 	for _, f := range fleet {
 		setPercent(f)
 	}
 	for _, f := range friends {
 		setPercent(f)
 	}
-	landed, all := 0, 0
+	landed, failed, all := 0, 0, 0
 	for _, w := range work {
 		landed += w.Landed
+		failed += w.Fail
 		all += w.Blocked + w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging + w.Landed + w.Fail
 	}
-	return envelope{Build: buildID, ServerVersion: "v2-dev", Landed: landed, All: all, At: at, Epoch: s.Epoch, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}}
+	return envelope{Done: all > 0 && landed+failed == all, Build: buildID, ServerVersion: Version, Landed: landed, All: all, At: at, Epoch: s.Epoch, OK: true, Streams: streams, StreamCosts: costs, Tables: map[string]any{"work": work, "fleet": fleet, "friends": friends, "merge": merge, "readers": readers}}
+}
+func setStreamStates(streams []streamLine, work map[string]*workRow) {
+	for i := range streams {
+		w := work[streams[i].Stream]
+		total := w.Blocked + w.Waiting + w.Ready + w.Working + w.Review + w.Fix + w.Merging + w.Landed + w.Fail
+		if total > 0 && w.Landed == total {
+			streams[i].State = "landed"
+		} else if streams[i].State != "held" && w.Ready+w.Working+w.Review+w.Fix+w.Merging > 0 {
+			streams[i].State = "working"
+		}
+	}
 }
 func mapRows(rows map[string]store.Row, fleet, friends map[string]*fleetRow) {
 	for n, r := range rows {
@@ -169,30 +187,7 @@ func countWork(w *workRow, c store.Card) {
 }
 func countConsumer(c store.Card, cards map[string]store.Card, work map[string]*workRow, fleet, friends map[string]*fleetRow, costs map[string]map[string]float64) {
 	if w := work[c.Stream]; w != nil {
-		d := float64(c.Cost) / 1e6
-		if c.Priced {
-			if w.Cost == nil {
-				z := 0.0
-				w.Cost = &z
-			}
-			*w.Cost += d
-			w.ByTier[c.Tier] += d
-		} else {
-			w.Unpriced = true
-		}
-		if c.Priced {
-			costs[c.Stream]["total_cost"] += d
-		}
-		if c.Priced {
-			if c.Kind == "read" {
-				costs[c.Stream]["read_cost"] += d
-			} else {
-				costs[c.Stream]["work_cost"] += d
-			}
-		}
-		if !c.Priced {
-			costs[c.Stream]["unpriced_runs"]++
-		}
+		countCost(w, c, costs[c.Stream])
 	}
 	f := fleet[c.Holder]
 	if f == nil {
@@ -221,6 +216,26 @@ func countConsumer(c store.Card, cards map[string]store.Card, work map[string]*w
 				author.Failed++
 			}
 		}
+	}
+}
+func countCost(w *workRow, c store.Card, costs map[string]float64) {
+	if !c.Priced {
+		w.Unpriced = true
+		costs["unpriced_runs"]++
+		return
+	}
+	d := float64(c.Cost) / 1e6
+	if w.Cost == nil {
+		z := 0.0
+		w.Cost = &z
+	}
+	*w.Cost += d
+	w.ByTier[c.Tier] += d
+	costs["total_cost"] += d
+	if c.Kind == "read" {
+		costs["read_cost"] += d
+	} else {
+		costs["work_cost"] += d
 	}
 }
 func countTrack(f *fleetRow, c, p store.Card) {

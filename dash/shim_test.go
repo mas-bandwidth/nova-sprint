@@ -22,3 +22,17 @@ func TestMapRepresentative(t *testing.T) {
 		t.Fatalf("kin=%+v", f)
 	}
 }
+
+func TestStreamStates(t *testing.T) {
+	s := store.Snapshot{Streams: map[string]store.Stream{"empty": {Name: "empty"}, "held": {Name: "held", Held: true}, "blocked": {Name: "blocked"}, "failed": {Name: "failed"}}, Cards: map[string]store.Card{"b": {ID: "b", Kind: "producer", Stream: "blocked", State: "blocked"}, "f": {ID: "f", Kind: "producer", Stream: "failed", State: "fail"}}}
+	d := mapSnapshot(s, time.Time{})
+	got := map[string]string{}
+	for _, row := range d.Streams {
+		got[row.Stream] = row.State
+	}
+	for k, v := range map[string]string{"empty": "waiting", "held": "held", "blocked": "waiting", "failed": "waiting"} {
+		if got[k] != v {
+			t.Errorf("%s state=%q want=%q", k, got[k], v)
+		}
+	}
+}

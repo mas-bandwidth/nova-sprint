@@ -1,0 +1,77 @@
+{
+  "note": "Live fixture checks plus synthetic intercepted response probes; no live board modifications.",
+  "initial": {
+    "cost": "$28.62",
+    "tput": "0",
+    "pulse": true,
+    "linkCursor": "pointer",
+    "empty": "waiting"
+  },
+  "redirects": [
+    {
+      "path": "/stream/schema-main",
+      "status": 302,
+      "location": "/"
+    },
+    {
+      "path": "/api/stream/schema-main",
+      "status": 302,
+      "location": "/"
+    },
+    {
+      "path": "/api/history",
+      "status": 302,
+      "location": "/"
+    }
+  ],
+  "healthPulse": {
+    "stoppedAfterLostPoll": true,
+    "clockHeld": true,
+    "recovered": true
+  },
+  "probe": {
+    "inflight": "27",
+    "sub": "3 working · 24 verify · 2 blocked",
+    "all": "376",
+    "work": [
+      "schema-main",
+      "waiting",
+      "2",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0 / 5",
+      "3",
+      "$0.00"
+    ],
+    "fleet": [
+      "amd-1",
+      "up",
+      "2",
+      "",
+      "0 / 8",
+      "1",
+      "0.0%",
+      ""
+    ],
+    "missingCost": "-",
+    "missingOK": "-",
+    "merge": [
+      "0",
+      "151",
+      "",
+      "",
+      ""
+    ]
+  },
+  "done": {
+    "eta": "DONE",
+    "all": "376",
+    "inflight": "0",
+    "legend": "landed 146fail 230merging 0fix 0review 0working 0ready 0blocked 0waiting 0"
+  },
+  "errors": []
+}

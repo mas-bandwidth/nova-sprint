@@ -206,8 +206,9 @@ button.toggle:hover { color: var(--text); border-color: var(--border-strong); }
 .fb { color: var(--text-2); }
 .waiting { background: var(--s-waiting); } .ready { background: var(--s-ready); }
 .working { background: var(--s-working); } .review { background: var(--s-review); }
-.fail { background: #000; }
-.blocked { background: #444; }
+:root { --s-fail: #000; --s-blocked: #704342; }
+.fail { background: var(--s-fail); }
+.blocked { background: var(--s-blocked); }
 .fix { background: var(--s-fix); }
 .p-fix { background: var(--p-fix); }
 .p-blocker { background: var(--s-blocker); } .p-critical { background: var(--s-critical); } .p-reader { background: var(--s-read); }

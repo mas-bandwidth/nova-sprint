@@ -52,17 +52,32 @@ type pageEnvelope struct {
 	FetchedAt         time.Time `json:"fetchedAt"`
 	DataAgeSeconds    float64   `json:"dataAgeSeconds"`
 	AttemptAt         time.Time `json:"attemptAt"`
-	Error             string    `json:"error"`
-	ReadSeconds       *float64  `json:"readSeconds"`
+	Error             *string   `json:"error"`
+	ReadSeconds       float64   `json:"readSeconds"`
 	MinInterval       int       `json:"minInterval"`
-	Throughput        *float64  `json:"throughput"`
-	ThroughputMinutes *float64  `json:"throughputMinutes"`
+	Throughput        float64   `json:"throughput"`
+	ThroughputMinutes float64   `json:"throughputMinutes"`
 	Build             string    `json:"build"`
 }
 
+func (c *Cache) pageSnapshot() pageEnvelope {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	d := c.view
+	if c.err != nil {
+		d.OK = false
+		d.Error = "store read failed"
+	}
+	rate, minutes := c.rate()
+	now := c.clock()
+	var msg *string
+	if d.Error != "" {
+		msg = &d.Error
+	}
+	return pageEnvelope{OK: d.OK, Data: d, FetchedAt: d.At, DataAgeSeconds: now.Sub(d.At).Seconds(), AttemptAt: d.At, Error: msg, ReadSeconds: c.readSeconds, Throughput: rate, ThroughputMinutes: minutes, MinInterval: 1, Build: buildID}
+}
 func dataHandler(c *Cache, w http.ResponseWriter, r *http.Request) {
-	d := c.Data().(envelope)
-	result := pageEnvelope{OK: d.OK, Data: d, FetchedAt: d.At, DataAgeSeconds: time.Since(d.At).Seconds(), AttemptAt: d.At, Error: d.Error, MinInterval: 1, Build: buildID}
+	result := c.pageSnapshot()
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Vary", "Accept-Encoding")
 	if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
@@ -79,10 +94,15 @@ func dataHandler(c *Cache, w http.ResponseWriter, r *http.Request) {
 func Handler(c *Cache) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/sprint", func(w http.ResponseWriter, r *http.Request) { dataHandler(c, w, r) })
+	for _, path := range []string{"/stream/", "/api/stream/", "/api/history"} {
+		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/", http.StatusFound) })
+	}
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		c.mu.RLock()
-		healthy := c.err == nil && time.Since(c.at) < 5*time.Second
-		c.mu.RUnlock()
+		c.mu.Lock()
+		now := c.clock()
+		c.checkAlarm(now)
+		healthy := now.Sub(c.at) < 32*time.Second
+		c.mu.Unlock()
 		if !healthy {
 			http.Error(w, "stale", http.StatusServiceUnavailable)
 			return
@@ -95,7 +115,11 @@ func Handler(c *Cache) http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write(versionedIndex())
+		body := versionedIndex()
+		if r.URL.Path == "/public.html" {
+			body = publicIndex(body)
+		}
+		_, _ = w.Write(body)
 	})
 	for _, size := range []string{"192", "384"} {
 		path := "/logo-tile-" + size + ".png"
@@ -116,4 +140,16 @@ func Handler(c *Cache) http.Handler {
 		w.Header().Set("Expires", "0")
 		mux.ServeHTTP(w, r)
 	})
+}
+
+func publicIndex(body []byte) []byte {
+	text := strings.ReplaceAll(string(body), `<script src="charts.js?v=`+buildID+`"></script>`, "")
+	start := strings.Index(text, `<section class="panel history"`)
+	if start >= 0 {
+		end := strings.Index(text[start:], "</section>")
+		if end >= 0 {
+			text = text[:start] + text[start+end+len("</section>"):]
+		}
+	}
+	return []byte(text)
 }

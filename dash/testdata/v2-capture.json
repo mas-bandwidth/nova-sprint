@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-06T21:19:31.595Z",
+  "at": "2026-11-06T21:32:41.326Z",
   "zone": "America/New_York",
   "checks": [
     {
@@ -9,7 +9,7 @@
       "statsDisplay": "none",
       "coordDisplay": "none",
       "failColor": "rgb(0, 0, 0)",
-      "blockedColor": "rgb(68, 68, 68)",
+      "blockedColor": "rgb(112, 67, 66)",
       "commentLeak": false,
       "zeroCents": 0,
       "zeroPercent": 0,
@@ -38,7 +38,13 @@
       "landed": "151",
       "inflight": "27",
       "cost": "$28.62",
-      "version": "v2-dev",
+      "version": "dev",
+      "throughputText": "0",
+      "eta": "-",
+      "pulseStopped": false,
+      "emptyStreamState": [
+        "waiting"
+      ],
       "workCompact": true,
       "workHeaders": [
         "stream",
@@ -70,7 +76,7 @@
       "statsDisplay": "none",
       "coordDisplay": "none",
       "failColor": "rgb(0, 0, 0)",
-      "blockedColor": "rgb(68, 68, 68)",
+      "blockedColor": "rgb(112, 67, 66)",
       "commentLeak": false,
       "zeroCents": 0,
       "zeroPercent": 0,
@@ -99,7 +105,13 @@
       "landed": "151",
       "inflight": "27",
       "cost": "$28.62",
-      "version": "v2-dev",
+      "version": "dev",
+      "throughputText": "0",
+      "eta": "-",
+      "pulseStopped": false,
+      "emptyStreamState": [
+        "waiting"
+      ],
       "workCompact": true,
       "workHeaders": [
         "stream",
@@ -110,17 +122,17 @@
         {
           "text": "schema-main",
           "x": 27,
-          "y": 1707
+          "y": 1707.75
         },
         {
           "text": "landed",
           "x": 190.5,
-          "y": 1705
+          "y": 1705.75
         },
         {
           "text": "5 / 5",
           "x": 250.34375,
-          "y": 1707.5
+          "y": 1708.25
         }
       ]
     },
@@ -131,7 +143,7 @@
       "statsDisplay": "none",
       "coordDisplay": "none",
       "failColor": "rgb(0, 0, 0)",
-      "blockedColor": "rgb(68, 68, 68)",
+      "blockedColor": "rgb(112, 67, 66)",
       "commentLeak": false,
       "zeroCents": 0,
       "zeroPercent": 0,
@@ -160,7 +172,13 @@
       "landed": "151",
       "inflight": "27",
       "cost": "$28.62",
-      "version": "v2-dev",
+      "version": "dev",
+      "throughputText": "0",
+      "eta": "-",
+      "pulseStopped": false,
+      "emptyStreamState": [
+        "waiting"
+      ],
       "workCompact": false,
       "workHeaders": [
         "stream",
@@ -246,7 +264,7 @@
       "statsDisplay": "none",
       "coordDisplay": "none",
       "failColor": "rgb(0, 0, 0)",
-      "blockedColor": "rgb(68, 68, 68)",
+      "blockedColor": "rgb(112, 67, 66)",
       "commentLeak": false,
       "zeroCents": 0,
       "zeroPercent": 0,
@@ -275,7 +293,13 @@
       "landed": "151",
       "inflight": "27",
       "cost": "$28.62",
-      "version": "v2-dev",
+      "version": "dev",
+      "throughputText": "0",
+      "eta": "-",
+      "pulseStopped": false,
+      "emptyStreamState": [
+        "waiting"
+      ],
       "workCompact": true,
       "workHeaders": [
         "stream",
@@ -286,17 +310,17 @@
         {
           "text": "schema-main",
           "x": 57,
-          "y": 2910.1875
+          "y": 3003.78125
         },
         {
           "text": "landed",
           "x": 783,
-          "y": 2907.1875
+          "y": 3000.78125
         },
         {
           "text": "5 / 5",
           "x": 883.140625,
-          "y": 2911.1875
+          "y": 3004.78125
         }
       ]
     },
@@ -307,7 +331,7 @@
       "statsDisplay": "none",
       "coordDisplay": "none",
       "failColor": "rgb(0, 0, 0)",
-      "blockedColor": "rgb(68, 68, 68)",
+      "blockedColor": "rgb(112, 67, 66)",
       "commentLeak": false,
       "zeroCents": 0,
       "zeroPercent": 0,
@@ -336,7 +360,13 @@
       "landed": "151",
       "inflight": "27",
       "cost": "$28.62",
-      "version": "v2-dev",
+      "version": "dev",
+      "throughputText": "0",
+      "eta": "-",
+      "pulseStopped": false,
+      "emptyStreamState": [
+        "waiting"
+      ],
       "workCompact": true,
       "workHeaders": [
         "stream",
@@ -347,17 +377,17 @@
         {
           "text": "schema-main",
           "x": 57,
-          "y": 3006.1875
+          "y": 3099.78125
         },
         {
           "text": "landed",
           "x": 443,
-          "y": 3003.1875
+          "y": 3096.78125
         },
         {
           "text": "5 / 5",
           "x": 543.140625,
-          "y": 3007.1875
+          "y": 3100.78125
         }
       ]
     },
@@ -368,7 +398,7 @@
       "statsDisplay": "none",
       "coordDisplay": "none",
       "failColor": "rgb(0, 0, 0)",
-      "blockedColor": "rgb(68, 68, 68)",
+      "blockedColor": "rgb(112, 67, 66)",
       "commentLeak": false,
       "zeroCents": 0,
       "zeroPercent": 0,
@@ -397,7 +427,13 @@
       "landed": "151",
       "inflight": "27",
       "cost": "$28.62",
-      "version": "v2-dev",
+      "version": "dev",
+      "throughputText": "0",
+      "eta": "-",
+      "pulseStopped": false,
+      "emptyStreamState": [
+        "waiting"
+      ],
       "workCompact": false,
       "workHeaders": [
         "stream",
@@ -481,27 +517,27 @@
   "requests": [
     {
       "url": "http://127.0.0.1:18082/api/sprint",
-      "at": 1793999966526
+      "at": 1794000756313
     },
     {
       "url": "http://127.0.0.1:18082/api/sprint",
-      "at": 1793999967526
+      "at": 1794000757312
     },
     {
       "url": "http://127.0.0.1:18082/api/sprint",
-      "at": 1793999968527
+      "at": 1794000758313
     },
     {
       "url": "http://127.0.0.1:18082/api/sprint",
-      "at": 1793999969528
+      "at": 1794000759314
     },
     {
       "url": "http://127.0.0.1:18082/api/sprint",
-      "at": 1793999970527
+      "at": 1794000760313
     },
     {
       "url": "http://127.0.0.1:18082/api/sprint",
-      "at": 1793999971528
+      "at": 1794000761314
     }
   ]
 }

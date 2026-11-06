@@ -249,7 +249,7 @@ function frac(a, b, digits, bDigits) {
 function digitsOf(n) { return String(Math.max(0, n)).length; }
 function makePill() { var p = el("span", "pill neutral"); p.appendChild(el("span", "dot")); p._t = quiet(el("span")); p.appendChild(p._t); return p; }
 function setPill(p, text, tone, title) { setText(p._t, text); setClass(p, "pill " + tone); setTitle(p, title || text); }
-function setOk(o, p, done) { setText(o, p === null ? "" : p.toFixed(1) + "%"); setClass(o, "num" + (done ? "" : " zero")); }
+function setOk(o, p, done) { setText(o, p === null ? "-" : p.toFixed(1) + "%"); setClass(o, "num" + (done ? "" : " zero")); }
 // One vocabulary across the tables (SPEC.md, the owner 8:04 AM: "change 'asleep' to 'down' so we have
 // consistency across all tables"): a store that still says "asleep" is shown as "down", in red.
 var STATUS_TONE = { up: "good", held: "warning", down: "critical" };
@@ -282,7 +282,7 @@ function streamStatus(state, c, total) {
   // just because all its cards are in waiting state")
   if (state === "held") return ["held", "warning"];
   if (total > 0 && c.waiting === total) return ["waiting", "neutral"];
-  if (c.blocked + c.ready + c.working + c.review + (c.fix || 0) + c.merging > 0) return ["working", "active"];
+  if (c.ready + c.working + c.review + (c.fix || 0) + c.merging > 0) return ["working", "active"];
   if (state === "landed") return ["landed", "done"];
   // cards still waiting and nothing in flight (some landed already): waiting, like a stream
   // whose cards all wait
@@ -368,7 +368,7 @@ function renderStreams(d) {
     setText(r.tag, tags.join(" · "));
     FLOW.forEach(function (st) { if (st !== "landed") setNum(r.n[st], c[st]); });
     setHTML(r.n.landed, frac(c.landed, total, digits));
-    setText(r.cost, w.unpriced || ct === null ? "" : money(ct)); setClass(r.cost, "num" + (ct === null ? " zero" : ""));
+    setText(r.cost, ct === null ? "-" : money(ct)); setClass(r.cost, "num" + (ct === null ? " zero" : ""));
   }, box._total);
   // the sprint's unreconciled spend rides on every stream's record, an archived one's too:
   // read once, never summed
@@ -378,7 +378,7 @@ function renderStreams(d) {
   var tc = box._total._c, all = 0;
   FLOW.forEach(function (st, i) { all += sum[st]; if (st !== "landed") setNum(tc[2 + i], sum[st]); });
   setHTML(tc[LANDED_AT], frac(sum.landed, all, digits));
-  setText(tc[COST_AT], sum.unpriced ? "" : money(sum.cost));
+  setText(tc[COST_AT], money(sum.cost));
   // stream counts, never cards: "landed" here read as cards beside the table's landed column (Glenn 2026-10-14), so it names its unit
   setText($("streams-sub"), keys.length + " streams · " + landedStreams + " streams landed · " + held + " held");
   // the "landed" header is centred over its n / total cell: same width as the cell, text centred
@@ -613,7 +613,7 @@ function renderHero(d, s, ft) {
   setText($("pct"), all ? (landed / all * 100).toFixed(1) + "%" : "not started"); // an empty sprint says so (the owner 2026-10-12 ~01:09Z)
   var pctSuffix = $("pct-suffix"); if (pctSuffix) pctSuffix.style.display = all ? "" : "none"; var ofAll2 = $("of-all2"); if (ofAll2) ofAll2.style.display = all ? "" : "none"; // an empty sprint says only "not started" (the owner ~01:22Z)
   var m = String(d.summary || "").match(/ETA\s+(\S+)/), at = new Date(d.at);
-  var machineStopped = /STOPPED/.test(String(d.machine || "")) && !(all && landed >= all);
+  var machineStopped = /STOPPED/.test(String(d.machine || "")) && !(d.done);
   if (machineStopped) { setHTML($("eta"), "<span class=\"eta-stopped\">STOP</span>"); /* STOP at every width (the owner ~01:32Z: "cleaner") */ etaAtLast = null; setText($("eta-at"), "\u00a0"); } /* the owner 2026-10-12 ~00:58Z: "When stopped put STOPPED there in red" */
   else if (m) {
     setHTML($("eta"), etaText(m[1]));
@@ -621,25 +621,25 @@ function renderHero(d, s, ft) {
     // the viewer's zone after the time, the same source as the Updated clock (SPEC.md, the owner 10:00 PM)
     var etaAt = new Date(at.getTime() + ms);
     if (ms != null && !isNaN(at)) { etaAtLast = [etaAt, ms]; fitEtaAt(); } else { etaAtLast = null; setText($("eta-at"), "\u00a0"); }
-  } else if (all && landed >= all) { setHTML($("eta"), "<span class=\"eta-done\">DONE</span>");  /* the owner 2026-10-12 ~00:32Z: "DONE with done in bright green" */ setText($("eta-at"), tookText(d));  /* the owner 2026-10-12 ~00:35Z: "Below DONE show the time it took in days, hours, minutes" */ }
-  else { setText($("eta"), ""); setText($("eta-at"), ""); }
+  } else if (d.done) { setHTML($("eta"), "<span class=\"eta-done\">DONE</span>");  /* the owner 2026-10-12 ~00:32Z: "DONE with done in bright green" */ setText($("eta-at"), tookText(d));  /* the owner 2026-10-12 ~00:35Z: "Below DONE show the time it took in days, hours, minutes" */ }
+  else { setText($("eta"), "-"); setText($("eta-at"), ""); }
   // the cost tile and its tooltip cover one scope (docs/SPEC-SPRINT.md, the summary line): the
   // streams on the table, or, the sprint done, the epoch's every stream, as the hero's count
   // is. The cost is every recorded take and read of their cards in any column; the cost per
   // card is that over the cards that landed
   var c = d.done ? s.sum.epoch : s.sum, recorded = c.totalCost;
   var unpriced = Object.keys(d.stream_costs || {}).some(function (k) { return int(d.stream_costs[k].unpriced_runs) > 0; });
-  setText($("cost"), unpriced ? "" : money(recorded));
-  setText($("cost-whole"), unpriced ? "" : dollars(recorded));  // the phone layout shows whole dollars, rounded up (the owner 2026-10-12 ~00:30Z: "don't show the cents in the cost in iphone layout", "just round up to nearest dollar")
-  var per = landed && !unpriced ? money(Math.ceil(recorded / landed)) + " per card" : "";
+  setText($("cost"), money(recorded));
+  setText($("cost-whole"), dollars(recorded));  // the phone layout shows whole dollars, rounded up (the owner 2026-10-12 ~00:30Z: "don't show the cents in the cost in iphone layout", "just round up to nearest dollar")
+  var per = landed ? money(Math.ceil(recorded / landed)) + " per card" : "";
   setText($("cost-per"), per || " ");
-  setText($("inflight"), s.sum.blocked + s.sum.working + (s.sum.fix || 0) + s.sum.review + s.sum.merging);
+  setText($("inflight"), s.sum.working + (s.sum.fix || 0) + s.sum.review + s.sum.merging);
   inflightLast = s.sum; renderInflight(s.sum);
   // throughput: cards landed per hour over the last hour, from the server's samples
-  setText($("tput"), throughput == null ? "" : String(Math.round(throughput)));
+  setText($("tput"), throughput == null ? "\u2014" : String(Math.round(throughput)));
   setTitle($("tput"), throughput == null ? "needs ten minutes of samples" : "over the last " + Math.round(throughputMinutes) + " min");
   
-  setMachine(d.machine);
+  setMachine(d.machine || (cacheHealthy ? "running" : ""));
   setText($("coord"), d.coordinator || ""); $("coord-chip").hidden = !d.coordinator;
   // the running sprint server's version (server.py reads it from the process; absent when unknown) and the epoch (the owner ~01:20Z)
   var vc = $("ver-chip"); if (vc) { vc.hidden = !d.server_version; if (d.server_version) setText($("ver"), d.server_version); }
@@ -648,6 +648,7 @@ function renderHero(d, s, ft) {
 }
 
 // ---------- poll loop ----------
+var cacheHealthy = false, lastMachine = "";
 var shownAt = -Infinity, inFlight = 0, build = null, throughput = null, throughputMinutes = 0;
 // Readers and merge are hidden by default; ?all=1 shows them.
 var SHOW_ALL = /(?:^|[?&])all=1(?:&|$)/.test(location.search);
@@ -779,7 +780,8 @@ function renderInflight(sum) {
   // the words shorten in turn when the line does not fit the tile (a phone)
   var forms = [["working", "verify"], ["work", "verify"], ["wk", "vfy"]];
   var draw = function (w) {
-    var parts = [[sum.working, w[0]], [sum.blocked + sum.review + (sum.fix || 0) + sum.merging, w[1]]].filter(function (p) { return p[0] > 0; });
+    var parts = [[sum.working, w[0]], [sum.review + (sum.fix || 0) + sum.merging, w[1]]].filter(function (p) { return p[0] > 0; });
+    if (sum.blocked) parts.push([sum.blocked,"blocked"]);
     box.textContent = "";
     if (!parts.length) box.textContent = "\u00a0"; // blank when nothing is in flight; the line keeps its height (the owner 2026-10-12 ~01:10Z)
     parts.forEach(function (p, i) {
@@ -870,7 +872,7 @@ function escHTML(s) { return String(s).replace(/[&<>"']/g, function (c) { return
 function digitsOf(n) { return String(Math.max(0, n)).length; }
 function makePill() { var p = el("span", "pill neutral"); p.appendChild(el("span", "dot")); p._t = quiet(el("span")); p.appendChild(p._t); return p; }
 function setPill(p, text, tone, title) { setText(p._t, text); setClass(p, "pill " + tone); setTitle(p, title || text); }
-function setOk(o, p, done) { setText(o, p === null ? "" : p.toFixed(1) + "%"); setClass(o, "num" + (done ? "" : " zero")); }
+function setOk(o, p, done) { setText(o, p === null ? "-" : p.toFixed(1) + "%"); setClass(o, "num" + (done ? "" : " zero")); }
 var STATUS_TONE = { up: "good", held: "warning", down: "critical" };
 
 // ---------- sections ----------
@@ -914,7 +916,10 @@ function render(d) {
 // `where --json` snapshot.
 function accept(j) {
   if (!j) return;
+  cacheHealthy = j.ok && Date.now() - Date.parse(j.fetchedAt) < 2000;
   var d = j.tables ? j : j.data;
+  lastMachine = d && d.machine || "";
+  setMachine(lastMachine || (cacheHealthy ? "running" : ""));
   if (j.build) { if (build == null) build = j.build; else if (build !== j.build) { try { sessionStorage.setItem("dash-scroll", String(window.scrollY)); } catch (e) {} location.reload(); return; } }
   if (!d || !d.tables) return;
   var at = Date.parse(d.at);
@@ -930,6 +935,7 @@ function accept(j) {
 // hold a slot. A failure changes nothing on the page.
 var MAX_IN_FLIGHT = 2, FETCH_TIMEOUT_MS = 10000, pollTimer = null;
 function poll() {
+  if (Date.now() - shownAt >= 2000) { cacheHealthy = false; setMachine(lastMachine); }
   if (inFlight >= MAX_IN_FLIGHT) { console.debug("poll: tick skipped, " + inFlight + " fetches in flight"); return; }
   inFlight++;
   var ctl = typeof AbortController === "function" ? new AbortController() : null;
