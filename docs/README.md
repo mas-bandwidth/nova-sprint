@@ -83,6 +83,18 @@ approved:
   time deadlines (LESSONS 1.14) and what a ready producer that cannot start
   for a reason other than a held stream becomes (LESSONS 2.20).
 
+## The release gate for v2.0.0 (Glenn, 2026-11-06)
+
+"I really want to land nova-sprint v2 tonight if possible." "For this one we
+need to dogfood it a bit, but also, I think it's OK to release v2.0.0 even if
+we haven't dogfooded it fully." So v2.0.0 ships when every layer is built,
+modelled, cold-read and green, and one real dogfood run has happened: our own
+sprint on the v2 tool, the dashboard live, at least one card dealt, worked,
+read, merged and shown landed. The full gates (a cold AI sets up a fresh fleet
+from the tool's help twice; the friends adopt it; the six promises and 10/10
+across all friends and models; the vanilla-versus-sprint measurement) are
+2.0.x point releases, each one a gate met.
+
 ## Two ideas from the field, deferred (Glenn, 2026-11-06)
 
 From the Hacker News thread "Ask HN: What's your current AI agentic setup?"
