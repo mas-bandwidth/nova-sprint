@@ -79,7 +79,7 @@ func viewJSON(t *testing.T, s store.Snapshot) string {
 	return string(b)
 }
 
-// 2: Snapshot once, the read position never moves backwards, and fold == Snapshot == Rebuild(all).
+// 2: Snapshot once, the read position advances exactly +1 per call, and fold == Snapshot == Rebuild(all).
 func TestColdreadFoldNoClear(t *testing.T) {
 	ctx := context.Background()
 	f := store.NewFake()
