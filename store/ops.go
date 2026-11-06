@@ -7,8 +7,9 @@ import (
 	"time"
 )
 
-// Expect is a condition: one of CardGen, CardState, CardHolder, NeedsLanded,
-// RowIs, RowGen, RowHeld, StreamHeld, CardAbsent, JudgementOpen, AtSeq. There
+// Expect is a condition: one of CardGen, CardState, CardHolder, CardRed,
+// NeedsLanded, RowIs, RowGen, RowHeld, StreamHeld, CardAbsent, JudgementOpen,
+// AtSeq. There
 // is no width condition and no tier condition: the writes are the checks (the
 // state write into working for width, put card for the holder's tiers). The
 // set is closed by the unexported method; any other value is ErrInvalid.
@@ -29,6 +30,13 @@ type CardState struct{ Card, State string }
 
 // CardHolder holds when card Card has holder Holder ("" for none).
 type CardHolder struct{ Card, Holder string }
+
+// CardRed holds when card Card's red flag is Red: a plan that waives a red
+// read fences on the producer being red (round 17).
+type CardRed struct {
+	Card string
+	Red  bool
+}
 
 // NeedsLanded holds when every need of card Card, read from the card itself
 // inside the transaction, is landed.
@@ -66,6 +74,7 @@ type AtSeq struct{ Seq int64 }
 func (CardGen) isExpect()       {}
 func (CardState) isExpect()     {}
 func (CardHolder) isExpect()    {}
+func (CardRed) isExpect()       {}
 func (NeedsLanded) isExpect()   {}
 func (RowIs) isExpect()         {}
 func (RowGen) isExpect()        {}
@@ -212,6 +221,15 @@ type SetCardReview struct{ Card string }
 // any other kind.
 type SetCardFinding struct{ Card, Finding string }
 
+// SetCardRed records on a producer whether its last read's verdict was red,
+// so a later waiver can require it (round 17). Refused on any other kind,
+// naming the fix: a consumer's verdict is recorded on its producer, and a
+// sentinel is never read.
+type SetCardRed struct {
+	Card string
+	Red  bool
+}
+
 // SetCardCost sets what a consumer's run cost, in micro-dollars, and whether
 // its route had a price at all: one field, so an unpriced run is never $0.
 // Refused on a producer or sentinel.
@@ -345,6 +363,7 @@ func (SetCardPriorHead) isWrite() {}
 func (SetCardBounces) isWrite()   {}
 func (SetCardReview) isWrite()    {}
 func (SetCardFinding) isWrite()   {}
+func (SetCardRed) isWrite()       {}
 func (SetCardCost) isWrite()      {}
 func (SetCardPriority) isWrite()  {}
 func (PutRow) isWrite()           {}
@@ -469,6 +488,13 @@ func setSpec(w Write) spec {
 	case SetCardAfter:
 		s := card(v.Card, "after", func(k *Card) { k.After = normSet(v.After) }, func(c *checker) { c.keys("card", v.After...) }).kinds("SetCardAfter", "a producer or sentinel", holdless)
 		return s.listed(afterList, v.After)
+	}
+	return kindSpec(w)
+}
+
+// kindSpec is setSpec for the set-card writes that one kind alone carries.
+func kindSpec(w Write) spec {
+	switch v := w.(type) {
 	case SetCardPriorHead:
 		return card(v.Card, "prior_head", func(k *Card) { k.Prior = v.Head }, func(c *checker) { c.text(v.Head) }).kinds("SetCardPriorHead", "a work consumer", func(k string) bool { return k == "work" })
 	case SetCardBounces:
@@ -485,6 +511,10 @@ func setSpec(w Write) spec {
 		return s
 	case SetCardFinding:
 		return card(v.Card, "finding", func(k *Card) { k.Finding = v.Finding }, func(c *checker) { c.text(v.Finding) }).kinds("SetCardFinding", "a producer", func(k string) bool { return k == "producer" })
+	case SetCardRed:
+		s := card(v.Card, "red", func(k *Card) { k.Red = v.Red }, nil)
+		s.cardIf = func(_ *work, k Card) (string, error) { return redOnProducer(k), nil }
+		return s
 	case SetCardCost:
 		return card(v.Card, "cost", func(k *Card) { k.Cost, k.Priced = v.Cost, v.Priced }, func(c *checker) { c.num64("cost", v.Cost) }).kinds("SetCardCost", "a consumer", consumer)
 	case SetCardPriority:

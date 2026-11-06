@@ -21,15 +21,24 @@ var schemaSQL string
 // SchemaVersion is the version of schema.sql, kept in sprint.meta with the
 // schema's hash. Version 2 adds to version 1: the card columns kind (with
 // sentinel), of, after, author, base_sha, prior_head, result (with fault),
-// bounces, cost, priced, priority, tier, paths, done_when, prose, review and finding; the card
+// bounces, cost, priced, priority, tier, paths, done_when, prose, review, finding and red; the card
 // states blocked and done; the row columns gen, held, tiers, model, harness
 // and reason; the tables judgements and cursors; the events' policy; the meta
 // hash; the triggers that keep a card's kind, of, stream, holder, tier, id
 // and epoch, a row's, stream's or judgement's key and epoch, a policy version's
 // columns but active, and the log (TRUNCATE included)
 // fixed; and the CHECKs that keep every count at 0 or more. There is no
-// upgrade path: a store at version 1 is refused like any other version.
+// upgrade path from version 1: a store at version 1 is refused like any
+// other version. Within version 2 there is one: a store made by round 16's
+// schema (round16Hash) is upgraded by Migrate (round 17's red column).
 const SchemaVersion = 2
+
+// round16Hash is the schema hash of round 16's schema.sql
+// (testdata/schema-round16.sql, 36c1bbd6), the one earlier build of version
+// 2 Migrate upgrades: running schema.sql on it adds cards.red (false on every
+// card, with its CHECK) and changes nothing else, then the new hash is
+// recorded. Any other hash is still refused.
+const round16Hash = "58b09b225469ae56094b2eeafc8631c5e5cc9ae3dc5e1d2894a0f0434187373e"
 
 // schemaHash is the sha256, in hex, of the schema the binary carries with
 // comments, indentation and blank lines stripped, so editing a comment does
@@ -115,7 +124,9 @@ func (p *PG) Close() { p.pool.Close() }
 // sprint that holds anything but no sprint.meta (not made by nova-sprint):
 // any object of any kind in the namespace, which PostgreSQL records as a
 // pg_depend row on it (a relation, type, function, operator, collation, text
-// search object, operator family, ...).
+// search object, operator family, ...). The one other hash it takes is
+// round16Hash: schema.sql adds cards.red to that store and the new hash is
+// recorded, in the same transaction.
 // Twice is a no-op, and concurrent Migrates are safe: each holds one
 // advisory lock.
 func (p *PG) Migrate(ctx context.Context) error {
@@ -146,7 +157,7 @@ func (p *PG) Migrate(ctx context.Context) error {
 		if v != SchemaVersion {
 			return fmt.Errorf("store: migrate: the store is at schema version %d, this binary knows schema version %d: run a binary built for schema version %d, or recreate the store", v, SchemaVersion, v)
 		}
-		if hash != schemaHash {
+		if hash != schemaHash && hash != round16Hash {
 			return fmt.Errorf("store: migrate: the store's schema hash is %s, this binary's is %s: this store was made by a different build of schema 2; recreate it (no live store is at v2 yet)", cmp.Or(hash, "none"), schemaHash)
 		}
 	}

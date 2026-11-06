@@ -7,7 +7,7 @@
 -- version with the two card kinds (kind with sentinel, of, after, author,
 -- base_sha, result, the states blocked and done; prior_head, bounces, cost,
 -- priced, priority, the result fault; tier, paths, done_when, prose,
--- review, finding), row gen, held, tiers, model, harness and reason, the judgements and cursors tables and
+-- review, finding, red), row gen, held, tiers, model, harness and reason, the judgements and cursors tables and
 -- the events' policy; there is no upgrade path from version 1.
 
 CREATE SCHEMA IF NOT EXISTS sprint;
@@ -110,6 +110,14 @@ CREATE TABLE IF NOT EXISTS sprint.cards (
     FOREIGN KEY (epoch, holder) REFERENCES sprint.rows (epoch, name),
     FOREIGN KEY (epoch, "of") REFERENCES sprint.cards (epoch, id)
 );
+
+-- red (round 17): on a producer, its last read's verdict was red, so a later
+-- waiver can require it; false on every other kind. Mutable (SetCardRed), so
+-- cards_fixed does not name it. Added by ALTER, not in the CREATE above, so a
+-- new store and a round-16 store that Migrate upgrades get the one column the
+-- same way: ADD COLUMN IF NOT EXISTS is a no-op once it is there.
+ALTER TABLE sprint.cards ADD COLUMN IF NOT EXISTS red boolean NOT NULL DEFAULT false
+    CONSTRAINT cards_red_check CHECK (kind = 'producer' OR NOT red);
 
 -- What a CHECK cannot say: a card's id, epoch, kind, of, stream, holder and
 -- tier never change once it is written (there is no write for any of them;

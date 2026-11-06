@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -173,4 +174,16 @@ func TestSchemaHash(t *testing.T) {
 	assert.NotEqual(t, hashSchema("SELECT 'a -- b';\n"), hashSchema("SELECT 'a -- c';\n"), "a -- inside a string literal is hashed, not stripped")
 	assert.Equal(t, hashSchema("SELECT 'it''s';\n"), hashSchema("SELECT 'it''s'; -- x\n"), "a doubled quote stays inside the literal")
 	assert.Equal(t, hashSchema("SELECT 1;\nSELECT 2;\n"), hashSchema("SELECT 1; -- 'x\nSELECT 2;\n"), "a quote inside a comment opens nothing")
+}
+
+// round16Hash is the hash of round 16's schema.sql, kept in testdata, and
+// not this build's: Migrate upgrades exactly that one earlier build. Unit:
+// reads a file in the package, no store.
+func TestRound16Hash(t *testing.T) {
+	t.Parallel()
+	old, err := os.ReadFile("testdata/schema-round16.sql")
+	require.NoError(t, err)
+	assert.Equal(t, round16Hash, hashSchema(string(old)))
+	assert.NotEqual(t, round16Hash, schemaHash)
+	assert.NotContains(t, string(old), " red ")
 }

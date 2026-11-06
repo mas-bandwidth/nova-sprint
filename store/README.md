@@ -24,11 +24,17 @@ package does with it.
   2 whose hash differs from this binary's (or has none) is refused naming
   both hashes:
   "this store was made by a different build of schema 2; recreate it (no live
-  store is at v2 yet)". The binary knows schema version 2: version 1 plus the two card kinds
+  store is at v2 yet)". One earlier build is taken instead: a store at round
+  16's hash (`round16Hash`, the hash of `testdata/schema-round16.sql`) is
+  upgraded in Migrate's one transaction: `schema.sql` runs on it (every
+  `CREATE ... IF NOT EXISTS` a no-op, the functions and triggers replaced by
+  the same text, and `ALTER TABLE sprint.cards ADD COLUMN IF NOT EXISTS red`
+  adds `red`, false on every card, with its CHECK), then the new hash is
+  recorded; the events are untouched and a second Migrate is a no-op. The binary knows schema version 2: version 1 plus the two card kinds
   (`kind` with `sentinel`, `of`, `after`, `result`, the states `blocked` and
   `done`), the card columns `author`, `base_sha`, `prior_head`, `bounces`,
   `cost`, `priced` and `priority` and the result `fault` (layer 2's and the
-  lessons of v1), the card columns `tier`, `paths`, `done_when`, `prose`, `review` and `finding`, row `gen`, `held`, `tiers`, `model`, `harness` and `reason`, the tables `judgements` and `cursors`, and the events' `policy`. There is no upgrade path: a store at
+  lessons of v1), the card columns `tier`, `paths`, `done_when`, `prose`, `review`, `finding` and `red`, row `gen`, `held`, `tiers`, `model`, `harness` and `reason`, the tables `judgements` and `cursors`, and the events' `policy`. There is no upgrade path: a store at
   version 1 is refused like any other version.
 - `Fake` (`NewFake()`) is the same store in memory, for unit tests of the
   layers above. It runs the same rules and the same protocol (`apply.go`,
@@ -134,7 +140,7 @@ default: // accepted: r.Seq is the event, r.After the touched rows
 against; required, epochs start at 1), `Actor`, `Kind` (a label for the log),
 `At` (the caller's time), `Expect`, `Writes` and `Note`.
 
-Conditions: `CardGen`, `CardState`, `CardHolder` (`""` is none), `NeedsLanded`
+Conditions: `CardGen`, `CardState`, `CardHolder` (`""` is none), `CardRed`, `NeedsLanded`
 (every need of the card, read from the card inside the transaction, is
 landed), `RowIs`, `RowGen`, `RowHeld`, `StreamHeld`, `CardAbsent`,
 `JudgementOpen`, `AtSeq` (the last event's seq is N: nothing at all entered
@@ -196,6 +202,19 @@ finding}` (producers only); `reason` stays the status reason. A work
 consumer is cut with `PutCard{Finding}` equal to its producer's current
 finding (refused otherwise, naming both) and keeps it (the cards_fixed
 trigger); every other kind's finding is "" (a CHECK).
+
+Red (round 17). A producer's `red` says its last read's verdict was red, so
+a later waiver can require it (the card machine had been using `pr` for
+this). `SetCardRed{card, red}` sets it on a producer; on any other kind it is
+refused whatever the value, naming the fix: "card u1 is of kind work;
+SetCardRed is only for a producer: record the verdict on its producer c1",
+and for a sentinel "card t1 is of kind sentinel; SetCardRed is only for a
+producer, and a sentinel is never read". The same value is refused ("card
+c1 already has the given red"). `CardRed{card, red}` fences a plan on it
+("card c1 is not red, expected red"). Every other kind's red is false (the
+CHECK `cards_red_check`); red is mutable, so the cards_fixed trigger does not
+name it. An event written before round 17 has no `red` in its images and
+reads as false.
 
 Tier. Every card names its tier at add, one of `flash`, `pro`, `heavy`,
 `frontier` (a CHECK in the schema; in Go a tier outside the four is a
@@ -268,7 +287,7 @@ when its row already holds as many working cards as its width),
 `SetCardPaths`, `SetCardDoneWhen`, `SetCardProse`, `SetCardAttempt`, `SetCardBranch`, `SetCardHead`, `SetCardPR`,
 `SetCardReason`, `SetCardScore`, `SetCardAuthor` (the row whose work the head
 is), `SetCardBaseSHA` (the base commit the attempt started from),
-`SetCardPriorHead`, `SetCardResult`, `SetCardBounces`, `SetCardReview` (+1, a producer's), `SetCardFinding` (a producer's), `SetCardCost` (cost
+`SetCardPriorHead`, `SetCardResult`, `SetCardBounces`, `SetCardReview` (+1, a producer's), `SetCardFinding` (a producer's), `SetCardRed` (a producer's), `SetCardCost` (cost
 and priced together, one field), `SetCardPriority` (refused on a consumer,
 normal included; `""` is normal, as at put card), `SetCardNeeds` and `SetCardAfter` (each refused on a
 consumer, nil included), `PutRow`
