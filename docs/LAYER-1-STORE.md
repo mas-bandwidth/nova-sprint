@@ -105,8 +105,10 @@ writes), `Note` (kept in the receipt).
 Conditions (`Expect`): card `X` is at gen `G`; card `X` is in state `S`; card
 `X` has holder `R` (or none); every need of card `X` is `landed` (read from the
 card's own `needs` inside the transaction, never from a caller's list); row
-`R` is in state `S`; row `R` holds fewer than `W` cards (holders counted
-inside the transaction, so two deals cannot overfill a row); stream `S` is
+`R` is in state `S`; row `R` is under its width (the holders counted and the
+width read inside the transaction, from the row itself, never from the
+caller, so two deals cannot overfill a row and a stale width cannot be
+asserted); stream `S` is
 held or not held; card `X` does not exist; the store is at seq `N` (a fence
 for a plan that needs nothing at all to have changed since its snapshot). The
 op's epoch must equal the store's epoch; a mismatch is a refusal. Every
@@ -121,8 +123,17 @@ card holder (a name or none); set card attempt; set card branch; set card
 head; set card pr; set card reason; set card score; set card needs; put row
 (insert or overwrite: kind, width, session); set row state; set row session;
 set row flaps; put policy version; set active policy version (deactivates the
-one active before it in the same transaction). Every card write raises gen by
-one. A set write whose target does not exist is a refusal. Writes in one op
+one active before it in the same transaction). An op that writes a card raises
+that card's gen by one, however many of its writes touch the card: gen counts
+the operations that changed the card. Put row refuses a width below the
+number of cards the row holds, so holders never exceed width by any path.
+Set card needs follows the add rule (other cards of the same epoch, no
+duplicates); a cycle through needs is layer 2's refusal. The op's epoch is
+checked on a clear too: a clear names the epoch it closes, so a retried clear
+with a new id after the first landed is refused, not applied twice. The
+clear's event carries the carried-forward rows in its after-image, which is
+how rebuild reproduces the copy. A set write whose target does not exist is a
+refusal. Writes in one op
 apply in order, so a later write sees a row an earlier one put. Two writes to
 one field in one op are invalid. `kind` on the op is a label for the log; the
 writes are the truth, and rebuild reads the writes' after-images, never the
@@ -219,10 +230,16 @@ it the StaleCheck witness is exactly what `READ COMMITTED` would do.
 - `tla/Store.tla` with `tla/Store.cfg`: operations as atomic steps over cards,
   rows, events and applied op ids; invariants for the guarantees above
   (single state and holder are structural; idempotent replay; log matches
-  state; conditions checked against the same state the writes change).
-  Reversed witnesses in `tla/witnesses/`, each a variant that TLC must fail:
-  a write that lands without its event row; a replay that applies again; a
-  condition checked against a stale snapshot (lost update); a second holder.
+  state; conditions checked against the same state the writes change; ops
+  land only in their epoch; holders never exceed width). Reversed witnesses
+  in `tla/witnesses/`, each a variant that TLC must fail: a write that lands
+  without its event row; a replay that applies again; a condition checked
+  against a stale snapshot (lost update); a second holder; an op without the
+  epoch check landing after a clear; a width check on a stale count. Reach
+  checks in `tla/reach/`, each also a required violation, show the passing
+  run really reaches a take, a refusal, a recovery after a transport failure,
+  a stale-epoch refusal, a needs-ready deal and a full row. `tla/ci-tlc.sh`
+  runs all of them and fails on any wrong outcome.
 - Unit tests, package `store`: pure Go against `store.Fake` (an in-memory
   implementation of the same interface used only by tests above this layer),
   time passed in, no sockets, no real time, no network.
