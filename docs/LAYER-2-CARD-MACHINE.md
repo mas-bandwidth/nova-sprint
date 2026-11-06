@@ -403,3 +403,21 @@ with a design change, never a special case):
   refuses a cycle through needs or after, and a need that is not a card.
 - Wording: `attempt` counts the work consumers cut; `bounces` is what the
   block limit reads; a fault raises neither.
+
+## Rulings from the card model (2026-11-06)
+
+- The invariant is as the tables have it: at most one live work consumer per
+  producer, belonging to the current attempt; a producer in `working` whose
+  consumer has reported or been withdrawn is one plan away from leaving
+  `working` (Finished, Broken, Faulted, Released, Block), and that plan is
+  built in the same tick.
+- A move that returns a producer to `ready` while its stream is held
+  (Broken, Faulted, ReadFix, Released) writes it parked in the same plan.
+- Preemption withdraws a `working` consumer only (a ready one holds no width),
+  and "no serving row has width" counts open rows: up and not held.
+- `ReadFix` requires at least one done fix read of the current review, as
+  `ReadYes` requires a yes.
+- `NeedFailedTakesDependants` is a rule, not a side effect: a dependant of a
+  failed need gets no new consumer and is failed by layer 3 in the same tick.
+- Row table text: there is no row block; the flap limit sentence is gone.
+- The liveness obligation "nothing stalls" is layer 3's model, with the tick.
