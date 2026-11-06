@@ -1,0 +1,47 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"github.com/mas-bandwidth/nova-sprint/dash"
+	"github.com/mas-bandwidth/nova-sprint/store"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+)
+
+func main() {
+	pg := flag.String("pg", os.Getenv("NOVA_PG_DSN"), "PostgreSQL DSN")
+	listen := flag.String("listen", "127.0.0.1:8080", "HTTP listen address")
+	flag.Parse()
+	if *pg == "" {
+		log.Fatal("--pg or NOVA_PG_DSN is required")
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	s, err := store.Open(ctx, *pg, os.Getenv("NOVA_PG_PASSWORD"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer s.Close()
+	cache, err := dash.New(ctx, s)
+	if err != nil {
+		log.Fatal(err)
+	}
+	go cache.Run(ctx, s)
+	server := &http.Server{Addr: *listen, Handler: dash.Handler(cache), ReadHeaderTimeout: 5 * time.Second}
+	go func() {
+		<-ctx.Done()
+		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = server.Shutdown(shutdown)
+	}()
+	log.Printf("dashboard listening on %s", *listen)
+	if err = server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Fatal(err)
+	}
+}

@@ -1,0 +1,43 @@
+{
+  "note": "Synthetic response projection tests browser rendering; not a second live store capture.",
+  "got": {
+    "inflight": "29",
+    "all": "376",
+    "landed": "146",
+    "work": [
+      "schema-main",
+      "working",
+      "2",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0",
+      "0 / 5",
+      "3",
+      "$0.00"
+    ],
+    "fleet": [
+      "amd-1",
+      "up",
+      "2",
+      "",
+      "0 / 8",
+      "1",
+      "0.0%",
+      ""
+    ],
+    "merge": [
+      "0",
+      "151",
+      "",
+      "",
+      ""
+    ],
+    "load": "",
+    "legend": "landed 146fail 3merging 0fix 5review 19working 3ready 23blocked 2waiting 175",
+    "commentLeak": false
+  },
+  "errs": []
+}

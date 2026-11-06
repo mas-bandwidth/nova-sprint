@@ -1,0 +1,38 @@
+{
+  "url": "http://37.27.135.206/",
+  "at": "2026-11-06T21:03:08.950Z",
+  "zone": "America/New_York",
+  "checks": [
+    {
+      "width": 1440,
+      "scroll": 1440,
+      "title": "nova-sprint",
+      "fonts": "loaded"
+    },
+    {
+      "width": 375,
+      "scroll": 375,
+      "title": "nova-sprint",
+      "fonts": "loaded"
+    },
+    {
+      "width": 2000,
+      "scroll": 2000,
+      "title": "nova-sprint",
+      "fonts": "loaded"
+    },
+    {
+      "width": 1100,
+      "scroll": 1100,
+      "title": "nova-sprint",
+      "fonts": "loaded"
+    },
+    {
+      "width": 760,
+      "scroll": 760,
+      "title": "nova-sprint",
+      "fonts": "loaded"
+    }
+  ],
+  "errors": []
+}
