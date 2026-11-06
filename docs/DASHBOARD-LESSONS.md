@@ -426,7 +426,7 @@ is what the code does because of it.
 | 2026-10-18 | "I would like it if you could create a stats page showing me all the things you can do with https://pele.run ... below the existing stuff we have at the bottom." | Last 24 hours panel (**omitted in v2**) |
 | 2026-10-18 | "Maybe we can click on a work stream by name, and this takes you to a page showing all details for that work stream ..." | stream pages |
 | 2026-10-20 | "Please fix the sprint dashboard here: http://37.27.135.206"; "I don't want to see that text in the empty friends table. just leave empty" | empty Friends panel |
-| 2026-11-05 | "if a card flaps around more than n times, it goes into blocked primary card state."; "blocked card is colored black." | v2 `blocked` state, black |
+| 2026-11-05 | "if a card flaps around more than n times, it goes into blocked primary card state."; "blocked card is colored black." | v2 `blocked` state; its colour superseded 2026-11-06 ("You can make fail black"): fail is black, blocked its own token |
 | 2026-11-06 | "The dashboard design should be identical to the v1 in visual, excluding the unimplemented stats part at bottom we didn't end up doing." | this file |
 | 2026-11-06 | "I need it to check for visual correctness." "it should be exactly matching what we currently have, visually. no changes except i think you added fail state." | exact match + `fail` |
 | 2026-11-06 | "remember that we iterated a lot on the dashboard, so if it comes out different in any way, it's going to make me sad." | side-by-side check (section 4) |
