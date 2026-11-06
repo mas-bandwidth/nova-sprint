@@ -70,6 +70,22 @@ approved:
   time deadlines (LESSONS 1.14) and what a ready producer that cannot start
   for a reason other than a held stream becomes (LESSONS 2.20).
 
+## Two ideas from the field, deferred (Glenn, 2026-11-06)
+
+From the Hacker News thread "Ask HN: What's your current AI agentic setup?"
+(2026-11-04, item 50366117), read in full. Glenn: "i like better sandboxing,
+and control from a mobile phone or even my ipad or apple watch over tailscale.
+yes. not right now, but yes."
+
+- **Sandboxed workers (layer 4).** Several setups run unattended agents only
+  inside a microVM or container with an egress allowlist. Our workers run
+  with the host's access on the tailnet, and a card's branch can carry a
+  malicious test. The nova-worker design brings a containment option.
+- **Control from a phone, iPad or watch over Tailscale (layer 6).**
+  Judgements already push one way over the message bus; nothing yet puts
+  "needs you" in a pocket or lets the answer come back from there. The
+  layer 6 design names the channel and what can be answered from it.
+
 ## The dashboard (Glenn, 2026-11-06)
 
 "The dashboard design should be identical to the v1 in visual, excluding the
