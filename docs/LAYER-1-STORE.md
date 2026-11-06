@@ -467,3 +467,15 @@ text NOT NULL DEFAULT ''` (producer: the last read's finding; work consumer: a
 copy at cut, fixed), written by `SetCardFinding` (producer only).
 
 Model rounds 6 and 7 (2026-11-06): same-value refusal, policy immutability and the append-only log modelled; 51 runs. One known difference, harmless: the store inserts an absent cursor set to 0; the model treats an absent cursor as 0 and would refuse it.
+
+## Scale: hundreds or thousands of cards (Glenn, 2026-11-06)
+
+"remember, we'll have sprints with hundreds or thousands of cards." So the
+whole-epoch `Snapshot` is the cold-start read only. In steady state the run
+loop and the dashboard keep a local copy of the state and advance it from
+`Events(afterSeq)` with their saved cursor, the same fold `Rebuild` runs, so a
+tick or a dashboard refresh reads only what changed since the last one,
+whatever the sprint's size. A snapshot per tick is a defect in layer 3. The
+deferred load test's target is thousands of producers with their consumers
+and judgements at a one-second tick, every worker reporting at once, with
+Apply latency under the writer lock and the incremental read both measured.
