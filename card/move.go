@@ -124,7 +124,7 @@ func Move(p Card, consumers []Card, rows map[string]Row, s Stream, needs map[str
 	if r := m.producerEvent(e); r != nil {
 		return Plan{}, r
 	}
-	return checked(m.plan)
+	return sealMove(m, e)
 }
 
 func (m *mover) producerEvent(e Event) *Refusal {
@@ -379,10 +379,15 @@ func (m *mover) start(e Start) *Refusal {
 	if m.p.Kind != "producer" {
 		return no("sentinel %s never has a consumer", m.p.ID)
 	}
+	// The stream before the state: Hold then Start, the producer already parked,
+	// refuses "held" (round 4). A free stream still refuses on the state.
+	if r := m.stream(true); r != nil {
+		return r
+	}
 	if r := m.from(e, Ready); r != nil {
 		return r
 	}
-	if r := firstOf(m.stream(true), m.row(e.Row), sha("base", e.Base), m.noLive(m.liveRefusal)); r != nil {
+	if r := firstOf(m.row(e.Row), sha("base", e.Base), m.noLive(m.liveRefusal)); r != nil {
 		return r
 	}
 	if e.Branch == "" {
@@ -394,6 +399,7 @@ func (m *mover) start(e Start) *Refusal {
 	if m.p.Author != "" {
 		m.write(store.SetCardAuthor{Card: m.p.ID, Author: ""})
 	}
+	m.clearRed()
 	id := workID(m.p.ID, n)
 	cols := []store.Write{store.SetCardBranch{Card: id, Branch: e.Branch}, store.SetCardBaseSHA{Card: id, SHA: e.Base}}
 	if m.p.Head != "" {
@@ -453,6 +459,7 @@ func (m *mover) finished(e Finished) *Refusal {
 	if c.Holder != m.p.Author {
 		m.write(store.SetCardAuthor{Card: m.p.ID, Author: c.Holder})
 	}
+	m.clearRed()
 	return nil
 }
 
@@ -505,9 +512,6 @@ func (m *mover) returned(e Event, id, result string, bounce bool) *Refusal {
 		return r
 	}
 	m.reason(m.p.ID, m.p.Reason, m.returnReason(c.Reason))
-	if c.Reason != "" && c.Reason != m.p.Finding {
-		m.write(store.SetCardFinding{Card: m.p.ID, Finding: c.Reason})
-	}
 	if bounce {
 		m.write(store.SetCardBounces{Card: m.p.ID, Bounces: m.p.Bounces + 1})
 	}
@@ -653,9 +657,9 @@ func (m *mover) readFix(e ReadFix) *Refusal {
 	return nil
 }
 
-// waiveRed sends a producer a Red returned to review on to merging, when a
-// done ok read of the previous review at this head exists. It does not raise
-// the review. A live consumer is refused, so a live read cannot leave review.
+// waiveRed sends a producer a Red returned to review on to merging, when that
+// Red is still recorded and a done ok read of the previous review at this
+// head exists. It does not raise the review. A live consumer is refused.
 func (m *mover) waiveRed(e WaiveRed) *Refusal {
 	if r := m.from(e, Review); r != nil {
 		return r
@@ -663,13 +667,36 @@ func (m *mover) waiveRed(e WaiveRed) *Refusal {
 	if r := m.noLive(m.liveRefusal); r != nil {
 		return r
 	}
-	prev := m.p.Review - 1
-	if prev < 0 || m.countAt(prev, "ok") == 0 {
-		return no("producer %s has no done ok read of review %d at head %s; WaiveRed needs one", m.p.ID, prev, m.p.Head)
+	if m.p.Review < 1 {
+		return no("producer %s has no review yet", m.p.ID)
+	}
+	if m.p.PR != redPR {
+		return no("no red on review %d", m.p.Review)
+	}
+	if m.countAt(m.p.Review-1, "ok") == 0 {
+		return no("producer %s has no done ok read of review %d at head %s; WaiveRed needs one", m.p.ID, m.p.Review-1, m.p.Head)
 	}
 	m.state(m.p.ID, Merging)
 	m.reason(m.p.ID, m.p.Reason, e.Reason)
 	return nil
+}
+
+// redPR is a recorded Red. The store's result column is consumers only and
+// its closed set has no "red", so until a red column exists the producer's
+// pr holds 1 after Red and 0 after Finished or Start. pr is otherwise unused
+// by this layer.
+const redPR = 1
+
+func (m *mover) markRed() {
+	if m.p.PR != redPR {
+		m.write(store.SetCardPR{Card: m.p.ID, PR: redPR})
+	}
+}
+
+func (m *mover) clearRed() {
+	if m.p.PR == redPR {
+		m.write(store.SetCardPR{Card: m.p.ID, PR: 0})
+	}
 }
 
 func (m *mover) atHead(e Event, h string) *Refusal {
@@ -698,6 +725,7 @@ func (m *mover) red(e Red) *Refusal {
 		return r
 	}
 	m.reason(m.p.ID, m.p.Reason, e.Reason)
+	m.markRed()
 	return nil
 }
 
@@ -801,10 +829,10 @@ func (m *mover) relink(e Relink) *Refusal {
 	switch {
 	case !ok:
 		return no("card %s does not exist", e.To)
-	case to.Kind != "producer":
-		return no("card %s is a %s; a need is relinked only to a producer that is not final", e.To, kindName(to.Kind))
+	case to.Kind != "producer" && to.Kind != "sentinel":
+		return no("card %s is a %s; a need is relinked only to a producer or a sentinel that is not final", e.To, kindName(to.Kind))
 	case final(to.Kind, to.State):
-		return no("producer %s is %s; a need is relinked only to a producer that is not final", e.To, to.State)
+		return no("%s %s is %s; a need is relinked only to a producer or a sentinel that is not final", to.Kind, e.To, to.State)
 	case slices.Contains(m.p.Needs, e.To):
 		return no("%s %s already needs %s", m.p.Kind, m.p.ID, e.To)
 	}
@@ -983,7 +1011,7 @@ func MoveConsumer(c Card, p Card, r Row, e Event) (Plan, *Refusal) {
 	if refusal != nil {
 		return Plan{}, refusal
 	}
-	return checked(m.plan)
+	return sealConsumer(m, p, r, e)
 }
 
 // holder refuses a row that is not the consumer's holder.
@@ -1087,13 +1115,16 @@ func (m *mover) withdraw(e Withdraw, p Card) *Refusal {
 	if r := m.from(e, Ready, Working); r != nil {
 		return r
 	}
+	if strings.HasPrefix(e.Reason, "preempt") && c.State != Working {
+		return no("consumer %s is %s; a preempt withdraws a working consumer, and the step chooses the youngest on the row", c.ID, c.State)
+	}
 	if e.Head != "" {
 		if r := m.withdrawHead(e, c); r != nil {
 			return r
 		}
 	}
 	if c.Kind == "work" && live(c) && p.State != Working {
-		return no("producer %s is %s; withdrawing live work consumer %s would leave it working", p.ID, p.State, c.ID)
+		return no("producer %s is %s; withdrawing live work consumer %s would leave it working; pass the producer in working, so the withdraw releases it", p.ID, p.State, c.ID)
 	}
 	m.state(c.ID, Fail)
 	m.reason(c.ID, c.Reason, e.Reason)
@@ -1178,7 +1209,11 @@ func holdStream(s Stream, v HoldStream) (Plan, *Refusal) {
 		m.state(p.ID, Waiting)
 		m.reason(p.ID, p.Reason, why)
 	}
-	return checked(m.plan)
+	return sealStream(m.plan, s, v, v.Ready, func(cur records) (Plan, *Refusal) {
+		v2 := v
+		v2.Ready = readyOn(cur, streamOr(cur, s).Name)
+		return holdStream(streamOr(cur, s), v2)
+	})
 }
 
 func unholdStream(s Stream, e UnholdStream) (Plan, *Refusal) {
@@ -1195,7 +1230,9 @@ func unholdStream(s Stream, e UnholdStream) (Plan, *Refusal) {
 	m := &mover{}
 	m.expect(store.StreamHeld{Stream: s.Name, Held: true})
 	m.write(store.SetStreamHeld{Stream: s.Name, Held: false})
-	return checked(m.plan)
+	return sealStream(m.plan, s, e, nil, func(cur records) (Plan, *Refusal) {
+		return unholdStream(streamOr(cur, s), e)
+	})
 }
 
 // MoveRow is a row's move on event e.
@@ -1225,7 +1262,7 @@ func MoveRow(r Row, e Event) (Plan, *Refusal) {
 		return Plan{}, refusal
 	}
 	p.Writes = append(p.Writes, w)
-	return checked(p)
+	return sealRow(p, r, e)
 }
 
 func rowFrom(r Row, e Event, state string) *Refusal {

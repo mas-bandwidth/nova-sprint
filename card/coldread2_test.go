@@ -41,7 +41,7 @@ func TestCold2DefectTwoReadsInOneTick(t *testing.T) {
 	b, r := w.plan("p1", AskRead{Row: "r3"})
 	require.Nil(t, r)
 	_, r = Merge(a, b)
-	refusal{r, "a second write to card p1.r1.1 field kind; one op writes a field once"}.check(t)
+	refusal{r, "a second write to card p1.r1.1 field kind; one op writes a field once; several reads of one head are AskReads"}.check(t)
 	_, ok := w.snap().Cards["p1.r1.1"]
 	assert.False(t, ok, "the refused merge was applied")
 	_, r = w.plan("p1", AskReads{Rows: []string{"r2", "r2"}})
@@ -80,20 +80,21 @@ func TestCold2DefectRelinkInTheDropsOp(t *testing.T) {
 	assert.Equal(t, []string{"x"}, w.card("p3").Needs)
 }
 
-// E4. Broken and Faulted write the consumer's reason into the producer's
-// finding, and Start copies that finding onto the new work consumer. Start
-// copies no reason. The failure the work reported is what the next attempt
-// carries.
+// E4, as round 4 ruled it. A broken or faulted attempt writes its reason to
+// the producer's reason and never to finding. Finding is a reader's, and
+// Start copies that finding, not the reason. The failure the work reported
+// does not ride into the next attempt.
 func TestCold2DefectBrokenReasonNeverReachesTheNextAttempt(t *testing.T) {
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.move("p1", Broken{Consumer: w.work("p1", "r1", "fail", h1, "TestFoo panics on nil map")})
 	assert.Equal(t, "TestFoo panics on nil map", w.card("p1").Reason)
+	assert.Empty(t, w.card("p1").Finding, "a fault's or a broken attempt's reason stays off finding")
 	w.move("p1", Start{Row: "r2", Branch: "b", Base: base})
 	c := w.card("p1.w2")
 	assert.Equal(t, h1, c.PriorHead)
-	assert.True(t, strings.Contains(c.Reason+c.Finding, "TestFoo panics"),
-		"the fix attempt does not carry the failure it fixes: reason %q, finding %q", c.Reason, c.Finding)
+	assert.Empty(t, c.Reason, "Start copies no reason")
+	assert.Empty(t, c.Finding, "the next attempt carries a reader's finding, not the broken reason")
 }
 
 // E5. A producer parked in a held stream carries "reason naming the hold"
@@ -182,7 +183,7 @@ func TestCold2SuspectWithdrawFromAStaleProducerStrands(t *testing.T) {
 	stale := w.card("p1") // ready, attempt 0
 	w.move("p1", Start{Row: "r1", Branch: "b", Base: base})
 	_, r := MoveConsumer(w.card("p1.w1"), stale, w.rows()["r1"], Withdraw{Reason: "silent", Stream: Stream{Name: "s1"}})
-	refusal{r, "producer p1 is ready; withdrawing live work consumer p1.w1 would leave it working"}.check(t)
+	refusal{r, "producer p1 is ready; withdrawing live work consumer p1.w1 would leave it working; pass the producer in working, so the withdraw releases it"}.check(t)
 	assert.Equal(t, []string{Working, Ready}, []string{w.card("p1").State, w.card("p1.w1").State})
 }
 

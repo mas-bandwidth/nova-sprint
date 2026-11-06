@@ -223,6 +223,8 @@ func (w *world) landedCard2(s store.Snapshot, x store.Write) bool {
 		assert.ElementsMatch(w.t, v.Needs, s.Cards[v.Card].Needs, "needs of %s", v.Card)
 	case store.SetCardReview:
 		assert.Positive(w.t, s.Cards[v.Card].Review, "review of %s", v.Card)
+	case store.SetCardPR:
+		assert.Equal(w.t, v.PR, s.Cards[v.Card].PR, "pr of %s", v.Card)
 	case store.SetCardPriorHead:
 		assert.Equal(w.t, v.Head, s.Cards[v.Card].Prior, "prior head of %s", v.Card)
 	case store.PutCard:
