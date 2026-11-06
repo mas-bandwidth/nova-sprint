@@ -37,17 +37,24 @@
 (* work report's head (in 1..MaxHead) always differs from base_sha.        *)
 (*                                                                         *)
 (* Bounds that are the model's and not the design's: K consumer slots per  *)
-(* producer; attempt stops at MaxAttempt and bounces at MaxBounce (Start,  *)
-(* Broken and ReadFix are not enabled past them); flaps stop at 1; scores  *)
+(* producer; attempt stops at MaxAttempt (Start is not enabled past it)    *)
+(* and bounces at MaxBounce (a work consumer does not report fail, nor a   *)
+(* read fix, at it, so Broken and ReadFix are never stuck once reported);  *)
+(* flaps stop at 1; scores                                                 *)
 (* are 0..1; widths 1..2; priority is normal or blocker (the other levels  *)
 (* only order within policy). The environment and coordinator moves       *)
-(* (Rescore, SetPriority, Edit, the row table, the stream's hold) share a *)
+(* (Rescore, SetPriority, Edit, Red, the rows, the stream's hold) share a *)
 (* budget of MaxEnv per behaviour; every card and consumer move is        *)
 (* unbounded but for the slots. Rows start up, width 1, not held.         *)
 (*                                                                         *)
 (* Left out, because no guard reads them: branch, base_sha (always 0),     *)
-(* prior_head, reason, brief, cost, priced, the by of Replace. Edit writes *)
-(* only the brief, so in the model it changes nothing but the monitor.    *)
+(* reason, finding, brief, prose, paths, done_when, cost, priced. Edit     *)
+(* writes only prose, paths and done_when, so in the model it changes     *)
+(* nothing but the monitor. prior_head is the work consumer's prior: the  *)
+(* producer's head at Start, which an ok report may not repeat.           *)
+(*                                                                         *)
+(* deps also carries the sentinel a, absent until Add puts it with needs  *)
+(* and after chosen from the existing cards.                              *)
 (*                                                                         *)
 (* last is a step monitor: the set of step rules the step broke (bad),    *)
 (* computed by StepRule from the state before and after the step, and the *)
@@ -66,10 +73,15 @@ CONSTANTS
   MaxBounce,   \* model bound: Broken and ReadFix are not enabled at this count
   MaxEnv       \* model bound: environment and coordinator moves per behaviour
 
-Prods     == IF Scenario = "life" THEN {"p1"} ELSE {"p1", "p2"}   \* producers with work
-Sentinels == IF Scenario = "pre" THEN {} ELSE {"s"}
+Prods     == IF Scenario \in {"life", "reads"} THEN {"p1"} ELSE {"p1", "p2"}   \* producers with work
+\* In deps a second sentinel, a, is absent until Add puts it.
+Added     == IF Scenario = "deps" THEN {"a"} ELSE {}
+Sentinels == (IF Scenario \in {"pre", "reads"} THEN {} ELSE {"s"}) \cup Added
 P         == Prods \cup Sentinels
-Rows      == {"r1", "r2"}
+\* "reads" has a third row, so AskReads can cut reads on two rows that are
+\* not the author.
+Rows      == IF Scenario = "reads" THEN {"r1", "r2", "r3"} ELSE {"r1", "r2"}
+RowIdx    == [r \in Rows |-> CASE r = "r1" -> 1 [] r = "r2" -> 2 [] OTHER -> 3]
 CIds      == Prods \X (1..K)
 ConsOf(p) == IF p \in Prods THEN {<<p, i>> : i \in 1..K} ELSE {}
 
@@ -77,7 +89,7 @@ Needs0 == CASE Scenario = "life" -> [p \in P |-> IF p = "s" THEN {"p1"} ELSE {}]
             [] Scenario = "deps" ->
                  [p \in P |-> CASE p = "p2" -> {"p1"} [] p = "s" -> {"p2"} [] OTHER -> {}]
             [] OTHER -> [p \in P |-> {}]
-After  == IF Scenario = "pre"
+After0 == IF Scenario = "pre"
           THEN [p \in P |-> IF p = "p2" THEN {"p1"} ELSE {}]
           ELSE [p \in P |-> {}]
 
@@ -85,7 +97,7 @@ Tier     == [p \in P |-> "pro"]
 RowTiers == [r \in Rows |-> {"pro"}]
 Serves(r, p) == Tier[p] \in RowTiers[r]
 
-PStates == {"waiting", "ready", "working", "review", "merging", "landed", "fail", "blocked"}
+PStates == {"absent", "waiting", "ready", "working", "review", "merging", "landed", "fail", "blocked"}
 PFinal  == {"landed", "fail"}
 CStates == {"none", "ready", "working", "done", "fail"}
 CFinal  == {"done", "fail"}
@@ -99,13 +111,18 @@ NoC     == <<"-", 0>>
 Heads   == 1..MaxHead
 
 NoCons == [st |-> "none", kind |-> "-", row |-> NoR, att |-> 0, head |-> 0,
-           res |-> "-", author |-> None, review |-> 0]
-NewProd(p) == [st |-> "waiting", att |-> 0, head |-> 0, author |-> None, bounces |-> 0,
-               score |-> 0, prio |-> "normal", needs |-> Needs0[p], review |-> 0, ncut |-> 0]
+           res |-> "-", author |-> None, review |-> 0, prior |-> 0, finding |-> "-"]
+\* finding: the last failure the producer returned with (Broken: fail,
+\* Faulted: fault, ReadFix: fix); Start copies it to the work consumer.
+Findings == {"-", "fail", "fault", "fix"}
+NewProd(p) == [st |-> IF p \in Added THEN "absent" ELSE "waiting", att |-> 0, head |-> 0,
+               author |-> None, bounces |-> 0, score |-> 0, prio |-> "normal",
+               needs |-> Needs0[p], after |-> After0[p], review |-> 0, ncut |-> 0,
+               finding |-> "-"]
 
 VARIABLES
-  ps,    \* producer -> [st, att, head, author, bounces, score, prio, needs, review, ncut]
-  cs,    \* consumer slot -> [st, kind, row, att, head, res, author, review]
+  ps,    \* producer -> [st, att, head, author, bounces, score, prio, needs, after, review, ncut, finding]
+  cs,    \* consumer slot -> [st, kind, row, att, head, res, author, review, prior, finding]
   rs,    \* row -> [st, flaps, width, held]
   held,  \* the stream's held flag
   last,  \* step monitor: [ev, bad]
@@ -119,7 +136,11 @@ NoLive(p)    == LiveOf(p) = {}
 WorkingOn(r) == {c \in CIds : cs[c].st = "working" /\ cs[c].row = r}
 RowOpen(r)   == rs[r].st = "up" /\ ~rs[r].held
 NeedsLanded(p) == \A n \in ps[p].needs : ps[n].st = "landed"
-NonFinal(p)  == ps[p].st \notin PFinal
+NonFinal(p)  == ps[p].st \notin PFinal \cup {"absent"}
+Exists(p)    == ps[p].st # "absent"
+\* A move that returns a producer to ready writes it parked (waiting) when
+\* the stream is held, in the same plan (Rulings from the card model).
+Back         == IF held THEN "waiting" ELSE "ready"
 \* c is p's work consumer of its current attempt.
 IsCur(p, c)  == c \in ConsOf(p) /\ cs[c].kind = "work" /\ cs[c].att = ps[p].att /\ cs[c].st # "none"
 NextSlot(p)  == <<p, ps[p].ncut + 1>>
@@ -132,6 +153,8 @@ Reach(g, frontier, seen) ==
        IN Reach(g, nxt, seen \cup nxt)
 Acyclic(g) == \A p \in P : p \notin Reach(g, g[p], g[p])
 NeedsGraph == [p \in P |-> ps[p].needs]
+\* Needs and after together: Add refuses a cycle through either.
+OrderGraph == [p \in P |-> ps[p].needs \cup ps[p].after]
 
 Init ==
   /\ ps   = [p \in P |-> NewProd(p)]
@@ -167,6 +190,27 @@ StepRule(n, ev, p, c, r) ==
            \E k \in ConsOf(p) :
              /\ cs[k].kind = "read" /\ cs[k].st = "done" /\ cs[k].res = "ok"
              /\ cs[k].head = ps[p].head /\ cs[k].review = ps[p].review
+    [] n = "ReadFixNeedsFix" ->
+         ev = "ReadFix" =>
+           \E k \in ConsOf(p) :
+             /\ cs[k].kind = "read" /\ cs[k].st = "done" /\ cs[k].res = "fix"
+             /\ cs[k].head = ps[p].head /\ cs[k].review = ps[p].review
+    [] n = "ReplaceByLive" -> ev = "Replace" => (r \in P \ {p} /\ NonFinal(r))
+    [] n = "HeadNeverRepeats" ->
+         (ev \in {"Report", "Withdraw"} /\ cs[c].kind = "work")
+           => (cs'[c].head = 0 \/ cs'[c].head # cs[c].prior)
+    [] n = "WaiveRedNeedsPriorRead" ->
+         ev = "WaiveRed" =>
+           \E k \in ConsOf(p) :
+             /\ cs[k].kind = "read" /\ cs[k].st = "done" /\ cs[k].res = "ok"
+             /\ cs[k].head = ps[p].head /\ cs[k].review + 1 = ps[p].review
+    [] n = "FixCarriesFailure" ->
+         /\ ev \in {"Broken", "Faulted"} => ps'[p].finding = cs[c].res
+         /\ ev \in {"Start", "Preempt"} => cs'[NextSlot(p)].finding = ps[p].finding
+    [] n = "WithdrawReleasesInOneStep" ->
+         (ev \in {"Withdraw", "Preempt"} /\ cs[c].kind = "work"
+            /\ ps[c[1]].st = "working" /\ cs[c].att = ps[c[1]].att)
+           => ps'[c[1]].st = Back
     [] n = "FaultSpendsNothing" ->
          ev = "Faulted" => (ps'[p].att = ps[p].att /\ ps'[p].bounces = ps[p].bounces)
     [] n = "BlockNoLive" -> ev = "Block" => \A k \in ConsOf(p) : cs[k].st \notin LiveSt
@@ -175,18 +219,20 @@ StepRule(n, ev, p, c, r) ==
          \A s \in Sentinels :
            (ps[s].st # "landed" /\ ps'[s].st = "landed")
              => (ev = "Reached" /\ \A x \in ps[s].needs : ps[x].st = "landed")
-    [] n = "AfterKept" -> ev = "Landed" => \A a \in After[p] : ps[a].st # "merging"
+    [] n = "AfterKept" -> ev = "Landed" => \A a \in ps[p].after : ps[a].st # "merging"
 
 StepRules == {"FinalNeverMoves", "AttemptOnlyOnStart", "RedNeverAdvances", "FixKeepsScore",
               "HolderNeverChanges", "OldAttemptNeverMoves", "OnlyHolderActs",
-              "ReadYesNeedsYes", "FaultSpendsNothing", "BlockNoLive", "EditNoLive",
+              "ReadYesNeedsYes", "ReadFixNeedsFix", "WithdrawReleasesInOneStep",
+              "WaiveRedNeedsPriorRead", "FixCarriesFailure", "ReplaceByLive", "HeadNeverRepeats",
+              "FaultSpendsNothing", "BlockNoLive", "EditNoLive",
               "SentinelLandsByReached", "AfterKept"}
 
 \* The monitor's value after a step: the rules it broke, and its name only
 \* when a reach check needs it (every other step is "-", so states are not
 \* split by the event that reached them). ps' and cs' must be set before it
 \* is evaluated.
-Tracked == {"NeedFailed", "Preempt"}
+Tracked == {"NeedFailed", "Preempt", "AskReads", "InThisOp"}
 L(ev, p, c, r) == [ev |-> IF ev \in Tracked THEN ev ELSE "-",
                    bad |-> {n \in StepRules : ~StepRule(n, ev, p, c, r)}]
 
@@ -232,7 +278,8 @@ Reached(p) ==
 \* on row r in state ready.
 StartCut(p, r) ==
   [st |-> "ready", kind |-> "work", row |-> r, att |-> ps[p].att + 1, head |-> 0,
-   res |-> "-", author |-> None, review |-> 0]
+   res |-> "-", author |-> None, review |-> 0, prior |-> ps[p].head,
+   finding |-> ps[p].finding]
 StartGuard(p, r) ==
   /\ p \in Prods
   /\ ps[p].st = "ready"
@@ -266,31 +313,57 @@ Broken(p, c) ==
   /\ IsCur(p, c)
   /\ cs[c].st = "done"
   /\ cs[c].res = "fail"
-  /\ ps[p].bounces < MaxBounce
-  /\ PStep("Broken", p, c, [ps[p] EXCEPT !.st = "ready", !.bounces = @ + 1,
-                                         !.head = KeptHead(p, c)])
+  /\ PStep("Broken", p, c, [ps[p] EXCEPT !.st = Back, !.bounces = @ + 1,
+                                         !.head = KeptHead(p, c), !.finding = "fail"])
 
 Faulted(p, c) ==
   /\ ps[p].st = "working"
   /\ IsCur(p, c)
   /\ cs[c].st = "done"
   /\ cs[c].res = "fault"
-  /\ PStep("Faulted", p, c, [ps[p] EXCEPT !.st = "ready", !.head = KeptHead(p, c)])
+  /\ PStep("Faulted", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c),
+                                          !.finding = "fault"])
+
+\* AskRead refuses a sentinel, the author, and a row that already holds a
+\* live read of this head (the first cold read).
+ReadRowOK(p, r) ==
+  /\ RowOpen(r)
+  /\ r # ps[p].author
+  /\ Serves(r, p)
+  /\ ~\E k \in LiveOf(p) : cs[k].kind = "read" /\ cs[k].row = r /\ cs[k].head = ps[p].head
+ReadCut(p, r) ==
+  [st |-> "ready", kind |-> "read", row |-> r, att |-> ps[p].att,
+   head |-> ps[p].head, res |-> "-", author |-> ps[p].author,
+   review |-> ps[p].review, prior |-> 0, finding |-> "-"]
 
 AskRead(p, r) ==
   /\ p \in Prods
   /\ ps[p].st = "review"
-  /\ RowOpen(r)
   /\ ~held
-  /\ r # ps[p].author
-  /\ Serves(r, p)
+  /\ ReadRowOK(p, r)
   /\ ps[p].ncut < K
   /\ ps'   = [ps EXCEPT ![p].ncut = @ + 1]
-  /\ cs'   = [cs EXCEPT ![NextSlot(p)] =
-                [st |-> "ready", kind |-> "read", row |-> r, att |-> ps[p].att,
-                 head |-> ps[p].head, res |-> "-", author |-> ps[p].author,
-                 review |-> ps[p].review]]
+  /\ cs'   = [cs EXCEPT ![NextSlot(p)] = ReadCut(p, r)]
   /\ last' = L("AskRead", p, NextSlot(p), r)
+  /\ UNCHANGED <<rs, held>>
+
+\* AskReads{rows} (the second cold read): several reads cut from one
+\* snapshot, each row as AskRead checks it, in distinct slots (indices),
+\* in the order of the rows.
+ReadSlot(p, R, r) == <<p, ps[p].ncut + Cardinality({x \in R : RowIdx[x] <= RowIdx[r]})>>
+AskReads(p, R) ==
+  /\ p \in Prods
+  /\ Cardinality(R) >= 2
+  /\ ps[p].st = "review"
+  /\ ~held
+  /\ \A r \in R : ReadRowOK(p, r)
+  /\ ps[p].ncut + Cardinality(R) <= K
+  /\ ps'   = [ps EXCEPT ![p].ncut = @ + Cardinality(R)]
+  /\ cs'   = [k \in CIds |-> IF \E r \in R : k = ReadSlot(p, R, r)
+                             THEN ReadCut(p, CHOOSE r \in R : k = ReadSlot(p, R, r))
+                             ELSE cs[k]]
+  /\ last' = L("AskReads", p, NoC, NoR)
+  /\ UNCHANGED <<rs, held>>
   /\ UNCHANGED <<rs, held>>
 
 \* Every read consumer of p at p.head is done or fail.
@@ -303,13 +376,17 @@ ReadsSettled(p) ==
 \* equals p's: cut after p last entered review, so a read from before a
 \* Red or a fix never counts and a yes never fires on zero yes (Rules added
 \* from the promise reviews; Added after layer 2 was built).
-YesRead(p) ==
+CountedRead(p, res) ==
   \E c \in ConsOf(p) :
     /\ cs[c].kind = "read"
     /\ cs[c].st = "done"
-    /\ cs[c].res = "ok"
+    /\ cs[c].res = res
     /\ cs[c].head = ps[p].head
     /\ cs[c].review = ps[p].review
+YesRead(p) == CountedRead(p, "ok")
+\* ReadFix requires a done fix read of the current review, as ReadYes a yes
+\* (Rulings from the card model).
+FixRead(p) == CountedRead(p, "fix")
 
 ReadYes(p) ==
   /\ ps[p].st = "review"
@@ -322,11 +399,28 @@ ReadFix(p) ==
   /\ ps[p].st = "review"
   /\ ReadsSettled(p)
   /\ NoLive(p)
-  /\ ps[p].bounces < MaxBounce
-  /\ PStep("ReadFix", p, NoC, [ps[p] EXCEPT !.st = "ready", !.bounces = @ + 1])
+  /\ FixRead(p)
+  /\ PStep("ReadFix", p, NoC, [ps[p] EXCEPT !.st = Back, !.bounces = @ + 1,
+                                            !.finding = "fix"])
+
+\* WaiveRed (the second cold read): a producer that a Red sent back to
+\* review goes on to merging without a new read, when a done ok read of the
+\* previous review at the same head exists (the coordinator's judgement
+\* that the red was not the code's). Such a read exists only after a Red:
+\* a Finished brings a new head (an ok head is never the prior head).
+PrevYes(p) ==
+  \E c \in ConsOf(p) :
+    /\ cs[c].kind = "read" /\ cs[c].st = "done" /\ cs[c].res = "ok"
+    /\ cs[c].head = ps[p].head /\ cs[c].review + 1 = ps[p].review
+
+WaiveRed(p) ==
+  /\ ps[p].st = "review"
+  /\ NoLive(p)
+  /\ PrevYes(p)
+  /\ PStep("WaiveRed", p, NoC, [ps[p] EXCEPT !.st = "merging"])
 
 \* Soft order: p lands only when no producer it names in after is merging.
-AfterClear(p) == \A a \in After[p] : ps[a].st # "merging"
+AfterClear(p) == \A a \in ps[p].after : ps[a].st # "merging"
 
 Landed(p, h) ==
   /\ ps[p].st = "merging"
@@ -343,17 +437,23 @@ Released(p, c) ==
   /\ ps[p].st = "working"
   /\ IsCur(p, c)
   /\ cs[c].st = "fail"
-  /\ PStep("Released", p, c, [ps[p] EXCEPT !.st = "ready"])
+  /\ PStep("Released", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c)])
 
 Cancel(p) ==
   /\ NonFinal(p)
   /\ NoLive(p)
   /\ PStep("Cancel", p, NoC, [ps[p] EXCEPT !.st = "fail"])
 
+\* Replace{by}: by is a producer or sentinel other than p, non-final (the
+\* second cold read).
 Replace(p, by) ==
   /\ NonFinal(p)
+  /\ by \in P \ {p}
+  /\ NonFinal(by)
   /\ NoLive(p)
-  /\ PStep("Replace", p, NoC, [ps[p] EXCEPT !.st = "fail"])
+  /\ ps'   = [ps EXCEPT ![p].st = "fail"]
+  /\ UNCHANGED <<cs, rs, held>>
+  /\ last' = L("Replace", p, NoC, by)   \* by rides in the row slot, for ReplaceByLive
 
 NeedFailed(p, n) ==
   /\ NonFinal(p)
@@ -372,24 +472,52 @@ Relink(p, n, to) ==
   /\ ps[p].st = "waiting"
   /\ n \in ps[p].needs
   /\ ps[n].st = "fail"
-  /\ to \in P \ {p}
+  /\ to \in Prods \ {p}   \* the code: a need is relinked only to a producer
   /\ NonFinal(to)
-  /\ Acyclic([NeedsGraph EXCEPT ![p] = (@ \ {n}) \cup {to}])
+  /\ to \notin ps[p].needs
+  /\ Acyclic([OrderGraph EXCEPT ![p] = (@ \ {n}) \cup {to}])   \* needs and after (the code)
   /\ PStep("Relink", p, NoC, [ps[p] EXCEPT !.needs = (@ \ {n}) \cup {to}])
 
+\* NeedFailed, Waive and Relink {InThisOp} (the code at v2-card-fix3): the
+\* op fails the need n earlier (here by Cancel) and moves the dependant p
+\* in the same op, with no "need is fail" fence; one step, no state between.
+InThisOpGuard(n, p, m, to) ==
+  /\ NonFinal(n) /\ NoLive(n)            \* Cancel(n)
+  /\ p # n /\ n \in ps[p].needs
+  /\ (m # "Relink") => to = n
+  /\ CASE m = "NeedFailed" -> NonFinal(p) /\ NoLive(p)
+       [] m = "Waive"      -> ps[p].st = "waiting"
+       [] OTHER            -> /\ ps[p].st = "waiting"
+                              /\ to \in Prods \ {p, n}
+                              /\ NonFinal(to)
+                              /\ to \notin ps[p].needs
+                              /\ Acyclic([OrderGraph EXCEPT ![p] = (@ \ {n}) \cup {to}])
+InThisOpMove(p, n, m, to) ==
+  CASE m = "NeedFailed" -> [ps[p] EXCEPT !.st = "fail"]
+    [] m = "Waive"      -> [ps[p] EXCEPT !.needs = @ \ {n}]
+    [] OTHER            -> [ps[p] EXCEPT !.needs = (@ \ {n}) \cup {to}]
+InThisOp(n, p, m, to) ==
+  /\ InThisOpGuard(n, p, m, to)
+  /\ ps'   = [ps EXCEPT ![n].st = "fail", ![p] = InThisOpMove(p, n, m, to)]
+  /\ UNCHANGED <<cs, rs, held>>
+  /\ last' = L("InThisOp", p, NoC, NoR)
+
 \* Edit writes the brief, which the model leaves out: only the history moves.
+\* A sentinel has no prose or score: Edit and Rescore refuse it, as Start
+\* and AskRead do; SetPriority and Relink apply to it (the first cold read).
 Edit(p) ==
+  /\ p \in Prods
   /\ NonFinal(p)
   /\ NoLive(p)
   /\ PStep("Edit", p, NoC, ps[p])
 
 Rescore(p, s) ==
+  /\ p \in Prods
   /\ NonFinal(p)
   /\ s # ps[p].score
   /\ PStep("Rescore", p, NoC, [ps[p] EXCEPT !.score = s])
 
 SetPriority(p, l) ==
-  /\ p \in Prods
   /\ NonFinal(p)
   /\ l # ps[p].prio
   /\ PStep("SetPriority", p, NoC, [ps[p] EXCEPT !.prio = l])
@@ -404,24 +532,43 @@ Unblock(p) ==
   /\ ps[p].st = "blocked"
   /\ PStep("Unblock", p, NoC, [ps[p] EXCEPT !.st = "waiting"])
 
+\* Add puts a new card (here the sentinel a): its needs are existing
+\* producers or sentinels, its after the same, and a cycle
+\* through needs and after is refused (the first cold read).
+Add(p, ns, as) ==
+  /\ ps[p].st = "absent"
+  /\ ns \subseteq {q \in P \ {p} : Exists(q)}
+  /\ as \subseteq {q \in P \ {p} : Exists(q)}
+  /\ Acyclic([OrderGraph EXCEPT ![p] = ns \cup as])
+  /\ PStep("Add", p, NoC, [ps[p] EXCEPT !.st = "waiting", !.needs = ns, !.after = as])
+
 -----------------------------------------------------------------------------
 (* Consumer events                                                         *)
 
 \* The store's state write refuses a move into working when the row already
 \* has as many working consumers as its width; ready ones are not counted.
+\* Take is refused on a down row and allowed on a held one: a hold stops
+\* new deals, not work already dealt.
 Take(c, r) ==
   /\ cs[c].st = "ready"
   /\ cs[c].row = r
+  /\ rs[r].st = "up"
   /\ Cardinality(WorkingOn(r)) < rs[r].width
   /\ CStep("Take", c, r, [cs[c] EXCEPT !.st = "working"])
 
-\* A work report: ok carries a pushed head (never the base, 0); fail and
-\* fault may carry one or none. A read report carries the producer's head.
+\* A work report: ok carries a pushed head, never the base (0) nor the
+\* attempt's prior_head; fail and fault may carry one or none. A read
+\* report carries the producer's head.
 ReportHeads(c, res) ==
   IF cs[c].kind = "read" THEN {ps[c[1]].head}
-  ELSE IF res = "ok" THEN Heads ELSE 0..MaxHead
+  ELSE IF res = "ok" THEN Heads \ {cs[c].prior} ELSE {0} \cup (Heads \ {cs[c].prior})
+\* A work consumer reports ok, fail or fault; a read ok, fix or fault. The
+\* model's bound on bounces sits here, on the report that would raise them
+\* (fail, fix), so Broken and ReadFix are always enabled once reported.
 ReportResults(c) ==
-  IF cs[c].kind = "read" THEN {"ok", "fix", "fail", "fault"} ELSE {"ok", "fail", "fault"}
+  LET ok == ps[c[1]].bounces < MaxBounce IN
+  IF cs[c].kind = "read" THEN {"ok", "fault"} \cup (IF ok THEN {"fix"} ELSE {})
+  ELSE {"ok", "fault"} \cup (IF ok THEN {"fail"} ELSE {})
 
 Report(c, r, res, h) ==
   /\ cs[c].st = "working"
@@ -430,24 +577,46 @@ Report(c, r, res, h) ==
   /\ h \in ReportHeads(c, res)
   /\ CStep("Report", c, r, [cs[c] EXCEPT !.st = "done", !.res = res, !.head = h])
 
-Withdraw(c) ==
-  /\ Live(c)
-  /\ CStep("Withdraw", c, NoR, [cs[c] EXCEPT !.st = "fail"])
+\* Withdraw fails a live consumer, with its last pushed head h when it has
+\* one (0: none; a read is withdrawn without a head). Withdrawing the work
+\* consumer of a working producer releases the producer in the same plan:
+\* ready, or parked when the stream is held, with the head for the next
+\* attempt's prior_head (the first cold read).
+Releases(c) == cs[c].kind = "work" /\ ps[c[1]].st = "working" /\ cs[c].att = ps[c[1]].att
+Withdrawn(c, h) == [cs[c] EXCEPT !.st = "fail", !.head = IF h # 0 THEN h ELSE @]
+ReleasedBy(c, h) ==
+  IF Releases(c)
+  THEN [ps EXCEPT ![c[1]].st = Back, ![c[1]].head = IF h # 0 THEN h ELSE @]
+  ELSE ps
 
-\* Blocker preemption (Rules the tables encode): with no serving open row
-\* below its width, policy withdraws a live consumer of a serving row and,
-\* in the same plan, Start deals the blocker to that row. Which consumer
-\* (the youngest) is policy's; the model lets it be any.
+\* The code: a ready work consumer has pushed nothing; a pushed head is not
+\* the base (0 here is "none") nor the prior head; a read gives none.
+WithdrawHeads(c) ==
+  IF cs[c].kind = "work" /\ cs[c].st = "working" THEN {0} \cup (Heads \ {cs[c].prior}) ELSE {0}
+
+Withdraw(c, h) ==
+  /\ Live(c)
+  /\ h \in WithdrawHeads(c)
+  /\ cs'   = [cs EXCEPT ![c] = Withdrawn(c, h)]
+  /\ ps'   = ReleasedBy(c, h)
+  /\ UNCHANGED <<rs, held>>
+  /\ last' = L("Withdraw", NoP, c, NoR)
+
+\* Blocker preemption (Rules the tables encode): with no open serving row
+\* (up, not held) below its width, policy withdraws a working consumer of a
+\* serving row (a ready one holds no width) and, in the same plan, Start
+\* deals the blocker to that row. The Withdraw releases its producer as a
+\* Withdraw alone does. Which consumer is policy's; the model lets it be any.
 Preempt(b, c, r) ==
   /\ StartGuard(b, r)
   /\ ps[b].prio = "blocker"
   /\ \A r2 \in Rows : (Serves(r2, b) /\ RowOpen(r2)) => Cardinality(WorkingOn(r2)) >= rs[r2].width
-  /\ Live(c)
+  /\ cs[c].st = "working"
   /\ cs[c].row = r
   /\ c \notin ConsOf(b)
-  /\ ps'   = [ps EXCEPT ![b].st = "working", ![b].att = @ + 1, ![b].author = None,
-                        ![b].ncut = @ + 1]
-  /\ cs'   = [cs EXCEPT ![c].st = "fail", ![NextSlot(b)] = StartCut(b, r)]
+  /\ ps'   = [ReleasedBy(c, 0) EXCEPT ![b].st = "working", ![b].att = @ + 1,
+                                      ![b].author = None, ![b].ncut = @ + 1]
+  /\ cs'   = [cs EXCEPT ![c] = Withdrawn(c, 0), ![NextSlot(b)] = StartCut(b, r)]
   /\ last' = L("Preempt", b, c, r)
   /\ UNCHANGED <<rs, held>>
 
@@ -495,17 +664,19 @@ UnholdStream ==
 \* The card and consumer moves.
 CardMove ==
   \/ \E p \in P :
-       \/ Resolve(p) \/ Park(p) \/ Reached(p) \/ ReadYes(p) \/ ReadFix(p)
+       \/ Resolve(p) \/ Park(p) \/ Reached(p) \/ ReadYes(p) \/ ReadFix(p) \/ WaiveRed(p)
        \/ Cancel(p) \/ Block(p) \/ Unblock(p)
-       \/ \E h \in Heads : Landed(p, h) \/ Red(p, h)
+       \/ \E h \in Heads : Landed(p, h)
        \/ \E r \in Rows : Start(p, r) \/ AskRead(p, r)
+       \/ \E R \in SUBSET Rows : AskReads(p, R)
        \/ \E c \in CIds : Finished(p, c) \/ Broken(p, c) \/ Faulted(p, c) \/ Released(p, c)
        \/ \E q \in P \ {p} : Replace(p, q)
        \/ \E n \in P : NeedFailed(p, n) \/ Waive(p, n)
        \/ \E n, to \in P : Relink(p, n, to)
        \/ \E c \in CIds, r \in Rows : Preempt(p, c, r)
+  \/ \E n, p \in P, m \in {"NeedFailed", "Waive", "Relink"}, to \in P : InThisOp(n, p, m, to)
   \/ \E c \in CIds :
-       \/ Withdraw(c)
+       \/ \E h \in 0..MaxHead : Withdraw(c, h)
        \/ \E r \in Rows :
             \/ Take(c, r)
             \/ \E res \in Results, h \in 0..MaxHead : Report(c, r, res, h)
@@ -516,13 +687,15 @@ EnvMove ==
        \/ Scenario # "pre" /\ Edit(p)
        \/ Scenario # "pre" /\ \E s \in 0..1 : Rescore(p, s)
        \/ \E l \in Prios : SetPriority(p, l)
+       \/ \E h \in Heads : Red(p, h)   \* a red CI result: an outside event
+       \/ \E ns, as \in SUBSET P : Add(p, ns, as)
   \/ \E r \in Rows :
        \/ Seen(r) \/ Gone(r) \/ Hold(r) \/ Unhold(r)
        \/ \E n \in 1..2 : Width(r, n)
   \/ HoldStream \/ UnholdStream
 
 \* Every producer final: the run is over (any other deadlock is reported).
-Terminating == (\A p \in P : ps[p].st \in PFinal) /\ UNCHANGED vars
+Terminating == (\A p \in P : ps[p].st \in PFinal \cup {"absent"}) /\ UNCHANGED vars
 
 Next ==
   \/ CardMove /\ UNCHANGED env
@@ -536,10 +709,11 @@ Spec == Init /\ [][Next]_vars
 
 ProdRec == [st : PStates, att : 0..MaxAttempt, head : 0..MaxHead, author : Rows \cup {None},
             bounces : 0..MaxBounce, score : 0..1, prio : Prios, needs : SUBSET P,
-            review : 0..(K + MaxAttempt), ncut : 0..K]
+            after : SUBSET P, review : 0..(MaxAttempt + MaxEnv), ncut : 0..K, finding : Findings]
 ConsRec == [st : CStates, kind : {"-", "work", "read"}, row : Rows \cup {NoR},
             att : 0..MaxAttempt, head : 0..MaxHead, res : Results,
-            author : Rows \cup {None}, review : 0..(K + MaxAttempt)]
+            author : Rows \cup {None}, review : 0..(MaxAttempt + MaxEnv), prior : 0..MaxHead,
+            finding : Findings]
 
 TypeOK ==
   /\ ps \in [P -> ProdRec]
@@ -558,18 +732,62 @@ ProducerNeverHeld ==
 (* The cut slots of p are exactly 1..ncut.                                *)
 SlotsDense == \A p \in Prods : \A i \in 1..K : (cs[<<p, i>>].st # "none") <=> (i <= ps[p].ncut)
 
-(* working <=> one work consumer. The design's "working exactly when it   *)
-(* has one live work consumer" cannot hold as written: after Report and   *)
-(* before Finished, Broken or Faulted, and after Withdraw and before      *)
-(* Released or Block, the producer is working with no live consumer. The  *)
-(* form the tables keep: at most one live work consumer; a live work      *)
-(* consumer is the current attempt's and its producer is working; and a   *)
-(* working producer has its current attempt's work consumer.              *)
+(* The invariant as the tables have it (Rulings from the card model): at  *)
+(* most one live work consumer; a live work consumer is the current       *)
+(* attempt's and its producer is working; and a working producer has its  *)
+(* current attempt's work consumer, which (the Withdraw fold) is never    *)
+(* withdrawn while the producer is working.                               *)
 WorkingOneWorkConsumer ==
   \A p \in Prods :
     /\ Cardinality({c \in LiveOf(p) : cs[c].kind = "work"}) <= 1
     /\ \A c \in LiveOf(p) : cs[c].kind = "work" => (ps[p].st = "working" /\ IsCur(p, c))
-    /\ ps[p].st = "working" => \E c \in ConsOf(p) : IsCur(p, c)
+    /\ ps[p].st = "working" => \E c \in ConsOf(p) : IsCur(p, c) /\ cs[c].st # "fail"
+
+(* A producer in working with no live consumer (its consumer reported)   *)
+(* is one plan from leaving working: Finished, Broken, Faulted, Released  *)
+(* or Block is enabled.                                                   *)
+WorkingLeavesInOneStep ==
+  \A p \in Prods :
+    (ps[p].st = "working" /\ NoLive(p))
+      => \/ ENABLED (\E c \in ConsOf(p) :
+                       Finished(p, c) \/ Broken(p, c) \/ Faulted(p, c) \/ Released(p, c))
+         \/ ENABLED Block(p)
+
+(* No producer is ready in a held stream after any step: every move that  *)
+(* returns one to ready writes it parked under a hold, and HoldStream     *)
+(* parks the ready ones in the same op.                                   *)
+ParkedUnderHold == held => \A p \in P : ps[p].st # "ready"
+
+(* No producer is ever stranded (the second cold read): every non-final   *)
+(* producer with no live consumer has a move of its own enabled, other    *)
+(* than the coordinator's Cancel, Replace, Block, Edit, Rescore and       *)
+(* SetPriority; or waits on a need that can still move, on an after-      *)
+(* target that is merging, or (for the moves rows and holds gate) on a    *)
+(* row coming back or a hold lifting. A ready producer at the model's     *)
+(* attempt bound, or one with no consumer slot left, is exempt: that is   *)
+(* the model's limit, not the design's.                                   *)
+OwnMove(p) ==
+  \/ Resolve(p) \/ Park(p) \/ Reached(p) \/ ReadYes(p) \/ ReadFix(p) \/ WaiveRed(p)
+  \/ Unblock(p)
+  \/ \E h \in Heads : Landed(p, h) \/ Red(p, h)
+  \/ \E r \in Rows : Start(p, r) \/ AskRead(p, r)
+  \/ \E c \in CIds : Finished(p, c) \/ Broken(p, c) \/ Faulted(p, c) \/ Released(p, c)
+  \/ \E n \in P : NeedFailed(p, n) \/ Waive(p, n)
+  \/ \E n, to \in P : Relink(p, n, to)
+  \/ \E c \in CIds, r \in Rows : Preempt(p, c, r)
+Gated(p) ==
+  /\ ps[p].st \in {"waiting", "ready", "review"}
+  /\ (held \/ \E r \in Rows : rs[r].st = "down" \/ rs[r].held)
+ModelBound(p) ==
+  \/ ps[p].st = "ready" /\ (ps[p].att >= MaxAttempt \/ ps[p].ncut >= K)
+  \/ ps[p].st = "review" /\ ps[p].ncut >= K
+NeverStranded ==
+  \A p \in P :
+    (NonFinal(p) /\ NoLive(p) /\ ~ModelBound(p))
+      => \/ ENABLED OwnMove(p)
+         \/ \E n \in ps[p].needs : NonFinal(n)
+         \/ \E a \in ps[p].after : ps[a].st = "merging"
+         \/ Gated(p)
 
 (* A live read consumer only in review, of the producer's current head    *)
 (* and review count.                                                      *)
@@ -583,11 +801,26 @@ ReaderNeverAuthor ==
 
 WidthKept == \A r \in Rows : Cardinality(WorkingOn(r)) <= rs[r].width
 
-(* A ready consumer is never refused Take while its row's working count  *)
-(* is below width: ready ones are not counted (LESSONS 3.3).              *)
+(* A work consumer reports ok, fail or fault; a read ok, fix or fault.   *)
+ResultsByKind ==
+  \A c \in CIds :
+    /\ cs[c].kind = "work" => cs[c].res \in {"-", "ok", "fail", "fault"}
+    /\ cs[c].kind = "read" => cs[c].res \in {"-", "ok", "fix", "fault"}
+
+(* AskRead and AskReads refuse a row already holding a live read of this  *)
+(* head: at most one live read of a head per row.                         *)
+OneLiveReadPerRow ==
+  \A c, k \in CIds :
+    (c # k /\ c[1] = k[1] /\ Live(c) /\ Live(k) /\ cs[c].kind = "read" /\ cs[k].kind = "read"
+       /\ cs[c].head = cs[k].head) => cs[c].row # cs[k].row
+
+(* A ready consumer is never refused Take while its row is up and its     *)
+(* working count is below width, held or not: ready ones are not counted  *)
+(* (LESSONS 3.3), and a hold stops deals, not taking what was dealt.      *)
 TakeBelowWidth ==
   \A c \in CIds :
-    (cs[c].st = "ready" /\ Cardinality(WorkingOn(cs[c].row)) < rs[cs[c].row].width)
+    (cs[c].st = "ready" /\ rs[cs[c].row].st = "up"
+       /\ Cardinality(WorkingOn(cs[c].row)) < rs[cs[c].row].width)
       => ENABLED Take(c, cs[c].row)
 
 NeedFailedTakesDependants ==
@@ -596,9 +829,12 @@ NeedFailedTakesDependants ==
 
 (* A sentinel never has a consumer (structural: it has no slots) and is   *)
 (* never in a state that has one.                                         *)
-SentinelShape == \A s \in Sentinels : ps[s].st \in {"waiting", "landed", "fail"}
+SentinelShape == \A s \in Sentinels : ps[s].st \in {"absent", "waiting", "landed", "fail"}
 
 NeedsAcyclic == Acyclic(NeedsGraph)
+(* Needs and after together stay acyclic: Add and Relink both walk needs *)
+(* and after (the code at v2-card-fix3).                                 *)
+OrderAcyclic == Acyclic(OrderGraph)
 
 (* Soft order never holds a landing whose target is not queued: a         *)
 (* merging producer whose after-targets are not merging can land.         *)
@@ -614,6 +850,12 @@ HolderNeverChanges     == "HolderNeverChanges" \notin last.bad
 OldAttemptNeverMoves   == "OldAttemptNeverMoves" \notin last.bad
 OnlyHolderActs         == "OnlyHolderActs" \notin last.bad
 ReadYesNeedsYes        == "ReadYesNeedsYes" \notin last.bad
+ReadFixNeedsFix        == "ReadFixNeedsFix" \notin last.bad
+WithdrawReleasesInOneStep == "WithdrawReleasesInOneStep" \notin last.bad
+WaiveRedNeedsPriorRead == "WaiveRedNeedsPriorRead" \notin last.bad
+FixCarriesFailure      == "FixCarriesFailure" \notin last.bad
+ReplaceByLive          == "ReplaceByLive" \notin last.bad
+HeadNeverRepeats       == "HeadNeverRepeats" \notin last.bad
 FaultSpendsNothing     == "FaultSpendsNothing" \notin last.bad
 BlockNoLive            == "BlockNoLive" \notin last.bad
 EditNoLive             == "EditNoLive" \notin last.bad
@@ -644,8 +886,22 @@ NeverPreempted       == last.ev # "Preempt"
 (* Only Reached lands a sentinel (SentinelLandsByReached); this one lands *)
 (* with its original needs landed, not waived away.                       *)
 NeverSentinelReached ==
-  \A s \in Sentinels : ~(ps[s].st = "landed" /\ \A n \in Needs0[s] : ps[n].st = "landed")
-NeverRelinked        == \A p \in P : ps[p].needs \subseteq Needs0[p]
+  \A s \in Sentinels \ Added : ~(ps[s].st = "landed" /\ \A n \in Needs0[s] : ps[n].st = "landed")
+NeverRelinked        == \A p \in P \ Added : ps[p].needs \subseteq Needs0[p]
+(* Add puts the sentinel a with a need and an after.                      *)
+NeverAdded           == \A p \in Added : ~(Exists(p) /\ ps[p].needs # {} /\ ps[p].after # {})
+(* A sentinel is a need: a is added needing s.                            *)
+NeverSentinelNeeded  == \A p \in Added : ~(Exists(p) /\ \E n \in ps[p].needs : n \in Sentinels)
+NeverAskReads        == last.ev # "AskReads"
+NeverInThisOp        == last.ev # "InThisOp"
+(* WaiveRed: merging after a Red with no ok read of the current review.   *)
+NeverWaivedRed       ==
+  ~\E p \in Prods :
+     /\ ps[p].st = "merging"
+     /\ AfterRed(p)
+     /\ ~\E k \in ConsOf(p) : OkRead(p, k) /\ cs[k].review = ps[p].review
+(* A fix attempt's work consumer carries the failure it fixes.            *)
+NeverFindingCarried  == ~\E c \in CIds : cs[c].kind = "work" /\ cs[c].finding # "-"
 (* A work consumer reported fault, and a later work consumer of the same *)
 (* producer was cut: the fault was re-dealt.                              *)
 NeverFaultRedealt ==
