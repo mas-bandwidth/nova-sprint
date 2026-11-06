@@ -83,6 +83,21 @@ approved:
   time deadlines (LESSONS 1.14) and what a ready producer that cannot start
   for a reason other than a held stream becomes (LESSONS 2.20).
 
+## The dashboard shim is on v2 (2026-11-06)
+
+`dash/` is v1's page carried as is over a shim from the store (one cold
+Snapshot, Events folded into a local copy, the page polling the copy every
+second), served by `cmd/nova-sprint-dash` until layer 6 serves it. Six rounds
+by Stella, five cold reads; the fifth (a real browser on a bench with a real
+scrollbar, every cell compared against the live v1 board) scored 9/10 with
+one one-line defect, fixed in round 6 and merged on my read of the diff. The
+agreed differences from v1: the missing cells (coordinator chip, machine
+state and ETA, load, summary, window, stuck and CI), the `fail` column and
+legend entry (black), `blocked` shown only when present, no Last 24 hours
+panel. Measured: at 5,000 producers an idle tick is under 1 ms, a one-event
+tick about 11 ms, the JSON answer 0.5 ms. Nativizing the page is the final
+step after everything else is correct (Glenn).
+
 ## The release gate for v2.0.0 (Glenn, 2026-11-06)
 
 "I really want to land nova-sprint v2 tonight if possible." "For this one we
