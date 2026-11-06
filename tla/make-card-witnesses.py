@@ -16,22 +16,24 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 # Every invariant of the passing runs, in cfg order.
 INVARIANTS = [
-    "TypeOK", "ProducerNeverHeld", "SlotsDense", "WorkingOneWorkConsumer", "ReadOnlyInReview",
+    "TypeOK", "ProducerNeverHeld", "SlotsDense", "WorkingOneWorkConsumer",
+    "WorkingLeavesInOneStep", "ParkedUnderHold", "ReadOnlyInReview",
     "ReaderNeverAuthor", "WidthKept", "TakeBelowWidth", "NeedFailedTakesDependants",
-    "SentinelShape", "NeedsAcyclic", "AfterNeverHolds",
+    "SentinelShape", "NeedsAcyclic", "OrderAcyclic", "AfterNeverHolds",
     "FinalNeverMoves", "AttemptOnlyOnStart", "RedNeverAdvances", "FixKeepsScore",
     "HolderNeverChanges", "OldAttemptNeverMoves", "OnlyHolderActs", "ReadYesNeedsYes",
+    "ReadFixNeedsFix", "WithdrawReleasesInOneStep",
     "FaultSpendsNothing", "BlockNoLive", "EditNoLive", "SentinelLandsByReached", "AfterKept",
 ]
 
 # The instance of each scenario (see the module header). "life": one
 # producer, room for a fix, a Red and a re-deal. "deps": p2 needs p1, s needs
-# p2. "pre": p1 and p2 independent, p2 after p1, s needs both; two
-# environment moves, so a blocker priority and a closed row fit in one
-# behaviour.
+# p2, and the sentinel a put by Add. "pre": p1 and p2 independent, p2 after
+# p1; two environment moves, so a blocker priority and a closed row fit in
+# one behaviour.
 SCENARIOS = {
     "life": {"K": 3, "MaxHead": 2, "MaxAttempt": 2, "MaxBounce": 1, "MaxEnv": 2},
-    "deps": {"K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 1},
+    "deps": {"K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 2},
     "pre":  {"K": 2, "MaxHead": 1, "MaxAttempt": 1, "MaxBounce": 1, "MaxEnv": 2},
 }
 
@@ -49,6 +51,7 @@ REACH = {
     "NeverYesAfterRed": ("life", "a yes after a Red, on a new read"),
     "NeverNeedFailed": ("deps", "NeedFailed takes a dependant"),
     "NeverRelinked": ("deps", "a failed need is relinked"),
+    "NeverAdded": ("deps", "Add puts a sentinel with a need and an after"),
     "NeverPreempted": ("pre", "a blocker preempts a live consumer"),
 }
 
@@ -56,8 +59,8 @@ REACH = {
 WITNESSES = [
     ("CardLandedMoves", "FinalNeverMoves", "life",
      "Rescore has no final check: a landed or fail producer is rescored.",
-     [("Rescore(p, s) ==\n  /\\ NonFinal(p)\n",
-       "Rescore(p, s) ==\n  /\\ TRUE   \\* FAULT: was NonFinal(p)\n", 1)]),
+     [("Rescore(p, s) ==\n  /\\ p \\in Prods\n  /\\ NonFinal(p)\n",
+       "Rescore(p, s) ==\n  /\\ p \\in Prods\n  /\\ TRUE   \\* FAULT: was NonFinal(p)\n", 1)]),
     ("CardAuthorReads", "ReaderNeverAuthor", "life",
      "AskRead does not refuse the author: the row that produced the head\n"
      "is asked to read it.",
@@ -98,13 +101,13 @@ WITNESSES = [
        "  /\\ NoLive(p)\n  /\\ TRUE   \\* FAULT: was YesRead(p)\n", 1)]),
     ("CardFaultBumpsAttempt", "FaultSpendsNothing", "life",
      "Faulted raises the producer's attempt.",
-     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = \"ready\", !.head = KeptHead(p, c)])",
-       "PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = \"ready\", !.head = KeptHead(p, c),\n"
+     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c)])",
+       "PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c),\n"
        "                                          !.att = @ + 1])   \\* FAULT: attempt+1", 1)]),
     ("CardFaultBounces", "FaultSpendsNothing", "life",
      "Faulted raises bounces, so a fault counts toward Block.",
-     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = \"ready\", !.head = KeptHead(p, c)])",
-       "PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = \"ready\", !.head = KeptHead(p, c),\n"
+     [("PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c)])",
+       "PStep(\"Faulted\", p, c, [ps[p] EXCEPT !.st = Back, !.head = KeptHead(p, c),\n"
        "                                          !.bounces = @ + 1])   \\* FAULT: bounces+1", 1)]),
     ("CardEditUnderLive", "EditNoLive", "life",
      "Edit is accepted while the producer has a live consumer.",
@@ -122,6 +125,23 @@ WITNESSES = [
      "the sentinel, which needs p2.",
      [("  /\\ Acyclic([NeedsGraph EXCEPT ![p] = (@ \\ {n}) \\cup {to}])\n",
        "  /\\ TRUE   \\* FAULT: no cycle check\n", 1)]),
+    ("CardWithdrawLeavesWorking", "WithdrawReleasesInOneStep", "life",
+     "Withdraw of the working producer's work consumer does not release\n"
+     "the producer in the same plan: it stays working with no live\n"
+     "consumer until a separate Released.",
+     [("  /\\ ps'   = ReleasedBy(c, h)\n",
+       "  /\\ ps'   = ps   \\* FAULT: was ReleasedBy(c, h)\n", 1)]),
+    ("CardReadFixOnZero", "ReadFixNeedsFix", "life",
+     "ReadFix does not require a done fix read of the current review: a\n"
+     "fix fires on zero fix reads.",
+     [("  /\\ NoLive(p)\n  /\\ FixRead(p)\n",
+       "  /\\ NoLive(p)\n  /\\ TRUE   \\* FAULT: was FixRead(p)\n", 1)]),
+    ("CardHeldStreamReady", "ParkedUnderHold", "life",
+     "Broken returns the producer to ready even when its stream is held,\n"
+     "instead of writing it parked in the same plan.",
+     [("PStep(\"Broken\", p, c, [ps[p] EXCEPT !.st = Back,",
+       "PStep(\"Broken\", p, c, [ps[p] EXCEPT !.st = \"ready\",   \\* FAULT: was Back\n"
+       "                                        ", 1)]),
 ]
 
 
