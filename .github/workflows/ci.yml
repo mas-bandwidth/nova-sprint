@@ -21,7 +21,7 @@ concurrency:
 jobs:
   lint:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, linux, x64, space]
+    runs-on: [self-hosted, linux, x64, bench]
     timeout-minutes: 10
     steps:
       - &clean
@@ -53,7 +53,7 @@ jobs:
 
   unit:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, linux, x64, space]
+    runs-on: [self-hosted, linux, x64, bench]
     timeout-minutes: 10
     steps:
       - *clean
@@ -64,7 +64,7 @@ jobs:
 
   functional:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, linux, x64, space]
+    runs-on: [self-hosted, linux, x64, bench]
     timeout-minutes: 20
     steps:
       - *clean
@@ -86,7 +86,7 @@ jobs:
 
   tlc:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, linux, x64]
+    runs-on: [self-hosted, linux, x64, bench]
     timeout-minutes: 30
     steps:
       - *clean
