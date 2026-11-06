@@ -109,3 +109,29 @@ The dashboard's "needs you" column shows the same line. The coordinator's
 5. Is a judgement owed to this name? If so: its command.
 6. Is a stream empty or everything landed? If so: `add`, or `done`.
 7. Otherwise: `nothing; wait for the bus`.
+
+## Everything moves by push, over nova-bus, and there is one way
+
+Glenn, 2026-11-06: "it's important for AIs to be given structure and get push
+notifications, esp. as coordinator. You should not need to keep polling or
+remember to do things, things should move forward mechanically, and notify
+you via push notification." "Similarly, for friends (and yourself) doing
+work, you should be driven forward to accept ready cards, do work, mark the
+work done automatically via push notifications." "And all push notification
+should come through the nova-bus. There is ONE WAY. Do not re-implement the
+nova bus in nova-sprint! Verboten!"
+
+So:
+
+- Every change of state that needs someone to act is one bus message to that
+  someone, sent by the run loop the moment the change lands: a deal to the
+  row; a read owed to the reader; a judgement to the coordinator; a landing,
+  a red, a block. The message carries the one command that answers it.
+- Nobody polls. `next` is for a cold start or a lost session, never the
+  mechanism; the mechanism is the hook waking the session.
+- nova-sprint sends by running `nova-bus send` and reads presence with
+  `nova-bus who`. It never opens Redis, never defines a stream, never keeps
+  an inbox, never retries delivery on its own: nova-bus is the one way, and
+  a second way is forbidden.
+- The coordinator is a row like any other: hooked in, driven by pushes, with
+  judgement verbs instead of take and finish.
