@@ -1,0 +1,92 @@
+# CI for nova-sprint v2: lint, the unit tier, the functional tier and TLC.
+# Each step is one plain command; docs/TESTING.md lists the same commands to run
+# by hand. Pull requests run on the self-hosted runners, and only for branches
+# of this repository: a fork's code never runs on them.
+
+name: ci
+
+on:
+  push:
+    branches: [v2, main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64, space]
+    timeout-minutes: 10
+    steps:
+      - &clean
+        name: clean the reused workspace
+        shell: bash
+        run: |
+          [ -d "${GITHUB_WORKSPACE:?}/.git" ] || exit 0
+          git -C "$GITHUB_WORKSPACE" reset -q --hard && git -C "$GITHUB_WORKSPACE" clean -ffdxq ||
+            find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+      - &checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - &go
+        name: use the installed Go toolchain
+        shell: bash
+        run: |
+          want=go$(sed -n 's/^go \([0-9.]*\)$/\1/p' go.mod)
+          newest=$(ls -d "$HOME"/sdk/go*/bin 2>/dev/null | sort -V | tail -1 || true)
+          onpath=$(dirname "$(command -v go 2>/dev/null || echo /none/go)")
+          for d in "$HOME/sdk/$want/bin" "$newest" "$HOME/go/bin" /usr/local/go/bin /opt/homebrew/bin "$onpath"; do
+            [ -n "$d" ] && [ -x "$d/go" ] && { echo "$d" >> "$GITHUB_PATH"; "$d/go" version; exit 0; }
+          done
+          echo "no Go toolchain on this runner" >&2; exit 1
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - name: build
+        run: go build ./...
+      - name: vet
+        run: go vet ./...
+
+  unit:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64, space]
+    timeout-minutes: 10
+    steps:
+      - *clean
+      - *checkout
+      - *go
+      - name: unit tests (everything but the functional tests)
+        run: go test -count=1 -race -skip Functional ./...
+
+  functional:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64, space]
+    timeout-minutes: 20
+    steps:
+      - *clean
+      - *checkout
+      - *go
+      - name: postgres on PATH
+        shell: bash
+        run: |
+          command -v initdb >/dev/null || ls /usr/lib/postgresql/*/bin/initdb >/dev/null 2>&1 || { sudo -n apt-get update -qq && sudo -n apt-get install -y -qq postgresql; }
+          for d in /usr/lib/postgresql/*/bin; do [ -x "$d/initdb" ] && echo "$d" >> "$GITHUB_PATH"; done
+          true
+      - name: initdb is present (a missing one fails the job, it does not skip)
+        run: command -v initdb
+      - name: functional tests
+        run: go test -count=1 -race -run Functional ./...
+
+  tlc:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 30
+    steps:
+      - *clean
+      - *checkout
+      - name: TLC on Store (must pass), the witnesses and the reach checks (must be violated)
+        run: bash tla/ci-tlc.sh
