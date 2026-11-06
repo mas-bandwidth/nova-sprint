@@ -26,7 +26,9 @@ for real work.
 
 1. **The tool enforces the order of doing things.** As nova-bus makes you hook in
    before you can send, nova-sprint refuses a step whose prerequisite has not
-   happened and says, nicely, what to do first.
+   happened and says, nicely, what to do first. This one is the key: it is how
+   correct use is enforced by the tool, instead of relying on an LLM to
+   remember to do the right thing.
 2. **A great first-time experience that guides an AI toward using the tool
    correctly as it works.** Every verb's output says what it did and what the
    next verb is; help and refusals are written for an AI meeting the tool cold.
