@@ -86,6 +86,18 @@ yes. not right now, but yes."
   "needs you" in a pocket or lets the answer come back from there. The
   layer 6 design names the channel and what can be answered from it.
 
+## The stitch pass (Glenn, 2026-11-06)
+
+"The only thing we can improve is the stitch together passes after the
+patchwork work." Code from many models working in isolation is a pastiche
+(Glenn's own word in the thread); today the hardening pass is a chore run by
+hand afterwards. In v2 it is a policy rule, owed to layer 5: when a stream's
+sentinel is reached, deal one stitch card for the stream (the whole diff since
+its base as the brief, heavy or frontier tier, a model that wrote none of the
+cards), whose job is one style, one set of names, duplicated helpers folded,
+dead seams removed, no behaviour change, read cold before it lands. The
+engine needs nothing new: sentinels, tiers, reads and `needs` are layer 2.
+
 ## The dashboard (Glenn, 2026-11-06)
 
 "The dashboard design should be identical to the v1 in visual, excluding the
