@@ -25,10 +25,10 @@ var (
 	nonFinal       = []string{Waiting, Ready, Working, Review, Merging, Blocked}
 )
 
-// pr is producer p1 in state: attempt 1, head h1 written by r2.
+// pr is producer p1 in state: attempt 1, review 1, head h1 written by r2.
 func pr(state string) Card {
 	return Card{ID: "p1", Kind: "producer", Stream: "s1", State: state, Gen: 3, Attempt: 1, Priority: "normal", Tier: "pro", Score: 5,
-		Needs: []string{"n1"}, Head: h1, Author: "r2", Reason: "old"}
+		Needs: []string{"n1"}, Head: h1, Author: "r2", Reason: "old", Review: 1}
 }
 
 // wk is p1's work consumer of attempt 1, on r1.
@@ -37,10 +37,10 @@ func wk(state, result, head string) Card {
 		Branch: "b1", BaseSHA: base, Head: head, Result: result, Reason: "tests red"}
 }
 
-// rd is p1's first read of attempt 1, on r1.
+// rd is p1's first read of review 1, on r1.
 func rd(state, result string) Card {
 	return Card{ID: "p1.r1.1", Kind: "read", Of: "p1", Stream: "s1", State: state, Gen: 2, Attempt: 1, Tier: "pro", Holder: "r1",
-		Head: h1, Author: "r2", Result: result}
+		Head: h1, Author: "r2", Result: result, Review: 1}
 }
 
 func rows() map[string]Row {
@@ -92,21 +92,21 @@ func producerTable() []pcase {
 				store.SetCardBranch{Card: "p1.w2", Branch: "b2"}, store.SetCardBaseSHA{Card: "p1.w2", SHA: base}, store.SetCardPriorHead{Card: "p1.w2", Head: h1},
 				store.SetCardReason{Card: "p1.w2", Reason: "old"}, store.SetCardState{Card: "p1.w2", State: Ready}}},
 		{event: Finished{Consumer: "p1.w1"}, from: []string{Working}, cons: []Card{wk(Done, "ok", h2)}, expect: []store.Expect{p1, gen("p1.w1", 6)},
-			writes: []store.Write{store.SetCardState{Card: "p1", State: Review}, store.SetCardHead{Card: "p1", Head: h2}, store.SetCardAuthor{Card: "p1", Author: "r1"}}},
+			writes: []store.Write{store.SetCardState{Card: "p1", State: Review}, store.SetCardReview{Card: "p1"}, store.SetCardHead{Card: "p1", Head: h2}, store.SetCardAuthor{Card: "p1", Author: "r1"}}},
 		{event: Broken{Consumer: "p1.w1"}, from: []string{Working}, cons: []Card{wk(Done, "fail", h2)}, expect: []store.Expect{p1, gen("p1.w1", 6)},
 			writes: []store.Write{store.SetCardState{Card: "p1", State: Ready}, store.SetCardReason{Card: "p1", Reason: "tests red"}, store.SetCardBounces{Card: "p1", Bounces: 1}, store.SetCardHead{Card: "p1", Head: h2}}},
 		{event: Faulted{Consumer: "p1.w1"}, from: []string{Working}, cons: []Card{wk(Done, "fault", h2)}, expect: []store.Expect{p1, gen("p1.w1", 6)},
 			writes: []store.Write{store.SetCardState{Card: "p1", State: Ready}, store.SetCardReason{Card: "p1", Reason: "tests red"}, store.SetCardHead{Card: "p1", Head: h2}}},
 		{event: AskRead{Row: "r1"}, from: []string{Review}, cons: []Card{wk(Done, "ok", h1)},
 			expect: append(append([]store.Expect{p1, free}, r1...), gen("p1.w1", 6), store.CardAbsent{Card: "p1.r1.1"}),
-			writes: []store.Write{store.PutCard{ID: "p1.r1.1", Kind: "read", Of: "p1", Stream: "s1", Holder: "r1", Tier: "pro", Attempt: 1},
+			writes: []store.Write{store.PutCard{ID: "p1.r1.1", Kind: "read", Of: "p1", Stream: "s1", Holder: "r1", Tier: "pro", Attempt: 1, Review: 1},
 				store.SetCardHead{Card: "p1.r1.1", Head: h1}, store.SetCardAuthor{Card: "p1.r1.1", Author: "r2"}, store.SetCardState{Card: "p1.r1.1", State: Ready}}},
 		{event: ReadYes{}, from: []string{Review}, cons: reads, expect: readFence, writes: []store.Write{store.SetCardState{Card: "p1", State: Merging}}},
 		{event: ReadFix{Reason: "fix x"}, from: []string{Review}, cons: reads, expect: readFence,
 			writes: []store.Write{store.SetCardState{Card: "p1", State: Ready}, store.SetCardReason{Card: "p1", Reason: "fix x"}, store.SetCardBounces{Card: "p1", Bounces: 1}}},
 		{event: Landed{Head: h1}, from: []string{Merging}, expect: []store.Expect{p1}, writes: []store.Write{store.SetCardState{Card: "p1", State: LandedState}}},
 		{event: Red{Head: h1, Reason: "ci red"}, from: []string{Merging}, expect: []store.Expect{p1},
-			writes: []store.Write{store.SetCardState{Card: "p1", State: Review}, store.SetCardReason{Card: "p1", Reason: "ci red"}}},
+			writes: []store.Write{store.SetCardState{Card: "p1", State: Review}, store.SetCardReview{Card: "p1"}, store.SetCardReason{Card: "p1", Reason: "ci red"}}},
 		{event: Released{}, from: []string{Working}, cons: []Card{{ID: "p1.w1", Kind: "work", Of: "p1", State: Fail, Gen: 6, Attempt: 1, Holder: "r1", Head: h2, Reason: "silent"}},
 			expect: []store.Expect{p1, gen("p1.w1", 6)},
 			writes: []store.Write{store.SetCardState{Card: "p1", State: Ready}, store.SetCardReason{Card: "p1", Reason: "silent"}, store.SetCardHead{Card: "p1", Head: h2}}},
@@ -122,7 +122,8 @@ func producerTable() []pcase {
 		{event: Edit{Prose: "new", Paths: []string{"card/"}, Reason: "scope"}, expect: []store.Expect{p1},
 			writes: []store.Write{store.SetCardProse{Card: "p1", Prose: "new"}, store.SetCardPaths{Card: "p1", Paths: []string{"card/"}}, store.SetCardReason{Card: "p1", Reason: "scope"}}},
 		{event: Rescore{Score: 9}, expect: []store.Expect{p1}, writes: []store.Write{store.SetCardScore{Card: "p1", Score: 9}}},
-		{event: SetPriority{Level: "blocker"}, expect: []store.Expect{p1}, writes: []store.Write{store.SetCardPriority{Card: "p1", Priority: "blocker"}}},
+		{event: SetPriority{Level: "blocker", Reason: "release"}, expect: []store.Expect{p1},
+			writes: []store.Write{store.SetCardPriority{Card: "p1", Priority: "blocker"}, store.SetCardReason{Card: "p1", Reason: "release"}}},
 		{event: Block{Reason: "bounced"}, from: []string{Ready, Review, Working}, cons: []Card{wk(Done, "fail", h2)}, expect: []store.Expect{p1, gen("p1.w1", 6)},
 			writes: []store.Write{store.SetCardState{Card: "p1", State: Blocked}, store.SetCardReason{Card: "p1", Reason: "bounced"}}},
 		{event: Unblock{Reason: "reviewed"}, from: []string{Blocked}, expect: []store.Expect{p1},
@@ -249,9 +250,9 @@ func TestRowTable(t *testing.T) {
 		{Gone{}, up, []store.Write{store.SetRowState{Row: "r1", State: Down}, store.SetRowFlaps{Row: "r1", Flaps: 1}}},
 		{Width{N: 3}, up, []store.Write{store.SetRowWidth{Row: "r1", Width: 3}}},
 		{Width{N: 3}, down, []store.Write{store.SetRowWidth{Row: "r3", Width: 3}}},
-		{Hold{Reason: "maintenance"}, up, []store.Write{store.SetRowHeld{Row: "r1", Held: true}}},
+		{Hold{Reason: "maintenance"}, up, []store.Write{store.SetRowHeld{Row: "r1", Held: true, Reason: "maintenance"}}},
 		{Hold{}, down, []store.Write{store.SetRowHeld{Row: "r3", Held: true}}},
-		{Unhold{}, held, []store.Write{store.SetRowHeld{Row: "r4", Held: false}}},
+		{Unhold{Reason: "back"}, held, []store.Write{store.SetRowHeld{Row: "r4", Held: false, Reason: "back"}}},
 	} {
 		plan, r := MoveRow(c.r, c.event)
 		require.Nil(t, r, name(c.event))
@@ -310,6 +311,8 @@ func TestProducerRefusals(t *testing.T) {
 	liveReason := "producer p1 has live consumer p1.w1 on row r1; withdraw it first"
 	later := pr(Working)
 	later.Attempt = 2
+	stale := rd(Done, "ok") // cut before a Red: review 0
+	stale.Review = 0
 	_, oldAttempt := Move(later, []Card{wk(Done, "ok", h2)}, rows(), Stream{Name: "s1"}, nil, Finished{Consumer: "p1.w1"})
 	for _, c := range []refusal{
 		{onConsumer, "card p1.w1 is a work consumer; Move is for producers"},
@@ -343,8 +346,10 @@ func TestProducerRefusals(t *testing.T) {
 		{mv(Working, nil, Released{}), "card p1.w1 is not producer p1's work consumer of attempt 1"},
 		{mv(Review, nil, AskRead{Row: "r2"}), "r2 wrote producer p1's head and may not read it"},
 		{mv(Review, []Card{wk(Working, "", "")}, AskRead{Row: "r1"}), liveReason},
-		{mv(Review, []Card{rd(Done, "fix")}, ReadYes{}), "producer p1 has no read of head " + h1 + " that said ok; ReadYes needs one"},
-		{mv(Review, []Card{rd(Fail, "")}, ReadYes{}), "producer p1 has no read of head " + h1 + " that said ok; ReadYes needs one"},
+		{mv(Review, []Card{rd(Done, "fix")}, ReadYes{}), "producer p1 has no read of review 1 that said ok; ReadYes needs one"},
+		{mv(Review, []Card{rd(Fail, "")}, ReadYes{}), "producer p1 has no read of review 1 that said ok; ReadYes needs one"},
+		{mv(Review, []Card{stale}, ReadYes{}), "producer p1 has no read of review 1 that said ok; ReadYes needs one"},
+		{mv(Review, nil, ReadYes{}), "producer p1 has no read of review 1 that said ok; ReadYes needs one"},
 		{mv(Review, []Card{rd(Working, "")}, ReadYes{}), "producer p1 has live consumer p1.r1.1 on row r1; withdraw it first"},
 		{mv(Review, []Card{rd(Ready, "")}, ReadFix{}), "producer p1 has live consumer p1.r1.1 on row r1; withdraw it first"},
 		{mv(Merging, nil, Landed{Head: h2}), "producer p1 is at head " + h1 + ", Landed names " + h2},

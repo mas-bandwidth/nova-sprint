@@ -2,7 +2,9 @@
 // card, a consumer card and a row, and nothing else. Pure Go: no store, no
 // clock, no bus. Given the records an event touches, Move, MoveConsumer and
 // MoveRow return the plan layer 1 applies (conditions and writes from package
-// store) or a refusal naming why. The contract is docs/LAYER-2-CARD-MACHINE.md.
+// store) or a refusal naming why. The contract is docs/LAYER-2-CARD-MACHINE.md;
+// the model is tla/CardMachine.tla (landing with the model's branch), checked
+// with TLC, and the tables here are its actions.
 package card
 
 import (
@@ -24,6 +26,7 @@ type Card struct {
 	PR                          int
 	Result, Reason              string
 	Bounces                     int
+	Review                      int // a producer: its entries into review; a read: the producer's at cut
 	Cost                        int64
 	Priced                      bool
 	Prose                       string // the contract fields Edit sets
@@ -36,6 +39,7 @@ type Row struct {
 	Width, Gen  int
 	Flaps       int
 	Held        bool
+	Reason      string
 	Tiers       []string
 }
 
@@ -78,23 +82,23 @@ type (
 	Park     struct{ Reason string } // ready -> waiting while the stream is held
 	Reached  struct{}                // a sentinel: waiting -> landed when every need landed
 	Start    struct{ Row, Branch, Base string }
-	Finished struct{ Consumer string } // the work consumer reported ok
+	Finished struct{ Consumer string } // the work consumer reported ok; review +1
 	Broken   struct{ Consumer string } // the work consumer reported fail
 	Faulted  struct{ Consumer string } // the work consumer reported fault
 	AskRead  struct{ Row string }
 	ReadYes  struct{}
 	ReadFix  struct{ Reason string }
 	Landed   struct{ Head string }
-	Red      struct{ Head, Reason string }
-	Released struct{ Reason string } // the work consumer of this attempt was withdrawn
+	Red      struct{ Head, Reason string } // review +1: reads before it no longer count
+	Released struct{ Reason string }       // the work consumer of this attempt was withdrawn
 	Cancel   struct{ Reason string }
 	Replace  struct{ By, Reason string }
 	// NeedFailed takes a dependant with its failed need.
 	NeedFailed struct{ Need string }
 	Waive      struct{ Need, Reason string }
 	Relink     struct{ Need, To, Reason string }
-	// Edit sets the contract fields layer 1 can set after add (prose, paths,
-	// done when); a nil list or "" prose leaves that field as it is.
+	// Edit sets prose, paths and done_when; the brief as given is immutable.
+	// A nil list or "" prose leaves that field as it is.
 	Edit struct {
 		Prose           string
 		Paths, DoneWhen []string
@@ -123,7 +127,7 @@ type (
 	Gone   struct{}
 	Width  struct{ N int }
 	Hold   struct{ Reason string }
-	Unhold struct{}
+	Unhold struct{ Reason string }
 )
 
 func (Resolve) isEvent()     {}

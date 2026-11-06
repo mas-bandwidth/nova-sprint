@@ -294,21 +294,23 @@ func (m *mover) liveRefusal(c Card) *Refusal {
 }
 
 // workID and readID name the consumers a producer cuts: its work consumer
-// of attempt n, and its next read of the current attempt.
+// of attempt n (<producer>.w<attempt>), and its next read of the current
+// review (<producer>.r<review>.<n>).
 func workID(p string, n int) string { return fmt.Sprintf("%s.w%d", p, n) }
 
 func (m *mover) readID() string {
 	n := 1
 	for _, c := range m.cons {
-		if c.Kind == "read" && c.Attempt == m.p.Attempt {
+		if c.Kind == "read" && c.Review == m.p.Review {
 			n++
 		}
 	}
-	return fmt.Sprintf("%s.r%d.%d", m.p.ID, m.p.Attempt, n)
+	return fmt.Sprintf("%s.r%d.%d", m.p.ID, m.p.Review, n)
 }
 
 // cut adds a consumer of p, held by row, in state ready: put card, then its
-// own columns, then the state (layer 1 checks the row serves its tier).
+// own columns, then the state (layer 1 checks the row serves its tier). A
+// read is cut at p's current review.
 func (m *mover) cut(id, kind, row string, attempt int, cols ...store.Write) *Refusal {
 	if len(id) > store.MaxName {
 		return no("producer %s's id is too long to name its consumer %s", m.p.ID, id)
@@ -316,7 +318,11 @@ func (m *mover) cut(id, kind, row string, attempt int, cols ...store.Write) *Ref
 	if absent := (store.CardAbsent{Card: id}); !slices.Contains(m.plan.Expect, store.Expect(absent)) {
 		m.expect(absent) // fenced already when noLive read the review's next read
 	}
-	m.write(store.PutCard{ID: id, Kind: kind, Of: m.p.ID, Stream: m.p.Stream, Holder: row, Tier: m.p.Tier, Attempt: attempt})
+	put := store.PutCard{ID: id, Kind: kind, Of: m.p.ID, Stream: m.p.Stream, Holder: row, Tier: m.p.Tier, Attempt: attempt}
+	if kind == "read" {
+		put.Review = m.p.Review
+	}
+	m.write(put)
 	m.write(cols...)
 	m.state(id, Ready)
 	return nil
@@ -397,6 +403,7 @@ func (m *mover) finished(e Finished) *Refusal {
 		return r
 	}
 	m.state(m.p.ID, Review)
+	m.write(store.SetCardReview{Card: m.p.ID})
 	m.head(m.p.ID, m.p.Head, c.Head)
 	if c.Holder != m.p.Author {
 		m.write(store.SetCardAuthor{Card: m.p.ID, Author: c.Holder})
@@ -450,15 +457,16 @@ func (m *mover) liveWork(c Card) *Refusal {
 	return nil
 }
 
-// reads checks what ReadYes and ReadFix need: no live consumer of p, every
-// read of the current head done or fail; it returns how many said ok.
+// reads checks what ReadYes and ReadFix need: no live consumer of p; it
+// returns how many reads cut at p's current review are done ok (a read from
+// before a Red or a fix never counts).
 func (m *mover) reads() (int, *Refusal) {
 	if r := m.noLive(m.liveRefusal); r != nil {
 		return 0, r
 	}
 	ok := 0
 	for _, c := range m.cons {
-		if c.Kind == "read" && c.Attempt == m.p.Attempt && c.Head == m.p.Head && c.State == Done && c.Result == "ok" {
+		if c.Kind == "read" && c.Review == m.p.Review && c.State == Done && c.Result == "ok" {
 			ok++
 		}
 	}
@@ -474,7 +482,7 @@ func (m *mover) readYes(e ReadYes) *Refusal {
 		return r
 	}
 	if ok == 0 {
-		return no("producer %s has no read of head %s that said ok; ReadYes needs one", m.p.ID, m.p.Head)
+		return no("producer %s has no read of review %d that said ok; ReadYes needs one", m.p.ID, m.p.Review)
 	}
 	m.state(m.p.ID, Merging)
 	return nil
@@ -516,6 +524,7 @@ func (m *mover) red(e Red) *Refusal {
 		return r
 	}
 	m.state(m.p.ID, Review)
+	m.write(store.SetCardReview{Card: m.p.ID})
 	m.reason(m.p.ID, m.p.Reason, e.Reason)
 	return nil
 }
@@ -683,6 +692,7 @@ func (m *mover) setPriority(e SetPriority) *Refusal {
 		return no("producer %s is already at priority %s", m.p.ID, level)
 	}
 	m.write(store.SetCardPriority{Card: m.p.ID, Priority: level})
+	m.reason(m.p.ID, m.p.Reason, e.Reason)
 	return nil
 }
 
@@ -824,9 +834,9 @@ func MoveRow(r Row, e Event) (Plan, *Refusal) {
 	case Width:
 		w, refusal = store.SetRowWidth{Row: r.Name, Width: v.N}, rowWidth(r, v.N)
 	case Hold:
-		w, refusal = store.SetRowHeld{Row: r.Name, Held: true}, rowHeld(r, true)
+		w, refusal = store.SetRowHeld{Row: r.Name, Held: true, Reason: v.Reason}, rowHeld(r, true)
 	case Unhold:
-		w, refusal = store.SetRowHeld{Row: r.Name, Held: false}, rowHeld(r, false)
+		w, refusal = store.SetRowHeld{Row: r.Name, Held: false, Reason: v.Reason}, rowHeld(r, false)
 	default:
 		refusal = no("%s is not a row event; MoveRow takes Seen, Gone, Width, Hold and Unhold", name(e))
 	}

@@ -80,13 +80,13 @@ func fromStore(c store.Card) Card {
 	return Card{ID: c.ID, Kind: c.Kind, Of: c.Of, Stream: c.Stream, State: c.State, Gen: c.Gen, Attempt: c.Attempt, Priority: c.Priority,
 		Tier: c.Tier, Score: c.Score, Needs: c.Needs, After: c.After, Holder: c.Holder, Author: c.Author, Branch: c.Branch,
 		BaseSHA: c.BaseSHA, PriorHead: c.Prior, Head: c.Head, PR: c.PR, Result: c.Result, Reason: c.Reason, Bounces: c.Bounces,
-		Cost: c.Cost, Priced: c.Priced, Prose: c.Prose, Paths: c.Paths, DoneWhen: c.DoneWhen}
+		Cost: c.Cost, Priced: c.Priced, Prose: c.Prose, Paths: c.Paths, DoneWhen: c.DoneWhen, Review: c.Review}
 }
 
 func (w *world) rows() map[string]Row {
 	rs := map[string]Row{}
 	for n, r := range w.snap().Rows {
-		rs[n] = Row{Name: r.Name, State: r.State, Width: r.Width, Gen: r.Gen, Flaps: r.Flaps, Held: r.Held, Tiers: r.Tiers}
+		rs[n] = Row{Name: r.Name, State: r.State, Width: r.Width, Gen: r.Gen, Flaps: r.Flaps, Held: r.Held, Reason: r.Reason, Tiers: r.Tiers}
 	}
 	return rs
 }
@@ -155,6 +155,8 @@ func (w *world) landed(plan Plan) {
 			assert.Equal(w.t, v.Bounces, s.Cards[v.Card].Bounces, "bounces of %s", v.Card)
 		case store.SetCardNeeds:
 			assert.ElementsMatch(w.t, v.Needs, s.Cards[v.Card].Needs, "needs of %s", v.Card)
+		case store.SetCardReview:
+			assert.Positive(w.t, s.Cards[v.Card].Review, "review of %s", v.Card)
 		case store.SetCardPriorHead:
 			assert.Equal(w.t, v.Head, s.Cards[v.Card].Prior, "prior head of %s", v.Card)
 		case store.PutCard:
@@ -246,7 +248,7 @@ func TestConformanceFix(t *testing.T) {
 	w.consume("p1.w2", Report{Row: "r3", Result: "ok", Head: h2})
 	w.move("p1", Finished{Consumer: "p1.w2"})
 	assert.Equal(t, []any{h2, "r3"}, []any{w.card("p1").Head, w.card("p1").Author})
-	w.refused("p1", ReadYes{}, "producer p1 has no read of head "+h2+" that said ok; ReadYes needs one")
+	w.refused("p1", ReadYes{}, "producer p1 has no read of review 2 that said ok; ReadYes needs one")
 	assert.Equal(t, "p1.r2.1", w.read("p1", "r1", "ok", ""))
 	w.move("p1", ReadYes{})
 	w.move("p1", Landed{Head: h2})
@@ -261,7 +263,11 @@ func TestConformanceRed(t *testing.T) {
 	w.move("p1", ReadYes{})
 	w.move("p1", Red{Head: h1, Reason: "ci red"})
 	w.is("p1", Review)
-	assert.Equal(t, "p1.r1.2", w.read("p1", "r3", "ok", ""), "the next read of the attempt")
+	assert.Equal(t, 2, w.card("p1").Review, "Finished and Red each raise the review")
+	w.refused("p1", ReadYes{}, "producer p1 has no read of review 2 that said ok; ReadYes needs one")
+	assert.Equal(t, "p1.r2.1", w.read("p1", "r3", "ok", ""), "a new read, cut at the new review")
+	assert.Equal(t, 2, w.card("p1.r2.1").Review)
+	assert.Equal(t, 1, w.card("p1.r1.1").Review, "the old read keeps the review it was cut at")
 	w.move("p1", ReadYes{})
 	w.move("p1", Landed{Head: h1})
 }
@@ -368,8 +374,9 @@ func TestConformanceRows(t *testing.T) {
 	w := newWorld(t, producer("p1"))
 	w.move("p1", Resolve{})
 	w.row("r1", Hold{Reason: "maintenance"})
+	assert.Equal(t, "maintenance", w.rows()["r1"].Reason)
 	w.refused("p1", Start{Row: "r1", Branch: "b", Base: base}, "row r1 is held; nothing is dealt to a held row")
-	w.row("r1", Unhold{})
+	w.row("r1", Unhold{Reason: "back"})
 	w.row("r1", Width{N: 3})
 	w.row("r1", Gone{})
 	assert.Equal(t, 1, w.rows()["r1"].Flaps)
