@@ -241,7 +241,7 @@ var (
 	reCreateTable     = regexp.MustCompile(`(?s)CREATE TABLE IF NOT EXISTS sprint\.([a-z_]+)\s*\((.*?)\n\);`)
 	reNamedConstraint = regexp.MustCompile(`\bCONSTRAINT\s+([a-z0-9_]+)\s+(?:CHECK|UNIQUE|PRIMARY KEY|FOREIGN KEY)\b`)
 	reTrigger         = regexp.MustCompile(`CREATE\s+(?:OR\s+REPLACE\s+)?TRIGGER\s+([a-z0-9_]+)\b`)
-	reUniqueIndex     = regexp.MustCompile(`CREATE\s+UNIQUE\s+INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z0-9_]+)\b`)
+	reUniqueIndex     = regexp.MustCompile(`CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z0-9_]+)\b`)
 	reRaisedCheck     = regexp.MustCompile(`CONSTRAINT\s*=\s*'([a-z0-9_]+)'`)
 	reTableFKey       = regexp.MustCompile(`^\s*FOREIGN KEY\s*\(([^)]+)\)\s*REFERENCES\b`)
 	reColDef          = regexp.MustCompile(`^\s*"?([a-z_]+)"?\s+(?:integer|bigint|text|boolean|timestamptz|jsonb)\b(.*)$`)
