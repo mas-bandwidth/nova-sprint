@@ -18,6 +18,8 @@ are all required.
 5. Policy: Starlark scripts, versioned in the store, changed during a sprint.
 6. Run, worker, verbs, the dashboard, and setup: `nova-sprint up` ships the setup in [SETUP.md](SETUP.md) as part of the tool.
 
+Landing, approved 2026-11-06: [LANDING.md](LANDING.md). The hard-earned rules of v1 (priority, merge, tiers) are gathered in [LESSONS-PRIORITY-AND-MERGE.md](LESSONS-PRIORITY-AND-MERGE.md) as they are extracted.
+
 A layer is secured when it is modelled in TLA+ with reversed witnesses, every
 refusal is tested on a real store, a cold reader is green, and it has been used
 for real work.
