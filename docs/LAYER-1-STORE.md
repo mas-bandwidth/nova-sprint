@@ -114,14 +114,22 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
   from the row and the row outlives the push, so nothing owed is forgotten
   (promise 1), the dashboard's "needs you" column reads this table (promise
   5), and the coordinator is told once per group (promise 6). Writes: put
-  judgement; answer judgement (state answered, answer, actor); expire
-  judgement (state expired, reason in answer). Condition: judgement `J` is
-  open. Layer 3 opens them, layer 6 answers them.
+  judgement (refused if the id exists); answer judgement (state answered,
+  answer, actor); expire judgement (state expired, reason in answer). A
+  close is refused inside the write unless the judgement is open, and when
+  the op's time is before `opened_at`, so a judgement closes at most once
+  whatever the plan carried (the model's `JudgementClosedOnce`; the code's
+  rule, adopted 2026-11-06). Condition: judgement `J` is open. Layer 3 opens
+  them, layer 6 answers them. Judgements belong to their epoch and are not
+  carried across a clear.
 - `sprint.cursors`: `name text`, `seq bigint`, `epoch integer`. Primary key
   `(epoch, name)`. A subscriber's place in the event log (the run loop's push
   cursor per row, the dashboard's feed cursor), saved so a restart resumes
   where it stopped and never pushes twice or skips (promise 6). Write: set
-  cursor (refused below the cursor's current value).
+  cursor (refused below the cursor's current value and above the last event
+  seq; an absent cursor reads as 0). Because `seq` is global and never
+  restarts, cursors are carried forward across a clear, so a subscriber
+  resumes exactly where it was and the old epoch is never pushed again.
 
 Two columns for the tier (Glenn 2026-11-06: "flash, pro, heavy, frontier ...
 making sure the right models did the work"): on cards, `tier text` (one of
@@ -298,9 +306,16 @@ Schema version 2 (2026-11-06) is the version with the two card kinds:
 `kind`, `of`, `author`, `base_sha`, `result`, the state `done`, and row
 `gen`; with the lessons placed the same day it also carries `prior_head`,
 `bounces`, `cost`, `priced` and the result `fault` (LESSONS 1.17, 2.24,
-3.9), and `priority` (Glenn's rulings of 2026-11-06, above). Still owed to a later layer, named so it is not lost: row labels for
-policy (tier, model, harness) are layer 5's, and arrive with a schema version
-bump and a design change, never as a special case.
+3.9), `priority` (Glenn's rulings of 2026-11-06, above), and from the promise
+round the same day `tier`, `paths`, `done_when`, `prose`, the rows' `tiers`,
+`model` and `harness`, `sprint.judgements`, `sprint.cursors` and
+`events.policy`. Nothing is owed to a later layer; a later column arrives with
+a schema version bump and a design change, never as a special case. The
+`cards_fixed` trigger fixes `id`, `epoch`, `kind`, `of`, `stream`, `holder`
+and `tier` once a card exists, and rows and streams have their name and epoch
+fixed the same way; a consumer's `stream` equals its producer's. The schema
+hash in `sprint.meta` is taken over the schema text with comments and blank
+lines stripped, so a comment edit refuses no store.
 
 `Replay` returns `(receipt, found, err)`: `found` is false when no event has
 that id. A refused event has no before or after images; rebuild folds only
