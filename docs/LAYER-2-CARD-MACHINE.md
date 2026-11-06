@@ -10,7 +10,7 @@ snapshot; layer 5 (policy) decides *when* to raise an event; this layer says
 
 ## The card states
 
-The six states Glenn locked on 2026-09-29, plus `left`:
+The six states Glenn locked on 2026-09-29, plus `fail`:
 
 | state | meaning | holder |
 |---|---|---|
@@ -20,7 +20,7 @@ The six states Glenn locked on 2026-09-29, plus `left`:
 | `review` | finished with a head; a read is owed or in progress | none until a reader is dealt, then the reader |
 | `merging` | a read said yes to this head; landing in progress | none |
 | `landed` | the head is on the base branch; **final** | none |
-| `left` | stopped any other way (cancelled, replaced, a need left); **final**, reason kept | none |
+| `fail` | stopped any other way (cancelled, replaced, a need failed); **final**, reason kept | none |
 
 Two columns arrive with this layer, schema version 2: `author text` (the row
 whose work the card's head is; set on finish, kept through review, merging
@@ -38,23 +38,23 @@ on the snapshot the event was built from) plus the conditions named.
 | event | from | to | writes | extra conditions |
 |---|---|---|---|---|
 | `Resolve` | waiting | ready | state | `NeedsLanded(card)` |
-| `Deal{row, branch, base}` | ready | working | state, holder=row, attempt+1, branch, base_sha, reason="" | row `up`, `RowUnder(row)`, stream not held |
+| `Deal{row, branch, base}` | ready | working | state, holder=row, attempt+1, branch, base_sha, reason="" | row `up`, stream not held (width is enforced by the holder write) |
 | `Finish{row, head}` | working | review | state, holder=none, author=row, head | holder is `row` |
-| `DealRead{row}` | review, holder none | review | holder=row | row `up`, `RowUnder(row)`, row != author |
+| `DealRead{row}` | review, holder none | review | holder=row | row `up`, row != author (width is enforced by the holder write) |
 | `ReadYes{row, head}` | review, holder row | merging | state, holder=none | head equals the card's head |
 | `ReadFix{row, head, reason}` | review, holder row | ready | state, holder=none, reason | head equals the card's head; score untouched |
 | `Landed{head}` | merging | landed | state | head equals the card's head |
 | `Red{head, reason}` | merging | review | state, holder=none, reason | head equals the card's head |
 | `Release{reason}` | working, or review with a reader | ready, or review with holder none | holder=none, reason; attempt kept | |
-| `Cancel{reason}` | any non-final | left | state, holder=none, reason | |
-| `Replace{by, reason}` | any non-final | left | state, holder=none, reason naming `by` | |
-| `NeedLeft{need}` | any non-final | left | state, holder=none, reason naming the need | `need` is in the card's needs |
+| `Cancel{reason}` | any non-final | fail | state, holder=none, reason | |
+| `Replace{by, reason}` | any non-final | fail | state, holder=none, reason naming `by` | |
+| `NeedFailed{need}` | any non-final | fail | state, holder=none, reason naming the need | `need` is in the card's needs |
 | `Rescore{score}` | any non-final | same | score | |
 
 Rules the table encodes, so they are checked by the model and tested one by
 one:
 
-- `landed` and `left` are final: no event moves them, including `Rescore`.
+- `landed` and `fail` are final: no event moves them, including `Rescore`.
 - A red CI result never advances a card; it retreats `merging → review` and
   is reported (layer 3 raises the notification; this layer only moves).
 - A fix keeps the score, so a fixed card is at the head of its queue without
@@ -68,7 +68,7 @@ one:
 - A row going down does **not** take back its cards. `Release` is a separate
   event that policy raises after a silence it has stated; the engine offers
   the move and never decides the silence (Johnny, Emma, 2026-11-06).
-- A need going `left` takes its dependants: layer 3 raises `NeedLeft` for
+- A need going `fail` takes its dependants: layer 3 raises `NeedFailed` for
   every card whose needs name it, in the same tick.
 
 ## The row machine
@@ -87,14 +87,14 @@ state never moves a card by itself.
 
 ## What it refuses, naming the fix
 
-- A move from `landed` or `left`: "card X is landed; nothing moves a landed card".
+- A move from `landed` or `fail`: "card X is landed; nothing moves a landed card".
 - An event whose from-state does not match: "card X is in review, Finish needs working".
 - A finish, read or release by a row that is not the holder: "card X is held by r1, not r2".
 - A head that is not a full 40-hex commit: "head abc is not a full commit sha".
 - A read result for a head that is not the card's: "card X is at head H1, the read was of H2".
 - A read dealt to the author: "r1 wrote card X and may not read it".
 - A deal to a row that is down or blocked, or to a held stream.
-- `NeedLeft` naming a card that is not a need of this card.
+- `NeedFailed` naming a card that is not a need of this card.
 - `Flapped` below the limit; `Unblock` of a row that is not blocked.
 
 A refusal is a value (`Refusal{Reason}`), never an error; the step layer logs
@@ -102,14 +102,14 @@ it through layer 1 as a refused op so it is visible.
 
 ## How it is checked
 
-- `tla/CardMachine.tla`: one card (or two, for `NeedLeft`), two rows, the
+- `tla/CardMachine.tla`: one card (or two, for `NeedFailed`), two rows, the
   events above as actions, with holder, author, attempt and head as
   variables. Invariants: final states never move; holder is none in waiting,
-  ready, merging, landed and left; in review the holder is never the author;
+  ready, merging, landed and fail; in review the holder is never the author;
   in working the holder is set; attempt rises only on Deal; red never reaches
-  merging or landed; a card whose need is left is left; one holder. Reversed
+  merging or landed; a card whose need failed is failed; one holder. Reversed
   witnesses, each a required violation: a landed card moving; the author
-  reading their own work; red CI advancing; a need-left card staying ready; a
+  reading their own work; red CI advancing; a need-failed card staying ready; a
   release that bumps attempt; a finish by a non-holder accepted.
 - Unit tests, package `card`: every row of both tables accepted once and
   refused from every other state; every refusal above with its exact reason;

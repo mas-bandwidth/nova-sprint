@@ -74,8 +74,8 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
 ### Card states
 
 The closed set, locked by Glenn 2026-09-29 plus one exit: `waiting`, `ready`,
-`working`, `review`, `merging`, `landed`, `left`. `landed` means the code is on
-the base branch and is final. `left` is the record of a card that stopped any
+`working`, `review`, `merging`, `landed`, `fail`. `landed` means the code is on
+the base branch and is final. `fail` is the record of a card that stopped any
 other way (cancelled, replaced, its need failed) with the reason kept. Which
 transitions are legal is layer 2's; this layer only refuses a state outside the
 set. (The flapping row goes to row state `blocked`; that is a row state, not a
@@ -105,11 +105,8 @@ writes), `Note` (kept in the receipt).
 Conditions (`Expect`): card `X` is at gen `G`; card `X` is in state `S`; card
 `X` has holder `R` (or none); every need of card `X` is `landed` (read from the
 card's own `needs` inside the transaction, never from a caller's list); row
-`R` is in state `S`; row `R` is under its width (the holders counted and the
-width read inside the transaction, from the row itself, never from the
-caller, so two deals cannot overfill a row and a stale width cannot be
-asserted); stream `S` is
-held or not held; card `X` does not exist; the store is at seq `N` (a fence
+`R` is in state `S`; stream `S` is held or not held; card `X` does not exist;
+the store is at seq `N` (a fence
 for a plan that needs nothing at all to have changed since its snapshot). The
 op's epoch must equal the store's epoch; a mismatch is a refusal. Every
 condition is checked inside the same transaction as the writes, against the
@@ -119,14 +116,22 @@ Writes (closed set), one field each: put stream (insert or overwrite: repo,
 base, pos; `pos` is the order streams land in); set stream held; put card
 (add: stream, score, needs, brief; refused if the card exists; every need must
 name a different card of the same epoch, no duplicates); set card state; set
-card holder (a name or none); set card attempt; set card branch; set card
-head; set card pr; set card reason; set card score; set card needs; put row
-(insert or overwrite: kind, width, session); set row state; set row session;
-set row flaps; put policy version; set active policy version (deactivates the
-one active before it in the same transaction). An op that writes a card raises
-that card's gen by one, however many of its writes touch the card: gen counts
-the operations that changed the card. Put row refuses a width below the
-number of cards the row holds, so holders never exceed width by any path.
+card holder (a name or none: setting a name is refused when that row already
+holds as many cards as its width, counted at the moment of the write, so one
+op with two holder writes to a width-one row is refused on the second and
+nothing lands; there is no separate width condition, the write is the check);
+set card attempt; set card branch; set card head; set card pr; set card
+reason; set card score; set card needs; put row (insert or overwrite: kind,
+width, session); set row state; set row session; set row flaps; put policy
+version; set active policy version (deactivates the one active before it in
+the same transaction). An op that writes a card raises that card's gen by
+one, however many of its writes touch the card: gen counts the operations
+that changed the card. Put row refuses a width below the number of cards the
+row holds. Together, the two refusals make "holders never exceed width" true
+by every path. Every integer a write carries must fit the column
+(PostgreSQL `integer`, 32-bit signed); a value outside it is `ErrInvalid`
+from Fake and PG alike, never `ErrUnknown`. A snapshot is the caller's own
+copy: editing it never changes the store (the Fake copies every slice).
 Set card needs follows the add rule (other cards of the same epoch, no
 duplicates); a cycle through needs is layer 2's refusal. The op's epoch is
 checked on a clear too: a clear names the epoch it closes, so a retried clear
