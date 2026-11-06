@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# CI run of the store model: bash tla/ci-tlc.sh
+# CI run of the store model (layer 1) and the card machine (layer 2):
+# bash tla/ci-tlc.sh
 #
 # Runs TLC once per module, all in parallel, each in its own invocation:
 #   Store.tla with Store.cfg and with StoreRecords.cfg (the two scenarios)
 #                                      must pass            (TLC exit 0)
+#   CardMachine.tla with CardMachine.cfg, CardDeps.cfg and CardPreempt.cfg
+#     (its three scenarios)            must pass            (TLC exit 0)
 #   witnesses/*.tla with their .cfg    must report a violation (TLC exit 12)
-#   Store.tla with reach/*.cfg         must report a violation (TLC exit 12)
-# Exits non-zero if Store fails, if any witness or reach run passes, or if any
+#   reach/*.cfg                        must report a violation (TLC exit 12):
+#     reach/Card*.cfg on CardMachine.tla, every other one on Store.tla
+# Exits non-zero if a model fails, if any witness or reach run passes, or if any
 # run ends any other way (a parse error, a crash, a timeout is not a violation).
 # Run it on a bench host, never on the working machine.
 #
@@ -94,6 +98,9 @@ run() {
 
 run Store pass . Store.cfg Store.tla 4
 run StoreRecords pass . StoreRecords.cfg Store.tla 4
+run CardMachine pass . CardMachine.cfg CardMachine.tla 4
+run CardDeps pass . CardDeps.cfg CardMachine.tla 4
+run CardPreempt pass . CardPreempt.cfg CardMachine.tla 4
 
 for f in "$HERE"/witnesses/*.tla; do
     m="$(basename "$f" .tla)"
@@ -103,7 +110,11 @@ done
 
 for f in "$HERE"/reach/*.cfg; do
     m="$(basename "$f" .cfg)"
-    run "reach-$m" violate . "reach/$m.cfg" Store.tla 1
+    case "$m" in
+        Card*) mod=CardMachine.tla ;;   # the card machine's reach checks
+        *) mod=Store.tla ;;
+    esac
+    run "reach-$m" violate . "reach/$m.cfg" "$mod" 1
 done
 
 wait
