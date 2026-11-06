@@ -34,19 +34,27 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
   the snapshot shows only the current epoch's rows. Nothing is deleted.
 - `sprint.streams`: `name text`, `repo text`, `base text`, `held boolean`,
   `pos integer`, `epoch integer`. Primary key `(epoch, name)`.
-- `sprint.cards`: `id text`, `stream text`, `state text NOT NULL`,
-  `gen integer`, `score integer`, `needs text[]`, `holder text` (nullable),
-  `head text`, `pr integer`, `brief text`, `reason text`, `epoch integer`.
-  Primary key `(epoch, id)`. `state` is checked against the closed set below.
-  `(epoch, stream)` references `streams`; `(epoch, holder)` references `rows`.
-  `gen` starts at 0 and goes up by one on every write to the card (state,
-  holder, head and pr, reason, score), so an expectation on gen catches any
-  change. `score` is the work order: set at add, changed only by the explicit
-  score write, never by a move.
+- `sprint.cards`: `id text`, `stream text`, `state text`, `gen integer`,
+  `attempt integer`, `score integer`, `needs text[]`, `holder text`
+  (nullable), `branch text`, `head text`, `pr integer`, `brief text`,
+  `reason text`, `epoch integer`. Primary key `(epoch, id)`. Every column but
+  `holder` is `NOT NULL` (text defaults to the empty string, `pr` to 0).
+  `state` is checked against the closed set below. `(epoch, stream)`
+  references `streams`; `(epoch, holder)` references `rows`. `gen` starts at 0
+  and goes up by one on every write to the card, so an expectation on gen
+  catches any change; it is a version, not an attempt. `attempt` is the
+  number of the attempt the holder is on, raised only by its own write when
+  a new attempt starts (layer 2 says when). `score` is the work order: set at
+  add, changed only by the explicit score write, never by a move. A card is
+  added in state `waiting`, gen 0, attempt 0, no holder.
 - `sprint.rows`: `name text`, `kind text` (`worker` or `kin`), `width integer`,
   `state text` (`up`, `down`, `blocked`), `session text` (the hook's session,
-  so a late heartbeat from an old session can be told apart), `seen
-  timestamptz`, `flaps integer`, `epoch integer`. Primary key `(epoch, name)`.
+  so a late report from an old session can be told apart), `flaps integer`,
+  `epoch integer`. Primary key `(epoch, name)`; every column `NOT NULL`;
+  `kind` and `state` checked against their sets. There is no heartbeat column
+  and no heartbeat op: presence is the bus's fact (`nova-bus who`), read by
+  the run loop at tick time; the store records a row's state only when it
+  changes. v1 filled its log with heartbeats.
 - `sprint.events`: `seq bigint`, `op text unique`, `actor text`, `kind text`,
   `accepted boolean`, `reason text`, `before jsonb`, `after jsonb`,
   `receipt jsonb`, `at timestamptz`, `epoch integer`. Append-only. One row per
@@ -95,21 +103,30 @@ never `now()` in SQL), `Expect` (conditions), `Writes` (a closed set of typed
 writes), `Note` (kept in the receipt).
 
 Conditions (`Expect`): card `X` is at gen `G`; card `X` is in state `S`; card
-`X` has holder `R` (or none); row `R` is in state `S`; stream `S` is held or
-not held; card `X` does not exist; the store is at seq `N` (a fence for a plan
-that needs nothing at all to have changed since its snapshot). The op's epoch
-must equal the store's epoch; a mismatch is a refusal. Every condition is
-checked inside the same transaction as the writes, against the rows as they
-are at that moment.
+`X` has holder `R` (or none); every need of card `X` is `landed` (read from the
+card's own `needs` inside the transaction, never from a caller's list); row
+`R` is in state `S`; row `R` holds fewer than `W` cards (holders counted
+inside the transaction, so two deals cannot overfill a row); stream `S` is
+held or not held; card `X` does not exist; the store is at seq `N` (a fence
+for a plan that needs nothing at all to have changed since its snapshot). The
+op's epoch must equal the store's epoch; a mismatch is a refusal. Every
+condition is checked inside the same transaction as the writes, against the
+rows as they are at that moment.
 
-Writes (closed set): put stream (insert or overwrite); set stream held; put
-card (add; refused if the card exists; every need must name a card of the same
-epoch); set card state; set card holder (a name or none); set card head and
-pr; set card reason; set card score; put row (insert or overwrite); set row
-state, session, seen, flaps; put policy version; set active policy version.
-Every card write raises gen by one. A set write whose target does not exist is
-a refusal. Writes in one op apply in order, so a later write sees a row an
-earlier one put. Two writes to one field in one op are invalid.
+Writes (closed set), one field each: put stream (insert or overwrite: repo,
+base, pos; `pos` is the order streams land in); set stream held; put card
+(add: stream, score, needs, brief; refused if the card exists; every need must
+name a different card of the same epoch, no duplicates); set card state; set
+card holder (a name or none); set card attempt; set card branch; set card
+head; set card pr; set card reason; set card score; set card needs; put row
+(insert or overwrite: kind, width, session); set row state; set row session;
+set row flaps; put policy version; set active policy version (deactivates the
+one active before it in the same transaction). Every card write raises gen by
+one. A set write whose target does not exist is a refusal. Writes in one op
+apply in order, so a later write sees a row an earlier one put. Two writes to
+one field in one op are invalid. `kind` on the op is a label for the log; the
+writes are the truth, and rebuild reads the writes' after-images, never the
+label.
 
 Writers run one at a time: `Apply` and `Clear` begin by taking one lock
 (`LOCK TABLE sprint.epoch`) and hold it to commit, at `READ COMMITTED`. A
@@ -151,9 +168,21 @@ applies with one id are serialized by the lock; the second sees the event row
 and returns the first's receipt.
 
 `Clear` is an `Op` with kind `clear`, no writes, and at most the seq fence as
-a condition. It is idempotent by id, logged, and its receipt carries the new
-epoch. Streams, cards and rows of the old epoch stay readable through `Events`
-and are not in the next `Snapshot`; policy is kept.
+a condition. It is idempotent by id, logged with the epoch it closed, and its
+receipt carries the new epoch. Streams, cards and rows of the old epoch stay
+readable through `Events` and are not in the next `Snapshot`; policy is kept.
+Nothing is ever deleted: a clear opens a new epoch, it does not remove the
+old one.
+
+`Replay` returns `(receipt, found, err)`: `found` is false when no event has
+that id. A refused event has no before or after images; rebuild folds only
+accepted events. `Events` crosses epochs (each event carries its epoch, the
+clear event included), so a tail sees the clear.
+
+One PostgreSQL role, `sprint`, owns the schema and is the only writer; the
+run loop and the verbs connect as it. Workers, kin and the bus never get the
+DSN: they talk to the store only through the engine's verbs. Making the role
+is nova-fleet's postgres play (layer 6 adds the row).
 
 ## What it guarantees
 
