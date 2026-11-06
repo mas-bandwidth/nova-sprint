@@ -50,3 +50,11 @@ of instructions. The gate before v2 is called done: an AI with no memory of
 this project takes a fresh fleet (VMs are enough) from zero to a running
 sprint with a dashboard, using only docs/README.md and the tool's own help,
 and then does it again. Simple and repeatable, or not done.
+
+Glenn, 2026-11-06, the dogfood gate in his words: "we need to dogfood the new user
+experience at least once, that means we set up our own sprint with it, and we
+successfully run that sprint with the dashboard working and it works." So two
+runs are owed before v2 is done: a cold AI's setup on a fresh fleet from the
+docs alone (above), and our own real sprint set up with v2 through this same
+walkthrough, run to completion with the dashboard live, by Rowan and the kin as
+rows.
