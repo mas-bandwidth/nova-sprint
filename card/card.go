@@ -27,6 +27,7 @@ type Card struct {
 	Finding                     string // a producer: the last read's finding; a work consumer: the producer's at cut
 	Bounces                     int
 	Review                      int // a producer: its entries into review; a read: the producer's at cut
+	PR                          int // 1 after a Red, cleared by Finished and Start. result cannot hold "red"
 	Cost                        int64
 	Priced                      bool
 	Brief                       string // the brief as given: immutable, copied to each consumer at cut
@@ -52,27 +53,17 @@ type Stream struct {
 
 // Plan is what a legal move writes: layer 1's conditions and writes, applied
 // as one op. Every card the move reads is fenced by its gen, every row by its
-// gen, plus the conditions the design names.
+// gen, plus the conditions the design names. A plan the machine built also
+// carries, unexported, the move that built it, so Merge can run that move
+// again after the plans ahead of it have been folded in.
 type Plan struct {
 	Expect []store.Expect
 	Writes []store.Write
-}
 
-// Merge is plans applied as one op, in order (a preemption: the withdraw of
-// the youngest consumer and the start of the blocker). It runs the same
-// value checks as one plan, and refuses two writes to one field, so a merged
-// plan is never store.ErrInvalid (the second cold read of layer 2). Several
-// reads of one head are AskReads, not two AskReads merged.
-func Merge(plans ...Plan) (Plan, *Refusal) {
-	var m Plan
-	for _, p := range plans {
-		m.Expect = append(m.Expect, p.Expect...)
-		m.Writes = append(m.Writes, p.Writes...)
-	}
-	if r := dupWrites(m.Writes); r != nil {
-		return Plan{}, r
-	}
-	return checked(m)
+	label   string  // the move, for a merge refusal: "Relink p1"
+	seen    records // the records the move read
+	again   rerun   // the move, run again against folded records; nil if hand-built
+	replays int     // how many later moves a Merge ran again
 }
 
 // Refusal is an illegal move, as a value: the reason names the fix.
@@ -97,8 +88,9 @@ type (
 	ReadYes  struct{}
 	ReadFix  struct{ Finding string } // the read's finding, kept in its own column
 	// WaiveRed moves a producer a Red sent back to review on to merging
-	// without a new read, when a done ok read of the previous review at the
-	// same head exists. Who may waive is layer 3's; the event carries no actor.
+	// without a new read, when that Red is still recorded and a done ok read
+	// of the previous review at the same head exists. Who may waive is layer
+	// 3's; the event carries no actor.
 	WaiveRed struct{ Reason string }
 	Landed   struct{ Head string }
 	Red      struct{ Head, Reason string } // review +1: reads before it no longer count
@@ -172,7 +164,7 @@ func FromStore(c store.Card) Card {
 	return Card{ID: c.ID, Kind: c.Kind, Of: c.Of, Stream: c.Stream, State: c.State, Gen: c.Gen, Attempt: c.Attempt, Priority: c.Priority,
 		Tier: c.Tier, Score: c.Score, Needs: c.Needs, After: c.After, Holder: c.Holder, Author: c.Author, Branch: c.Branch,
 		BaseSHA: c.BaseSHA, PriorHead: c.Prior, Head: c.Head, Result: c.Result, Reason: c.Reason, Finding: c.Finding,
-		Bounces: c.Bounces, Review: c.Review, Cost: c.Cost, Priced: c.Priced, Brief: c.Brief, Prose: c.Prose, Paths: c.Paths, DoneWhen: c.DoneWhen}
+		Bounces: c.Bounces, Review: c.Review, PR: c.PR, Cost: c.Cost, Priced: c.Priced, Brief: c.Brief, Prose: c.Prose, Paths: c.Paths, DoneWhen: c.DoneWhen}
 }
 
 // RowFromStore is a store row as the machine reads it.

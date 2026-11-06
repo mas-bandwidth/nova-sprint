@@ -204,6 +204,8 @@ func cardValue(w store.Write) (string, func(v *vals)) {
 				v.fail("cost %d is below 0", x.Cost)
 			}
 		}
+	case store.SetCardPR:
+		return x.Card, func(v *vals) { v.num("pr", x.PR) }
 	}
 	return "", nil
 }
@@ -215,6 +217,9 @@ func dupWrites(ws []store.Write) *Refusal {
 	for _, w := range ws {
 		for _, f := range writeFields(w) {
 			if seen[f] {
+				if f[2] == "kind" {
+					return no("a second write to %s %s field %s; one op writes a field once; several reads of one head are AskReads", f[0], f[1], f[2])
+				}
 				return no("a second write to %s %s field %s; one op writes a field once", f[0], f[1], f[2])
 			}
 			seen[f] = true
@@ -288,6 +293,8 @@ func oneField(w store.Write) (id, col string, ok bool) {
 		return x.Card, "bounces", true
 	case store.SetCardCost:
 		return x.Card, "cost", true
+	case store.SetCardPR:
+		return x.Card, "pr", true
 	}
 	return "", "", false
 }

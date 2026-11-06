@@ -34,7 +34,13 @@ func MoveAdd(e Add, cards map[string]Card) (Plan, *Refusal) {
 	put := store.PutCard{ID: e.ID, Kind: e.Kind, Stream: e.Stream, Tier: e.Tier, Priority: e.Priority, Score: e.Score,
 		Needs: slices.Clone(e.Needs), After: slices.Clone(e.After), Brief: e.Brief, Prose: e.Prose,
 		Paths: slices.Clone(e.Paths), DoneWhen: slices.Clone(e.DoneWhen)}
-	return checked(Plan{Expect: []store.Expect{store.CardAbsent{Card: e.ID}}, Writes: []store.Write{put}})
+	seen := records{cards: map[string]Card{}}
+	for _, c := range cards {
+		addCard(seen, c)
+	}
+	return finish(Plan{Expect: []store.Expect{store.CardAbsent{Card: e.ID}}, Writes: []store.Write{put}}, "Add "+e.ID, seen, func(cur records) (Plan, *Refusal) {
+		return MoveAdd(e, cardsOr(cur, cards))
+	})
 }
 
 func addShape(e Add, cards map[string]Card) *Refusal {
