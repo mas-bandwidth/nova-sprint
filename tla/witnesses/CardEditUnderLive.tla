@@ -20,9 +20,11 @@
 (*   for a fix, a Red and a re-deal: the whole lifecycle.                  *)
 (* - "deps": producers p1 and p2 (p2 needs p1) and s (s needs p2): needs,  *)
 (*   NeedFailed, Waive, Relink and the cycle check.                        *)
-(* - "pre": p1 and p2 independent, p2 names p1 in after, s needs both: a   *)
+(* - "pre": p1 and p2 independent, p2 names p1 in after, no sentinel: a    *)
 (*   blocker can only preempt the consumer of another producer live at    *)
 (*   the same time, and after only orders two producers queued together.  *)
+(*   Its environment budget goes to SetPriority, the row table and the     *)
+(*   stream's hold; Edit and Rescore are checked in the other two.         *)
 (* A sentinel has no consumers.                                            *)
 (*                                                                         *)
 (* Consumers are slots: producer p's i-th cut consumer is <<p, i>>, for i  *)
@@ -64,7 +66,7 @@ CONSTANTS
   MaxEnv       \* model bound: environment and coordinator moves per behaviour
 
 Prods     == IF Scenario = "life" THEN {"p1"} ELSE {"p1", "p2"}   \* producers with work
-Sentinels == {"s"}
+Sentinels == IF Scenario = "pre" THEN {} ELSE {"s"}
 P         == Prods \cup Sentinels
 Rows      == {"r1", "r2"}
 CIds      == Prods \X (1..K)
@@ -73,7 +75,7 @@ ConsOf(p) == IF p \in Prods THEN {<<p, i>> : i \in 1..K} ELSE {}
 Needs0 == CASE Scenario = "life" -> [p \in P |-> IF p = "s" THEN {"p1"} ELSE {}]
             [] Scenario = "deps" ->
                  [p \in P |-> CASE p = "p2" -> {"p1"} [] p = "s" -> {"p2"} [] OTHER -> {}]
-            [] OTHER -> [p \in P |-> IF p = "s" THEN {"p1", "p2"} ELSE {}]
+            [] OTHER -> [p \in P |-> {}]
 After  == IF Scenario = "pre"
           THEN [p \in P |-> IF p = "p2" THEN {"p1"} ELSE {}]
           ELSE [p \in P |-> {}]
@@ -510,8 +512,8 @@ CardMove ==
 \* The environment and coordinator moves, on the MaxEnv budget.
 EnvMove ==
   \/ \E p \in P :
-       \/ Edit(p)
-       \/ \E s \in 0..1 : Rescore(p, s)
+       \/ Scenario # "pre" /\ Edit(p)
+       \/ Scenario # "pre" /\ \E s \in 0..1 : Rescore(p, s)
        \/ \E l \in Prios : SetPriority(p, l)
   \/ \E r \in Rows :
        \/ Seen(r) \/ Gone(r) \/ Hold(r) \/ Unhold(r)
