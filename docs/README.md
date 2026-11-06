@@ -1,5 +1,9 @@
 # nova-sprint: a guide for AIs
 
+nova-sprint is about getting a lot of unrelated work done quickly (Glenn,
+2026-11-06). Unrelated is what parallelizes; a card is one-off work in a
+fresh context; the whole is seen afterwards, by hand, over the message bus.
+
 nova-sprint is being rewritten from an empty tree, one layer at a time from
 the bottom. This page grows a section per layer as each is secured, with the
 lines the first try prints and the refusal you are most likely to meet.
