@@ -224,6 +224,16 @@ func (t *pgTx) working(row string) (int, error) {
 	return n, err
 }
 
+func (t *pgTx) needed(row string, tiers []string) (Card, bool, error) {
+	var c Card
+	err := t.tx.QueryRow(t.ctx, "SELECT id, tier FROM sprint.cards WHERE epoch = $1 AND holder = $2 AND state IN ('ready', 'working') AND NOT tier = ANY(coalesce($3::text[], '{}')) ORDER BY id LIMIT 1",
+		t.epoch, row, tiers).Scan(&c.ID, &c.Tier)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Card{}, false, nil
+	}
+	return c, err == nil, err
+}
+
 func (t *pgTx) lastSeq() (int64, error) {
 	var n int64
 	err := t.tx.QueryRow(t.ctx, "SELECT coalesce(max(seq), 0) FROM sprint.events").Scan(&n)

@@ -3,8 +3,6 @@ package store
 import (
 	"cmp"
 	"fmt"
-	"slices"
-	"strings"
 )
 
 // txn is one transaction as the shared rules see it, run with the writer
@@ -17,7 +15,8 @@ type txn interface {
 	row(name string) (Row, bool, error)
 	policy(version int) (PolicyVersion, bool, error)
 	policies() (last int, active []PolicyVersion, err error)
-	working(row string) (int, error) // cards in working whose holder is row: what width counts
+	working(row string) (int, error)                       // cards in working whose holder is row: what width counts
+	needed(row string, tiers []string) (Card, bool, error) // the live (ready or working) consumer held by row, lowest id, whose tier is not in tiers
 	lastSeq() (int64, error)
 	rows() ([]Row, error) // every row of the epoch
 	open() error          // epoch n = n + 1; later puts go to the new epoch
@@ -211,9 +210,6 @@ func (w *work) expect(e Expect) (string, error) {
 	case AtSeq:
 		seq, err := w.tx.lastSeq()
 		return when(seq != c.Seq, "the store is at seq %d, expected seq %d", seq, c.Seq), err
-	case RowServes:
-		row, r, err := w.mustRow(c.Row)
-		return cmp.Or(r, when(err == nil && !slices.Contains(row.Tiers, c.Tier), "row %s serves %s; card needs %s", c.Row, tierList(row.Tiers), c.Tier)), err
 	case JudgementOpen:
 		j, r, err := w.mustJudgement(c.ID)
 		return cmp.Or(r, when(err == nil && j.State != "open", "judgement %s is %s, expected open", c.ID, j.State)), err
@@ -267,9 +263,6 @@ func (w *work) mustJudgement(id string) (Judgement, string, error) {
 	j, ok, err := w.tx.judgement(id)
 	return j, when(err == nil && !ok, "judgement %s does not exist", id), err
 }
-
-// tierList is a row's tiers for a reason: "flash,pro", or none.
-func tierList(tiers []string) string { return cmp.Or(strings.Join(tiers, ","), "none") }
 
 func (w *work) mustStream(name string) (Stream, string, error) {
 	s, ok, err := w.tx.stream(name)

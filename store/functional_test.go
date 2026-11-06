@@ -220,7 +220,7 @@ func TestFunctionalConcurrentTakes(t *testing.T) {
 	t.Parallel()
 	h, p, _ := pgHarness(t)
 	h.seed()
-	h.ok(h.op("wide", nil, PutRow{Name: "w1", Kind: "worker", Width: 10, Session: "sess-a"})) // room for every take: the take checks width
+	h.ok(h.op("wide", nil, PutRow{Name: "w1", Kind: "worker", Width: 10, Session: "sess-a", Tiers: []string{"pro"}})) // room for every take: the take checks width
 	for i := range 10 {
 		id := fmt.Sprintf("k%d", i)
 		h.ok(h.op("add", nil, PutCard{Tier: "pro", Kind: "work", ID: id, Of: "c1", Stream: "s1", Holder: "w1"}))
@@ -246,7 +246,7 @@ func TestFunctionalWidthRace(t *testing.T) {
 	h.seed()
 	for i := range 10 {
 		row := fmt.Sprintf("r%d", i)
-		h.ok(h.op("row", nil, PutRow{Name: row, Kind: "worker", Width: 1}, SetRowState{row, "up"}, PutCard{Tier: "pro", Kind: "work", ID: row + "a", Of: "c1", Stream: "s1", Holder: row}, PutCard{Tier: "pro", Kind: "work", ID: row + "b", Of: "c1", Stream: "s1", Holder: row}))
+		h.ok(h.op("row", nil, PutRow{Name: row, Kind: "worker", Width: 1, Tiers: []string{"pro"}}, SetRowState{row, "up"}, PutCard{Tier: "pro", Kind: "work", ID: row + "a", Of: "c1", Stream: "s1", Holder: row}, PutCard{Tier: "pro", Kind: "work", ID: row + "b", Of: "c1", Stream: "s1", Holder: row}))
 		deal := func(card string) Op {
 			return h.op("deal", []Expect{RowIs{row, "up"}, CardHolder{card, row}}, SetCardState{card, "working"})
 		}

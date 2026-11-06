@@ -3,15 +3,11 @@ package store
 import "time"
 
 // Expect is a condition: one of CardGen, CardState, CardHolder, NeedsLanded,
-// RowIs, RowGen, RowHeld, RowServes, StreamHeld, CardAbsent, JudgementOpen,
-// AtSeq. There is no width condition: the state write into working is the
-// check. The set is closed by the unexported method; any other value is
-// ErrInvalid.
+// RowIs, RowGen, RowHeld, StreamHeld, CardAbsent, JudgementOpen, AtSeq. There
+// is no width condition and no tier condition: the writes are the checks (the
+// state write into working for width, put card for the holder's tiers). The
+// set is closed by the unexported method; any other value is ErrInvalid.
 type Expect interface{ isExpect() }
-
-// RowServes holds when row Row serves tier Tier (one of its tiers, read from
-// the row inside the transaction).
-type RowServes struct{ Row, Tier string }
 
 // JudgementOpen holds when judgement ID is open: it fences a judgement plan
 // (a judgement has no gen).
@@ -72,7 +68,6 @@ func (RowHeld) isExpect()       {}
 func (StreamHeld) isExpect()    {}
 func (CardAbsent) isExpect()    {}
 func (AtSeq) isExpect()         {}
-func (RowServes) isExpect()     {}
 func (JudgementOpen) isExpect() {}
 
 // Write is one write. The set is closed by the unexported method; any other

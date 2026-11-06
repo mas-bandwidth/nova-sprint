@@ -128,10 +128,12 @@ making sure the right models did the work"): on cards, `tier text` (one of
 the four; a producer's, set at add from the brief; a consumer inherits its
 producer's at add); on rows, `tiers text[]` (the tiers this row serves; a
 bench row's from its model, a kin's from its own word), with `model text` and
-`harness text` as labels for policy and the dashboard. Condition: row `R`
-serves tier `T` (read from the row inside the transaction), so a deal to a
-row that does not serve the card's tier is refused by the store, never by
-layer 2's good behaviour. And the card contract's structured fields as
+`harness text` as labels for policy and the dashboard. The put-card write
+refuses a consumer whose holder row does not serve its tier (read from the
+row inside the transaction), as does a move into ready or working, and the
+row writes refuse to drop a tier a live consumer of the row needs, so a
+consumer on a row that does not serve its tier is refused by the store,
+never by layer 2's good behaviour. And the card contract's structured fields as
 columns, since the table is the structure: `paths text[]`, `done_when
 text[]`, and `prose text` (the task a mind reads), beside `brief text` which
 keeps the whole brief as given.

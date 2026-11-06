@@ -253,6 +253,16 @@ func (t *fakeTx) working(row string) (int, error) {
 	return n, nil
 }
 
+func (t *fakeTx) needed(row string, tiers []string) (Card, bool, error) {
+	var found Card
+	for k, c := range t.st.cards {
+		if k.epoch == t.st.epoch && c.Holder == row && (c.State == "ready" || c.State == "working") && !slices.Contains(tiers, c.Tier) && (found.ID == "" || c.ID < found.ID) {
+			found = c
+		}
+	}
+	return found, found.ID != "", nil
+}
+
 func (t *fakeTx) lastSeq() (int64, error) { return int64(len(t.events)), nil }
 
 func (t *fakeTx) rows() ([]Row, error) {

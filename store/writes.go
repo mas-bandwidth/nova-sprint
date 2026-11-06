@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"slices"
+	"strings"
 )
 
 // write performs one write, or returns the reason it is refused.
@@ -68,6 +69,9 @@ func (w *work) writePutRow(v PutRow) (string, error) {
 		if r, err := w.widthFits(v.Name, v.Width); r != "" || err != nil {
 			return r, err
 		}
+		if r, err := w.tiersFit(v.Name, v.Tiers); r != "" || err != nil {
+			return r, err
+		}
 		next.State, next.Flaps, next.Held = old.State, old.Flaps, old.Held
 	}
 	return "", w.putRow(old, ok, next)
@@ -77,6 +81,14 @@ func (w *work) writePutRow(v PutRow) (string, error) {
 func (w *work) widthFits(row string, width int) (string, error) {
 	n, err := w.tx.working(row)
 	return when(err == nil && n > width, "row %s holds %s, more than width %d; wait for a card to finish before narrowing it", row, workingCards(n), width), err
+}
+
+// tiersFit refuses tiers that drop one a live (ready or working) consumer
+// held by the row needs, as widthFits refuses narrowing below its working
+// cards: a consumer's holder never changes, so its row keeps serving it.
+func (w *work) tiersFit(row string, tiers []string) (string, error) {
+	c, found, err := w.tx.needed(row, tiers)
+	return when(err == nil && found, "row %s holds consumer %s (%s); cannot drop %s", row, c.ID, c.Tier, c.Tier), err
 }
 
 // checkTiers refuses a tier outside the four, or one named twice.
@@ -116,8 +128,13 @@ func (w *work) writeRow(wr Write) (string, error) {
 	if r != "" || err != nil {
 		return r, err
 	}
-	if v, ok := wr.(SetRowWidth); ok {
+	switch v := wr.(type) {
+	case SetRowWidth:
 		if r, err := w.widthFits(name, v.Width); r != "" || err != nil {
+			return r, err
+		}
+	case SetRowTiers:
+		if r, err := w.tiersFit(name, v.Tiers); r != "" || err != nil {
 			return r, err
 		}
 	}
@@ -139,7 +156,10 @@ func (w *work) writeCard(wr Write) (string, error) {
 	switch v := wr.(type) {
 	case SetCardState:
 		r = oneOf("card state", v.State, CardStates)
-		if r == "" && card.Holder != "" && card.State != "working" && v.State == "working" {
+		if r == "" && card.Holder != "" && !live(card.State) && live(v.State) {
+			r, err = w.rowServes(card)
+		}
+		if r == "" && err == nil && card.Holder != "" && card.State != "working" && v.State == "working" {
 			r, err = w.rowFits(card.Holder)
 		}
 	case SetCardPaths:
@@ -194,9 +214,9 @@ func onlyFor(card Card, write, kinds string, ok bool) string {
 func consumer(kind string) bool { return kind == "work" || kind == "read" }
 
 // checkHolder is the holder at add, the only time it is set: a producer or
-// sentinel has none, and a consumer names a row of the epoch. The card is
-// added waiting, so it takes no room; width is checked when it moves into
-// working.
+// sentinel has none, and a consumer names a row of the epoch that serves its
+// tier (the row's tiers, read inside the transaction). The card is added
+// waiting, so it takes no room; width is checked when it moves into working.
 func (w *work) checkHolder(c Card) (string, error) {
 	switch {
 	case !consumer(c.Kind):
@@ -204,9 +224,23 @@ func (w *work) checkHolder(c Card) (string, error) {
 	case c.Holder == "":
 		return fmt.Sprintf("card %s is a consumer; a consumer names its holder row at add, and it never changes", c.ID), nil
 	}
-	_, r, err := w.mustRow(c.Holder)
-	return r, err
+	return w.rowServes(c)
 }
+
+// rowServes refuses a consumer whose holder row does not exist or does not
+// serve its tier, read now (earlier writes of the op included). It is checked
+// at add and on every move into ready or working, and tiersFit keeps a live
+// consumer's tier on its row, so a live consumer's row always serves it.
+func (w *work) rowServes(c Card) (string, error) {
+	row, r, err := w.mustRow(c.Holder)
+	return cmp.Or(r, when(err == nil && !slices.Contains(row.Tiers, c.Tier), "row %s serves %s; consumer needs %s", c.Holder, tierList(row.Tiers), c.Tier)), err
+}
+
+// live is a consumer state that holds its row's tier: ready or working.
+func live(state string) bool { return state == "ready" || state == "working" }
+
+// tierList is a row's tiers for a reason: "flash,pro", or none.
+func tierList(tiers []string) string { return cmp.Or(strings.Join(tiers, ","), "none") }
 
 // rowFits refuses a row that does not exist or has no room for one more
 // working card, counted now (earlier writes of the op included).

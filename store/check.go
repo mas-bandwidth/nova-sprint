@@ -144,8 +144,6 @@ func (c *checker) expect(e Expect) {
 		c.name(v.Stream)
 	case CardAbsent:
 		c.name(v.Card)
-	case RowServes:
-		c.name(v.Row).text(v.Tier)
 	case JudgementOpen:
 		c.name(v.ID)
 	case AtSeq:

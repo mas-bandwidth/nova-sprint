@@ -101,11 +101,11 @@ against; required, epochs start at 1), `Actor`, `Kind` (a label for the log),
 
 Conditions: `CardGen`, `CardState`, `CardHolder` (`""` is none), `NeedsLanded`
 (every need of the card, read from the card inside the transaction, is
-landed), `RowIs`, `RowGen`, `RowHeld`, `RowServes` (the row's tiers include
-the tier, read inside the transaction: "row r1 serves flash,pro; card needs
-heavy"), `StreamHeld`, `CardAbsent`, `JudgementOpen`, `AtSeq` (the last
-event's seq is N: nothing changed since a snapshot). There is no width
-condition: the state write into working is the check.
+landed), `RowIs`, `RowGen`, `RowHeld`, `StreamHeld`, `CardAbsent`,
+`JudgementOpen`, `AtSeq` (the last event's seq is N: nothing changed since a
+snapshot). There is no width condition and no tier condition: the writes are
+the checks (the state write into working for width; put card, the state
+write into ready or working, and the row writes for tiers).
 
 Cards are of two kinds. A `producer` is the work itself (it has needs, a
 branch, a head, a PR, a bounce count and a priority, and lands); it never has
@@ -142,9 +142,16 @@ tier"), and no write changes it. A row serves a set of tiers, `tiers`
 (each one of the four, once; a CHECK `tiers <@ '{flash,pro,heavy,frontier}'`,
 no function), with `model` and `harness` as labels for policy and the
 dashboard; `PutRow` takes them, `SetRowTiers` and `SetRowLabels` (model and
-harness, one field) change them and raise the row's gen. `RowServes` lets a
-deal refuse a row that does not serve the card's tier inside the
-transaction. Beside `brief`, which keeps the whole brief as given, a card
+harness, one field) change them and raise the row's gen. The writes keep
+every live consumer on a row that serves its tier, read inside the
+transaction: `PutCard` refuses a consumer whose holder row does not serve
+its tier ("row rflash serves flash; consumer needs heavy"), and so does a
+`SetCardState` that moves a consumer into ready or working; `SetRowTiers`,
+and `PutRow` on overwrite, refuse to drop a tier a live (ready or working)
+consumer held by the row needs ("row r1 holds consumer u3 (heavy); cannot
+drop heavy"), as narrowing is refused below the working cards. A waiting
+consumer holds no tier, so its row may drop it; it is checked again when it
+moves. Beside `brief`, which keeps the whole brief as given, a card
 carries the contract's structured fields: `paths`, `done_when` and `prose`;
 `PutCard` takes them, `SetCardPaths`, `SetCardDoneWhen` and `SetCardProse`
 change a producer's or sentinel's, and a consumer carries the copies it was
@@ -188,8 +195,8 @@ waiting, gen 0, attempt 0, result `""`; a producer or sentinel is refused an
 `of` and a holder, a sentinel a brief, a consumer needs, after, a priority
 other than normal, a missing holder, a tier other than its producer's and
 an `of` that is missing or is not a producer; the
-holder row must exist), `SetCardState` (a consumer moving into `working` is
-refused when its row already holds as many working cards as its width),
+holder row must exist and serve its tier), `SetCardState` (a consumer moving into ready or working is refused when its row does not serve its tier; into `working` also
+when its row already holds as many working cards as its width),
 `SetCardPaths`, `SetCardDoneWhen`, `SetCardProse`, `SetCardAttempt`, `SetCardBranch`, `SetCardHead`, `SetCardPR`,
 `SetCardReason`, `SetCardScore`, `SetCardAuthor` (the row whose work the head
 is), `SetCardBaseSHA` (the base commit the attempt started from),
@@ -198,10 +205,10 @@ and priced together, one field), `SetCardPriority` (refused on a consumer,
 normal included), `SetCardNeeds` and `SetCardAfter` (each refused on a
 consumer, nil included), `PutRow`
 (kind, width, session, tiers, model, harness; insert or overwrite; a new row is down and not held;
-state, flaps and held are kept on overwrite), `SetRowWidth` (the width
+state, flaps and held are kept on overwrite; an overwrite may not narrow below the working cards or drop a tier a live consumer needs), `SetRowWidth` (the width
 alone), `SetRowHeld` (the coordinator's hold: no deals to the row while
 true, whatever its state), `SetRowState`, `SetRowSession`, `SetRowFlaps`,
-`SetRowTiers`, `SetRowLabels`, `PutPolicy`, `SetActivePolicy`,
+`SetRowTiers` (refused when it drops a tier a live consumer of the row needs), `SetRowLabels`, `PutPolicy`, `SetActivePolicy`,
 `PutJudgement`, `AnswerJudgement`, `ExpireJudgement`, `SetCursor`. `PutPolicy` takes no version: the store
 gives it the next one, and the caller learns it from the receipt,
 `r.After.Policies` (keyed by version; the new version is the one not in

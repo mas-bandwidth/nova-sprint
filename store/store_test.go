@@ -73,7 +73,7 @@ func TestFakeRaces(t *testing.T) {
 	t.Parallel()
 	h, _ := newHarness(t)
 	h.seed()
-	h.ok(h.op("narrow", nil, PutRow{Name: "w1", Kind: "worker", Width: 1, Session: "sess-a"}, SetCardState{"u1", "ready"}, SetCardState{"u2", "ready"}))
+	h.ok(h.op("narrow", nil, PutRow{Name: "w1", Kind: "worker", Width: 1, Session: "sess-a", Tiers: []string{"pro"}}, SetCardState{"u1", "ready"}, SetCardState{"u2", "ready"}))
 	for name, ops := range map[string][]Op{
 		"take": {h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"}), h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"})},
 		"deal": {h.op("deal", nil, SetCardState{"u1", "working"}), h.op("deal", nil, SetCardState{"u2", "working"})}, // the state write into working alone is the width check
