@@ -1,4 +1,8 @@
-# tla/: the store model (layer 1)
+# tla/: the store model (layer 1) and the card machine (layer 2)
+
+Two models live here: `Store.tla` (layer 1, below) and `CardMachine.tla`
+(layer 2, in its own section after the store's results). `ci-tlc.sh` runs
+both, with all their witnesses and reach checks, in one parallel pass.
 
 `Store.tla` models the contract in `docs/LAYER-1-STORE.md`. Each operation is
 one atomic step over `epoch`, `cards`, `rows`, `events` and `applied`. In
@@ -105,7 +109,8 @@ java -jar tla2tools.jar -config StoreWidthStale.cfg StoreWidthStale.tla
 ```
 
 The helper scripts:
-- `sh run-tlc.sh /path/to/tla2tools.jar [java]` runs all thirteen in parallel
+- `sh run-tlc.sh /path/to/tla2tools.jar [java]` runs all twenty-five (the
+  thirteen store runs and the twelve card-machine runs) in parallel
   and writes `logs/<name>.log`. Each run gets its own `java.io.tmpdir`,
   because parallel runs that share `/tmp` race while unpacking the standard
   modules.
@@ -193,3 +198,130 @@ The counterexamples were checked by hand (`show-trace.sh`):
   in epoch 1.
 - **StoreWidthStale:** a1 and w1 both begin on the width-1 row r1 with a
   count of 0, and both land.
+
+# The card machine (layer 2)
+
+`CardMachine.tla` models the two tables of moves in
+`docs/LAYER-2-CARD-MACHINE.md`. Each action is one accepted event. Its guard
+is the design's from-state plus the event's extra conditions, and nothing
+else. An event that does not match is simply not enabled: the Go code
+refuses it with a value and nothing changes. So the model is the reachable
+state space of accepted moves.
+
+- Card events: Resolve, Deal, Finish, DealRead, ReadYes, ReadFix, Landed,
+  Red, Release, Cancel, Replace, NeedFailed, Rescore.
+- Row events: Seen, Gone, Flapped (with the constant `Limit`), Unblock,
+  Width.
+- Environment: Hold and Unhold set the stream's held flag, which only Deal
+  reads.
+
+Deal and DealRead write the holder. Layer 1 refuses a holder write to a row
+that already holds as many cards as its width, so both are enabled only
+below the width (`HolderWriteFits`). The guard is that write's refusal,
+stated in the model. Width refuses a value below the row's held count, as
+layer 1's put row does.
+
+`last` is a history variable: the last event, its card and row, and every
+card as it was before the step. The step invariants read it.
+
+## The instance
+
+- Two cards: c2 needs c1.
+- Two rows, r1 and r2: they start down, width 1, flaps 0.
+- One stream with a held flag.
+- Heads are 1..2; 0 means no head yet. A read result, a landing or a red
+  result carries a head and is enabled only when it equals the card's head.
+
+These bounds are the model's, not the design's:
+- attempt stops at 2 (Deal is not enabled past it);
+- flaps stop at Limit + 1 = 2 (Gone is not enabled past it);
+- scores are 0..1;
+- widths are 1..2.
+
+Left out, because no guard reads them: branch, base_sha, reason, the `by`
+of Replace and the need named in NeedFailed's reason.
+
+Release carries a row, and is enabled only for the holder. The design's
+refusal list says "a release by a row that is not the holder", but its table
+writes `Release{reason}` with no row.
+
+## Invariants
+
+- **TypeOK**: every variable stays in its type.
+- **OneHolder**: one holder column per card, a row or none. Structural;
+  stated anyway.
+- **HolderNoneInRestStates**: holder is none in waiting, ready, merging,
+  landed and fail.
+- **ReaderNeverAuthor**: in review, a reader is never the card's author.
+- **WorkingHasHolder**: in working, the holder is a row.
+- **WidthKept**: no row holds more cards than its width.
+- **FinalNeverMoves**: a card that was landed or fail before a step is
+  unchanged after it, and that includes Rescore.
+- **AttemptOnlyOnDeal**: attempt rises by one on a Deal of that card, and is
+  unchanged by every other step.
+- **RedNeverAdvances**: a Red step never ends in merging or landed. It is a
+  step property: after a red, a new read may say yes, which is legal.
+- **FixKeepsScore**: a ReadFix step leaves the score as it was.
+- **OnlyHolderActs**: Finish, ReadYes, ReadFix and Release are accepted only
+  from the card's holder.
+- **NeedFailedTakesDependants**: whenever a need has failed and its dependant
+  is not final, NeedFailed for that dependant is enabled. The design's "a card
+  whose need failed is failed" holds only after layer 3's tick; between the
+  two steps the dependant is still live, so this is the layer-2 form of the
+  rule. `reach/NeverNeedFailed` shows the move fires.
+
+## Expected results
+
+| Module | Fault | Expected result |
+|---|---|---|
+| `CardMachine` | none | pass, no violation |
+| `witnesses/CardLandedMoves` | Rescore enabled from landed and fail | violation of FinalNeverMoves |
+| `witnesses/CardAuthorReads` | DealRead without the author check | violation of ReaderNeverAuthor |
+| `witnesses/CardRedAdvances` | Red moves merging to landed | violation of RedNeverAdvances |
+| `witnesses/CardNeedFailedIgnored` | NeedFailed refused once the need has failed | violation of NeedFailedTakesDependants |
+| `witnesses/CardReleaseBumpsAttempt` | Release raises attempt | violation of AttemptOnlyOnDeal |
+| `witnesses/CardNonHolderFinishes` | Finish without the holder check | violation of OnlyHolderActs |
+| `CardMachine` + `reach/NeverLanded.cfg` | none | violation: a card lands |
+| `CardMachine` + `reach/NeverFixed.cfg` | none | violation: a read says fix |
+| `CardMachine` + `reach/NeverRed.cfg` | none | violation: a merging card goes red |
+| `CardMachine` + `reach/NeverNeedFailed.cfg` | none | violation: NeedFailed fires after its need failed |
+| `CardMachine` + `reach/NeverBlocked.cfg` | none | violation: a row flaps to blocked |
+
+## Results, on hetzner2, 2026-11-06
+
+TLC as the pinned jar reports itself: `TLC2 Version 2026.11.06.100558 (rev:
+3ec1cc4)`. All twelve ran in one parallel pass with the store's thirteen (`run-tlc.sh`,
+CardMachine on 8 workers, the others on 1). `ci-tlc.sh` then passed on
+hetzner2.
+
+| Module | Result | States generated / distinct | Depth | Time |
+|---|---|---|---|---|
+| `CardMachine` | No error has been found | 169196946 / 13704193 | 33 | 1min 02s |
+| `CardLandedMoves` | Invariant FinalNeverMoves is violated | 36 / 36 | 3 | 01s |
+| `CardAuthorReads` | Invariant ReaderNeverAuthor is violated | 15244 / 3485 | 6 | 02s |
+| `CardRedAdvances` | Invariant RedNeverAdvances is violated | 313954 / 48375 | 9 | 04s |
+| `CardNeedFailedIgnored` | Invariant NeedFailedTakesDependants is violated | 3 / 3 | 2 | 01s |
+| `CardReleaseBumpsAttempt` | Invariant AttemptOnlyOnDeal is violated | 3154 / 1079 | 5 | 01s |
+| `CardNonHolderFinishes` | Invariant OnlyHolderActs is violated | 3157 / 1082 | 5 | 02s |
+| reach `NeverLanded` | violated | 313953 / 48374 | 9 | 03s |
+| reach `NeverFixed` | violated | 130847 / 22285 | 8 | 03s |
+| reach `NeverRed` | violated | 313954 / 48375 | 9 | 03s |
+| reach `NeverNeedFailed` | violated | 37 / 37 | 3 | 01s |
+| reach `NeverBlocked` | violated | 1461 / 652 | 4 | 01s |
+
+The counterexamples were checked by hand:
+- **CardLandedMoves:** c1 is cancelled (fail, final), then Rescore changes
+  its score.
+- **CardAuthorReads:** r1 is dealt c1 and finishes it, then r1 is dealt the
+  read of its own head.
+- **CardRedAdvances:** c1 is dealt to r1, finished, read yes by r2 and is
+  merging; then Red lands it.
+- **CardNeedFailedIgnored:** c1 is cancelled. c2 is waiting, and NeedFailed
+  for it is not enabled.
+- **CardReleaseBumpsAttempt:** c1 is dealt to r1 (attempt 1); then Release
+  makes it attempt 2.
+- **CardNonHolderFinishes:** c1 is dealt to r1; then r2 finishes it.
+- **reach:** NeverLanded and NeverRed each run deal, finish, read and yes,
+  then Landed or Red. NeverFixed is the same path ending in ReadFix.
+  NeverNeedFailed cancels c1, then fires NeedFailed for c2. NeverBlocked runs
+  Seen, Gone and Flapped on r1.

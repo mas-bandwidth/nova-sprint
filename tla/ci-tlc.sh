@@ -103,6 +103,8 @@ run CardMachine pass . CardMachine.cfg CardMachine.tla 8
 
 for f in "$HERE"/witnesses/*.tla; do
     m="$(basename "$f" .tla)"
+    # TLC writes a <module>_TTrace_<n>.tla beside a violated spec; not a witness.
+    case "$m" in *_TTrace_*) continue ;; esac
     run "witness-$m" violate witnesses "$m.cfg" "$m.tla" 1
 done
 
