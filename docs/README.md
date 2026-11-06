@@ -11,7 +11,7 @@ are all required.
 
 ## The layers
 
-1. [The store](LAYER-1-STORE.md): PostgreSQL, one transaction per operation, every operation logged.
+1. [The store](LAYER-1-STORE.md): PostgreSQL, one transaction per operation, every operation logged. **Locked 2026-11-06 at 81bc9c24**: 12 rounds, 6 cold reads, the three friends at 10/10, the model at 47 runs; see "What the lock approves" in the design.
 2. [The card machine](LAYER-2-CARD-MACHINE.md): the states of one card and the legal moves between them.
 3. The steps: one legal move each, a pure function from snapshot and request to plan or refusal.
 4. The edges: nova-bus, git and GitHub, and the worker runner: a service per bench in the shape nova-swarm already proved (a slot from nova-reserve, nova-sandbox, a worktree per card), dealt over the bus (Glenn 2026-11-06: "you need actual runners ... that was pretty reliable already").
