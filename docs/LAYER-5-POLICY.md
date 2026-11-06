@@ -397,3 +397,98 @@ An estimate: 1,300 lines of Go, 80 of Starlark, 150 of TLA+, 1,000 of tests.
 - One version answers a whole tick, so the receipt names one set of rules;
   kind `data` stays unused; a data table later is a question, not a second
   mechanism. Prices ship empty rather than invented.
+
+## Built (2026-11-06, branch v2-l5-policy)
+
+Package `policy/` and `tla/Policy.tla`. What differs from the design, and why;
+every number is marked measured or guess.
+
+**The embedding.** As designed: `ExecFileOptions` with zero `FileOptions`,
+`Thread.Load` nil, `Thread.Print` discarding, globals frozen, the universe plus
+`TIERS` and `LEVELS`. One compile per stored version, cached by number (an
+unstored file in `check` or `set` is compiled fresh and never cached). The step
+budget is per call, not per tick: each call gets a fresh thread with
+`CallSteps` = 1,000,000 (guess), and the file's top level gets the same. Two
+Starlark texts the design did not fix, as the library prints them: `set` is
+"this Starlark dialect does not support sets"; `load` is "load not implemented
+by this application". A syntax error at the end of a line names the next line
+("got newline"), as Starlark reports it.
+
+**The inputs.** The fields the design lists, with these readings of the
+snapshot types: `order`'s `prior_head` is the producer's `head` (a producer has
+no prior-head column; layer 2 copies its head into the work consumer's at
+`Start`); `writer_rank` is on every `rows`, `reads` and `verdict` card, the
+rank of the row named by `author`, or the card's tier when that row is unknown
+or there is no author; a read's `finding` is the read consumer's `reason` (a
+read has no finding column). Candidates are computed here from the snapshot
+(up, not held, serving the card's tier, the author excluded for a read; by
+name) and shared by every `rows` question with the same tier, kind and author.
+`landing`'s `rung` is layer 3's state, so `LandingQuestion` carries it; check
+and `FullQuestions` use `flowing` unless given. `width` is asked for every row
+and the argument-free questions once, every tick (the joint check needs every
+width). A subject the snapshot does not hold is not asked; its answer is absent.
+
+**The validator.** Every refusal in the design, plus: an `order` answer must be
+a tuple (a list is refused) of ints fitting 64 bits or strings, compared int
+before string (`CompareOrder`); a `rows` answer naming a row twice is refused;
+"rank below the card's tier" fires for a known row that is not a candidate (a
+candidate always lists the card's tier, so is never below it). The joint check
+as built: a `rows` answer with candidates must name at least one row whose
+`width` work is above 0 whenever some candidate has a configured width above 0;
+it is reported at the line of `rows`. Dicts are closed: an extra key is refused.
+
+**The tick's answer.** `Engine.Answer(Versions, Snapshot, Questions) (Answers,
+[]Failure)`: tried in order active, previous active (when different), built-in;
+the first version with no error and no refusal answers everything. Each failing
+version tried is one `Failure`, so a failing previous version also gets its own
+judgement. `Answers.Version` is the version that answered (`answered_by`; 0 the
+built-in, -1 when even the built-in failed). `Judgements(snap, failures)`
+builds the `PutJudgement` for each failing version with none open (group
+`policy:v<n>`, id `policy-v<n>-s<seq>` so an id is never reused after an
+answer, command `nova-sprint policy check v<n>`); its deadline is left to layer
+3, which holds the clock (now plus `timeouts().judgement`). The answer cache is
+keyed by version, question and input (the arguments as printed; for `rows`, a
+sha256 of the shared candidate list), bounded at 200,000 entries (guess) and
+emptied when full. Load, measured on amd-3 without -race, 5,000 ready producers
+over 50 rows, every question: cold 132 ms, warm 68 ms, against the 100 ms
+budget (a guess); cold is over it.
+
+**The verbs.** `Up`, `Set`, `Activate`, `Show`, `List`, `Diff`, `Check` and
+`LoadVersions`/`PrevOf`, taking a `Caller` whose `Coordinator` is layer 6's
+answer. Refusals are `*Refusal` in the CORRECT-USE form (`SPRINT REFUSED policy
+<verb>: <what>: <fix>`). The reason goes in `Op.Note` (kept in the receipt; the
+events' `reason` column is the refusal's), and an empty reason is refused. `up`
+stores and activates the built-in in one op. `activate` pre-checks "already
+active" with the store's own text and answers the open policy judgements of
+both the old active and the version it activates; it has no `AtSeq` fence (the
+snapshot moves every tick; a version that breaks after its check is caught by
+the fallback). `Show`, `List` and `LoadVersions` walk the whole log; layer 6
+should call `PrevOf` as it folds events rather than `LoadVersions` per tick.
+
+**The default.** `policy/default.star` is the design's text unchanged. Not
+marked v1 or guess, because they are rules rather than tunables: the 0/1 fix
+flag in `order`, "one rank" in `_up(..., 1)`, and "more than one card" in
+`stitch`.
+
+**Tests.** Conformance shapes are the suite's own (empty; seeded; escalated
+with a security prose and a down row; landed and merging with a narrowed row):
+layer 2's builders are unexported test code in `card/`. The mid-sprint break
+and every verb row run on Fake and on PostgreSQL. `FuzzAnswers` checks no
+panic, in-domain answers or a named refusal with the built-in answering; the
+design's "the store never returning ErrInvalid" is not checked here, since a
+tick's answers reach the store only through layer 3's ops.
+
+**The model.** As designed, with `FallbackWasActive` added (the never-active
+fallback witness needs an invariant to break), a seventh witness
+(`PolicyWaitRebound` for `WaitKeepsItsBound`), and five reach checks. There is
+no separate `Answer` action: answering the judgement is part of `Activate`, as
+in the code.
+
+**Names.** Layer 3's design names its questions differently (`regrace`,
+`victim`, `rung`, `bounce_limit`, `escalate_after`, `budget`, `pack`,
+`deadline`). Layer 6 defers to this design for policy, so these names stand;
+`regrace`, `budget`, `pack` and `deadline(kind)` have no question here and are
+owed to the layer 3 and 6 wiring.
+
+**Size.** 1,700 lines of non-test Go, over the 1.5k budget by about 200; 74
+lines of Starlark.

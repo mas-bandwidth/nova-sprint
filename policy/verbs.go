@@ -54,11 +54,12 @@ func Up(ctx context.Context, st store.Store, c Caller) (Result, error) {
 	}
 	op := store.Op{ID: c.OpID, Epoch: snap.Epoch, Actor: c.Actor, Kind: "policy-set", At: c.At, Note: "up: the built-in default",
 		Writes: []store.Write{store.PutPolicy{Kind: "script", Name: "default.star", Body: defaultBody}, store.SetActivePolicy{Version: 1}}}
-	return apply(ctx, st, op, "up", Result{Version: 1, Next: "nova-sprint policy show"})
+	_, err = apply(ctx, st, op, "up")
+	return Result{Version: 1, Next: "nova-sprint policy show"}, err
 }
 
 // Set compiles the file, checks its names and arity, runs it on the current
-// snapshot, and stores it as the next version, not active.
+// snapshot, and stores it as the next version, not active (tla/Policy.tla Set).
 func Set(ctx context.Context, st store.Store, e *Engine, c Caller, path, reason string) (Result, error) {
 	no := func(what, fix string) (Result, error) { return Result{}, &Refusal{"set", what, fix} }
 	if r := coordinator("set", c, reason); r != nil {
@@ -84,13 +85,17 @@ func Set(ctx context.Context, st store.Store, e *Engine, c Caller, path, reason 
 	}
 	op := store.Op{ID: c.OpID, Epoch: snap.Epoch, Actor: c.Actor, Kind: "policy-set", At: c.At, Note: reason,
 		Writes: []store.Write{store.PutPolicy{Kind: "script", Name: name, Body: body}}}
-	v := len(all) + 1
-	return apply(ctx, st, op, "set", Result{Version: v, Next: fmt.Sprintf("nova-sprint policy check v%d", v)})
+	after, err := apply(ctx, st, op, "set")
+	for v := range after.Policies { // the one version the op stored
+		return Result{Version: v, Next: fmt.Sprintf("nova-sprint policy check v%d", v)}, nil
+	}
+	return Result{}, err
 }
 
 // Activate re-runs check on the current snapshot, then in one op moves the
 // active flag to v and answers the open policy judgements of the old
-// version and of v (v now runs clean).
+// version and of v (v now runs clean). It writes no card (tla/Policy.tla
+// Activate, ActivateMovesNoCard).
 func Activate(ctx context.Context, st store.Store, e *Engine, c Caller, v int, reason string) (Result, error) {
 	no := func(what, fix string) (Result, error) { return Result{}, &Refusal{"activate", what, fix} }
 	if r := coordinator("activate", c, reason); r != nil {
@@ -119,7 +124,8 @@ func Activate(ctx context.Context, st store.Store, e *Engine, c Caller, v int, r
 		writes = append(writes, store.AnswerJudgement{ID: id, Answer: fmt.Sprintf("v%d activated: %s", v, reason)})
 	}
 	op := store.Op{ID: c.OpID, Epoch: snap.Epoch, Actor: c.Actor, Kind: "policy-activate", At: c.At, Note: reason, Writes: writes}
-	return apply(ctx, st, op, "activate", Result{Version: v, Changes: len(rep.Changes), Next: "nova-sprint next"})
+	_, err = apply(ctx, st, op, "activate")
+	return Result{Version: v, Changes: len(rep.Changes), Next: "nova-sprint next"}, err
 }
 
 func cmpErr(err error, r *Refusal) error {
@@ -159,15 +165,17 @@ func readFile(verb, path string) (string, string, *Refusal) {
 	return filepath.Base(path), string(b), nil
 }
 
-func apply(ctx context.Context, st store.Store, op store.Op, verb string, ok Result) (Result, error) {
+// apply applies a verb's op: the touched rows after it, or the store's
+// refusal as the verb's.
+func apply(ctx context.Context, st store.Store, op store.Op, verb string) (*store.State, error) {
 	r, err := st.Apply(ctx, op)
 	switch {
 	case err != nil:
-		return Result{}, err
+		return &store.State{}, err
 	case !r.Accepted:
-		return Result{}, &Refusal{verb, r.Reason, "nova-sprint policy show --list"}
+		return &store.State{}, &Refusal{verb, r.Reason, "nova-sprint policy show --list"}
 	}
-	return ok, nil
+	return r.After, nil
 }
 
 // version is stored version v, or the refusal naming the list.
