@@ -54,8 +54,8 @@ var (
 
 // The closed sets the schema checks.
 var (
-	CardStates  = []string{"waiting", "ready", "working", "review", "merging", "landed", "fail", "done"}
-	CardKinds   = []string{"producer", "work", "read"}
+	CardStates  = []string{"waiting", "ready", "working", "review", "merging", "landed", "fail", "blocked", "done"}
+	CardKinds   = []string{"producer", "sentinel", "work", "read"}
 	CardResults = []string{"", "ok", "fix", "fail"}
 	LiveStates  = []string{"ready", "working"} // a live card counts against its holder's width
 	RowKinds    = []string{"worker", "kin"}
@@ -96,7 +96,8 @@ type Card struct {
 	Gen     int      `json:"gen"`
 	Attempt int      `json:"attempt"`
 	Score   int      `json:"score"`
-	Needs   []string `json:"needs,omitempty"`
+	Needs   []string `json:"needs,omitempty"` // hard: cannot start until these landed
+	After   []string `json:"after,omitempty"` // soft: cannot land until these landed
 	Holder  string   `json:"holder,omitempty"`
 	Branch  string   `json:"branch"`
 	Head    string   `json:"head"`
@@ -116,6 +117,7 @@ type Row struct {
 	State   string `json:"state"`
 	Session string `json:"session"`
 	Flaps   int    `json:"flaps"`
+	Held    bool   `json:"held"` // the coordinator's hold: no deals while true
 	Gen     int    `json:"gen"`
 }
 

@@ -146,7 +146,7 @@ func (f *Fake) Snapshot(_ context.Context) (Snapshot, error) {
 	pick(s.Streams, f.streams, f.epoch)
 	pick(s.Cards, f.cards, f.epoch)
 	for id, c := range s.Cards {
-		c.Needs = needs(c.Needs) // the caller's own copy: editing it never changes the store
+		c.Needs, c.After = needs(c.Needs), needs(c.After) // the caller's own copy: editing it never changes the store
 		s.Cards[id] = c
 	}
 	pick(s.Rows, f.rows, f.epoch)
@@ -193,7 +193,7 @@ func (t *fakeTx) k(name string) key { return key{t.st.epoch, name} }
 
 func (t *fakeTx) card(id string) (Card, bool, error) {
 	c, ok := t.st.cards[t.k(id)]
-	c.Needs = needs(c.Needs)
+	c.Needs, c.After = needs(c.Needs), needs(c.After)
 	return c, ok, nil
 }
 
@@ -248,7 +248,7 @@ func (t *fakeTx) rows() ([]Row, error) {
 func (t *fakeTx) open() error { t.st.epoch++; return nil }
 
 func (t *fakeTx) putCard(c Card) error {
-	c.Needs = needs(c.Needs)
+	c.Needs, c.After = needs(c.Needs), needs(c.After)
 	t.st.cards[t.k(c.ID)] = c
 	return nil
 }

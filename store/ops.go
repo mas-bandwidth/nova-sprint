@@ -72,16 +72,19 @@ type SetStreamHeld struct {
 	Held   bool
 }
 
-// PutCard adds a card of a kind (producer, work or read): refused when it
-// exists. It starts waiting, gen 0, attempt 0. Its stream must exist; every
-// need must name another card of the same epoch, once. A producer has no Of
-// and no Holder. A consumer (work or read) names its producer in Of (a
-// producer of the same epoch; Of never changes after), has no needs, and may
-// be added with its Holder, which is the holder write in the same op.
+// PutCard adds a card of a kind (producer, sentinel, work or read): refused
+// when it exists. It starts waiting, gen 0, attempt 0. Its stream must exist;
+// every need, and every card it comes after, must name another card of the
+// same epoch, once. A producer or sentinel has no Of and no Holder; a
+// sentinel has no Brief. A consumer (work or read) names its producer in Of
+// (a producer of the same epoch; Of never changes after), has no needs and no
+// after, and may be added with its Holder, which is the holder write in the
+// same op.
 type PutCard struct {
 	ID, Kind, Of, Stream string
 	Score                int
-	Needs                []string
+	Needs                []string // hard: cannot start until these landed
+	After                []string // soft: cannot land until these landed
 	Brief                string
 	Holder               string
 }
@@ -138,8 +141,15 @@ type SetCardNeeds struct {
 	Needs []string
 }
 
-// PutRow inserts a row or overwrites its kind, width and session; state and
-// flaps are kept on overwrite, and down and 0 on insert.
+// SetCardAfter replaces the cards a card lands after, under the rules of
+// PutCard.
+type SetCardAfter struct {
+	Card  string
+	After []string
+}
+
+// PutRow inserts a row or overwrites its kind, width and session; state,
+// flaps and held are kept on overwrite, and down, 0 and false on insert.
 type PutRow struct {
 	Name, Kind string
 	Width      int
@@ -158,6 +168,13 @@ type SetRowState struct{ Row, State string }
 
 // SetRowSession sets a row's session.
 type SetRowSession struct{ Row, Session string }
+
+// SetRowHeld sets a row's held flag: the coordinator's hold, no deals to the
+// row while true, whatever its state.
+type SetRowHeld struct {
+	Row  string
+	Held bool
+}
 
 // SetRowFlaps sets a row's flap count.
 type SetRowFlaps struct {
@@ -188,7 +205,9 @@ func (SetCardScore) isWrite()    {}
 func (SetCardAuthor) isWrite()   {}
 func (SetCardBaseSHA) isWrite()  {}
 func (SetCardNeeds) isWrite()    {}
+func (SetCardAfter) isWrite()    {}
 func (PutRow) isWrite()          {}
+func (SetRowHeld) isWrite()      {}
 func (SetRowState) isWrite()     {}
 func (SetRowSession) isWrite()   {}
 func (SetRowFlaps) isWrite()     {}
@@ -219,7 +238,7 @@ func fields(w Write) (fs []field, ok bool) {
 	case SetStreamHeld:
 		return of("stream", v.Stream, "held"), true
 	case PutCard:
-		return of("card", v.ID, "kind", "of", "stream", "score", "needs", "brief", "holder"), true
+		return of("card", v.ID, "kind", "of", "stream", "score", "needs", "after", "brief", "holder"), true
 	case PutRow:
 		return of("row", v.Name, "kind", "width", "session"), true
 	case PutPolicy:
@@ -259,6 +278,8 @@ func cardSet(w Write) (id, column string, set func(*Card), ok bool) {
 		return v.Card, "base_sha", func(c *Card) { c.BaseSHA = v.SHA }, true
 	case SetCardNeeds:
 		return v.Card, "needs", func(c *Card) { c.Needs = v.Needs }, true
+	case SetCardAfter:
+		return v.Card, "after", func(c *Card) { c.After = v.After }, true
 	}
 	return "", "", nil, false
 }
@@ -274,6 +295,8 @@ func rowSet(w Write) (name, column string, set func(*Row), ok bool) {
 		return v.Row, "flaps", func(r *Row) { r.Flaps = v.Flaps }, true
 	case SetRowWidth:
 		return v.Row, "width", func(r *Row) { r.Width = v.Width }, true
+	case SetRowHeld:
+		return v.Row, "held", func(r *Row) { r.Held = v.Held }, true
 	}
 	return "", "", nil, false
 }
@@ -285,10 +308,13 @@ func normalize(op Op) Op {
 	for i, w := range op.Writes {
 		switch v := w.(type) {
 		case PutCard:
-			v.Needs = needs(v.Needs)
+			v.Needs, v.After = needs(v.Needs), needs(v.After)
 			op.Writes[i] = v
 		case SetCardNeeds:
 			v.Needs = needs(v.Needs)
+			op.Writes[i] = v
+		case SetCardAfter:
+			v.After = needs(v.After)
 			op.Writes[i] = v
 		}
 	}

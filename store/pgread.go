@@ -11,8 +11,8 @@ import (
 
 const (
 	streamCols = "name, repo, base, held, pos"
-	cardCols   = `id, kind, coalesce("of", ''), stream, state, gen, attempt, score, needs, coalesce(holder, ''), branch, head, pr, brief, reason, author, base_sha, result`
-	rowCols    = "name, kind, width, state, session, flaps, gen"
+	cardCols   = `id, kind, coalesce("of", ''), stream, state, gen, attempt, score, needs, after, coalesce(holder, ''), branch, head, pr, brief, reason, author, base_sha, result`
+	rowCols    = "name, kind, width, state, session, flaps, held, gen"
 	policyCols = "version, kind, name, body, active, actor, at"
 )
 
@@ -24,14 +24,14 @@ func scanStream(r pgx.Row) (Stream, error) {
 
 func scanCard(r pgx.Row) (Card, error) {
 	var c Card
-	err := r.Scan(&c.ID, &c.Kind, &c.Of, &c.Stream, &c.State, &c.Gen, &c.Attempt, &c.Score, &c.Needs, &c.Holder, &c.Branch, &c.Head, &c.PR, &c.Brief, &c.Reason, &c.Author, &c.BaseSHA, &c.Result)
-	c.Needs = needs(c.Needs)
+	err := r.Scan(&c.ID, &c.Kind, &c.Of, &c.Stream, &c.State, &c.Gen, &c.Attempt, &c.Score, &c.Needs, &c.After, &c.Holder, &c.Branch, &c.Head, &c.PR, &c.Brief, &c.Reason, &c.Author, &c.BaseSHA, &c.Result)
+	c.Needs, c.After = needs(c.Needs), needs(c.After)
 	return c, err
 }
 
 func scanRow(r pgx.Row) (Row, error) {
 	var w Row
-	err := r.Scan(&w.Name, &w.Kind, &w.Width, &w.State, &w.Session, &w.Flaps, &w.Gen)
+	err := r.Scan(&w.Name, &w.Kind, &w.Width, &w.State, &w.Session, &w.Flaps, &w.Held, &w.Gen)
 	return w, err
 }
 
@@ -209,26 +209,30 @@ func (t *pgTx) putStream(s Stream) error {
 }
 
 func (t *pgTx) putCard(c Card) error {
-	n := c.Needs
-	if n == nil {
-		n = []string{}
-	}
 	// kind and of are set on insert only: no write changes them.
-	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.cards (epoch, id, kind, "of", stream, state, gen, attempt, score, needs, holder, branch, head, pr, brief, reason, author, base_sha, result)
-		VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, $8, $9, $10, NULLIF($11, ''), $12, $13, $14, $15, $16, $17, $18, $19)
+	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.cards (epoch, id, kind, "of", stream, state, gen, attempt, score, needs, after, holder, branch, head, pr, brief, reason, author, base_sha, result)
+		VALUES ($1, $2, $3, NULLIF($4, ''), $5, $6, $7, $8, $9, $10, $11, NULLIF($12, ''), $13, $14, $15, $16, $17, $18, $19, $20)
 		ON CONFLICT (epoch, id) DO UPDATE SET stream = EXCLUDED.stream, state = EXCLUDED.state, gen = EXCLUDED.gen, attempt = EXCLUDED.attempt,
-		score = EXCLUDED.score, needs = EXCLUDED.needs, holder = EXCLUDED.holder, branch = EXCLUDED.branch, head = EXCLUDED.head,
+		score = EXCLUDED.score, needs = EXCLUDED.needs, after = EXCLUDED.after, holder = EXCLUDED.holder, branch = EXCLUDED.branch, head = EXCLUDED.head,
 		pr = EXCLUDED.pr, brief = EXCLUDED.brief, reason = EXCLUDED.reason, author = EXCLUDED.author, base_sha = EXCLUDED.base_sha, result = EXCLUDED.result`,
-		t.epoch, c.ID, c.Kind, c.Of, c.Stream, c.State, c.Gen, c.Attempt, c.Score, n, c.Holder, c.Branch, c.Head, c.PR, c.Brief, c.Reason, c.Author, c.BaseSHA, c.Result)
+		t.epoch, c.ID, c.Kind, c.Of, c.Stream, c.State, c.Gen, c.Attempt, c.Score, list0(c.Needs), list0(c.After), c.Holder, c.Branch, c.Head, c.PR, c.Brief, c.Reason, c.Author, c.BaseSHA, c.Result)
 	return err
 }
 
 func (t *pgTx) putRow(r Row) error {
-	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.rows (epoch, name, kind, width, state, session, flaps, gen) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	_, err := t.tx.Exec(t.ctx, `INSERT INTO sprint.rows (epoch, name, kind, width, state, session, flaps, held, gen) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (epoch, name) DO UPDATE SET kind = EXCLUDED.kind, width = EXCLUDED.width, state = EXCLUDED.state,
-		session = EXCLUDED.session, flaps = EXCLUDED.flaps, gen = EXCLUDED.gen`,
-		t.epoch, r.Name, r.Kind, r.Width, r.State, r.Session, r.Flaps, r.Gen)
+		session = EXCLUDED.session, flaps = EXCLUDED.flaps, held = EXCLUDED.held, gen = EXCLUDED.gen`,
+		t.epoch, r.Name, r.Kind, r.Width, r.State, r.Session, r.Flaps, r.Held, r.Gen)
 	return err
+}
+
+// list0 is a card list as PostgreSQL stores it: '{}', never NULL.
+func list0(l []string) []string {
+	if l == nil {
+		return []string{}
+	}
+	return l
 }
 
 func (t *pgTx) replay(opID string) (Receipt, bool, error) { return replayTx(t.ctx, t.tx, opID) }

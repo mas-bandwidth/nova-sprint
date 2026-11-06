@@ -3,7 +3,8 @@
 -- it runs this, and refuses a store at another schema version. Nothing is
 -- ever deleted; a clear increments sprint.epoch and every stream, card and row
 -- carries the epoch it was written in. Version 2 is the version with the two
--- card kinds (kind, of, author, base_sha, result, the state done) and row gen;
+-- card kinds (kind with sentinel, of, after, author, base_sha, result, the
+-- states blocked and done) and row gen and held;
 -- there is no upgrade path from version 1.
 
 CREATE SCHEMA IF NOT EXISTS sprint;
@@ -37,6 +38,7 @@ CREATE TABLE IF NOT EXISTS sprint.rows (
     state   text    NOT NULL CHECK (state IN ('up', 'down', 'blocked')),
     session text    NOT NULL DEFAULT '',
     flaps   integer NOT NULL DEFAULT 0,
+    held    boolean NOT NULL DEFAULT false,
     gen     integer NOT NULL DEFAULT 0,
     epoch   integer NOT NULL,
     PRIMARY KEY (epoch, name)
@@ -44,18 +46,20 @@ CREATE TABLE IF NOT EXISTS sprint.rows (
 
 -- One NOT NULL state column with a CHECK and one holder column with a
 -- foreign key: a card is in exactly one state and has at most one holder, by
--- the schema. A producer's "of" is NULL (the empty string in Go, as holder);
+-- the schema. A producer's or sentinel's "of" is NULL (the empty string in Go,
+-- as holder); neither is ever held, and a sentinel has no brief;
 -- a consumer's names a card of the same epoch by a foreign key.
 CREATE TABLE IF NOT EXISTS sprint.cards (
     id       text    NOT NULL,
-    kind     text    NOT NULL CHECK (kind IN ('producer', 'work', 'read')),
+    kind     text    NOT NULL CHECK (kind IN ('producer', 'sentinel', 'work', 'read')),
     "of"     text,
     stream   text    NOT NULL,
-    state    text    NOT NULL CHECK (state IN ('waiting', 'ready', 'working', 'review', 'merging', 'landed', 'fail', 'done')),
+    state    text    NOT NULL CHECK (state IN ('waiting', 'ready', 'working', 'review', 'merging', 'landed', 'fail', 'blocked', 'done')),
     gen      integer NOT NULL DEFAULT 0,
     attempt  integer NOT NULL DEFAULT 0,
     score    integer NOT NULL DEFAULT 0,
     needs    text[]  NOT NULL DEFAULT '{}',
+    after    text[]  NOT NULL DEFAULT '{}',
     holder   text,
     author   text    NOT NULL DEFAULT '',
     branch   text    NOT NULL DEFAULT '',
@@ -67,9 +71,11 @@ CREATE TABLE IF NOT EXISTS sprint.cards (
     reason   text    NOT NULL DEFAULT '',
     epoch    integer NOT NULL,
     PRIMARY KEY (epoch, id),
-    CONSTRAINT cards_of_check CHECK ((kind = 'producer') = ("of" IS NULL)),
-    CONSTRAINT cards_needs_check CHECK (kind = 'producer' OR needs = '{}'),
-    CONSTRAINT cards_holder_check CHECK (kind <> 'producer' OR holder IS NULL),
+    CONSTRAINT cards_of_check CHECK ((kind IN ('producer', 'sentinel')) = ("of" IS NULL)),
+    CONSTRAINT cards_needs_check CHECK (kind IN ('producer', 'sentinel') OR needs = '{}'),
+    CONSTRAINT cards_after_check CHECK (kind IN ('producer', 'sentinel') OR after = '{}'),
+    CONSTRAINT cards_brief_check CHECK (kind <> 'sentinel' OR brief = ''),
+    CONSTRAINT cards_holder_check CHECK (kind IN ('work', 'read') OR holder IS NULL),
     FOREIGN KEY (epoch, stream) REFERENCES sprint.streams (epoch, name),
     FOREIGN KEY (epoch, holder) REFERENCES sprint.rows (epoch, name),
     FOREIGN KEY (epoch, "of") REFERENCES sprint.cards (epoch, id)

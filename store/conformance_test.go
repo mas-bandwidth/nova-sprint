@@ -40,6 +40,10 @@ func RunConformance(t *testing.T, newStore func(t *testing.T) Store) {
 		"width in one op":         widthInOneOp,
 		"live count":              liveCount,
 		"row gen race":            rowGenRace,
+		"sentinels":               sentinels,
+		"after":                   afterOrder,
+		"blocked":                 blockedState,
+		"row held":                rowHeld,
 		"int range":               intRange,
 		"nul bytes":               nulBytes,
 		"text and time":           textAndTime,
@@ -238,7 +242,7 @@ type strangeExpect struct{ AtSeq }
 
 func writeRefusals(h *harness) {
 	h.seed()
-	all := "waiting, ready, working, review, merging, landed, fail, done"
+	all := "waiting, ready, working, review, merging, landed, fail, blocked, done"
 	for _, c := range []struct {
 		w      Write
 		reason string
@@ -250,7 +254,7 @@ func writeRefusals(h *harness) {
 		{PutCard{Kind: "producer", ID: "c3", Stream: "s1", Needs: []string{"c0", "c0"}}, "card c3 names need c0 twice"},
 		{PutCard{Kind: "producer", ID: "c3", Stream: "s1", Needs: []string{"c9"}}, "need c9 of card c3 does not exist"},
 		{PutCard{Stream: "s1"}, "a card needs an id"},
-		{PutCard{ID: "c3", Kind: "job", Stream: "s1"}, `card kind "job" is not one of producer, work, read`},
+		{PutCard{ID: "c3", Kind: "job", Stream: "s1"}, `card kind "job" is not one of producer, sentinel, work, read`},
 		{PutCard{ID: "c3", Kind: "producer", Of: "c1", Stream: "s1"}, "card c3 is a producer; a producer has no of"},
 		{PutCard{ID: "c3", Kind: "producer", Stream: "s1", Holder: "w1"}, "card c3 is a producer; a producer never has a holder"},
 		{PutCard{ID: "k3", Kind: "work", Stream: "s1"}, "card k3 is a consumer; a consumer names its producer in of"},
@@ -305,6 +309,9 @@ func invalidOps(h *harness) {
 		"stream twice":      h.op("x", nil, PutStream{Name: "s1"}, PutStream{Name: "s1"}),
 		"row then session":  h.op("x", nil, PutRow{"w1", "kin", 1, ""}, SetRowSession{"w1", "s"}),
 		"activate twice":    h.op("x", nil, SetActivePolicy{1}, SetActivePolicy{2}),
+		"add then after":    h.op("x", nil, PutCard{Kind: "producer", ID: "c3", Stream: "s1"}, SetCardAfter{"c3", []string{"c0"}}),
+		"held twice":        h.op("x", nil, SetRowHeld{"w1", true}, SetRowHeld{"w1", false}),
+		"nul in after":      h.op("x", nil, SetCardAfter{"c1", []string{"c\x000"}}),
 	} {
 		_, err := h.s.Apply(h.ctx, o)
 		assert.ErrorIs(h.t, err, ErrInvalid, name)
@@ -358,7 +365,7 @@ func idempotent(h *harness) {
 	require.NoError(h.t, err)
 	assert.False(h.t, ok)
 	no := h.op("bad", nil, SetCardState{"c1", "nope"})
-	refused := h.refused(no, `card state "nope" is not one of waiting, ready, working, review, merging, landed, fail, done`)
+	refused := h.refused(no, `card state "nope" is not one of waiting, ready, working, review, merging, landed, fail, blocked, done`)
 	no.Writes = nil
 	r, err = h.s.Apply(h.ctx, no)
 	require.NoError(h.t, err)
@@ -754,7 +761,8 @@ func rebuild(h *harness) {
 	h.seed()
 	h.ok(h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"}, SetCardHolder{"u1", "w1"}, SetCardState{"u1", "working"}, SetCardResult{"u2", "fix"}))
 	h.refused(h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"}), "card c1 is at gen 1, expected gen 0")
-	h.ok(h.op("pol", nil, PutPolicy{"script", "p1", "x"}, PutPolicy{"data", "p2", "y"}, SetActivePolicy{2}, SetRowWidth{"w1", 4}))
+	h.ok(h.op("pol", nil, PutPolicy{"script", "p1", "x"}, PutPolicy{"data", "p2", "y"}, SetActivePolicy{2}, SetRowWidth{"w1", 4}, SetRowHeld{"w1", true},
+		SetCardAfter{"c2", []string{"c0"}}, PutCard{Kind: "sentinel", ID: "g1", Stream: "s1", Needs: []string{"c2"}}, SetCardState{"c0", "blocked"}))
 	assert.Equal(h.t, Rebuild(h.events()), h.snap())
 	h.clear()
 	h.ok(h.op("seed2", nil, PutStream{Name: "s1"}, PutCard{Kind: "producer", ID: "c1", Stream: "s1"}, SetActivePolicy{1}, SetRowSession{"w1", "sess-z"}))
@@ -765,6 +773,83 @@ func rebuild(h *harness) {
 	assert.Equal(h.t, 2, got.Epoch)
 	assert.Equal(h.t, "sess-z", got.Rows["w1"].Session)
 	assert.Equal(h.t, 4, got.Rows["w1"].Gen, "row gen survives the clear and the rebuild")
+	assert.True(h.t, got.Rows["w1"].Held, "the hold survives the clear and the rebuild")
+}
+
+// A sentinel is a producer with no brief: it has needs and after, and never
+// an of, a holder or a consumer.
+func sentinels(h *harness) {
+	h.seed()
+	h.ok(h.op("gate", nil, PutCard{Kind: "sentinel", ID: "g1", Stream: "s1", Needs: []string{"c1", "c2"}, After: []string{"c0"}}))
+	assert.Equal(h.t, Card{ID: "g1", Kind: "sentinel", Stream: "s1", State: "waiting", Needs: []string{"c1", "c2"}, After: []string{"c0"}}, h.snap().Cards["g1"])
+	for _, c := range []struct {
+		w      Write
+		reason string
+	}{
+		{PutCard{Kind: "sentinel", ID: "g2", Stream: "s1", Brief: "x"}, "card g2 is a sentinel; a sentinel has no brief"},
+		{PutCard{Kind: "sentinel", ID: "g2", Of: "c1", Stream: "s1"}, "card g2 is a sentinel; a sentinel has no of"},
+		{PutCard{Kind: "sentinel", ID: "g2", Stream: "s1", Holder: "w1"}, "card g2 is a sentinel; a sentinel never has a holder"},
+		{SetCardHolder{"g1", "w1"}, "card g1 is a sentinel; a sentinel never has a holder"},
+		{PutCard{Kind: "read", ID: "k1", Of: "g1", Stream: "s1"}, "card k1 is a consumer of g1, which is not a producer"},
+	} {
+		h.refused(h.op("bad", nil, c.w), c.reason)
+	}
+	h.ok(h.op("reached", []Expect{CardGen{"g1", 0}}, SetCardState{"g1", "landed"}))
+	assert.Equal(h.t, 1, h.snap().Cards["g1"].Gen)
+}
+
+// After is soft order, under the same rules as needs.
+func afterOrder(h *harness) {
+	h.seed()
+	h.ok(h.op("add", nil, PutCard{Kind: "producer", ID: "c3", Stream: "s1", After: []string{"c1", "c2"}}, SetCardAfter{"c1", []string{"c0"}}))
+	s := h.snap()
+	assert.Equal(h.t, []string{"c1", "c2"}, s.Cards["c3"].After)
+	assert.Equal(h.t, []string{"c0"}, s.Cards["c1"].After)
+	assert.Equal(h.t, 1, s.Cards["c1"].Gen, "set after raises the gen")
+	for _, c := range []struct {
+		w      Write
+		reason string
+	}{
+		{SetCardAfter{"c1", []string{"c1"}}, "card c1 cannot come after itself"},
+		{SetCardAfter{"c1", []string{"c0", "c0"}}, "card c1 names after c0 twice"},
+		{SetCardAfter{"c1", []string{"c9"}}, "after c9 of card c1 does not exist"},
+		{SetCardAfter{"c9", []string{"c0"}}, "card c9 does not exist"},
+		{SetCardAfter{"u1", []string{"c0"}}, "card u1 is a consumer; a consumer has no after"},
+		{PutCard{Kind: "work", ID: "k1", Of: "c1", Stream: "s1", After: []string{"c0"}}, "card k1 is a consumer; a consumer has no after"},
+		{PutCard{Kind: "producer", ID: "c4", Stream: "s1", After: []string{"c4"}}, "card c4 cannot come after itself"},
+	} {
+		h.refused(h.op("bad", nil, c.w), c.reason)
+	}
+	h.ok(h.op("unorder", nil, SetCardAfter{"c3", nil}))
+	assert.Nil(h.t, h.snap().Cards["c3"].After)
+}
+
+// blocked is in the set: the store admits it and leaves its moves to layer 2.
+func blockedState(h *harness) {
+	h.seed()
+	h.ok(h.op("block", nil, SetCardState{"c1", "blocked"}))
+	assert.Equal(h.t, "blocked", h.snap().Cards["c1"].State)
+	h.ok(h.op("unblock", []Expect{CardState{"c1", "blocked"}}, SetCardState{"c1", "waiting"}))
+	h.refused(h.op("bad", []Expect{CardState{"c1", "blocked"}}, SetCardState{"c1", "ready"}), "card c1 is waiting, expected blocked")
+}
+
+// held is the coordinator's hold on a row: its own write, kept by put row,
+// carried by a clear, and it raises the row's gen.
+func rowHeld(h *harness) {
+	h.seed()
+	h.ok(h.op("hold", []Expect{RowGen{"w1", 0}}, SetRowHeld{"w1", true}))
+	h.ok(h.op("put", nil, PutRow{"w1", "worker", 3, "sess-b"}, PutRow{"w2", "kin", 1, ""}))
+	s := h.snap()
+	assert.Equal(h.t, Row{Name: "w1", Kind: "worker", Width: 3, State: "up", Session: "sess-b", Held: true, Gen: 2}, s.Rows["w1"], "put row keeps held")
+	assert.False(h.t, s.Rows["w2"].Held, "a new row is not held")
+	h.refused(h.op("stale", []Expect{RowGen{"w1", 0}}, SetRowHeld{"w1", false}), "row w1 is at gen 2, expected gen 0")
+	h.refused(h.op("bad", nil, SetRowHeld{"w9", true}), "row w9 does not exist")
+	h.clear()
+	got := h.snap()
+	assert.True(h.t, got.Rows["w1"].Held, "a clear carries the hold")
+	assert.Equal(h.t, Rebuild(h.events()), got)
+	h.ok(h.op("unhold", []Expect{RowGen{"w1", 3}}, SetRowHeld{"w1", false}))
+	assert.False(h.t, h.snap().Rows["w1"].Held)
 }
 
 func eventsPaging(h *harness) {
