@@ -28,7 +28,7 @@ through pgx; no ORM. The schema file is embedded in the binary and applied with
 
 - `sprint.meta`: one row (`id = 1` by CHECK), `schema integer`. `Migrate`
   creates the schema at the version the binary knows and refuses a store at any
-  other version, naming both numbers.
+  other version, naming both numbers, and also keeps a hash of the schema text that made the store, refusing a store made by a different build of the same version (no live store is at version 2 yet, so such a store is recreated, not upgraded).
 - `sprint.epoch`: one row (`id = 1` by CHECK), `n integer`. Clear is
   `n = n + 1`. Every stream, card and row carries the epoch it was written in;
   the snapshot shows only the current epoch's rows. Nothing is deleted.
@@ -165,8 +165,8 @@ so one op with two such writes to a width-one row is refused on the second
 and nothing lands, and no path over-fills a row; there is no separate width
 condition, the write is the check. How many `ready` consumers a row may hold
 ahead of its width is policy's number (PRIORITY D21), never the store's;
-set card attempt; set card author; set
-card branch; set card base_sha; set card prior_head; set card head; set card
+set card author; set
+card branch; set card base_sha; set card head; set card
 pr; set card result (a consumer only); set card bounces (a producer only); set card prior_head (a work consumer only); set card attempt (never a consumer: its attempt is set at add); set card cost (a consumer only; cost and priced
 together, one field; each kind-specific write is refused on the wrong kind, naming the kind and the write, and the schema carries the matching CHECKs); set card reason; set card score; set card priority (`SetCardPriority`: one
 of the five levels, refused on a consumer, written only by the verb a
@@ -218,11 +218,21 @@ one slow call never stalls every writer (LESSONS 3.23).
 3. `ErrInvalid`: the op never entered the store (no id, no epoch, a write type
    outside the closed set, two writes to one field). Nothing is logged. A
    caller bug.
-4. `ErrUnknown`: the request may have reached the server and the outcome is
-   not known (any failure after the transaction began, held conservatively).
-   The caller calls `Replay(opID)`: if the op landed, its receipt comes back;
-   if not, the caller may `Apply` again with the same id. Exit code 2 at the
-   CLI.
+4. `ErrUnknown`: the server did not answer, so the outcome is not known: a
+   connection error, a timeout or a cancelled context after the request was
+   sent, or any error during or after COMMIT. The caller calls
+   `Replay(opID)`: if the op landed, its receipt comes back; if not, the
+   caller may `Apply` again with the same id. Exit code 2 at the CLI. An
+   error the server itself returned before COMMIT, whatever its SQLSTATE,
+   means the transaction rolled back and the outcome is known: it is a plain
+   error naming the SQLSTATE and the message, never `ErrUnknown` (the second
+   cold read found a 3 KB id and a missing column reported as unknown, which
+   sends a caller into a replay loop that can never end).
+
+Ids and names (op id, card id, row and stream names, actor, kind label,
+policy name) are at most 128 bytes, `ErrInvalid` above, so no index can
+refuse one; brief, reason, body, head, branch and note are unbounded text
+with no index on them.
 
 Any other error means the request did not reach the store and nothing
 happened. A constraint violation from PostgreSQL during the writes is an engine
