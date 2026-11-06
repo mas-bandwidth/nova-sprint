@@ -21,6 +21,14 @@ On a Mac with Homebrew PostgreSQL, put its tools on PATH first:
 
     export PATH=/opt/homebrew/opt/postgresql@18/bin:$PATH
 
+and run them with `-parallel 4`. Every functional test starts its own server,
+and each server takes System V shared memory; macOS's default limits
+(`kern.sysv.shmmni` 32) run out at the default parallelism (one per core) and
+tests fail with "could not create shared memory segment". Linux CI needs no
+flag.
+
+    go test -count=1 -race -parallel 4 -run Functional ./...
+
 TLC (Store must pass; every witness and reach check must report a violation).
 Run it on a bench host, never on the working machine:
 

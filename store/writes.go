@@ -1,6 +1,9 @@
 package store
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
 // write performs one write, or returns the reason it is refused.
 func (w *work) write(wr Write) (string, error) {
@@ -53,13 +56,18 @@ func (w *work) writePutRow(v PutRow) (string, error) {
 	}
 	next := Row{Name: v.Name, Kind: v.Kind, Width: v.Width, Session: v.Session, State: "down"}
 	if ok {
-		n, err := w.tx.held(v.Name)
-		if n > v.Width || err != nil {
-			return when(err == nil, "row %s holds %d cards, more than width %d", v.Name, n, v.Width), err
+		if r, err := w.widthFits(v.Name, v.Width); r != "" || err != nil {
+			return r, err
 		}
 		next.State, next.Flaps = old.State, old.Flaps
 	}
 	return "", w.putRow(old, ok, next)
+}
+
+// widthFits refuses a width below the live cards the row holds.
+func (w *work) widthFits(row string, width int) (string, error) {
+	n, err := w.tx.held(row)
+	return when(err == nil && n > width, "row %s holds %d live cards, more than width %d", row, n, width), err
 }
 
 // writeRow is the set-row writes (rowSet).
@@ -73,6 +81,11 @@ func (w *work) writeRow(wr Write) (string, error) {
 	row, r, err := w.mustRow(name)
 	if r != "" || err != nil {
 		return r, err
+	}
+	if v, ok := wr.(SetRowWidth); ok {
+		if r, err := w.widthFits(name, v.Width); r != "" || err != nil {
+			return r, err
+		}
 	}
 	next := row
 	set(&next)
@@ -90,10 +103,15 @@ func (w *work) writeCard(wr Write) (string, error) {
 	switch v := wr.(type) {
 	case SetCardState:
 		r = oneOf("card state", v.State, CardStates)
+		if r == "" && card.Holder != "" && !live(card.State) && live(v.State) {
+			r, err = w.rowFits(card.Holder)
+		}
 	case SetCardHolder:
 		r, err = w.holderFits(card, v.Holder)
+	case SetCardResult:
+		r = oneOf("card result", v.Result, CardResults)
 	case SetCardNeeds:
-		r, err = w.checkNeeds(card.ID, v.Needs)
+		r, err = w.checkNeeds(card, v.Needs)
 	}
 	if r != "" || err != nil {
 		return r, err
@@ -103,25 +121,41 @@ func (w *work) writeCard(wr Write) (string, error) {
 	return "", w.putCard(card, true, next)
 }
 
-// holderFits refuses a holder row that does not exist or already holds as
-// many cards as its width, counted now (earlier writes of the op included).
-// The count excludes the card being written: setting a card's holder to the
-// row that holds it already is a no-op, never a refusal.
+func live(state string) bool { return slices.Contains(LiveStates, state) }
+
+// holderFits refuses a holder on a producer, a holder row that does not
+// exist, or one that already holds as many live cards as its width, counted
+// now (earlier writes of the op included). The count excludes the card being
+// written: setting a card's holder to the row that holds it already is a
+// no-op, never a refusal.
 func (w *work) holderFits(card Card, holder string) (string, error) {
-	if holder == "" || holder == card.Holder {
+	switch {
+	case holder == "" || holder == card.Holder:
 		return "", nil
+	case card.Kind == "producer":
+		return fmt.Sprintf("card %s is a producer; a producer never has a holder", card.ID), nil
 	}
-	row, r, err := w.mustRow(holder)
+	return w.rowFits(holder)
+}
+
+// rowFits refuses a row that does not exist or has no room for one more live
+// card.
+func (w *work) rowFits(name string) (string, error) {
+	row, r, err := w.mustRow(name)
 	if r != "" || err != nil {
 		return r, err
 	}
-	n, err := w.tx.held(holder)
-	return when(err == nil && n >= row.Width, "row %s holds %d cards, its width is %d", holder, n, row.Width), err
+	n, err := w.tx.held(name)
+	return when(err == nil && n >= row.Width, "row %s holds %d live cards, its width is %d", name, n, row.Width), err
 }
 
-// checkNeeds refuses needs that name the card itself, a card twice, or a card
-// not in the epoch.
-func (w *work) checkNeeds(id string, needs []string) (string, error) {
+// checkNeeds refuses needs on a consumer, and needs that name the card
+// itself, a card twice, or a card not in the epoch.
+func (w *work) checkNeeds(card Card, needs []string) (string, error) {
+	id := card.ID
+	if len(needs) > 0 && card.Kind != "producer" {
+		return fmt.Sprintf("card %s is a consumer; a consumer has no needs", id), nil
+	}
 	seen := map[string]bool{}
 	for _, n := range needs {
 		switch {
@@ -145,14 +179,43 @@ func (w *work) addCard(v PutCard) (string, error) {
 	if _, ok, err := w.tx.card(v.ID); ok || err != nil {
 		return when(err == nil, "card %s exists", v.ID), err
 	}
+	if r := oneOf("card kind", v.Kind, CardKinds); r != "" {
+		return r, nil
+	}
 	if _, r, err := w.mustStream(v.Stream); r != "" || err != nil {
 		return r, err
 	}
-	if r, err := w.checkNeeds(v.ID, v.Needs); r != "" || err != nil {
+	c := Card{ID: v.ID, Kind: v.Kind, Of: v.Of, Stream: v.Stream, State: "waiting", Score: v.Score, Needs: v.Needs, Brief: v.Brief}
+	if r, err := w.checkOf(c); r != "" || err != nil {
 		return r, err
 	}
-	c := Card{ID: v.ID, Stream: v.Stream, State: "waiting", Score: v.Score, Needs: v.Needs, Brief: v.Brief}
+	if r, err := w.checkNeeds(c, v.Needs); r != "" || err != nil {
+		return r, err
+	}
+	if r, err := w.holderFits(c, v.Holder); r != "" || err != nil {
+		return r, err
+	}
+	c.Holder = v.Holder
 	return "", w.putCard(Card{}, false, c)
+}
+
+// checkOf refuses a producer that names an of, and a consumer whose of is not
+// a producer of the epoch.
+func (w *work) checkOf(c Card) (string, error) {
+	if c.Kind == "producer" {
+		return when(c.Of != "", "card %s is a producer; a producer has no of", c.ID), nil
+	}
+	if c.Of == "" {
+		return fmt.Sprintf("card %s is a consumer; a consumer names its producer in of", c.ID), nil
+	}
+	p, ok, err := w.tx.card(c.Of)
+	switch {
+	case err != nil:
+		return "", err
+	case !ok:
+		return fmt.Sprintf("card %s is a consumer of %s, which does not exist", c.ID, c.Of), nil
+	}
+	return when(p.Kind != "producer", "card %s is a consumer of %s, which is not a producer", c.ID, c.Of), nil
 }
 
 func (w *work) writePolicy(wr Write) (string, error) {

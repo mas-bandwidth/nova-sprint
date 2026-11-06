@@ -73,10 +73,10 @@ func TestFakeRaces(t *testing.T) {
 	t.Parallel()
 	h, _ := newHarness(t)
 	h.seed()
-	h.ok(h.op("narrow", nil, PutRow{"w1", "worker", 1, "sess-a"}))
+	h.ok(h.op("narrow", nil, PutRow{"w1", "worker", 1, "sess-a"}, SetCardState{"u1", "ready"}, SetCardState{"u2", "ready"}))
 	for name, ops := range map[string][]Op{
 		"take": {h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"}), h.op("take", []Expect{CardGen{"c1", 0}}, SetCardState{"c1", "working"})},
-		"deal": {h.op("deal", nil, SetCardHolder{"c0", "w1"}), h.op("deal", nil, SetCardHolder{"c2", "w1"})}, // the holder write alone is the width check
+		"deal": {h.op("deal", nil, SetCardHolder{"u1", "w1"}), h.op("deal", nil, SetCardHolder{"u2", "w1"})}, // the holder write alone is the width check
 	} {
 		got := make([]Receipt, 2)
 		var wg sync.WaitGroup
@@ -110,7 +110,7 @@ func TestEventsCap(t *testing.T) {
 
 func TestRebuildCarriesClearImage(t *testing.T) {
 	t.Parallel()
-	card := Card{ID: "c1", Stream: "s1", State: "ready"}
+	card := Card{ID: "c1", Kind: "producer", Stream: "s1", State: "ready"}
 	row := Row{Name: "w1", Kind: "worker", State: "down"}
 	events := []Event{
 		{Seq: 1, Accepted: true, After: &State{Streams: map[string]Stream{"s1": {Name: "s1"}}, Cards: map[string]Card{"c1": card}}},

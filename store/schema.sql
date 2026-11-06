@@ -2,8 +2,9 @@
 -- Idempotent: applying it twice is a no-op. Migrate checks sprint.meta before
 -- it runs this, and refuses a store at another schema version. Nothing is
 -- ever deleted; a clear increments sprint.epoch and every stream, card and row
--- carries the epoch it was written in. Version 2 adds sprint.cards.author and
--- sprint.cards.base_sha (layer 2); there is no upgrade path from version 1.
+-- carries the epoch it was written in. Version 2 is the version with the two
+-- card kinds (kind, of, author, base_sha, result, the state done) and row gen;
+-- there is no upgrade path from version 1.
 
 CREATE SCHEMA IF NOT EXISTS sprint;
 
@@ -36,33 +37,42 @@ CREATE TABLE IF NOT EXISTS sprint.rows (
     state   text    NOT NULL CHECK (state IN ('up', 'down', 'blocked')),
     session text    NOT NULL DEFAULT '',
     flaps   integer NOT NULL DEFAULT 0,
+    gen     integer NOT NULL DEFAULT 0,
     epoch   integer NOT NULL,
     PRIMARY KEY (epoch, name)
 );
 
 -- One NOT NULL state column with a CHECK and one holder column with a
 -- foreign key: a card is in exactly one state and has at most one holder, by
--- the schema.
+-- the schema. A producer's "of" is NULL (the empty string in Go, as holder);
+-- a consumer's names a card of the same epoch by a foreign key.
 CREATE TABLE IF NOT EXISTS sprint.cards (
-    id      text    NOT NULL,
-    stream  text    NOT NULL,
-    state   text    NOT NULL CHECK (state IN ('waiting', 'ready', 'working', 'review', 'merging', 'landed', 'fail')),
-    gen     integer NOT NULL DEFAULT 0,
-    attempt integer NOT NULL DEFAULT 0,
-    score   integer NOT NULL DEFAULT 0,
-    needs   text[]  NOT NULL DEFAULT '{}',
-    holder  text,
-    branch  text    NOT NULL DEFAULT '',
-    head    text    NOT NULL DEFAULT '',
-    pr      integer NOT NULL DEFAULT 0,
-    brief   text    NOT NULL DEFAULT '',
-    reason  text    NOT NULL DEFAULT '',
-    author   text   NOT NULL DEFAULT '',
-    base_sha text   NOT NULL DEFAULT '',
-    epoch   integer NOT NULL,
+    id       text    NOT NULL,
+    kind     text    NOT NULL CHECK (kind IN ('producer', 'work', 'read')),
+    "of"     text,
+    stream   text    NOT NULL,
+    state    text    NOT NULL CHECK (state IN ('waiting', 'ready', 'working', 'review', 'merging', 'landed', 'fail', 'done')),
+    gen      integer NOT NULL DEFAULT 0,
+    attempt  integer NOT NULL DEFAULT 0,
+    score    integer NOT NULL DEFAULT 0,
+    needs    text[]  NOT NULL DEFAULT '{}',
+    holder   text,
+    author   text    NOT NULL DEFAULT '',
+    branch   text    NOT NULL DEFAULT '',
+    base_sha text    NOT NULL DEFAULT '',
+    head     text    NOT NULL DEFAULT '',
+    pr       integer NOT NULL DEFAULT 0,
+    result   text    NOT NULL DEFAULT '' CHECK (result IN ('', 'ok', 'fix', 'fail')),
+    brief    text    NOT NULL DEFAULT '',
+    reason   text    NOT NULL DEFAULT '',
+    epoch    integer NOT NULL,
     PRIMARY KEY (epoch, id),
+    CONSTRAINT cards_of_check CHECK ((kind = 'producer') = ("of" IS NULL)),
+    CONSTRAINT cards_needs_check CHECK (kind = 'producer' OR needs = '{}'),
+    CONSTRAINT cards_holder_check CHECK (kind <> 'producer' OR holder IS NULL),
     FOREIGN KEY (epoch, stream) REFERENCES sprint.streams (epoch, name),
-    FOREIGN KEY (epoch, holder) REFERENCES sprint.rows (epoch, name)
+    FOREIGN KEY (epoch, holder) REFERENCES sprint.rows (epoch, name),
+    FOREIGN KEY (epoch, "of") REFERENCES sprint.cards (epoch, id)
 );
 
 -- Append-only: one row per operation that entered the store, accepted or
